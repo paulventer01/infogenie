@@ -130,4 +130,104 @@ router.get('/pipeline', async (req, res) => {
   res.json({ ok:true, by_stage: byStage.rows, top_accounts: topAccounts.rows, total: totalValue.rows[0], stages: STAGES });
 });
 
+// ── F04: Multi-touch Revenue Attribution ────────────────────────────────
+// Given a list of touchpoints (channel, timestamp, cost) and a final revenue
+// value, distributes attribution credit across channels using four models.
+router.post('/attribution', async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'revenue-intel:attribution' });
+  if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
+  const { touchpoints = [], revenue = 0, deal_name } = req.body;
+  if (!Array.isArray(touchpoints) || touchpoints.length === 0) {
+    return res.status(400).json({ ok:false, error:'touchpoints array required (each: {channel, occurred_at, cost})' });
+  }
+  if (typeof revenue !== 'number' || revenue < 0) {
+    return res.status(400).json({ ok:false, error:'revenue must be a non-negative number' });
+  }
+
+  const n = touchpoints.length;
+  const sorted = [...touchpoints].sort((a,b) => new Date(a.occurred_at) - new Date(b.occurred_at));
+
+  // First-touch: 100% to the first touchpoint
+  const firstTouch = sorted.map((tp, i) => ({ ...tp, credit: i === 0 ? revenue : 0, pct: i === 0 ? 100 : 0 }));
+
+  // Last-touch: 100% to the last touchpoint
+  const lastTouch = sorted.map((tp, i) => ({ ...tp, credit: i === n-1 ? revenue : 0, pct: i === n-1 ? 100 : 0 }));
+
+  // Linear: equal share to every touchpoint
+  const linearShare = revenue / n;
+  const linear = sorted.map(tp => ({ ...tp, credit: parseFloat(linearShare.toFixed(2)), pct: parseFloat((100/n).toFixed(1)) }));
+
+  // Time-decay: exponential weight favouring recent touchpoints (half-life = 7 days)
+  const HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
+  const lastTs = new Date(sorted[n-1].occurred_at).getTime();
+  const rawWeights = sorted.map(tp => {
+    const age = lastTs - new Date(tp.occurred_at).getTime();
+    return Math.pow(2, -age / HALF_LIFE_MS);
+  });
+  const weightSum = rawWeights.reduce((a,b) => a+b, 0);
+  const timeDecay = sorted.map((tp, i) => {
+    const frac = weightSum ? rawWeights[i] / weightSum : 1/n;
+    return { ...tp, credit: parseFloat((revenue * frac).toFixed(2)), pct: parseFloat((frac*100).toFixed(1)), weight: parseFloat(rawWeights[i].toFixed(4)) };
+  });
+
+  // Position-based (40/20/40): 40% first, 40% last, 20% spread across middle
+  const posBased = sorted.map((tp, i) => {
+    let frac;
+    if (n === 1)      frac = 1;
+    else if (n === 2) frac = 0.5;
+    else if (i === 0) frac = 0.40;
+    else if (i === n-1) frac = 0.40;
+    else frac = 0.20 / (n - 2);
+    return { ...tp, credit: parseFloat((revenue * frac).toFixed(2)), pct: parseFloat((frac*100).toFixed(1)) };
+  });
+
+  // Channel-level roll-up for each model
+  function _rollUp(tps) {
+    const m = {};
+    for (const tp of tps) {
+      const ch = tp.channel || 'unknown';
+      if (!m[ch]) m[ch] = { channel: ch, credit: 0, pct: 0, touchpoints: 0, spend: 0 };
+      m[ch].credit += tp.credit;
+      m[ch].pct += tp.pct;
+      m[ch].touchpoints += 1;
+      m[ch].spend += +(tp.cost || 0);
+    }
+    return Object.values(m).map(r => ({
+      ...r,
+      credit: parseFloat(r.credit.toFixed(2)),
+      pct: parseFloat(r.pct.toFixed(1)),
+      roas: r.spend > 0 ? parseFloat((r.credit / r.spend).toFixed(2)) : null
+    })).sort((a,b) => b.credit - a.credit);
+  }
+
+  const p = await _db.getPool();
+  // Persist as a revenue signal for auditing
+  const totalSpend = touchpoints.reduce((s, tp) => s + (+(tp.cost || 0)), 0);
+  try {
+    await p.query(
+      `INSERT INTO revenue_signals(tenant_id, signal_type, description, metadata)
+       VALUES($1,'attribution_run',$2,$3)`,
+      [tid,
+       `Attribution for ${deal_name || 'deal'} — $${revenue.toLocaleString()}`,
+       JSON.stringify({ deal_name, revenue, touchpoints: n, total_spend: totalSpend })]
+    );
+  } catch(e2) {}
+
+  res.json({
+    ok: true,
+    deal_name: deal_name || null,
+    revenue,
+    total_spend: totalSpend,
+    total_roas: totalSpend > 0 ? parseFloat((revenue / totalSpend).toFixed(2)) : null,
+    touchpoints_count: n,
+    models: {
+      first_touch:    { touchpoints: firstTouch, by_channel: _rollUp(firstTouch) },
+      last_touch:     { touchpoints: lastTouch,  by_channel: _rollUp(lastTouch) },
+      linear:         { touchpoints: linear,     by_channel: _rollUp(linear) },
+      time_decay:     { touchpoints: timeDecay,  by_channel: _rollUp(timeDecay) },
+      position_based: { touchpoints: posBased,   by_channel: _rollUp(posBased) }
+    }
+  });
+});
+
 module.exports = router;

@@ -85,4 +85,88 @@ Return strict JSON: {"verdict":"significant|not_significant|inconclusive","inter
   res.json({ ok:true, analysis });
 });
 
+// ── F07: Statistical A/B Confidence Display ─────────────────────────────
+// Given raw control and variant counts, computes statistical confidence,
+// p-value (two-proportion z-test), and sample size recommendation.
+// Also patches the experiment record with computed confidence if id provided.
+router.post('/confidence', async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'experiments:confidence' });
+  if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
+  const { experiment_id, control_n, control_conversions, variant_n, variant_conversions } = req.body;
+  for (const [k, v] of [['control_n',control_n],['control_conversions',control_conversions],['variant_n',variant_n],['variant_conversions',variant_conversions]]) {
+    if (typeof v !== 'number' || v < 0) return res.status(400).json({ ok:false, error:`${k} must be a non-negative number` });
+  }
+  if (control_n < 1 || variant_n < 1) return res.status(400).json({ ok:false, error:'sample sizes must be >= 1' });
+
+  // Conversion rates
+  const p_c = control_conversions / control_n;
+  const p_v = variant_conversions / variant_n;
+  const lift_pct = p_c > 0 ? parseFloat(((p_v - p_c) / p_c * 100).toFixed(2)) : null;
+
+  // Two-proportion z-test
+  const p_pool = (control_conversions + variant_conversions) / (control_n + variant_n);
+  const se = Math.sqrt(p_pool * (1 - p_pool) * (1/control_n + 1/variant_n));
+  const z = se > 0 ? (p_v - p_c) / se : 0;
+
+  // Two-tailed p-value approximation (Zelen & Severo, Abramowitz & Stegun)
+  function _cdf(z) {
+    const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
+    const sign = z < 0 ? -1 : 1;
+    const t = 1 / (1 + p * Math.abs(z) / Math.SQRT2);
+    const poly = ((((a5*t+a4)*t+a3)*t+a2)*t+a1)*t;
+    return 0.5 * (1 + sign * (1 - poly * Math.exp(-z*z/2)));
+  }
+  const p_value = parseFloat((2 * Math.min(_cdf(z), 1 - _cdf(z))).toFixed(4));
+  const confidence_pct = parseFloat(((1 - p_value) * 100).toFixed(1));
+  const is_significant = confidence_pct >= 95 && p_value < 0.05;
+  const verdict = is_significant ? 'significant' : confidence_pct >= 80 ? 'trending' : 'not_significant';
+
+  // Minimum detectable effect & recommended sample size (for 80% power, 95% conf)
+  // n = 16 * p(1-p) / delta^2 (rule of thumb)
+  const mde_pct = 5; // assume 5% MDE as default
+  const delta = p_c * mde_pct / 100;
+  const recommended_n = delta > 0
+    ? Math.ceil(16 * p_c * (1 - p_c) / (delta * delta))
+    : null;
+
+  // Interpret
+  const interpretation = is_significant
+    ? `✅ Statistically significant at ${confidence_pct}% confidence. Variant ${lift_pct >= 0 ? 'outperforms' : 'underperforms'} control by ${Math.abs(lift_pct||0)}%.`
+    : confidence_pct >= 80
+    ? `⚠️ Trending (${confidence_pct}% confidence) but not yet significant. Collect more data.`
+    : `❌ Not significant (${confidence_pct}% confidence, p=${p_value}). No reliable difference detected.`;
+
+  const result = {
+    ok: true,
+    control_rate: parseFloat((p_c * 100).toFixed(2)),
+    variant_rate: parseFloat((p_v * 100).toFixed(2)),
+    lift_pct,
+    z_score: parseFloat(z.toFixed(4)),
+    p_value,
+    confidence_pct,
+    is_significant,
+    verdict,
+    interpretation,
+    sample_adequacy: {
+      control_n, variant_n,
+      recommended_n_per_arm: recommended_n,
+      is_adequate: recommended_n ? (control_n >= recommended_n && variant_n >= recommended_n) : null
+    }
+  };
+
+  // Patch the experiment record if id provided
+  if (experiment_id) {
+    const p = await _db.getPool();
+    try {
+      await p.query(
+        `UPDATE experiments SET confidence_pct=$1, p_value=$2, lift_pct=$3, updated_at=NOW()
+         WHERE id=$4 AND tenant_id=$5`,
+        [confidence_pct, p_value, lift_pct, experiment_id, tid]
+      );
+    } catch(e2) {}
+  }
+
+  res.json(result);
+});
+
 module.exports = router;

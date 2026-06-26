@@ -1,5 +1,6 @@
 // Journey runner — every 60s wakes pending runs and executes their next node.
-// Supported node types: trigger, wait, condition, action(email|whatsapp|voice|sms|webpush|tag).
+// Supported node types: trigger, wait, condition, action(email|whatsapp|voice|sms|webpush|tag),
+//                       ai_decision, send_time_optimized, translate_send.
 const _db = require('../../db');
 const hasDb = () => _db.hasDb();
 const pool = { query: (...a) => _db.getPool().query(...a) };
@@ -84,6 +85,75 @@ async function executeNode(run, journey, node) {
       }
     } catch (e) { result = 'error:' + e.message; }
     log.push({ ts, node: node.id, action: 'send', channel, result });
+    return { nextNodeId: outgoing[0]?.to || null, waitMs: 0, log };
+  }
+
+  // ── AI Decision node ─────────────────────────────────────────────────────
+  // Calls an LLM with the contact's data as context, stores the result, and
+  // routes down the YES or NO branch depending on the model's answer.
+  if (node.type === 'ai_decision') {
+    const prompt = node.config?.prompt || 'Should this contact receive the next step?';
+    const storeKey = node.config?.store_key || 'ai_decision_result';
+    const yesLabel = node.config?.yes_label || 'yes';
+    const noLabel  = node.config?.no_label  || 'no';
+    let aiResult = '';
+    let branch = noLabel;
+    try {
+      const OpenAI = require('openai');
+      const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+      const ctxStr = JSON.stringify(run.contact_meta || {});
+      const fullPrompt = `${prompt}\n\nContact data: ${ctxStr}\n\nAnswer YES or NO, then one brief reason (≤ 20 words).`;
+      const r = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: fullPrompt }],
+        max_tokens: 80
+      });
+      aiResult = r.choices[0].message.content.trim();
+      branch = /^yes/i.test(aiResult) ? yesLabel : noLabel;
+    } catch(e) { aiResult = 'error:' + e.message; }
+    // Persist AI result into contact_meta so downstream nodes can read it
+    const updatedMeta = { ...(run.contact_meta || {}), [storeKey]: aiResult };
+    try { await pool.query(`UPDATE journey_runs SET contact_meta=$1::jsonb WHERE id=$2`, [JSON.stringify(updatedMeta), run.id]); } catch(_) {}
+    run.contact_meta = updatedMeta;
+    const next = outgoing.find(e => (e.label || yesLabel) === branch) || outgoing[0];
+    log.push({ ts, node: node.id, action: 'ai_decision', prompt: prompt.slice(0, 100), result: aiResult.slice(0, 200), branch });
+    return { nextNodeId: next?.to || null, waitMs: 0, log };
+  }
+
+  // ── Smart send-time action ────────────────────────────────────────────────
+  // Delays the email/SMS send to the contact's historically best engagement hour.
+  // Falls through to immediate send if no history data is available.
+  if (node.type === 'smart_send') {
+    const channel = node.config?.channel || 'email';
+    const subject = node.config?.subject || '';
+    const message = node.config?.message || '';
+    // Read the contact's preferred send hour from contact_meta (set by smart-send-time API)
+    const preferredHour = run.contact_meta?.preferred_send_hour;
+    const now = new Date();
+    let waitMs = 0;
+    if (preferredHour != null) {
+      const target = new Date(now);
+      target.setHours(preferredHour, 0, 0, 0);
+      if (target <= now) target.setDate(target.getDate() + 1);
+      waitMs = target.getTime() - now.getTime();
+    }
+    // If we still have waitMs to burn, park with a wait-style return
+    if (waitMs > 60_000) {
+      log.push({ ts, node: node.id, action: 'smart_send_waiting', preferredHour, waitMs });
+      return { nextNodeId: node.id, waitMs, log }; // stay on this node
+    }
+    // Send now — reuse action send logic
+    let result = 'ok';
+    try {
+      if (channel === 'email' && run.contact_email && process.env.RESEND_API_KEY) {
+        const { Resend } = require('resend');
+        await new Resend(process.env.RESEND_API_KEY).emails.send({
+          from: process.env.RESEND_FROM_EMAIL || 'noreply@infogenie.app',
+          to: run.contact_email, subject: subject || 'A message for you', text: message
+        });
+      } else { result = 'skipped:no-target'; }
+    } catch(e) { result = 'send-failed:' + e.message; }
+    log.push({ ts, node: node.id, action: 'smart_send', channel, result, preferredHour });
     return { nextNodeId: outgoing[0]?.to || null, waitMs: 0, log };
   }
 

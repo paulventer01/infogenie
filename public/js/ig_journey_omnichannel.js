@@ -108,9 +108,11 @@
           <h3 style="margin:0 0 12px;color:#0F172A;font-size:1rem">Steps (top → bottom)</h3>
           <div id="jed_nodes" style="display:grid;gap:10px;margin-bottom:14px"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button data-add="wait" style="padding:8px 14px;background:#FEF3C7;border:1px solid #FBBF24;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem">+ Wait</button>
-            <button data-add="condition" style="padding:8px 14px;background:#DBEAFE;border:1px solid #60A5FA;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem">+ Condition (if/then)</button>
-            <button data-add="action" style="padding:8px 14px;background:#DCFCE7;border:1px solid #86EFAC;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem">+ Send (Email/SMS/WhatsApp/Voice/Push/Tag)</button>
+            <button data-add="wait" style="padding:8px 14px;background:#FEF3C7;border:1px solid #FBBF24;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem">⏳ Wait</button>
+            <button data-add="condition" style="padding:8px 14px;background:#DBEAFE;border:1px solid #60A5FA;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem">🔀 Condition (if/then)</button>
+            <button data-add="action" style="padding:8px 14px;background:#DCFCE7;border:1px solid #86EFAC;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem">📤 Send</button>
+            <button data-add="ai_decision" style="padding:8px 14px;background:#FDF4FF;border:2px solid #C084FC;border-radius:8px;cursor:pointer;font-weight:700;font-size:0.85rem;color:#7E22CE">🤖 AI Decision</button>
+            <button data-add="smart_send" style="padding:8px 14px;background:#FFFBEB;border:2px solid #F59E0B;border-radius:8px;cursor:pointer;font-weight:700;font-size:0.85rem;color:#B45309">⏰ Smart Send</button>
           </div>`;
         const nodesDiv = ed.querySelector('#jed_nodes');
         nodesDiv.innerHTML = journey.nodes.map((n,idx)=>{
@@ -134,6 +136,35 @@
               <input data-nidx="${idx}" data-nkey="equals" value="${_esc(c.equals||'')}" placeholder="value (e.g. US)" style="flex:1;min-width:120px;padding:6px 8px;border:1px solid #60A5FA;border-radius:6px">
               <button data-del-node="${idx}" style="padding:5px 10px;background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5;border-radius:6px;cursor:pointer;font-weight:600">✕</button>
             </div>`;
+          // ai_decision node
+          if (n.type==='ai_decision') return `
+            <div style="background:#FDF4FF;border:2px solid #C084FC;border-radius:10px;padding:14px;display:grid;grid-template-columns:80px 1fr auto;gap:8px;align-items:start">
+              <span style="font-weight:700;color:#7E22CE;align-self:start;padding-top:4px">🤖 AI<br>Decide</span>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <textarea data-nidx="${idx}" data-nkey="prompt" rows="3" placeholder="AI prompt — e.g. 'Should this contact receive a discount? They have: {{score}} score and {{days_since_signup}} days.'" style="padding:6px 8px;border:1px solid #C084FC;border-radius:6px;font-family:inherit;width:100%;box-sizing:border-box">${_esc(c.prompt||'')}</textarea>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <label style="font-size:0.8rem;color:#6B21A8">Store result as:<input data-nidx="${idx}" data-nkey="store_key" value="${_esc(c.store_key||'ai_decision_result')}" style="margin-left:6px;padding:4px 6px;border:1px solid #C084FC;border-radius:4px;width:150px"></label>
+                  <label style="font-size:0.8rem;color:#6B21A8">YES label:<input data-nidx="${idx}" data-nkey="yes_label" value="${_esc(c.yes_label||'yes')}" style="margin-left:6px;padding:4px 6px;border:1px solid #C084FC;border-radius:4px;width:80px"></label>
+                  <label style="font-size:0.8rem;color:#6B21A8">NO label:<input data-nidx="${idx}" data-nkey="no_label" value="${_esc(c.no_label||'no')}" style="margin-left:6px;padding:4px 6px;border:1px solid #C084FC;border-radius:4px;width:80px"></label>
+                </div>
+                <div style="font-size:0.78rem;color:#9333EA">The AI reads the contact's data, answers YES or NO, and routes the journey accordingly. The response is saved to contact_meta[store_key].</div>
+              </div>
+              <button data-del-node="${idx}" style="padding:5px 10px;background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5;border-radius:6px;cursor:pointer;font-weight:600;align-self:start">✕</button>
+            </div>`;
+          // smart_send node
+          if (n.type==='smart_send') return `
+            <div style="background:#FFFBEB;border:2px solid #F59E0B;border-radius:10px;padding:14px;display:grid;grid-template-columns:80px 140px 1fr auto;gap:8px;align-items:start">
+              <span style="font-weight:700;color:#B45309;align-self:center">⏰ Smart<br>Send</span>
+              <select data-nidx="${idx}" data-nkey="channel" style="padding:6px 8px;border:1px solid #F59E0B;border-radius:6px">
+                ${['email','sms'].map(o=>`<option value="${o}" ${c.channel===o?'selected':''}>${o}</option>`).join('')}
+              </select>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <input data-nidx="${idx}" data-nkey="subject" value="${_esc(c.subject||'')}" placeholder="Email subject" style="padding:6px 8px;border:1px solid #F59E0B;border-radius:6px">
+                <textarea data-nidx="${idx}" data-nkey="message" rows="2" placeholder="Message body" style="padding:6px 8px;border:1px solid #F59E0B;border-radius:6px;font-family:inherit">${_esc(c.message||'')}</textarea>
+                <div style="font-size:0.78rem;color:#92400E">Waits until each contact's optimal engagement hour before sending. Reads <code>preferred_send_hour</code> from contact_meta.</div>
+              </div>
+              <button data-del-node="${idx}" style="padding:5px 10px;background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5;border-radius:6px;cursor:pointer;font-weight:600;align-self:start">✕</button>
+            </div>`;
           // action
           return `
             <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:14px;display:grid;grid-template-columns:80px 140px 1fr auto;gap:8px;align-items:start">
@@ -152,7 +183,11 @@
         ed.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{
           const t = b.dataset.add;
           const id = 'n'+(journey.nodes.length+1)+'_'+Math.random().toString(36).slice(2,5);
-          const cfg = t==='wait'?{minutes:60}:t==='condition'?{key:'',equals:''}:{channel:'email',subject:'',message:''};
+          const cfg = t==='wait'?{minutes:60}
+            : t==='condition'?{key:'',equals:''}
+            : t==='ai_decision'?{prompt:'',store_key:'ai_decision_result',yes_label:'yes',no_label:'no'}
+            : t==='smart_send'?{channel:'email',subject:'',message:''}
+            : {channel:'email',subject:'',message:''};
           // Wire edge from previous node → this one
           const prev = journey.nodes[journey.nodes.length-1];
           journey.nodes.push({id, type:t, config:cfg});

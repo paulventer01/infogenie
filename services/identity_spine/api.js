@@ -111,4 +111,70 @@ router.post('/event', async (req, res) => {
   res.json({ ok:true });
 });
 
+// ── Anonymous → Known Profile Stitching ──────────────────────────────────
+// Associates an anonymous session identity with a known email profile.
+// Merges anonymous_id's event history into the target profile.
+router.post('/stitch', async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'identity:stitch' });
+  if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
+  const { anonymous_id, email, source_channel } = req.body;
+  if (!anonymous_id || !email) return res.status(400).json({ ok:false, error:'anonymous_id and email required' });
+  const p = await _db.getPool();
+  // Find or create the known profile
+  let profile = await p.query(
+    `SELECT id FROM identity_profiles WHERE tenant_id=$1 AND email=$2`, [tid, email.toLowerCase().trim()]
+  );
+  let profile_id;
+  if (profile.rows.length) {
+    profile_id = profile.rows[0].id;
+  } else {
+    const ins = await p.query(
+      `INSERT INTO identity_profiles(tenant_id,email,source_channels,lifecycle_stage,last_seen_at)
+       VALUES($1,$2,$3,'aware',NOW()) RETURNING id`,
+      [tid, email.toLowerCase().trim(), source_channel || 'web']
+    );
+    profile_id = ins.rows[0].id;
+  }
+  // Re-assign any events logged under anonymous_id to this profile
+  const reassigned = await p.query(
+    `UPDATE identity_events SET profile_id=$1
+     WHERE tenant_id=$2 AND properties::jsonb->>'anonymous_id'=$3 AND profile_id IS NULL`,
+    [profile_id, tid, anonymous_id]
+  );
+  // Log the stitch event itself
+  await p.query(
+    `INSERT INTO identity_events(profile_id,tenant_id,event_type,channel,properties)
+     VALUES($1,$2,'identity_stitched','web',$3)`,
+    [profile_id, tid, JSON.stringify({ anonymous_id, email, reassigned_events: reassigned.rowCount })]
+  );
+  await p.query(`UPDATE identity_profiles SET last_seen_at=NOW() WHERE id=$1`, [profile_id]);
+  res.json({ ok:true, profile_id, email, events_reassigned: reassigned.rowCount });
+});
+
+// ── Merge two profiles ────────────────────────────────────────────────────
+// Merge a secondary profile into a primary, carrying over events.
+router.post('/merge', async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'identity:merge' });
+  if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
+  const { primary_id, secondary_id } = req.body;
+  if (!primary_id || !secondary_id) return res.status(400).json({ ok:false, error:'primary_id and secondary_id required' });
+  if (primary_id === secondary_id) return res.status(400).json({ ok:false, error:'cannot merge profile with itself' });
+  const p = await _db.getPool();
+  const [primary, secondary] = await Promise.all([
+    p.query(`SELECT id FROM identity_profiles WHERE id=$1 AND tenant_id=$2`, [primary_id, tid]),
+    p.query(`SELECT id FROM identity_profiles WHERE id=$1 AND tenant_id=$2`, [secondary_id, tid])
+  ]);
+  if (!primary.rows.length) return res.status(404).json({ ok:false, error:'primary profile not found' });
+  if (!secondary.rows.length) return res.status(404).json({ ok:false, error:'secondary profile not found' });
+  // Reassign events from secondary → primary
+  const moved = await p.query(
+    `UPDATE identity_events SET profile_id=$1 WHERE profile_id=$2 AND tenant_id=$3`,
+    [primary_id, secondary_id, tid]
+  );
+  // Delete secondary profile
+  await p.query(`DELETE FROM identity_profiles WHERE id=$1 AND tenant_id=$2`, [secondary_id, tid]);
+  await p.query(`UPDATE identity_profiles SET updated_at=NOW() WHERE id=$1`, [primary_id]);
+  res.json({ ok:true, primary_id, secondary_id_removed: secondary_id, events_moved: moved.rowCount });
+});
+
 module.exports = router;

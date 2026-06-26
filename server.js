@@ -3245,7 +3245,7 @@ const _playbooksSchema    = require('./services/vertical_playbooks/schema');
 const _playbooksRouter    = require('./services/vertical_playbooks/api');
 app.use('/api/decision-engine',  _decisionEngineRouter);
 app.use('/api/experiments',      _experimentSuiteRouter);
-app.use('/api/identity',         _identitySpineRouter);
+app.use('/api/identity',         _identitySpineRouter);  // includes /stitch + /merge (profile stitching)
 app.use('/api/approvals',        _approvalWfRouter);
 app.use('/api/ai-answer-sov',    _aiAnswerSovRouter);
 app.use('/api/revenue-intel',    _revenueIntelRouter);
@@ -3390,6 +3390,31 @@ const _bfSchema    = require('./services/brand_foundation/schema');
 const _bfRouter    = require('./services/brand_foundation/api');
 app.use('/api/deliverability', _delivRouter);
 app.use('/api/landing-pages',  _lpRouter);
+
+// ── Customer.io-inspired features (Surveys · Email Designer · MCP · Smart Send · Ad Sync) ──
+const _surveysSchema = require('./services/surveys/schema');
+const _surveysRouter = require('./services/surveys/api');
+const { router: _emailDesignerRouter } = require('./services/email_designer/api');
+const _emailDesignerSchema = require('./services/email_designer/schema');
+const _mcpRouter = require('./services/mcp/api');
+const _smartSendRouter = require('./services/drips/smart_send');
+const _commentsSchema = require('./services/comments/schema');
+const _commentsRouter = require('./services/comments/api');
+app.use('/api/surveys',        _surveysRouter);
+app.use('/api/email-designer', _emailDesignerRouter);
+app.use('/api/mcp',            _mcpRouter);
+app.use('/api/drips',          _smartSendRouter);   // adds /api/drips/smart-send-time + /api/drips/translate
+app.use('/api/comments',       _commentsRouter);    // F13 team collaboration asset comments
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _surveysSchema.ensureSurveysSchema();
+      await _emailDesignerSchema.ensureEmailDesignerSchema();
+      await _commentsSchema.ensureCommentsSchema();
+      console.log('[surveys/email-designer/comments] schemas ready');
+    }
+  } catch(e) { console.warn('[surveys/email-designer/comments] schema init failed:', e.message); }
+});
 
 // ── T70/T71 Public landing page serve (/lp/:id) ───────────────────────────
 app.get('/lp/:id', async (req, res) => {
