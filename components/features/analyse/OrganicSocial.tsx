@@ -625,7 +625,7 @@ function ResultsView({ items, keyword, onExport }: { items: TikTokItem[]; keywor
           ) : (
             <div style={{ background:"#FEF3C7", border:"1px solid #FCD34D", borderRadius:10, padding:"12px 16px", marginBottom:20, fontSize:"0.82rem", color:"#92400E" }}>
               ⚠️ <strong>No official {keyword} channel videos found in these results.</strong>{" "}
-              The scraper found only third-party content that mentions &ldquo;{keyword}&rdquo;. Try searching for their exact TikTok handle (e.g. <em>@{keyword.toLowerCase().replace(/\s+/g, "")}</em>) if you know it.
+              The scraper found only third-party content that mentions &ldquo;{keyword}&rdquo;. Try searching for their exact TikTok handle (e.g. <em>@{keyword.toLowerCase().split(" ").join("")}</em>) if you know it.
             </div>
           )}
         </>
