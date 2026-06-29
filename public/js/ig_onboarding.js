@@ -60,14 +60,14 @@
       $('ig-onb-title').textContent = "Tell us about your business";
       $('ig-onb-sub').textContent   = "We'll personalise everything from this — you can change it later.";
       body.innerHTML = `
-        <label>Business name</label><input type="text" id="ob-biz" value="${_e(state.biz)}" placeholder="Acme Co" autocomplete="off">
+        <label>Business name</label><input type="text" id="ob-biz" value="${_e(state.biz)}" placeholder="Acme Co" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-form-type="other">
         <label>Website (optional)</label><input type="url" id="ob-site" value="${_e(state.site)}" placeholder="https://acme.com" autocomplete="off">
         <label>Industry</label>
         <select id="ob-ind"><option value="">— pick one —</option>${['SaaS','E-commerce','Local services','Agency','Consulting','Education','Healthcare','Real estate','Finance','Hospitality','Manufacturing','Non-profit','Other'].map(i=>`<option ${state.industry===i?'selected':''}>${i}</option>`).join('')}</select>`;
     } else if (state.step === 2) {
       $('ig-onb-title').textContent = "Add 1–3 competitors";
       $('ig-onb-sub').textContent   = "Optional. We'll auto-pull their ads, keywords, and landing pages once you do.";
-      body.innerHTML = [0,1,2].map(i => `<label>Competitor ${i+1} ${i?'<span style="color:#94A3B8;font-weight:500">(optional)</span>':''}</label><input type="text" id="ob-c${i}" value="${_e(state.comps[i]||'')}" placeholder="competitor${i+1}.com or brand name" autocomplete="off">`).join('');
+      body.innerHTML = [0,1,2].map(i => `<label>Competitor ${i+1} ${i?'<span style="color:#94A3B8;font-weight:500">(optional)</span>':''}</label><input type="text" id="ob-c${i}" value="${_e(state.comps[i]||'')}" placeholder="competitor${i+1}.com or brand name" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-form-type="other">`).join('');
     } else if (state.step === 3) {
       $('ig-onb-title').textContent = "Where do you want to grow?";
       $('ig-onb-sub').textContent   = "Pick the channels you'll use. We'll only show tools that match.";

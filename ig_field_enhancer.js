@@ -99,6 +99,61 @@
   function cleanLabel(s){ return String(s || '').replace(/\s+/g, ' ').replace(/\*$/,'').trim(); }
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Autofill suppression — Chromium ignores autocomplete="off" and uses its own
+  // form-shape heuristic, so plain text inputs across the app (campaign briefs,
+  // brand fields, lead/contact forms, settings inputs) get unwanted saved
+  // email/password injection. The reliable Chromium bypass is
+  // autocomplete="new-password" on the field. We apply it (plus the standard
+  // password-manager opt-out data attributes) to every free-text input the SPA
+  // renders, EXCEPT:
+  //   • real auth/credential forms (login/signup/reset) — those intentionally
+  //     use autofill;
+  //   • genuine email/url/tel/search fields and any field that already declares a
+  //     meaningful autocomplete token (email, url, name, tel, username, etc.) —
+  //     we honour the form's explicit intent rather than override it.
+  // This central pass means any new view rendered by any feature is covered for
+  // free, without editing every per-form template.
+  //
+  // Tokens that signal the form WANTS a specific kind of autofill; if present we
+  // leave the field untouched. "off"/"on" are treated as no-meaningful-intent
+  // because Chromium ignores them anyway.
+  const KEEP_AUTOCOMPLETE = new Set([
+    'email','url','tel','name','given-name','family-name','additional-name',
+    'nickname','username','organization','organization-title','street-address',
+    'address-line1','address-line2','address-level1','address-level2',
+    'postal-code','country','country-name','cc-name','cc-number','bday',
+    'current-password','new-password','one-time-code'
+  ]);
+
+  function suppressAutofill(el){
+    if (el.dataset.igNoAutofill) return;
+    // Never touch real auth/credential forms — they intentionally use autofill.
+    if (el.closest('#igAuthWall, #igForgotForm, #ig-reset-form, [data-auth-form]')) return;
+
+    // Only free-text inputs and textareas. Leave structured/credential types
+    // (email/url/tel/search/password/date/number/etc.) to the browser.
+    let suppressible = el.tagName === 'TEXTAREA';
+    if (el.tagName === 'INPUT') {
+      const t = (el.getAttribute('type') || 'text').toLowerCase();
+      suppressible = (t === 'text' || t === '');
+    }
+    if (!suppressible) return;
+
+    // Honour any meaningful autocomplete token the form already declared.
+    const existing = (el.getAttribute('autocomplete') || '').trim().toLowerCase();
+    if (existing && KEEP_AUTOCOMPLETE.has(existing.split(/\s+/).pop())) {
+      el.dataset.igNoAutofill = '1';
+      return;
+    }
+
+    el.setAttribute('autocomplete', 'new-password');
+    el.setAttribute('data-lpignore', 'true');
+    el.setAttribute('data-1p-ignore', 'true');
+    el.setAttribute('data-form-type', 'other');
+    el.dataset.igNoAutofill = '1';
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
   function alreadyHandled(el){
     if (el.dataset.igEnhanced) return true;
     // Skip if THIS field already has an AI Suggest button next to it (the
@@ -318,8 +373,15 @@
   const SCAN_SEL = 'input[type="text"],input[type="email"],input[type="url"],' +
                    'input[type="tel"],input:not([type]),textarea';
 
+  // Run autofill suppression first (applies to every free-text field), then the
+  // AI-Suggest decoration (which has its own narrower eligibility rules).
+  function processField(el){
+    try { suppressAutofill(el); } catch(_) {}
+    decorate(el);
+  }
+
   function scan(root){
-    (root || document).querySelectorAll(SCAN_SEL).forEach(decorate);
+    (root || document).querySelectorAll(SCAN_SEL).forEach(processField);
   }
 
   // Only freshly-inserted subtrees are scanned — never the whole document.
@@ -354,7 +416,7 @@
     let processed = 0;
     while (pendingInputs.length && processed < MAX_PER_FRAME) {
       const el = pendingInputs.shift();
-      if (el && el.isConnected) decorate(el);
+      if (el && el.isConnected) processField(el);
       processed++;
     }
     if (window.IGDiag && total > MAX_PER_FRAME) {

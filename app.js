@@ -15283,7 +15283,7 @@ async function _adminRenderPlatformKeys(body) {
         <div style="font-size:12px;color:#64748B;margin-bottom:8px">${_esc(it.desc || '')}</div>
         <div style="font-size:11px;color:#94A3B8;font-family:monospace;margin-bottom:8px">${_esc(it.key)}</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input type="${it.secret ? 'password' : 'text'}" id="pk-${_esc(it.key)}" placeholder="${ph}" autocomplete="off"
+          <input type="${it.secret ? 'password' : 'text'}" id="pk-${_esc(it.key)}" placeholder="${ph}" autocomplete="${it.secret ? 'off' : 'new-password'}" data-lpignore="true" data-1p-ignore="true" data-form-type="other"
             style="flex:1;min-width:200px;padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:13px" />
           <button onclick="_adminSavePlatformKey('${_esc(it.key)}')" style="border:1px solid #BBF7D0;background:#F0FDF4;color:#15803D;border-radius:8px;font-size:12px;padding:8px 14px;cursor:pointer;font-weight:700">Save</button>
           ${testBtn}
