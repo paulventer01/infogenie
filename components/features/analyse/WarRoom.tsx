@@ -42,6 +42,8 @@ interface RunResult {
   competitor?: string;
   signals?: string[];
   prediction?: Prediction;
+  provider_used?: string | null;
+  signal_provider?: string | null;
   created_at?: string;
 }
 interface HistoryRun {
@@ -242,6 +244,15 @@ export default function WarRoom() {
 
         {status === "idle" && p && (
           <div className="wr-card">
+            {!result?.provider_used && (
+              <div style={{ background: "#FEF9C3", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: "0.82rem", color: "#92400E", display: "flex", gap: 8, alignItems: "center" }}>
+                <span>⚠️</span>
+                <span>
+                  <strong>No AI provider active</strong> — showing template result. Add an OpenAI, Anthropic, or Gemini key in{" "}
+                  <strong>Admin → Platform APIs</strong> for live predictions.
+                </span>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
               <div className="wr-ring" style={{ background: threatColor(p.threat_level) }}>
                 {p.confidence}%
@@ -256,6 +267,12 @@ export default function WarRoom() {
                   </span>
                   <span className="wr-badge" style={{ background: "#1E3A8A" }}>{p.move_type}</span>
                   <span style={{ fontSize: "0.78rem", color: "#6B7280", fontWeight: 700 }}>⏱ {p.timeframe}</span>
+                  {result?.provider_used && (
+                    <span style={{ fontSize: "0.7rem", background: "#F0FDF4", color: "#166534", border: "1px solid #BBF7D0", borderRadius: 20, padding: "2px 9px", fontWeight: 700 }}>
+                      🤖 {result.provider_used}
+                      {result.signal_provider ? ` · 📡 ${result.signal_provider}` : ""}
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: "0.92rem", color: "#0A1628", lineHeight: 1.55 }}>{p.prediction}</div>
               </div>
