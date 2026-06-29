@@ -35,8 +35,10 @@ interface ExploreResult {
   ok: boolean;
   error?: string;
   note?: string;
+  source?: string;
   seed_metrics?: SeedMetrics;
   ideas?: Idea[];
+  total_ideas?: number;
 }
 
 interface AnalysisCompetitor {
@@ -585,6 +587,58 @@ export default function KeywordExplorer() {
           )}
           {status === "idle" && result && sm && (
             <>
+              {result.source === "rapidapi_keyword_research" && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 10,
+                    fontSize: "0.75rem",
+                    color: "#6B7280",
+                  }}
+                >
+                  <span
+                    style={{
+                      background: "#F3F0FF",
+                      color: "#7C3AED",
+                      border: "1px solid #DDD6FE",
+                      borderRadius: 6,
+                      padding: "2px 8px",
+                      fontWeight: 600,
+                      letterSpacing: "0.02em",
+                    }}
+                  >
+                    ⚡ Powered by RapidAPI · Google SEO Keyword Research
+                  </span>
+                </div>
+              )}
+              {result.source === "dataforseo_labs" && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 10,
+                    fontSize: "0.75rem",
+                    color: "#6B7280",
+                  }}
+                >
+                  <span
+                    style={{
+                      background: "#F0FDF4",
+                      color: "#15803D",
+                      border: "1px solid #BBF7D0",
+                      borderRadius: 6,
+                      padding: "2px 8px",
+                      fontWeight: 600,
+                      letterSpacing: "0.02em",
+                    }}
+                  >
+                    📊 Powered by DataForSEO
+                  </span>
+                </div>
+              )}
               <div
                 style={{
                   background:

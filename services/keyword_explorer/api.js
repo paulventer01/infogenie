@@ -8,6 +8,77 @@ async function _tid(req, label) {
   return await _tenantCtx.resolveTenantId(req, { label });
 }
 
+// ── RapidAPI: keyword-research-for-seo.p.rapidapi.com ────────────────────────
+const _KW_HOST = 'keyword-research-for-seo.p.rapidapi.com';
+
+function _hasRapidAPIKeywords() {
+  const k = process.env.RAPIDAPI_KEY;
+  return !!(k && !/^_DUMMY/i.test(k));
+}
+
+function _rapidAPIGet(path, params) {
+  const key = process.env.RAPIDAPI_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return Promise.resolve(null);
+  const qs = new URLSearchParams(params).toString();
+  const fullPath = qs ? `${path}?${qs}` : path;
+  return new Promise(resolve => {
+    const req = _https.request({
+      hostname: _KW_HOST,
+      path: fullPath,
+      method: 'GET',
+      headers: {
+        'x-rapidapi-key': key,
+        'x-rapidapi-host': _KW_HOST,
+        'Accept': 'application/json',
+      },
+    }, r => {
+      let d = ''; r.on('data', c => d += c);
+      r.on('end', () => {
+        try {
+          if (r.statusCode !== 200) {
+            console.warn('[keyword-explorer] RapidAPI', r.statusCode, d.slice(0, 200));
+            return resolve(null);
+          }
+          resolve(JSON.parse(d));
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(30000, () => { req.destroy(); resolve(null); });
+    req.end();
+  });
+}
+
+// Normalise competition string/number to 0-1 float + level label
+function _parseCompetition(raw) {
+  if (raw == null) return { competition: 0, competition_level: null };
+  if (typeof raw === 'number') {
+    const level = raw > 0.66 ? 'HIGH' : raw > 0.33 ? 'MEDIUM' : 'LOW';
+    return { competition: raw, competition_level: level };
+  }
+  const s = String(raw).toUpperCase();
+  const map = { HIGH: 0.85, MEDIUM: 0.5, LOW: 0.2, 'VERY_LOW': 0.1 };
+  return { competition: map[s] ?? 0, competition_level: s };
+}
+
+function _mapRapidAPIItem(item) {
+  if (!item || !item.keyword) return null;
+  const vol = parseInt(item.search_volume ?? item.monthly_searches ?? 0, 10) || 0;
+  const cpc = parseFloat(item.cpc ?? item.cpc_range?.min ?? 0) || 0;
+  const { competition, competition_level } = _parseCompetition(item.competition ?? item.competition_level);
+  return {
+    keyword: item.keyword,
+    search_volume: vol,
+    cpc,
+    competition,
+    competition_level,
+    keyword_difficulty: item.keyword_difficulty ?? null,
+    low_top_of_page_bid: parseFloat(item.low_bid ?? 0) || 0,
+    high_top_of_page_bid: parseFloat(item.high_bid ?? 0) || 0,
+    intent: item.search_intent ?? item.intent ?? null,
+  };
+}
+
 const COUNTRY_TO_LOC = {
   us:2840, gb:2826, ca:2124, au:2036, in:2356, de:2276, fr:2250, jp:2392, br:2076, mx:2484,
   za:2710, nl:2528, es:2724, it:2380, sg:2702, ae:2784, ch:2756, se:2752, no:2578, dk:2208,
@@ -61,7 +132,48 @@ router.post('/explore', async (req, res) => {
   const isGlobal = country === 'global' || country === '';
   const locCode = isGlobal ? null : (COUNTRY_TO_LOC[country] || 2840);
 
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', note:'Set DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD for live keyword data.' });
+  // ── RapidAPI fallback when DataForSEO is not configured ──────────────────
+  if (!_hasCreds()) {
+    if (_hasRapidAPIKeywords()) {
+      try {
+        const cc = isGlobal ? 'us' : country;
+        const lang = 'en';
+        const [kwRes, sugRes] = await Promise.all([
+          _rapidAPIGet('/keyword_research', { keyword: seed, country: cc, lang }),
+          _rapidAPIGet('/keyword_suggestions', { keyword: seed, country: cc, lang }),
+        ]);
+        // seed metrics — from keyword_research endpoint
+        const seedRaw = Array.isArray(kwRes) ? kwRes[0] : kwRes;
+        const seed_metrics = _mapRapidAPIItem(seedRaw ? { keyword: seed, ...seedRaw } : { keyword: seed }) || {
+          keyword: seed, search_volume: 0, cpc: 0, competition: 0, keyword_difficulty: null,
+        };
+        // keyword ideas — from keyword_suggestions endpoint
+        const rawIdeas = Array.isArray(sugRes)
+          ? sugRes
+          : (Array.isArray(sugRes?.keywords) ? sugRes.keywords
+            : Array.isArray(sugRes?.data) ? sugRes.data : []);
+        const ideas = rawIdeas
+          .map(it => _mapRapidAPIItem(it))
+          .filter(Boolean)
+          .filter(it => it.keyword !== seed)
+          .slice(0, limit);
+
+        if (_db.hasDb()) {
+          try {
+            const tid = await _tid(req, 'kw-explorer:explore');
+            await _db.getPool().query(
+              `INSERT INTO keyword_explorer_runs (tenant_id, seed, country, seed_metrics, ideas) VALUES ($1,$2,$3,$4,$5)`,
+              [tid, seed, country, JSON.stringify(seed_metrics), JSON.stringify(ideas)]);
+          } catch (e) { console.warn('[keyword-explorer] persist:', e.message); }
+        }
+
+        return res.json({ ok: true, source: 'rapidapi_keyword_research', seed_metrics, ideas, total_ideas: ideas.length });
+      } catch (e) {
+        console.warn('[keyword-explorer] RapidAPI error:', e.message);
+      }
+    }
+    return res.json({ ok:true, source:'placeholder', note:'Configure DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD or RAPIDAPI_KEY for live keyword data.' });
+  }
 
   // Build request bodies — omit location_code for global queries
   const _overviewBody = isGlobal
