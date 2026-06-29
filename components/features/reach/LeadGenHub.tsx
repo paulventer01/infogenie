@@ -1058,11 +1058,13 @@ function LocalMode({
 // ═══════════════════════════════════════════════════════════════════════════
 interface Prospect {
   id: number;
+  campaign_id?: number;
   name?: string;
   company?: string;
   role?: string;
   email?: string;
   score: number;
+  status?: string;
 }
 interface SequenceEmail {
   step: number;
@@ -1083,13 +1085,72 @@ interface LaunchResult {
   email_sequence?: { emails?: SequenceEmail[] };
 }
 interface Campaign {
+  id?: number;
   name: string;
   status: string;
   stats?: AEStats;
+  created_at?: string;
 }
 interface CampaignsResult {
   ok: boolean;
   campaigns?: Campaign[];
+  prospects?: Prospect[];
+}
+
+// Shared prospects table — used by both a fresh launch result and the
+// detail view of a previously-run campaign.
+function ProspectsTable({
+  prospects,
+  onMark,
+}: {
+  prospects: Prospect[];
+  onMark: (id: number, type: "meeting" | "sent") => void;
+}) {
+  if (!prospects.length) {
+    return (
+      <div style={{ padding: 16, textAlign: "center", color: "#6b7280", fontSize: 13 }}>
+        No prospects were recorded for this campaign.
+      </div>
+    );
+  }
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr style={{ background: "#f9fafb" }}>
+            {["Name", "Company", "Role", "Email", "Score", "Actions"].map((h) => (
+              <th key={h} style={{ padding: 8, textAlign: "left", color: "#6b7280", fontWeight: 600 }}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {prospects.map((p) => (
+            <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+              <td style={{ padding: 8 }}>{p.name || "—"}</td>
+              <td style={{ padding: 8, fontWeight: 600 }}>{p.company || "—"}</td>
+              <td style={{ padding: 8 }}>{p.role || "—"}</td>
+              <td style={{ padding: 8, color: "#6b7280" }}>{p.email || "—"}</td>
+              <td style={{ padding: 8 }}>
+                <ScoreDot score={p.score} />
+              </td>
+              <td style={{ padding: 8 }}>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button className="btn btn-xs" onClick={() => onMark(p.id, "sent")} title="Mark emailed">
+                    📧
+                  </button>
+                  <button className="btn btn-xs" onClick={() => onMark(p.id, "meeting")} title="Mark meeting booked">
+                    📅
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function OutreachMode({
@@ -1110,10 +1171,13 @@ function OutreachMode({
   const [launching, setLaunching] = useState(false);
   const [result, setResult] = useState<LaunchResult | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
+  const [campaignProspects, setCampaignProspects] = useState<Prospect[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
 
   const loadCampaigns = useCallback(async () => {
     const d = await apiGet<CampaignsResult>("/api/acquisition-engine/campaigns");
     setCampaigns(d.ok && d.campaigns ? d.campaigns : []);
+    setCampaignProspects(d.ok && d.prospects ? d.prospects : []);
   }, []);
 
   useEffect(() => {
@@ -1156,6 +1220,10 @@ function OutreachMode({
 
   const seq = result?.email_sequence?.emails || [];
   const stats = result?.stats || {};
+  const selectedCampaign =
+    selectedCampaignId != null ? campaigns?.find((c) => c.id === selectedCampaignId) ?? null : null;
+  const selectedProspects =
+    selectedCampaignId != null ? campaignProspects.filter((p) => p.campaign_id === selectedCampaignId) : [];
 
   return (
     <div>
@@ -1221,16 +1289,43 @@ function OutreachMode({
         <div style={{ flex: 2, minWidth: 300 }}>
           {campaigns && campaigns.length > 0 ? (
             <>
-              <h3 style={{ fontWeight: 700, marginBottom: 8 }}>Active campaigns</h3>
+              <h3 style={{ fontWeight: 700, marginBottom: 8 }}>Your campaigns</h3>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
+                Click a campaign to see the prospects it found and update their status.
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {campaigns.map((c, i) => {
                   const s = c.stats || {};
+                  const cid = c.id ?? null;
+                  const isSelected = cid != null && cid === selectedCampaignId;
                   return (
-                    <div key={i} className="ig-card" style={{ padding: 12 }}>
+                    <div
+                      key={c.id ?? i}
+                      className="ig-card"
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedCampaignId(isSelected ? null : cid)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedCampaignId(isSelected ? null : cid);
+                        }
+                      }}
+                      style={{
+                        padding: 12,
+                        cursor: "pointer",
+                        border: isSelected ? "1px solid #6366F1" : undefined,
+                        boxShadow: isSelected ? "0 0 0 2px rgba(99,102,241,.18)" : undefined,
+                      }}
+                    >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                         <span style={{ fontWeight: 600 }}>{c.name}</span>
-                        <span style={{ background: "#dbeafe", color: "#1d4ed8", borderRadius: 4, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
-                          {c.status}
+                        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ background: "#dbeafe", color: "#1d4ed8", borderRadius: 4, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
+                            {c.status}
+                          </span>
+                          <span style={{ fontSize: 11, color: "#6366F1", fontWeight: 600 }}>{isSelected ? "Hide ▲" : "View ▾"}</span>
                         </span>
                       </div>
                       <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#6b7280", flexWrap: "wrap" }}>
@@ -1252,6 +1347,40 @@ function OutreachMode({
         </div>
       </div>
 
+      {selectedCampaign && (
+        <div className="ig-card" style={{ marginBottom: 16, padding: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <h4 style={{ fontWeight: 700, margin: 0 }}>
+              {selectedCampaign.name} — prospects
+            </h4>
+            <button
+              className="btn btn-xs"
+              onClick={() => setSelectedCampaignId(null)}
+              title="Close"
+              style={{ cursor: "pointer" }}
+            >
+              ✕ Close
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 16 }}>
+            {(
+              [
+                [selectedCampaign.stats?.total_found ?? selectedProspects.length, "Prospects Found", "#3b82f6"],
+                [selectedCampaign.stats?.emails_sent || 0, "Emails Sent", "#10b981"],
+                [selectedCampaign.stats?.replies || 0, "Replies", "#f59e0b"],
+                [selectedCampaign.stats?.meetings_booked || 0, "Meetings Booked", "#8b5cf6"],
+              ] as [number, string, string][]
+            ).map(([v, l, col]) => (
+              <div key={l} style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "2rem", fontWeight: 800, color: col }}>{v}</div>
+                <div style={{ fontSize: 11, color: "#6b7280" }}>{l}</div>
+              </div>
+            ))}
+          </div>
+          <ProspectsTable prospects={selectedProspects} onMark={mark} />
+        </div>
+      )}
+
       {result && (
         <>
           <div className="ig-card" style={{ marginBottom: 16, padding: 18 }}>
@@ -1271,42 +1400,7 @@ function OutreachMode({
               ))}
             </div>
             <h4 style={{ fontWeight: 700, marginBottom: 8 }}>Prospects</h4>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ background: "#f9fafb" }}>
-                    {["Name", "Company", "Role", "Email", "Score", "Actions"].map((h) => (
-                      <th key={h} style={{ padding: 8, textAlign: "left", color: "#6b7280", fontWeight: 600 }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(result.prospects || []).map((p) => (
-                    <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: 8 }}>{p.name || "—"}</td>
-                      <td style={{ padding: 8, fontWeight: 600 }}>{p.company || "—"}</td>
-                      <td style={{ padding: 8 }}>{p.role || "—"}</td>
-                      <td style={{ padding: 8, color: "#6b7280" }}>{p.email || "—"}</td>
-                      <td style={{ padding: 8 }}>
-                        <ScoreDot score={p.score} />
-                      </td>
-                      <td style={{ padding: 8 }}>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button className="btn btn-xs" onClick={() => mark(p.id, "sent")} title="Mark emailed">
-                            📧
-                          </button>
-                          <button className="btn btn-xs" onClick={() => mark(p.id, "meeting")} title="Mark meeting booked">
-                            📅
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ProspectsTable prospects={result.prospects || []} onMark={mark} />
           </div>
 
           {seq.length > 0 && (
