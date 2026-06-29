@@ -93,7 +93,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "battleplan", icon: "⚔️", label: "Battle Plan" },
           { view: "intelligence", icon: "🧠", label: "Intelligence Hub", className: "nav-link-intel" },
           { view: "war-room", icon: "⚔️", label: "AI Competitor War Room" },
-          { view: "biz-scanner", icon: "🔭", label: "Business Acquisition Scanner" },
           { view: "benchmarks", icon: "📊", label: "Benchmark Intelligence (vs network)" },
         ],
       },

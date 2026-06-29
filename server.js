@@ -3339,8 +3339,6 @@ const _acqEngineSchema      = require('./services/acquisition_engine/schema');
 const _acqEngineRouter      = require('./services/acquisition_engine/api');
 const _investorSchema       = require('./services/investor_mode/schema');
 const _investorRouter       = require('./services/investor_mode/api');
-const _bizScannerSchema     = require('./services/biz_scanner/schema');
-const _bizScannerRouter     = require('./services/biz_scanner/api');
 const _marketplaceSchema    = require('./services/marketplace/schema');
 const _marketplaceRouter    = require('./services/marketplace/api');
 const _autoOperatorSchema   = require('./services/auto_operator/schema');
@@ -3350,7 +3348,6 @@ app.use('/api/revenue-forecast',  _revForecastRouter);
 app.use('/api/digital-twin',      _digitalTwinRouter);
 app.use('/api/acquisition-engine',_acqEngineRouter);
 app.use('/api/investor-mode',     _investorRouter);
-app.use('/api/biz-scanner',       _bizScannerRouter);
 app.use('/api/marketplace',       _marketplaceRouter);
 app.use('/api/auto-operator',     _autoOperatorRouter);
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
@@ -3359,7 +3356,6 @@ BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _digitalTwinSchema.ensureDigitalTwinSchema();
   await _acqEngineSchema.ensureAcquisitionEngineSchema();
   await _investorSchema.ensureInvestorModeSchema();
-  await _bizScannerSchema.ensureBizScannerSchema();
   await _marketplaceSchema.ensureMarketplaceSchema();
   await _autoOperatorSchema.ensureAutoOperatorSchema();
   console.log('[t81-t88] schemas ready');
