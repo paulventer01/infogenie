@@ -195,6 +195,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "audiences-dynamic", legacyModule: null },
   { view: "journey-builder", legacyModule: null },
   { view: "omnichannel", legacyModule: null },
+  { view: "lead-gen", legacyModule: null },
   { view: "lead-finder", legacyModule: null },
   { view: "local-leads", legacyModule: null },
   { view: "lead-aggregator", legacyModule: null },

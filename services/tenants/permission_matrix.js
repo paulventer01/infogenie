@@ -347,6 +347,7 @@ const COMPONENT_MATRIX = {
   'voice-caller':         'reach.inbox.view',
   'reply-assistant':      'reach.inbox.view',
   'influencers':          'reach.leads.view',
+  'lead-gen':             'reach.leads.view',
   'lead-finder':          'reach.leads.view',
   'local-leads':          'reach.leads.view',
   'lead-qualifier':       'reach.leads.view',

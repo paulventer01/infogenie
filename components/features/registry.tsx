@@ -144,6 +144,7 @@ import Lookalike from "@/components/features/reach/Lookalike";
 import AudiencesDynamic from "@/components/features/reach/AudiencesDynamic";
 import JourneyBuilder from "@/components/features/reach/JourneyBuilder";
 import Omnichannel from "@/components/features/reach/Omnichannel";
+import LeadGenHub from "@/components/features/reach/LeadGenHub";
 import LeadFinder from "@/components/features/reach/LeadFinder";
 import LocalLeads from "@/components/features/reach/LocalLeads";
 import LeadAggregator from "@/components/features/reach/LeadAggregator";
@@ -347,6 +348,7 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "audiences-dynamic": AudiencesDynamic,
   "journey-builder": JourneyBuilder,
   "omnichannel": Omnichannel,
+  "lead-gen": LeadGenHub,
   "lead-finder": LeadFinder,
   "local-leads": LocalLeads,
   "lead-aggregator": LeadAggregator,

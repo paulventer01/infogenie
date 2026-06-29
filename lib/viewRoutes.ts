@@ -275,6 +275,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "2 · Find & qualify leads",
         items: [
+          { view: "lead-gen", icon: "🧲", label: "Lead Generation" },
           { view: "lead-finder", icon: "🧲", label: "B2B Lead Finder" },
           { view: "local-leads", icon: "📍", label: "Local Lead Finder" },
           { view: "lead-aggregator", icon: "🌐", label: "Multi-Source Lead Sweep" },
