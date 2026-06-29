@@ -90,6 +90,7 @@ export default function Benchmarks() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [comparing, setComparing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [result, setResult] = useState<CompareResponse | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [activeLeadVert, setActiveLeadVert] = useState<string | null>(null);
@@ -168,6 +169,25 @@ export default function Benchmarks() {
     });
     setSubmitting(false);
     if (d.ok) alert(`✅ Contributed ${d.submitted} metric(s) anonymously. Thank you!`);
+  }
+
+  async function aiSuggest() {
+    setSuggesting(true);
+    const d = await apiPost<{ ok: boolean; error?: string; suggested?: Record<string, number> }>(
+      "/api/benchmarks/ai-suggest",
+      {}
+    );
+    setSuggesting(false);
+    if (!d.ok) { alert(d.error || "AI suggestion failed. Please fill in your Brand Foundation first."); return; }
+    if (d.suggested) {
+      setValues((prev) => {
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(d.suggested!)) {
+          if (v != null && v > 0) next[k] = String(v);
+        }
+        return next;
+      });
+    }
   }
 
   const filledCount = Object.values(values).filter((v) => v !== "").length;
@@ -281,14 +301,44 @@ export default function Benchmarks() {
 
           {/* Left: Metric inputs */}
           <div style={{ background: "#FFFFFF", border: "1px solid #E8EEF8", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 12px rgba(10,20,50,.06)" }}>
-            <div style={{ background: "linear-gradient(135deg, #F8FAFF, #EFF4FF)", padding: "16px 20px", borderBottom: "1px solid #E8EEF8", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ background: "linear-gradient(135deg, #F8FAFF, #EFF4FF)", padding: "16px 20px", borderBottom: "1px solid #E8EEF8", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <div>
                 <div style={{ fontFamily: "Sora, sans-serif", fontSize: "0.9rem", fontWeight: 800, color: "#0A1628" }}>Enter Your Metrics</div>
                 <div style={{ fontSize: "0.72rem", color: "#6B88B0", marginTop: 2 }}>Fill in any metrics you have — leave others blank</div>
               </div>
-              <span style={{ fontSize: "0.68rem", fontWeight: 700, background: "#EFF6FF", color: "#3B5BDB", border: "1px solid #C7D2FE", borderRadius: 20, padding: "3px 10px" }}>
-                Anonymous comparison
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={aiSuggest}
+                  disabled={suggesting}
+                  title="Uses your Brand Foundation profile to estimate realistic metrics with AI"
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "7px 14px",
+                    background: suggesting ? "#F3F4F6" : "linear-gradient(135deg, #7C3AED, #6D28D9)",
+                    border: "none",
+                    borderRadius: 20,
+                    fontSize: "0.72rem",
+                    fontWeight: 700,
+                    color: suggesting ? "#9BADC8" : "#FFFFFF",
+                    cursor: suggesting ? "not-allowed" : "pointer",
+                    boxShadow: suggesting ? "none" : "0 2px 8px rgba(124,58,237,.35)",
+                    transition: "opacity .15s",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {suggesting ? (
+                    <>
+                      <span style={{ display: "inline-block", width: 11, height: 11, border: "1.5px solid #CBD5E1", borderTopColor: "#6D28D9", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                      Generating…
+                    </>
+                  ) : (
+                    <>✨ AI Suggest</>
+                  )}
+                </button>
+                <span style={{ fontSize: "0.68rem", fontWeight: 700, background: "#EFF6FF", color: "#3B5BDB", border: "1px solid #C7D2FE", borderRadius: 20, padding: "3px 10px", whiteSpace: "nowrap" }}>
+                  Anonymous comparison
+                </span>
+              </div>
             </div>
             <div style={{ padding: "16px 20px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>

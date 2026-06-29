@@ -91,6 +91,102 @@ Return strict JSON: {"insights":[{"metric":"...","status":"above|below|on_par","
   res.json({ ok:true, vertical, benchmarks, ai_insights, your_metrics: your_metrics||{} });
 });
 
+// AI Suggest — uses brand foundation + company context to estimate your metrics
+router.post('/ai-suggest', async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'benchmarks:ai-suggest' });
+  if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
+
+  // Fetch brand foundation for this tenant
+  let bf = {};
+  try {
+    const p = _db.getPool();
+    if (p) {
+      const r = await p.query(`SELECT * FROM brand_foundation WHERE tenant_id=$1 LIMIT 1`, [tid]);
+      bf = r.rows[0] || {};
+    }
+  } catch(e) { console.warn('[benchmarks:ai-suggest] bf fetch failed:', e.message); }
+
+  const companyCtx = [
+    bf.positioning_statement && `Positioning: ${bf.positioning_statement}`,
+    bf.purpose_why && `Why they exist: ${bf.purpose_why}`,
+    bf.icp_role && `Ideal customer role: ${bf.icp_role}`,
+    bf.icp_pain && `Customer pain: ${bf.icp_pain}`,
+    bf.icp_dream_outcome && `Customer dream outcome: ${bf.icp_dream_outcome}`,
+    bf.purpose_beyond_money && `Mission: ${bf.purpose_beyond_money}`,
+  ].filter(Boolean).join('\n');
+
+  if (!companyCtx) {
+    return res.json({
+      ok: false,
+      error: 'No company profile found. Please fill in your Brand Foundation first (Manage → Brand Foundation).',
+    });
+  }
+
+  const metricList = METRICS.map(m => `${m.key} (${m.label}, unit: ${m.unit})`).join(', ');
+
+  const prompt = `You are a marketing metrics analyst. Based on the following company profile, estimate realistic current marketing performance metrics for this business. Use industry knowledge to produce plausible estimates — not ideal targets, but realistic current figures for a company fitting this profile.
+
+Company profile:
+${companyCtx}
+
+Metrics to estimate: ${metricList}
+
+Rules:
+- cpa, cac, cpm, ltv, monthly_ad_spend: dollar values (positive numbers)
+- roas, ltv_cac_ratio: multipliers (e.g. 3.2 means 3.2x)
+- ctr, cvr, email_open_rate, email_ctr: percentages (e.g. 2.5 means 2.5%)
+- organic_traffic: monthly visitors (integer)
+- Return ONLY strict JSON: { "cpa": <number>, "cac": <number>, "roas": <number>, "ctr": <number>, "cvr": <number>, "cpm": <number>, "email_open_rate": <number>, "email_ctr": <number>, "ltv": <number>, "ltv_cac_ratio": <number>, "monthly_ad_spend": <number>, "organic_traffic": <number> }
+- No nulls. Every field must have a positive number. No extra keys. No markdown.`;
+
+  let suggested = null;
+
+  // Try OpenAI first
+  try {
+    const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const r = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const parsed = JSON.parse(r.choices[0].message.content);
+    if (!parsed._DUMMY) suggested = parsed;
+  } catch(e) {
+    console.warn('[benchmarks:ai-suggest] openai failed:', e.message);
+  }
+
+  // Try Anthropic
+  if (!suggested) {
+    try {
+      const Anthropic = require('@anthropic-ai/sdk');
+      const ant = new Anthropic({ apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY });
+      const r = await ant.messages.create({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      const text = r.content[0]?.text || '';
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) suggested = JSON.parse(match[0]);
+    } catch(e) {
+      console.warn('[benchmarks:ai-suggest] anthropic failed:', e.message);
+    }
+  }
+
+  if (!suggested) {
+    return res.status(503).json({ ok:false, error:'No AI provider available. Please configure one under Manage → AI Providers.' });
+  }
+
+  // Validate — ensure all values are positive numbers
+  const clean = {};
+  for (const m of METRICS) {
+    const v = +suggested[m.key];
+    if (Number.isFinite(v) && v >= 0) clean[m.key] = v;
+  }
+
+  res.json({ ok: true, suggested: clean });
+});
+
 router.get('/leaderboard', async (req, res) => {
   const p = await _db.getPool();
   const rows = await p.query(
