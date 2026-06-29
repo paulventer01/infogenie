@@ -535,14 +535,29 @@ export function viewToPath(view: string): string {
 }
 
 /**
+ * Legacy view IDs that have been consolidated into a hub view.
+ * Any deep-link or bookmark to an old ID resolves to the hub so existing
+ * links degrade gracefully instead of landing on the home screen.
+ */
+export const VIEW_ID_ALIASES: Record<string, string> = {
+  "lead-finder":       "lead-gen",
+  "local-leads":       "lead-gen",
+  "lead-aggregator":   "lead-gen",
+  "acquisition-engine":"lead-gen",
+};
+
+/**
  * Resolve a dashboard pathname to its `data-view` id. The group segment is
  * cosmetic — the last path segment is the view id, accepted only if it's a real
- * nav view. Returns null for `/` (which maps to the legacy 'home' view).
+ * nav view (or a known alias). Returns null for `/` (which maps to the legacy
+ * 'home' view).
  */
 export function pathToViewId(pathname: string): string | null {
   if (!pathname || pathname === "/") return null;
   const segs = pathname.split("/").filter(Boolean);
   if (!segs.length) return null;
   const last = segs[segs.length - 1];
-  return ALL_VIEW_IDS.has(last) ? last : null;
+  if (ALL_VIEW_IDS.has(last)) return last;
+  // Gracefully redirect retired view IDs to their replacement hub.
+  return VIEW_ID_ALIASES[last] ?? null;
 }

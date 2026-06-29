@@ -195,6 +195,13 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "journey-builder", legacyModule: null },
   { view: "omnichannel", legacyModule: null },
   { view: "lead-gen", legacyModule: null },
+  // Retired individual views — registry maps these to LeadGenHub so the
+  // React shell intercepts them and renders the hub instead of falling
+  // through to the legacy builder or blank panel.
+  { view: "lead-finder", legacyModule: null },
+  { view: "local-leads", legacyModule: null },
+  { view: "lead-aggregator", legacyModule: null },
+  { view: "acquisition-engine", legacyModule: null },
   { view: "bookings", legacyModule: null },
   { view: "lead-qualifier", legacyModule: null },
   { view: "hubspot-sync", legacyModule: null },
