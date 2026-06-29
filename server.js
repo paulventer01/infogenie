@@ -3449,6 +3449,7 @@ const _leadFinderSchema = require('./services/lead_finder/schema');
 const _leadFinderRouter = require('./services/lead_finder/api');
 app.use('/api/web-vitals',  _webVitalsRouter);
 app.use('/api/lead-finder', _leadFinderRouter);
+app.use('/api/lead-runs',   require('./services/lead_runs/api'));
 
 // ── Tier 12 ────────────────────────────────────────────────────────────────
 const _serpTrackerSchema = require('./services/serp_tracker/schema');

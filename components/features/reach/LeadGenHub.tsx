@@ -22,7 +22,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
 import { goToView } from "@/lib/nav";
 
@@ -65,7 +65,12 @@ interface RecentRun {
   params: RunParams;
 }
 
-// ── Recent-runs store (localStorage, real session history) ───────────────────
+// ── Recent-runs store ────────────────────────────────────────────────────────
+// Recent runs are real session history (the user's own searches). They are
+// persisted server-side (tenant + user scoped) via /api/lead-runs so the panel
+// follows the user across sessions and devices. localStorage is kept as an
+// offline fallback: it seeds the UI instantly and survives when the server is
+// unreachable. The server list is authoritative once it loads.
 const RECENT_KEY = "ig_leadgen_recent_v1";
 const RECENT_MAX = 12;
 
@@ -88,6 +93,11 @@ function saveRecent(list: RecentRun[]): void {
   } catch {
     /* storage full / disabled — recent history is best-effort */
   }
+}
+
+interface RecentRunsResult {
+  ok: boolean;
+  runs?: RecentRun[];
 }
 
 const MODE_META: Record<Mode, { icon: string; title: string }> = {
@@ -1469,8 +1479,23 @@ export default function LeadGenHub() {
   const [replayKey, setReplayKey] = useState(0);
   const [recent, setRecent] = useState<RecentRun[]>([]);
 
+  // Seed instantly from localStorage (offline fallback), then reconcile with
+  // the server store — which follows the user across sessions and devices.
   useEffect(() => {
     setRecent(loadRecent());
+    let cancelled = false;
+    apiGet<RecentRunsResult>("/api/lead-runs")
+      .then((d) => {
+        if (cancelled || !d.ok || !Array.isArray(d.runs)) return;
+        setRecent(d.runs);
+        saveRecent(d.runs);
+      })
+      .catch(() => {
+        /* server unreachable — keep the localStorage fallback already loaded */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const onRecord = useCallback((params: RunParams, count: number) => {
@@ -1491,12 +1516,25 @@ export default function LeadGenHub() {
       count,
       params,
     };
+    // Optimistic local update + localStorage write so the panel feels instant
+    // even before the server round-trip completes.
     setRecent((prev) => {
       const deduped = prev.filter((r) => !(r.params.mode === params.mode && r.sublabel === sublabel));
       const next = [entry, ...deduped].slice(0, RECENT_MAX);
       saveRecent(next);
       return next;
     });
+    // Persist server-side; reconcile with the authoritative list it returns.
+    apiPost<RecentRunsResult>("/api/lead-runs", { run: entry })
+      .then((d) => {
+        if (d.ok && Array.isArray(d.runs)) {
+          setRecent(d.runs);
+          saveRecent(d.runs);
+        }
+      })
+      .catch(() => {
+        /* offline — the optimistic localStorage copy is the fallback */
+      });
   }, []);
 
   function openMode(m: Mode) {
@@ -1516,6 +1554,9 @@ export default function LeadGenHub() {
   function clearRecent() {
     setRecent([]);
     saveRecent([]);
+    apiDelete("/api/lead-runs").catch(() => {
+      /* offline — server copy will reconcile on next load */
+    });
   }
 
   const activeMeta = mode ? MODE_META[mode] : null;

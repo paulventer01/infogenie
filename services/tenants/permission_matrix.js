@@ -142,6 +142,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/reply-assistant',           view: 'reach.inbox.view',     write: 'reach.inbox.reply' },
   { prefix: '/api/influencers',               view: 'reach.leads.view',     write: 'reach.leads.manage' },
   { prefix: '/api/lead-finder',               view: 'reach.leads.view',     write: 'reach.leads.manage' },
+  { prefix: '/api/lead-runs',                 view: 'reach.leads.view',     write: 'reach.leads.manage' },
   { prefix: '/api/hunter',                    view: 'reach.leads.view',     write: 'reach.leads.manage' },
   { prefix: '/api/brand-deals',               view: 'reach.leads.view',     write: 'reach.leads.manage' },
   { prefix: '/api/apollo',                    view: 'reach.leads.view',     write: 'reach.leads.manage' },
