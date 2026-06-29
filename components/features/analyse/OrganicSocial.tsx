@@ -48,6 +48,19 @@ interface AnalysisData {
 
 type Banner = { kind: "spinner" | "error" | "info" | "success" | "nokey"; msg: string } | null;
 
+// Returns true when the video author appears to be the brand's own account.
+// Strips punctuation/spaces from both sides then checks containment in both
+// directions — e.g. "cmtrading" matches "@cmtrading" or "@cmtradingglobal".
+function isBrandAuthor(author: string, brand: string): boolean {
+  if (!author || !brand) return false;
+  const norm = (s: string) =>
+    s.toLowerCase().replace(/[@\s\-_.]/g, "").replace(/[^a-z0-9]/g, "");
+  const a = norm(author);
+  const b = norm(brand);
+  if (!a || !b || b.length < 3) return false;
+  return a.includes(b) || b.includes(a);
+}
+
 function fmt(n: number | string | undefined): string {
   const v = parseInt(String(n)) || 0;
   if (v >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
@@ -453,6 +466,90 @@ function StatusBanner({ banner }: { banner: Banner }) {
   );
 }
 
+function VideoCard({ v, isTop }: { v: TikTokItem; isTop: boolean }) {
+  const views    = parseInt(String(v.playCount))    || 0;
+  const likes    = parseInt(String(v.diggCount))    || 0;
+  const comments = parseInt(String(v.commentCount)) || 0;
+  const shares   = parseInt(String(v.shareCount))   || 0;
+  const author   = v.authorMeta?.name || v.author?.nickname || v.authorNickname || "unknown";
+  const desc     = (v.text || v.description || "").slice(0, 180);
+  const url      = v.webVideoUrl || v.videoUrl || "";
+  const erNum    = views > 0 ? (likes / views) * 100 : 0;
+  const er       = erNum.toFixed(2);
+  const erColor  = erNum > 2 ? "#059669" : erNum > 0.5 ? "#D97706" : "#DC2626";
+  const erBg     = erNum > 2 ? "#ECFDF5" : erNum > 0.5 ? "#FFFBEB" : "#FEF2F2";
+  const initials = author.slice(0, 2).toUpperCase();
+  const tags     = (v.text || "").match(/#\w+/g) || [];
+
+  return (
+    <div
+      className="tt-card-hover"
+      style={{
+        background:"#fff",
+        border:`1px solid ${isTop ? "#93C5FD" : "#D1DCF5"}`,
+        borderRadius:16, overflow:"hidden", position:"relative",
+        boxShadow: isTop ? "0 0 0 2px rgba(0,102,255,.15)" : "0 2px 12px rgba(0,60,160,.06)",
+      }}
+    >
+      {isTop && <div style={{ height:3, background:"linear-gradient(90deg,#0050CC,#0099FF,#00C9C8)" }} />}
+      <div style={{ padding:"16px 18px" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+          <div style={{ flexShrink:0, width:38, height:38, background:"linear-gradient(135deg,#0050CC,#0099FF)", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:"0.8rem", fontWeight:900, boxShadow:"0 2px 8px rgba(0,102,255,.3)" }}>
+            {initials}
+          </div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontWeight:800, fontSize:"0.88rem", color:"#0A1628", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>@{author}</div>
+            {isTop && <div style={{ fontSize:"0.62rem", color:"#0066FF", fontWeight:700, letterSpacing:"0.06em" }}>👑 TOP PERFORMING</div>}
+          </div>
+          {url && (
+            <a href={url} target="_blank" rel="noopener noreferrer"
+              className="tt-watch-btn"
+              style={{ flexShrink:0, background:"rgba(0,102,255,.1)", border:"1px solid rgba(0,102,255,.25)", color:"#0050CC", fontSize:"0.72rem", fontWeight:800, padding:"5px 12px", borderRadius:20, textDecoration:"none", transition:"background .15s" }}>
+              ▶ Watch
+            </a>
+          )}
+        </div>
+        <div style={{ fontSize:"0.8rem", color:"#374151", lineHeight:1.6, marginBottom:10, minHeight:40 }}>
+          {desc}{desc.length >= 180 ? "…" : ""}
+        </div>
+        {tags.length > 0 && (
+          <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:12 }}>
+            {tags.slice(0, 3).map((t, ti) => (
+              <span key={ti} style={{ background:"#EFF6FF", border:"1px solid #BFDBFE", color:"#1D4ED8", fontSize:"0.62rem", padding:"2px 7px", borderRadius:20, fontWeight:600 }}>{t}</span>
+            ))}
+          </div>
+        )}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
+          {([["👁", fmt(views), "Views"], ["❤️", fmt(likes), "Likes"], ["💬", fmt(comments), "Cmts"], ["🔁", fmt(shares), "Shares"]] as [string,string,string][]).map(([ic, val, lbl], ci) => (
+            <div key={ci} style={{ background:"#F5F8FF", border:"1px solid #E0EAFF", borderRadius:10, padding:"8px 4px", textAlign:"center" }}>
+              <div style={{ fontSize:"0.85rem", marginBottom:2 }}>{ic}</div>
+              <div style={{ fontSize:"0.8rem", fontWeight:800, color:"#0A1628" }}>{val}</div>
+              <div style={{ fontSize:"0.57rem", color:"#6B88B0", textTransform:"uppercase", letterSpacing:"0.05em" }}>{lbl}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop:10, display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ fontSize:"0.6rem", color:"#8899BB", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", flexShrink:0 }}>Engagement</div>
+          <div style={{ flex:1, height:5, background:"#E8EFFF", borderRadius:4, overflow:"hidden" }}>
+            <div style={{ width:`${Math.min(erNum * 20, 100)}%`, height:"100%", background:erColor, borderRadius:4, transition:"width .6s ease" }} />
+          </div>
+          <span style={{ fontSize:"0.72rem", fontWeight:800, color:erColor, background:erBg, padding:"2px 7px", borderRadius:20, flexShrink:0 }}>{er}%</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({ emoji, title, count, accent }: { emoji: string; title: string; count: number; accent: string }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+      <div style={{ width:4, height:24, background:accent, borderRadius:2, flexShrink:0 }} />
+      <span style={{ fontSize:"0.62rem", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:accent }}>{emoji} {title}</span>
+      <span style={{ background:accent, color:"#fff", borderRadius:20, padding:"2px 9px", fontSize:"0.62rem", fontWeight:800 }}>{count}</span>
+    </div>
+  );
+}
+
 function ResultsView({ items, keyword, onExport }: { items: TikTokItem[]; keyword: string; onExport: () => void }) {
   if (!items.length) {
     return (
@@ -462,8 +559,20 @@ function ResultsView({ items, keyword, onExport }: { items: TikTokItem[]; keywor
     );
   }
 
-  const totalViews = items.reduce((a, v) => a + (parseInt(String(v.playCount)) || 0), 0);
-  const totalLikes = items.reduce((a, v) => a + (parseInt(String(v.diggCount)) || 0), 0);
+  // Split into brand's own channel vs third-party mentions
+  const isHashtagSearch = keyword.startsWith("#");
+  const brandVideos  = isHashtagSearch ? [] : items.filter((v) => {
+    const author = v.authorMeta?.name || v.author?.nickname || v.authorNickname || "";
+    return isBrandAuthor(author, keyword);
+  });
+  const mentionVideos = isHashtagSearch ? items : items.filter((v) => {
+    const author = v.authorMeta?.name || v.author?.nickname || v.authorNickname || "";
+    return !isBrandAuthor(author, keyword);
+  });
+
+  const allForStats = items;
+  const totalViews = allForStats.reduce((a, v) => a + (parseInt(String(v.playCount)) || 0), 0);
+  const totalLikes = allForStats.reduce((a, v) => a + (parseInt(String(v.diggCount)) || 0), 0);
   const avgEr = totalViews > 0 ? ((totalLikes / totalViews) * 100).toFixed(2) : "0";
 
   const stats: [string, string, string, string][] = [
@@ -487,7 +596,7 @@ function ResultsView({ items, keyword, onExport }: { items: TikTokItem[]; keywor
       </div>
 
       {/* Results header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
         <div>
           <div style={{ fontSize:"0.6rem", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:"#8899BB", marginBottom:3 }}>TIKTOK RESULTS</div>
           <div style={{ fontSize:"1.02rem", fontWeight:800, color:"#0A1628", fontFamily:"'Sora',sans-serif" }}>
@@ -503,95 +612,44 @@ function ResultsView({ items, keyword, onExport }: { items: TikTokItem[]; keywor
         </button>
       </div>
 
-      {/* Video cards */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(290px,1fr))", gap:14 }}>
-        {items.map((v, i) => {
-          const views    = parseInt(String(v.playCount))    || 0;
-          const likes    = parseInt(String(v.diggCount))    || 0;
-          const comments = parseInt(String(v.commentCount)) || 0;
-          const shares   = parseInt(String(v.shareCount))   || 0;
-          const author   = v.authorMeta?.name || v.author?.nickname || v.authorNickname || "unknown";
-          const desc     = (v.text || v.description || "").slice(0, 180);
-          const url      = v.webVideoUrl || v.videoUrl || "";
-          const erNum    = views > 0 ? (likes / views) * 100 : 0;
-          const er       = erNum.toFixed(2);
-          const erColor  = erNum > 2 ? "#059669" : erNum > 0.5 ? "#D97706" : "#DC2626";
-          const erBg     = erNum > 2 ? "#ECFDF5" : erNum > 0.5 ? "#FFFBEB" : "#FEF2F2";
-          const isTop    = i === 0 && views > 0;
-          const initials = author.slice(0, 2).toUpperCase();
-          const tags     = (v.text || "").match(/#\w+/g) || [];
-
-          return (
-            <div
-              key={i}
-              className="tt-card-hover"
-              style={{
-                background:"#fff",
-                border:`1px solid ${isTop ? "#93C5FD" : "#D1DCF5"}`,
-                borderRadius:16, overflow:"hidden", position:"relative",
-                boxShadow: isTop ? "0 0 0 2px rgba(0,102,255,.15)" : "0 2px 12px rgba(0,60,160,.06)",
-              }}
-            >
-              {/* top accent line for #1 */}
-              {isTop && <div style={{ height:3, background:"linear-gradient(90deg,#0050CC,#0099FF,#00C9C8)" }} />}
-
-              <div style={{ padding:"16px 18px" }}>
-                {/* Creator row */}
-                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
-                  <div style={{ flexShrink:0, width:38, height:38, background:"linear-gradient(135deg,#0050CC,#0099FF)", borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:"0.8rem", fontWeight:900, boxShadow:"0 2px 8px rgba(0,102,255,.3)" }}>
-                    {initials}
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontWeight:800, fontSize:"0.88rem", color:"#0A1628", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>@{author}</div>
-                    {isTop && <div style={{ fontSize:"0.62rem", color:"#0066FF", fontWeight:700, letterSpacing:"0.06em" }}>👑 TOP PERFORMING</div>}
-                  </div>
-                  {url && (
-                    <a href={url} target="_blank" rel="noopener noreferrer"
-                      className="tt-watch-btn"
-                      style={{ flexShrink:0, background:"rgba(0,102,255,.1)", border:"1px solid rgba(0,102,255,.25)", color:"#0050CC", fontSize:"0.72rem", fontWeight:800, padding:"5px 12px", borderRadius:20, textDecoration:"none", transition:"background .15s" }}>
-                      ▶ Watch
-                    </a>
-                  )}
-                </div>
-
-                {/* Description */}
-                <div style={{ fontSize:"0.8rem", color:"#374151", lineHeight:1.6, marginBottom:10, minHeight:40 }}>
-                  {desc}{desc.length >= 180 ? "…" : ""}
-                </div>
-
-                {/* Hashtag pills */}
-                {tags.length > 0 && (
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:12 }}>
-                    {tags.slice(0, 3).map((t, ti) => (
-                      <span key={ti} style={{ background:"#EFF6FF", border:"1px solid #BFDBFE", color:"#1D4ED8", fontSize:"0.62rem", padding:"2px 7px", borderRadius:20, fontWeight:600 }}>{t}</span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Metrics grid */}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
-                  {([["👁", fmt(views), "Views"], ["❤️", fmt(likes), "Likes"], ["💬", fmt(comments), "Cmts"], ["🔁", fmt(shares), "Shares"]] as [string,string,string][]).map(([ic, val, lbl], ci) => (
-                    <div key={ci} style={{ background:"#F5F8FF", border:"1px solid #E0EAFF", borderRadius:10, padding:"8px 4px", textAlign:"center" }}>
-                      <div style={{ fontSize:"0.85rem", marginBottom:2 }}>{ic}</div>
-                      <div style={{ fontSize:"0.8rem", fontWeight:800, color:"#0A1628" }}>{val}</div>
-                      <div style={{ fontSize:"0.57rem", color:"#6B88B0", textTransform:"uppercase", letterSpacing:"0.05em" }}>{lbl}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* ER pill */}
-                <div style={{ marginTop:10, display:"flex", alignItems:"center", gap:8 }}>
-                  <div style={{ fontSize:"0.6rem", color:"#8899BB", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", flexShrink:0 }}>Engagement</div>
-                  <div style={{ flex:1, height:5, background:"#E8EFFF", borderRadius:4, overflow:"hidden" }}>
-                    <div style={{ width:`${Math.min(erNum * 20, 100)}%`, height:"100%", background:erColor, borderRadius:4, transition:"width .6s ease" }} />
-                  </div>
-                  <span style={{ fontSize:"0.72rem", fontWeight:800, color:erColor, background:erBg, padding:"2px 7px", borderRadius:20, flexShrink:0 }}>{er}%</span>
-                </div>
+      {/* Brand channel section */}
+      {!isHashtagSearch && (
+        <>
+          {brandVideos.length > 0 ? (
+            <div style={{ marginBottom:28 }}>
+              <SectionHeader emoji="🏢" title={`${keyword} — Official Channel`} count={brandVideos.length} accent="#0066FF" />
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(290px,1fr))", gap:14 }}>
+                {brandVideos.map((v, i) => <VideoCard key={i} v={v} isTop={i === 0 && (parseInt(String(v.playCount)) || 0) > 0} />)}
               </div>
             </div>
-          );
-        })}
-      </div>
+          ) : (
+            <div style={{ background:"#FEF3C7", border:"1px solid #FCD34D", borderRadius:10, padding:"12px 16px", marginBottom:20, fontSize:"0.82rem", color:"#92400E" }}>
+              ⚠️ <strong>No official {keyword} channel videos found in these results.</strong>{" "}
+              The scraper found only third-party content that mentions &ldquo;{keyword}&rdquo;. Try searching for their exact TikTok handle (e.g. <em>@{keyword.toLowerCase().replace(/\s+/g, "")}</em>) if you know it.
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Mentions / hashtag results */}
+      {mentionVideos.length > 0 && (
+        <div>
+          <SectionHeader
+            emoji={isHashtagSearch ? "🔎" : "💬"}
+            title={isHashtagSearch ? `Videos tagged ${keyword}` : `3rd-party mentions of "${keyword}"`}
+            count={mentionVideos.length}
+            accent={isHashtagSearch ? "#0066FF" : "#6B7280"}
+          />
+          {!isHashtagSearch && (
+            <div style={{ fontSize:"0.72rem", color:"#6B7280", marginBottom:12, marginTop:-6 }}>
+              These creators mentioned or hashtagged &ldquo;{keyword}&rdquo; but are not the brand&apos;s official account.
+            </div>
+          )}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(290px,1fr))", gap:14 }}>
+            {mentionVideos.map((v, i) => <VideoCard key={i} v={v} isTop={isHashtagSearch && i === 0 && (parseInt(String(v.playCount)) || 0) > 0} />)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
