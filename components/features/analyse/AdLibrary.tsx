@@ -15,7 +15,7 @@
 // See `docs/react-panel-migration.md` for the porting pattern.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiPost } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 
 // ── Country list (UI configuration — mirrors window._AL_COUNTRIES) ──────────
 const AL_COUNTRIES: [string, string][] = [
@@ -185,6 +185,7 @@ export default function AdLibrary() {
   const [progress, setProgress] = useState<string[]>([]);
   const [results, setResults] = useState<ResultBlock[]>([]);
   const [topError, setTopError] = useState("");
+  const [datasources, setDatasources] = useState<{ meta: boolean; perplexity: boolean } | null>(null);
 
   const countryWrapRef = useRef<HTMLDivElement>(null);
 
@@ -209,6 +210,16 @@ export default function AdLibrary() {
       setBrand((b) => b || ownBrand);
     }
   }, [ownBrand]);
+
+  // Probe which data sources are live (Meta token + Perplexity key)
+  useEffect(() => {
+    void apiGet<{ ok: boolean; meta: boolean; perplexity: boolean }>(
+      "/api/ad-library/test"
+    ).then((d) => {
+      if (d.ok !== false)
+        setDatasources({ meta: !!d.meta, perplexity: !!d.perplexity });
+    });
+  }, []);
 
   // Close the country menu when clicking outside.
   useEffect(() => {
@@ -719,6 +730,34 @@ export default function AdLibrary() {
             </div>
           </div>
 
+          {/* Data-source status strip */}
+          {datasources !== null && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <div style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "6px 12px",
+                background: datasources.meta ? "#F0FDF4" : "#FEF3C7",
+                border: `1px solid ${datasources.meta ? "#86EFAC" : "#FCD34D"}`,
+                borderRadius: 20, fontSize: "0.72rem", fontWeight: 700,
+                color: datasources.meta ? "#15803D" : "#92400E",
+              }}>
+                <span style={{ fontSize: "0.78rem" }}>{datasources.meta ? "✅" : "⚠️"}</span>
+                📘 Meta — {datasources.meta ? "Live Graph API connected" : "Not connected · will use Perplexity fallback"}
+              </div>
+              <div style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "6px 12px",
+                background: datasources.perplexity ? "#F0FDF4" : "#FEF3C7",
+                border: `1px solid ${datasources.perplexity ? "#86EFAC" : "#FCD34D"}`,
+                borderRadius: 20, fontSize: "0.72rem", fontWeight: 700,
+                color: datasources.perplexity ? "#15803D" : "#92400E",
+              }}>
+                <span style={{ fontSize: "0.78rem" }}>{datasources.perplexity ? "✅" : "⚠️"}</span>
+                🔍 Perplexity — {datasources.perplexity ? "Public archive scraping ready" : "Key missing · Google / TikTok / LinkedIn / X will fail"}
+              </div>
+            </div>
+          )}
+
           {/* Platforms */}
           <div
             style={{
@@ -775,42 +814,55 @@ export default function AdLibrary() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))",
+                gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))",
                 gap: 8,
               }}
             >
-              {PLATFORMS.map(([id, label, color]) => (
-                <label
-                  key={id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 10px",
-                    background: "#fff",
-                    border: "1px solid #E5E7EB",
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    fontSize: "0.78rem",
-                    fontWeight: 600,
-                    color: "#0A1628",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedPlatforms.has(id)}
-                    onChange={(e) => togglePlatform(id, e.target.checked)}
+              {PLATFORMS.map(([id, label, color]) => {
+                const isLiveApi = id === "meta";
+                const needsPerplexity = !isLiveApi;
+                const unavailable = needsPerplexity && datasources !== null && !datasources.perplexity;
+                return (
+                  <label
+                    key={id}
                     style={{
-                      width: 15,
-                      height: 15,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 10px",
+                      background: "#fff",
+                      border: `1px solid ${unavailable ? "#FCD34D" : "#E5E7EB"}`,
+                      borderRadius: 6,
                       cursor: "pointer",
-                      accentColor: color,
-                      flexShrink: 0,
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      color: "#0A1628",
                     }}
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPlatforms.has(id)}
+                      onChange={(e) => togglePlatform(id, e.target.checked)}
+                      style={{
+                        width: 15,
+                        height: 15,
+                        cursor: "pointer",
+                        accentColor: color,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{ flex: 1 }}>{label}</span>
+                    <span style={{
+                      fontSize: "0.62rem", fontWeight: 700, borderRadius: 4, padding: "1px 6px",
+                      background: isLiveApi ? "#DBEAFE" : "#F3F4F6",
+                      color: isLiveApi ? "#1D4ED8" : "#6B7280",
+                      whiteSpace: "nowrap", flexShrink: 0,
+                    }}>
+                      {isLiveApi ? "📡 Graph API" : "🔍 Public Archive"}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -833,17 +885,14 @@ export default function AdLibrary() {
           >
             {running ? "⏳ Searching…" : "🚀 Run Ad Library Search"}
           </button>
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: "0.7rem",
-              color: "#6B7280",
-              lineHeight: 1.45,
-            }}
-          >
-            📘 Meta = live Graph API · the rest scrape each platform&apos;s
-            public ad transparency archive (requires PERPLEXITY_API_KEY).
-          </div>
+          {datasources !== null && !datasources.perplexity && (
+            Array.from(selectedPlatforms).some((p) => p !== "meta")
+          ) && (
+            <div style={{ marginTop: 8, padding: "8px 12px", background: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 6, fontSize: "0.72rem", color: "#92400E", fontWeight: 600 }}>
+              ⚠️ <strong>PERPLEXITY_API_KEY not configured</strong> — Google, TikTok, LinkedIn and X scans require it. Only Meta will return results.
+              {" "}<span style={{ fontWeight: 400 }}>Add the key under Manage → Platform APIs.</span>
+            </div>
+          )}
         </div>
 
         {/* Output */}
