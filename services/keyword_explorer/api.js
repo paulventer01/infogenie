@@ -138,21 +138,24 @@ router.post('/explore', async (req, res) => {
       try {
         const cc = isGlobal ? 'us' : country;
         const lang = 'en';
-        const [kwRes, sugRes] = await Promise.all([
-          _rapidAPIGet('/keyword_research', { keyword: seed, country: cc, lang }),
-          _rapidAPIGet('/keyword_suggestions', { keyword: seed, country: cc, lang }),
-        ]);
-        // seed metrics — from keyword_research endpoint
-        const seedRaw = Array.isArray(kwRes) ? kwRes[0] : kwRes;
-        const seed_metrics = _mapRapidAPIItem(seedRaw ? { keyword: seed, ...seedRaw } : { keyword: seed }) || {
-          keyword: seed, search_volume: 0, cpc: 0, competition: 0, keyword_difficulty: null,
-        };
-        // keyword ideas — from keyword_suggestions endpoint
-        const rawIdeas = Array.isArray(sugRes)
+        // keyword_suggestions is the single valid endpoint on this API —
+        // it returns the seed keyword as the first item plus related suggestions
+        const sugRes = await _rapidAPIGet('/keyword_suggestions', { keyword: seed, country: cc, lang });
+        // Normalise: API may return array, { keywords: [] }, or { data: [] }
+        const rawAll = Array.isArray(sugRes)
           ? sugRes
           : (Array.isArray(sugRes?.keywords) ? sugRes.keywords
             : Array.isArray(sugRes?.data) ? sugRes.data : []);
-        const ideas = rawIdeas
+
+        // First item whose keyword matches seed (or first item) = seed metrics
+        const seedIdx = rawAll.findIndex(it => it?.keyword === seed);
+        const seedRaw = rawAll[seedIdx >= 0 ? seedIdx : 0];
+        const seed_metrics = _mapRapidAPIItem(seedRaw ? { ...seedRaw, keyword: seed } : { keyword: seed }) || {
+          keyword: seed, search_volume: 0, cpc: 0, competition: 0, keyword_difficulty: null,
+        };
+        // Remaining items = ideas, excluding the seed itself
+        const ideas = rawAll
+          .filter((it, i) => i !== (seedIdx >= 0 ? seedIdx : 0))
           .map(it => _mapRapidAPIItem(it))
           .filter(Boolean)
           .filter(it => it.keyword !== seed)
