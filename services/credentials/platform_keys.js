@@ -36,6 +36,7 @@ const REGISTRY = [
   { key: 'PERPLEXITY_API_KEY', group: 'AI Models', service: 'Perplexity', label: 'Perplexity API Key', desc: 'Perplexity — live web-grounded research', secret: true, test: 'perplexity', settingsIds: ['perplexity'] },
   { key: 'CLOUDFLARE_ACCOUNT_ID', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare Account ID', desc: 'Workers AI (Llama 3.1) — account identifier', secret: false, settingsIds: ['cloudflare'] },
   { key: 'CLOUDFLARE_AI_TOKEN', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare AI Token', desc: 'Workers AI (Llama 3.1) — API token', secret: true, test: 'cloudflare', settingsIds: ['cloudflare'] },
+  { key: 'RAPIDAPI_KEY', group: 'AI Models', service: 'Meta Llama (RapidAPI)', label: 'RapidAPI Key', desc: 'Meta Llama 3.2 Vision via RapidAPI — fallback LLM for analysis & generation', secret: true, test: 'rapidapi_llama', settingsIds: ['rapidapi'] },
 
   // ── Data & Intelligence ─────────────────────────────────────────────────────
   { key: 'DATAFORSEO_LOGIN', group: 'Data & Intelligence', service: 'DataForSEO', label: 'DataForSEO Login', desc: 'SEO/SERP/keyword data — account login', secret: false, test: 'dataforseo', settingsIds: ['dataforseo', 'dataseo'] },
@@ -464,6 +465,25 @@ async function _runTest(keyName) {
       if (r.ok) return _OK('Stripe authenticated');
       if (r.status === 401 || r.status === 403) return _BAD('Stripe rejected the key (HTTP ' + r.status + ')');
       return _HTTP('Stripe', r);
+    }
+    if (entry.test === 'rapidapi_llama') {
+      const key = resolvePlatformKey('RAPIDAPI_KEY');
+      if (!key) return _UNCONF();
+      // Probe: tiny chat completion — reveals a bad key (401/403) without using
+      // meaningful quota. The RapidAPI host is the Llama 3.2 Vision endpoint.
+      const host = 'meta-llama-3-2-vision.p.rapidapi.com';
+      const r = await _fetchT('https://' + host + '/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-rapidapi-key': key,
+          'x-rapidapi-host': host,
+        },
+        body: JSON.stringify({ model: 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo', messages: [{ role: 'user', content: 'Say ok' }], max_tokens: 5 }),
+      });
+      if (r.status === 401 || r.status === 403) return _BAD('RapidAPI rejected the key (HTTP ' + r.status + ')');
+      if (r.ok || r.status === 400 || r.status === 422) return _OK('Meta Llama (RapidAPI) reachable');
+      return _HTTP('Meta Llama (RapidAPI)', r);
     }
     return { ok: false, status: 'error', message: 'no test available for this key' };
   } catch (e) {

@@ -193,4 +193,57 @@ function _wrapClientRequestBody(req) {
   };
 }
 
-module.exports = { normalizeChatParams, patchOpenAI, patchHttp, isGpt5 };
+// ── Meta Llama 3.2 Vision via RapidAPI ──────────────────────────────────────
+// Shared helper so any service can drop Llama into its AI cascade without
+// duplicating the RapidAPI call pattern. Returns { text, latency_ms, tokens }
+// or null on any failure / unconfigured key. Uses Node https.request (not
+// fetch) so it works in the same environments as every other _callXxx helper.
+const _LLAMA_HOST = 'meta-llama-3-2-vision.p.rapidapi.com';
+const _LLAMA_MODEL = 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo';
+
+function hasLlama() {
+  const k = process.env.RAPIDAPI_KEY;
+  return !!(k && !/^_DUMMY/i.test(k));
+}
+
+function callLlama(messages, opts = {}) {
+  const key = process.env.RAPIDAPI_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return Promise.resolve(null);
+  const model = opts.model || _LLAMA_MODEL;
+  const body = JSON.stringify({
+    model,
+    messages,
+    max_tokens: opts.max_tokens || 800,
+    temperature: opts.temperature != null ? opts.temperature : 0.7,
+  });
+  const start = Date.now();
+  return new Promise(resolve => {
+    const _https = require('https');
+    const req = _https.request({
+      hostname: _LLAMA_HOST,
+      path: '/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'x-rapidapi-key': key,
+        'x-rapidapi-host': _LLAMA_HOST,
+      },
+    }, r => {
+      let d = ''; r.on('data', c => d += c);
+      r.on('end', () => {
+        try {
+          if (r.statusCode !== 200) return resolve(null);
+          const j = JSON.parse(d);
+          const text = j?.choices?.[0]?.message?.content || '';
+          resolve({ text, latency_ms: Date.now() - start, tokens: j?.usage?.completion_tokens || 0, model });
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(opts.timeout_ms || 60000, () => { req.destroy(); resolve(null); });
+    req.write(body); req.end();
+  });
+}
+
+module.exports = { normalizeChatParams, patchOpenAI, patchHttp, isGpt5, callLlama, hasLlama, LLAMA_MODEL: _LLAMA_MODEL, LLAMA_HOST: _LLAMA_HOST };

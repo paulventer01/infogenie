@@ -1488,21 +1488,34 @@ app.post('/api/ai-visibility-multi', async (req, res) => {
       chatgptP, claudeP, googleP, googleAiP, bingP,
       process.env.GEMINI_API_KEY     ? (async () => { try { _chargeBudget('gemini', req.ip); const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contents:[{ parts:[{ text: queryQ }] }] }) }); const d = await r.json(); const text = d?.candidates?.[0]?.content?.parts?.[0]?.text || ''; const m = detectMention(text); return { key:'gemini', name:'Gemini', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) }; } catch(e){ return { key:'gemini', name:'Gemini', live:false, mentioned:false, score:0, error:e.message }; } })() : pending('gemini','Gemini','GEMINI_API_KEY'),
       process.env.PERPLEXITY_API_KEY ? (async () => { try { _chargeBudget('perplexity', req.ip); const r = await fetch('https://api.perplexity.ai/chat/completions', { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.PERPLEXITY_API_KEY}`}, body: JSON.stringify({ model:'sonar', messages:[{role:'user',content:queryQ}] }) }); const d = await r.json(); const text = d?.choices?.[0]?.message?.content || ''; const m = detectMention(text); return { key:'perplexity', name:'Perplexity', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) }; } catch(e){ return { key:'perplexity', name:'Perplexity', live:false, mentioned:false, score:0, error:e.message }; } })() : pending('perplexity','Perplexity','PERPLEXITY_API_KEY'),
-      (process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_AI_TOKEN)
-        ? (async () => { try {
+      (async () => {
+        // Cloudflare Workers AI — primary path
+        if (process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_AI_TOKEN) {
+          try {
             const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
               { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.CLOUDFLARE_AI_TOKEN}`},
                 body: JSON.stringify({ messages:[{role:'user',content:queryQ}] }) });
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const d = await r.json();
             const text = d?.result?.response || '';
-            // Only charge budget after a successful upstream response so failed
-            // calls (auth/5xx/rate-limit) don't burn the daily quota.
             try { _chargeBudget('cloudflare', req.ip); } catch (_) {}
             const m = detectMention(text);
             return { key:'llama', name:'Llama 3.1 (Cloudflare)', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) };
-          } catch(e){ return { key:'llama', name:'Llama 3.1 (Cloudflare)', live:false, mentioned:false, score:0, error:e.message }; } })()
-        : pending('llama','Llama','CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN'),
+          } catch(e) { /* fall through to RapidAPI */ }
+        }
+        // RapidAPI Llama 3.2 Vision — fallback path
+        if (process.env.RAPIDAPI_KEY && !/^_DUMMY/i.test(process.env.RAPIDAPI_KEY)) {
+          try {
+            const { callLlama } = require('../ai_compat');
+            const result = await callLlama([{role:'user',content:queryQ}], { max_tokens:400 });
+            if (result) {
+              const m = detectMention(result.text);
+              return { key:'llama', name:'Llama 3.2 Vision (RapidAPI)', live:true, mentioned:m, score:scoreFor(m,true), snippet:result.text.slice(0,240) };
+            }
+          } catch(e) { return { key:'llama', name:'Llama 3.2 Vision (RapidAPI)', live:false, mentioned:false, score:0, error:e.message }; }
+        }
+        return pending('llama','Llama','CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN or RAPIDAPI_KEY');
+      })(),
       process.env.DEEPSEEK_API_KEY   ? (async () => { try { const r = await fetch('https://api.deepseek.com/chat/completions', { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.DEEPSEEK_API_KEY}`}, body: JSON.stringify({ model:'deepseek-chat', messages:[{role:'user',content:queryQ}] }) }); const d = await r.json(); const text = d?.choices?.[0]?.message?.content || ''; const m = detectMention(text); return { key:'deepseek', name:'DeepSeek', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) }; } catch(e){ return { key:'deepseek', name:'DeepSeek', live:false, mentioned:false, score:0, error:e.message }; } })() : pending('deepseek','DeepSeek','DEEPSEEK_API_KEY'),
     ]);
 
