@@ -1877,7 +1877,7 @@ function buildBattlePlan() {
     const dotColor = t === 'high' ? '#EF4444' : t === 'medium' ? '#F59E0B' : '#10B981';
     const active = i === idx;
     return `<button onclick="switchBattlePlanComp(${i})" style="display:flex;align-items:center;gap:8px;padding:10px 18px;border:none;border-bottom:3px solid ${active?'#0066FF':'transparent'};background:${active?'#EFF6FF':'transparent'};cursor:pointer;color:${active?'#0066FF':'#5A7090'};font-size:0.8rem;font-weight:${active?700:500};white-space:nowrap;font-family:'Inter',sans-serif;transition:all .15s">
-      <span style="width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#0066FF,#00C9C8);display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:white">${(comp.logo||comp.name[0]).toString()[0]}</span>
+      <span style="width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#0066FF,#00C9C8);display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:#0A1628">${(comp.logo||comp.name[0]).toString()[0]}</span>
       ${comp.name}
       <span style="width:7px;height:7px;border-radius:50%;background:${dotColor}"></span>
     </button>`;
@@ -2037,7 +2037,7 @@ function buildBattlePlan() {
     <div class="bp-comp-summary" style="background:#FFFFFF;border-bottom:1px solid #E8EEF8;padding:14px 28px;box-shadow:0 2px 8px rgba(10,20,50,.05)">
       <div style="max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#0066FF,#00C9C8);display:flex;align-items:center;justify-content:center;font-weight:900;color:white;font-size:1rem;box-shadow:0 3px 10px rgba(0,102,255,.25)">${(c.logo||c.name[0]).toString()[0]}</div>
+          <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#0066FF,#00C9C8);display:flex;align-items:center;justify-content:center;font-weight:900;color:#0A1628;font-size:1rem;box-shadow:0 3px 10px rgba(0,102,255,.25)">${(c.logo||c.name[0]).toString()[0]}</div>
           <div>
             <div style="font-weight:800;color:#0A1628;font-size:0.95rem">${c.name}</div>
             <div style="font-size:0.68rem;color:#7A92B4">${c.url||''}</div>
