@@ -275,10 +275,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "2 · Find & qualify leads",
         items: [
           { view: "lead-gen", icon: "🧲", label: "Lead Generation" },
-          { view: "lead-finder", icon: "🧲", label: "B2B Lead Finder" },
-          { view: "local-leads", icon: "📍", label: "Local Lead Finder" },
-          { view: "lead-aggregator", icon: "🌐", label: "Multi-Source Lead Sweep" },
-          { view: "acquisition-engine", icon: "🚀", label: "AI Acquisition Engine (auto)" },
           { view: "bookings", icon: "📅", label: "Bookings (public scheduler)" },
           { view: "lead-qualifier", icon: "✅", label: "Lead Qualifier (AI score)" },
           { view: "hubspot-sync", icon: "🔁", label: "HubSpot CRM Sync" },

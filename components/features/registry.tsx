@@ -144,10 +144,6 @@ import AudiencesDynamic from "@/components/features/reach/AudiencesDynamic";
 import JourneyBuilder from "@/components/features/reach/JourneyBuilder";
 import Omnichannel from "@/components/features/reach/Omnichannel";
 import LeadGenHub from "@/components/features/reach/LeadGenHub";
-import LeadFinder from "@/components/features/reach/LeadFinder";
-import LocalLeads from "@/components/features/reach/LocalLeads";
-import LeadAggregator from "@/components/features/reach/LeadAggregator";
-import AcquisitionEngine from "@/components/features/reach/AcquisitionEngine";
 import Bookings from "@/components/features/reach/Bookings";
 import LeadQualifier from "@/components/features/reach/LeadQualifier";
 import HubspotSync from "@/components/features/reach/HubspotSync";
@@ -347,10 +343,11 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "journey-builder": JourneyBuilder,
   "omnichannel": Omnichannel,
   "lead-gen": LeadGenHub,
-  "lead-finder": LeadFinder,
-  "local-leads": LocalLeads,
-  "lead-aggregator": LeadAggregator,
-  "acquisition-engine": AcquisitionEngine,
+  // Retired individual views — redirect to the Lead Generation hub
+  "lead-finder": LeadGenHub,
+  "local-leads": LeadGenHub,
+  "lead-aggregator": LeadGenHub,
+  "acquisition-engine": LeadGenHub,
   "bookings": Bookings,
   "lead-qualifier": LeadQualifier,
   "hubspot-sync": HubspotSync,
