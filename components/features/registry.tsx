@@ -58,6 +58,7 @@ import BattleCards from "@/components/features/analyse/BattleCards";
 import Battleplan from "@/components/features/analyse/Battleplan";
 import Intelligence from "@/components/features/analyse/Intelligence";
 import WarRoom from "@/components/features/analyse/WarRoom";
+import BizScanner from "@/components/features/analyse/BizScanner";
 import Benchmarks from "@/components/features/analyse/Benchmarks";
 import AdLibrary from "@/components/features/analyse/AdLibrary";
 import OrganicSocial from "@/components/features/analyse/OrganicSocial";
@@ -257,6 +258,7 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "battleplan": Battleplan,
   "intelligence": Intelligence,
   "war-room": WarRoom,
+  "biz-scanner": BizScanner,
   "benchmarks": Benchmarks,
   "ad-library": AdLibrary,
   "organic-social": OrganicSocial,

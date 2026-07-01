@@ -3220,6 +3220,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'resilient-tracker')   { try { window.buildResilientTracker && window.buildResilientTracker(); } catch(e) { console.warn('buildResilientTracker error:', e); } }
   if (viewId === 'conversion-recovery') { try { window.buildConversionRecovery && window.buildConversionRecovery(); } catch(e) { console.warn('buildConversionRecovery error:', e); } }
   if (viewId === 'lead-aggregator')     { navigateTo('lead-gen'); return; }
+  if (viewId === 'acquisition-engine')  { navigateTo('lead-gen'); return; }
   if (viewId === 'model-compare')       { try { window.buildModelCompare && window.buildModelCompare(); }         catch(e) { console.warn('buildModelCompare error:', e); } }
   if (viewId === 'creative-intel')   { try { window.buildCreativeIntel && window.buildCreativeIntel(); }      catch(e) { console.warn('buildCreativeIntel error:', e); } }
   if (viewId === 'hashtag-intel')     { try { window.buildHashtagIntel && window.buildHashtagIntel(); }       catch(e) { console.warn('buildHashtagIntel error:', e); } }

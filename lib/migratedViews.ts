@@ -109,6 +109,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "battleplan", legacyModule: null },
   { view: "intelligence", legacyModule: null },
   { view: "war-room", legacyModule: null },
+  { view: "biz-scanner", legacyModule: null },
   { view: "benchmarks", legacyModule: null },
   { view: "ad-library", legacyModule: null },
   { view: "organic-social", legacyModule: null },
