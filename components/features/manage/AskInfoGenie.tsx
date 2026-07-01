@@ -13,14 +13,36 @@ interface Evidence {
   content: string;
   relevance: number;
 }
-interface Action { label: string; description: string }
-
+interface Action {
+  label: string;
+  description: string;
+  effort?: string;
+  impact?: string;
+}
+interface KeyMetric {
+  metric: string;
+  value: string;
+  trend: string;
+  source: string;
+}
+interface Risk {
+  risk?: string;
+  mitigation?: string;
+}
+interface BoardAction {
+  action?: string;
+  owner?: string;
+  timeline?: string;
+  priority?: string;
+}
 interface BoardroomBrief {
   executive_summary?: string;
+  key_metrics?: KeyMetric[];
   key_insights?: string[];
-  risks?: string[];
+  strategic_implications?: string[];
+  risks?: (Risk | string)[];
   decision_needed?: string;
-  actions?: string[];
+  actions?: (BoardAction | string)[];
 }
 
 interface AskResult {
@@ -31,9 +53,11 @@ interface AskResult {
   answer?: string;
   confidence?: number;
   evidence?: Evidence[];
+  risk_flags?: string[];
   recommended_actions?: Action[];
   boardroom_brief?: BoardroomBrief | null;
   chunksUsed?: number;
+  predictionsUsed?: number;
   source?: string;
   autoIndexed?: boolean;
   indexCount?: number;
@@ -79,24 +103,27 @@ const SUGGESTIONS_BOARDROOM = [
 ];
 
 const TYPE_LABELS: Record<string, string> = {
-  campaign: "Campaign",
-  insight: "Ad Insight",
-  lead: "Lead",
-  mention: "Mention",
-  landing_page: "Landing Page",
-  content_calendar: "Content",
-  brand_calendar: "Brand Calendar",
-  budget: "Budget",
-  booking: "Booking",
-  linksell: "Link-in-Bio",
-  audience: "Audience",
-  task: "Task",
+  campaign: "Campaign", insight: "Ad Insight", lead: "Lead", mention: "Mention",
+  landing_page: "Landing Page", content_calendar: "Content", brand_calendar: "Brand Calendar",
+  budget: "Budget", booking: "Booking", linksell: "Link-in-Bio", audience: "Audience", task: "Task",
 };
 const TYPE_ICONS: Record<string, string> = {
   campaign: "📣", insight: "📊", lead: "👤", mention: "💬",
   landing_page: "🔗", content_calendar: "📅", brand_calendar: "🗓",
   budget: "💰", booking: "📆", linksell: "🔗", audience: "👥", task: "✅",
 };
+
+const EFFORT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  low:    { bg: "#F0FDF4", text: "#166534", border: "#BBF7D0" },
+  medium: { bg: "#FFFBEB", text: "#92400E", border: "#FDE68A" },
+  high:   { bg: "#FFF5F5", text: "#B91C1C", border: "#FECACA" },
+};
+const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
+  high:   { bg: "#FEF2F2", text: "#B91C1C" },
+  medium: { bg: "#FFFBEB", text: "#92400E" },
+  low:    { bg: "#F0FDF4", text: "#166534" },
+};
+const TREND_ICON: Record<string, string> = { up: "📈", down: "📉", stable: "➡️" };
 
 function ConfidenceRing({ value }: { value: number }) {
   const r  = 22;
@@ -112,10 +139,8 @@ function ConfidenceRing({ value }: { value: number }) {
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="#E5E7EB" strokeWidth={4} />
         <circle
           cx={cx} cy={cy} r={r} fill="none"
-          stroke={color} strokeWidth={4}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
+          stroke={color} strokeWidth={4} strokeLinecap="round"
+          strokeDasharray={circumference} strokeDashoffset={offset}
           transform={`rotate(-90 ${cx} ${cy})`}
           style={{ transition: "stroke-dashoffset .6s ease" }}
         />
@@ -150,11 +175,7 @@ function EvidenceAccordion({ items }: { items: Evidence[] }) {
     <div style={{ marginTop: 14, border: "1px solid #E5E7EB", borderRadius: 8 }}>
       <button
         onClick={() => setOpen(v => !v)}
-        style={{
-          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "8px 12px", background: "transparent", border: 0, cursor: "pointer",
-          fontSize: "0.76rem", fontWeight: 700, color: "#374151",
-        }}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "transparent", border: 0, cursor: "pointer", fontSize: "0.76rem", fontWeight: 700, color: "#374151" }}
       >
         <span>📌 Evidence Sources ({items.length})</span>
         <span style={{ fontSize: "0.6rem", color: "#9CA3AF" }}>{open ? "▲ hide" : "▼ show"}</span>
@@ -163,10 +184,7 @@ function EvidenceAccordion({ items }: { items: Evidence[] }) {
         <div style={{ padding: "0 12px 10px" }}>
           {items.map(e => (
             <div key={e.index} style={{ display: "flex", gap: 8, padding: "6px 0", borderTop: "1px solid #F3F4F6", alignItems: "flex-start" }}>
-              <span style={{
-                minWidth: 24, height: 20, borderRadius: 4, background: "#EEF2FF", color: "#4F46E5",
-                fontSize: "0.65rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
-              }}>{e.index}</span>
+              <span style={{ minWidth: 24, height: 20, borderRadius: 4, background: "#EEF2FF", color: "#4F46E5", fontSize: "0.65rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{e.index}</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#6B7280", marginBottom: 2 }}>
                   {TYPE_ICONS[e.type] || ""} {TYPE_LABELS[e.type] || e.type} · {e.relevance}% match
@@ -178,6 +196,17 @@ function EvidenceAccordion({ items }: { items: Evidence[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+function EffortImpactBadge({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  const v = value.toLowerCase();
+  const c = EFFORT_COLORS[v] || EFFORT_COLORS.medium;
+  return (
+    <span style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.text, padding: "1px 6px", borderRadius: 8, fontSize: "0.6rem", fontWeight: 700 }}>
+      {label}: {value}
+    </span>
   );
 }
 
@@ -215,6 +244,11 @@ function AnswerBubble({
                 ⚡ Vector Search · {result.chunksUsed} chunks
               </span>
             )}
+            {(result.predictionsUsed || 0) > 0 && (
+              <span style={{ background: "#F5F3FF", color: "#7C3AED", border: "1px solid #DDD6FE", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 700 }}>
+                🔮 {result.predictionsUsed} predictions
+              </span>
+            )}
           </div>
           <div style={{ fontSize: "1.02rem", fontWeight: 800, color: "#0A1628", lineHeight: 1.3 }}>
             {result.headline || result.question}
@@ -224,20 +258,12 @@ function AnswerBubble({
           <button
             onClick={onStar}
             title={starred ? "Saved as Intelligence Card" : "Save as Intelligence Card"}
-            style={{
-              background: starred ? "#FEF9C3" : "#F9FAFB", border: `1px solid ${starred ? "#FDE047" : "#E5E7EB"}`,
-              borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: "0.82rem",
-              fontWeight: 700, color: starred ? "#713F12" : "#6B7280",
-            }}
+            style={{ background: starred ? "#FEF9C3" : "#F9FAFB", border: `1px solid ${starred ? "#FDE047" : "#E5E7EB"}`, borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700, color: starred ? "#713F12" : "#6B7280" }}
           >{starred ? "⭐ Saved" : "☆ Save"}</button>
           {isBoardroom && onExport && (
             <button
-              onClick={onExport}
-              disabled={exporting}
-              style={{
-                background: "#F3F4F6", border: "1px solid #E5E7EB", borderRadius: 7,
-                padding: "5px 9px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700, color: "#374151",
-              }}
+              onClick={onExport} disabled={exporting}
+              style={{ background: "#F3F4F6", border: "1px solid #E5E7EB", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700, color: "#374151" }}
             >{exporting ? "⏳" : "⬇️ PDF"}</button>
           )}
         </div>
@@ -248,10 +274,23 @@ function AnswerBubble({
         {renderAnswerText(result.answer || "")}
       </div>
 
-      {/* Evidence */}
-      {(result.evidence || []).length > 0 && (
-        <EvidenceAccordion items={result.evidence!} />
+      {/* Risk flags */}
+      {(result.risk_flags || []).length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>⚠️ Risk Flags</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {(result.risk_flags!).map((rf, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#FFF5F5", border: "1px solid #FECACA", borderRadius: 7, padding: "6px 10px" }}>
+                <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "#B91C1C", minWidth: 16 }}>⚠</span>
+                <span style={{ fontSize: "0.78rem", color: "#374151" }}>{rf}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
+
+      {/* Evidence */}
+      {(result.evidence || []).length > 0 && <EvidenceAccordion items={result.evidence!} />}
 
       {/* Recommended actions */}
       {(result.recommended_actions || []).length > 0 && (
@@ -261,9 +300,13 @@ function AnswerBubble({
             {(result.recommended_actions!).map((a, i) => (
               <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8, padding: "7px 11px" }}>
                 <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "#166534", minWidth: 20 }}>{i + 1}.</span>
-                <div>
-                  <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#166534" }}>{a.label}</span>
-                  {a.description && <span style={{ fontSize: "0.76rem", color: "#374151" }}> — {a.description}</span>}
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 2 }}>
+                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#166534" }}>{a.label}</span>
+                    <EffortImpactBadge label="Effort" value={a.effort} />
+                    <EffortImpactBadge label="Impact" value={a.impact} />
+                  </div>
+                  {a.description && <span style={{ fontSize: "0.76rem", color: "#374151" }}>{a.description}</span>}
                 </div>
               </div>
             ))}
@@ -274,50 +317,104 @@ function AnswerBubble({
       {/* Boardroom brief */}
       {isBoardroom && bb && (
         <div style={{ marginTop: 18, background: "#0F172A", borderRadius: 10, padding: 16, color: "#E2E8F0" }}>
-          <div style={{ fontSize: "0.72rem", fontWeight: 800, letterSpacing: ".06em", color: "#94A3B8", marginBottom: 12, textTransform: "uppercase" }}>🏛️ BOARDROOM BRIEF</div>
+          <div style={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: ".06em", color: "#94A3B8", marginBottom: 14, textTransform: "uppercase" }}>🏛️ BOARDROOM BRIEF</div>
+
           {bb.executive_summary && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#6366F1", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Executive Summary</div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#6366F1", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Executive Summary</div>
               <div style={{ fontSize: "0.9rem", lineHeight: 1.6, color: "#F1F5F9" }}>{bb.executive_summary}</div>
             </div>
           )}
+
+          {(bb.key_metrics || []).length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#34D399", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>📊 Key Metrics &amp; Evidence</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 8 }}>
+                {(bb.key_metrics!).map((m, i) => (
+                  <div key={i} style={{ background: "rgba(255,255,255,.06)", borderRadius: 8, padding: "8px 10px" }}>
+                    <div style={{ fontSize: "0.64rem", color: "#94A3B8", marginBottom: 2 }}>
+                      {TREND_ICON[m.trend] || ""} {m.source}
+                    </div>
+                    <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#CBD5E1", marginBottom: 1 }}>{m.metric}</div>
+                    <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#F1F5F9" }}>{m.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {(bb.key_insights || []).length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#34D399", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Key Insights</div>
-              {bb.key_insights!.map((ins, i) => (
+              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#A5B4FC", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>🔑 Key Insights</div>
+              {(bb.key_insights!).map((ins, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                  <span style={{ color: "#34D399", fontWeight: 800, fontSize: "0.72rem" }}>▸</span>
+                  <span style={{ color: "#A5B4FC", fontWeight: 800, fontSize: "0.72rem" }}>▸</span>
                   <span style={{ fontSize: "0.83rem", color: "#CBD5E1" }}>{ins}</span>
                 </div>
               ))}
             </div>
           )}
-          {(bb.risks || []).length > 0 && (
+
+          {(bb.strategic_implications || []).length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#F87171", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Risks &amp; Concerns</div>
-              {bb.risks!.map((r, i) => (
+              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#FCD34D", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>🔭 Strategic Implications</div>
+              {(bb.strategic_implications!).map((s, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                  <span style={{ color: "#F87171", fontWeight: 800, fontSize: "0.72rem" }}>⚠</span>
-                  <span style={{ fontSize: "0.83rem", color: "#CBD5E1" }}>{r}</span>
+                  <span style={{ color: "#FCD34D", fontWeight: 800, fontSize: "0.72rem" }}>◆</span>
+                  <span style={{ fontSize: "0.83rem", color: "#CBD5E1" }}>{s}</span>
                 </div>
               ))}
             </div>
           )}
+
+          {(bb.risks || []).length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#F87171", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>⚠️ Risks &amp; Mitigants</div>
+              {(bb.risks!).map((r, i) => {
+                const riskText   = typeof r === "string" ? r : r.risk || "";
+                const mitigation = typeof r === "string" ? "" : r.mitigation || "";
+                return (
+                  <div key={i} style={{ background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 7, padding: "7px 10px", marginBottom: 5 }}>
+                    <div style={{ fontSize: "0.82rem", color: "#FCA5A5", fontWeight: 700 }}>{riskText}</div>
+                    {mitigation && <div style={{ fontSize: "0.76rem", color: "#94A3B8", marginTop: 3 }}>🛡️ {mitigation}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {bb.decision_needed && (
             <div style={{ marginBottom: 12, background: "rgba(99,102,241,.15)", borderRadius: 8, padding: "8px 12px" }}>
-              <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#A5B4FC", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Decision Required</div>
+              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#A5B4FC", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>🗳️ Decision Required</div>
               <div style={{ fontSize: "0.85rem", color: "#E2E8F0" }}>{bb.decision_needed}</div>
             </div>
           )}
+
           {(bb.actions || []).length > 0 && (
             <div>
-              <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#FCD34D", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>Board Actions</div>
-              {bb.actions!.map((a, i) => (
-                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 5, alignItems: "flex-start" }}>
-                  <span style={{ background: "#FCD34D", color: "#0F172A", borderRadius: 4, fontSize: "0.62rem", fontWeight: 800, padding: "1px 5px", minWidth: 18, textAlign: "center" }}>{i + 1}</span>
-                  <span style={{ fontSize: "0.83rem", color: "#CBD5E1" }}>{a}</span>
-                </div>
-              ))}
+              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#34D399", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>📌 Board Actions</div>
+              {(bb.actions!).map((a, i) => {
+                const actionText = typeof a === "string" ? a : (a.action || "");
+                const owner      = typeof a === "string" ? "" : (a.owner || "");
+                const timeline   = typeof a === "string" ? "" : (a.timeline || "");
+                const priority   = typeof a === "string" ? "" : (a.priority || "");
+                const pc = PRIORITY_COLORS[(priority || "").toLowerCase()] || PRIORITY_COLORS.medium;
+                return (
+                  <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "flex-start" }}>
+                    <span style={{ background: "#34D399", color: "#0F172A", borderRadius: 4, fontSize: "0.62rem", fontWeight: 800, padding: "1px 5px", minWidth: 18, textAlign: "center" }}>{i + 1}</span>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: "0.83rem", color: "#CBD5E1" }}>{actionText}</span>
+                      {(owner || timeline || priority) && (
+                        <div style={{ display: "flex", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
+                          {owner && <span style={{ fontSize: "0.62rem", color: "#94A3B8" }}>👤 {owner}</span>}
+                          {timeline && <span style={{ fontSize: "0.62rem", color: "#94A3B8" }}>🗓 {timeline}</span>}
+                          {priority && <span style={{ fontSize: "0.62rem", fontWeight: 700, background: pc.bg, color: pc.text, padding: "1px 5px", borderRadius: 6 }}>{priority.toUpperCase()}</span>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -327,37 +424,73 @@ function AnswerBubble({
 }
 
 function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
-  const [items, setItems]   = useState<HistoryItem[]>([]);
-  const [total, setTotal]   = useState(0);
-  const [page, setPage]     = useState(0);
+  const [items, setItems]     = useState<HistoryItem[]>([]);
+  const [total, setTotal]     = useState(0);
+  const [page, setPage]       = useState(0);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch]   = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const PAGE = 15;
 
-  const load = useCallback(async (p: number) => {
+  const load = useCallback(async (p: number, q: string) => {
     setLoading(true);
+    const qs = q.trim() ? `&q=${encodeURIComponent(q.trim())}` : "";
     const r = await apiGet<{ ok: boolean; items: HistoryItem[]; total: number }>(
-      `/api/ask/history?limit=${PAGE}&offset=${p * PAGE}`,
+      `/api/ask/history?limit=${PAGE}&offset=${p * PAGE}${qs}`,
     );
     if (r.ok) { setItems(r.items || []); setTotal(r.total || 0); }
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(0); }, [load]);
+  useEffect(() => { load(0, ""); }, [load]);
+
+  function doSearch() {
+    setPage(0);
+    setSearch(searchInput);
+    load(0, searchInput);
+  }
+
+  function clearSearch() {
+    setSearchInput("");
+    setSearch("");
+    setPage(0);
+    load(0, "");
+  }
 
   if (loading && !items.length) {
     return <div style={{ color: "#9CA3AF", padding: 20, textAlign: "center" }}>⏳ Loading history…</div>;
   }
-  if (!items.length) {
-    return (
-      <div style={{ color: "#9CA3AF", padding: 40, textAlign: "center" }}>
-        <div style={{ fontSize: "2rem", marginBottom: 8 }}>🗂️</div>
-        No questions asked yet. Your Q&amp;A history will appear here.
-      </div>
-    );
-  }
 
   return (
     <div>
+      {/* Search bar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <input
+          value={searchInput}
+          onChange={e => setSearchInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") doSearch(); }}
+          placeholder="Search questions…"
+          style={{ flex: 1, padding: "8px 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: "0.84rem" }}
+        />
+        <button
+          onClick={doSearch}
+          style={{ padding: "8px 14px", borderRadius: 8, border: 0, background: "linear-gradient(135deg,#0066FF,#7C3AED)", color: "#fff", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}
+        >Search</button>
+        {search && (
+          <button
+            onClick={clearSearch}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #E5E7EB", background: "#F3F4F6", color: "#374151", fontSize: "0.78rem", cursor: "pointer" }}
+          >✕ Clear</button>
+        )}
+      </div>
+
+      {!loading && !items.length && (
+        <div style={{ color: "#9CA3AF", padding: 40, textAlign: "center" }}>
+          <div style={{ fontSize: "2rem", marginBottom: 8 }}>🗂️</div>
+          {search ? `No questions matching "${search}"` : "No questions asked yet. Your Q&A history will appear here."}
+        </div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {items.map(item => {
           const aj = item.answer_json || {};
@@ -374,7 +507,7 @@ function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
                     </span>
                     {typeof aj.confidence === "number" && (
                       <span style={{ fontSize: "0.66rem", color: "#6B7280" }}>
-                        {aj.confidence >= 75 ? "🟢" : aj.confidence >= 50 ? "🟡" : "🔴"} {aj.confidence}% confidence
+                        {aj.confidence >= 75 ? "🟢" : aj.confidence >= 50 ? "🟡" : "🔴"} {aj.confidence}%
                       </span>
                     )}
                   </div>
@@ -390,16 +523,17 @@ function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
           );
         })}
       </div>
+
       {total > PAGE && (
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
           <button
-            onClick={() => { const p = Math.max(0, page - 1); setPage(p); load(p); }}
+            onClick={() => { const p = Math.max(0, page - 1); setPage(p); load(p, search); }}
             disabled={page === 0}
             style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #E5E7EB", background: "#fff", cursor: page === 0 ? "default" : "pointer", fontSize: "0.78rem" }}
           >← Prev</button>
           <span style={{ fontSize: "0.78rem", color: "#6B7280", lineHeight: "32px" }}>Page {page + 1} of {Math.ceil(total / PAGE)}</span>
           <button
-            onClick={() => { const p = page + 1; setPage(p); load(p); }}
+            onClick={() => { const p = page + 1; setPage(p); load(p, search); }}
             disabled={(page + 1) * PAGE >= total}
             style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #E5E7EB", background: "#fff", cursor: (page + 1) * PAGE >= total ? "default" : "pointer", fontSize: "0.78rem" }}
           >Next →</button>
@@ -411,7 +545,7 @@ function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
 
 function CardGrid({ refreshTick }: { refreshTick: number }) {
   const toast = useToast();
-  const [cards, setCards] = useState<Card[]>([]);
+  const [cards, setCards]     = useState<Card[]>([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState<number | null>(null);
 
@@ -427,7 +561,10 @@ function CardGrid({ refreshTick }: { refreshTick: number }) {
   async function togglePin(card: Card) {
     const r = await apiPatch<{ ok: boolean; card: Card }>(`/api/ask/cards/${card.id}`, { pinned: !card.pinned });
     if (r.ok) {
-      setCards(cs => cs.map(c => c.id === card.id ? { ...c, pinned: !card.pinned } : c).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)));
+      setCards(cs =>
+        cs.map(c => c.id === card.id ? { ...c, pinned: !card.pinned } : c)
+          .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)),
+      );
       toast(card.pinned ? "📌 Unpinned" : "📌 Pinned to Boardroom");
     }
   }
@@ -457,13 +594,14 @@ function CardGrid({ refreshTick }: { refreshTick: number }) {
       <div style={{ color: "#9CA3AF", padding: 40, textAlign: "center" }}>
         <div style={{ fontSize: "2rem", marginBottom: 8 }}>🏛️</div>
         No Intelligence Cards saved yet.<br />
-        <span style={{ fontSize: "0.8rem" }}>Ask a question and click <strong>☆ Save</strong> to pin it here.</span>
+        <span style={{ fontSize: "0.8rem" }}>Ask a question and click <strong>☆ Save</strong> to create a card.</span>
       </div>
     );
   }
 
   const pinned   = cards.filter(c => c.pinned);
   const unpinned = cards.filter(c => !c.pinned);
+
   const renderGroup = (group: Card[], label?: string) => (
     <>
       {label && group.length > 0 && (
@@ -479,7 +617,7 @@ function CardGrid({ refreshTick }: { refreshTick: number }) {
               boxShadow: card.pinned ? "0 2px 12px rgba(250,204,21,.25)" : undefined,
             }}>
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                {card.pinned && <span style={{ fontSize: "0.64rem" }}>📌</span>}
+                {card.pinned && <span>📌</span>}
                 {card.mode === "boardroom" && (
                   <span style={{ background: "#0F172A", color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️</span>
                 )}
@@ -508,9 +646,7 @@ function CardGrid({ refreshTick }: { refreshTick: number }) {
                 <button onClick={() => togglePin(card)} style={{ padding: "4px 9px", borderRadius: 6, border: `1px solid ${card.pinned ? "#FDE047" : "#E5E7EB"}`, background: card.pinned ? "#FEF9C3" : "#F9FAFB", cursor: "pointer", fontSize: "0.7rem", fontWeight: 700, color: card.pinned ? "#713F12" : "#374151" }}>
                   {card.pinned ? "📌 Unpin" : "📌 Pin"}
                 </button>
-                <button onClick={() => deleteCard(card)} style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid #FECACA", background: "#FFF5F5", cursor: "pointer", fontSize: "0.7rem", fontWeight: 700, color: "#B91C1C" }}>
-                  🗑
-                </button>
+                <button onClick={() => deleteCard(card)} style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid #FECACA", background: "#FFF5F5", cursor: "pointer", fontSize: "0.7rem", fontWeight: 700, color: "#B91C1C" }}>🗑</button>
               </div>
             </div>
           );
@@ -617,7 +753,7 @@ export default function AskInfoGenie() {
   }
 
   const suggestions = mode === "boardroom" ? SUGGESTIONS_BOARDROOM : SUGGESTIONS_STANDARD;
-  const indexedStr = (indexStatus.indexed || 0) > 0
+  const indexedStr  = (indexStatus.indexed || 0) > 0
     ? `${indexStatus.indexed} chunks indexed`
     : "Not yet indexed";
 
@@ -639,7 +775,7 @@ export default function AskInfoGenie() {
               </div>
               <h2 className="view-title">🧠 Executive AI Copilot</h2>
               <p className="view-sub">
-                Ask questions in plain English and get structured answers with confidence scores, evidence citations, recommended actions — or a full Boardroom Brief for leadership.
+                Ask questions in plain English and get structured answers with confidence scores, risk flags, evidence citations, and effort/impact-rated actions — or a full Boardroom Brief with predictive intelligence for leadership.
               </p>
             </div>
           </div>
@@ -657,16 +793,13 @@ export default function AskInfoGenie() {
         {/* ASK TAB */}
         {tab === "ask" && (
           <>
-            {/* Control panel */}
             <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 18, marginBottom: 16 }}>
-              {/* Status + reindex row */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ background: "linear-gradient(135deg,#0066FF,#7C3AED)", borderRadius: 8, padding: "4px 10px", fontSize: "0.66rem", fontWeight: 800, color: "#fff", letterSpacing: ".04em" }}>⚡ AI COPILOT</div>
                   <span style={{ fontSize: "0.73rem", color: "#9CA3AF" }}>{indexedStr}</span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  {/* Mode toggle */}
                   <div style={{ display: "flex", border: "1px solid #E5E7EB", borderRadius: 8, overflow: "hidden" }}>
                     {(["standard", "boardroom"] as Mode[]).map(m => (
                       <button
@@ -688,14 +821,12 @@ export default function AskInfoGenie() {
                 </div>
               </div>
 
-              {/* Boardroom info */}
               {mode === "boardroom" && (
                 <div style={{ background: "#0F172A", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: "0.75rem", color: "#94A3B8" }}>
-                  🏛️ <strong style={{ color: "#E2E8F0" }}>Boardroom mode</strong> — runs two AI passes: an analyst answer then an executive brief formatted for leadership.
+                  🏛️ <strong style={{ color: "#E2E8F0" }}>Boardroom mode</strong> — two AI passes: analyst answer + executive brief with key metrics, strategic implications, risks &amp; mitigants, and board actions with owners and timelines. Includes predictive intelligence signals.
                 </div>
               )}
 
-              {/* Input */}
               <div style={{ display: "flex", gap: 8 }}>
                 <input
                   ref={inputRef}
@@ -717,23 +848,17 @@ export default function AskInfoGenie() {
                 >{asking ? "⏳" : mode === "boardroom" ? "Brief →" : "Ask →"}</button>
               </div>
 
-              {/* Suggestions */}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
                 {suggestions.map(s => (
-                  <button
-                    key={s}
-                    onClick={() => ask(s)}
-                    style={{ background: "#F3F4F6", border: "1px solid #E5E7EB", color: "#374151", padding: "4px 10px", borderRadius: 14, fontSize: "0.72rem", cursor: "pointer" }}
-                  >{s}</button>
+                  <button key={s} onClick={() => ask(s)} style={{ background: "#F3F4F6", border: "1px solid #E5E7EB", color: "#374151", padding: "4px 10px", borderRadius: 14, fontSize: "0.72rem", cursor: "pointer" }}>{s}</button>
                 ))}
               </div>
             </div>
 
-            {/* Result */}
             {asking && (
               <div style={{ color: "#9CA3AF", display: "flex", alignItems: "center", gap: 8, padding: 16 }}>
                 <span>🔍</span>
-                {mode === "boardroom" ? "Running analyst + board brief (two AI passes)…" : "Searching your data semantically…"}
+                {mode === "boardroom" ? "Running analyst + board brief with predictive intelligence (two AI passes)…" : "Searching your data semantically…"}
               </div>
             )}
             {askError && <div style={{ color: "#DC2626", padding: "10px 0" }}>{askError}</div>}
@@ -749,12 +874,10 @@ export default function AskInfoGenie() {
           </>
         )}
 
-        {/* HISTORY TAB */}
         {tab === "history" && (
           <HistoryTab onReask={(q, m) => { setMode(m); ask(q, m); }} />
         )}
 
-        {/* BOARDROOM TAB */}
         {tab === "boardroom" && (
           <CardGrid refreshTick={cardRefreshTick} />
         )}
