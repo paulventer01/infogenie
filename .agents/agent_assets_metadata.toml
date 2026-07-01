@@ -90,3 +90,9 @@ id = "MwGTaAXDlXI2KTRlLbcYA"
 uri = "file://docs/InfoGenie_Features_Guide.md"
 type = "text"
 title = "InfoGenie — Complete Feature Guide"
+
+[[outputs]]
+id = "XB1iGqB7eP_44elYCYyDH"
+uri = "file://public/InfoGenie_Feature_Guide.md"
+type = "text"
+title = "InfoGenie Complete Feature Guide"
