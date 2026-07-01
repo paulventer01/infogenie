@@ -10,8 +10,11 @@
 //   POST /api/swarm/trigger
 //   GET  /api/swarm/runs
 //   GET  /api/swarm/runs/:id
-//   GET  /api/swarm/quick-briefings        ← new
-//   POST /api/swarm/briefing               ← new
+//   GET  /api/swarm/quick-briefings
+//   GET  /api/swarm/personas
+//   GET  /api/swarm/persona-overrides
+//   PUT  /api/swarm/persona-overrides/:id
+//   POST /api/swarm/briefing
 
 const express    = require('express');
 const _https     = require('https');
@@ -22,8 +25,10 @@ const _tenantCtx = require('../tenants/context');
 const TRIGGER_EVENTS = ['competitor_change','ad_rejected','roas_drop','budget_pacing','keyword_spike','content_published','lead_scored','manual'];
 const AGENT_TYPES = ['competitor_spy','media_buyer','copywriter','seo_analyst','email_composer','audience_builder','approval_gate','slack_notify','webhook'];
 
-// ── Agent persona registry ────────────────────────────────────────────────
-const AGENT_PERSONAS = {
+// ── Default agent persona registry ────────────────────────────────────────
+// These serve as the static defaults. Per-tenant overrides are stored in
+// swarm_persona_overrides and merged at request time.
+const DEFAULT_PERSONAS = {
   cmo: {
     id: 'cmo',
     name: 'CMO',
@@ -32,10 +37,10 @@ const AGENT_PERSONAS = {
     color: '#7C3AED',
     description: 'Strategic marketing leadership, brand positioning, budget allocation, and cross-channel alignment.',
     expertise: ['Strategy', 'Brand', 'Budget', 'Leadership'],
-    systemPrompt: `You are the Chief Marketing Officer (CMO) of a fast-growing company. You have 20 years of marketing experience across B2B and B2C.
+    system_prompt: `You are the Chief Marketing Officer (CMO) of a fast-growing company. You have 20 years of marketing experience across B2B and B2C.
 Your expertise: brand strategy, budget allocation, channel mix, competitive positioning, go-to-market planning, and executive communication.
 You speak with authority and decisiveness. You think in terms of business outcomes, not just marketing metrics.
-When synthesising input from other team members, you produce a clear prioritised action plan with confidence scores.`,
+When contributing as a specialist, give the CMO-level strategic view. When synthesising, produce a clear prioritised action plan.`,
     model: 'gpt-4o',
     temperature: 0.3,
   },
@@ -47,7 +52,7 @@ When synthesising input from other team members, you produce a clear prioritised
     color: '#059669',
     description: 'Organic search strategy, content marketing, keyword opportunities, and technical SEO guidance.',
     expertise: ['SEO', 'Content', 'Keywords', 'Technical'],
-    systemPrompt: `You are the SEO & Content Director with deep expertise in organic search, content strategy, and technical SEO.
+    system_prompt: `You are the SEO & Content Director with deep expertise in organic search, content strategy, and technical SEO.
 Your expertise: keyword research, content gap analysis, on-page optimisation, link-building strategy, Core Web Vitals, E-E-A-T, and AI search (GEO/AIO).
 You speak in specifics — suggest actual content angles, keyword clusters, and page-level fixes.
 Consider the challenge from the angle of: search visibility, content investment ROI, and organic lead quality.`,
@@ -62,7 +67,7 @@ Consider the challenge from the angle of: search visibility, content investment 
     color: '#DC2626',
     description: 'Paid advertising strategy, ROAS optimisation, creative testing, and cross-platform budget management.',
     expertise: ['Paid Ads', 'ROAS', 'Creative', 'Attribution'],
-    systemPrompt: `You are the Paid Media Director, a performance marketing expert with deep hands-on experience in Meta, Google, TikTok, and LinkedIn Ads.
+    system_prompt: `You are the Paid Media Director, a performance marketing expert with deep hands-on experience in Meta, Google, TikTok, and LinkedIn Ads.
 Your expertise: campaign architecture, audience targeting, creative strategy, bid management, ROAS optimisation, and incrementality testing.
 You think in terms of CAC, LTV, ROAS, and marginal returns. You are data-driven and test-and-learn focused.
 Consider the challenge from the angle of: ad spend efficiency, audience quality, creative performance, and attribution accuracy.`,
@@ -77,7 +82,7 @@ Consider the challenge from the angle of: ad spend efficiency, audience quality,
     color: '#D97706',
     description: 'Landing page optimisation, A/B testing, funnel analysis, and user experience improvements.',
     expertise: ['CRO', 'A/B Testing', 'UX', 'Funnels'],
-    systemPrompt: `You are the Conversion Rate Optimisation (CRO) Specialist, an expert in turning traffic into customers.
+    system_prompt: `You are the Conversion Rate Optimisation (CRO) Specialist, an expert in turning traffic into customers.
 Your expertise: landing page design, A/B and multivariate testing, heatmap analysis, session replay insights, funnel leak identification, and copy optimisation.
 You think in terms of CVR, bounce rate, scroll depth, form completion, and micro-conversions.
 Consider the challenge from the angle of: where users are dropping off, what friction exists, and what tests would have the highest impact.`,
@@ -92,7 +97,7 @@ Consider the challenge from the angle of: where users are dropping off, what fri
     color: '#0284C7',
     description: 'Data interpretation, marketing attribution, trend analysis, and performance benchmarking.',
     expertise: ['Analytics', 'Attribution', 'Trends', 'Reporting'],
-    systemPrompt: `You are the Marketing Data Analyst, the team's evidence-based thinker who grounds strategy in data.
+    system_prompt: `You are the Marketing Data Analyst, the team's evidence-based thinker who grounds strategy in data.
 Your expertise: multi-touch attribution, cohort analysis, funnel metrics, marketing mix modelling, A/B test significance, and dashboard design.
 You question assumptions, look for confounding variables, and quantify uncertainty. You always cite what data would be needed to confirm a hypothesis.
 Consider the challenge from the angle of: what the data says, what data is missing, and what metrics should be tracked to measure success.`,
@@ -101,7 +106,7 @@ Consider the challenge from the angle of: what the data says, what data is missi
   },
 };
 
-// Quick briefing templates (static config)
+// Quick briefing templates (static config — canonical scenarios)
 const QUICK_BRIEFINGS = [
   {
     id: 'competitor_launched',
@@ -136,6 +141,32 @@ const QUICK_BRIEFINGS = [
     challenge_template: 'Our peak sales season is 60 days away. Last year we left significant revenue on the table due to poor preparation. What should we be doing right now — across ads, content, landing pages, and offers — to maximise this year\'s peak season revenue?',
   },
 ];
+
+// ── Resolve effective personas (static defaults + per-tenant DB overrides) ──
+async function _resolvePersonas(tenantId) {
+  const personas = {};
+  for (const [k, v] of Object.entries(DEFAULT_PERSONAS)) {
+    personas[k] = { ...v };
+  }
+  if (!tenantId) return personas;
+  try {
+    const p = await _db.getPool();
+    const rows = await p.query(
+      `SELECT persona_id, display_name, system_prompt, model, temperature, is_active
+       FROM swarm_persona_overrides WHERE tenant_id=$1`,
+      [tenantId]
+    );
+    for (const row of rows.rows) {
+      if (!personas[row.persona_id]) continue;
+      if (row.display_name) personas[row.persona_id].name = row.display_name;
+      if (row.system_prompt) personas[row.persona_id].system_prompt = row.system_prompt;
+      if (row.model) personas[row.persona_id].model = row.model;
+      if (row.temperature != null) personas[row.persona_id].temperature = parseFloat(row.temperature);
+      if (row.is_active === false) delete personas[row.persona_id];
+    }
+  } catch (_) {}
+  return personas;
+}
 
 // ── OpenAI helper (gpt-4o) ────────────────────────────────────────────────
 function _openai(messages, opts = {}) {
@@ -343,54 +374,113 @@ router.get('/quick-briefings', async (req, res) => {
   res.json({ ok: true, quick_briefings: QUICK_BRIEFINGS });
 });
 
-// ── GET /personas — returns the 5 agent personas ─────────────────────────
+// ── GET /personas — returns effective personas (defaults merged with overrides) ──
 router.get('/personas', async (req, res) => {
   const tid = await _tid(req, 'swarm:personas');
   if (!tid) return _err(res, 400, 'no_tenant');
-  const safe = Object.values(AGENT_PERSONAS).map(({ id, name, title, icon, color, description, expertise }) =>
+  const personas = await _resolvePersonas(tid);
+  const safe = Object.values(personas).map(({ id, name, title, icon, color, description, expertise }) =>
     ({ id, name, title, icon, color, description, expertise })
   );
   res.json({ ok: true, personas: safe });
 });
 
+// ── GET /persona-overrides — returns raw per-tenant overrides ─────────────
+router.get('/persona-overrides', async (req, res) => {
+  const tid = await _tid(req, 'swarm:persona-overrides');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const p = await _db.getPool();
+  const rows = await p.query(
+    `SELECT persona_id, display_name, system_prompt, model, temperature, is_active, updated_at
+     FROM swarm_persona_overrides WHERE tenant_id=$1`,
+    [tid]
+  );
+  res.json({ ok: true, overrides: rows.rows, defaults: Object.fromEntries(
+    Object.entries(DEFAULT_PERSONAS).map(([k, v]) => [k, { model: v.model, temperature: v.temperature, system_prompt: v.system_prompt }])
+  )});
+});
+
+// ── PUT /persona-overrides/:persona_id — upsert a persona override ─────────
+router.put('/persona-overrides/:persona_id', async (req, res) => {
+  const tid = await _tid(req, 'swarm:persona-override-put');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const { persona_id } = req.params;
+  if (!DEFAULT_PERSONAS[persona_id]) return _err(res, 400, 'unknown persona_id');
+  const { display_name, system_prompt, model, temperature, is_active } = req.body || {};
+  const ALLOWED_MODELS = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'];
+  if (model && !ALLOWED_MODELS.includes(model)) return _err(res, 400, `model must be one of: ${ALLOWED_MODELS.join(', ')}`);
+  if (temperature != null && (isNaN(Number(temperature)) || Number(temperature) < 0 || Number(temperature) > 2)) {
+    return _err(res, 400, 'temperature must be 0–2');
+  }
+  const p = await _db.getPool();
+  await p.query(
+    `INSERT INTO swarm_persona_overrides(tenant_id, persona_id, display_name, system_prompt, model, temperature, is_active, updated_at)
+     VALUES($1,$2,$3,$4,$5,$6,$7,NOW())
+     ON CONFLICT(tenant_id, persona_id) DO UPDATE SET
+       display_name=COALESCE(EXCLUDED.display_name, swarm_persona_overrides.display_name),
+       system_prompt=COALESCE(EXCLUDED.system_prompt, swarm_persona_overrides.system_prompt),
+       model=COALESCE(EXCLUDED.model, swarm_persona_overrides.model),
+       temperature=COALESCE(EXCLUDED.temperature, swarm_persona_overrides.temperature),
+       is_active=COALESCE(EXCLUDED.is_active, swarm_persona_overrides.is_active),
+       updated_at=NOW()`,
+    [tid, persona_id, display_name || null, system_prompt || null, model || null,
+     temperature != null ? Number(temperature) : null, is_active != null ? is_active : null]
+  );
+  res.json({ ok: true });
+});
+
+// ── DELETE /persona-overrides/:persona_id — reset persona to defaults ──────
+router.delete('/persona-overrides/:persona_id', async (req, res) => {
+  const tid = await _tid(req, 'swarm:persona-override-delete');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const { persona_id } = req.params;
+  const p = await _db.getPool();
+  await p.query(`DELETE FROM swarm_persona_overrides WHERE tenant_id=$1 AND persona_id=$2`, [tid, persona_id]);
+  res.json({ ok: true });
+});
+
 // ── POST /briefing — runs multi-agent strategy session ───────────────────
+// ALL selected agents contribute as specialists (sequentially, building on prior context).
+// CMO always runs a dedicated synthesis pass at the end regardless of selection.
 router.post('/briefing', async (req, res) => {
   const tid = await _tid(req, 'swarm:briefing');
   if (!tid) return _err(res, 400, 'no_tenant');
 
   if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
 
-  const { challenge, agents = Object.keys(AGENT_PERSONAS), quick_briefing_id } = req.body || {};
+  const { challenge, agents = Object.keys(DEFAULT_PERSONAS), quick_briefing_id } = req.body || {};
   if (!challenge || typeof challenge !== 'string' || challenge.trim().length < 10) {
     return _err(res, 400, 'challenge must be at least 10 characters');
   }
   const challengeText = challenge.trim().slice(0, 2000);
 
-  // Resolve & validate agent list
-  const agentIds = (Array.isArray(agents) ? agents : Object.keys(AGENT_PERSONAS))
+  // Resolve effective personas (with per-tenant overrides)
+  const AGENT_PERSONAS = await _resolvePersonas(tid);
+
+  // Validate & resolve agent list — ALL selected agents run as specialists
+  const agentIds = (Array.isArray(agents) ? agents : Object.keys(DEFAULT_PERSONAS))
     .filter(id => AGENT_PERSONAS[id])
     .slice(0, 5);
   if (!agentIds.length) return _err(res, 400, 'at least one valid agent required');
 
-  // Ensure CMO is always last (or add it as synthesizer even if not selected)
-  const runAgentIds = agentIds.filter(id => id !== 'cmo');
-  // CMO always synthesises at the end
-  const synthesizerId = 'cmo';
+  // CMO persona is always used for the final synthesis pass
+  const cmoPersona = AGENT_PERSONAS['cmo'] || DEFAULT_PERSONAS['cmo'];
 
   const p = await _db.getPool();
+  // steps_total = number of specialists + 1 (synthesis pass)
   const runRow = await p.query(
     `INSERT INTO swarm_runs(tenant_id,config_name,trigger_event,trigger_data,status,steps_total,run_type)
      VALUES($1,'Marketing Team Briefing','briefing',$2,'running',$3,'briefing') RETURNING id,started_at`,
-    [tid, JSON.stringify({ challenge: challengeText, quick_briefing_id: quick_briefing_id || null }), runAgentIds.length + 1]
+    [tid, JSON.stringify({ challenge: challengeText, quick_briefing_id: quick_briefing_id || null }), agentIds.length + 1]
   );
   const runId = runRow.rows[0].id;
 
   const agentContributions = [];
   let priorContext = '';
 
-  // Run each specialist agent sequentially
-  for (let i = 0; i < runAgentIds.length; i++) {
-    const agentId = runAgentIds[i];
+  // Run ALL selected agents sequentially as specialists
+  for (let i = 0; i < agentIds.length; i++) {
+    const agentId = agentIds[i];
     const persona = AGENT_PERSONAS[agentId];
     const step = i + 1;
 
@@ -412,7 +502,7 @@ Return strict JSON:
 }`;
 
       const raw = await _openai(
-        [{ role: 'system', content: persona.systemPrompt }, { role: 'user', content: userMsg }],
+        [{ role: 'system', content: persona.system_prompt }, { role: 'user', content: userMsg }],
         { model: persona.model, temperature: persona.temperature, jsonMode: true, maxTokens: 800 }
       );
       contribution = raw ? JSON.parse(raw) : null;
@@ -446,10 +536,9 @@ Return strict JSON:
     );
   }
 
-  // CMO synthesis pass
+  // Dedicated CMO synthesis pass (always runs, even if CMO was a specialist above)
   let synthesis = null;
   try {
-    const cmoPersona = AGENT_PERSONAS[synthesizerId];
     const synthMsg = `STRATEGIC CHALLENGE: ${challengeText}
 
 FULL TEAM INPUT:
@@ -470,7 +559,7 @@ Return strict JSON:
 }`;
 
     const raw = await _openai(
-      [{ role: 'system', content: cmoPersona.systemPrompt }, { role: 'user', content: synthMsg }],
+      [{ role: 'system', content: cmoPersona.system_prompt }, { role: 'user', content: synthMsg }],
       { model: cmoPersona.model, temperature: cmoPersona.temperature, jsonMode: true, maxTokens: 1200 }
     );
     synthesis = raw ? JSON.parse(raw) : null;
@@ -491,6 +580,15 @@ Return strict JSON:
     };
   }
 
+  // Record synthesis step
+  await p.query(
+    `INSERT INTO swarm_steps(run_id,tenant_id,step_order,step_name,agent_type,input_summary,output_summary,status)
+     VALUES($1,$2,$3,$4,'cmo',$5,$6,'completed')`,
+    [runId, tid, agentIds.length + 1, 'CMO Strategy Synthesis',
+     `${agentIds.length} specialist contributions`,
+     JSON.stringify(synthesis).slice(0, 500)]
+  );
+
   // Persist session output
   const sessionOutput = {
     session_id: runId,
@@ -504,7 +602,7 @@ Return strict JSON:
   const summaryText = synthesis.executive_summary || `Briefing complete — ${agentContributions.length} agents contributed.`;
   await p.query(
     `UPDATE swarm_runs SET status='completed', steps_completed=$1, summary=$2, session_output=$3, completed_at=NOW() WHERE id=$4`,
-    [agentContributions.length + 1, summaryText, JSON.stringify(sessionOutput), runId]
+    [agentIds.length + 1, summaryText, JSON.stringify(sessionOutput), runId]
   );
 
   // KG ingest — fire-and-forget
@@ -528,19 +626,30 @@ Return strict JSON:
   res.json({ ok: true, ...sessionOutput });
 });
 
-// ── GET /runs ─────────────────────────────────────────────────────────────
+// ── GET /runs — list runs, filterable by type, date range, and search ─────
 router.get('/runs', async (req, res) => {
   const tid = await _tid(req, 'swarm:runs');
   if (!tid) return _err(res, 400, 'no_tenant');
   const p = await _db.getPool();
-  const type = req.query.type;
-  const typeFilter = type && ['trigger', 'briefing'].includes(type) ? `AND run_type=$2` : '';
-  const params = typeFilter ? [tid, type] : [tid];
-  const rows = await p.query(
-    `SELECT id, config_name, trigger_event, run_type, status, steps_completed, steps_total, summary, session_output, started_at, completed_at
-     FROM swarm_runs WHERE tenant_id=$1 ${typeFilter} ORDER BY started_at DESC LIMIT 50`,
-    params
-  );
+
+  const type = ['trigger', 'briefing'].includes(req.query.type) ? req.query.type : null;
+  const q = req.query.q ? String(req.query.q).trim().slice(0, 200) : null;
+  const from = req.query.from ? new Date(req.query.from) : null;
+  const to = req.query.to ? new Date(req.query.to) : null;
+
+  const conditions = ['tenant_id=$1'];
+  const params = [tid];
+
+  if (type) { params.push(type); conditions.push(`run_type=$${params.length}`); }
+  if (q) { params.push(`%${q}%`); conditions.push(`(summary ILIKE $${params.length} OR trigger_data ILIKE $${params.length} OR config_name ILIKE $${params.length})`); }
+  if (from && !isNaN(from)) { params.push(from.toISOString()); conditions.push(`started_at>=$${params.length}`); }
+  if (to && !isNaN(to)) { params.push(to.toISOString()); conditions.push(`started_at<=$${params.length}`); }
+
+  const sql = `SELECT id, config_name, trigger_event, run_type, status, steps_completed, steps_total,
+                      summary, session_output, started_at, completed_at
+               FROM swarm_runs WHERE ${conditions.join(' AND ')}
+               ORDER BY started_at DESC LIMIT 50`;
+  const rows = await p.query(sql, params);
   res.json({ ok: true, runs: rows.rows });
 });
 

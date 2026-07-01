@@ -49,10 +49,23 @@ async function ensureAgentSwarmSchema() {
       executed_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_swarm_steps_run ON swarm_steps(run_id, step_order);
+    CREATE TABLE IF NOT EXISTS swarm_persona_overrides (
+      id SERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id),
+      persona_id VARCHAR(40) NOT NULL,
+      display_name VARCHAR(120),
+      system_prompt TEXT,
+      model VARCHAR(60),
+      temperature DECIMAL(3,2),
+      is_active BOOLEAN DEFAULT TRUE,
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(tenant_id, persona_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_swarm_persona_overrides_tenant ON swarm_persona_overrides(tenant_id);
   `);
 
-  // Phase 2 migration: add new columns to existing tables safely
-  // Each statement is wrapped independently so one failure doesn't block others
+  // Phase 2 migration: add new columns to existing tables safely.
+  // Each statement runs independently so one failure doesn't block others.
   const migrations = [
     `ALTER TABLE swarm_runs ADD COLUMN IF NOT EXISTS run_type VARCHAR(40) DEFAULT 'trigger'`,
     `ALTER TABLE swarm_runs ADD COLUMN IF NOT EXISTS session_output JSONB`,
