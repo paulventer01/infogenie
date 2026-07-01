@@ -93,7 +93,7 @@ router.post('/sweep', async (req, res) => {
         const { ingestMemoryNode } = require('../knowledge_graph/api');
         ingestMemoryNode({
           tenant_id: tid,
-          node_type: 'lead_scoring',
+          node_type: 'lead_event',
           summary: `Lead sweep found ${allLeads.length} prospects (${hotLeads.length} high-score ≥80) for "${industry || 'unknown'}" industry in "${location || 'any'}" location.`,
           detail: { total: allLeads.length, hot: hotLeads.length, industry, location, role, source_counts: sourceCounts },
           source_ref: `lead_sweep:${new Date().toISOString().slice(0, 10)}`,

@@ -297,7 +297,7 @@ async function _safeRun() {
           const { ingestMemoryNode } = require('../knowledge_graph/api');
           ingestMemoryNode({
             tenant_id: Number(tid),
-            node_type: 'audience_insight',
+            node_type: 'audience_shift',
             summary: `Audience sweep: ${agg.added} contacts joined, ${agg.removed} left across segments: ${agg.segments.join(', ')}.`,
             detail: { added: agg.added, removed: agg.removed, segments: agg.segments },
             source_ref: `audience_sweep:${new Date().toISOString().slice(0, 10)}`,
