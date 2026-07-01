@@ -108,6 +108,17 @@ const ROUTE_GROUPS = [
   { prefix: '/api/churn-scorer',              view: 'compete.intel.view',        write: 'compete.intel.manage' },
   { prefix: '/api/search-intel',              view: 'compete.intel.view',        write: 'compete.intel.manage' },
   { prefix: '/api/apify',                     view: 'compete.intel.view',        write: 'compete.intel.manage' },
+  // ── Brand Intelligence Suite ──────────────────────────────────────────────
+  { prefix: '/api/reputation-score',          view: 'compete.intel.view',        write: 'compete.intel.manage' },
+  { prefix: '/api/ave',                       view: 'compete.intel.view',        write: 'compete.intel.manage' },
+  { prefix: '/api/anomaly-detector',          view: 'compete.intel.view',        write: 'compete.intel.manage' },
+  { prefix: '/api/intent-radar',              view: 'compete.intel.view',        write: 'compete.intel.manage' },
+  { prefix: '/api/hashtag-tracker',           view: 'compete.intel.view',        write: 'compete.intel.manage' },
+  { prefix: '/api/presence-score',            view: 'compete.intel.view',        write: 'compete.intel.manage' },
+  { prefix: '/api/project-compare',           view: 'compete.intel.view',        write: 'compete.intel.manage' },
+  { prefix: '/api/influence-score',           view: 'compete.intel.view',        write: 'compete.intel.manage' },
+  { prefix: '/api/geo-insights',              view: 'compete.intel.view',        write: 'compete.intel.manage' },
+  { prefix: '/api/ugc-discovery',             view: 'compete.intel.view',        write: 'compete.intel.manage' },
 
   // ── Grow ──────────────────────────────────────────────────────────────────
   { prefix: '/api/launch',                    view: 'grow.campaigns.view',     write: 'grow.campaigns.launch' },
@@ -305,6 +316,16 @@ const COMPONENT_MATRIX = {
   'review-aggregator':    'compete.intel.view',
   'trending-topics':      'compete.intel.view',
   'content-gaps':         'compete.intel.view',
+  'reputation-score':     'compete.intel.view',
+  'ave':                  'compete.intel.view',
+  'anomaly-detector':     'compete.intel.view',
+  'intent-radar':         'compete.intel.view',
+  'hashtag-tracker':      'compete.intel.view',
+  'presence-score':       'compete.intel.view',
+  'project-compare':      'compete.intel.view',
+  'influence-score':      'compete.intel.view',
+  'geo-insights':         'compete.intel.view',
+  'ugc-discovery':        'compete.intel.view',
 
   // Grow
   'campaigns':            'grow.campaigns.view',

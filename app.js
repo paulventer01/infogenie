@@ -3155,6 +3155,17 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'playbook-7day')        { try { window.buildPlaybook7Day && window.buildPlaybook7Day(); }         catch(e) { console.warn('buildPlaybook7Day error:', e); } }
   if (viewId === 'growth-methodology')   { try { window.buildGrowthMethodology && window.buildGrowthMethodology(); } catch(e) { console.warn('buildGrowthMethodology error:', e); } }
   if (viewId === 'headline-tester')      { try { window.buildHeadlineTester && window.buildHeadlineTester(); }       catch(e) { console.warn('buildHeadlineTester error:', e); } }
+  // ── Brand Intelligence Suite ──────────────────────────────────────────────
+  if (viewId === 'reputation-score')   { try { window.buildReputationScore && window.buildReputationScore(); }   catch(e) { console.warn('buildReputationScore error:', e); } }
+  if (viewId === 'presence-score')     { try { window.buildPresenceScore && window.buildPresenceScore(); }       catch(e) { console.warn('buildPresenceScore error:', e); } }
+  if (viewId === 'ave')                { try { window.buildAve && window.buildAve(); }                           catch(e) { console.warn('buildAve error:', e); } }
+  if (viewId === 'anomaly-detector')   { try { window.buildAnomalyDetector && window.buildAnomalyDetector(); }   catch(e) { console.warn('buildAnomalyDetector error:', e); } }
+  if (viewId === 'intent-radar')       { try { window.buildIntentRadar && window.buildIntentRadar(); }           catch(e) { console.warn('buildIntentRadar error:', e); } }
+  if (viewId === 'hashtag-tracker')    { try { window.buildHashtagTracker && window.buildHashtagTracker(); }     catch(e) { console.warn('buildHashtagTracker error:', e); } }
+  if (viewId === 'influence-score')    { try { window.buildInfluenceScore && window.buildInfluenceScore(); }     catch(e) { console.warn('buildInfluenceScore error:', e); } }
+  if (viewId === 'project-compare')    { try { window.buildProjectCompare && window.buildProjectCompare(); }     catch(e) { console.warn('buildProjectCompare error:', e); } }
+  if (viewId === 'geo-insights')       { try { window.buildGeoInsights && window.buildGeoInsights(); }           catch(e) { console.warn('buildGeoInsights error:', e); } }
+  if (viewId === 'ugc-discovery')      { try { window.buildUgcDiscovery && window.buildUgcDiscovery(); }         catch(e) { console.warn('buildUgcDiscovery error:', e); } }
   if (viewId === 'review-aggregator')    { try { window.buildReviewAggregator && window.buildReviewAggregator(); }     catch(e) { console.warn('buildReviewAggregator error:', e); } }
   if (viewId === 'churn-scorer')         { try { window.buildChurnScorer && window.buildChurnScorer(); }          catch(e) { console.warn('buildChurnScorer error:', e); } }
   if (viewId === 'twitter-pulse')        { try { window.buildTwitterPulse && window.buildTwitterPulse(); }         catch(e) { console.warn('buildTwitterPulse error:', e); } }
