@@ -173,7 +173,7 @@ function makeHarness() {
 // stays tight. The staleness check below will fail if this value drifts more
 // than MAX_BUILDER_FLOOR_DRIFT below the live resolved count, printing the exact
 // value you need to set it to. ────────────────────────────────────────────────
-const MIN_COVERED_BUILDERS = 178;
+const MIN_COVERED_BUILDERS = 175;
 
 // Maximum allowed gap between MIN_COVERED_BUILDERS and the live resolved count
 // before the staleness check fires. Keeps the floor within ~5 builders of

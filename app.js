@@ -3131,7 +3131,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'tech-stack')       { try { window.buildTechStack && window.buildTechStack(); }        catch(e) { console.warn('buildTechStack error:', e); } }
   if (viewId === 'cold-email')       { try { window.buildColdEmail && window.buildColdEmail(); }        catch(e) { console.warn('buildColdEmail error:', e); } }
   if (viewId === 'web-vitals')       { try { window.buildWebVitals && window.buildWebVitals(); }        catch(e) { console.warn('buildWebVitals error:', e); } }
-  if (viewId === 'lead-finder')      { try { window.buildLeadFinder && window.buildLeadFinder(); }       catch(e) { console.warn('buildLeadFinder error:', e); } }
+  if (viewId === 'lead-finder')      { navigateTo('lead-gen'); return; }
   if (viewId === 'serp-tracker')     { try { window.buildSerpTracker && window.buildSerpTracker(); }      catch(e) { console.warn('buildSerpTracker error:', e); } }
   if (viewId === 'hubspot-sync')     { try { window.buildHubspotSync && window.buildHubspotSync(); }      catch(e) { console.warn('buildHubspotSync error:', e); } }
   if (viewId === 'ai-team')          { try { window.buildAiTeam && window.buildAiTeam(); }           catch(e) { console.warn('buildAiTeam error:', e); } }
@@ -3192,7 +3192,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'ecom-video')           { try { window.buildEcomVideo        && window.buildEcomVideo();        } catch(e) { console.warn('buildEcomVideo error:', e); } }
   if (viewId === 'brand-deals')          { try { window.buildBrandDeals      && window.buildBrandDeals();      } catch(e) { console.warn('buildBrandDeals error:', e); } }
   if (viewId === 'organic-social')       { try { window.buildOrganic         && window.buildOrganic();          } catch(e) { console.warn('buildOrganic error:', e); } try { window._orgAutoFillKeyword && window._orgAutoFillKeyword(); } catch(e) {} }
-  if (viewId === 'local-leads')          { try { window.buildLocalLeads      && window.buildLocalLeads();       } catch(e) { console.warn('buildLocalLeads error:', e); } }
+  if (viewId === 'local-leads')          { navigateTo('lead-gen'); return; }
   if (viewId === 'flywheel')             { try { window.buildFlywheel        && window.buildFlywheel();         } catch(e) { console.warn('buildFlywheel error:', e); } }
   if (viewId === 'seo-roadmap')          { try { window.buildSeoRoadmap      && window.buildSeoRoadmap();       } catch(e) { console.warn('buildSeoRoadmap error:', e); } }
   if (viewId === 'roadmap')              { try { window.buildRoadmap && window.buildRoadmap(); }              catch(e) { console.warn('buildRoadmap error:', e); } }
@@ -3219,7 +3219,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'dataset-market')      { try { window.buildDatasetMarket && window.buildDatasetMarket(); }       catch(e) { console.warn('buildDatasetMarket error:', e); } }
   if (viewId === 'resilient-tracker')   { try { window.buildResilientTracker && window.buildResilientTracker(); } catch(e) { console.warn('buildResilientTracker error:', e); } }
   if (viewId === 'conversion-recovery') { try { window.buildConversionRecovery && window.buildConversionRecovery(); } catch(e) { console.warn('buildConversionRecovery error:', e); } }
-  if (viewId === 'lead-aggregator')     { try { window.buildLeadAggregator && window.buildLeadAggregator(); }     catch(e) { console.warn('buildLeadAggregator error:', e); } }
+  if (viewId === 'lead-aggregator')     { navigateTo('lead-gen'); return; }
   if (viewId === 'model-compare')       { try { window.buildModelCompare && window.buildModelCompare(); }         catch(e) { console.warn('buildModelCompare error:', e); } }
   if (viewId === 'creative-intel')   { try { window.buildCreativeIntel && window.buildCreativeIntel(); }      catch(e) { console.warn('buildCreativeIntel error:', e); } }
   if (viewId === 'hashtag-intel')     { try { window.buildHashtagIntel && window.buildHashtagIntel(); }       catch(e) { console.warn('buildHashtagIntel error:', e); } }
