@@ -66,15 +66,18 @@ async function ensureDigitalTwinSchema() {
     CREATE INDEX IF NOT EXISTS simulation_templates_category_idx ON simulation_templates(category, sort_order);
   `);
 
-  const existing = await p.query(`SELECT COUNT(*) FROM simulation_templates`);
-  if (parseInt(existing.rows[0].count, 10) === 0) {
-    for (let i = 0; i < TEMPLATES.length; i++) {
-      const t = TEMPLATES[i];
-      await p.query(
-        `INSERT INTO simulation_templates(category,icon,label,prompt,sort_order) VALUES($1,$2,$3,$4,$5)`,
-        [t.category, t.icon, t.label, t.prompt, i]
-      );
-    }
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS simulation_templates_label_uidx ON simulation_templates(label);
+  `).catch(() => {});
+
+  for (let i = 0; i < TEMPLATES.length; i++) {
+    const t = TEMPLATES[i];
+    await p.query(
+      `INSERT INTO simulation_templates(category,icon,label,prompt,sort_order)
+       VALUES($1,$2,$3,$4,$5)
+       ON CONFLICT (label) DO UPDATE SET category=$1, icon=$2, prompt=$4, sort_order=$5`,
+      [t.category, t.icon, t.label, t.prompt, i]
+    );
   }
 }
 

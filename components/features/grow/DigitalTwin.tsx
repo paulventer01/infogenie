@@ -132,6 +132,7 @@ function SimulatorTab({ history, onSimDone, initialTemplate }: {
   const [question, setQuestion]   = useState("");
   const [ctx, setCtx]             = useState("");
   const [scenarioName, setScenarioName] = useState("");
+  const [templateId, setTemplateId]     = useState<number | null>(null);
   const [running, setRunning]     = useState(false);
   const [resultHtml, setResultHtml] = useState("");
   const [lastId, setLastId]       = useState<number | null>(null);
@@ -143,6 +144,7 @@ function SimulatorTab({ history, onSimDone, initialTemplate }: {
     if (initialTemplate) {
       setQuestion(initialTemplate.prompt);
       setScenarioName(initialTemplate.label);
+      setTemplateId(initialTemplate.id);
     }
     apiGet<TemplatesResponse>("/api/digital-twin/templates").then(d => {
       if (d.ok) { setTemplates(d.templates); setGrouped(d.grouped); }
@@ -164,6 +166,7 @@ function SimulatorTab({ history, onSimDone, initialTemplate }: {
   function pickTemplate(t: Template) {
     setQuestion(t.prompt);
     setScenarioName(t.label);
+    setTemplateId(t.id);
   }
 
   function loadAutoCtx() {
@@ -183,6 +186,7 @@ function SimulatorTab({ history, onSimDone, initialTemplate }: {
     const d = await apiPost<SimResp>("/api/digital-twin/simulate", {
       question: q,
       scenario_name: scenarioName || q,
+      template_id: templateId ?? undefined,
       business_context,
     });
     setRunning(false);
@@ -236,7 +240,7 @@ function SimulatorTab({ history, onSimDone, initialTemplate }: {
             <label>Scenario / &quot;What if&quot; question</label>
             <textarea className="form-control" rows={3}
               placeholder="e.g. What if I increased ad spend by 50% and launched in the UK simultaneously?"
-              value={question} onChange={e => setQuestion(e.target.value)} />
+              value={question} onChange={e => { setQuestion(e.target.value); setTemplateId(null); }} />
           </div>
 
           <div className="form-group">
@@ -273,8 +277,8 @@ function SimulatorTab({ history, onSimDone, initialTemplate }: {
           {shareToken && (
             <div style={{ marginTop: 8, padding: "8px 10px", background: "#f0fdf4", borderRadius: 6, fontSize: ".75rem", wordBreak: "break-all" }}>
               <strong>Share URL:</strong>{" "}
-              <a href={`/api/digital-twin/share/${shareToken}`} target="_blank" rel="noreferrer">
-                /api/digital-twin/share/{shareToken}
+              <a href={`/api/digital-twin/share/${shareToken}/view`} target="_blank" rel="noreferrer">
+                /api/digital-twin/share/{shareToken}/view
               </a>
             </div>
           )}
