@@ -72,7 +72,7 @@ function renderResult(r: SimResults, question: string, showShare?: { id:number; 
   const shareSection = showShare ? `
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
       ${showShare.token
-        ? `<a href="/api/digital-twin/share/${showShare.token}" target="_blank" rel="noreferrer" style="padding:6px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:.8rem;font-weight:600;color:#1d4ed8;text-decoration:none">🔗 Share link</a>`
+        ? `<a href="/api/digital-twin/share/${showShare.token}/view" target="_blank" rel="noreferrer" style="padding:6px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:.8rem;font-weight:600;color:#1d4ed8;text-decoration:none">🔗 Share link</a>`
         : `<button onclick="window._dtShare(${showShare.id})" style="padding:6px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:.8rem;font-weight:600;color:#1d4ed8;cursor:pointer">🔗 Get share link</button>`
       }
       <a href="/api/digital-twin/scenarios/${showShare.id}/pdf" target="_blank" rel="noreferrer" style="padding:6px 14px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:6px;font-size:.8rem;font-weight:600;color:#7c3aed;text-decoration:none">📄 Export PDF</a>
