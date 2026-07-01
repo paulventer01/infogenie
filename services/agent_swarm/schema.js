@@ -2,6 +2,8 @@ const _db = require('../../db');
 
 async function ensureAgentSwarmSchema() {
   const p = await _db.getPool();
+
+  // Create base tables for fresh installs
   await p.query(`
     CREATE TABLE IF NOT EXISTS swarm_configs (
       id SERIAL PRIMARY KEY,
@@ -48,6 +50,21 @@ async function ensureAgentSwarmSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_swarm_steps_run ON swarm_steps(run_id, step_order);
   `);
+
+  // Phase 2 migration: add new columns to existing tables safely
+  // Each statement is wrapped independently so one failure doesn't block others
+  const migrations = [
+    `ALTER TABLE swarm_runs ADD COLUMN IF NOT EXISTS run_type VARCHAR(40) DEFAULT 'trigger'`,
+    `ALTER TABLE swarm_runs ADD COLUMN IF NOT EXISTS session_output JSONB`,
+  ];
+  for (const sql of migrations) {
+    await p.query(sql).catch(() => {});
+  }
+
+  // Index on run_type can only be created after the column exists
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_swarm_runs_type ON swarm_runs(tenant_id, run_type, started_at DESC)`
+  ).catch(() => {});
 }
 
 module.exports = { ensureAgentSwarmSchema };

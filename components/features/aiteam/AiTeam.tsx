@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
+import BriefingRoom from "./BriefingRoom";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 interface Officer {
@@ -501,6 +502,7 @@ function BulletList({
 // ════════════════════════════════════════════════════════════════════════════
 export default function AiTeam() {
   const router = useRouter();
+  const [mainTab, setMainTab] = useState<"officers" | "briefing">("officers");
   const [avatars, setAvatars] = useState<Record<string, string>>({});
   const [taskCounts, setTaskCounts] = useState<Record<string, number>>({});
   const [statusPill, setStatusPill] = useState<{ color: string; label: string }>({
@@ -576,6 +578,30 @@ export default function AiTeam() {
   return (
     <div>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}`}</style>
+
+      {/* Top-level tab bar: AI Officers vs Briefing Room */}
+      <div style={{ display: "flex", borderBottom: "2px solid var(--border,#E5E7EB)", marginBottom: 22, paddingLeft: 4, gap: 0 }}>
+        {([["officers", "🤖 AI Officer Team"], ["briefing", "🧠 Briefing Room"]] as ["officers" | "briefing", string][]).map(([t, label]) => (
+          <button
+            key={t}
+            onClick={() => setMainTab(t)}
+            style={{
+              padding: "12px 22px", border: "none",
+              borderBottom: mainTab === t ? "2px solid #7C3AED" : "2px solid transparent",
+              marginBottom: -2,
+              background: "none", cursor: "pointer", fontSize: ".88rem",
+              fontWeight: mainTab === t ? 800 : 600,
+              color: mainTab === t ? "#7C3AED" : "var(--text-muted,#6B7280)",
+              transition: "color .15s, border-color .15s",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mainTab === "briefing" && <BriefingRoom />}
+      {mainTab === "officers" && <>
 
       {/* Header */}
       <div
@@ -783,6 +809,7 @@ export default function AiTeam() {
       {autoReportViewer && (
         <AutoReportViewer run={autoReportViewer} onClose={() => setAutoReportViewer(null)} />
       )}
+      </>}
     </div>
   );
 }
