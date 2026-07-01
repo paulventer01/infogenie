@@ -27,10 +27,15 @@ async function ensureAskCopilotSchema() {
       question     TEXT NOT NULL,
       answer_json  JSONB NOT NULL DEFAULT '{}',
       mode         TEXT NOT NULL DEFAULT 'standard',
+      topic        TEXT,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // migration: add topic column if it doesn't exist yet
+  await pool.query(`ALTER TABLE ask_history ADD COLUMN IF NOT EXISTS topic TEXT`);
+
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_ask_history_tenant ON ask_history(tenant_id, created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_ask_history_topic ON ask_history(tenant_id, topic) WHERE topic IS NOT NULL`);
 }
 
 module.exports = { ensureAskCopilotSchema };

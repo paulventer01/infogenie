@@ -49,6 +49,7 @@ interface AskResult {
   ok?: boolean;
   question?: string;
   mode?: Mode;
+  topic?: string;
   headline?: string;
   answer?: string;
   confidence?: number;
@@ -58,6 +59,7 @@ interface AskResult {
   boardroom_brief?: BoardroomBrief | null;
   chunksUsed?: number;
   predictionsUsed?: number;
+  liveDataUsed?: boolean;
   source?: string;
   autoIndexed?: boolean;
   indexCount?: number;
@@ -69,6 +71,7 @@ interface HistoryItem {
   question: string;
   answer_json: AskResult;
   mode: Mode;
+  topic?: string;
   created_at: string;
 }
 
@@ -90,9 +93,9 @@ interface IndexStatus {
 const SUGGESTIONS_STANDARD = [
   "Which landing page is converting best?",
   "Are any campaigns over budget?",
+  "What is my ROAS by campaign?",
   "Which leads should I call first?",
   "What changed in the last 7 days?",
-  "Which audiences have the most members?",
 ];
 
 const SUGGESTIONS_BOARDROOM = [
@@ -124,6 +127,13 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
   low:    { bg: "#F0FDF4", text: "#166534" },
 };
 const TREND_ICON: Record<string, string> = { up: "📈", down: "📉", stable: "➡️" };
+
+const TOPIC_LABELS: Record<string, string> = {
+  roas: "📈 ROAS", spend: "💰 Spend", leads: "👤 Leads", campaigns: "📣 Campaigns",
+  seo: "🔍 SEO", content: "📅 Content", competitors: "⚔️ Competitors",
+  audiences: "👥 Audiences", performance: "📊 Performance", revenue: "💵 Revenue",
+  general: "💬 General",
+};
 
 function ConfidenceRing({ value }: { value: number }) {
   const r  = 22;
@@ -215,7 +225,7 @@ function AnswerBubble({
 }: {
   result: AskResult;
   onStar: () => void;
-  onExport?: () => void;
+  onExport: () => void;
   starred?: boolean;
   exporting?: boolean;
 }) {
@@ -239,14 +249,24 @@ function AnswerBubble({
                 🏛️ BOARDROOM
               </span>
             )}
-            {result.source === "vector-retrieval" && (
+            {result.liveDataUsed && (
+              <span style={{ background: "#FFF7ED", color: "#C2410C", border: "1px solid #FED7AA", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 700 }}>
+                📡 Live Data
+              </span>
+            )}
+            {result.source === "vector-retrieval" && !result.liveDataUsed && (
               <span style={{ background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 700 }}>
-                ⚡ Vector Search · {result.chunksUsed} chunks
+                ⚡ {result.chunksUsed} chunks
               </span>
             )}
             {(result.predictionsUsed || 0) > 0 && (
               <span style={{ background: "#F5F3FF", color: "#7C3AED", border: "1px solid #DDD6FE", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 700 }}>
                 🔮 {result.predictionsUsed} predictions
+              </span>
+            )}
+            {result.topic && (
+              <span style={{ background: "#F9FAFB", color: "#6B7280", border: "1px solid #E5E7EB", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 600 }}>
+                {TOPIC_LABELS[result.topic] || result.topic}
               </span>
             )}
           </div>
@@ -260,12 +280,11 @@ function AnswerBubble({
             title={starred ? "Saved as Intelligence Card" : "Save as Intelligence Card"}
             style={{ background: starred ? "#FEF9C3" : "#F9FAFB", border: `1px solid ${starred ? "#FDE047" : "#E5E7EB"}`, borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700, color: starred ? "#713F12" : "#6B7280" }}
           >{starred ? "⭐ Saved" : "☆ Save"}</button>
-          {isBoardroom && onExport && (
-            <button
-              onClick={onExport} disabled={exporting}
-              style={{ background: "#F3F4F6", border: "1px solid #E5E7EB", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700, color: "#374151" }}
-            >{exporting ? "⏳" : "⬇️ PDF"}</button>
-          )}
+          <button
+            onClick={onExport} disabled={exporting}
+            title="Export as PDF"
+            style={{ background: "#F3F4F6", border: "1px solid #E5E7EB", borderRadius: 7, padding: "5px 9px", cursor: exporting ? "default" : "pointer", fontSize: "0.82rem", fontWeight: 700, color: "#374151" }}
+          >{exporting ? "⏳" : "⬇️ PDF"}</button>
         </div>
       </div>
 
@@ -332,9 +351,7 @@ function AnswerBubble({
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 8 }}>
                 {(bb.key_metrics!).map((m, i) => (
                   <div key={i} style={{ background: "rgba(255,255,255,.06)", borderRadius: 8, padding: "8px 10px" }}>
-                    <div style={{ fontSize: "0.64rem", color: "#94A3B8", marginBottom: 2 }}>
-                      {TREND_ICON[m.trend] || ""} {m.source}
-                    </div>
+                    <div style={{ fontSize: "0.64rem", color: "#94A3B8", marginBottom: 2 }}>{TREND_ICON[m.trend] || ""} {m.source}</div>
                     <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#CBD5E1", marginBottom: 1 }}>{m.metric}</div>
                     <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#F1F5F9" }}>{m.value}</div>
                   </div>
@@ -428,34 +445,47 @@ function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
   const [total, setTotal]     = useState(0);
   const [page, setPage]       = useState(0);
   const [loading, setLoading] = useState(false);
+  const [topics, setTopics]   = useState<string[]>([]);
   const [search, setSearch]   = useState("");
+  const [topic, setTopic]     = useState("");
   const [searchInput, setSearchInput] = useState("");
   const PAGE = 15;
 
-  const load = useCallback(async (p: number, q: string) => {
+  const load = useCallback(async (p: number, q: string, t: string) => {
     setLoading(true);
-    const qs = q.trim() ? `&q=${encodeURIComponent(q.trim())}` : "";
-    const r = await apiGet<{ ok: boolean; items: HistoryItem[]; total: number }>(
-      `/api/ask/history?limit=${PAGE}&offset=${p * PAGE}${qs}`,
+    const qs = [
+      `limit=${PAGE}`, `offset=${p * PAGE}`,
+      q.trim() ? `q=${encodeURIComponent(q.trim())}` : "",
+      t ? `topic=${encodeURIComponent(t)}` : "",
+    ].filter(Boolean).join("&");
+    const r = await apiGet<{ ok: boolean; items: HistoryItem[]; total: number; topics: string[] }>(
+      `/api/ask/history?${qs}`,
     );
-    if (r.ok) { setItems(r.items || []); setTotal(r.total || 0); }
+    if (r.ok) {
+      setItems(r.items || []);
+      setTotal(r.total || 0);
+      if ((r.topics || []).length) setTopics(r.topics);
+    }
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(0, ""); }, [load]);
+  useEffect(() => { load(0, "", ""); }, [load]);
 
   function doSearch() {
     setPage(0);
     setSearch(searchInput);
-    load(0, searchInput);
+    load(0, searchInput, topic);
   }
 
-  function clearSearch() {
+  function clearFilters() {
     setSearchInput("");
     setSearch("");
+    setTopic("");
     setPage(0);
-    load(0, "");
+    load(0, "", "");
   }
+
+  const hasFilters = search || topic;
 
   if (loading && !items.length) {
     return <div style={{ color: "#9CA3AF", padding: 20, textAlign: "center" }}>⏳ Loading history…</div>;
@@ -463,22 +493,32 @@ function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
 
   return (
     <div>
-      {/* Search bar */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+      {/* Search + topic filter bar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <input
           value={searchInput}
           onChange={e => setSearchInput(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") doSearch(); }}
           placeholder="Search questions…"
-          style={{ flex: 1, padding: "8px 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: "0.84rem" }}
+          style={{ flex: "1 1 200px", padding: "8px 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: "0.84rem" }}
         />
+        {topics.length > 0 && (
+          <select
+            value={topic}
+            onChange={e => { setTopic(e.target.value); setPage(0); load(0, search, e.target.value); }}
+            style={{ padding: "8px 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: "0.82rem", background: "#fff", cursor: "pointer" }}
+          >
+            <option value="">All topics</option>
+            {topics.map(t => <option key={t} value={t}>{TOPIC_LABELS[t] || t}</option>)}
+          </select>
+        )}
         <button
           onClick={doSearch}
           style={{ padding: "8px 14px", borderRadius: 8, border: 0, background: "linear-gradient(135deg,#0066FF,#7C3AED)", color: "#fff", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}
         >Search</button>
-        {search && (
+        {hasFilters && (
           <button
-            onClick={clearSearch}
+            onClick={clearFilters}
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #E5E7EB", background: "#F3F4F6", color: "#374151", fontSize: "0.78rem", cursor: "pointer" }}
           >✕ Clear</button>
         )}
@@ -487,7 +527,7 @@ function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
       {!loading && !items.length && (
         <div style={{ color: "#9CA3AF", padding: 40, textAlign: "center" }}>
           <div style={{ fontSize: "2rem", marginBottom: 8 }}>🗂️</div>
-          {search ? `No questions matching "${search}"` : "No questions asked yet. Your Q&A history will appear here."}
+          {hasFilters ? `No questions matching your filters.` : "No questions asked yet. Your Q&A history will appear here."}
         </div>
       )}
 
@@ -501,6 +541,9 @@ function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
                   <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
                     {item.mode === "boardroom" && (
                       <span style={{ background: "#0F172A", color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️ Boardroom</span>
+                    )}
+                    {item.topic && (
+                      <span style={{ background: "#F3F4F6", color: "#6B7280", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 600 }}>{TOPIC_LABELS[item.topic] || item.topic}</span>
                     )}
                     <span style={{ fontSize: "0.68rem", color: "#9CA3AF" }}>
                       {new Date(item.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
@@ -527,13 +570,13 @@ function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
       {total > PAGE && (
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
           <button
-            onClick={() => { const p = Math.max(0, page - 1); setPage(p); load(p, search); }}
+            onClick={() => { const p = Math.max(0, page - 1); setPage(p); load(p, search, topic); }}
             disabled={page === 0}
             style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #E5E7EB", background: "#fff", cursor: page === 0 ? "default" : "pointer", fontSize: "0.78rem" }}
           >← Prev</button>
           <span style={{ fontSize: "0.78rem", color: "#6B7280", lineHeight: "32px" }}>Page {page + 1} of {Math.ceil(total / PAGE)}</span>
           <button
-            onClick={() => { const p = page + 1; setPage(p); load(p, search); }}
+            onClick={() => { const p = page + 1; setPage(p); load(p, search, topic); }}
             disabled={(page + 1) * PAGE >= total}
             style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #E5E7EB", background: "#fff", cursor: (page + 1) * PAGE >= total ? "default" : "pointer", fontSize: "0.78rem" }}
           >Next →</button>
@@ -729,26 +772,27 @@ export default function AskInfoGenie() {
     }
   }
 
-  async function exportCurrentCard() {
+  // Export any answer (standard OR boardroom) directly to PDF via POST /api/ask/export
+  async function exportCurrentAnswer() {
     if (!result) return;
     setExporting(true);
     try {
-      const savedR = await apiPost<{ ok: boolean; card?: Card }>("/api/ask/cards", {
-        question: result.question || query,
-        answer_json: result,
-        mode: result.mode || mode,
+      const resp = await fetch("/api/ask/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question:    result.question || query,
+          answer_json: result,
+          mode:        result.mode || mode,
+        }),
       });
-      if (!savedR.ok || !savedR.card) { toast("⚠️ Could not save for export"); return; }
-      const cardId = savedR.card.id;
-      const resp   = await fetch(`/api/ask/cards/${cardId}/export`);
       if (!resp.ok) { toast("⚠️ Export failed"); return; }
       const blob = await resp.blob();
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
-      a.href = url; a.download = `infogenie-brief-${cardId}.pdf`; a.click();
+      const slug = String(result.question || query).slice(0, 40).replace(/[^a-z0-9]/gi, "-").toLowerCase();
+      a.href = url; a.download = `infogenie-brief-${slug}.pdf`; a.click();
       URL.revokeObjectURL(url);
-      setStarred(true);
-      setCardRefreshTick(t => t + 1);
     } finally { setExporting(false); }
   }
 
@@ -775,7 +819,7 @@ export default function AskInfoGenie() {
               </div>
               <h2 className="view-title">🧠 Executive AI Copilot</h2>
               <p className="view-sub">
-                Ask questions in plain English and get structured answers with confidence scores, risk flags, evidence citations, and effort/impact-rated actions — or a full Boardroom Brief with predictive intelligence for leadership.
+                Ask questions in plain English — get structured answers with confidence scores, risk flags, evidence citations, effort/impact actions, and live campaign data. Boardroom mode adds a full executive brief with predictive intelligence.
               </p>
             </div>
           </div>
@@ -835,7 +879,7 @@ export default function AskInfoGenie() {
                   onKeyDown={e => { if (e.key === "Enter") ask(); }}
                   placeholder={mode === "boardroom"
                     ? "e.g. Summarise our marketing performance for the board…"
-                    : "e.g. Which campaign has the worst CPC? · What changed this week?"}
+                    : "e.g. What is my ROAS by campaign? · Which leads should I call first?"}
                   style={{ flex: 1, padding: "11px 14px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: "0.9rem" }}
                 />
                 <button
@@ -858,7 +902,7 @@ export default function AskInfoGenie() {
             {asking && (
               <div style={{ color: "#9CA3AF", display: "flex", alignItems: "center", gap: 8, padding: 16 }}>
                 <span>🔍</span>
-                {mode === "boardroom" ? "Running analyst + board brief with predictive intelligence (two AI passes)…" : "Searching your data semantically…"}
+                {mode === "boardroom" ? "Running analyst + board brief with live data + predictive intelligence…" : "Searching your data and live campaign metrics…"}
               </div>
             )}
             {askError && <div style={{ color: "#DC2626", padding: "10px 0" }}>{askError}</div>}
@@ -866,7 +910,7 @@ export default function AskInfoGenie() {
               <AnswerBubble
                 result={result}
                 onStar={saveCard}
-                onExport={result.mode === "boardroom" ? exportCurrentCard : undefined}
+                onExport={exportCurrentAnswer}
                 starred={starred}
                 exporting={exporting}
               />
