@@ -96,3 +96,9 @@ id = "XB1iGqB7eP_44elYCYyDH"
 uri = "file://public/InfoGenie_Feature_Guide.md"
 type = "text"
 title = "InfoGenie Complete Feature Guide"
+
+[[outputs]]
+id = "TcPWPECyOCo3eyJuLeS0D"
+uri = "file://public/InfoGenie_API_LLM_Token_Reference.md"
+type = "text"
+title = "InfoGenie — Complete API, LLM & Token Reference"
