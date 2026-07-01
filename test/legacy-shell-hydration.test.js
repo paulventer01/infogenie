@@ -282,7 +282,7 @@ test('getLegacyShell().bodyHtml contains multiple class="view" panels', () => {
 // Update MIN_VIEW_PANEL_COUNT after an intentional batch removal; keep the
 // value at (new total − 20) so there is still a meaningful floor.
 
-const MIN_VIEW_PANEL_COUNT = 222;
+const MIN_VIEW_PANEL_COUNT = 223;
 
 test(`getLegacyShell().bodyHtml contains at least ${MIN_VIEW_PANEL_COUNT} id="view-*" panels (bulk-removal guard)`, () => {
   const { bodyHtml } = getLegacyShell();

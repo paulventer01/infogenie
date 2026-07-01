@@ -3131,6 +3131,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'tech-stack')       { try { window.buildTechStack && window.buildTechStack(); }        catch(e) { console.warn('buildTechStack error:', e); } }
   if (viewId === 'cold-email')       { try { window.buildColdEmail && window.buildColdEmail(); }        catch(e) { console.warn('buildColdEmail error:', e); } }
   if (viewId === 'web-vitals')       { try { window.buildWebVitals && window.buildWebVitals(); }        catch(e) { console.warn('buildWebVitals error:', e); } }
+  if (viewId === 'lead-gen')         { /* React LeadGenHub renders into #view-lead-gen */ }
   if (viewId === 'lead-finder')      { navigateTo('lead-gen'); return; }
   if (viewId === 'serp-tracker')     { try { window.buildSerpTracker && window.buildSerpTracker(); }      catch(e) { console.warn('buildSerpTracker error:', e); } }
   if (viewId === 'hubspot-sync')     { try { window.buildHubspotSync && window.buildHubspotSync(); }      catch(e) { console.warn('buildHubspotSync error:', e); } }
