@@ -3295,6 +3295,8 @@ const _llmKbSchema            = require('./services/llm_kb/schema');
 const _llmKbRouter            = require('./services/llm_kb/api');
 const _kgApi                  = require('./services/knowledge_graph/api');
 const _kgSchema               = require('./services/knowledge_graph/schema');
+const _predictionsSchema      = require('./services/predictions/schema');
+const _predictionsApi         = require('./services/predictions/api');
 const _privacySchema          = require('./services/privacy_compliance/schema');
 const _privacyRouter          = require('./services/privacy_compliance/api');
 const _brandDnaSchema         = require('./services/brand_dna/schema');
@@ -3309,6 +3311,7 @@ app.use('/api/ctv',                _ctvRouter);
 app.use('/api/rcs',                _rcsRouter);
 app.use('/api/llm-kb',             _llmKbRouter);
 app.use('/api/knowledge-graph',    _kgApi.router);
+app.use('/api/predictions',        _predictionsApi.router);
 // Knowledge Graph monthly rollup — fires daily at 03:00-ish (off-peak).
 if (_runtimeFlags.backgroundEnabled()) {
   const _kgRollupDelay = (() => {
@@ -3323,6 +3326,10 @@ if (_runtimeFlags.backgroundEnabled()) {
       _kgApi.runMonthlyRollup().catch(e => console.warn('[knowledge-graph] rollup error:', e.message));
     }, 24 * 60 * 60 * 1000);
   }, _kgRollupDelay);
+  // Predictions — refresh all active tenants every 6 hours
+  setInterval(() => {
+    _predictionsApi.runPredictionsRefreshForAllTenants().catch(e => console.warn('[predictions] cron error:', e.message));
+  }, 6 * 60 * 60 * 1000);
 }
 app.use('/api/privacy-compliance', _privacyRouter);
 app.use('/api/brand-dna',          _brandDnaRouter);
@@ -3336,6 +3343,7 @@ BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _rcsSchema.ensureRcsSchema();
   await _llmKbSchema.ensureLlmKbSchema();
   await _kgSchema.ensureKnowledgeGraphSchema();
+  await _predictionsSchema.ensurePredictionsSchema();
   await _privacySchema.ensurePrivacyComplianceSchema();
   await _brandDnaSchema.ensureBrandDnaSchema();
   await _workflowBuilderSchema.ensureWorkflowBuilderSchema();

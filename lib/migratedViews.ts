@@ -77,6 +77,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "budget-board", legacyModule: null },
   { view: "ask-infogenie", legacyModule: null },
   { view: "marketing-memory", legacyModule: null },
+  { view: "predictive-intelligence", legacyModule: null },
   { view: "agent-goals", legacyModule: null },
   { view: "ai-providers", legacyModule: null },
   { view: "meeting-notes", legacyModule: null },
