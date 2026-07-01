@@ -150,19 +150,22 @@ async function _runCompetitorMoves(tenantId, inputs = {}) {
       const jr = await pool.query(
         `SELECT company, total_jobs, by_dept, strategic_signals, created_at
          FROM job_board_runs
-         WHERE created_at > NOW() - INTERVAL '30 days'
-         ORDER BY created_at DESC LIMIT 10`
+         WHERE tenant_id=$1 AND created_at > NOW() - INTERVAL '30 days'
+         ORDER BY created_at DESC LIMIT 10`,
+        [tenantId]
       );
       jobSignals = jr.rows;
     } catch (_) {}
-    // Ad spend trend: rising competitor spend signals an incoming push
+    // Ad spend trend: scoped to this tenant's campaigns via ad_campaigns join
     try {
       const ar = await pool.query(
-        `SELECT SUM(spend) AS total_spend, SUM(impressions) AS total_impressions,
-                DATE_TRUNC('week', bucket_hour) AS week
-         FROM ad_performance_hourly
-         WHERE bucket_hour > NOW() - INTERVAL '30 days'
-         GROUP BY week ORDER BY week DESC LIMIT 4`
+        `SELECT SUM(aph.spend) AS total_spend, SUM(aph.impressions) AS total_impressions,
+                DATE_TRUNC('week', aph.bucket_hour) AS week
+         FROM ad_performance_hourly aph
+         JOIN ad_campaigns ac ON ac.id = aph.campaign_id AND ac.tenant_id = $1
+         WHERE aph.bucket_hour > NOW() - INTERVAL '30 days'
+         GROUP BY week ORDER BY week DESC LIMIT 4`,
+        [tenantId]
       );
       adSpendTrend = ar.rows;
     } catch (_) {}
