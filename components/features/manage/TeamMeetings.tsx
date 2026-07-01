@@ -188,6 +188,24 @@ export default function TeamMeetings() {
   }
 
   return (
+    <div className="view-header-wrap">
+      <div className="view-header">
+        <div className="container">
+          <div className="vh-inner">
+            <div>
+              <div className="breadcrumb">
+                <span className="bc-group">Manage</span>{" "}
+                <span className="bc-sep">›</span> Minutes of Meeting
+              </div>
+              <h2 className="view-title">📋 Minutes of Meeting</h2>
+              <p className="view-sub">
+                Auto-generated minutes for your AI team meetings — decisions,
+                action items, and owners captured in one shareable record.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
       <div
         style={{
@@ -498,6 +516,7 @@ export default function TeamMeetings() {
       {detail ? (
         <MeetingDetail meeting={detail} onClose={() => setDetail(null)} />
       ) : null}
+    </div>
     </div>
   );
 }

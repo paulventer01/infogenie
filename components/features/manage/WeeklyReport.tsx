@@ -194,6 +194,25 @@ export default function WeeklyReport() {
     : "#";
 
   return (
+    <div className="view-header-wrap">
+      <div className="view-header">
+        <div className="container">
+          <div className="vh-inner">
+            <div>
+              <div className="breadcrumb">
+                <span className="bc-group">Manage</span>{" "}
+                <span className="bc-sep">›</span> Weekly Report
+              </div>
+              <h2 className="view-title">📑 Weekly Report</h2>
+              <p className="view-sub">
+                An automatically generated weekly performance report — ad spend,
+                conversions, organic traffic, and key wins and losses, with no
+                manual prep required.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
       <div
         style={{
@@ -536,6 +555,7 @@ export default function WeeklyReport() {
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 }

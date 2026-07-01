@@ -344,6 +344,27 @@ export default function Reddit() {
 
   return (
     <div>
+      <div className="view-header-wrap">
+        <div className="view-header">
+          <div className="container">
+            <div className="vh-inner">
+              <div>
+                <div className="breadcrumb">
+                  <span className="bc-group">Analyse</span>{" "}
+                  <span className="bc-sep">›</span> Reddit Research
+                </div>
+                <h2 className="view-title">🔴 Reddit Research</h2>
+                <p className="view-sub">
+                  Searches Reddit for threads and comments about your brand,
+                  category, or competitors — one of the most authentic sources
+                  of unfiltered customer opinion.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Config Panel */}
       <div
         style={{

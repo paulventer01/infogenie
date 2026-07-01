@@ -171,6 +171,25 @@ export default function EmployeeAdvocacy() {
   const shareBase = origin + "/advocacy/share/";
 
   return (
+    <div className="view-header-wrap">
+      <div className="view-header">
+        <div className="container">
+          <div className="vh-inner">
+            <div>
+              <div className="breadcrumb">
+                <span className="bc-group">Manage</span>{" "}
+                <span className="bc-sep">›</span> Employee Advocacy
+              </div>
+              <h2 className="view-title">📣 Employee Advocacy</h2>
+              <p className="view-sub">
+                Makes it easy for your team to share company content on their
+                personal social profiles — amplifying your organic reach through
+                employees&apos; combined networks.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
       {loading ? (
         <div style={{ textAlign: "center", padding: 40, color: "#6B7280" }}>⏳ Loading…</div>
@@ -786,6 +805,7 @@ export default function EmployeeAdvocacy() {
           )}
         </>
       )}
+    </div>
     </div>
   );
 }

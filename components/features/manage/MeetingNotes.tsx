@@ -91,6 +91,25 @@ export default function MeetingNotes() {
   }
 
   return (
+    <div className="view-header-wrap">
+      <div className="view-header">
+        <div className="container">
+          <div className="vh-inner">
+            <div>
+              <div className="breadcrumb">
+                <span className="bc-group">Manage</span>{" "}
+                <span className="bc-sep">›</span> Meeting Notes
+              </div>
+              <h2 className="view-title">📝 Meeting Notes</h2>
+              <p className="view-sub">
+                AI-powered meeting notes — record or paste a transcript and the
+                AI extracts action items, decisions, and follow-ups so every
+                meeting produces clear, executable outputs.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
       <div
         style={{
@@ -192,6 +211,7 @@ export default function MeetingNotes() {
         )}
         {out.kind === "result" && <Result summary={out.summary} />}
       </div>
+    </div>
     </div>
   );
 }

@@ -288,6 +288,27 @@ export default function ReviewAggregator() {
 
   return (
     <div>
+      <div className="view-header-wrap">
+        <div className="view-header">
+          <div className="container">
+            <div className="vh-inner">
+              <div>
+                <div className="breadcrumb">
+                  <span className="bc-group">Analyse</span>{" "}
+                  <span className="bc-sep">›</span> Review Aggregator
+                </div>
+                <h2 className="view-title">⭐ Review Aggregator</h2>
+                <p className="view-sub">
+                  Pulls reviews of your brand and competitors from Google,
+                  Trustpilot, G2, Capterra and the App Store into one place, and
+                  surfaces the recurring themes — praise and complaints alike.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div
         style={{
           background: "#fff",

@@ -220,6 +220,28 @@ export default function OrganicSocial() {
 
   return (
     <div style={{ background: "#EFF4FF", minHeight: "100vh", paddingBottom: 56 }}>
+      <div className="view-header-wrap">
+        <div className="view-header">
+          <div className="container">
+            <div className="vh-inner">
+              <div>
+                <div className="breadcrumb">
+                  <span className="bc-group">Analyse</span>{" "}
+                  <span className="bc-sep">›</span> Organic Social Monitor
+                </div>
+                <h2 className="view-title">📱 Organic Social Monitor</h2>
+                <p className="view-sub">
+                  Tracks competitors&apos; organic posts across Instagram,
+                  LinkedIn, Twitter/X and TikTok — posting frequency, engagement
+                  rates, and top-performing content so you can benchmark your own
+                  strategy.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <style>{`
         @keyframes _ttGlow  { 0%,100%{opacity:.5} 50%{opacity:1} }
         @keyframes _ttPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }

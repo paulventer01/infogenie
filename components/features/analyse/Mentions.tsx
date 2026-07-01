@@ -503,6 +503,28 @@ export default function Mentions() {
 
   return (
     <div>
+      <div className="view-header-wrap">
+        <div className="view-header">
+          <div className="container">
+            <div className="vh-inner">
+              <div>
+                <div className="breadcrumb">
+                  <span className="bc-group">Analyse</span>{" "}
+                  <span className="bc-sep">›</span> Web &amp; News Mentions
+                </div>
+                <h2 className="view-title">📰 Web &amp; News Mentions</h2>
+                <p className="view-sub">
+                  Monitors thousands of news sites, blogs, and online
+                  publications for any mention of your brand, competitors, or
+                  keywords — so you stay on top of press coverage and
+                  third-party commentary.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="mt-controls">
         <div className="mt-control">
           <label className="mt-lbl">Your brand</label>

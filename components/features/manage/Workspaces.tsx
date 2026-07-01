@@ -113,6 +113,25 @@ export default function Workspaces() {
   const activeWs = workspaces.find((w) => w.active);
 
   return (
+    <div className="view-header-wrap">
+      <div className="view-header">
+        <div className="container">
+          <div className="vh-inner">
+            <div>
+              <div className="breadcrumb">
+                <span className="bc-group">Manage</span>{" "}
+                <span className="bc-sep">›</span> Workspaces &amp; Team
+              </div>
+              <h2 className="view-title">👥 Workspaces &amp; Team</h2>
+              <p className="view-sub">
+                Manage team members, assign roles and permissions, and organise
+                work across multiple brand or client workspaces within a single
+                InfoGenie account.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     <div className="container" style={{ paddingTop: 24, paddingBottom: 40 }}>
       <div
         style={{
@@ -525,6 +544,7 @@ export default function Workspaces() {
           </table>
         )}
       </div>
+    </div>
     </div>
   );
 }

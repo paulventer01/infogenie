@@ -228,7 +228,7 @@ export default function Benchmarks() {
                 📊 Benchmark Intelligence
               </h2>
               <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,.7)", fontSize: "0.88rem", maxWidth: 520, lineHeight: 1.6 }}>
-                Compare your marketing metrics against anonymised network medians from real companies in your vertical — instantly spot where you're leading or lagging.
+                Compare your marketing metrics against anonymised network medians from real companies in your vertical — instantly spot where you&apos;re leading or lagging.
               </p>
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
