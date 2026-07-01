@@ -4639,6 +4639,55 @@ p, span, label, td, li {
   border-bottom: none !important;
   margin-bottom: 2px !important;
 }
+/* ── Collapsible section toggles ── */
+.nav-section-toggle {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  background: none !important;
+  border: none !important;
+  cursor: pointer !important;
+  font-size: 0.6rem !important;
+  font-weight: 800 !important;
+  color: rgba(0,201,200,.45) !important;
+  letter-spacing: .1em !important;
+  text-transform: uppercase !important;
+  padding: 4px 12px 8px !important;
+  margin-bottom: 2px !important;
+  text-align: left !important;
+  transition: color .15s !important;
+  border-radius: 4px !important;
+}
+.nav-section-toggle:hover {
+  color: rgba(0,201,200,.8) !important;
+  background: rgba(0,201,200,.06) !important;
+}
+.nav-section-toggle .nst-chevron {
+  flex-shrink: 0 !important;
+  opacity: .55 !important;
+  transition: transform .2s ease !important;
+  transform: rotate(180deg) !important;
+}
+.nav-section-toggle.nav-section-collapsed .nst-chevron {
+  transform: rotate(0deg) !important;
+}
+.nav-section-body {
+  overflow: hidden !important;
+  max-height: 2000px !important;
+  transition: max-height .25s ease !important;
+}
+.nav-section-body--collapsed {
+  max-height: 0 !important;
+}
+[data-theme="light"] .nav-section-toggle { /* lint-ok-important: dark .nav-section-toggle uses !important on color */
+  color: #94A3B8 !important;
+}
+[data-theme="light"] .nav-section-toggle:hover { /* lint-ok-important: dark .nav-section-toggle:hover uses !important on color and bg */
+  color: #0066FF !important;
+  background: rgba(0,102,255,.06) !important;
+}
+
 /* ── Cross-group "Next →" footer ── */
 .nav-drop-next {
   margin-top: 10px !important;

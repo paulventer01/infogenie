@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import type { NavGroupDef, NavItem } from "@/lib/viewRoutes";
 
 const CHEVRON =
@@ -10,12 +11,38 @@ interface NavGroupProps {
   onNavClick: (e: React.MouseEvent, item: NavItem) => void;
 }
 
-// Renders a single `.nav-group-wrap` exactly as the legacy navbar did, so the
-// replayed legacy scripts (hover dropdowns, search filter, permission gating)
-// keep working against matching selectors. Only the nav-link click is owned by
-// React (navigateTo + router.push); the `.nav-drop-next` footer stays a plain
-// anchor wired by the replayed inline delegation script.
+const LS_KEY = "ig-nav-collapsed-sections";
+
+function loadCollapsed(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveCollapsed(state: Record<string, boolean>) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+  } catch {
+  }
+}
+
 export default function NavGroup({ group, onNavClick }: NavGroupProps) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setCollapsed(loadCollapsed());
+  }, []);
+
+  const toggle = (sectionKey: string) => {
+    setCollapsed((prev) => {
+      const next = { ...prev, [sectionKey]: !prev[sectionKey] };
+      saveCollapsed(next);
+      return next;
+    });
+  };
+
   return (
     <div className="nav-group-wrap" data-group={group.key}>
       <button className="nav-group-btn" type="button">
@@ -31,28 +58,67 @@ export default function NavGroup({ group, onNavClick }: NavGroupProps) {
           "nav-dropdown" + (group.dropdownRight ? " nav-dropdown-right" : "")
         }
       >
-        {group.sections.map((section, si) => (
-          <div key={si} style={{ display: "contents" }}>
-            {section.header && (
-              <div className="nav-drop-header">{section.header}</div>
-            )}
-            {section.items.map((item, ii) => (
-              <a
-                key={item.view || item.action || ii}
-                href="#"
-                className={"nav-link" + (item.className ? " " + item.className : "")}
-                {...(item.id ? { id: item.id } : {})}
-                {...(item.view ? { "data-view": item.view } : {})}
-                {...(item.title ? { title: item.title } : {})}
-                {...(item.hidden ? { style: { display: "none" } } : {})}
-                onClick={(e) => onNavClick(e, item)}
+        {group.sections.map((section, si) => {
+          const sectionKey = `${group.key}-${si}`;
+          const isCollapsed = !!collapsed[sectionKey];
+          return (
+            <div key={si}>
+              {section.header ? (
+                <button
+                  className={
+                    "nav-section-toggle" +
+                    (isCollapsed ? " nav-section-collapsed" : "")
+                  }
+                  type="button"
+                  onClick={() => toggle(sectionKey)}
+                  title={isCollapsed ? "Expand section" : "Collapse section"}
+                >
+                  <span>{section.header}</span>
+                  <svg
+                    className="nst-chevron"
+                    width="8"
+                    height="8"
+                    viewBox="0 0 10 10"
+                  >
+                    <path
+                      d="M2 3.5l3 3 3-3"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              ) : null}
+              <div
+                className={
+                  "nav-section-body" +
+                  (isCollapsed ? " nav-section-body--collapsed" : "")
+                }
               >
-                <span className="ndl-icon">{item.icon}</span>
-                <span className="ndl-text">{item.label}</span>
-              </a>
-            ))}
-          </div>
-        ))}
+                {section.items.map((item, ii) => (
+                  <a
+                    key={item.view || item.action || ii}
+                    href="#"
+                    className={
+                      "nav-link" +
+                      (item.className ? " " + item.className : "")
+                    }
+                    {...(item.id ? { id: item.id } : {})}
+                    {...(item.view ? { "data-view": item.view } : {})}
+                    {...(item.title ? { title: item.title } : {})}
+                    {...(item.hidden ? { style: { display: "none" } } : {})}
+                    onClick={(e) => onNavClick(e, item)}
+                  >
+                    <span className="ndl-icon">{item.icon}</span>
+                    <span className="ndl-text">{item.label}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          );
+        })}
         {group.footer && (
           <a
             href="#"
