@@ -448,6 +448,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "3 · AI tools & config",
         items: [
           { view: "ask-infogenie", icon: "💬", label: "Ask InfoGenie (your data)" },
+          { view: "marketing-memory", icon: "🧠", label: "Marketing Memory (knowledge graph)" },
           { view: "agent-goals", icon: "🤖", label: "AI Marketing Agent" },
           { view: "ai-providers", icon: "🧠", label: "AI Providers (bring your own LLM)" },
           { view: "model-compare", icon: "⚖️", label: "Model Comparison (A/B prompts)" },

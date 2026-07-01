@@ -28,6 +28,7 @@ import AiTraffic from "@/components/features/manage/AiTraffic";
 import Heatmaps from "@/components/features/manage/Heatmaps";
 import BudgetBoard from "@/components/features/manage/BudgetBoard";
 import AskInfoGenie from "@/components/features/manage/AskInfoGenie";
+import MarketingMemory from "@/components/features/manage/MarketingMemory";
 import AgentGoals from "@/components/features/manage/AgentGoals";
 import AiProviders from "@/components/features/manage/AiProviders";
 import MeetingNotes from "@/components/features/manage/MeetingNotes";
@@ -227,6 +228,7 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   heatmaps: Heatmaps,
   "budget-board": BudgetBoard,
   "ask-infogenie": AskInfoGenie,
+  "marketing-memory": MarketingMemory,
   "agent-goals": AgentGoals,
   "ai-providers": AiProviders,
   "meeting-notes": MeetingNotes,

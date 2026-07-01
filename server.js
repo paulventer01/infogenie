@@ -3289,6 +3289,8 @@ const _rcsSchema              = require('./services/rcs/schema');
 const _rcsRouter              = require('./services/rcs/api');
 const _llmKbSchema            = require('./services/llm_kb/schema');
 const _llmKbRouter            = require('./services/llm_kb/api');
+const _kgApi                  = require('./services/knowledge_graph/api');
+const _kgSchema               = require('./services/knowledge_graph/schema');
 const _privacySchema          = require('./services/privacy_compliance/schema');
 const _privacyRouter          = require('./services/privacy_compliance/api');
 const _brandDnaSchema         = require('./services/brand_dna/schema');
@@ -3302,6 +3304,22 @@ app.use('/api/ss-events',          _ssEventsRouter);
 app.use('/api/ctv',                _ctvRouter);
 app.use('/api/rcs',                _rcsRouter);
 app.use('/api/llm-kb',             _llmKbRouter);
+app.use('/api/knowledge-graph',    _kgApi.router);
+// Knowledge Graph monthly rollup — fires daily at 03:00-ish (off-peak).
+if (_runtimeFlags.backgroundEnabled()) {
+  const _kgRollupDelay = (() => {
+    const now = new Date();
+    const next3am = new Date(now); next3am.setHours(3, 0, 0, 0);
+    if (next3am <= now) next3am.setDate(next3am.getDate() + 1);
+    return next3am - now;
+  })();
+  setTimeout(() => {
+    _kgApi.runMonthlyRollup().catch(e => console.warn('[knowledge-graph] rollup error:', e.message));
+    setInterval(() => {
+      _kgApi.runMonthlyRollup().catch(e => console.warn('[knowledge-graph] rollup error:', e.message));
+    }, 24 * 60 * 60 * 1000);
+  }, _kgRollupDelay);
+}
 app.use('/api/privacy-compliance', _privacyRouter);
 app.use('/api/brand-dna',          _brandDnaRouter);
 app.use('/api/workflow-builder',   _workflowBuilderRouter);
@@ -3313,6 +3331,7 @@ BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _ctvSchema.ensureCtvSchema();
   await _rcsSchema.ensureRcsSchema();
   await _llmKbSchema.ensureLlmKbSchema();
+  await _kgSchema.ensureKnowledgeGraphSchema();
   await _privacySchema.ensurePrivacyComplianceSchema();
   await _brandDnaSchema.ensureBrandDnaSchema();
   await _workflowBuilderSchema.ensureWorkflowBuilderSchema();
