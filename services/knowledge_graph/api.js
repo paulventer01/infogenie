@@ -94,7 +94,7 @@ async function _retrieveNodes(tenant_id, queryVec, limit = 8) {
   try {
     const pool = _db.getPool();
     const r = await pool.query(
-      `SELECT id, node_type, source_ref, summary, detail_json, importance_score, created_at
+      `SELECT id, node_type, source_ref, summary, detail_json, importance_score, embedding, created_at
        FROM marketing_memory_nodes
        WHERE tenant_id=$1 AND embedding IS NOT NULL AND rolled_up_at IS NULL
        ORDER BY created_at DESC LIMIT 200`,
@@ -114,6 +114,11 @@ async function _retrieveNodes(tenant_id, queryVec, limit = 8) {
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
   } catch { return []; }
+}
+
+// ── Public query helper (used by platform_search /ask and direct callers) ─────
+async function queryMemoryNodes(tenant_id, question, queryVec, limit = 6) {
+  return _retrieveNodes(tenant_id, queryVec, limit);
 }
 
 // ── Monthly rollup (called by cron) ──────────────────────────────────────────
@@ -183,6 +188,7 @@ async function runMonthlyRollup() {
 
 // POST /api/knowledge-graph/ingest
 router.post('/ingest', _safe(async (req, res) => {
+  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:ingest' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -196,6 +202,7 @@ router.post('/ingest', _safe(async (req, res) => {
 
 // POST /api/knowledge-graph/query
 router.post('/query', _safe(async (req, res) => {
+  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:query' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -316,4 +323,4 @@ router.post('/rollup', _safe(async (req, res) => {
   res.json({ ok: true, ...result });
 }));
 
-module.exports = { router, ingestMemoryNode, runMonthlyRollup };
+module.exports = { router, ingestMemoryNode, queryMemoryNodes, runMonthlyRollup };

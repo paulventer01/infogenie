@@ -136,6 +136,19 @@ async function _runOne(w) {
         incident_kind:inc.kind, headline:inc.headline, detail:inc.detail, incident_id:r.rows[0].id,
         tenant_id: w.tenant_id });
     } catch (e) { console.warn('[alert-routing] dispatch failed:', e.message); }
+    // Fire-and-forget: record crisis incident in Marketing Memory
+    try {
+      const { ingestMemoryNode } = require('../knowledge_graph/api');
+      ingestMemoryNode({
+        tenant_id: w.tenant_id,
+        node_type: 'competitor_signal',
+        summary: r.rows[0].headline,
+        detail: { incident_id: r.rows[0].id, kind: inc.kind, severity: inc.severity, brand: w.brand },
+        source_ref: `crisis:${r.rows[0].id}`,
+        importance: inc.severity === 'high' ? 0.9 : inc.severity === 'med' ? 0.7 : 0.5,
+      }).catch(() => {});
+    } catch (_) {}
+
     created.push(r.rows[0]);
   }
   return { snapshot: snap.rows[0], incidents: created };

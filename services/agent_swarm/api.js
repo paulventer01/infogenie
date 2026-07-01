@@ -149,6 +149,19 @@ Return strict JSON: {"output":"...","action_taken":"...","next_recommendation":"
     });
   } catch (e) {}
 
+  // Fire-and-forget: record swarm completion in Marketing Memory
+  try {
+    const { ingestMemoryNode } = require('../knowledge_graph/api');
+    ingestMemoryNode({
+      tenant_id: tid,
+      node_type: 'ai_synthesis',
+      summary: `AI agent swarm completed: ${event_type} — ${summary}`,
+      detail: { run_id: runId, event_type, steps: chain.length },
+      source_ref: `swarm:${runId}`,
+      importance: 0.55,
+    }).catch(() => {});
+  } catch (_) {}
+
   res.json({ ok: true, run_id: runId, steps: stepResults, summary });
 });
 

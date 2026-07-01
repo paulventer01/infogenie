@@ -711,6 +711,7 @@ app.post('/api/launch/google-ads', async (req, res) => {
       optimizerEnabled = false;
       console.error('[Google Ads launch] optimizer registration failed:', _e.message);
     }
+    try { const { ingestMemoryNode } = require('./services/knowledge_graph/api'); ingestMemoryNode({ tenant_id: _tid, node_type: 'campaign_result', summary: `Campaign "${campaignName}" launched on Google Ads (ID: ${campaignId}). Budget: $${dailyBud}/day.`, detail: { platform: 'google', campaignId, budget: dailyBud, status: 'paused' }, source_ref: `campaign:google:${campaignId}`, importance: 0.7 }).catch(() => {}); } catch (_) {}
     res.json({
       success: true, platform: 'Google Ads', campaignId, status: 'PAUSED',
       optimizerEnabled,
@@ -773,6 +774,7 @@ app.post('/api/launch/meta', async (req, res) => {
       optimizerEnabled = false;
       console.error('[Meta launch] optimizer registration failed:', _e.message);
     }
+    try { const { ingestMemoryNode } = require('./services/knowledge_graph/api'); ingestMemoryNode({ tenant_id: _tid, node_type: 'campaign_result', summary: `Campaign "${campaignName}" launched on Meta Ads (ID: ${campData.id}). Budget: $${dailyBud}/day.`, detail: { platform: 'meta', campaignId: campData.id, budget: dailyBud, status: 'paused' }, source_ref: `campaign:meta:${campData.id}`, importance: 0.7 }).catch(() => {}); } catch (_) {}
     res.json({
       success: true, platform: 'Meta Ads', campaignId: campData.id, status: 'PAUSED',
       optimizerEnabled,
@@ -867,6 +869,7 @@ app.post('/api/launch/microsoft-ads', async (req, res) => {
       console.error('[Microsoft Ads launch] optimizer registration failed:', _e.message);
     }
 
+    try { const { ingestMemoryNode } = require('./services/knowledge_graph/api'); ingestMemoryNode({ tenant_id: _tid, node_type: 'campaign_result', summary: `Campaign "${campaignName}" launched on Microsoft Ads (ID: ${newId}). Budget: $${dailyBud}/day.`, detail: { platform: 'microsoft', campaignId: newId, budget: dailyBud, status: 'paused' }, source_ref: `campaign:microsoft:${newId}`, importance: 0.7 }).catch(() => {}); } catch (_) {}
     res.json({
       success: true, platform: 'Microsoft Ads', campaignId: newId, status: 'PAUSED',
       optimizerEnabled,
@@ -918,6 +921,7 @@ app.post('/api/launch/tiktok', async (req, res) => {
       optimizerEnabled = false;
       console.error('[TikTok launch] optimizer registration failed:', _e.message);
     }
+    try { const { ingestMemoryNode } = require('./services/knowledge_graph/api'); ingestMemoryNode({ tenant_id: _tid, node_type: 'campaign_result', summary: `Campaign "${campaignName}" launched on TikTok Ads (ID: ${campaignId}). Budget: $${dailyBud}/day.`, detail: { platform: 'tiktok', campaignId, budget: dailyBud, status: 'paused' }, source_ref: `campaign:tiktok:${campaignId}`, importance: 0.7 }).catch(() => {}); } catch (_) {}
     res.json({
       success: true, platform: 'TikTok Ads', campaignId, status: 'DISABLED',
       optimizerEnabled,
