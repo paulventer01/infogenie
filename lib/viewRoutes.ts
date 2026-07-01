@@ -146,7 +146,22 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "7 · Find search opportunity",
+        header: "7 · Brand intelligence",
+        items: [
+          { view: "reputation-score", icon: "⭐", label: "Reputation Score" },
+          { view: "presence-score",   icon: "📡", label: "Presence Score" },
+          { view: "ave",              icon: "💵", label: "Media Value (AVE)" },
+          { view: "anomaly-detector", icon: "🔍", label: "AI Anomaly Detector" },
+          { view: "intent-radar",     icon: "🎯", label: "Intent Radar" },
+          { view: "hashtag-tracker",  icon: "🏷️", label: "Hashtag Tracker" },
+          { view: "influence-score",  icon: "🏆", label: "Influence Score" },
+          { view: "project-compare",  icon: "⚖️", label: "Project Comparison" },
+          { view: "geo-insights",     icon: "🌍", label: "Geolocation Insights" },
+          { view: "ugc-discovery",    icon: "📸", label: "UGC Discovery" },
+        ],
+      },
+      {
+        header: "8 · Find search opportunity",
         items: [
           { view: "keyword-explorer", icon: "🔬", label: "Keyword Explorer" },
           { view: "question-miner", icon: "❔", label: "Question Mining (What people ask)" },
