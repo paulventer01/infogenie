@@ -105,6 +105,22 @@ router.post('/post', async (req, res) => {
   if (scheduledFor) payload.scheduledFor = scheduledFor;
   const r = await _zernio('POST', '/posts', payload);
   if (!r.ok) return _err(res, 400, _friendlyError(r.error, r.status));
+  // Fire-and-forget: record content publish in Marketing Memory
+  try {
+    const _tenantCtx = require('../tenants/context');
+    const { ingestMemoryNode } = require('../knowledge_graph/api');
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'social_publisher:post' }).catch(() => null);
+    if (tid) {
+      ingestMemoryNode({
+        tenant_id: tid,
+        node_type: 'content_performance',
+        summary: `Social post ${scheduledFor ? 'scheduled for ' + scheduledFor : 'published'} on ${platforms.join(', ')}: "${text.slice(0, 120)}${text.length > 120 ? '…' : ''}"`,
+        detail: { platforms, scheduledFor, post_id: r.data?.post?.id || null },
+        source_ref: `social_post:${r.data?.post?.id || Date.now()}`,
+        importance: 0.55,
+      }).catch(() => {});
+    }
+  } catch (_) {}
   res.json({ ok:true, post: r.data?.post || r.data, scheduled: !!scheduledFor });
 });
 

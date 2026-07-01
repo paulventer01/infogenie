@@ -93,6 +93,20 @@ router.post('/generate', async (req, res) => {
         [tid, brand, goal, JSON.stringify(channels), days, JSON.stringify(result.posts), source]);
     } catch (e) { console.warn('[content-calendar] persist failed:', e.message); }
   }
+  // Fire-and-forget: record content calendar generation in Marketing Memory
+  if (tid) {
+    try {
+      const { ingestMemoryNode } = require('../knowledge_graph/api');
+      ingestMemoryNode({
+        tenant_id: tid,
+        node_type: 'content_performance',
+        summary: `Content calendar generated for "${brand}": ${result.posts?.length || days} posts across ${channels.join(', ')} for ${days} days.`,
+        detail: { brand, goal, channels, days, post_count: result.posts?.length || 0, generated_by: source },
+        source_ref: `content_calendar:${brand}:${new Date().toISOString().slice(0, 10)}`,
+        importance: 0.5,
+      }).catch(() => {});
+    } catch (_) {}
+  }
   res.json({ ok:true, source, brand, days, channels, posts: result.posts });
 });
 
