@@ -272,6 +272,40 @@ async function _safeRun() {
     console.log('[audiences] sweep:', JSON.stringify({
       ok: s.ok, segments: s.segments, contacts: s.contacts, source: s.source, ms: s.durationMs
     }));
+    // Fire-and-forget: record sweep completion in Marketing Memory per tenant
+    if (s.ok && s.results) {
+      const byTenant = {};
+      for (const r of s.results) {
+        // Fetch tenant_id from pool per segment (already in DB context)
+        if (r.added > 0 || r.removed > 0) {
+          try {
+            const { ingestMemoryNode } = require('../knowledge_graph/api');
+            const pool = require('../../db').getPool();
+            const seg = await pool.query(`SELECT tenant_id, name FROM audience_segments WHERE id=$1`, [r.segmentId]);
+            if (seg.rows[0]) {
+              const tid = seg.rows[0].tenant_id;
+              if (!byTenant[tid]) byTenant[tid] = { added: 0, removed: 0, segments: [] };
+              byTenant[tid].added += r.added || 0;
+              byTenant[tid].removed += r.removed || 0;
+              byTenant[tid].segments.push(seg.rows[0].name || `Segment #${r.segmentId}`);
+            }
+          } catch (_) {}
+        }
+      }
+      for (const [tid, agg] of Object.entries(byTenant)) {
+        try {
+          const { ingestMemoryNode } = require('../knowledge_graph/api');
+          ingestMemoryNode({
+            tenant_id: Number(tid),
+            node_type: 'audience_insight',
+            summary: `Audience sweep: ${agg.added} contacts joined, ${agg.removed} left across segments: ${agg.segments.join(', ')}.`,
+            detail: { added: agg.added, removed: agg.removed, segments: agg.segments },
+            source_ref: `audience_sweep:${new Date().toISOString().slice(0, 10)}`,
+            importance: 0.5,
+          }).catch(() => {});
+        } catch (_) {}
+      }
+    }
   } catch (e) { console.error('[audiences] sweep err:', e.message); }
   finally { _running = false; }
 }

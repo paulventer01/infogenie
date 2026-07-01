@@ -82,6 +82,27 @@ router.post('/sweep', async (req, res) => {
   allLeads.sort((a,b)=>b.score-a.score);
   const sourceCounts = {};
   allLeads.forEach(l=>{ sourceCounts[l.source]=(sourceCounts[l.source]||0)+1; });
+
+  // Fire-and-forget: record lead scoring results in Marketing Memory
+  if (allLeads.length > 0) {
+    try {
+      const _tenantCtx = require('../tenants/context');
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'lead_aggregator:sweep' }).catch(() => null);
+      if (tid) {
+        const hotLeads = allLeads.filter(l => l.score >= 80);
+        const { ingestMemoryNode } = require('../knowledge_graph/api');
+        ingestMemoryNode({
+          tenant_id: tid,
+          node_type: 'lead_scoring',
+          summary: `Lead sweep found ${allLeads.length} prospects (${hotLeads.length} high-score ≥80) for "${industry || 'unknown'}" industry in "${location || 'any'}" location.`,
+          detail: { total: allLeads.length, hot: hotLeads.length, industry, location, role, source_counts: sourceCounts },
+          source_ref: `lead_sweep:${new Date().toISOString().slice(0, 10)}`,
+          importance: hotLeads.length > 0 ? 0.7 : 0.45,
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  }
+
   res.json({ ok:true, leads: allLeads, total: allLeads.length, with_email: allLeads.filter(l=>l.email).length, with_linkedin: allLeads.filter(l=>l.linkedin_url).length, source_counts: sourceCounts });
 });
 

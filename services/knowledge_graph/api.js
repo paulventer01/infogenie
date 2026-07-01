@@ -258,6 +258,7 @@ router.post('/query', _safe(async (req, res) => {
 
 // GET /api/knowledge-graph/nodes
 router.get('/nodes', _safe(async (req, res) => {
+  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:nodes' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -290,6 +291,7 @@ router.get('/nodes', _safe(async (req, res) => {
 
 // GET /api/knowledge-graph/health
 router.get('/health', _safe(async (req, res) => {
+  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:health' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -319,6 +321,8 @@ router.get('/health', _safe(async (req, res) => {
 // POST /api/knowledge-graph/rollup (admin/cron — owner only)
 router.post('/rollup', _safe(async (req, res) => {
   if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  const user = req.user || req.apiKeyUser;
+  if (!user?.is_owner && !user?.is_admin) return _err(res, 403, 'owner or admin required');
   const result = await runMonthlyRollup();
   res.json({ ok: true, ...result });
 }));
