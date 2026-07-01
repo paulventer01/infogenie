@@ -114,7 +114,7 @@ function _kgIngest(tenantId, nodeType, summary, detail, sourceRef, importance = 
 //          sov_snapshots (last 30d). Falls back to template when AI unavailable.
 // ─────────────────────────────────────────────────────────────────────────────
 async function _runCompetitorMoves(tenantId, inputs = {}) {
-  let incidents = [], pricingChanges = [], sovShifts = [];
+  let incidents = [], pricingChanges = [], sovShifts = [], jobSignals = [], adSpendTrend = [];
   if (_db.hasDb && _db.hasDb()) {
     const pool = _db.getPool();
     try {
@@ -145,6 +145,27 @@ async function _runCompetitorMoves(tenantId, inputs = {}) {
       );
       sovShifts = sr.rows;
     } catch (_) {}
+    // Job board spy: hiring velocity as a leading indicator of competitor expansion
+    try {
+      const jr = await pool.query(
+        `SELECT company, total_jobs, by_dept, strategic_signals, created_at
+         FROM job_board_runs
+         WHERE created_at > NOW() - INTERVAL '30 days'
+         ORDER BY created_at DESC LIMIT 10`
+      );
+      jobSignals = jr.rows;
+    } catch (_) {}
+    // Ad spend trend: rising competitor spend signals an incoming push
+    try {
+      const ar = await pool.query(
+        `SELECT SUM(spend) AS total_spend, SUM(impressions) AS total_impressions,
+                DATE_TRUNC('week', bucket_hour) AS week
+         FROM ad_performance_hourly
+         WHERE bucket_hour > NOW() - INTERVAL '30 days'
+         GROUP BY week ORDER BY week DESC LIMIT 4`
+      );
+      adSpendTrend = ar.rows;
+    } catch (_) {}
   }
 
   const sys = `You are a competitive intelligence strategist. Analyse the provided signals and predict likely competitor moves over the next 90 days.
@@ -162,9 +183,11 @@ Return strict JSON:
   const userMsg = `Crisis / sentiment incidents (last 30 days): ${JSON.stringify(incidents)}
 Competitor pricing changes: ${JSON.stringify(pricingChanges)}
 Share of Voice shifts: ${JSON.stringify(sovShifts)}
+Competitor hiring signals (job board, last 30 days): ${JSON.stringify(jobSignals)}
+Your ad spend trend by week (last 4 weeks): ${JSON.stringify(adSpendTrend)}
 Additional context: ${JSON.stringify(inputs)}
 
-Produce the competitor moves prediction.`;
+Produce the competitor moves prediction using all available signals above.`;
 
   const ai = await _openai([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 1000);
 
@@ -307,6 +330,7 @@ Return strict JSON:
   "predicted_churn_rate_30d": 0-100,
   "predicted_churn_rate_90d": 0-100,
   "revenue_at_risk": 0,
+  "top_risk_drivers": ["driver 1 (most critical)", "driver 2", "driver 3"],
   "evidence": ["bullet 1", "bullet 2", "bullet 3"],
   "recommended_action": "2-3 sentence retention playbook",
   "retention_levers": ["lever 1", "lever 2", "lever 3"],
@@ -324,12 +348,16 @@ Return strict JSON:
 Additional inputs: ${JSON.stringify(inputs)}`;
 
   const churnPct = Math.min(100, Math.round(scoreData.avg * 0.8));
+  const topDrivers = scoreData.topSignals.length
+    ? scoreData.topSignals.slice(0, 3)
+    : ['Low engagement / infrequent logins', 'No recent product activity', 'Support tickets unresolved'];
   const template = {
     confidence: 38,
     summary: 'Template estimate — score more contacts and connect AI providers for personalised churn modelling.',
     predicted_churn_rate_30d: Math.round(churnPct * 0.35),
     predicted_churn_rate_90d: churnPct,
     revenue_at_risk: 0,
+    top_risk_drivers: topDrivers,
     evidence: [
       `Average churn score: ${scoreData.avg}/100`,
       `${scoreData.high} contacts flagged as high or critical risk`,
@@ -347,9 +375,9 @@ Additional inputs: ${JSON.stringify(inputs)}`;
   const ai = await _openai([{ role: 'system', content: sys }, { role: 'user', content: userMsg }], 1000);
   const output = ai || template;
 
-  _kgIngest(tenantId, 'audience_shift',
-    `Churn trajectory prediction — confidence ${output.confidence}%: predicted 90-day churn rate ${output.predicted_churn_rate_90d}%.`,
-    { churn_30d: output.predicted_churn_rate_30d, churn_90d: output.predicted_churn_rate_90d, levers: output.retention_levers },
+  _kgIngest(tenantId, 'campaign_result',
+    `Churn trajectory prediction — confidence ${output.confidence}%: predicted 90-day churn rate ${output.predicted_churn_rate_90d}%. Top drivers: ${(output.top_risk_drivers || []).slice(0,2).join('; ')}.`,
+    { churn_30d: output.predicted_churn_rate_30d, churn_90d: output.predicted_churn_rate_90d, top_risk_drivers: output.top_risk_drivers, levers: output.retention_levers },
     'prediction:churn_trajectory',
     Math.min(1, (output.confidence || 50) / 100)
   );
