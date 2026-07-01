@@ -3334,6 +3334,13 @@ if (_runtimeFlags.backgroundEnabled()) {
 app.use('/api/privacy-compliance', _privacyRouter);
 app.use('/api/brand-dna',          _brandDnaRouter);
 app.use('/api/workflow-builder',   _workflowBuilderRouter);
+const _askCopilotSchema = require('./services/ask_copilot/schema');
+const _askCopilotRouter = require('./services/ask_copilot/api');
+app.use('/api/ask',                _askCopilotRouter);
+BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
+  await _askCopilotSchema.ensureAskCopilotSchema();
+  console.log('[ask-copilot] schema ready');
+} } catch(e) { console.warn('[ask-copilot] schema init failed:', e.message); } });
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _swarmSchema.ensureAgentSwarmSchema();
   await _selfHealingSchema.ensureSelfHealingSchema();

@@ -132,7 +132,7 @@ async function _embed(text) {
 }
 
 async function _openaiChat(messages, maxTokens = 700) {
-  const r = await _openaiPost('/v1/chat/completions', { model: 'gpt-5-mini', messages, temperature: 0.3, max_tokens: maxTokens });
+  const r = await _openaiPost('/v1/chat/completions', { model: 'gpt-4o', messages, temperature: 0.3, max_tokens: maxTokens });
   return r?.choices?.[0]?.message?.content || null;
 }
 
@@ -363,7 +363,7 @@ router.post('/ask', _safe(async (req, res) => {
   const queryVec = await _embed(q);
 
   let chunks = [];
-  let source = 'gpt-5-mini';
+  let source = 'gpt-4o';
 
   if (queryVec && indexCount > 0 && pool && tid) {
     try {
@@ -389,7 +389,7 @@ router.post('/ask', _safe(async (req, res) => {
     // Fallback: build snapshot context
     const ctx = await _buildContext(req);
     contextBlock = JSON.stringify(ctx).slice(0, 12000);
-    source = 'gpt-5-mini';
+    source = 'gpt-4o';
   }
 
   // Merge in knowledge graph memory nodes as additional evidence

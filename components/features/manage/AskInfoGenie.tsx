@@ -1,165 +1,632 @@
 "use client";
 
-// Native React port of the legacy `ask-infogenie` panel (was
-// `window.buildAskInfogenie` in public/js/ig_manage_pack.js + `#view-ask-infogenie`).
-// Onyx-style platform Q&A: shows index status, re-indexes, and asks questions
-// against the existing Express API (`GET /api/platform-search/index-status`,
-// `POST /api/platform-search/reindex`, `POST /api/platform-search/ask`) via lib/api.
-
-import { useEffect, useState } from "react";
-import { apiGet, apiPost } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
+
+type Mode = "standard" | "boardroom";
+type Tab  = "ask" | "history" | "boardroom";
+
+interface Evidence {
+  index: number;
+  type: string;
+  content: string;
+  relevance: number;
+}
+interface Action { label: string; description: string }
+
+interface BoardroomBrief {
+  executive_summary?: string;
+  key_insights?: string[];
+  risks?: string[];
+  decision_needed?: string;
+  actions?: string[];
+}
+
+interface AskResult {
+  ok?: boolean;
+  question?: string;
+  mode?: Mode;
+  headline?: string;
+  answer?: string;
+  confidence?: number;
+  evidence?: Evidence[];
+  recommended_actions?: Action[];
+  boardroom_brief?: BoardroomBrief | null;
+  chunksUsed?: number;
+  source?: string;
+  autoIndexed?: boolean;
+  indexCount?: number;
+  error?: string;
+}
+
+interface HistoryItem {
+  id: number;
+  question: string;
+  answer_json: AskResult;
+  mode: Mode;
+  created_at: string;
+}
+
+interface Card {
+  id: number;
+  question: string;
+  answer_json: AskResult;
+  mode: Mode;
+  pinned: boolean;
+  created_at: string;
+}
 
 interface IndexStatus {
   ok?: boolean;
   indexed?: number;
   lastUpdated?: string | null;
 }
-interface TopScore {
-  type: string;
-  score: number;
-}
-interface AskResult {
-  ok: boolean;
-  error?: string;
-  answer?: string;
-  source?: string;
-  dataTypes?: string[];
-  autoIndexed?: boolean;
-  indexCount?: number;
-  chunksUsed?: number;
-  topScores?: TopScore[];
-  context?: { totals?: Record<string, number> };
-}
 
-const TYPE_LABELS: Record<string, string> = {
-  campaign: "Campaigns",
-  insight: "Ad Insights",
-  lead: "Leads",
-  mention: "Mentions",
-  landing_page: "Landing Pages",
-  content_calendar: "Content",
-  brand_calendar: "Brand Calendar",
-  budget: "Budget",
-  booking: "Bookings",
-  linksell: "Link-in-Bio",
-  audience: "Audiences",
-  task: "Tasks",
-};
-const TYPE_ICONS: Record<string, string> = {
-  campaign: "📣",
-  insight: "📊",
-  lead: "👤",
-  mention: "💬",
-  landing_page: "🔗",
-  content_calendar: "📅",
-  brand_calendar: "🗓",
-  budget: "💰",
-  booking: "📆",
-  linksell: "🔗",
-  audience: "👥",
-  task: "✅",
-};
-
-const SUGGESTIONS = [
-  "What changed in the last 7 days?",
+const SUGGESTIONS_STANDARD = [
   "Which landing page is converting best?",
   "Are any campaigns over budget?",
   "Which leads should I call first?",
-  "What's scheduled this week?",
+  "What changed in the last 7 days?",
+  "Which audiences have the most members?",
 ];
 
-function renderAnswer(answer: string): React.ReactNode {
-  const lines = answer.split("\n");
-  return lines.map((line, i) => {
+const SUGGESTIONS_BOARDROOM = [
+  "Summarise our marketing performance for the board",
+  "What is our biggest growth risk this quarter?",
+  "Where should we double-down on ad spend?",
+  "What decisions need leadership sign-off?",
+];
+
+const TYPE_LABELS: Record<string, string> = {
+  campaign: "Campaign",
+  insight: "Ad Insight",
+  lead: "Lead",
+  mention: "Mention",
+  landing_page: "Landing Page",
+  content_calendar: "Content",
+  brand_calendar: "Brand Calendar",
+  budget: "Budget",
+  booking: "Booking",
+  linksell: "Link-in-Bio",
+  audience: "Audience",
+  task: "Task",
+};
+const TYPE_ICONS: Record<string, string> = {
+  campaign: "📣", insight: "📊", lead: "👤", mention: "💬",
+  landing_page: "🔗", content_calendar: "📅", brand_calendar: "🗓",
+  budget: "💰", booking: "📆", linksell: "🔗", audience: "👥", task: "✅",
+};
+
+function ConfidenceRing({ value }: { value: number }) {
+  const r  = 22;
+  const cx = 28;
+  const cy = 28;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference - (value / 100) * circumference;
+  const color  = value >= 75 ? "#10B981" : value >= 50 ? "#F59E0B" : "#EF4444";
+  const label  = value >= 75 ? "High" : value >= 50 ? "Medium" : "Low";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 56 }}>
+      <svg width={cx * 2} height={cy * 2}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#E5E7EB" strokeWidth={4} />
+        <circle
+          cx={cx} cy={cy} r={r} fill="none"
+          stroke={color} strokeWidth={4}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          transform={`rotate(-90 ${cx} ${cy})`}
+          style={{ transition: "stroke-dashoffset .6s ease" }}
+        />
+        <text x={cx} y={cy + 5} textAnchor="middle" fontSize={11} fontWeight={800} fill={color}>{value}%</text>
+      </svg>
+      <span style={{ fontSize: "0.62rem", fontWeight: 700, color, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</span>
+    </div>
+  );
+}
+
+function renderAnswerText(text: string): React.ReactNode {
+  return text.split("\n").map((line, i, arr) => {
     const l = line.replace(/^[-•]\s/, "• ");
     const parts: React.ReactNode[] = [];
-    const regex = /\*\*(.+?)\*\*/g;
-    let last = 0;
-    let key = 0;
+    const re = /\*\*(.+?)\*\*/g;
+    let last = 0, k = 0;
     let m: RegExpExecArray | null;
-    while ((m = regex.exec(l)) !== null) {
+    while ((m = re.exec(l)) !== null) {
       if (m.index > last) parts.push(l.slice(last, m.index));
-      parts.push(<strong key={key++}>{m[1]}</strong>);
+      parts.push(<strong key={k++}>{m[1]}</strong>);
       last = m.index + m[0].length;
     }
     if (last < l.length) parts.push(l.slice(last));
-    return (
-      <span key={i}>
-        {parts}
-        {i < lines.length - 1 ? <br /> : null}
-      </span>
-    );
+    return <span key={i}>{parts}{i < arr.length - 1 ? <br /> : null}</span>;
   });
+}
+
+function EvidenceAccordion({ items }: { items: Evidence[] }) {
+  const [open, setOpen] = useState(false);
+  if (!items.length) return null;
+  return (
+    <div style={{ marginTop: 14, border: "1px solid #E5E7EB", borderRadius: 8 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "8px 12px", background: "transparent", border: 0, cursor: "pointer",
+          fontSize: "0.76rem", fontWeight: 700, color: "#374151",
+        }}
+      >
+        <span>📌 Evidence Sources ({items.length})</span>
+        <span style={{ fontSize: "0.6rem", color: "#9CA3AF" }}>{open ? "▲ hide" : "▼ show"}</span>
+      </button>
+      {open && (
+        <div style={{ padding: "0 12px 10px" }}>
+          {items.map(e => (
+            <div key={e.index} style={{ display: "flex", gap: 8, padding: "6px 0", borderTop: "1px solid #F3F4F6", alignItems: "flex-start" }}>
+              <span style={{
+                minWidth: 24, height: 20, borderRadius: 4, background: "#EEF2FF", color: "#4F46E5",
+                fontSize: "0.65rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
+              }}>{e.index}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#6B7280", marginBottom: 2 }}>
+                  {TYPE_ICONS[e.type] || ""} {TYPE_LABELS[e.type] || e.type} · {e.relevance}% match
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "#374151", lineHeight: 1.45 }}>{e.content}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnswerBubble({
+  result, onStar, onExport, starred, exporting,
+}: {
+  result: AskResult;
+  onStar: () => void;
+  onExport?: () => void;
+  starred?: boolean;
+  exporting?: boolean;
+}) {
+  const isBoardroom = result.mode === "boardroom";
+  const bb = result.boardroom_brief;
+  return (
+    <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 20, marginTop: 16 }}>
+      {result.autoIndexed && (
+        <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8", padding: "7px 12px", borderRadius: 7, fontSize: "0.74rem", marginBottom: 12 }}>
+          ⚡ Auto-indexed {result.indexCount} chunks. Future answers will be faster.
+        </div>
+      )}
+
+      {/* Header row */}
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 14 }}>
+        {typeof result.confidence === "number" && <ConfidenceRing value={result.confidence} />}
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+            {isBoardroom && (
+              <span style={{ background: "linear-gradient(135deg,#0F172A,#4F46E5)", color: "#fff", padding: "3px 9px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 800, letterSpacing: ".04em" }}>
+                🏛️ BOARDROOM
+              </span>
+            )}
+            {result.source === "vector-retrieval" && (
+              <span style={{ background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 700 }}>
+                ⚡ Vector Search · {result.chunksUsed} chunks
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: "1.02rem", fontWeight: 800, color: "#0A1628", lineHeight: 1.3 }}>
+            {result.headline || result.question}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+          <button
+            onClick={onStar}
+            title={starred ? "Saved as Intelligence Card" : "Save as Intelligence Card"}
+            style={{
+              background: starred ? "#FEF9C3" : "#F9FAFB", border: `1px solid ${starred ? "#FDE047" : "#E5E7EB"}`,
+              borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: "0.82rem",
+              fontWeight: 700, color: starred ? "#713F12" : "#6B7280",
+            }}
+          >{starred ? "⭐ Saved" : "☆ Save"}</button>
+          {isBoardroom && onExport && (
+            <button
+              onClick={onExport}
+              disabled={exporting}
+              style={{
+                background: "#F3F4F6", border: "1px solid #E5E7EB", borderRadius: 7,
+                padding: "5px 9px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700, color: "#374151",
+              }}
+            >{exporting ? "⏳" : "⬇️ PDF"}</button>
+          )}
+        </div>
+      </div>
+
+      {/* Main answer */}
+      <div style={{ fontSize: "0.93rem", lineHeight: 1.7, color: "#0A1628" }}>
+        {renderAnswerText(result.answer || "")}
+      </div>
+
+      {/* Evidence */}
+      {(result.evidence || []).length > 0 && (
+        <EvidenceAccordion items={result.evidence!} />
+      )}
+
+      {/* Recommended actions */}
+      {(result.recommended_actions || []).length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#6B7280", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".04em" }}>⚡ Recommended Actions</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {(result.recommended_actions!).map((a, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8, padding: "7px 11px" }}>
+                <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "#166534", minWidth: 20 }}>{i + 1}.</span>
+                <div>
+                  <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#166534" }}>{a.label}</span>
+                  {a.description && <span style={{ fontSize: "0.76rem", color: "#374151" }}> — {a.description}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Boardroom brief */}
+      {isBoardroom && bb && (
+        <div style={{ marginTop: 18, background: "#0F172A", borderRadius: 10, padding: 16, color: "#E2E8F0" }}>
+          <div style={{ fontSize: "0.72rem", fontWeight: 800, letterSpacing: ".06em", color: "#94A3B8", marginBottom: 12, textTransform: "uppercase" }}>🏛️ BOARDROOM BRIEF</div>
+          {bb.executive_summary && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#6366F1", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Executive Summary</div>
+              <div style={{ fontSize: "0.9rem", lineHeight: 1.6, color: "#F1F5F9" }}>{bb.executive_summary}</div>
+            </div>
+          )}
+          {(bb.key_insights || []).length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#34D399", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Key Insights</div>
+              {bb.key_insights!.map((ins, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: "#34D399", fontWeight: 800, fontSize: "0.72rem" }}>▸</span>
+                  <span style={{ fontSize: "0.83rem", color: "#CBD5E1" }}>{ins}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {(bb.risks || []).length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#F87171", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Risks &amp; Concerns</div>
+              {bb.risks!.map((r, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: "#F87171", fontWeight: 800, fontSize: "0.72rem" }}>⚠</span>
+                  <span style={{ fontSize: "0.83rem", color: "#CBD5E1" }}>{r}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {bb.decision_needed && (
+            <div style={{ marginBottom: 12, background: "rgba(99,102,241,.15)", borderRadius: 8, padding: "8px 12px" }}>
+              <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#A5B4FC", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Decision Required</div>
+              <div style={{ fontSize: "0.85rem", color: "#E2E8F0" }}>{bb.decision_needed}</div>
+            </div>
+          )}
+          {(bb.actions || []).length > 0 && (
+            <div>
+              <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#FCD34D", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>Board Actions</div>
+              {bb.actions!.map((a, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 5, alignItems: "flex-start" }}>
+                  <span style={{ background: "#FCD34D", color: "#0F172A", borderRadius: 4, fontSize: "0.62rem", fontWeight: 800, padding: "1px 5px", minWidth: 18, textAlign: "center" }}>{i + 1}</span>
+                  <span style={{ fontSize: "0.83rem", color: "#CBD5E1" }}>{a}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
+  const [items, setItems]   = useState<HistoryItem[]>([]);
+  const [total, setTotal]   = useState(0);
+  const [page, setPage]     = useState(0);
+  const [loading, setLoading] = useState(false);
+  const PAGE = 15;
+
+  const load = useCallback(async (p: number) => {
+    setLoading(true);
+    const r = await apiGet<{ ok: boolean; items: HistoryItem[]; total: number }>(
+      `/api/ask/history?limit=${PAGE}&offset=${p * PAGE}`,
+    );
+    if (r.ok) { setItems(r.items || []); setTotal(r.total || 0); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(0); }, [load]);
+
+  if (loading && !items.length) {
+    return <div style={{ color: "#9CA3AF", padding: 20, textAlign: "center" }}>⏳ Loading history…</div>;
+  }
+  if (!items.length) {
+    return (
+      <div style={{ color: "#9CA3AF", padding: 40, textAlign: "center" }}>
+        <div style={{ fontSize: "2rem", marginBottom: 8 }}>🗂️</div>
+        No questions asked yet. Your Q&amp;A history will appear here.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {items.map(item => {
+          const aj = item.answer_json || {};
+          return (
+            <div key={item.id} style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
+                    {item.mode === "boardroom" && (
+                      <span style={{ background: "#0F172A", color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️ Boardroom</span>
+                    )}
+                    <span style={{ fontSize: "0.68rem", color: "#9CA3AF" }}>
+                      {new Date(item.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    {typeof aj.confidence === "number" && (
+                      <span style={{ fontSize: "0.66rem", color: "#6B7280" }}>
+                        {aj.confidence >= 75 ? "🟢" : aj.confidence >= 50 ? "🟡" : "🔴"} {aj.confidence}% confidence
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#0A1628", marginBottom: 3 }}>{item.question}</div>
+                  {aj.headline && <div style={{ fontSize: "0.78rem", color: "#6B7280" }}>{aj.headline}</div>}
+                </div>
+                <button
+                  onClick={() => onReask(item.question, item.mode)}
+                  style={{ background: "#F3F4F6", border: "1px solid #E5E7EB", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: "0.72rem", fontWeight: 700, color: "#374151", flexShrink: 0 }}
+                >Ask again →</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {total > PAGE && (
+        <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
+          <button
+            onClick={() => { const p = Math.max(0, page - 1); setPage(p); load(p); }}
+            disabled={page === 0}
+            style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #E5E7EB", background: "#fff", cursor: page === 0 ? "default" : "pointer", fontSize: "0.78rem" }}
+          >← Prev</button>
+          <span style={{ fontSize: "0.78rem", color: "#6B7280", lineHeight: "32px" }}>Page {page + 1} of {Math.ceil(total / PAGE)}</span>
+          <button
+            onClick={() => { const p = page + 1; setPage(p); load(p); }}
+            disabled={(page + 1) * PAGE >= total}
+            style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #E5E7EB", background: "#fff", cursor: (page + 1) * PAGE >= total ? "default" : "pointer", fontSize: "0.78rem" }}
+          >Next →</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CardGrid({ refreshTick }: { refreshTick: number }) {
+  const toast = useToast();
+  const [cards, setCards] = useState<Card[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await apiGet<{ ok: boolean; items: Card[] }>("/api/ask/cards");
+    if (r.ok) setCards(r.items || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load, refreshTick]);
+
+  async function togglePin(card: Card) {
+    const r = await apiPatch<{ ok: boolean; card: Card }>(`/api/ask/cards/${card.id}`, { pinned: !card.pinned });
+    if (r.ok) {
+      setCards(cs => cs.map(c => c.id === card.id ? { ...c, pinned: !card.pinned } : c).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)));
+      toast(card.pinned ? "📌 Unpinned" : "📌 Pinned to Boardroom");
+    }
+  }
+
+  async function deleteCard(card: Card) {
+    const r = await apiDelete<{ ok: boolean }>(`/api/ask/cards/${card.id}`);
+    if (r.ok) { setCards(cs => cs.filter(c => c.id !== card.id)); toast("🗑️ Card deleted"); }
+  }
+
+  async function exportCard(cardId: number) {
+    setExporting(cardId);
+    try {
+      const resp = await fetch(`/api/ask/cards/${cardId}/export`);
+      if (!resp.ok) { toast("⚠️ Export failed"); return; }
+      const blob = await resp.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `infogenie-brief-${cardId}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } finally { setExporting(null); }
+  }
+
+  if (loading && !cards.length) return <div style={{ color: "#9CA3AF", padding: 20, textAlign: "center" }}>⏳ Loading cards…</div>;
+
+  if (!cards.length) {
+    return (
+      <div style={{ color: "#9CA3AF", padding: 40, textAlign: "center" }}>
+        <div style={{ fontSize: "2rem", marginBottom: 8 }}>🏛️</div>
+        No Intelligence Cards saved yet.<br />
+        <span style={{ fontSize: "0.8rem" }}>Ask a question and click <strong>☆ Save</strong> to pin it here.</span>
+      </div>
+    );
+  }
+
+  const pinned   = cards.filter(c => c.pinned);
+  const unpinned = cards.filter(c => !c.pinned);
+  const renderGroup = (group: Card[], label?: string) => (
+    <>
+      {label && group.length > 0 && (
+        <div style={{ fontSize: "0.68rem", fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8, marginTop: 14 }}>{label}</div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 12 }}>
+        {group.map(card => {
+          const aj = card.answer_json || {};
+          return (
+            <div key={card.id} style={{
+              background: "#fff", border: `1px solid ${card.pinned ? "#FDE047" : "#E5E7EB"}`,
+              borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 8,
+              boxShadow: card.pinned ? "0 2px 12px rgba(250,204,21,.25)" : undefined,
+            }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                {card.pinned && <span style={{ fontSize: "0.64rem" }}>📌</span>}
+                {card.mode === "boardroom" && (
+                  <span style={{ background: "#0F172A", color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️</span>
+                )}
+                {typeof aj.confidence === "number" && (
+                  <span style={{ fontSize: "0.64rem", color: "#6B7280" }}>
+                    {aj.confidence >= 75 ? "🟢" : aj.confidence >= 50 ? "🟡" : "🔴"} {aj.confidence}%
+                  </span>
+                )}
+                <span style={{ fontSize: "0.64rem", color: "#9CA3AF", marginLeft: "auto" }}>
+                  {new Date(card.created_at).toLocaleDateString()}
+                </span>
+              </div>
+              <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#0A1628", lineHeight: 1.35 }}>{card.question}</div>
+              {aj.headline && <div style={{ fontSize: "0.76rem", color: "#6B7280", lineHeight: 1.4 }}>{aj.headline}</div>}
+              {(aj.recommended_actions || []).length > 0 && (
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {(aj.recommended_actions || []).slice(0, 2).map((a, i) => (
+                    <span key={i} style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", color: "#166534", padding: "2px 8px", borderRadius: 10, fontSize: "0.64rem", fontWeight: 600 }}>{a.label}</span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 4 }}>
+                <button onClick={() => exportCard(card.id)} disabled={exporting === card.id} style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid #E5E7EB", background: "#F9FAFB", cursor: "pointer", fontSize: "0.7rem", fontWeight: 700, color: "#374151" }}>
+                  {exporting === card.id ? "⏳" : "⬇️ PDF"}
+                </button>
+                <button onClick={() => togglePin(card)} style={{ padding: "4px 9px", borderRadius: 6, border: `1px solid ${card.pinned ? "#FDE047" : "#E5E7EB"}`, background: card.pinned ? "#FEF9C3" : "#F9FAFB", cursor: "pointer", fontSize: "0.7rem", fontWeight: 700, color: card.pinned ? "#713F12" : "#374151" }}>
+                  {card.pinned ? "📌 Unpin" : "📌 Pin"}
+                </button>
+                <button onClick={() => deleteCard(card)} style={{ padding: "4px 9px", borderRadius: 6, border: "1px solid #FECACA", background: "#FFF5F5", cursor: "pointer", fontSize: "0.7rem", fontWeight: 700, color: "#B91C1C" }}>
+                  🗑
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+
+  return (
+    <div>
+      {renderGroup(pinned, pinned.length && unpinned.length ? "📌 Pinned" : undefined)}
+      {renderGroup(unpinned, pinned.length && unpinned.length ? "Recent" : undefined)}
+    </div>
+  );
 }
 
 export default function AskInfoGenie() {
   const toast = useToast();
-  const [indexStatus, setIndexStatus] = useState<IndexStatus>({ indexed: 0, lastUpdated: null });
-  const [query, setQuery] = useState("");
+  const [tab, setTab]               = useState<Tab>("ask");
+  const [mode, setMode]             = useState<Mode>("standard");
+  const [query, setQuery]           = useState("");
+  const [asking, setAsking]         = useState(false);
+  const [result, setResult]         = useState<AskResult | null>(null);
+  const [askError, setAskError]     = useState<string | null>(null);
+  const [starred, setStarred]       = useState(false);
+  const [exporting, setExporting]   = useState(false);
+  const [indexStatus, setIndexStatus] = useState<IndexStatus>({});
   const [reindexing, setReindexing] = useState(false);
-  const [asking, setAsking] = useState(false);
-  const [result, setResult] = useState<AskResult | null>(null);
-  const [askError, setAskError] = useState<string | null>(null);
-
-  async function loadStatus() {
-    const s = await apiGet<IndexStatus>("/api/platform-search/index-status");
-    if (s.ok) setIndexStatus(s);
-  }
+  const [cardRefreshTick, setCardRefreshTick] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    let cancelled = false;
     (async () => {
       const s = await apiGet<IndexStatus>("/api/platform-search/index-status");
-      if (cancelled) return;
       if (s.ok) setIndexStatus(s);
     })();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   async function reindex() {
     setReindexing(true);
-    const r = await apiPost<{ ok: boolean; chunks?: number; embedded?: number; error?: string }>(
-      "/api/platform-search/reindex",
-    );
+    const r = await apiPost<{ ok: boolean; chunks?: number; embedded?: number; error?: string }>("/api/platform-search/reindex");
     if (r.ok) {
       toast(`✅ Indexed ${r.chunks} chunks (${r.embedded} embedded)`);
-      await loadStatus();
+      const s = await apiGet<IndexStatus>("/api/platform-search/index-status");
+      if (s.ok) setIndexStatus(s);
     } else {
       toast("⚠️ " + (r.error || "Reindex failed"));
     }
     setReindexing(false);
   }
 
-  async function ask(q?: string) {
+  async function ask(q?: string, overrideMode?: Mode) {
     const question = (q ?? query).trim();
     if (!question) return;
     if (q !== undefined) setQuery(q);
     setAsking(true);
     setResult(null);
     setAskError(null);
-    const j = await apiPost<AskResult>("/api/platform-search/ask", { question });
+    setStarred(false);
+    const j = await apiPost<AskResult>("/api/ask/ask", { question, mode: overrideMode ?? mode });
     setAsking(false);
-    if (!j.ok) {
-      setAskError(j.error || "failed");
-      return;
-    }
+    if (!j.ok) { setAskError(j.error || "Failed to get answer"); return; }
     setResult(j);
+    setTab("ask");
   }
 
-  const lastUpdStr = indexStatus.lastUpdated
-    ? new Date(indexStatus.lastUpdated).toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
+  async function saveCard() {
+    if (!result) return;
+    const r = await apiPost<{ ok: boolean; card?: Card }>("/api/ask/cards", {
+      question: result.question || query,
+      answer_json: result,
+      mode: result.mode || mode,
+    });
+    if (r.ok) {
+      setStarred(true);
+      setCardRefreshTick(t => t + 1);
+      toast("⭐ Saved as Intelligence Card");
+    } else {
+      toast("⚠️ Save failed");
+    }
+  }
 
-  const isVector = result?.source === "vector-retrieval";
-  const totals = result?.context?.totals || {};
+  async function exportCurrentCard() {
+    if (!result) return;
+    setExporting(true);
+    try {
+      const savedR = await apiPost<{ ok: boolean; card?: Card }>("/api/ask/cards", {
+        question: result.question || query,
+        answer_json: result,
+        mode: result.mode || mode,
+      });
+      if (!savedR.ok || !savedR.card) { toast("⚠️ Could not save for export"); return; }
+      const cardId = savedR.card.id;
+      const resp   = await fetch(`/api/ask/cards/${cardId}/export`);
+      if (!resp.ok) { toast("⚠️ Export failed"); return; }
+      const blob = await resp.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `infogenie-brief-${cardId}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+      setStarred(true);
+      setCardRefreshTick(t => t + 1);
+    } finally { setExporting(false); }
+  }
+
+  const suggestions = mode === "boardroom" ? SUGGESTIONS_BOARDROOM : SUGGESTIONS_STANDARD;
+  const indexedStr = (indexStatus.indexed || 0) > 0
+    ? `${indexStatus.indexed} chunks indexed`
+    : "Not yet indexed";
+
+  const tabStyle = (t: Tab): React.CSSProperties => ({
+    padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700,
+    fontSize: "0.8rem", transition: "all .15s",
+    background: tab === t ? (t === "boardroom" ? "#0F172A" : "linear-gradient(135deg,#0066FF,#7C3AED)") : "#F3F4F6",
+    color: tab === t ? "#fff" : "#6B7280",
+  });
 
   return (
     <div className="view-header-wrap">
@@ -168,302 +635,129 @@ export default function AskInfoGenie() {
           <div className="vh-inner">
             <div>
               <div className="breadcrumb">
-                <span className="bc-group">Manage</span> <span className="bc-sep">›</span> Ask
-                InfoGenie
+                <span className="bc-group">Manage</span> <span className="bc-sep">›</span> Executive AI Copilot
               </div>
-              <h2 className="view-title">💬 Ask InfoGenie</h2>
+              <h2 className="view-title">🧠 Executive AI Copilot</h2>
               <p className="view-sub">
-                One chat box that knows about your campaigns, leads, audiences, mentions, ad
-                insights, content calendar, budget, landing pages, bookings and link-in-bio. Ask in
-                plain English.
+                Ask questions in plain English and get structured answers with confidence scores, evidence citations, recommended actions — or a full Boardroom Brief for leadership.
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #E5E7EB",
-            borderRadius: 12,
-            padding: 18,
-            marginBottom: 18,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 14,
-              flexWrap: "wrap",
-              gap: 8,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div
-                style={{
-                  background: "linear-gradient(135deg,#0066FF,#7C3AED)",
-                  borderRadius: 8,
-                  padding: "5px 10px",
-                  fontSize: "0.7rem",
-                  fontWeight: 800,
-                  color: "#fff",
-                  letterSpacing: ".04em",
-                }}
-              >
-                ⚡ SMART SEARCH
-              </div>
-              <div style={{ fontSize: "0.75rem", color: "#6B7280" }}>
-                {(indexStatus.indexed || 0) > 0
-                  ? `${indexStatus.indexed} indexed chunks${
-                      lastUpdStr ? " · updated " + lastUpdStr : ""
-                    }`
-                  : "Not yet indexed — will auto-index on first question"}
-              </div>
-            </div>
-            <button
-              onClick={reindex}
-              disabled={reindexing}
-              style={{
-                background: "#F3F4F6",
-                border: "1px solid #E5E7EB",
-                color: "#374151",
-                padding: "5px 11px",
-                borderRadius: 7,
-                fontSize: "0.72rem",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              {reindexing ? "⏳ Indexing…" : "🔄 Re-index data"}
-            </button>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") ask();
-              }}
-              placeholder="e.g. Which campaign has the worst CPC? · Which leads should I call first? · Any negative mentions?"
-              style={{
-                flex: 1,
-                padding: "11px 14px",
-                border: "1px solid #D1D5DB",
-                borderRadius: 7,
-                fontSize: "0.92rem",
-              }}
-            />
-            <button
-              onClick={() => ask()}
-              style={{
-                background: "linear-gradient(135deg,#0066FF,#7C3AED)",
-                color: "#fff",
-                border: 0,
-                padding: "11px 22px",
-                borderRadius: 7,
-                fontWeight: 800,
-                cursor: "pointer",
-              }}
-            >
-              Ask →
-            </button>
-          </div>
-          <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {SUGGESTIONS.map((q) => (
-              <button
-                key={q}
-                onClick={() => ask(q)}
-                style={{
-                  background: "#F3F4F6",
-                  border: "1px solid #E5E7EB",
-                  color: "#374151",
-                  padding: "5px 10px",
-                  borderRadius: 14,
-                  fontSize: "0.74rem",
-                  cursor: "pointer",
-                }}
-              >
-                {q}
-              </button>
-            ))}
-          </div>
+      <div className="container" style={{ paddingTop: 20, paddingBottom: 56 }}>
+        {/* Tab bar */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+          <button style={tabStyle("ask")} onClick={() => setTab("ask")}>💬 Ask</button>
+          <button style={tabStyle("history")} onClick={() => setTab("history")}>🗂️ History</button>
+          <button style={tabStyle("boardroom")} onClick={() => setTab("boardroom")}>🏛️ Boardroom</button>
         </div>
 
-        <div>
-          {asking && (
-            <div style={{ color: "#9CA3AF", display: "flex", alignItems: "center", gap: 8 }}>
-              <span>⚙️</span> Searching your data semantically…
-            </div>
-          )}
-          {askError && <div style={{ color: "#DC2626" }}>{askError}</div>}
-          {result && result.answer != null && (
-            <div
-              style={{
-                background: "#fff",
-                border: "1px solid #E5E7EB",
-                borderRadius: 12,
-                padding: 18,
-              }}
-            >
-              {result.autoIndexed && (
-                <div
-                  style={{
-                    background: "#EFF6FF",
-                    border: "1px solid #BFDBFE",
-                    color: "#1D4ED8",
-                    padding: "8px 12px",
-                    borderRadius: 7,
-                    fontSize: "0.75rem",
-                    marginBottom: 10,
-                  }}
-                >
-                  ⚡ Your data was indexed automatically ({result.indexCount} chunks). Future
-                  questions will be faster.
+        {/* ASK TAB */}
+        {tab === "ask" && (
+          <>
+            {/* Control panel */}
+            <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 18, marginBottom: 16 }}>
+              {/* Status + reindex row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ background: "linear-gradient(135deg,#0066FF,#7C3AED)", borderRadius: 8, padding: "4px 10px", fontSize: "0.66rem", fontWeight: 800, color: "#fff", letterSpacing: ".04em" }}>⚡ AI COPILOT</div>
+                  <span style={{ fontSize: "0.73rem", color: "#9CA3AF" }}>{indexedStr}</span>
                 </div>
-              )}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                {isVector ? (
-                  <span
-                    style={{
-                      background: "#EFF6FF",
-                      color: "#1D4ED8",
-                      border: "1px solid #BFDBFE",
-                      padding: "3px 8px",
-                      borderRadius: 12,
-                      fontSize: "0.68rem",
-                      fontWeight: 700,
-                    }}
-                  >
-                    ⚡ Vector Search
-                  </span>
-                ) : (
-                  <span
-                    style={{
-                      background: "#F3F4F6",
-                      color: "#6B7280",
-                      border: "1px solid #E5E7EB",
-                      padding: "3px 8px",
-                      borderRadius: 12,
-                      fontSize: "0.68rem",
-                      fontWeight: 700,
-                    }}
-                  >
-                    💬 GPT snapshot
-                  </span>
-                )}
-                {result.chunksUsed ? (
-                  <span style={{ fontSize: "0.7rem", color: "#9CA3AF" }}>
-                    Searched {result.indexCount || 0} chunks · used {result.chunksUsed} most relevant
-                  </span>
-                ) : null}
-              </div>
-              <div style={{ fontSize: "0.95rem", lineHeight: 1.6, color: "#0A1628" }}>
-                {renderAnswer(result.answer)}
-              </div>
-              {(result.dataTypes || []).length > 0 && (
-                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
-                  {(result.dataTypes || []).map((t) => (
-                    <span
-                      key={t}
-                      style={{
-                        background: "#F0FDF4",
-                        color: "#166534",
-                        border: "1px solid #BBF7D0",
-                        padding: "3px 8px",
-                        borderRadius: 10,
-                        fontSize: "0.68rem",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {(TYPE_ICONS[t] || "") + (TYPE_LABELS[t] || t)}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {(result.topScores || []).length > 0 && isVector && (
-                <div style={{ marginTop: 8, fontSize: "0.68rem", color: "#9CA3AF" }}>
-                  Top matches:{" "}
-                  {(result.topScores || [])
-                    .map(
-                      (s) =>
-                        `${TYPE_ICONS[s.type] || ""}${TYPE_LABELS[s.type] || s.type} (${s.score}%)`,
-                    )
-                    .join(" · ")}
-                </div>
-              )}
-              {result.source === "fallback" && result.context && (
-                <>
-                  <div
-                    style={{
-                      background: "#FEF3C7",
-                      border: "1px solid #FBBF24",
-                      color: "#92400E",
-                      padding: "10px 14px",
-                      borderRadius: 8,
-                      fontSize: "0.8rem",
-                      margin: "14px 0",
-                    }}
-                  >
-                    💡 Add a real OpenAI key in Manage → AI Providers to unlock semantic search.
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
-                      gap: 10,
-                    }}
-                  >
-                    {(
-                      [
-                        ["Campaigns", totals.campaigns],
-                        ["Leads", totals.leads],
-                        ["Mentions", totals.mentions],
-                        ["Landing Pages", totals.landingPages],
-                        ["Bookings", totals.bookings],
-                      ] as Array<[string, number | undefined]>
-                    ).map(([k, v]) => (
-                      <div
-                        key={k}
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {/* Mode toggle */}
+                  <div style={{ display: "flex", border: "1px solid #E5E7EB", borderRadius: 8, overflow: "hidden" }}>
+                    {(["standard", "boardroom"] as Mode[]).map(m => (
+                      <button
+                        key={m}
+                        onClick={() => setMode(m)}
                         style={{
-                          background: "#F8FAFC",
-                          border: "1px solid #E5E7EB",
-                          borderRadius: 8,
-                          padding: "10px 12px",
+                          padding: "5px 12px", border: 0, cursor: "pointer", fontSize: "0.74rem", fontWeight: 700, transition: "all .15s",
+                          background: mode === m ? (m === "boardroom" ? "#0F172A" : "#EEF2FF") : "transparent",
+                          color: mode === m ? (m === "boardroom" ? "#fff" : "#4F46E5") : "#9CA3AF",
                         }}
                       >
-                        <div
-                          style={{
-                            fontSize: "0.7rem",
-                            color: "#6B7280",
-                            textTransform: "uppercase",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {k}
-                        </div>
-                        <div style={{ fontSize: "1.6rem", fontWeight: 800, color: "#0A1628" }}>
-                          {v || 0}
-                        </div>
-                      </div>
+                        {m === "boardroom" ? "🏛️ Boardroom" : "💬 Standard"}
+                      </button>
                     ))}
                   </div>
-                </>
+                  <button onClick={reindex} disabled={reindexing} style={{ background: "#F3F4F6", border: "1px solid #E5E7EB", color: "#374151", padding: "5px 11px", borderRadius: 7, fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
+                    {reindexing ? "⏳ Indexing…" : "🔄 Re-index"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Boardroom info */}
+              {mode === "boardroom" && (
+                <div style={{ background: "#0F172A", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: "0.75rem", color: "#94A3B8" }}>
+                  🏛️ <strong style={{ color: "#E2E8F0" }}>Boardroom mode</strong> — runs two AI passes: an analyst answer then an executive brief formatted for leadership.
+                </div>
               )}
+
+              {/* Input */}
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  ref={inputRef}
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") ask(); }}
+                  placeholder={mode === "boardroom"
+                    ? "e.g. Summarise our marketing performance for the board…"
+                    : "e.g. Which campaign has the worst CPC? · What changed this week?"}
+                  style={{ flex: 1, padding: "11px 14px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: "0.9rem" }}
+                />
+                <button
+                  onClick={() => ask()}
+                  disabled={asking}
+                  style={{
+                    background: mode === "boardroom" ? "#0F172A" : "linear-gradient(135deg,#0066FF,#7C3AED)",
+                    color: "#fff", border: 0, padding: "11px 22px", borderRadius: 8, fontWeight: 800, cursor: asking ? "default" : "pointer", fontSize: "0.92rem",
+                  }}
+                >{asking ? "⏳" : mode === "boardroom" ? "Brief →" : "Ask →"}</button>
+              </div>
+
+              {/* Suggestions */}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                {suggestions.map(s => (
+                  <button
+                    key={s}
+                    onClick={() => ask(s)}
+                    style={{ background: "#F3F4F6", border: "1px solid #E5E7EB", color: "#374151", padding: "4px 10px", borderRadius: 14, fontSize: "0.72rem", cursor: "pointer" }}
+                  >{s}</button>
+                ))}
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* Result */}
+            {asking && (
+              <div style={{ color: "#9CA3AF", display: "flex", alignItems: "center", gap: 8, padding: 16 }}>
+                <span>🔍</span>
+                {mode === "boardroom" ? "Running analyst + board brief (two AI passes)…" : "Searching your data semantically…"}
+              </div>
+            )}
+            {askError && <div style={{ color: "#DC2626", padding: "10px 0" }}>{askError}</div>}
+            {result && !asking && (
+              <AnswerBubble
+                result={result}
+                onStar={saveCard}
+                onExport={result.mode === "boardroom" ? exportCurrentCard : undefined}
+                starred={starred}
+                exporting={exporting}
+              />
+            )}
+          </>
+        )}
+
+        {/* HISTORY TAB */}
+        {tab === "history" && (
+          <HistoryTab onReask={(q, m) => { setMode(m); ask(q, m); }} />
+        )}
+
+        {/* BOARDROOM TAB */}
+        {tab === "boardroom" && (
+          <CardGrid refreshTick={cardRefreshTick} />
+        )}
       </div>
     </div>
   );
