@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { NavGroupDef, NavItem } from "@/lib/viewRoutes";
 
 const CHEVRON =
@@ -30,6 +30,8 @@ function saveCollapsed(state: Record<string, boolean>) {
 
 export default function NavGroup({ group, onNavClick }: NavGroupProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [filterText, setFilterText] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setCollapsed(loadCollapsed());
@@ -43,8 +45,10 @@ export default function NavGroup({ group, onNavClick }: NavGroupProps) {
     });
   };
 
+  const q = filterText.trim().toLowerCase();
+
   return (
-    <div className="nav-group-wrap" data-group={group.key}>
+    <div className="nav-group-wrap" data-group={group.key} onMouseLeave={() => setFilterText("")}>
       <button className="nav-group-btn" type="button">
         <span
           className="ngb-icon"
@@ -57,17 +61,45 @@ export default function NavGroup({ group, onNavClick }: NavGroupProps) {
         className={
           "nav-dropdown" + (group.dropdownRight ? " nav-dropdown-right" : "")
         }
+        data-slimmed="1"
       >
+        {/* ── Filter input ─────────────────────────────────────────── */}
+        <div className="nav-drop-search">
+          <input
+            ref={inputRef}
+            type="text"
+            className="nav-drop-search-input"
+            placeholder={`Filter ${group.label.toLowerCase()}…`}
+            aria-label={`Filter ${group.label} menu`}
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+        </div>
+
+        {/* ── Sections ─────────────────────────────────────────────── */}
         {group.sections.map((section, si) => {
           const sectionKey = `${group.key}-${si}`;
           const isCollapsed = !!collapsed[sectionKey];
+
+          const visibleItems = section.items.filter((item) => {
+            if (!q) return true;
+            return (
+              item.label?.toLowerCase().includes(q) ||
+              item.view?.toLowerCase().includes(q)
+            );
+          });
+
+          if (q && visibleItems.length === 0) return null;
+
           return (
             <div key={si}>
               {section.header ? (
                 <button
                   className={
                     "nav-section-toggle" +
-                    (isCollapsed ? " nav-section-collapsed" : "")
+                    (isCollapsed && !q ? " nav-section-collapsed" : "")
                   }
                   type="button"
                   onClick={() => toggle(sectionKey)}
@@ -94,10 +126,10 @@ export default function NavGroup({ group, onNavClick }: NavGroupProps) {
               <div
                 className={
                   "nav-section-body" +
-                  (isCollapsed ? " nav-section-body--collapsed" : "")
+                  (isCollapsed && !q ? " nav-section-body--collapsed" : "")
                 }
               >
-                {section.items.map((item, ii) => (
+                {visibleItems.map((item, ii) => (
                   <a
                     key={item.view || item.action || ii}
                     href="#"
@@ -119,6 +151,7 @@ export default function NavGroup({ group, onNavClick }: NavGroupProps) {
             </div>
           );
         })}
+
         {group.footer && (
           <a
             href="#"
