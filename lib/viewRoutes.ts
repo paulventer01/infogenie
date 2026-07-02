@@ -113,6 +113,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "recipe-scraper", icon: "📋", label: "Scraping Recipe Library" },
           { view: "dataset-market", icon: "📦", label: "Dataset Marketplace" },
           { view: "resilient-tracker", icon: "🛡️", label: "Resilient Tracker" },
+          { view: "spyfu", icon: "🕵️", label: "SpyFu — Competitor PPC & SEO Spy" },
         ],
       },
       {
@@ -183,6 +184,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "backlinks", icon: "🔗", label: "Backlink Explorer" },
           { view: "backlink-monitor", icon: "🛰️", label: "Backlink Health Monitor" },
           { view: "link-prospector", icon: "🎯", label: "Link Prospector" },
+          { view: "majestic", icon: "🔗", label: "Majestic — Trust Flow & Authority" },
         ],
       },
     ],

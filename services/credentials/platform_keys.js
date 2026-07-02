@@ -50,6 +50,8 @@ const REGISTRY = [
   { key: 'GOOGLE_SEARCH_API_KEY', group: 'Data & Intelligence', service: 'Google Search', label: 'Google Search API Key', desc: 'Custom Search / SERP visibility', secret: true, test: 'google_search', settingsIds: ['google_search'] },
   { key: 'YOUTUBE_DATA_API_KEY', group: 'Data & Intelligence', service: 'YouTube Data', label: 'YouTube Data API Key', desc: 'YouTube trending videos (chart=mostPopular) for Trending Topics', secret: true, test: 'youtube_data', settingsIds: ['youtube_data'] },
   { key: 'BING_WEBMASTER_API_KEY', group: 'Data & Intelligence', service: 'Bing Webmaster', label: 'Bing Webmaster API Key', desc: 'Bing keyword performance, page stats, and crawl data — free second SEO data source alongside Google', secret: true, test: 'bing_webmaster', settingsIds: ['bing_webmaster'] },
+  { key: 'SPYFU_API_KEY', group: 'Data & Intelligence', service: 'SpyFu', label: 'SpyFu API Key', desc: 'Competitor PPC budgets, historical keyword rankings, organic/paid keyword spy data for any domain', secret: true, test: 'spyfu', settingsIds: ['spyfu'] },
+  { key: 'MAJESTIC_API_KEY', group: 'Data & Intelligence', service: 'Majestic', label: 'Majestic API Key', desc: 'Trust Flow, Citation Flow, Topical Trust Flow, backlinks and referring domain data (free OpenApps tier)', secret: true, test: 'majestic', settingsIds: ['majestic'] },
 
   // ── Infrastructure ──────────────────────────────────────────────────────────
   { key: 'RESEND_API_KEY', group: 'Infrastructure', service: 'Resend', label: 'Resend API Key', desc: 'Transactional & broadcast email', secret: true, test: 'resend', settingsIds: ['resend'] },
@@ -456,6 +458,27 @@ async function _runTest(keyName) {
       let data = null; try { data = JSON.parse(await _bodyText(r)); } catch {}
       if (data && data.Message) return _BAD('Bing Webmaster: ' + data.Message);
       return _OK('Bing Webmaster key accepted');
+    }
+    if (entry.test === 'spyfu') {
+      const key = resolvePlatformKey('SPYFU_API_KEY');
+      if (!key) return _UNCONF();
+      // Probe: getDomainStatsForSingleDomain with a known domain — bad key returns 401/403.
+      const r = await _fetchT('https://www.spyfu.com/apis/domain_stats_api/v2/getDomainStatsForSingleDomain?domain=spyfu.com&countryCode=US&api_key=' + encodeURIComponent(key));
+      if (r.status === 401 || r.status === 403) return _BAD('SpyFu rejected the key (HTTP ' + r.status + ')');
+      if (r.ok) return _OK('SpyFu key accepted');
+      return _HTTP('SpyFu', r);
+    }
+    if (entry.test === 'majestic') {
+      const key = resolvePlatformKey('MAJESTIC_API_KEY');
+      if (!key) return _UNCONF();
+      // GetIndexItemInfo for a well-known domain — bad key returns Code=ApiKeyUnauthorized.
+      const url = 'https://api.majestic.com/api/json?app_api_key=' + encodeURIComponent(key) + '&cmd=GetIndexItemInfo&items=1&item0=majestic.com&datasource=fresh';
+      const r = await _fetchT(url);
+      if (!r.ok) return _HTTP('Majestic', r);
+      let data = null; try { data = JSON.parse(await _bodyText(r)); } catch {}
+      if (data && (data.Code === 'ApiKeyUnauthorized' || data.Code === 'InvalidApiKey')) return _BAD('Majestic rejected the key: ' + data.ErrorMessage);
+      if (data && data.Code === 'OK') return _OK('Majestic key accepted');
+      return _OK('Majestic reachable');
     }
     if (entry.test === 'amplitude') {
       const key = resolvePlatformKey('AMPLITUDE_API_KEY');

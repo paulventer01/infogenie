@@ -4388,6 +4388,14 @@ async function _firecrawlGetHtml(url, timeoutMs = 12000) {
   }
 }
 
+// ── SpyFu ────────────────────────────────────────────────────────────────────
+const _spyfuRouter = require('./services/spyfu/api');
+app.use('/api/spyfu', _spyfuRouter);
+
+// ── Majestic SEO ──────────────────────────────────────────────────────────────
+const _majesticRouter = require('./services/majestic/api');
+app.use('/api/majestic', _majesticRouter);
+
 // ── Bing Webmaster Tools ─────────────────────────────────────────────────────
 const _bingWmtSchema = require('./services/bing_webmaster/schema');
 const _bingWmtRouter = require('./services/bing_webmaster/api');
