@@ -15,6 +15,21 @@ async function ensureGeoAuditSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_geo_audit_url ON geo_audit_runs(url, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS geo_citation_checks (
+      id         TEXT PRIMARY KEY,
+      run_id     TEXT REFERENCES geo_audit_runs(id) ON DELETE CASCADE,
+      tenant_id  INT,
+      domain     TEXT NOT NULL,
+      queries    JSONB NOT NULL DEFAULT '[]',
+      results    JSONB NOT NULL DEFAULT '[]',
+      citation_rate FLOAT NOT NULL DEFAULT 0,
+      checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_geo_citation_run
+      ON geo_citation_checks(run_id, checked_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_geo_citation_tenant
+      ON geo_citation_checks(tenant_id, checked_at DESC);
   `);
 }
 

@@ -2,6 +2,8 @@
 // Scores how well a page is structured to be cited by ChatGPT / Perplexity /
 // Gemini answers. 10 weighted checks summing to 100, A–F grade, prioritised
 // fixes. Pure HTML regex parsing — no LLM call required for the core audit.
+// Also includes AI Citation Tracking: queries OpenAI / Perplexity / Gemini
+// with page-derived questions and records whether your domain is cited.
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
@@ -11,6 +13,7 @@ const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { isUrlSafeToFetch } = require('../_shared/ssrf');
 const _headless = require('../_shared/headless_fetch');
+const OpenAI = require('openai');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safeAsync(h) {
@@ -259,6 +262,153 @@ router.get('/runs/:id', _safeAsync(async (req, res) => {
   const r = await _db.getPool().query(`SELECT * FROM geo_audit_runs WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   if (!r.rowCount) return _err(res, 404, 'Run not found');
   res.json({ ok: true, run: r.rows[0] });
+}));
+
+// ── AI Citation Tracking ──────────────────────────────────────────────────────
+
+function _extractQuerySignals(html) {
+  const strip = s => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const titleM = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleM ? strip(titleM[1]) : '';
+  const descM = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+              || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+  const desc = descM ? descM[1].trim() : '';
+  const h1M = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const h1 = h1M ? strip(h1M[1]) : '';
+  const h2s = (html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/gi) || []).map(strip).filter(Boolean).slice(0, 3);
+
+  const topic = h1 || title || desc || '';
+  const queries = [];
+
+  if (topic) {
+    queries.push(`What is ${topic}?`);
+    queries.push(`Who provides the best ${topic}?`);
+  }
+  if (h2s[0]) queries.push(`${h2s[0].replace(/\?$/, '')}?`);
+  if (h2s[1]) queries.push(`${h2s[1].replace(/\?$/, '')}?`);
+  if (desc && !queries.some(q => q.includes(desc.slice(0, 30)))) {
+    queries.push(desc.slice(0, 120));
+  }
+
+  return queries.filter(Boolean).slice(0, 5);
+}
+
+async function _runCitationCheck(domain, queries) {
+  const results = [];
+  const openai = process.env.AI_INTEGRATIONS_OPENAI_API_KEY
+    ? new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY }) : null;
+
+  const domainCore = domain.replace(/^www\./, '').toLowerCase();
+
+  for (const query of queries) {
+    const row = { query, providers: [] };
+
+    // OpenAI
+    if (openai) {
+      try {
+        const r = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: query }],
+          max_tokens: 400,
+        });
+        const answer = r.choices[0]?.message?.content || '';
+        const cited = answer.toLowerCase().includes(domainCore);
+        const competitorRegex = /([a-z0-9-]+\.(?:com|io|co|net|ai|org))/gi;
+        const competitors = [...(answer.matchAll(competitorRegex) || [])]
+          .map(m => m[1]).filter(d => !d.includes(domainCore)).slice(0, 4);
+        row.providers.push({ name: 'ChatGPT', cited, answer: answer.slice(0, 400), competitors });
+      } catch (e) { row.providers.push({ name: 'ChatGPT', cited: false, error: e.message, competitors: [] }); }
+    }
+
+    // Perplexity
+    if (process.env.PERPLEXITY_API_KEY) {
+      try {
+        const r = await fetch('https://api.perplexity.ai/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'sonar', messages: [{ role: 'user', content: query }], max_tokens: 400 }),
+        });
+        const j = await r.json();
+        const answer = j.choices?.[0]?.message?.content || '';
+        const cited = answer.toLowerCase().includes(domainCore);
+        const competitorRegex = /([a-z0-9-]+\.(?:com|io|co|net|ai|org))/gi;
+        const competitors = [...(answer.matchAll(competitorRegex) || [])]
+          .map(m => m[1]).filter(d => !d.includes(domainCore)).slice(0, 4);
+        row.providers.push({ name: 'Perplexity', cited, answer: answer.slice(0, 400), competitors });
+      } catch (e) { row.providers.push({ name: 'Perplexity', cited: false, error: e.message, competitors: [] }); }
+    }
+
+    // Gemini
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: query }] }], generationConfig: { maxOutputTokens: 400 } }),
+          }
+        );
+        const j = await r.json();
+        const answer = j.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const cited = answer.toLowerCase().includes(domainCore);
+        const competitorRegex = /([a-z0-9-]+\.(?:com|io|co|net|ai|org))/gi;
+        const competitors = [...(answer.matchAll(competitorRegex) || [])]
+          .map(m => m[1]).filter(d => !d.includes(domainCore)).slice(0, 4);
+        row.providers.push({ name: 'Gemini', cited, answer: answer.slice(0, 400), competitors });
+      } catch (e) { row.providers.push({ name: 'Gemini', cited: false, error: e.message, competitors: [] }); }
+    }
+
+    results.push(row);
+  }
+
+  const totalProbes = results.reduce((s, r) => s + r.providers.length, 0);
+  const totalCited  = results.reduce((s, r) => s + r.providers.filter(p => p.cited).length, 0);
+  const citationRate = totalProbes > 0 ? parseFloat((totalCited / totalProbes).toFixed(3)) : 0;
+
+  return { queries, results, citationRate, totalProbes, totalCited };
+}
+
+router.post('/runs/:id/cite-check', _safeAsync(async (req, res) => {
+  if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database unavailable');
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'geo_audit:cite-check' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const p = _db.getPool();
+
+  const runRow = await p.query(`SELECT * FROM geo_audit_runs WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+  if (!runRow.rowCount) return _err(res, 404, 'Run not found');
+  const run = runRow.rows[0];
+
+  let domain = '';
+  try { domain = new URL(run.url).hostname; } catch { return _err(res, 400, 'Invalid URL in run'); }
+
+  const fetched = await _fetchHtml(run.url);
+  const queries = fetched.ok ? _extractQuerySignals(fetched.html) : [`What is ${domain}?`, `Who provides ${domain}?`];
+  if (!queries.length) queries.push(`What is ${domain}?`);
+
+  const check = await _runCitationCheck(domain, queries);
+
+  const id = 'gcite_' + crypto.randomBytes(6).toString('hex');
+  await p.query(
+    `INSERT INTO geo_citation_checks(id, run_id, tenant_id, domain, queries, results, citation_rate)
+     VALUES($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (id) DO NOTHING`,
+    [id, run.id, tid, domain, JSON.stringify(check.queries), JSON.stringify(check.results), check.citationRate]
+  );
+
+  res.json({ ok: true, id, domain, ...check });
+}));
+
+router.get('/runs/:id/cite-check', _safeAsync(async (req, res) => {
+  if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, check: null });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'geo_audit:cite-check-get' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const p = _db.getPool();
+  const r = await p.query(
+    `SELECT * FROM geo_citation_checks WHERE run_id=$1 AND tenant_id=$2 ORDER BY checked_at DESC LIMIT 1`,
+    [req.params.id, tid]
+  );
+  res.json({ ok: true, check: r.rows[0] || null });
 }));
 
 module.exports = router;
