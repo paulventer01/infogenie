@@ -399,4 +399,94 @@ router.delete('/:id', _safeAsync(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ── POST /api/unified-inbox/ai-draft ─────────────────────────────────────────
+// Context-only draft (no DB lookup) — used by the Gmail reply modal where
+// there is no unified_inbox_items row. Accepts { author, subject, content,
+// threadMessages } and returns a draft reply string.
+router.post('/ai-draft', _safeAsync(async (req, res) => {
+  const { author = '', subject = '', content = '', threadMessages = [] } = req.body || {};
+  if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) return _err(res, 400, 'OpenAI not configured');
+  const OpenAI = require('openai');
+  const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+  let ctx = `From: ${author}\nSubject: ${subject}\nMessage: ${String(content).slice(0, 800)}`;
+  if (Array.isArray(threadMessages) && threadMessages.length) {
+    ctx += '\n\nRecent thread:\n' + threadMessages.slice(-4)
+      .map(m => `${m.from}: ${(m.body || m.snippet || '').slice(0, 400)}`).join('\n---\n');
+  }
+  try {
+    const r = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'Draft a professional, concise reply (under 120 words). Do not include subject line or opening salutation — start with the reply body directly.' },
+        { role: 'user', content: `Draft a reply:\n\n${ctx}` },
+      ],
+      max_tokens: 250,
+    });
+    res.json({ ok: true, draft: r.choices[0].message.content?.trim() || '' });
+  } catch (e) {
+    console.warn('[inbox:ai-draft-ctx]', e.message);
+    res.json({ ok: false, error: 'AI draft failed: ' + e.message });
+  }
+}));
+
+// ── POST /api/unified-inbox/:id/ai-draft ─────────────────────────────────────
+// Generates an AI reply draft for a given inbox item using GPT-4o-mini.
+// For Gmail threads the caller passes { threadMessages } for richer context.
+router.post('/:id/ai-draft', _safeAsync(async (req, res) => {
+  if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
+  const id = parseInt(req.params.id, 10);
+  if (!id) return _err(res, 400, 'Bad id');
+  const tid = await _tid(req, 'inbox:ai-draft');
+
+  const { threadMessages } = req.body || {};
+
+  const row = await _db.getPool().query(
+    `SELECT source, author, title, content, notes, sentiment FROM unified_inbox_items WHERE id=$1 AND tenant_id=$2`,
+    [id, tid]
+  );
+  if (!row.rows.length) return _err(res, 404, 'Item not found');
+  const item = row.rows[0];
+
+  if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    return _err(res, 400, 'OpenAI not configured');
+  }
+
+  const OpenAI = require('openai');
+  const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+
+  let contextBlock = `Source: ${item.source || 'unknown'}
+From: ${item.author || 'unknown'}
+Subject / Title: ${item.title || '(none)'}
+Message: ${(item.content || '').slice(0, 800)}`;
+
+  if (item.notes) contextBlock += `\nInternal notes: ${item.notes}`;
+  if (item.sentiment) contextBlock += `\nDetected sentiment: ${item.sentiment}`;
+
+  if (Array.isArray(threadMessages) && threadMessages.length) {
+    const history = threadMessages.slice(-4).map(m =>
+      `${m.from}: ${(m.body || m.snippet || '').slice(0, 400)}`
+    ).join('\n---\n');
+    contextBlock += `\n\nRecent thread history:\n${history}`;
+  }
+
+  try {
+    const r = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'system',
+        content: 'You are a helpful marketing assistant drafting professional, concise replies to customer messages. Match the tone to the sentiment (warm for negative, friendly for neutral). Keep replies under 120 words. Do not include subject lines or greetings like "Dear X" — start directly with the response body.',
+      }, {
+        role: 'user',
+        content: `Draft a reply for this message:\n\n${contextBlock}`,
+      }],
+      max_tokens: 250,
+    });
+    const draft = r.choices[0].message.content?.trim() || '';
+    res.json({ ok: true, draft });
+  } catch (e) {
+    console.warn('[inbox:ai-draft]', e.message);
+    res.json({ ok: false, error: 'AI draft generation failed: ' + e.message });
+  }
+}));
+
 module.exports = router;

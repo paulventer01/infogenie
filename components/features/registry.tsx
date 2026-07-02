@@ -28,6 +28,8 @@ import Launches from "@/components/features/manage/Launches";
 import AiTraffic from "@/components/features/manage/AiTraffic";
 import Heatmaps from "@/components/features/manage/Heatmaps";
 import BudgetBoard from "@/components/features/manage/BudgetBoard";
+import ActionQueue from "@/components/features/manage/ActionQueue";
+import AdCommentMonitor from "@/components/features/grow/AdCommentMonitor";
 import AskInfoGenie from "@/components/features/manage/AskInfoGenie";
 import MarketingMemory from "@/components/features/manage/MarketingMemory";
 import PredictiveIntelligence from "@/components/features/manage/PredictiveIntelligence";
@@ -230,6 +232,8 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "ai-traffic": AiTraffic,
   heatmaps: Heatmaps,
   "budget-board": BudgetBoard,
+  "action-queue": ActionQueue,
+  "ad-comment-monitor": AdCommentMonitor,
   "ask-infogenie": AskInfoGenie,
   "marketing-memory": MarketingMemory,
   "predictive-intelligence": PredictiveIntelligence,

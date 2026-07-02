@@ -3224,6 +3224,11 @@ app.use('/api/model-compare',        _mcRouter);
 app.use('/api/resilient-tracker',    _rtRouter);
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) { await _cmSchema.ensureChangeMonitorSchema(); await _rtSchema.ensureResilientTrackerSchema(); } } catch(e) { console.warn('[t73-t80] schema init failed:', e.message); } });
 
+// ── Ad Comment Monitor ───────────────────────────────────────────────────────
+const _adCommentsSchema = require('./services/ad_comments/schema');
+const _adCommentsRouter = require('./services/ad_comments/api');
+app.use('/api/ad-comments', _adCommentsRouter);
+
 // ── Tier 89-94 ──────────────────────────────────────────────────────────────
 const _decisionEngineSchema  = require('./services/decision_engine/schema');
 const _decisionEngineRouter  = require('./services/decision_engine/api');
@@ -3264,6 +3269,7 @@ app.use('/api/brand-safety',    _brandSafetyRouter);
 app.use('/api/safe-agent',      _safeAgentRouter);
 app.use('/api/data-provenance', _provenanceRouter);
 app.use('/api/playbooks',       _playbooksRouter);
+BOOT_TASKS.push(async () => { try { if (_db.hasDb()) { await _adCommentsSchema.ensureAdCommentsSchema(); } } catch(e) { console.warn('[ad-comments] schema init failed:', e.message); } });
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _decisionEngineSchema.ensureDecisionEngineSchema();
   await _experimentSuiteSchema.ensureExperimentSuiteSchema();

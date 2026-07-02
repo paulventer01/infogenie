@@ -160,6 +160,7 @@ export default function UnifiedInbox() {
   const [reply, setReply] = useState<ReplyTarget | null>(null);
   const [replyBody, setReplyBody] = useState("");
   const [replySending, setReplySending] = useState(false);
+  const [aiDrafting, setAiDrafting] = useState(false);
 
   async function loadStats() {
     const r = await apiGet<StatsResult>("/api/unified-inbox/stats");
@@ -233,6 +234,27 @@ export default function UnifiedInbox() {
       return;
     }
     setThreadBodies((m) => ({ ...m, [tid]: r.messages || [] }));
+  }
+
+  async function generateDraft() {
+    if (!reply) return;
+    setAiDrafting(true);
+    const msgs = threadBodies[reply.threadId];
+    const r = await apiPost<{ ok: boolean; draft?: string; error?: string }>(
+      "/api/unified-inbox/ai-draft",
+      {
+        author: reply.to,
+        subject: reply.subject,
+        content: reply.subject,
+        threadMessages: Array.isArray(msgs) ? msgs : [],
+      }
+    );
+    setAiDrafting(false);
+    if (r.ok && r.draft) {
+      setReplyBody(r.draft);
+    } else {
+      showToast("AI draft failed: " + (r.error || "unknown"), "error");
+    }
   }
 
   async function sendReply() {
@@ -441,7 +463,7 @@ export default function UnifiedInbox() {
               rows={6}
               value={replyBody}
               onChange={(e) => setReplyBody(e.target.value)}
-              placeholder="Type your reply…"
+              placeholder="Type your reply or click ✨ AI Draft…"
               style={{
                 width: "100%",
                 padding: 10,
@@ -453,20 +475,29 @@ export default function UnifiedInbox() {
                 resize: "vertical",
               }}
             />
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+            <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 14, flexWrap: "wrap" }}>
               <button
-                onClick={() => setReply(null)}
-                style={{ padding: "8px 16px", background: "var(--bg-secondary,#f1f5f9)", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}
+                onClick={generateDraft}
+                disabled={aiDrafting}
+                style={{ padding: "8px 16px", background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: "0.88rem" }}
               >
-                Cancel
+                {aiDrafting ? "⏳ Drafting…" : "✨ AI Draft"}
               </button>
-              <button
-                onClick={sendReply}
-                disabled={replySending}
-                style={{ padding: "8px 18px", background: "#0ea5e9", color: "white", border: 0, borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
-              >
-                {replySending ? "Sending…" : "📤 Send Reply"}
-              </button>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={() => setReply(null)}
+                  style={{ padding: "8px 16px", background: "var(--bg-secondary,#f1f5f9)", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={sendReply}
+                  disabled={replySending}
+                  style={{ padding: "8px 18px", background: "#0ea5e9", color: "white", border: 0, borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+                >
+                  {replySending ? "Sending…" : "📤 Send Reply"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
