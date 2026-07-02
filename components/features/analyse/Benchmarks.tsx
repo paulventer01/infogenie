@@ -91,6 +91,7 @@ export default function Benchmarks() {
   const [comparing, setComparing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
   const [result, setResult] = useState<CompareResponse | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [activeLeadVert, setActiveLeadVert] = useState<string | null>(null);
@@ -173,12 +174,17 @@ export default function Benchmarks() {
 
   async function aiSuggest() {
     setSuggesting(true);
+    setSuggestError(null);
     const d = await apiPost<{ ok: boolean; error?: string; suggested?: Record<string, number> }>(
       "/api/benchmarks/ai-suggest",
       {}
     );
     setSuggesting(false);
-    if (!d.ok) { alert(d.error || "AI suggestion failed. Please fill in your Brand Foundation first."); return; }
+    if (!d.ok) {
+      setSuggestError(d.error || "AI suggestion failed. Please fill in your Brand Foundation first.");
+      return;
+    }
+    setSuggestError(null);
     if (d.suggested) {
       setValues((prev) => {
         const next = { ...prev };
@@ -340,6 +346,54 @@ export default function Benchmarks() {
                 </span>
               </div>
             </div>
+            {suggestError && (
+              <div style={{
+                margin: "0 16px 0",
+                padding: "10px 14px",
+                background: "#FFF7ED",
+                border: "1px solid #FED7AA",
+                borderRadius: 10,
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                fontSize: "0.78rem",
+                color: "#92400E",
+              }}>
+                <span style={{ fontSize: "1rem", lineHeight: 1.3 }}>⚠️</span>
+                <div style={{ flex: 1 }}>
+                  <span>{suggestError.includes("Brand Foundation")
+                    ? "Your Brand Foundation is empty — AI Suggest needs it to estimate your metrics."
+                    : suggestError}
+                  </span>
+                  {suggestError.includes("Brand Foundation") && (
+                    <button
+                      onClick={() => {
+                        setSuggestError(null);
+                        try { (window as unknown as Record<string, (v: string) => void>).navigateTo?.("brand-foundation"); } catch { /* noop */ }
+                      }}
+                      style={{
+                        display: "inline-block",
+                        marginLeft: 10,
+                        padding: "2px 10px",
+                        background: "#7C3AED",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 12,
+                        fontSize: "0.72rem",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Set up Brand Foundation →
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => setSuggestError(null)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#B45309", fontSize: "0.85rem", padding: 0, lineHeight: 1 }}
+                >✕</button>
+              </div>
+            )}
             <div style={{ padding: "16px 20px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 {(config?.metrics || []).map((m) => {
