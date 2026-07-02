@@ -1,0 +1,1671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>InfoGenie — Platform Overview, Strategy & Pricing</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');
+  body{font-family:'Inter',sans-serif;color:#0f172a;background:#fff;font-size:14px;line-height:1.7}
+  @media print{
+    .no-print{display:none}
+    .page-break{page-break-before:always}
+    body{font-size:11px}
+    h1{font-size:2rem}h2{font-size:1.4rem}h3{font-size:1.1rem}
+  }
+  /* ─── Layout ─── */
+  .wrap{max-width:1100px;margin:0 auto;padding:0 32px}
+  /* ─── Cover ─── */
+  .cover{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#312e81 100%);color:#fff;padding:100px 64px 80px;min-height:100vh;display:flex;flex-direction:column;justify-content:center}
+  .cover-logo{font-family:'Plus Jakarta Sans',sans-serif;font-size:3.5rem;font-weight:800;letter-spacing:-2px;margin-bottom:6px}
+  .cover-logo span{color:#818cf8}
+  .cover-tagline{font-size:1.2rem;color:#94a3b8;margin-bottom:48px;font-weight:400}
+  .cover-title{font-size:2rem;font-weight:700;margin-bottom:12px;color:#f1f5f9;line-height:1.3}
+  .cover-sub{font-size:1rem;color:#94a3b8;max-width:600px;line-height:1.8}
+  .cover-meta{margin-top:60px;display:flex;gap:48px;flex-wrap:wrap}
+  .cover-meta-item label{display:block;font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:4px}
+  .cover-meta-item strong{font-size:1.1rem;color:#e2e8f0}
+  .cover-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(129,140,248,0.2);border:1px solid rgba(129,140,248,0.4);border-radius:20px;padding:6px 16px;font-size:0.8rem;color:#a5b4fc;margin-bottom:28px}
+
+  /* ─── Section headers ─── */
+  .sec{padding:60px 0}
+  .sec-alt{background:#f8fafc}
+  .sec-header{margin-bottom:40px}
+  .sec-label{font-size:0.72rem;text-transform:uppercase;letter-spacing:2px;color:#7c3aed;font-weight:700;margin-bottom:8px}
+  .sec-title{font-size:2rem;font-weight:800;color:#0f172a;line-height:1.2;margin-bottom:10px}
+  .sec-desc{font-size:0.95rem;color:#475569;max-width:700px;line-height:1.8}
+
+  /* ─── Feature card ─── */
+  .feat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:20px}
+  .feat-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;position:relative}
+  .feat-card:hover{border-color:#7c3aed;box-shadow:0 4px 20px rgba(124,58,237,0.08)}
+  .feat-icon{font-size:1.5rem;margin-bottom:10px}
+  .feat-name{font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:4px}
+  .feat-tier{font-size:0.7rem;background:#ede9fe;color:#7c3aed;border-radius:4px;padding:2px 8px;font-weight:700;display:inline-block;margin-bottom:8px}
+  .feat-desc{font-size:0.85rem;color:#475569;line-height:1.7;margin-bottom:8px}
+  .feat-why{font-size:0.82rem;color:#0f172a;font-weight:600;margin-bottom:4px}
+  .feat-why-text{font-size:0.82rem;color:#64748b;line-height:1.6}
+  .feat-links{margin-top:8px;font-size:0.78rem;color:#7c3aed;font-style:italic}
+  .tag{display:inline-block;background:#f1f5f9;color:#475569;border-radius:4px;padding:2px 7px;font-size:0.72rem;margin:2px 2px 0 0}
+  .tag-blue{background:#dbeafe;color:#1e40af}
+  .tag-green{background:#dcfce7;color:#15803d}
+  .tag-orange{background:#fef3c7;color:#92400e}
+  .tag-red{background:#fee2e2;color:#991b1b}
+  .tag-purple{background:#ede9fe;color:#5b21b6}
+
+  /* ─── Architecture ─── */
+  .arch-wrap{overflow-x:auto}
+  .arch-table{width:100%;border-collapse:collapse}
+  .arch-table th{background:#0f172a;color:#f1f5f9;padding:12px 16px;font-size:0.8rem;font-weight:700;text-align:left}
+  .arch-table td{padding:12px 16px;border-bottom:1px solid #e2e8f0;vertical-align:top;font-size:0.85rem}
+  .arch-table tr:nth-child(even) td{background:#f8fafc}
+  .arch-row-header{font-weight:700;color:#7c3aed;white-space:nowrap}
+
+  /* ─── Flow diagram ─── */
+  .flow{display:flex;flex-wrap:wrap;gap:0;align-items:flex-start}
+  .flow-step{flex:1;min-width:160px;text-align:center;position:relative;padding:20px 10px}
+  .flow-step:not(:last-child)::after{content:"→";position:absolute;right:-12px;top:50%;transform:translateY(-50%);font-size:1.5rem;color:#7c3aed;font-weight:900}
+  .flow-num{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#3b82f6);color:#fff;font-weight:800;font-size:1rem;display:flex;align-items:center;justify-content:center;margin:0 auto 10px}
+  .flow-label{font-weight:700;font-size:0.85rem;color:#0f172a;margin-bottom:4px}
+  .flow-tools{font-size:0.75rem;color:#64748b;line-height:1.6}
+  .flow-connector{display:flex;align-items:center;justify-content:center;padding:0 4px;color:#7c3aed;font-size:1.4rem;font-weight:900;flex-shrink:0}
+
+  /* ─── Pricing ─── */
+  .pricing-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:24px}
+  .plan-card{border:2px solid #e2e8f0;border-radius:16px;padding:28px;position:relative}
+  .plan-card.popular{border-color:#7c3aed;box-shadow:0 0 0 4px rgba(124,58,237,0.08)}
+  .plan-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:#7c3aed;color:#fff;border-radius:20px;padding:4px 16px;font-size:0.75rem;font-weight:700;white-space:nowrap}
+  .plan-name{font-size:1.1rem;font-weight:800;color:#0f172a;margin-bottom:4px}
+  .plan-tagline{font-size:0.82rem;color:#64748b;margin-bottom:16px}
+  .plan-price{font-size:2.4rem;font-weight:900;color:#7c3aed;margin-bottom:4px}
+  .plan-price span{font-size:0.9rem;font-weight:500;color:#64748b}
+  .plan-annual{font-size:0.78rem;color:#16a34a;font-weight:600;margin-bottom:20px}
+  .plan-features{list-style:none;margin-bottom:20px}
+  .plan-features li{font-size:0.82rem;color:#334155;padding:5px 0;border-bottom:1px solid #f1f5f9;display:flex;gap:8px;align-items:baseline}
+  .plan-features li::before{content:"✓";color:#16a34a;font-weight:700;flex-shrink:0}
+  .plan-cta{display:block;text-align:center;background:#7c3aed;color:#fff;border-radius:8px;padding:12px;font-weight:700;font-size:0.88rem;text-decoration:none}
+  .plan-cta.outline{background:transparent;color:#7c3aed;border:2px solid #7c3aed}
+
+  /* ─── Market ─── */
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:32px}
+  .stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;text-align:center}
+  .stat-value{font-size:2rem;font-weight:900;color:#7c3aed;margin-bottom:4px}
+  .stat-label{font-size:0.8rem;color:#64748b;font-weight:600}
+  .stat-note{font-size:0.72rem;color:#94a3b8;margin-top:2px}
+
+  /* ─── GTM ─── */
+  .gtm-phase{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:24px;margin-bottom:16px}
+  .gtm-phase-header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .gtm-num{width:36px;height:36px;border-radius:50%;background:#7c3aed;color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:0.9rem;flex-shrink:0}
+  .gtm-phase-title{font-weight:800;font-size:1rem;color:#0f172a}
+  .gtm-phase-sub{font-size:0.8rem;color:#64748b}
+  .gtm-body{font-size:0.86rem;color:#334155;line-height:1.8}
+  .gtm-body ul{padding-left:20px;margin-top:6px}
+
+  /* ─── ICP ─── */
+  .icp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+  .icp-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px}
+  .icp-icon{font-size:1.8rem;margin-bottom:8px}
+  .icp-name{font-weight:700;font-size:0.95rem;color:#0f172a;margin-bottom:6px}
+  .icp-desc{font-size:0.82rem;color:#475569;line-height:1.6}
+
+  /* ─── Group header ─── */
+  .group-header{background:linear-gradient(90deg,#7c3aed,#3b82f6);color:#fff;padding:12px 20px;border-radius:8px;margin:32px 0 16px;font-weight:800;font-size:1rem}
+
+  /* ─── TOC ─── */
+  .toc a{display:block;padding:6px 0;color:#334155;text-decoration:none;font-size:0.88rem;border-bottom:1px solid #f1f5f9}
+  .toc a:hover{color:#7c3aed}
+  .toc a span{float:right;color:#94a3b8;font-size:0.8rem}
+
+  /* ─── Footer ─── */
+  .footer{background:#0f172a;color:#94a3b8;padding:32px;text-align:center;font-size:0.8rem}
+  .footer strong{color:#e2e8f0}
+
+  h2.section-h{font-size:1.5rem;font-weight:800;color:#0f172a;margin:32px 0 16px;padding-top:8px}
+  h3.sub-h{font-size:1.05rem;font-weight:700;color:#334155;margin:20px 0 10px}
+  p.body-p{font-size:0.9rem;color:#475569;line-height:1.8;margin-bottom:12px}
+  ul.body-ul{padding-left:20px;margin-bottom:12px}
+  ul.body-ul li{font-size:0.88rem;color:#334155;line-height:1.8}
+  table.comp-table{width:100%;border-collapse:collapse;font-size:0.85rem;margin:16px 0}
+  table.comp-table th{background:#f8fafc;padding:10px 12px;text-align:left;font-weight:700;border-bottom:2px solid #e2e8f0}
+  table.comp-table td{padding:9px 12px;border-bottom:1px solid #f1f5f9}
+  .check{color:#16a34a;font-weight:700}
+  .cross{color:#dc2626}
+  .warn{color:#f59e0b}
+
+  .print-btn{position:fixed;bottom:24px;right:24px;background:#7c3aed;color:#fff;border:none;border-radius:50px;padding:12px 24px;font-size:0.88rem;font-weight:700;cursor:pointer;box-shadow:0 4px 20px rgba(124,58,237,0.3);z-index:100}
+</style>
+</head>
+<body>
+
+<!-- Print button -->
+<button class="print-btn no-print" onclick="window.print()">🖨️ Save as PDF</button>
+
+<!-- ═══════════════════════ COVER ═══════════════════════ -->
+<div class="cover">
+  <div class="cover-badge">📄 Confidential — Platform Overview Document · July 2026</div>
+  <div class="cover-logo">Info<span>Genie</span></div>
+  <div class="cover-tagline">AI-Powered Marketing Intelligence &amp; Campaign Automation</div>
+  <div class="cover-title">Complete Platform Overview,<br/>Architecture, Market Strategy &amp; Pricing</div>
+  <div class="cover-sub">This document covers every InfoGenie feature, how each one works, why it exists, how features connect, the market opportunity, go-to-market strategy, and package pricing tiers.</div>
+  <div class="cover-meta">
+    <div class="cover-meta-item"><label>Total Features</label><strong>115+ Tools</strong></div>
+    <div class="cover-meta-item"><label>AI Models Used</label><strong>GPT-4o · Claude · Gemini · Perplexity · Llama</strong></div>
+    <div class="cover-meta-item"><label>Market Opportunity</label><strong>$25B+ SAM</strong></div>
+    <div class="cover-meta-item"><label>Target Segments</label><strong>SMBs · Agencies · Mid-Market</strong></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ TABLE OF CONTENTS ═══════════════════════ -->
+<div class="sec">
+<div class="wrap">
+<div class="sec-header">
+  <div class="sec-label">Navigation</div>
+  <div class="sec-title">Table of Contents</div>
+</div>
+<div class="toc">
+  <a href="#what-is"><strong>1. What is InfoGenie?</strong> — Vision, Design Philosophy &amp; Differentiation<span>↓</span></a>
+  <a href="#market"><strong>2. Market Opportunity</strong> — TAM/SAM/SOM, Competitive Landscape, Market Value<span>↓</span></a>
+  <a href="#architecture"><strong>3. Architecture Overview</strong> — How the Platform is Built &amp; Feature Flow<span>↓</span></a>
+  <a href="#features"><strong>4. Feature Catalogue</strong> — All 115+ Features with Full Descriptions<span>↓</span></a>
+  <a href="#interconnections"><strong>5. Feature Interconnections</strong> — How Tools Link &amp; Amplify Each Other<span>↓</span></a>
+  <a href="#gtm"><strong>6. Go-to-Market Strategy</strong> — Phases, Channels, ICPs, Sales Motion<span>↓</span></a>
+  <a href="#pricing"><strong>7. Package &amp; Pricing</strong> — Tiers, Feature Sets &amp; Target Pricing<span>↓</span></a>
+</div>
+</div>
+</div>
+
+<!-- ═══════════════════════ 1. WHAT IS INFOGENIE ═══════════════════════ -->
+<div class="sec sec-alt" id="what-is">
+<div class="wrap">
+<div class="sec-header">
+  <div class="sec-label">1 · Vision &amp; Design Philosophy</div>
+  <div class="sec-title">What is InfoGenie?</div>
+  <div class="sec-desc">The single platform that replaces your entire marketing toolstack — from competitive intelligence to campaign automation, content creation to compliance.</div>
+</div>
+
+<h3 class="sub-h">The Core Problem InfoGenie Solves</h3>
+<p class="body-p">The average marketing team today pays for 12–18 separate SaaS tools — Semrush for SEO, Brandwatch for monitoring, HubSpot for CRM, Meta Business Suite for ads, Canva for creative, Mailchimp for email, and so on. Each tool has its own login, data silo, billing, and learning curve. Teams spend more time context-switching between tools than actually making marketing decisions.</p>
+<p class="body-p">InfoGenie is designed as the <strong>operating system for modern marketing teams</strong>. It consolidates over 115 specialised marketing intelligence and automation tools into a single, AI-native platform — covering the complete marketing loop: <em>research → plan → create → publish → optimise → report</em>.</p>
+
+<h3 class="sub-h">Design Philosophy</h3>
+<ul class="body-ul">
+  <li><strong>AI-first, not AI-added:</strong> Every feature is built around AI reasoning — GPT-4o, Claude, Gemini, Perplexity, and Cloudflare Llama are embedded in every workflow, not bolted on as an afterthought.</li>
+  <li><strong>Actionable over analytical:</strong> InfoGenie doesn't just surface data — it tells you what to do with it. Every report ends with a prioritised action list.</li>
+  <li><strong>Competitive intelligence as a moat:</strong> The platform is built around understanding your competitors as deeply as your own business — ad creative, pricing changes, hiring patterns, backlink profiles, keyword rankings.</li>
+  <li><strong>Full-funnel coverage:</strong> From top-of-funnel SEO and brand monitoring all the way through to lead scoring, campaign launch, conversion optimisation, and churn prediction.</li>
+  <li><strong>Automation with human guardrails:</strong> The Safe Agent and Approval Workflows system ensures AI can propose and simulate changes, but humans approve before execution — preventing costly mistakes.</li>
+  <li><strong>Multi-tenant &amp; agency-ready:</strong> Built with multi-tenancy from the ground up — agencies can manage multiple client workspaces from one login.</li>
+</ul>
+
+<h3 class="sub-h">Where InfoGenie Sits in the Market</h3>
+<p class="body-p">InfoGenie is positioned as a <strong>vertical AI platform for marketing intelligence</strong> — competing with (and replacing) a combination of tools in three categories:</p>
+<table class="comp-table">
+  <thead><tr><th>Category</th><th>Existing Tools Replaced</th><th>InfoGenie Advantage</th></tr></thead>
+  <tbody>
+    <tr><td>SEO &amp; Competitive Intelligence</td><td>Semrush, Ahrefs, Moz, SpyFu, Majestic</td><td>All-in-one + AI interpretation + action recommendations</td></tr>
+    <tr><td>Brand &amp; Social Monitoring</td><td>Brandwatch, Mention, Sprout Social</td><td>Cross-channel inbox + AI digest + crisis detection</td></tr>
+    <tr><td>Ad Intelligence &amp; Optimisation</td><td>AdBeat, SimilarWeb, WordStream, Triple Whale</td><td>Real-time AI optimizer + cross-platform unified view</td></tr>
+    <tr><td>Content &amp; Creative</td><td>Canva AI, Copy.ai, Jasper, Lumen5</td><td>Full content pipeline: calendar → scripts → voiceover → publish</td></tr>
+    <tr><td>Lead Gen &amp; CRM Bridge</td><td>Apollo.io, Hunter.io, Instantly</td><td>Multi-source aggregation + AI scoring + HubSpot sync</td></tr>
+    <tr><td>Marketing Analytics</td><td>Databox, Klipfolio, Power BI (marketing)</td><td>AI decision engine + benchmark network + revenue forecasting</td></tr>
+    <tr><td>Compliance &amp; Governance</td><td>Compliance tools are rarely integrated</td><td>Built-in brand safety, approval workflows, audit trail</td></tr>
+  </tbody>
+</table>
+</div>
+</div>
+
+<!-- ═══════════════════════ 2. MARKET OPPORTUNITY ═══════════════════════ -->
+<div class="sec" id="market">
+<div class="wrap">
+<div class="sec-header">
+  <div class="sec-label">2 · Market Opportunity</div>
+  <div class="sec-title">Market Size &amp; Value</div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card"><div class="stat-value">$807B</div><div class="stat-label">Global MarTech TAM (2026)</div><div class="stat-note">Total Addressable Market — all marketing technology spending</div></div>
+  <div class="stat-card"><div class="stat-value">$25B</div><div class="stat-label">InfoGenie SAM</div><div class="stat-note">AI marketing intelligence + competitive intelligence + automation (SMB–mid-market)</div></div>
+  <div class="stat-card"><div class="stat-value">$180M</div><div class="stat-label">3-Year SOM Target</div><div class="stat-note">Serviceable Obtainable Market at 3% of SAM within 3 years at scale</div></div>
+  <div class="stat-card"><div class="stat-value">42%</div><div class="stat-label">AI MarTech CAGR</div><div class="stat-note">AI-powered marketing tools growing 42% annually through 2028</div></div>
+  <div class="stat-card"><div class="stat-value">$1,200</div><div class="stat-label">Avg Monthly Stack Cost</div><div class="stat-note">What a mid-market marketing team pays across 12-18 tools today</div></div>
+  <div class="stat-card"><div class="stat-value">$497</div><div class="stat-label">InfoGenie Scale Plan</div><div class="stat-note">Replaces $1,200/mo toolstack at less than half the price</div></div>
+</div>
+
+<h3 class="sub-h">Comparable Company Valuations (Validation)</h3>
+<table class="comp-table">
+  <thead><tr><th>Company</th><th>Focus</th><th>Valuation / ARR</th><th>What InfoGenie Covers of This</th></tr></thead>
+  <tbody>
+    <tr><td>Semrush</td><td>SEO + Competitive Intelligence</td><td>~$3.0B (NASDAQ: SEMR)</td><td>Full SEO suite + competitive intelligence ✓</td></tr>
+    <tr><td>Brandwatch</td><td>Social Listening + Brand Monitoring</td><td>~$450M (acquired by Cision)</td><td>Crisis radar, sentiment, inbox ✓</td></tr>
+    <tr><td>Sprout Social</td><td>Social Media Management</td><td>~$2.5B (NASDAQ: SPT)</td><td>Social publisher, analytics, scheduling ✓</td></tr>
+    <tr><td>Apollo.io</td><td>B2B Lead Intelligence</td><td>~$1.6B (Series D)</td><td>Lead finder, aggregator, CRM sync ✓</td></tr>
+    <tr><td>Triple Whale</td><td>eCommerce Ad Analytics</td><td>~$200M (Series B)</td><td>Cross-channel ad insights, ROAS tracking ✓</td></tr>
+    <tr><td>Jasper AI</td><td>AI Content Generation</td><td>~$1.5B (Series A)</td><td>Content calendar, scripts, cold email, landing pages ✓</td></tr>
+    <tr><td><strong>InfoGenie</strong></td><td><strong>All of the above + more</strong></td><td><strong>$50M–$200M at scale (est.)</strong></td><td><strong>Single unified platform</strong></td></tr>
+  </tbody>
+</table>
+
+<h3 class="sub-h">Estimated Platform Value at Operational Scale</h3>
+<p class="body-p">Based on SaaS revenue multiples for vertical AI platforms (typically 8–15× ARR), InfoGenie's estimated value at different ARR milestones:</p>
+<table class="comp-table">
+  <thead><tr><th>ARR Milestone</th><th>Customers Required</th><th>Revenue Multiple</th><th>Est. Platform Valuation</th></tr></thead>
+  <tbody>
+    <tr><td>$1M ARR</td><td>~170 Scale plan customers</td><td>10×</td><td>$10M</td></tr>
+    <tr><td>$5M ARR</td><td>~840 customers (mixed plans)</td><td>12×</td><td>$60M</td></tr>
+    <tr><td>$15M ARR</td><td>~2,500 customers</td><td>15×</td><td>$225M</td></tr>
+    <tr><td>$50M ARR</td><td>~8,000 customers</td><td>15×</td><td>$750M</td></tr>
+  </tbody>
+</table>
+</div>
+</div>
+
+<!-- ═══════════════════════ 3. ARCHITECTURE ═══════════════════════ -->
+<div class="sec sec-alt page-break" id="architecture">
+<div class="wrap">
+<div class="sec-header">
+  <div class="sec-label">3 · Architecture &amp; Feature Flow</div>
+  <div class="sec-title">How InfoGenie is Built</div>
+</div>
+
+<h3 class="sub-h">Technology Stack</h3>
+<table class="comp-table">
+  <thead><tr><th>Layer</th><th>Technology</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td>Backend API</td><td>Node.js + Express.js</td><td>REST API server, 115+ route modules, session auth</td></tr>
+    <tr><td>Frontend (Legacy)</td><td>Vanilla JS SPA + HTML5 + CSS3</td><td>Original dashboard shell — ~60,000 lines of frontend code</td></tr>
+    <tr><td>Frontend (Modern)</td><td>React + Next.js 15 App Router + TypeScript</td><td>Incremental migration — new views are React, served via Next.js front door</td></tr>
+    <tr><td>Database</td><td>PostgreSQL (via DATABASE_URL)</td><td>114 tenant-scoped tables + kv_store for config</td></tr>
+    <tr><td>AI / LLMs</td><td>GPT-4o/mini · Claude 3.5 Sonnet/Haiku · Gemini 1.5 · Perplexity Sonar · Llama 3.1 (Cloudflare)</td><td>Reasoning, classification, generation, research</td></tr>
+    <tr><td>External APIs</td><td>DataForSEO · Firecrawl · HubSpot · Resend · Amplitude · Google PageSpeed · SpyFu · Majestic · Bing Webmaster · Zernio · Apollo</td><td>Real-time data enrichment</td></tr>
+    <tr><td>Ad Platforms</td><td>Google Ads API v17 · Meta Graph API v19 · TikTok Marketing API</td><td>Campaign performance + ad creative intelligence</td></tr>
+    <tr><td>Auth</td><td>bcrypt + rolling 30-day sessions + OAuth (Google/Facebook/Microsoft)</td><td>Per-user accounts, social login, multi-tenant isolation</td></tr>
+    <tr><td>Infrastructure</td><td>Replit VMs (always-on) · PostgreSQL managed · Next.js + Express dual-server</td><td>Prod: Next.js front door → Express backend on internal port 8000</td></tr>
+  </tbody>
+</table>
+
+<h3 class="sub-h">The Five-Stage Marketing Intelligence Loop</h3>
+<p class="body-p">InfoGenie is designed around a continuous intelligence loop — every stage feeds the next, creating compounding value the longer a team uses the platform:</p>
+
+<div class="flow" style="margin:24px 0">
+  <div class="flow-step">
+    <div class="flow-num">1</div>
+    <div class="flow-label">DISCOVER</div>
+    <div class="flow-tools">Search &amp; AI Visibility · Competitor Profiles · SpyFu · Majestic · Ad Library Spy · Tech Stack · Pricing Watcher · Job Board Spy · Change Monitor</div>
+  </div>
+  <div class="flow-connector">→</div>
+  <div class="flow-step">
+    <div class="flow-num">2</div>
+    <div class="flow-label">ANALYSE</div>
+    <div class="flow-tools">Battle Cards · War Room · Benchmark Intelligence · Keyword Explorer · SERP Tracker · SEO Auditor · Web Vitals · Voice of Customer · Review Aggregator</div>
+  </div>
+  <div class="flow-connector">→</div>
+  <div class="flow-step">
+    <div class="flow-num">3</div>
+    <div class="flow-label">CREATE</div>
+    <div class="flow-tools">Content Calendar · Landing Page Builder · Cold Email Writer · Video Scripts · Voiceover · Chatbot Builder · Press Releases · A/B Designer · Social Publisher</div>
+  </div>
+  <div class="flow-connector">→</div>
+  <div class="flow-step">
+    <div class="flow-num">4</div>
+    <div class="flow-label">DEPLOY</div>
+    <div class="flow-tools">Campaign Launch · AI Optimizer · Dynamic Audiences · Journey Builder · Drip Engine · Omnichannel Composer · HubSpot Sync · Social Publisher</div>
+  </div>
+  <div class="flow-connector">→</div>
+  <div class="flow-step">
+    <div class="flow-num">5</div>
+    <div class="flow-label">OPTIMISE</div>
+    <div class="flow-tools">AI Optimizer (MAB) · Decision Engine · Revenue Forecast · Media Mix Modeler · Safe Agent · Experiment Suite · Auto Operator · Churn Scorer</div>
+  </div>
+</div>
+
+<h3 class="sub-h">Multi-tenant Architecture</h3>
+<p class="body-p">Every piece of data in InfoGenie is isolated by tenant. This means agencies can manage dozens of client workspaces, each with their own competitor data, campaigns, leads, and settings — all from one login. The permission matrix system allows granular feature access control per user role within a tenant.</p>
+
+<h3 class="sub-h">AI Safety Architecture</h3>
+<p class="body-p">InfoGenie's AI pipeline uses a strict validation pattern: every LLM response is validated as strict JSON → checked against a <code>/^_DUMMY/i</code> key gate to detect non-responses → falls back to a template response if validation fails → then persists to PostgreSQL. This means AI features never silently fail — users always get a meaningful response.</p>
+</div>
+</div>
+
+<!-- ═══════════════════════ 4. FEATURE CATALOGUE ═══════════════════════ -->
+<div class="sec page-break" id="features">
+<div class="wrap">
+<div class="sec-header">
+  <div class="sec-label">4 · Feature Catalogue</div>
+  <div class="sec-title">All 115+ Features</div>
+  <div class="sec-desc">Every InfoGenie tool — what it does, why it matters, and who benefits most.</div>
+</div>
+
+<!-- ─── COMPETE ─── -->
+<div class="group-header">🏆 COMPETE — Know Your Competitors Inside Out</div>
+<div class="feat-grid">
+
+  <div class="feat-card">
+    <div class="feat-icon">👤</div>
+    <div class="feat-name">Competitor Profiles</div>
+    <div><span class="feat-tier">T1 Core</span></div>
+    <div class="feat-desc">Build rich profiles of any competitor — their messaging, positioning, strengths, weaknesses, and strategic moves, sourced from live web data via Firecrawl + AI synthesis.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Most teams make strategic decisions with incomplete competitive data. Competitor Profiles give you a structured, always-current intelligence dossier without hours of manual research.</div>
+    <div class="feat-links">→ Feeds Battle Cards, War Room, Battle Plan</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🛡️</div>
+    <div class="feat-name">Battle Cards</div>
+    <div><span class="feat-tier">T2</span></div>
+    <div class="feat-desc">AI-generated competitive battlecards: 4 strengths, 4 weaknesses, 3 strategic moves, 4 counter-plays per competitor. Ready to use in sales calls or strategy meetings.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Sales teams lose deals because they can't articulate why the customer should choose you over competitors. Battle Cards give every salesperson the same sharp talking points.</div>
+    <div class="feat-links">→ Uses Competitor Profile data; links to Press Release Generator for counter-messaging</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">⚔️</div>
+    <div class="feat-name">AI Competitor War Room</div>
+    <div><span class="feat-tier">T81</span></div>
+    <div class="feat-desc">Cross-signal AI prediction engine. Gathers live signals (hiring, ad spend, pricing changes, new pages, PR, geographic expansion) then GPT-4o predicts the competitor's next strategic move with a confidence score and recommended counter-move.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Reactive competitive strategy always puts you behind. The War Room lets you anticipate competitor moves weeks in advance and prepare your response before they strike.</div>
+    <div class="feat-links">→ Pulls from Job Board Spy, Pricing Watcher, Change Monitor, Ad Library Spy</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📈</div>
+    <div class="feat-name">Share of Voice Tracker</div>
+    <div><span class="feat-tier">T3</span></div>
+    <div class="feat-desc">Tracks your brand's mention share vs. competitors across all monitored channels, auto-populated by the Crisis Radar cron every 6 hours. Chart.js stacked-area visualisation.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Brand awareness doesn't grow in a vacuum. Share of Voice tells you whether your marketing spend is actually expanding your presence relative to the competition.</div>
+    <div class="feat-links">→ Auto-feeds from Crisis Radar 6h cron; included in Weekly Report</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🕵️</div>
+    <div class="feat-name">Ad Library Spy</div>
+    <div><span class="feat-tier">T17</span></div>
+    <div class="feat-desc">Pull active competitor ads from Meta's Ad Library and TikTok — see exactly what creative they're running, how long campaigns have been live, and what messaging angles they're testing.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">The fastest way to improve your ad creative is to study what's already working for competitors. Ad Library Spy gives you a legal, real-time window into their creative strategy.</div>
+    <div class="feat-links">→ Pairs with TikTok Downloader (T20) to build a local swipe file; feeds Ad Swipe File</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">💰</div>
+    <div class="feat-name">Pricing Watcher</div>
+    <div><span class="feat-tier">T8</span></div>
+    <div class="feat-desc">Monitors competitor pricing pages via Firecrawl + GPT-4o extraction. Detects price changes, new tiers, trial offers, and discounts. Alerts you the moment a competitor moves their pricing.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Price is often the deciding factor in a buying decision. Knowing when a competitor drops their prices (or adds a cheaper tier) lets you respond strategically before you lose deals.</div>
+    <div class="feat-links">→ Feeds War Room signal analysis; triggers Smart Alert Routing</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">💼</div>
+    <div class="feat-name">Job Board Spy</div>
+    <div><span class="feat-tier">T18</span></div>
+    <div class="feat-desc">Scans LinkedIn, Indeed, and competitor career pages for open roles. Categorises by department and generates 2–5 strategic signals about the competitor's direction from their hiring patterns.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Hiring patterns are one of the earliest signals of a competitor's strategic intent — hiring ML engineers means a new AI feature is coming; hiring enterprise sales means they're moving upmarket.</div>
+    <div class="feat-links">→ Feeds War Room; links to Battle Plan</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔔</div>
+    <div class="feat-name">Change Monitor</div>
+    <div><span class="feat-tier">T73</span></div>
+    <div class="feat-desc">Watch any competitor URL for content changes. On manual or scheduled check, computes a word-level delta. If change ≥5%, AI classifies the change type (pricing/features/messaging/design/content), severity, and produces a strategic insight.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Competitors rarely announce their changes — they just make them. Change Monitor ensures you're the first to know when they update their homepage messaging, pricing, or product pages.</div>
+    <div class="feat-links">→ Triggers Smart Alert Routing (email + Slack); feeds War Room</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🧱</div>
+    <div class="feat-name">Tech Stack Detector</div>
+    <div><span class="feat-tier">T10</span></div>
+    <div class="feat-desc">Detects what technology a competitor or prospect is running (BuiltWith API). Multi-domain matrix up to 5 domains side-by-side. Shows live/dead technology pills by category.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Knowing a competitor's tech stack reveals their infrastructure spend, integrations, and potential vulnerabilities. It also helps agencies identify prospects running tools they can replace.</div>
+    <div class="feat-links">→ Useful for Agency Sales with Dataset Marketplace</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔭</div>
+    <div class="feat-name">Business Acquisition Scanner</div>
+    <div><span class="feat-tier">T86</span></div>
+    <div class="feat-desc">M&A opportunity intelligence. Scans for struggling competitors, businesses for sale, fast-growing sectors, or franchise opportunities. Perplexity sonar gathers live market data; GPT-4o scores each opportunity on strategic value, price attractiveness, distress signals, and growth trajectory.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Inorganic growth through acquisition is often faster and cheaper than organic growth. The Scanner makes M&A intelligence accessible to SMBs and mid-market teams that can't afford investment bankers.</div>
+    <div class="feat-links">→ Standalone; outputs feed Revenue Intelligence pipeline</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📊</div>
+    <div class="feat-name">Benchmark Intelligence</div>
+    <div><span class="feat-tier">T89</span></div>
+    <div class="feat-desc">Cross-customer anonymised benchmark data. Tenants submit their own metrics (CPA, CAC, ROAS, CTR, CVR, LTV). Aggregated into P25/median/P75 per vertical × region × company size. AI identifies where you're above or below median and what to do about it.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Most teams have no idea if their ROAS of 2.4 is good or bad for their industry. Benchmarks answer that question with real peer data — not industry blog estimates.</div>
+    <div class="feat-links">→ Data moat feature — gets more valuable as more tenants contribute</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📦</div>
+    <div class="feat-name">Proprietary Data Products</div>
+    <div><span class="feat-tier">T101</span></div>
+    <div class="feat-desc">Three-product proprietary data suite: Creative Performance Index (CTR/CVR benchmarks by format + hook + CTA type), Offer Benchmark Network (pricing model × CVR comparisons), and Emerging Market Signals (AI-generated typed intelligence signals).</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Network-effect data products create compounding defensibility — the more customers use InfoGenie, the better these benchmarks become, making the platform harder to replace.</div>
+    <div class="feat-links">→ Feeds Decision Engine; powers Benchmark Intelligence</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🕵️</div>
+    <div class="feat-name">SpyFu — Competitor PPC &amp; SEO Spy</div>
+    <div><span class="feat-tier">T114</span></div>
+    <div class="feat-desc">Historical PPC budgets, organic keyword rankings, and competitor keyword maps for any domain. Shows organic vs. paid keyword counts, monthly SEO/PPC clicks, SEO value, PPC budget, top keywords (with rank, CPC, clicks), and competitor lists.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">SpyFu reveals what Google Analytics won't — your competitors' keyword investments and PPC spend history going back years, giving you a roadmap for where to compete.</div>
+    <div class="feat-links">→ Feeds Battle Cards, Keyword Explorer, SERP Tracker</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">⭐</div>
+    <div class="feat-name">Review Aggregator</div>
+    <div><span class="feat-tier">T18</span></div>
+    <div class="feat-desc">Pulls competitor reviews from Trustpilot, G2, Google, Capterra, TripAdvisor via Perplexity sonar. Returns avg ratings, sentiment-tagged reviews, and total counts. Compare mode shows 2–4 brands side-by-side.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Customer reviews contain the raw language your prospects use — their exact pain points, frustrations, and desires. Mining competitor reviews reveals gaps you can exploit in your messaging.</div>
+    <div class="feat-links">→ Feeds Unified Inbox; insights feed Cold Email Writer and Content Calendar</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">😊</div>
+    <div class="feat-name">Glassdoor Sentiment</div>
+    <div><span class="feat-tier">T19</span></div>
+    <div class="feat-desc">Pulls overall rating, CEO approval, recommend %, and employee reviews with pros/cons/sentiment for any company. Extracts top complaints, praises, and 2–5 culture signal insights.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">High employee churn at a competitor signals product instability. Poor engineering reviews suggest technical debt. Glassdoor data predicts future product quality before it shows up in their product.</div>
+    <div class="feat-links">→ Feeds Unified Inbox; contributes to War Room signal analysis</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🛡️</div>
+    <div class="feat-name">Resilient Competitor Tracker</div>
+    <div><span class="feat-tier">T80</span></div>
+    <div class="feat-desc">Track specific data points (e.g., "pricing for Enterprise plan") on any competitor page. Uses a cascade: Firecrawl primary → Perplexity fallback. Stores history and shows value changes over time.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Unlike the Change Monitor which detects any change, the Resilient Tracker watches specific data points you care about — even when competitors use JavaScript-rendered content that blocks crawlers.</div>
+    <div class="feat-links">→ Works alongside Change Monitor for structured vs. unstructured tracking</div>
+  </div>
+
+</div><!-- /feat-grid compete -->
+
+<!-- ─── SEO ─── -->
+<div class="group-header">🔍 SEO — Own the Search Results</div>
+<div class="feat-grid">
+
+  <div class="feat-card">
+    <div class="feat-icon">🧠</div>
+    <div class="feat-name">Search &amp; AI Visibility</div>
+    <div><span class="feat-tier">T1 Core</span></div>
+    <div class="feat-desc">Multi-LLM brand mention parser — asks GPT-4o-mini, Claude, Perplexity, and Gemini whether they mention your brand when answering industry questions. DataForSEO Labs keyword pulse. GPT-4o vision logo recognition. Tracks your AI visibility score over time.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">In 2026, 30-40% of search happens through AI chatbots. If your brand isn't being cited by AI engines, you're invisible to an entire generation of buyers. This is the only tool in the market that measures AI search visibility specifically.</div>
+    <div class="feat-links">→ Feeds AI Answer SOV tracker; Schema Generator improves AI citations</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔑</div>
+    <div class="feat-name">Keyword Explorer</div>
+    <div><span class="feat-tier">T13</span></div>
+    <div class="feat-desc">DataForSEO Labs keyword_overview + keyword_ideas in parallel. 15 countries, keyword difficulty, CPC, search intent, 5–50 related ideas per query. Full historical volume trends.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Content without keyword research is guesswork. Keyword Explorer tells you exactly where search demand exists and how hard it is to rank — before you spend resources creating content.</div>
+    <div class="feat-links">→ Feeds Content Calendar, SEO Task Manager, On-Page Auditor</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📍</div>
+    <div class="feat-name">SERP Position Tracker</div>
+    <div><span class="feat-tier">T12</span></div>
+    <div class="feat-desc">Tracks keyword ranking positions via DataForSEO. 15-country location codes, exact-domain matching. Scheduling for regular re-checks. History charts show position trends.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">SEO is a long game — you need to see whether your efforts are moving the needle. The SERP Tracker gives you a daily dashboard of where you rank and how that's changing week-over-week.</div>
+    <div class="feat-links">→ Feeds Decision Engine; SEO drops trigger Smart Alert Routing</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔎</div>
+    <div class="feat-name">SEO On-Page Auditor</div>
+    <div><span class="feat-tier">T22</span></div>
+    <div class="feat-desc">Audits any URL across 17 on-page checks + 2 root probes (robots.txt, sitemap). Checks: title length, meta description, H1, viewport, canonical, OG tags, JSON-LD, alt text %, word count, internal links, mixed content. Score 0–100, grade A–F.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Technical SEO errors are often invisible — a missing canonical tag or absent meta description can cost you thousands of clicks per month. The auditor surfaces these issues in 10 seconds.</div>
+    <div class="feat-links">→ Feeds SEO Task Manager (T24); powers Embeddable Audit Widget (T23)</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📋</div>
+    <div class="feat-name">SEO Task Manager</div>
+    <div><span class="feat-tier">T24</span></div>
+    <div class="feat-desc">Converts audit findings into a living to-do list. Import from any audit run, auto-prioritise (P1/P2/P3), assign to team members, set due dates, re-audit to auto-close resolved tasks.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">An audit that produces a PDF no-one acts on is worthless. The Task Manager turns the audit from a snapshot into a managed workflow — ensuring SEO fixes actually get done.</div>
+    <div class="feat-links">→ Directly powered by On-Page Auditor; re-audit links back to T22</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">⚡</div>
+    <div class="feat-name">Web Vitals Auditor</div>
+    <div><span class="feat-tier">T11</span></div>
+    <div class="feat-desc">Google PageSpeed Insights v5 — mobile + desktop parallel. Lab scores + CrUX field data + top 6 performance opportunities. Core Web Vitals: LCP, FID, CLS.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Core Web Vitals are now a confirmed Google ranking factor. A slow website is both a user experience problem and an SEO problem — the Web Vitals Auditor diagnoses both simultaneously.</div>
+    <div class="feat-links">→ Twin with On-Page Auditor (T22); both feed SEO Task Manager</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📝</div>
+    <div class="feat-name">Schema.org / JSON-LD Generator</div>
+    <div><span class="feat-tier">T25</span></div>
+    <div class="feat-desc">8 schema types — Organization, Article, Product, FAQPage, LocalBusiness, BreadcrumbList, Event, Recipe. Dynamic form driven by schema manifest. Generates valid JSON-LD ready to paste. Saves named blocks for reuse.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Structured data is what AI engines (ChatGPT, Perplexity, Gemini) parse to decide which brands to cite. Proper schema is arguably the most important AI visibility optimisation a business can do in 2026.</div>
+    <div class="feat-links">→ Directly improves Search &amp; AI Visibility (T1) citation rates</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔗</div>
+    <div class="feat-name">Backlink Intel</div>
+    <div><span class="feat-tier">T6</span></div>
+    <div class="feat-desc">DataForSEO backlinks API — domain backlink summary and referring domain breakdown. See which sites link to you vs. competitors.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Backlinks remain the #1 ranking signal for Google. Knowing where competitors get their links reveals your link-building roadmap.</div>
+    <div class="feat-links">→ Pairs with Majestic (T115) for deeper authority analysis; feeds Link Prospector</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔗</div>
+    <div class="feat-name">Majestic — Trust Flow &amp; Authority</div>
+    <div><span class="feat-tier">T115</span></div>
+    <div class="feat-desc">Industry-standard Trust Flow &amp; Citation Flow scores, Topical Trust Flow (what topics the site is authoritative on), individual backlink records with nofollow/redirect flags, referring domains with TF/CF scores, and anchor text distribution. Free OpenApps tier.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Not all backlinks are equal. Trust Flow distinguishes editorial links from spammy ones. A high TF/CF ratio (above 0.5) signals a clean, authoritative link profile — the kind Google rewards.</div>
+    <div class="feat-links">→ Pairs with Backlink Intel (T6) and Link Prospector</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🌍</div>
+    <div class="feat-name">Bing Webmaster Tools</div>
+    <div><span class="feat-tier">T113</span></div>
+    <div class="feat-desc">Bing keyword performance, top pages, crawl stats, and index coverage — a free second SEO data source alongside Google. Snapshots stored in DB for trend analysis.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Bing and Edge collectively drive 12% of desktop search — significant revenue that most marketing teams completely ignore. Bing also powers Cortana and some ChatGPT browse functionality.</div>
+    <div class="feat-links">→ Complements SERP Tracker and Keyword Explorer for multi-engine coverage</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🛒</div>
+    <div class="feat-name">Embeddable SEO Audit Widget</div>
+    <div><span class="feat-tier">T23</span></div>
+    <div class="feat-desc">A paste-once JavaScript widget for agency websites. Visitors enter their URL and email to get a free SEO audit teaser — the lead is captured, the full report is emailed. Fully white-labelled with custom accent colour.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Agencies can use InfoGenie as a lead generation tool itself — embedding the widget on their site turns their SEO capability into a lead magnet that captures client emails 24/7.</div>
+    <div class="feat-links">→ Built on On-Page Auditor (T22) engine; leads feed CRM/HubSpot</div>
+  </div>
+
+</div><!-- /feat-grid seo -->
+
+<!-- ─── MONITOR ─── -->
+<div class="group-header">🚨 MONITOR — Know What's Being Said About You</div>
+<div class="feat-grid">
+
+  <div class="feat-card">
+    <div class="feat-icon">🚨</div>
+    <div class="feat-name">Crisis Radar</div>
+    <div><span class="feat-tier">T2</span></div>
+    <div class="feat-desc">6-hour automated monitoring cron. Tracks mention volumes for your brand + competitors. Baseline = 7-snapshot moving average. Triggers an incident when volume spikes beyond normal range. Slack alerts via webhook.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">A PR crisis can destroy years of brand equity in 24 hours. Most brands discover crises through social media — Crisis Radar detects the spike 2–4 hours earlier, giving you time to prepare a response.</div>
+    <div class="feat-links">→ Auto-populates Share of Voice tracker; incidents feed Press Release Generator; triggers Alert Routing</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔥</div>
+    <div class="feat-name">Trending Topics</div>
+    <div><span class="feat-tier">T2</span></div>
+    <div class="feat-desc">Perplexity sonar detects 6–10 trending topics in your industry over the past 7 days. Returns topic, momentum score, and why it's trending.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Jumping on a trend before your competitors is one of the cheapest forms of organic reach. Trending Topics surfaces these opportunities daily so your content team can act on them immediately.</div>
+    <div class="feat-links">→ Feeds Content Calendar; feeds Daily Digest</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📰</div>
+    <div class="feat-name">Reddit Pulse</div>
+    <div><span class="feat-tier">T17</span></div>
+    <div class="feat-desc">Scans up to 10 subreddits × 5 keywords in the past 7 days. Batch GPT-4o-mini sentiment classification. Returns posts with scores, comments, sentiment, and community context.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Reddit is where authentic unfiltered customer opinions live. A single negative post in r/entrepreneur or r/sysadmin can reach millions of potential customers — Reddit Pulse catches these before they escalate.</div>
+    <div class="feat-links">→ Feeds Unified Inbox; negative posts feed Crisis Radar watchlist</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🐦</div>
+    <div class="feat-name">Twitter/X Pulse</div>
+    <div><span class="feat-tier">T18</span></div>
+    <div class="feat-desc">Perplexity sonar searches X for brand + keywords over the past 7 days. Returns tweets with author, text, likes, retweets, replies, sentiment. Flags viral content (>1k likes or >500 retweets).</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Twitter/X remains the fastest-moving real-time news channel. Viral brand mentions — positive or negative — can reshape public perception within hours.</div>
+    <div class="feat-links">→ Feeds Unified Inbox; viral posts trigger Alert Routing</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🎙️</div>
+    <div class="feat-name">Podcast Monitor</div>
+    <div><span class="feat-tier">T7</span></div>
+    <div class="feat-desc">Tracks when your brand, competitors, or industry topics are mentioned on podcasts. Perplexity sonar returns episodes with sentiment, platform, and a summary of what was said.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Podcast audiences are highly engaged and trusting of hosts. A single endorsement or criticism on a major podcast can drive thousands of signups — or cancellations.</div>
+    <div class="feat-links">→ Feeds Unified Inbox; opportunities feed Influencer CRM for podcast outreach</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📺</div>
+    <div class="feat-name">YouTube Monitor</div>
+    <div><span class="feat-tier">T16</span></div>
+    <div class="feat-desc">Tracks YouTube channels for your brand or competitors. Perplexity sonar pulls 3–15 recent videos per channel with view counts, likes, comments, sentiment, and AI summaries. No Google API key required.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">YouTube is the world's second largest search engine. Competitor review videos can directly influence purchase decisions — monitoring them gives you advance warning of negative content.</div>
+    <div class="feat-links">→ Feeds Weekly Report; competitor videos feed Influencer Discovery</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📩</div>
+    <div class="feat-name">Newsletter Tracker</div>
+    <div><span class="feat-tier">T17</span></div>
+    <div class="feat-desc">Tracks competitor newsletters (Substack, Beehiiv, Mailchimp) — extracts subject lines, send dates, and previews of their last 10 issues via Firecrawl + AI.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Newsletters reveal a competitor's editorial strategy, content themes, and subscriber engagement angles — intelligence that's completely invisible through any other monitoring tool.</div>
+    <div class="feat-links">→ Feeds Unified Inbox; subject lines inspire Headline Tester variations</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📬</div>
+    <div class="feat-name">Unified Conversation Inbox</div>
+    <div><span class="feat-tier">T26</span></div>
+    <div class="feat-desc">Aggregates all 7 monitoring tools (Reddit, Twitter, Reviews, Quora, Glassdoor, Newsletters, Chatbot conversations) into a single actionable stream. Filter by source, status, sentiment. Assign, reply, resolve, or snooze items.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Marketing teams waste hours daily switching between monitoring dashboards. The Unified Inbox creates a single triage queue — one place to manage every conversation your brand is part of.</div>
+    <div class="feat-links">→ The central hub for all 7 monitoring tools; outputs feed Reply Assistant</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📊</div>
+    <div class="feat-name">Voice of Customer</div>
+    <div><span class="feat-tier">T8</span></div>
+    <div class="feat-desc">AI mines customer feedback to extract 4–8 themes classified as praise/complaint/question/feature_request/neutral. Returns verbatim examples per theme and priority signal.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Product-market fit is discovered through customer language, not founder opinions. VoC mining turns thousands of unstructured comments into structured themes your product and marketing teams can act on.</div>
+    <div class="feat-links">→ Feeds Content Calendar; themes improve Cold Email Writer personalisation</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🤖</div>
+    <div class="feat-name">AI Answer SOV</div>
+    <div><span class="feat-tier">T99</span></div>
+    <div class="feat-desc">Tracks whether AI engines (GPT, Claude, Perplexity) mention your brand when answering buyer questions. Sweeps active questions across providers, extracts brand citation frequency, brand sentiment, and competitor domain citations.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">AI search share-of-voice is the new keyword ranking. As AI answers replace traditional search results for informational queries, being cited by these engines is the new form of organic visibility.</div>
+    <div class="feat-links">→ Informed by Schema Generator; feeds Search &amp; AI Visibility</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📅</div>
+    <div class="feat-name">AI Daily Digest</div>
+    <div><span class="feat-tier">T4</span></div>
+    <div class="feat-desc">24h automated digest cron for every monitored brand. GPT-4o-mini produces a structured briefing with sections: warnings, wins, actions, highlights. Sends to Slack.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Executives don't have time to check 8 dashboards. The Daily Digest delivers a one-paragraph briefing to Slack every morning — what changed, what needs attention, what's working.</div>
+    <div class="feat-links">→ Aggregates data from Crisis Radar, SoV, Trending Topics, Optimizer</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📡</div>
+    <div class="feat-name">Weekly Report</div>
+    <div><span class="feat-tier">T16</span></div>
+    <div class="feat-desc">Automated 7-day PDF report emailed every week to configured subscribers. Sections aggregate Crisis Radar incidents, SoV 7-day averages, mention volumes, press releases, VoC themes, trends, optimizer decisions, and YouTube activity.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Board members and clients need regular reporting without manual effort. The Weekly Report generates a professional PDF automatically — zero time spent building slides.</div>
+    <div class="feat-links">→ Aggregates data from 10+ features into a single PDF</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔔</div>
+    <div class="feat-name">Smart Alert Routing</div>
+    <div><span class="feat-tier">T5</span></div>
+    <div class="feat-desc">Rule-based alert engine. Trigger kinds: crisis_incident, SoV drop, digest ready, mention volume spike, custom. Channels: Slack + email (Resend). Define which events trigger which notifications to which people.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Monitoring is only valuable if the right person gets the right alert at the right time. Alert Routing ensures critical events surface to decision-makers immediately, not in the next morning's dashboard review.</div>
+    <div class="feat-links">→ Receives signals from Crisis Radar, Change Monitor, SERP Tracker, Pricing Watcher</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📊</div>
+    <div class="feat-name">Google Trends Integration</div>
+    <div><span class="feat-tier">T112</span></div>
+    <div class="feat-desc">Real-time and historical Google Trends data — interest over time, geographic breakdown, related topics, and rising queries. 15-minute cache for performance.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Google Trends is the world's largest real-time demand signal. Understanding when interest in your category peaks lets you time content and ad spend for maximum impact.</div>
+    <div class="feat-links">→ Feeds Trending Topics; informs Content Calendar timing</div>
+  </div>
+
+</div><!-- /feat-grid monitor -->
+
+<!-- ─── REACH / ENGAGE ─── -->
+<div class="group-header">📣 REACH — Generate &amp; Nurture Leads at Scale</div>
+<div class="feat-grid">
+
+  <div class="feat-card">
+    <div class="feat-icon">🎯</div>
+    <div class="feat-name">B2B Lead Finder</div>
+    <div><span class="feat-tier">T11</span></div>
+    <div class="feat-desc">Perplexity sonar finds qualified leads matching your ICP (industry, role, location, company size). Never invents emails — validates before returning. Max 2 contacts per company. One-click push to HubSpot.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Cold outbound starts with finding the right people. The Lead Finder eliminates the manual LinkedIn scraping and email guessing that wastes hours of SDR time every day.</div>
+    <div class="feat-links">→ Feeds Email Personalizer, HubSpot Sync, Cold Email Writer, Acquisition Engine</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🌐</div>
+    <div class="feat-name">Multi-Source Lead Aggregator</div>
+    <div><span class="feat-tier">T77</span></div>
+    <div class="feat-desc">Sweeps leads from Perplexity AI research and Apollo.io simultaneously. Deduplicates by email/LinkedIn URL/name+company. Scores leads (+15 for email, +10 for LinkedIn, etc.). Returns sorted leads with source attribution.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Single-source lead lists have blind spots. Aggregating across multiple sources and deduplicating them produces far richer lead lists than any single tool can provide.</div>
+    <div class="feat-links">→ Aggregates with Lead Finder (T11); feeds Identity Spine (CDP)</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🚀</div>
+    <div class="feat-name">AI Acquisition Engine</div>
+    <div><span class="feat-tier">T84</span></div>
+    <div class="feat-desc">Fully autonomous lead-to-meeting pipeline. Finds prospects via Perplexity sonar, scores them, generates a 3-step cold email sequence via GPT-4o, and tracks the pipeline from found → emailed → meeting_booked.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Most SMBs can't afford a full SDR team. The Acquisition Engine gives one person the prospecting capacity of a 3-person outbound team — fully automated from discovery to booked meeting.</div>
+    <div class="feat-links">→ Uses Lead Finder + Cold Email Writer + CRM in one automated flow</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">✉️</div>
+    <div class="feat-name">Cold Email Writer</div>
+    <div><span class="feat-tier">T10</span></div>
+    <div class="feat-desc">GPT-4o-mini generates 1–5 step cold email sequences. Tone allowlist (professional, casual, direct, empathetic). Strict JSON output. Persistent history. Template fallback when AI unavailable.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Cold email response rates vary from 0.5% to 10%+ based purely on copy quality. AI-written sequences informed by VoC data and competitor intelligence consistently outperform generic templates.</div>
+    <div class="feat-links">→ Feeds Acquisition Engine; personalised by Email Personalizer (T16)</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">✍️</div>
+    <div class="feat-name">Email Personalizer</div>
+    <div><span class="feat-tier">T16</span></div>
+    <div class="feat-desc">Firecrawl researches each lead's website + GPT-4o-mini rewrites the email specifically for them. Up to 25 leads per batch. Tokens: [NAME], [COMPANY], [ROLE], [WEBSITE]. One-click pull from Lead Finder results. CSV export.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Personalised emails get 6x higher reply rates than generic ones. Email Personalizer scales the hyper-personalised approach that normally only top SDRs can execute.</div>
+    <div class="feat-links">→ Works directly on top of Cold Email sequences from T10 and Lead Finder from T11</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">👥</div>
+    <div class="feat-name">Influencer CRM</div>
+    <div><span class="feat-tier">T1 Core</span></div>
+    <div class="feat-desc">Manage influencer relationships through a full pipeline: prospect → contacted → negotiating → active. AI-drafted outreach emails. Status tracking and history.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Influencer marketing generates 11× the ROI of traditional advertising on average — but most teams manage influencer relationships in spreadsheets. A proper CRM prevents dropped conversations and missed follow-ups.</div>
+    <div class="feat-links">→ Seeded by Influencer Discovery (T3); outreach drafted by AI email tools</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔍</div>
+    <div class="feat-name">Influencer Discovery</div>
+    <div><span class="feat-tier">T3</span></div>
+    <div class="feat-desc">Perplexity sonar finds relevant influencers (≥5k followers) by topic, platform, or audience type. One-click add to Influencer CRM. Follower count, engagement rate, platform, and niche returned.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Finding the right influencer is the hardest part of influencer marketing. Discovery removes that bottleneck — surfacing qualified influencers in minutes instead of days of manual research.</div>
+    <div class="feat-links">→ Directly feeds Influencer CRM (T1)</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🎯</div>
+    <div class="feat-name">Dynamic Audiences</div>
+    <div><span class="feat-tier">Cross-cutting</span></div>
+    <div class="feat-desc">Real-time, rule-based contact segments. 15-minute sweep cron keeps segments current. HubSpot Static List mirroring. Auto-enrol/unsubscribe from Drip sequences on join/leave. AI win-back for churn-risk segments.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Sending the same email to your entire list is the fastest way to destroy deliverability and revenue. Dynamic Audiences ensures every contact gets messaging matched to their current behaviour and lifecycle stage.</div>
+    <div class="feat-links">→ Built on Identity Spine; drives Drip Engine; mirrors to HubSpot; feeds Re-engagement Agent</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">💧</div>
+    <div class="feat-name">Drip Engine</div>
+    <div><span class="feat-tier">Core Platform</span></div>
+    <div class="feat-desc">Email sequence engine. Bind any Dynamic Audience to a drip sequence — contacts are auto-enrolled on joining the audience and auto-unsubscribed on leaving. Manages manual vs. system-initiated enrollments separately.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Automated nurture sequences generate 50% more sales-ready leads at 33% lower cost than manual outreach. The Drip Engine runs these sequences automatically based on real-time audience membership.</div>
+    <div class="feat-links">→ Powered by Dynamic Audiences; uses Cold Email sequences; triggers via Journey Builder</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🗺️</div>
+    <div class="feat-name">Journey Builder</div>
+    <div><span class="feat-tier">Core Platform</span></div>
+    <div class="feat-desc">Visual trigger/wait/condition/action node workflow builder. Runner ticks every 60 seconds. Signal triggers bridge real events (form fill, purchase, page visit) into journey enrollment. Supports multi-step omnichannel sequences.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Customer journeys rarely follow a linear path. The Journey Builder creates personalised, event-driven experiences that respond to how each customer actually behaves, not how you hoped they would.</div>
+    <div class="feat-links">→ Interacts with Dynamic Audiences, Drip Engine, and Omnichannel Composer</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📱</div>
+    <div class="feat-name">Social Publisher &amp; Analytics</div>
+    <div><span class="feat-tier">T15</span></div>
+    <div class="feat-desc">15-platform publisher (Twitter, Instagram, Facebook, LinkedIn, TikTok, YouTube, Pinterest, Reddit, Bluesky, Threads, Google Business, Telegram, Snapchat, WhatsApp, Discord). Bulk schedule from Content Calendar. Analytics: impressions, engagement rate, follower growth per account.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Publishing to 15 platforms individually takes 2–3 hours per day. Social Publisher compresses this to 10 minutes while also giving unified analytics across all channels — the clearest picture of what content is actually working.</div>
+    <div class="feat-links">→ Bulk-scheduled from Content Calendar (T6); analytics feed Decision Engine</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔄</div>
+    <div class="feat-name">HubSpot Sync</div>
+    <div><span class="feat-tier">T12</span></div>
+    <div class="feat-desc">Bidirectional sync with HubSpot. Push leads and influencers from InfoGenie to HubSpot contacts. Batch upsert by email. Pull recent contacts. Dynamic Audiences mirror to HubSpot Static Lists.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">HubSpot is the CRM of record for most SMBs. Without sync, lead data lives in two places and teams waste time manually transferring contacts. HubSpot Sync makes InfoGenie the source of truth that feeds the CRM automatically.</div>
+    <div class="feat-links">→ Receives from Lead Finder (T11), Influencer CRM (T1), Dynamic Audiences</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔁</div>
+    <div class="feat-name">Reply Assistant</div>
+    <div><span class="feat-tier">T4</span></div>
+    <div class="feat-desc">AI drafts responses to top-30 ranked brand mentions. Tone allowlist. Returns full reply + 240-character X/Twitter variant. Works across review and social sources.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Responding to every mention manually is impossible at scale. Reply Assistant ensures no customer comment goes unanswered while maintaining brand voice consistency across all channels.</div>
+    <div class="feat-links">→ Works off mentions surfaced by Unified Inbox (T26)</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🤖</div>
+    <div class="feat-name">Chatbot Builder</div>
+    <div><span class="feat-tier">T19</span></div>
+    <div class="feat-desc">GPT-4o-mini generates complete chatbot configuration: greeting, 8–15 FAQ Q&A pairs, fallback, lead-capture fields, suggested quick replies, and accent colour. Produces copy-pasteable embed snippet.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">A well-designed website chatbot can capture 20–30% more leads from existing traffic. The Chatbot Builder creates a fully configured bot in minutes — not weeks of custom development.</div>
+    <div class="feat-links">→ Conversations feed Unified Inbox; leads feed HubSpot Sync and Identity Spine</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🧑‍💼</div>
+    <div class="feat-name">Churn Scorer</div>
+    <div><span class="feat-tier">T18</span></div>
+    <div class="feat-desc">GPT-4o-mini scores each contact 0–100 churn risk. Returns risk_level, churn signals, and personalised retention recommendation. Bulk scoring up to 25 contacts simultaneously.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">It costs 5–7× more to acquire a new customer than retain an existing one. The Churn Scorer identifies at-risk customers before they cancel — giving you time to intervene with a targeted win-back.</div>
+    <div class="feat-links">→ High-risk contacts auto-enroll in AI win-back via Dynamic Audiences binding</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">💬</div>
+    <div class="feat-name">Quora Mining</div>
+    <div><span class="feat-tier">T19</span></div>
+    <div class="feat-desc">Finds 8–15 most-engaged Quora questions about your industry. Returns answer count, view count, intent classification (informational/comparison/recommendation), top answer summary, and suggested response angle for your brand.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Quora answers rank in Google and generate long-term SEO traffic. Mining the highest-value questions and crafting authoritative answers is one of the lowest-cost, highest-ROI content strategies available.</div>
+    <div class="feat-links">→ Feeds Unified Inbox; question data improves Content Calendar topic selection</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🪪</div>
+    <div class="feat-name">Identity Spine (CDP-lite)</div>
+    <div><span class="feat-tier">T97</span></div>
+    <div class="feat-desc">Consent-aware unified customer profile store. Batch CSV import. AI scoring assigns LTV estimate, purchase propensity score (0–100), lifecycle stage, and next_best_action per profile. Event logging tracks touchpoints.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Customer Data Platforms cost $10k+/month for enterprise. The Identity Spine gives SMBs a lightweight CDP capability — unified profiles, AI-scored LTV, and lifecycle segmentation — without the enterprise price tag.</div>
+    <div class="feat-links">→ Powers Dynamic Audiences; feeds Journey Builder; data feeds Churn Scorer</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📊</div>
+    <div class="feat-name">Email Deliverability Auditor</div>
+    <div><span class="feat-tier">T9</span></div>
+    <div class="feat-desc">Pure DNS audit — MX, SPF, DKIM (19 selectors), DMARC, MTA-STS, BIMI. Weighted A–F grade. No email sending required — runs entirely on DNS lookups.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">The average marketing team loses 30–40% of their email sends to spam filters, often without knowing it. The Deliverability Auditor diagnoses exactly which DNS records are missing or misconfigured and how to fix them.</div>
+    <div class="feat-links">→ Audit results feed Cold Email and Drip Engine deliverability optimisation</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📝</div>
+    <div class="feat-name">Meeting Notes Summariser</div>
+    <div><span class="feat-tier">T17</span></div>
+    <div class="feat-desc">Paste any meeting transcript → GPT-4o-mini returns summary, key points, action items, BANT scores (budget/authority/need/timeline 0–10 each), overall deal score 0–100, deal stage, sentiment, risks, objections, and next step.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Sales reps spend 30 minutes per meeting writing up notes. The Meeting Notes tool cuts this to under 60 seconds while also providing BANT qualification scoring that most reps don't formally do at all.</div>
+    <div class="feat-links">→ Deal scores feed Revenue Intelligence (T100) pipeline tracking</div>
+  </div>
+
+</div><!-- /feat-grid reach -->
+
+<!-- ─── GROW / CAMPAIGN ─── -->
+<div class="group-header">🚀 GROW — Launch &amp; Optimise Campaigns</div>
+<div class="feat-grid">
+
+  <div class="feat-card">
+    <div class="feat-icon">🚀</div>
+    <div class="feat-name">Campaign Launch</div>
+    <div><span class="feat-tier">Core Platform</span></div>
+    <div class="feat-desc">Multi-platform campaign launcher. Auto-registers in the AI Optimizer with optimizer_enabled=TRUE. Without live platform credentials, creates local campaigns immediately — real platform IDs assigned once credentials are connected.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Campaign setup across multiple platforms takes hours of repetitive form-filling. Campaign Launch centralises multi-platform launches and immediately feeds them into the optimisation pipeline.</div>
+    <div class="feat-links">→ Auto-feeds AI Optimizer; links to Google Ads, Meta Ads, TikTok Insights</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🤖</div>
+    <div class="feat-name">AI Optimizer (MAB)</div>
+    <div><span class="feat-tier">Core Platform</span></div>
+    <div class="feat-desc">Hourly ad-insight ingest. 6-hour pause/scale rules. 12-hour multi-armed bandit budget reallocation. 24-hour creative refresh. Dry-run by default — flip LIVE when ready. Uses Thompson sampling for budget allocation.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Manual campaign optimisation requires constant attention and often happens too slowly — by the time a human notices a creative is underperforming, thousands of dollars have been wasted. The Optimizer acts every 6 hours, 24/7.</div>
+    <div class="feat-links">→ Receives campaigns from Campaign Launch; decisions feed Daily Digest and Weekly Report</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🎛️</div>
+    <div class="feat-name">Media Mix Modeler</div>
+    <div><span class="feat-tier">T90</span></div>
+    <div class="feat-desc">Forward-looking budget allocation engine. Models saturation curves (linear/log/S-curve), diminishing returns, lag effects, and cross-channel synergy for each channel. Returns optimal budget split, per-channel health (under/optimal/over-saturated), and three scenario projections.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Most teams allocate budget based on last month's performance, not where the next dollar will generate the most return. MMM models the marginal return curve of each channel so you can find the allocation that maximises total ROAS.</div>
+    <div class="feat-links">→ Outputs feed Campaign Launch budget planning; links to Revenue Forecast</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">💹</div>
+    <div class="feat-name">Revenue Forecast Engine</div>
+    <div><span class="feat-tier">T82</span></div>
+    <div class="feat-desc">90-day what-if revenue modeller. Input your current metrics (spend, leads, conversion rate, AOV, CAC, LTV). GPT-4o produces best/expected/worst case scenarios, payback period, LTV/CAC ratio, and a 3-month breakdown table.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Board members and investors ask "what will happen if we increase budget by 20%?" — and most marketing teams can't answer that question quantitatively. Revenue Forecast gives you the answer in under 30 seconds.</div>
+    <div class="feat-links">→ Links with Media Mix Modeler; outputs feed Investor Mode (T85)</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🪞</div>
+    <div class="feat-name">Business Digital Twin</div>
+    <div><span class="feat-tier">T83</span></div>
+    <div class="feat-desc">AI business simulation engine. 7 preset scenarios (increase spend, launch UK, cut Meta, double down on SEO, raise prices, launch product, custom). GPT-4o returns a verdict, confidence score, 90-day 3-phase timeline, upsides, risks, and alternative scenarios.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Major marketing decisions are usually made with gut instinct rather than scenario analysis. The Digital Twin lets you simulate the consequences of a decision before committing budget — like a flight simulator for business strategy.</div>
+    <div class="feat-links">→ Scenario results inform Revenue Forecast and Media Mix Modeler decisions</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🧬</div>
+    <div class="feat-name">CRO Lab / A/B Designer</div>
+    <div><span class="feat-tier">T7</span></div>
+    <div class="feat-desc">GPT-4o-mini generates 3–10 headline variants per test across 10 test types (curiosity, negative, question, listicle, urgent, specific_number, contrarian, social_proof, how_to, outcome). Each variant includes a score, patterns hit, and reasoning.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">The best headline can generate 500% more clicks than the second best. A/B testing without systematic variant generation means you're testing fewer ideas and finding the optimum more slowly.</div>
+    <div class="feat-links">→ Headline variants feed Landing Page Builder; experiment tracking in Experiment Suite</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🏠</div>
+    <div class="feat-name">Landing Page Builder</div>
+    <div><span class="feat-tier">T9</span></div>
+    <div class="feat-desc">GPT-4o-mini generates complete landing page content: hero, 4–6 features, 3–4 steps, 2–3 testimonials, 4–6 FAQs, and final CTA. Server-side renders as responsive HTML with sandboxed preview. Lead capture auto-injected. Webhook forwarding to Zapier/HubSpot/Make.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">A dedicated landing page can increase conversion rates by 200–300% vs. directing traffic to a homepage. InfoGenie generates, hosts, and optimises landing pages — eliminating the need for a developer or a separate landing page tool.</div>
+    <div class="feat-links">→ Ad Package generator (T72) creates Meta/Google/TikTok ads from any landing page; leads feed HubSpot</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📣</div>
+    <div class="feat-name">Create Once Publish Everywhere</div>
+    <div><span class="feat-tier">T72</span></div>
+    <div class="feat-desc">Generates a complete 3-platform ad package from any saved landing page. Meta (FB+IG): headline ≤30 chars, 125-char primary text, CTA. Google Display: responsive headline, 90-char description. TikTok: 3-second hook script, video concept, hashtags.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Creating platform-specific ad copy from scratch for every campaign wastes hours. Create Once Publish Everywhere extracts your key messages from the landing page and adapts them for each platform's creative format automatically.</div>
+    <div class="feat-links">→ Directly powered by Landing Page Builder (T9) content</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔄</div>
+    <div class="feat-name">Conversion Recovery Assistant</div>
+    <div><span class="feat-tier">T74</span></div>
+    <div class="feat-desc">Two-panel tool. Score Calculator: computes Recovery Score based on iOS/Safari loss, ad blockers, cross-device tracking, cookie consent, and late pixel fires. Setup Guide: GPT-4o-mini generates step-by-step server-side tracking setup (Meta CAPI or Google Enhanced Conversions) with copy-paste code.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Apple's iOS 14+ privacy changes and ad blockers mean most advertisers are measuring only 60–70% of their actual conversions. The Recovery Assistant diagnoses the gap and provides the technical fix to recapture that lost attribution.</div>
+    <div class="feat-links">→ Recovery improvements feed AI Optimizer accuracy; pairs with Web Vitals for full technical health</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🛡️</div>
+    <div class="feat-name">Safe Autonomous Agent</div>
+    <div><span class="feat-tier">T92</span></div>
+    <div class="feat-desc">Trustworthy AI execution pipeline: propose → simulate → approve → execute → rollback. GPT-4o produces a structured action plan with pre-execution simulation. Budget guardrail enforced. Full audit log every state transition. One-click rollback.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">AI that can execute marketing changes autonomously is powerful — but terrifying without safety rails. The Safe Agent gives teams the speed of autonomous AI while maintaining the human approval checkpoints that prevent expensive mistakes.</div>
+    <div class="feat-links">→ Proposal outputs feed Approval Workflows (T98); audit log feeds Data Provenance (T93)</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🦾</div>
+    <div class="feat-name">Autonomous Marketing Operator</div>
+    <div><span class="feat-tier">T88</span></div>
+    <div class="feat-desc">The "I already fixed it" AI. Diagnoses marketing problems and takes 3+ decisive actions: rewrite_ad, pause_campaign, scale_campaign, reallocate_budget, launch_ab_test, update_landing_page, send_alert, adjust_bid. Returns rewritten copy, budget plan, A/B proposal, and a plain-English summary.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">When ROAS drops 30% on a Friday afternoon, most teams can't react until Monday. The Auto Operator acts immediately — diagnosing the cause and executing fixes autonomously, or preparing a plan for human approval.</div>
+    <div class="feat-links">→ Works alongside Safe Agent; decisions feed Decision Engine</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">💰</div>
+    <div class="feat-name">Conversion Boosters</div>
+    <div><span class="feat-tier">T27</span></div>
+    <div class="feat-desc">Two embeddable widgets: Social Proof popup (rotating "Sarah from Cape Town just signed up" toasts) and Exit Intent popup (desktop mouseleave + mobile scroll trigger). Full admin controls for message content, timing, styling.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Social proof and exit intent are among the highest ROI conversion tactics — average lift of 10–20% on existing traffic. Most widget tools cost $50–$100/month standalone; InfoGenie includes both at no extra cost.</div>
+    <div class="feat-links">→ Leads from exit intent feed Identity Spine; events feed Data Provenance</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📈</div>
+    <div class="feat-name">Investor Mode</div>
+    <div><span class="feat-tier">T85</span></div>
+    <div class="feat-desc">AI CFO report generator. Inputs your MRR/ARR, growth rate, CAC, LTV, burn rate, runway. GPT-4o produces an 8-metric dashboard, 12-month forecast, executive narrative, investor ask, and next milestones. Generates a unique public investor portal link.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Startups raise faster when investors can access a clean, data-backed investor update on demand. The Investor Mode portal gives VCs a professional read-only portal without needing a CFO to write it.</div>
+    <div class="feat-links">→ Powered by Revenue Forecast data; portal token = public shareable link</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔬</div>
+    <div class="feat-name">Experiment Suite</div>
+    <div><span class="feat-tier">T96</span></div>
+    <div class="feat-desc">Incrementality experiment tracking. 5 experiment types: A/B, geo lift, holdout, creative incrementality, audience saturation. AI analysis returns verdict (significant/not significant/inconclusive), practical significance, next action, and institutional learning to preserve.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Most "A/B tests" aren't statistically valid. The Experiment Suite enforces proper experimental design (control/variant, confidence %, p-value) and preserves institutional learnings so teams don't run the same failed experiment twice.</div>
+    <div class="feat-links">→ Feeds Decision Engine; confirmed learnings feed AI Optimizer strategy</div>
+  </div>
+
+</div><!-- /feat-grid grow -->
+
+<!-- ─── PLAN / CREATE ─── -->
+<div class="group-header">✍️ PLAN &amp; CREATE — Build Content That Converts</div>
+<div class="feat-grid">
+
+  <div class="feat-card">
+    <div class="feat-icon">📅</div>
+    <div class="feat-name">Content Calendar</div>
+    <div><span class="feat-tier">T6</span></div>
+    <div class="feat-desc">GPT-4o-mini generates 1–30 days of content across 8 channels (blog, social, email, video, podcast, webinar, case study, press release). Topics suggested from trending data. CSV export. Links to Social Publisher for direct scheduling.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Consistent content publishing is the single highest-leverage SEO activity — but planning it manually is the most common reason teams fall behind. A 30-day calendar generated in 2 minutes removes that blocker permanently.</div>
+    <div class="feat-links">→ Informed by Trending Topics and VoC; bulk-schedules to Social Publisher</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🎬</div>
+    <div class="feat-name">Video Script Generator</div>
+    <div><span class="feat-tier">T18</span></div>
+    <div class="feat-desc">GPT-4o-mini generates 1–5 video script variants per call. Platforms: TikTok, Reels, Shorts, LinkedIn. 6 tone options. 15–180 second duration. Each script: hook, body (spoken/onscreen/cue), CTA, viral pattern, hashtags.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Short-form video is the highest reach-per-dollar content format in 2026, but scriptwriting requires skill most teams don't have in-house. Video Script Generator produces platform-optimised scripts in seconds.</div>
+    <div class="feat-links">→ Scripts feed Voiceover (T21) for audio production; feeds Social Publisher for scheduling</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🎙️</div>
+    <div class="feat-name">Voiceover</div>
+    <div><span class="feat-tier">T21</span></div>
+    <div class="feat-desc">OpenAI TTS. 6 voices (alloy, echo, fable, onyx, nova, shimmer). Two quality models (tts-1, tts-1-hd). Up to 4,000 characters. Returns MP3 for direct browser playback + download. History of last 10 recordings.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Professional voiceovers cost $50–$200 per minute from human voice actors. Voiceover produces broadcast-quality audio in under 10 seconds — enabling video, podcast, and ad production at a fraction of the traditional cost.</div>
+    <div class="feat-links">→ Directly pairs with Video Script Generator (T18) for complete video production pipeline</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📰</div>
+    <div class="feat-name">Press Release Generator</div>
+    <div><span class="feat-tier">T5</span></div>
+    <div class="feat-desc">GPT-4o-mini generates press releases for 6 types: crisis response, product launch, milestone, counter-competitor, partnership, custom. Can hydrate from an existing crisis incident or battle card for contextual relevance.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">PR agencies charge $5–$10k for a press release. AI-generated press releases informed by live competitor and crisis data are faster, cheaper, and more contextually relevant than anything produced cold from a brief.</div>
+    <div class="feat-links">→ Crisis incidents from Crisis Radar auto-feed press release hydration</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">💡</div>
+    <div class="feat-name">Headline Tester</div>
+    <div><span class="feat-tier">T17</span></div>
+    <div class="feat-desc">GPT-4o-mini scores your original headline 0–100 and generates 3–10 variants across 10 types (curiosity, negative, question, listicle, urgent, specific number, contrarian, social proof, how-to, outcome). Each with patterns hit and reasoning. Sortable by score.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">8 out of 10 people read the headline; 2 out of 10 read the rest. Headline quality is the single most important factor in email open rates, ad CTR, and blog traffic — yet most teams never systematically test it.</div>
+    <div class="feat-links">→ Variants feed A/B Designer and Landing Page Builder</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📊</div>
+    <div class="feat-name">One-Click Reports</div>
+    <div><span class="feat-tier">T1 Core</span></div>
+    <div class="feat-desc">Export any InfoGenie analysis as PPTX (pptxgenjs), PDF (pdfkit), or XLSX (exceljs). Declarative pipeline — each data source maps to export format automatically. Available on Search &amp; AI Visibility, campaigns, and all major analysis features.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Most marketing reports are manually assembled in PowerPoint and take half a day. One-Click Reports export professional-grade decks directly from live data in under 30 seconds.</div>
+    <div class="feat-links">→ Export engine used by Weekly Report, Investor Mode, and ad hoc analysis tools</div>
+  </div>
+
+</div><!-- /feat-grid plan -->
+
+<!-- ─── MANAGE / INTELLIGENCE ─── -->
+<div class="group-header">⚙️ MANAGE — Governance, Analytics &amp; Platform Intelligence</div>
+<div class="feat-grid">
+
+  <div class="feat-card">
+    <div class="feat-icon">🧭</div>
+    <div class="feat-name">Decision Engine</div>
+    <div><span class="feat-tier">T95</span></div>
+    <div class="feat-desc">Cross-platform ranked recommendation engine. Pulls live signal counts from optimizer, SEO, SERP, and other tables. GPT-4o synthesises 8 prioritised recommendations across 7 categories (budget, channel, creative, audience, SEO, lifecycle, competitive) with expected impact, confidence %, and cost estimate.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Marketing teams face hundreds of potential actions at any given time. The Decision Engine ranks them by expected impact and confidence — so you always know what to do next and why.</div>
+    <div class="feat-links">→ Aggregates signals from across the entire platform; the intelligence hub for all features</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔒</div>
+    <div class="feat-name">Brand Safety &amp; Compliance</div>
+    <div><span class="feat-tier">T91</span></div>
+    <div class="feat-desc">Compliance guardrail layer for ad copy, landing pages, emails, and social posts. Six jurisdiction rulesets: FTC (US), GDPR (EU), FCA (UK Finance), ESMA (EU Finance), HIPAA (US Health), ASA (UK General). Returns verdict, risk score, per-flag details, required disclaimers, and a compliant rewrite.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">A single non-compliant ad can result in regulatory fines of €10M+ (GDPR) or revocation of advertising accounts. Brand Safety runs a compliance check before publish — preventing expensive mistakes.</div>
+    <div class="feat-links">→ Should be run on all content produced by Cold Email, Landing Pages, and Social Publisher</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">✅</div>
+    <div class="feat-name">Approval Workflows</div>
+    <div><span class="feat-tier">T98</span></div>
+    <div class="feat-desc">Human-in-the-loop governance for AI-proposed actions. 8 action types (pause campaign, scale budget, launch campaign, send email, publish content, audience change, price change). Pre-execution simulation. Full state machine: pending → approved/rejected → executed → rolled_back. Policy engine by budget threshold.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">As AI automation increases, the risk of unreviewed actions causing damage increases too. Approval Workflows provide the institutional controls that enterprises and agencies need to confidently deploy AI automation.</div>
+    <div class="feat-links">→ Receives proposals from Safe Agent (T92) and Auto Operator (T88)</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔍</div>
+    <div class="feat-name">Data Provenance</div>
+    <div><span class="feat-tier">T93</span></div>
+    <div class="feat-desc">First-class data audit trail. Every insight logged with source type (API/scrape/AI-generated/user input), source name, URL, AI model used, freshness hours, and fetch timestamp. AI vs. real data ratio gauge. Freshness colour-coded (green &lt;24h, amber &lt;7d, red older).</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">AI-generated insights can be wrong. Data Provenance makes it transparent which data is real (from an API) vs. estimated (AI-generated) — enabling teams to trust high-confidence data and verify low-confidence data before acting.</div>
+    <div class="feat-links">→ Every feature in InfoGenie can log to this; critical for regulated industries</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">💼</div>
+    <div class="feat-name">Revenue Intelligence</div>
+    <div><span class="feat-tier">T100</span></div>
+    <div class="feat-desc">B2B account intent scoring and pipeline influence. 7 pipeline stages. 10 signal types with weighted scores (pricing page visit = 15, demo request = 25). AI returns recommended play, outreach angle, urgency, deal probability %, and recommended actions. Hot triggers: accounts with intent ≥50 + signals in past 7 days.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Intent data tells you which accounts are actively researching a purchase — allowing you to prioritise outreach to the accounts most likely to close now. This is the same data that B2B intent tools like Bombora charge $30k/year for.</div>
+    <div class="feat-links">→ Signals feed from CRM events; scored accounts feed Acquisition Engine</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">⚖️</div>
+    <div class="feat-name">AI Model Comparison</div>
+    <div><span class="feat-tier">T79</span></div>
+    <div class="feat-desc">Run any prompt on up to 5 models simultaneously: GPT-4o, GPT-4o-mini, Claude 3.5 Sonnet, Claude 3 Haiku, Gemini 1.5 Flash, Gemini 1.5 Pro, Llama 3.1. AI judge (GPT-4o-mini) picks the winner and scores each on quality, creativity, accuracy, and conciseness.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Different AI models excel at different tasks. Using the right model for each job can cut AI costs by 50% while improving output quality. The comparison tool makes model selection scientific rather than guesswork.</div>
+    <div class="feat-links">→ Informs AI provider strategy; pairs with AI Providers management</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🛍️</div>
+    <div class="feat-name">AI Marketing Marketplace</div>
+    <div><span class="feat-tier">T87</span></div>
+    <div class="feat-desc">Multi-tenant marketplace for sharing marketing assets. 8 categories: templates, campaigns, audiences, prompt packs, landing pages, email sequences, AI agents, creative. Tenants browse, publish, and download assets with search + category filtering.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">A marketplace creates network effects — users contribute proven strategies and templates that other users can deploy instantly. This builds a proprietary library of community-validated marketing playbooks that no competitor can replicate.</div>
+    <div class="feat-links">→ Community-built assets complement all InfoGenie creation tools</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🧲</div>
+    <div class="feat-name">AI Web Extractor</div>
+    <div><span class="feat-tier">T75</span></div>
+    <div class="feat-desc">Free-form data extraction in plain English. "Extract all pricing information from this page" — returns structured JSON table. Firecrawl fetches the page; GPT-4o-mini interprets and structures the data.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Manual data extraction from websites is one of the most time-consuming competitive research tasks. The Web Extractor lets anyone extract any structured data from any website with a plain English instruction.</div>
+    <div class="feat-links">→ Powers Dataset Marketplace generation; complements Resilient Tracker</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📋</div>
+    <div class="feat-name">Scraping Recipe Library</div>
+    <div><span class="feat-tier">T76</span></div>
+    <div class="feat-desc">10 pre-built extraction recipes: G2 reviews, Product Hunt, Trustpilot, LinkedIn company, HN discussion, App Store, Glassdoor, Capterra, competitor pricing, jobs page. Run any recipe on any target URL. Returns columns/rows/summary.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Pre-built recipes remove the prompt engineering barrier — anyone can extract competitive data from the most important intelligence sources without knowing how to write extraction instructions.</div>
+    <div class="feat-links">→ Complements AI Web Extractor; results feed Unified Inbox and competitor analysis</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">📦</div>
+    <div class="feat-name">Dataset Marketplace</div>
+    <div><span class="feat-tier">T78</span></div>
+    <div class="feat-desc">8 intelligence dataset packs: competitor pricing, job market signals, social proof aggregator, industry benchmarks, tech stack map, content gaps, ad creative intelligence, market sizing. Generates structured tables via GPT-4o with key takeaways.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Strategy consultants charge $5–$20k for custom market intelligence reports. The Dataset Marketplace generates comparable structured datasets in minutes for any industry and region.</div>
+    <div class="feat-links">→ Generated data feeds Strategy Playbook and Benchmark Intelligence</div>
+  </div>
+
+</div><!-- /feat-grid manage -->
+
+<!-- ─── ADS ─── -->
+<div class="group-header">📊 AD ANALYTICS — Unified Cross-Platform Ad Intelligence</div>
+<div class="feat-grid">
+
+  <div class="feat-card">
+    <div class="feat-icon">📘</div>
+    <div class="feat-name">Meta Ads Insights</div>
+    <div><span class="feat-tier">T13</span></div>
+    <div class="feat-desc">Graph API v19.0 integration. Account summary, campaign performance, and top ad creative. Date presets, ROAS calculation (revenue/spend), impressions, clicks, CPM, CPC. Friendly error hints for scope issues.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Meta Ads Manager shows data for Meta only — it doesn't tell you how Meta compares to Google or TikTok. InfoGenie's unified view shows cross-platform performance in the same dashboard.</div>
+    <div class="feat-links">→ Feeds AI Optimizer; combined with Google/TikTok for unified reporting</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🔵</div>
+    <div class="feat-name">Google Ads Insights</div>
+    <div><span class="feat-tier">T14</span></div>
+    <div class="feat-desc">Google Ads API v17 with GAQL search stream. Account summary, campaigns, top ads. OAuth2 refresh-token flow with in-memory access-token cache. Per-user OAuth Connect via credential vault. MCC support.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Google Ads data lives in Google's ecosystem — isolated from your other ad platforms. Centralising it in InfoGenie means your team sees Google performance alongside Meta and TikTok in one view.</div>
+    <div class="feat-links">→ Feeds AI Optimizer; combined cross-platform reporting with Meta and TikTok</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">🎵</div>
+    <div class="feat-name">TikTok Ads Insights</div>
+    <div><span class="feat-tier">T14</span></div>
+    <div class="feat-desc">TikTok Marketing API v1.3. Report levels: AUCTION_ADVERTISER, CAMPAIGN, AD. Account summary, top campaigns, top ads. Date-preset mapping. Friendly scope and advertiser-id error hints.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">TikTok has surpassed Google as the most-used search tool for Gen Z. Ignoring TikTok Ads is ignoring the fastest-growing advertising platform. InfoGenie surfaces TikTok data alongside Meta and Google for a complete picture.</div>
+    <div class="feat-links">→ Feeds AI Optimizer; Ad Library Spy (T17) provides competitor TikTok creative intelligence</div>
+  </div>
+
+  <div class="feat-card">
+    <div class="feat-icon">⬇️</div>
+    <div class="feat-name">TikTok Video Downloader</div>
+    <div><span class="feat-tier">T20</span></div>
+    <div class="feat-desc">Accepts up to 25 TikTok URLs per batch. Resolves via tikwm.com API (stage 1 free) or tiktok-scraper7 RapidAPI (stage 2 paid fallback). Returns no-watermark MP4 URL, cover, caption, hashtags, author, and engagement metrics. Streams MP4 through origin as clean download.</div>
+    <div class="feat-why">Why it matters:</div>
+    <div class="feat-why-text">Competitor TikTok videos are the richest source of creative inspiration. Downloading them without watermarks enables proper reference material for in-house creative teams and builds a structured swipe file.</div>
+    <div class="feat-links">→ Pairs with Ad Library Spy (T17); downloads build the Ad Swipe File</div>
+  </div>
+
+</div><!-- /feat-grid ads -->
+
+</div><!-- /wrap features -->
+</div><!-- /sec features -->
+
+<!-- ═══════════════════════ 5. INTERCONNECTIONS ═══════════════════════ -->
+<div class="sec sec-alt page-break" id="interconnections">
+<div class="wrap">
+<div class="sec-header">
+  <div class="sec-label">5 · Feature Interconnections</div>
+  <div class="sec-title">How Features Amplify Each Other</div>
+  <div class="sec-desc">InfoGenie's features aren't isolated tools — they form an interconnected intelligence graph. Data flows automatically between tools, meaning the more you use the platform, the smarter each tool gets.</div>
+</div>
+
+<h3 class="sub-h">Key Intelligence Chains</h3>
+
+<table class="comp-table">
+  <thead><tr><th>Workflow</th><th>Tools in Chain</th><th>Net Effect</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Full competitive attack cycle</strong></td><td>Competitor Profiles → Battle Cards → War Room → Press Release Generator → A/B Designer → Landing Page Builder → Create Once Publish Everywhere</td><td>From raw competitor data to a live counter-campaign in under 2 hours</td></tr>
+    <tr><td><strong>SEO content pipeline</strong></td><td>Keyword Explorer → Content Calendar → Headline Tester → SEO On-Page Auditor → SEO Task Manager → SERP Tracker</td><td>End-to-end SEO workflow with automated task management and ranking tracking</td></tr>
+    <tr><td><strong>Lead-to-close pipeline</strong></td><td>Multi-Source Lead Aggregator → Lead Finder → Email Personalizer → Cold Email Writer → Acquisition Engine → Meeting Notes → HubSpot Sync → Revenue Intelligence</td><td>Fully automated lead generation, outreach, qualification, and CRM handoff</td></tr>
+    <tr><td><strong>Crisis response</strong></td><td>Crisis Radar → Smart Alert Routing → Unified Inbox → Reply Assistant → Press Release Generator → Social Publisher</td><td>From crisis detection to published response in under 30 minutes</td></tr>
+    <tr><td><strong>Ad optimisation loop</strong></td><td>Campaign Launch → AI Optimizer → Meta/Google/TikTok Insights → Auto Operator → Decision Engine → Media Mix Modeler</td><td>Continuous 24/7 performance improvement across all ad platforms</td></tr>
+    <tr><td><strong>Customer intelligence loop</strong></td><td>Identity Spine → Dynamic Audiences → Drip Engine → Churn Scorer → Journey Builder → Re-engagement Agent → Conversion Boosters</td><td>Fully automated lifecycle marketing from first touch to retention</td></tr>
+    <tr><td><strong>AI visibility moat</strong></td><td>Search &amp; AI Visibility → Schema Generator → AI Answer SOV → Content Calendar → SEO On-Page Auditor</td><td>Systematic improvement of AI engine citations across all major LLMs</td></tr>
+    <tr><td><strong>Investor readiness</strong></td><td>Revenue Forecast → Digital Twin → Media Mix Modeler → Benchmark Intelligence → Investor Mode</td><td>Complete investor-ready financial modelling and reporting from marketing data</td></tr>
+  </tbody>
+</table>
+
+<h3 class="sub-h">Data Flow Architecture</h3>
+<p class="body-p">The platform uses an event-driven architecture where monitoring tools (Crisis Radar, Change Monitor, Pricing Watcher) continuously feed intelligence into the Unified Inbox and Alert Routing system. These signals flow upward into the Decision Engine, which synthesises across all data sources to produce ranked recommendations. The AI Optimizer operates as a separate continuous loop consuming campaign performance data from the ad platform integrations.</p>
+
+<p class="body-p">The Data Provenance system sits orthogonally across all other features — every insight generated by any tool can be logged with its source, freshness, and whether it's AI-estimated vs. real API data. This creates a complete audit trail that's particularly valuable for regulated industries (finance, healthcare, legal) and for enterprise accounts that need to justify marketing decisions to compliance teams.</p>
+</div>
+</div>
+
+<!-- ═══════════════════════ 6. GTM STRATEGY ═══════════════════════ -->
+<div class="sec page-break" id="gtm">
+<div class="wrap">
+<div class="sec-header">
+  <div class="sec-label">6 · Go-to-Market Strategy</div>
+  <div class="sec-title">How InfoGenie Goes to Market</div>
+</div>
+
+<h3 class="sub-h">Ideal Customer Profiles (ICPs)</h3>
+<div class="icp-grid">
+  <div class="icp-card">
+    <div class="icp-icon">🏢</div>
+    <div class="icp-name">Digital Marketing Agency</div>
+    <div class="icp-desc">5–50 person agency managing 10–100 client brands. Currently paying for Semrush + Brandwatch + scheduling tools separately. InfoGenie consolidates their entire tool stack into one white-label-ready platform at 60% lower cost.</div>
+  </div>
+  <div class="icp-card">
+    <div class="icp-icon">🛒</div>
+    <div class="icp-name">eCommerce Brand ($1M–$50M GMV)</div>
+    <div class="icp-desc">Brands spending $10k–$200k/month on Meta + Google ads who need to optimize across channels and understand why competitors are winning on attribution-disrupted platforms post-iOS 14.</div>
+  </div>
+  <div class="icp-card">
+    <div class="icp-icon">💼</div>
+    <div class="icp-name">B2B SaaS Company (Series A–C)</div>
+    <div class="icp-desc">Funded SaaS companies with 10–200 employees needing a full marketing intelligence stack. Currently stitching together Apollo + HubSpot + Semrush + Brandwatch. InfoGenie replaces all four plus adds AI automation.</div>
+  </div>
+  <div class="icp-card">
+    <div class="icp-icon">🏬</div>
+    <div class="icp-name">Multi-Location Service Business</div>
+    <div class="icp-desc">Franchises, financial advisors, real estate groups, healthcare networks with 5–500 locations. Need local SEO intelligence, review monitoring, and brand consistency across locations. Strong fit for Majestic + local SEO + Review Aggregator.</div>
+  </div>
+  <div class="icp-card">
+    <div class="icp-icon">📊</div>
+    <div class="icp-name">In-House Marketing Director</div>
+    <div class="icp-desc">Marketing director at a $5M–$100M company responsible for all marketing channels. Has a small team and needs to move fast. InfoGenie gives a 3-person team the capability of a 15-person team with specialist tools.</div>
+  </div>
+  <div class="icp-card">
+    <div class="icp-icon">🌍</div>
+    <div class="icp-name">African &amp; Emerging Market SMB</div>
+    <div class="icp-desc">South African and African businesses who need enterprise-grade marketing intelligence but can't justify $500–$2,000/month for Western tools priced for US markets. InfoGenie's pricing and ZAR-friendly plans create a natural home market advantage.</div>
+  </div>
+</div>
+
+<h3 class="sub-h" style="margin-top:32px">Go-to-Market Phases</h3>
+
+<div class="gtm-phase">
+  <div class="gtm-phase-header">
+    <div class="gtm-num">1</div>
+    <div><div class="gtm-phase-title">Foundation &amp; Proof (Months 1–3)</div><div class="gtm-phase-sub">Goal: 50 paying customers, $20k MRR</div></div>
+  </div>
+  <div class="gtm-body">
+    <ul>
+      <li><strong>Free Audit Widget as lead magnet:</strong> Deploy the Embeddable SEO Audit Widget on InfoGenie's own marketing site. Every website that receives a free audit = a warm inbound lead. Target: 500 audit leads per month.</li>
+      <li><strong>Founder-led sales:</strong> Direct outreach to digital marketing agencies in South Africa (primary) and broader Africa (secondary). Offer a 30-day free trial with hands-on onboarding.</li>
+      <li><strong>Content SEO:</strong> Use InfoGenie's own Keyword Explorer + Content Calendar to build an SEO moat around "marketing intelligence", "competitor analysis tool SA", "Semrush alternative Africa".</li>
+      <li><strong>Social proof:</strong> 3–5 detailed case studies from pilot customers with specific metrics (time saved, leads generated, campaigns improved).</li>
+    </ul>
+  </div>
+</div>
+
+<div class="gtm-phase">
+  <div class="gtm-phase-header">
+    <div class="gtm-num">2</div>
+    <div><div class="gtm-phase-title">Agency Channel Build (Months 4–9)</div><div class="gtm-phase-sub">Goal: 200 paying customers, $80k MRR</div></div>
+  </div>
+  <div class="gtm-body">
+    <ul>
+      <li><strong>Agency partner programme:</strong> Agencies get a discounted agency seat (20–30% off Scale plan) + client sub-accounts. InfoGenie becomes the tool agencies use to manage all client work — stickiest possible retention mechanism.</li>
+      <li><strong>Tool-stack displacement:</strong> Build direct comparison landing pages against Semrush, Brandwatch, and Apollo. Target customers who are paying for 3+ of these tools already.</li>
+      <li><strong>LinkedIn outbound:</strong> Use InfoGenie's own Acquisition Engine to identify and reach out to marketing directors and agency founders. Eat your own cooking messaging.</li>
+      <li><strong>Webinar series:</strong> "How to analyse your competitors with AI in 30 minutes" — drives signups and demonstrates the platform live.</li>
+      <li><strong>Reseller network:</strong> Recruit 10–20 resellers in key African markets (Nigeria, Kenya, Ghana, Egypt, Zimbabwe) on a 20% revenue share model.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="gtm-phase">
+  <div class="gtm-phase-header">
+    <div class="gtm-num">3</div>
+    <div><div class="gtm-phase-title">Product-Led Growth &amp; Virality (Months 10–18)</div><div class="gtm-phase-sub">Goal: 800 paying customers, $300k MRR</div></div>
+  </div>
+  <div class="gtm-body">
+    <ul>
+      <li><strong>Freemium SEO tool:</strong> Launch a free-forever Starter plan (limited to 5 competitor checks/month + 1 SEO audit). Creates top-of-funnel virality and builds brand awareness.</li>
+      <li><strong>Marketplace virality:</strong> Published marketplace templates link back to InfoGenie ("Powered by InfoGenie") — every shared strategy is a marketing touchpoint.</li>
+      <li><strong>Benchmark data network:</strong> As more customers contribute benchmark data, the Benchmark Intelligence and Proprietary Data Products become genuinely unique insights no competitor can replicate.</li>
+      <li><strong>International expansion:</strong> UK and Australia are natural second markets — English-speaking, high digital ad spend, underserved by Africa-first tools.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="gtm-phase">
+  <div class="gtm-phase-header">
+    <div class="gtm-num">4</div>
+    <div><div class="gtm-phase-title">Enterprise &amp; Scale (Months 18–36)</div><div class="gtm-phase-sub">Goal: 3,000 customers, $1.5M MRR</div></div>
+  </div>
+  <div class="gtm-body">
+    <ul>
+      <li><strong>Enterprise deals:</strong> Target companies with 200+ employees and $500k+ annual ad spend. Custom SLAs, dedicated onboarding, SSO, and advanced compliance features (Brand Safety + Approval Workflows) justify enterprise pricing.</li>
+      <li><strong>White-label licensing:</strong> License the platform to large agencies and consultancies who want to offer AI marketing intelligence under their own brand. $5k–$20k/month licensing fees.</li>
+      <li><strong>API access tier:</strong> Developers and data teams who want to access InfoGenie's competitive data via API for custom integrations. Per-API-call pricing.</li>
+      <li><strong>Strategic partnerships:</strong> Integrate natively with HubSpot App Marketplace, Shopify App Store, and Zapier to access millions of existing SMB customers.</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sub-h">Pricing Strategy Principles</h3>
+<ul class="body-ul">
+  <li><strong>Value-based pricing:</strong> Price against the cost of the tools being replaced ($500–$2,000/month), not cost-of-goods. InfoGenie at $497 replacing a $1,200 toolstack is an easy sell.</li>
+  <li><strong>Annual pre-pay discount:</strong> 20% discount for annual payment to improve cash flow and reduce churn.</li>
+  <li><strong>Usage limits drive upgrades:</strong> Starter plan limits (5 competitor checks, 3 SEO audits, 100 AI credits) drive natural upgrades as customers hit the ceiling.</li>
+  <li><strong>Seat-based for agencies:</strong> Agency plan pricing is per managed client, not per user — aligns InfoGenie's revenue with agency growth.</li>
+</ul>
+</div>
+</div>
+
+<!-- ═══════════════════════ 7. PRICING ═══════════════════════ -->
+<div class="sec sec-alt page-break" id="pricing">
+<div class="wrap">
+<div class="sec-header">
+  <div class="sec-label">7 · Packages &amp; Pricing</div>
+  <div class="sec-title">InfoGenie Plans</div>
+  <div class="sec-desc">Four tiers designed to serve the full spectrum from solo marketers to enterprise agencies — all with a clear upgrade path.</div>
+</div>
+
+<div class="pricing-grid">
+
+  <!-- STARTER -->
+  <div class="plan-card">
+    <div class="plan-name">🌱 Starter</div>
+    <div class="plan-tagline">Solo marketer or small business getting started</div>
+    <div class="plan-price">$97<span>/month</span></div>
+    <div class="plan-annual">$78/mo billed annually — save 20%</div>
+    <ul class="plan-features">
+      <li>5 competitor analyses / month</li>
+      <li>3 SEO on-page audits</li>
+      <li>Keyword Explorer (50 ideas/query)</li>
+      <li>Content Calendar (7 days)</li>
+      <li>Cold Email Writer (3 sequences)</li>
+      <li>Landing Page Builder (2 pages)</li>
+      <li>1 SERP tracker keyword</li>
+      <li>Crisis Radar (1 brand)</li>
+      <li>500 AI credits / month</li>
+      <li>1 user seat</li>
+      <li>Email support</li>
+    </ul>
+    <a href="#" class="plan-cta outline">Start Free Trial</a>
+  </div>
+
+  <!-- GROWTH -->
+  <div class="plan-card popular">
+    <div class="plan-badge">⭐ Most Popular</div>
+    <div class="plan-name">🚀 Growth</div>
+    <div class="plan-tagline">Growing team with active marketing operations</div>
+    <div class="plan-price">$247<span>/month</span></div>
+    <div class="plan-annual">$198/mo billed annually — save 20%</div>
+    <ul class="plan-features">
+      <li>25 competitor analyses / month</li>
+      <li>Unlimited SEO audits + Task Manager</li>
+      <li>Full Keyword Explorer (500 ideas)</li>
+      <li>Content Calendar (30 days, all channels)</li>
+      <li>Cold Email + Email Personalizer (bulk 25)</li>
+      <li>Landing Pages (unlimited) + Lead Capture</li>
+      <li>20 SERP tracker keywords</li>
+      <li>Crisis Radar (3 brands) + Alert Routing</li>
+      <li>Social Publisher (5 profiles)</li>
+      <li>B2B Lead Finder + HubSpot Sync</li>
+      <li>Video Scripts + Voiceover</li>
+      <li>Schema Generator + Web Vitals</li>
+      <li>2,500 AI credits / month</li>
+      <li>3 user seats</li>
+      <li>Priority email + chat support</li>
+    </ul>
+    <a href="#" class="plan-cta">Start Free Trial</a>
+  </div>
+
+  <!-- SCALE -->
+  <div class="plan-card">
+    <div class="plan-name">⚡ Scale</div>
+    <div class="plan-tagline">Established business running serious campaigns</div>
+    <div class="plan-price">$497<span>/month</span></div>
+    <div class="plan-annual">$398/mo billed annually — save 20%</div>
+    <ul class="plan-features">
+      <li>Unlimited competitor analyses</li>
+      <li>All SEO tools + Majestic + SpyFu + Bing</li>
+      <li>Google Trends integration</li>
+      <li>Full ad platform insights (Google/Meta/TikTok)</li>
+      <li>AI Optimizer (live campaigns)</li>
+      <li>Dynamic Audiences + Journey Builder</li>
+      <li>Revenue Forecast + Digital Twin</li>
+      <li>Media Mix Modeler</li>
+      <li>Benchmark Intelligence</li>
+      <li>Safe Agent + Auto Operator</li>
+      <li>Brand Safety &amp; Compliance</li>
+      <li>Identity Spine (CDP)</li>
+      <li>Investor Mode</li>
+      <li>Unlimited SERP tracking</li>
+      <li>Social Publisher (unlimited profiles)</li>
+      <li>Decision Engine + Data Provenance</li>
+      <li>10,000 AI credits / month</li>
+      <li>10 user seats</li>
+      <li>Dedicated onboarding + Slack support</li>
+    </ul>
+    <a href="#" class="plan-cta">Start Free Trial</a>
+  </div>
+
+  <!-- AGENCY / ENTERPRISE -->
+  <div class="plan-card">
+    <div class="plan-name">🏢 Agency / Enterprise</div>
+    <div class="plan-tagline">Agencies and enterprises managing multiple brands</div>
+    <div class="plan-price">$997<span>/month+</span></div>
+    <div class="plan-annual">From $797/mo billed annually</div>
+    <ul class="plan-features">
+      <li>Everything in Scale</li>
+      <li>Multi-tenant client workspaces (up to 20)</li>
+      <li>White-label branding (your logo/colours)</li>
+      <li>Approval Workflows + Governance</li>
+      <li>Revenue Intelligence (B2B intent)</li>
+      <li>Proprietary Data Products</li>
+      <li>AI Marketing Marketplace access</li>
+      <li>Experiment Suite (incrementality testing)</li>
+      <li>Custom API access</li>
+      <li>Priority Slack support + CSM</li>
+      <li>SLA guarantee (99.9% uptime)</li>
+      <li>Unlimited user seats</li>
+      <li>50,000 AI credits / month</li>
+      <li>Custom onboarding &amp; training</li>
+    </ul>
+    <a href="#" class="plan-cta">Contact Sales</a>
+  </div>
+
+</div><!-- /pricing-grid -->
+
+<h3 class="sub-h" style="margin-top:40px">Feature Matrix by Plan</h3>
+<table class="comp-table">
+  <thead>
+    <tr>
+      <th>Feature Category</th>
+      <th>🌱 Starter</th>
+      <th>🚀 Growth</th>
+      <th>⚡ Scale</th>
+      <th>🏢 Agency</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>SEO Auditor + Task Manager</td><td class="warn">3/month</td><td class="check">✓ Unlimited</td><td class="check">✓ Unlimited</td><td class="check">✓ Unlimited</td></tr>
+    <tr><td>Keyword Explorer</td><td class="warn">50 ideas</td><td class="check">✓ 500 ideas</td><td class="check">✓ Unlimited</td><td class="check">✓ Unlimited</td></tr>
+    <tr><td>Competitor Profiles + Battle Cards</td><td class="warn">5/month</td><td class="warn">25/month</td><td class="check">✓ Unlimited</td><td class="check">✓ Unlimited</td></tr>
+    <tr><td>SpyFu + Majestic + Bing</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
+    <tr><td>Crisis Radar + Alert Routing</td><td class="warn">1 brand</td><td class="warn">3 brands</td><td class="check">✓ Unlimited</td><td class="check">✓ Unlimited</td></tr>
+    <tr><td>Social Publisher</td><td class="cross">✗</td><td class="warn">5 profiles</td><td class="check">✓ Unlimited</td><td class="check">✓ Unlimited</td></tr>
+    <tr><td>Ad Platform Insights (Google/Meta/TikTok)</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
+    <tr><td>AI Optimizer (live campaigns)</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
+    <tr><td>Dynamic Audiences + Journey Builder</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
+    <tr><td>Revenue Forecast + Digital Twin</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
+    <tr><td>Safe Agent + Auto Operator</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
+    <tr><td>Brand Safety + Compliance</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
+    <tr><td>Identity Spine (CDP)</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td></tr>
+    <tr><td>Multi-tenant Client Workspaces</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓ Up to 20</td></tr>
+    <tr><td>White-label Branding</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td></tr>
+    <tr><td>Approval Workflows + Governance</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td></tr>
+    <tr><td>Revenue Intelligence (Intent Data)</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td></tr>
+    <tr><td>AI Marketing Marketplace</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td></tr>
+    <tr><td>User Seats</td><td>1</td><td>3</td><td>10</td><td>Unlimited</td></tr>
+    <tr><td>AI Credits / Month</td><td>500</td><td>2,500</td><td>10,000</td><td>50,000</td></tr>
+    <tr><td>Monthly Price (billed monthly)</td><td><strong>$97</strong></td><td><strong>$247</strong></td><td><strong>$497</strong></td><td><strong>$997+</strong></td></tr>
+    <tr><td>Annual Price (per month)</td><td><strong>$78</strong></td><td><strong>$198</strong></td><td><strong>$398</strong></td><td><strong>$797+</strong></td></tr>
+  </tbody>
+</table>
+
+<h3 class="sub-h" style="margin-top:32px">Add-ons (Available on All Plans)</h3>
+<table class="comp-table">
+  <thead><tr><th>Add-on</th><th>Price</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td>Extra AI Credits</td><td>$20 / 1,000 credits</td><td>Top up your AI credit pool at any time</td></tr>
+    <tr><td>Extra Client Workspaces</td><td>$50 / workspace / month</td><td>Add more managed client brands (Agency plan)</td></tr>
+    <tr><td>API Access</td><td>$199 / month</td><td>Programmatic access to InfoGenie data via REST API</td></tr>
+    <tr><td>Custom AI Model Integration</td><td>$299 / month</td><td>Connect your own OpenAI or Anthropic key at higher rate limits</td></tr>
+    <tr><td>Dedicated Onboarding</td><td>$499 one-time</td><td>3 × 1-hour onboarding sessions with a specialist</td></tr>
+  </tbody>
+</table>
+
+<h3 class="sub-h" style="margin-top:32px">Value vs. Toolstack Comparison</h3>
+<table class="comp-table">
+  <thead><tr><th>Equivalent Toolstack (Growth plan equivalent)</th><th>Individual Cost/Month</th></tr></thead>
+  <tbody>
+    <tr><td>Semrush (Pro plan)</td><td>$130</td></tr>
+    <tr><td>Brandwatch (Essentials)</td><td>$108</td></tr>
+    <tr><td>Buffer (Team plan)</td><td>$60</td></tr>
+    <tr><td>Apollo.io (Basic)</td><td>$99</td></tr>
+    <tr><td>Copy.ai (Team)</td><td>$49</td></tr>
+    <tr><td>Unbounce (Optimize)</td><td>$99</td></tr>
+    <tr><td><strong>Total toolstack</strong></td><td><strong>$545/month</strong></td></tr>
+    <tr><td><strong>InfoGenie Growth plan</strong></td><td><strong>$247/month</strong></td></tr>
+    <tr><td><strong>Saving</strong></td><td><strong>$298/month (55% less)</strong></td></tr>
+  </tbody>
+</table>
+
+</div>
+</div>
+
+<!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+<div class="footer">
+  <strong>InfoGenie</strong> — AI-Powered Marketing Intelligence &amp; Campaign Automation Platform<br/>
+  <span style="margin-top:8px;display:block">infogenie.co.za · hello@infogenie.co.za</span>
+  <span style="margin-top:6px;display:block;font-size:0.72rem">© 2026 InfoGenie. Confidential. Not for external distribution without permission.</span>
+</div>
+
+</body>
+</html>
