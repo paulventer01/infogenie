@@ -21,6 +21,7 @@ import VerticalPlaybooks from "@/components/features/manage/VerticalPlaybooks";
 import Flywheel from "@/components/features/manage/Flywheel";
 import Playbook7Day from "@/components/features/manage/Playbook7Day";
 import NewProject from "@/components/features/manage/NewProject";
+import MarketingOKR from "@/components/features/manage/MarketingOKR";
 import MasterCalendar from "@/components/features/manage/MasterCalendar";
 import BrandCalendar from "@/components/features/manage/BrandCalendar";
 import Launches from "@/components/features/manage/Launches";
@@ -222,6 +223,7 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "playbook-7day": Playbook7Day,
   // ── Remainder of the Manage group (Phase 3 batch 2) ──────────────────────
   "new-project": NewProject,
+  "marketing-okr": MarketingOKR,
   "master-calendar": MasterCalendar,
   "brand-calendar": BrandCalendar,
   launches: Launches,

@@ -2619,12 +2619,15 @@ BOOT_TASKS.push(async () => {
 // ── Marketing Projects + Brand Calendar + Budget Board + Web Analytics ────
 const _projectsSchema  = require('./services/projects/schema');
 const _projectsRouter  = require('./services/projects/api');
+const _okrSchema       = require('./services/okr/schema');
+const _okrRouter       = require('./services/okr/api');
 const _bcalSchema      = require('./services/brand_calendar/schema');
 const _bcalRouter      = require('./services/brand_calendar/api');
 const _budgetSchema    = require('./services/budget_board/schema');
 const _budgetRouter    = require('./services/budget_board/api');
 const _webAnalRouter   = require('./services/web_analytics/api');
 app.use('/api/projects',        _projectsRouter);
+app.use('/api/okr',             _okrRouter);
 app.use('/api/brand-calendar',  _bcalRouter);
 app.use('/api/budget',          _budgetRouter);
 app.use('/api/web-analytics',   _webAnalRouter);
@@ -2633,6 +2636,7 @@ BOOT_TASKS.push(async () => {
   try {
     if (_db.hasDb()) {
       await _projectsSchema.ensureProjectsSchema();
+      await _okrSchema.ensureOkrSchema();
       await _bcalSchema.ensureBrandCalendarSchema();
       await _budgetSchema.ensureBudgetSchema();
       console.log('[projects + brand-calendar + budget-board + web-analytics] ready');

@@ -441,6 +441,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "web-analytics", icon: "📈", label: "Web Analytics (acquisition + behaviour)" },
           { view: "ai-traffic", icon: "📡", label: "AI Traffic Monitor" },
           { view: "heatmaps", icon: "🔥", label: "Heatmaps + Session Replay" },
+          { view: "marketing-okr", icon: "🎯", label: "Marketing OKRs (live campaign data)" },
           { view: "budget-board", icon: "💰", label: "Budget Board (monitor + spend)" },
         ],
       },
