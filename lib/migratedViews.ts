@@ -150,6 +150,8 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "content-gaps", legacyModule: null },
   { view: "serp", legacyModule: null },
   { view: "serp-tracker", legacyModule: null },
+  { view: "google-trends", legacyModule: null },
+  { view: "bing-webmaster", legacyModule: null },
   { view: "backlinks", legacyModule: null },
   { view: "backlink-monitor", legacyModule: null },
   { view: "link-prospector", legacyModule: null },

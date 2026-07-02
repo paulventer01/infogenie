@@ -102,6 +102,8 @@ import IntentMap from "@/components/features/analyse/IntentMap";
 import ContentGaps from "@/components/features/analyse/ContentGaps";
 import Serp from "@/components/features/analyse/Serp";
 import SerpTracker from "@/components/features/analyse/SerpTracker";
+import BingWebmaster from "@/components/features/analyse/BingWebmaster";
+import GoogleTrends from "@/components/features/analyse/GoogleTrends";
 import Backlinks from "@/components/features/analyse/Backlinks";
 import BacklinkMonitor from "@/components/features/analyse/BacklinkMonitor";
 import LinkProspector from "@/components/features/analyse/LinkProspector";
@@ -307,6 +309,8 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "content-gaps": ContentGaps,
   "serp": Serp,
   "serp-tracker": SerpTracker,
+  "bing-webmaster": BingWebmaster,
+  "google-trends": GoogleTrends,
   "backlinks": Backlinks,
   "backlink-monitor": BacklinkMonitor,
   "link-prospector": LinkProspector,

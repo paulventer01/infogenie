@@ -173,6 +173,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "content-gaps", icon: "🧩", label: "Content Gaps vs Rivals" },
           { view: "serp", icon: "🔎", label: "Live Google SERP" },
           { view: "serp-tracker", icon: "📍", label: "SERP Rank Tracker" },
+          { view: "google-trends", icon: "📈", label: "Google Trends" },
+          { view: "bing-webmaster", icon: "🔷", label: "Bing Webmaster Tools" },
         ],
       },
       {

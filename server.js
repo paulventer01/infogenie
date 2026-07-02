@@ -4388,6 +4388,16 @@ async function _firecrawlGetHtml(url, timeoutMs = 12000) {
   }
 }
 
+// ── Bing Webmaster Tools ─────────────────────────────────────────────────────
+const _bingWmtSchema = require('./services/bing_webmaster/schema');
+const _bingWmtRouter = require('./services/bing_webmaster/api');
+app.use('/api/bing-webmaster', _bingWmtRouter);
+BOOT_TASKS.push(async () => { try { if (_db.hasDb()) { await _bingWmtSchema.ensureBingWebmasterSchema(); console.log('[bing-wmt] schema ready'); } } catch(e) { console.error('[bing-wmt] init failed:', e.message); } });
+
+// ── Google Trends ────────────────────────────────────────────────────────────
+const _googleTrendsRouter = require('./services/google_trends/api');
+app.use('/api/google-trends', _googleTrendsRouter);
+
 // ─── Profound (LLM brand-mention tracker) ───────────────────────────────────
 // Profound · Shopify · AppsFlyer routes → services/external_connectors/routes.js
 require('./services/external_connectors/routes')(app, { _missingCreds });

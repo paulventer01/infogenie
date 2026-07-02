@@ -49,6 +49,7 @@ const REGISTRY = [
   { key: 'GOOGLE_PAGESPEED_API_KEY', group: 'Data & Intelligence', service: 'Google PageSpeed', label: 'PageSpeed API Key', desc: 'Core Web Vitals & page performance audits', secret: true, test: 'pagespeed', settingsIds: ['pagespeed', 'google_pagespeed'] },
   { key: 'GOOGLE_SEARCH_API_KEY', group: 'Data & Intelligence', service: 'Google Search', label: 'Google Search API Key', desc: 'Custom Search / SERP visibility', secret: true, test: 'google_search', settingsIds: ['google_search'] },
   { key: 'YOUTUBE_DATA_API_KEY', group: 'Data & Intelligence', service: 'YouTube Data', label: 'YouTube Data API Key', desc: 'YouTube trending videos (chart=mostPopular) for Trending Topics', secret: true, test: 'youtube_data', settingsIds: ['youtube_data'] },
+  { key: 'BING_WEBMASTER_API_KEY', group: 'Data & Intelligence', service: 'Bing Webmaster', label: 'Bing Webmaster API Key', desc: 'Bing keyword performance, page stats, and crawl data — free second SEO data source alongside Google', secret: true, test: 'bing_webmaster', settingsIds: ['bing_webmaster'] },
 
   // ── Infrastructure ──────────────────────────────────────────────────────────
   { key: 'RESEND_API_KEY', group: 'Infrastructure', service: 'Resend', label: 'Resend API Key', desc: 'Transactional & broadcast email', secret: true, test: 'resend', settingsIds: ['resend'] },
@@ -443,6 +444,18 @@ async function _runTest(keyName) {
       if (r.ok) return _OK('YouTube Data API key accepted');
       if (r.status === 400 || r.status === 401 || r.status === 403) return _BAD('YouTube Data API rejected the key (HTTP ' + r.status + ')');
       return _HTTP('YouTube Data API', r);
+    }
+    if (entry.test === 'bing_webmaster') {
+      const key = resolvePlatformKey('BING_WEBMASTER_API_KEY');
+      if (!key) return _UNCONF();
+      // Probe: GetSites with a valid key returns an array (possibly empty). A bad
+      // key returns HTTP 403 or a body with error code before any site data is read.
+      const r = await _fetchT('https://ssl.bing.com/webmaster/api.svc/json/GetSites?apikey=' + encodeURIComponent(key));
+      if (r.status === 401 || r.status === 403) return _BAD('Bing Webmaster rejected the key (HTTP ' + r.status + ')');
+      if (!r.ok) return _HTTP('Bing Webmaster', r);
+      let data = null; try { data = JSON.parse(await _bodyText(r)); } catch {}
+      if (data && data.Message) return _BAD('Bing Webmaster: ' + data.Message);
+      return _OK('Bing Webmaster key accepted');
     }
     if (entry.test === 'amplitude') {
       const key = resolvePlatformKey('AMPLITUDE_API_KEY');
