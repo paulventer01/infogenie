@@ -4396,6 +4396,17 @@ app.use('/api/spyfu', _spyfuRouter);
 const _majesticRouter = require('./services/majestic/api');
 app.use('/api/majestic', _majesticRouter);
 
+// ── T116 — Real-Time News ─────────────────────────────────────────────────────
+const _rtnRouter = require('./services/realtime_news/api');
+const _rtnSchema = require('./services/realtime_news/schema');
+app.use('/api/realtime-news', _rtnRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) await _rtnSchema.ensureRealtimeNewsSchema();
+    console.log('[t116] realtime-news schema ready');
+  } catch(e) { console.warn('[t116] schema init failed:', e.message); }
+});
+
 // ── Bing Webmaster Tools ─────────────────────────────────────────────────────
 const _bingWmtSchema = require('./services/bing_webmaster/schema');
 const _bingWmtRouter = require('./services/bing_webmaster/api');

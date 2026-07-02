@@ -136,7 +136,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "6 · Listen for mentions",
         items: [
-          { view: "mentions", icon: "📰", label: "Web & News Mentions" },
+          { view: "realtime-news", icon: "📰", label: "Real-Time News" },
+          { view: "mentions", icon: "🌐", label: "Web & News Mentions" },
           { view: "reddit", icon: "🔴", label: "Reddit Research" },
           { view: "reddit-pulse", icon: "👽", label: "Reddit Live Pulse" },
           { view: "twitter-pulse", icon: "🐦", label: "X / Twitter Pulse" },

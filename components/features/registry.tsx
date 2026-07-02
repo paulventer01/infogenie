@@ -106,6 +106,7 @@ import BingWebmaster from "@/components/features/analyse/BingWebmaster";
 import GoogleTrends from "@/components/features/analyse/GoogleTrends";
 import SpyFu from "@/components/features/analyse/SpyFu";
 import MajesticSEO from "@/components/features/analyse/MajesticSEO";
+import RealtimeNews from "@/components/features/monitor/RealtimeNews";
 import Backlinks from "@/components/features/analyse/Backlinks";
 import BacklinkMonitor from "@/components/features/analyse/BacklinkMonitor";
 import LinkProspector from "@/components/features/analyse/LinkProspector";
@@ -315,6 +316,7 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "google-trends": GoogleTrends,
   "spyfu": SpyFu,
   "majestic": MajesticSEO,
+  "realtime-news": RealtimeNews,
   "backlinks": Backlinks,
   "backlink-monitor": BacklinkMonitor,
   "link-prospector": LinkProspector,

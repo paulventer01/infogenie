@@ -154,6 +154,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "bing-webmaster", legacyModule: null },
   { view: "spyfu", legacyModule: null },
   { view: "majestic", legacyModule: null },
+  { view: "realtime-news", legacyModule: null },
   { view: "backlinks", legacyModule: null },
   { view: "backlink-monitor", legacyModule: null },
   { view: "link-prospector", legacyModule: null },
