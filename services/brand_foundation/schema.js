@@ -75,14 +75,18 @@ async function ensureBrandFoundationSchema() {
   // Always re-syncs setval on every boot so the sequence cannot drift behind
   // the real MAX(id) (a known cause of duplicate-key errors after manual
   // inserts or restores).
+  // NOTE: SET DEFAULT is applied unconditionally (not only at sequence creation
+  // time) so that re-runs after a partial migration always fix the column default.
   try {
     await p.query(`
       DO $$
       BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname='brand_foundation_id_seq') THEN
           CREATE SEQUENCE brand_foundation_id_seq OWNED BY brand_foundation.id;
-          ALTER TABLE brand_foundation ALTER COLUMN id SET DEFAULT nextval('brand_foundation_id_seq');
         END IF;
+        -- Always re-apply SET DEFAULT in case a previous run created the sequence
+        -- but crashed before or after the ALTER TABLE (leaves id with no default).
+        ALTER TABLE brand_foundation ALTER COLUMN id SET DEFAULT nextval('brand_foundation_id_seq');
       END $$;
     `);
     // Safety re-sync on every boot — cheap and guards against drift.
