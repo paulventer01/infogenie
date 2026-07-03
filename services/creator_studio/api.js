@@ -271,46 +271,6 @@ Return strict JSON: { "value": "<the suggestion as plain text — no quotes, no 
   } catch (e) { _err(res, 502, e.message); }
 });
 
-  // Resolve tenant and pull stored Brand Foundation so suggestions are always
-  // grounded in the company's real industry/ICP/voice — even when the client
-  // sends empty brand/industry (e.g. on pages with no active analysis).
-  let bfBlock = '';
-  try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label: 'studio:ai-suggest' });
-    if (tid) bfBlock = await getBrandContextBlock(tid);
-  } catch (_) { /* non-fatal — degrade gracefully */ }
-
-  const compList = (Array.isArray(competitors) ? competitors : [])
-    .slice(0, 8)
-    .map(c => typeof c === 'string' ? c : (c.name || c.domain || ''))
-    .filter(Boolean).join(', ');
-
-  // Client-supplied values supplement (or override) the stored foundation.
-  const clientCtx = [
-    brand       ? `Brand (from active analysis): ${brand}`       : '',
-    industry    ? `Industry (from active analysis): ${industry}` : '',
-    compList    ? `Active competitors: ${compList}`              : '',
-    currentValue ? `Current draft value (improve, don't echo): "${currentValue}"` : '',
-    context     ? `Extra context: ${context}`                    : '',
-  ].filter(Boolean).join('\n');
-
-  const effectiveIndustry = industry || '';
-  const prompt = `You are filling out the "${field}" field for a marketing tool.
-
-${bfBlock ? `STORED BRAND FOUNDATION (highest priority — use this as your primary context):\n${bfBlock}\n` : ''}${clientCtx ? `\nADDITIONAL CONTEXT:\n${clientCtx}\n` : ''}
-Write ONE concise, real, industry-specific answer for the "${field}" field. Ground the answer in the brand's actual industry, competitors, and voice from the context above. Do NOT use placeholders, generic clichés, lorem ipsum, or made-up names like "Acme", "Apex", "Nexus", "Vega". The value must be something a real ${effectiveIndustry || 'marketing'} practitioner would actually write for this specific brand.
-
-Return strict JSON: { "value": "<the suggestion as plain text — no quotes, no markdown>" }`;
-
-  try {
-    const data = await _ai(prompt, { temperature: 0.85, max_tokens: 400 });
-    let value = String(data?.value || '').trim();
-    if (!value) throw new Error('AI returned empty value');
-    value = value.replace(/^["'""'']+|["'""'']+$/g, '').trim();
-    res.json({ ok: true, value });
-  } catch (e) { _err(res, 502, e.message); }
-});
-
 router.get('/brand/kit', async (req, res) => {
   const kit = await _db.kvGet('brand_kit:default', null);
   res.json({ ok:true, kit });
