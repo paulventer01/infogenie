@@ -2178,7 +2178,7 @@ window.buildMapsIntel = async function() {
             <label style="font-size:0.7rem;font-weight:700;color:#6B7280">TARGET CITY / REGION *</label>
             <button id="miRgSuggest" style="padding:3px 10px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);border:none;border-radius:5px;color:#fff;font-size:0.65rem;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
           </div>
-          <input id="miRegion" placeholder="e.g. Cape Town, Manhattan New York, London UK" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+          <input id="miRegion" data-no-autofill placeholder="e.g. Cape Town, Manhattan New York, London UK" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
           <div id="miRgPills" style="display:none;margin-top:5px;flex-wrap:wrap;gap:5px"></div>
         </div>
         <button id="miGo" style="background:linear-gradient(135deg,#0F4C81,#1E88E5);color:#fff;border:none;padding:9px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer;white-space:nowrap;align-self:flex-end">🗺️ Scan Market</button>
@@ -2205,10 +2205,15 @@ window.buildMapsIntel = async function() {
         body: JSON.stringify({ fieldLabel, fieldPlaceholder: inp.placeholder, context: `Google Maps competitor intelligence tool. ${fieldLabel}. Suggest 5 options. Return a JSON array of 5 short strings.`, format: 'json_array' })
       }).then(x => x.json());
       let sugs = suggestions; // fallback
-      if (r.ok && r.result) {
-        try { sugs = JSON.parse(r.result); } catch(_) {
-          const m = String(r.result).match(/\[[\s\S]*\]/);
-          if (m) { try { sugs = JSON.parse(m[0]); } catch(_) {} }
+      const raw = r.ok && (r.values || r.value || r.result);
+      if (raw) {
+        if (Array.isArray(raw)) { sugs = raw; }
+        else {
+          try { const p = JSON.parse(raw); sugs = Array.isArray(p) ? p : (p.values || p.suggestions || suggestions); }
+          catch(_) {
+            const m = String(raw).match(/\[[\s\S]*\]/);
+            if (m) { try { sugs = JSON.parse(m[0]); } catch(_) {} }
+          }
         }
       }
       if (!Array.isArray(sugs) || !sugs.length) sugs = suggestions;

@@ -193,20 +193,23 @@ export default function MapsIntel() {
     const r = await apiPost<AiSuggestResult>("/api/studio/ai-suggest", {
       fieldLabel,
       fieldPlaceholder: placeholder,
-      context: `Google Maps competitor intelligence tool. ${fieldLabel}. Suggest 5 options. Return a JSON array of 5 short strings.`,
+      context: `Google Maps competitor intelligence tool. ${fieldLabel}. Suggest 5 options.`,
       format: "json_array",
     });
     let sugs = fallback;
-    if (r.ok && r.result) {
-      try {
-        sugs = JSON.parse(r.result);
-      } catch {
-        const m = String(r.result).match(/\[[\s\S]*\]/);
-        if (m) {
-          try {
-            sugs = JSON.parse(m[0]);
-          } catch {
-            /* keep fallback */
+    // Backend returns { ok, values: [...] } for format=json_array
+    const raw = r.ok && ((r as unknown as { values?: unknown }).values || r.result);
+    if (raw) {
+      if (Array.isArray(raw)) {
+        sugs = raw as string[];
+      } else {
+        try {
+          const p = JSON.parse(String(raw));
+          sugs = Array.isArray(p) ? p : fallback;
+        } catch {
+          const m = String(raw).match(/\[[\s\S]*\]/);
+          if (m) {
+            try { sugs = JSON.parse(m[0]); } catch { /* keep fallback */ }
           }
         }
       }

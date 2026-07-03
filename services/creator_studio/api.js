@@ -212,8 +212,64 @@ Mix styles. Keep most under 8 words. NEVER use clichés like "your trusted partn
 // NEVER returns a hardcoded/placeholder string — every value comes from a real
 // LLM grounded in the analysed industry + competitor list.
 router.post('/ai-suggest', async (req, res) => {
-  const { field = '', brand = '', industry = '', competitors = [], currentValue = '', context = '' } = req.body || {};
-  if (!field) return _err(res, 400, 'field required');
+  const { field = '', fieldLabel = '', brand = '', industry = '', competitors = [], currentValue = '', context = '', format = '' } = req.body || {};
+  const resolvedField = field || fieldLabel;
+  if (!resolvedField) return _err(res, 400, 'field required');
+
+  // Resolve tenant + Brand Foundation for grounded suggestions.
+  let bfBlock = '';
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'studio:ai-suggest' });
+    if (tid) bfBlock = await getBrandContextBlock(tid);
+  } catch (_) { /* non-fatal */ }
+
+  const compList = (Array.isArray(competitors) ? competitors : [])
+    .slice(0, 8)
+    .map(c => typeof c === 'string' ? c : (c.name || c.domain || ''))
+    .filter(Boolean).join(', ');
+  const clientCtx = [
+    brand       ? `Brand: ${brand}`       : '',
+    industry    ? `Industry: ${industry}` : '',
+    compList    ? `Competitors: ${compList}` : '',
+    currentValue ? `Current value: "${currentValue}"` : '',
+    context     ? `Context: ${context}`  : '',
+  ].filter(Boolean).join('\n');
+  const ctxSection = [
+    bfBlock    ? `BRAND FOUNDATION:\n${bfBlock}` : '',
+    clientCtx  ? `ADDITIONAL CONTEXT:\n${clientCtx}` : '',
+  ].filter(Boolean).join('\n\n');
+
+  // format=json_array → return 5-6 diverse options as an array (used by pill pickers).
+  if (format === 'json_array') {
+    const prompt = `You are a marketing assistant. Suggest 5-6 diverse, realistic options for the "${resolvedField}" field.
+${ctxSection ? ctxSection + '\n' : ''}
+Each option must be concise (≤ 10 words), specific, and relevant to the brand/industry above. No placeholders, no generic filler.
+Return strict JSON: { "values": ["option 1", "option 2", "option 3", "option 4", "option 5"] }`;
+    try {
+      const data = await _ai(prompt, { temperature: 0.9, max_tokens: 300 });
+      let values = Array.isArray(data?.values) ? data.values : null;
+      if (!values && Array.isArray(data)) values = data;
+      if (!values) throw new Error('AI returned no array');
+      values = values.slice(0, 6).map(v => String(v).replace(/^["']+|["']+$/g, '').trim()).filter(Boolean);
+      return res.json({ ok: true, values });
+    } catch (e) { return _err(res, 502, e.message); }
+  }
+
+  // Single-value path (original behaviour — kept for backward compat).
+  const effectiveIndustry = industry || '';
+  const prompt = `You are filling out the "${resolvedField}" field for a marketing tool.
+${ctxSection ? ctxSection + '\n' : ''}
+Write ONE concise, real, industry-specific answer. Do NOT use placeholders, generic clichés, or made-up names like "Acme", "Apex". The value must be something a real ${effectiveIndustry || 'marketing'} practitioner would write.
+
+Return strict JSON: { "value": "<the suggestion as plain text — no quotes, no markdown>" }`;
+  try {
+    const data = await _ai(prompt, { temperature: 0.85, max_tokens: 400 });
+    let value = String(data?.value || '').trim();
+    if (!value) throw new Error('AI returned empty value');
+    value = value.replace(/^["'""'']+|["'""'']+$/g, '').trim();
+    res.json({ ok: true, value });
+  } catch (e) { _err(res, 502, e.message); }
+});
 
   // Resolve tenant and pull stored Brand Foundation so suggestions are always
   // grounded in the company's real industry/ICP/voice — even when the client
