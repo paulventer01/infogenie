@@ -14,6 +14,8 @@ const OpenAI  = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
 const router  = express.Router();
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
+const { getBrandContextBlock } = require('../brand_foundation/api');
 
 const _openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
 const _anthropicKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || '';
@@ -212,26 +214,44 @@ Mix styles. Keep most under 8 words. NEVER use clichés like "your trusted partn
 router.post('/ai-suggest', async (req, res) => {
   const { field = '', brand = '', industry = '', competitors = [], currentValue = '', context = '' } = req.body || {};
   if (!field) return _err(res, 400, 'field required');
-  const compList = (Array.isArray(competitors)?competitors:[]).slice(0,8).map(c=>typeof c==='string'?c:(c.name||c.domain||'')).filter(Boolean).join(', ');
-  const ctxBlock = [
-    brand     ? `Brand: ${brand}`            : '',
-    industry  ? `Industry: ${industry}`      : '',
-    compList  ? `Active competitors: ${compList}` : '',
-    currentValue ? `Current draft value (improve, don't echo): "${currentValue}"` : '',
-    context   ? `Extra context: ${context}`  : '',
-  ].filter(Boolean).join('\n');
-  const prompt = `You are filling out the "${field}" field for a marketing tool. Use the brand + industry + competitor context below to write ONE concise, real, industry-specific answer. Do NOT use placeholders, generic clichés, lorem ipsum, or names like "Acme", "Apex", "Nexus", "Vega". The value must be something a real ${industry||'brand'} practitioner would actually write.
 
-${ctxBlock}
+  // Resolve tenant and pull stored Brand Foundation so suggestions are always
+  // grounded in the company's real industry/ICP/voice — even when the client
+  // sends empty brand/industry (e.g. on pages with no active analysis).
+  let bfBlock = '';
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'studio:ai-suggest' });
+    if (tid) bfBlock = await getBrandContextBlock(tid);
+  } catch (_) { /* non-fatal — degrade gracefully */ }
+
+  const compList = (Array.isArray(competitors) ? competitors : [])
+    .slice(0, 8)
+    .map(c => typeof c === 'string' ? c : (c.name || c.domain || ''))
+    .filter(Boolean).join(', ');
+
+  // Client-supplied values supplement (or override) the stored foundation.
+  const clientCtx = [
+    brand       ? `Brand (from active analysis): ${brand}`       : '',
+    industry    ? `Industry (from active analysis): ${industry}` : '',
+    compList    ? `Active competitors: ${compList}`              : '',
+    currentValue ? `Current draft value (improve, don't echo): "${currentValue}"` : '',
+    context     ? `Extra context: ${context}`                    : '',
+  ].filter(Boolean).join('\n');
+
+  const effectiveIndustry = industry || '';
+  const prompt = `You are filling out the "${field}" field for a marketing tool.
+
+${bfBlock ? `STORED BRAND FOUNDATION (highest priority — use this as your primary context):\n${bfBlock}\n` : ''}${clientCtx ? `\nADDITIONAL CONTEXT:\n${clientCtx}\n` : ''}
+Write ONE concise, real, industry-specific answer for the "${field}" field. Ground the answer in the brand's actual industry, competitors, and voice from the context above. Do NOT use placeholders, generic clichés, lorem ipsum, or made-up names like "Acme", "Apex", "Nexus", "Vega". The value must be something a real ${effectiveIndustry || 'marketing'} practitioner would actually write for this specific brand.
 
 Return strict JSON: { "value": "<the suggestion as plain text — no quotes, no markdown>" }`;
+
   try {
     const data = await _ai(prompt, { temperature: 0.85, max_tokens: 400 });
     let value = String(data?.value || '').trim();
     if (!value) throw new Error('AI returned empty value');
-    // Defensive: strip wrapping quotes some models add.
     value = value.replace(/^["'""'']+|["'""'']+$/g, '').trim();
-    res.json({ ok:true, value });
+    res.json({ ok: true, value });
   } catch (e) { _err(res, 502, e.message); }
 });
 
