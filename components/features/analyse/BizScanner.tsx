@@ -41,6 +41,26 @@ const CAT_COLOUR: Record<string, string> = {
   franchise: "#f59e0b",
 };
 
+const SCAN_TYPES = [
+  { value: "all",        label: "Full Scan",      icon: "🔭", desc: "All opportunity types" },
+  { value: "struggling", label: "Struggling",     icon: "📉", desc: "Weak competitors" },
+  { value: "for_sale",   label: "For Sale",       icon: "🏷️", desc: "Businesses listed" },
+  { value: "growing",    label: "Fast-Growing",   icon: "🚀", desc: "Rising sectors" },
+  { value: "franchise",  label: "Franchise",      icon: "🏪", desc: "Franchise openings" },
+];
+
+const REGIONS = [
+  "Global / All countries",
+  "United States",
+  "United Kingdom",
+  "European Union",
+  "Canada",
+  "Australia",
+  "Asia-Pacific",
+  "Latin America",
+  "Middle East & Africa",
+];
+
 function ScoreRing({ val, max = 100 }: { val: number; max?: number }) {
   const pct = Math.min(100, Math.max(0, Math.round((val / max) * 100)));
   const col = pct >= 70 ? "#10b981" : pct >= 40 ? "#f59e0b" : "#ef4444";
@@ -123,56 +143,216 @@ export default function BizScanner() {
       </div>
 
       <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
-        <div className="ig-card" style={{ maxWidth: 680, marginBottom: 24 }}>
-          <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <div className="form-group">
-              <label>Industry / Sector</label>
-              <input
-                className="form-control"
-                value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label>Region</label>
-              <input
-                className="form-control"
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label>Scan Type</label>
-              <select
-                className="form-control"
-                value={scanType}
-                onChange={(e) => setScanType(e.target.value)}
-              >
-                <option value="all">Full Scan (all types)</option>
-                <option value="struggling">Struggling Competitors</option>
-                <option value="for_sale">Businesses for Sale</option>
-                <option value="growing">Fast-Growing Sectors</option>
-                <option value="franchise">Franchise Opportunities</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Budget Range (optional)</label>
-              <input
-                className="form-control"
-                placeholder="e.g. $100K–$2M"
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-              />
+
+        {/* ── Modern scan form ── */}
+        <div style={{
+          maxWidth: 720,
+          marginBottom: 28,
+          background: "#fff",
+          border: "1px solid #E8EFF8",
+          borderRadius: 20,
+          boxShadow: "0 4px 24px rgba(10,22,40,.07)",
+          overflow: "hidden",
+        }}>
+
+          {/* Card header accent */}
+          <div style={{
+            background: "linear-gradient(110deg,#0A1628 0%,#1E3A8A 60%,#2563EB 100%)",
+            padding: "18px 24px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+          }}>
+            <div style={{
+              width: 40, height: 40,
+              background: "rgba(255,255,255,.12)",
+              borderRadius: 10,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: "1.2rem",
+            }}>🔭</div>
+            <div>
+              <div style={{ color: "#fff", fontWeight: 700, fontSize: "0.95rem", fontFamily: "Sora,sans-serif" }}>
+                Configure Scan
+              </div>
+              <div style={{ color: "rgba(255,255,255,.55)", fontSize: "0.75rem" }}>
+                AI will scan the market and score every opportunity
+              </div>
             </div>
           </div>
-          <button
-            className="btn btn-primary"
-            style={{ width: "100%" }}
-            disabled={running}
-            onClick={run}
-          >
-            {running ? "Scanning market…" : "🔭 Run Acquisition Scan"}
-          </button>
+
+          {/* Form body */}
+          <div style={{ padding: "24px 24px 20px" }}>
+
+            {/* Row 1: Industry + Region */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>
+                  Industry / Sector
+                </label>
+                <div style={{ position: "relative" }}>
+                  <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: "0.9rem", pointerEvents: "none" }}>🏭</span>
+                  <input
+                    value={industry}
+                    onChange={(e) => setIndustry(e.target.value)}
+                    placeholder="e.g. SaaS, FinTech, Retail…"
+                    style={{
+                      width: "100%", boxSizing: "border-box",
+                      padding: "10px 12px 10px 36px",
+                      border: "1.5px solid #E2E8F0",
+                      borderRadius: 10,
+                      fontSize: "0.88rem",
+                      color: "#0A1628",
+                      outline: "none",
+                      background: "#F8FAFC",
+                      fontFamily: "inherit",
+                      transition: "border-color .15s",
+                    }}
+                    onFocus={e => (e.currentTarget.style.borderColor = "#3B82F6")}
+                    onBlur={e => (e.currentTarget.style.borderColor = "#E2E8F0")}
+                  />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>
+                  Region
+                </label>
+                <div style={{ position: "relative" }}>
+                  <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: "0.9rem", pointerEvents: "none" }}>🌐</span>
+                  <select
+                    value={region}
+                    onChange={(e) => setRegion(e.target.value)}
+                    style={{
+                      width: "100%", boxSizing: "border-box",
+                      padding: "10px 12px 10px 36px",
+                      border: "1.5px solid #E2E8F0",
+                      borderRadius: 10,
+                      fontSize: "0.88rem",
+                      color: "#0A1628",
+                      outline: "none",
+                      background: "#F8FAFC",
+                      fontFamily: "inherit",
+                      appearance: "auto",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {REGIONS.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Scan type pill chips */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>
+                Scan Type
+              </label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {SCAN_TYPES.map(t => {
+                  const active = scanType === t.value;
+                  return (
+                    <button
+                      key={t.value}
+                      onClick={() => setScanType(t.value)}
+                      title={t.desc}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        padding: "8px 14px",
+                        borderRadius: 999,
+                        border: active ? "2px solid #2563EB" : "1.5px solid #E2E8F0",
+                        background: active ? "#EFF6FF" : "#fff",
+                        color: active ? "#1D4ED8" : "#374151",
+                        fontWeight: active ? 700 : 500,
+                        fontSize: "0.82rem",
+                        cursor: "pointer",
+                        transition: "all .15s",
+                        fontFamily: "inherit",
+                        boxShadow: active ? "0 0 0 3px rgba(37,99,235,.12)" : "none",
+                      }}
+                    >
+                      <span>{t.icon}</span>
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Row 3: Budget range */}
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>
+                Budget Range{" "}
+                <span style={{ color: "#9CA3AF", fontWeight: 400, textTransform: "none", fontSize: "0.7rem" }}>(optional)</span>
+              </label>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: "0.9rem", pointerEvents: "none" }}>💰</span>
+                <input
+                  value={budget}
+                  onChange={(e) => setBudget(e.target.value)}
+                  placeholder="e.g. $100K–$2M"
+                  style={{
+                    width: "100%", boxSizing: "border-box",
+                    padding: "10px 12px 10px 36px",
+                    border: "1.5px solid #E2E8F0",
+                    borderRadius: 10,
+                    fontSize: "0.88rem",
+                    color: "#0A1628",
+                    outline: "none",
+                    background: "#F8FAFC",
+                    fontFamily: "inherit",
+                    transition: "border-color .15s",
+                  }}
+                  onFocus={e => (e.currentTarget.style.borderColor = "#3B82F6")}
+                  onBlur={e => (e.currentTarget.style.borderColor = "#E2E8F0")}
+                />
+              </div>
+            </div>
+
+            {/* CTA button */}
+            <button
+              disabled={running}
+              onClick={run}
+              style={{
+                width: "100%",
+                padding: "13px 24px",
+                background: running
+                  ? "linear-gradient(135deg,#94A3B8,#64748B)"
+                  : "linear-gradient(135deg,#1D4ED8 0%,#2563EB 50%,#0EA5E9 100%)",
+                border: "none",
+                borderRadius: 12,
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: "0.95rem",
+                fontFamily: "Sora, sans-serif",
+                cursor: running ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                boxShadow: running ? "none" : "0 4px 20px rgba(37,99,235,.35)",
+                transition: "all .2s",
+                letterSpacing: ".01em",
+              }}
+            >
+              {running ? (
+                <>
+                  <span style={{
+                    display: "inline-block",
+                    width: 16, height: 16,
+                    border: "2px solid rgba(255,255,255,.3)",
+                    borderTopColor: "#fff",
+                    borderRadius: "50%",
+                    animation: "spin .7s linear infinite",
+                  }} />
+                  Scanning market…
+                </>
+              ) : (
+                <>🔭 Run Acquisition Scan</>
+              )}
+            </button>
+
+          </div>
         </div>
 
         {r && (
@@ -317,6 +497,8 @@ export default function BizScanner() {
           </div>
         )}
       </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
