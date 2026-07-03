@@ -3728,6 +3728,8 @@ const _geoInsightsRouter      = require('./services/geo_insights/api');
 const _geoInsightsSchema      = require('./services/geo_insights/schema');
 const _ugcDiscoveryRouter     = require('./services/ugc_discovery/api');
 const _ugcDiscoverySchema     = require('./services/ugc_discovery/schema');
+const _bizScannerRouter       = require('./services/biz_scanner/api');
+const _bizScannerSchema       = require('./services/biz_scanner/schema');
 app.use('/api/reputation-score', _reputationScoreRouter);
 app.use('/api/ave',              _aveRouter);
 app.use('/api/anomaly-detector', _anomalyDetectorRouter);
@@ -3738,6 +3740,7 @@ app.use('/api/project-compare',  _projectCompareRouter);
 app.use('/api/influence-score',  _influenceScoreRouter);
 app.use('/api/geo-insights',     _geoInsightsRouter);
 app.use('/api/ugc-discovery',    _ugcDiscoveryRouter);
+app.use('/api/biz-scanner',      _bizScannerRouter);
 BOOT_TASKS.push(async () => { try {
   if (process.env.DATABASE_URL) {
     await _reputationScoreSchema.ensureReputationScoreSchema();
@@ -3750,6 +3753,7 @@ BOOT_TASKS.push(async () => { try {
     await _influenceScoreSchema.ensureInfluenceScoreSchema();
     await _geoInsightsSchema.ensureGeoInsightsSchema();
     await _ugcDiscoverySchema.ensureUgcDiscoverySchema();
+    await _bizScannerSchema.ensureBizScannerSchema();
     console.log('[brand-intel] all 10 brand intelligence schemas ready');
   }
 } catch (e) { console.warn('[brand-intel] schema init failed:', e.message); }});
