@@ -200,9 +200,23 @@
     return b;
   }
 
-  function fireInput(el){
-    el.dispatchEvent(new Event('input', { bubbles:true }));
-    el.dispatchEvent(new Event('change', { bubbles:true }));
+  // For React controlled inputs, setting el.value directly doesn't trigger
+  // React's synthetic onChange. We use the native input/textarea value setter
+  // (obtained from the prototype before React overwrites it) so React's
+  // internal onChange listener fires and updates component state.
+  var _nativeInputSetter    = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,    'value') && Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,    'value').set;
+  var _nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value') && Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+
+  function fireInput(el, newValue){
+    // If a new value was supplied, push it through the native setter first so
+    // React recognises the change (otherwise it sees el.value===state and skips).
+    if (newValue !== undefined) {
+      var setter = el.tagName === 'TEXTAREA' ? _nativeTextareaSetter : _nativeInputSetter;
+      if (setter) setter.call(el, newValue);
+      else el.value = newValue;
+    }
+    el.dispatchEvent(new Event('input',  { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -246,10 +260,9 @@
       if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
       const v = String(j.value || '').trim();
       if (!v) throw new Error('AI returned empty');
-      el.value = v;
-      fireInput(el);
+      fireInput(el, v);
     } catch (e) {
-      el.value = prev;
+      fireInput(el, prev);
       (window.showToast || function(m){ console.warn(m); })('⚠ AI Suggest failed: ' + e.message);
     } finally {
       clearInterval(iv);
@@ -282,7 +295,7 @@
     // Auto-populate brand fields on creation when empty.
     if (isBrand && !el.value) {
       const b = getBrand();
-      if (b) { el.value = b; fireInput(el); }
+      if (b) { fireInput(el, b); }
     }
 
     const bar = document.createElement('div');
@@ -298,7 +311,7 @@
           if (window.navigateTo) { setTimeout(() => window.navigateTo('home'), 400); }
           return;
         }
-        el.value = b; fireInput(el);
+        fireInput(el, b);
       });
       bar.appendChild(useBtn);
 
@@ -354,7 +367,7 @@
       'padding:2px 6px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit';
     rebuildCompPicker(sel);
     sel.addEventListener('change', () => {
-      if (sel.value) { el.value = sel.value; fireInput(el); sel.selectedIndex = 0; }
+      if (sel.value) { fireInput(el, sel.value); sel.selectedIndex = 0; }
     });
     // Re-fetch competitors whenever analysis updates — via a single shared
     // listener, wired lazily on first picker creation.
