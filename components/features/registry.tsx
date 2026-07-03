@@ -106,6 +106,10 @@ import BingWebmaster from "@/components/features/analyse/BingWebmaster";
 import GoogleTrends from "@/components/features/analyse/GoogleTrends";
 import SpyFu from "@/components/features/analyse/SpyFu";
 import MajesticSEO from "@/components/features/analyse/MajesticSEO";
+import SemrushIntel from "@/components/features/analyse/SemrushIntel";
+import AhrefsIntel from "@/components/features/analyse/AhrefsIntel";
+import SerpstatIntel from "@/components/features/analyse/SerpstatIntel";
+import ContentKingMonitor from "@/components/features/analyse/ContentKingMonitor";
 import RealtimeNews from "@/components/features/monitor/RealtimeNews";
 import AttributionDashboard from "@/components/features/analyse/AttributionDashboard";
 import ProductLibrary from "@/components/features/manage/ProductLibrary";
@@ -319,6 +323,10 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "google-trends": GoogleTrends,
   "spyfu": SpyFu,
   "majestic": MajesticSEO,
+  "semrush": SemrushIntel,
+  "ahrefs": AhrefsIntel,
+  "serpstat": SerpstatIntel,
+  "contentking": ContentKingMonitor,
   "realtime-news": RealtimeNews,
   "attribution": AttributionDashboard,
   "product-library": ProductLibrary,
@@ -417,7 +425,6 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "analytics-hub": AnalyticsHub,
   "amplitude-agents": AmplitudeAgents,
   "blended-perf": BlendedPerf,
-  "attribution": Attribution,
   "true-roas": TrueRoas,
   "iroas": Iroas,
   "conversion-recovery": ConversionRecovery,

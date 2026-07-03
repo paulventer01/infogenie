@@ -4439,6 +4439,22 @@ BOOT_TASKS.push(async () => { try { if (_db.hasDb()) { await _bingWmtSchema.ensu
 const _googleTrendsRouter = require('./services/google_trends/api');
 app.use('/api/google-trends', _googleTrendsRouter);
 
+// ── Semrush ───────────────────────────────────────────────────────────────────
+const _semrushRouter = require('./services/semrush/api');
+app.use('/api/semrush', _semrushRouter);
+
+// ── Ahrefs ────────────────────────────────────────────────────────────────────
+const _ahrefsRouter = require('./services/ahrefs/api');
+app.use('/api/ahrefs', _ahrefsRouter);
+
+// ── Serpstat ──────────────────────────────────────────────────────────────────
+const _serpstatRouter = require('./services/serpstat/api');
+app.use('/api/serpstat', _serpstatRouter);
+
+// ── ContentKing ───────────────────────────────────────────────────────────────
+const _contentkingRouter = require('./services/contentking/api');
+app.use('/api/contentking', _contentkingRouter);
+
 // ─── Profound (LLM brand-mention tracker) ───────────────────────────────────
 // Profound · Shopify · AppsFlyer routes → services/external_connectors/routes.js
 require('./services/external_connectors/routes')(app, { _missingCreds });
