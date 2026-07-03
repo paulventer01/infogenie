@@ -1841,8 +1841,8 @@ function buildBattlePlan() {
     wrap.innerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;text-align:center;gap:20px;padding:40px">
         <div style="font-size:3.5rem">⚔️</div>
-        <div style="font-family:Sora,sans-serif;font-size:1.5rem;font-weight:900;color:white">No Analysis Yet</div>
-        <div style="color:rgba(255,255,255,.5);max-width:420px;font-size:0.9rem;line-height:1.6">Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.</div>
+        <div style="font-family:Sora,sans-serif;font-size:1.5rem;font-weight:900;color:#0A1628">No Analysis Yet</div>
+        <div style="color:#6B7280;max-width:420px;font-size:0.9rem;line-height:1.6">Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.</div>
         <button onclick="navigateTo('home')" style="padding:13px 30px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:12px;color:white;font-weight:700;font-size:0.9rem;cursor:pointer">Run Analysis →</button>
       </div>`;
     return;
@@ -2081,23 +2081,23 @@ function buildBattlePlan() {
       </div>
 
       <!-- Bottom CTA -->
-      <div style="margin-top:24px;background:linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06));border:1px solid rgba(0,201,200,.2);border-radius:14px;padding:20px 24px">
+      <div style="margin-top:24px;background:linear-gradient(135deg,#EFF6FF,#ECFEFF);border:1px solid #BAE6FD;border-radius:14px;padding:20px 24px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px">
           <div>
-            <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:white;margin-bottom:4px">🚀 Launch Full Attack Plan</div>
-            <div style="font-size:0.8rem;color:rgba(255,255,255,.55)">GPT-4 generates a complete 8-week strategy — keywords, channels, content, budget &amp; weekly milestones</div>
+            <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">🚀 Launch Full Attack Plan</div>
+            <div style="font-size:0.8rem;color:#6B7280">GPT-4 generates a complete 8-week strategy — keywords, channels, content, budget &amp; weekly milestones</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px">
-            <label style="font-size:0.68rem;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.07em">Select Competitor</label>
-            <select id="attackPlanCompSelect" style="padding:10px 14px;background:#1A2E4A;border:1px solid rgba(0,201,200,.3);border-radius:9px;font-size:0.82rem;font-weight:600;color:white;cursor:pointer;width:100%;appearance:auto">
-              ${(analysisData?.competitors||[]).map((cc,i)=>`<option value="${i}" ${i===idx?'selected':''} style="background:#1A2E4A;color:white">${cc.name||'Competitor '+(i+1)}</option>`).join('')}
+            <label style="font-size:0.68rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.07em">Select Competitor</label>
+            <select id="attackPlanCompSelect" style="padding:10px 14px;background:#fff;border:1px solid #BAE6FD;border-radius:9px;font-size:0.82rem;font-weight:600;color:#0A1628;cursor:pointer;width:100%;appearance:auto">
+              ${(analysisData?.competitors||[]).map((cc,i)=>`<option value="${i}" ${i===idx?'selected':''}>${cc.name||'Competitor '+(i+1)}</option>`).join('')}
             </select>
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding-top:18px">
             <button onclick="openFullAttackPlanModal(parseInt(document.getElementById('attackPlanCompSelect').value||'${idx}'))" style="padding:11px 24px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:0.84rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap;box-shadow:0 4px 16px rgba(0,102,255,.4)">🚀 Generate Attack Plan</button>
-            <button onclick="navigateTo('intelligence')" class="bp-cta-secondary" style="padding:11px 20px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:10px;font-size:0.82rem;font-weight:600;color:white;cursor:pointer;white-space:nowrap">📊 Deep Intelligence</button>
+            <button onclick="navigateTo('intelligence')" class="bp-cta-secondary" style="padding:11px 20px;background:#fff;border:1px solid #BAE6FD;border-radius:10px;font-size:0.82rem;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap">📊 Deep Intelligence</button>
           </div>
         </div>
       </div>
