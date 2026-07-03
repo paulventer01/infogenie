@@ -108,3 +108,9 @@ id = "JGwMmzGDhDGd5o9b0rXHc"
 uri = "file://docs/infogenie-complete-reference.md"
 type = "text"
 title = "InfoGenie — Complete Feature & Architecture Reference"
+
+[[outputs]]
+id = "PzPuuCRmflMyAYsACtgE6"
+uri = "file://docs/integrations-reference.md"
+type = "text"
+title = "InfoGenie — Integrations & Tools Reference"
