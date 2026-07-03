@@ -1,5 +1,4 @@
 const express = require('express');
-const _https = require('https');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 
@@ -8,17 +7,8 @@ async function _tid(req, label) {
   return await _tenantCtx.resolveTenantId(req, { label });
 }
 
-const _COUNTRY_TO_DFS_LOC = {
-  US:2840, GB:2826, CA:2124, AU:2036, DE:2276, FR:2250, ES:2724, IT:2380,
-  NL:2528, BE:2056, SE:2752, NO:2578, DK:2208, FI:2246, PL:2616, PT:2620,
-  IE:2372, AT:2040, CH:2756, JP:2392, KR:2410, IN:2356, SG:2702, MY:2458,
-  TH:2764, ID:2360, PH:2608, VN:2704, BR:2076, MX:2484, AR:2032, CL:2152,
-  CO:2170, ZA:2710, AE:2784, SA:2682, IL:2376, TR:2792, EG:2818, NG:2566,
-  KE:2404, NZ:2554, RU:2643, UA:2804, CZ:2203, RO:2642, GR:2300, HU:2348
-};
-
 async function _fetchMentions(brand, days, callDataForSEO) {
-  if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) return [];
+  if (!callDataForSEO || !process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) return [];
   try {
     const dfsParams = { keyword: `"${brand}"`, language_code: 'en', depth: 20 };
     const raw = await callDataForSEO('/v3/serp/google/news/live/advanced', [dfsParams], 12000);
@@ -64,7 +54,7 @@ Rules:
 - top_quotes: 2-3 short, real-feeling quotes drawn from the actual snippets.
 - recommended_action must be specific (not "do better"); cite the kind of fix (product, comms, support, pricing).`;
     const completion = await openaiChatWithRetry({
-      model: 'gpt-5-mini',
+      model: 'gpt-4o-mini',
       messages: [{ role:'system', content: sys }, { role:'user', content: `Brand: ${brand}\nMentions (${mentions.length}):\n${sample}\n\nCluster now.` }],
       response_format: { type:'json_object' },
       temperature: 0.4,
@@ -73,6 +63,37 @@ Rules:
     return JSON.parse(completion.choices[0].message.content);
   } catch (e) {
     console.warn('[voc] ai cluster failed:', e.message);
+    return null;
+  }
+}
+
+async function _aiSynthesize({ brand, days }, openaiChatWithRetry) {
+  if (!openaiChatWithRetry) return null;
+  try {
+    const sys = `You are a senior customer-insights analyst with deep knowledge of the financial services and trading industry.
+Based on your knowledge of ${brand}, synthesize what customers typically say about this brand online — their complaints, praises, feature requests, and common questions.
+Return strict JSON in this exact shape:
+{"summary":"<2-3 sentence executive overview of what customers typically say about ${brand}>","themes":[{"label":"<short 2-5 word theme>","kind":"praise|complaint|question|feature_request|neutral","frequency":<estimated mention count int, e.g. 120>,"share":<float 0-1 of total, all themes must sum to 1.0>,"sentiment_score":<float -1..1>,"top_quotes":["<realistic customer quote>","<realistic customer quote>"],"recommended_action":"<1 specific concrete next step the brand should take>"}]}
+Rules:
+- Generate 4-6 realistic, distinct themes based on what you know about ${brand}'s products, services, pricing, UX and public reputation.
+- top_quotes: 2 short, realistic quotes a real customer might write on Reddit, Trustpilot, or Twitter.
+- recommended_action must be specific — name the fix type (product, UX, comms, support, pricing).
+- All share values must sum to exactly 1.0.`;
+    const completion = await openaiChatWithRetry({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role:'system', content: sys },
+        { role:'user', content: `Synthesize voice-of-customer themes for: ${brand}. Reflect patterns typical for a ${days}-day monitoring window.` }
+      ],
+      response_format: { type:'json_object' },
+      temperature: 0.55,
+      max_tokens: 2000,
+    }, { fallbackModel:'gpt-3.5-turbo', retries: 2 });
+    const parsed = JSON.parse(completion.choices[0].message.content);
+    if (!Array.isArray(parsed?.themes) || !parsed.themes.length) return null;
+    return parsed;
+  } catch (e) {
+    console.warn('[voc] ai synthesize failed:', e.message);
     return null;
   }
 }
@@ -101,21 +122,29 @@ module.exports = function vocRouter(ctx) {
 
   router.post('/mine', async (req, res) => {
     const brand = String(req.body?.brand || '').trim().slice(0, 80);
-    const days  = Math.min(60, Math.max(1, parseInt(req.body?.days, 10) || 14));
+    const days  = Math.min(90, Math.max(1, parseInt(req.body?.days, 10) || 14));
     if (!brand) return _err(res, 400, 'brand required');
 
-    if (!callDataForSEO || !process.env.DATAFORSEO_LOGIN) {
-      return res.json({ ok:true, source:'empty', brand, mention_count:0, summary:'DataForSEO is not configured — cannot fetch mentions.', themes: [] });
-    }
-
     const mentions = await _fetchMentions(brand, days, callDataForSEO);
-    if (!mentions.length) {
-      return res.json({ ok:true, source:'empty', brand, mention_count:0, summary:'No mentions returned for this brand in the selected window.', themes: [] });
-    }
 
-    let result = await _aiCluster({ brand, mentions }, openaiChatWithRetry);
-    let source = 'openai';
-    if (!result || !Array.isArray(result.themes)) { result = _templateCluster({ brand, mentions }); source = 'template'; }
+    let result, source;
+
+    if (mentions.length) {
+      result = await _aiCluster({ brand, mentions }, openaiChatWithRetry);
+      source = 'openai';
+      if (!result || !Array.isArray(result.themes)) { result = _templateCluster({ brand, mentions }); source = 'template'; }
+    } else {
+      // No live mentions — synthesize from AI training knowledge
+      result = await _aiSynthesize({ brand, days }, openaiChatWithRetry);
+      source = 'ai_synthesized';
+      if (!result || !Array.isArray(result.themes) || !result.themes.length) {
+        return res.json({
+          ok: true, source: 'empty', brand, mention_count: 0,
+          summary: 'No mentions found and AI synthesis unavailable. Try extending the time window or check that the brand name is spelled correctly.',
+          themes: []
+        });
+      }
+    }
 
     if (_db.hasDb()) {
       try {
@@ -125,7 +154,13 @@ module.exports = function vocRouter(ctx) {
           [tid, brand, days, mentions.length, JSON.stringify(result.themes), result.summary || '', source]);
       } catch (e) { console.warn('[voc] persist failed:', e.message); }
     }
-    res.json({ ok:true, source, brand, days, mention_count: mentions.length, summary: result.summary || '', themes: result.themes });
+
+    res.json({
+      ok: true, source, brand, days,
+      mention_count: mentions.length,
+      summary: result.summary || '',
+      themes: result.themes
+    });
   });
 
   router.get('/history', async (req, res) => {

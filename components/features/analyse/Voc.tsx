@@ -370,8 +370,11 @@ export default function Voc() {
                     opacity: 0.9,
                   }}
                 >
-                  {result.brand} · {result.mention_count} mentions · last{" "}
-                  {result.days}d · {(result.source || "").toUpperCase()}
+                  {result.brand} ·{" "}
+                  {result.source === "ai_synthesized"
+                    ? "AI-synthesised themes"
+                    : `${result.mention_count} live mentions`}{" "}
+                  · last {result.days}d
                 </div>
                 <div
                   style={{
@@ -394,6 +397,16 @@ export default function Voc() {
                   padding: "18px 22px",
                 }}
               >
+                {result.source === "ai_synthesized" && (
+                  <div style={{
+                    background: "#FEF9C3", border: "1px solid #FDE68A",
+                    borderRadius: 8, padding: "9px 14px", marginBottom: 16,
+                    fontSize: "0.8rem", color: "#92400E", display: "flex", gap: 8, alignItems: "center",
+                  }}>
+                    <span>🤖</span>
+                    <span>No live mentions were found via news search — these themes were synthesised from AI training knowledge about <strong>{result.brand}</strong>. They reflect typical customer patterns, not real-time data.</span>
+                  </div>
+                )}
                 <div
                   style={{
                     display: "grid",
