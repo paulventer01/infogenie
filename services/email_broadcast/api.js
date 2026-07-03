@@ -389,4 +389,32 @@ router.post('/webhook', async (req, res) => {
   }
 });
 
+// ── GET /api/email-broadcast/analytics ───────────────────────────────────────
+router.get('/analytics', async (req, res) => {
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'email-broadcast:analytics' });
+    if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
+    const pool = _pool();
+    const { rows } = await pool.query(
+      `SELECT id, name, subject, status, recipient_count, sent_count,
+              open_count, click_count, bounce_count, complaint_count, unsubscribe_count,
+              created_at, sent_at
+       FROM email_broadcasts WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 200`,
+      [tid]
+    );
+    const totals = rows.reduce((acc, b) => ({
+      campaigns: acc.campaigns + 1,
+      sent: acc.sent + (b.sent_count || 0),
+      opens: acc.opens + (b.open_count || 0),
+      clicks: acc.clicks + (b.click_count || 0),
+      bounces: acc.bounces + (b.bounce_count || 0),
+      unsubscribes: acc.unsubscribes + (b.unsubscribe_count || 0),
+    }), { campaigns: 0, sent: 0, opens: 0, clicks: 0, bounces: 0, unsubscribes: 0 });
+    res.json({ ok: true, broadcasts: rows, totals });
+  } catch (e) {
+    console.error('[email-broadcast] analytics error:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;

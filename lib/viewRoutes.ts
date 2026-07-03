@@ -217,6 +217,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "cold-email", icon: "✉️", label: "Cold Email Writer" },
           { view: "email-personalizer", icon: "📨", label: "Email Personalizer (1-to-1)" },
           { view: "email-broadcast", icon: "📧", label: "Email Broadcast + Tracking" },
+          { view: "email-analytics", icon: "📊", label: "Email Campaign Analytics" },
           { view: "whatsapp", icon: "💬", label: "WhatsApp Channel" },
           { view: "voice-caller", icon: "📞", label: "AI Voice Caller" },
           { view: "reply-assistant", icon: "📩", label: "Reply Assistant (inbound)" },
@@ -483,6 +484,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "signal-triggers", icon: "⚡", label: "Real-time Signal Triggers" },
           { view: "stakeholders", icon: "👤", label: "Stakeholders" },
           { view: "brand-deals", icon: "🤝", label: "Brand Deal Pipeline" },
+          { view: "product-library", icon: "📦", label: "Product Library (catalog + USP)" },
         ],
       },
       {

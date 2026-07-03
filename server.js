@@ -4407,6 +4407,28 @@ BOOT_TASKS.push(async () => {
   } catch(e) { console.warn('[t116] schema init failed:', e.message); }
 });
 
+// ── T117 Multi-touch Attribution Dashboard ────────────────────────────────────
+const _attrRouter = require('./services/attribution/api');
+const _attrSchema = require('./services/attribution/schema');
+app.use('/api/attribution', _attrRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) await _attrSchema.ensureAttributionSchema();
+    console.log('[t117] attribution schema ready');
+  } catch(e) { console.warn('[t117] attribution schema init failed:', e.message); }
+});
+
+// ── T118 Product Library ──────────────────────────────────────────────────────
+const _prodLibRouter = require('./services/product_library/api');
+const _prodLibSchema = require('./services/product_library/schema');
+app.use('/api/products', _prodLibRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) await _prodLibSchema.ensureProductLibrarySchema();
+    console.log('[t118] product-library schema ready');
+  } catch(e) { console.warn('[t118] product-library schema init failed:', e.message); }
+});
+
 // ── Bing Webmaster Tools ─────────────────────────────────────────────────────
 const _bingWmtSchema = require('./services/bing_webmaster/schema');
 const _bingWmtRouter = require('./services/bing_webmaster/api');

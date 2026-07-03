@@ -107,6 +107,9 @@ import GoogleTrends from "@/components/features/analyse/GoogleTrends";
 import SpyFu from "@/components/features/analyse/SpyFu";
 import MajesticSEO from "@/components/features/analyse/MajesticSEO";
 import RealtimeNews from "@/components/features/monitor/RealtimeNews";
+import AttributionDashboard from "@/components/features/analyse/AttributionDashboard";
+import ProductLibrary from "@/components/features/manage/ProductLibrary";
+import EmailCampaignAnalytics from "@/components/features/reach/EmailCampaignAnalytics";
 import Backlinks from "@/components/features/analyse/Backlinks";
 import BacklinkMonitor from "@/components/features/analyse/BacklinkMonitor";
 import LinkProspector from "@/components/features/analyse/LinkProspector";
@@ -317,6 +320,9 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "spyfu": SpyFu,
   "majestic": MajesticSEO,
   "realtime-news": RealtimeNews,
+  "attribution": AttributionDashboard,
+  "product-library": ProductLibrary,
+  "email-analytics": EmailCampaignAnalytics,
   "backlinks": Backlinks,
   "backlink-monitor": BacklinkMonitor,
   "link-prospector": LinkProspector,

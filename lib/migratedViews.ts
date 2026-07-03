@@ -259,6 +259,8 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "revenue-forecast", legacyModule: null },
   { view: "digital-twin", legacyModule: null },
   { view: "mmm", legacyModule: null },
+  { view: "product-library", legacyModule: null },
+  { view: "email-analytics", legacyModule: null },
   { view: "autoseo", legacyModule: null },
   { view: "contentscorer", legacyModule: null },
   { view: "link-suggester", legacyModule: null },
