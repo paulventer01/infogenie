@@ -6999,23 +6999,24 @@ h3:hover {
 }
 
 /* ── Enterprise pricing card — light mode: features list visibility (was white-on-white) ── */
+/* needs !important to beat the dark-default !important rules at the block above */
 [data-theme="light"] .price-enterprise .price-features li {
-  color: #2A3654;
+  color: #2A3654 !important; /* lint-ok-important: overrides dark !important */
 }
 [data-theme="light"] .price-enterprise .price-amount {
-  color: #0A1628;
+  color: #0A1628 !important; /* lint-ok-important: overrides dark !important */
 }
 [data-theme="light"] .price-enterprise .price-amount span {
-  color: rgba(10,22,40,.55);
+  color: rgba(10,22,40,.55) !important; /* lint-ok-important: overrides dark !important */
 }
 [data-theme="light"] .price-enterprise .price-desc {
-  color: #5A6B85;
+  color: #5A6B85 !important; /* lint-ok-important: overrides dark !important */
 }
 [data-theme="light"] .price-enterprise .price-name {
-  color: #008B8A;
+  color: #008B8A !important; /* lint-ok-important: overrides dark !important */
 }
 [data-theme="light"] .price-enterprise .pf-check {
-  color: #00C9C8;
+  color: #00C9C8 !important; /* lint-ok-important: overrides dark !important */
 }
 
 /* ── Launch Full Attack Plan CTA — light mode visibility ── */

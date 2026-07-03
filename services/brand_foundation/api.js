@@ -168,10 +168,15 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/save', async (req, res) => {
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:save' });
-  if (!tid) return _err(res, 400, 'no_tenant');
-  const f = await _save(req.body || {}, tid);
-  res.json({ ok:true, foundation: f });
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:save' });
+    if (!tid) return _err(res, 400, 'no_tenant');
+    const f = await _save(req.body || {}, tid);
+    res.json({ ok:true, foundation: f });
+  } catch (e) {
+    console.error('[brand-foundation] save error:', e.message);
+    _err(res, 500, e.message || 'save_failed');
+  }
 });
 
 router.post('/suggest-purpose', async (req, res) => {
