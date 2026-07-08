@@ -577,6 +577,7 @@ export const VIEW_ID_ALIASES: Record<string, string> = {
   "local-leads":       "lead-gen",
   "lead-aggregator":   "lead-gen",
   "acquisition-engine":"lead-gen",
+  "marketing-simulator":"digital-twin",
 };
 
 /**
