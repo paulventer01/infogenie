@@ -275,6 +275,9 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "ai-team", legacyModule: null },
   { view: "finance-officer", legacyModule: null },
   { view: "ops-officer", legacyModule: null },
+  // Customer 360 is a brand-new panel (not a legacy port) — lives entirely in
+  // React with no legacy #view-customer-360 markup or public/js builder.
+  { view: "customer-360", legacyModule: null },
 ];
 
 /** Set of view ids now rendered by React. */

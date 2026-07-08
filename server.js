@@ -3203,6 +3203,11 @@ const _pwRouter    = require('./services/pricing_watch/api');
 app.use('/api/voc',            _vocRouter);
 app.use('/api/pricing-watch',  _pwRouter);
 
+// Customer 360 — unified account view (aggregates brand foundation, VoC,
+// leads, audience segments, brand deals; no dedicated schema of its own).
+const _customer360Router = require('./services/customer_360/api');
+app.use('/api/customer-360', _customer360Router);
+
 // ── T73-T80 Intelligence Tools ────────────────────────────────────────────
 const _cmSchema        = require('./services/change_monitor/schema');
 const _cmRouter        = require('./services/change_monitor/api');

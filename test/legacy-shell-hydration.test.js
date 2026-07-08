@@ -273,7 +273,7 @@ test('getLegacyShell().bodyHtml contains multiple class="view" panels', () => {
 
 // ── Bulk-removal guard ────────────────────────────────────────────────────────
 //
-// index.html currently contains 223 elements with id="view-*". This test
+// index.html currently contains 246 elements with id="view-*". This test
 // catches accidental bulk removal — e.g. a merge that replaces index.html with
 // an older version, or a refactor that collapses many view panels — while
 // allowing deliberate single-panel removals without needing to update the
@@ -282,7 +282,7 @@ test('getLegacyShell().bodyHtml contains multiple class="view" panels', () => {
 // Update MIN_VIEW_PANEL_COUNT after an intentional batch removal; keep the
 // value at (new total − 20) so there is still a meaningful floor.
 
-const MIN_VIEW_PANEL_COUNT = 225;
+const MIN_VIEW_PANEL_COUNT = 226;
 
 test(`getLegacyShell().bodyHtml contains at least ${MIN_VIEW_PANEL_COUNT} id="view-*" panels (bulk-removal guard)`, () => {
   const { bodyHtml } = getLegacyShell();

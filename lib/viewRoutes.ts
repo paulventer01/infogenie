@@ -455,6 +455,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "action-queue", icon: "🚀", label: "Daily Action Queue (what to do today)" },
           { view: "marketing-okr", icon: "🎯", label: "Marketing OKRs (live campaign data)" },
           { view: "budget-board", icon: "💰", label: "Budget Board (monitor + spend)" },
+          { view: "customer-360", icon: "🧭", label: "Customer 360 (unified account view)" },
         ],
       },
       {

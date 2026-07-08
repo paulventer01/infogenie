@@ -70,6 +70,7 @@ const ROUTE_GROUPS = [
 
   // ── Brand ─────────────────────────────────────────────────────────────────
   { prefix: '/api/brand-foundation',          view: 'brand.view',          write: 'brand.edit' },
+  { prefix: '/api/customer-360',              view: 'brand.view',          write: 'brand.edit' },
   { prefix: '/api/brand-calendar',            view: 'brand.calendar.view', write: 'brand.calendar.edit' },
   { prefix: '/api/content-calendar',          view: 'brand.calendar.view', write: 'brand.calendar.edit' },
 
@@ -431,6 +432,7 @@ const COMPONENT_MATRIX = {
   'team-meetings':        'manage.projects.view',
   'stakeholders':         'manage.projects.view',
   'budget-board':         'manage.budget.view',
+  'customer-360':         'brand.view',
   'ask-infogenie':        'manage.ask.use',
   'playbook-7day':        'manage.playbook.use',
   'ai-providers':         'manage.ai_providers.view',

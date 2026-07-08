@@ -18,3 +18,4 @@
 - [Legacy↔React nav bridge](legacy-react-nav-bridge.md) — migrated views blank out after legacy navigateTo() (div stripped, URL never moves); two-way bridge (SpaRouter + LegacyNavBridge via ig:spa-navigate) + reactive globals via custom events.
 - [Field-enhancer autofill suppression](field-enhancer-autofill.md) — enhancer sets autocomplete="new-password" on all free-text fields to kill Chromium saved-email/password leakage; honours meaningful tokens + exempts auth forms.
 - [Llama RapidAPI integration](llama-rapidapi.md) — callLlama/hasLlama in ai_compat.js; RAPIDAPI_KEY; Cloudflare-first fallback pattern in market_signals; SWC rejects /regex/g inside JSX text — use .split().join() instead.
+- [View-panel bulk-removal guard](view-panel-count-guard.md) — adding any new #view-* panel can fail the legacy-shell-hydration staleness test; bump MIN_VIEW_PANEL_COUNT to (liveCount-20).

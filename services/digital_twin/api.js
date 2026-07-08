@@ -314,7 +314,9 @@ router.post('/simulate', async (req, res) => {
   ]);
 
   let results = _templateResult(q);
-  if (raw) { try { results = JSON.parse(raw); } catch {} }
+  let source = 'template';
+  if (raw) { try { results = JSON.parse(raw); source = 'openai'; } catch {} }
+  results.source = source;
 
   const p = await _db.getPool();
   const ins = await p.query(
