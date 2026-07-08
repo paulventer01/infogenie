@@ -16,6 +16,10 @@ import GrowthMethodology from "@/components/features/manage/GrowthMethodology";
 import WhiteLabel from "@/components/features/manage/WhiteLabel";
 import BulkReports from "@/components/features/manage/BulkReports";
 import ModelCompare from "@/components/features/manage/ModelCompare";
+import CampaignComposer from "@/components/features/reach/CampaignComposer";
+import Geofencing from "@/components/features/reach/Geofencing";
+import LocalListings from "@/components/features/seo/LocalListings";
+import ReviewAutomation from "@/components/features/compete/ReviewAutomation";
 import WebAnalytics from "@/components/features/manage/WebAnalytics";
 import VerticalPlaybooks from "@/components/features/manage/VerticalPlaybooks";
 import Flywheel from "@/components/features/manage/Flywheel";
@@ -433,6 +437,10 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "churn-scorer": ChurnScorer,
   "revenue-forecast": RevenueForecast,
   "digital-twin": DigitalTwin,
+  "campaign-composer": CampaignComposer,
+  "geofencing": Geofencing,
+  "local-listings": LocalListings,
+  "review-automation": ReviewAutomation,
   "mmm": Mmm,
   "autoseo": Autoseo,
   "contentscorer": Contentscorer,

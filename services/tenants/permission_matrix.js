@@ -91,6 +91,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/yt-comment-miner',          view: 'compete.intel.view',        write: 'compete.intel.manage' },
   { prefix: '/api/pricing-watch',             view: 'compete.intel.view',        write: 'compete.intel.manage' },
   { prefix: '/api/review-monitor',            view: 'compete.intel.view',        write: 'compete.intel.manage' },
+  { prefix: '/api/local-listings',            view: 'seo.view',                  write: 'seo.run' },
   { prefix: '/api/review-aggregator',         view: 'compete.intel.view',        write: 'compete.intel.manage' },
   { prefix: '/api/glassdoor',                 view: 'compete.intel.view',        write: 'compete.intel.manage' },
   { prefix: '/api/job-board-spy',             view: 'compete.intel.view',        write: 'compete.intel.manage' },
@@ -141,6 +142,8 @@ const ROUTE_GROUPS = [
 
   // ── Reach ─────────────────────────────────────────────────────────────────
   { prefix: '/api/audiences',                 view: 'reach.audiences.view', write: 'reach.audiences.edit' },
+  { prefix: '/api/campaign-composer',         view: 'reach.email.view',     write: 'reach.email.send' },
+  { prefix: '/api/geofencing',                view: 'reach.audiences.view', write: 'reach.audiences.edit' },
   { prefix: '/api/personas',                  view: 'reach.audiences.view', write: 'reach.audiences.edit' },
   { prefix: '/api/journeys',                  view: 'reach.journeys.view',  write: 'reach.journeys.edit' },
   { prefix: '/api/omnichannel',               view: 'reach.email.view',     write: 'reach.email.send' },
@@ -327,6 +330,7 @@ const COMPONENT_MATRIX = {
   'influence-score':      'compete.intel.view',
   'geo-insights':         'compete.intel.view',
   'ugc-discovery':        'compete.intel.view',
+  'review-automation':    'compete.intel.view',
 
   // Grow
   'campaigns':            'grow.campaigns.view',
@@ -374,6 +378,8 @@ const COMPONENT_MATRIX = {
   'lead-qualifier':       'reach.leads.view',
   'hunter':               'reach.leads.view',
   'brand-deals':          'reach.leads.view',
+  'campaign-composer':    'reach.email.view',
+  'geofencing':           'reach.audiences.view',
 
   // Creator Studio
   'studio':               'creator.view',
@@ -424,6 +430,7 @@ const COMPONENT_MATRIX = {
   'schema-generator':     'seo.view',
   'social-tags':          'seo.view',
   'accessibility':        'seo.view',
+  'local-listings':       'seo.view',
 
   // Manage / utilities
   'new-project':          'manage.projects.edit',

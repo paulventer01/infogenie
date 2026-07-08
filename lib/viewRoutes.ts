@@ -161,6 +161,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "project-compare",  icon: "⚖️", label: "Project Comparison" },
           { view: "geo-insights",     icon: "🌍", label: "Geolocation Insights" },
           { view: "ugc-discovery",    icon: "📸", label: "UGC Discovery" },
+          { view: "review-automation", icon: "💬", label: "AI Review Reply & Request Automation" },
         ],
       },
       {
@@ -295,6 +296,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "omnichannel", icon: "📡", label: "Omnichannel Composer (Email · SMS · WhatsApp · Voice · Push)" },
           { view: "smart-send", icon: "⏰", label: "Smart Send Time Optimizer" },
           { view: "translate", icon: "🌍", label: "AI Campaign Translator" },
+          { view: "campaign-composer", icon: "🪄", label: "Prompt-to-Campaign Builder" },
+          { view: "geofencing", icon: "📍", label: "Geofencing (location triggers)" },
         ],
       },
       {
@@ -333,6 +336,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "search-intel", icon: "🔮", label: "AI Visibility & Search Pulse" },
           { view: "geo-audit", icon: "🛸", label: "GEO Audit (ChatGPT · Perplexity)" },
           { view: "local-seo", icon: "📍", label: "Local SEO (Google Maps)" },
+          { view: "local-listings", icon: "🏬", label: "Local Listings / NAP Sync" },
           { view: "seo-auditor", icon: "🧭", label: "On-Page SEO Audit" },
           { view: "content-score", icon: "📊", label: "Content Score Auto-Optimize" },
           { view: "seo-crawler", icon: "🕸️", label: "Full-Site SEO Crawler" },

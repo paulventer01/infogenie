@@ -3454,6 +3454,32 @@ app.use('/api/email-designer', _emailDesignerRouter);
 app.use('/api/mcp',            _mcpRouter);
 app.use('/api/drips',          _smartSendRouter);   // adds /api/drips/smart-send-time + /api/drips/translate
 app.use('/api/comments',       _commentsRouter);    // F13 team collaboration asset comments
+// ── Competitor-gap features (prompt-to-campaign · review automation · local listings · geofencing) ──
+const _campaignComposerSchema = require('./services/campaign_composer/schema');
+const _campaignComposerRouter = require('./services/campaign_composer/api');
+const _reviewReplySchema      = require('./services/review_monitor/reply_schema');
+const _reviewReplyRouter      = require('./services/review_monitor/reply_api');
+const _localListingsSchema    = require('./services/local_listings/schema');
+const _localListingsRouter    = require('./services/local_listings/api');
+const _geofencingSchema       = require('./services/geofencing/schema');
+const _geofencingRouter       = require('./services/geofencing/api');
+app.use('/api/campaign-composer', _campaignComposerRouter);
+app.use('/api/review-monitor',    _reviewReplyRouter);   // adds /replies/* + /request-rules/* onto the existing review-monitor prefix
+app.use('/api/local-listings',    _localListingsRouter);
+app.use('/api/geofencing',        _geofencingRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _campaignComposerSchema.ensureCampaignComposerSchema();
+      await _reviewReplySchema.ensureReviewReplySchema();
+      await _localListingsSchema.ensureLocalListingsSchema();
+      await _geofencingSchema.ensureGeofencingSchema();
+      console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing');
+    } else {
+      console.log('[gap-features] disabled — DATABASE_URL not set');
+    }
+  } catch (e) { console.error('[gap-features] init failed:', e.message); }
+});
 BOOT_TASKS.push(async () => {
   try {
     if (_db.hasDb()) {
