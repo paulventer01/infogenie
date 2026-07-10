@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { NAV_GROUPS, viewToPath, type NavItem } from "@/lib/viewRoutes";
 import NavGroup from "./NavGroup";
@@ -11,6 +12,8 @@ const LOGO_SVG =
 const BELL_SVG =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>';
 
+const LS_KEY = "ig:analysed";
+
 // React replacement for the legacy `<nav id="navbar">`. The DOM structure, ids
 // and classes mirror index.html exactly so the replayed legacy scripts (app.js
 // nav wiring, ig_navperms/ig_navchrome MutationObservers, theme toggle, the
@@ -19,6 +22,45 @@ const BELL_SVG =
 // router.push (keeps the URL in sync) so deep links / back-forward work.
 export default function Navbar() {
   const router = useRouter();
+
+  // ── "Has analysis been run?" gate ────────────────────────────────────────
+  // The feature nav (Brief, Analyse, Create …) is hidden until the user has
+  // run at least one analysis. We persist the flag in localStorage so the nav
+  // is visible on every subsequent visit without waiting for a server check.
+  const [navReady, setNavReady] = useState(false);
+
+  useEffect(() => {
+    // 1. Fast sync check — flag set by a previous session
+    try {
+      if (localStorage.getItem(LS_KEY)) {
+        setNavReady(true);
+        return;
+      }
+    } catch { /* private-browsing / storage disabled */ }
+
+    // 2. Async server check — handles users who have existing analysis data
+    //    (e.g. ran analysis before this feature was added, or cleared storage)
+    //    A non-empty signals array in the brief means real analysis data exists.
+    fetch("/api/marketing-brief/merged")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.brief?.signals?.length > 0) {
+          setNavReady(true);
+          try { localStorage.setItem(LS_KEY, "1"); } catch { /* noop */ }
+        }
+      })
+      .catch(() => { /* network error — stay gated */ });
+  }, []);
+
+  useEffect(() => {
+    // 3. Real-time: analysis just completed in this tab
+    const onReady = () => {
+      setNavReady(true);
+      try { localStorage.setItem(LS_KEY, "1"); } catch { /* noop */ }
+    };
+    document.addEventListener("ig:analysis-ready", onReady);
+    return () => document.removeEventListener("ig:analysis-ready", onReady);
+  }, []);
 
   const onNavClick = (e: React.MouseEvent, item: NavItem) => {
     e.preventDefault();
@@ -54,7 +96,7 @@ export default function Navbar() {
     router.push("/manage/marketing-brief");
   };
 
-  // + Analyse button → analysis form at /home so MigratedPanel unmounts
+  // + Analyse button → analysis form at /analyse so MigratedPanel unmounts
   const goAnalyse = (e: React.MouseEvent) => {
     e.preventDefault();
     try { window.navigateTo?.("home"); } catch { /* noop */ }
@@ -64,9 +106,9 @@ export default function Navbar() {
   return (
     <nav className="navbar" id="navbar">
       <div className="nav-inner">
-        {/* Row 1: logo + actions */}
+        {/* Row 1: logo + actions — always visible */}
         <div className="nav-top-row">
-          <a href="#" className="nav-logo" id="navLogo" onClick={goBrief}>
+          <a href="#" className="nav-logo" id="navLogo" onClick={navReady ? goBrief : goAnalyse}>
             <div
               className="logo-mark"
               dangerouslySetInnerHTML={{ __html: LOGO_SVG }}
@@ -139,27 +181,30 @@ export default function Navbar() {
             </button>
           </div>
         </div>
-        {/* Row 2: group dropdown buttons */}
-        <div className="nav-groups" id="navGroups">
-          {/* Brief — standalone tab, no dropdown */}
-          <button
-            className="nav-group-btn"
-            type="button"
-            title="Today's Marketing Brief"
-            onClick={goBrief}
-            style={{ cursor: "pointer" }}
-          >
-            <span className="ngb-icon">📋</span>
-            <span className="ngb-label">Brief</span>
-          </button>
-          <span className="ngb-sep" />
-          {NAV_GROUPS.map((group) => (
-            <div key={group.key} style={{ display: "contents" }}>
-              <NavGroup group={group} onNavClick={onNavClick} />
-              {group.sepAfter && <span className="ngb-sep" />}
-            </div>
-          ))}
-        </div>
+
+        {/* Row 2: feature nav — hidden until analysis has been run */}
+        {navReady && (
+          <div className="nav-groups" id="navGroups">
+            {/* Brief — standalone tab, no dropdown */}
+            <button
+              className="nav-group-btn"
+              type="button"
+              title="Today's Marketing Brief"
+              onClick={goBrief}
+              style={{ cursor: "pointer" }}
+            >
+              <span className="ngb-icon">📋</span>
+              <span className="ngb-label">Brief</span>
+            </button>
+            <span className="ngb-sep" />
+            {NAV_GROUPS.map((group) => (
+              <div key={group.key} style={{ display: "contents" }}>
+                <NavGroup group={group} onNavClick={onNavClick} />
+                {group.sepAfter && <span className="ngb-sep" />}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </nav>
   );
