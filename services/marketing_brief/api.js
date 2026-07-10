@@ -33,6 +33,52 @@ function _shouldGenerate(lastBrief, cadence) {
   return hoursAgo >= min;
 }
 
+// GET /api/marketing-brief/merged — unified payload: brief + digest + decision recs
+// Single-request home screen feed used by the MarketingBrief React panel.
+router.get('/merged', async (req, res) => {
+  if (!_db.hasDb()) return _err(res, 503, 'no-db');
+  const tid = await _tid(req, 'brief:merged');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const forceNew = req.query.force === '1';
+  try {
+    const pool = _db.getPool();
+    const storedCadence = await _getTenantCadence(pool, tid);
+
+    // All three sources run in parallel
+    const [briefRow, digestRow, recsRow] = await Promise.all([
+      pool.query(
+        `SELECT * FROM marketing_briefs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 1`, [tid]
+      ).catch(() => ({ rows: [] })),
+      pool.query(
+        `SELECT id, brand, headline, summary_md, sections, stats, generated_by, created_at
+         FROM digest_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 1`, [tid]
+      ).catch(() => ({ rows: [] })),
+      pool.query(
+        `SELECT id, category, title, recommendation, expected_impact,
+                confidence_pct, cost_estimate, time_to_result, priority_score, data_sources
+         FROM decision_recommendations
+         WHERE tenant_id=$1 AND dismissed_at IS NULL
+         ORDER BY priority_score DESC, created_at DESC LIMIT 5`, [tid]
+      ).catch(() => ({ rows: [] })),
+    ]);
+
+    let brief = briefRow.rows[0] || null;
+
+    // Auto-generate brief if missing or stale (respects cadence)
+    if (!brief || (forceNew || _shouldGenerate(brief, storedCadence))) {
+      try { brief = await generateBrief('your brand', tid); } catch { /* keep stale */ }
+    }
+
+    res.json({
+      ok: true,
+      cadence: storedCadence,
+      brief: brief || null,
+      digest: digestRow.rows[0] || null,
+      recommendations: recsRow.rows,
+    });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
 // GET /api/marketing-brief/settings — read cadence for this tenant
 router.get('/settings', async (req, res) => {
   if (!req.user) return _err(res, 401, 'login_required');
