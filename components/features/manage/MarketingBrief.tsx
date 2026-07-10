@@ -502,20 +502,27 @@ export default function MarketingBrief() {
         {/* Cadence selector */}
         <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#A5B4FC', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cadence:</span>
-          {(Object.entries(CADENCES) as [Cadence, CadenceMeta][]).map(([key, meta]) => (
-            <button
-              key={key} onClick={() => saveCadence(key)} disabled={savingCadence}
-              title={meta.plan + ' plan'}
-              style={{
-                padding: '3px 9px', borderRadius: 5, fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
-                background: cadence === key ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.06)',
-                border: `1px solid ${cadence === key ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.14)'}`,
-                color: cadence === key ? '#fff' : '#A5B4FC',
-              }}
-            >
-              {meta.label} <span style={{ opacity: 0.65, fontSize: '0.6rem' }}>({meta.plan})</span>
-            </button>
-          ))}
+          {(Object.entries(CADENCES) as [Cadence, CadenceMeta][]).map(([key, meta]) => {
+            const isSelected = cadence === key;
+            return (
+              <button
+                key={key} onClick={() => saveCadence(key)} disabled={savingCadence}
+                title={meta.plan + ' plan'}
+                style={{
+                  padding: '5px 12px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: savingCadence ? 'default' : 'pointer', transition: 'all 0.18s',
+                  background: isSelected ? '#fff' : 'rgba(255,255,255,0.08)',
+                  border: `2px solid ${isSelected ? '#fff' : 'rgba(255,255,255,0.18)'}`,
+                  color: isSelected ? '#312E81' : '#C7D2FE',
+                  boxShadow: isSelected ? '0 2px 8px rgba(0,0,0,0.18)' : 'none',
+                  opacity: savingCadence && !isSelected ? 0.5 : 1,
+                }}
+              >
+                {meta.label} <span style={{ opacity: 0.7, fontSize: '0.62rem' }}>({meta.plan})</span>
+                {isSelected && <span style={{ marginLeft: 5, fontSize: '0.62rem' }}>✓</span>}
+              </button>
+            );
+          })}
+          {savingCadence && <span style={{ fontSize: '0.65rem', color: '#A5B4FC', opacity: 0.8 }}>Saving…</span>}
         </div>
 
         {/* Active pillars */}
@@ -548,22 +555,33 @@ export default function MarketingBrief() {
       {/* ── Today's Brief tab ─────────────────────────────────────────────── */}
       {tab === 'brief' && (
         <>
-          {/* Signal count chips */}
+          {/* Signal count chips + inline opportunity cards */}
           {(brief?.signals || []).length > 0 && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8, marginBottom: 18 }}>
-              {(['warning', 'win', 'opportunity'] as const).map(kind => {
-                const count = (brief!.signals || []).filter(s => s.kind === kind).length;
-                if (!count) return null;
-                const s = KIND_STYLE[kind];
-                return (
-                  <div key={kind} style={{ background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 9, padding: '10px 14px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1.3rem', marginBottom: 3 }}>{s.icon}</div>
-                    <div style={{ fontSize: '1.3rem', fontWeight: 800, color: s.badge }}>{count}</div>
-                    <div style={{ fontSize: '0.68rem', color: s.badge, fontWeight: 700, textTransform: 'capitalize' }}>{kind}{count !== 1 ? 's' : ''}</div>
-                  </div>
-                );
-              })}
-            </div>
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8, marginBottom: 12 }}>
+                {(['warning', 'win', 'opportunity'] as const).map(kind => {
+                  const count = (brief!.signals || []).filter(s => s.kind === kind).length;
+                  if (!count) return null;
+                  const s = KIND_STYLE[kind];
+                  return (
+                    <div key={kind} style={{ background: s.bg, border: `1.5px solid ${s.border}`, borderRadius: 9, padding: '10px 14px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.3rem', marginBottom: 3 }}>{s.icon}</div>
+                      <div style={{ fontSize: '1.3rem', fontWeight: 800, color: s.badge }}>{count}</div>
+                      <div style={{ fontSize: '0.68rem', color: s.badge, fontWeight: 700, textTransform: 'capitalize' }}>{kind}{count !== 1 ? 's' : ''}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Opportunity sections — shown directly under the chips */}
+              {(brief?.sections || []).filter(s => s.kind === 'opportunity').length > 0 && (
+                <div style={{ marginBottom: 18 }}>
+                  {(brief!.sections).filter(s => s.kind === 'opportunity').map((s, i) => (
+                    <BriefSectionCard key={i} section={s} />
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {/* ── Morning Digest — inline ──────────────────────────────────── */}
@@ -589,12 +607,14 @@ export default function MarketingBrief() {
             onNavigateFull={() => navigate('decision-engine')}
           />
 
-          {/* ── Brief signal headlines ───────────────────────────────────── */}
-          {(brief?.sections || []).length > 0 && (
+          {/* ── Signal Headlines (warnings, wins, info — not opportunities) ── */}
+          {(brief?.sections || []).filter(s => s.kind !== 'opportunity').length > 0 && (
             <>
               <SectionLabel label="📡 Signal Headlines" />
               <div style={{ marginBottom: 8 }}>
-                {(brief!.sections).map((s, i) => <BriefSectionCard key={i} section={s} />)}
+                {(brief!.sections).filter(s => s.kind !== 'opportunity').map((s, i) => (
+                  <BriefSectionCard key={i} section={s} />
+                ))}
               </div>
             </>
           )}
