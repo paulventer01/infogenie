@@ -3454,6 +3454,21 @@ app.use('/api/email-designer', _emailDesignerRouter);
 app.use('/api/mcp',            _mcpRouter);
 app.use('/api/drips',          _smartSendRouter);   // adds /api/drips/smart-send-time + /api/drips/translate
 app.use('/api/comments',       _commentsRouter);    // F13 team collaboration asset comments
+// ── Today's Marketing Brief ──
+const _marketingBriefSchema = require('./services/marketing_brief/schema');
+const _marketingBriefRouter = require('./services/marketing_brief/api');
+const _marketingBriefCron   = require('./services/marketing_brief/api').startCron;
+app.use('/api/marketing-brief', _marketingBriefRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _marketingBriefSchema.ensureMarketingBriefSchema();
+      _marketingBriefCron();
+      console.log('[marketing-brief] schema ready, cron started');
+    }
+  } catch (e) { console.error('[marketing-brief] init failed:', e.message); }
+});
+
 // ── Competitor-gap features (prompt-to-campaign · review automation · local listings · geofencing) ──
 const _campaignComposerSchema = require('./services/campaign_composer/schema');
 const _campaignComposerRouter = require('./services/campaign_composer/api');

@@ -65,6 +65,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/weekly-report',             view: 'reports.view', write: 'reports.export' },
   { prefix: '/api/bulk-reports',              view: 'reports.view', write: 'reports.export' },
   { prefix: '/api/digest',                    view: 'reports.view', write: 'reports.export' },
+  { prefix: '/api/marketing-brief',           view: 'reports.view', write: 'reports.export' },
   { prefix: '/api/exports',                   view: 'reports.view', write: 'reports.export' },
   { prefix: '/api/infographics',              view: 'reports.view', write: 'reports.export' },
 
@@ -278,6 +279,7 @@ const COMPONENT_MATRIX = {
   'bulk-reports':         'reports.view',
   'weekly-report':        'reports.view',
   'digest':               'reports.view',
+  'marketing-brief':      'reports.view',
   'infographics':         'reports.view',
   'kpi-dashboard':        'analytics.view',
 

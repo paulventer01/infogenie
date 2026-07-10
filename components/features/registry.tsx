@@ -20,6 +20,7 @@ import CampaignComposer from "@/components/features/reach/CampaignComposer";
 import Geofencing from "@/components/features/reach/Geofencing";
 import LocalListings from "@/components/features/seo/LocalListings";
 import ReviewAutomation from "@/components/features/compete/ReviewAutomation";
+import MarketingBrief from "@/components/features/manage/MarketingBrief";
 import WebAnalytics from "@/components/features/manage/WebAnalytics";
 import VerticalPlaybooks from "@/components/features/manage/VerticalPlaybooks";
 import Flywheel from "@/components/features/manage/Flywheel";
@@ -441,6 +442,7 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "geofencing": Geofencing,
   "local-listings": LocalListings,
   "review-automation": ReviewAutomation,
+  "marketing-brief": MarketingBrief,
   "mmm": Mmm,
   "autoseo": Autoseo,
   "contentscorer": Contentscorer,

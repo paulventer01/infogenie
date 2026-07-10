@@ -441,6 +441,12 @@ export const NAV_GROUPS: NavGroupDef[] = [
     sepAfter: true,
     sections: [
       {
+        header: "0 · Morning Brief",
+        items: [
+          { view: "marketing-brief", icon: "📋", label: "Today's Marketing Brief — AI Director" },
+        ],
+      },
+      {
         header: "1 · Calendars & projects",
         items: [
           { view: "new-project", icon: "✨", label: "+ New Marketing Project" },
