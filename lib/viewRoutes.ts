@@ -597,10 +597,9 @@ export const VIEW_ID_ALIASES: Record<string, string> = {
  * nav view (or a known alias). `/` maps to the marketing-brief home screen.
  */
 export function pathToViewId(pathname: string): string | null {
-  if (!pathname || pathname === "/") return "marketing-brief";
-  // /analyse (no slug) → show legacy analysis form; 'home' is not a migrated
-  // React view so MigratedPanel renders nothing and #view-home is visible.
-  if (pathname === "/analyse") return "home";
+  // / → analysis form on first load; 'home' is not a migrated React view so
+  // MigratedPanel renders nothing and the legacy #view-home entry form shows.
+  if (!pathname || pathname === "/" || pathname === "/analyse") return "home";
   const segs = pathname.split("/").filter(Boolean);
   if (!segs.length) return null;
   const last = segs[segs.length - 1];

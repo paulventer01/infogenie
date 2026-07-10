@@ -51,7 +51,7 @@ export default function Navbar() {
   const goBrief = (e: React.MouseEvent) => {
     e.preventDefault();
     try { window.navigateTo?.("marketing-brief"); } catch { /* noop */ }
-    router.push("/");
+    router.push("/manage/marketing-brief");
   };
 
   // + Analyse button → analysis form at /home so MigratedPanel unmounts
