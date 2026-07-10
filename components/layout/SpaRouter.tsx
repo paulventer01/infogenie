@@ -12,7 +12,7 @@ export default function SpaRouter() {
   const pathname = usePathname();
 
   useEffect(() => {
-    const view = pathToViewId(pathname) || "home";
+    const view = pathToViewId(pathname) || "marketing-brief";
     const go = () => {
       try {
         window.navigateTo?.(view);

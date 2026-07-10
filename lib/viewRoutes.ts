@@ -593,11 +593,10 @@ export const VIEW_ID_ALIASES: Record<string, string> = {
 /**
  * Resolve a dashboard pathname to its `data-view` id. The group segment is
  * cosmetic — the last path segment is the view id, accepted only if it's a real
- * nav view (or a known alias). Returns null for `/` (which maps to the legacy
- * 'home' view).
+ * nav view (or a known alias). `/` maps to the marketing-brief home screen.
  */
 export function pathToViewId(pathname: string): string | null {
-  if (!pathname || pathname === "/") return null;
+  if (!pathname || pathname === "/") return "marketing-brief";
   const segs = pathname.split("/").filter(Boolean);
   if (!segs.length) return null;
   const last = segs[segs.length - 1];
