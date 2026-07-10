@@ -574,6 +574,7 @@ for (const group of NAV_GROUPS) {
 
 /** Canonical dashboard URL for a `data-view` id, or `/` if unknown. */
 export function viewToPath(view: string): string {
+  if (view === "home") return "/analyse";
   return VIEW_TO_PATH[view] || "/";
 }
 
@@ -597,6 +598,9 @@ export const VIEW_ID_ALIASES: Record<string, string> = {
  */
 export function pathToViewId(pathname: string): string | null {
   if (!pathname || pathname === "/") return "marketing-brief";
+  // /analyse (no slug) → show legacy analysis form; 'home' is not a migrated
+  // React view so MigratedPanel renders nothing and #view-home is visible.
+  if (pathname === "/analyse") return "home";
   const segs = pathname.split("/").filter(Boolean);
   if (!segs.length) return null;
   const last = segs[segs.length - 1];

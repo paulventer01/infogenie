@@ -54,10 +54,11 @@ export default function Navbar() {
     router.push("/");
   };
 
-  // + Analyse button → analysis form (legacy home view); no router.push needed
+  // + Analyse button → analysis form at /home so MigratedPanel unmounts
   const goAnalyse = (e: React.MouseEvent) => {
     e.preventDefault();
     try { window.navigateTo?.("home"); } catch { /* noop */ }
+    router.push("/analyse");
   };
 
   return (
