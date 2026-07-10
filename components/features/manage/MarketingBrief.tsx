@@ -37,6 +37,15 @@ interface Brief {
   created_at: string;
 }
 
+type Cadence = 'weekly' | 'daily' | 'daily-per-client';
+
+interface CadenceMeta { label: string; plan: string }
+const CADENCES: Record<Cadence, CadenceMeta> = {
+  weekly:             { label: 'Weekly',           plan: 'Solo'   },
+  daily:              { label: 'Daily',             plan: 'Growth' },
+  'daily-per-client': { label: 'Daily per-client',  plan: 'Agency' },
+};
+
 const KIND_STYLE: Record<string, { bg: string; border: string; badge: string; icon: string }> = {
   warning:     { bg: '#FFF7ED', border: '#FED7AA', badge: '#EA580C', icon: '⚠️' },
   win:         { bg: '#F0FDF4', border: '#BBF7D0', badge: '#16A34A', icon: '✅' },
@@ -96,15 +105,38 @@ function ActionRow({ action, index }: { action: BriefAction; index: number }) {
 }
 
 export default function MarketingBrief() {
-  const [brief, setBrief]       = useState<Brief | null>(null);
-  const [loading, setLoading]   = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [delivering, setDelivering] = useState(false);
-  const [error, setError]       = useState('');
-  const [delivered, setDelivered] = useState(false);
-  const [tab, setTab]           = useState<'brief' | 'history'>('brief');
-  const [history, setHistory]   = useState<Brief[]>([]);
+  const [brief, setBrief]             = useState<Brief | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [refreshing, setRefreshing]   = useState(false);
+  const [delivering, setDelivering]   = useState(false);
+  const [error, setError]             = useState('');
+  const [delivered, setDelivered]     = useState(false);
+  const [tab, setTab]                 = useState<'brief' | 'history'>('brief');
+  const [history, setHistory]         = useState<Brief[]>([]);
   const [histLoading, setHistLoading] = useState(false);
+  const [cadence, setCadence]         = useState<Cadence>('daily');
+  const [savingCadence, setSavingCadence] = useState(false);
+
+  // Load persisted cadence setting on mount
+  useEffect(() => {
+    fetch('/api/marketing-brief/settings')
+      .then(r => r.json())
+      .then(d => { if (d.ok && d.cadence) setCadence(d.cadence as Cadence); })
+      .catch(() => {});
+  }, []);
+
+  const saveCadence = useCallback(async (c: Cadence) => {
+    setSavingCadence(true);
+    try {
+      await fetch('/api/marketing-brief/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cadence: c }),
+      });
+      setCadence(c);
+    } catch { /* ignore */ }
+    finally { setSavingCadence(false); }
+  }, []);
 
   const loadToday = useCallback(async (force = false) => {
     force ? setRefreshing(true) : setLoading(true);
@@ -188,6 +220,7 @@ export default function MarketingBrief() {
       <div style={{ background: 'linear-gradient(135deg,#1E1B4B 0%,#312E81 60%,#4338CA 100%)', borderRadius: 16, padding: '28px 30px 24px', marginBottom: 20, color: '#fff', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: -30, right: -30, width: 160, height: 160, background: 'rgba(255,255,255,0.04)', borderRadius: '50%' }} />
         <div style={{ position: 'absolute', bottom: -40, right: 60, width: 100, height: 100, background: 'rgba(255,255,255,0.03)', borderRadius: '50%' }} />
+
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#A5B4FC', marginBottom: 6 }}>
@@ -217,8 +250,34 @@ export default function MarketingBrief() {
             </button>
           </div>
         </div>
+
+        {/* ── Cadence selector ── */}
+        <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#A5B4FC', textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0 }}>Brief cadence:</span>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(Object.entries(CADENCES) as [Cadence, CadenceMeta][]).map(([key, meta]) => (
+              <button
+                key={key}
+                onClick={() => saveCadence(key)}
+                disabled={savingCadence}
+                title={meta.plan + ' plan'}
+                style={{
+                  padding: '3px 10px', borderRadius: 5, border: '1px solid',
+                  fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                  background: cadence === key ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.06)',
+                  borderColor: cadence === key ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.15)',
+                  color: cadence === key ? '#fff' : '#A5B4FC',
+                }}
+              >
+                {meta.label}
+                <span style={{ marginLeft: 5, fontSize: '0.62rem', opacity: 0.75 }}>({meta.plan})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {brief && (
-          <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {(brief.active_pillars || []).slice(0, 8).map(p => (
               <span key={p} style={{ background: 'rgba(255,255,255,0.1)', color: '#E0E7FF', borderRadius: 5, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.04em' }}>{p}</span>
             ))}
@@ -293,7 +352,14 @@ export default function MarketingBrief() {
           )}
 
           {/* ── Footer ── */}
-          <div style={{ marginTop: 28, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ marginTop: 28, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button
+              onClick={() => navigate('home')}
+              style={{ padding: '8px 16px', background: 'linear-gradient(135deg,#0066FF,#0EA5E9)', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
+            >
+              🔍 Run Analysis
+            </button>
+            <div style={{ flex: 1 }} />
             <button onClick={() => navigate('decision-engine')} style={{ padding: '8px 16px', background: '#F1F5F9', color: '#374151', border: '1.5px solid #E2E8F0', borderRadius: 7, fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer' }}>
               🧭 Full Decision Engine
             </button>

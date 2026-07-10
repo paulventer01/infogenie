@@ -8,37 +8,88 @@ const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error:msg }); }
 function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
 
+// Valid cadences and their human labels
+const CADENCES = {
+  'weekly':           { label: 'Weekly',            plan: 'Solo',   minHours: 168 },
+  'daily':            { label: 'Daily',              plan: 'Growth', minHours: 22  },
+  'daily-per-client': { label: 'Daily per-client',  plan: 'Agency', minHours: 22  },
+};
+
+// Reads stored cadence for a tenant (defaults to 'daily')
+async function _getTenantCadence(pool, tid) {
+  try {
+    const r = await pool.query(
+      `SELECT cadence FROM marketing_brief_settings WHERE tenant_id=$1`, [tid]);
+    return r.rows[0]?.cadence || 'daily';
+  } catch { return 'daily'; }
+}
+
 // Cadence gate: returns true if a new brief should be generated
 function _shouldGenerate(lastBrief, cadence) {
   if (!lastBrief) return true;
   const last = new Date(lastBrief.created_at);
-  const now  = new Date();
-  const hoursAgo = (now - last) / 3600000;
-  if (cadence === 'weekly') return hoursAgo >= 168;
-  return hoursAgo >= 22; // daily (allow 2h window for timezone drift)
+  const hoursAgo = (new Date() - last) / 3600000;
+  const min = CADENCES[cadence]?.minHours ?? 22;
+  return hoursAgo >= min;
 }
+
+// GET /api/marketing-brief/settings — read cadence for this tenant
+router.get('/settings', async (req, res) => {
+  if (!req.user) return _err(res, 401, 'login_required');
+  if (!_db.hasDb()) return _err(res, 503, 'no-db');
+  const tid = await _tid(req, 'brief:settings:get');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  try {
+    const pool = _db.getPool();
+    const cadence = await _getTenantCadence(pool, tid);
+    res.json({ ok: true, cadence, cadences: CADENCES });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// PUT /api/marketing-brief/settings — persist cadence for this tenant
+router.put('/settings', async (req, res) => {
+  if (!req.user) return _err(res, 401, 'login_required');
+  if (!_db.hasDb()) return _err(res, 503, 'no-db');
+  const tid = await _tid(req, 'brief:settings:put');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const cadence = String(req.body?.cadence || '').trim();
+  if (!CADENCES[cadence]) return _err(res, 400, `cadence must be one of: ${Object.keys(CADENCES).join(', ')}`);
+  try {
+    const pool = _db.getPool();
+    await pool.query(`
+      INSERT INTO marketing_brief_settings (tenant_id, cadence, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (tenant_id) DO UPDATE SET cadence=$2, updated_at=NOW()
+    `, [tid, cadence]);
+    console.log(`[marketing-brief] cadence set: tid=${tid} cadence=${cadence}`);
+    res.json({ ok: true, cadence });
+  } catch (e) { _err(res, 500, e.message); }
+});
 
 // GET /api/marketing-brief/today  — returns cached brief or generates one
 router.get('/today', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const tid = await _tid(req, 'brief:today');
   if (!tid) return _err(res, 400, 'no_tenant');
-  const brand = String(req.query.brand || '').trim().slice(0, 80);
-  const cadence = String(req.query.cadence || 'daily');
+  const brand    = String(req.query.brand || '').trim().slice(0, 80);
   const forceNew = req.query.force === '1';
   try {
     const pool = _db.getPool();
+    // Use stored per-tenant cadence; query-param override only for power users
+    const storedCadence = await _getTenantCadence(pool, tid);
+    const cadence = CADENCES[req.query.cadence] ? req.query.cadence : storedCadence;
+
     const existing = await pool.query(
       `SELECT * FROM marketing_briefs WHERE tenant_id=$1
        ORDER BY created_at DESC LIMIT 1`, [tid]);
     const last = existing.rows[0];
 
     if (!forceNew && last && !_shouldGenerate(last, cadence)) {
-      return res.json({ ok:true, brief:last, fresh:false });
+      return res.json({ ok:true, brief:last, fresh:false, cadence });
     }
 
     const brief = await generateBrief(brand || 'your brand', tid);
-    res.json({ ok:true, brief, fresh:true });
+    res.json({ ok:true, brief, fresh:true, cadence });
   } catch (e) { _err(res, 500, e.message); }
 });
 
@@ -140,7 +191,7 @@ function _slackPost(text) {
   });
 }
 
-// ── Daily cron ──
+// ── Cron — respects per-tenant cadence ──
 let _cronTimer = null;
 function startCron() {
   if (_cronTimer || !_db.hasDb()) return;
@@ -148,22 +199,26 @@ function startCron() {
     if (!_db.hasDb()) return;
     try {
       const pool = _db.getPool();
-      const tenants = await pool.query(
-        `SELECT DISTINCT t.id, t.name FROM tenants t
-         WHERE t.active = TRUE LIMIT 50`);
+      // Join settings so each tenant's cadence is checked correctly
+      const tenants = await pool.query(`
+        SELECT t.id, t.name,
+               COALESCE(s.cadence, 'daily') AS cadence
+        FROM tenants t
+        LEFT JOIN marketing_brief_settings s ON s.tenant_id = t.id
+        WHERE t.active = TRUE LIMIT 50`);
       for (const tenant of tenants.rows) {
         try {
           const last = await pool.query(
             `SELECT created_at FROM marketing_briefs WHERE tenant_id=$1
              ORDER BY created_at DESC LIMIT 1`, [tenant.id]);
-          if (_shouldGenerate(last.rows[0], 'daily')) {
+          if (_shouldGenerate(last.rows[0], tenant.cadence)) {
             await generateBrief(tenant.name || 'brand', tenant.id);
           }
         } catch { /* skip failed tenant */ }
       }
     } catch (e) { console.warn('[marketing-brief] cron tick failed:', e.message); }
   };
-  _cronTimer = setInterval(tick, 6 * 3600 * 1000); // check every 6h, gate internally
+  _cronTimer = setInterval(tick, 6 * 3600 * 1000); // check every 6h, gate by cadence
   console.log('[marketing-brief] cron started — 6h check interval');
 }
 

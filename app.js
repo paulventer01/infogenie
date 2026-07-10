@@ -788,7 +788,7 @@ function igTrack(eventName, props = {}) {
   }
 }
 
-let currentView = 'home';
+let currentView = 'marketing-brief';
 let analysisData = null;
 let ctrChartInstance = null;
 let roasChartInstance = null;
