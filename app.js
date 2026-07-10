@@ -4121,7 +4121,7 @@ async function runAnalysis(url, country, industryOverride) {
   } catch(_) {}
 
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
-  window.IGDiag && IGDiag.mark('runAnalysis: navigating to dashboard', 'comps=' + selectedComps.length);
+  window.IGDiag && IGDiag.mark('runAnalysis: navigating to marketing-brief', 'comps=' + selectedComps.length);
   // Start a heartbeat that ticks every 250ms — any gap >500ms in the server
   // log proves the main thread was blocked during that window and the prior
   // breadcrumb names the culprit.
@@ -4129,12 +4129,11 @@ async function runAnalysis(url, country, industryOverride) {
   // Stop the heartbeat 15s later — by then the dashboard, all deferred
   // builders and enrichments are well past done in the happy case.
   setTimeout(() => { try { window.IGDiag && IGDiag.stopHeartbeat && IGDiag.stopHeartbeat(); } catch(_) {} }, 15000);
-  navigateTo('dashboard');
-  // Tell any already-mounted React Dashboard panel (Next.js dev shell) that a
-  // fresh analysis payload is on `window.analysisData`. On first analyse the
-  // panel mounts via the nav bridge and reads the data through its initializer;
-  // on a re-run while it's already mounted, the URL doesn't change so it won't
-  // remount — this event makes it re-read and refresh the report.
+  navigateTo('marketing-brief');
+  // Tell any already-mounted React panel (Next.js dev shell) that a fresh
+  // analysis payload is on `window.analysisData`. The Marketing Brief auto-
+  // refreshes when it sees this event so the brief stays in sync with the
+  // latest analysis without requiring a manual page reload.
   try {
     document.dispatchEvent(new CustomEvent('ig:analysis-ready', { detail: { url: cleanUrl } }));
   } catch(_) {}

@@ -47,14 +47,17 @@ export default function Navbar() {
     router.push(viewToPath(item.view));
   };
 
-  const goHome = (e: React.MouseEvent) => {
+  // Logo / Brief tab → marketing-brief home screen
+  const goBrief = (e: React.MouseEvent) => {
     e.preventDefault();
-    try {
-      window.navigateTo?.("home");
-    } catch {
-      /* noop */
-    }
+    try { window.navigateTo?.("marketing-brief"); } catch { /* noop */ }
     router.push("/");
+  };
+
+  // + Analyse button → analysis form (legacy home view); no router.push needed
+  const goAnalyse = (e: React.MouseEvent) => {
+    e.preventDefault();
+    try { window.navigateTo?.("home"); } catch { /* noop */ }
   };
 
   return (
@@ -62,7 +65,7 @@ export default function Navbar() {
       <div className="nav-inner">
         {/* Row 1: logo + actions */}
         <div className="nav-top-row">
-          <a href="#" className="nav-logo" id="navLogo" onClick={goHome}>
+          <a href="#" className="nav-logo" id="navLogo" onClick={goBrief}>
             <div
               className="logo-mark"
               dangerouslySetInnerHTML={{ __html: LOGO_SVG }}
@@ -129,7 +132,7 @@ export default function Navbar() {
             <button
               className="btn-nav-analyse"
               id="navAnalyseBtn"
-              onClick={goHome}
+              onClick={goAnalyse}
             >
               + Analyse
             </button>
@@ -137,6 +140,18 @@ export default function Navbar() {
         </div>
         {/* Row 2: group dropdown buttons */}
         <div className="nav-groups" id="navGroups">
+          {/* Brief — standalone tab, no dropdown */}
+          <button
+            className="nav-group-btn"
+            type="button"
+            title="Today's Marketing Brief"
+            onClick={goBrief}
+            style={{ cursor: "pointer" }}
+          >
+            <span className="ngb-icon">📋</span>
+            <span className="ngb-label">Brief</span>
+          </button>
+          <span className="ngb-sep" />
           {NAV_GROUPS.map((group) => (
             <div key={group.key} style={{ display: "contents" }}>
               <NavGroup group={group} onNavClick={onNavClick} />

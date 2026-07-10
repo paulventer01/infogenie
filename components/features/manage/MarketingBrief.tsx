@@ -409,6 +409,13 @@ export default function MarketingBrief() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Auto-refresh when a fresh analysis completes so the brief reflects new data
+  useEffect(() => {
+    const onAnalysis = () => { load(true); };
+    document.addEventListener('ig:analysis-ready', onAnalysis);
+    return () => document.removeEventListener('ig:analysis-ready', onAnalysis);
+  }, [load]);
+
   const saveCadence = useCallback(async (c: Cadence) => {
     setSavingCadence(true);
     try {
