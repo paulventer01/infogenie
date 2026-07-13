@@ -2040,21 +2040,21 @@ function buildBattlePlan() {
           <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#0066FF,#00C9C8);display:flex;align-items:center;justify-content:center;font-weight:900;color:#0A1628;font-size:1rem;box-shadow:0 3px 10px rgba(0,102,255,.25)">${(c.logo||c.name[0]).toString()[0]}</div>
           <div>
             <div style="font-weight:800;color:#0A1628;font-size:0.95rem">${c.name}</div>
-            <div style="font-size:0.68rem;color:#7A92B4">${c.url||''}</div>
+            <div style="font-size:0.68rem;color:#475569">${c.url||''}</div>
           </div>
         </div>
         <div style="flex:1;display:flex;gap:24px;flex-wrap:wrap">
-          <div style="text-align:center" title="Estimated total monthly website visits for ${c.name} — organic + paid combined."><div style="font-size:0.92rem;font-weight:800;color:#0066FF">${traffic}</div><div style="font-size:0.62rem;color:#7A92B4;text-transform:uppercase;letter-spacing:.06em">Traffic/mo</div></div>
-          <div style="text-align:center" title="Click-Through Rate: % of ad impressions that result in a click. This competitor's average across all campaigns."><div style="font-size:0.92rem;font-weight:800;color:#0066FF">${c.ctr||'—'}</div><div style="font-size:0.62rem;color:#7A92B4;text-transform:uppercase;letter-spacing:.06em">CTR</div></div>
-          <div style="text-align:center" title="Return on Ad Spend — estimated revenue earned per $1 spent on ads by this competitor."><div style="font-size:0.92rem;font-weight:800;color:#0066FF">${c.roas||'—'}×</div><div style="font-size:0.62rem;color:#7A92B4;text-transform:uppercase;letter-spacing:.06em">ROAS</div></div>
-          <div style="text-align:center" title="Estimated monthly advertising budget across Google, Meta, TikTok and other paid channels."><div style="font-size:0.92rem;font-weight:800;color:#0066FF">${c.adSpend||'—'}</div><div style="font-size:0.62rem;color:#7A92B4;text-transform:uppercase;letter-spacing:.06em">Ad Spend</div></div>
-          <div style="text-align:center" title="The marketing channel where this competitor is investing the most budget and generating the best results."><div style="font-size:0.92rem;font-weight:800;color:#0066FF">${c.topChannel||'—'}</div><div style="font-size:0.62rem;color:#7A92B4;text-transform:uppercase;letter-spacing:.06em">Top Channel</div></div>
-          <div style="text-align:center" title="AI threat assessment — how directly this competitor threatens your market position. High = immediate action required."><div style="font-size:0.92rem;font-weight:800;color:${(threat==='critical'||threat==='high')?'#DC2626':threat==='medium'?'#D97706':'#059669'}">${threat.toUpperCase()}</div><div style="font-size:0.62rem;color:#7A92B4;text-transform:uppercase;letter-spacing:.06em">Threat</div></div>
+          <div style="text-align:center" title="Estimated total monthly website visits for ${c.name} — organic + paid combined."><div style="font-size:0.92rem;font-weight:800;color:#0066FF">${traffic}</div><div style="font-size:0.62rem;color:#475569;text-transform:uppercase;letter-spacing:.06em">Traffic/mo</div></div>
+          <div style="text-align:center" title="Click-Through Rate: % of ad impressions that result in a click. This competitor's average across all campaigns."><div style="font-size:0.92rem;font-weight:800;color:#0066FF">${c.ctr||'—'}</div><div style="font-size:0.62rem;color:#475569;text-transform:uppercase;letter-spacing:.06em">CTR</div></div>
+          <div style="text-align:center" title="Return on Ad Spend — estimated revenue earned per $1 spent on ads by this competitor."><div style="font-size:0.92rem;font-weight:800;color:#0066FF">${c.roas||'—'}×</div><div style="font-size:0.62rem;color:#475569;text-transform:uppercase;letter-spacing:.06em">ROAS</div></div>
+          <div style="text-align:center" title="Estimated monthly advertising budget across Google, Meta, TikTok and other paid channels."><div style="font-size:0.92rem;font-weight:800;color:#0066FF">${c.adSpend||'—'}</div><div style="font-size:0.62rem;color:#475569;text-transform:uppercase;letter-spacing:.06em">Ad Spend</div></div>
+          <div style="text-align:center" title="The marketing channel where this competitor is investing the most budget and generating the best results."><div style="font-size:0.92rem;font-weight:800;color:#0066FF">${c.topChannel||'—'}</div><div style="font-size:0.62rem;color:#475569;text-transform:uppercase;letter-spacing:.06em">Top Channel</div></div>
+          <div style="text-align:center" title="AI threat assessment — how directly this competitor threatens your market position. High = immediate action required."><div style="font-size:0.92rem;font-weight:800;color:${(threat==='critical'||threat==='high')?'#DC2626':threat==='medium'?'#D97706':'#059669'}">${threat.toUpperCase()}</div><div style="font-size:0.62rem;color:#475569;text-transform:uppercase;letter-spacing:.06em">Threat</div></div>
         </div>
         <div style="text-align:right;flex-shrink:0;background:#F8FAFF;border:1.5px solid #E0EAFF;border-radius:14px;padding:10px 18px" title="AI-calculated opportunity score — how much market share you can realistically capture from this competitor. Higher = more opportunity.">
-          <div style="font-size:0.62rem;color:#7A92B4;margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em">Opportunity Score</div>
+          <div style="font-size:0.62rem;color:#475569;margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em">Opportunity Score</div>
           <div style="font-size:2rem;font-weight:900;font-family:Sora,sans-serif;color:${oppScore>=70?'#059669':oppScore>=50?'#D97706':'#0066FF'};line-height:1">${oppScore}</div>
-          <div style="font-size:0.62rem;color:#9BADC8">out of 100</div>
+          <div style="font-size:0.62rem;color:#475569">out of 100</div>
         </div>
       </div>
     </div>
