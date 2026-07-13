@@ -2097,7 +2097,7 @@ function buildBattlePlan() {
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding-top:18px">
             <button onclick="openFullAttackPlanModal(parseInt(document.getElementById('attackPlanCompSelect').value||'${idx}'))" style="padding:11px 24px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:0.84rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap;box-shadow:0 4px 16px rgba(0,102,255,.4)">🚀 Generate Attack Plan</button>
-            <button onclick="navigateTo('intelligence')" class="bp-cta-secondary" style="padding:11px 20px;background:#fff;border:1px solid #BAE6FD;border-radius:10px;font-size:0.82rem;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap">📊 Deep Intelligence</button>
+            <button onclick="navigateTo('intelligence')" class="bp-cta-secondary" style="padding:11px 20px;background:#1D4ED8;border:1.5px solid #1D4ED8;border-radius:10px;font-size:0.82rem;font-weight:700;color:#FFFFFF;-webkit-text-fill-color:#FFFFFF;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(29,78,216,.30)">📊 Deep Intelligence</button>
           </div>
         </div>
       </div>

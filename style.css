@@ -7046,10 +7046,11 @@ h3:hover {
 /* In this app dark mode = no data-theme attribute; light mode = data-theme="light".
    These rules use [data-theme="light"] only — no :not([data-theme="dark"]) which
    would incorrectly fire in dark mode too (the attribute is absent, never "dark"). */
-[data-theme="light"] .bp-cta-secondary { /* lint-ok-important: must override inline color:white on the button element */
-  background: #FFFFFF !important;
-  border: 1px solid rgba(10,22,40,.15) !important;
-  color: #0A1628 !important;
+[data-theme="light"] .bp-cta-secondary { /* lint-ok-important: must override any inherited color so white text on the blue button stays readable */
+  background: #1D4ED8 !important;
+  border: 1.5px solid #1D4ED8 !important;
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
 }
 
 /* Battle Plan competitor summary bar — now uses white background with dark text in
@@ -7059,11 +7060,14 @@ h3:hover {
   border-bottom-color: #E8EEF8 !important;
 }
 
-/* Attack plan competitor <select> uses appearance:auto — browsers apply system light
-   theme in light mode, ignoring inline background/color; color-scheme:dark forces the
-   native control to stay dark so white text on #1A2E4A remains readable. */
-[data-theme="light"] #attackPlanCompSelect {
-  color-scheme: dark;
+/* Attack plan competitor <select> — force light native control in light mode so the
+   white background and dark text are readable (color-scheme:light overrides the
+   browser's dark-system-UI that was hiding the selected text). */
+[data-theme="light"] #attackPlanCompSelect { /* lint-ok-important: must beat browser color-scheme heuristic that renders the native control dark */
+  color-scheme: light;
+  background: #ffffff !important;
+  color: #0A1628 !important;
+  border-color: #93C5FD !important;
 }
 
 /* ── Reddit Intelligence sub-tabs — light mode visibility ── */
