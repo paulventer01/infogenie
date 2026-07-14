@@ -3484,6 +3484,10 @@ const _budgetCapsSchema       = require('./services/budget_caps/schema');
 const _budgetCapsRouter       = require('./services/budget_caps/api');
 const _pixelManagerSchema     = require('./services/pixel_manager/schema');
 const _pixelManagerRouter     = require('./services/pixel_manager/api');
+const _launchComplianceSchema = require('./services/launch_compliance/schema');
+const _launchComplianceRouter = require('./services/launch_compliance/api');
+const _postLaunchAuditSchema  = require('./services/post_launch_audit/schema');
+const _postLaunchAuditRouter  = require('./services/post_launch_audit/api');
 app.use('/api/campaign-composer', _campaignComposerRouter);
 app.use('/api/review-monitor',    _reviewReplyRouter);   // adds /replies/* + /request-rules/* onto the existing review-monitor prefix
 app.use('/api/local-listings',    _localListingsRouter);
@@ -3491,6 +3495,8 @@ app.use('/api/geofencing',        _geofencingRouter);
 app.use('/api/utm-builder',       _utmBuilderRouter);
 app.use('/api/budget-caps',       _budgetCapsRouter);
 app.use('/api/pixel-manager',     _pixelManagerRouter);
+app.use('/api/launch-compliance', _launchComplianceRouter);
+app.use('/api/post-launch-audit', _postLaunchAuditRouter);
 // Public UTM redirect — must be before appShellGate (no auth required)
 app.get('/l/:slug', _utmBuilderRouter.handleRedirect);
 BOOT_TASKS.push(async () => {
@@ -3503,9 +3509,11 @@ BOOT_TASKS.push(async () => {
       await _utmBuilderSchema.ensureUtmBuilderSchema();
       await _budgetCapsSchema.ensureBudgetCapsSchema();
       await _pixelManagerSchema.ensurePixelManagerSchema();
+      await _launchComplianceSchema.ensureLaunchComplianceSchema();
+      await _postLaunchAuditSchema.ensurePostLaunchAuditSchema();
       const { startBudgetCapsCron } = require('./services/budget_caps/cron');
       startBudgetCapsCron();
-      console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing, utm-builder, budget-caps, pixel-manager');
+      console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing, utm-builder, budget-caps, pixel-manager, launch-compliance, post-launch-audit');
     } else {
       console.log('[gap-features] disabled — DATABASE_URL not set');
     }

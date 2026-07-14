@@ -468,6 +468,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "budget-caps", icon: "🚦", label: "Budget Caps (platform daily + lifetime limits)" },
           { view: "utm-builder", icon: "🔗", label: "UTM Architecture (link builder + presets)" },
           { view: "pixel-manager", icon: "📡", label: "Pixel Manager (Meta CAPI · LinkedIn · TikTok)" },
+          { view: "launch-compliance", icon: "✅", label: "Launch Compliance Checklist (brand · copy · legal · mobile)" },
+          { view: "post-launch-audit", icon: "🔬", label: "Post-Launch Audit (live data + lead flow 24-48h)" },
           { view: "customer-360", icon: "🧭", label: "Customer 360 (unified account view)" },
         ],
       },
