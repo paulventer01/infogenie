@@ -289,6 +289,10 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "pixel-manager",      legacyModule: null },
   { view: "launch-compliance",  legacyModule: null },
   { view: "post-launch-audit",  legacyModule: null },
+  { view: "audio-summary",      legacyModule: null },
+  { view: "self-healing",       legacyModule: null },
+  { view: "ctv-streaming",      legacyModule: null },
+  { view: "rcs-campaigns",      legacyModule: null },
 ];
 
 /** Set of view ids now rendered by React. */

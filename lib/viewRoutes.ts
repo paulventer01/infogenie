@@ -239,6 +239,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "ugc-avatars", icon: "🧑‍🎤", label: "UGC Avatar Videos" },
           { view: "video-script", icon: "🎬", label: "Video Script Generator" },
           { view: "voiceover", icon: "🔊", label: "AI Voiceovers" },
+          { view: "audio-summary", icon: "🎙️", label: "Audio Summary Generator (article → MP3)" },
           { view: "creative-intel", icon: "💡", label: "Creative Intel (what performs)" },
           { view: "infographics", icon: "🖼️", label: "Infographic Generator" },
         ],
@@ -364,6 +365,12 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "inbox-monitor", icon: "📬", label: "Inbox Placement Monitor" },
         ],
       },
+      {
+        header: "8 · Next-gen messaging",
+        items: [
+          { view: "rcs-campaigns", icon: "💬", label: "RCS & Apple Messages (rich interactive messaging)" },
+        ],
+      },
     ],
     footer: {
       group: "grow",
@@ -397,6 +404,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "ad-comment-monitor", icon: "💬", label: "Ad Comment Monitor (Meta)" },
           { view: "auto-operator", icon: "🦾", label: "Autonomous Marketing Operator" },
           { view: "safe-agent", icon: "🛡️", label: "Safe Agent (propose → approve → execute)" },
+          { view: "self-healing", icon: "🩹", label: "Self-Healing Ad Accounts (AI rejection repair)" },
         ],
       },
       {
@@ -413,6 +421,12 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "revenue-forecast", icon: "💹", label: "AI Revenue Forecast Engine" },
           { view: "digital-twin", icon: "🪞", label: "Digital Twin (what-if simulator)" },
           { view: "mmm", icon: "🎛️", label: "Media Mix Modeler (optimal allocation)" },
+        ],
+      },
+      {
+        header: "5 · Next-gen ad channels",
+        items: [
+          { view: "ctv-streaming", icon: "📺", label: "CTV & Streaming Audio (Roku · Hulu · Spotify)" },
         ],
       },
       {

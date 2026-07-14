@@ -232,6 +232,10 @@ import BudgetCaps from "@/components/features/manage/BudgetCaps";
 import PixelManager from "@/components/features/manage/PixelManager";
 import LaunchCompliance from "@/components/features/grow/LaunchCompliance";
 import PostLaunchAudit from "@/components/features/grow/PostLaunchAudit";
+import AudioSummary from "@/components/features/creator/AudioSummary";
+import SelfHealing from "@/components/features/grow/SelfHealing";
+import CtvStreaming from "@/components/features/grow/CtvStreaming";
+import RcsCampaigns from "@/components/features/reach/RcsCampaigns";
 
 export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "seo-roadmap": SeoRoadmap,
@@ -261,6 +265,10 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "pixel-manager":      PixelManager,
   "launch-compliance":  LaunchCompliance,
   "post-launch-audit":  PostLaunchAudit,
+  "audio-summary":      AudioSummary,
+  "self-healing":       SelfHealing,
+  "ctv-streaming":      CtvStreaming,
+  "rcs-campaigns":      RcsCampaigns,
   "action-queue": ActionQueue,
   "ad-comment-monitor": AdCommentMonitor,
   "ask-infogenie": AskInfoGenie,
