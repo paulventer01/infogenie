@@ -19,7 +19,6 @@
 
 // Exact root-level files that are part of the browser experience.
 const PUBLIC_FILES = new Set([
-  '/index.html',            // app shell (also served via serveVersionedHtml route; auth-gated)
   '/app.js',                // app bundle (auth-gated)
   '/data.js',               // industry/competitor data (auth-gated)
   '/style.css',             // all styling

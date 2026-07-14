@@ -137,7 +137,7 @@ const PUBLIC = [
   '/login.html',
   '/reset-password.html',
   '/accept-invite.html',
-  '/public/js/ig_core_views.js',
+  '/public/js/ig_intel_pack_a.js',
 ];
 
 test('unit: isPublicStaticAsset marks server source private and browser assets public', () => {
@@ -158,7 +158,7 @@ test('http: representative server-source path returns 404 and leaks no source', 
 });
 
 test('http: representative public asset returns 200 with its real bytes', async () => {
-  const r = await get('/public/js/ig_core_views.js');
+  const r = await get('/public/js/ig_intel_pack_a.js');
   assert.equal(r.status, 200, 'public bundle module should be served');
   assert.ok(r.body.length > 0, 'public asset should return its contents');
   const css = await get('/style.css');

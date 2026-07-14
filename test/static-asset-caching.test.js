@@ -166,9 +166,12 @@ test('server.js still wires the immutable-asset caching into express.static', ()
     /setHeaders:\s*_staticVersioning\.setVersionedAssetHeaders/,
     'express.static still uses setVersionedAssetHeaders as its setHeaders hook',
   );
+  // The legacy shell is retired over HTTP: server.js no longer serves
+  // index.html at all — /index.html 302s to `/` (Next front door). Guard that
+  // the redirect stays in place so old bookmarks can't load the stripped shell.
   assert.match(
     src,
-    /_staticVersioning\.serveVersionedHtml\(/,
-    'index.html still served through serveVersionedHtml',
+    /app\.get\('\/index\.html', \(_req, res\) => res\.redirect\(302, '\/'\)\)/,
+    '/index.html redirects to the Next front door instead of serving the legacy shell',
   );
 });

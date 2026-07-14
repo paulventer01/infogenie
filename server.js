@@ -308,24 +308,33 @@ app.get(['/login', '/login.html'], (req, res) => {
 // bypassed by it. See services/auth_gate.
 app.use(_authGate.appShellGate);
 
-// ── Auto cache-busting for index.html ───────────────────────────────────────
-// Serve index.html with every local .js/.css reference auto-versioned by its
-// file content hash (see services/static_versioning). This retires the manual
-// `?v=YYYYMMDD<TAG>` strings: editing any frontend file changes its hash, so the
-// URL changes automatically and returning users always get the new bytes — with
-// no manual bump and no stale-code bugs. Registered before express.static so the
-// rewritten HTML wins over the raw on-disk file.
+// ── Legacy shell retired over HTTP ───────────────────────────────────────────
+// Next.js is the front door in both dev (scripts/dev.js) and prod
+// (scripts/start.js): it renders the React dashboard at `/` and reads
+// index.html straight from disk (lib/legacyShell.ts) for the not-yet-ported
+// chrome — it never fetches /index.html over HTTP. Since the migrated view divs
+// were stripped from index.html, serving it directly would hand old bookmarks a
+// broken, much thinner page. So:
+//   • /index.html (any mode) → 302 to `/`, where the Next front door owns the
+//     dashboard. Old bookmarks land on the real app instead of a broken shell.
+//   • `/` is owned by Next when it's the front door (NEXT_FRONT_DOOR=1 —
+//     Next has a page there, so Express never sees the request). When Express
+//     runs standalone (bare `node server.js`, a debug-only path now that
+//     `start:express` is retired), `/` returns a plain notice explaining the
+//     app is served via `npm run dev` / `npm start` — never the broken shell.
+// `_staticVersioning` is still required for setVersionedAssetHeaders below.
 const _staticVersioning = require('./services/static_versioning');
-const _serveIndexHtml = _staticVersioning.serveVersionedHtml(
-  path.join(__dirname, 'index.html'),
-  __dirname,
-);
-// When Next.js is the dev front door (NEXT_FRONT_DOOR=1, set by scripts/dev.js),
-// Next owns `/` and renders the React dashboard shell, so Express must NOT serve
-// the legacy SPA at the root. It still serves /index.html (and all assets/APIs)
-// for the proxy. In prod (no flag) Express serves the SPA at `/` as before.
-const _indexRoutes = process.env.NEXT_FRONT_DOOR === '1' ? ['/index.html'] : ['/', '/index.html'];
-app.get(_indexRoutes, _serveIndexHtml);
+app.get('/index.html', (_req, res) => res.redirect(302, '/'));
+if (process.env.NEXT_FRONT_DOOR !== '1') {
+  app.get('/', (_req, res) => {
+    res.status(503).type('html').send(
+      '<!doctype html><html><head><title>InfoGenie</title></head><body style="font-family:sans-serif;max-width:36em;margin:4em auto;line-height:1.5">' +
+      '<h1>InfoGenie runs behind the Next.js front door</h1>' +
+      '<p>The legacy interface has been retired. Start the app with <code>npm run dev</code> (development) or <code>npm start</code> (production) and open the Next.js port.</p>' +
+      '</body></html>',
+    );
+  });
+}
 
 // Fingerprinted static assets (.js/.css carrying a content-hash `?v=`) are
 // served `public, max-age=31536000, immutable` via setHeaders so returning

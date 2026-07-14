@@ -128,8 +128,11 @@ test('source guard: server.js mounts the gate before the static/index serving', 
   assert.ok(/require\(['"]\.\/services\/auth_gate['"]\)/.test(src), 'server.js must require services/auth_gate');
   const gateIdx = src.indexOf('appShellGate');
   const staticIdx = src.indexOf('express.static(path.join(__dirname)');
-  const indexIdx = src.indexOf("app.get(['/', '/index.html'], _serveIndexHtml)");
+  // The legacy shell is retired over HTTP: /index.html now 302s to `/` (owned
+  // by the Next front door). The redirect route must still sit behind the gate
+  // mount so ordering stays intact if it ever serves content again.
+  const indexIdx = src.indexOf("app.get('/index.html', (_req, res) => res.redirect(302, '/'))");
   assert.ok(gateIdx > 0, 'server.js must mount appShellGate');
   assert.ok(staticIdx > gateIdx, 'gate must be mounted before express.static');
-  assert.ok(indexIdx > gateIdx, 'gate must be mounted before the index.html route');
+  assert.ok(indexIdx > gateIdx, 'gate must be mounted before the /index.html redirect route');
 });

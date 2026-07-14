@@ -20,7 +20,7 @@
 // through.
 
 const PROTECTED_APP_ASSETS = [
-  /^\/$/,                       // app shell (served via serveVersionedHtml)
+  /^\/$/,                       // app root (Next front door; standalone Express serves a retirement notice)
   /^\/index\.html$/,
   /^\/app\.js$/,
   /^\/data\.js$/,
