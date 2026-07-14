@@ -16,10 +16,16 @@ async function ensureUtmBuilderSchema() {
       utm_content TEXT,
       utm_term    TEXT,
       full_url    TEXT NOT NULL,
+      slug        TEXT UNIQUE,
       click_count INT NOT NULL DEFAULT 0,
+      last_clicked TIMESTAMPTZ,
       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  // Migration — add slug / last_clicked to pre-existing tables
+  await p.query(`ALTER TABLE utm_links ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE`).catch(() => {});
+  await p.query(`ALTER TABLE utm_links ADD COLUMN IF NOT EXISTS last_clicked TIMESTAMPTZ`).catch(() => {});
 
   await p.query(`
     CREATE TABLE IF NOT EXISTS utm_presets (

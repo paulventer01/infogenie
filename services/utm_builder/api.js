@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto  = require('crypto');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 
@@ -20,6 +21,10 @@ function buildFullUrl(dest, source, medium, campaign, content, term) {
   } catch {
     return dest;
   }
+}
+
+function generateSlug() {
+  return crypto.randomBytes(6).toString('base64url');
 }
 
 // GET /api/utm-builder/links
@@ -44,13 +49,28 @@ router.post('/links', async (req, res) => {
   if (!destination || !utm_source || !utm_medium || !utm_campaign)
     return _err(res, 400, 'destination, utm_source, utm_medium, utm_campaign are required');
   const full_url = buildFullUrl(destination, utm_source, utm_medium, utm_campaign, utm_content, utm_term);
+  // Generate a unique slug (retry once on collision)
+  let slug = generateSlug();
   try {
     const p = _db.getPool();
-    const { rows } = await p.query(
-      `INSERT INTO utm_links (tenant_id,label,destination,utm_source,utm_medium,utm_campaign,utm_content,utm_term,full_url)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [tid, label || utm_campaign, destination, utm_source, utm_medium, utm_campaign, utm_content||null, utm_term||null, full_url]
-    );
+    let rows;
+    try {
+      ({ rows } = await p.query(
+        `INSERT INTO utm_links (tenant_id,label,destination,utm_source,utm_medium,utm_campaign,utm_content,utm_term,full_url,slug)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [tid, label || utm_campaign, destination, utm_source, utm_medium, utm_campaign, utm_content||null, utm_term||null, full_url, slug]
+      ));
+    } catch (e) {
+      if (e.code === '23505') {
+        // slug collision — try once more
+        slug = generateSlug();
+        ({ rows } = await p.query(
+          `INSERT INTO utm_links (tenant_id,label,destination,utm_source,utm_medium,utm_campaign,utm_content,utm_term,full_url,slug)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+          [tid, label || utm_campaign, destination, utm_source, utm_medium, utm_campaign, utm_content||null, utm_term||null, full_url, slug]
+        ));
+      } else { throw e; }
+    }
     res.json({ ok: true, link: rows[0] });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -106,4 +126,22 @@ router.delete('/presets/:id', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// Public redirect handler — called from server.js at GET /l/:slug (before auth gate)
+async function handleRedirect(req, res) {
+  const { slug } = req.params;
+  if (!slug || slug.length > 20) return res.redirect(302, '/');
+  if (!_db.hasDb()) return res.redirect(302, '/');
+  try {
+    const p = _db.getPool();
+    const { rows } = await p.query('SELECT full_url FROM utm_links WHERE slug=$1', [slug]);
+    if (!rows.length) return res.status(404).send('Link not found');
+    // Async click increment — don't block the redirect
+    p.query('UPDATE utm_links SET click_count=click_count+1,last_clicked=NOW() WHERE slug=$1', [slug]).catch(() => {});
+    res.redirect(302, rows[0].full_url);
+  } catch {
+    res.redirect(302, '/');
+  }
+}
+
 module.exports = router;
+module.exports.handleRedirect = handleRedirect;

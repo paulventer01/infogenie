@@ -3491,6 +3491,8 @@ app.use('/api/geofencing',        _geofencingRouter);
 app.use('/api/utm-builder',       _utmBuilderRouter);
 app.use('/api/budget-caps',       _budgetCapsRouter);
 app.use('/api/pixel-manager',     _pixelManagerRouter);
+// Public UTM redirect — must be before appShellGate (no auth required)
+app.get('/l/:slug', _utmBuilderRouter.handleRedirect);
 BOOT_TASKS.push(async () => {
   try {
     if (_db.hasDb()) {
@@ -3501,6 +3503,8 @@ BOOT_TASKS.push(async () => {
       await _utmBuilderSchema.ensureUtmBuilderSchema();
       await _budgetCapsSchema.ensureBudgetCapsSchema();
       await _pixelManagerSchema.ensurePixelManagerSchema();
+      const { startBudgetCapsCron } = require('./services/budget_caps/cron');
+      startBudgetCapsCron();
       console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing, utm-builder, budget-caps, pixel-manager');
     } else {
       console.log('[gap-features] disabled — DATABASE_URL not set');

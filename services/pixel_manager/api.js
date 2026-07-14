@@ -93,7 +93,7 @@ router.post('/test/:platform', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
-// POST /api/pixel-manager/capi/meta — send a server-side event to Meta CAPI
+// POST /api/pixel-manager/capi/meta — Meta Conversions API (server-side event)
 router.post('/capi/meta', async (req, res) => {
   const tid = await _tid(req, 'pixel:capi-meta');
   if (!tid) return _err(res, 400, 'no_tenant');
@@ -122,6 +122,101 @@ router.post('/capi/meta', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// POST /api/pixel-manager/capi/linkedin — LinkedIn Conversions API
+router.post('/capi/linkedin', async (req, res) => {
+  const tid = await _tid(req, 'pixel:capi-linkedin');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const { event_name, event_data } = req.body || {};
+  if (!event_name) return _err(res, 400, 'event_name required');
+  try {
+    const p = _db.getPool();
+    const { rows } = await p.query(
+      'SELECT * FROM pixel_configs WHERE tenant_id=$1 AND platform=$2 AND enabled=true',
+      [tid, 'linkedin']
+    );
+    if (!rows.length) return _err(res, 404, 'no_linkedin_pixel_configured');
+    const cfg = rows[0];
+    if (!cfg.access_token) return _err(res, 400, 'access_token_required_for_linkedin_capi');
+
+    const data = event_data || {};
+    const emailHash = data.email
+      ? crypto.createHash('sha256').update(data.email.toLowerCase().trim()).digest('hex')
+      : null;
+
+    // LinkedIn Conversions API payload
+    const payload = {
+      conversion: `urn:lla:llaPartnerConversion:${cfg.pixel_id}`,
+      conversionHappenedAt: Date.now(),
+      conversionValue: data.value ? { currencyCode: data.currency || 'USD', amount: String(data.value) } : undefined,
+      user: {
+        userIds: emailHash ? [{ idType: 'SHA256_EMAIL', idValue: emailHash }] : [],
+        userInfo: data.url ? { linkedInFirstPartyAdsTrackingUUID: '' } : undefined,
+      },
+    };
+
+    const capiRes = await sendLinkedInCapi(cfg.access_token, payload);
+
+    await p.query(
+      `INSERT INTO capi_event_log (tenant_id,platform,event_name,payload,status,response)
+       VALUES ($1,'linkedin',$2,$3,$4,$5)`,
+      [tid, event_name, JSON.stringify(payload), capiRes.ok ? 'sent' : 'failed', JSON.stringify(capiRes)]
+    );
+
+    res.json({ ok: capiRes.ok, capi_response: capiRes });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// POST /api/pixel-manager/capi/tiktok — TikTok Events API
+router.post('/capi/tiktok', async (req, res) => {
+  const tid = await _tid(req, 'pixel:capi-tiktok');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const { event_name, event_data } = req.body || {};
+  if (!event_name) return _err(res, 400, 'event_name required');
+  try {
+    const p = _db.getPool();
+    const { rows } = await p.query(
+      'SELECT * FROM pixel_configs WHERE tenant_id=$1 AND platform=$2 AND enabled=true',
+      [tid, 'tiktok']
+    );
+    if (!rows.length) return _err(res, 404, 'no_tiktok_pixel_configured');
+    const cfg = rows[0];
+    if (!cfg.access_token) return _err(res, 400, 'access_token_required_for_tiktok_capi');
+
+    const data = event_data || {};
+    const emailHash = data.email
+      ? crypto.createHash('sha256').update(data.email.toLowerCase().trim()).digest('hex')
+      : null;
+    const phoneHash = data.phone
+      ? crypto.createHash('sha256').update(data.phone.replace(/\D/g, '')).digest('hex')
+      : null;
+
+    // TikTok Events API payload
+    const payload = {
+      pixel_code: cfg.pixel_id,
+      event: event_name,
+      event_time: Math.floor(Date.now() / 1000),
+      user: {
+        ...(emailHash  && { email: emailHash }),
+        ...(phoneHash  && { phone_number: phoneHash }),
+        ip: req.socket?.remoteAddress || '0.0.0.0',
+        user_agent: req.headers['user-agent'] || '',
+      },
+      page: { url: data.url || '' },
+      properties: data.custom_data || {},
+    };
+
+    const capiRes = await sendTikTokCapi(cfg.access_token, payload);
+
+    await p.query(
+      `INSERT INTO capi_event_log (tenant_id,platform,event_name,payload,status,response)
+       VALUES ($1,'tiktok',$2,$3,$4,$5)`,
+      [tid, event_name, JSON.stringify(payload), capiRes.ok ? 'sent' : 'failed', JSON.stringify(capiRes)]
+    );
+
+    res.json({ ok: capiRes.ok, capi_response: capiRes });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
 // GET /api/pixel-manager/capi-log — recent CAPI events
 router.get('/capi-log', async (req, res) => {
   const tid = await _tid(req, 'pixel:capi-log');
@@ -137,6 +232,8 @@ router.get('/capi-log', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// ── Helpers ────────────────────────────────────────────────────────────────
+
 function buildMetaCapiPayload(eventName, data, req) {
   const now = Math.floor(Date.now() / 1000);
   const userData = {};
@@ -145,7 +242,6 @@ function buildMetaCapiPayload(eventName, data, req) {
   if (data.external_id) userData.external_id = [data.external_id];
   userData.client_ip_address = req.socket?.remoteAddress || '0.0.0.0';
   userData.client_user_agent = req.headers['user-agent'] || '';
-
   return {
     data: [{
       event_name: eventName,
@@ -158,27 +254,55 @@ function buildMetaCapiPayload(eventName, data, req) {
   };
 }
 
-function sendMetaCapi(pixelId, accessToken, payload) {
+function _httpsPost(hostname, path, body, headers) {
   return new Promise((resolve) => {
-    const body = JSON.stringify(payload);
-    const options = {
-      hostname: 'graph.facebook.com',
-      path: `/v18.0/${pixelId}/events?access_token=${encodeURIComponent(accessToken)}`,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    const bodyStr = JSON.stringify(body);
+    const opts = {
+      hostname, path, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr), ...headers },
     };
-    const req = https.request(options, (r) => {
-      let data = '';
-      r.on('data', (c) => { data += c; });
+    const req = https.request(opts, (r) => {
+      let d = '';
+      r.on('data', c => { d += c; });
       r.on('end', () => {
-        try { resolve({ ok: r.statusCode < 300, statusCode: r.statusCode, body: JSON.parse(data) }); }
-        catch { resolve({ ok: false, statusCode: r.statusCode, body: data }); }
+        try { resolve({ ok: r.statusCode < 300, statusCode: r.statusCode, body: JSON.parse(d) }); }
+        catch { resolve({ ok: false, statusCode: r.statusCode, body: d }); }
       });
     });
-    req.on('error', (e) => resolve({ ok: false, error: e.message }));
-    req.write(body);
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.write(bodyStr);
     req.end();
   });
+}
+
+function sendMetaCapi(pixelId, accessToken, payload) {
+  return _httpsPost(
+    'graph.facebook.com',
+    `/v18.0/${pixelId}/events?access_token=${encodeURIComponent(accessToken)}`,
+    payload, {}
+  );
+}
+
+function sendLinkedInCapi(accessToken, payload) {
+  return _httpsPost(
+    'api.linkedin.com',
+    '/rest/conversionEvents',
+    payload,
+    {
+      'Authorization': `Bearer ${accessToken}`,
+      'LinkedIn-Version': '202401',
+      'X-Restli-Protocol-Version': '2.0.0',
+    }
+  );
+}
+
+function sendTikTokCapi(accessToken, payload) {
+  return _httpsPost(
+    'business-api.tiktok.com',
+    '/open_api/v1.3/event/track/',
+    { event_source: 'web', data: [payload] },
+    { 'Access-Token': accessToken }
+  );
 }
 
 function testMetaPixel(pixelId, accessToken) {
@@ -190,7 +314,7 @@ function testMetaPixel(pixelId, accessToken) {
     };
     const req = https.request(options, (r) => {
       let data = '';
-      r.on('data', (c) => { data += c; });
+      r.on('data', c => { data += c; });
       r.on('end', () => {
         try {
           const json = JSON.parse(data);
@@ -201,7 +325,7 @@ function testMetaPixel(pixelId, accessToken) {
         } catch { resolve({ ok: false, message: 'Verification failed.' }); }
       });
     });
-    req.on('error', (e) => resolve({ ok: false, message: e.message }));
+    req.on('error', e => resolve({ ok: false, message: e.message }));
     req.end();
   });
 }
