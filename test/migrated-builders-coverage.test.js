@@ -172,7 +172,14 @@ function makeHarness() {
 // stays tight. The staleness check below will fail if this value drifts more
 // than MAX_BUILDER_FLOOR_DRIFT below the live resolved count, printing the exact
 // value you need to set it to. ────────────────────────────────────────────────
-const MIN_COVERED_BUILDERS = 105;
+// 2026-07: the legacy-code-removal sweep deleted every migrated view's
+// navigateTo() dispatch block (and its inline app.js builder), so no migrated
+// view resolves to a legacy builder anymore — the crash path this guard covers
+// (legacy dispatch firing a builder against a React-stripped DOM) no longer
+// exists. The harness stays in place: if a legacy dispatch for a migrated view
+// is ever re-added, its builder is automatically resolved and tested again,
+// and the staleness check below forces this floor back up.
+const MIN_COVERED_BUILDERS = 0;
 
 // Maximum allowed gap between MIN_COVERED_BUILDERS and the live resolved count
 // before the staleness check fires. Keeps the floor within ~5 builders of

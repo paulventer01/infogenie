@@ -14,4 +14,7 @@ After every dashboard view was ported to React, the duplicate legacy code was de
 - `test/migrated-builders-safety.test.js` now only tests the ported React logic (buildVsCards placeholder coercion); its legacy stripped-DOM half died with the legacy builders.
 - Views retired into hub views live in `VIEW_ID_ALIASES` (lib/viewRoutes.ts) and are exempted from the lockstep orphan check.
 
+- The final sweep (July 2026) deleted every migrated view's dispatch block and all unreachable inline app.js builders/handlers via mark-and-sweep: roots = top-level executable statements + names referenced from `index.html`/`public/js` runtime lines + names accessed via `window.X` in React code. Per-name orphan checks miss self-referential clusters (modal/render/save cycles keep each other alive) — reachability from roots is the only correct test. React components often define LOCAL functions with the same names as legacy globals (`runTemplates`, `selectAvatar`), so a bare name match in `.tsx` is NOT evidence the legacy global is live; require a `window.`-access pattern.
+- `MIN_COVERED_BUILDERS` in `test/migrated-builders-coverage.test.js` is now 0 — no migrated view resolves to a legacy builder. It self-heals upward if a legacy dispatch is ever re-added.
+
 **Why:** deleting legacy modules without auditing consumers causes silent `ReferenceError`s at load or on stray onclicks; the guard pattern + floors make wholesale regressions loud while tolerating intentional shrinkage.
