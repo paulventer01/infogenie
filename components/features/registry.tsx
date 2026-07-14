@@ -227,6 +227,9 @@ import LandingPages from "@/components/features/grow/LandingPages";
 import AiTeam from "@/components/features/aiteam/AiTeam";
 import FinanceOfficer from "@/components/features/aiteam/FinanceOfficer";
 import OpsOfficer from "@/components/features/aiteam/OpsOfficer";
+import UtmBuilder from "@/components/features/manage/UtmBuilder";
+import BudgetCaps from "@/components/features/manage/BudgetCaps";
+import PixelManager from "@/components/features/manage/PixelManager";
 
 export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "seo-roadmap": SeoRoadmap,
@@ -251,6 +254,9 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   heatmaps: Heatmaps,
   "budget-board": BudgetBoard,
   "customer-360": Customer360,
+  "utm-builder":   UtmBuilder,
+  "budget-caps":   BudgetCaps,
+  "pixel-manager": PixelManager,
   "action-queue": ActionQueue,
   "ad-comment-monitor": AdCommentMonitor,
   "ask-infogenie": AskInfoGenie,

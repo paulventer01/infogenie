@@ -3478,10 +3478,19 @@ const _localListingsSchema    = require('./services/local_listings/schema');
 const _localListingsRouter    = require('./services/local_listings/api');
 const _geofencingSchema       = require('./services/geofencing/schema');
 const _geofencingRouter       = require('./services/geofencing/api');
+const _utmBuilderSchema       = require('./services/utm_builder/schema');
+const _utmBuilderRouter       = require('./services/utm_builder/api');
+const _budgetCapsSchema       = require('./services/budget_caps/schema');
+const _budgetCapsRouter       = require('./services/budget_caps/api');
+const _pixelManagerSchema     = require('./services/pixel_manager/schema');
+const _pixelManagerRouter     = require('./services/pixel_manager/api');
 app.use('/api/campaign-composer', _campaignComposerRouter);
 app.use('/api/review-monitor',    _reviewReplyRouter);   // adds /replies/* + /request-rules/* onto the existing review-monitor prefix
 app.use('/api/local-listings',    _localListingsRouter);
 app.use('/api/geofencing',        _geofencingRouter);
+app.use('/api/utm-builder',       _utmBuilderRouter);
+app.use('/api/budget-caps',       _budgetCapsRouter);
+app.use('/api/pixel-manager',     _pixelManagerRouter);
 BOOT_TASKS.push(async () => {
   try {
     if (_db.hasDb()) {
@@ -3489,7 +3498,10 @@ BOOT_TASKS.push(async () => {
       await _reviewReplySchema.ensureReviewReplySchema();
       await _localListingsSchema.ensureLocalListingsSchema();
       await _geofencingSchema.ensureGeofencingSchema();
-      console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing');
+      await _utmBuilderSchema.ensureUtmBuilderSchema();
+      await _budgetCapsSchema.ensureBudgetCapsSchema();
+      await _pixelManagerSchema.ensurePixelManagerSchema();
+      console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing, utm-builder, budget-caps, pixel-manager');
     } else {
       console.log('[gap-features] disabled — DATABASE_URL not set');
     }
