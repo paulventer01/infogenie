@@ -19,9 +19,9 @@ interface Question {
 }
 interface SurveyRow {
   id: string;
-  name: string;
-  type: string;
-  trigger: string;
+  title: string;
+  status?: string;
+  question_count?: number;
   response_count?: number;
 }
 interface SurveyResponse {
@@ -192,11 +192,9 @@ export default function Surveys() {
     }));
     setSaving(true);
     const d = await apiPost("/api/surveys", {
-      name: name.trim(),
-      type,
-      trigger,
-      thanks_message: thanks,
+      title: name.trim(),
       questions: qs,
+      settings: { type, trigger, thanks_message: thanks },
     });
     setSaving(false);
     if (d.ok) {
@@ -533,10 +531,10 @@ export default function Surveys() {
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{s.name}</div>
+                      <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{s.title}</div>
                       <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>
-                        {badge(s.type, "#6366f1")} &nbsp;{s.response_count || 0} responses &nbsp;·
-                        trigger: {s.trigger}
+                        {badge(s.status || "draft", "#6366f1")} &nbsp;{s.response_count || 0}{" "}
+                        responses &nbsp;· {s.question_count || 0} questions
                       </div>
                     </div>
                     <button

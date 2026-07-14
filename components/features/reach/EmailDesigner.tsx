@@ -152,7 +152,7 @@ export default function EmailDesigner() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   async function loadTemplates() {
-    const d = await apiGet<TemplatesResp>("/api/email-designer/templates");
+    const d = await apiGet<TemplatesResp>("/api/email-designer");
     if (!d.ok || !d.templates?.length) {
       setTemplates([]);
       return;
@@ -225,10 +225,9 @@ export default function EmailDesigner() {
       return;
     }
     setSaving(true);
-    const d = await apiPost("/api/email-designer/templates", {
+    const d = await apiPost("/api/email-designer", {
       name: templateName.trim(),
       blocks,
-      preview_html: buildHtml(blocks),
     });
     setSaving(false);
     if (d.ok) {
@@ -238,7 +237,7 @@ export default function EmailDesigner() {
   }
 
   async function loadTemplate(id: string) {
-    const r = await apiGet<TemplateResp>(`/api/email-designer/templates/${id}`);
+    const r = await apiGet<TemplateResp>(`/api/email-designer/${id}`);
     if (r.ok && r.template) {
       setBlocks(r.template.blocks || []);
       setActiveIdx(null);
@@ -249,7 +248,7 @@ export default function EmailDesigner() {
 
   async function deleteTemplate(id: string) {
     if (!confirm("Delete template?")) return;
-    const r = await apiDelete(`/api/email-designer/templates/${id}`);
+    const r = await apiDelete(`/api/email-designer/${id}`);
     if (r.ok) {
       toast("Deleted.");
       loadTemplates();

@@ -3,8 +3,10 @@
 // Native React port of the legacy `mcp-server` panel (was
 // `window.buildMcpServer` in public/js/ig_customer_engagement.js +
 // `#view-mcp-server`). Exposes InfoGenie as an MCP tool server against the
-// existing Express API (`GET /api/mcp`, `GET /api/mcp/tools`,
-// `POST /api/mcp/call`) via lib/api.
+// existing Express API (`GET /api/mcp/tools`, `POST /api/mcp/call`) via
+// lib/api. The tools discovery response doubles as the server manifest
+// (protocol, version, name, description) — there is no separate `GET /api/mcp`
+// manifest route.
 
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
@@ -17,26 +19,27 @@ interface McpTool {
     properties?: Record<string, { type?: string; example?: unknown }>;
   };
 }
-interface ManifestResp {
-  ok?: boolean;
-  error?: string;
-  name?: string;
-  version?: string;
-}
 interface ToolsResp {
   ok?: boolean;
   error?: string;
+  protocol?: string;
+  version?: string;
+  name?: string;
+  description?: string;
   tools?: McpTool[];
 }
+// MCP JSON-RPC shape: success → { content: [{type,text}], isError }, error →
+// { error: { code, message } }.
 interface CallResp {
-  ok: boolean;
-  error?: string;
-  result?: unknown;
+  ok?: boolean;
+  error?: string | { code?: number; message?: string };
+  content?: { type: string; text: string }[];
+  isError?: boolean;
 }
 
 export default function McpServer() {
   const toast = useToast();
-  const [manifest, setManifest] = useState<ManifestResp | null>(null);
+  const [manifest, setManifest] = useState<ToolsResp | null>(null);
   const [tools, setTools] = useState<McpTool[] | null>(null);
   const [selTool, setSelTool] = useState("");
   const [args, setArgs] = useState("{}");
@@ -47,11 +50,8 @@ export default function McpServer() {
 
   useEffect(() => {
     (async () => {
-      const [m, t] = await Promise.all([
-        apiGet<ManifestResp>("/api/mcp"),
-        apiGet<ToolsResp>("/api/mcp/tools"),
-      ]);
-      if (m.ok !== false) setManifest(m);
+      const t = await apiGet<ToolsResp>("/api/mcp/tools");
+      if (t.ok !== false) setManifest(t);
       if (t.ok !== false && Array.isArray(t.tools)) {
         setTools(t.tools);
         if (t.tools[0]) setSelTool(t.tools[0].name);
@@ -84,10 +84,12 @@ export default function McpServer() {
     setCalling(true);
     const d = await apiPost<CallResp>("/api/mcp/call", { name: selTool, arguments: parsed });
     setCalling(false);
-    if (d.ok) {
-      setResult({ ok: true, body: JSON.stringify(d.result, null, 2) });
+    if (d.ok !== false && !d.isError && Array.isArray(d.content)) {
+      setResult({ ok: true, body: d.content.map((c) => c.text).join("\n") });
     } else {
-      setResult({ ok: false, body: d.error || "Tool call failed" });
+      const msg =
+        typeof d.error === "string" ? d.error : d.error?.message || "Tool call failed";
+      setResult({ ok: false, body: msg });
     }
   }
 
@@ -137,7 +139,7 @@ export default function McpServer() {
                         borderRadius: 4,
                       }}
                     >
-                      {origin}/api/mcp
+                      {origin}/api/mcp/tools
                     </code>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -293,7 +295,7 @@ export default function McpServer() {
                     color: "#374151",
                   }}
                 >
-                  mcp install --url {origin}/api/mcp
+                  mcp install --url {origin}/api/mcp/tools
                 </code>
               </div>
               <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 12 }}>
@@ -310,7 +312,7 @@ export default function McpServer() {
                     color: "#374151",
                   }}
                 >
-                  MCPServerSse(url=&quot;{origin}/api/mcp&quot;)
+                  MCPServerSse(url=&quot;{origin}/api/mcp/tools&quot;)
                 </code>
               </div>
               <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 12 }}>

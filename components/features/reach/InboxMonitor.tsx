@@ -2,9 +2,11 @@
 
 // Native React port of the legacy `inbox-monitor` panel (was
 // `window.buildInboxMonitor` in public/js/ig_customer_engagement.js +
-// `#view-inbox-monitor`). Analyses a campaign's inbox placement and surfaces
-// deliverability recommendations via the existing Express API
-// (`POST /api/deliverability/campaign-monitor`) through lib/api.
+// `#view-inbox-monitor`). Analyses campaign-level deliverability signals via
+// the existing Express API (`POST /api/deliverability/campaign-monitor`)
+// through lib/api. The API expects per-send outcomes
+// (`sends: [{email, delivered, bounced, opened, complained}]`), so the form
+// collects campaign totals and expands them into a sends array client-side.
 
 import { useState } from "react";
 import { apiPost } from "@/lib/api";
@@ -13,43 +15,110 @@ import { useToast } from "@/hooks/useToast";
 interface MonitorResponse {
   ok: boolean;
   error?: string;
-  placement?: Record<string, number>;
-  score?: number;
-  deliverability_score?: number;
-  issues?: string[];
+  campaign_name?: string;
+  stats?: {
+    total: number;
+    delivered: number;
+    bounced: number;
+    opened: number;
+    complained: number;
+    deliveryRate: number;
+    bounceRate: number;
+    openRate: number;
+    complaintRate: number;
+  };
+  inbox_score?: number;
+  grade?: string;
+  flags?: { severity: string; issue: string }[];
   recommendations?: string[];
 }
 
+interface SendRecord {
+  email: string;
+  delivered: boolean;
+  bounced: boolean;
+  opened: boolean;
+  complained: boolean;
+}
+
+// Expand campaign totals into the per-send outcome array the API expects.
+// Caps the array at 2000 records, scaling all counts proportionally so the
+// rates (and therefore the score) are preserved.
+function buildSends(
+  total: number,
+  delivered: number,
+  bounced: number,
+  opened: number,
+  complained: number,
+): SendRecord[] {
+  const CAP = 2000;
+  let n = total;
+  let d = Math.min(delivered, total);
+  let b = Math.min(bounced, total - d);
+  let o = Math.min(opened, d);
+  let c = Math.min(complained, d);
+  if (n > CAP) {
+    const f = CAP / n;
+    n = CAP;
+    d = Math.round(d * f);
+    b = Math.round(b * f);
+    o = Math.round(o * f);
+    c = Math.round(c * f);
+  }
+  const sends: SendRecord[] = [];
+  for (let i = 0; i < n; i++) {
+    sends.push({
+      email: `contact${i + 1}@example.com`,
+      delivered: i < d,
+      bounced: i >= d && i < d + b,
+      opened: i < o,
+      complained: i < c,
+    });
+  }
+  return sends;
+}
+
+const sevColor: Record<string, string> = {
+  high: "#dc2626",
+  medium: "#d97706",
+  low: "#6b7280",
+};
+
 export default function InboxMonitor() {
   const toast = useToast();
-  const [campId, setCampId] = useState("");
-  const [from, setFrom] = useState("");
-  const [subject, setSubject] = useState("");
-  const [volume, setVolume] = useState("");
+  const [campName, setCampName] = useState("");
+  const [total, setTotal] = useState("");
+  const [delivered, setDelivered] = useState("");
+  const [bounced, setBounced] = useState("0");
+  const [opened, setOpened] = useState("");
+  const [complained, setComplained] = useState("0");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<MonitorResponse | null>(null);
 
   async function run() {
-    if (!from.trim()) {
-      toast("Enter a from address.");
+    const t = parseInt(total) || 0;
+    if (t <= 0) {
+      toast("Enter the total number of emails sent.");
+      return;
+    }
+    const d = parseInt(delivered) || 0;
+    if (d <= 0) {
+      toast("Enter how many were delivered.");
       return;
     }
     setRunning(true);
-    const d = await apiPost<MonitorResponse>(
+    const resp = await apiPost<MonitorResponse>(
       "/api/deliverability/campaign-monitor",
       {
-        campaign_id: campId.trim(),
-        from_address: from.trim(),
-        subject: subject.trim(),
-        volume: parseInt(volume) || 0,
+        campaign_name: campName.trim() || "Unnamed Campaign",
+        sends: buildSends(t, d, parseInt(bounced) || 0, parseInt(opened) || 0, parseInt(complained) || 0),
       },
     );
     setRunning(false);
-    setResult(d);
+    setResult(resp);
   }
 
-  const placement = result?.placement || {};
-  const score = result?.score ?? result?.deliverability_score ?? "—";
+  const score = result?.inbox_score ?? "—";
   const scoreColor =
     typeof score === "number"
       ? score >= 80
@@ -59,14 +128,22 @@ export default function InboxMonitor() {
           : "#ef4444"
       : "#10b981";
 
+  const stats = result?.stats;
+  const rateBars: { label: string; pct: number }[] = stats
+    ? [
+        { label: "Delivery", pct: stats.deliveryRate },
+        { label: "Open", pct: stats.openRate },
+        { label: "Bounce", pct: stats.bounceRate },
+      ]
+    : [];
+
   return (
     <div>
       <div className="view-header">
         <h2>📬 Inbox Placement Monitor</h2>
         <p className="view-sub">
-          Analyse a campaign&apos;s inbox placement across major providers
-          (Gmail, Outlook, Yahoo) and get AI-powered deliverability
-          recommendations.
+          Enter your campaign&apos;s send outcomes to score inbox placement and
+          get deliverability recommendations.
         </p>
       </div>
       <div
@@ -82,41 +159,62 @@ export default function InboxMonitor() {
             Analyse Campaign
           </h3>
           <div className="form-group">
-            <label>Campaign ID</label>
+            <label>Campaign Name</label>
             <input
               className="form-control"
-              placeholder="e.g. 42"
-              value={campId}
-              onChange={(e) => setCampId(e.target.value)}
+              placeholder="e.g. June Newsletter"
+              value={campName}
+              onChange={(e) => setCampName(e.target.value)}
             />
           </div>
           <div className="form-group">
-            <label>From Address</label>
-            <input
-              className="form-control"
-              placeholder="hello@yourdomain.com"
-              type="email"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label>Subject Line</label>
-            <input
-              className="form-control"
-              placeholder="Your email subject…"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label>Sample Send Volume</label>
+            <label>Total Emails Sent</label>
             <input
               className="form-control"
               placeholder="e.g. 5000"
               type="number"
-              value={volume}
-              onChange={(e) => setVolume(e.target.value)}
+              value={total}
+              onChange={(e) => setTotal(e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label>Delivered</label>
+            <input
+              className="form-control"
+              placeholder="e.g. 4900"
+              type="number"
+              value={delivered}
+              onChange={(e) => setDelivered(e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label>Bounced</label>
+            <input
+              className="form-control"
+              placeholder="e.g. 100"
+              type="number"
+              value={bounced}
+              onChange={(e) => setBounced(e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label>Opened</label>
+            <input
+              className="form-control"
+              placeholder="e.g. 1200"
+              type="number"
+              value={opened}
+              onChange={(e) => setOpened(e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label>Spam Complaints</label>
+            <input
+              className="form-control"
+              placeholder="e.g. 2"
+              type="number"
+              value={complained}
+              onChange={(e) => setComplained(e.target.value)}
             />
           </div>
           <button
@@ -157,12 +255,23 @@ export default function InboxMonitor() {
                     }}
                   >
                     {score}
+                    {result.grade ? (
+                      <span
+                        style={{
+                          fontSize: "1.2rem",
+                          marginLeft: 8,
+                          verticalAlign: "middle",
+                        }}
+                      >
+                        ({result.grade})
+                      </span>
+                    ) : null}
                   </div>
                   <div style={{ fontSize: "0.82rem", color: "#6b7280" }}>
-                    Deliverability Score
+                    Inbox Placement Score
                   </div>
                 </div>
-                {Object.entries(placement).length ? (
+                {rateBars.length ? (
                   <div style={{ marginBottom: 14 }}>
                     <div
                       style={{
@@ -171,11 +280,11 @@ export default function InboxMonitor() {
                         marginBottom: 8,
                       }}
                     >
-                      Placement by Provider
+                      Campaign Rates
                     </div>
-                    {Object.entries(placement).map(([prov, pct]) => (
+                    {rateBars.map(({ label, pct }) => (
                       <div
-                        key={prov}
+                        key={label}
                         style={{
                           display: "flex",
                           alignItems: "center",
@@ -184,7 +293,7 @@ export default function InboxMonitor() {
                           fontSize: "0.82rem",
                         }}
                       >
-                        <span style={{ width: 80 }}>{prov}</span>
+                        <span style={{ width: 80 }}>{label}</span>
                         <div
                           style={{
                             flex: 1,
@@ -198,23 +307,29 @@ export default function InboxMonitor() {
                               width: `${Math.min(100, Math.round(pct))}%`,
                               height: "100%",
                               background:
-                                pct > 70
-                                  ? "#10b981"
-                                  : pct > 40
-                                    ? "#f59e0b"
-                                    : "#ef4444",
+                                label === "Bounce"
+                                  ? pct > 5
+                                    ? "#ef4444"
+                                    : pct > 2
+                                      ? "#f59e0b"
+                                      : "#10b981"
+                                  : pct > 70
+                                    ? "#10b981"
+                                    : pct > 40
+                                      ? "#f59e0b"
+                                      : "#ef4444",
                               borderRadius: 4,
                             }}
                           />
                         </div>
                         <span style={{ fontWeight: 600 }}>
-                          {Math.round(pct)}%
+                          {Math.round(pct * 10) / 10}%
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : null}
-                {result.issues?.length ? (
+                {result.flags?.length ? (
                   <div style={{ marginBottom: 12 }}>
                     <div
                       style={{
@@ -225,16 +340,16 @@ export default function InboxMonitor() {
                     >
                       ⚠️ Issues Detected
                     </div>
-                    {result.issues.map((issue, i) => (
+                    {result.flags.map((f, i) => (
                       <div
                         key={i}
                         style={{
                           fontSize: "0.82rem",
-                          color: "#dc2626",
+                          color: sevColor[f.severity] || "#dc2626",
                           marginBottom: 3,
                         }}
                       >
-                        • {issue}
+                        • {f.issue}
                       </div>
                     ))}
                   </div>
