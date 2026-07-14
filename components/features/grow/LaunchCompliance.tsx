@@ -75,7 +75,7 @@ export default function LaunchCompliance() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await apiGet("/api/launch-compliance/checklists");
+    const r = await apiGet<{ ok: boolean; error?: string; checklists?: Checklist[] }>("/api/launch-compliance/checklists");
     if (r?.checklists) setChecklists(r.checklists);
     setLoading(false);
   }, []);
@@ -83,19 +83,19 @@ export default function LaunchCompliance() {
   useEffect(() => { load(); }, [load]);
 
   async function loadDetail(id: number) {
-    const r = await apiGet(`/api/launch-compliance/checklists/${id}`);
+    const r = await apiGet<{ ok: boolean; error?: string; checklist?: Checklist }>(`/api/launch-compliance/checklists/${id}`);
     if (r?.checklist) { setActive(r.checklist); setTab("detail"); setCatTab("brand"); }
   }
 
   async function handleCreate() {
     if (!form.campaign_name) { showToast("Campaign name is required."); return; }
     setSaving(true);
-    const r = await apiPost("/api/launch-compliance/checklists", form);
+    const r = await apiPost<{ ok: boolean; error?: string; checklist?: Checklist }>("/api/launch-compliance/checklists", form);
     if (r?.ok) {
       showToast("✅ Checklist created!");
       setForm({ campaign_name: "", platform: "general", landing_page_url: "", ad_copy: "" });
       load();
-      setActive(r.checklist);
+      setActive(r.checklist ?? null);
       setTab("detail");
     } else { showToast("Error creating checklist."); }
     setSaving(false);
@@ -103,23 +103,23 @@ export default function LaunchCompliance() {
 
   async function handleItemUpdate(itemId: number, status: string, notes?: string) {
     if (!active) return;
-    const r = await apiPost(`/api/launch-compliance/items/${itemId}`, { status, notes: notes ?? undefined });
+    const r = await apiPost<{ ok: boolean; error?: string; overall_result?: string | null }>(`/api/launch-compliance/items/${itemId}`, { status, notes: notes ?? undefined });
     if (r?.ok) {
       setActive(prev => prev ? {
         ...prev,
-        overall_result: r.overall_result,
+        overall_result: r.overall_result ?? prev.overall_result,
         items: prev.items?.map(i => i.id === itemId ? { ...i, status: status as ChecklistItem["status"], notes: notes || i.notes } : i),
       } : null);
-      setChecklists(prev => prev.map(c => c.id === active.id ? { ...c, overall_result: r.overall_result } : c));
+      setChecklists(prev => prev.map(c => c.id === active.id ? { ...c, overall_result: r.overall_result ?? c.overall_result } : c));
     }
   }
 
   async function handleProofread() {
     if (!active) return;
     setSaving(true);
-    const r = await apiPost(`/api/launch-compliance/checklists/${active.id}/proofread`, { ad_copy: active.ad_copy });
+    const r = await apiPost<{ ok: boolean; error?: string; feedback?: Checklist["ai_feedback"] }>(`/api/launch-compliance/checklists/${active.id}/proofread`, { ad_copy: active.ad_copy });
     if (r?.ok) {
-      setActive(prev => prev ? { ...prev, ai_feedback: r.feedback } : null);
+      setActive(prev => prev ? { ...prev, ai_feedback: r.feedback ?? null } : null);
       showToast("✅ AI proofreading complete!");
       setCopyPreview(true);
     } else { showToast(r?.error || "Proofread failed."); }
@@ -129,9 +129,9 @@ export default function LaunchCompliance() {
   async function handleBrandCheck() {
     if (!active) return;
     setSaving(true);
-    const r = await apiPost(`/api/launch-compliance/checklists/${active.id}/brand-check`, {});
+    const r = await apiPost<{ ok: boolean; error?: string; brand_score?: number | null; brand_found?: boolean }>(`/api/launch-compliance/checklists/${active.id}/brand-check`, {});
     if (r?.ok) {
-      setActive(prev => prev ? { ...prev, brand_score: r.brand_score } : null);
+      setActive(prev => prev ? { ...prev, brand_score: r.brand_score ?? null } : null);
       showToast(r.brand_found ? `✅ Brand score: ${r.brand_score}/10` : "⚠️ No Brand Foundation found — add one in Brand Foundation.");
     } else { showToast("Brand check failed."); }
     setSaving(false);

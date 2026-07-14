@@ -44,7 +44,7 @@ function fmtMoney(n: number|null|undefined) {
 
 function getAnalysisDomain(): string {
   if (typeof window === "undefined") return "";
-  const ad = (window as Record<string,unknown>).analysisData as Record<string,unknown>|undefined;
+  const ad = (window as unknown as Record<string,unknown>).analysisData as Record<string,unknown>|undefined;
   if (!ad) return "";
   const url = String(ad.url || ad.domain || "");
   if (!url) return "";

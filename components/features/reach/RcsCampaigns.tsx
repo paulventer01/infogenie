@@ -61,7 +61,7 @@ export default function RcsCampaigns() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await apiGet("/api/rcs/campaigns");
+    const r = await apiGet<{ ok: boolean; error?: string; campaigns?: Campaign[] }>("/api/rcs/campaigns");
     if (r?.campaigns) setCampaigns(r.campaigns);
     setLoading(false);
   }, []);
@@ -71,15 +71,16 @@ export default function RcsCampaigns() {
   async function handleAiGenerate() {
     if (!aiForm.goal) { showToast("Enter a campaign goal first."); return; }
     setGenAi(true);
-    const r = await apiPost("/api/rcs/campaigns/0/ai-generate", aiForm);
+    const r = await apiPost<{ ok: boolean; error?: string; generated?: AiResult }>("/api/rcs/campaigns/0/ai-generate", aiForm);
     if (r?.ok && r?.generated) {
-      setAiResult(r.generated);
+      const generated = r.generated;
+      setAiResult(generated);
       setForm(f => ({
         ...f,
         channel: aiForm.channel,
         name: f.name || `${aiForm.brand_name || "Campaign"} — ${new Date().toLocaleDateString()}`,
-        message_body: r.generated.plain_text || "",
-        sender_name: r.generated.sender_name || f.sender_name,
+        message_body: generated.plain_text || "",
+        sender_name: generated.sender_name || f.sender_name,
       }));
       showToast("✅ AI generated your RCS message!");
       setTab("new");
@@ -93,11 +94,12 @@ export default function RcsCampaigns() {
     if (!form.name || !form.message_body) { showToast("Name and message body required."); return; }
     setSaving(true);
     const payload = { ...form, rich_card: aiResult?.rich_card || undefined, cta_buttons: aiResult?.cta_buttons || undefined };
-    const r = await apiPost("/api/rcs/campaigns/create", payload);
-    if (r?.ok) {
+    const r = await apiPost<{ ok: boolean; error?: string; campaign?: Campaign }>("/api/rcs/campaigns/create", payload);
+    if (r?.ok && r.campaign) {
+      const campaign = r.campaign;
       showToast("✅ Campaign created!");
-      setCampaigns(prev => [r.campaign, ...prev]);
-      setActive(r.campaign);
+      setCampaigns(prev => [campaign, ...prev]);
+      setActive(campaign);
       setForm({ name: "", channel: "rcs", message_body: "", sender_name: "", media_url: "" });
       setAiResult(null);
       setTab("campaigns");
@@ -213,7 +215,7 @@ export default function RcsCampaigns() {
                 <div style={{ ...card, textAlign: "center", padding: "50px 20px" }}>
                   <div style={{ fontSize: "2.5rem", marginBottom: 8 }}>💬</div>
                   <div style={{ fontWeight: 700, color: "#0A1628" }}>No RCS campaigns yet</div>
-                  <div style={{ color: "#64748B", fontSize: "0.82rem", marginTop: 4 }}>Switch to "AI Generate + Create" to build your first rich message campaign.</div>
+                  <div style={{ color: "#64748B", fontSize: "0.82rem", marginTop: 4 }}>Switch to &ldquo;AI Generate + Create&rdquo; to build your first rich message campaign.</div>
                 </div>
               ) : campaigns.map(c => {
                 const cc = CHANNEL_CONFIG[c.channel] || CHANNEL_CONFIG.rcs;

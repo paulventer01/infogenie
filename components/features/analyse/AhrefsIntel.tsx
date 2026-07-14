@@ -81,7 +81,7 @@ export default function AhrefsIntel() {
             <div>
               <div className="breadcrumb"><span className="bc-group">SEO</span> <span className="bc-sep">›</span> Ahrefs</div>
               <h2 className="view-title">🔍 Ahrefs Intelligence</h2>
-              <p className="view-sub">Domain Rating, authoritative backlinks, organic keyword rankings, and content gap analysis from the world's largest backlink index.</p>
+              <p className="view-sub">Domain Rating, authoritative backlinks, organic keyword rankings, and content gap analysis from the world&apos;s largest backlink index.</p>
             </div>
           </div>
         </div>

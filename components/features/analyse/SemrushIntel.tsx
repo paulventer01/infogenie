@@ -277,7 +277,7 @@ export default function SemrushIntel() {
             {lookupData.metrics && (
               <div style={{ flex: "0 0 300px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "18px 20px" }}>
                 <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: 14, color: "#0f172a" }}>
-                  "{lookupData.metrics.keyword}"
+                  &ldquo;{lookupData.metrics.keyword}&rdquo;
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {[

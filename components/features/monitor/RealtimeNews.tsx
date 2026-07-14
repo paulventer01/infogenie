@@ -38,6 +38,7 @@ interface Article {
   id?: number;
   saved_at?: string;
   sentiment?: string;
+  article_url?: string;
 }
 
 function fmtDate(s: string) {

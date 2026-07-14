@@ -56,7 +56,7 @@ export default function PostLaunchAudit() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await apiGet("/api/post-launch-audit/audits");
+    const r = await apiGet<{ ok: boolean; error?: string; audits?: Audit[] }>("/api/post-launch-audit/audits");
     if (r?.audits) setAudits(r.audits);
     setLoading(false);
   }, []);
@@ -64,19 +64,19 @@ export default function PostLaunchAudit() {
   useEffect(() => { load(); }, [load]);
 
   async function loadDetail(id: number) {
-    const r = await apiGet(`/api/post-launch-audit/audits/${id}`);
+    const r = await apiGet<{ ok: boolean; error?: string; audit?: Audit }>(`/api/post-launch-audit/audits/${id}`);
     if (r?.audit) { setActive(r.audit); setTab("detail"); }
   }
 
   async function handleCreate() {
     if (!form.campaign_name) { showToast("Campaign name is required."); return; }
     setRunning("create");
-    const r = await apiPost("/api/post-launch-audit/audits", form);
+    const r = await apiPost<{ ok: boolean; error?: string; audit?: Audit }>("/api/post-launch-audit/audits", form);
     if (r?.ok) {
       showToast("✅ Audit scheduled!");
       setForm({ campaign_name: "", platform: "meta", audit_window: "48h" });
       load();
-      setActive(r.audit);
+      setActive(r.audit ?? null);
       setTab("detail");
     } else { showToast("Error creating audit."); }
     setRunning(null);
@@ -85,10 +85,10 @@ export default function PostLaunchAudit() {
   async function handleRunLiveCheck() {
     if (!active) return;
     setRunning("live");
-    const r = await apiPost(`/api/post-launch-audit/audits/${active.id}/run-live-check`, {});
+    const r = await apiPost<{ ok: boolean; error?: string; status?: string }>(`/api/post-launch-audit/audits/${active.id}/run-live-check`, {});
     if (r?.ok) {
       showToast(r.status === "pass" ? "✅ Live data check passed!" : `⚠️ Live data check: ${r.status}`);
-      const detail = await apiGet(`/api/post-launch-audit/audits/${active.id}`);
+      const detail = await apiGet<{ ok: boolean; error?: string; audit?: Audit }>(`/api/post-launch-audit/audits/${active.id}`);
       if (detail?.audit) setActive(detail.audit);
       load();
     } else { showToast("Live check failed."); }
@@ -98,10 +98,10 @@ export default function PostLaunchAudit() {
   async function handleRunLeadFlow() {
     if (!active) return;
     setRunning("lead");
-    const r = await apiPost(`/api/post-launch-audit/audits/${active.id}/run-lead-flow`, {});
+    const r = await apiPost<{ ok: boolean; error?: string; status?: string }>(`/api/post-launch-audit/audits/${active.id}/run-lead-flow`, {});
     if (r?.ok) {
       showToast(r.status === "pass" ? "✅ Lead flow verified!" : r.status === "na" ? "⚠️ HubSpot not connected — configure it in Integrations." : `⚠️ Lead flow: ${r.status}`);
-      const detail = await apiGet(`/api/post-launch-audit/audits/${active.id}`);
+      const detail = await apiGet<{ ok: boolean; error?: string; audit?: Audit }>(`/api/post-launch-audit/audits/${active.id}`);
       if (detail?.audit) setActive(detail.audit);
       load();
     } else { showToast("Lead flow check failed."); }
@@ -282,7 +282,7 @@ export default function PostLaunchAudit() {
                           </div>
                         </div>
                       ))}
-                      {details.test_email && <div style={{ fontSize: "0.68rem", color: "#94A3B8", marginTop: 6 }}>Test email: {String(details.test_email)}</div>}
+                      {!!details.test_email && <div style={{ fontSize: "0.68rem", color: "#94A3B8", marginTop: 6 }}>Test email: {String(details.test_email)}</div>}
                     </div>
                   )}
 

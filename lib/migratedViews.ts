@@ -293,6 +293,35 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "self-healing",       legacyModule: null },
   { view: "ctv-streaming",      legacyModule: null },
   { view: "rcs-campaigns",      legacyModule: null },
+  // Customer-engagement pack — ig_customer_engagement.js is DEDICATED to these
+  // 8 views (buildSurveys/EmailDesigner/McpServer/SmartSend/AiSegments/
+  // AudienceAdSync/Translation/InboxMonitor), so the module can be dropped from
+  // the DEV replay bundle. Listing it once is enough (MIGRATED_MODULES dedupes
+  // by usage); keep it on the first entry only to avoid duplicates.
+  { view: "surveys",          legacyModule: "ig_customer_engagement.js" },
+  { view: "email-designer",   legacyModule: null },
+  { view: "mcp-server",       legacyModule: null },
+  { view: "smart-send",       legacyModule: null },
+  { view: "ai-segments",      legacyModule: null },
+  { view: "audience-ad-sync", legacyModule: null },
+  { view: "translate",        legacyModule: null },
+  { view: "inbox-monitor",    legacyModule: null },
+  // Brand Intelligence suite — ig_brand24_suite.js is DEDICATED to these 10
+  // views, so it too drops from the DEV replay bundle (listed once).
+  { view: "reputation-score", legacyModule: "ig_brand24_suite.js" },
+  { view: "presence-score",   legacyModule: null },
+  { view: "ave",              legacyModule: null },
+  { view: "anomaly-detector", legacyModule: null },
+  { view: "intent-radar",     legacyModule: null },
+  { view: "hashtag-tracker",  legacyModule: null },
+  { view: "influence-score",  legacyModule: null },
+  { view: "project-compare",  legacyModule: null },
+  { view: "geo-insights",     legacyModule: null },
+  { view: "ugc-discovery",    legacyModule: null },
+  // identity-spine's builder lives in the SHARED ig_strategic_features.js
+  // (decision-engine / experiment-suite / approval-workflows are still legacy),
+  // so the module must keep loading — suppression is div-strip only.
+  { view: "identity-spine",   legacyModule: null },
 ];
 
 /** Set of view ids now rendered by React. */

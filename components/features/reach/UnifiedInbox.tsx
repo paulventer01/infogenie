@@ -253,7 +253,7 @@ export default function UnifiedInbox() {
     if (r.ok && r.draft) {
       setReplyBody(r.draft);
     } else {
-      showToast("AI draft failed: " + (r.error || "unknown"), "error");
+      showToast("AI draft failed: " + (r.error || "unknown"));
     }
   }
 

@@ -227,6 +227,25 @@ import LandingPages from "@/components/features/grow/LandingPages";
 import AiTeam from "@/components/features/aiteam/AiTeam";
 import FinanceOfficer from "@/components/features/aiteam/FinanceOfficer";
 import OpsOfficer from "@/components/features/aiteam/OpsOfficer";
+import Surveys from "@/components/features/reach/Surveys";
+import EmailDesigner from "@/components/features/reach/EmailDesigner";
+import McpServer from "@/components/features/reach/McpServer";
+import SmartSend from "@/components/features/reach/SmartSend";
+import AiSegments from "@/components/features/reach/AiSegments";
+import AudienceAdSync from "@/components/features/reach/AudienceAdSync";
+import Translate from "@/components/features/reach/Translate";
+import InboxMonitor from "@/components/features/reach/InboxMonitor";
+import IdentitySpine from "@/components/features/reach/IdentitySpine";
+import ReputationScore from "@/components/features/analyse/ReputationScore";
+import PresenceScore from "@/components/features/analyse/PresenceScore";
+import Ave from "@/components/features/analyse/Ave";
+import AnomalyDetector from "@/components/features/analyse/AnomalyDetector";
+import IntentRadar from "@/components/features/analyse/IntentRadar";
+import HashtagTracker from "@/components/features/analyse/HashtagTracker";
+import InfluenceScore from "@/components/features/analyse/InfluenceScore";
+import ProjectCompare from "@/components/features/analyse/ProjectCompare";
+import GeoInsights from "@/components/features/analyse/GeoInsights";
+import UgcDiscovery from "@/components/features/analyse/UgcDiscovery";
 import UtmBuilder from "@/components/features/manage/UtmBuilder";
 import BudgetCaps from "@/components/features/manage/BudgetCaps";
 import PixelManager from "@/components/features/manage/PixelManager";
@@ -472,4 +491,23 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "ai-team": AiTeam,
   "finance-officer": FinanceOfficer,
   "ops-officer": OpsOfficer,
+  "surveys": Surveys,
+  "email-designer": EmailDesigner,
+  "mcp-server": McpServer,
+  "smart-send": SmartSend,
+  "ai-segments": AiSegments,
+  "audience-ad-sync": AudienceAdSync,
+  "translate": Translate,
+  "inbox-monitor": InboxMonitor,
+  "identity-spine": IdentitySpine,
+  "reputation-score": ReputationScore,
+  "presence-score": PresenceScore,
+  "ave": Ave,
+  "anomaly-detector": AnomalyDetector,
+  "intent-radar": IntentRadar,
+  "hashtag-tracker": HashtagTracker,
+  "influence-score": InfluenceScore,
+  "project-compare": ProjectCompare,
+  "geo-insights": GeoInsights,
+  "ugc-discovery": UgcDiscovery,
 };

@@ -234,7 +234,7 @@ export default function SerpstatIntel() {
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
             {research.metrics && (
               <div style={{ flex: "0 0 280px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "18px 20px" }}>
-                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: 14 }}>"{research.metrics.keyword}"</div>
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: 14 }}>&ldquo;{research.metrics.keyword}&rdquo;</div>
                 {[
                   { label: "Monthly Volume",  value: research.metrics.searchVolume?.toLocaleString() || "—" },
                   { label: "CPC",             value: research.metrics.cpc ? `$${Number(research.metrics.cpc).toFixed(2)}` : "—" },

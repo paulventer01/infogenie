@@ -19,3 +19,4 @@
 - [Field-enhancer autofill suppression](field-enhancer-autofill.md) — enhancer sets autocomplete="new-password" on all free-text fields to kill Chromium saved-email/password leakage; honours meaningful tokens + exempts auth forms.
 - [Llama RapidAPI integration](llama-rapidapi.md) — callLlama/hasLlama in ai_compat.js; RAPIDAPI_KEY; Cloudflare-first fallback pattern in market_signals; SWC rejects /regex/g inside JSX text — use .split().join() instead.
 - [View-panel bulk-removal guard](view-panel-count-guard.md) — adding any new #view-* panel can fail the legacy-shell-hydration staleness test; bump MIN_VIEW_PANEL_COUNT to (liveCount-20).
+- [Next build strictness](nextjs-build-strictness.md) — build:next fails on ESLint errors + tsc across ALL components; new panels must type apiGet/apiPost generics and escape JSX quotes; verify build, not just tsc-on-new-files.

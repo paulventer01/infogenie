@@ -146,7 +146,10 @@ export default function PixelManager() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [cfgR, logR] = await Promise.all([apiGet("/api/pixel-manager/configs"), apiGet("/api/pixel-manager/capi-log")]);
+    const [cfgR, logR] = await Promise.all([
+      apiGet<{ ok: boolean; error?: string; configs?: PixelConfig[] }>("/api/pixel-manager/configs"),
+      apiGet<{ ok: boolean; error?: string; events?: CAPIEvent[] }>("/api/pixel-manager/capi-log"),
+    ]);
     if (cfgR?.configs) {
       setConfigs(cfgR.configs);
       const initForms: typeof forms = {};
@@ -168,9 +171,10 @@ export default function PixelManager() {
     setSaving(platformId);
     const body: Record<string, unknown> = { platform: platformId, pixel_id: f.pixelId, enabled: f.enabled };
     if (f.token) body.access_token = f.token;
-    const r = await apiPost("/api/pixel-manager/configs", body);
-    if (r?.ok) {
-      setConfigs(prev => { const idx = prev.findIndex(c => c.platform === platformId); return idx >= 0 ? prev.map(c => c.platform === platformId ? r.config : c) : [r.config, ...prev]; });
+    const r = await apiPost<{ ok: boolean; error?: string; config?: PixelConfig }>("/api/pixel-manager/configs", body);
+    if (r?.ok && r.config) {
+      const config = r.config;
+      setConfigs(prev => { const idx = prev.findIndex(c => c.platform === platformId); return idx >= 0 ? prev.map(c => c.platform === platformId ? config : c) : [config, ...prev]; });
       showToast(`✅ ${platformId} pixel saved`);
     } else { showToast("Error saving."); }
     setSaving(null);
@@ -178,10 +182,11 @@ export default function PixelManager() {
 
   async function testPlatform(platformId: string) {
     setTesting(platformId);
-    const r = await apiPost(`/api/pixel-manager/test/${platformId}`, {});
+    const r = await apiPost<{ ok: boolean; error?: string; result?: { ok: boolean; message: string } | null }>(`/api/pixel-manager/test/${platformId}`, {});
     if (r?.ok) {
-      setConfigs(prev => prev.map(c => c.platform === platformId ? { ...c, test_result: r.result } : c));
-      showToast(r.result?.ok ? `✅ ${r.result.message}` : `⚠️ ${r.result?.message}`);
+      const result = r.result ?? null;
+      setConfigs(prev => prev.map(c => c.platform === platformId ? { ...c, test_result: result } : c));
+      showToast(result?.ok ? `✅ ${result.message}` : `⚠️ ${result?.message}`);
     }
     setTesting(null);
   }
@@ -206,7 +211,7 @@ export default function PixelManager() {
     if (capiForm.custom_data) {
       try { (body.event_data as Record<string, unknown>).custom_data = JSON.parse(capiForm.custom_data); } catch { /* ignore */ }
     }
-    const r = await apiPost(`/api/pixel-manager/capi/${capiPlatform}`, body);
+    const r = await apiPost<{ ok: boolean; error?: string; capi_response?: { body?: { error?: { message?: string } } } }>(`/api/pixel-manager/capi/${capiPlatform}`, body);
     if (r?.ok) {
       showToast(`✅ ${capiPlatform.toUpperCase()} CAPI event sent!`);
       load();

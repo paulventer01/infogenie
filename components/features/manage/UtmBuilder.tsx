@@ -74,7 +74,10 @@ export default function UtmBuilder() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [l, p] = await Promise.all([apiGet("/api/utm-builder/links"), apiGet("/api/utm-builder/presets")]);
+    const [l, p] = await Promise.all([
+      apiGet<{ ok: boolean; error?: string; links?: UtmLink[] }>("/api/utm-builder/links"),
+      apiGet<{ ok: boolean; error?: string; presets?: Preset[] }>("/api/utm-builder/presets"),
+    ]);
     if (l?.links) setLinks(l.links);
     if (p?.presets) setPresets(p.presets);
     setLoading(false);
@@ -91,9 +94,10 @@ export default function UtmBuilder() {
       setToast("Fill in destination, source, medium and campaign."); setTimeout(() => setToast(""), 3000); return;
     }
     setSaving(true);
-    const r = await apiPost("/api/utm-builder/links", form);
-    if (r?.ok) {
-      setLinks(prev => [r.link, ...prev]);
+    const r = await apiPost<{ ok: boolean; error?: string; link?: UtmLink }>("/api/utm-builder/links", form);
+    if (r?.ok && r.link) {
+      const link = r.link;
+      setLinks(prev => [link, ...prev]);
       setForm({ label: "", destination: "", utm_source: "", utm_medium: "", utm_campaign: "", utm_content: "", utm_term: "" });
       setTab("links");
       setToast("✅ Link saved!"); setTimeout(() => setToast(""), 2500);
@@ -112,9 +116,10 @@ export default function UtmBuilder() {
     if (!presetForm.label || !presetForm.source || !presetForm.medium) {
       setToast("Label, source and medium are required."); setTimeout(() => setToast(""), 3000); return;
     }
-    const r = await apiPost("/api/utm-builder/presets", presetForm);
-    if (r?.ok) {
-      setPresets(prev => { const idx = prev.findIndex(p => p.id === r.preset.id); return idx >= 0 ? prev.map(p => p.id === r.preset.id ? r.preset : p) : [r.preset, ...prev]; });
+    const r = await apiPost<{ ok: boolean; error?: string; preset?: Preset }>("/api/utm-builder/presets", presetForm);
+    if (r?.ok && r.preset) {
+      const preset = r.preset;
+      setPresets(prev => { const idx = prev.findIndex(p => p.id === preset.id); return idx >= 0 ? prev.map(p => p.id === preset.id ? preset : p) : [preset, ...prev]; });
       setPresetForm({ label: "", source: "", medium: "", campaign: "" });
       setToast("✅ Preset saved!"); setTimeout(() => setToast(""), 2500);
     }

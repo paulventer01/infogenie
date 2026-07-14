@@ -58,8 +58,11 @@ export default function CtvStreaming() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [cfg, cmp] = await Promise.all([apiGet("/api/ctv/config"), apiGet("/api/ctv/campaigns")]);
-    if (cfg?.platforms) { setPlatforms(cfg.platforms); setObjectives(cfg.objectives || []); setForm(f => ({ ...f, platform: cfg.platforms[0]?.id || "roku" })); }
+    const [cfg, cmp] = await Promise.all([
+      apiGet<{ ok: boolean; error?: string; platforms?: Platform[]; objectives?: string[] }>("/api/ctv/config"),
+      apiGet<{ ok: boolean; error?: string; campaigns?: Campaign[] }>("/api/ctv/campaigns"),
+    ]);
+    if (cfg?.platforms) { setPlatforms(cfg.platforms); setObjectives(cfg.objectives || []); setForm(f => ({ ...f, platform: cfg.platforms![0]?.id || "roku" })); }
     if (cmp?.campaigns) setCampaigns(cmp.campaigns);
     setLoading(false);
   }, []);
@@ -69,11 +72,12 @@ export default function CtvStreaming() {
   async function handleCreate() {
     if (!form.name || !form.platform) { showToast("Name and platform required."); return; }
     setSaving(true);
-    const r = await apiPost("/api/ctv/campaigns/create", { ...form, budget: form.budget ? +form.budget : undefined, daily_budget: form.daily_budget ? +form.daily_budget : undefined });
-    if (r?.ok) {
+    const r = await apiPost<{ ok: boolean; error?: string; campaign?: Campaign }>("/api/ctv/campaigns/create", { ...form, budget: form.budget ? +form.budget : undefined, daily_budget: form.daily_budget ? +form.daily_budget : undefined });
+    if (r?.ok && r.campaign) {
+      const created = r.campaign;
       showToast("✅ Campaign created!");
-      setCampaigns(prev => [r.campaign, ...prev]);
-      setActive(r.campaign);
+      setCampaigns(prev => [created, ...prev]);
+      setActive(created);
       setBrief(null);
       setTab("campaigns");
     } else { showToast("Error creating campaign."); }
@@ -83,7 +87,7 @@ export default function CtvStreaming() {
   async function handleGenerateBrief(id: number) {
     if (!briefForm.brand_name && !briefForm.key_message) { showToast("Enter brand name or key message first."); return; }
     setGenBrief(true);
-    const r = await apiPost(`/api/ctv/campaigns/${id}/ai-brief`, briefForm);
+    const r = await apiPost<{ ok: boolean; error?: string; brief?: string; ad_copy?: string }>(`/api/ctv/campaigns/${id}/ai-brief`, briefForm);
     if (r?.ok) {
       setBrief(r.brief || r.ad_copy || JSON.stringify(r, null, 2));
       showToast("✅ AI creative brief generated!");

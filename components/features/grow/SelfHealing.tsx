@@ -52,7 +52,7 @@ export default function SelfHealing() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await apiGet("/api/self-healing/history");
+    const r = await apiGet<{ ok: boolean; error?: string; rejections?: Rejection[] }>("/api/self-healing/history");
     if (r?.rejections) setRejections(r.rejections);
     setLoading(false);
   }, []);
@@ -62,11 +62,12 @@ export default function SelfHealing() {
   async function handleReport() {
     if (!form.platform || !form.rejection_reason) { showToast("Platform and rejection reason are required."); return; }
     setHealing(true);
-    const r = await apiPost("/api/self-healing/check", form);
-    if (r?.ok) {
+    const r = await apiPost<{ ok: boolean; error?: string; rejection?: Rejection }>("/api/self-healing/check", form);
+    if (r?.ok && r.rejection) {
+      const rej = r.rejection;
       showToast("✅ Rejection logged — click Heal to fix it.");
-      setRejections(prev => [r.rejection, ...prev]);
-      setActive(r.rejection);
+      setRejections(prev => [rej, ...prev]);
+      setActive(rej);
       setHealResult(null);
       setTab("history");
     } else { showToast("Error logging rejection."); }
@@ -76,10 +77,10 @@ export default function SelfHealing() {
   async function handleHeal(id: number) {
     setHealing(true);
     setHealResult(null);
-    const r = await apiPost(`/api/self-healing/heal/${id}`, {});
+    const r = await apiPost<{ ok: boolean; error?: string; result?: HealResult } & Partial<HealResult>>(`/api/self-healing/heal/${id}`, {});
     if (r?.ok) {
       showToast("✅ AI healed the ad copy!");
-      setHealResult(r.result || r);
+      setHealResult(r.result || (r as unknown as HealResult));
       load();
     } else {
       showToast(r?.error?.includes("key") ? "⚠️ OpenAI key required — configure it in AI Providers." : "Heal failed — check OpenAI credentials.");
@@ -155,7 +156,7 @@ export default function SelfHealing() {
                 <div style={{ ...card, textAlign: "center", padding: "50px 20px" }}>
                   <div style={{ fontSize: "2.5rem", marginBottom: 8 }}>🩹</div>
                   <div style={{ fontWeight: 700, color: "#0A1628" }}>No rejections logged</div>
-                  <div style={{ color: "#64748B", fontSize: "0.82rem", marginTop: 4 }}>Switch to "Log New Rejection" to add your first one.</div>
+                  <div style={{ color: "#64748B", fontSize: "0.82rem", marginTop: 4 }}>Switch to &ldquo;Log New Rejection&rdquo; to add your first one.</div>
                 </div>
               ) : rejections.map(r => {
                 const sc = STATUS_CONFIG[r.status] || STATUS_CONFIG.detected;

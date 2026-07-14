@@ -36,7 +36,7 @@ export default function AudioSummary() {
   async function loadRuns() {
     if (loaded) return;
     setLoading(true);
-    const r = await apiGet("/api/audio-summary/list");
+    const r = await apiGet<{ ok: boolean; error?: string; runs?: Run[] }>("/api/audio-summary/list");
     if (r?.runs) setRuns(r.runs);
     setLoaded(true);
     setLoading(false);
@@ -45,10 +45,10 @@ export default function AudioSummary() {
   async function handleGenerate() {
     if (!form.text.trim()) { showToast("Paste or type article text first."); return; }
     setGen(true);
-    const r = await apiPost("/api/audio-summary/generate", { title: form.title, text: form.text, voice: form.voice });
+    const r = await apiPost<{ ok: boolean; error?: string; run?: Run; audio_url?: string | null; script?: string | null; word_count?: number | null }>("/api/audio-summary/generate", { title: form.title, text: form.text, voice: form.voice });
     if (r?.ok) {
       showToast("✅ Audio summary ready!");
-      const run = r.run || { id: Date.now(), title: form.title, voice: form.voice, audio_url: r.audio_url, script: r.script, word_count: r.word_count, created_at: new Date().toISOString() };
+      const run: Run = r.run || { id: Date.now(), title: form.title, voice: form.voice, audio_url: r.audio_url ?? null, script: r.script ?? null, word_count: r.word_count ?? null, created_at: new Date().toISOString() };
       setRuns(prev => [run, ...prev]);
       setSelected(run);
       setForm(f => ({ ...f, title: "", text: "" }));

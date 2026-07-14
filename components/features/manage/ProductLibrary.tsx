@@ -277,7 +277,7 @@ export default function ProductLibrary() {
               {activeTab === "objections" && (
                 <div>
                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, color: "#374151", marginBottom: 8 }}>Objections & Responses</label>
-                  <div style={{ fontSize: "0.72rem", color: "#6B7280", marginBottom: 10 }}>Common reasons people don't buy, and how to handle them.</div>
+                  <div style={{ fontSize: "0.72rem", color: "#6B7280", marginBottom: 10 }}>Common reasons people don&apos;t buy, and how to handle them.</div>
                   <PairList items={(editing.objections || []) as unknown as { [k: string]: string }[]}
                     onChange={v => setEditing(p => ({ ...p!, objections: v as unknown as Objection[] }))}
                     keyPlaceholder="Objection" valPlaceholder="Response" />

@@ -23,6 +23,7 @@ interface ModelRow {
 
 interface AttributionRun {
   id: number;
+  run_id?: number;
   name: string;
   date_range: string;
   total_spend: number;

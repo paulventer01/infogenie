@@ -474,7 +474,7 @@ export default function MarketingBrief() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#A5B4FC', marginBottom: 6 }}>
-              📋 Today's Marketing Brief · {formattedDate}
+              📋 Today&apos;s Marketing Brief · {formattedDate}
             </div>
             <h1 style={{ margin: 0, fontSize: '1.22rem', fontWeight: 800, lineHeight: 1.3, color: '#fff' }}>
               {brief?.headline || 'Your AI Marketing Director'}
