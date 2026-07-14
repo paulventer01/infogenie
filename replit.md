@@ -56,6 +56,7 @@ Runs `lint:fabrication` (AI-placeholder markers) **and** `lint:css` (both CSS ch
 | `services/meta_ads_oauth/` | Per-user Meta Ads OAuth Connect |
 | `scripts/` | Build utilities (manual gen, screenshots) |
 | `uploads/` | User-uploaded brand assets |
+| `legacy_archive/` | Retired legacy `#view-*` panels + builders (see its README for restore steps) |
 
 ## Environment Variables
 

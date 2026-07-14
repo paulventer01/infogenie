@@ -257,10 +257,10 @@ test('getLegacyShell().bodyHtml contains multiple class="view" panels', () => {
 
   const matches = bodyHtml.match(/class="view(?:\s[^"]*)?"/g) || [];
   assert.ok(
-    matches.length >= 10,
+    matches.length >= 3,
     `getLegacyShell().bodyHtml contains only ${matches.length} class="view" ` +
-      'element(s) — expected at least 10. The SPA has dozens of view panels; ' +
-      'if most are missing the strip regex has over-matched and removed them.',
+      'element(s) — expected at least 3 (home, brand-foundation, decision-engine). ' +
+      'If they are missing the strip regex has over-matched and removed them.',
   );
 });
 

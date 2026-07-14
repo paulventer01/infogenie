@@ -3074,9 +3074,6 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'content') {
     try { buildContent(); } catch(e) { console.warn('buildContent error:', e); }
   }
-  if (viewId === 'aivisibility') {
-    try { buildAiVisibility(); } catch(e) { console.warn('buildAiVisibility error:', e); }
-  }
   if (viewId === 'search-intel') {
     try { window.buildSearchIntel && window.buildSearchIntel(); } catch(e) { console.warn('buildSearchIntel error:', e); }
   }
@@ -3113,7 +3110,6 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'meta-insights')        { try { window.buildMetaInsights && window.buildMetaInsights(); }        catch(e) { console.warn('buildMetaInsights error:', e); } }
   if (viewId === 'google-ads-insights')  { try { window.buildGoogleAdsInsights && window.buildGoogleAdsInsights(); }   catch(e) { console.warn('buildGoogleAdsInsights error:', e); } }
   if (viewId === 'tiktok-ads-insights')  { try { window.buildTiktokAdsInsights && window.buildTiktokAdsInsights(); }   catch(e) { console.warn('buildTiktokAdsInsights error:', e); } }
-  if (viewId === 'microsoft-ads-insights') { try { window.buildMicrosoftAdsInsights && window.buildMicrosoftAdsInsights(); } catch(e) { console.warn('buildMicrosoftAdsInsights error:', e); } }
   if (viewId === 'social-publisher')     { try { window.buildSocialPublisher && window.buildSocialPublisher(); }      catch(e) { console.warn('buildSocialPublisher error:', e); } }
   if (viewId === 'email-personalizer')   { try { window.buildEmailPersonalizer && window.buildEmailPersonalizer(); }    catch(e) { console.warn('buildEmailPersonalizer error:', e); } }
   if (viewId === 'youtube-monitor')      { try { window.buildYoutubeMonitor && window.buildYoutubeMonitor(); }       catch(e) { console.warn('buildYoutubeMonitor error:', e); } }
@@ -3142,7 +3138,6 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'local-leads')          { navigateTo('lead-gen'); return; }
   if (viewId === 'roadmap')              { try { window.buildRoadmap && window.buildRoadmap(); }              catch(e) { console.warn('buildRoadmap error:', e); } }
   if (viewId === 'carousel')             { try { window.buildCarousel && window.buildCarousel(); }             catch(e) { console.warn('buildCarousel error:', e); } }
-  if (viewId === 'llm-scan')             { try { window.buildLlmScan && window.buildLlmScan(); }              catch(e) { console.warn('buildLlmScan error:', e); } }
   if (viewId === 'social-analytics')     { try { window.buildSocialAnalytics && window.buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
   if (viewId === 'keyword-explorer')     { try { window.buildKeywordExplorer && window.buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'ai-audit-suite') {
@@ -3205,9 +3200,6 @@ function navigateTo(viewId, updateActive = true) {
   }
   if (viewId === 'ugc-avatars') {
     try { buildUgcAvatars(); } catch(e) { console.warn('buildUgcAvatars error:', e); }
-  }
-  if (viewId === 'voiceovers') {
-    try { buildVoiceovers(); } catch(e) { console.warn('buildVoiceovers error:', e); }
   }
   if (viewId === 'templates') {
     try { buildTemplates(); } catch(e) { console.warn('buildTemplates error:', e); }
@@ -3286,8 +3278,8 @@ const _nextStepMap = {
   intelligence: { icon:'⚔️', label:'Competitive gaps identified — build your plan.', btnLabel:'Battle Plan →', view:'battleplan', hint:'Turn keyword & ad gaps into a 8-week action plan' },
   reddit:       { icon:'📣', label:'Market insights gathered — now reach them.',      btnLabel:'Advertise Hub →', view:'advertise', hint:'Run ads targeting the communities you just researched' },
   serp:         { icon:'🚀', label:'Keyword rankings clear — grow your organic SEO.', btnLabel:'AutoSEO Pro →', view:'autoseo',    hint:'Content calendar, backlinks & traffic projections' },
-  autoseo:      { icon:'🤖', label:'SEO engine running — boost your AI presence.',   btnLabel:'AI Visibility →', view:'aivisibility', hint:'Get cited by ChatGPT, Claude & Gemini' },
-  aivisibility: { icon:'⚡', label:'AI visibility tracked — run the deep audits.', btnLabel:'AI Audit Suite →', view:'ai-audit-suite', hint:'Prompt coverage, accuracy, citations, sentiment & more' },
+  autoseo:      { icon:'🤖', label:'SEO engine running — boost your AI presence.',   btnLabel:'AI Visibility →', view:'search-intel', hint:'Get cited by ChatGPT, Claude & Gemini' },
+  'search-intel': { icon:'⚡', label:'AI visibility tracked — run the deep audits.', btnLabel:'AI Audit Suite →', view:'ai-audit-suite', hint:'Prompt coverage, accuracy, citations, sentiment & more' },
   'action-center':{ icon:'🚀', label:'Actions prioritised — deploy them.',            btnLabel:'Campaigns →', view:'campaigns', hint:'Launch campaigns around your top action items' },
   agency:       { icon:'👔', label:'Agency reports ready — share executive dashboards.', btnLabel:'C-Suite Reports →', view:'csuite', hint:'CEO, CMO, CFO & COO one-click PDF dashboards' },
 };
@@ -7806,12 +7798,15 @@ window.openCompPlan = async function(compName) {
       }
     }
   } catch (e) { /* silent — plan view will badge as ESTIMATE */ }
-  buildPlanView(compName);
+  if (typeof window.buildPlanView !== 'function') {
+    // Legacy Execution Plan view archived (legacy_archive/plan/) — competitors are
+    // now a migrated React view, so this path is unreachable in practice.
+    showToast('⚠️ The Execution Plan view has been retired');
+    return;
+  }
+  window.buildPlanView(compName);
   navigateTo('plan', false);
 };
-
-// buildPlanView() moved to public/js/ig_plan_view.js (Competitor ROAS Plan view).
-// It is attached to window there; window.openCompPlan above resolves it by global name.
 
 function openAttackModal(action, competitor, type) {
   // ── 'attack' and 'keyword' types → go straight to Full Attack Plan ──────────
@@ -9375,10 +9370,6 @@ document.addEventListener('DOMContentLoaded', () => {
     navigateTo('competitors');
   });
 
-  // Plan view — back button returns to competitors tab
-  document.getElementById('planBackBtn').addEventListener('click', () => {
-    navigateTo('competitors');
-  });
   
   // Launch campaign button (header; absent when the campaigns view is rendered by React)
   const launchCampaignBtn = document.getElementById('launchCampaignBtn');
@@ -13215,97 +13206,6 @@ window.runUgcAvatars = function() {
   else { selectAvatar('sarah'); }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 4. AI VOICEOVERS
-// ═══════════════════════════════════════════════════════════════════════════
-window._voData = null;
-
-function buildVoiceovers() {
-  const wrap = document.getElementById('voiceoversWrap');
-  if (!wrap) return;
-  if (!_lsDomain()) { wrap.innerHTML = _emptyAnalysisCard('AI Voiceovers', 'Generate Voiceover'); return; }
-  const voices = [
-    { id:'aria', name:'Aria', gender:'F', accent:'US', style:'Warm', color:'#F472B6' },
-    { id:'liam', name:'Liam', gender:'M', accent:'US', style:'Confident', color:'#0EA5E9' },
-    { id:'olivia', name:'Olivia', gender:'F', accent:'UK', style:'Crisp', color:'#10B981' },
-    { id:'ethan', name:'Ethan', gender:'M', accent:'UK', style:'Authoritative', color:'#8B5CF6' },
-    { id:'sofia', name:'Sofia', gender:'F', accent:'AU', style:'Friendly', color:'#F59E0B' },
-    { id:'noah', name:'Noah', gender:'M', accent:'CA', style:'Casual', color:'#06B6D4' },
-    { id:'isla', name:'Isla', gender:'F', accent:'IE', style:'Playful', color:'#EC4899' },
-    { id:'arjun', name:'Arjun', gender:'M', accent:'IN', style:'Smooth', color:'#A855F7' }
-  ];
-  const d = window._voData;
-  const brand = _esc(_lsBrand()), kw = _esc(_lsKeywords()[0] || _lsSector());
-  const defaultScript = `Tired of spending hours on ${kw}? Meet ${brand} — the AI marketing platform built for modern teams. Start your free trial today.`;
-  wrap.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
-      <!-- Left: script + voices -->
-      <div>
-        <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0;margin-bottom:14px">
-          <div style="font-size:12px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:8px">SCRIPT</div>
-          <textarea id="voScript" rows="5" style="width:100%;padding:12px;border:1px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;line-height:1.5;box-sizing:border-box">${(d && d.script) || defaultScript}</textarea>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><div style="font-size:11px;color:#94A3B8">~<span id="voSec">${Math.ceil(((d && d.script) || defaultScript).split(' ').length / 2.4)}</span> seconds at default pace</div><div style="display:flex;gap:6px"><label style="font-size:11px;color:#64748B;display:flex;align-items:center;gap:4px">Lang: <select id="voLang" style="padding:4px 8px;border:1px solid #E2E8F0;border-radius:4px;font-size:11px">${['English','Spanish','French','German','Italian','Portuguese','Dutch','Polish','Hindi','Arabic','Japanese','Mandarin'].map(l=>`<option ${l==='English'?'selected':''}>${l}</option>`).join('')}</select></label></div></div>
-        </div>
-        <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0">
-          <div style="font-size:12px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:10px">PICK A VOICE</div>
-          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
-            ${voices.map(v => `
-              <div onclick="generateVoiceover('${v.id}')" style="display:flex;gap:10px;padding:10px;background:${d && d.voiceId===v.id ? '#F0F9FF':'#F8FAFC'};border:1.5px solid ${d && d.voiceId===v.id ? '#0EA5E9':'transparent'};border-radius:8px;cursor:pointer;align-items:center" onmouseover="if(!this.style.borderColor.includes('14, 165'))this.style.background='#F1F5F9'" onmouseout="if(!this.style.borderColor.includes('14, 165'))this.style.background='#F8FAFC'">
-                <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${v.color},${v.color}aa);display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:14px">${v.name[0]}</div>
-                <div style="flex:1;min-width:0"><div style="font-weight:700;color:#1E293B;font-size:13px">${v.name} <span style="color:#94A3B8;font-weight:400;font-size:11px">• ${v.gender} ${v.accent}</span></div><div style="font-size:11px;color:#64748B">${v.style}</div></div>
-                <div style="font-size:14px">▶</div>
-              </div>`).join('')}
-          </div>
-        </div>
-      </div>
-      <!-- Right: preview -->
-      <div>
-        ${d ? `
-        <div style="background:white;border-radius:12px;padding:24px;border:1px solid #E2E8F0">
-          <div style="font-size:12px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:14px">PREVIEW</div>
-          <div style="background:linear-gradient(135deg,${voices.find(v=>v.id===d.voiceId).color}15,#F8FAFC);border-radius:10px;padding:24px;text-align:center">
-            <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,${voices.find(v=>v.id===d.voiceId).color},${voices.find(v=>v.id===d.voiceId).color}aa);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;color:white;font-size:30px;font-weight:800">${voices.find(v=>v.id===d.voiceId).name[0]}</div>
-            <div style="font-weight:700;color:#1E293B;font-size:16px">${voices.find(v=>v.id===d.voiceId).name}</div>
-            <div style="font-size:12px;color:#64748B;margin-bottom:18px">${voices.find(v=>v.id===d.voiceId).style} • ${d.lang}</div>
-            <!-- Mock waveform -->
-            <div style="display:flex;align-items:center;justify-content:center;gap:2px;height:50px;margin-bottom:14px">
-              ${Array.from({length:42}).map((_,i)=>{const h=12+Math.sin(i*0.7+i*0.3)*16+(i%5)*4;return `<div style="width:3px;height:${Math.abs(h)}px;background:${voices.find(v=>v.id===d.voiceId).color};border-radius:2px"></div>`}).join('')}
-            </div>
-            <div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-bottom:14px">
-              <button id="voPlayBtn" onclick="playVoiceoverScript()" title="Play the script in this voice" style="width:46px;height:46px;border-radius:50%;background:${voices.find(v=>v.id===d.voiceId).color};color:white;border:none;font-size:18px;cursor:pointer;transition:transform .15s" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">▶</button>
-              <span id="voTime" style="font-size:12px;color:#64748B;font-variant-numeric:tabular-nums">0:00 / 0:${String(d.duration).padStart(2,'0')}</span>
-            </div>
-            <div style="display:flex;gap:6px;justify-content:center"><button onclick="showToast('✓ Downloading MP3…')" style="padding:9px 18px;background:#1E40AF;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">⬇ MP3</button><button onclick="showToast('✓ Downloading WAV…')" style="padding:9px 18px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">⬇ WAV</button></div>
-          </div>
-          <div style="margin-top:14px;padding:12px;background:#F8FAFC;border-radius:8px;font-size:12px;color:#475569;line-height:1.5"><strong style="color:#1E293B">Cost:</strong> $0.${d.cost} • <strong style="color:#1E293B">Format:</strong> 44.1kHz Stereo • <strong style="color:#1E293B">Use:</strong> Royalty-free, commercial</div>
-        </div>` : `
-        <div style="background:white;border-radius:12px;padding:36px;border:1px solid #E2E8F0;text-align:center">
-          <div style="font-size:42px;margin-bottom:10px">🎙️</div>
-          <div style="font-weight:700;color:#1E293B;margin-bottom:6px">Pick a voice to preview</div>
-          <div style="font-size:13px;color:#64748B">Tap any voice on the left to render your script.</div>
-        </div>`}
-      </div>
-    </div>`;
-}
-
-window.generateVoiceover = function(voiceId) {
-  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
-  const stop = window.startButtonTimer ? window.startButtonTimer(`[onclick*="generateVoiceover('${voiceId}')"]`, 'Synthesising voice…') : (() => {});
-  const script = (document.getElementById('voScript') || {}).value || '';
-  const lang = (document.getElementById('voLang') || {}).value || 'English';
-  setTimeout(() => {
-    const wc = script.split(/\s+/).filter(Boolean).length;
-    window._voData = { voiceId, script, lang, duration: Math.max(8, Math.ceil(wc / 2.4)), cost: String(Math.floor(wc * 0.15)).padStart(2,'0') };
-    buildVoiceovers();
-    stop();
-    showToast('✅ Voiceover generated');
-  }, 1100);
-};
-
-window.runVoiceovers = function() {
-  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
-  generateVoiceover((window._voData && window._voData.voiceId) || 'aria');
-};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 5. TEMPLATES LIBRARY
@@ -16487,7 +16387,7 @@ window._renderJourneyStages = function() {
       features: [
         { icon: '📣', name: 'Advertise Hub',     view: 'advertise' },
         { icon: '👥', name: 'Lookalike Audiences', view: 'lookalike' },
-        { icon: '🤖', name: 'AI Visibility',     view: 'aivisibility' },
+        { icon: '🤖', name: 'AI Visibility',     view: 'search-intel' },
         { icon: '🚀', name: 'AutoSEO Pro',       view: 'autoseo' },
         { icon: '🧑‍🎤', name: 'AI UGC Avatars',  view: 'ugc-avatars' },
         { icon: '📅', name: 'Social Calendar',   view: 'social' },
@@ -21279,7 +21179,7 @@ async function _cgLoad(id) {
     { id:'content',   icon:'✍️', title:'Content Officer',    role:'Scores, plans and schedules content',
       links:[['contentscorer','Content Scorer'],['content-calendar','Content Calendar'],['social','Social Calendar']] },
     { id:'seo',       icon:'🔎', title:'SEO Officer',        role:'On-page, GEO and keyword strategy',
-      links:[['seo-auditor','On-Page Auditor'],['geo-audit','GEO Audit'],['llm-scan','AI Search Visibility (Live LLM Scan)'],['keyword-map','Keyword Map']] },
+      links:[['seo-auditor','On-Page Auditor'],['geo-audit','GEO Audit'],['search-intel','AI Visibility & Search Pulse'],['keyword-map','Keyword Map']] },
     { id:'cro',       icon:'🧪', title:'CRO Officer',        role:'A/B testing and conversion lift',
       links:[['cro-lab','CRO Lab'],['conversion-boosters','Conversion Boosters'],['ab-designer','A/B Designer']] },
     { id:'finance',   icon:'💼', title:'Finance Officer',    role:'P&L, CAC, LTV, runway alerts', isNew:true,
@@ -22681,7 +22581,7 @@ async function _cgLoad(id) {
 
 // ─── Nav chrome (Slim Sidebar collapse · View Header/breadcrumbs · Related Views) → moved to public/js/ig_navchrome.js ───
 
-// ─── AI Search Visibility — Live LLM Scan (buildLlmScan + _aiv* helpers) → moved to public/js/ig_intel_pack_b.js ───
+// ─── AI Search Visibility — Live LLM Scan → retired; archived in legacy_archive/llm-scan/ ───
 
 // ============================================================================
 // GLOBAL FIELD AUTO-ENHANCER (Brand · Keywords · Country)

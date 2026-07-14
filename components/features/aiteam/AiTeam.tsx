@@ -181,7 +181,7 @@ const OFFICERS: Officer[] = [
     links: [
       ["seo-auditor", "On-Page Auditor"],
       ["geo-audit", "GEO Audit"],
-      ["llm-scan", "AI Search Visibility (Live LLM Scan)"],
+      ["search-intel", "AI Visibility & Search Pulse"],
       ["keyword-map", "Keyword Map"],
     ],
   },

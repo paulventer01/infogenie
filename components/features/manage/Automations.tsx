@@ -152,7 +152,7 @@ const AUTOMATIONS: Automation[] = [
     desc: "Every Monday, runs a full AI visibility audit across ChatGPT, Claude, Gemini, and Perplexity. Tracks your citation score over time and alerts on drops.",
     trigger: "Every Monday 08:00",
     actions: ["Run AI citation audit", "Score all 6 AI platforms", "Update trend chart & alert on drops"],
-    nav: "aivisibility",
+    nav: "search-intel",
   },
 ];
 
