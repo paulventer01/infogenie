@@ -63,7 +63,7 @@ const { MIGRATED_COMPONENTS } = loadTsModule(
   'components/features/registry.tsx',
   { stubRequire: true },
 );
-const { ALL_VIEW_IDS } = loadTsModule('lib/viewRoutes.ts');
+const { ALL_VIEW_IDS, VIEW_ID_ALIASES } = loadTsModule('lib/viewRoutes.ts');
 
 const componentIds = Object.keys(MIGRATED_COMPONENTS);
 
@@ -102,8 +102,14 @@ test('every registry component has a matching MIGRATED_VIEWS entry', () => {
   );
 });
 
-test('every migrated view id exists as a data-view in NAV_GROUPS', () => {
-  const orphans = [...MIGRATED_VIEW_IDS].filter((id) => !ALL_VIEW_IDS.has(id));
+test('every migrated view id exists as a data-view in NAV_GROUPS (or is a retired alias)', () => {
+  // Retired ids consolidated into a hub view (VIEW_ID_ALIASES) stay in
+  // MIGRATED_VIEWS so the React shell intercepts old deep-links, but they no
+  // longer appear in the nav — exempt them from the orphan check.
+  const aliases = new Set(Object.keys(VIEW_ID_ALIASES || {}));
+  const orphans = [...MIGRATED_VIEW_IDS].filter(
+    (id) => !ALL_VIEW_IDS.has(id) && !aliases.has(id),
+  );
   assert.deepEqual(
     orphans,
     [],

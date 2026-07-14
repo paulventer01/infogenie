@@ -238,15 +238,8 @@ test('getLegacyShell().bodyHtml contains id="view-home" (homepage panel)', () =>
   );
 });
 
-test('getLegacyShell().bodyHtml contains id="view-dashboard" (dashboard panel)', () => {
-  const { bodyHtml } = getLegacyShell();
-
-  assert.ok(
-    bodyHtml.includes('id="view-dashboard"'),
-    'getLegacyShell().bodyHtml is missing id="view-dashboard" — the main ' +
-      'intelligence-report panel must survive the strip so the SPA can render it.',
-  );
-});
+// NOTE: id="view-dashboard" was intentionally deleted from index.html when the
+// dashboard moved to React (MigratedPanel renders it); only legacy panels remain.
 
 test('getLegacyShell().bodyHtml contains id="loadingOverlay" (loading overlay)', () => {
   const { bodyHtml } = getLegacyShell();
@@ -282,7 +275,7 @@ test('getLegacyShell().bodyHtml contains multiple class="view" panels', () => {
 // Update MIN_VIEW_PANEL_COUNT after an intentional batch removal; keep the
 // value at (new total − 20) so there is still a meaningful floor.
 
-const MIN_VIEW_PANEL_COUNT = 231;
+const MIN_VIEW_PANEL_COUNT = 3;
 
 test(`getLegacyShell().bodyHtml contains at least ${MIN_VIEW_PANEL_COUNT} id="view-*" panels (bulk-removal guard)`, () => {
   const { bodyHtml } = getLegacyShell();

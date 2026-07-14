@@ -858,678 +858,150 @@
 <style>@keyframes pulseDot{0%{box-shadow:0 0 0 0 rgba(0,201,200,.7)}70%{box-shadow:0 0 0 10px rgba(0,201,200,0)}100%{box-shadow:0 0 0 0 rgba(0,201,200,0)}}</style>
 
 <!-- DASHBOARD VIEW -->
-<div class="view hidden" id="view-studio"></div>
-<div class="view hidden" id="view-whatsapp"></div>
-<div class="view hidden" id="view-voice-caller"></div>
-<div class="view hidden" id="view-lead-gen"></div>
-<div class="view hidden" id="view-bookings"></div>
-<div class="view hidden" id="view-site-builder"></div>
-<div class="view hidden" id="view-linksell"></div>
 
-<div class="view hidden" id="view-dashboard">
-  <div class="view-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Dashboard</div>
-          <h2 class="view-title" id="dashTitle">Intelligence Report</h2>
-          <p class="view-sub" id="dashSub">Full competitor analysis and AI recommendations</p>
-        </div>
-        <div class="vh-actions">
-          <div class="analysis-tags" id="analysisTags"></div>
-          <button class="btn-secondary" id="reRunBtn" title="Refresh all competitor data and regenerate AI recommendations from scratch. Takes 30–60 seconds.">↺ Re-run Analysis</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container">
-    <div id="competitorChips" class="competitor-chips"></div>
-    <div class="kpi-grid" id="kpiGrid"></div>
-    <div id="kpiDataNotice" style="margin-top:8px;padding:8px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px"></div>
-    <div id="yourSwotCard" style="margin-top:18px"></div>
-    <div id="forecastSavingsWidget" style="margin-top:18px"></div>
-    <div class="roi-banner" id="roiBanner"></div>
-    <div class="two-charts">
-      <div class="chart-box">
-        <div class="chart-box-header">
-          <h3 title="Side-by-side Click-Through Rate comparison — your domain vs each tracked competitor. A higher CTR means ads are more compelling and relevant to the target audience.">Average CTR Comparison <span class="chart-tag ctr-tag" title="Click-Through Rate: % of ad impressions that result in a click.">CTR</span></h3>
-        </div>
-        <canvas id="ctrChart" height="240"></canvas>
-      </div>
-      <div class="chart-box">
-        <div class="chart-box-header">
-          <h3 title="Return on Ad Spend comparison across all competitors. A 3× ROAS means $3 revenue generated for every $1 spent on ads.">ROAS Performance <span class="chart-tag roas-tag" title="Return on Ad Spend: revenue generated per $1 of advertising budget.">ROAS</span></h3>
-        </div>
-        <canvas id="roasChart" height="240"></canvas>
-      </div>
-    </div>
-    <div class="chart-box full">
-      <div class="chart-box-header">
-        <h3 title="12-month trend lines showing how competitor website traffic and estimated ad spend have evolved. Rising lines indicate aggressive growth; flat or falling lines signal vulnerability.">Traffic & Ad Spend Trends — 12 Months <span class="chart-tag trend-tag" title="Historical trend data — AI-interpolated from available competitor signals.">TREND</span></h3>
-      </div>
-      <canvas id="trendChart" height="140"></canvas>
-    </div>
-    <div class="data-table-card">
-      <div class="dtc-header">
-        <h3 title="A snapshot of all tracked competitors with their key performance metrics. Click any Threat Level badge for a detailed threat breakdown.">Competitor Intelligence Summary</h3>
-        <button class="btn-link" id="viewAllCompBtn" title="Open the full Competitors page for in-depth analysis, attack plans and ad creative insights.">View Full Analysis →</button>
-      </div>
-      <div class="table-scroll">
-        <table class="ig-table">
-          <thead>
-            <tr>
-              <th title="The competitor domain being tracked and benchmarked.">Competitor Website</th>
-              <th title="Estimated total monthly visits — organic search + paid traffic combined. Sourced from DataForSEO where available.">Est. Monthly Traffic</th>
-              <th title="Average Click-Through Rate across this competitor's active ad campaigns. Higher % = more compelling ads.">Avg CTR</th>
-              <th title="Return on Ad Spend — estimated revenue earned per $1 spent on ads. 2× means $2 back for every $1 spent.">ROAS</th>
-              <th title="Estimated monthly advertising budget across Google, Meta, TikTok and other paid channels.">Est. Ad Spend/mo</th>
-              <th title="The marketing channel driving the most traffic or conversions for this competitor.">Top Channel</th>
-              <th title="AI-assessed threat level: how directly this competitor threatens your market position. Click for a detailed breakdown.">Threat Level</th>
-            </tr>
-          </thead>
-          <tbody id="compSummaryBody"></tbody>
-        </table>
-      </div>
-    </div>
-    <div id="dashLivePanels"></div>
-  </div>
-</div>
+
+
+
+
+
+
+
+
 
 <!-- COMPETITORS VIEW -->
-<div class="view hidden" id="view-competitors">
-  <div class="container" style="padding-top:24px">
-    <!-- Light blue hero -->
-    <div class="comp-hero" style="background:linear-gradient(110deg,#1E40AF 0%,#2563EB 50%,#3B82F6 100%);border-radius:18px;padding:26px 30px;margin-bottom:20px;position:relative;overflow:hidden;box-shadow:0 8px 28px rgba(37,99,235,.18)">
-      <div style="position:absolute;top:-30px;right:-30px;width:200px;height:200px;background:rgba(255,255,255,.07);border-radius:50%"></div>
-      <div style="position:absolute;bottom:-50px;right:80px;width:150px;height:150px;background:rgba(255,255,255,.18);border-radius:50%"></div>
-      <div style="position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
-        <div style="flex:1;min-width:280px">
-          <div style="font-size:0.65rem;font-weight:800;color:#BFDBFE !important;opacity:.9;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px">Analyse › Intelligence Hub</div>
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-            <span style="font-size:1.4rem">⚡</span>
-            <h1 style="font-family:'Space Grotesk',sans-serif;font-size:1.5rem;font-weight:800;color:#FFFFFF !important;line-height:1.2;margin:0;text-shadow:0 1px 2px rgba(15,30,61,.20)">Competitive Intelligence Engine</h1>
-          </div>
-          <div style="font-size:0.88rem;color:#E0E7FF !important;max-width:680px;line-height:1.5;font-weight:500;opacity:.95;text-shadow:0 1px 2px rgba(15,30,61,.18)">Exclusive InfoGenie capabilities — real-time signals, predictive moves, keyword gaps, and your 90-day category domination roadmap</div>
-        </div>
-        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center" id="compHeroStats">
-          <div style="background:#FFFFFF;border:1px solid rgba(255,255,255,.6);border-radius:14px;padding:14px 20px;text-align:center;min-width:118px;box-shadow:0 2px 6px rgba(15,30,61,.12)">
-            <div id="compHeroTotal" style="font-size:1.5rem;font-weight:900;color:#0A1628 !important;line-height:1.1">0</div>
-            <div style="font-size:0.78rem;font-weight:800;color:#0A1628 !important;margin-top:6px;letter-spacing:.02em;white-space:nowrap">🎯 Tracked</div>
-          </div>
-          <div style="background:#FFFFFF;border:1px solid rgba(255,255,255,.6);border-radius:14px;padding:14px 20px;text-align:center;min-width:118px;box-shadow:0 2px 6px rgba(15,30,61,.12)">
-            <div id="compHeroLive" style="font-size:1.5rem;font-weight:900;color:#0A1628 !important;line-height:1.1">0</div>
-            <div style="font-size:0.78rem;font-weight:800;color:#0A1628 !important;margin-top:6px;letter-spacing:.02em;white-space:nowrap">📡 Live</div>
-          </div>
-          <div style="background:#FFFFFF;border:1px solid rgba(255,255,255,.6);border-radius:14px;padding:14px 20px;text-align:center;min-width:128px;box-shadow:0 2px 6px rgba(15,30,61,.12)">
-            <div id="compHeroAi" style="font-size:1.5rem;font-weight:900;color:#0A1628 !important;line-height:1.1">0</div>
-            <div style="font-size:0.78rem;font-weight:800;color:#0A1628 !important;margin-top:6px;letter-spacing:.02em;white-space:nowrap">🤖 AI-detected</div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:center;margin-left:8px">
-            <label for="compFilterSel" style="font-size:0.66rem;font-weight:800;color:#FFFFFF !important;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;text-shadow:0 1px 2px rgba(15,30,61,.25)">Filter</label>
-            <select class="filter-sel comp-hero-sel" id="compFilterSel" style="background:#FFFFFF;color:#0F4C4A;border:1px solid rgba(15,76,74,.18);border-radius:10px;padding:10px 32px;font-weight:800;font-size:0.85rem;cursor:pointer;min-width:200px;text-align:center;text-align-last:center;box-shadow:0 2px 6px rgba(15,30,61,.12);height:54px">
-              <option value="all">All Competitors</option>
-            </select>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="competitorCardsWrap"></div>
-  <div class="container" id="compMonitorWrap" style="margin-top:0"></div>
-</div>
+
 
 <!-- CAMPAIGNS VIEW -->
-<div class="view hidden" id="view-campaigns">
-  <div class="view-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Campaigns</div>
-          <h2 class="view-title">Campaign Intelligence & Recommendations</h2>
-          <p class="view-sub">AI-generated campaign improvements based on real competitor data</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" id="launchCampaignBtn">🚀 Launch Campaign</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="campaignsWrap"></div>
-</div>
+
 
 <!-- DYNAMIC AUDIENCES VIEW (Drip-style real-time segments) -->
-<div class="view hidden" id="view-audiences-dynamic">
-  <div class="view-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Dynamic Audiences</div>
-          <h2 class="view-title">⚡ Dynamic Audiences</h2>
-          <p class="view-sub">Real-time, rule-based segments — contacts auto-flow in & out as their behaviour changes. No manual list maintenance, ever.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" id="newDynSegBtn" onclick="openDynSegmentBuilder()">+ New Audience</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="dynAudWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- SEARCH & AI VISIBILITY VIEW -->
-<div class="view hidden" id="view-search-intel">
-  <div class="view-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Search &amp; AI Visibility</div>
-          <h2 class="view-title">🔮 Search &amp; AI Visibility</h2>
-          <p class="view-sub">See what the world is searching for — and how (or whether) your brand shows up in ChatGPT, Claude, Perplexity, and Gemini answers.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="searchIntelWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- INFLUENCER CRM VIEW -->
-<div class="view hidden" id="view-influencers">
-  <div class="view-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Influencer CRM</div>
-          <h2 class="view-title">🌟 Influencer CRM</h2>
-          <p class="view-sub">Pipeline-style tracker for creator partnerships — prospecting, outreach, negotiation, deal value, and full activity log per creator.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" onclick="_infOpenEdit()">+ New Influencer</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="infWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- CRISIS RADAR VIEW -->
-<div class="view hidden" id="view-crisis-radar">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Crisis Radar</div>
-      <h2 class="view-title">🚨 Crisis Radar</h2>
-      <p class="view-sub">Daily anomaly detection on mention volume + sentiment. Detects spikes vs your 7-day baseline and fires Slack alerts when configured.</p>
-    </div>
-    <div class="vh-actions">
-      <button id="crRunNowBtn" class="btn-primary" onclick="_crRunNow()">▶ Run scan now</button>
-    </div>
-  </div></div></div>
-  <div class="container" id="crWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- BATTLE CARDS VIEW -->
-<div class="view hidden" id="view-battle-cards">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Battle Cards</div>
-      <h2 class="view-title">⚔️ Competitor Battle Cards</h2>
-      <p class="view-sub">Auto-generated 1-page intel briefs per competitor — positioning, strengths, weaknesses, recent moves, and concrete counter-plays.</p>
-    </div>
-    <div class="vh-actions">
-      <button class="btn-primary" onclick="_bcOpenGenerate()">✨ New Battle Card</button>
-    </div>
-  </div></div></div>
-  <div class="container" id="bcWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- TRENDING TOPICS VIEW -->
-<div class="view hidden" id="view-trending-topics">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Trending Topics</div>
-      <h2 class="view-title">🔥 Trending Topics</h2>
-      <p class="view-sub">What's spiking in your category right now — powered by live web search via Perplexity.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="trendingTopicsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- SHARE OF VOICE VIEW -->
-<div class="view hidden" id="view-sov-tracker">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Share of Voice</div>
-      <h2 class="view-title">📈 Share of Voice Tracker</h2>
-      <p class="view-sub">Time-series share of media mentions vs your competitors. Snapshots are captured every 6 hours by Crisis Radar — add brands there to populate this chart.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="sovWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- DISCOVERY VIEW -->
-<div class="view hidden" id="view-discovery">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Influencer Discovery</div>
-      <h2 class="view-title">🔭 Influencer Discovery</h2>
-      <p class="view-sub">Find real, currently-active creators in any niche via live web search. One click adds them straight into your Influencer CRM.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="discWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- DAILY DIGEST VIEW (Tier 4 #1) -->
-<div class="view hidden" id="view-digest">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Daily Digest</div>
-      <h2 class="view-title">📋 AI Daily Digest</h2>
-      <p class="view-sub">One-page executive summary across Crisis Radar, Share of Voice, Trending Topics, Battle Cards and Influencer CRM. Auto-generated daily and on demand. Send straight to Slack.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="digestWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- REPLY ASSISTANT VIEW (Tier 4 #2) -->
-<div class="view hidden" id="view-reply-assistant">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Reply Assistant</div>
-      <h2 class="view-title">💬 Reply Assistant</h2>
-      <p class="view-sub">Your most-impactful unanswered mentions, ranked by sentiment + source reach. Click any mention to draft an AI reply in the tone you want, then copy + post.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="replyWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- PRESS RELEASE VIEW (Tier 5 #1) -->
-<div class="view hidden" id="view-press-release">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Press Releases</div>
-      <h2 class="view-title">📰 AI Press Release Generator</h2>
-      <p class="view-sub">Draft AP-style press releases for crisis response, product launches, milestones, partnerships and competitor counter-positioning. Pull context from any Crisis Incident or Battle Card.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="prWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- ALERT ROUTING VIEW (Tier 5 #2) -->
-<div class="view hidden" id="view-alert-routing">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Alert Routing</div>
-      <h2 class="view-title">🔔 Smart Alert Routing</h2>
-      <p class="view-sub">Build rules that route Crisis incidents, SoV drops and digest alerts to Slack and email. Filter by brand, severity, kind. Test-fire any rule with one click.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="arWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- BACKLINK INTEL VIEW (Tier 6 #1) -->
-<div class="view hidden" id="view-backlinks">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Backlink Intel</div>
-      <h2 class="view-title">🔗 Backlink Intel</h2>
-      <p class="view-sub">See who's linking to any domain — total backlinks, referring domains, top sources by authority. Powered by DataForSEO.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="blWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-link-prospector">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Link Prospector</div>
-    <h2 class="view-title">🎯 Link Prospector</h2>
-    <p class="view-sub">Enter a keyword and your domain — get a ranked list of 10-20 pages most likely to link to you, enriched with domain strength, content relevance, competitor link history, and contact details. One click sends any prospect to the Cold Email Writer.</p>
-  </div></div></div></div>
-  <div class="container" id="lpWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
+
 
 <!-- CONTENT CALENDAR VIEW (Tier 6 #2) -->
-<div class="view hidden" id="view-content-calendar">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Content Calendar</div>
-      <h2 class="view-title">📅 Content Calendar Auto-Pilot</h2>
-      <p class="view-sub">Generate a fully-fleshed multi-channel content calendar in seconds — hook, copy, hashtags, CTA and best time per post.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="ccWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- CONTENT MODES VIEW (T48) -->
-<div class="view hidden" id="view-content-modes">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Content Modes</div>
-      <h2 class="view-title">✍️ Content Modes</h2>
-      <p class="view-sub">Generate full SEO articles in 6 specialised modes — Affiliation, E-commerce, Local SEO, Discovery, Update, and standard Article. Publish directly to WordPress.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="cmWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- AD CREATIVE GENERATOR VIEW (T51) -->
-<div class="view hidden" id="view-ad-creative">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div style="flex:1">
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Ad Creative Generator</div>
-      <h2 class="view-title">🎨 AI Ad Creative Generator</h2>
-      <p class="view-sub">Generate professional ad images for any platform using DALL-E 3. Facebook ads, Instagram posts, Google Display banners, TikTok thumbnails and more — in any style.</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
-        <a href="#adCreativeGen" onclick="document.getElementById('adCreativeGen')?.scrollIntoView({behavior:'smooth'});return false;" style="padding:6px 14px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:20px;color:#fff;font-size:12px;font-weight:600;text-decoration:none">🎨 Image Generator ↓</a>
-        <a href="#csScorer" onclick="document.getElementById('csScorer')?.scrollIntoView({behavior:'smooth'});return false;" style="padding:6px 14px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:20px;color:#fff;font-size:12px;font-weight:600;text-decoration:none">🎯 Pre-launch Scorer ↓</a>
-        <a href="#ugcScripter" onclick="document.getElementById('ugcScripter')?.scrollIntoView({behavior:'smooth'});return false;" style="padding:6px 14px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:20px;color:#fff;font-size:12px;font-weight:600;text-decoration:none">🎬 UGC Script Generator ↓</a>
-      </div>
-    </div>
-  </div></div></div>
-  <div class="container" id="adCreativeWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- IDEA SWIPE FEED VIEW (T53/T54) -->
-<div class="view hidden" id="view-idea-feed">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Idea Feed</div>
-      <h2 class="view-title">💡 Daily Idea Feed</h2>
-      <p class="view-sub">Fresh AI-generated content ideas every day — swipe to save or add straight to your calendar. Explore 20 proven content angles like Mythbuster, Before &amp; After, Us vs Them, and more.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="ideaFeedWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- PITCH DECK BUILDER VIEW (T56) -->
-<div class="view hidden" id="view-pitch-deck">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Pitch Deck Builder</div>
-      <h2 class="view-title">📊 AI Pitch Deck Builder</h2>
-      <p class="view-sub">Generate a fully-structured pitch deck in seconds — investor, sales, marketing, or product. Exports as a polished PPTX with speaker notes ready to present.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="pitchDeckWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- WCAG ACCESSIBILITY AUDIT VIEW (T57) -->
-<div class="view hidden" id="view-accessibility">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Accessibility Audit</div>
-      <h2 class="view-title">♿ WCAG Accessibility Audit</h2>
-      <p class="view-sub">Scan any public URL for WCAG 2.1 AA accessibility violations. Get a scored report with specific issues, affected elements, and actionable fixes — prioritised by severity.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="accessibilityWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- WIREFRAME GENERATOR VIEW (T58) -->
-<div class="view hidden" id="view-wireframe">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Wireframe Generator</div>
-      <h2 class="view-title">📐 AI Wireframe Generator</h2>
-      <p class="view-sub">Describe any page and get a complete HTML wireframe in seconds — landing pages, pricing, checkout, dashboards. Preview live in the browser or download as HTML.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="wireframeWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- AI PERSONA STUDIO VIEW (T60) -->
-<div class="view hidden" id="view-persona-studio">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> AI Persona Studio</div>
-      <h2 class="view-title">🎭 AI Persona Studio</h2>
-      <p class="view-sub">Design and manage virtual AI influencer personas — define their niche, appearance, personality, content voice, and posting style. Generate consistent content and avatars from a saved character profile.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="personaStudioWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- iROAS INCREMENTALITY MODULE VIEW (T61) -->
-<div class="view hidden" id="view-iroas">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> iROAS Module</div>
-      <h2 class="view-title">📊 iROAS Incrementality</h2>
-      <p class="view-sub">Measure true ad lift — not just reported ROAS. Design holdout tests, track incremental conversions, and see where each channel hits diminishing returns with budget saturation curves.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="iroasWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- AI MARKETING AGENT VIEW (T62) -->
-<div class="view hidden" id="view-agent-goals">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> AI Marketing Agent</div>
-      <h2 class="view-title">🤖 AI Marketing Agent</h2>
-      <p class="view-sub">Set a marketing goal, and the AI agent builds an execution plan, breaks it into tasks, and evaluates your progress. A judge LLM grades how close you are and recommends the next move.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="agentGoalsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- E-COMMERCE PRODUCT VIDEO VIEW (T63) -->
-<div class="view hidden" id="view-ecom-video">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Product Video</div>
-      <h2 class="view-title">🛒 E-commerce Product Video</h2>
-      <p class="view-sub">Generate a conversion-optimised 6-scene video storyboard for any product — with shot types, voiceovers, text overlays, and a ready-to-post caption. Pair with an AI Persona for full influencer-style content.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="ecomVideoWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- BRAND DEAL PIPELINE VIEW (T64) -->
-<div class="view hidden" id="view-brand-deals">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Brand Deals</div>
-      <h2 class="view-title">🤝 Brand Deal Pipeline</h2>
-      <p class="view-sub">Track every brand deal from first inquiry to payment — with a kanban pipeline, AI-generated pitch emails, counter-offer writers, and earnings tracking across all your AI personas.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="brandDealsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-organic-social">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Organic Social Monitor</div>
-      <h2 class="view-title">📱 Organic Social Monitor</h2>
-      <p class="view-sub">Track any brand or keyword's organic TikTok content — views, engagement, top creators. Powered by Apify.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="organicWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-local-leads"></div>
+
+
+
 
 <!-- CONTENT AUTOPILOT VIEW (T49) -->
-<div class="view hidden" id="view-content-autopilot">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Content Autopilot</div>
-      <h2 class="view-title">🤖 Content Autopilot</h2>
-      <p class="view-sub">Schedule automated content generation on a recurring cadence. Optionally auto-publish to WordPress as draft or live.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="apWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- PODCAST MONITOR VIEW (Tier 7 #1) -->
-<div class="view hidden" id="view-podcast-monitor">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Podcast Monitor</div>
-      <h2 class="view-title">🎙️ Podcast Mention Monitor</h2>
-      <p class="view-sub">Find podcast episodes that mention your brand — host, show, sentiment, and direct episode link. Powered by Perplexity live search.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="pmWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- A/B TEST DESIGNER VIEW (Tier 7 #2) -->
-<div class="view hidden" id="view-ab-designer">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> A/B Test Designer</div>
-      <h2 class="view-title">🧪 AI A/B Test Designer</h2>
-      <p class="view-sub">Drop in any subject line, ad headline, CTA or hero copy and get scientifically-angled variants with a hypothesis, primary metric, predicted lift, and recommended split.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="abWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- VOICE OF CUSTOMER VIEW (Tier 8 #1) -->
-<div class="view hidden" id="view-voc">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Voice of Customer</div>
-      <h2 class="view-title">🗣️ Voice of Customer Mining</h2>
-      <p class="view-sub">AI clusters every recent mention into themes — top complaints, top praises, feature requests — with sample quotes and a recommended action per theme.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="vocWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- PRICING WATCH VIEW (Tier 8 #2) -->
-<div class="view hidden" id="view-pricing-watch">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Pricing Watcher</div>
-      <h2 class="view-title">💰 Competitor Pricing Watcher</h2>
-      <p class="view-sub">Add any competitor product URL — we scrape it, AI extracts the price, and we track movement over time. Manual scan now; cron coming next.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="pwWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- DELIVERABILITY VIEW (Tier 9 #1) -->
-<div class="view hidden" id="view-deliverability">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Email Auditor</div>
-      <h2 class="view-title">📬 Email Deliverability Auditor</h2>
-      <p class="view-sub">Live DNS lookups for SPF, DKIM, DMARC, MX, MTA-STS, and BIMI. Get a deliverability grade, per-record diagnosis, and concrete fixes.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="delivWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- LANDING PAGES VIEW (Tier 9 #2) -->
-<div class="view hidden" id="view-landing-pages">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> AI Landing Pages</div>
-      <h2 class="view-title">🚀 AI Landing Page Builder</h2>
-      <p class="view-sub">Brief in, full HTML landing page out — hero, features, FAQs, final CTA. Includes <strong>🔍 Audience Research</strong> (T67), <strong>🧪 A/B Split Testing</strong> (T70), <strong>📋 Lead Capture &amp; Analytics</strong> (T71), and <strong>📣 Create Once Publish Everywhere</strong> (T72).</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="landingPagesWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- TECH STACK VIEW (Tier 10 #1) -->
-<div class="view hidden" id="view-tech-stack">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Tech Stack Detector</div>
-      <h2 class="view-title">🧱 Competitor Tech Stack Detector</h2>
-      <p class="view-sub">See what analytics, ad platforms, CMS, frameworks, and tools any competitor runs. Compare up to 5 sites side-by-side to spot gaps.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="tsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- COLD EMAIL VIEW (Tier 10 #2) -->
-<div class="view hidden" id="view-cold-email">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Cold Email Writer</div>
-      <h2 class="view-title">✉️ AI Cold Email Writer</h2>
-      <p class="view-sub">Drafts a multi-step cold outreach sequence — opener, follow-ups, and breakup — tailored to one prospect's role, company, and pain point.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="ceWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- WEB VITALS VIEW (Tier 11 #1) -->
-<div class="view hidden" id="view-web-vitals">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Web Vitals Auditor</div>
-      <h2 class="view-title">⚡ Web Vitals Auditor</h2>
-      <p class="view-sub">Audit any URL's Core Web Vitals (LCP, CLS, INP) and Lighthouse scores (Performance, SEO, Accessibility, Best Practices) on mobile and desktop.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="wvWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- LEAD FINDER VIEW (Tier 11 #2) -->
-<div class="view hidden" id="view-lead-finder"></div>
+
 
 <!-- SERP TRACKER VIEW (Tier 12 #1) -->
-<div class="view hidden" id="view-serp-tracker">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> SERP Position Tracker</div>
-      <h2 class="view-title">🔎 SERP Position Tracker</h2>
-      <p class="view-sub">Track your domain's Google search rank for any keyword across countries — see who's outranking you and how positions move over time.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="serpTrackerWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- HUBSPOT SYNC VIEW (Tier 12 #2) -->
-<div class="view hidden" id="view-hubspot-sync">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> HubSpot Sync</div>
-      <h2 class="view-title">🔄 HubSpot Sync</h2>
-      <p class="view-sub">Push leads from B2B Lead Finder + influencers from your CRM straight into HubSpot. Auto-dedups by email, supports bulk upsert (50/batch), and sees recent contacts at a glance.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="hsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- META ADS INSIGHTS VIEW (Tier 13 #1) -->
-<div class="view hidden" id="view-meta-insights">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Meta Ads Insights</div>
-      <h2 class="view-title">📘 Meta Ads Insights</h2>
-      <p class="view-sub">Live performance from your Meta Ads account — spend, ROAS, top campaigns and best-performing creatives. Pulled in real-time via the Meta Marketing API.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="metaInsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- GOOGLE ADS INSIGHTS VIEW (Tier 14 #1) -->
-<div class="view hidden" id="view-google-ads-insights">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Google Ads Insights</div>
-      <h2 class="view-title">🅖 Google Ads Insights</h2>
-      <p class="view-sub">Live performance from your Google Ads account — spend, ROAS, top campaigns and best ads. Pulled in real-time via the Google Ads API.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="gaiWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- TIKTOK ADS INSIGHTS VIEW (Tier 14 #2) -->
-<div class="view hidden" id="view-tiktok-ads-insights">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> TikTok Ads Insights</div>
-      <h2 class="view-title">🎵 TikTok Ads Insights</h2>
-      <p class="view-sub">Live performance from your TikTok Ads account — spend, ROAS, top campaigns and best creatives. Pulled in real-time via the TikTok Marketing API.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="ttiWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- MICROSOFT ADS INSIGHTS VIEW (Tier 14 #3) -->
 <div class="view hidden" id="view-microsoft-ads-insights">
@@ -1544,538 +1016,125 @@
 </div>
 
 <!-- TIER 16 VIEWS -->
-<div class="view hidden" id="view-email-personalizer">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Email Personalizer</div>
-    <h2 class="view-title">✉️ AI Sales Email Personalizer</h2>
-    <p class="view-sub">Take a base cold-email template, paste your leads, and get one personalized email per lead — with real research from each lead's company website (Firecrawl + GPT-4o-mini). Pulls leads automatically from B2B Lead Finder.</p>
-  </div></div></div></div>
-  <div class="container" id="epWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-youtube-monitor">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> YouTube Monitor</div>
-    <h2 class="view-title">▶️ YouTube Channel Monitor</h2>
-    <p class="view-sub">Track competitor YouTube channels — recent uploads, view-velocity, comment sentiment. Real-time data via Perplexity (no Google API key needed).</p>
-  </div></div></div></div>
-  <div class="container" id="ymWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-yt-comment-miner">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Comment Miner</div>
-    <h2 class="view-title">💬 YouTube Comment Miner</h2>
-    <p class="view-sub">Mine YouTube comments to surface what your audience is actually asking for — recurring questions, content gaps, sentiment, and 6-10 ready-to-film content ideas. Send any idea to the Content Calendar in one click.</p>
-  </div></div></div></div>
-  <div class="container" id="ycmWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-weekly-report">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Weekly Report</div>
-    <h2 class="view-title">📑 Weekly Auto-PDF Report</h2>
-    <p class="view-sub">One PDF per brand per week — auto-aggregates Crisis Radar, Share of Voice, Mention Volume, Press Releases, VoC, Trends, AI Optimizer decisions and YouTube activity. Auto-emailed every 7 days via Resend.</p>
-  </div></div></div></div>
-  <div class="container" id="wrWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
+
+
+
 
 <!-- TIER 17 VIEWS -->
-<div class="view hidden" id="view-reddit-pulse">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Reddit Pulse</div>
-    <h2 class="view-title">👽 Reddit & Community Pulse</h2>
-    <p class="view-sub">Search any subreddit for brand mentions or keywords from the last 7 days. AI sentiment classification batched via GPT-4o-mini.</p>
-  </div></div></div></div>
-  <div class="container" id="rpWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-ad-library">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Ad Library Spy</div>
-    <h2 class="view-title">🕵️ Ad Library Spy</h2>
-    <p class="view-sub">Pull competitors' currently-running ads from Meta (live Graph API), Google Ads Transparency Center, LinkedIn Ad Library, TikTok Ad Library, and X (Twitter) Ads Transparency.</p>
-  </div></div></div></div>
-  <div class="container" id="alWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-ad-swipe">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Ad Swipe File</div>
-    <h2 class="view-title">💾 Ad Swipe File</h2>
-    <p class="view-sub">Your private library of winning ads. Save anything from Ad Library Spy, tag it, score it, take notes — and your AI Creative Generator will learn from real winners instead of generic templates.</p>
-  </div></div></div></div>
-  <div class="container" id="adSwipeWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-newsletter-tracker">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Newsletter Tracker</div>
-    <h2 class="view-title">📧 Newsletter Tracker</h2>
-    <p class="view-sub">Monitor competitor newsletter archives. Add a Substack/Beehiiv/Mailchimp archive URL → AI extracts subject lines + cadence.</p>
-  </div></div></div></div>
-  <div class="container" id="ntWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-reputation-score">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Brand Intelligence</div>
-    <h2 class="view-title">⭐ Reputation Score</h2>
-    <p class="view-sub">A single 0–100 composite score rolling up sentiment, mention volume, share of voice, and crisis history into one brand health number.</p>
-  </div></div></div></div>
-  <div class="container" id="reputationScoreWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-presence-score">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Brand Intelligence</div>
-    <h2 class="view-title">📡 Presence Score</h2>
-    <p class="view-sub">Measure how prominent your brand is online across search, social media, news, communities, and influencer channels — scored out of 100 in each dimension.</p>
-  </div></div></div></div>
-  <div class="container" id="presenceScoreWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-ave">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Brand Intelligence</div>
-    <h2 class="view-title">💵 Media Value (AVE)</h2>
-    <p class="view-sub">Advertising Value Equivalency — estimate the dollar value of your earned media coverage by comparing it to what equivalent paid advertising would cost.</p>
-  </div></div></div></div>
-  <div class="container" id="aveWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-anomaly-detector">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Brand Intelligence</div>
-    <h2 class="view-title">🔍 AI Anomaly Detector</h2>
-    <p class="view-sub">Automatically detect sudden spikes or drops in your brand's mention volume or sentiment — with AI explaining the cause and recommending your next move.</p>
-  </div></div></div></div>
-  <div class="container" id="anomalyDetectorWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-intent-radar">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Brand Intelligence</div>
-    <h2 class="view-title">🎯 Intent Radar</h2>
-    <p class="view-sub">Scan online conversations to find people showing purchase intent for your brand or category — from early research to ready-to-buy signals.</p>
-  </div></div></div></div>
-  <div class="container" id="intentRadarWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-hashtag-tracker">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Brand Intelligence</div>
-    <h2 class="view-title">#️⃣ Hashtag Tracker</h2>
-    <p class="view-sub">Track hashtags across Twitter/X, Instagram, and TikTok — monitor posting volume, velocity, top influencers using the tag, and sentiment trends over time.</p>
-  </div></div></div></div>
-  <div class="container" id="hashtagTrackerWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-influence-score">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Brand Intelligence</div>
-    <h2 class="view-title">🏆 Influence Score</h2>
-    <p class="view-sub">Rank the sources and authors mentioning your brand by their real influence — factoring follower count, engagement rate, domain authority, and reach into a single score.</p>
-  </div></div></div></div>
-  <div class="container" id="influenceScoreWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-project-compare">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Brand Intelligence</div>
-    <h2 class="view-title">⚖️ Project Comparison</h2>
-    <p class="view-sub">Compare your brand side-by-side against up to 4 competitors across traffic, social following, sentiment, mentions, share of voice, and domain authority.</p>
-  </div></div></div></div>
-  <div class="container" id="projectCompareWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-geo-insights">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Brand Intelligence</div>
-    <h2 class="view-title">🌍 Geolocation Insights</h2>
-    <p class="view-sub">See where in the world your brand is being discussed — broken down by region, with local sentiment, key topics, and strategic notes for each geography.</p>
-  </div></div></div></div>
-  <div class="container" id="geoInsightsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-ugc-discovery">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Brand Intelligence</div>
-    <h2 class="view-title">📸 UGC Discovery</h2>
-    <p class="view-sub">Find and curate user-generated content about your brand — customer reviews, organic social posts, unboxing videos, and testimonials you can repurpose for marketing.</p>
-  </div></div></div></div>
-  <div class="container" id="ugcDiscoveryWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-team-meetings">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Minutes of Meeting</div>
-    <h2 class="view-title">📋 AI Team — Minutes of Meeting</h2>
-    <p class="view-sub">Calendar of all team meetings (autonomous + manual). Click any day to jump to that day's minutes, or pick from the list.</p>
-  </div></div></div></div>
-  <div class="container" id="teamMeetingsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-playbook-7day">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> 7-Day Marketing Playbook</div>
-    <h2 class="view-title">📅 7-Day Marketing Playbook</h2>
-    <p class="view-sub">A 7-day strategic plan: research → tracking → landing → Google Ads → Meta Ads → optimize → automate. Click 🤖 AI Suggest on any step for grounded recommendations, or ▶ Run Autonomously to assign every step to an AI officer.</p>
-  </div></div></div></div>
-  <div class="container" id="playbook7DayWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-growth-methodology">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Growth Methodology</div>
-    <h2 class="view-title">🎯 Discover Our Growth Methodology</h2>
-    <p class="view-sub">Five stages — Diagnose · Analyse · Implement · Prove · Compound — and the InfoGenie features that power each one. Click any stage to see what's behind it and jump straight to those features.</p>
-  </div></div></div></div>
-  <div class="container" id="growthMethodWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-flywheel">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Performance Growth Flywheel</div>
-    <h2 class="view-title">⚙️ Performance Growth Flywheel</h2>
-    <p class="view-sub">Six stages — Research · Gaps · Opportunities · Execute · Evaluate · Report — running in a continuous loop. See exactly where you are and what to do next.</p>
-  </div></div></div></div>
-  <div class="container" id="flywheelWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-seo-roadmap">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> SEO Roadmap</div>
-    <h2 class="view-title">🗺️ SEO Roadmap</h2>
-    <p class="view-sub">A 9-step system to rank your website on Google — track your progress and jump to the right InfoGenie tool at each step.</p>
-  </div></div></div></div>
-  <div class="container" id="seoRoadmapWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-meeting-notes">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Meeting Notes</div>
-    <h2 class="view-title">🎙️ AI Meeting Note Summarizer</h2>
-    <p class="view-sub">Paste any sales-call transcript → get summary, BANT scoring, action items, deal-stage prediction, risks and next-step recommendation.</p>
-  </div></div></div></div>
-  <div class="container" id="mnWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-headline-tester">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Headline Tester</div>
-    <h2 class="view-title">🎯 Headline & Hook Tester</h2>
-    <p class="view-sub">Score any headline 0-100 across virality patterns + get up to 10 alternate variants ranked by predicted performance.</p>
-  </div></div></div></div>
-  <div class="container" id="htWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 <!-- TIER 18 VIEWS -->
-<div class="view hidden" id="view-review-aggregator">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Review Aggregator</div>
-    <h2 class="view-title">⭐ Review Aggregator</h2>
-    <p class="view-sub">Pull recent reviews from Trustpilot, G2, Google, Capterra, TripAdvisor — for your brand or to compare 2-4 competitors side-by-side.</p>
-  </div></div></div></div>
-  <div class="container" id="raWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-churn-scorer">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Churn Scorer</div>
-    <h2 class="view-title">⚠️ Predictive Churn Scorer</h2>
-    <p class="view-sub">Score each contact 0-100 on churn risk based on engagement, usage, NPS, tenure and more. Bulk-score up to 25 contacts at once.</p>
-  </div></div></div></div>
-  <div class="container" id="csWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-twitter-pulse">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Twitter/X Pulse</div>
-    <h2 class="view-title">🐦 Twitter/X Pulse</h2>
-    <p class="view-sub">Search X for brand mentions in the last 7 days with sentiment classification + viral-thread detection. No X API key needed.</p>
-  </div></div></div></div>
-  <div class="container" id="twWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-job-board-spy">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Job Board Spy</div>
-    <h2 class="view-title">💼 Job Board Spy</h2>
-    <p class="view-sub">Track competitors' open roles across LinkedIn, Indeed and careers pages — leading indicator of strategic direction (AI hires? geographic expansion? new product line?).</p>
-  </div></div></div></div>
-  <div class="container" id="jbWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-video-script">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Video Scripts</div>
-    <h2 class="view-title">🎬 Video Script Generator</h2>
-    <p class="view-sub">Generate short-form video scripts for TikTok, Reels, Shorts and LinkedIn. Each variant includes hook, body lines, on-screen text cues, B-roll directions, CTA and hashtags.</p>
-  </div></div></div></div>
-  <div class="container" id="vsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-chatbot-builder">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Chatbot Builder</div>
-    <h2 class="view-title">💬 Chatbot Builder</h2>
-    <p class="view-sub">Generate a website FAQ chatbot — greeting, 8-15 Q&amp;A entries, fallback handler, lead-capture form and a copy-pasteable embed snippet — all from a one-line description.</p>
-  </div></div></div></div>
-  <div class="container" id="cbWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-glassdoor">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Glassdoor Sentiment</div>
-    <h2 class="view-title">🏢 Glassdoor Sentiment</h2>
-    <p class="view-sub">Pull current employee reviews for any competitor — overall rating, CEO approval, top complaints, top praises and culture signals about strategy and management.</p>
-  </div></div></div></div>
-  <div class="container" id="gdWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-voiceover">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Voiceover</div>
-    <h2 class="view-title">🔊 Voiceover</h2>
-    <p class="view-sub">Turn any script into studio-quality narration in one click. 6 voices, 2 quality tiers (standard / HD). Pairs with the Video Script Generator — paste a script, pick a voice, get an mp3.</p>
-  </div></div></div></div>
-  <div class="container" id="voWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-creative-intel">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Creative Intel</div>
-    <h2 class="view-title">🎬 Creative Intel</h2>
-    <p class="view-sub">Paste competitor TikTok, YouTube Shorts or Instagram Reels URLs — AI analyses what makes top content perform and produces an actionable creative brief for your next video.</p>
-  </div></div></div></div>
-  <div class="container" id="ciWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-seo-auditor">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> SEO On-Page Auditor</div>
-    <h2 class="view-title">🧭 SEO On-Page Auditor</h2>
-    <p class="view-sub">Drop in any URL and get a 100-point on-page SEO report — title, meta, H1, alt text, schema, mobile, OG/Twitter, robots, sitemap, mixed content and more — with prioritised fixes for each issue.</p>
-  </div></div></div></div>
-  <div class="container" id="seoWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-seo-widget">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Embeddable Audit Widget</div>
-    <h2 class="view-title">🧩 Embeddable Audit Widget</h2>
-    <p class="view-sub">Generate a copy-pasteable script tag for your own marketing site. Visitors enter a URL → get a teaser SEO score → leave their email for the full report. Every lead is captured and listed below.</p>
-  </div></div></div></div>
-  <div class="container" id="swWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-seo-tasks">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> SEO Task Manager</div>
-    <h2 class="view-title">✅ SEO Task Manager</h2>
-    <p class="view-sub">Every warning and failure from the SEO On-Page Auditor becomes a trackable task — set priority, assignee, due date, status. Re-run the audit to auto-close anything that now passes. Turns the audit from a snapshot into a living to-do list.</p>
-  </div></div></div></div>
-  <div class="container" id="seoTasksWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-schema-generator">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Schema Generator</div>
-    <h2 class="view-title">🏷️ Schema.org / JSON-LD Generator</h2>
-    <p class="view-sub">Form-based generator for the 8 most-used Schema.org types — Organization · Article · Product · FAQ · LocalBusiness · Breadcrumb · Event · Recipe. Outputs paste-ready &lt;script type="application/ld+json"&gt; blocks. Schema is what ChatGPT and Perplexity parse to cite your site, so this directly boosts AI Visibility (T1).</p>
-  </div></div></div></div>
-  <div class="container" id="sgWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-conversion-boosters">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Conversion Boosters</div>
-    <h2 class="view-title">🚀 Conversion Boosters</h2>
-    <p class="view-sub">Two paste-once widgets for any external marketing site — <strong>Social Proof popup</strong> (rotating "Sarah from Cape Town just signed up" toasts) and <strong>Exit Intent popup</strong> (captures email when the visitor's mouse leaves the page). Same one-line embed pattern as the SEO Audit Widget. Captured leads land in the Unified Inbox automatically.</p>
-  </div></div></div></div>
-  <div class="container" id="cnvbWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-white-label">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> White-Label Reports</div>
-    <h2 class="view-title">🎨 White-Label Reports</h2>
-    <p class="view-sub">Replace InfoGenie's purple/navy palette, logo and footer with your own agency brand on every PPTX / PDF / XLSX export. Toggle on, set your colours, paste a logo, and every existing report regenerates in your brand. Preview live before applying.</p>
-  </div></div></div></div>
-  <div class="container" id="wlWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-bulk-reports">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Bulk Reporting</div>
-    <h2 class="view-title">📦 Bulk Reporting</h2>
-    <p class="view-sub">Upload a CSV of website URLs (one per row, no header needed) and InfoGenie will batch-run a full SEO audit on every URL. Download a zip of branded PDFs (uses your White-Label profile if enabled) plus a flat CSV of every check, ready for prospecting or client deliverables. Up to 500 URLs per run, 4 audits in parallel, resumes automatically if the server restarts.</p>
-  </div></div></div></div>
-  <div class="container" id="brWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-backlink-monitor">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Backlink Monitor</div>
-    <h2 class="view-title">🛰️ Backlink Change Monitor</h2>
-    <p class="view-sub">Track new and lost backlinks on any domain. Daily snapshots from DataForSEO are diffed automatically — you get a Slack ping or email digest the moment a link disappears (so you can reach out and recover it) or a suspicious cluster of new low-quality links arrives (so you can disavow before it hurts rankings). Pairs with the Backlink Intel research view.</p>
-  </div></div></div></div>
-  <div class="container" id="bmWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-carousel">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Carousel Generator</div>
-    <h2 class="view-title">🎠 Viral Carousel Generator</h2>
-    <p class="view-sub">Generate paste-ready 10-slide carousels for Instagram and LinkedIn. Pick a topic, pick a structure (Pure Info · Storytelling · Problem-Solution · Listicle), and AI fills every slide following the proven Hook → Context → Value → Action framework. Hand off straight to your Social Publisher or designer.</p>
-  </div></div></div></div>
-  <div class="container" id="carouselWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-roadmap">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> 90-Day Roadmap</div>
-    <h2 class="view-title">🗺️ Get Started — 90-Day Roadmap</h2>
-    <p class="view-sub">A guided 90-day marketing plan covering SEO, social media, and paid ads. Every task is mapped to the InfoGenie tool that does the work for you — click any task and it opens the right view. Tick tasks off as you complete them. Includes a weekly social posting cadence for Instagram, Facebook, and LinkedIn.</p>
-  </div></div></div></div>
-  <div class="container" id="roadmapWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-true-roas">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> True ROAS</div>
-    <h2 class="view-title">💰 True ROAS — Offline + Online Revenue</h2>
-    <p class="view-sub">Pull closed-deal revenue from HubSpot or upload a CSV from your data warehouse so InfoGenie sees the money your ad platforms can't. Get your real ROAS (online + offline ÷ spend), watch how long leads actually take to close, and let the optimizer recommend budget cuts on campaigns where the true picture is unprofitable — even when Meta says they're winning.</p>
-  </div></div></div></div>
-  <div class="container" id="trueRoasWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-hunter">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Hunter.io Email Finder</div>
-    <h2 class="view-title">🎯 Hunter.io Email Finder</h2>
-    <p class="view-sub">Find verified email addresses for any company domain — search all emails on record, find a specific person's email by name, or verify any address before you send. Feeds directly into Lead Finder and Cold Email Writer.</p>
-  </div></div></div></div>
-  <div class="container" id="hunterWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-linkedin-ads">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> LinkedIn Ad Spy</div>
-    <h2 class="view-title">💼 LinkedIn Ad Spy</h2>
-    <p class="view-sub">Research any competitor's LinkedIn advertising strategy — ad formats, copy themes, targeting signals, creative style, budget tier, and gaps you can exploit. Powered by AI research against the LinkedIn Ad Library.</p>
-  </div></div></div></div>
-  <div class="container" id="linkedinAdsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-canva">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Canva Launcher</div>
-    <h2 class="view-title">🎨 Canva Template Launcher</h2>
-    <p class="view-sub">Bridge your InfoGenie content directly to Canva. Browse curated templates by content type, format your copy for instant paste into any design, and open the right Canva template in one click — no design experience needed.</p>
-  </div></div></div></div>
-  <div class="container" id="canvaWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-crm-sync">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> CRM Sync</div>
-    <h2 class="view-title">🔄 CRM Sync</h2>
-    <p class="view-sub">Push contacts from InfoGenie's Lead Finder, Dynamic Audiences, or any CSV directly into ActiveCampaign, ConvertKit, or Mailchimp — with sync history and per-contact status tracking.</p>
-  </div></div></div></div>
-  <div class="container" id="crmSyncWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-post-performance">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Post Performance</div>
-    <h2 class="view-title">📈 Post Performance</h2>
-    <p class="view-sub">See every published post ranked by engagement, impressions, clicks, or date — across all your connected social accounts in one place. Spot your best content at a glance and replicate what works.</p>
-  </div></div></div></div>
-  <div class="container" id="ppWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-email-broadcast">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Email Broadcast</div>
-    <h2 class="view-title">📧 Email Broadcast</h2>
-    <p class="view-sub">Send bulk emails to any contact list and track every open, click, bounce, and complaint in real time. Create a draft, add recipients by paste or CSV, send — then watch the live tracking dashboard update as Resend reports back.</p>
-  </div></div></div></div>
-  <div class="container" id="ebWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-employee-advocacy">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Employee Advocacy</div>
-    <h2 class="view-title">📣 Employee Advocacy</h2>
-    <p class="view-sub">Turn your team into brand amplifiers. Build a pre-approved content queue, generate a share link for employees, and track how many times each post is shared across LinkedIn, Twitter, and Facebook — zero ad spend required.</p>
-  </div></div></div></div>
-  <div class="container" id="advocacyWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-social-listening">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Social Listening</div>
-    <h2 class="view-title">👂 Social Listening</h2>
-    <p class="view-sub">A unified feed of brand mentions, competitor conversations, and industry sentiment across Twitter, Reddit, LinkedIn, news, and forums — all in one real-time dashboard with sentiment scoring and trending keyword alerts.</p>
-  </div></div></div></div>
-  <div class="container" id="socialListeningWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-media-intel">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Media Intelligence</div>
-    <h2 class="view-title">📰 Media Intelligence</h2>
-    <p class="view-sub">Real-time tracking of press coverage for your brand and competitors — journalists writing about your space, stories gaining momentum before they peak, and media opportunities to pitch, newsjack, or respond to before the window closes.</p>
-  </div></div></div></div>
-  <div class="container" id="mediaIntelWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-content-score">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Content Score</div>
-    <h2 class="view-title">📊 Content Score Auto-Optimize</h2>
-    <p class="view-sub">Score any page across 8 on-page signals — keyword usage, meta tags, content depth, headings, featured-snippet eligibility, schema, links and images — then let AI generate a precise fix for every failing subscore in one click.</p>
-  </div></div></div></div>
-  <div class="container" id="contentScoreWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-ai-traffic">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> AI Traffic Monitor</div>
-    <h2 class="view-title">🤖 AI Traffic Monitor</h2>
-    <p class="view-sub">Track referrals from ChatGPT, Perplexity, Claude, Gemini, Copilot and 10+ other AI engines. Paste a one-line script on your site and see real-time AI referral trends with source breakdown and period-over-period growth.</p>
-  </div></div></div></div>
-  <div class="container" id="atWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-vis-leaderboard">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Visibility Rank</div>
-    <h2 class="view-title">🏆 Visibility Rank Table</h2>
-    <p class="view-sub">See how you and your competitors rank by AI Share of Voice — with Δ vs your previous run so you can track momentum across ChatGPT, Perplexity, Gemini and Claude.</p>
-  </div></div></div></div>
-  <div class="container" id="vlWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-seo-crawler">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Site SEO Crawler</div>
-    <h2 class="view-title">🕸️ Multi-Page SEO Crawler</h2>
-    <p class="view-sub">Crawl up to 100 pages of any site, run the full T22 19-check audit on each, and aggregate into a site-wide SEO score with the worst-offender pages surfaced. Same A–F grading scale as the single-page audit.</p>
-  </div></div></div></div>
-  <div class="container" id="scrWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-geo-audit">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> GEO Audit</div>
-    <h2 class="view-title">🤖 GEO Audit — Generative Engine Optimization</h2>
-    <p class="view-sub">Score how well any page is structured to be cited by ChatGPT, Perplexity and Gemini. Checks clear headings, concise answer blocks, JSON-LD schema, author bio, freshness signals, semantic chunking and more — with prioritised fixes.</p>
-  </div></div></div></div>
-  <div class="container" id="geoWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 <div class="view hidden" id="view-llm-scan">
   <div class="view-header"><div class="container"><div class="vh-inner"><div>
@@ -2086,282 +1145,55 @@
   <div class="container" id="llmScanWrap" style="padding-top:24px;padding-bottom:56px"></div>
 </div>
 
-<div class="view hidden" id="view-local-seo">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Local SEO Basics</div>
-    <h2 class="view-title">📍 Local SEO Basics</h2>
-    <p class="view-sub">For brick-and-mortar and service-area businesses. Checks NAP visibility, LocalBusiness schema, Google Business Profile link, embedded map, opening hours, click-to-call, contact page and service-area signals — the must-haves for local-pack and Maps rankings.</p>
-  </div></div></div></div>
-  <div class="container" id="lsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-social-tags">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Social Tags Audit</div>
-    <h2 class="view-title">🔖 Social Tags Audit</h2>
-    <p class="view-sub">Audits Open Graph (Facebook/LinkedIn previews), Twitter Cards (X previews), Facebook Pixel, GA4, social profile links, favicon and Apple touch icon. Catches the "why does my link look ugly when shared?" problems instantly.</p>
-  </div></div></div></div>
-  <div class="container" id="socialTagsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-unified-inbox">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Unified Inbox</div>
-    <h2 class="view-title">📬 Unified Conversation Inbox</h2>
-    <p class="view-sub">Every conversation surface InfoGenie monitors — Reddit, Twitter/X, Reviews, Quora, Glassdoor, Newsletter mentions, Chatbot — pulled into one inbox-style stream. Filter by source, status, sentiment. Mark items replied / resolved / snoozed and never lose track of who said what.</p>
-  </div></div></div></div>
-  <div class="container" id="uiboxWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-tiktok-downloader">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> TikTok Downloader</div>
-    <h2 class="view-title">⬇️ TikTok Downloader</h2>
-    <p class="view-sub">Paste TikTok URLs (one per line) and pull the no-watermark mp4, caption, hashtags, music and engagement stats. Pairs with Ad Library Spy — turn the URLs you discover there into a swipe file you can study and remix.</p>
-  </div></div></div></div>
-  <div class="container" id="ttdlWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-quora-mining">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Quora Mining</div>
-    <h2 class="view-title">❓ Quora Mining</h2>
-    <p class="view-sub">Discover the most-engaged Quora questions in your topic, with intent classification and a suggested response angle for each — content gold for SEO and answer marketing.</p>
-  </div></div></div></div>
-  <div class="container" id="qmWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-maps-intel">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Maps Intel</div>
-    <h2 class="view-title">🗺️ Maps Intel</h2>
-    <p class="view-sub">Map your local competitive landscape — discover every competitor in a region with ratings, review counts, price range, and AI-generated strategic signals.</p>
-  </div></div></div></div>
-  <div class="container" id="miWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-change-monitor">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Change Monitor</div>
-    <h2 class="view-title">🔔 Competitor Change Monitor</h2>
-    <p class="view-sub">Watch any competitor URL for changes. When their pricing page, features page, or homepage updates — you get an instant AI-powered summary of what changed and why it matters strategically.</p>
-  </div></div></div></div>
-  <div class="container" id="changeMonitorWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-web-extractor">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> AI Web Extractor</div>
-    <h2 class="view-title">🧲 AI Web Extractor</h2>
-    <p class="view-sub">Extract any structured data from any public webpage in plain English — no code, no CSS selectors. Paste a URL, describe what you want, and get a clean table of results.</p>
-  </div></div></div></div>
-  <div class="container" id="webExtractorWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-recipe-scraper">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Scraping Recipe Library</div>
-    <h2 class="view-title">📋 Scraping Recipe Library</h2>
-    <p class="view-sub">Pre-built extraction recipes for G2 reviews, Product Hunt, Trustpilot, LinkedIn, Glassdoor, pricing pages, job boards and more. One-click — just add your target URL.</p>
-  </div></div></div></div>
-  <div class="container" id="recipeScraperWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-dataset-market">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Dataset Marketplace</div>
-    <h2 class="view-title">📦 Dataset Marketplace</h2>
-    <p class="view-sub">Generate AI-powered structured intelligence datasets for your industry — competitor pricing, job market signals, social proof, market sizing, tech stack maps, and more.</p>
-  </div></div></div></div>
-  <div class="container" id="datasetMarketWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-resilient-tracker">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Resilient Tracker</div>
-    <h2 class="view-title">🛡️ Resilient Competitor Trackers</h2>
-    <p class="view-sub">Track specific data points on any competitor page — pricing, team size, CTA text, any value. When the page structure changes, the tracker auto-heals using alternative methods.</p>
-  </div></div></div></div>
-  <div class="container" id="resilientTrackerWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-conversion-recovery">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Conversion Recovery</div>
-    <h2 class="view-title">🔄 Conversion Recovery Assistant</h2>
-    <p class="view-sub">Recover the 20–40% of conversions lost to iOS14+, Safari ITP, and ad blockers. Get your Recovery Score, see which events you're missing, and generate a step-by-step server-side tracking setup guide.</p>
-  </div></div></div></div>
-  <div class="container" id="convRecoveryWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-lead-aggregator"></div>
 
-<div class="view hidden" id="view-model-compare">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Model Comparison</div>
-    <h2 class="view-title">⚖️ AI Model Comparison</h2>
-    <p class="view-sub">Run any prompt on GPT-4o, Claude 3.5 Sonnet, and Gemini 1.5 Flash simultaneously. Compare outputs side-by-side with latency, token count, and an AI quality judge that picks the winner.</p>
-  </div></div></div></div>
-  <div class="container" id="modelCompareWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-hashtag-intel">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Hashtag Intelligence</div>
-    <h2 class="view-title">🏷️ Hashtag Intelligence</h2>
-    <p class="view-sub">Research the top-performing Instagram and TikTok hashtags for any topic — clustered by strategy so you know exactly which tags to use on each post.</p>
-  </div></div></div></div>
-  <div class="container" id="hiWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
 
-<div class="view hidden" id="view-social-analytics">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Social Analytics</div>
-    <h2 class="view-title">📈 Social Analytics</h2>
-    <p class="view-sub">Per-account engagement, follower growth and top-performing posts across every social account connected to Zernio. Pulls live data from your Social Publisher profile.</p>
-  </div></div></div></div>
-  <div class="container" id="saWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 <!-- SOCIAL PUBLISHER VIEW (Tier 15) -->
-<div class="view hidden" id="view-social-publisher">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Social Publisher</div>
-      <h2 class="view-title">📤 Social Publisher</h2>
-      <p class="view-sub">Post & schedule across 15 social platforms (Twitter/X, Instagram, Facebook, LinkedIn, TikTok, YouTube, Pinterest, Reddit, Bluesky, Threads, Google Business, Telegram, Snapchat, WhatsApp, Discord) — one click from any AI draft you've generated. Powered by Zernio.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="spWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- KEYWORD EXPLORER VIEW (Tier 13 #2) -->
-<div class="view hidden" id="view-keyword-explorer">
-  <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
-      <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Keyword Explorer</div>
-      <h2 class="view-title">🔬 Keyword Explorer</h2>
-      <p class="view-sub">Drop in any seed keyword to get search volume, CPC, competition, keyword difficulty, search intent, and dozens of related keyword ideas — Google Ads + DataForSEO Labs data.</p>
-    </div>
-  </div></div></div>
-  <div class="container" id="keWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- AUDIENCE VIEW -->
-<div class="view hidden" id="view-audience">
-  <div class="view-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Audience</div>
-          <h2 class="view-title">Audience Intelligence</h2>
-          <p class="view-sub">Identify and automatically target the highest-converting audience segments</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" id="autoTargetBtn">🎯 Auto-Target Best Audience</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="audienceWrap"></div>
-</div>
+
 
 <!-- AI CREATIVE VIEW -->
-<div class="view hidden" id="view-creative">
-  <div class="view-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> AI Creative</div>
-          <h2 class="view-title">AI Creative Generation Engine</h2>
-          <p class="view-sub">Ad copy, headlines, and campaign briefs generated from real competitor intelligence</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" id="generateMoreBtn">✨ Generate More Creatives</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="creativeWrap"></div>
-</div>
+
 
 <!-- INTELLIGENCE HUB VIEW -->
-<div class="view hidden" id="view-intelligence">
-  <div class="view-header intel-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Intelligence Hub</div>
-          <h2 class="view-title">⚡ Competitive Intelligence Engine</h2>
-          <p class="view-sub">Exclusive InfoGenie capabilities — real-time signals, predictive moves, keyword gaps, and your 90-day category domination roadmap</p>
-        </div>
-        <div class="intel-header-actions">
-          <div class="intel-live-badge">● Live Monitoring</div>
-          <button class="btn-primary" onclick="exportIntelligenceReport()">📥 Export Report</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="intelligenceWrap"></div>
-</div>
+
 
 <!-- GOOGLE SERP VIEW -->
-<div class="view hidden" id="view-serp">
-  <div class="view-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Google Search</div>
-          <h2 class="view-title">Google Search Intelligence</h2>
-          <p class="view-sub">Live Google SERP results — track rankings, ads, and competitor visibility in real time</p>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" style="padding-top:28px;padding-bottom:56px">
 
-    <!-- Search bar -->
-    <div class="serp-search-bar">
-      <div class="serp-search-input-wrap">
-        <svg class="serp-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <input id="serpQueryInput" class="serp-search-input" type="text" placeholder="Search Google — e.g. best fintech app UK, revolut vs monzo…" />
-      </div>
-      <select id="serpLocationSelect" class="serp-location-select">
-        <option value="Global">🌐 Global (All Regions)</option>
-        <option value="United States">🇺🇸 United States</option>
-        <option value="United Kingdom" selected>🇬🇧 United Kingdom</option>
-        <option value="Australia">🇦🇺 Australia</option>
-        <option value="Canada">🇨🇦 Canada</option>
-        <option value="Germany">🇩🇪 Germany</option>
-        <option value="France">🇫🇷 France</option>
-        <option value="India">🇮🇳 India</option>
-        <option value="Singapore">🇸🇬 Singapore</option>
-      </select>
-      <select id="serpTypeSelect" class="serp-type-select">
-        <option value="search">Organic</option>
-        <option value="news">News</option>
-      </select>
-      <button class="serp-search-btn" onclick="runSerpSearch()">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="5.8" cy="5.8" r="4.3" stroke="white" stroke-width="1.5"/><path d="M9.2 9.2L13 13" stroke="white" stroke-width="1.6" stroke-linecap="round"/></svg>
-        Search
-      </button>
-    </div>
-
-    <!-- Quick searches -->
-    <div class="serp-quick-chips" id="serpQuickChips">
-      <span class="serp-chip-label">Quick:</span>
-    </div>
-
-    <!-- Results area -->
-    <div id="serpResultsWrap">
-      <div class="serp-empty-state">
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="21" cy="21" r="14" stroke="rgba(0,201,200,.3)" stroke-width="2.5"/><path d="M30 30L42 42" stroke="rgba(0,201,200,.3)" stroke-width="3" stroke-linecap="round"/><path d="M15 21h12M21 15v12" stroke="rgba(0,201,200,.25)" stroke-width="2" stroke-linecap="round"/></svg>
-        <p>Enter a search query above to fetch live Google results</p>
-      </div>
-    </div>
-
-  </div>
-</div>
 
 <!-- COMPETITOR PLAN VIEW -->
 <div class="view hidden" id="view-plan">
@@ -2390,276 +1222,44 @@
 </div>
 
 <!-- RESULTS VIEW -->
-<div class="view hidden" id="view-results">
-  <div class="view-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Results</div>
-          <h2 class="view-title">Campaign Results & Action History</h2>
-          <p class="view-sub">Live tracking of InfoGenie's actions, launched campaigns, and performance improvements</p>
-        </div>
-        <div class="vh-actions" style="gap:10px">
-          <button class="btn-secondary" id="customizeResultsBtn" title="Show/hide sections">⚙ Customise View</button>
-          <button class="btn-primary" id="exportResultsBtn">📄 Export PDF</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="resultsWrap"></div>
-</div>
+
 
 <!-- ADVERTISE HUB VIEW -->
-<div class="view hidden" id="view-advertise">
-  <div class="view-header" style="background:linear-gradient(135deg,#0A1628 0%,#0D2140 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#00C9C8"><span class="bc-group" style="color:rgba(0,229,255,.7)">Reach</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Advertise</div>
-          <h2 class="view-title">Multi-Channel Advertising Hub</h2>
-          <p class="view-sub">Lead-generation ads across 20+ channels — connected accounts, 3-step campaign creation, and AI-powered optimisation</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" id="advertiseNewCampBtn">+ New Campaign</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="advertiseWrap"></div>
-</div>
+
 
 <!-- REDDIT INTEL VIEW -->
-<div class="view hidden" id="view-reddit">
-  <div class="view-header" style="background:linear-gradient(135deg,#FF4500 0%,#FF6B35 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#FFD4C2"><span class="bc-group" style="color:rgba(255,180,150,.8)">Analyse</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Reddit Intel</div>
-          <h2 class="view-title">Reddit &amp; Community Intelligence</h2>
-          <p class="view-sub">Monitor brand &amp; competitor mentions, surface SERP threads, score engagement opportunities, and deploy AI replies in your brand voice</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" onclick="scanRedditMonitor()" style="background:white;color:#FF4500">🔍 Scan Now</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="redditWrap" style="padding-top:24px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- INTENT MAP VIEW -->
-<div class="view hidden" id="view-intent-map">
-  <div class="view-header" style="background:linear-gradient(135deg,#0066FF 0%,#7C3AED 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#C7D9FF"><span class="bc-group" style="color:rgba(199,217,255,.8)">Analyse</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Intent Map</div>
-          <h2 class="view-title">🧭 Search Intent Map</h2>
-          <p class="view-sub">Classify every keyword by user intent, match it to the right page type, and surface gaps your competitors are exploiting.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" id="intentRunBtn" style="background:white;color:#0066FF">⚡ Generate Intent Map</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="intentMapWrap" style="padding-top:24px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- KEYWORD MAP VIEW -->
-<div class="view hidden" id="view-keyword-map">
-  <div class="view-header" style="background:linear-gradient(135deg,#0EA5E9 0%,#6366F1 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#BAE6FD"><span class="bc-group" style="color:rgba(186,230,253,.8)">Analyse</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Keyword Map</div>
-          <h2 class="view-title">🗺️ Keyword–Page Map</h2>
-          <p class="view-sub">One primary keyword per page, supporting keywords mapped, and cannibalisation flagged before it costs you rankings.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" id="kmRunBtn" style="background:white;color:#0EA5E9">⚡ Generate Map</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="keywordMapWrap" style="padding-top:24px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- ICP STUDIO VIEW -->
-<div class="view hidden" id="view-icp-studio">
-  <div class="view-header" style="background:linear-gradient(135deg,#7C3AED 0%,#EC4899 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#F5D0FE"><span class="bc-group" style="color:rgba(245,208,254,.8)">Analyse</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> ICP Studio</div>
-          <h2 class="view-title">🎯 ICP Studio — Ideal Customer Profile</h2>
-          <p class="view-sub">Build a detailed customer profile, mine voice-of-customer signals from Reddit &amp; competitor data, then activate it across Creative, Social &amp; Email.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" id="icpDraftBtn" style="background:white;color:#7C3AED">✨ Auto-Draft from Brand Intel</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="icpStudioWrap" style="padding-top:24px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- SOCIAL CALENDAR VIEW -->
-<div class="view hidden" id="view-social">
-  <div class="view-header" style="background:linear-gradient(135deg,#7C3AED 0%,#4F46E5 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#C4B5FD"><span class="bc-group" style="color:rgba(196,181,253,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Social</div>
-          <h2 class="view-title">Social Content Generator, Calendar & Scheduling</h2>
-          <p class="view-sub">Create, schedule, and publish AI-generated content across all social platforms from one place</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" id="socialCreatePostBtn" style="background:white;color:#7C3AED">+ Create Post</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="socialWrap"></div>
-</div>
+
 
 <!-- CONTENT AI VIEW -->
-<div class="view hidden" id="view-content">
-  <div class="view-header" style="background:linear-gradient(135deg,#065F46 0%,#047857 50%,#0F9D58 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#6EE7B7"><span class="bc-group" style="color:rgba(110,231,183,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Content AI</div>
-          <h2 class="view-title">Content Intelligence</h2>
-          <p class="view-sub">Spot content gaps, build topical clusters and AI-powered page audits — create content that ranks and drives compounding organic traffic</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" id="contentAnalyseBtn" style="background:white;color:#065F46">⚡ Analyse Content</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="contentWrap"></div>
-</div>
+
 
 <!-- AI VISIBILITY VIEW -->
 <!-- AMPLITUDE AI AGENTS VIEW -->
-<div class="view hidden" id="view-amplitude-agents">
-  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#1E40AF 50%,#0EA5E9 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#BAE6FD"><span class="bc-group" style="color:rgba(186,230,253,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Amplitude AI Agents</div>
-          <h2 class="view-title">Amplitude AI Agents</h2>
-          <p class="view-sub">Three on-demand agents that pull live product-analytics data from your Amplitude project and turn it into trends, friction hypotheses, and customer-feedback themes — all powered by GPT-4o.</p>
-        </div>
-        <div class="vh-actions">
-          <span id="ampAgentsConnBadge" style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:999px;color:white;font-size:0.78rem;font-weight:600">⏳ Checking connection…</span>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" style="padding-top:24px;padding-bottom:40px">
-    <div id="ampAgentsCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px"></div>
-    <div id="ampAgentResult" style="margin-top:28px"></div>
-  </div>
-</div>
+
 
 <!-- GOALS & TARGETS VIEW -->
-<div class="view hidden" id="view-goals">
-  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#7C3AED 50%,#A855F7 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#E9D5FF"><span class="bc-group" style="color:rgba(233,213,255,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Goals &amp; Targets</div>
-          <h2 class="view-title">Goals &amp; Targets</h2>
-          <p class="view-sub">Set targets on the metrics that matter, then let InfoGenie autonomously check progress and surface a GPT-4o root-cause hypothesis the moment a goal goes off-track.</p>
-        </div>
-        <div class="vh-actions">
-          <button onclick="openAddGoalModal()" style="padding:10px 16px;background:white;color:#7C3AED;border:none;border-radius:9px;font-weight:700;font-size:0.85rem;cursor:pointer">+ Add Goal</button>
-          <button class="btn-refresh-light" onclick="refreshGoals()">↻ Refresh</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" style="padding-top:24px;padding-bottom:40px">
-    <div id="goalsList"></div>
-  </div>
-</div>
+
 
 <!-- BLENDED PERFORMANCE VIEW -->
-<div class="view hidden" id="view-blended-perf">
-  <div class="view-header" style="background:linear-gradient(135deg,#064E3B 0%,#047857 50%,#10B981 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#A7F3D0"><span class="bc-group" style="color:rgba(167,243,208,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Blended Performance</div>
-          <h2 class="view-title">Blended Performance</h2>
-          <p class="view-sub">One blended view of ad spend, customers, and CAC across Meta + Google + TikTok — using your Amplitude conversion events as ground truth instead of channel-reported numbers.</p>
-        </div>
-        <div class="vh-actions">
-          <select id="blendedDays" onchange="loadBlendedPerf()" style="padding:9px 12px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:0.85rem;font-weight:600">
-            <option value="7">Last 7 days</option>
-            <option value="30" selected>Last 30 days</option>
-            <option value="90">Last 90 days</option>
-          </select>
-          <button class="btn-refresh-solid" style="color:#047857" onclick="loadBlendedPerf()">↻ Refresh</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" style="padding-top:24px;padding-bottom:40px">
-    <div id="blendedPerfBody"><div style="text-align:center;padding:48px;color:#64748B">⏳ Loading…</div></div>
-  </div>
-</div>
+
 
 <!-- LEAD QUALIFIER VIEW -->
-<div class="view hidden" id="view-lead-qualifier">
-  <div class="view-header" style="background:linear-gradient(135deg,#0C4A6E 0%,#0369A1 50%,#0EA5E9 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#BAE6FD"><span class="bc-group" style="color:rgba(186,230,253,.8)">Reach</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Lead Qualifier</div>
-          <h2 class="view-title">Lead Qualifier</h2>
-          <p class="view-sub">Drop in any inbound lead — InfoGenie's GPT-4o agent scores them on BANT, fit and intent, then tells you the best next move. Hot leads can be enrolled into a nurture in one click.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-refresh-light" onclick="refreshLeadQualifier()">↻ Refresh</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" style="padding-top:24px;padding-bottom:40px">
-    <div id="leadQualifierBody"><div style="text-align:center;padding:48px;color:#64748B">⏳ Loading…</div></div>
-  </div>
-</div>
+
 
 <!-- RE-ENGAGE AUDIENCE VIEW -->
-<div class="view hidden" id="view-reengage">
-  <div class="view-header" style="background:linear-gradient(135deg,#7C2D12 0%,#C2410C 50%,#F97316 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#FED7AA"><span class="bc-group" style="color:rgba(254,215,170,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Re-engage Audience</div>
-          <h2 class="view-title">Re-engage Audience</h2>
-          <p class="view-sub">Find subscribers who've gone quiet, generate three adaptive copy angles with GPT-4o, and launch a one-touch re-engagement campaign — all without leaving InfoGenie.</p>
-        </div>
-        <div class="vh-actions">
-          <select id="reengageDays" onchange="loadReengage()" style="padding:9px 12px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:0.85rem;font-weight:600">
-            <option value="14">14+ days inactive</option>
-            <option value="30" selected>30+ days inactive</option>
-            <option value="60">60+ days inactive</option>
-            <option value="90">90+ days inactive</option>
-          </select>
-          <button class="btn-refresh-solid" style="color:#C2410C" onclick="loadReengage()">↻ Refresh</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" style="padding-top:24px;padding-bottom:40px">
-    <div id="reengageBody"><div style="text-align:center;padding:48px;color:#64748B">⏳ Loading…</div></div>
-  </div>
-</div>
+
 
 <div class="view hidden" id="view-aivisibility">
   <div class="view-header" style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)">
@@ -2680,161 +1280,32 @@
 </div>
 
 <!-- AI AUDIT SUITE VIEW -->
-<div class="view hidden" id="view-ai-audit-suite">
-  <div class="view-header" style="background:linear-gradient(135deg,#312E81 0%,#4338CA 50%,#7C3AED 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#C4B5FD"><span class="bc-group" style="color:rgba(196,181,253,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> AI Audit Suite</div>
-          <h2 class="view-title">🧪 AI Audit Suite</h2>
-          <p class="view-sub">Run each deep-dive AI audit independently — Prompt Coverage, Trend Tracking, Answer Accuracy, Competitive Citation, Entity Mapping, Sentiment, Google AI Overview & Citation-to-Traffic Attribution.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#4338CA" onclick="generateAiVisibilityAudit()">✨ Run Full Audit</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="aiAuditSuiteWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- TECHNICAL SUITE VIEW -->
-<div class="view hidden" id="view-technical-suite">
-  <div class="view-header" style="background:linear-gradient(135deg,#064E3B 0%,#047857 50%,#10B981 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#A7F3D0"><span class="bc-group" style="color:rgba(167,243,208,.8)">Manage</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Technical Suite</div>
-          <h2 class="view-title">🛠️ Technical Suite</h2>
-          <p class="view-sub">Site health, crawlability and index-readiness — three deep technical audits that fetch your live site and grade every signal that affects search engines, AI engines and humans.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#047857" onclick="runTechSuiteAll()">🛠️ Run All Audits</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="techSuiteWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- INTERNAL LINK SUGGESTER VIEW -->
-<div class="view hidden" id="view-link-suggester">
-  <div class="view-header" style="background:linear-gradient(135deg,#1E3A8A 0%,#3B82F6 50%,#8B5CF6 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#BFDBFE"><span class="bc-group" style="color:rgba(191,219,254,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Internal Link Suggester</div>
-          <h2 class="view-title">🔗 Internal Link Suggester</h2>
-          <p class="view-sub">AI-powered recommendations: which pages to link, what anchor text to use, and why each link strengthens your topical authority.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#1E40AF" onclick="runLinkSuggester()">🔗 Generate Suggestions</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="linkSuggesterWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- CRO LAB VIEW -->
-<div class="view hidden" id="view-cro-lab">
-  <div class="view-header" style="background:linear-gradient(135deg,#7C2D12 0%,#EA580C 50%,#F59E0B 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#FED7AA"><span class="bc-group" style="color:rgba(254,215,170,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> CRO Lab</div>
-          <h2 class="view-title">🧪 CRO Lab</h2>
-          <p class="view-sub">Conversion rate optimisation: A/B test setup, trust-signal audit, and checkout-friction scoring — turn your traffic into revenue.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#C2410C" onclick="runCroAudit()">🧪 Run Full Audit</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="croLabWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- GSC / GA4 ANALYTICS HUB VIEW -->
-<div class="view hidden" id="view-analytics-hub">
-  <div class="view-header" style="background:linear-gradient(135deg,#0F766E 0%,#14B8A6 50%,#06B6D4 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#A7F3D0"><span class="bc-group" style="color:rgba(167,243,208,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> GSC / GA4 Hub</div>
-          <h2 class="view-title">📡 GSC / GA4 Analytics Hub</h2>
-          <p class="view-sub">Connect Google Search Console &amp; GA4 — InfoGenie pulls real impressions, clicks, ranks and revenue per page, then highlights top performers and weak performers ready to fix.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#0F766E" onclick="loadAnalyticsHub()">📡 Refresh Data</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="analyticsHubWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
      PLAI-PARITY MODULES — Tier 1 + Tier 2 (April 2026)
      ═══════════════════════════════════════════════════════════════════════════ -->
 
 <!-- LANDING PAGE BUILDER -->
-<div class="view hidden" id="view-landing-builder">
-  <div class="view-header" style="background:linear-gradient(135deg,#0EA5E9 0%,#6366F1 50%,#A855F7 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#BAE6FD"><span class="bc-group" style="color:rgba(186,230,253,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Landing Page Builder</div>
-          <h2 class="view-title">🌐 AI Landing Page Builder</h2>
-          <p class="view-sub">Generate a conversion-ready landing page from your analysis — hero, social proof, features, FAQ and CTA — preview, edit, then export HTML.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#4338CA" onclick="runLandingBuilder()">🌐 Generate Landing Page</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="landingBuilderWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- SMART CREATIVE BUILDER -->
-<div class="view hidden" id="view-smart-creative">
-  <div class="view-header" style="background:linear-gradient(135deg,#BE185D 0%,#EC4899 50%,#F472B6 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#FBCFE8"><span class="bc-group" style="color:rgba(251,207,232,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Smart Creative Builder</div>
-          <h2 class="view-title">🎨 Smart Creative Builder</h2>
-          <p class="view-sub">One brand asset → 50+ ad variants. Auto-resized for Meta, Google, TikTok, LinkedIn — with AI-rotated headlines, CTAs and color treatments.</p>
-        </div>
-        <div class="vh-actions" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <button class="btn-primary" style="background:rgba(255,255,255,0.18);color:white;border:1px solid rgba(255,255,255,0.55)" onclick="navigateTo('brand-assets')">🖼️ Add Brand Assets</button>
-          <button class="btn-primary" style="background:white;color:#BE185D" onclick="runSmartCreative()">🎨 Generate 50+ Variants</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="smartCreativeWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- AI UGC AVATARS -->
-<div class="view hidden" id="view-ugc-avatars">
-  <div class="view-header" style="background:linear-gradient(135deg,#7E22CE 0%,#A855F7 50%,#D946EF 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#E9D5FF"><span class="bc-group" style="color:rgba(233,213,255,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> AI UGC Avatars</div>
-          <h2 class="view-title">🧑‍🎤 AI UGC Avatars</h2>
-          <p class="view-sub">Pick an avatar, write a script (or let AI write it from your analysis), and generate a TikTok / Reels-ready creator video — no filming needed.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#7E22CE" onclick="runUgcAvatars()">🧑‍🎤 Generate Avatar Video</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="ugcAvatarsWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- AI VOICEOVERS -->
 <div class="view hidden" id="view-voiceovers">
@@ -2856,169 +1327,46 @@
 </div>
 
 <!-- TEMPLATES LIBRARY -->
-<div class="view hidden" id="view-templates">
-  <div class="view-header" style="background:linear-gradient(135deg,#065F46 0%,#10B981 50%,#34D399 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#A7F3D0"><span class="bc-group" style="color:rgba(167,243,208,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Templates Library</div>
-          <h2 class="view-title">📐 Templates Library</h2>
-          <p class="view-sub">Browse 60+ proven ad &amp; landing-page templates — filtered to your sector — and one-click apply them to a new campaign.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#065F46" onclick="runTemplates()">📐 Browse Templates</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="templatesWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- OPTIMIZATION FOLDERS -->
-<div class="view hidden" id="view-opt-folders">
-  <div class="view-header" style="background:linear-gradient(135deg,#1E40AF 0%,#3B82F6 50%,#06B6D4 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#BFDBFE"><span class="bc-group" style="color:rgba(191,219,254,.8)">Reach</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Optimization Folders</div>
-          <h2 class="view-title">📁 Optimization Folders</h2>
-          <p class="view-sub">Group campaigns into auto-optimising folders — set rules (pause if CPA &gt; X, scale if ROAS &gt; Y) and InfoGenie runs the loop hourly.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#1E40AF" onclick="runOptFolders()">📁 Build Folders</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="optFoldersWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- IMPORT EXISTING CAMPAIGNS -->
-<div class="view hidden" id="view-import-campaigns">
-  <div class="view-header" style="background:linear-gradient(135deg,#7C2D12 0%,#DC2626 50%,#F97316 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#FED7AA"><span class="bc-group" style="color:rgba(254,215,170,.8)">Reach</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Import Campaigns</div>
-          <h2 class="view-title">📥 Import Existing Campaigns</h2>
-          <p class="view-sub">Already running ads on Meta, Google, TikTok or LinkedIn? Import them in one click — InfoGenie audits performance and recommends fixes.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#B91C1C" onclick="runImportCampaigns()">📥 Scan &amp; Import</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="importCampaignsWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- INTERNATIONAL LOCALIZATION -->
-<div class="view hidden" id="view-localization">
-  <div class="view-header" style="background:linear-gradient(135deg,#312E81 0%,#6366F1 50%,#22D3EE 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#C7D2FE"><span class="bc-group" style="color:rgba(199,210,254,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Localization</div>
-          <h2 class="view-title">🌍 International Localization</h2>
-          <p class="view-sub">Translate your ads, landing pages and posts into 40+ languages — with locale-specific tone, currency, idioms and CTA buttons.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#4338CA" onclick="runLocalization()">🌍 Generate Localizations</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="localizationWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- WORKSPACES & TEAM -->
-<div class="view hidden" id="view-workspaces">
-  <div class="view-header" style="background:linear-gradient(135deg,#831843 0%,#BE185D 50%,#EC4899 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#FBCFE8"><span class="bc-group" style="color:rgba(251,207,232,.8)">Manage</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Workspaces &amp; Team</div>
-          <h2 class="view-title">👥 Workspaces &amp; Team</h2>
-          <p class="view-sub">Run multiple brands or clients in isolated workspaces — invite team-mates, assign roles (Owner / Editor / Viewer) and audit every action.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#BE185D" onclick="runWorkspaces()">👥 Open Workspace Console</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="workspacesWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- ADMIN PORTAL VIEW (owner/admin only) -->
-<div class="view hidden" id="view-admin">
-  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#1E293B 50%,#334155 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#CBD5E1"><span class="bc-group" style="color:rgba(203,213,225,.8)">Manage</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Admin Portal</div>
-          <h2 class="view-title">🛡️ Admin Portal</h2>
-          <p class="view-sub">Manage workspaces, users, clients and data honesty. Control whether unavailable data is shown as clearly-badged demo data, or replaced with an honest "data unavailable" message.</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" style="background:white;color:#1E293B" onclick="buildAdmin(true)">↻ Refresh</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="adminWrap" style="padding-top:24px;padding-bottom:40px"></div>
-</div>
+
 
 <!-- SETTINGS VIEW -->
-<div class="view hidden" id="view-settings">
-  <div class="view-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Settings</div>
-          <h2 class="view-title">Integrations & Settings</h2>
-          <p class="view-sub">Connect APIs, AI models, and tools to power InfoGenie's full intelligence engine</p>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="settingsWrap"></div>
-</div>
+
 
 <!-- AGENCY HUB VIEW -->
-<div class="view hidden" id="view-agency">
-  <div id="agencyWrap" style="min-height:100vh;background:#F5F3FF;padding:28px 32px"></div>
-</div>
+
 
 <!-- AUTOMATIONS VIEW -->
-<div class="view hidden" id="view-automations">
-  <div id="automationsWrap" style="min-height:100vh;background:#F0FDF9;padding:28px 32px"></div>
-</div>
+
 
 <!-- CUSTOMER JOURNEY BUILDER -->
-<div class="view hidden" id="view-journey-builder">
-  <div id="journeyBuilderWrap" style="min-height:100vh;background:#F8FAFC;padding:28px 32px"></div>
-</div>
+
 
 <!-- REAL-TIME SIGNAL TRIGGERS -->
-<div class="view hidden" id="view-signal-triggers">
-  <div id="signalTriggersWrap" style="min-height:100vh;background:#FEF7E6;padding:28px 32px"></div>
-</div>
+
 
 <!-- OMNICHANNEL COMPOSER -->
-<div class="view hidden" id="view-omnichannel">
-  <div id="omnichannelWrap" style="min-height:100vh;background:#EEF2FF;padding:28px 32px"></div>
-</div>
+
 
 <!-- NEW MARKETING PROJECT -->
-<div class="view hidden" id="view-new-project">
-  <div id="newProjectWrap" style="min-height:100vh;background:#FFF7ED;padding:28px 32px"></div>
-</div>
+
 
 <!-- BRAND CALENDAR -->
-<div class="view hidden" id="view-brand-calendar">
-  <div id="brandCalendarWrap" style="min-height:100vh;background:#F0F9FF;padding:28px 32px"></div>
-</div>
+
 
 <!-- BRAND FOUNDATION -->
 <div class="view hidden" id="view-brand-foundation">
@@ -3026,76 +1374,35 @@
 </div>
 
 <!-- CUSTOMER 360 -->
-<div class="view hidden" id="view-customer-360"></div>
+
 
 <!-- BUDGET BOARD -->
-<div class="view hidden" id="view-budget-board">
-  <div id="budgetBoardWrap" style="min-height:100vh;background:#F0FDF4;padding:28px 32px"></div>
-</div>
+
 
 <!-- WEB ANALYTICS -->
-<div class="view hidden" id="view-web-analytics">
-  <div id="webAnalyticsWrap" style="min-height:100vh;background:#FAFAFA;padding:28px 32px"></div>
-</div>
+
 
 <!-- MARKETING MEMORY (knowledge graph) -->
-<div class="view hidden" id="view-marketing-memory"></div>
-<div class="view hidden" id="view-predictive-intelligence"></div>
+
+
 
 <!-- ASK INFOGENIE (Onyx-style platform Q&A) -->
-<div class="view hidden" id="view-ask-infogenie">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Ask InfoGenie</div>
-    <h2 class="view-title">💬 Ask InfoGenie</h2>
-    <p class="view-sub">One chat box that knows about your campaigns, leads, audiences, mentions, ad insights, content calendar, budget, landing pages, bookings and link-in-bio. Ask in plain English.</p>
-  </div></div></div></div>
-  <div class="container" id="askInfogenieWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- INFOGRAPHICS (Napkin-style) -->
-<div class="view hidden" id="view-infographics">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Infographic Generator</div>
-    <h2 class="view-title">📊 Infographic Generator</h2>
-    <p class="view-sub">Text → visual. Funnels, comparisons, journeys, pyramids, cycles — generated on-brand and exported as PNG/SVG for social, decks and landing pages.</p>
-  </div></div></div></div>
-  <div class="container" id="infographicsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- HEATMAPS (Microsoft Clarity wrapper) -->
-<div class="view hidden" id="view-heatmaps">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> Heatmaps</div>
-    <h2 class="view-title">🔥 Heatmaps + Session Replay</h2>
-    <p class="view-sub">Free heatmaps, session recordings and rage-click data via Microsoft Clarity. Connect once, then see what visitors actually do on your site — alongside your existing landing-page list.</p>
-  </div></div></div></div>
-  <div class="container" id="heatmapsWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- QUESTION MINER (AnswerThePublic-style) -->
-<div class="view hidden" id="view-question-miner">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Question Mining</div>
-    <h2 class="view-title">❔ Question Mining</h2>
-    <p class="view-sub">What are people actually typing into Google about your topic? Pulls People Also Ask + related queries, groups them by What/Why/How/etc, and one-clicks any of them into your Content Calendar.</p>
-  </div></div></div></div>
-  <div class="container" id="questionMinerWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- AI PROVIDERS -->
-<div class="view hidden" id="view-ai-providers">
-  <div class="view-header"><div class="container"><div class="vh-inner"><div>
-    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> AI Providers</div>
-    <h2 class="view-title">🧠 AI Providers</h2>
-    <p class="view-sub">Plug in any OpenAI-compatible LLM (Groq, DeepSeek, Mistral, OpenRouter, Together, Azure OpenAI, Ollama, etc.) and pick a default for each task category — writing, analysis, vision, audio.</p>
-  </div></div></div></div>
-  <div class="container" id="aiProvidersWrap" style="padding-top:24px;padding-bottom:56px"></div>
-</div>
+
 
 <!-- BATTLE PLAN VIEW -->
-<div class="view hidden" id="view-battleplan">
-  <div id="battlePlanWrap" style="min-height:100vh;background:var(--ig-page)"></div>
-</div>
+
 
 <!-- LAUNCH MODAL -->
 <div class="modal-backdrop hidden" id="launchModal">
@@ -3269,134 +1576,16 @@
 </div>
 
 <!-- BRAND ASSETS VIEW -->
-<div class="view hidden" id="view-brand-assets">
-  <div class="view-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Brand Assets</div>
-          <h2 class="view-title">Brand Creative Library</h2>
-          <p class="view-sub">Upload logos, banners, videos and ad creatives — available across all campaigns</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-primary" onclick="document.getElementById('ba-file-input').click()">
-            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style="margin-right:5px"><path d="M7 1v9M3 5l4-4 4 4" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M1 11h12" stroke="white" stroke-width="1.6" stroke-linecap="round"/></svg>
-            Upload Assets
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
 
-  <div class="container" style="padding-top:28px;padding-bottom:56px">
-
-    <!-- Tag filter + search row -->
-    <div class="ba-toolbar">
-      <div class="ba-tag-filters" id="baTagFilters">
-        <button class="ba-tag active" data-tag="all" onclick="baFilterTag(this,'all')">All</button>
-        <button class="ba-tag" data-tag="Logo" onclick="baFilterTag(this,'Logo')">Logos</button>
-        <button class="ba-tag" data-tag="Banner" onclick="baFilterTag(this,'Banner')">Banners</button>
-        <button class="ba-tag" data-tag="Video" onclick="baFilterTag(this,'Video')">Video</button>
-        <button class="ba-tag" data-tag="Social" onclick="baFilterTag(this,'Social')">Social</button>
-        <button class="ba-tag" data-tag="Print" onclick="baFilterTag(this,'Print')">Print</button>
-        <button class="ba-tag" data-tag="General" onclick="baFilterTag(this,'General')">General</button>
-      </div>
-      <input id="baSearchInput" class="ba-search" type="text" placeholder="Search assets…" oninput="baRender()">
-    </div>
-
-    <!-- Drop zone -->
-    <div class="ba-dropzone" id="baDropzone">
-      <input type="file" id="ba-file-input" multiple accept="image/*,video/*,.pdf,.svg" style="display:none" onchange="baHandleFiles(this.files)">
-      <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><path d="M18 4v20M8 14l10-10 10 10" stroke="rgba(0,201,200,.5)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 30h28" stroke="rgba(0,201,200,.3)" stroke-width="2.5" stroke-linecap="round"/></svg>
-      <p class="ba-dz-text">Drag &amp; drop brand assets here, or <button class="ba-dz-link" onclick="document.getElementById('ba-file-input').click()">browse files</button></p>
-      <p class="ba-dz-hint">JPG · PNG · GIF · WebP · MP4 · MOV · PDF · SVG &nbsp;·&nbsp; Up to 50 MB per file</p>
-      <div class="ba-tag-select-wrap">
-        <label class="ba-tag-label">Tag uploads as:</label>
-        <select id="ba-upload-tag" class="ba-tag-select">
-          <option>General</option><option>Logo</option><option>Banner</option>
-          <option>Video</option><option>Social</option><option>Print</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Upload progress bar -->
-    <div id="baUploadProgress" class="ba-progress-wrap" style="display:none">
-      <div class="ba-progress-bar" id="baProgressBar"></div>
-      <div class="ba-progress-label" id="baProgressLabel">Uploading…</div>
-    </div>
-
-    <!-- Assets grid -->
-    <div id="baStats" class="ba-stats"></div>
-    <div id="baGrid" class="ba-grid"></div>
-
-  </div>
-</div>
 
 <!-- C-SUITE EXECUTIVE REPORTS VIEW -->
-<div class="view hidden" id="view-csuite">
-  <div class="view-header" style="background:linear-gradient(135deg,#0A1628 0%,#1a1040 100%);border-bottom:1px solid rgba(124,58,237,.25)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> C-Suite Reports</div>
-          <h2 class="view-title">C-Suite Executive Intelligence</h2>
-          <p class="view-sub">Board-ready dashboards for CEO, CMO, CFO and COO — one click to PDF</p>
-        </div>
-        <div class="vh-actions" style="gap:10px">
-          <div class="cs-role-tabs" id="csRoleTabs">
-            <button class="cs-role-btn active" data-role="ceo" onclick="csSetRole(this,'ceo')">CEO</button>
-            <button class="cs-role-btn" data-role="cmo" onclick="csSetRole(this,'cmo')">CMO</button>
-            <button class="cs-role-btn" data-role="cfo" onclick="csSetRole(this,'cfo')">CFO</button>
-            <button class="cs-role-btn" data-role="coo" onclick="csSetRole(this,'coo')">COO</button>
-          </div>
-          <button class="btn-primary" onclick="csSuitePDF()">📄 Export PDF</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="csuiteWrap" style="padding-top:28px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- AUTOSEO PRO VIEW -->
-<div class="view hidden" id="view-autoseo">
-  <div class="view-header" style="background:linear-gradient(135deg,#0A1628 0%,#0D2A5E 100%);border-bottom:1px solid rgba(0,229,255,.2)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> AutoSEO Pro</div>
-          <h2 class="view-title">🚀 AutoSEO Pro</h2>
-          <p class="view-sub">AI-powered SEO on autopilot — articles, backlinks, keyword research &amp; WordPress publishing</p>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center">
-          <div id="autoseo-wp-status" style="display:none;padding:6px 12px;background:rgba(0,102,255,.15);border:1px solid rgba(0,102,255,.35);border-radius:8px;font-size:0.72rem;font-weight:700;color:#93C5FD;cursor:pointer" onclick="openWpCredentialsModal()">🟦 WordPress Connected</div>
-          <button onclick="openWpCredentialsModal()" id="autoseo-connect-wp-btn" style="padding:9px 18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🟦 Connect WordPress</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" style="padding-top:24px">
-    <div id="autoseoWrap"></div>
-  </div>
-</div>
+
 
 <!-- ACTION CENTER VIEW -->
-<div class="view hidden" id="view-action-center">
-  <div class="view-header" style="background:linear-gradient(135deg,#0A1628 0%,#001830 100%);border-bottom:1px solid rgba(0,229,255,.2)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Action Center</div>
-          <h2 class="view-title">Action Center</h2>
-          <p class="view-sub">Live status, upcoming launches, risks and opportunities — your full marketing command view</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-secondary" onclick="initActionCenter()">🔄 Refresh</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="actionCenterWrap" style="padding-top:28px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- TOAST -->
 <div class="toast hidden" id="toast"></div>
@@ -3484,60 +1673,15 @@
 </div>
 
 <!-- KPI TRACKER VIEW -->
-<div class="view hidden" id="view-master-calendar">
-  <div class="intel-header" style="background:linear-gradient(110deg,#1E40AF 0%,#2563EB 50%,#3B82F6 100%)">
-    <div class="breadcrumb" style="color:#BFDBFE"><span class="bc-group" style="color:#BFDBFE;opacity:.85">Manage</span> <span class="bc-sep" style="color:#BFDBFE;opacity:.55">›</span> Master Calendar</div>
-    <h1 class="ih-title">🗓️ Master Calendar</h1>
-    <p class="ih-sub">Unified view of all articles, campaigns &amp; social posts — dates, status &amp; risk at a glance</p>
-  </div>
-  <div id="masterCalWrap" style="padding:24px 28px"></div>
-</div>
 
-<div class="view hidden" id="view-optimizer">
-  <div class="intel-header" style="background:linear-gradient(110deg,#0F172A 0%,#1E40AF 50%,#0066FF 100%)">
-    <div class="breadcrumb"><span class="bc-group" style="opacity:.85">Grow</span> <span class="bc-sep" style="opacity:.55">›</span> AI Optimizer</div>
-    <h1 class="ih-title">🤖 AI Campaign Optimizer</h1>
-    <p class="ih-sub">Continuously monitors your live ad campaigns, pauses underperformers, and reallocates budget to winners. Decisions logged below — turn on apply mode when you're ready to let the AI act on your accounts.</p>
-  </div>
-  <div id="optimizerWrap" style="padding:24px;max-width:1240px;margin:0 auto"></div>
-</div>
 
-<div class="view hidden" id="view-launches">
-  <div class="intel-header" style="background:linear-gradient(110deg,#7C3AED 0%,#A855F7 50%,#EC4899 100%)">
-    <div class="breadcrumb" style="color:#FBCFE8"><span class="bc-group" style="color:#FBCFE8;opacity:.85">Manage</span> <span class="bc-sep" style="color:#FBCFE8;opacity:.55">›</span> Launch Calendar</div>
-    <h1 class="ih-title">🚀 Launch Calendar</h1>
-    <p class="ih-sub">Schedule campaign go-live dates — get 24h &amp; 1h reminders in your bell + stakeholder inboxes</p>
-  </div>
-  <div id="launchesWrap" style="padding:24px 28px"></div>
-</div>
 
-<div class="view hidden" id="view-stakeholders">
-  <div class="intel-header" style="background:linear-gradient(110deg,#0F766E 0%,#14B8A6 50%,#5EEAD4 100%)">
-    <div class="breadcrumb" style="color:#CCFBF1"><span class="bc-group" style="color:#CCFBF1;opacity:.85">Manage</span> <span class="bc-sep" style="color:#CCFBF1;opacity:.55">›</span> Stakeholders</div>
-    <h1 class="ih-title">👤 Stakeholders</h1>
-    <p class="ih-sub">Add the people who get a digest email when a high-severity alert fires (max one per 30 min)</p>
-  </div>
-  <div id="stakeholdersWrap" style="padding:24px 28px"></div>
-</div>
 
-<div class="view hidden" id="view-kpi-tracker">
-  <div class="view-header intel-header">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> KPI Tracker</div>
-          <h2 class="view-title">KPI Performance Tracker</h2>
-          <p class="view-sub">Live status of every marketing KPI — achieved, at risk, and gap analysis with AI explanations</p>
-        </div>
-        <div class="vh-actions">
-          <button class="btn-secondary" onclick="buildKPITracker()">↻ Refresh</button>
-          <button class="btn-primary" id="runKpiAnalysisBtn" onclick="window._runKPIAnalysis(this)" style="white-space:nowrap">🔍 Run KPI Analysis</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="kpiTrackerWrap" style="padding-top:28px;padding-bottom:60px"></div>
-</div>
+
+
+
+
+
 
 <script src="/data.js"></script>
 <!-- ─────────────────────────────────────────────────────────────────
@@ -3566,122 +1710,22 @@
 </div>
 
 <!-- ATTRIBUTION & ROI VIEW -->
-<div class="view hidden" id="view-attribution">
-  <div class="view-header" style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#C7D2FE"><span class="bc-group" style="color:rgba(199,210,254,.75)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Attribution &amp; ROI</div>
-          <h2 class="view-title">Attribution &amp; ROI Dashboard</h2>
-          <p class="view-sub">Unify Meta, Google, and TikTok ad spend with Amplitude/PostHog conversion data — pick an attribution model, plug in your AOV, and see exactly which channels are paying back.</p>
-        </div>
-        <div class="vh-actions" style="gap:8px">
-          <select id="attrDays" onchange="loadAttribution()" style="padding:9px 12px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:0.85rem;font-weight:600">
-            <option value="7">Last 7 days</option>
-            <option value="30" selected>Last 30 days</option>
-            <option value="90">Last 90 days</option>
-          </select>
-          <select id="attrModel" onchange="loadAttribution()" style="padding:9px 12px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:0.85rem;font-weight:600">
-            <option value="last-click" selected>Last-Click</option>
-            <option value="linear">Linear</option>
-            <option value="time-decay">Time-Decay</option>
-            <option value="position-based">Position-Based</option>
-          </select>
-          <input id="attrAOV" type="number" min="0" step="1" placeholder="AOV $" value="" style="width:90px;padding:9px 10px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:0.85rem;font-weight:600" onchange="loadAttribution()">
-          <button class="btn-refresh-solid" style="color:#4338CA" onclick="loadAttribution()">↻ Refresh</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" style="padding-top:18px">
-    <div id="attrTabs" style="display:flex;gap:8px;border-bottom:2px solid #E5E7EB;padding-bottom:0">
-      <button class="attr-tab attr-tab-active" data-attr-tab="channels" onclick="switchAttributionTab('channels')" title="Per-channel ROAS, ROI, CAC and reallocation recommendations across the chosen attribution model.">📊 Channels</button>
-      <button class="attr-tab" data-attr-tab="cohorts" onclick="switchAttributionTab('cohorts')" title="Weekly acquisition cohorts — see how spend and conversions move week over week, with per-channel breakdown.">🗓️ Cohorts</button>
-      <button class="attr-tab" data-attr-tab="forecast" onclick="switchAttributionTab('forecast')" title="Linear+EMA projection of the next 30 days of spend, conversions, ROAS and CAC based on your trailing daily trend.">🔮 Forecast</button>
-    </div>
-  </div>
-  <div class="container" id="attributionWrap" style="padding-top:18px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- LOOKALIKE AUDIENCE BUILDER VIEW -->
-<div class="view hidden" id="view-lookalike">
-  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#1E40AF 50%,#0EA5E9 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#BAE6FD"><span class="bc-group" style="color:rgba(186,230,253,.75)">Reach</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Lookalike Audiences</div>
-          <h2 class="view-title">Lookalike Audience Builder</h2>
-          <p class="view-sub">Turn competitor signals or seed audience descriptions into platform-ready Meta Lookalike, Google Customer Match, and TikTok LLA audience specs you can upload directly.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="lookalikeWrap" style="padding-top:24px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- CONTENT OPTIMISATION SCORER VIEW -->
-<div class="view hidden" id="view-contentscorer">
-  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#7C3AED 50%,#22D3EE 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#E9D5FF"><span class="bc-group" style="color:rgba(233,213,255,.75)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Content Scorer</div>
-          <h2 class="view-title">Content Optimisation Scorer</h2>
-          <p class="view-sub">Pulls the live top-10 SERP for any keyword, scrapes what's already winning, and scores your page 0–100 against the SERP-winning average — with concrete recommendations to close the gap.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="contentScorerWrap" style="padding-top:24px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- MENTION TRACKER VIEW (Feature 1) -->
-<div class="view hidden" id="view-mentions">
-  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#1E40AF 50%,#06B6D4 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#BAE6FD"><span class="bc-group" style="color:rgba(186,230,253,.75)">Analyse</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Mention Tracker</div>
-          <h2 class="view-title">Brand Mentions &amp; Sentiment</h2>
-          <p class="view-sub">Live Google News coverage for your brand and competitors with AI-classified sentiment, source breakdown, and a daily share-of-voice timeline.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="mentionsWrap" style="padding-top:24px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- CONTENT GAPS VIEW (Feature 3) -->
-<div class="view hidden" id="view-content-gaps">
-  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#9333EA 50%,#F59E0B 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#FEF3C7"><span class="bc-group" style="color:rgba(254,243,199,.75)">Analyse</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Content Gaps</div>
-          <h2 class="view-title">AI Content-Gap Ideation</h2>
-          <p class="view-sub">Reads sitemaps for your domain and your competitors, then asks AI to find the topics they cover that you don't — with a suggested angle for each gap.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="contentGapsWrap" style="padding-top:24px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- CROSS-CHANNEL REPORT VIEW (Feature 4) -->
-<div class="view hidden" id="view-cross-channel">
-  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#0891B2 50%,#10B981 100%)">
-    <div class="container">
-      <div class="vh-inner">
-        <div>
-          <div class="breadcrumb" style="color:#A7F3D0"><span class="bc-group" style="color:rgba(167,243,208,.75)">Manage</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Cross-Channel Report</div>
-          <h2 class="view-title">Cross-Channel Report</h2>
-          <p class="view-sub">Unified view across Meta, Google Ads, TikTok, organic search, and earned media — with an AI-written executive summary.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="container" id="crossChannelWrap" style="padding-top:24px;padding-bottom:60px"></div>
-</div>
+
 
 <!-- ALERTS PANEL (Feature 2 — slides out from top-right when bell clicked) -->
 <div id="alertsPanel" class="alerts-panel hidden" role="dialog" aria-label="Real-Time Alerts">
@@ -3707,45 +1751,23 @@
      load AFTER app.js. The server auto-appends a content-hash ?v= to every local
      .js/.css reference at serve time (see services/static_versioning), so editing
      one feature only re-downloads that file — with no manual version bump. -->
-<script src="/public/js/ig_settings.js?v=20260606SET1"></script>
-<script src="/public/js/ig_content_pro.js?v=20260604PRO1"></script>
-<script src="/public/js/ig_brand24_suite.js?v=20260701BIS1"></script>
-<script src="/public/js/ig_creative_suite.js?v=20260612CS3"></script>
-<script src="/public/js/ig_design_studio.js?v=20260605DS1"></script>
-<script src="/public/js/ig_creator_suite.js?v=20260606CS1"></script>
-<script src="/public/js/ig_studio.js"></script>
-<script src="/public/js/ig_journey_omnichannel.js"></script>
 <script src="/public/js/ig_manage_pack.js?v=20260611MP2"></script>
-<script src="/public/js/ig_seo.js"></script>
 <script src="/public/js/ig_onboarding.js"></script>
 <script src="/public/js/ig_navchrome.js"></script>
 <script src="/public/js/ig_navperms.js?v=20260623NP2"></script>
-<script src="/public/js/ig_true_roas.js"></script>
-<script src="/public/js/ig_content_traffic.js"></script>
-<script src="/public/js/ig_reach_automation.js"></script>
-<script src="/public/js/ig_drip_serp.js"></script>
 <script src="/public/js/ig_results_export.js"></script>
-<script src="/public/js/ig_csuite.js"></script>
 <script src="/public/js/ig_manual_comp_autoseo.js"></script>
 <script src="/public/js/ig_mentions_gaps.js?v=20260604MG1"></script>
 <script src="/public/js/ig_content_social.js?v=20260604CSO1"></script>
 <script src="/public/js/ig_attribution_scorer.js?v=20260604AS1"></script>
 <script src="/public/js/ig_intel_pack_a.js?v=20260609IPA4"></script>
-<script src="/public/js/ig_apify.js?v=20260624AP3"></script>
-<script src="/public/js/ig_growth_flywheel.js?v=20260605GF1"></script>
-<script src="/public/js/ig_seo_roadmap.js?v=20260605SR1"></script>
 <script src="/public/js/ig_intel_pack_b.js?v=20260609IPB2"></script>
-<script src="/public/js/ig_research_tools.js?v=20260610RT2"></script>
 <script src="/public/js/ig_plan_view.js?v=20260610PV3"></script>
 <script src="/public/js/ig_search_assist.js?v=20260612SA1"></script>
-<script src="/public/js/ig_compete.js?v=20260612CMP2"></script>
-<script src="/public/js/ig_intelligence_tools.js?v=20260612IT1"></script>
 <script src="/public/js/ig_advanced_features.js?v=20260612AF1"></script>
 <script src="/public/js/ig_moat_features.js?v=20260612MF1"></script>
 <script src="/public/js/ig_strategic_features.js?v=20260613SF1"></script>
 <script src="/public/js/ig_agentic_suite.js?v=20260613AS1"></script>
-<script src="/public/js/ig_customer_engagement.js?v=20260626CE3"></script>
-<script src="/public/js/ig_core_views.js?v=20260609CV2"></script>
 <script src="/ig_field_enhancer.js?v=20260629FE2"></script>
 <script src="/ig_diag.js"></script>
 <script>
@@ -3769,45 +1791,45 @@
 }());
 </script>
 <!-- AI TEAM VIEWS -->
-<div class="view hidden" id="view-ai-team"></div>
-<div class="view hidden" id="view-finance-officer"></div>
-<div class="view hidden" id="view-ops-officer"></div>
-<div class="view hidden" id="view-war-room"></div>
-<div class="view hidden" id="view-biz-scanner"></div>
-<div class="view hidden" id="view-revenue-forecast"></div>
-<div class="view hidden" id="view-digital-twin"></div>
-<div class="view hidden" id="view-campaign-composer"></div>
-<div class="view hidden" id="view-geofencing"></div>
-<div class="view hidden" id="view-local-listings"></div>
-<div class="view hidden" id="view-review-automation"></div>
-<div class="view active" id="view-marketing-brief"></div>
-<div class="view hidden" id="view-acquisition-engine"></div>
-<div class="view hidden" id="view-investor-mode"></div>
-<div class="view hidden" id="view-marketplace"></div>
-<div class="view hidden" id="view-auto-operator"></div>
-<div class="view hidden" id="view-benchmarks"></div>
-<div class="view hidden" id="view-mmm"></div>
-<div class="view hidden" id="view-brand-safety"></div>
-<div class="view hidden" id="view-safe-agent"></div>
-<div class="view hidden" id="view-data-provenance"></div>
-<div class="view hidden" id="view-vertical-playbooks"></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <div class="view hidden" id="view-decision-engine"></div>
 <div class="view hidden" id="view-experiment-suite"></div>
-<div class="view hidden" id="view-identity-spine"></div>
-<div class="view hidden" id="view-surveys"></div>
-<div class="view hidden" id="view-email-designer"></div>
-<div class="view hidden" id="view-mcp-server"></div>
-<div class="view hidden" id="view-smart-send"></div>
-<div class="view hidden" id="view-ai-segments"></div>
-<div class="view hidden" id="view-audience-ad-sync"></div>
-<div class="view hidden" id="view-translate"></div>
-<div class="view hidden" id="view-inbox-monitor"></div>
+
+
+
+
+
+
+
+
+
 <div class="view hidden" id="view-approval-workflows"></div>
 <div class="view hidden" id="view-ai-answer-sov"></div>
 <div class="view hidden" id="view-revenue-intel"></div>
 <div class="view hidden" id="view-data-products"></div>
 <div class="view hidden" id="view-agent-swarm"></div>
-<div class="view hidden" id="view-self-healing"></div>
+
 <div class="view hidden" id="view-budget-arbitrage"></div>
 <div class="view hidden" id="view-ss-events"></div>
 <div class="view hidden" id="view-ctv"></div>

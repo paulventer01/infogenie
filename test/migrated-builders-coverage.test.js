@@ -93,9 +93,9 @@ function migratedViewIds() {
 // The dispatch is a run of `if (viewId === 'x') { … buildX() … }` blocks. For
 // each block we pick the builder it invokes, in priority order:
 //   _lazyBuild('x', BUILDER)  >  window.BUILDER && …  >  first build/init/render
-// 'dashboard' is special-cased: its panel is rendered by buildDashboard from the
-// background pre-build queue, while its only dispatch reference is a secondary
-// widget — so map it to the real builder the safety suite also covers.
+// Views whose legacy modules were deleted after the React port (dashboard,
+// competitors, settings, …) simply no longer appear in the dispatch — their
+// panels are rendered by React and there is no legacy builder left to test.
 function dispatchBuilderMap() {
   const src = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   const navStart = src.indexOf('function navigateTo(');
@@ -118,7 +118,6 @@ function dispatchBuilderMap() {
     else if ((mm = /\b((?:build|init|render)\w+)\s*\(/.exec(seg))) fn = mm[1];
     if (fn && !map[hits[i].view]) map[hits[i].view] = fn;
   }
-  map.dashboard = 'buildDashboard';
   return map;
 }
 
@@ -173,7 +172,7 @@ function makeHarness() {
 // stays tight. The staleness check below will fail if this value drifts more
 // than MAX_BUILDER_FLOOR_DRIFT below the live resolved count, printing the exact
 // value you need to set it to. ────────────────────────────────────────────────
-const MIN_COVERED_BUILDERS = 185;
+const MIN_COVERED_BUILDERS = 105;
 
 // Maximum allowed gap between MIN_COVERED_BUILDERS and the live resolved count
 // before the staleness check fires. Keeps the floor within ~5 builders of

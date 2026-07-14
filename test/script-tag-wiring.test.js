@@ -73,7 +73,7 @@ test('every declared load-order constraint holds in index.html', () => {
 test('the load-order check actually sees the real script order (no no-op pass)', () => {
   const order = scriptLoadOrder();
   assert.ok(order.includes('app.js'), 'expected app.js in the index.html script order');
-  assert.ok(order.includes('ig_settings.js'), 'expected ig_settings.js in the index.html script order');
+  assert.ok(order.includes('ig_advanced_features.js'), 'expected ig_advanced_features.js in the index.html script order');
   assert.ok(getLoadOrderConstraints().length > 0, 'expected at least one load-order constraint to be discovered');
 });
 
@@ -87,13 +87,18 @@ test('the scanner discovers the cross-file load-time wraps and resolves their de
   const find = (dependent, symbol) =>
     constraints.find((c) => c.dependent === dependent && c.symbol === symbol);
 
-  const wp = find('ig_content_pro.js', 'window.buildSettings');
-  assert.ok(wp, 'expected ig_content_pro.js → window.buildSettings to be discovered');
-  assert.equal(wp.predecessor, 'ig_settings.js', 'buildSettings is defined in ig_settings.js');
-
-  const cc = find('ig_creative_suite.js', 'window._ccGo');
-  assert.ok(cc, 'expected ig_creative_suite.js → window._ccGo to be discovered');
-  assert.equal(cc.predecessor, 'app.js', '_ccGo is defined in app.js');
+  // The surviving cross-file wraps are the navigateTo decorator chain: each of
+  // these modules re-wraps window.navigateTo (defined in app.js) at load time.
+  for (const dep of [
+    'ig_advanced_features.js',
+    'ig_agentic_suite.js',
+    'ig_moat_features.js',
+    'ig_strategic_features.js',
+  ]) {
+    const c = find(dep, 'window.navigateTo');
+    assert.ok(c, `expected ${dep} → window.navigateTo to be discovered`);
+    assert.equal(c.predecessor, 'app.js', 'navigateTo is defined in app.js');
+  }
 
   for (const c of constraints) {
     assert.equal(c.source, 'discovered', `constraint for ${c.dependent} should be auto-discovered`);
@@ -147,30 +152,27 @@ test('analyzeModuleSource classifies wrap vs. define vs. sentinel vs. handler', 
 });
 
 test('an out-of-order index.html is detected (negative control)', () => {
-  // Synthesize HTML where ig_content_pro.js loads BEFORE ig_settings.js.
+  // Synthesize HTML where ig_advanced_features.js loads BEFORE app.js (its
+  // navigateTo predecessor).
   const html = [
+    '<script src="/public/js/ig_advanced_features.js?v=1"></script>',
     '<script src="/app.js"></script>',
-    '<script src="/public/js/ig_creative_suite.js"></script>',
-    '<script src="/public/js/ig_content_pro.js?v=1"></script>',
-    '<script src="/public/js/ig_settings.js?v=1"></script>',
   ].join('\n');
   const { violations } = checkLoadOrder(html);
   assert.ok(
-    violations.some((v) => v.dependent === 'ig_content_pro.js' && v.kind === 'out-of-order'),
-    'expected an out-of-order violation for ig_content_pro.js loading before ig_settings.js',
+    violations.some((v) => v.dependent === 'ig_advanced_features.js' && v.kind === 'out-of-order'),
+    'expected an out-of-order violation for ig_advanced_features.js loading before app.js',
   );
 });
 
 test('a missing predecessor is detected (negative control)', () => {
-  // ig_content_pro.js is wired but ig_settings.js is absent entirely.
+  // ig_advanced_features.js is wired but app.js is absent entirely.
   const html = [
-    '<script src="/app.js"></script>',
-    '<script src="/public/js/ig_creative_suite.js"></script>',
-    '<script src="/public/js/ig_content_pro.js?v=1"></script>',
+    '<script src="/public/js/ig_advanced_features.js?v=1"></script>',
   ].join('\n');
   const { violations } = checkLoadOrder(html);
   assert.ok(
-    violations.some((v) => v.dependent === 'ig_content_pro.js' && v.kind === 'missing'),
-    'expected a missing-predecessor violation when ig_settings.js is absent',
+    violations.some((v) => v.dependent === 'ig_advanced_features.js' && v.kind === 'missing'),
+    'expected a missing-predecessor violation when app.js is absent',
   );
 });

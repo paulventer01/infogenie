@@ -322,6 +322,10 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   // (decision-engine / experiment-suite / approval-workflows are still legacy),
   // so the module must keep loading — suppression is div-strip only.
   { view: "identity-spine",   legacyModule: null },
+  // React-only additions (never had a legacy panel or module).
+  { view: "marketing-okr",      legacyModule: null },
+  { view: "action-queue",       legacyModule: null },
+  { view: "ad-comment-monitor", legacyModule: null },
 ];
 
 /** Set of view ids now rendered by React. */

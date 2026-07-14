@@ -3039,15 +3039,12 @@ function navigateTo(viewId, updateActive = true) {
       // Leave marker false so a future navigation can retry
     }
   };
-  if (viewId === 'competitors')  _lazyBuild('competitors',  buildCompetitors);
-  if (viewId === 'audience')     _lazyBuild('audience',     buildAudience);
-  if (viewId === 'creative')     _lazyBuild('creative',     buildCreative);
-  if (viewId === 'intelligence') _lazyBuild('intelligence', buildIntelligence);
-  if (viewId === 'battleplan')   _lazyBuild('battleplan',   buildBattlePlan);
+  if (viewId === 'competitors')  _lazyBuild('competitors',  window.buildCompetitors);
+  if (viewId === 'audience')     _lazyBuild('audience',     window.buildAudience);
+  if (viewId === 'creative')     _lazyBuild('creative',     window.buildCreative);
+  if (viewId === 'intelligence') _lazyBuild('intelligence', window.buildIntelligence);
+  if (viewId === 'battleplan')   _lazyBuild('battleplan',   window.buildBattlePlan);
 
-  if (viewId === 'settings') {
-    try { buildSettings(); } catch(e) { console.warn('buildSettings error:', e); }
-  }
   if (viewId === 'campaigns') {
     try { buildCampaigns(); } catch(e) { console.warn('buildCampaigns error:', e); }
   }
@@ -3063,18 +3060,6 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'social') {
     try { buildSocialCalendar(); } catch(e) { console.warn('buildSocialCalendar error:', e); }
   }
-  if (viewId === 'icp-studio') {
-    try { buildICPStudio(); } catch(e) { console.warn('buildICPStudio error:', e); }
-  }
-  if (viewId === 'studio')       { try { buildStudio();       } catch(e) { console.warn('buildStudio error:', e); } }
-  if (viewId === 'whatsapp')     { try { buildWhatsApp();     } catch(e) { console.warn('buildWhatsApp error:', e); } }
-  if (viewId === 'voice-caller') { try { buildVoiceCaller();  } catch(e) { console.warn('buildVoiceCaller error:', e); } }
-  if (viewId === 'bookings')     { try { buildBookings();     } catch(e) { console.warn('buildBookings error:', e); } }
-  if (viewId === 'site-builder') { try { buildSiteBuilder();  } catch(e) { console.warn('buildSiteBuilder error:', e); } }
-  if (viewId === 'linksell')     { try { buildLinksell();     } catch(e) { console.warn('buildLinksell error:', e); } }
-  if (viewId === 'journey-builder')  { try { window.buildJourneyBuilder && window.buildJourneyBuilder(); }  catch(e) { console.warn('buildJourneyBuilder error:', e); } }
-  if (viewId === 'signal-triggers')  { try { window.buildSignalTriggers && window.buildSignalTriggers(); }  catch(e) { console.warn('buildSignalTriggers error:', e); } }
-  if (viewId === 'omnichannel')      { try { window.buildOmnichannel && window.buildOmnichannel(); }      catch(e) { console.warn('buildOmnichannel error:', e); } }
   if (viewId === 'new-project')      { try { window.buildNewProject && window.buildNewProject(); }      catch(e) { console.warn('buildNewProject error:', e); } }
   if (viewId === 'brand-calendar')   { try { window.buildBrandCalendar && window.buildBrandCalendar(); } catch(e) { console.warn('buildBrandCalendar error:', e); } }
   if (viewId === 'brand-foundation') { try { window.buildBrandFoundation && window.buildBrandFoundation(); } catch(e) { console.warn('buildBrandFoundation error:', e); } }
@@ -3086,12 +3071,6 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'ai-providers')     { try { window.buildAiProviders && window.buildAiProviders(); }   catch(e) { console.warn('buildAiProviders error:', e); } }
   if (viewId === 'budget-board')     { try { window.buildBudgetBoard && window.buildBudgetBoard(); }    catch(e) { console.warn('buildBudgetBoard error:', e); } }
   if (viewId === 'web-analytics')    { try { window.buildWebAnalytics && window.buildWebAnalytics(); }   catch(e) { console.warn('buildWebAnalytics error:', e); } }
-  if (viewId === 'intent-map') {
-    try { buildIntentMap(); } catch(e) { console.warn('buildIntentMap error:', e); }
-  }
-  if (viewId === 'keyword-map') {
-    try { buildKeywordMap(); } catch(e) { console.warn('buildKeywordMap error:', e); }
-  }
   if (viewId === 'content') {
     try { buildContent(); } catch(e) { console.warn('buildContent error:', e); }
   }
@@ -3115,13 +3094,6 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'alert-routing')   { try { window.buildAlertRouting && window.buildAlertRouting(); }   catch(e) { console.warn('buildAlertRouting error:', e); } }
   if (viewId === 'backlinks')        { try { window.buildBacklinks && window.buildBacklinks(); }       catch(e) { console.warn('buildBacklinks error:', e); } }
   if (viewId === 'content-calendar')  { try { window.buildContentCalendar && window.buildContentCalendar(); } catch(e) { console.warn('buildContentCalendar error:', e); } }
-  if (viewId === 'content-modes')     { try { window.buildContentModes   && window.buildContentModes();   } catch(e) { console.warn('buildContentModes error:', e); } }
-  if (viewId === 'content-autopilot') { try { window.buildAutopilot      && window.buildAutopilot();      } catch(e) { console.warn('buildAutopilot error:', e); } }
-  if (viewId === 'ad-creative')       { try { window.buildAdCreative     && window.buildAdCreative();     } catch(e) { console.warn('buildAdCreative error:', e); } }
-  if (viewId === 'idea-feed')         { try { window.buildIdeaFeed       && window.buildIdeaFeed();       } catch(e) { console.warn('buildIdeaFeed error:', e); } }
-  if (viewId === 'pitch-deck')        { try { window.buildPitchDeck      && window.buildPitchDeck();      } catch(e) { console.warn('buildPitchDeck error:', e); } }
-  if (viewId === 'accessibility')     { try { window.buildAccessibility  && window.buildAccessibility();  } catch(e) { console.warn('buildAccessibility error:', e); } }
-  if (viewId === 'wireframe')         { try { window.buildWireframe      && window.buildWireframe();      } catch(e) { console.warn('buildWireframe error:', e); } }
   if (viewId === 'podcast-monitor')  { try { window.buildPodcastMonitor && window.buildPodcastMonitor(); }  catch(e) { console.warn('buildPodcastMonitor error:', e); } }
   if (viewId === 'ab-designer')      { try { window.buildAbDesigner && window.buildAbDesigner(); }      catch(e) { console.warn('buildAbDesigner error:', e); } }
   if (viewId === 'voc')              { try { window.buildVoc && window.buildVoc(); }              catch(e) { console.warn('buildVoc error:', e); } }
@@ -3157,16 +3129,6 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'growth-methodology')   { try { window.buildGrowthMethodology && window.buildGrowthMethodology(); } catch(e) { console.warn('buildGrowthMethodology error:', e); } }
   if (viewId === 'headline-tester')      { try { window.buildHeadlineTester && window.buildHeadlineTester(); }       catch(e) { console.warn('buildHeadlineTester error:', e); } }
   // ── Brand Intelligence Suite ──────────────────────────────────────────────
-  if (viewId === 'reputation-score')   { try { window.buildReputationScore && window.buildReputationScore(); }   catch(e) { console.warn('buildReputationScore error:', e); } }
-  if (viewId === 'presence-score')     { try { window.buildPresenceScore && window.buildPresenceScore(); }       catch(e) { console.warn('buildPresenceScore error:', e); } }
-  if (viewId === 'ave')                { try { window.buildAve && window.buildAve(); }                           catch(e) { console.warn('buildAve error:', e); } }
-  if (viewId === 'anomaly-detector')   { try { window.buildAnomalyDetector && window.buildAnomalyDetector(); }   catch(e) { console.warn('buildAnomalyDetector error:', e); } }
-  if (viewId === 'intent-radar')       { try { window.buildIntentRadar && window.buildIntentRadar(); }           catch(e) { console.warn('buildIntentRadar error:', e); } }
-  if (viewId === 'hashtag-tracker')    { try { window.buildHashtagTracker && window.buildHashtagTracker(); }     catch(e) { console.warn('buildHashtagTracker error:', e); } }
-  if (viewId === 'influence-score')    { try { window.buildInfluenceScore && window.buildInfluenceScore(); }     catch(e) { console.warn('buildInfluenceScore error:', e); } }
-  if (viewId === 'project-compare')    { try { window.buildProjectCompare && window.buildProjectCompare(); }     catch(e) { console.warn('buildProjectCompare error:', e); } }
-  if (viewId === 'geo-insights')       { try { window.buildGeoInsights && window.buildGeoInsights(); }           catch(e) { console.warn('buildGeoInsights error:', e); } }
-  if (viewId === 'ugc-discovery')      { try { window.buildUgcDiscovery && window.buildUgcDiscovery(); }         catch(e) { console.warn('buildUgcDiscovery error:', e); } }
   if (viewId === 'review-aggregator')    { try { window.buildReviewAggregator && window.buildReviewAggregator(); }     catch(e) { console.warn('buildReviewAggregator error:', e); } }
   if (viewId === 'churn-scorer')         { try { window.buildChurnScorer && window.buildChurnScorer(); }          catch(e) { console.warn('buildChurnScorer error:', e); } }
   if (viewId === 'twitter-pulse')        { try { window.buildTwitterPulse && window.buildTwitterPulse(); }         catch(e) { console.warn('buildTwitterPulse error:', e); } }
@@ -3177,55 +3139,20 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'quora-mining')         { try { window.buildQuoraMining && window.buildQuoraMining(); }          catch(e) { console.warn('buildQuoraMining error:', e); } }
   if (viewId === 'tiktok-downloader')    { try { window.buildTiktokDownloader && window.buildTiktokDownloader(); }     catch(e) { console.warn('buildTiktokDownloader error:', e); } }
   if (viewId === 'voiceover')            { try { window.buildVoiceover && window.buildVoiceover(); }            catch(e) { console.warn('buildVoiceover error:', e); } }
-  if (viewId === 'seo-auditor')          { try { window.buildSeoAuditor && window.buildSeoAuditor(); }           catch(e) { console.warn('buildSeoAuditor error:', e); } }
-  if (viewId === 'seo-widget')           { try { window.buildSeoWidget && window.buildSeoWidget(); }            catch(e) { console.warn('buildSeoWidget error:', e); } }
-  if (viewId === 'seo-tasks')            { try { window.buildSeoTasks && window.buildSeoTasks(); }             catch(e) { console.warn('buildSeoTasks error:', e); } }
-  if (viewId === 'schema-generator')     { try { window.buildSchemaGenerator && window.buildSchemaGenerator(); }      catch(e) { console.warn('buildSchemaGenerator error:', e); } }
-  if (viewId === 'unified-inbox')        { try { window.buildUnifiedInbox && window.buildUnifiedInbox(); }         catch(e) { console.warn('buildUnifiedInbox error:', e); } }
-  if (viewId === 'conversion-boosters')  { try { window.buildConversionBoosters && window.buildConversionBoosters(); }   catch(e) { console.warn('buildConversionBoosters error:', e); } }
-  if (viewId === 'white-label')          { try { window.buildWhiteLabel && window.buildWhiteLabel(); }           catch(e) { console.warn('buildWhiteLabel error:', e); } }
-  if (viewId === 'bulk-reports')         { try { window.buildBulkReports && window.buildBulkReports(); }          catch(e) { console.warn('buildBulkReports error:', e); } }
-  if (viewId === 'backlink-monitor')     { try { window.buildBacklinkMonitor && window.buildBacklinkMonitor(); }      catch(e) { console.warn('buildBacklinkMonitor error:', e); } }
-  if (viewId === 'true-roas')            { try { window.buildTrueRoas && window.buildTrueRoas(); }             catch(e) { console.warn('buildTrueRoas error:', e); } }
-  if (viewId === 'persona-studio')       { try { window.buildPersonaStudio  && window.buildPersonaStudio();  } catch(e) { console.warn('buildPersonaStudio error:', e); } }
-  if (viewId === 'iroas')                { try { window.buildIroas           && window.buildIroas();           } catch(e) { console.warn('buildIroas error:', e); } }
-  if (viewId === 'agent-goals')          { try { window.buildAgentGoals      && window.buildAgentGoals();      } catch(e) { console.warn('buildAgentGoals error:', e); } }
-  if (viewId === 'ecom-video')           { try { window.buildEcomVideo        && window.buildEcomVideo();        } catch(e) { console.warn('buildEcomVideo error:', e); } }
-  if (viewId === 'brand-deals')          { try { window.buildBrandDeals      && window.buildBrandDeals();      } catch(e) { console.warn('buildBrandDeals error:', e); } }
-  if (viewId === 'organic-social')       { try { window.buildOrganic         && window.buildOrganic();          } catch(e) { console.warn('buildOrganic error:', e); } try { window._orgAutoFillKeyword && window._orgAutoFillKeyword(); } catch(e) {} }
   if (viewId === 'local-leads')          { navigateTo('lead-gen'); return; }
-  if (viewId === 'flywheel')             { try { window.buildFlywheel        && window.buildFlywheel();         } catch(e) { console.warn('buildFlywheel error:', e); } }
-  if (viewId === 'seo-roadmap')          { try { window.buildSeoRoadmap      && window.buildSeoRoadmap();       } catch(e) { console.warn('buildSeoRoadmap error:', e); } }
   if (viewId === 'roadmap')              { try { window.buildRoadmap && window.buildRoadmap(); }              catch(e) { console.warn('buildRoadmap error:', e); } }
   if (viewId === 'carousel')             { try { window.buildCarousel && window.buildCarousel(); }             catch(e) { console.warn('buildCarousel error:', e); } }
-  if (viewId === 'seo-crawler')          { try { window.buildSeoCrawler && window.buildSeoCrawler(); }           catch(e) { console.warn('buildSeoCrawler error:', e); } }
-  if (viewId === 'geo-audit')            { try { window.buildGeoAudit && window.buildGeoAudit(); }             catch(e) { console.warn('buildGeoAudit error:', e); } }
   if (viewId === 'llm-scan')             { try { window.buildLlmScan && window.buildLlmScan(); }              catch(e) { console.warn('buildLlmScan error:', e); } }
-  if (viewId === 'local-seo')            { try { window.buildLocalSeo && window.buildLocalSeo(); }             catch(e) { console.warn('buildLocalSeo error:', e); } }
-  if (viewId === 'social-tags')          { try { window.buildSocialTags && window.buildSocialTags(); }           catch(e) { console.warn('buildSocialTags error:', e); } }
   if (viewId === 'social-analytics')     { try { window.buildSocialAnalytics && window.buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
   if (viewId === 'keyword-explorer')     { try { window.buildKeywordExplorer && window.buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
-  if (viewId === 'amplitude-agents') {
-    try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
-  }
   if (viewId === 'ai-audit-suite') {
     try { buildAiAuditSuite(); } catch(e) { console.warn('buildAiAuditSuite error:', e); }
   }
-  if (viewId === 'content-score')     { try { window.buildContentScore && window.buildContentScore(); }     catch(e) { console.warn('buildContentScore error:', e); } }
-  if (viewId === 'ai-traffic')        { try { window.buildAiTrafficMonitor && window.buildAiTrafficMonitor(); } catch(e) { console.warn('buildAiTrafficMonitor error:', e); } }
   if (viewId === 'maps-intel')        { try { window.buildMapsIntel && window.buildMapsIntel(); }             catch(e) { console.warn('buildMapsIntel error:', e); } }
-  if (viewId === 'change-monitor')      { try { window.buildChangeMonitor && window.buildChangeMonitor(); }       catch(e) { console.warn('buildChangeMonitor error:', e); } }
-  if (viewId === 'web-extractor')       { try { window.buildWebExtractor && window.buildWebExtractor(); }         catch(e) { console.warn('buildWebExtractor error:', e); } }
-  if (viewId === 'recipe-scraper')      { try { window.buildRecipeScraper && window.buildRecipeScraper(); }       catch(e) { console.warn('buildRecipeScraper error:', e); } }
-  if (viewId === 'dataset-market')      { try { window.buildDatasetMarket && window.buildDatasetMarket(); }       catch(e) { console.warn('buildDatasetMarket error:', e); } }
-  if (viewId === 'resilient-tracker')   { try { window.buildResilientTracker && window.buildResilientTracker(); } catch(e) { console.warn('buildResilientTracker error:', e); } }
-  if (viewId === 'conversion-recovery') { try { window.buildConversionRecovery && window.buildConversionRecovery(); } catch(e) { console.warn('buildConversionRecovery error:', e); } }
   if (viewId === 'lead-aggregator')     { navigateTo('lead-gen'); return; }
   if (viewId === 'acquisition-engine')  { navigateTo('lead-gen'); return; }
-  if (viewId === 'model-compare')       { try { window.buildModelCompare && window.buildModelCompare(); }         catch(e) { console.warn('buildModelCompare error:', e); } }
   if (viewId === 'creative-intel')   { try { window.buildCreativeIntel && window.buildCreativeIntel(); }      catch(e) { console.warn('buildCreativeIntel error:', e); } }
   if (viewId === 'hashtag-intel')     { try { window.buildHashtagIntel && window.buildHashtagIntel(); }       catch(e) { console.warn('buildHashtagIntel error:', e); } }
-  if (viewId === 'vis-leaderboard')   { try { window.buildVisLeaderboard && window.buildVisLeaderboard(); }  catch(e) { console.warn('buildVisLeaderboard error:', e); } }
   if (viewId === 'post-performance')  { try { window.buildPostPerformance && window.buildPostPerformance(); } catch(e) { console.warn('buildPostPerformance error:', e); } }
   if (viewId === 'email-broadcast')   { try { window.buildEmailBroadcast && window.buildEmailBroadcast(); }  catch(e) { console.warn('buildEmailBroadcast error:', e); } }
   if (viewId === 'hunter')            { try { window.buildHunter && window.buildHunter(); }                  catch(e) { console.warn('buildHunter error:', e); } }
@@ -3239,32 +3166,11 @@ function navigateTo(viewId, updateActive = true) {
     try { buildTechnicalSuite(); } catch(e) { console.warn('buildTechnicalSuite error:', e); }
   }
   // (battleplan now handled by _lazyBuild above)
-  if (viewId === 'reddit') {
-    try { buildRedditIntel(); } catch(e) { console.warn('buildRedditIntel error:', e); }
-  }
-  if (viewId === 'serp') {
-    try { initSerpView(); } catch(e) { console.warn('initSerpView error:', e); }
-  }
-  if (viewId === 'brand-assets') {
-    try { initBrandAssets(); } catch(e) { console.warn('initBrandAssets error:', e); }
-  }
   if (viewId === 'kpi-tracker') {
     Promise.resolve(buildKPITracker()).catch(e => console.warn('buildKPITracker error:', e));
   }
-  if (viewId === 'csuite') {
-    try { initCsuite(); } catch(e) { console.warn('initCsuite error:', e); }
-  }
-  if (viewId === 'action-center') {
-    try { initActionCenter(); } catch(e) { console.warn('initActionCenter error:', e); }
-  }
   if (viewId === 'reengage') {
     try { window.buildReengage && window.buildReengage(); } catch(e) { console.warn('buildReengage error:', e); }
-  }
-  if (viewId === 'automations') {
-    try { buildAutomations(); } catch(e) { console.warn('buildAutomations error:', e); }
-  }
-  if (viewId === 'agency') {
-    try { buildAgency(); } catch(e) { console.warn('buildAgency error:', e); }
   }
   if (viewId === 'autoseo') {
     try { buildAutoSEO(); } catch(e) { console.warn('buildAutoSEO error:', e); }
@@ -4146,6 +4052,8 @@ async function runAnalysis(url, country, industryOverride) {
   // wired into navigateTo as a safety net — if the user clicks a tab before
   // the background queue reaches it, it builds on demand instead.
   const _runBuilder = (name, fn, tag) => {
+    // Builder ported to React (legacy module deleted) — nothing to run here.
+    if (typeof fn !== 'function') return true;
     const t0 = performance.now();
     try {
       window.IGDiag && IGDiag.log(name + ': start' + (tag ? ' (' + tag + ')' : ''));
@@ -4159,7 +4067,7 @@ async function runAnalysis(url, country, industryOverride) {
     }
   };
   // 1. Render the dashboard NOW so the user sees results immediately.
-  _runBuilder('buildDashboard', buildDashboard);
+  _runBuilder('buildDashboard', window.buildDashboard);
 
   // 2. Mark all other top-level views as "needs build" so navigateTo will
   //    build them on first click if the background queue hasn't reached them.
@@ -4175,11 +4083,11 @@ async function runAnalysis(url, country, industryOverride) {
   //    seeing right after buildIntelligence completed.
   const _bgBuild = async () => {
     const queue = [
-      ['buildCompetitors',  buildCompetitors,  'competitors'],
-      ['buildAudience',     buildAudience,     'audience'],
-      ['buildCreative',     buildCreative,     'creative'],
-      ['buildIntelligence', buildIntelligence, 'intelligence'],
-      ['buildBattlePlan',   buildBattlePlan,   'battleplan'],
+      ['buildCompetitors',  window.buildCompetitors,  'competitors'],
+      ['buildAudience',     window.buildAudience,     'audience'],
+      ['buildCreative',     window.buildCreative,     'creative'],
+      ['buildIntelligence', window.buildIntelligence, 'intelligence'],
+      ['buildBattlePlan',   window.buildBattlePlan,   'battleplan'],
     ];
     for (const [name, fn, viewId] of queue) {
       if (window._igViewBuilt[viewId]) continue; // user already triggered it
@@ -4287,9 +4195,10 @@ async function enrichWithRealCompetitorData(domain, industryKey, country) {
 
     if (enriched > 0) {
       console.log(`Enriched ${enriched} competitors with real DataForSEO data`);
-      // Re-render competitors view with real data badges
-      buildCompetitors();
-      buildDashboard();
+      // Re-render competitors view with real data badges (legacy builders —
+      // deleted once the views moved to React, so guard via window.*)
+      window.buildCompetitors && window.buildCompetitors();
+      window.buildDashboard && window.buildDashboard();
     }
 
     // Update your own domain metrics in dashboard if available
@@ -4355,7 +4264,7 @@ async function enrichCompetitorKwAudiences(domain, industryKey, country) {
         .flatMap(c => c.topKeywords || [])
         .filter((k, i, a) => k && a.indexOf(k) === i)
         .slice(0, 30);
-      buildCompetitors();
+      window.buildCompetitors && window.buildCompetitors();
     }
   } catch (err) {
     console.warn('Competitor keyword/audience enrichment failed (non-fatal):', err.message);
@@ -9340,7 +9249,7 @@ function showToast(msg) {
 // ===== EVENT LISTENERS =====
 document.addEventListener('DOMContentLoaded', () => {
   navigateTo('home');
-  try { buildIntelligence(); } catch(e) { console.warn('buildIntelligence error:', e); }
+  try { window.buildIntelligence && window.buildIntelligence(); } catch(e) { console.warn('buildIntelligence error:', e); }
 
   // Event delegation — attack & signal buttons rendered inside dynamic innerHTML
   document.addEventListener('click', e => {
@@ -9505,7 +9414,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('generateMoreBtn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
     setTimeout(() => {
-      buildCreative();
+      window.buildCreative && window.buildCreative();
       if (btn) { btn.disabled = false; btn.textContent = '✨ Generate More Creatives'; }
       showToast(`✅ Batch ${batchNum} ready — ${6} new creative variants generated`);
     }, 1600);
@@ -9536,7 +9445,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Exclusive modal — close on backdrop click
   document.getElementById('exclusiveModal').addEventListener('click', e => {
-    if (e.target === document.getElementById('exclusiveModal')) closeExclusiveModal();
+    if (e.target === document.getElementById('exclusiveModal')) window.closeExclusiveModal && window.closeExclusiveModal();
   });
 
   // New rich modals — close on backdrop click
@@ -9567,7 +9476,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Docs modal — close on backdrop click
   document.getElementById('docsModal').addEventListener('click', e => {
-    if (e.target === document.getElementById('docsModal')) closeDocsModal();
+    if (e.target === document.getElementById('docsModal')) window.closeDocsModal && window.closeDocsModal();
   });
 
   // Escape key — close whichever modal is open
@@ -9576,9 +9485,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const modals = [
       { id: 'differentiatorModal', close: closeDifferentiatorModal },
       { id: 'attackModal',         close: closeAttackModal         },
-      { id: 'exclusiveModal',      close: closeExclusiveModal      },
+      { id: 'exclusiveModal',      close: () => window.closeExclusiveModal && window.closeExclusiveModal() },
       { id: 'planModal',           close: closePlanModal           },
-      { id: 'docsModal',           close: closeDocsModal           },
+      { id: 'docsModal',           close: () => window.closeDocsModal && window.closeDocsModal() },
       { id: 'launchModal',         close: closeModal               },
     ];
     for (const m of modals) {

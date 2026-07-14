@@ -15,7 +15,7 @@ npm start            # → scripts/start.js
 
 **Dev (Next.js front door — `npm run dev`):**
 
-`scripts/dev.js` spawns Express on internal port **8000** (`EXPRESS_PORT=8000`) and **Next.js (App Router, TS) on port 5000** (the Replit webview). Next owns the new auth pages (`/login`, `/reset-password`, `/accept-invite`) and proxies everything else — the legacy SPA at `/`, all static assets, and the whole `/api/*` surface — back to Express via rewrites in `next.config.ts`. Single same-origin so the `infogenie.sid` cookie keeps working. `npm run build:next` / `npm run lint:next` for the Next layer. Note: `next dev` and `next start` cannot share the `.next` dir, so don't run the dev workflow while exercising the prod launcher locally. The migration is complete: every dashboard view is ported to React (`lib/migratedViews.ts` + `components/features/registry.tsx`), but the legacy vanilla-JS SPA (`index.html`/`app.js`/`public/js/*`) is intentionally kept on disk — Express still serves it behind the cutover until removal is done as a separate cleanup task.
+`scripts/dev.js` spawns Express on internal port **8000** (`EXPRESS_PORT=8000`) and **Next.js (App Router, TS) on port 5000** (the Replit webview). Next owns the new auth pages (`/login`, `/reset-password`, `/accept-invite`) and proxies everything else — the legacy SPA at `/`, all static assets, and the whole `/api/*` surface — back to Express via rewrites in `next.config.ts`. Single same-origin so the `infogenie.sid` cookie keeps working. `npm run build:next` / `npm run lint:next` for the Next layer. Note: `next dev` and `next start` cannot share the `.next` dir, so don't run the dev workflow while exercising the prod launcher locally. The migration is complete: every dashboard view is ported to React (`lib/migratedViews.ts` + `components/features/registry.tsx`). The duplicate legacy code for migrated views has been removed: 22 view-builder modules deleted from `public/js/` (17 shared/chrome modules remain), 228 migrated `#view-*` divs stripped from `index.html` (23 remain, incl. `view-home`), and their dead dispatch blocks deleted from `app.js` (surviving bare builder refs are guarded with `window.buildX && …`). The legacy shell (`index.html`/`app.js` + surviving modules) still hosts the not-yet-ported chrome and legacy-only panels.
 
 ## Lint
 
@@ -41,7 +41,7 @@ Runs `lint:fabrication` (AI-placeholder markers) **and** `lint:css` (both CSS ch
 |---|---|
 | `index.html` | SPA entry point |
 | `style.css` | All styling |
-| `app.js` | Frontend logic (~23k lines; bulk of feature code extracted into `public/js/` modules — ~36k lines across 31 files) |
+| `app.js` | Frontend logic (~23k lines; shared chrome/utilities — migrated view-builders removed, remainder extracted into 17 `public/js/` modules) |
 | `public/js/<feature>.js` | Extracted per-feature view-builders (plain `<script>` + `window` globals; own `?v=`). See `public/js/README.md` |
 | `data.js` | Industry intelligence + competitor data |
 | `server.js` | Express server + API wiring |

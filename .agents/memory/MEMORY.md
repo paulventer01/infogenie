@@ -21,3 +21,4 @@
 - [View-panel bulk-removal guard](view-panel-count-guard.md) — adding any new #view-* panel can fail the legacy-shell-hydration staleness test; bump MIN_VIEW_PANEL_COUNT to (liveCount-20).
 - [Legacy client/API contract drift](legacy-api-contract-drift.md) — port API contracts from services/*/api.js, not legacy public/js; smoke-test primary actions logged in as an owner.
 - [Next build strictness](nextjs-build-strictness.md) — build:next fails on ESLint errors + tsc across ALL components; new panels must type apiGet/apiPost generics and escape JSX quotes; verify build, not just tsc-on-new-files.
+- [Legacy code removal](legacy-code-removal.md) — migrated legacy builders/divs deleted; guard bare builder refs in app.js; audit module globals before deleting; test floors pinned to post-removal counts.
