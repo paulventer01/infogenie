@@ -162,6 +162,21 @@ const ROUTE_GROUPS = [
   { prefix: '/api/hunter',                    view: 'reach.leads.view',     write: 'reach.leads.manage' },
   { prefix: '/api/brand-deals',               view: 'reach.leads.view',     write: 'reach.leads.manage' },
   { prefix: '/api/apollo',                    view: 'reach.leads.view',     write: 'reach.leads.manage' },
+  // ── Reach — newer outreach surfaces ───────────────────────────────────────
+  // Surveys: in-app survey builder + response analysis (audience insight).
+  { prefix: '/api/surveys',                   view: 'reach.audiences.view', write: 'reach.audiences.edit' },
+  // Email Designer: block-based visual email template builder.
+  { prefix: '/api/email-designer',            view: 'reach.email.view',     write: 'reach.email.send' },
+  // Drip engine (also serves Smart Send `/api/drips/smart-send-time` and
+  // Translate `/api/drips/translate`).
+  { prefix: '/api/drips',                     view: 'reach.email.view',     write: 'reach.email.send' },
+  // Identity Spine: unified first-party customer profiles (import/stitch/merge).
+  { prefix: '/api/identity',                  view: 'reach.leads.view',     write: 'reach.leads.manage' },
+  // MCP server: exposes InfoGenie as an MCP tool server — an integration
+  // surface (tool calls read tenant data), so gate to integrations.manage.
+  { prefix: '/api/mcp',                       view: 'tenant.integrations.manage' },
+  // AI Segments + Audience↔Ad Sync ride on the existing /api/audiences group;
+  // Inbox Monitor rides on /api/deliverability — both already mapped above.
 
   // ── Creator Studio ────────────────────────────────────────────────────────
   { prefix: '/api/studio',                    view: 'creator.view', write: 'creator.edit' },
@@ -382,6 +397,15 @@ const COMPONENT_MATRIX = {
   'brand-deals':          'reach.leads.view',
   'campaign-composer':    'reach.email.view',
   'geofencing':           'reach.audiences.view',
+  'surveys':              'reach.audiences.view',
+  'ai-segments':          'reach.audiences.view',
+  'audience-ad-sync':     'reach.audiences.view',
+  'identity-spine':       'reach.leads.view',
+  'email-designer':       'reach.email.view',
+  'smart-send':           'reach.email.view',
+  'translate':            'reach.email.view',
+  'inbox-monitor':        'reach.email.view',
+  'mcp-server':           'tenant.integrations.manage',
 
   // Creator Studio
   'studio':               'creator.view',
