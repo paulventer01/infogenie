@@ -255,6 +255,8 @@ import AudioSummary from "@/components/features/creator/AudioSummary";
 import SelfHealing from "@/components/features/grow/SelfHealing";
 import CtvStreaming from "@/components/features/grow/CtvStreaming";
 import RcsCampaigns from "@/components/features/reach/RcsCampaigns";
+import EmailWarmup from "@/components/features/reach/EmailWarmup";
+import LinkedInOutreach from "@/components/features/reach/LinkedInOutreach";
 
 export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "seo-roadmap": SeoRoadmap,
@@ -288,6 +290,8 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "self-healing":       SelfHealing,
   "ctv-streaming":      CtvStreaming,
   "rcs-campaigns":      RcsCampaigns,
+  "email-warmup":       EmailWarmup,
+  "linkedin-outreach":  LinkedInOutreach,
   "action-queue": ActionQueue,
   "ad-comment-monitor": AdCommentMonitor,
   "ask-infogenie": AskInfoGenie,

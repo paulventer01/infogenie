@@ -3307,6 +3307,10 @@ const _swarmSchema            = require('./services/agent_swarm/schema');
 const _swarmRouter            = require('./services/agent_swarm/api');
 const _selfHealingSchema      = require('./services/self_healing/schema');
 const _selfHealingRouter      = require('./services/self_healing/api');
+const _emailWarmupSchema      = require('./services/email_warmup/schema');
+const _emailWarmupRouter      = require('./services/email_warmup/api');
+const _linkedinOutreachSchema = require('./services/linkedin_outreach/schema');
+const _linkedinOutreachRouter = require('./services/linkedin_outreach/api');
 const _budgetArbSchema        = require('./services/budget_arbitrage/schema');
 const _budgetArbRouter        = require('./services/budget_arbitrage/api');
 const _ssEventsSchema         = require('./services/ss_events/schema');
@@ -3329,6 +3333,8 @@ const _workflowBuilderSchema  = require('./services/workflow_builder/schema');
 const _workflowBuilderRouter  = require('./services/workflow_builder/api');
 app.use('/api/swarm',              _swarmRouter);
 app.use('/api/self-healing',       _selfHealingRouter);
+app.use('/api/email-warmup',      _emailWarmupRouter);
+app.use('/api/linkedin-outreach', _linkedinOutreachRouter);
 app.use('/api/budget-arbitrage',   _budgetArbRouter);
 app.use('/api/ss-events',          _ssEventsRouter);
 app.use('/api/ctv',                _ctvRouter);
@@ -3368,6 +3374,8 @@ BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _swarmSchema.ensureAgentSwarmSchema();
   await _selfHealingSchema.ensureSelfHealingSchema();
+  await _emailWarmupSchema.ensureEmailWarmupSchema();
+  await _linkedinOutreachSchema.ensureLinkedInOutreachSchema();
   await _budgetArbSchema.ensureBudgetArbitrageSchema();
   await _ssEventsSchema.ensureSsEventsSchema();
   await _ctvSchema.ensureCtvSchema();

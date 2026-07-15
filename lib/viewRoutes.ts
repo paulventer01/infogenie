@@ -346,6 +346,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "accessibility", icon: "♿", label: "Accessibility Audit" },
           { view: "social-tags", icon: "🔖", label: "Social Tags Audit" },
           { view: "deliverability", icon: "✉️", label: "Email Deliverability Audit" },
+          { view: "email-warmup",   icon: "🔥", label: "Email Warm-Up (inbox trust builder)" },
           { view: "seo-tasks", icon: "📋", label: "SEO Task Manager" },
           { view: "seo-widget", icon: "🧩", label: "Embeddable Lead-Gen Widget" },
         ],
@@ -368,7 +369,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "8 · Next-gen messaging",
         items: [
-          { view: "rcs-campaigns", icon: "💬", label: "RCS & Apple Messages (rich interactive messaging)" },
+          { view: "rcs-campaigns",     icon: "💬", label: "RCS & Apple Messages (rich interactive messaging)" },
+          { view: "linkedin-outreach", icon: "💼", label: "LinkedIn Outreach Automation (sequences)" },
         ],
       },
     ],
