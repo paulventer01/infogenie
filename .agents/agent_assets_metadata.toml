@@ -114,3 +114,9 @@ id = "PzPuuCRmflMyAYsACtgE6"
 uri = "file://docs/integrations-reference.md"
 type = "text"
 title = "InfoGenie — Integrations & Tools Reference"
+
+[[outputs]]
+id = "kV_krOby51Gse-SjCi0Qy"
+uri = "file://InfoGenie_MVP_PRD.md"
+type = "text"
+title = "InfoGenie MVP PRD"
