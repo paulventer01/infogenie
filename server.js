@@ -3517,8 +3517,7 @@ const _budgetCapsSchema       = require('./services/budget_caps/schema');
 const _budgetCapsRouter       = require('./services/budget_caps/api');
 const _pixelManagerSchema     = require('./services/pixel_manager/schema');
 const _pixelManagerRouter     = require('./services/pixel_manager/api');
-const _serankingSchema        = require('./services/seranking/schema');
-const _serankingRouter        = require('./services/seranking/api');
+
 const _visitorIntelSchema     = require('./services/visitor_intel/schema');
 const _visitorIntelRouter     = require('./services/visitor_intel/api');
 const _launchComplianceSchema = require('./services/launch_compliance/schema');
@@ -3532,7 +3531,7 @@ app.use('/api/geofencing',        _geofencingRouter);
 app.use('/api/utm-builder',       _utmBuilderRouter);
 app.use('/api/budget-caps',       _budgetCapsRouter);
 app.use('/api/pixel-manager',     _pixelManagerRouter);
-app.use('/api/seranking',         _serankingRouter);
+
 app.use('/api/visitor-intel',     _visitorIntelRouter);
 app.use('/api/launch-compliance', _launchComplianceRouter);
 app.use('/api/post-launch-audit', _postLaunchAuditRouter);
@@ -3548,13 +3547,13 @@ BOOT_TASKS.push(async () => {
       await _utmBuilderSchema.ensureUtmBuilderSchema();
       await _budgetCapsSchema.ensureBudgetCapsSchema();
       await _pixelManagerSchema.ensurePixelManagerSchema();
-      await _serankingSchema.ensureSERankingSchema();
+
       await _visitorIntelSchema.ensureVisitorIntelSchema();
       await _launchComplianceSchema.ensureLaunchComplianceSchema();
       await _postLaunchAuditSchema.ensurePostLaunchAuditSchema();
       const { startBudgetCapsCron } = require('./services/budget_caps/cron');
       startBudgetCapsCron();
-      console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing, utm-builder, budget-caps, pixel-manager, seranking, visitor-intel, launch-compliance, post-launch-audit');
+      console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing, utm-builder, budget-caps, pixel-manager, visitor-intel, launch-compliance, post-launch-audit');
     } else {
       console.log('[gap-features] disabled — DATABASE_URL not set');
     }

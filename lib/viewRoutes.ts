@@ -132,7 +132,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "voc", icon: "🗣️", label: "Voice of Customer" },
           { view: "review-aggregator", icon: "⭐", label: "Review Aggregator" },
           { view: "glassdoor", icon: "🏢", label: "Glassdoor Sentiment" },
-          { view: "seranking", icon: "📊", label: "SE Ranking (rank tracker)" },
+
         ],
       },
       {
