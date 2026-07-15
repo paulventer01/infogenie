@@ -480,6 +480,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "2 · Monitor performance",
         items: [
+          { view: "period-comparison", icon: "📅", label: "Period Comparison (performance vs prior)" },
           { view: "web-analytics", icon: "📈", label: "Web Analytics (acquisition + behaviour)" },
           { view: "ai-traffic", icon: "📡", label: "AI Traffic Monitor" },
           { view: "heatmaps", icon: "🔥", label: "Heatmaps + Session Replay" },
