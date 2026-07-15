@@ -126,3 +126,9 @@ id = "MF30V1D9EMGJW-B024VLq"
 uri = "file://InfoGenie_MVP_Integrations_Specification.md"
 type = "text"
 title = "InfoGenie MVP Integrations Specification"
+
+[[outputs]]
+id = "ZfANrPp3uk9mplXxLvLrL"
+uri = "file://InfoGenie_MVP_Feature_Prioritisation.md"
+type = "text"
+title = "InfoGenie MVP Feature Prioritisation"
