@@ -1,94 +1,183 @@
 # InfoGenie — MVP Integrations Specification
 
-**Version:** 1.0  
+**Version:** 2.0  
 **Date:** July 2026  
-**Companion to:** InfoGenie_MVP_PRD.md  
+**Based on:** InfoGenie_MVP_Feature_Prioritisation.md (50 Must-Have features)  
+**Supersedes:** InfoGenie_MVP_Integrations_Specification v1.0
 
 ---
 
-## Overview
+## Purpose
 
-InfoGenie connects to 25+ external services. This document defines each integration: what it does, how credentials are stored, the authentication model, which features depend on it, rate limits, costs, and failure behaviour.
+This document answers three questions for every integration InfoGenie uses:
 
-### Credential Architecture
+1. **Which of the 50 MVP features does it power?**
+2. **Is it required for MVP launch, or optional?**
+3. **What breaks if it isn't configured?**
 
-InfoGenie has two classes of integrations:
+Integrations are classified into three tiers:
 
-**Platform Keys** — API keys InfoGenie pays for on behalf of all tenants. Stored encrypted in the `platform_api_keys` database table. Managed by the owner/admin via the 🔑 Platform APIs tab. Never exposed to end users. At boot, values are overlaid onto `process.env`.
+| Tier | Meaning |
+|---|---|
+| 🔴 **Day 1 Required** | MVP is broken without it. Block launch until configured. |
+| 🟡 **Day 1 Important** | Several MVP features degrade to templates/AI estimates. Ship without, but configure ASAP. |
+| 🟢 **Post-MVP** | No MVP feature depends on it. Safely skip for launch. |
 
-**User Vault Keys** — Credentials a user brings themselves (their own Google Ads account, their own Shopify store, etc.). Stored in the AES-256-GCM credential vault, scoped per `(user_id, platform)`. Managed by users via Settings → Integrations.
+---
 
-| Key Type | Where stored | Who manages | Example |
+## Credential Architecture
+
+InfoGenie uses two classes of credentials — never mix them up:
+
+**Platform Keys** — API keys InfoGenie pays for on behalf of all tenants. Stored encrypted in the `platform_api_keys` database table. Managed owner/admin-only via the 🔑 Platform APIs admin tab. Overlaid onto `process.env` at boot. End users never see these.
+
+**User Vault Keys** — Credentials the user brings themselves (their own Google Ads account, their own HubSpot portal, etc.). Stored AES-256-GCM per `(user_id, platform)`. Managed by each user via Settings → Integrations.
+
+| Key type | Where stored | Who manages | Examples |
 |---|---|---|---|
-| Platform Key | `platform_api_keys` table (encrypted) | Owner/Admin only | OpenAI, DataForSEO, Firecrawl |
+| Platform Key | `platform_api_keys` table (encrypted) | Owner / Admin | OpenAI, DataForSEO, Firecrawl, Resend |
 | User Vault Key | `credentials` table (AES-256-GCM) | Each user | Google Ads OAuth, Shopify token |
-| OAuth Token | `credentials` table (encrypted) | Auto-stored post-OAuth | Google Workspace, Meta Ads |
+| OAuth Token | `credentials` table (encrypted, auto) | Auto-stored after OAuth | Google Ads, Meta Ads, Google Workspace |
 
 ---
 
-## 1. AI / LLM Providers
+## MVP Integration Matrix
 
-### 1.1 OpenAI
+This table maps every Must-Have feature to the integrations it requires. Use it to decide which keys to configure first.
+
+| Must-Have Feature | Required integrations | Optional (degrades gracefully) |
+|---|---|---|
+| Competitor Profiles | OpenAI, Firecrawl | BuiltWith (tech stack) |
+| Battle Cards | OpenAI, Firecrawl | Perplexity |
+| Ad Library Spy | Meta Access Token | — |
+| Pricing Watcher | Firecrawl, OpenAI | — |
+| Tech Stack Detector | BuiltWith | — |
+| Keyword Explorer | DataForSEO | — |
+| Question Mining | DataForSEO, OpenAI | — |
+| Content Gaps vs Rivals | DataForSEO, OpenAI, Firecrawl | — |
+| SERP Rank Tracker | DataForSEO | — |
+| Backlink Explorer | DataForSEO | — |
+| AI Answer SOV | OpenAI, Anthropic, Perplexity | Gemini |
+| ICP Studio | OpenAI | — |
+| Voice of Customer | OpenAI, Firecrawl | Perplexity |
+| Review Aggregator | OpenAI, Perplexity | Firecrawl |
+| Content AI | OpenAI or Anthropic | Gemini, Cloudflare |
+| Headline Tester | OpenAI | — |
+| Cold Email Writer | OpenAI | Anthropic |
+| Email Personalizer | OpenAI | — |
+| Email Broadcast + Tracking | Resend | — |
+| Video Script Generator | OpenAI or Anthropic | — |
+| Smart Creative Builder | OpenAI | — |
+| Ad Creative from Landing Page | OpenAI | — |
+| Landing Page Builder | OpenAI | — |
+| LP Lead Capture + Webhook | — (internal) | HubSpot |
+| Content Calendar | OpenAI | — |
+| Campaign Strategy | OpenAI | Anthropic |
+| A/B Test Designer | OpenAI | — |
+| Advertise Hub (Meta) | Meta Access Token, Meta Ad Account ID | — |
+| Advertise Hub (Google) | Google Ads Developer Token + per-user OAuth | — |
+| Advertise Hub (TikTok) | TikTok Access Token | TikTok RapidAPI Key |
+| AI Campaign Optimizer | Meta or Google creds (same as above) | — |
+| Import Existing Campaigns | Meta or Google creds | — |
+| Social Publisher | None required (copy/paste schedule mode) | (platform APIs per channel) |
+| Journey Builder | Resend (email actions) | Twilio (SMS), VAPI (voice) |
+| Dynamic Audiences | OpenAI | HubSpot (list mirror) |
+| Omnichannel Composer | Resend (email) | Twilio (SMS), WhatsApp |
+| Lead Generation | Apollo | Perplexity (fallback) |
+| HubSpot CRM Sync | HubSpot Private App Token | — |
+| Conversion Boosters | — (internal) | — |
+| On-Page SEO Audit | DataForSEO, Google PageSpeed | — |
+| Embeddable Audit Widget | DataForSEO, Google PageSpeed | — |
+| GEO Audit | Gemini, Perplexity, OpenAI | Anthropic |
+| Web Vitals Auditor | Google PageSpeed | DataForSEO |
+| Email Deliverability Audit | OpenAI | — |
+| Email Warm-Up | Resend | — |
+| LinkedIn Outreach | Apollo | Perplexity |
+| Content Scorer | DataForSEO, OpenAI, Firecrawl | — |
+| Bulk Content Rewriter | OpenAI or Anthropic | — |
+| AutoSEO Pro | DataForSEO, OpenAI, Firecrawl | — |
+| CRO Lab | OpenAI | — |
+| Meta Ads Insights | Meta Access Token, Meta Ad Account ID | — |
+| Google Ads Insights | Google Ads Developer Token + OAuth | — |
+| Funnel Analytics (JS pixel) | — (internal) | — |
+| True ROAS / Blended CAC | — (internal, uses campaign data) | — |
+| Revenue Forecast Engine | OpenAI | — |
+| Churn-Risk Scorer | OpenAI | — |
+| Today's Marketing Brief | OpenAI | — |
+| Budget Board | — (internal) | — |
+| Weekly Report | Resend, OpenAI | — |
+| White-Label Reports | — (internal, PDF export) | — |
+| InstaReports | OpenAI, Firecrawl, Google PageSpeed, Resend | BuiltWith |
+| Ask InfoGenie | OpenAI | Anthropic |
+| 7-Day Playbook | OpenAI | — |
+| Re-Engage Customers | Resend | Twilio |
+| Signal Triggers | — (internal) | Slack, Resend |
+| Alert Routing | Slack or Resend | — |
+| Workspaces & Team | Resend (invitation emails) | — |
+| Unified Conversation Inbox | Resend | Twilio, WhatsApp |
+
+---
+
+## Section 1 — AI / LLM Providers
+
+### 1.1 OpenAI 🔴 Day 1 Required
 
 | Property | Value |
 |---|---|
 | **Key type** | Platform Key |
 | **Env var** | `AI_INTEGRATIONS_OPENAI_API_KEY` |
-| **Models used** | `gpt-4o` (complex reasoning), `gpt-4o-mini` (bulk operations, fast generation) |
+| **Models used** | `gpt-4o` (complex reasoning), `gpt-4o-mini` (bulk/fast tasks) |
+| **SDK** | `openai` npm package — shared singleton, rebuilt when platform key changes |
 | **Auth** | Bearer token in `Authorization` header |
-| **SDK** | `openai` npm package (shared singleton, rebuilt on platform key change) |
 
-**Used by:** Competitor Profiles, Battle Cards, Campaign Copy, Content Rewriter, InstaReports, Journey Builder, Ask InfoGenie, all AI Suggest fields
+**MVP features powered:**
+Battle Cards · Competitor Profiles · Cold Email Writer · Content AI · Video Script Generator · Smart Creative Builder · Landing Page Builder · Campaign Optimizer · Revenue Forecast Engine · Today's Marketing Brief · Ask InfoGenie · Weekly Report · Journey Builder · InstaReports · AI Answer SOV · and 30+ more
 
-**Request pattern:**
-```
-POST https://api.openai.com/v1/chat/completions
-{
-  model: "gpt-4o-mini",
-  response_format: { type: "json_object" },
-  messages: [{ role: "user", content: prompt }]
-}
-```
+**If missing:** The majority of AI generation features will fail or fall back to template output. Not viable for MVP.
 
-**JSON Gate:** Every AI response is checked for a `_DUMMY` key. If present, the response is rejected and the system falls back to a template. This prevents fabricated/placeholder data from reaching users.
+**JSON Gate (critical):** Every AI response is checked for a `_DUMMY` key before use. Responses containing `_DUMMY` are rejected and trigger template fallback, preventing fabricated placeholder data from reaching users.
 
-**gpt-5 / reasoning models:** Models matching `gpt-5*` require `max_completion_tokens` instead of `max_tokens`, and do not accept `temperature` or `top_p`. A global compatibility layer (`ai_compat.js`) normalises these differences transparently.
+**Failure cascade:** OpenAI → Anthropic → Gemini → template. No feature silently returns empty output — either real data or a clearly-labelled template.
 
-**Rate limits:** RPM varies by tier. InfoGenie enforces per-tenant quotas via `INFOGENIE_API_KEY` gate.
+**gpt-5 compatibility:** Models matching `gpt-5*` require `max_completion_tokens` (not `max_tokens`) and reject `temperature`/`top_p`. The global `ai_compat.js` normalises these automatically — no per-feature code changes needed.
 
-**Failure behaviour:** Falls back to Claude → Gemini → template. No silent empty responses.
+**Rate limits:** Per-tier RPM limits enforced via the `INFOGENIE_API_KEY` quota gate.
 
 ---
 
-### 1.2 Anthropic (Claude)
+### 1.2 Anthropic (Claude) 🟡 Day 1 Important
 
 | Property | Value |
 |---|---|
 | **Key type** | Platform Key |
 | **Env var** | `AI_INTEGRATIONS_ANTHROPIC_API_KEY` |
-| **Models used** | `claude-3-5-sonnet-20241022` (long-form content), `claude-3-haiku` (fast tasks) |
-| **SDK** | `@anthropic-ai/sdk` npm package (shared singleton) |
+| **Models used** | `claude-3-5-sonnet-20241022` (long-form), `claude-3-haiku` (fast tasks) |
+| **SDK** | `@anthropic-ai/sdk` — shared singleton |
 
-**Used by:** Long-form content generation, Brand Calendar, Video Script generation, deep competitor analysis
+**MVP features powered:**
+Long-form blog content · Brand Calendar deep copy · Video scripts (alternative to OpenAI) · AI Answer SOV (Claude is one of the three tracked AI engines alongside GPT and Perplexity) · Fallback for any OpenAI failure
 
-**Failure behaviour:** Falls back to OpenAI or template.
+**If missing:** AI Answer SOV only tracks 2 of 3 AI engines. Long-form content quality degrades slightly. All other features fall back to OpenAI cleanly.
 
 ---
 
-### 1.3 Google Gemini
+### 1.3 Google Gemini 🟡 Day 1 Important
 
 | Property | Value |
 |---|---|
 | **Key type** | Platform Key |
 | **Env var** | `GEMINI_API_KEY` |
 | **Models used** | `gemini-1.5-flash`, `gemini-1.5-pro` |
-| **Auth** | API key in query param `?key=` |
+| **Auth** | API key in `?key=` query param |
 
-**Used by:** GEO Audit (tests visibility in Gemini answers), multimodal content tasks, fallback LLM
+**MVP features powered:**
+GEO Audit (tests whether brand appears in Gemini answers — a core part of the unique AI Answer Share-of-Voice feature) · Fallback LLM for OpenAI failures
+
+**If missing:** GEO Audit and AI Answer SOV only test GPT + Perplexity, not Gemini. Product still works; coverage is reduced.
 
 ---
 
-### 1.4 Perplexity
+### 1.4 Perplexity 🟡 Day 1 Important
 
 | Property | Value |
 |---|---|
@@ -96,14 +185,16 @@ POST https://api.openai.com/v1/chat/completions
 | **Env var** | `PERPLEXITY_API_KEY` |
 | **Models used** | `llama-3.1-sonar-large-128k-online` |
 | **Auth** | Bearer token |
+| **Key capability** | Live internet access — use when real-time web context is required |
 
-**Used by:** GEO Audit (tests visibility in Perplexity answers), real-time web-aware generation, competitor news monitoring
+**MVP features powered:**
+GEO Audit (Perplexity is one of the three tracked AI engines) · AI Answer SOV (Perplexity sweep) · Competitor monitoring (real-time news) · Voice of Customer (live web research) · Lead Generation (fallback when Apollo returns sparse results) · Review Aggregator (live web research for review data)
 
-**Key capability:** Perplexity models have live internet access — used when real-time web context is required.
+**If missing:** GEO Audit and AI Answer SOV lose Perplexity coverage. Live web-grounded features fall back to OpenAI without internet context. Lead Aggregator runs Apollo-only.
 
 ---
 
-### 1.5 Cloudflare Workers AI
+### 1.5 Cloudflare Workers AI 🟢 Post-MVP
 
 | Property | Value |
 |---|---|
@@ -112,124 +203,151 @@ POST https://api.openai.com/v1/chat/completions
 | **Models used** | `@cf/meta/llama-3.1-8b-instruct` |
 | **Endpoint** | `https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/run/{model}` |
 
-**Used by:** Low-cost bulk inference, market signals fallback, Llama 3.1 tasks
+**MVP features powered:** Low-cost bulk inference, Llama 3.1 tasks — fallback only.
 
-**Failure behaviour:** Falls back to OpenAI.
+**If missing:** Cloudflare tasks fall back to OpenAI. No user-visible degradation.
 
 ---
 
-## 2. Ad Platforms
+## Section 2 — Ad Platforms
 
-### 2.1 Google Ads
+### 2.1 Meta Ads 🔴 Day 1 Required
+
+| Property | Value |
+|---|---|
+| **Key type** | Platform Key (system token) + optional per-user OAuth |
+| **Platform env vars** | `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` |
+| **Per-user vault key** | `meta_ads` |
+| **OAuth callback** | `${PUBLIC_URL}/api/integrations/meta-ads/oauth/callback` |
+| **OAuth scopes** | `ads_management, ads_read, business_management` |
+| **API version** | v19.0 |
+
+**MVP features powered:**
+Campaign Launch (Meta) · AI Campaign Optimizer (pause / scale / budget rules) · Ad Library Spy (competitor ads) · Meta Ads Insights dashboard · Cross-Channel Report · Import Existing Campaigns
+
+**Credential resolution:** Platform `META_ACCESS_TOKEN` is the system default. Users can connect their own account via OAuth, which takes precedence for their campaigns.
+
+**Ad Library Spy note:** The `/ads_archive` endpoint is public — it does not require user OAuth, only the platform access token. This means Ad Library Spy works for any user even before they connect their own Meta account.
+
+**API surface used for campaign launch:**
+
+| Meta endpoint | Purpose |
+|---|---|
+| `/{ad-account}/campaigns` | Create / list campaigns |
+| `/{ad-account}/adsets` | Audience + placement + budget per ad set |
+| `/{ad-account}/ads` | Creative + copy for each ad |
+| `/act_{id}/insights` | Performance metrics pull |
+| `/ads_archive` | Competitor ad library (public, no user auth) |
+
+**Rate limits:** 200 calls/hour per user token. InfoGenie queues batch operations.
+
+**If missing:** Campaign Launch, Optimizer, and Meta Insights are disabled. Ad Library Spy shows no Meta ads. This removes a core MVP feature — Meta is the most common ad platform among InfoGenie's target users.
+
+---
+
+### 2.2 Google Ads 🔴 Day 1 Required
 
 | Property | Value |
 |---|---|
 | **Key type** | Hybrid — platform developer token + per-user OAuth |
 | **Platform env vars** | `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_OAUTH_CLIENT_ID`, `GOOGLE_ADS_OAUTH_CLIENT_SECRET` |
+| **Owner fallback** | `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_CUSTOMER_ID` |
 | **Per-user vault key** | `google_ads` |
 | **OAuth callback** | `${PUBLIC_URL}/api/integrations/google-ads/oauth/callback` |
-| **Scope** | `https://www.googleapis.com/auth/adwords` |
+| **OAuth scope** | `https://www.googleapis.com/auth/adwords` |
 
-**Setup requirements:**
-1. `GOOGLE_ADS_DEVELOPER_TOKEN` — issued by Google to InfoGenie as the app (not per user). Required for any Google Ads API call.
-2. Per-user OAuth — each user connects their own Google Ads account via the Connect button. Tokens stored in vault.
-3. Whitelist the OAuth callback URI in Google Cloud Console.
+**Setup requirements (in order):**
+1. `GOOGLE_ADS_DEVELOPER_TOKEN` — issued by Google to InfoGenie as the app. Required for any Google Ads API call whatsoever.
+2. `GOOGLE_ADS_OAUTH_CLIENT_ID` + `GOOGLE_ADS_OAUTH_CLIENT_SECRET` — needed to run per-user OAuth. Whitelist the callback URI in Google Cloud Console.
+3. Each user connects their Google Ads account via the Connect button in Settings. Tokens stored in vault.
 
-**Credential resolution:** `resolveGoogleAdsCredentials(userId)` checks:
-1. User's vault (`google_ads` entry)
-2. Owner env-var fallback (`GOOGLE_ADS_CLIENT_ID/SECRET/REFRESH_TOKEN/CUSTOMER_ID`) — only for platform owner or cron jobs
+**Credential resolution order** (`resolveGoogleAdsCredentials(userId)`):
+1. User's vault entry (`google_ads`)
+2. Owner env-var fallback — only for the platform owner account or cron jobs
 
-**Used by:** Campaign Launch (Google), AI Optimizer (pause/scale/budget rules), Cross-Channel Report, Import Existing Campaigns
+**MVP features powered:**
+Campaign Launch (Google) · Google Ads Insights dashboard · AI Campaign Optimizer (Google bids + budgets) · Import Existing Campaigns · Cross-Channel Report
 
 **API surface used:**
-- `CustomerService` — list accessible accounts
-- `CampaignService` — create/update campaigns
-- `AdGroupService` — ad group management
-- `AdService` — create/update ads
-- `BudgetService` — budget updates
-- `ReportingService` — performance data pull
 
----
-
-### 2.2 Meta Ads (Facebook/Instagram)
-
-| Property | Value |
+| Google Ads API service | Purpose |
 |---|---|
-| **Key type** | Platform Key (long-lived system token) + per-user OAuth |
-| **Platform env vars** | `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` |
-| **Per-user vault key** | `meta_ads` |
-| **OAuth callback** | `${PUBLIC_URL}/api/integrations/meta-ads/oauth/callback` |
-| **Scope** | `ads_management, ads_read, business_management` |
-| **API version** | v19.0 |
+| `CustomerService` | List accessible accounts |
+| `CampaignService` | Create / update campaigns |
+| `AdGroupService` | Ad group management |
+| `AdService` | Create / update ads |
+| `BudgetService` | Budget adjustments |
+| `GoogleAdsService (GAQL)` | Performance data queries |
 
-**Used by:** Campaign Launch (Meta), AI Optimizer, Ad Library Spy, Cross-Channel Report
-
-**API surface used:**
-- `/{ad-account}/campaigns` — create/list campaigns
-- `/{ad-account}/adsets` — audience + placement targeting
-- `/{ad-account}/ads` — creative creation
-- `/act_{ad_account_id}/insights` — performance metrics
-- `/ads_archive` — competitor ad library (public endpoint, no user auth needed)
-
-**Rate limits:** 200 calls/hour per user token. InfoGenie queues batch operations.
+**If missing:** Google campaign features are disabled. Users who are Google-primary (not Meta) cannot launch campaigns at MVP. Prioritise configuring this alongside Meta.
 
 ---
 
-### 2.3 TikTok Ads
+### 2.3 TikTok Ads 🟡 Day 1 Important
 
 | Property | Value |
 |---|---|
 | **Key type** | Platform Key |
-| **Env vars** | `TIKTOK_ACCESS_TOKEN`, `TIKTOK_ADVERTISER_ID`, `TIKTOK_RAPIDAPI_KEY` |
+| **Env vars** | `TIKTOK_ACCESS_TOKEN`, `TIKTOK_ADVERTISER_ID` |
+| **Fallback** | `TIKTOK_RAPIDAPI_KEY` — RapidAPI route for accounts pending TikTok direct access |
 | **API base** | `https://business-api.tiktok.com/open_api/v1.3/` |
 
-**Used by:** Campaign Launch (TikTok), AI Optimizer, Cross-Channel Report
+**MVP features powered:** Campaign Launch (TikTok) · Cross-Channel Report
 
-**Note:** TikTok API access requires app review approval from TikTok. The `TIKTOK_RAPIDAPI_KEY` provides an alternative route via RapidAPI for accounts pending direct access.
+**Important:** TikTok direct API access requires a formal app review by TikTok. If pending, `TIKTOK_RAPIDAPI_KEY` via RapidAPI provides a fallback route. Configure RapidAPI key first; swap to direct access when approved.
+
+**If missing:** TikTok campaign launch is disabled. Meta and Google still work. Acceptable for MVP if the primary ICP uses Meta/Google.
 
 ---
 
-### 2.4 Microsoft Ads (Bing)
+### 2.4 Microsoft Ads 🟢 Post-MVP
 
-| Property | Value |
+| Env var | Purpose |
 |---|---|
-| **Key type** | Platform Key |
-| **Env vars** | `MICROSOFT_ADS_CLIENT_ID`, `MICROSOFT_ADS_CLIENT_SECRET`, `MICROSOFT_ADS_REFRESH_TOKEN`, `MICROSOFT_ADS_DEVELOPER_TOKEN`, `MICROSOFT_ADS_CUSTOMER_ID` |
+| `MICROSOFT_ADS_CLIENT_ID` | OAuth client |
+| `MICROSOFT_ADS_CLIENT_SECRET` | OAuth secret |
+| `MICROSOFT_ADS_REFRESH_TOKEN` | Long-lived token |
+| `MICROSOFT_ADS_DEVELOPER_TOKEN` | App-level token |
+| `MICROSOFT_ADS_CUSTOMER_ID` | Account ID |
 
-**Used by:** Campaign Launch (Microsoft/Bing), Cross-Channel Report
+**If missing:** Microsoft/Bing campaign launch is disabled. Not a day-1 blocker for most users.
 
 ---
 
-## 3. Data & Intelligence APIs
+## Section 3 — Data & Intelligence APIs
 
-### 3.1 DataForSEO
+### 3.1 DataForSEO 🔴 Day 1 Required
 
 | Property | Value |
 |---|---|
 | **Key type** | Platform Key |
 | **Env vars** | `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD` |
-| **Auth** | HTTP Basic Auth (`login:password`) |
+| **Auth** | HTTP Basic Auth (`login:password` Base64) |
 | **Base URL** | `https://api.dataforseo.com/v3/` |
 | **Cost model** | Pay-per-result (fractions of a cent per data point) |
 
-**API endpoints used:**
+**MVP features powered and endpoints used:**
 
-| Endpoint | Feature | Approx. cost |
+| DataForSEO endpoint | Feature(s) powered | Approx. cost |
 |---|---|---|
-| `serp/google/organic/live` | SERP Tracker, keyword rankings | ~$0.002/keyword |
-| `keywords_data/google_ads/search_volume/live` | Keyword Explorer, Content Scorer | ~$0.001/keyword |
-| `backlinks/summary/live` | Competitor backlink analysis | ~$0.01/domain |
-| `on_page/task_post` | On-Page SEO Audit | ~$0.01/URL |
-| `content_analysis/search/live` | Content gap analysis | ~$0.005/search |
-| `domain_analytics/technologies/domain_technologies/live` | Tech stack detection | ~$0.01/domain |
+| `serp/google/organic/live` | SERP Rank Tracker, Keyword Explorer | ~$0.002 / keyword |
+| `keywords_data/google_ads/search_volume/live` | Keyword Explorer, Content Scorer, Question Mining | ~$0.001 / keyword |
+| `backlinks/summary/live` | Backlink Explorer, Competitor Profiles | ~$0.01 / domain |
+| `on_page/task_post` + `on_page/pages` | On-Page SEO Audit, Embeddable Widget, Web Vitals | ~$0.01 / URL |
+| `content_analysis/search/live` | Content Gaps vs Rivals, AutoSEO Pro | ~$0.005 / search |
+| `domain_analytics/technologies/domain_technologies/live` | Tech Stack Detector, Competitor Profiles | ~$0.01 / domain |
 
-**Rate limits:** 2,000 requests/minute (post-limits via queue).
+**Caching:** Results cached for 24 hours in `kv_store` to control costs. Cache is tenant-scoped.
 
-**Failure behaviour:** Returns cached data if available (24h TTL in `kv_store`). Falls back to AI-estimated values with a "data unavailable" flag.
+**Rate limits:** 2,000 requests/minute. Batch operations are queued.
+
+**Failure behaviour:** Returns cached data if available. Falls back to AI-estimated values with a visible "data unavailable" label — never silently empty.
+
+**If missing:** All SEO features (SERP Tracker, Keyword Explorer, Backlink Explorer, Content Gaps, On-Page Audit, Content Scorer) return AI estimates only. Embeddable Audit Widget cannot produce real scores. DataForSEO is the single most impactful non-AI integration — configure before launch.
 
 ---
 
-### 3.2 Firecrawl
+### 3.2 Firecrawl 🔴 Day 1 Required
 
 | Property | Value |
 |---|---|
@@ -237,25 +355,21 @@ POST https://api.openai.com/v1/chat/completions
 | **Env var** | `FIRECRAWL_API_KEY` |
 | **Base URL** | `https://api.firecrawl.dev/v1/` |
 
-**Used by:**
-- Competitor Profiles — scrapes competitor websites to extract positioning, messaging, pricing, features
-- Ad Swipe File — scrapes competitor landing pages
-- Content Scorer — scrapes target URL for content analysis
-- InstaReports — scrapes prospect website for audit data
+**MVP features powered:**
 
-**API endpoints used:**
-
-| Endpoint | Purpose |
+| Firecrawl endpoint | Feature(s) powered |
 |---|---|
-| `POST /scrape` | Single URL scrape (returns markdown + metadata) |
-| `POST /crawl` | Multi-page crawl (up to 50 pages per domain) |
-| `POST /extract` | Structured data extraction via AI schema |
+| `POST /scrape` (single URL) | Competitor Profiles · Pricing Watcher · InstaReports · Content Scorer · Voice of Customer |
+| `POST /crawl` (multi-page, up to 50) | AutoSEO Pro (full-site crawl) · Content Gaps vs Rivals |
+| `POST /extract` (AI-schema extraction) | Battle Cards · ICP Studio (extract competitor claims) |
 
-**SSRF protection:** All URLs passed to Firecrawl are validated against a strict allowlist — private IP ranges (10.x, 192.168.x, 127.x, localhost, `*.internal`) are blocked before the request is made.
+**SSRF protection:** Every URL passed to Firecrawl is validated against a strict blocklist before the request. Private IP ranges (`10.x`, `192.168.x`, `127.x`, `localhost`, `*.internal`) are rejected with a 400 error — never forwarded.
+
+**If missing:** Competitor Profiles and Battle Cards fall back to AI-generated intelligence without live website data (significantly lower accuracy). InstaReports produces an audit without live page analysis. Pricing Watcher cannot track real prices. This is a significant MVP capability gap — configure before launch.
 
 ---
 
-### 3.3 Apollo
+### 3.3 Apollo 🟡 Day 1 Important
 
 | Property | Value |
 |---|---|
@@ -263,21 +377,21 @@ POST https://api.openai.com/v1/chat/completions
 | **Env var** | `APOLLO_API_KEY` |
 | **Base URL** | `https://api.apollo.io/v1/` |
 
-**Used by:** Lead Generation (prospect search + enrichment), LinkedIn Outreach (contact data), Re-engagement Agent
+**MVP features powered:**
 
-**API endpoints used:**
-
-| Endpoint | Purpose |
+| Apollo endpoint | Feature |
 |---|---|
-| `POST /mixed_people/search` | Find contacts by title, company, location, industry |
-| `POST /people/match` | Enrich a contact by email or LinkedIn URL |
-| `POST /organizations/enrich` | Company firmographic data |
+| `POST /mixed_people/search` | Lead Generation (find contacts by title/industry/company) |
+| `POST /people/match` | Lead enrichment (add email, LinkedIn URL to a contact) |
+| `POST /organizations/enrich` | Company firmographic data for Battle Cards |
 
-**Note:** Apollo returns HTTP 200 even for invalid API keys (with empty results). InfoGenie's platform key tester is aware of this behaviour and validates by checking result count, not HTTP status.
+**Apollo quirk (important):** Apollo returns HTTP 200 even for invalid API keys — the response body simply contains empty results. InfoGenie's platform key tester is aware of this and validates by checking result count + shape, not HTTP status code.
+
+**If missing:** Lead Generation falls back to Perplexity sonar AI research (lower data quality, no guaranteed email addresses). LinkedIn Outreach uses AI-researched contacts only. Acceptable for MVP but reduce lead quality significantly — prioritise configuring.
 
 ---
 
-### 3.4 BuiltWith
+### 3.4 BuiltWith 🟡 Day 1 Important
 
 | Property | Value |
 |---|---|
@@ -285,207 +399,210 @@ POST https://api.openai.com/v1/chat/completions
 | **Env var** | `BUILTWITH_API_KEY` |
 | **Base URL** | `https://api.builtwith.com/v21/api.json` |
 
-**Used by:** Competitor Profiles (technology stack), Battle Cards (tech comparison), InstaReports (tech stack section)
+**MVP features powered:** Tech Stack Detector · Competitor Profiles (technology section) · InstaReports (tech stack tab)
 
-**Key data returned:** CMS, analytics tools, ad pixels, ecommerce platform, CDN, email service provider, frameworks.
+**Key data returned per domain:** CMS, analytics tools, ad pixels, ecommerce platform, CDN, email service provider, JavaScript frameworks, A/B testing tools.
 
-**Note:** Like Apollo, BuiltWith returns HTTP 200 with an error payload for bad keys. The platform key tester checks for `Errors` in the response body.
+**BuiltWith quirk:** Like Apollo, BuiltWith returns HTTP 200 with an `Errors` key in the response body when the API key is invalid. The platform key tester checks for `Errors` in the response, not just HTTP status.
+
+**If missing:** Tech Stack Detector is disabled. Competitor Profiles omit the technology section. InstaReports shows AI-estimated tech stack only.
 
 ---
 
-### 3.5 Google PageSpeed Insights
+### 3.5 Google PageSpeed Insights 🔴 Day 1 Required
 
 | Property | Value |
 |---|---|
 | **Key type** | Platform Key |
 | **Env var** | `GOOGLE_PAGESPEED_API_KEY` |
 | **Endpoint** | `https://www.googleapis.com/pagespeedonline/v5/runPagespeed` |
+| **Auth** | API key in `?key=` query param |
 
-**Used by:** InstaReports (real Page Speed scores), Web Vitals audit, On-Page Audit
+**MVP features powered:**
+InstaReports (real Lighthouse scores — Performance, SEO, Accessibility, Best Practices 0–100) · Web Vitals Auditor (LCP, FID/INP, CLS) · On-Page SEO Audit (opportunities + estimated savings) · Embeddable Audit Widget
 
 **Data returned per call:**
-- Lighthouse scores: Performance, SEO, Accessibility, Best Practices (0–100)
-- Core Web Vitals: LCP, FID/INP, CLS
-- Opportunities: specific optimisation recommendations with estimated savings
+- Lighthouse scores: Performance / SEO / Accessibility / Best Practices (0–100)
+- Core Web Vitals: LCP, FID/INP, CLS with pass/fail thresholds
+- Specific optimisation opportunities with estimated time savings
 
-**Fallback:** If key not configured or quota exceeded, InstaReports falls back to AI-estimated scores with a disclosure note.
+**Rate limits:** Free tier = 25,000 requests/day. More than sufficient for MVP.
+
+**If missing:** InstaReports falls back to AI-estimated scores with a disclosure note. Embeddable Audit Widget shows partial results. This directly impacts the showcase feature (InstaReports) — configure before launch.
 
 ---
 
-### 3.6 Google Search (Custom Search API)
+### 3.6 Google Search (Custom Search API) 🟡 Day 1 Important
 
 | Property | Value |
 |---|---|
 | **Key type** | Platform Key |
 | **Env var** | `GOOGLE_SEARCH_API_KEY` |
 | **Endpoint** | `https://www.googleapis.com/customsearch/v1` |
+| **Rate limits** | 100 queries/day free · 10,000/day paid |
 
-**Used by:** Competitor monitoring, brand mention alerts, Question Mining, GEO Audit (cross-referencing)
+**MVP features powered:** Competitor monitoring (brand mentions) · Question Mining (cross-reference search results) · Alert Routing (news mention triggers)
 
-**Limits:** 100 queries/day on free tier; 10,000/day on paid.
+**If missing:** Search-result based features degrade to Perplexity or OpenAI alternatives. Not a hard blocker.
 
 ---
 
-## 4. Communication & Email
+## Section 4 — Communication & Email
 
-### 4.1 Resend
+### 4.1 Resend 🔴 Day 1 Required
 
 | Property | Value |
 |---|---|
 | **Key type** | Platform Key |
 | **Env var** | `RESEND_API_KEY` |
-| **From address** | `RESEND_FROM_EMAIL` (must be a verified Resend domain) |
+| **From address** | `RESEND_FROM_EMAIL` — must be a **verified Resend domain** |
 | **Webhook secret** | `RESEND_WEBHOOK_SECRET` |
 | **SDK** | `resend` npm package |
 
-**Used by:**
-- Auth — email verification, password reset, team invitations
-- Weekly Report — automated Monday performance email
-- Daily Digest — daily summary email
-- InstaReports — prospect audit email delivery
-- Journey Builder — email actions within automations
-- Drip Engine — sequence emails
-- Alert Routing — channel for marketing alerts
+**MVP features powered:**
+Auth flows (email verification, password reset, team invitations) · Weekly Report (auto Monday email) · Daily Digest · InstaReports (prospect report delivery via email) · Journey Builder email actions · Drip Engine sequences · Alert Routing · Omnichannel Composer email sends · Email Warm-Up (infrastructure sends)
 
 **Webhook events handled:**
 
-| Event | Action |
+| Resend event | InfoGenie action |
 |---|---|
-| `email.delivered` | Mark send record as `delivered` |
-| `email.opened` | Record open timestamp; trigger journey signals |
+| `email.delivered` | Mark send record `delivered` |
+| `email.opened` | Record open timestamp; fire `email_open` signal to Journey Builder |
 | `email.clicked` | Record click; fire `email_click` signal to Journey Builder |
-| `email.bounced` | Mark contact as `hard_bounce`; suppress from future sends |
+| `email.bounced` | Mark contact `hard_bounce`; suppress from future sends |
 | `email.complained` | Unsubscribe contact; add to suppression list |
 
-**Critical setup note:** `RESEND_FROM_EMAIL` must be a domain verified in the Resend dashboard. Emails from unverified domains are silently dropped. Use `onboarding@resend.dev` for development only.
+**⚠️ Critical:** `RESEND_FROM_EMAIL` must use a domain verified in the Resend dashboard. Emails sent from unverified domains are silently dropped by Resend — no error is returned. This is the most common setup mistake.
 
-**Webhook verification:** All incoming webhooks are verified using `RESEND_WEBHOOK_SECRET` with HMAC-SHA256 before processing.
+For development and testing, use `onboarding@resend.dev` (Resend's pre-verified sandbox sender).
+
+**Webhook verification:** All incoming webhooks verified via HMAC-SHA256 using `RESEND_WEBHOOK_SECRET` before any state change.
+
+**If missing:** Auth emails don't send (users can't verify accounts). Weekly reports aren't delivered. InstaReports can be viewed on-screen but not emailed. This breaks the core product — configure before launch.
 
 ---
 
-### 4.2 Twilio (SMS & Voice)
+### 4.2 Twilio (SMS & Voice) 🟢 Post-MVP
 
-| Property | Value |
+| Env var | Purpose |
 |---|---|
-| **Key type** | Platform Key |
-| **Env vars** | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` |
-| **SDK** | `twilio` npm package |
+| `TWILIO_ACCOUNT_SID` | Account identifier |
+| `TWILIO_AUTH_TOKEN` | Auth credential |
+| `TWILIO_FROM_NUMBER` | Sending phone number |
 
-**Used by:** Omnichannel Composer (SMS sends), Journey Builder (SMS actions), Re-engagement Agent (SMS channel)
+**MVP features powered (if configured):** Omnichannel Composer SMS sends · Journey Builder SMS actions · Re-engagement Agent SMS channel
 
-**Failure behaviour:** If Twilio keys not configured, SMS channel is hidden from UI. No silent failures.
+**If missing:** SMS channel is hidden from UI automatically. No silent failures. Journey Builder and Omnichannel run email-only at MVP. Acceptable for launch.
 
 ---
 
-### 4.3 WhatsApp Business API
+### 4.3 WhatsApp Business API 🟢 Post-MVP
 
-| Property | Value |
+| Env var | Purpose |
 |---|---|
-| **Key type** | Platform Key |
-| **Env vars** | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` |
-| **Provider** | Meta Cloud API |
-| **Webhook endpoint** | `POST /api/webhooks/whatsapp` |
+| `WHATSAPP_PHONE_NUMBER_ID` | Sending number |
+| `WHATSAPP_ACCESS_TOKEN` | Meta Cloud API token |
+| `WHATSAPP_VERIFY_TOKEN` | Webhook hub verification |
+| `WHATSAPP_APP_SECRET` | Inbound event HMAC verification |
 
-**Used by:** Omnichannel Composer (WhatsApp sends), Conversation Inbox (inbound messages), Journey Builder (WhatsApp actions)
+**Webhook endpoint:** `POST /api/webhooks/whatsapp`
 
-**Webhook verification:** `WHATSAPP_VERIFY_TOKEN` used for the initial hub verification handshake. `WHATSAPP_APP_SECRET` used for HMAC verification of all subsequent event payloads.
+**If missing:** WhatsApp channel is hidden from UI. Email-only fallback is seamless. Post-MVP addition.
 
 ---
 
-### 4.4 Web Push (VAPID)
+### 4.4 VAPI (AI Voice Calls) 🟢 Post-MVP
 
-| Property | Value |
+| Env var | Purpose |
 |---|---|
-| **Key type** | Platform Key |
-| **Env vars** | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` |
-| **Library** | `web-push` npm package |
+| `VAPI_API_KEY` | Auth |
+| `VAPI_PHONE_NUMBER_ID` | Outbound calling number |
+| `VAPI_WEBHOOK_SECRET` | Inbound webhook verification |
 
-**Used by:** Omnichannel Composer (push notifications), Journey Builder (push actions), Re-engagement Agent
-
-**Setup:** Generate a VAPID key pair once with `web-push generate-vapid-keys`. The public key is served to the frontend for service worker registration.
+**If missing:** Voice channel hidden from UI. No impact on MVP.
 
 ---
 
-### 4.5 VAPI (AI Voice)
+### 4.5 Web Push / VAPID 🟢 Post-MVP
 
-| Property | Value |
+| Env var | Purpose |
 |---|---|
-| **Key type** | Platform Key |
-| **Env vars** | `VAPI_API_KEY`, `VAPI_PHONE_NUMBER_ID`, `VAPI_WEBHOOK_SECRET` |
+| `VAPID_PUBLIC_KEY` | Served to browser for service worker subscription |
+| `VAPID_PRIVATE_KEY` | Server-side push signing |
+| `VAPID_SUBJECT` | Contact email for push service |
 
-**Used by:** Omnichannel Composer (AI voice calls), Journey Builder (voice call actions), Re-engagement Agent (phone channel)
+**Setup:** Generate once with `web-push generate-vapid-keys`. Keys must match — regenerating invalidates all existing browser subscriptions.
+
+**If missing:** Push notifications hidden from Omnichannel and Journey Builder. No impact on MVP.
 
 ---
 
-## 5. CRM & Marketing Automation
+## Section 5 — CRM & Marketing Automation
 
-### 5.1 HubSpot
+### 5.1 HubSpot 🟡 Day 1 Important
 
 | Property | Value |
 |---|---|
 | **Key type** | Platform Key |
 | **Env var** | `HUBSPOT_PRIVATE_APP_TOKEN` |
-| **Auth** | Bearer token (`Authorization: Bearer {token}`) |
+| **Auth** | `Authorization: Bearer {token}` |
 | **API version** | v3 |
 | **Base URL** | `https://api.hubapi.com/` |
 
-**Used by:**
-- Dynamic Audiences — sync audience segments to HubSpot Static Lists
-- Lead Generation — push enriched leads to HubSpot contacts
-- InstaReports — pull contact records as prospect data source
-- Journey Builder — HubSpot deal/contact actions
-- Drip Engine — contact property updates on email events
+**MVP features powered:**
 
-**API endpoints used:**
-
-| Endpoint | Purpose |
+| HubSpot endpoint | Feature |
 |---|---|
-| `POST /crm/v3/objects/contacts` | Create contact |
-| `PATCH /crm/v3/objects/contacts/{id}` | Update contact properties |
-| `POST /crm/v3/lists` | Create static list for audience segment |
-| `PUT /crm/v3/lists/{listId}/memberships/add-from-search` | Populate list with matching contacts |
-| `GET /crm/v3/objects/contacts/search` | Search contacts by property |
-| `POST /crm/v3/objects/deals` | Create deal from lead |
+| `POST /crm/v3/objects/contacts` | Push enriched leads from Lead Generation |
+| `PATCH /crm/v3/objects/contacts/{id}` | Update contact on email event (click, open) |
+| `POST /crm/v3/lists` | Create HubSpot Static List per Dynamic Audience segment |
+| `PUT /crm/v3/lists/{id}/memberships/add-from-search` | Sync audience members to HubSpot list |
+| `GET /crm/v3/objects/contacts/search` | Look up existing contacts to avoid duplication |
+| `POST /crm/v3/objects/deals` | Create deal from qualified lead |
 
-**Sync behaviour:** Audience sweep runs every 15 minutes. HubSpot list mirror runs after each sweep if changes detected. Mutations gated by `global._dripStore.lock` to prevent concurrent sync conflicts.
+**Sync behaviour:** Dynamic Audience sweep runs every 15 minutes. HubSpot list mirror runs after each sweep when changes are detected. All mutations gated by `global._dripStore.lock` to prevent concurrent sync conflicts.
+
+**If missing:** Lead Generation results are not pushed to HubSpot. Dynamic Audience segments do not mirror to HubSpot Static Lists. Internal lead table still works — HubSpot sync is additive. Acceptable for MVP without HubSpot; configure for users who use HubSpot.
 
 ---
 
-## 6. Analytics & Monitoring
+## Section 6 — Analytics & Monitoring
 
-### 6.1 Amplitude
+### 6.1 Amplitude 🟡 Day 1 Important
 
 | Property | Value |
 |---|---|
 | **Key type** | Platform Key |
 | **Env vars** | `AMPLITUDE_API_KEY`, `AMPLITUDE_SECRET_KEY` |
-| **Base URL** | `https://api.amplitude.com/2/httpapi` |
+| **Ingestion endpoint** | `https://api.amplitude.com/2/httpapi` |
 
-**Events tracked (server-side):**
+**MVP events tracked (server-side):**
 
-| Event | Trigger |
+| Event name | Trigger |
 |---|---|
 | `user_signed_up` | New account created |
-| `ai_action_completed` | Any AI generation completes |
-| `campaign_launched` | Campaign successfully submitted to ad platform |
+| `ai_action_completed` | Any AI generation completes successfully |
+| `campaign_launched` | Campaign submitted to Meta / Google / TikTok |
 | `report_sent` | Weekly report or InstaReport emailed |
-| `competitor_profile_created` | First competitor added |
-| `platform_key_updated` | Admin changes a platform API key |
-| `insta_report_viewed` | Prospect opens their report via public link |
+| `competitor_profile_created` | First competitor profile saved |
+| `insta_report_viewed` | Prospect opens their public report link |
+| `platform_key_updated` | Admin changes a platform API key (key name only, never value) |
 
-**Privacy:** No PII in event properties. User identity is the internal UUID only.
+**Privacy:** No PII in any event properties. User identity sent as internal UUID only.
 
----
-
-### 6.2 Google Analytics (Deferred)
-
-Currently parked — Google Workspace org policy blocks the OAuth scope required for GA4 data API access. Will revisit post-MVP.
+**If missing:** Product analytics are unavailable. No impact on user-facing features. Configure for team visibility into adoption and engagement.
 
 ---
 
-## 7. Payments
+### 6.2 Google Analytics 4 🧊 Blocked
 
-### 7.1 Stripe
+Currently parked. Google Workspace organisational policy blocks the OAuth scope required for GA4 data API access. Will revisit post-PMF. Do not attempt to configure at MVP.
+
+---
+
+## Section 7 — Payments
+
+### 7.1 Stripe 🟡 Day 1 Important
 
 | Property | Value |
 |---|---|
@@ -494,59 +611,59 @@ Currently parked — Google Workspace org policy blocks the OAuth scope required
 | **SDK** | `stripe` npm package |
 | **Webhook endpoint** | `POST /api/webhooks/stripe` |
 
-**Used by:** Subscription billing (Starter/Growth/Agency tiers), usage-based billing for AI credits
+**MVP features powered:** Subscription billing (Starter / Growth / Agency tiers) · Usage billing for AI credits · Link-in-Bio Stripe payment links
 
 **Webhook events handled:**
 
-| Event | Action |
+| Stripe event | InfoGenie action |
 |---|---|
 | `checkout.session.completed` | Activate subscription, set tenant tier |
-| `customer.subscription.updated` | Update tier limits |
-| `customer.subscription.deleted` | Downgrade to free / lock account |
-| `invoice.payment_failed` | Send payment failure email, grace period logic |
+| `customer.subscription.updated` | Update tier limits and feature access |
+| `customer.subscription.deleted` | Downgrade to free; lock paid features |
+| `invoice.payment_failed` | Send payment failure email; start grace period |
 
-**Webhook verification:** All events verified with `stripe.webhooks.constructEvent()` using `STRIPE_WEBHOOK_SECRET` before any state change.
+**Webhook verification:** All events verified with `stripe.webhooks.constructEvent()` using `STRIPE_WEBHOOK_SECRET`. No state change before verification passes.
+
+**If missing:** Subscription billing is non-functional. Users remain on a single default tier. Acceptable for a closed beta / invite-only launch, but configure before public launch.
 
 ---
 
-## 8. Social & Identity
+## Section 8 — Social Login (Auth)
 
-### 8.1 Google OAuth (Social Login)
+These three integrations enable "Sign in with Google/Facebook/Microsoft" buttons on the login page. If any env vars are absent, that button is automatically hidden — no error shown to users.
 
-| Property | Value |
+### 8.1 Google OAuth Login 🟢 Post-MVP
+
+| Env var | Value |
 |---|---|
-| **Key type** | Platform Key |
-| **Env vars** | `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET` |
+| `AUTH_GOOGLE_CLIENT_ID` | OAuth client ID |
+| `AUTH_GOOGLE_CLIENT_SECRET` | OAuth client secret |
 | **Callback** | `/api/auth/oauth/google/callback` |
 | **Scopes** | `openid email profile` |
 
-**Used by:** Sign in with Google on the login/signup page. If env vars not set, the Google button is hidden automatically.
+### 8.2 Facebook OAuth Login 🟢 Post-MVP
 
----
-
-### 8.2 Facebook OAuth (Social Login)
-
-| Property | Value |
+| Env var | Value |
 |---|---|
-| **Key type** | Platform Key |
-| **Env vars** | `AUTH_FACEBOOK_CLIENT_ID`, `AUTH_FACEBOOK_CLIENT_SECRET` |
+| `AUTH_FACEBOOK_CLIENT_ID` | OAuth client ID |
+| `AUTH_FACEBOOK_CLIENT_SECRET` | OAuth client secret |
 | **Callback** | `/api/auth/oauth/facebook/callback` |
 
----
+### 8.3 Microsoft OAuth Login 🟢 Post-MVP
 
-### 8.3 Microsoft OAuth (Social Login + Ads)
-
-| Property | Value |
+| Env var | Value |
 |---|---|
-| **Key type** | Platform Key |
-| **Env vars** | `AUTH_MICROSOFT_CLIENT_ID`, `AUTH_MICROSOFT_CLIENT_SECRET` |
+| `AUTH_MICROSOFT_CLIENT_ID` | OAuth client ID |
+| `AUTH_MICROSOFT_CLIENT_SECRET` | OAuth client secret |
 | **Callback** | `/api/auth/oauth/microsoft/callback` |
 
-Used for both social login and Microsoft Ads authentication.
+Note: Microsoft credentials serve double duty — social login and Microsoft Ads authentication.
 
 ---
 
-### 8.4 Google Workspace OAuth
+## Section 9 — Workspace Integrations
+
+### 9.1 Google Workspace OAuth 🟢 Post-MVP
 
 | Property | Value |
 |---|---|
@@ -554,212 +671,245 @@ Used for both social login and Microsoft Ads authentication.
 | **Vault key** | `google_workspace` |
 | **Env vars** | `GOOGLE_WORKSPACE_CLIENT_ID`, `GOOGLE_WORKSPACE_CLIENT_SECRET` |
 | **Callback** | `/api/integrations/workspace/oauth/callback` |
-| **Scopes** | Gmail read/send, Google Drive, Google Calendar |
+| **Scopes** | Gmail read/send · Google Drive · Google Calendar |
 
-**Used by:** Google Workspace integration tab — read emails, manage calendar bookings, attach Drive files to campaigns.
+**Powers:** Email reading in Conversation Inbox · Calendar-aware Journey Builder · Drive file attachment in campaigns.
 
----
-
-## 9. Website Intelligence
-
-### 9.1 Bing Webmaster Tools
-
-| Property | Value |
-|---|---|
-| **Key type** | Platform Key |
-| **Env var** | `BING_WEBMASTER_API_KEY` |
-
-**Used by:** SERP Tracker (Bing rankings), SEO Roadmap (Bing-specific recommendations)
+**If missing:** Google Workspace tab in Settings shows a "connect" button; features gracefully unavailable until connected.
 
 ---
 
-## 10. File Storage
+## Section 10 — File Storage
 
-### 10.1 Local Uploads (MVP)
+### 10.1 Local Filesystem (MVP) ⚠️
 
-User-uploaded brand assets (logos, images) are stored in the `uploads/` directory on the VM. Files are served at `/uploads/{filename}`.
+User-uploaded brand assets (logos, images) are stored in `uploads/` on the VM. Served at `/uploads/{filename}`.
 
-**Limits:** 10MB per file, 200MB total per tenant.
+**Limits:** 10MB per file · 200MB total per tenant.
 
-**Post-MVP:** Migrate to Cloudflare R2 or AWS S3 for durable object storage. VM filesystem is not suitable for multi-region deployments.
-
----
-
-## 11. Internal APIs (Public-Facing)
-
-These are InfoGenie-generated endpoints consumed by external parties.
-
-### 11.1 Funnel Analytics Pixel
-
-```
-POST /api/funnel-analytics/track
-Content-Type: application/json
-{ "pixel_id": "abc123", "event": "pageview|optin|sale", "revenue": 0, "session_id": "...", "utm_source": "..." }
-```
-
-No authentication required. Rate-limited by hashed IP address. CORS: `*` (must be embeddable from any domain).
-
-### 11.2 InstaReport Public View
-
-```
-GET /api/insta-reports/public/:token
-```
-
-No authentication required. Token is a 48-character random hex string. Records `viewed_at` timestamp on first access. Used by prospects clicking the link in their emailed report.
-
-### 11.3 Booking Pages
-
-```
-GET  /book/:slug        — Public booking page
-POST /api/bookings/:slug — Slot reservation
-```
-
-No authentication. Rate-limited by IP. Used by clients booking appointments via Link-in-Bio or direct URL.
-
-### 11.4 Web Push Subscription
-
-```
-POST /api/push/subscribe
-{ "subscription": { PushSubscription object } }
-```
-
-Authenticated. Stores the browser push subscription endpoint for the current user/contact.
+**⚠️ Post-MVP action required:** VM filesystem is not durable for production multi-region deployments. Migrate to Cloudflare R2 or AWS S3 after MVP. This is a known technical debt item — document it before launch.
 
 ---
 
-## 12. Integration Health Monitoring
+## Section 11 — Public-Facing Endpoints
 
-### Platform Key Live Tests
+These are InfoGenie-generated endpoints consumed by third parties or embedded in user websites.
 
-Each platform key can be tested from the 🔑 Platform APIs admin tab:
-
-| Key | Test method | Success signal |
-|---|---|---|
-| OpenAI | `GET /v1/models` | HTTP 200 + model list |
-| Anthropic | `GET /v1/models` | HTTP 200 |
-| Gemini | `GET /v1beta/models` | HTTP 200 |
-| Perplexity | `POST /chat/completions` (minimal) | HTTP 200 |
-| Cloudflare | `GET /accounts/{id}/ai/models/search` | HTTP 200 |
-| DataForSEO | `GET /v3/serp/google/organic/task_get/advanced` | HTTP 200 |
-| Firecrawl | `GET /v1/` (health endpoint) | HTTP 200 |
-| Apollo | `POST /mixed_people/search` (0 results OK) | HTTP 200 + check result shape |
-| BuiltWith | `GET /?KEY=&LOOKUP=example.com` | HTTP 200 + check no `Errors` key |
-| Google PageSpeed | `GET /runPagespeed?url=https://example.com&key=` | HTTP 200 + categories |
-| HubSpot | `GET /crm/v3/objects/contacts?limit=1` | HTTP 200 |
-| Resend | `GET /emails` | HTTP 200 |
-| Amplitude | `POST /httpapi` (test event) | HTTP 200 |
-| Stripe | `GET /v1/customers?limit=1` | HTTP 200 |
-
-Tests are logged as `platform_key_updated` audit events. Test results (pass/fail) are stored but the key value is never logged.
-
----
-
-## 13. Setup Priority Order
-
-For a new InfoGenie deployment, configure integrations in this order:
-
-**Required to boot:**
-1. `DATABASE_URL` — Postgres connection
-2. `CREDENTIAL_ENCRYPTION_KEY` — 32-byte AES-256-GCM key (`openssl rand -base64 32`)
-3. `SESSION_SECRET` — signs session cookies
-4. `INFOGENIE_API_KEY` — API gate
-
-**Required for core features:**
-5. `AI_INTEGRATIONS_OPENAI_API_KEY` — powers almost everything AI
-6. `RESEND_API_KEY` + `RESEND_FROM_EMAIL` — auth emails (verify/reset)
-7. `DATAFORSEO_LOGIN` + `DATAFORSEO_PASSWORD` — SEO data
-8. `FIRECRAWL_API_KEY` — competitor scraping
-
-**Required for ad campaigns:**
-9. `GOOGLE_ADS_DEVELOPER_TOKEN` + OAuth client
-10. `META_ACCESS_TOKEN` + `META_AD_ACCOUNT_ID`
-
-**Required for reporting & outreach:**
-11. `HUBSPOT_PRIVATE_APP_TOKEN`
-12. `AMPLITUDE_API_KEY`
-13. `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`
-
-**Optional (features degrade gracefully without these):**
-14. `AI_INTEGRATIONS_ANTHROPIC_API_KEY` — Claude fallback
-15. `GEMINI_API_KEY` — Gemini fallback + GEO Audit
-16. `PERPLEXITY_API_KEY` — real-time web AI + GEO Audit
-17. `GOOGLE_PAGESPEED_API_KEY` — real PageSpeed in InstaReports
-18. `APOLLO_API_KEY` — lead enrichment
-19. `BUILTWITH_API_KEY` — tech stack detection
-20. `TWILIO_*` — SMS channel
-21. `WHATSAPP_*` — WhatsApp channel
-22. `VAPI_*` — AI voice channel
-23. `VAPID_*` — web push notifications
-24. Auth OAuth keys (Google/Facebook/Microsoft) — social login buttons
-
----
-
-## 14. Environment Variables Reference
-
-| Variable | Required | Default | Purpose |
+| Endpoint | Auth | Used by | Rate limit |
 |---|---|---|---|
-| `DATABASE_URL` | ✅ | — | Postgres connection string |
-| `CREDENTIAL_ENCRYPTION_KEY` | ✅ prod | — | AES-256-GCM vault key |
-| `SESSION_SECRET` | ✅ prod | Falls back to `INFOGENIE_API_KEY` in dev | Signs session cookies |
-| `INFOGENIE_API_KEY` | ✅ | — | API gate + LLM quota |
-| `AI_INTEGRATIONS_OPENAI_API_KEY` | ✅ | — | OpenAI (GPT-4o/mini) |
-| `AI_INTEGRATIONS_ANTHROPIC_API_KEY` | ⚠️ | — | Claude fallback |
-| `GEMINI_API_KEY` | ⚠️ | — | Gemini + GEO Audit |
-| `PERPLEXITY_API_KEY` | ⚠️ | — | Perplexity + real-time AI |
-| `CLOUDFLARE_ACCOUNT_ID` | ⚠️ | — | Cloudflare Workers AI |
-| `CLOUDFLARE_AI_TOKEN` | ⚠️ | — | Cloudflare Workers AI |
-| `DATAFORSEO_LOGIN` | ✅ | — | SEO keyword + SERP data |
-| `DATAFORSEO_PASSWORD` | ✅ | — | SEO keyword + SERP data |
-| `FIRECRAWL_API_KEY` | ✅ | — | Web scraping |
-| `APOLLO_API_KEY` | ⚠️ | — | Lead enrichment |
-| `BUILTWITH_API_KEY` | ⚠️ | — | Tech stack detection |
-| `GOOGLE_PAGESPEED_API_KEY` | ⚠️ | — | Real PageSpeed scores |
-| `GOOGLE_SEARCH_API_KEY` | ⚠️ | — | Google custom search |
-| `BING_WEBMASTER_API_KEY` | ⚠️ | — | Bing rankings |
-| `HUBSPOT_PRIVATE_APP_TOKEN` | ⚠️ | — | CRM sync |
-| `RESEND_API_KEY` | ✅ | — | All outbound email |
-| `RESEND_FROM_EMAIL` | ✅ | `onboarding@resend.dev` | Verified sender address |
-| `RESEND_WEBHOOK_SECRET` | ✅ | — | Webhook verification |
-| `AMPLITUDE_API_KEY` | ⚠️ | — | Product analytics |
-| `AMPLITUDE_SECRET_KEY` | ⚠️ | — | Server-side events |
-| `STRIPE_SECRET_KEY` | ✅ prod | — | Subscription billing |
-| `STRIPE_WEBHOOK_SECRET` | ✅ prod | — | Billing webhook verification |
-| `GOOGLE_ADS_DEVELOPER_TOKEN` | ⚠️ | — | Google Ads API access |
-| `GOOGLE_ADS_OAUTH_CLIENT_ID` | ⚠️ | — | Per-user Google Ads OAuth |
-| `GOOGLE_ADS_OAUTH_CLIENT_SECRET` | ⚠️ | — | Per-user Google Ads OAuth |
-| `META_ACCESS_TOKEN` | ⚠️ | — | Meta Ads |
-| `META_AD_ACCOUNT_ID` | ⚠️ | — | Meta Ads |
-| `TIKTOK_ACCESS_TOKEN` | ⚠️ | — | TikTok Ads |
-| `TIKTOK_ADVERTISER_ID` | ⚠️ | — | TikTok Ads |
-| `AUTH_GOOGLE_CLIENT_ID` | ⚠️ | — | Google social login |
-| `AUTH_GOOGLE_CLIENT_SECRET` | ⚠️ | — | Google social login |
-| `AUTH_FACEBOOK_CLIENT_ID` | ⚠️ | — | Facebook social login |
-| `AUTH_FACEBOOK_CLIENT_SECRET` | ⚠️ | — | Facebook social login |
-| `AUTH_MICROSOFT_CLIENT_ID` | ⚠️ | — | Microsoft social login |
-| `AUTH_MICROSOFT_CLIENT_SECRET` | ⚠️ | — | Microsoft social login |
-| `GOOGLE_WORKSPACE_CLIENT_ID` | ⚠️ | — | Google Workspace OAuth |
-| `GOOGLE_WORKSPACE_CLIENT_SECRET` | ⚠️ | — | Google Workspace OAuth |
-| `TWILIO_ACCOUNT_SID` | ⚠️ | — | SMS |
-| `TWILIO_AUTH_TOKEN` | ⚠️ | — | SMS |
-| `TWILIO_FROM_NUMBER` | ⚠️ | — | SMS sender number |
-| `WHATSAPP_PHONE_NUMBER_ID` | ⚠️ | — | WhatsApp |
-| `WHATSAPP_ACCESS_TOKEN` | ⚠️ | — | WhatsApp |
-| `WHATSAPP_VERIFY_TOKEN` | ⚠️ | — | WhatsApp webhook verification |
-| `WHATSAPP_APP_SECRET` | ⚠️ | — | WhatsApp payload verification |
-| `VAPI_API_KEY` | ⚠️ | — | AI voice calls |
-| `VAPI_PHONE_NUMBER_ID` | ⚠️ | — | AI voice calls |
-| `VAPI_WEBHOOK_SECRET` | ⚠️ | — | VAPI webhook verification |
-| `VAPID_PUBLIC_KEY` | ⚠️ | — | Web push |
-| `VAPID_PRIVATE_KEY` | ⚠️ | — | Web push |
-| `VAPID_SUBJECT` | ⚠️ | — | Web push (mailto: or URL) |
-| `RAPIDAPI_KEY` | ⚠️ | — | TikTok + Llama via RapidAPI |
-| `PUBLIC_URL` | ⚠️ | `https://{REPL_SLUG}.replit.app` | OAuth callback base URL |
-| `SLACK_WEBHOOK_URL` | ⚠️ | — | Internal Slack alerts |
-| `ZERNIO_API_KEY` | ⚠️ | — | Additional data enrichment |
+| `POST /api/funnel-analytics/track` | None (pixel) | Funnel analytics JS pixel embedded on user sites | Hashed IP |
+| `GET /api/insta-reports/public/:token` | None (token) | Prospects opening their emailed audit report | None (token is secret) |
+| `GET /book/:slug` + `POST /api/bookings/:slug` | None | Clients booking via Link-in-Bio | IP-based |
+| `POST /api/push/subscribe` | Session auth | Browser push service worker registration | Per-user |
+| `GET /lp/:id` | None | Landing pages served to ad traffic | IP-based |
+| `POST /api/landing-pages/lead/:pageId` | None | Lead capture form on landing pages | IP-based |
 
-✅ = Required to boot / core function | ⚠️ = Optional, feature degrades gracefully
+**Rate limiting note:** All public routes use `req.socket.remoteAddress` for IP rate limiting — NOT `req.ip`. This is intentional: `req.ip` is spoofable via `X-Forwarded-For` headers. Never change this without a security review.
 
 ---
 
-*Document owner: Engineering*  
-*Next review: At each new integration added*
+## Section 12 — Environment Variables Reference
+
+### Complete Day 1 Required Set (minimum to go live)
+
+```bash
+# Core security
+CREDENTIAL_ENCRYPTION_KEY=<32-byte base64 string from openssl rand -base64 32>
+SESSION_SECRET=<random secret>
+INFOGENIE_API_KEY=<random token for API gate>
+
+# Database
+DATABASE_URL=<PostgreSQL connection string>
+
+# AI
+AI_INTEGRATIONS_OPENAI_API_KEY=<key>
+
+# Data & intelligence
+DATAFORSEO_LOGIN=<login>
+DATAFORSEO_PASSWORD=<password>
+FIRECRAWL_API_KEY=<key>
+GOOGLE_PAGESPEED_API_KEY=<key>
+
+# Email
+RESEND_API_KEY=<key>
+RESEND_FROM_EMAIL=<verified@yourdomain.com>
+RESEND_WEBHOOK_SECRET=<key>
+
+# Ad platforms (at least one)
+META_ACCESS_TOKEN=<long-lived system token>
+META_AD_ACCOUNT_ID=<act_NNNN>
+GOOGLE_ADS_DEVELOPER_TOKEN=<key>
+GOOGLE_ADS_OAUTH_CLIENT_ID=<key>
+GOOGLE_ADS_OAUTH_CLIENT_SECRET=<key>
+
+# Public URL (required for OAuth callbacks)
+PUBLIC_URL=https://your-app.replit.app
+```
+
+### Full Day 1 Important Set (configure within first week)
+
+```bash
+# Additional AI providers
+AI_INTEGRATIONS_ANTHROPIC_API_KEY=<key>
+GEMINI_API_KEY=<key>
+PERPLEXITY_API_KEY=<key>
+
+# Additional data APIs
+APOLLO_API_KEY=<key>
+BUILTWITH_API_KEY=<key>
+GOOGLE_SEARCH_API_KEY=<key>
+
+# CRM
+HUBSPOT_PRIVATE_APP_TOKEN=<key>
+
+# Payments
+STRIPE_SECRET_KEY=<key>
+STRIPE_WEBHOOK_SECRET=<key>
+
+# Analytics
+AMPLITUDE_API_KEY=<key>
+AMPLITUDE_SECRET_KEY=<key>
+
+# TikTok (if target audience uses TikTok ads)
+TIKTOK_ACCESS_TOKEN=<key>
+TIKTOK_ADVERTISER_ID=<id>
+TIKTOK_RAPIDAPI_KEY=<key>
+```
+
+### Post-MVP Set (configure after launch)
+
+```bash
+# Social login
+AUTH_GOOGLE_CLIENT_ID=<key>
+AUTH_GOOGLE_CLIENT_SECRET=<key>
+AUTH_FACEBOOK_CLIENT_ID=<key>
+AUTH_FACEBOOK_CLIENT_SECRET=<key>
+AUTH_MICROSOFT_CLIENT_ID=<key>
+AUTH_MICROSOFT_CLIENT_SECRET=<key>
+
+# Messaging channels
+TWILIO_ACCOUNT_SID=<sid>
+TWILIO_AUTH_TOKEN=<token>
+TWILIO_FROM_NUMBER=<+1XXXXXXXXXX>
+WHATSAPP_PHONE_NUMBER_ID=<id>
+WHATSAPP_ACCESS_TOKEN=<token>
+WHATSAPP_VERIFY_TOKEN=<random>
+WHATSAPP_APP_SECRET=<secret>
+VAPI_API_KEY=<key>
+VAPI_PHONE_NUMBER_ID=<id>
+VAPI_WEBHOOK_SECRET=<secret>
+
+# Push notifications
+VAPID_PUBLIC_KEY=<key>
+VAPID_PRIVATE_KEY=<key>
+VAPID_SUBJECT=mailto:team@yourdomain.com
+
+# Microsoft Ads
+MICROSOFT_ADS_CLIENT_ID=<key>
+MICROSOFT_ADS_CLIENT_SECRET=<key>
+MICROSOFT_ADS_REFRESH_TOKEN=<token>
+MICROSOFT_ADS_DEVELOPER_TOKEN=<key>
+MICROSOFT_ADS_CUSTOMER_ID=<id>
+
+# Cloudflare AI (fallback LLM)
+CLOUDFLARE_ACCOUNT_ID=<id>
+CLOUDFLARE_AI_TOKEN=<token>
+
+# Slack alerts
+SLACK_WEBHOOK_URL=<url>
+
+# Misc
+BING_WEBMASTER_API_KEY=<key>
+GOOGLE_MERCHANT_CENTER_ID=<id>
+RAPIDAPI_KEY=<key>
+ZERNIO_API_KEY=<key>
+```
+
+---
+
+## Section 13 — Integration Health Monitoring
+
+The **🔑 Platform APIs** admin tab provides a live test button for each configured key. Tests are non-destructive read-only probes.
+
+| Integration | Test method | Success signal | Known quirk |
+|---|---|---|---|
+| OpenAI | `GET /v1/models` | HTTP 200 + model list | — |
+| Anthropic | `GET /v1/models` | HTTP 200 | — |
+| Gemini | `GET /v1beta/models?key=` | HTTP 200 | Returns 400 (not 401) on bad key |
+| Perplexity | Minimal chat completion | HTTP 200 | — |
+| Cloudflare | `GET /accounts/{id}/ai/models/search` | HTTP 200 | — |
+| DataForSEO | `GET /v3/appendix/user_data` | HTTP 200 | — |
+| Firecrawl | `GET /v1/` (health) | HTTP 200 | — |
+| Apollo | `POST /people/search` (empty query) | HTTP 200 + check result shape | Returns 200 on bad key with empty results |
+| BuiltWith | `GET /?KEY=&LOOKUP=example.com` | HTTP 200 + no `Errors` key | Returns 200 + `Errors` on bad key |
+| Google PageSpeed | `GET /runPagespeed?url=https://example.com&key=` | HTTP 200 | — |
+| Resend | `GET /emails` | HTTP 200 | — |
+| HubSpot | `GET /crm/v3/objects/contacts?limit=1` | HTTP 200 | — |
+| Amplitude | `GET /amplitude/health` | HTTP 200 | — |
+| Stripe | `GET /v1/customers?limit=1` | HTTP 200 | — |
+| Meta Ads | `GET /{ad_account}/campaigns?fields=id` | HTTP 200 | — |
+
+---
+
+## Section 14 — Failure Behaviour Summary
+
+This table defines what users see when an integration is unavailable.
+
+| Integration | Feature affected | Failure experience |
+|---|---|---|
+| OpenAI down | All AI generation | Falls back: Claude → Gemini → template. Shows "Generated from template" label. Never silently empty. |
+| DataForSEO quota | Keyword / SEO features | Returns cached data (24h TTL). If no cache, shows AI estimate with "data unavailable" label. |
+| Firecrawl down | Competitor Profiles, InstaReports | Returns AI-generated profile without live web data. Labelled as "AI-researched". |
+| Resend unverified domain | All outbound emails | Email silently dropped by Resend. In dev, use `onboarding@resend.dev`. |
+| Meta token expired | Campaign Launch, Ad Library | "Reconnect Meta account" prompt shown. Existing data displayed; new data blocked. |
+| Google Ads OAuth expired | Google campaign features | "Reconnect Google Ads" prompt. Same pattern as Meta. |
+| Apollo unavailable | Lead Generation | Falls back to Perplexity sonar research. Lower data quality but no hard failure. |
+| HubSpot token revoked | CRM sync | Sync silently skipped (logged). Internal lead table unaffected. User sees "HubSpot sync paused" in settings. |
+| Stripe key invalid | Subscription billing | No tier changes possible. Users stay on current tier. No user-facing error unless they try to upgrade. |
+
+---
+
+## Section 15 — Day 1 Go-Live Checklist
+
+Use this to verify the environment is ready before flipping the deployment to live.
+
+```
+SECURITY
+[ ] CREDENTIAL_ENCRYPTION_KEY is a fresh 32-byte base64 key (openssl rand -base64 32)
+[ ] SESSION_SECRET set (not INFOGENIE_API_KEY reused)
+[ ] INFOGENIE_API_KEY set for API gate
+[ ] DATABASE_URL points to production PostgreSQL
+
+AI
+[ ] AI_INTEGRATIONS_OPENAI_API_KEY — live test passes in Platform APIs tab
+
+DATA & INTELLIGENCE
+[ ] DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD — live test passes
+[ ] FIRECRAWL_API_KEY — live test passes
+[ ] GOOGLE_PAGESPEED_API_KEY — test: returns scores for example.com
+
+EMAIL
+[ ] RESEND_API_KEY set
+[ ] RESEND_FROM_EMAIL is a verified domain in Resend dashboard (not @resend.dev)
+[ ] RESEND_WEBHOOK_SECRET set and webhook registered in Resend dashboard
+
+AD PLATFORMS (at least one)
+[ ] META_ACCESS_TOKEN + META_AD_ACCOUNT_ID — test: fetch campaigns returns HTTP 200
+[ ] GOOGLE_ADS_DEVELOPER_TOKEN set
+[ ] GOOGLE_ADS_OAUTH_CLIENT_ID + SECRET set
+[ ] OAuth callback URI whitelisted in Google Cloud Console
+
+PUBLIC URL
+[ ] PUBLIC_URL set to production domain (required for all OAuth callbacks)
+[ ] Resend webhook URL updated to production URL
+
+DEPLOYMENT TYPE
+[ ] deploy=vm confirmed in .replit (required for cron/optimizer/journey ticks)
+[ ] npm run build:next succeeds before deploy
+[ ] npm start boots without errors (scripts/start.js)
+```
+
+---
+
+*Document owner: Engineering / Product*  
+*Review cadence: Updated each time a new integration is added or an existing one changes auth model*
