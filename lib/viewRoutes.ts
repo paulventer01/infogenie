@@ -341,6 +341,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "local-seo", icon: "📍", label: "Local SEO (Google Maps)" },
           { view: "local-listings", icon: "🏬", label: "Local Listings / NAP Sync" },
           { view: "seo-auditor", icon: "🧭", label: "On-Page SEO Audit" },
+          { view: "content-brief", icon: "📄", label: "SEO Content Brief Studio" },
           { view: "content-score", icon: "📊", label: "Content Score Auto-Optimize" },
           { view: "seo-crawler", icon: "🕸️", label: "Full-Site SEO Crawler" },
           { view: "seo-roadmap", icon: "🗺️", label: "SEO Roadmap (9-step guide)" },

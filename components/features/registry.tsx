@@ -91,7 +91,7 @@ import IcpStudio from "@/components/features/analyse/IcpStudio";
 import Voc from "@/components/features/analyse/Voc";
 import ReviewAggregator from "@/components/features/analyse/ReviewAggregator";
 import Glassdoor from "@/components/features/analyse/Glassdoor";
-
+import ContentBrief from "@/components/features/seo/ContentBrief";
 import Mentions from "@/components/features/analyse/Mentions";
 import Reddit from "@/components/features/analyse/Reddit";
 import RedditPulse from "@/components/features/analyse/RedditPulse";
@@ -357,7 +357,7 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "voc": Voc,
   "review-aggregator": ReviewAggregator,
   "glassdoor": Glassdoor,
-
+  "content-brief": ContentBrief,
   "visitor-intel": VisitorIntel,
   "mentions": Mentions,
   "reddit": Reddit,

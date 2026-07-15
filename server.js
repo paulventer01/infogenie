@@ -3518,6 +3518,8 @@ const _budgetCapsRouter       = require('./services/budget_caps/api');
 const _pixelManagerSchema     = require('./services/pixel_manager/schema');
 const _pixelManagerRouter     = require('./services/pixel_manager/api');
 
+const _contentBriefSchema     = require('./services/content_brief/schema');
+const _contentBriefRouter     = require('./services/content_brief/api');
 const _visitorIntelSchema     = require('./services/visitor_intel/schema');
 const _visitorIntelRouter     = require('./services/visitor_intel/api');
 const _launchComplianceSchema = require('./services/launch_compliance/schema');
@@ -3532,6 +3534,7 @@ app.use('/api/utm-builder',       _utmBuilderRouter);
 app.use('/api/budget-caps',       _budgetCapsRouter);
 app.use('/api/pixel-manager',     _pixelManagerRouter);
 
+app.use('/api/content-brief',     _contentBriefRouter);
 app.use('/api/visitor-intel',     _visitorIntelRouter);
 app.use('/api/launch-compliance', _launchComplianceRouter);
 app.use('/api/post-launch-audit', _postLaunchAuditRouter);
@@ -3547,13 +3550,13 @@ BOOT_TASKS.push(async () => {
       await _utmBuilderSchema.ensureUtmBuilderSchema();
       await _budgetCapsSchema.ensureBudgetCapsSchema();
       await _pixelManagerSchema.ensurePixelManagerSchema();
-
+      await _contentBriefSchema.ensureContentBriefSchema();
       await _visitorIntelSchema.ensureVisitorIntelSchema();
       await _launchComplianceSchema.ensureLaunchComplianceSchema();
       await _postLaunchAuditSchema.ensurePostLaunchAuditSchema();
       const { startBudgetCapsCron } = require('./services/budget_caps/cron');
       startBudgetCapsCron();
-      console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing, utm-builder, budget-caps, pixel-manager, visitor-intel, launch-compliance, post-launch-audit');
+      console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing, utm-builder, budget-caps, pixel-manager, content-brief, visitor-intel, launch-compliance, post-launch-audit');
     } else {
       console.log('[gap-features] disabled — DATABASE_URL not set');
     }
