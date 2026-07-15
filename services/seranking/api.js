@@ -8,6 +8,44 @@ const router = express.Router();
 const BASE   = 'api.seranking.com';
 const MCP_BASE_URL = 'https://api.seranking.com/mcp';
 
+// ── DataForSEO helper ─────────────────────────────────────────────────────────
+function _dfsPost(path, body) {
+  return new Promise(resolve => {
+    const u = process.env.DATAFORSEO_LOGIN;
+    const p = process.env.DATAFORSEO_PASSWORD;
+    if (!u || !p) return resolve({ ok: false, error: 'DataForSEO not configured' });
+    const auth    = 'Basic ' + Buffer.from(u + ':' + p).toString('base64');
+    const payload = JSON.stringify(body);
+    const req = _https.request({
+      hostname: 'api.dataforseo.com', path, method: 'POST',
+      headers: { 'Authorization': auth, 'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload) },
+    }, r => {
+      let d = '';
+      r.on('data', c => d += c);
+      r.on('end', () => {
+        try {
+          const json = JSON.parse(d);
+          if (json.status_code !== 20000) return resolve({ ok: false, error: json.status_message || 'DFS error', raw: json });
+          resolve({ ok: true, tasks: json.tasks || [] });
+        } catch { resolve({ ok: false, error: 'parse error', raw: d.slice(0, 200) }); }
+      });
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.setTimeout(25000, () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
+    req.write(payload);
+    req.end();
+  });
+}
+
+function _dfsItem0(r) {
+  return r?.tasks?.[0]?.result?.[0] || null;
+}
+
+function _dfsItems(r) {
+  return r?.tasks?.[0]?.result?.[0]?.items || [];
+}
+
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
 
@@ -325,6 +363,130 @@ router.get('/sites/:id/competitors', async (req, res) => {
   const r = await _get('/v1/project-management/competitors' + _qs({ site_id: req.params.id }));
   if (!r.ok) return _err(res, 502, r.error || 'SE Ranking API error');
   res.json({ ok: true, competitors: r.data });
+});
+
+// POST /sites/:id/competitors — add a competitor domain to the SE Ranking project
+router.post('/sites/:id/competitors', async (req, res) => {
+  const { url } = req.body || {};
+  if (!url) return _err(res, 400, 'url is required');
+  // Clean the URL — SE Ranking expects just the domain, no protocol
+  const domain = url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+  const r = await _post('/v1/project-management/competitors', { site_id: Number(req.params.id), url: domain });
+  if (!r.ok) return _err(res, 502, r.data?.error_description || r.error || 'SE Ranking API error');
+  res.json({ ok: true, competitor: r.data });
+});
+
+// DELETE /sites/:id/competitors/:cid — remove a competitor from the SE Ranking project
+router.delete('/sites/:id/competitors/:cid', async (req, res) => {
+  // Try the standard REST path first, fall back to query-param style
+  const r = await new Promise(resolve => {
+    const key = process.env.SERANKING_API_KEY;
+    if (!key) return resolve({ ok: false });
+    const req2 = _https.request({
+      hostname: BASE,
+      path: '/v1/project-management/competitors/' + req.params.cid,
+      method: 'DELETE',
+      headers: { 'Authorization': 'Token ' + key, 'Accept': 'application/json' },
+    }, rs => {
+      let d = '';
+      rs.on('data', c => d += c);
+      rs.on('end', () => resolve({ ok: rs.statusCode < 400, status: rs.statusCode, raw: d }));
+    });
+    req2.on('error', e => resolve({ ok: false, error: e.message }));
+    req2.setTimeout(10000, () => { req2.destroy(); resolve({ ok: false, error: 'timeout' }); });
+    req2.end();
+  });
+  if (!r.ok) return _err(res, 502, 'Failed to remove competitor');
+  res.json({ ok: true });
+});
+
+// POST /sites/:id/keywords — add keywords to the SE Ranking project
+router.post('/sites/:id/keywords', async (req, res) => {
+  const { keywords, group_id } = req.body || {};
+  if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
+    return _err(res, 400, 'keywords array is required');
+  }
+  const body = {
+    site_id: Number(req.params.id),
+    keywords: keywords.map(k => ({ keyword: String(k).trim() })),
+  };
+  if (group_id) body.group_id = group_id;
+  const r = await _post('/v1/project-management/keywords', body);
+  if (!r.ok) return _err(res, 502, r.data?.error_description || r.error || 'SE Ranking API error');
+  res.json({ ok: true, result: r.data });
+});
+
+// POST /sites/:id/competitor-analysis — full competitive intelligence via DataForSEO
+router.post('/sites/:id/competitor-analysis', async (req, res) => {
+  const { own_domain, competitor_domains = [] } = req.body || {};
+  if (!own_domain) return _err(res, 400, 'own_domain is required');
+
+  const allDomains = [own_domain, ...competitor_domains];
+  const loc = { location_code: 2710, language_code: 'en' }; // South Africa / en — adjust as needed
+
+  // Run all DataForSEO calls concurrently
+  const [overviewRes, ...intersectionResults] = await Promise.all([
+    // Domain rank overview for ALL domains at once
+    _dfsPost('/v3/dataforseo_labs/google/bulk_traffic_estimation/live', [
+      ...allDomains.map(d => ({ target: d, ...loc })),
+    ]),
+    // Keyword intersection: own domain vs each competitor
+    ...competitor_domains.map(comp =>
+      _dfsPost('/v3/dataforseo_labs/google/domain_intersection/live', [{
+        target1: own_domain, target2: comp,
+        filters: ['ranked_serp_element.serp_item.rank_group', '<=', 50],
+        order_by: ['ranked_serp_element.serp_item.etv,desc'],
+        limit: 20,
+        ...loc,
+      }])
+    ),
+  ]);
+
+  // Also get domain rank overview via competitors_domain to suggest new competitors
+  const suggestRes = competitor_domains.length === 0
+    ? await _dfsPost('/v3/dataforseo_labs/google/competitors_domain/live', [{
+        target: own_domain, limit: 8, ...loc,
+      }])
+    : null;
+
+  // Parse domain overviews
+  const overviewItems = overviewRes.ok ? (_dfsItems(overviewRes) || []) : [];
+  const overviewMap = {};
+  for (const item of overviewItems) {
+    if (item.target) overviewMap[item.target] = item;
+  }
+
+  // Parse intersections
+  const intersections = competitor_domains.map((comp, i) => {
+    const r = intersectionResults[i];
+    const items = r?.ok ? _dfsItems(r) : [];
+    return {
+      competitor: comp,
+      shared_keywords: items.map(kw => ({
+        keyword:      kw.keyword_data?.keyword,
+        own_pos:      kw.first_domain_serp_element?.rank_group ?? null,
+        comp_pos:     kw.second_domain_serp_element?.rank_group ?? null,
+        search_volume: kw.keyword_data?.keyword_info?.search_volume ?? null,
+      })).filter(k => k.keyword),
+    };
+  });
+
+  // Suggested competitors (when none added yet)
+  const suggested = suggestRes?.ok
+    ? _dfsItems(suggestRes).map(c => ({ domain: c.domain, intersections: c.intersections_count }))
+    : [];
+
+  res.json({
+    ok: true,
+    own_domain,
+    domains: allDomains.map(d => ({
+      domain:      d,
+      is_own:      d === own_domain,
+      metrics:     overviewMap[d] || null,
+    })),
+    intersections,
+    suggested_competitors: suggested,
+  });
 });
 
 // GET /sites/:id/check-dates

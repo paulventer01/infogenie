@@ -9,6 +9,36 @@ interface MCPTool {
   inputSchema?: { properties?: Record<string, { description?: string; type?: string }> };
 }
 
+interface CompDomainMetrics {
+  domain: string;
+  is_own: boolean;
+  metrics: {
+    organic_count?: number;
+    paid_count?: number;
+    etv?: number;
+    avg_position?: number;
+  } | null;
+}
+
+interface CompKeyword {
+  keyword: string | null;
+  own_pos: number | null;
+  comp_pos: number | null;
+  search_volume: number | null;
+}
+
+interface CompIntersection {
+  competitor: string;
+  shared_keywords: CompKeyword[];
+}
+
+interface CompAnalysis {
+  own_domain: string;
+  domains: CompDomainMetrics[];
+  intersections: CompIntersection[];
+  suggested_competitors: { domain: string; intersections: number }[];
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface SERSite {
@@ -160,6 +190,14 @@ export default function SeRanking() {
   const [mcpLoading, setMcpLoading]     = useState(false);
   const [mcpError, setMcpError]         = useState<string | null>(null);
   const [mcpConnecting, setMcpConnecting] = useState(false);
+
+  // Competitor analysis state
+  const [compInput, setCompInput]               = useState("");
+  const [compAdding, setCompAdding]             = useState(false);
+  const [compAddError, setCompAddError]         = useState<string | null>(null);
+  const [compAnalysis, setCompAnalysis]         = useState<CompAnalysis | null>(null);
+  const [compAnalysisLoading, setCompAnalysisLoading] = useState(false);
+  const [compAnalysisError, setCompAnalysisError]     = useState<string | null>(null);
 
   // ── Load status + sites ──────────────────────────────────────────────────
 
@@ -362,6 +400,58 @@ export default function SeRanking() {
   useEffect(() => {
     if (tab === "mcp" && mcpConnected && mcpTools.length === 0) loadMcpTools();
   }, [tab, mcpConnected, mcpTools.length, loadMcpTools]);
+
+  // ── Competitor management handlers ────────────────────────────────────────
+
+  const addCompetitor = useCallback(async () => {
+    if (!selectedSite || !compInput.trim()) return;
+    setCompAdding(true);
+    setCompAddError(null);
+    try {
+      await apiPost(`/api/seranking/sites/${selectedSite.id}/competitors`, { url: compInput.trim() });
+      setCompInput("");
+      // Reload competitors list
+      const r = await apiGet<{ ok: boolean; competitors: { id: number; url: string; name: string }[] }>(
+        `/api/seranking/sites/${selectedSite.id}/competitors`
+      );
+      setCompetitors(r.competitors || []);
+    } catch (e) {
+      setCompAddError(e instanceof Error ? e.message : "Failed to add competitor");
+    } finally {
+      setCompAdding(false);
+    }
+  }, [selectedSite, compInput]);
+
+  const removeCompetitor = useCallback(async (cid: number) => {
+    if (!selectedSite) return;
+    try {
+      await apiDelete(`/api/seranking/sites/${selectedSite.id}/competitors/${cid}`);
+      setCompetitors(prev => prev.filter((c: { id?: number }) => c.id !== cid));
+    } catch {}
+  }, [selectedSite]);
+
+  const runCompetitorAnalysis = useCallback(async () => {
+    if (!selectedSite) return;
+    const ownDomain = selectedSite.name?.replace(/^https?:\/\//i, "").replace(/\/.*$/, "") || "";
+    if (!ownDomain) return;
+    setCompAnalysisLoading(true);
+    setCompAnalysisError(null);
+    try {
+      const compDomains = competitors
+        .map((c: { url?: string }) => (c.url || "").replace(/^https?:\/\//i, "").replace(/\/.*$/, ""))
+        .filter(Boolean);
+      const r = await apiPost<CompAnalysis & { ok: boolean; error?: string }>(
+        `/api/seranking/sites/${selectedSite.id}/competitor-analysis`,
+        { own_domain: ownDomain, competitor_domains: compDomains }
+      );
+      if (!r.ok) { setCompAnalysisError(r.error || "Analysis failed"); return; }
+      setCompAnalysis(r as CompAnalysis);
+    } catch (e) {
+      setCompAnalysisError(e instanceof Error ? e.message : "Analysis failed");
+    } finally {
+      setCompAnalysisLoading(false);
+    }
+  }, [selectedSite, competitors]);
 
   // ── Computed stats ────────────────────────────────────────────────────────
 
@@ -785,39 +875,224 @@ export default function SeRanking() {
 
       {/* ── Competitors tab ───────────────────────────────────────────── */}
       {tab === "competitors" && (
-        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, padding: "20px 24px" }}>
-          <div style={{ fontWeight: 700, fontSize: ".95rem", color: "#111827", marginBottom: 16 }}>
-            Tracked competitors
-          </div>
-          {competitors.length === 0 ? (
-            <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}>
-              <div style={{ fontSize: "2.5rem", marginBottom: 8 }}>🏁</div>
-              No competitors added yet.
-              <div style={{ fontSize: ".85rem", marginTop: 6 }}>
-                Add competitor URLs in SE Ranking → your project settings.
-              </div>
-              <a href="https://online.seranking.com/" target="_blank" rel="noreferrer"
-                style={{ display: "inline-block", marginTop: 12, padding: "8px 20px",
-                  background: "#2563EB", color: "#fff", borderRadius: 8, textDecoration: "none",
-                  fontSize: ".88rem", fontWeight: 600 }}>
-                Open SE Ranking →
-              </a>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+          {/* Add competitor form */}
+          <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, padding: "16px 20px" }}>
+            <div style={{ fontWeight: 700, fontSize: ".9rem", color: "#111827", marginBottom: 10 }}>
+              🏁 Track a competitor
             </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {competitors.map((c, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
-                  background: "#F9FAFB", borderRadius: 8, border: "1px solid #E5E7EB" }}>
-                  <img src={`https://www.google.com/s2/favicons?domain=${c.url}&sz=20`} alt=""
-                    style={{ width: 20, height: 20, borderRadius: 3 }} />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: ".88rem", color: "#111827" }}>{c.name || c.url}</div>
-                    {c.name && c.url !== c.name && (
-                      <div style={{ fontSize: ".76rem", color: "#9CA3AF" }}>{c.url}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                type="text" placeholder="competitor.com" value={compInput}
+                onChange={e => setCompInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addCompetitor()}
+                style={{ flex: 1, padding: "8px 12px", border: "1px solid #D1D5DB", borderRadius: 8,
+                  fontSize: ".88rem", outline: "none" }}
+              />
+              <button onClick={addCompetitor} disabled={compAdding || !compInput.trim()}
+                style={{ padding: "8px 18px", background: "#2563EB", color: "#fff", border: "none",
+                  borderRadius: 8, fontWeight: 600, fontSize: ".85rem",
+                  cursor: compAdding || !compInput.trim() ? "not-allowed" : "pointer",
+                  opacity: compAdding || !compInput.trim() ? .5 : 1 }}>
+                {compAdding ? "Adding…" : "+ Add"}
+              </button>
+            </div>
+            {compAddError && (
+              <div style={{ marginTop: 6, fontSize: ".78rem", color: "#DC2626" }}>⚠️ {compAddError}</div>
+            )}
+            {/* Suggested competitors from DataForSEO */}
+            {compAnalysis?.suggested_competitors && compAnalysis.suggested_competitors.length > 0 && competitors.length === 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: ".78rem", color: "#6B7280", marginBottom: 6 }}>Suggested competitors:</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {compAnalysis.suggested_competitors.slice(0, 6).map(s => (
+                    <button key={s.domain} onClick={() => setCompInput(s.domain)}
+                      style={{ fontSize: ".76rem", padding: "3px 10px", background: "#EFF6FF",
+                        color: "#2563EB", border: "1px solid #BFDBFE", borderRadius: 99, cursor: "pointer" }}>
+                      {s.domain}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Tracked competitors list */}
+          {competitors.length > 0 && (
+            <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, padding: "16px 20px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: ".9rem", color: "#111827" }}>
+                  Tracked competitors ({competitors.length})
+                </div>
+                <button onClick={runCompetitorAnalysis} disabled={compAnalysisLoading}
+                  style={{ padding: "7px 16px", background: compAnalysisLoading ? "#E5E7EB" : "#7C3AED",
+                    color: compAnalysisLoading ? "#9CA3AF" : "#fff", border: "none", borderRadius: 8,
+                    fontWeight: 600, fontSize: ".82rem", cursor: compAnalysisLoading ? "not-allowed" : "pointer" }}>
+                  {compAnalysisLoading ? "⏳ Analysing…" : "🔍 Run Analysis"}
+                </button>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {competitors.map((c: { id?: number; url?: string; name?: string }, i: number) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                    background: "#F9FAFB", borderRadius: 8, border: "1px solid #E5E7EB" }}>
+                    <img src={`https://www.google.com/s2/favicons?domain=${c.url}&sz=18`} alt=""
+                      style={{ width: 18, height: 18, borderRadius: 3, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: ".85rem", color: "#111827" }}>{c.name || c.url}</div>
+                      {c.name && c.url !== c.name && (
+                        <div style={{ fontSize: ".74rem", color: "#9CA3AF" }}>{c.url}</div>
+                      )}
+                    </div>
+                    {/* DataForSEO metrics if available */}
+                    {compAnalysis && (() => {
+                      const dm = compAnalysis.domains.find(d => d.domain === (c.url || "").replace(/^https?:\/\//i, "").replace(/\/.*$/, ""));
+                      return dm?.metrics ? (
+                        <div style={{ display: "flex", gap: 12, fontSize: ".76rem", color: "#6B7280" }}>
+                          {dm.metrics.organic_count != null && (
+                            <span title="Organic keywords">🔑 {dm.metrics.organic_count?.toLocaleString()}</span>
+                          )}
+                          {dm.metrics.etv != null && (
+                            <span title="Est. monthly traffic">📈 {Math.round(dm.metrics.etv || 0).toLocaleString()}/mo</span>
+                          )}
+                        </div>
+                      ) : null;
+                    })()}
+                    {c.id && (
+                      <button onClick={() => removeCompetitor(c.id!)}
+                        style={{ padding: "3px 8px", background: "none", border: "1px solid #FCA5A5",
+                          color: "#DC2626", borderRadius: 6, fontSize: ".72rem", cursor: "pointer" }}>
+                        Remove
+                      </button>
                     )}
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Analysis error */}
+          {compAnalysisError && (
+            <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 8,
+              padding: "12px 16px", color: "#DC2626", fontSize: ".85rem" }}>
+              ⚠️ {compAnalysisError}
+            </div>
+          )}
+
+          {/* Own site vs competitor domain metrics */}
+          {compAnalysis && compAnalysis.domains.length > 0 && (
+            <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, padding: "16px 20px" }}>
+              <div style={{ fontWeight: 700, fontSize: ".9rem", color: "#111827", marginBottom: 12 }}>
+                📊 Domain comparison
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".84rem" }}>
+                  <thead>
+                    <tr style={{ background: "#F9FAFB", borderBottom: "2px solid #E5E7EB" }}>
+                      {["Domain", "Organic Keywords", "Est. Monthly Traffic", "Avg Position"].map(h => (
+                        <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 600,
+                          color: "#374151", fontSize: ".76rem", textTransform: "uppercase", letterSpacing: ".04em" }}>
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {compAnalysis.domains.map(d => (
+                      <tr key={d.domain} style={{ borderBottom: "1px solid #F3F4F6",
+                        background: d.is_own ? "#EFF6FF" : "#fff" }}>
+                        <td style={{ padding: "9px 12px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <img src={`https://www.google.com/s2/favicons?domain=${d.domain}&sz=16`} alt=""
+                              style={{ width: 16, height: 16, borderRadius: 2 }} />
+                            <span style={{ fontWeight: d.is_own ? 700 : 400, color: "#111827" }}>
+                              {d.domain}{d.is_own && <span style={{ marginLeft: 6, fontSize: ".7rem",
+                                background: "#DBEAFE", color: "#1D4ED8", padding: "1px 6px", borderRadius: 99 }}>You</span>}
+                            </span>
+                          </div>
+                        </td>
+                        <td style={{ padding: "9px 12px", color: "#374151" }}>
+                          {d.metrics?.organic_count != null ? d.metrics.organic_count.toLocaleString() : <span style={{ color: "#9CA3AF" }}>—</span>}
+                        </td>
+                        <td style={{ padding: "9px 12px", color: "#374151" }}>
+                          {d.metrics?.etv != null ? Math.round(d.metrics.etv).toLocaleString() : <span style={{ color: "#9CA3AF" }}>—</span>}
+                        </td>
+                        <td style={{ padding: "9px 12px", color: "#374151" }}>
+                          {d.metrics?.avg_position != null ? `#${d.metrics.avg_position.toFixed(1)}` : <span style={{ color: "#9CA3AF" }}>—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Keyword overlap — side-by-side positions */}
+          {compAnalysis && compAnalysis.intersections.map(ix => (
+            ix.shared_keywords.length > 0 && (
+              <div key={ix.competitor} style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, padding: "16px 20px" }}>
+                <div style={{ fontWeight: 700, fontSize: ".9rem", color: "#111827", marginBottom: 4 }}>
+                  🔗 Keyword overlap — <span style={{ color: "#7C3AED" }}>{ix.competitor}</span>
                 </div>
-              ))}
+                <div style={{ fontSize: ".78rem", color: "#6B7280", marginBottom: 12 }}>
+                  {ix.shared_keywords.length} keywords both sites rank for
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".83rem" }}>
+                    <thead>
+                      <tr style={{ background: "#F9FAFB", borderBottom: "2px solid #E5E7EB" }}>
+                        <th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 600, color: "#374151", fontSize: ".74rem", textTransform: "uppercase" }}>Keyword</th>
+                        <th style={{ padding: "8px 12px", textAlign: "center", fontWeight: 600, color: "#1D4ED8", fontSize: ".74rem", textTransform: "uppercase" }}>Your position</th>
+                        <th style={{ padding: "8px 12px", textAlign: "center", fontWeight: 600, color: "#7C3AED", fontSize: ".74rem", textTransform: "uppercase" }}>Their position</th>
+                        <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 600, color: "#374151", fontSize: ".74rem", textTransform: "uppercase" }}>Vol/mo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ix.shared_keywords.map((kw, ki) => {
+                        const youWin = kw.own_pos != null && kw.comp_pos != null && kw.own_pos < kw.comp_pos;
+                        const theyWin = kw.own_pos != null && kw.comp_pos != null && kw.comp_pos < kw.own_pos;
+                        return (
+                          <tr key={ki} style={{ borderBottom: "1px solid #F3F4F6", background: ki % 2 === 0 ? "#fff" : "#FAFAFA" }}>
+                            <td style={{ padding: "7px 12px", color: "#111827" }}>{kw.keyword}</td>
+                            <td style={{ padding: "7px 12px", textAlign: "center" }}>
+                              {kw.own_pos != null
+                                ? <span style={{ fontWeight: 700, color: youWin ? "#16A34A" : "#374151" }}>#{kw.own_pos}</span>
+                                : <span style={{ color: "#9CA3AF" }}>—</span>}
+                            </td>
+                            <td style={{ padding: "7px 12px", textAlign: "center" }}>
+                              {kw.comp_pos != null
+                                ? <span style={{ fontWeight: 700, color: theyWin ? "#DC2626" : "#374151" }}>#{kw.comp_pos}</span>
+                                : <span style={{ color: "#9CA3AF" }}>—</span>}
+                            </td>
+                            <td style={{ padding: "7px 12px", textAlign: "right", color: "#6B7280" }}>
+                              {kw.search_volume != null ? kw.search_volume.toLocaleString() : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          ))}
+
+          {/* Empty state — no competitors yet, prompt to analyse own site first */}
+          {competitors.length === 0 && !compAnalysis && (
+            <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10,
+              padding: "36px 24px", textAlign: "center", color: "#9CA3AF" }}>
+              <div style={{ fontSize: "2.5rem", marginBottom: 10 }}>🏁</div>
+              <div style={{ fontWeight: 600, color: "#374151", marginBottom: 6 }}>No competitors tracked yet</div>
+              <div style={{ fontSize: ".85rem", maxWidth: 400, margin: "0 auto 16px" }}>
+                Type a competitor domain above and click <strong>+ Add</strong>, or click
+                {" "}<strong>Run Analysis</strong> to discover who competes with {selectedSite?.name || "your site"}.
+              </div>
+              <button onClick={runCompetitorAnalysis} disabled={compAnalysisLoading}
+                style={{ padding: "9px 22px", background: "#7C3AED", color: "#fff", border: "none",
+                  borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: ".88rem" }}>
+                {compAnalysisLoading ? "⏳ Discovering…" : "🔍 Discover competitors"}
+              </button>
             </div>
           )}
         </div>
