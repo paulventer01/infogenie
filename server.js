@@ -398,6 +398,9 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/landing-pages\/lead\/[^\/]+$/,            // T71 public lead capture (rate-limited)
   /^\/api\/landing-pages\/ab-view\/[^\/]+$/,         // T70 A/B view tracking
   /^\/api\/landing-pages\/ab-convert\/[^\/]+$/,      // T70 A/B conversion tracking
+  /^\/api\/digital-twin\/share\/[^\/]+$/,            // public simulator share JSON (no auth)
+  /^\/api\/digital-twin\/share\/[^\/]+\/view$/,      // public simulator share HTML (no auth)
+  /^\/api\/digital-twin\/share\/[^\/]+\/pdf$/,       // public simulator share PDF (no auth)
 ];
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.

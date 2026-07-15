@@ -431,7 +431,7 @@ router.post('/scenarios/:id/share', async (req, res) => {
     );
   }
   const base = process.env.PUBLIC_URL || `https://${process.env.REPL_SLUG}.replit.app`;
-  res.json({ ok: true, token, url: `${base}/api/digital-twin/share/${token}/view` });
+  res.json({ ok: true, token, url: `${base}/simulator/share/${token}` });
 });
 
 /* ── GET /api/digital-twin/share/:token/view  (public HTML — no auth) ───── */
