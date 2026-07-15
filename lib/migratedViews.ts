@@ -293,6 +293,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "self-healing",       legacyModule: null },
   { view: "ctv-streaming",      legacyModule: null },
   { view: "rcs-campaigns",      legacyModule: null },
+  { view: "funnel-analytics",   legacyModule: null },
   { view: "email-warmup",       legacyModule: null },
   { view: "linkedin-outreach",  legacyModule: null },
   // Customer-engagement pack — ig_customer_engagement.js is DEDICATED to these

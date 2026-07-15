@@ -421,8 +421,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "conversion-recovery", icon: "🔄", label: "Conversion Recovery (CAPI)" },
           { view: "churn-scorer", icon: "⚠️", label: "Churn-Risk Scorer" },
           { view: "revenue-forecast", icon: "💹", label: "AI Revenue Forecast Engine" },
-          { view: "digital-twin", icon: "🪞", label: "Digital Twin (what-if simulator)" },
-          { view: "mmm", icon: "🎛️", label: "Media Mix Modeler (optimal allocation)" },
+          { view: "digital-twin",     icon: "🪞", label: "Digital Twin (what-if simulator)" },
+          { view: "mmm",             icon: "🎛️", label: "Media Mix Modeler (optimal allocation)" },
+          { view: "funnel-analytics", icon: "📊", label: "Funnel Analytics (page views · opt-ins · sales · EPC)" },
         ],
       },
       {

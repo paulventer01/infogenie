@@ -3307,6 +3307,8 @@ const _swarmSchema            = require('./services/agent_swarm/schema');
 const _swarmRouter            = require('./services/agent_swarm/api');
 const _selfHealingSchema      = require('./services/self_healing/schema');
 const _selfHealingRouter      = require('./services/self_healing/api');
+const _funnelAnalyticsSchema  = require('./services/funnel_analytics/schema');
+const _funnelAnalyticsRouter  = require('./services/funnel_analytics/api');
 const _emailWarmupSchema      = require('./services/email_warmup/schema');
 const _emailWarmupRouter      = require('./services/email_warmup/api');
 const _linkedinOutreachSchema = require('./services/linkedin_outreach/schema');
@@ -3333,6 +3335,7 @@ const _workflowBuilderSchema  = require('./services/workflow_builder/schema');
 const _workflowBuilderRouter  = require('./services/workflow_builder/api');
 app.use('/api/swarm',              _swarmRouter);
 app.use('/api/self-healing',       _selfHealingRouter);
+app.use('/api/funnel-analytics',  _funnelAnalyticsRouter);
 app.use('/api/email-warmup',      _emailWarmupRouter);
 app.use('/api/linkedin-outreach', _linkedinOutreachRouter);
 app.use('/api/budget-arbitrage',   _budgetArbRouter);
@@ -3374,6 +3377,7 @@ BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _swarmSchema.ensureAgentSwarmSchema();
   await _selfHealingSchema.ensureSelfHealingSchema();
+  await _funnelAnalyticsSchema.ensureFunnelAnalyticsSchema();
   await _emailWarmupSchema.ensureEmailWarmupSchema();
   await _linkedinOutreachSchema.ensureLinkedInOutreachSchema();
   await _budgetArbSchema.ensureBudgetArbitrageSchema();

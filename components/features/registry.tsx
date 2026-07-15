@@ -255,6 +255,7 @@ import AudioSummary from "@/components/features/creator/AudioSummary";
 import SelfHealing from "@/components/features/grow/SelfHealing";
 import CtvStreaming from "@/components/features/grow/CtvStreaming";
 import RcsCampaigns from "@/components/features/reach/RcsCampaigns";
+import FunnelAnalytics from "@/components/features/grow/FunnelAnalytics";
 import EmailWarmup from "@/components/features/reach/EmailWarmup";
 import LinkedInOutreach from "@/components/features/reach/LinkedInOutreach";
 
@@ -290,6 +291,7 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "self-healing":       SelfHealing,
   "ctv-streaming":      CtvStreaming,
   "rcs-campaigns":      RcsCampaigns,
+  "funnel-analytics":   FunnelAnalytics,
   "email-warmup":       EmailWarmup,
   "linkedin-outreach":  LinkedInOutreach,
   "action-queue": ActionQueue,
