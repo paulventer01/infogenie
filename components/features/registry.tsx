@@ -93,6 +93,7 @@ import ReviewAggregator from "@/components/features/analyse/ReviewAggregator";
 import Glassdoor from "@/components/features/analyse/Glassdoor";
 import ContentBrief from "@/components/features/seo/ContentBrief";
 import PeriodComparison from "@/components/features/manage/PeriodComparison";
+import GscData from "@/components/features/seo/GscData";
 import Mentions from "@/components/features/analyse/Mentions";
 import Reddit from "@/components/features/analyse/Reddit";
 import RedditPulse from "@/components/features/analyse/RedditPulse";
@@ -360,6 +361,7 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "glassdoor": Glassdoor,
   "content-brief": ContentBrief,
   "period-comparison": PeriodComparison,
+  "gsc-data": GscData,
   "visitor-intel": VisitorIntel,
   "mentions": Mentions,
   "reddit": Reddit,

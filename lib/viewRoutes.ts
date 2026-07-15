@@ -336,6 +336,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "5 · Get found in search & AI",
         items: [
+          { view: "gsc-data", icon: "🔍", label: "Search Console Data (organic clicks · impressions · CTR · position)" },
           { view: "search-intel", icon: "🔮", label: "AI Visibility & Search Pulse" },
           { view: "geo-audit", icon: "🛸", label: "GEO Audit (ChatGPT · Perplexity)" },
           { view: "local-seo", icon: "📍", label: "Local SEO (Google Maps)" },

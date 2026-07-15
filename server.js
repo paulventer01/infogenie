@@ -3521,6 +3521,7 @@ const _pixelManagerRouter     = require('./services/pixel_manager/api');
 const _contentBriefSchema     = require('./services/content_brief/schema');
 const _contentBriefRouter     = require('./services/content_brief/api');
 const _periodCompRouter       = require('./services/period_comparison/api');
+const _gscDataRouter          = require('./services/gsc_data/api');
 const _visitorIntelSchema     = require('./services/visitor_intel/schema');
 const _visitorIntelRouter     = require('./services/visitor_intel/api');
 const _launchComplianceSchema = require('./services/launch_compliance/schema');
@@ -3537,6 +3538,7 @@ app.use('/api/pixel-manager',     _pixelManagerRouter);
 
 app.use('/api/content-brief',     _contentBriefRouter);
 app.use('/api/period-comparison', _periodCompRouter);
+app.use('/api/gsc-data',         _gscDataRouter);
 app.use('/api/visitor-intel',     _visitorIntelRouter);
 app.use('/api/launch-compliance', _launchComplianceRouter);
 app.use('/api/post-launch-audit', _postLaunchAuditRouter);
