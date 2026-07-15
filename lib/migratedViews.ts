@@ -132,6 +132,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "voc", legacyModule: null },
   { view: "review-aggregator", legacyModule: null },
   { view: "glassdoor", legacyModule: null },
+  { view: "visitor-intel", legacyModule: null },
   { view: "mentions", legacyModule: null },
   { view: "reddit", legacyModule: null },
   { view: "reddit-pulse", legacyModule: null },

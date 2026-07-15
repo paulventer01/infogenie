@@ -12,6 +12,7 @@ import SeoRoadmap from "@/components/features/reach/SeoRoadmap";
 import Deliverability from "@/components/features/reach/Deliverability";
 import WebVitals from "@/components/features/reach/WebVitals";
 import TechStack from "@/components/features/analyse/TechStack";
+import VisitorIntel from "@/components/features/analyse/VisitorIntel";
 import GrowthMethodology from "@/components/features/manage/GrowthMethodology";
 import WhiteLabel from "@/components/features/manage/WhiteLabel";
 import BulkReports from "@/components/features/manage/BulkReports";
@@ -355,6 +356,7 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "voc": Voc,
   "review-aggregator": ReviewAggregator,
   "glassdoor": Glassdoor,
+  "visitor-intel": VisitorIntel,
   "mentions": Mentions,
   "reddit": Reddit,
   "reddit-pulse": RedditPulse,

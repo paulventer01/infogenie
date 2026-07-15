@@ -127,6 +127,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "5 · Understand your customers",
         items: [
+          { view: "visitor-intel", icon: "🔍", label: "Visitor Intelligence (who's on your site)" },
           { view: "icp-studio", icon: "🎯", label: "ICP Studio (your buyer)" },
           { view: "voc", icon: "🗣️", label: "Voice of Customer" },
           { view: "review-aggregator", icon: "⭐", label: "Review Aggregator" },

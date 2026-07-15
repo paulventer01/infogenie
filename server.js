@@ -401,6 +401,7 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/digital-twin\/share\/[^\/]+$/,            // public simulator share JSON (no auth)
   /^\/api\/digital-twin\/share\/[^\/]+\/view$/,      // public simulator share HTML (no auth)
   /^\/api\/digital-twin\/share\/[^\/]+\/pdf$/,       // public simulator share PDF (no auth)
+  /^\/api\/visitor-intel\/ping$/,                    // public visitor tracking pixel endpoint
 ];
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.
@@ -417,7 +418,7 @@ function _rateLimitPublic(req, res, next) {
   next();
 }
 // Apply to public POST surfaces (cheap; never blocks dashboard usage)
-const _RL_PATHS = [/^\/api\/bookings\/book\//, /^\/api\/linksell\/checkout\//, /^\/api\/linksell\/optin\//, /^\/api\/scroll-tracker\/event$/, /^\/api\/site-search\/event$/];
+const _RL_PATHS = [/^\/api\/bookings\/book\//, /^\/api\/linksell\/checkout\//, /^\/api\/linksell\/optin\//, /^\/api\/scroll-tracker\/event$/, /^\/api\/site-search\/event$/, /^\/api\/visitor-intel\/ping$/];
 app.use((req, res, next) => {
   if (req.method !== 'POST') return next();
   if (_RL_PATHS.some(rx => rx.test(req.path))) return _rateLimitPublic(req, res, next);
@@ -3516,6 +3517,8 @@ const _budgetCapsSchema       = require('./services/budget_caps/schema');
 const _budgetCapsRouter       = require('./services/budget_caps/api');
 const _pixelManagerSchema     = require('./services/pixel_manager/schema');
 const _pixelManagerRouter     = require('./services/pixel_manager/api');
+const _visitorIntelSchema     = require('./services/visitor_intel/schema');
+const _visitorIntelRouter     = require('./services/visitor_intel/api');
 const _launchComplianceSchema = require('./services/launch_compliance/schema');
 const _launchComplianceRouter = require('./services/launch_compliance/api');
 const _postLaunchAuditSchema  = require('./services/post_launch_audit/schema');
@@ -3527,6 +3530,7 @@ app.use('/api/geofencing',        _geofencingRouter);
 app.use('/api/utm-builder',       _utmBuilderRouter);
 app.use('/api/budget-caps',       _budgetCapsRouter);
 app.use('/api/pixel-manager',     _pixelManagerRouter);
+app.use('/api/visitor-intel',     _visitorIntelRouter);
 app.use('/api/launch-compliance', _launchComplianceRouter);
 app.use('/api/post-launch-audit', _postLaunchAuditRouter);
 // Public UTM redirect — must be before appShellGate (no auth required)
@@ -3541,11 +3545,12 @@ BOOT_TASKS.push(async () => {
       await _utmBuilderSchema.ensureUtmBuilderSchema();
       await _budgetCapsSchema.ensureBudgetCapsSchema();
       await _pixelManagerSchema.ensurePixelManagerSchema();
+      await _visitorIntelSchema.ensureVisitorIntelSchema();
       await _launchComplianceSchema.ensureLaunchComplianceSchema();
       await _postLaunchAuditSchema.ensurePostLaunchAuditSchema();
       const { startBudgetCapsCron } = require('./services/budget_caps/cron');
       startBudgetCapsCron();
-      console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing, utm-builder, budget-caps, pixel-manager, launch-compliance, post-launch-audit');
+      console.log('[gap-features] schemas ready: campaign-composer, review-reply, local-listings, geofencing, utm-builder, budget-caps, pixel-manager, visitor-intel, launch-compliance, post-launch-audit');
     } else {
       console.log('[gap-features] disabled — DATABASE_URL not set');
     }
