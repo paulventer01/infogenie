@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { apiGet, apiPost, apiPut } from "@/lib/api";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+
+interface MCPTool {
+  name: string;
+  description?: string;
+  inputSchema?: { properties?: Record<string, { description?: string; type?: string }> };
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -66,7 +72,7 @@ interface Settings {
   engine_label: string | null;
 }
 
-type Tab = "overview" | "keywords" | "history" | "competitors";
+type Tab = "overview" | "keywords" | "history" | "competitors" | "mcp";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -149,17 +155,24 @@ export default function SeRanking() {
   const [error, setError]           = useState<string | null>(null);
   const [search, setSearch]         = useState("");
   const savedEngineId               = useRef<number | null>(null);
+  const [mcpConnected, setMcpConnected] = useState(false);
+  const [mcpTools, setMcpTools]         = useState<MCPTool[]>([]);
+  const [mcpLoading, setMcpLoading]     = useState(false);
+  const [mcpError, setMcpError]         = useState<string | null>(null);
+  const [mcpConnecting, setMcpConnecting] = useState(false);
 
   // ── Load status + sites ──────────────────────────────────────────────────
 
   useEffect(() => {
     (async () => {
       try {
-        const [st, sitesRes] = await Promise.all([
-          apiGet<{ configured: boolean; user?: { email: string } }>("/api/seranking/status"),
+        const [st, sitesRes, mcpSt] = await Promise.all([
+          apiGet<{ configured: boolean; user?: { email: string }; mcpConnected?: boolean }>("/api/seranking/status"),
           apiGet<{ ok: boolean; sites: SERSite[] }>("/api/seranking/sites").catch(() => ({ ok: false, sites: [] as SERSite[] })),
+          apiGet<{ ok: boolean; connected: boolean }>("/api/seranking/mcp/status").catch(() => ({ ok: false, connected: false })),
         ]);
         setStatus(st);
+        setMcpConnected(mcpSt.connected || st.mcpConnected || false);
         if (sitesRes.ok && sitesRes.sites?.length) {
           setSites(sitesRes.sites);
         }
@@ -281,12 +294,74 @@ export default function SeRanking() {
       const r = await apiPost<{ message: string }>(`/api/seranking/sites/${selectedSite.id}/recheck`, {});
       setRecheckMsg(r.message || "Re-check triggered.");
       setTimeout(() => setRecheckMsg(null), 4000);
-    } catch (e) {
+    } catch {
       setRecheckMsg("Re-check failed — check your SE Ranking plan limits.");
     } finally {
       setRechecking(false);
     }
   };
+
+  // ── MCP handlers ──────────────────────────────────────────────────────────
+
+  const connectMcp = useCallback(() => {
+    setMcpConnecting(true);
+    setMcpError(null);
+    const popup = window.open("/api/seranking/mcp/auth", "serankingMcp",
+      "width=600,height=700,left=200,top=100");
+    const onMsg = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.serankingMcp === "connected") {
+        setMcpConnected(true);
+        setMcpConnecting(false);
+        window.removeEventListener("message", onMsg);
+        popup?.close();
+      } else if (e.data?.serankingMcp === "error") {
+        setMcpError(e.data.msg || "Connection failed");
+        setMcpConnecting(false);
+        window.removeEventListener("message", onMsg);
+      }
+    };
+    window.addEventListener("message", onMsg);
+    // Fallback: if popup closes without message
+    const pollClosed = setInterval(() => {
+      if (popup?.closed) {
+        clearInterval(pollClosed);
+        setMcpConnecting(false);
+        window.removeEventListener("message", onMsg);
+        // Re-check status in case it succeeded
+        apiGet<{ ok: boolean; connected: boolean }>("/api/seranking/mcp/status")
+          .then(r => setMcpConnected(r.connected))
+          .catch(() => {});
+      }
+    }, 500);
+  }, []);
+
+  const disconnectMcp = useCallback(async () => {
+    try {
+      await apiDelete("/api/seranking/mcp/disconnect");
+      setMcpConnected(false);
+      setMcpTools([]);
+    } catch {}
+  }, []);
+
+  const loadMcpTools = useCallback(async () => {
+    setMcpLoading(true);
+    setMcpError(null);
+    try {
+      const r = await apiGet<{ ok: boolean; tools: MCPTool[]; error?: string }>("/api/seranking/mcp/tools");
+      if (r.ok) setMcpTools(r.tools || []);
+      else setMcpError(r.error || "Failed to load tools");
+    } catch (e) {
+      setMcpError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMcpLoading(false);
+    }
+  }, []);
+
+  // Load tools when MCP tab opened and connected
+  useEffect(() => {
+    if (tab === "mcp" && mcpConnected && mcpTools.length === 0) loadMcpTools();
+  }, [tab, mcpConnected, mcpTools.length, loadMcpTools]);
 
   // ── Computed stats ────────────────────────────────────────────────────────
 
@@ -447,15 +522,50 @@ export default function SeRanking() {
         </div>
       )}
 
+      {/* MCP connection banner */}
+      <div style={{ background: mcpConnected ? "#F0FDF4" : "#F9FAFB",
+        border: `1px solid ${mcpConnected ? "#BBF7D0" : "#E5E7EB"}`,
+        borderRadius: 8, padding: "10px 14px", marginBottom: 14,
+        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", fontSize: ".83rem" }}>
+        <span style={{ fontWeight: 600, color: mcpConnected ? "#15803D" : "#6B7280" }}>
+          {mcpConnected ? "🔌 MCP: Connected" : "🔌 MCP: Not connected"}
+        </span>
+        <span style={{ color: "#9CA3AF", flex: 1 }}>
+          {mcpConnected
+            ? "AI tools can now call SE Ranking data directly."
+            : "Connect SE Ranking MCP to let InfoGenie\u2019s AI use your live ranking data."}
+        </span>
+        {mcpError && <span style={{ color: "#DC2626", fontSize: ".78rem" }}>{mcpError}</span>}
+        {mcpConnected ? (
+          <button onClick={disconnectMcp}
+            style={{ padding: "5px 12px", background: "#FEF2F2", color: "#DC2626",
+              border: "1px solid #FCA5A5", borderRadius: 6, fontSize: ".78rem", cursor: "pointer" }}>
+            Disconnect
+          </button>
+        ) : (
+          <button onClick={connectMcp} disabled={mcpConnecting}
+            style={{ padding: "5px 14px", background: "#2563EB", color: "#fff",
+              border: "none", borderRadius: 6, fontSize: ".78rem", cursor: mcpConnecting ? "not-allowed" : "pointer",
+              fontWeight: 600, opacity: mcpConnecting ? .6 : 1 }}>
+            {mcpConnecting ? "Connecting…" : "Connect via OAuth →"}
+          </button>
+        )}
+      </div>
+
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "2px solid #E5E7EB" }}>
-        {(["overview", "keywords", "history", "competitors"] as Tab[]).map(t => (
+        {(["overview", "keywords", "history", "competitors", "mcp"] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
             style={{ padding: "8px 18px", background: "none", border: "none", cursor: "pointer",
               fontWeight: tab === t ? 700 : 400, color: tab === t ? "#2563EB" : "#6B7280",
               borderBottom: tab === t ? "2px solid #2563EB" : "2px solid transparent",
-              marginBottom: -2, fontSize: ".88rem", textTransform: "capitalize" }}>
-            {t === "overview" ? "📊 Overview" : t === "keywords" ? "🔑 Keywords" : t === "history" ? "📈 History" : "🏁 Competitors"}
+              marginBottom: -2, fontSize: ".88rem" }}>
+            {t === "overview" ? "📊 Overview"
+              : t === "keywords" ? "🔑 Keywords"
+              : t === "history" ? "📈 History"
+              : t === "competitors" ? "🏁 Competitors"
+              : <span>🤖 MCP Tools{mcpConnected && <span style={{ marginLeft: 4, background: "#DCFCE7", color: "#15803D", borderRadius: 99, padding: "1px 6px", fontSize: ".7rem" }}>●</span>}</span>
+            }
           </button>
         ))}
       </div>
@@ -710,6 +820,100 @@ export default function SeRanking() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── MCP Tools tab ─────────────────────────────────────────────── */}
+      {tab === "mcp" && (
+        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, padding: "20px 24px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: ".95rem", color: "#111827" }}>SE Ranking MCP Tools</div>
+              <div style={{ fontSize: ".82rem", color: "#6B7280", marginTop: 2 }}>
+                Tools available to InfoGenie&apos;s AI when answering SEO questions.
+              </div>
+            </div>
+            {mcpConnected && (
+              <button onClick={loadMcpTools} disabled={mcpLoading}
+                style={{ padding: "6px 14px", background: "#EFF6FF", color: "#2563EB",
+                  border: "1px solid #BFDBFE", borderRadius: 8, fontSize: ".82rem",
+                  cursor: mcpLoading ? "not-allowed" : "pointer", fontWeight: 600, opacity: mcpLoading ? .6 : 1 }}>
+                {mcpLoading ? "Loading…" : "↻ Reload tools"}
+              </button>
+            )}
+          </div>
+
+          {!mcpConnected && (
+            <div style={{ textAlign: "center", padding: "40px 20px", color: "#9CA3AF" }}>
+              <div style={{ fontSize: "2.5rem", marginBottom: 10 }}>🔌</div>
+              <div style={{ fontWeight: 600, color: "#374151", marginBottom: 6 }}>Connect SE Ranking MCP to see available tools</div>
+              <div style={{ fontSize: ".85rem", marginBottom: 16 }}>
+                SE Ranking MCP exposes rank tracking data as AI-callable tools via OAuth 2.0.
+              </div>
+              <button onClick={connectMcp} disabled={mcpConnecting}
+                style={{ padding: "10px 24px", background: "#2563EB", color: "#fff",
+                  border: "none", borderRadius: 8, fontWeight: 600, cursor: mcpConnecting ? "not-allowed" : "pointer",
+                  fontSize: ".9rem", opacity: mcpConnecting ? .6 : 1 }}>
+                {mcpConnecting ? "Opening authorization…" : "Connect via OAuth →"}
+              </button>
+            </div>
+          )}
+
+          {mcpConnected && mcpLoading && (
+            <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF" }}>⏳ Loading MCP tools…</div>
+          )}
+
+          {mcpConnected && mcpError && !mcpLoading && (
+            <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 8,
+              padding: "12px 16px", color: "#DC2626", fontSize: ".85rem" }}>
+              ⚠️ {mcpError}
+            </div>
+          )}
+
+          {mcpConnected && !mcpLoading && mcpTools.length === 0 && !mcpError && (
+            <div style={{ textAlign: "center", padding: 32, color: "#9CA3AF", fontSize: ".88rem" }}>
+              Click &quot;Reload tools&quot; to discover available SE Ranking MCP tools.
+            </div>
+          )}
+
+          {mcpTools.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {mcpTools.map(tool => (
+                <div key={tool.name} style={{ background: "#F9FAFB", border: "1px solid #E5E7EB",
+                  borderRadius: 8, padding: "12px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <code style={{ fontSize: ".82rem", background: "#EFF6FF", color: "#1D4ED8",
+                      padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
+                      {tool.name}
+                    </code>
+                  </div>
+                  {tool.description && (
+                    <div style={{ fontSize: ".82rem", color: "#6B7280", marginBottom: tool.inputSchema ? 8 : 0 }}>
+                      {tool.description}
+                    </div>
+                  )}
+                  {tool.inputSchema?.properties && Object.keys(tool.inputSchema.properties).length > 0 && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                      {Object.entries(tool.inputSchema.properties).map(([k, v]) => (
+                        <span key={k} title={v.description}
+                          style={{ fontSize: ".72rem", background: "#fff", border: "1px solid #E5E7EB",
+                            borderRadius: 4, padding: "2px 7px", color: "#6B7280" }}>
+                          {k}{v.type ? <span style={{ color: "#9CA3AF" }}>: {v.type}</span> : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ marginTop: 20, padding: "12px 14px", background: "#F9FAFB",
+            border: "1px solid #E5E7EB", borderRadius: 8, fontSize: ".8rem", color: "#6B7280" }}>
+            💡 <strong>How it works:</strong> When you ask InfoGenie&apos;s AI a question about your rankings,
+            it automatically calls these MCP tools to fetch live data from SE Ranking before answering.
+            The MCP server is at <code style={{ fontSize: ".78rem" }}>https://api.seranking.com/mcp</code>.
+          </div>
         </div>
       )}
     </div>
