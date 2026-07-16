@@ -94,12 +94,12 @@ router.post('/fetch', async (req, res) => {
       ctr:        Math.round(ctr * 1000) / 10,
       url:        rd.url || '',
       competition: ki.competition_level || '',
-      trend:      ki.monthly_searches?.slice(-6).map((m: any) => m.search_volume) || [],
+      trend:      ki.monthly_searches?.slice(-6).map(m => m.search_volume) || [],
     };
   }).filter(k => k.keyword);
 
   // ── Pages (aggregate by URL) ──────────────────────────────────────────
-  const pageMap: Record<string, { url: string; clicks: number; impressions: number; keywords: number; avg_pos_sum: number }> = {};
+  const pageMap = {};
   for (const k of keywords) {
     const url = k.url || '(not set)';
     if (!pageMap[url]) pageMap[url] = { url, clicks: 0, impressions: 0, keywords: 0, avg_pos_sum: 0 };
@@ -122,12 +122,12 @@ router.post('/fetch', async (req, res) => {
 
   // ── History (monthly trend) ───────────────────────────────────────────
   const histItems = histRes?.tasks?.[0]?.result?.[0]?.history || [];
-  const history = histItems.map((h: any) => ({
+  const history = histItems.map(h => ({
     date:     h.date || '',
     etv:      Math.round(h.metrics?.organic?.etv        || 0),
     keywords: h.metrics?.organic?.count                  || 0,
     avg_pos:  Number((h.metrics?.organic?.avg_position  || 0).toFixed(1)),
-  })).sort((a: any, b: any) => a.date.localeCompare(b.date));
+  })).sort((a, b) => a.date.localeCompare(b.date));
 
   // ── Position distribution ─────────────────────────────────────────────
   const positionDist = [
