@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, type ApiResult } from "@/lib/api";
 
 interface Account {
   id: number;
@@ -52,6 +52,15 @@ interface Provider {
   smtp_port: number;
 }
 
+interface ConfigResponse extends ApiResult { providers?: Provider[]; }
+interface AccountsResponse extends ApiResult { accounts?: Account[]; }
+interface LogResponse extends ApiResult { log?: LogEntry[]; schedule?: ScheduleEntry[]; }
+interface AccountResponse extends ApiResult { account: Account; }
+interface PauseResponse extends ApiResult { status: string; }
+interface BlacklistResponse extends ApiResult { clean: boolean; lists_hit: number; domain: string; }
+interface LogDayResponse extends ApiResult { day: number; next_day_volume: number; reputation_score: number; }
+interface AdviceResponse extends ApiResult { advice: AiAdvice; }
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   active:      { label: "▶️ Warming",    color: "#059669", bg: "#ECFDF5" },
   paused:      { label: "⏸ Paused",      color: "#D97706", bg: "#FFF7ED" },
@@ -82,7 +91,10 @@ export default function EmailWarmup() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [cfg, accs] = await Promise.all([apiGet("/api/email-warmup/config"), apiGet("/api/email-warmup/accounts")]);
+    const [cfg, accs] = await Promise.all([
+      apiGet<ConfigResponse>("/api/email-warmup/config"),
+      apiGet<AccountsResponse>("/api/email-warmup/accounts"),
+    ]);
     if (cfg?.providers) setProviders(cfg.providers);
     if (accs?.accounts) setAccounts(accs.accounts);
     setLoading(false);
@@ -97,7 +109,7 @@ export default function EmailWarmup() {
     setLogData(null);
     setTab("detail");
     setLoadingLog(true);
-    const r = await apiGet(`/api/email-warmup/accounts/${acc.id}/log`);
+    const r = await apiGet<LogResponse>(`/api/email-warmup/accounts/${acc.id}/log`);
     if (r?.log) setLogData({ log: r.log, schedule: r.schedule || [] });
     setLoadingLog(false);
   }
@@ -105,7 +117,7 @@ export default function EmailWarmup() {
   async function handleCreate() {
     if (!form.email) { showToast("Email address required."); return; }
     setSaving(true);
-    const r = await apiPost("/api/email-warmup/accounts", {
+    const r = await apiPost<AccountResponse>("/api/email-warmup/accounts", {
       ...form,
       smtp_port: +form.smtp_port,
       max_volume: +form.max_volume,
@@ -121,7 +133,7 @@ export default function EmailWarmup() {
   }
 
   async function handlePause(id: number) {
-    const r = await apiPost(`/api/email-warmup/accounts/${id}/pause`, {});
+    const r = await apiPost<PauseResponse>(`/api/email-warmup/accounts/${id}/pause`, {});
     if (r?.ok) {
       const next = r.status;
       setAccounts(prev => prev.map(a => a.id === id ? { ...a, status: next } : a));
@@ -132,7 +144,7 @@ export default function EmailWarmup() {
 
   async function handleCheckBlacklist(id: number) {
     setCheckingBL(true);
-    const r = await apiPost(`/api/email-warmup/accounts/${id}/check-blacklist`, {});
+    const r = await apiPost<BlacklistResponse>(`/api/email-warmup/accounts/${id}/check-blacklist`, {});
     if (r?.ok) {
       setBlResult({ clean: r.clean, lists_hit: r.lists_hit, domain: r.domain });
       showToast(r.clean ? "✅ Not on any blacklist!" : `⚠️ Found on ${r.lists_hit} blacklist(s)`);
@@ -143,7 +155,7 @@ export default function EmailWarmup() {
 
   async function handleLogDay(id: number) {
     if (!logDayForm.sent_volume) { showToast("Enter sent volume."); return; }
-    const r = await apiPost(`/api/email-warmup/accounts/${id}/log-day`, {
+    const r = await apiPost<LogDayResponse>(`/api/email-warmup/accounts/${id}/log-day`, {
       sent_volume:    +logDayForm.sent_volume,
       delivered_count:+logDayForm.delivered_count || 0,
       bounced_count:  +logDayForm.bounced_count || 0,
@@ -160,7 +172,7 @@ export default function EmailWarmup() {
 
   async function handleGetAdvice(id: number) {
     setLoadingAdvice(true);
-    const r = await apiPost(`/api/email-warmup/accounts/${id}/ai-advice`, {});
+    const r = await apiPost<AdviceResponse>(`/api/email-warmup/accounts/${id}/ai-advice`, {});
     if (r?.ok) setAdvice(r.advice);
     else showToast(r?.error?.includes("key") ? "⚠️ OpenAI key required — configure it in AI Providers." : "Advice generation failed.");
     setLoadingAdvice(false);

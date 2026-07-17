@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 
 interface TimelineRow {
@@ -165,7 +166,7 @@ export default function SimulatorSharePage() {
           <p style={{ fontSize: "1rem" }}>
             {data?.error || "This simulation link is invalid or has expired."}
           </p>
-          <a
+          <Link
             href="/"
             style={{
               display: "inline-block",
@@ -180,7 +181,7 @@ export default function SimulatorSharePage() {
             }}
           >
             Run your own simulation →
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -344,7 +345,7 @@ export default function SimulatorSharePage() {
           <p style={{ fontSize: ".85rem", color: "#6b7280", marginBottom: 16 }}>
             Want to model your own scenarios?
           </p>
-          <a
+          <Link
             href="/"
             style={{
               display: "inline-block",
@@ -359,7 +360,7 @@ export default function SimulatorSharePage() {
             }}
           >
             Run your own simulation with InfoGenie →
-          </a>
+          </Link>
         </div>
       </div>
     </div>
