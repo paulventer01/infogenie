@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { apiGet, apiPost, apiDelete, type ApiResult } from "@/lib/api";
 
 interface Job {
   id: number;
@@ -32,6 +32,16 @@ interface Item {
 
 interface Tone { id: string; label: string; }
 interface Intensity { id: string; label: string; }
+
+interface ConfigResponse extends ApiResult {
+  tones?: Tone[];
+  intensities?: Intensity[];
+}
+
+interface JobsResponse extends ApiResult { jobs?: Job[]; }
+interface JobResponse extends ApiResult { job: Job; items: Item[]; }
+interface CreateJobResponse extends ApiResult { job: Job; }
+interface ProcessJobResponse extends ApiResult { processing: number; }
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
   pending:    { label: "⏳ Pending",    color: "#64748B", bg: "#F1F5F9" },
@@ -71,7 +81,10 @@ export default function BulkRewriter() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [cfg, r] = await Promise.all([apiGet("/api/bulk-rewriter/config"), apiGet("/api/bulk-rewriter/jobs")]);
+    const [cfg, r] = await Promise.all([
+      apiGet<ConfigResponse>("/api/bulk-rewriter/config"),
+      apiGet<JobsResponse>("/api/bulk-rewriter/jobs"),
+    ]);
     if (cfg?.tones) setTones(cfg.tones);
     if (cfg?.intensities) setIntensities(cfg.intensities);
     if (r?.jobs) setJobs(r.jobs);
@@ -82,7 +95,7 @@ export default function BulkRewriter() {
   useEffect(() => () => { if (pollTimer) clearTimeout(pollTimer); }, [pollTimer]);
 
   async function openJob(id: number) {
-    const r = await apiGet(`/api/bulk-rewriter/jobs/${id}`);
+    const r = await apiGet<JobResponse>(`/api/bulk-rewriter/jobs/${id}`);
     if (r?.ok) {
       setActive({ job: r.job, items: r.items });
       setTab("detail");
@@ -92,7 +105,7 @@ export default function BulkRewriter() {
 
   function startPolling(id: number) {
     const t = setTimeout(async () => {
-      const r = await apiGet(`/api/bulk-rewriter/jobs/${id}`);
+      const r = await apiGet<JobResponse>(`/api/bulk-rewriter/jobs/${id}`);
       if (r?.ok) {
         setActive({ job: r.job, items: r.items });
         setJobs(prev => prev.map(j => j.id === id ? r.job : j));
@@ -107,14 +120,14 @@ export default function BulkRewriter() {
     if (!validArticles.length) { showToast("Add at least one article (30+ chars)."); return; }
     if (!form.name) { showToast("Give this job a name."); return; }
     setSaving(true);
-    const r = await apiPost("/api/bulk-rewriter/jobs", {
+    const r = await apiPost<CreateJobResponse>("/api/bulk-rewriter/jobs", {
       ...form, items: validArticles.map(a => ({ title: a.title, text: a.text })),
     });
     if (r?.ok) {
       showToast("✅ Job created! Starting AI rewriting…");
       setJobs(prev => [r.job, ...prev]);
       // Auto-start processing
-      const pr = await apiPost(`/api/bulk-rewriter/jobs/${r.job.id}/process`, {});
+      const pr = await apiPost<ProcessJobResponse>(`/api/bulk-rewriter/jobs/${r.job.id}/process`, {});
       if (pr?.ok) {
         openJob(r.job.id);
         setForm({ name: "", tone: "professional", intensity: "moderate", target_keywords: "", seo_focus: true });
@@ -126,7 +139,7 @@ export default function BulkRewriter() {
 
   async function handleProcess(id: number) {
     setProcessing(true);
-    const r = await apiPost(`/api/bulk-rewriter/jobs/${id}/process`, {});
+    const r = await apiPost<ProcessJobResponse>(`/api/bulk-rewriter/jobs/${id}/process`, {});
     if (r?.ok) { showToast(`Processing ${r.processing} article(s)…`); startPolling(id); }
     else showToast("Process failed — ensure OpenAI key is configured.");
     setProcessing(false);

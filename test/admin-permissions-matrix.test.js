@@ -24,10 +24,10 @@ const { COMPONENT_MATRIX } = require('../services/tenants/permission_matrix');
 // The router gate requires a live DB (returns 503 otherwise). The matrix handler
 // itself never touches the DB, so stub hasDb()=true for the owner path; restore
 // after. Tests run with no DATABASE_URL, so this is a clean, isolated override.
-function withDb(fn) {
+async function withDb(fn) {
   const orig = _db.hasDb;
   _db.hasDb = () => true;
-  try { return fn(); } finally { _db.hasDb = orig; }
+  try { return await fn(); } finally { _db.hasDb = orig; }
 }
 
 function makeServer(principal) {
