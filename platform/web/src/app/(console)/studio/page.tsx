@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, type Capability, type RunResult } from "@/lib/api";
 import GateChecklist from "@/components/GateChecklist";
 
@@ -9,13 +10,10 @@ const DOMAIN_LABELS: Record<string, string> = {
   analyse: "Analyse", monitor: "Monitor", create: "Create", seo: "SEO",
 };
 
-const DOMAIN_ORDER = ["compete", "grow", "reach", "manage", "analyse", "monitor", "create", "seo"];
-
-export default function StudioPage() {
+function StudioInner() {
+  const searchParams = useSearchParams();
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
-  const [filter, setFilter] = useState("");
   const [key, setKey] = useState<string>("");
-  const [openDomain, setOpenDomain] = useState<string | null>("create");
   const [brief, setBrief] = useState("");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -24,26 +22,22 @@ export default function StudioPage() {
   useEffect(() => {
     api.capabilities().then(({ capabilities }) => {
       setCapabilities(capabilities);
-      const first = capabilities.find((c) => c.key === "create.content_generation") ?? capabilities[0];
-      if (first) setKey(first.key);
     }).catch(() => {});
   }, []);
 
-  const filtered = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return capabilities;
-    return capabilities.filter((c) =>
-      c.name.toLowerCase().includes(q) || c.domain.includes(q) || (c.description ?? "").toLowerCase().includes(q));
-  }, [capabilities, filter]);
-
-  const byDomain = useMemo(() => {
-    const m = new Map<string, Capability[]>();
-    for (const c of filtered) {
-      if (!m.has(c.domain)) m.set(c.domain, []);
-      m.get(c.domain)!.push(c);
+  // Selection arrives from the sidebar tree (?cap=…); default to content generation.
+  const capParam = searchParams.get("cap");
+  useEffect(() => {
+    if (capParam) {
+      setKey(capParam);
+      setResult(null);
+      setError(null);
+    } else if (!key && capabilities.length) {
+      const first = capabilities.find((c) => c.key === "create.content_generation") ?? capabilities[0];
+      if (first) setKey(first.key);
     }
-    return m;
-  }, [filtered]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capParam, capabilities]);
 
   const selected = capabilities.find((c) => c.key === key);
 
@@ -63,64 +57,35 @@ export default function StudioPage() {
     <>
       <h1 className="page-title">Capability Studio</h1>
       <p className="page-sub">
-        The full governed surface — {capabilities.length} capabilities across 8 domains, every one
-        running the same path: untrusted brief → integration evidence → grounded generation →
+        Pick any of the {capabilities.length} capabilities from the menu on the left — every one runs
+        the same governed path: untrusted brief → integration evidence → grounded generation →
         the seven-check gate → autonomy decision → audit rail.
       </p>
 
       <div className="two-col" style={{ alignItems: "start" }}>
         <form className="card" onSubmit={run}>
-          <label className="field"><span>Find a capability</span>
-            <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)}
-              placeholder={`Search ${capabilities.length} capabilities…`} />
-          </label>
           <div className="field">
             <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>
-              Capability — grouped by domain
+              Selected capability — pick another from the Capability Studio menu on the left
             </span>
-            <div className="cap-menu">
-              {DOMAIN_ORDER.filter((d) => byDomain.get(d)?.length).map((domain) => {
-                const caps = [...byDomain.get(domain)!].sort((a, b) => a.name.localeCompare(b.name));
-                const open = filter.trim() ? true : openDomain === domain;
-                return (
-                  <div key={domain} className={`cap-domain${open ? " open" : ""}`}>
-                    <button
-                      type="button"
-                      className="cap-domain-toggle"
-                      onClick={() => setOpenDomain(open && !filter.trim() ? null : domain)}
-                    >
-                      <span className="caret">{open ? "▾" : "▸"}</span>
-                      {DOMAIN_LABELS[domain] ?? domain}
-                      <span className="cap-count">{caps.length}</span>
-                    </button>
-                    {open && (
-                      <div className="cap-items">
-                        {caps.map((c) => (
-                          <button
-                            type="button"
-                            key={c.key}
-                            className={`cap-item${c.key === key ? " selected" : ""}`}
-                            onClick={() => { setKey(c.key); setOpenDomain(domain); }}
-                          >
-                            {c.name}
-                            {c.irreversible && <span className="cap-flag">A2 max</span>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {selected && (
-              <div className="hint">
-                {selected.description ?? ""}
-                <div style={{ marginTop: 4 }}>
-                  {selected.archetype} · {selected.agent_type} · runs at A{selected.level}
-                  {selected.irreversible ? " · irreversible (never exceeds A2)" : ""}
-                  {selected.integrations.length > 0 && <> · draws on: {selected.integrations.join(", ")}</>}
+            {selected ? (
+              <>
+                <div className="selected-cap">
+                  <b>{selected.name}</b>
+                  <span className="pill level">{DOMAIN_LABELS[selected.domain] ?? selected.domain}</span>
+                  {selected.irreversible && <span className="pill blocked">A2 max</span>}
                 </div>
-              </div>
+                <div className="hint">
+                  {selected.description ?? ""}
+                  <div style={{ marginTop: 4 }}>
+                    {selected.archetype} · {selected.agent_type} · runs at A{selected.level}
+                    {selected.irreversible ? " · irreversible (never exceeds A2)" : ""}
+                    {selected.integrations.length > 0 && <> · draws on: {selected.integrations.join(", ")}</>}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="empty" style={{ padding: 14 }}>Pick a capability from the sidebar menu.</div>
             )}
           </div>
           <label className="field"><span>Brief</span>
@@ -131,7 +96,7 @@ export default function StudioPage() {
               required
             />
           </label>
-          <button className="btn primary" type="submit" disabled={running || !brief}>
+          <button className="btn primary" type="submit" disabled={running || !brief || !selected}>
             {running ? "Running through the gate…" : "▶ Run capability"}
           </button>
           {error && <p className="error-text">{error}</p>}
@@ -170,5 +135,13 @@ export default function StudioPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function StudioPage() {
+  return (
+    <Suspense fallback={null}>
+      <StudioInner />
+    </Suspense>
   );
 }

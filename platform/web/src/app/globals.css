@@ -185,21 +185,29 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
   .content { padding: 20px 16px 60px; }
 }
 
-/* Capability domain menu (main menu → sub-menu) */
-.cap-menu { border: 1px solid var(--line); border-radius: 10px; overflow-y: auto; max-height: 380px; background: var(--surface); }
-.cap-domain + .cap-domain { border-top: 1px solid var(--line); }
-.cap-domain-toggle { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
-  padding: 10px 12px; background: var(--surface-2); border: none; cursor: pointer;
-  font-weight: 650; font-size: 13px; color: var(--ink); }
-.cap-domain.open .cap-domain-toggle { background: var(--accent-soft); color: var(--accent); }
-.cap-domain-toggle .caret { font-size: 10px; width: 10px; }
-.cap-count { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--faint);
-  background: var(--surface); border: 1px solid var(--line); padding: 1px 8px; border-radius: 999px; }
-.cap-items { display: flex; flex-direction: column; padding: 4px; gap: 1px; }
-.cap-item { text-align: left; padding: 7px 10px 7px 26px; border: none; background: none;
-  border-radius: 7px; font-size: 13px; color: var(--muted); cursor: pointer;
-  display: flex; align-items: center; gap: 8px; width: 100%; }
-.cap-item:hover { background: var(--surface-2); color: var(--ink); }
-.cap-item.selected { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.cap-flag { margin-left: auto; font-family: var(--font-mono); font-size: 9.5px; color: var(--hold);
-  background: var(--hold-soft); padding: 1px 6px; border-radius: 999px; }
+/* Sidebar capability tree (main menu → domain dropdown → sub-feature) */
+.nav { overflow-y: auto; flex: 1; min-height: 0; }
+.nav-tree { margin: 2px 0 8px 12px; border-left: 1px solid rgba(255,255,255,0.09); padding-left: 7px;
+  display: flex; flex-direction: column; gap: 1px; }
+.tree-search { margin: 4px 0 6px; }
+.tree-search input { width: 100%; font: inherit; font-size: 11.5px; padding: 6px 9px; border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.05); color: #e6e9f0; }
+.tree-search input::placeholder { color: #6b7488; }
+.tree-search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cap-domain-toggle { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left;
+  padding: 6px 8px; background: none; border: none; cursor: pointer;
+  font-size: 12.5px; font-weight: 600; color: #b6bdcb; border-radius: 7px; }
+.cap-domain-toggle:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.cap-domain.open > .cap-domain-toggle { color: #a5b4fc; }
+.cap-domain-toggle .caret { font-size: 9px; width: 9px; }
+.cap-count { margin-left: auto; font-family: var(--font-mono); font-size: 9.5px; color: #6b7488;
+  background: rgba(255,255,255,0.06); padding: 0 6px; border-radius: 999px; }
+.cap-items { display: flex; flex-direction: column; gap: 1px; padding: 0 0 3px 14px; }
+.cap-item { text-align: left; padding: 4px 8px; border: none; background: none; border-radius: 6px;
+  font-size: 11.5px; color: #8f97a8; cursor: pointer; display: flex; align-items: center; gap: 6px; width: 100%; }
+.cap-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.cap-item.selected { background: rgba(99,102,241,0.22); color: #fff; font-weight: 600; }
+.cap-flag { margin-left: auto; font-family: var(--font-mono); font-size: 8.5px; color: #d9a441;
+  background: rgba(217,164,65,0.15); padding: 0 5px; border-radius: 999px; }
+.selected-cap { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); font-size: 14px; }
