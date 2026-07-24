@@ -10,6 +10,7 @@ const NAV = [
   { href: "/brand", label: "Brand Foundation", glyph: "◈" },
   { href: "/studio", label: "Capability Studio", glyph: "▶" },
   { href: "/actions", label: "Actions & Approvals", glyph: "⛨" },
+  { href: "/integrations", label: "Integrations", glyph: "⇄" },
 ];
 
 export default function ConsoleShell({ children }: { children: React.ReactNode }) {

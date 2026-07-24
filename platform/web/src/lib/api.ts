@@ -14,7 +14,11 @@ export interface ActionRow {
 export interface Capability {
   key: string; name: string; domain: string; archetype: string; agent_type: string;
   irreversible: boolean; entry_autonomy: number; autonomy_ceiling: number;
-  description: string | null; level: number;
+  description: string | null; level: number; integrations: string[];
+}
+export interface Integration {
+  key: string; name: string; purpose: string; status: string; reason: string | null;
+  auth_kind: string; capability_count: number; connected: boolean; secret_hint: string | null;
 }
 export interface Tenant { id: string; name: string; type: "agency" | "client"; slug: string }
 export interface Brand {
@@ -68,5 +72,10 @@ export const api = {
   run: (key: string, brief: string, vars?: Record<string, string>) =>
     request<RunResult>(`/api/capabilities/${key}/run`, { method: "POST", body: JSON.stringify({ brief, vars }) }),
   actions: () => request<{ actions: ActionRow[]; engine: "live" | "mock" }>("/api/actions"),
+  integrations: () => request<{ integrations: Integration[] }>("/api/integrations"),
+  saveIntegrationCredential: (key: string, secret: string) =>
+    request<{ connected: boolean; hint: string }>(`/api/integrations/${key}/credential`, {
+      method: "PUT", body: JSON.stringify({ secret }),
+    }),
   approve: (id: string) => request<{ status: string }>(`/api/actions/${id}/approve`, { method: "POST" }),
 };

@@ -44,6 +44,12 @@ export async function migrate(): Promise<string[]> {
         throw new Error(`Migration ${file} failed: ${(err as Error).message}`);
       }
     }
+
+    // Sync the code-defined catalogs (features + integrations) into the DB
+    // registries — idempotent, and inside the advisory lock.
+    const { syncCatalogs } = await import("./modules/capabilities/sync.js");
+    await syncCatalogs(adminPool);
+
     return ran;
   } finally {
     await lock.query("select pg_advisory_unlock($1)", [MIGRATION_LOCK]);

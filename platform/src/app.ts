@@ -9,6 +9,7 @@ import { appendWith } from "./modules/audit/service.js";
 import { saveBrandFoundation } from "./modules/brand/service.js";
 import { runCapability, approveAction } from "./modules/capabilities/runner.js";
 import { gatewayLive } from "./gateway/llmGateway.js";
+import { saveCredential } from "./modules/integrations/hub.js";
 
 // Request augmented with the resolved principal and tenant context.
 interface Ctx {
@@ -178,14 +179,76 @@ export function createApp() {
         const { rows } = await client.query(
           `select c.key, c.name, c.domain, c.archetype, c.agent_type, c.irreversible,
                   c.entry_autonomy, c.autonomy_ceiling, c.description,
-                  coalesce(a.level, c.entry_autonomy) as level
+                  coalesce(a.level, c.entry_autonomy) as level,
+                  coalesce(array_agg(ci.integration_key) filter (where ci.integration_key is not null), '{}') as integrations
              from capabilities c
              left join tenant_capability_autonomy a on a.capability_key = c.key
-            order by c.domain, c.key`,
+             left join capability_integrations ci on ci.capability_key = c.key
+            group by c.key, a.level
+            order by c.domain, c.name`,
         );
         return rows;
       })
         .then((capabilities) => res.json({ capabilities, engine: gatewayLive() ? "live" : "mock" }))
+        .catch(next);
+    }) as express.RequestHandler,
+  );
+
+  // Integration landscape: the provider registry + this tenant's connections
+  // and how many capabilities each provider powers. Secrets are never returned.
+  app.get(
+    "/api/integrations",
+    authenticate as express.RequestHandler,
+    withTenantContext as express.RequestHandler,
+    ((req: CtxRequest, res: Response, next: NextFunction) => {
+      withTenant(req.ctx!.tenantId!, async (client) => {
+        const { rows } = await client.query(
+          `select i.key, i.name, i.purpose, i.status, i.reason, i.auth_kind,
+                  count(ci.capability_key)::int as capability_count,
+                  max(tc.secret_hint) as secret_hint,
+                  bool_or(tc.integration_key is not null) as connected
+             from integrations i
+             left join capability_integrations ci on ci.integration_key = i.key
+             left join tenant_integration_credentials tc on tc.integration_key = i.key
+            group by i.key
+            order by (i.status = 'live') desc, capability_count desc, i.name`,
+        );
+        return rows;
+      })
+        .then((integrations) => res.json({ integrations }))
+        .catch(next);
+    }) as express.RequestHandler,
+  );
+
+  // Store/rotate a connector credential (write-only; tenant admins).
+  app.put(
+    "/api/integrations/:key/credential",
+    authenticate as express.RequestHandler,
+    withTenantContext as express.RequestHandler,
+    requirePermission("tenant:admin") as express.RequestHandler,
+    ((req: CtxRequest, res: Response, next: NextFunction) => {
+      const secret = String(req.body?.secret ?? "");
+      if (secret.length < 8) {
+        res.status(400).json({ error: "secret required (min 8 chars)" });
+        return;
+      }
+      withTenant(req.ctx!.tenantId!, async (client) => {
+        const saved = await saveCredential(client, {
+          integrationKey: req.params.key!,
+          secret,
+          createdBy: req.ctx!.userId,
+        });
+        await appendWith(client, {
+          actorType: "user",
+          actorId: req.ctx!.userId,
+          action: "integration.credential_saved",
+          resourceType: "integration",
+          resourceId: req.params.key,
+          outcome: "stored (write-only)",
+        });
+        return saved;
+      })
+        .then(({ hint }) => res.json({ connected: true, hint }))
         .catch(next);
     }) as express.RequestHandler,
   );

@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, type Capability, type RunResult } from "@/lib/api";
 import GateChecklist from "@/components/GateChecklist";
 
+const DOMAIN_LABELS: Record<string, string> = {
+  compete: "Compete", grow: "Grow", reach: "Reach", manage: "Manage",
+  analyse: "Analyse", monitor: "Monitor", create: "Create", seo: "SEO",
+};
+
 export default function StudioPage() {
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
+  const [filter, setFilter] = useState("");
   const [key, setKey] = useState<string>("");
   const [brief, setBrief] = useState("");
   const [running, setRunning] = useState(false);
@@ -19,6 +25,22 @@ export default function StudioPage() {
       if (first) setKey(first.key);
     }).catch(() => {});
   }, []);
+
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return capabilities;
+    return capabilities.filter((c) =>
+      c.name.toLowerCase().includes(q) || c.domain.includes(q) || (c.description ?? "").toLowerCase().includes(q));
+  }, [capabilities, filter]);
+
+  const byDomain = useMemo(() => {
+    const m = new Map<string, Capability[]>();
+    for (const c of filtered) {
+      if (!m.has(c.domain)) m.set(c.domain, []);
+      m.get(c.domain)!.push(c);
+    }
+    return m;
+  }, [filtered]);
 
   const selected = capabilities.find((c) => c.key === key);
 
@@ -38,23 +60,35 @@ export default function StudioPage() {
     <>
       <h1 className="page-title">Capability Studio</h1>
       <p className="page-sub">
-        Run a governed capability. The brief is treated as untrusted input (screened for prompt
-        injection), grounded in the current Brand Foundation, and the output passes the seven-check
-        guardrail gate before anything is allowed to happen with it.
+        The full governed surface — {capabilities.length} capabilities across 8 domains, every one
+        running the same path: untrusted brief → integration evidence → grounded generation →
+        the seven-check gate → autonomy decision → audit rail.
       </p>
 
       <div className="two-col" style={{ alignItems: "start" }}>
         <form className="card" onSubmit={run}>
+          <label className="field"><span>Find a capability</span>
+            <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)}
+              placeholder={`Search ${capabilities.length} capabilities…`} />
+          </label>
           <label className="field"><span>Capability</span>
-            <select className="input" value={key} onChange={(e) => setKey(e.target.value)}>
-              {capabilities.map((c) => (
-                <option key={c.key} value={c.key}>{c.name} ({c.domain})</option>
+            <select className="input" value={key} onChange={(e) => setKey(e.target.value)} size={10}>
+              {[...byDomain.entries()].map(([domain, caps]) => (
+                <optgroup key={domain} label={`${DOMAIN_LABELS[domain] ?? domain} (${caps.length})`}>
+                  {caps.map((c) => (
+                    <option key={c.key} value={c.key}>{c.name}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             {selected && (
               <div className="hint">
-                {selected.archetype} · {selected.agent_type} · runs at A{selected.level}
-                {selected.irreversible ? " · irreversible (never exceeds A2)" : ""}
+                {selected.description ?? ""}
+                <div style={{ marginTop: 4 }}>
+                  {selected.archetype} · {selected.agent_type} · runs at A{selected.level}
+                  {selected.irreversible ? " · irreversible (never exceeds A2)" : ""}
+                  {selected.integrations.length > 0 && <> · draws on: {selected.integrations.join(", ")}</>}
+                </div>
               </div>
             )}
           </label>
@@ -62,7 +96,7 @@ export default function StudioPage() {
             <textarea
               value={brief}
               onChange={(e) => setBrief(e.target.value)}
-              placeholder="e.g. Write a short social post announcing our winter sale."
+              placeholder="e.g. Analyse how Initech Stores is positioned against us this quarter."
               required
             />
           </label>

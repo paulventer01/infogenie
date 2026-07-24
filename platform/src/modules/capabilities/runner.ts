@@ -3,6 +3,9 @@ import { loadCurrentBrand } from "../brand/service.js";
 import { gatewayCall, type ModelClass } from "../../gateway/llmGateway.js";
 import { evaluateGate, resolveAutonomy, type GateVerdict } from "../../gate/guardrailGate.js";
 import { appendWith } from "../audit/service.js";
+import { fetchEvidence } from "../integrations/hub.js";
+import { ENGINES, type EngineContext } from "./archetypes.js";
+import type { CatalogEntry } from "./catalog.js";
 
 /**
  * The governed capability runner — the spine of the platform (§5.5 + §5.6
@@ -50,7 +53,8 @@ export async function runCapability(tenantId: string, input: RunInput): Promise<
   return withTenant(tenantId, async (client) => {
     // 1. Capability registration.
     const capRes = await client.query(
-      `select key, name, irreversible, autonomy_ceiling, requires_context from capabilities where key = $1`,
+      `select key, name, domain, archetype, irreversible, autonomy_ceiling, requires_context, description
+         from capabilities where key = $1`,
       [input.capabilityKey],
     );
     if (capRes.rowCount === 0) {
@@ -86,32 +90,51 @@ export async function runCapability(tenantId: string, input: RunInput): Promise<
       return { actionId: blocked.rows[0].id, status: "blocked", output: null, gate, autonomyLevel, mode: "mock", brandVersion: null };
     }
 
-    // 3. Prompt assembly (versioned template + brand context) → gateway.
+    // 3. Retrieval evidence from bound integrations (§5.5 steps 2–3) — external
+    // content, so it travels the gateway's untrusted channel.
+    const evidence = await fetchEvidence(client, input.capabilityKey, input.brief.slice(0, 140));
+    const evidenceSummary = evidence.map((e) => `- [${e.provider}] ${e.text}`).join("\n");
+
+    // 4. Prompt assembly: explicit versioned template if one exists, otherwise
+    // the capability's archetype engine (the reuse boundary of §5.1).
+    const engine = ENGINES[capability.archetype as CatalogEntry["archetype"]] ?? ENGINES.knowledge;
+    const engineCtx: EngineContext = {
+      feature: {
+        key: capability.key, name: capability.name, domain: capability.domain,
+        archetype: capability.archetype, description: capability.description ?? "",
+      },
+      company: brand?.companyName ?? null,
+      brief: input.brief,
+      evidenceSummary,
+    };
     const tplRes = await client.query(
       `select template, version from prompt_templates where key = $1 and is_current`,
       [input.capabilityKey],
     );
-    const template: string = tplRes.rows[0]?.template ??
-      "You are the {{capability}} capability. Using ONLY the brand context provided, complete the brief accurately and on-brand.";
+    const template: string | undefined = tplRes.rows[0]?.template;
+    const systemBody = template
+      ? template
+          .replaceAll("{{company}}", brand?.companyName ?? "the client")
+          .replaceAll("{{capability}}", capability.name)
+          .replaceAll("{{format}}", input.vars?.format ?? "the requested output")
+      : engine.system(engineCtx);
     const system = [
-      template
-        .replaceAll("{{company}}", brand?.companyName ?? "the client")
-        .replaceAll("{{capability}}", capability.name)
-        .replaceAll("{{format}}", input.vars?.format ?? "the requested output"),
+      systemBody,
       brand ? `\n<brand_context version="${brand.version}">\n${brand.contextBlock}\n</brand_context>` : "",
     ].join("\n");
 
     const gw = await gatewayCall(client, {
       capabilityKey: input.capabilityKey,
-      purpose: input.vars?.format ?? "generation",
+      purpose: input.vars?.format ?? capability.archetype,
       modelClass: input.modelClass ?? "frontier",
       system,
       prompt: "Complete the brief below.",
       untrustedInput: input.brief,
-      mock: () => (input.mock ? input.mock({ company: brand?.companyName ?? null, brief: input.brief }) : `Draft for ${brand?.companyName ?? "client"}: ${input.brief.slice(0, 120)}`),
+      untrustedEvidence: evidence.map((e) => ({ source: e.provider, text: e.text })),
+      mock: () => (input.mock ? input.mock({ company: brand?.companyName ?? null, brief: input.brief }) : engine.mock(engineCtx)),
     });
 
-    // 4. Guardrail gate on the output.
+    // 5. Guardrail gate on the output.
     const gate = evaluateGate({
       capability,
       autonomyLevel,
@@ -119,7 +142,7 @@ export async function runCapability(tenantId: string, input: RunInput): Promise<
       brand,
     });
 
-    // 5. Decide the action status.
+    // 6. Decide the action status.
     const status: RunResult["status"] = !gate.allowed ? "blocked" : autonomyLevel >= 3 ? "executed" : "pending_approval";
 
     const action = await client.query(
@@ -137,7 +160,7 @@ export async function runCapability(tenantId: string, input: RunInput): Promise<
       ],
     );
 
-    // 6. Audit — atomic with the action.
+    // 7. Audit — atomic with the action.
     await appendWith(client, {
       actorType: input.actor.actorType,
       actorId: input.actor.actorId,
