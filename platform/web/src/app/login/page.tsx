@@ -21,7 +21,8 @@ export default function LoginPage() {
       const { tenants } = await api.myTenants();
       const client = tenants.find((t) => t.type === "client") ?? tenants[0];
       if (client) session.tenantId = client.id;
-      router.push("/");
+      // The app opens on Analyse Now — the market-mapping entry flow.
+      router.push("/analyse");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed");
       setBusy(false);

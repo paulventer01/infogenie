@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { api, session, type Capability, type Tenant } from "@/lib/api";
 
 const NAV = [
+  { href: "/analyse", label: "Analyse Now", glyph: "⌖" },
   { href: "/", label: "Overview", glyph: "◧" },
   { href: "/brand", label: "Brand Foundation", glyph: "◈" },
   { href: "/studio", label: "Capability Studio", glyph: "▶" },

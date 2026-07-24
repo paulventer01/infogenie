@@ -8,6 +8,7 @@ import { isReachable, type Channel } from "./modules/consent/service.js";
 import { appendWith } from "./modules/audit/service.js";
 import { saveBrandFoundation } from "./modules/brand/service.js";
 import { runCapability, approveAction } from "./modules/capabilities/runner.js";
+import { analyseMarket, battlePlanText } from "./modules/analyse/marketAnalysis.js";
 import { gatewayLive } from "./gateway/llmGateway.js";
 import { saveCredential } from "./modules/integrations/hub.js";
 
@@ -291,6 +292,38 @@ export function createApp() {
         actor: { actorType: "user", actorId: req.ctx!.userId },
       })
         .then((result) => res.json(result))
+        .catch(next);
+    }) as express.RequestHandler,
+  );
+
+  // "Analyse Now" — the market-analysis entry flow. Infers the industry from a
+  // website or sector, maps competitors in the exact same industry, and runs
+  // the battle plan through the governed spine (evidence → gateway → gate →
+  // autonomy → audit) under compete.market_analysis. The structured competitor
+  // set is deterministic mock-first evidence, same contract as the hub adapters.
+  app.post(
+    "/api/analyse/run",
+    authenticate as express.RequestHandler,
+    withTenantContext as express.RequestHandler,
+    requirePermission("consent:read") as express.RequestHandler,
+    ((req: CtxRequest, res: Response, next: NextFunction) => {
+      const { website, sector, region } = req.body ?? {};
+      if (!website && !sector) {
+        res.status(400).json({ error: "enter a website or a sector — either one is enough to begin" });
+        return;
+      }
+      const map = analyseMarket({ website, sector, region });
+      const brief =
+        `Map the market for ${map.subject} (${map.industry}, ${map.region}): identify the competitors in the exact same industry ` +
+        `and analyse each — positioning, strengths, weaknesses, threat level — then recommend counter-moves.`;
+      runCapability(req.ctx!.tenantId!, {
+        capabilityKey: "compete.market_analysis",
+        brief,
+        vars: { format: "market analysis battle plan" },
+        actor: { actorType: "user", actorId: req.ctx!.userId },
+        mock: () => battlePlanText(map),
+      })
+        .then((result) => res.json({ ...result, market: map }))
         .catch(next);
     }) as express.RequestHandler,
   );

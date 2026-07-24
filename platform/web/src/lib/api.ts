@@ -32,6 +32,13 @@ export interface RunResult {
   output: string | null; gate: GateVerdict; autonomyLevel: number;
   mode: "live" | "mock"; brandVersion: number | null;
 }
+export interface Competitor {
+  name: string; domain: string; positioning: string;
+  strengths: string[]; weaknesses: string[];
+  threat: "low" | "medium" | "high" | "critical"; counterMove: string;
+}
+export interface MarketMap { subject: string; industry: string; region: string; competitors: Competitor[] }
+export type AnalyseResult = RunResult & { market: MarketMap };
 
 export const session = {
   get token() { return typeof window === "undefined" ? null : localStorage.getItem("ig.token"); },
@@ -78,4 +85,6 @@ export const api = {
       method: "PUT", body: JSON.stringify({ secret }),
     }),
   approve: (id: string) => request<{ status: string }>(`/api/actions/${id}/approve`, { method: "POST" }),
+  analyse: (input: { website?: string; sector?: string; region?: string }) =>
+    request<AnalyseResult>("/api/analyse/run", { method: "POST", body: JSON.stringify(input) }),
 };
