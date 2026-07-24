@@ -10,7 +10,6 @@ import {
   recordConsent,
   withdrawConsent,
   isReachable,
-  addTenantSuppression,
   addGlobalSuppression,
 } from "../src/modules/consent/service.js";
 import { append, verifyChain } from "../src/modules/audit/service.js";

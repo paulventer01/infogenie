@@ -6,6 +6,9 @@ import { resolveTenantAccess, roleHasPermission } from "./modules/identity/rbac.
 import { withTenant } from "./db/tenantContext.js";
 import { isReachable, type Channel } from "./modules/consent/service.js";
 import { appendWith } from "./modules/audit/service.js";
+import { saveBrandFoundation } from "./modules/brand/service.js";
+import { runCapability, approveAction } from "./modules/capabilities/runner.js";
+import { gatewayLive } from "./gateway/llmGateway.js";
 
 // Request augmented with the resolved principal and tenant context.
 interface Ctx {
@@ -120,6 +123,81 @@ export function createApp() {
         return result;
       })
         .then((result) => res.json(result))
+        .catch(next);
+    }) as express.RequestHandler,
+  );
+
+  // ---- Phase 1/2 surface: Brand Foundation, governed capabilities ----------
+
+  // Save (a new version of) the tenant's Brand Foundation.
+  app.put(
+    "/api/brand",
+    authenticate as express.RequestHandler,
+    withTenantContext as express.RequestHandler,
+    requirePermission("tenant:admin") as express.RequestHandler,
+    ((req: CtxRequest, res: Response, next: NextFunction) => {
+      const body = req.body ?? {};
+      if (!body.companyName) {
+        res.status(400).json({ error: "companyName is required" });
+        return;
+      }
+      saveBrandFoundation(req.ctx!.tenantId!, body, { actorId: req.ctx!.userId })
+        .then((brand) => res.json({ id: brand.id, version: brand.version }))
+        .catch(next);
+    }) as express.RequestHandler,
+  );
+
+  // Run a governed capability. Output only executes past the gate + autonomy.
+  app.post(
+    "/api/capabilities/:key/run",
+    authenticate as express.RequestHandler,
+    withTenantContext as express.RequestHandler,
+    requirePermission("consent:read") as express.RequestHandler,
+    ((req: CtxRequest, res: Response, next: NextFunction) => {
+      const { brief, vars } = req.body ?? {};
+      if (!brief) {
+        res.status(400).json({ error: "brief is required" });
+        return;
+      }
+      runCapability(req.ctx!.tenantId!, {
+        capabilityKey: req.params.key!,
+        brief,
+        vars,
+        actor: { actorType: "user", actorId: req.ctx!.userId },
+      })
+        .then((result) => res.json(result))
+        .catch(next);
+    }) as express.RequestHandler,
+  );
+
+  // Approve a pending action (human-disposes pathway; requires send:approve).
+  app.post(
+    "/api/actions/:id/approve",
+    authenticate as express.RequestHandler,
+    withTenantContext as express.RequestHandler,
+    requirePermission("send:approve") as express.RequestHandler,
+    ((req: CtxRequest, res: Response, next: NextFunction) => {
+      approveAction(req.ctx!.tenantId!, req.params.id!, { actorId: req.ctx!.userId! })
+        .then((r) => res.json(r))
+        .catch(next);
+    }) as express.RequestHandler,
+  );
+
+  // Approval queue + action history for the tenant (gate reasons surfaced).
+  app.get(
+    "/api/actions",
+    authenticate as express.RequestHandler,
+    withTenantContext as express.RequestHandler,
+    requirePermission("audit:read") as express.RequestHandler,
+    ((req: CtxRequest, res: Response, next: NextFunction) => {
+      withTenant(req.ctx!.tenantId!, async (client) => {
+        const { rows } = await client.query(
+          `select id, capability_key, status, autonomy_level, gate, created_at, decided_at
+             from actions order by created_at desc limit 100`,
+        );
+        return rows;
+      })
+        .then((rows) => res.json({ actions: rows, engine: gatewayLive() ? "live" : "mock" }))
         .catch(next);
     }) as express.RequestHandler,
   );

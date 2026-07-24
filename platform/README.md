@@ -1,4 +1,4 @@
-# InfoGenie Platform — Phase 0 Foundations
+# InfoGenie Platform — Foundations & the Governed Spine
 
 The structural base of the InfoGenie multi-tenant marketing-intelligence OS,
 built to the **Architecture & Guardrails v1.1** master reference. Phase 0 ships
@@ -56,8 +56,32 @@ hold, not just that the code compiles.
 This split is why "cross-tenant read fails at the database" is true by
 construction and not by careful coding.
 
+## The governed spine (Phases 1–2)
+
+On top of Phase 0 sits the spine every feature in the Feature & Integration
+Reference registers on — so the 130-feature surface is a scale loop, not 130
+bespoke builds:
+
+| Piece | Where | What it enforces |
+|---|---|---|
+| **Brand Foundation** (Block 2) | `0006_brand_context.sql`, `src/modules/brand/` | Versioned, auditable brand context. Generation without it is **blocked** — there is no ungrounded path. |
+| **LLM gateway** (Block 3, hardest-to-reverse #7) | `src/gateway/llmGateway.ts` | The *sole* path to model providers: prompt-injection screening, PII redaction, per-tenant cost metering, model routing, mock fallback. Enforced by an ESLint `no-restricted-imports` rule (CI fails if any other module imports a provider SDK); production adds network policy. |
+| **Guardrail gate** (§5.6) | `src/gate/guardrailGate.ts` | Seven checks in sequence — brand context, prohibited terms, legal/claims (never auto-corrected), PII leakage, consent/suppression, autonomy ceiling, reversibility. Human-readable reasons; **fails closed**. |
+| **Autonomy ladder** (§7.2) | `capabilities` + `tenant_capability_autonomy` | Per capability × per tenant. Entry at A1; A0–A2 queue for human approval; A3 executes within bounds; **irreversible actions never exceed A2** regardless of configuration. |
+| **Capability registry + runner** (Block 5, Appendix A) | `src/modules/capabilities/runner.ts` | One governed execution path: context → gateway → gate → action record → audit, atomically. Registering a feature = a registry row + a prompt template + a call into the runner. |
+
+### Governed API surface
+
+```
+PUT  /api/brand                       save a new Brand Foundation version (tenant:admin)
+POST /api/capabilities/:key/run       run a governed capability (gate + autonomy applied)
+POST /api/actions/:id/approve         approve a pending action (send:approve)
+GET  /api/actions                     approval queue + action history with gate verdicts
+```
+
 ## Not here yet (later phases)
 
-The LLM gateway, the governed-action gate, the autonomy ladder and the capability
-surface are Phases 2–4. They attach to these foundations; they do not replace
-them.
+Live channel adapters (send/publish/bid), the coordinator agent and domain
+specialists, predictions/benchmarks, and white-label surfaces are Phases 3–5.
+They attach to this spine — every one of them will execute through the runner,
+the gateway and the gate.
