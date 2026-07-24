@@ -9,10 +9,13 @@ const DOMAIN_LABELS: Record<string, string> = {
   analyse: "Analyse", monitor: "Monitor", create: "Create", seo: "SEO",
 };
 
+const DOMAIN_ORDER = ["compete", "grow", "reach", "manage", "analyse", "monitor", "create", "seo"];
+
 export default function StudioPage() {
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [filter, setFilter] = useState("");
   const [key, setKey] = useState<string>("");
+  const [openDomain, setOpenDomain] = useState<string | null>("create");
   const [brief, setBrief] = useState("");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -71,16 +74,44 @@ export default function StudioPage() {
             <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)}
               placeholder={`Search ${capabilities.length} capabilities…`} />
           </label>
-          <label className="field"><span>Capability</span>
-            <select className="input" value={key} onChange={(e) => setKey(e.target.value)} size={10}>
-              {[...byDomain.entries()].map(([domain, caps]) => (
-                <optgroup key={domain} label={`${DOMAIN_LABELS[domain] ?? domain} (${caps.length})`}>
-                  {caps.map((c) => (
-                    <option key={c.key} value={c.key}>{c.name}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+          <div className="field">
+            <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>
+              Capability — grouped by domain
+            </span>
+            <div className="cap-menu">
+              {DOMAIN_ORDER.filter((d) => byDomain.get(d)?.length).map((domain) => {
+                const caps = [...byDomain.get(domain)!].sort((a, b) => a.name.localeCompare(b.name));
+                const open = filter.trim() ? true : openDomain === domain;
+                return (
+                  <div key={domain} className={`cap-domain${open ? " open" : ""}`}>
+                    <button
+                      type="button"
+                      className="cap-domain-toggle"
+                      onClick={() => setOpenDomain(open && !filter.trim() ? null : domain)}
+                    >
+                      <span className="caret">{open ? "▾" : "▸"}</span>
+                      {DOMAIN_LABELS[domain] ?? domain}
+                      <span className="cap-count">{caps.length}</span>
+                    </button>
+                    {open && (
+                      <div className="cap-items">
+                        {caps.map((c) => (
+                          <button
+                            type="button"
+                            key={c.key}
+                            className={`cap-item${c.key === key ? " selected" : ""}`}
+                            onClick={() => { setKey(c.key); setOpenDomain(domain); }}
+                          >
+                            {c.name}
+                            {c.irreversible && <span className="cap-flag">A2 max</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
             {selected && (
               <div className="hint">
                 {selected.description ?? ""}
@@ -91,7 +122,7 @@ export default function StudioPage() {
                 </div>
               </div>
             )}
-          </label>
+          </div>
           <label className="field"><span>Brief</span>
             <textarea
               value={brief}
