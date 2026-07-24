@@ -111,6 +111,14 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [engine, setEngine] = useState<"live" | "mock" | null>(null);
   const [ready, setReady] = useState(false);
+  // The capability menu stays rolled up under "Capability Studio" until opened.
+  const [treeOpen, setTreeOpen] = useState(false);
+
+  const activeCapKey = pathname === "/studio" ? searchParams.get("cap") : null;
+
+  useEffect(() => {
+    if (activeCapKey) setTreeOpen(true);
+  }, [activeCapKey]);
 
   useEffect(() => {
     if (!session.token) {
@@ -147,8 +155,6 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
 
   if (!ready) return null;
 
-  const activeCapKey = pathname === "/studio" ? searchParams.get("cap") : null;
-
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -161,24 +167,41 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
         </div>
         <div className="nav-label">Workspace</div>
         <nav className="nav">
-          {NAV.map((item) => (
-            <div key={item.href}>
-              <Link
-                href={item.href}
-                className={pathname === item.href ? "active" : ""}
-              >
-                <span className="glyph" aria-hidden>{item.glyph}</span>
-                {item.label}
-              </Link>
-              {item.href === "/studio" && capabilities.length > 0 && (
-                <CapabilityTree
-                  capabilities={capabilities}
-                  activeKey={activeCapKey}
-                  onNavigate={(key) => router.push(`/studio?cap=${encodeURIComponent(key)}`)}
-                />
-              )}
-            </div>
-          ))}
+          {NAV.map((item) => {
+            const isStudio = item.href === "/studio";
+            return (
+              <div key={item.href}>
+                <div className={isStudio ? "nav-row" : undefined}>
+                  <Link
+                    href={item.href}
+                    className={pathname === item.href ? "active" : ""}
+                    onClick={isStudio ? () => setTreeOpen(true) : undefined}
+                  >
+                    <span className="glyph" aria-hidden>{item.glyph}</span>
+                    {item.label}
+                  </Link>
+                  {isStudio && capabilities.length > 0 && (
+                    <button
+                      type="button"
+                      className="nav-caret"
+                      aria-expanded={treeOpen}
+                      aria-label={treeOpen ? "Collapse the capability menu" : "Open the capability menu"}
+                      onClick={() => setTreeOpen((o) => !o)}
+                    >
+                      {treeOpen ? "▾" : "▸"}
+                    </button>
+                  )}
+                </div>
+                {isStudio && treeOpen && capabilities.length > 0 && (
+                  <CapabilityTree
+                    capabilities={capabilities}
+                    activeKey={activeCapKey}
+                    onNavigate={(key) => router.push(`/studio?cap=${encodeURIComponent(key)}`)}
+                  />
+                )}
+              </div>
+            );
+          })}
         </nav>
         <div className="sidebar-foot">
           Every action here is grounded in brand context, checked by the guardrail gate, and written to the audit rail.
