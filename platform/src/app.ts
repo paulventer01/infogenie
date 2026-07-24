@@ -127,7 +127,69 @@ export function createApp() {
     }) as express.RequestHandler,
   );
 
+  // Tenants the authenticated user can act within (direct + agency children).
+  app.get(
+    "/api/me/tenants",
+    authenticate as express.RequestHandler,
+    ((req: CtxRequest, res: Response, next: NextFunction) => {
+      appPool
+        .query(
+          `select distinct t.id, t.name, t.type, t.slug
+             from tenants t
+             join memberships m on m.tenant_id = t.id or t.parent_tenant_id = m.tenant_id
+            where m.user_id = $1
+            order by t.type, t.name`,
+          [req.ctx!.userId],
+        )
+        .then(({ rows }) => res.json({ tenants: rows }))
+        .catch(next);
+    }) as express.RequestHandler,
+  );
+
   // ---- Phase 1/2 surface: Brand Foundation, governed capabilities ----------
+
+  // Current Brand Foundation (any tenant member).
+  app.get(
+    "/api/brand",
+    authenticate as express.RequestHandler,
+    withTenantContext as express.RequestHandler,
+    ((req: CtxRequest, res: Response, next: NextFunction) => {
+      withTenant(req.ctx!.tenantId!, async (client) => {
+        const { rows } = await client.query(
+          `select id, version, company_name, mission, positioning, voice_tone,
+                  key_messages, differentiators, competitors, prohibited_terms,
+                  mandatory_disclaimers, created_at
+             from brand_foundations where is_current limit 1`,
+        );
+        return rows[0] ?? null;
+      })
+        .then((brand) => res.json({ brand }))
+        .catch(next);
+    }) as express.RequestHandler,
+  );
+
+  // Capability registry with this tenant's autonomy levels.
+  app.get(
+    "/api/capabilities",
+    authenticate as express.RequestHandler,
+    withTenantContext as express.RequestHandler,
+    ((req: CtxRequest, res: Response, next: NextFunction) => {
+      withTenant(req.ctx!.tenantId!, async (client) => {
+        const { rows } = await client.query(
+          `select c.key, c.name, c.domain, c.archetype, c.agent_type, c.irreversible,
+                  c.entry_autonomy, c.autonomy_ceiling, c.description,
+                  coalesce(a.level, c.entry_autonomy) as level
+             from capabilities c
+             left join tenant_capability_autonomy a on a.capability_key = c.key
+            order by c.domain, c.key`,
+        );
+        return rows;
+      })
+        .then((capabilities) => res.json({ capabilities, engine: gatewayLive() ? "live" : "mock" }))
+        .catch(next);
+    }) as express.RequestHandler,
+  );
+
 
   // Save (a new version of) the tenant's Brand Foundation.
   app.put(
