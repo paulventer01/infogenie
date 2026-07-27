@@ -2,6 +2,7 @@ import "./env-setup.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { withTenant } from "../src/db/tenantContext.js";
+import { saveBrandFoundation } from "../src/modules/brand/service.js";
 import { runCapability } from "../src/modules/capabilities/runner.js";
 import { analyseMarket, battlePlanText } from "../src/modules/analyse/marketAnalysis.js";
 import { ensureMigrated, closeAll, createAgencyWithClient } from "./helpers.js";
@@ -38,6 +39,30 @@ test("unknown sector falls back to a generic same-industry set", () => {
   const map = analyseMarket({ sector: "artisanal cheese wholesale" });
   assert.ok(map.competitors.length >= 5);
   assert.ok(map.competitors.every((c) => c.positioning.includes("artisanal cheese wholesale")));
+});
+
+test("BlueAlpha maps as a same-industry competitor for AI marketing platforms", () => {
+  const map = analyseMarket({ website: "bluealpha.ai" });
+  assert.equal(map.industry, "AI marketing & measurement platforms");
+  assert.ok(!map.competitors.some((c) => c.domain === "bluealpha.ai"), "subject excluded");
+  const infogenieView = analyseMarket({ sector: "agentic marketing intelligence" });
+  assert.ok(infogenieView.competitors.some((c) => c.name === "BlueAlpha"), "BlueAlpha appears in InfoGenie's own competitive set");
+});
+
+test("BlueAlpha incrementality evidence grounds spend capabilities through the governed run", async () => {
+  const { client } = await createAgencyWithClient();
+  await saveBrandFoundation(client.id, { companyName: "Acme Retail" }, { actorId: "test-user" });
+  const result = await runCapability(client.id, {
+    capabilityKey: "grow.iroas_incrementality_module",
+    brief: "Measure the true incremental ROAS of our summer prospecting campaign.",
+    actor,
+  });
+  assert.notEqual(result.status, "blocked");
+  assert.match(result.output ?? "", /incremental/i, "output reasons about incrementality");
+  const audit = await withTenant(client.id, async (c) =>
+    c.query("select evidence from audit_log where action like 'grow.iroas_incrementality_module%'"),
+  );
+  assert.ok(audit.rowCount! >= 1, "governed run audited");
 });
 
 test("the battle plan runs through the governed spine (no brand needed, gated, audited)", async () => {

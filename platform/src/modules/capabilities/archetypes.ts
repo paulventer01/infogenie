@@ -62,10 +62,12 @@ export const ENGINES: Record<CatalogEntry["archetype"], ArchetypeEngine> = {
   analysis: {
     system: (ctx) =>
       base(ctx, "Perform the quantitative/qualitative analysis this capability owns and report it decision-grade.",
-        "Express findings with an explicit confidence band and the evidence base (sample size, window, source count). A point estimate without an interval is a defect (§7.9)."),
+        "Express findings with an explicit confidence band and the evidence base (sample size, window, source count). A point estimate without an interval is a defect (§7.9). " +
+        "Label every figure as measured, modelled, or forecast — never blur the three. Where advertising spend is involved, report incremental effect (lift vs the counterfactual) alongside platform-reported figures, and rank any recommendation by incremental impact, not reported ROAS."),
     mock: (ctx) => {
       const s = subjectOf(ctx.brief);
-      return `${ctx.feature.name} — analysis of ${s}\n\nEvidence base:\n${ctx.evidenceSummary || "- internal data only"}\n\nFinding: directionally positive movement on the primary metric.\nConfidence: 68–80% (moderate; single-window observation, ${ctx.evidenceSummary ? "multi-source" : "single-source"}).\nRecommended action: monitor one more cycle before committing budget; this finding is not decision-grade until validated against outcomes.`;
+      const spendRelated = /roas|spend|budget|cac|campaign|ad(s|vert)?\b|incrementalit/i.test(`${ctx.feature.name} ${ctx.brief}`);
+      return `${ctx.feature.name} — analysis of ${s}\n\nEvidence base:\n${ctx.evidenceSummary || "- internal data only"}\n\nFinding (measured): directionally positive movement on the primary metric.${spendRelated ? "\nIncrementality (modelled): platform-reported effect overstates causal lift — recommendations below are ranked by incremental impact, not reported ROAS." : ""}\nConfidence: 68–80% (moderate; single-window observation, ${ctx.evidenceSummary ? "multi-source" : "single-source"}).\nRecommended action: monitor one more cycle before committing budget; this finding is not decision-grade until validated against outcomes.`;
     },
   },
   planning: {

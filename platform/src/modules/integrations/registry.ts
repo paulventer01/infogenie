@@ -37,6 +37,7 @@ export const INTEGRATION_CATALOG: IntegrationEntry[] = [
   { key: "bing_webmaster", name: "Bing Webmaster Tools", purpose: "Bing-specific SEO data", status: "live" },
   { key: "slack", name: "Slack", purpose: "Alert routing, daily digest delivery, crisis notifications", status: "live", authKind: "oauth" },
   { key: "stripe", name: "Stripe", purpose: "Payment processing", status: "live" },
+  { key: "bluealpha", name: "BlueAlpha (causal measurement)", purpose: "Incrementality evidence — Meridian-based Bayesian MMM: incremental lift vs platform-reported ROAS, budget reallocation ranked by causal impact", status: "live" },
   { key: "wordpress", name: "WordPress (REST API)", purpose: "Auto-publishing for Content Modes and Content Calendar", status: "live" },
   { key: "apify", name: "Apify", purpose: "TikTok organic scraping, Google Maps lead scraping", status: "live" },
   { key: "rapidapi_tiktok", name: "RapidAPI (TikTok / News)", purpose: "TikTok downloader fallback; real-time news data", status: "live" },

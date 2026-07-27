@@ -119,6 +119,8 @@ const MOCK_ADAPTERS: Record<string, MockAdapter> = {
     `Question mining (simulated) for "${s}": ${seeded("qr-n", s, 3, 22)} active questions, highest-traffic: "What is the best option for ${s}?"`,
   trustpilot_g2: (s) =>
     `Review aggregation (simulated) for "${s}": avg rating ${(seeded("rv-r", s, 32, 47) / 10).toFixed(1)}/5 across platforms, praise: service quality; complaints: response times, ${seeded("rv-d", s, 0, 3)} review(s) disappeared since last scan.`,
+  bluealpha: (s) =>
+    `Causal measurement (simulated, Meridian-style MMM refit weekly) for "${s}": platform-reported ROAS ${(seeded("ba-rr", s, 30, 55) / 10).toFixed(2)}x vs incremental ROAS ${(seeded("ba-ir", s, 8, 26) / 10).toFixed(2)}x (90% credible interval ±0.${seeded("ba-ci", s, 2, 6)}x); est. non-incremental spend $${seeded("ba-w", s, 4, 42)}k/mo; top reallocation by incremental lift: shift ${seeded("ba-sh", s, 5, 25)}% of budget from the over-reported channel to the under-invested one.`,
   news_api: (s) =>
     `News scan (simulated) for "${s}": ${seeded("nw-n", s, 1, 12)} stories in the last 7 days, none crisis-grade, one sector piece on pricing pressure.`,
   zernio: (s) =>

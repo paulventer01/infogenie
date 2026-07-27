@@ -476,7 +476,8 @@ export const FEATURE_CATALOG: CatalogEntry[] = [
     "integrations": [
       "meta_ads",
       "google_ads",
-      "tiktok_ads"
+      "tiktok_ads",
+      "bluealpha"
     ],
     "description": "Launches ad campaigns across Google Ads, Meta Ads, and TikTok Ads. Once launched, the AI Optimizer runs an autonomous cycle: hourly ad-insight ingest → 6-hour pause/scale rules → 12-hour Multi-Armed Bandit budget reallocation → 24-hour creative refresh. Dry-run by default; flip to LIVE in settings."
   },
@@ -595,7 +596,9 @@ export const FEATURE_CATALOG: CatalogEntry[] = [
     "requiresContext": true,
     "entryAutonomy": 1,
     "autonomyCeiling": 3,
-    "integrations": [],
+    "integrations": [
+      "bluealpha"
+    ],
     "description": "Measures true incremental ROAS from holdout experiments. Design a holdout test, enter raw results, and get calculated: test CVR, control CVR, lift %, incremental conversions/revenue, iROAS, reported ROAS, and the delta between them. AI gives a verdict and recommended actions. Also generates budget saturation curves."
   },
   {
@@ -624,7 +627,8 @@ export const FEATURE_CATALOG: CatalogEntry[] = [
     "entryAutonomy": 1,
     "autonomyCeiling": 3,
     "integrations": [
-      "openai"
+      "openai",
+      "bluealpha"
     ],
     "description": "The \"I already fixed it\" AI. Input your current ROAS, target ROAS, CAC, campaigns, and issues. GPT-4o acts as an autonomous operator: diagnoses the problem, takes 3+ decisive actions (rewrite ad / pause campaign / scale / reallocate budget / launch A/B test / update landing page), produces rewritten ad copy, budget reallocation plan, and a one-sentence summary."
   },
@@ -1213,7 +1217,9 @@ export const FEATURE_CATALOG: CatalogEntry[] = [
     "requiresContext": true,
     "entryAutonomy": 1,
     "autonomyCeiling": 3,
-    "integrations": [],
+    "integrations": [
+      "bluealpha"
+    ],
     "description": "Unified budget monitoring view showing live campaign spend vs. budget across all platforms, with burn rate tracking and forecasted end-of-month spend."
   },
   {

@@ -98,6 +98,18 @@ const INDUSTRIES: Record<string, { label: string; match: RegExp; pool: Array<Omi
       { name: "Hopper", domain: "hopper.com", positioning: "Mobile-only fintech-flavoured travel app for price prediction.", strengths: ["Price-prediction hook", "Gen-Z mobile brand"], weaknesses: ["Inventory breadth", "Support reputation"] },
     ],
   },
+  martech_agentic: {
+    label: "AI marketing & measurement platforms",
+    match: /bluealpha|infogenie|triple ?whale|northbeam|martech|marketing (platform|intelligence|analytics|ai)|agentic marketing|incrementality|mmm|marketing mix/i,
+    pool: [
+      { name: "BlueAlpha", domain: "bluealpha.ai", positioning: "Ex-Tesla team running paid media 'like a portfolio': Meridian-based causal MMM refit weekly, seven agents, execution shipped to ad accounts with a human in the loop.", strengths: ["Causal measurement depth (incrementality, not reported ROAS)", "Closed analyse→act loop with on-platform execution"], weaknesses: ["Narrow scope: paid-media budget only, not the full marketing estate", "High-touch positioning limits self-serve reach"] },
+      { name: "Triple Whale", domain: "triplewhale.com", positioning: "E-commerce analytics hub unifying ad platform and store data for DTC brands.", strengths: ["Strong DTC brand and community", "Fast time-to-dashboard"], weaknesses: ["Correlation-heavy attribution", "Shopify-centric ceiling"] },
+      { name: "Northbeam", domain: "northbeam.io", positioning: "Multi-touch attribution and MMM for performance marketers at scale.", strengths: ["Attribution modelling credibility", "Enterprise media buyers"], weaknesses: ["Analyst-heavy onboarding", "Insight without execution"] },
+      { name: "Smartly", domain: "smartly.io", positioning: "Creative + media automation across social ad platforms for enterprises.", strengths: ["Creative automation at scale", "Deep platform partnerships"], weaknesses: ["Social-first scope", "Enterprise price point"] },
+      { name: "Madgicx", domain: "madgicx.com", positioning: "AI ad-management copilot for Meta-centric SMB advertisers.", strengths: ["Low entry price", "Meta optimisation depth"], weaknesses: ["Single-channel gravity", "Shallow measurement layer"] },
+      { name: "Optmyzr", domain: "optmyzr.com", positioning: "Rule-and-script PPC optimisation suite for search marketers.", strengths: ["Practitioner loyalty in PPC", "Granular control"], weaknesses: ["Pre-agentic paradigm (rules, not reasoning)", "Limited cross-channel view"] },
+    ],
+  },
   crypto_exchange: {
     label: "Crypto exchanges",
     match: /coinbase|binance|crypto|bitcoin|exchange|web3|blockchain/i,
