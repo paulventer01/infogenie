@@ -36,4 +36,12 @@ export default tseslint.config(
     files: ["src/gateway/**"],
     rules: { "no-restricted-imports": "off" },
   },
+  {
+    // Plain-Node operational scripts (deploy bootstrap etc.) — declare the
+    // Node.js runtime globals the TS configs don't cover for .mjs files.
+    files: ["**/*.mjs"],
+    languageOptions: {
+      globals: { process: "readonly", console: "readonly", URL: "readonly", Buffer: "readonly" },
+    },
+  },
 );
