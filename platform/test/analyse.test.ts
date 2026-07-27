@@ -5,6 +5,7 @@ import { withTenant } from "../src/db/tenantContext.js";
 import { saveBrandFoundation } from "../src/modules/brand/service.js";
 import { runCapability } from "../src/modules/capabilities/runner.js";
 import { analyseMarket, identifyMarket, battlePlanText } from "../src/modules/analyse/marketAnalysis.js";
+import { fetchEvidence, parseRssTitles } from "../src/modules/integrations/hub.js";
 import { ensureMigrated, closeAll, createAgencyWithClient } from "./helpers.js";
 
 // "Analyse Now" — the market-analysis entry flow. The competitor map must be
@@ -92,6 +93,47 @@ test("BlueAlpha incrementality evidence grounds spend capabilities through the g
     c.query("select evidence from audit_log where action like 'grow.iroas_incrementality_module%'"),
   );
   assert.ok(audit.rowCount! >= 1, "governed run audited");
+});
+
+test("no-cost providers: RSS parsing is robust and evidence falls back to mock offline", async () => {
+  const rss = `<rss><channel><title>feed</title><item><title><![CDATA[First story]]></title></item><item><title>Second &amp; third</title></item></rss>`;
+  assert.deepEqual(parseRssTitles(rss, 5), ["First story", "Second & third"]);
+  // EVIDENCE_LIVE=0 (env-setup): a capability bound to live no-cost providers
+  // still gets deterministic, clearly-labelled mock evidence.
+  const { client } = await createAgencyWithClient();
+  const blocks = await withTenant(client.id, (c) => fetchEvidence(c, "compete.market_analysis", "acme.example"));
+  const providers = blocks.map((b) => b.provider).sort();
+  assert.deepEqual(providers, ["news_api", "web_fetch", "wikipedia"]);
+  assert.ok(blocks.every((b) => b.mode === "mock"), "offline evidence is mock, never a hung network call");
+});
+
+test("live no-cost adapters produce live evidence end to end (stubbed network)", async () => {
+  const realFetch = globalThis.fetch;
+  const canned = (body: string) => Promise.resolve(new Response(body, { status: 200 }));
+  globalThis.fetch = ((url: string | URL) => {
+    const u = String(url);
+    if (u.includes("news.google.com")) return canned("<rss><item><title>Acme expands</title></item><item><title>Rival raises prices</title></item></rss>");
+    if (u.includes("wikipedia.org/w/api.php")) return canned(JSON.stringify(["acme", ["Acme Corp"], [], []]));
+    if (u.includes("wikipedia.org/api/rest_v1")) return canned(JSON.stringify({ extract: "Acme Corp is a retailer." }));
+    if (u.includes("acme.example")) return canned("<html><head><title>Acme — quality goods</title><meta name=\"description\" content=\"Acme sells durable goods.\"></head></html>");
+    if (u.includes("frankfurter")) return canned(JSON.stringify({ date: "2026-07-27", rates: { ZAR: 17.9, EUR: 0.9, GBP: 0.78 } }));
+    return Promise.reject(new Error(`unexpected url ${u}`));
+  }) as typeof fetch;
+  process.env.EVIDENCE_LIVE = "1";
+  try {
+    const { client } = await createAgencyWithClient();
+    const blocks = await withTenant(client.id, (c) => fetchEvidence(c, "compete.market_analysis", "acme.example"));
+    const byProvider = new Map(blocks.map((b) => [b.provider, b]));
+    assert.equal(byProvider.get("web_fetch")?.mode, "live");
+    assert.match(byProvider.get("web_fetch")?.text ?? "", /Acme — quality goods/);
+    assert.equal(byProvider.get("wikipedia")?.mode, "live");
+    assert.match(byProvider.get("wikipedia")?.text ?? "", /Acme Corp is a retailer/);
+    assert.equal(byProvider.get("news_api")?.mode, "live");
+    assert.match(byProvider.get("news_api")?.text ?? "", /Acme expands · Rival raises prices/);
+  } finally {
+    process.env.EVIDENCE_LIVE = "0";
+    globalThis.fetch = realFetch;
+  }
 });
 
 test("the battle plan runs through the governed spine (no brand needed, gated, audited)", async () => {

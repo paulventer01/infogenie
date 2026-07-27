@@ -150,12 +150,128 @@ export async function fetchEvidence(
     [capabilityKey],
   );
   if (rows.length === 0) return [];
-  const connected = await connectedIntegrations(client);
-  return rows.map((r) => {
-    const key = r.integration_key as string;
-    // Credentialed providers would route to a live adapter here; until one
-    // ships, evidence stays simulated (and says so) even when connected.
-    const adapter = MOCK_ADAPTERS[key] ?? DEFAULT_ADAPTER;
-    return { provider: key, mode: connected.has(key) ? "mock" : "mock", text: adapter(subject) } as EvidenceBlock;
-  });
+  return Promise.all(
+    rows.map(async (r) => {
+      const key = r.integration_key as string;
+      // No-cost providers have real live adapters (no credential needed);
+      // anything else — or any live failure/timeout — falls back to the
+      // deterministic mock, clearly labelled. Either way the text is
+      // untrusted external content and travels the gateway's delimited path.
+      const live = LIVE_ADAPTERS[key];
+      if (live && liveEvidenceEnabled()) {
+        try {
+          const text = await live(subject);
+          if (text) return { provider: key, mode: "live", text } as EvidenceBlock;
+        } catch {
+          // fall through to mock
+        }
+      }
+      const adapter = MOCK_ADAPTERS[key] ?? DEFAULT_ADAPTER;
+      return { provider: key, mode: "mock", text: adapter(subject) } as EvidenceBlock;
+    }),
+  );
 }
+
+// ---------- live adapters (no-cost, keyless providers) ----------
+
+/** Live evidence is on by default; EVIDENCE_LIVE=0 pins the deterministic
+ * mocks (tests/CI set this so suites never depend on external networks). */
+function liveEvidenceEnabled(): boolean {
+  return process.env.EVIDENCE_LIVE !== "0";
+}
+
+const LIVE_TIMEOUT_MS = 3500;
+
+async function getText(url: string, headers: Record<string, string> = {}): Promise<string> {
+  const res = await fetch(url, {
+    headers: { "user-agent": "InfoGenieBot/0.1 (+https://infogenie.app)", ...headers },
+    signal: AbortSignal.timeout(LIVE_TIMEOUT_MS),
+    redirect: "follow",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
+const ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&apos;": "'", "&nbsp;": " " };
+const clean = (s: string) =>
+  s.replace(/<[^>]+>/g, "").replace(/&[a-z#0-9]+;/gi, (e) => ENTITIES[e.toLowerCase()] ?? e).replace(/\s+/g, " ").trim();
+
+/** Titles of the first n <item>/<entry> elements of an RSS/Atom feed. */
+export function parseRssTitles(xml: string, n: number): string[] {
+  const items = xml.split(/<item[\s>]|<entry[\s>]/).slice(1);
+  return items
+    .map((chunk) => /<title[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/s.exec(chunk)?.[1] ?? "")
+    .map(clean)
+    .filter(Boolean)
+    .slice(0, n);
+}
+
+function subjectAsDomain(subject: string): string | null {
+  const candidate = subject.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/\s]/)[0] ?? "";
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(candidate) ? candidate : null;
+}
+
+/** One live fetcher per no-cost provider. Each returns a compact, labelled
+ * evidence block; any failure falls back to the provider's mock. */
+const LIVE_ADAPTERS: Record<string, (subject: string) => Promise<string>> = {
+  reddit: async (s) => {
+    const body = await getText(`https://www.reddit.com/search.json?q=${encodeURIComponent(s.slice(0, 80))}&limit=5&sort=relevance`);
+    const posts = (JSON.parse(body).data?.children ?? []) as Array<{ data: { title: string; subreddit: string; ups: number; num_comments: number } }>;
+    if (posts.length === 0) throw new Error("no results");
+    return `Reddit search (live) for "${s.slice(0, 80)}": ` + posts
+      .map((p) => `r/${p.data.subreddit}: "${clean(p.data.title).slice(0, 90)}" (${p.data.ups} upvotes, ${p.data.num_comments} comments)`)
+      .join(" · ");
+  },
+  hacker_news: async (s) => {
+    const body = await getText(`https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(s.slice(0, 80))}&hitsPerPage=5`);
+    const hits = (JSON.parse(body).hits ?? []) as Array<{ title?: string; points?: number; num_comments?: number }>;
+    const named = hits.filter((h) => h.title);
+    if (named.length === 0) throw new Error("no results");
+    return `Hacker News (live) for "${s.slice(0, 80)}": ` + named
+      .map((h) => `"${clean(h.title!).slice(0, 90)}" (${h.points ?? 0} points, ${h.num_comments ?? 0} comments)`)
+      .join(" · ");
+  },
+  google_trends: async () => {
+    const xml = await getText("https://trends.google.com/trending/rss?geo=US");
+    const titles = parseRssTitles(xml, 8);
+    if (titles.length === 0) throw new Error("no items");
+    return `Google Trends trending searches (live, US): ${titles.join(" · ")}.`;
+  },
+  news_api: async (s) => {
+    const xml = await getText(`https://news.google.com/rss/search?q=${encodeURIComponent(s.slice(0, 80))}&hl=en-US&gl=US&ceid=US:en`);
+    const titles = parseRssTitles(xml, 5);
+    if (titles.length === 0) throw new Error("no items");
+    return `News scan (live, Google News) for "${s.slice(0, 80)}": ${titles.join(" · ")}.`;
+  },
+  wikipedia: async (s) => {
+    const term = subjectAsDomain(s)?.split(".")[0] ?? s.slice(0, 60);
+    const search = JSON.parse(await getText(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(term)}&limit=1&format=json`)) as [string, string[], string[], string[]];
+    const title = search[1]?.[0];
+    if (!title) throw new Error("no article");
+    const summary = JSON.parse(await getText(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`)) as { extract?: string };
+    if (!summary.extract) throw new Error("no extract");
+    return `Wikipedia (live) — ${title}: ${clean(summary.extract).slice(0, 400)}`;
+  },
+  frankfurter: async () => {
+    const data = JSON.parse(await getText("https://api.frankfurter.dev/v1/latest?base=USD&symbols=ZAR,EUR,GBP")) as { date?: string; rates?: Record<string, number> };
+    if (!data.rates) throw new Error("no rates");
+    return `FX rates (live, ECB via Frankfurter, ${data.date}): 1 USD = ` + Object.entries(data.rates).map(([c, v]) => `${v} ${c}`).join(", ") + ".";
+  },
+  web_fetch: async (s) => {
+    const domain = subjectAsDomain(s);
+    if (!domain) throw new Error("subject is not a domain");
+    const html = (await getText(`https://${domain}/`)).slice(0, 60000);
+    const title = clean(/<title[^>]*>(.*?)<\/title>/is.exec(html)?.[1] ?? "");
+    const desc = clean(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/is.exec(html)?.[1] ?? /<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/is.exec(html)?.[1] ?? "");
+    if (!title && !desc) throw new Error("no metadata");
+    return `Site fetch (live) of ${domain}: title "${title.slice(0, 140)}"${desc ? `; description "${desc.slice(0, 240)}"` : ""}.`;
+  },
+  tikwm: async (s) => {
+    const url = /https?:\/\/\S*tiktok\.com\/\S+/i.exec(s)?.[0];
+    if (!url) throw new Error("no tiktok url in subject");
+    const data = JSON.parse(await getText(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`)) as { data?: { title?: string; play_count?: number; digg_count?: number; author?: { nickname?: string } } };
+    if (!data.data) throw new Error("no video data");
+    const v = data.data;
+    return `TikTok resolve (live, tikwm): "${clean(v.title ?? "").slice(0, 120)}" by ${v.author?.nickname ?? "unknown"} — ${v.play_count ?? 0} plays, ${v.digg_count ?? 0} likes.`;
+  },
+};

@@ -1013,7 +1013,9 @@ export const FEATURE_CATALOG: CatalogEntry[] = [
     "entryAutonomy": 1,
     "autonomyCeiling": 2,
     "integrations": [
-      "openai"
+      "openai",
+      "reddit",
+      "hacker_news"
     ],
     "description": "Pulls the top 30 brand mentions ranked by engagement. For each mention, GPT-4o-mini drafts a reply in your brand&#x27;s tone, with both a full version and a 240-character X variant."
   },
@@ -1218,7 +1220,8 @@ export const FEATURE_CATALOG: CatalogEntry[] = [
     "entryAutonomy": 1,
     "autonomyCeiling": 3,
     "integrations": [
-      "bluealpha"
+      "bluealpha",
+      "frankfurter"
     ],
     "description": "Unified budget monitoring view showing live campaign spend vs. budget across all platforms, with burn rate tracking and forecasted end-of-month spend."
   },
@@ -1501,7 +1504,9 @@ export const FEATURE_CATALOG: CatalogEntry[] = [
     "entryAutonomy": 1,
     "autonomyCeiling": 3,
     "integrations": [
-      "perplexity"
+      "perplexity",
+      "google_trends",
+      "hacker_news"
     ],
     "description": "Uses Perplexity Sonar to detect 6–10 trending topics in your space from the last 7 days, with relevance scores and strategic implications."
   },
