@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { withTenant } from "../src/db/tenantContext.js";
 import { saveBrandFoundation } from "../src/modules/brand/service.js";
 import { runCapability } from "../src/modules/capabilities/runner.js";
-import { analyseMarket, battlePlanText } from "../src/modules/analyse/marketAnalysis.js";
+import { analyseMarket, identifyMarket, battlePlanText } from "../src/modules/analyse/marketAnalysis.js";
 import { ensureMigrated, closeAll, createAgencyWithClient } from "./helpers.js";
 
 // "Analyse Now" — the market-analysis entry flow. The competitor map must be
@@ -33,6 +33,35 @@ test("sector-only input maps a market too (either one is enough to begin)", () =
   const map = analyseMarket({ sector: "travel booking", region: "Global" });
   assert.equal(map.industry, "Travel booking platforms");
   assert.ok(map.competitors.length >= 5);
+});
+
+test("an arbitrary business website lands in its real industry via domain keywords", () => {
+  const cases: Array<[string, string]> = [
+    ["joesplumbing.co.za", "Home services & trades"],
+    ["suretrade.co.za", "Retail trading & investing platforms"],
+    ["cityhealthclinic.com", "Healthcare & wellness"],
+    ["fastcourier.co.za", "Logistics & courier"],
+    ["smithattorneys.co.za", "Legal services"],
+    ["brightgym.com", "Fitness & gyms"],
+  ];
+  for (const [site, industry] of cases) {
+    const map = analyseMarket({ website: site });
+    assert.equal(map.industry, industry, `${site} should map to ${industry}, got ${map.industry}`);
+    assert.ok(map.competitors.length >= 5, `${site}: full competitive set`);
+    assert.ok(map.competitors.every((c) => c.domain !== site), `${site}: subject excluded`);
+  }
+});
+
+test("identifyMarket through the gateway (mock path) equals the deterministic map and is metered", async () => {
+  const { client } = await createAgencyWithClient();
+  const viaGateway = await identifyMarket(client.id, { website: "joesplumbing.co.za", region: "South Africa" });
+  const direct = analyseMarket({ website: "joesplumbing.co.za", region: "South Africa" });
+  assert.equal(viaGateway.industry, direct.industry);
+  assert.deepEqual(viaGateway.competitors.map((c) => c.name), direct.competitors.map((c) => c.name));
+  const metered = await withTenant(client.id, async (c) =>
+    c.query("select count(*)::int as n from model_calls where purpose = 'market identification'"),
+  );
+  assert.ok(metered.rows[0].n >= 1, "identification call is metered through the gateway");
 });
 
 test("unknown sector falls back to a generic same-industry set", () => {

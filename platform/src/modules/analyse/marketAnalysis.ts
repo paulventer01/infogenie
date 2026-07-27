@@ -36,8 +36,11 @@ export interface MarketMap {
 }
 
 /** Industry pools: real, recognisable players per industry so the analysis
- * reads true. The subject itself is excluded from its own competitor set. */
-const INDUSTRIES: Record<string, { label: string; match: RegExp; pool: Array<Omit<Competitor, "threat" | "counterMove">> }> = {
+ * reads true. The subject itself is excluded from its own competitor set.
+ * `match` catches explicit names/phrases; `keywords` are distinctive fragments
+ * matched inside the domain name itself (e.g. "plumb" in joesplumbing.co.za),
+ * so an arbitrary website still lands in its real industry. */
+const INDUSTRIES: Record<string, { label: string; match: RegExp; keywords?: string[]; pool: Array<Omit<Competitor, "threat" | "counterMove">> }> = {
   ecommerce_platforms: {
     label: "E-commerce platforms",
     match: /shopify|bigcommerce|woocommerce|magento|e-?comm|online store|webshop|storefront/i,
@@ -53,6 +56,7 @@ const INDUSTRIES: Record<string, { label: string; match: RegExp; pool: Array<Omi
   fintech_trading: {
     label: "Retail trading & investing platforms",
     match: /etoro|robinhood|trading|broker|invest|stocks|cfd|forex/i,
+    keywords: ["trade", "trading", "forex", "invest", "broker", "stock", "wealth", "capital"],
     pool: [
       { name: "eToro", domain: "etoro.com", positioning: "Social/copy-trading pioneer monetising community-led investing.", strengths: ["CopyTrader network effects", "Multi-asset breadth"], weaknesses: ["Spread pricing scrutiny", "Regulatory patchwork by region"] },
       { name: "Robinhood", domain: "robinhood.com", positioning: "Commission-free mobile-first trading for the US retail generation.", strengths: ["Brand with younger investors", "Slick mobile UX"], weaknesses: ["US-centric", "Trust deficits from past outages"] },
@@ -122,6 +126,174 @@ const INDUSTRIES: Record<string, { label: string; match: RegExp; pool: Array<Omi
       { name: "OKX", domain: "okx.com", positioning: "Derivatives-strong global exchange courting advanced traders.", strengths: ["Derivatives depth", "Web3 wallet play"], weaknesses: ["Western trust", "Brand recognition"] },
     ],
   },
+  retail: {
+    label: "Retail & e-commerce",
+    match: /\bretail(er)?\b|e-?commerce store|online (shop|store)|department store/i,
+    keywords: ["shop", "store", "retail", "market", "mall", "boutique", "deals"],
+    pool: [
+      { name: "Amazon", domain: "amazon.com", positioning: "Everything-store incumbent with logistics and Prime lock-in.", strengths: ["Fulfilment network", "Price + selection breadth"], weaknesses: ["Commoditised experience", "Marketplace trust erosion"] },
+      { name: "Walmart", domain: "walmart.com", positioning: "Omnichannel giant pairing stores with fast-growing online reach.", strengths: ["Store-network pickup economics", "Grocery frequency"], weaknesses: ["Brand ceiling upmarket", "Third-party marketplace depth"] },
+      { name: "Takealot", domain: "takealot.com", positioning: "South Africa's dominant online retailer with own logistics.", strengths: ["Local delivery network", "Local brand trust"], weaknesses: ["Thin margins", "Amazon's SA entry pressure"] },
+      { name: "Temu", domain: "temu.com", positioning: "Ultra-low-price cross-border marketplace growing on ad spend.", strengths: ["Price aggression", "Massive acquisition budget"], weaknesses: ["Delivery times", "Quality perception"] },
+      { name: "Shein", domain: "shein.com", positioning: "Fast-supply-chain retail with social-first demand generation.", strengths: ["Speed to trend", "Social commerce engine"], weaknesses: ["Sustainability scrutiny", "Quality variance"] },
+    ],
+  },
+  food_hospitality: {
+    label: "Food delivery & hospitality",
+    match: /restaurant|food delivery|takeaway|catering|coffee shop|cafe|bakery/i,
+    keywords: ["food", "eat", "pizza", "burger", "grill", "kitchen", "cafe", "coffee", "bakery", "catering", "restaurant"],
+    pool: [
+      { name: "Uber Eats", domain: "ubereats.com", positioning: "Global delivery marketplace riding the Uber network.", strengths: ["Rider network density", "App distribution"], weaknesses: ["Take-rate resentment", "Loyalty is to the app, not restaurants"] },
+      { name: "Mr D", domain: "mrdfood.com", positioning: "Takealot-group delivery player with deep South African coverage.", strengths: ["Local coverage", "Group synergies"], weaknesses: ["Regional only", "Marketing scale vs global players"] },
+      { name: "DoorDash", domain: "doordash.com", positioning: "US delivery leader expanding into commerce logistics.", strengths: ["US market share", "Logistics platform play"], weaknesses: ["International reach", "Unit economics"] },
+      { name: "Deliveroo", domain: "deliveroo.com", positioning: "Premium-leaning delivery brand in UK/EU metros.", strengths: ["Restaurant relationships", "Dense-metro economics"], weaknesses: ["Coverage outside metros", "Profitability pressure"] },
+      { name: "Just Eat Takeaway", domain: "justeattakeaway.com", positioning: "Consolidated European marketplace of national brands.", strengths: ["Market-leader positions in EU", "Order volume"], weaknesses: ["Brand fragmentation", "Tech debt from mergers"] },
+    ],
+  },
+  real_estate: {
+    label: "Real estate & property",
+    match: /real estate|property|estate agen|realtor|lettings?\b/i,
+    keywords: ["property", "realty", "estate", "homes", "immo", "rentals"],
+    pool: [
+      { name: "Property24", domain: "property24.com", positioning: "South Africa's leading property portal — the default search start.", strengths: ["Listing liquidity", "Agent network"], weaknesses: ["Portal model disruption risk", "Consumer experience parity"] },
+      { name: "Zillow", domain: "zillow.com", positioning: "US property search giant monetising agent leads and data.", strengths: ["Consumer traffic moat", "Zestimate data brand"], weaknesses: ["Agent dependence", "iBuying scars"] },
+      { name: "Rightmove", domain: "rightmove.co.uk", positioning: "UK portal incumbent with pricing power over agents.", strengths: ["Near-monopoly UK traffic", "High-margin model"], weaknesses: ["Agent fee resentment", "Innovation pace"] },
+      { name: "Private Property", domain: "privateproperty.co.za", positioning: "SA challenger portal competing on agent economics.", strengths: ["Agent-friendly pricing", "Local focus"], weaknesses: ["Traffic gap to leader", "Brand spend"] },
+      { name: "Redfin", domain: "redfin.com", positioning: "Tech-led brokerage undercutting commissions with salaried agents.", strengths: ["Integrated brokerage model", "Fee disruption story"], weaknesses: ["Market-cycle exposure", "Coverage"] },
+    ],
+  },
+  insurance: {
+    label: "Insurance",
+    match: /insur(ance|er)|underwrit|assurance|broker(age)? cover/i,
+    keywords: ["insur", "sure", "cover", "assur", "protect"],
+    pool: [
+      { name: "OUTsurance", domain: "outsurance.co.za", positioning: "Direct insurer with the 'you always get something out' brand promise.", strengths: ["Direct model economics", "Brand recall"], weaknesses: ["Price-comparison pressure", "Younger-market appeal"] },
+      { name: "Santam", domain: "santam.co.za", positioning: "South Africa's largest short-term insurer, broker-led.", strengths: ["Underwriting scale", "Broker network"], weaknesses: ["Direct-channel agility", "Legacy systems"] },
+      { name: "Lemonade", domain: "lemonade.com", positioning: "AI-native insurer selling speed and transparency to digital natives.", strengths: ["Onboarding UX", "AI claims speed"], weaknesses: ["Loss-ratio pressure", "Product breadth"] },
+      { name: "Discovery Insure", domain: "discovery.co.za", positioning: "Behaviour-linked insurance riding the Vitality ecosystem.", strengths: ["Behavioural data moat", "Cross-sell ecosystem"], weaknesses: ["Complexity", "Premium positioning"] },
+      { name: "Naked", domain: "naked.insure", positioning: "App-only SA challenger with instant cover and AI claims.", strengths: ["Digital-first cost base", "Transparent pricing"], weaknesses: ["Scale", "Single-market exposure"] },
+    ],
+  },
+  banking_fintech: {
+    label: "Banking & payments",
+    match: /\bbank(ing)?\b|payments? (platform|provider)|neobank|digital wallet/i,
+    keywords: ["bank", "pay", "wallet", "money", "lend", "credit", "finance"],
+    pool: [
+      { name: "Capitec", domain: "capitecbank.co.za", positioning: "Low-fee simplicity that took SA retail banking by storm.", strengths: ["Cost leadership", "Client growth engine"], weaknesses: ["Premium segment", "Business banking depth"] },
+      { name: "Revolut", domain: "revolut.com", positioning: "Global neobank super-app spanning cards, FX, and trading.", strengths: ["Feature velocity", "Multi-market scale"], weaknesses: ["Support at scale", "Regulatory friction"] },
+      { name: "TymeBank", domain: "tymebank.co.za", positioning: "SA digital bank acquiring through retail partnerships.", strengths: ["Kiosk onboarding via retailers", "Low cost base"], weaknesses: ["Deposit franchise depth", "Brand trust vs incumbents"] },
+      { name: "Wise", domain: "wise.com", positioning: "Cross-border money movement at transparent mid-market rates.", strengths: ["FX price leadership", "Infrastructure licensing"], weaknesses: ["Single-product gravity", "Bank partnerships"] },
+      { name: "Stripe", domain: "stripe.com", positioning: "Developer-first payments infrastructure for the internet economy.", strengths: ["Developer mindshare", "Product surface breadth"], weaknesses: ["Enterprise pricing pushback", "Support complexity"] },
+    ],
+  },
+  healthcare: {
+    label: "Healthcare & wellness",
+    match: /health(care)?|medical|clinic|telehealth|pharma|dental|wellness/i,
+    keywords: ["health", "med", "clinic", "care", "pharm", "dental", "doctor"],
+    pool: [
+      { name: "Discovery Health", domain: "discovery.co.za", positioning: "SA's dominant medical scheme with the Vitality behaviour engine.", strengths: ["Scheme scale", "Behavioural ecosystem"], weaknesses: ["Affordability perception", "Complexity"] },
+      { name: "Teladoc Health", domain: "teladochealth.com", positioning: "Telehealth pioneer serving employers and health plans.", strengths: ["Enterprise contracts", "Clinical breadth"], weaknesses: ["Consumer brand", "Growth after the telehealth wave"] },
+      { name: "Hello Doctor", domain: "hellodoctor.co.za", positioning: "Mobile-first SA telehealth at mass-market price points.", strengths: ["Accessibility", "Corporate/insurer channels"], weaknesses: ["Monetisation depth", "Clinical scope"] },
+      { name: "Zocdoc", domain: "zocdoc.com", positioning: "Appointment marketplace owning the find-a-doctor moment.", strengths: ["Booking intent capture", "Provider network"], weaknesses: ["US-only", "Payer integration"] },
+      { name: "Netcare", domain: "netcare.co.za", positioning: "Private hospital group extending into digital care.", strengths: ["Facility network", "Clinical reputation"], weaknesses: ["Asset-heavy model", "Digital pace"] },
+    ],
+  },
+  fitness: {
+    label: "Fitness & gyms",
+    match: /\bgym\b|fitness|workout|personal train|pilates|yoga studio|crossfit/i,
+    keywords: ["gym", "fit", "fitness", "train", "yoga", "pilates", "wellness"],
+    pool: [
+      { name: "Virgin Active", domain: "virginactive.co.za", positioning: "Premium club network anchoring the SA fitness market.", strengths: ["Club footprint", "Brand aspiration"], weaknesses: ["Price point", "Home-fitness substitution"] },
+      { name: "Planet Fitness", domain: "planetfitness.co.za", positioning: "Value-priced clubs with a judgement-free mass appeal.", strengths: ["Accessible pricing", "Franchise growth engine"], weaknesses: ["Premium amenities", "Member churn"] },
+      { name: "Peloton", domain: "onepeloton.com", positioning: "Connected home fitness with subscription content.", strengths: ["Content + community lock-in", "Brand devotion"], weaknesses: ["Hardware cycle exposure", "Post-pandemic demand"] },
+      { name: "ClassPass", domain: "classpass.com", positioning: "Aggregator selling flexibility across studios.", strengths: ["Variety proposition", "Studio fill-rate economics"], weaknesses: ["Studio margin tension", "Loyalty to platform not studios"] },
+      { name: "F45 Training", domain: "f45training.com", positioning: "Franchised functional-training studios with global playbook.", strengths: ["Format consistency", "Community workout culture"], weaknesses: ["Franchisee economics", "Fad-cycle risk"] },
+    ],
+  },
+  legal: {
+    label: "Legal services",
+    match: /\blaw firm\b|legal (services|tech)|attorney|conveyanc|litigation/i,
+    keywords: ["law", "legal", "attorney", "advocate", "counsel"],
+    pool: [
+      { name: "LegalZoom", domain: "legalzoom.com", positioning: "Self-serve legal documents and filings at consumer scale.", strengths: ["Brand for DIY legal", "Volume economics"], weaknesses: ["Advice-depth ceiling", "Commoditisation"] },
+      { name: "Rocket Lawyer", domain: "rocketlawyer.com", positioning: "Subscription legal help blending documents with on-call attorneys.", strengths: ["Subscription model", "SMB focus"], weaknesses: ["Differentiation vs free templates", "Churn"] },
+      { name: "Clio", domain: "clio.com", positioning: "Practice-management platform the modern law firm runs on.", strengths: ["Law-firm workflow lock-in", "App ecosystem"], weaknesses: ["Serves firms, not clients", "Enterprise legal ops"] },
+      { name: "LawForMe", domain: "lawforme.co.za", positioning: "SA online legal documents and fixed-fee services.", strengths: ["Fixed-fee transparency", "Local law coverage"], weaknesses: ["Scale", "Brand awareness"] },
+      { name: "Legal & General practices", domain: "locallawfirms.example", positioning: "Traditional local firms competing on relationships and reputation.", strengths: ["Trust and referrals", "Full-service depth"], weaknesses: ["Pricing opacity", "Digital client experience"] },
+    ],
+  },
+  accounting: {
+    label: "Accounting & tax software",
+    match: /account(ing|ant)|bookkeep|tax (software|services|filing)|payroll/i,
+    keywords: ["account", "tax", "bookkeep", "payroll", "audit", "ledger"],
+    pool: [
+      { name: "Xero", domain: "xero.com", positioning: "Cloud accounting loved by small businesses and their advisors.", strengths: ["Advisor channel", "App ecosystem"], weaknesses: ["US share vs Intuit", "Price rises testing loyalty"] },
+      { name: "QuickBooks (Intuit)", domain: "quickbooks.intuit.com", positioning: "SMB accounting incumbent with the largest US base.", strengths: ["Distribution + brand", "AI feature investment"], weaknesses: ["Complex pricing", "International depth"] },
+      { name: "Sage", domain: "sage.com", positioning: "Legacy leader migrating a large installed base to cloud.", strengths: ["Installed base + partner network", "Compliance depth (incl. SA payroll)"], weaknesses: ["Cloud UX gap", "Innovation speed"] },
+      { name: "FreshBooks", domain: "freshbooks.com", positioning: "Invoicing-first accounting for freelancers and micro-businesses.", strengths: ["Simplicity", "Time+billing fit for services"], weaknesses: ["Accountant ecosystem", "Feature ceiling"] },
+      { name: "Zoho Books", domain: "zoho.com", positioning: "Value accounting inside the wider Zoho suite.", strengths: ["Suite bundling", "Price"], weaknesses: ["Advisor mindshare", "Brand prestige"] },
+    ],
+  },
+  logistics: {
+    label: "Logistics & courier",
+    match: /courier|logistics|freight|shipping|last[- ]mile|parcel/i,
+    keywords: ["courier", "logistics", "cargo", "freight", "ship", "express", "deliver"],
+    pool: [
+      { name: "The Courier Guy", domain: "thecourierguy.co.za", positioning: "SA's e-commerce courier of choice with kiosk/locker reach.", strengths: ["E-commerce integrations", "National coverage + lockers"], weaknesses: ["Peak-season strain", "Cross-border depth"] },
+      { name: "DHL", domain: "dhl.com", positioning: "Global express leader with premium cross-border trust.", strengths: ["Global network", "Customs expertise"], weaknesses: ["Price premium", "Domestic last-mile cost"] },
+      { name: "FedEx", domain: "fedex.com", positioning: "Express and freight scale player restructuring for efficiency.", strengths: ["Network scale", "B2B relationships"], weaknesses: ["Cost structure", "E-commerce economics"] },
+      { name: "Aramex", domain: "aramex.com", positioning: "Emerging-markets logistics with strong Middle East/Africa lanes.", strengths: ["Emerging-market lanes", "Franchise flexibility"], weaknesses: ["Brand vs global majors", "Service consistency"] },
+      { name: "uAfrica/Bob Go", domain: "bobgo.co.za", positioning: "SA shipping-aggregation layer plugged into online stores.", strengths: ["Multi-courier rates in one API", "Merchant tooling"], weaknesses: ["Depends on carrier partners", "Thin aggregation margins"] },
+    ],
+  },
+  home_services: {
+    label: "Home services & trades",
+    match: /plumb|electrician|handyman|renovat|home services|builder|roofing|hvac|solar install/i,
+    keywords: ["plumb", "electric", "build", "renov", "repair", "clean", "pest", "garden", "roof", "paint", "solar", "handyman", "maintenance"],
+    pool: [
+      { name: "Kandua", domain: "kandua.com", positioning: "SA marketplace connecting vetted home pros with homeowners.", strengths: ["Vetting + reviews trust", "Local SEO strength"], weaknesses: ["Job liquidity outside metros", "Pro retention"] },
+      { name: "Angi", domain: "angi.com", positioning: "US home-services marketplace with massive demand capture.", strengths: ["Demand volume", "Brand history"], weaknesses: ["Lead-quality complaints", "Pro economics"] },
+      { name: "Thumbtack", domain: "thumbtack.com", positioning: "Project-based matching across hundreds of service categories.", strengths: ["Category breadth", "Instant matching"], weaknesses: ["Pay-per-lead resentment", "Retention"] },
+      { name: "TaskRabbit", domain: "taskrabbit.com", positioning: "IKEA-owned odd-jobs network for same-day tasks.", strengths: ["IKEA distribution", "Same-day convenience"], weaknesses: ["Skilled-trade depth", "Coverage"] },
+      { name: "Local established trades", domain: "localtrades.example", positioning: "Independent operators winning on word of mouth and speed to site.", strengths: ["Relationships + referrals", "Price flexibility"], weaknesses: ["No digital presence", "Capacity limits"] },
+    ],
+  },
+  cybersecurity: {
+    label: "Cybersecurity",
+    match: /cyber ?security|infosec|endpoint (security|protection)|threat detection|penetration test/i,
+    keywords: ["secur", "cyber", "shield", "defend", "threat"],
+    pool: [
+      { name: "CrowdStrike", domain: "crowdstrike.com", positioning: "Cloud-native endpoint security platform with elite brand.", strengths: ["Platform consolidation story", "Threat-intel brand"], weaknesses: ["Premium pricing", "Outage trust scar"] },
+      { name: "Palo Alto Networks", domain: "paloaltonetworks.com", positioning: "Broadest security platform via aggressive M&A.", strengths: ["Portfolio breadth", "Enterprise relationships"], weaknesses: ["Integration complexity", "Platformisation fatigue"] },
+      { name: "SentinelOne", domain: "sentinelone.com", positioning: "AI-first endpoint challenger competing on autonomy.", strengths: ["Autonomous response tech", "Price/performance"], weaknesses: ["Scale vs leaders", "Profitability"] },
+      { name: "Fortinet", domain: "fortinet.com", positioning: "Network-security value leader with custom silicon.", strengths: ["Price/performance via ASICs", "SMB-to-enterprise reach"], weaknesses: ["Cloud-native perception", "Vulnerability headlines"] },
+      { name: "Wiz", domain: "wiz.io", positioning: "Cloud-security rocket ship with land-fast agentless scanning.", strengths: ["Deployment speed", "Sales momentum"], weaknesses: ["Runtime depth", "Price at renewal"] },
+    ],
+  },
+  recruitment: {
+    label: "Recruitment & HR",
+    match: /recruit|staffing|talent acquisition|job board|\bhr\b|human resources/i,
+    keywords: ["recruit", "talent", "staff", "jobs", "career", "hire"],
+    pool: [
+      { name: "Pnet", domain: "pnet.co.za", positioning: "SA's leading job platform (Stepstone group).", strengths: ["Candidate database depth", "Employer brand reach"], weaknesses: ["LinkedIn encroachment", "Product innovation pace"] },
+      { name: "LinkedIn Talent", domain: "linkedin.com", positioning: "The professional graph monetised for recruiting.", strengths: ["Network moat", "Passive-candidate reach"], weaknesses: ["Cost", "Recruiter InMail fatigue"] },
+      { name: "Careers24", domain: "careers24.com", positioning: "Media24-backed SA job board with consumer reach.", strengths: ["Media distribution", "Local brand"], weaknesses: ["Differentiation", "Tech investment"] },
+      { name: "Greenhouse", domain: "greenhouse.com", positioning: "Structured-hiring ATS for scaling companies.", strengths: ["Hiring-process discipline", "Integration ecosystem"], weaknesses: ["Serves employers only", "SMB price fit"] },
+      { name: "Indeed", domain: "indeed.com", positioning: "Volume job aggregator with pay-per-application model.", strengths: ["Traffic scale", "Simplicity"], weaknesses: ["Quality vs volume", "Employer cost creep"] },
+    ],
+  },
+  saas_b2b: {
+    label: "B2B SaaS",
+    match: /\bsaas\b|b2b software|software platform|productivity software|workflow tool/i,
+    keywords: ["app", "cloud", "soft", "tech", "digital", "systems"],
+    pool: [
+      { name: "Salesforce", domain: "salesforce.com", positioning: "The enterprise SaaS incumbent and ecosystem gravity well.", strengths: ["Distribution machine", "Ecosystem lock-in"], weaknesses: ["Cost + complexity", "Innovation surface area"] },
+      { name: "Microsoft 365", domain: "microsoft.com", positioning: "Bundled productivity default for the enterprise.", strengths: ["Bundle economics", "IT relationships"], weaknesses: ["Best-of-breed gaps", "SMB attention"] },
+      { name: "Atlassian", domain: "atlassian.com", positioning: "Bottom-up tools for software and knowledge teams.", strengths: ["Product-led motion", "Developer loyalty"], weaknesses: ["Enterprise sales muscle", "Suite coherence"] },
+      { name: "Zoho", domain: "zoho.com", positioning: "50-app value suite for cost-conscious businesses.", strengths: ["Price-to-breadth", "Private ownership patience"], weaknesses: ["Depth per app", "Brand prestige"] },
+      { name: "monday.com", domain: "monday.com", positioning: "Flexible work-OS expanding from projects into CRM and dev.", strengths: ["Visual flexibility", "Marketing engine"], weaknesses: ["Depth vs specialists", "Seat-price sensitivity"] },
+    ],
+  },
 };
 
 /** Generic pool when no named industry matches — synthesised but plausible
@@ -152,15 +324,38 @@ function normaliseDomain(website: string): string {
   return website.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] ?? "";
 }
 
+/** The registrable name part of a domain: "www.joesplumbing.co.za" → "joesplumbing". */
+function domainBase(domain: string): string {
+  const parts = domain.split(".").filter(Boolean);
+  if (parts.length === 0) return "";
+  // Trailing TLD / country labels are short; the business name is the longest-left label.
+  const tldish = new Set(["com", "co", "org", "net", "io", "ai", "app", "biz", "info", "shop", "online", "site", "za", "uk", "us", "au", "de", "nl", "fr", "es", "it", "in", "ng", "ke", "bw", "na", "mu", "zw"]);
+  const nameParts = parts.filter((p) => !tldish.has(p));
+  return (nameParts[nameParts.length - 1] ?? parts[0]!).toLowerCase();
+}
+
 export function analyseMarket(req: AnalyseRequest): MarketMap {
   const domain = req.website ? normaliseDomain(req.website) : "";
   const subject = domain || (req.sector?.trim() || "your business");
   const region = req.region?.trim() || "Global";
   const probe = `${domain} ${req.sector ?? ""}`;
+  const base = domainBase(domain);
+  const sectorText = (req.sector ?? "").toLowerCase();
 
+  // Match order: explicit name/phrase regex first, then distinctive keyword
+  // fragments inside the domain name itself or the sector text — so an
+  // arbitrary business site still lands in its real industry.
   let industryKey: string | null = null;
   for (const [key, ind] of Object.entries(INDUSTRIES)) {
     if (ind.match.test(probe)) { industryKey = key; break; }
+  }
+  if (!industryKey && (base || sectorText)) {
+    for (const [key, ind] of Object.entries(INDUSTRIES)) {
+      if (ind.keywords?.some((k) => (base.length > 0 && base.includes(k)) || (sectorText.length > 0 && sectorText.includes(k)))) {
+        industryKey = key;
+        break;
+      }
+    }
   }
   const industry = industryKey ? INDUSTRIES[industryKey]!.label : (req.sector?.trim() || "General market");
   const basePool = industryKey ? INDUSTRIES[industryKey]!.pool : genericPool(req.sector ?? subject);
@@ -182,6 +377,59 @@ export function analyseMarket(req: AnalyseRequest): MarketMap {
   });
 
   return { subject, industry, region, competitors };
+}
+
+/**
+ * Identify the market through the LLM gateway. With a live model credential
+ * the model names the subject's real industry and its actual closest
+ * competitors — for any website, not just the built-in taxonomy; without one,
+ * the deterministic mapper answers (the gateway's mock path), so behaviour is
+ * identical offline. Either way the call is metered, screened, and the result
+ * validated before use — a malformed model reply falls back to the mapper.
+ */
+export async function identifyMarket(tenantId: string, req: AnalyseRequest): Promise<MarketMap> {
+  const fallback = analyseMarket(req);
+  const { withTenant } = await import("../../db/tenantContext.js");
+  const { gatewayCall } = await import("../../gateway/llmGateway.js");
+  try {
+    const raw = await withTenant(tenantId, (client) =>
+      gatewayCall(client, {
+        capabilityKey: "compete.market_analysis",
+        purpose: "market identification",
+        modelClass: "frontier",
+        system:
+          "You are the Market Analysis capability of a marketing intelligence platform. " +
+          "Given a subject (a website domain and/or a sector) and a region, identify the subject's exact industry and its 5 most direct competitors IN THAT SAME INDUSTRY. " +
+          "Use real, well-known companies competing in the subject's market and region; never include the subject itself. " +
+          "Respond with ONLY valid JSON, no prose, matching exactly: " +
+          '{"industry": string, "competitors": [{"name": string, "domain": string, "positioning": string, "strengths": [string, string], "weaknesses": [string, string], "threat": "low"|"medium"|"high"|"critical", "counterMove": string}]}',
+        prompt: "Identify the market for the subject below.",
+        untrustedInput: `subject website: ${req.website ?? "(none)"}; sector: ${req.sector ?? "(none)"}; region: ${req.region ?? "Global"}`,
+        mock: () => JSON.stringify({ industry: fallback.industry, competitors: fallback.competitors }),
+      }),
+    );
+    const parsed = JSON.parse(raw.text.replace(/^```(json)?|```$/gm, "").trim()) as {
+      industry?: unknown; competitors?: unknown;
+    };
+    const threats = new Set(["low", "medium", "high", "critical"]);
+    const competitors = (Array.isArray(parsed.competitors) ? parsed.competitors : [])
+      .filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null)
+      .map((c) => ({
+        name: String(c.name ?? "").trim(),
+        domain: String(c.domain ?? "").trim().toLowerCase(),
+        positioning: String(c.positioning ?? "").trim(),
+        strengths: (Array.isArray(c.strengths) ? c.strengths : []).map(String).filter(Boolean).slice(0, 3),
+        weaknesses: (Array.isArray(c.weaknesses) ? c.weaknesses : []).map(String).filter(Boolean).slice(0, 3),
+        threat: (threats.has(String(c.threat)) ? String(c.threat) : "medium") as Competitor["threat"],
+        counterMove: String(c.counterMove ?? "").trim(),
+      }))
+      .filter((c) => c.name && c.positioning && c.domain !== normaliseDomain(req.website ?? ""))
+      .slice(0, 6);
+    if (typeof parsed.industry !== "string" || !parsed.industry.trim() || competitors.length < 3) return fallback;
+    return { subject: fallback.subject, industry: parsed.industry.trim(), region: fallback.region, competitors };
+  } catch {
+    return fallback;
+  }
 }
 
 /** Narrative battle plan used as the governed run's deterministic mock output. */

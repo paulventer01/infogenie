@@ -8,7 +8,7 @@ import { isReachable, type Channel } from "./modules/consent/service.js";
 import { appendWith } from "./modules/audit/service.js";
 import { saveBrandFoundation } from "./modules/brand/service.js";
 import { runCapability, approveAction } from "./modules/capabilities/runner.js";
-import { analyseMarket, battlePlanText } from "./modules/analyse/marketAnalysis.js";
+import { identifyMarket, battlePlanText } from "./modules/analyse/marketAnalysis.js";
 import { gatewayLive } from "./gateway/llmGateway.js";
 import { saveCredential } from "./modules/integrations/hub.js";
 
@@ -308,22 +308,26 @@ export function createApp() {
     requirePermission("consent:read") as express.RequestHandler,
     ((req: CtxRequest, res: Response, next: NextFunction) => {
       const { website, sector, region } = req.body ?? {};
-      if (!website && !sector) {
+      if ((!website && !sector) || [website, sector, region].some((v) => v != null && typeof v !== "string")) {
         res.status(400).json({ error: "enter a website or a sector — either one is enough to begin" });
         return;
       }
-      const map = analyseMarket({ website, sector, region });
-      const brief =
-        `Map the market for ${map.subject} (${map.industry}, ${map.region}): identify the competitors in the exact same industry ` +
-        `and analyse each — positioning, strengths, weaknesses, threat level — then recommend counter-moves.`;
-      runCapability(req.ctx!.tenantId!, {
-        capabilityKey: "compete.market_analysis",
-        brief,
-        vars: { format: "market analysis battle plan" },
-        actor: { actorType: "user", actorId: req.ctx!.userId },
-        mock: () => battlePlanText(map),
-      })
-        .then((result) => res.json({ ...result, market: map }))
+      // Live model: identify the subject's real industry + closest competitors;
+      // offline: the deterministic taxonomy answers. Then the battle plan runs
+      // through the governed spine grounded in that map.
+      identifyMarket(req.ctx!.tenantId!, { website, sector, region })
+        .then((map) => {
+          const brief =
+            `Map the market for ${map.subject} (${map.industry}, ${map.region}): identify the competitors in the exact same industry ` +
+            `and analyse each — positioning, strengths, weaknesses, threat level — then recommend counter-moves.`;
+          return runCapability(req.ctx!.tenantId!, {
+            capabilityKey: "compete.market_analysis",
+            brief,
+            vars: { format: "market analysis battle plan" },
+            actor: { actorType: "user", actorId: req.ctx!.userId },
+            mock: () => battlePlanText(map),
+          }).then((result) => res.json({ ...result, market: map }));
+        })
         .catch(next);
     }) as express.RequestHandler,
   );
