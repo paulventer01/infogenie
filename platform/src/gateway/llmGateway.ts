@@ -116,8 +116,8 @@ export async function gatewayCall(client: PoolClient, req: GatewayRequest): Prom
   // 2. Route and execute.
   const live = gatewayLive();
   let text: string;
-  let inputTokens = 0;
-  let outputTokens = 0;
+  let inputTokens: number;
+  let outputTokens: number;
   const model = live ? MODEL_BY_CLASS[req.modelClass] : "mock";
 
   if (live) {

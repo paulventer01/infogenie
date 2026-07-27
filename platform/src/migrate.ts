@@ -41,7 +41,7 @@ export async function migrate(): Promise<string[]> {
         ran.push(file);
       } catch (err) {
         await lock.query("rollback");
-        throw new Error(`Migration ${file} failed: ${(err as Error).message}`);
+        throw new Error(`Migration ${file} failed: ${(err as Error).message}`, { cause: err });
       }
     }
 
