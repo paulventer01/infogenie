@@ -325,7 +325,7 @@ export default function FunnelAnalytics() {
             </button>
 
             <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 9, padding: "10px 14px", fontSize: "0.75rem", color: "#1D4ED8", marginBottom: 16 }}>
-              After creating, go to <strong>Embed Pixel</strong> to get the JavaScript snippet to paste on each page. The pixel auto-tracks pageviews; call <code>igTrack('optin')</code> on form submit and <code>igTrack('sale', &#123; revenue: 97 &#125;)</code> on checkout.
+              After creating, go to <strong>Embed Pixel</strong> to get the JavaScript snippet to paste on each page. The pixel auto-tracks pageviews; call <code>igTrack(&apos;optin&apos;)</code> on form submit and <code>igTrack(&apos;sale&apos;, &#123; revenue: 97 &#125;)</code> on checkout.
             </div>
 
             <button onClick={handleCreate} disabled={saving} style={{ ...btnPri, width: "100%", opacity: saving ? 0.7 : 1 }}>
@@ -600,7 +600,7 @@ export default function FunnelAnalytics() {
       {tab === "embed" && active && (
         <div style={{ maxWidth: 720 }}>
           <div style={card}>
-            <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#0A1628", marginBottom: 6 }}>🔌 Embed Pixel for "{active.name}"</div>
+            <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#0A1628", marginBottom: 6 }}>🔌 Embed Pixel for &ldquo;{active.name}&rdquo;</div>
             <p style={{ color: "#475569", fontSize: "0.85rem", margin: "0 0 16px" }}>
               Paste this snippet in the <code style={{ background: "#F1F5F9", padding: "1px 5px", borderRadius: 4 }}>&lt;head&gt;</code> of every page in your funnel. It auto-fires a <code style={{ background: "#F1F5F9", padding: "1px 5px", borderRadius: 4 }}>pageview</code> event — call the helper functions for opt-ins and sales.
             </p>
