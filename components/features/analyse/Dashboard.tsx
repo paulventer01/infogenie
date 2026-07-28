@@ -26,6 +26,7 @@ import {
   formatAdSpend,
   blendedMarketingMetrics,
 } from "@/lib/analysisDashboard";
+import MarketingIntelPanels from "./MarketingIntelPanels";
 
 interface WebsiteKPIs {
   ctr: number;
@@ -773,6 +774,8 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
+        {hasData && <MarketingIntelPanels domain={yourDomain} industryName={industryName} />}
 
         {/* Competitor chips */}
         {competitors.length > 0 && (

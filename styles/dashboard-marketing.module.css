@@ -415,3 +415,229 @@
   font-weight: 700;
   cursor: pointer;
 }
+
+/* ── 7-section marketing intel (from features2.3 doc) ── */
+.intelWrap {
+  margin-bottom: 28px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 22px;
+}
+
+.intelHeader {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.intelHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.intelBadge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.intelSection {
+  margin-bottom: 20px;
+}
+
+.intelTwoCol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .intelTwoCol {
+    grid-template-columns: 1fr;
+  }
+}
+
+.intelTitle {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+
+.intelHint {
+  font-size: 0.76rem;
+  color: #64748b;
+  margin: 0 0 10px;
+}
+
+.tableScroll {
+  overflow-x: auto;
+}
+
+.intelTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.intelTable th,
+.intelTable td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.intelTable th {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.audienceRow {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.donutWrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.donut {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.donutCenter {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.donutLegend {
+  font-size: 0.76rem;
+  color: #475569;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bounceCompare {
+  font-size: 0.8rem;
+  color: #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scrollBars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scrollRow {
+  display: grid;
+  grid-template-columns: 36px 1fr 56px;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.74rem;
+}
+
+.scrollLabel {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.scrollTrack {
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.scrollFill {
+  height: 100%;
+  background: linear-gradient(90deg, #0066ff, #00c9c8);
+  border-radius: 999px;
+}
+
+.scrollVal {
+  text-align: right;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.noteList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.noteItem {
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  font-size: 0.78rem;
+  color: #334155;
+}
+
+.noteDate {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #0066ff;
+  margin-bottom: 4px;
+}
+
+.addNoteBtn {
+  padding: 8px 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 9px;
+  background: #fff;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+}
+
+.intelDisclaimer {
+  font-size: 0.74rem;
+  color: #64748b;
+  margin: 8px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.linkBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #0066ff;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
