@@ -12,7 +12,6 @@ interface NavGroupProps {
   open: boolean;
   onToggle: () => void;
   onNavClick: (e: React.MouseEvent, item: NavItem) => void;
-  collapsedRail?: boolean;
 }
 
 const LS_KEY = "ig-nav-collapsed-sections";
@@ -53,10 +52,12 @@ export default function NavGroup({
     });
   };
 
+  // Intentionally NO legacy classes (nav-group-wrap / nav-dropdown / nav-link).
+  // Those style.css rules force hover-only absolute dropdowns and hide panels.
   return (
-    <div className="nav-group-wrap" data-group={group.key}>
+    <div className={styles.group} data-group={group.key}>
       <button
-        className={`${styles.groupBtn} ${open ? styles.groupBtnOpen : ""} nav-group-btn`}
+        className={`${styles.groupBtn} ${open ? styles.groupBtnOpen : ""}`}
         type="button"
         onClick={onToggle}
         aria-expanded={open}
@@ -66,7 +67,7 @@ export default function NavGroup({
           className={styles.gIcon}
           dangerouslySetInnerHTML={{ __html: group.icon }}
         />
-        <span className={`${styles.gLabel} ngb-label`}>{group.label}</span>
+        <span className={styles.gLabel}>{group.label}</span>
         <span
           className={styles.gChevron}
           dangerouslySetInnerHTML={{ __html: CHEVRON }}
@@ -74,12 +75,12 @@ export default function NavGroup({
       </button>
 
       {open && (
-        <div className={`${styles.groupPanel} nav-dropdown`} data-slimmed="1">
+        <div className={styles.groupPanel}>
           {group.sections.map((section, si) => {
             const sectionKey = `${group.key}-${si}`;
             const isCollapsed = !!collapsed[sectionKey];
             return (
-              <div key={si}>
+              <div key={si} className={styles.section}>
                 {section.header ? (
                   <button
                     type="button"
@@ -87,7 +88,7 @@ export default function NavGroup({
                     onClick={() => toggleSection(sectionKey)}
                   >
                     {section.header}
-                    {isCollapsed ? " +" : ""}
+                    <span aria-hidden>{isCollapsed ? " +" : " –"}</span>
                   </button>
                 ) : null}
                 {!isCollapsed &&
@@ -95,17 +96,15 @@ export default function NavGroup({
                     <a
                       key={item.view || item.action || ii}
                       href="#"
-                      className={`${styles.link} nav-link${item.className ? ` ${item.className}` : ""}`}
+                      className={styles.link}
                       {...(item.id ? { id: item.id } : {})}
                       {...(item.view ? { "data-view": item.view } : {})}
                       {...(item.title ? { title: item.title } : {})}
                       {...(item.hidden ? { style: { display: "none" } } : {})}
                       onClick={(e) => onNavClick(e, item)}
                     >
-                      <span className={`${styles.linkIcon} ndl-icon`}>
-                        {item.icon}
-                      </span>
-                      <span className="ndl-text">{item.label}</span>
+                      <span className={styles.linkIcon}>{item.icon}</span>
+                      <span>{item.label}</span>
                     </a>
                   ))}
               </div>

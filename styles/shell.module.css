@@ -1,21 +1,21 @@
 /* App shell — left collapsible sidebar + main stage. */
 
 .shell {
-  --shell-rail: #07111f;
-  --shell-rail-2: #0c1a2e;
-  --shell-ink: #e8eef8;
-  --shell-muted: #8ea3c0;
-  --shell-line: rgba(232, 238, 248, 0.08);
-  --shell-accent: #1ee0c8;
-  --shell-accent-2: #3d8bff;
-  --shell-stage: #f3f6fb;
-  --shell-stage-ink: #0a1628;
-  --shell-w-open: 268px;
-  --shell-w-closed: 76px;
-  --shell-topbar-bg: rgba(243, 246, 251, 0.82);
-  --shell-topbar-border: rgba(10, 22, 40, 0.06);
+  --shell-rail: #0b1220;
+  --shell-rail-2: #111827;
+  --shell-ink: #f8fafc;
+  --shell-muted: #94a3b8;
+  --shell-line: rgba(248, 250, 252, 0.08);
+  --shell-accent: #2dd4bf;
+  --shell-accent-2: #3b82f6;
+  --shell-stage: #f4f6fb;
+  --shell-stage-ink: #111827;
+  --shell-w-open: 280px;
+  --shell-w-closed: 78px;
+  --shell-topbar-bg: rgba(244, 246, 251, 0.9);
+  --shell-topbar-border: rgba(17, 24, 39, 0.06);
   --shell-icon-bg: #fff;
-  --shell-icon-border: rgba(10, 22, 40, 0.1);
+  --shell-icon-border: rgba(17, 24, 39, 0.08);
   --shell-icon-color: #334155;
 
   min-height: 100vh;
@@ -252,11 +252,30 @@
   padding: 12px 0;
 }
 
+.group {
+  margin-bottom: 2px;
+}
+
+.section {
+  margin-bottom: 4px;
+}
+
 .groupPanel {
   margin: 0 0 8px;
   padding: 4px 0 8px 8px;
   border-left: 1px solid rgba(30, 224, 200, 0.18);
   margin-left: 21px;
+  /* Must win over any leaked legacy dropdown rules */
+  position: static !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  display: block !important;
+  max-height: none !important;
+  overflow: visible !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  min-width: 0 !important;
 }
 
 .shellCollapsed .groupPanel {

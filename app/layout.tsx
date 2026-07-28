@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Sora, Space_Grotesk } from "next/font/google";
 import Script from "next/script";
 import "../styles/globals.css";
+import "../styles/theme-v2.css";
 
 export const metadata: Metadata = {
   title: "InfoGenie",

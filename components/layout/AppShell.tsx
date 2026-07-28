@@ -24,16 +24,20 @@ const LS_SIDEBAR = "ig:sidebar-open";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [navReady, setNavReady] = useState(false);
+  const [navReady, setNavReady] = useState(true);
   const [open, setOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [openGroup, setOpenGroup] = useState<string | null>("analyse");
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    analyse: true,
+  });
   const [filter, setFilter] = useState("");
 
   useEffect(() => {
     try {
+      // Always start expanded so menus are visible; user can collapse via toggle.
       const stored = localStorage.getItem(LS_SIDEBAR);
       if (stored === "0") setOpen(false);
+      else setOpen(true);
       if (localStorage.getItem(LS_ANALYSED)) setNavReady(true);
     } catch {
       /* private browsing */
@@ -146,9 +150,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (filter.trim() && filteredGroups[0]) {
-      setOpenGroup(filteredGroups[0].key);
+      setOpenGroups((prev) => {
+        const next = { ...prev };
+        for (const g of filteredGroups) next[g.key] = true;
+        return next;
+      });
     }
   }, [filter, filteredGroups]);
+
+  const toggleGroup = (key: string) => {
+    // If the rail is icon-collapsed, expand it so the submenu is visible.
+    if (!open) {
+      setOpen(true);
+      setOpenGroups((prev) => ({ ...prev, [key]: true }));
+      return;
+    }
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const shellClass = [
     styles.shell,
@@ -167,7 +185,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         onClick={() => setMobileOpen(false)}
       />
 
-      <aside className={styles.rail} id="navbar" aria-label="Primary">
+      <aside className={styles.rail} id="ig-side-rail" aria-label="Primary">
         <div className={styles.railTop}>
           <button
             type="button"
@@ -224,12 +242,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <NavGroup
                   key={group.key}
                   group={group}
-                  open={openGroup === group.key || !!filter.trim()}
-                  onToggle={() =>
-                    setOpenGroup((cur) =>
-                      cur === group.key && !filter.trim() ? null : group.key,
-                    )
-                  }
+                  open={!!openGroups[group.key] || !!filter.trim()}
+                  onToggle={() => toggleGroup(group.key)}
                   onNavClick={onNavClick}
                 />
               ))}

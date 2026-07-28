@@ -253,11 +253,11 @@ export default function LoginPage() {
           </span>
         </div>
         <h1 className={styles.heroTitle}>
-          Market intelligence that runs the next move.
+          Research, launch, and prove growth in one place.
         </h1>
         <p className={styles.heroLead}>
-          One workspace to research rivals, launch campaigns, and prove results
-          — without the tool sprawl.
+          InfoGenie replaces the tool sprawl — competitor intel, campaigns, and
+          reporting with a calm, modern workspace.
         </p>
         <div className={styles.heroMeta}>
           <span>Compete</span>

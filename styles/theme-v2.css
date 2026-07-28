@@ -1,0 +1,247 @@
+/* ============================================================
+   InfoGenie UI v2 — full look-and-feel override
+   Applied when the left-rail shell is mounted. Forces light
+   surfaces, new type, and softer chrome over legacy style.css.
+   ============================================================ */
+
+:root {
+  --v2-ink: #111827;
+  --v2-muted: #64748b;
+  --v2-stage: #f4f6fb;
+  --v2-surface: #ffffff;
+  --v2-border: #e4e9f2;
+  --v2-accent: #0f766e;
+  --v2-accent-2: #1d4ed8;
+  --v2-accent-soft: rgba(15, 118, 110, 0.1);
+  --v2-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 12px 32px rgba(17, 24, 39, 0.06);
+  --v2-radius: 16px;
+  --v2-radius-sm: 10px;
+  --font-display: var(--font-sora), "Sora", sans-serif;
+  --font-brand: var(--font-space), "Space Grotesk", sans-serif;
+  --font-ui: var(--font-jakarta), "Plus Jakarta Sans", sans-serif;
+}
+
+body:has(#ig-app-shell) {
+  background: var(--v2-stage) !important;
+  color: var(--v2-ink) !important;
+  font-family: var(--font-ui) !important;
+}
+
+html[data-theme="dark"] body:has(#ig-app-shell) {
+  --v2-ink: #e8eef8;
+  --v2-muted: #94a3b8;
+  --v2-stage: #0b1220;
+  --v2-surface: #121a2a;
+  --v2-border: rgba(232, 238, 248, 0.1);
+  background: var(--v2-stage) !important;
+  color: var(--v2-ink) !important;
+}
+
+/* ── Panels / views ───────────────────────────────────────── */
+body:has(#ig-app-shell) .view,
+body:has(#ig-app-shell) [id^="view-"] {
+  background: transparent !important;
+  color: var(--v2-ink) !important;
+  font-family: var(--font-ui) !important;
+}
+
+body:has(#ig-app-shell) .view-header,
+body:has(#ig-app-shell) .vh-banner,
+body:has(#ig-app-shell) .panel-header,
+body:has(#ig-app-shell) .section-header {
+  background: linear-gradient(135deg, #0f766e 0%, #1d4ed8 100%) !important;
+  border: none !important;
+  border-radius: var(--v2-radius) !important;
+  box-shadow: var(--v2-shadow) !important;
+  color: #fff !important;
+  margin: 16px 16px 12px !important;
+  padding: 18px 22px !important;
+}
+
+body:has(#ig-app-shell) .view-header h1,
+body:has(#ig-app-shell) .view-header h2,
+body:has(#ig-app-shell) .view-title,
+body:has(#ig-app-shell) .vh-title {
+  font-family: var(--font-display) !important;
+  letter-spacing: -0.03em !important;
+  color: #fff !important;
+  text-shadow: none !important;
+}
+
+body:has(#ig-app-shell) h1,
+body:has(#ig-app-shell) h2,
+body:has(#ig-app-shell) h3 {
+  font-family: var(--font-display) !important;
+  letter-spacing: -0.025em !important;
+  color: var(--v2-ink) !important;
+}
+
+/* ── Cards / surfaces ─────────────────────────────────────── */
+body:has(#ig-app-shell) .card,
+body:has(#ig-app-shell) .ig-card,
+body:has(#ig-app-shell) .panel,
+body:has(#ig-app-shell) .stat-card,
+body:has(#ig-app-shell) .kpi-card,
+body:has(#ig-app-shell) .tool-card,
+body:has(#ig-app-shell) .glass-card,
+body:has(#ig-app-shell) .result-card,
+body:has(#ig-app-shell) .widget,
+body:has(#ig-app-shell) .box {
+  background: var(--v2-surface) !important;
+  border: 1px solid var(--v2-border) !important;
+  border-radius: var(--v2-radius) !important;
+  box-shadow: var(--v2-shadow) !important;
+  color: var(--v2-ink) !important;
+}
+
+body:has(#ig-app-shell) .card h1,
+body:has(#ig-app-shell) .card h2,
+body:has(#ig-app-shell) .card h3,
+body:has(#ig-app-shell) .card p,
+body:has(#ig-app-shell) .card span,
+body:has(#ig-app-shell) .card label,
+body:has(#ig-app-shell) .ig-card h1,
+body:has(#ig-app-shell) .ig-card h2,
+body:has(#ig-app-shell) .ig-card p,
+body:has(#ig-app-shell) .ig-card span,
+body:has(#ig-app-shell) .ig-card label {
+  color: var(--v2-ink) !important;
+}
+
+/* ── Forms ────────────────────────────────────────────────── */
+body:has(#ig-app-shell) input:not([type="checkbox"]):not([type="radio"]),
+body:has(#ig-app-shell) select,
+body:has(#ig-app-shell) textarea,
+body:has(#ig-app-shell) .ig-input,
+body:has(#ig-app-shell) .ig-select {
+  background: var(--v2-surface) !important;
+  border: 1.5px solid var(--v2-border) !important;
+  border-radius: var(--v2-radius-sm) !important;
+  color: var(--v2-ink) !important;
+  font-family: var(--font-ui) !important;
+  box-shadow: none !important;
+}
+
+body:has(#ig-app-shell) input:focus,
+body:has(#ig-app-shell) select:focus,
+body:has(#ig-app-shell) textarea:focus {
+  border-color: var(--v2-accent) !important;
+  box-shadow: 0 0 0 3px var(--v2-accent-soft) !important;
+  outline: none !important;
+}
+
+body:has(#ig-app-shell) label {
+  color: var(--v2-muted) !important;
+  font-weight: 700 !important;
+  font-family: var(--font-ui) !important;
+}
+
+/* ── Buttons ──────────────────────────────────────────────── */
+body:has(#ig-app-shell) .btn-primary,
+body:has(#ig-app-shell) .btn-analyse,
+body:has(#ig-app-shell) .ig-btn-primary,
+body:has(#ig-app-shell) button.primary,
+body:has(#ig-app-shell) .cta-btn {
+  background: linear-gradient(135deg, var(--v2-accent-2), var(--v2-accent)) !important;
+  border: none !important;
+  border-radius: 12px !important;
+  color: #fff !important;
+  font-family: var(--font-ui) !important;
+  font-weight: 800 !important;
+  box-shadow: 0 10px 24px rgba(29, 78, 216, 0.22) !important;
+}
+
+body:has(#ig-app-shell) .btn-secondary,
+body:has(#ig-app-shell) .btn-ghost,
+body:has(#ig-app-shell) button.secondary {
+  background: var(--v2-surface) !important;
+  border: 1.5px solid var(--v2-border) !important;
+  border-radius: 12px !important;
+  color: var(--v2-ink) !important;
+  font-family: var(--font-ui) !important;
+  font-weight: 700 !important;
+}
+
+/* ── Tables / lists ───────────────────────────────────────── */
+body:has(#ig-app-shell) table {
+  background: var(--v2-surface) !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  border-radius: var(--v2-radius) !important;
+  overflow: hidden !important;
+  border: 1px solid var(--v2-border) !important;
+}
+
+body:has(#ig-app-shell) th {
+  background: #f1f5f9 !important;
+  color: var(--v2-muted) !important;
+  font-family: var(--font-ui) !important;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+}
+
+body:has(#ig-app-shell) td {
+  color: var(--v2-ink) !important;
+  border-bottom: 1px solid var(--v2-border) !important;
+}
+
+/* ── Hero / home analyse screen ───────────────────────────── */
+body:has(#ig-app-shell) .hero {
+  background:
+    radial-gradient(ellipse 70% 60% at 15% 20%, rgba(15, 118, 110, 0.14), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 90% 80%, rgba(29, 78, 216, 0.12), transparent 50%),
+    var(--v2-stage) !important;
+  border-radius: 0 !important;
+  color: var(--v2-ink) !important;
+}
+
+body:has(#ig-app-shell) .hero-title,
+body:has(#ig-app-shell) .hero h1 {
+  font-family: var(--font-display) !important;
+  color: var(--v2-ink) !important;
+  text-shadow: none !important;
+}
+
+body:has(#ig-app-shell) .hero-subtitle,
+body:has(#ig-app-shell) .hero p {
+  color: var(--v2-muted) !important;
+}
+
+body:has(#ig-app-shell) .hero-badge {
+  background: var(--v2-accent-soft) !important;
+  border-color: rgba(15, 118, 110, 0.25) !important;
+  color: var(--v2-accent) !important;
+  border-radius: 999px !important;
+}
+
+body:has(#ig-app-shell) .url-field,
+body:has(#ig-app-shell) .industry-field {
+  background: var(--v2-surface) !important;
+  border: 1.5px solid var(--v2-border) !important;
+  color: var(--v2-ink) !important;
+  border-radius: 14px !important;
+}
+
+/* ── Tabs / chips ─────────────────────────────────────────── */
+body:has(#ig-app-shell) .tab,
+body:has(#ig-app-shell) .stab,
+body:has(#ig-app-shell) .pill,
+body:has(#ig-app-shell) .chip {
+  border-radius: 999px !important;
+  font-family: var(--font-ui) !important;
+}
+
+/* ── Misc chrome ──────────────────────────────────────────── */
+body:has(#ig-app-shell) .logo-text {
+  font-family: var(--font-brand) !important;
+}
+
+body:has(#ig-app-shell) #ig-shell-content {
+  padding: 8px 8px 32px;
+}
+
+body:has(#ig-app-shell) .alerts-bell-badge {
+  background: #ef4444 !important;
+  color: #fff !important;
+}
