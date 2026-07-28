@@ -28,6 +28,7 @@ import {
 } from "@/lib/analysisDashboard";
 import MarketingIntelPanels from "./MarketingIntelPanels";
 import DomainOverview from "./DomainOverview";
+import OverviewWidgets from "./OverviewWidgets";
 import { buildCompanyOverview } from "@/lib/companyOverview";
 
 interface WebsiteKPIs {
@@ -622,7 +623,14 @@ export default function Dashboard() {
       </div>
 
       <div className="container">
-        {companyOverview && <DomainOverview overview={companyOverview} currentView="dashboard" />}
+        {companyOverview && (
+          <>
+            <DomainOverview overview={companyOverview} currentView="dashboard" />
+            {companyOverview.widgets?.length > 0 && (
+              <OverviewWidgets widgets={companyOverview.widgets} />
+            )}
+          </>
+        )}
 
         {marketing && (
           <div className={dm.wrap}>

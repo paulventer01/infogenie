@@ -30,11 +30,28 @@ export interface JourneyStep {
   done: boolean;
 }
 
+export interface OverviewWidgetMetric {
+  label: string;
+  value: string;
+  tone?: "danger" | "warn" | "info" | "ok";
+}
+
+export interface OverviewWidget {
+  id: string;
+  title: string;
+  view: string;
+  accent: string;
+  hero?: { label: string; value: string; suffix?: string };
+  metrics: OverviewWidgetMetric[];
+  note?: string;
+}
+
 export interface CompanyOverview {
   domain: string;
   industry: string;
   snapshot: OverviewSnapshot[];
   modules: OverviewModule[];
+  widgets: OverviewWidget[];
   journey: JourneyStep[];
   profile: {
     domain?: string;
@@ -51,3 +68,9 @@ export function buildCompanyOverview(
   industryName: string,
   analysisData: Record<string, unknown> | null | undefined,
 ): CompanyOverview;
+
+export function buildOverviewWidgets(
+  domain: string,
+  analysisData: Record<string, unknown>,
+  kpis: Record<string, unknown>,
+): OverviewWidget[];

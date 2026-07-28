@@ -62,6 +62,9 @@ export default function CompanyContextBar() {
           <button type="button" className={styles.linkBtn} onClick={() => goToView(router, "competitors")}>
             Competitors
           </button>
+          <button type="button" className={styles.linkBtn} onClick={() => goToView(router, "battleplan")}>
+            Plan
+          </button>
           <button type="button" className={styles.linkBtn} onClick={() => goToView(router, "analytics-hub")}>
             Analytics
           </button>

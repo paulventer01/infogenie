@@ -13,7 +13,7 @@ test('buildCompanyOverview builds domain snapshot from analysis data', () => {
       businessSummary: 'Online trading platform.',
     },
     websiteKPIs: { trafficMo: 450000, roas: 2.8 },
-    competitors: [{ domain: 'a.com' }, { domain: 'b.com' }],
+    competitors: [{ domain: 'a.com', name: 'Rival A', topChannel: 'Google Search' }, { domain: 'b.com' }],
     _yourRealData: { organicTraffic: 120000 },
   });
 
@@ -26,6 +26,11 @@ test('buildCompanyOverview builds domain snapshot from analysis data', () => {
   const trafficKpi = overview.snapshot.find((k) => k.key === 'traffic');
   assert.ok(trafficKpi);
   assert.equal(trafficKpi.live, true);
+  assert.ok(Array.isArray(overview.widgets));
+  assert.equal(overview.widgets.length, 6);
+  assert.ok(overview.widgets.every((w) => w.title && w.view && w.metrics.length > 0));
+  assert.ok(overview.widgets.some((w) => w.id === 'audit' && w.hero));
+  assert.ok(overview.journey.some((s) => s.label === 'Marketing Plan'));
 });
 
 test('buildCompanyOverview is deterministic per domain', () => {
