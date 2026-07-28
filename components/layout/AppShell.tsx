@@ -153,16 +153,26 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
     if (!item.view) return;
-    try {
-      window.navigateTo?.(item.view);
-    } catch {
-      /* noop */
-    }
     const path = viewToPath(item.view);
-    if (typeof window !== "undefined" && window.location.pathname === path) return;
+    // Single owner of the URL update — avoid navigateTo's spa-navigate bridge
+    // AND router.push both remounting MigratedPanel (removeChild races).
     startTransition(() => {
       router.push(path);
     });
+    try {
+      // Still run legacy side-effects (nav highlight, field-enhancer pause),
+      // but tell navigateTo the React router already owns the URL.
+      (window as unknown as { __igReactRouting?: boolean }).__igReactRouting = true;
+      window.navigateTo?.(item.view);
+    } catch {
+      /* noop */
+    } finally {
+      try {
+        (window as unknown as { __igReactRouting?: boolean }).__igReactRouting = false;
+      } catch {
+        /* noop */
+      }
+    }
   };
 
   const goBrief = (e?: React.MouseEvent) => {

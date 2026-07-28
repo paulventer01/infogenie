@@ -68,15 +68,12 @@ function PanelFallback() {
   );
 }
 
-// Renders the native React panel for the currently-routed view, if it has been
-// migrated. Mounted once in the dashboard layout, it resolves the active view
-// from the URL and renders the matching lazily-loaded component from the
-// registry — otherwise it renders nothing and the replayed legacy `#view-*`
-// panel handles the view as before.
-//
-// Registry entries are React.lazy loaders so only the active panel's module is
-// fetched/evaluated — avoids multi-second main-thread stalls from importing
-// every migrated panel on first navigation.
+/**
+ * Stable host for lazy panels. Keep Suspense + ErrorBoundary mounted across
+ * view changes — only the inner panel is keyed. Remounting the boundary (via
+ * key={view}) while Suspense is resolving races React's DOM reconciler and
+ * throws NotFoundError: removeChild.
+ */
 export default function MigratedPanel() {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
@@ -85,11 +82,12 @@ export default function MigratedPanel() {
   const view = pathToViewId(pathname);
   const Cmp = view ? MIGRATED_COMPONENTS[view] : undefined;
   if (!mounted || !view || !Cmp) return null;
+
   return (
     <div id="ig-react-panel" data-react-view={view}>
-      <PanelErrorBoundary key={view} view={view}>
+      <PanelErrorBoundary view={view}>
         <Suspense fallback={<PanelFallback />}>
-          <Cmp />
+          <Cmp key={view} />
         </Suspense>
       </PanelErrorBoundary>
     </div>

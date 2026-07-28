@@ -550,24 +550,17 @@ export default function Dashboard() {
     callWin("_renderJourneyStages");
 
     return () => {
-      // Defer Chart.js teardown so leaving this panel (nav→other view) does not
-      // block the main thread for multiple seconds under IGDiag's watchdog.
-      const toDestroy = instances.slice();
+      // Destroy charts while their canvases are still in React's tree. Deferring
+      // teardown lets Chart.js detach nodes React still expects to removeChild,
+      // which throws NotFoundError during view switches.
+      instances.forEach((c) => {
+        try {
+          c.destroy();
+        } catch {
+          /* already destroyed */
+        }
+      });
       chartsRef.current = [];
-      const run = () => {
-        toDestroy.forEach((c) => {
-          try {
-            c.destroy();
-          } catch {
-            /* already destroyed */
-          }
-        });
-      };
-      if (typeof requestIdleCallback === "function") {
-        requestIdleCallback(run, { timeout: 500 });
-      } else {
-        setTimeout(run, 0);
-      }
     };
   }, [derived, ad, competitors]);
 

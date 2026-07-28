@@ -2651,18 +2651,17 @@ function navigateTo(viewId, updateActive = true) {
     // No legacy `#view-<id>` div — under the Next.js dev shell this view has
     // been ported to React and its div is stripped from the replay shell. Bridge
     // the navigation to the Next router so <MigratedPanel/> mounts the React
-    // panel for this view. Defer the event one frame so this sync navigateTo
-    // returns before React starts tearing down the previous panel (Chart.js
-    // destroy etc.), which otherwise shows up as MAIN-THREAD STALL on nav→view.
+    // panel for this view. <LegacyNavBridge/> (mounted in the dashboard layout)
+    // listens for this event and pushes the canonical URL. Where no bridge is
+    // mounted (e.g. legacy-only contexts) this is a harmless no-op event.
+    //
+    // Dispatch synchronously (do NOT rAF-defer): a deferred bridge races the
+    // AppShell/Next router.push and can remount Suspense mid-reconcile, which
+    // throws NotFoundError: removeChild.
     try {
-      const view = viewId;
-      requestAnimationFrame(function() {
-        try {
-          document.dispatchEvent(new CustomEvent('ig:spa-navigate', { detail: { view: view } }));
-        } catch(_) {}
-        try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle'); } catch(_) {}
-      });
+      document.dispatchEvent(new CustomEvent('ig:spa-navigate', { detail: { view: viewId } }));
     } catch(_) {}
+    try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle'); } catch(_) {}
   }
   currentView = viewId;
   try { window.currentView = viewId; } catch(_) {}

@@ -21,5 +21,15 @@ declare global {
     _persistContent?: () => void;
     // Legacy auth client (app.js) — only `_clearSession` is used by React.
     _auth?: { _clearSession?: () => void };
+    // Set by AppShell/goToView while React owns the URL transition so
+    // navigateTo skips dispatching ig:spa-navigate (avoids double remount).
+    __igReactRouting?: boolean;
+    // ig_diag.js watchdog / breadcrumb helper.
+    IGDiag?: {
+      setBreadcrumb?: (s: string) => void;
+      log?: (...args: unknown[]) => void;
+      mark?: (...args: unknown[]) => void;
+      err?: (...args: unknown[]) => void;
+    };
   }
 }

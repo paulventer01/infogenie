@@ -15,15 +15,19 @@ type AppRouter = ReturnType<typeof useRouter>;
 
 export function goToView(router: AppRouter, view: string): void {
   const path = viewToPath(view);
-  try {
-    window.navigateTo?.(view);
-  } catch {
-    /* legacy not loaded yet — router.push still updates the URL */
-  }
-  // Skip a second push when navigateTo already bridged via ig:spa-navigate
-  // (LegacyNavBridge). Only push here as a fallback when the path still differs.
-  if (typeof window !== "undefined" && window.location.pathname === path) return;
   startTransition(() => {
     router.push(path);
   });
+  try {
+    (window as unknown as { __igReactRouting?: boolean }).__igReactRouting = true;
+    window.navigateTo?.(view);
+  } catch {
+    /* legacy not loaded yet — router.push still updates the URL */
+  } finally {
+    try {
+      (window as unknown as { __igReactRouting?: boolean }).__igReactRouting = false;
+    } catch {
+      /* noop */
+    }
+  }
 }
