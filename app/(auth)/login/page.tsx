@@ -201,8 +201,8 @@ export default function LoginPage() {
       return;
     }
 
-    if (p.length < 8) {
-      showErr("Password must be at least 8 characters.");
+    if (p.length < 10 || !/[A-Za-z]/.test(p) || !/[0-9]/.test(p)) {
+      showErr("Password must be at least 10 characters with a letter and a number.");
       return;
     }
     setBusy(true);
@@ -230,11 +230,17 @@ export default function LoginPage() {
       : "Log In →";
 
   return (
-    <div className={styles.card}>
-      <div className={styles.head}>
-        <div className={styles.brand}>
-          <svg width="36" height="36" viewBox="0 0 40 40">
-            <circle cx="20" cy="20" r="20" fill="rgba(255,255,255,.18)" />
+    <div className={styles.shell}>
+      <section className={styles.hero} aria-label="InfoGenie">
+        <div className={styles.brandMark}>
+          <svg width="44" height="44" viewBox="0 0 40 40" aria-hidden="true">
+            <defs>
+              <linearGradient id="igAuthLogo" x1="0" y1="0" x2="40" y2="40">
+                <stop offset="0%" stopColor="#00C9C8" />
+                <stop offset="100%" stopColor="#0066FF" />
+              </linearGradient>
+            </defs>
+            <circle cx="20" cy="20" r="20" fill="url(#igAuthLogo)" />
             <path
               d="M13 20 Q20 10 27 20 Q20 30 13 20Z"
               fill="white"
@@ -246,12 +252,31 @@ export default function LoginPage() {
             Info<em>Genie</em>
           </span>
         </div>
-        <div className={styles.tag}>
-          AI Marketing Intelligence — for your team
+        <h1 className={styles.heroTitle}>
+          Market intelligence that runs the next move.
+        </h1>
+        <p className={styles.heroLead}>
+          One workspace to research rivals, launch campaigns, and prove results
+          — without the tool sprawl.
+        </p>
+        <div className={styles.heroMeta}>
+          <span>Compete</span>
+          <span>Create</span>
+          <span>Reach</span>
+          <span>Grow</span>
         </div>
-      </div>
+      </section>
 
-      <div className={styles.body}>
+      <div className={styles.panel}>
+        <h2 className={styles.panelTitle}>
+          {mode === "signup" ? "Create your workspace" : "Welcome back"}
+        </h2>
+        <p className={styles.panelSub}>
+          {mode === "signup"
+            ? "Start with email — you can invite your team later."
+            : "Sign in to continue to your dashboard."}
+        </p>
+
         <div className={styles.tabs}>
           <button
             type="button"
@@ -287,7 +312,7 @@ export default function LoginPage() {
             </div>
             <div className={styles.divider}>
               <div className={styles.line} />
-              <span>or use email</span>
+              <span>or email</span>
               <div className={styles.line} />
             </div>
           </>
@@ -347,7 +372,7 @@ export default function LoginPage() {
             />
             {mode === "signup" && (
               <div className={styles.hint}>
-                Min 8 characters. Hashed server-side with bcrypt.
+                At least 10 characters, with a letter and a number.
               </div>
             )}
           </div>

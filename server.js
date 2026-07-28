@@ -28,6 +28,7 @@ const _tenantRouter     = require('./services/tenants/api');
 const _permEnforce      = require('./services/tenants/permission_enforce');
 const _authGate         = require('./services/auth_gate');
 const _runtimeFlags     = require('./services/runtime_flags');
+const _security         = require('./services/security');
 
 // Background work — port binding, the drip cron tick below, the register-time
 // crons in services/officer + services/assistant_ops routes, and the BOOT_TASKS
@@ -151,16 +152,20 @@ async function openaiChatWithRetry(params, opts = {}) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Headers required for Replit proxy/preview to work correctly
+// Baseline security headers (CSP report-only, nosniff, Referrer-Policy, …).
+// See docs/security-guardrails.md and services/security/headers.js.
+app.use(_security.securityHeaders);
+
+// CORS + cache headers. CORS stays permissive for the Replit/Cursor preview
+// iframe in non-prod; production can tighten via CORS_ORIGIN.
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  const corsOrigin = process.env.CORS_ORIGIN || '*';
+  res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-InfoGenie-Key, X-Requested-With');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  // Allow embedding in iframes (needed for Replit preview pane)
-  res.removeHeader('X-Frame-Options');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
@@ -176,11 +181,13 @@ app.set('trust proxy', true);
 // ── Session store (Postgres-backed, falls back to in-memory if no DB) ────────
 // Required for the real per-user auth flow (signup / login / social OAuth).
 // Cookie: HttpOnly, SameSite=Lax, Secure in production, 30-day rolling expiry.
-const _sessionSecret = process.env.SESSION_SECRET
-  || process.env.INFOGENIE_API_KEY
-  || crypto.randomBytes(32).toString('hex');
-if (!process.env.SESSION_SECRET) {
-  console.warn('[auth] SESSION_SECRET not set — using ephemeral secret (sessions will not survive restart unless DATABASE_URL is configured to back the session store)');
+// Production requires a dedicated SESSION_SECRET (see services/security/secrets.js).
+let _sessionSecret;
+try {
+  _sessionSecret = _security.resolveSessionSecret();
+} catch (e) {
+  console.error('[security] FATAL —', e.message);
+  process.exit(1);
 }
 const _sessionStore = (process.env.DATABASE_URL)
   ? new PgSession({
@@ -206,10 +213,17 @@ app.use(expressSession({
 // Populate req.user from req.session (if any). Runs before the static-file
 // + API-key gate so every downstream route can read req.user.
 app.use(_authService.loadUserFromSession);
+// CSRF Origin/Referer guard for cookie-authenticated mutations (shadow by default).
+app.use(_security.csrfGuard);
 // Attach tenant context (active tenant, role, permission set) to req. Phase 1
 // is non-enforcing — this just makes req.tenant / req.can(perm) available to
 // any route that wants to read it. No existing route is gated yet.
 app.use(_tenantMiddleware.loadTenantContext);
+// Auth abuse rate limit (login / signup / reset) — applied before the router.
+const _authAbuse = _security.authAbuseLimiter();
+app.use('/api/auth/login', _authAbuse);
+app.use('/api/auth/signup', _authAbuse);
+app.use('/api/auth/request-reset', _authAbuse);
 // Mount /api/auth/* routes BEFORE the static-file handler + API-key gate so
 // they remain reachable to unauthenticated visitors.
 app.use('/api/auth', _authService.router);
@@ -441,11 +455,17 @@ function _isApiPublic(p) { return _AUTH_PUBLIC_API_PATHS.some(rx => rx.test(p));
 async function _injectApiKeyAuth(req) {
   if (req.user) return;
   const expected = process.env.INFOGENIE_API_KEY;
+  // Prefer header auth. Query-string ?key= is rejected in production (leaks via
+  // logs/Referer); still accepted in development for quick curl smoke tests.
+  const queryKey =
+    req.method === 'GET' && process.env.NODE_ENV !== 'production'
+      ? String(req.query.key || '').trim()
+      : '';
   const supplied =
        (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
     || (req.headers['x-infogenie-key'] || '').trim()
-    || (req.method === 'GET' ? String(req.query.key || '').trim() : '');
-  if (!expected || !supplied || supplied !== expected) return;
+    || queryKey;
+  if (!expected || !supplied || !_security.safeEqualString(supplied, expected)) return;
   try {
     if (!global.__apiKeyPrincipal) {
       const _db = require('./db');

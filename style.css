@@ -3989,7 +3989,7 @@ h1, h2, h3 {
 }
 
 .logo-text {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font-space), 'Space Grotesk', sans-serif;
   font-size: 1.32rem;
   font-weight: 800;
   letter-spacing: -0.04em;
@@ -5926,9 +5926,10 @@ p, span, label, td, li {
 
 /* Navbar */
 [data-theme="light"] .navbar {
-  background: rgba(255,255,255,.98);
+  background: rgba(255,255,255,.92);
   border-bottom: 1px solid #E2E8F0;
-  box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
+  box-shadow: 0 1px 0 rgba(0,102,255,.06), 0 8px 24px rgba(10,22,40,.05);
+  backdrop-filter: blur(20px) saturate(160%);
 }
 [data-theme="light"] .navbar::after {
   background: linear-gradient(90deg, transparent 0%, rgba(0,102,255,.25) 30%, rgba(0,201,200,.4) 50%, rgba(0,102,255,.25) 70%, transparent 100%);
