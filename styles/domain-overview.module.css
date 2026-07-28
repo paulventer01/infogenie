@@ -1,0 +1,159 @@
+/* Domain overview strip + module grid (Semrush / Marketing OS inspired) */
+
+.strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.stripCard {
+  background: var(--ig-surface, #fff);
+  border: 1px solid var(--ig-border, #e2e8f0);
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-height: 88px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.stripLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ig-text-muted, #64748b);
+}
+
+.stripValue {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ig-text, #0f172a);
+  line-height: 1.2;
+}
+
+.stripHint {
+  font-size: 11px;
+  color: var(--ig-text-muted, #94a3b8);
+}
+
+.journey {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  background: var(--ig-surface-muted, #f8fafc);
+  border-radius: 10px;
+  border: 1px solid var(--ig-border, #e2e8f0);
+}
+
+.journeyStep {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ig-text-muted, #64748b);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.journeyStep:hover {
+  background: var(--ig-surface, #fff);
+  border-color: var(--ig-border, #e2e8f0);
+}
+
+.journeyCurrent {
+  background: var(--ig-primary-soft, #eef2ff);
+  color: var(--ig-primary, #4f46e5);
+  border-color: var(--ig-primary-border, #c7d2fe);
+}
+
+.journeyDone {
+  color: var(--ig-success, #059669);
+}
+
+.journeyNum {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  background: var(--ig-border, #e2e8f0);
+  color: var(--ig-text-muted, #64748b);
+}
+
+.journeyCurrent .journeyNum {
+  background: var(--ig-primary, #4f46e5);
+  color: #fff;
+}
+
+.journeyDone .journeyNum {
+  background: var(--ig-success, #059669);
+  color: #fff;
+}
+
+.moduleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.moduleCard {
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--ig-border, #e2e8f0);
+  background: var(--ig-surface, #fff);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.moduleCard:hover {
+  border-color: var(--ig-primary-border, #c7d2fe);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.moduleIcon {
+  font-size: 20px;
+  margin-bottom: 6px;
+}
+
+.moduleTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ig-text, #0f172a);
+  margin-bottom: 4px;
+}
+
+.moduleDesc {
+  font-size: 12px;
+  color: var(--ig-text-muted, #64748b);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.moduleStat {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ig-primary, #4f46e5);
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ig-text-muted, #64748b);
+  margin: 0 0 12px;
+}

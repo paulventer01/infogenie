@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { NAV_GROUPS, viewToPath, type NavItem } from "@/lib/viewRoutes";
 import NavGroup from "./NavGroup";
 import AccountMenu from "./AccountMenu";
+import CompanyContextBar from "./CompanyContextBar";
 import styles from "../../styles/shell.module.css";
 
 const LOGO_SVG =
@@ -413,6 +414,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <AccountMenu />
           </div>
         </header>
+        <CompanyContextBar />
         <div className={styles.content} id="ig-shell-content">
           {children}
         </div>

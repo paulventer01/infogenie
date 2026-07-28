@@ -27,6 +27,8 @@ import {
   blendedMarketingMetrics,
 } from "@/lib/analysisDashboard";
 import MarketingIntelPanels from "./MarketingIntelPanels";
+import DomainOverview from "./DomainOverview";
+import { buildCompanyOverview } from "@/lib/companyOverview";
 
 interface WebsiteKPIs {
   ctr: number;
@@ -229,6 +231,12 @@ export default function Dashboard() {
 
     return { websiteKPIs, industryName, url, avgCTR, avgROAS, yourCTR, yourROAS, realTraffic: !!realTraffic, trafficVal, sovData, yourSovShare };
   }, [ad, competitors, hasData]);
+
+  const companyOverview = useMemo(() => {
+    if (!ad || !hasData) return null;
+    const dom = (ad.url || "").replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+    return buildCompanyOverview(dom, ad.industry?.name || "your industry", ad as Record<string, unknown>);
+  }, [ad, hasData]);
 
   const marketing = useMemo(() => {
     if (!ad || !hasData) return null;
@@ -614,6 +622,8 @@ export default function Dashboard() {
       </div>
 
       <div className="container">
+        {companyOverview && <DomainOverview overview={companyOverview} currentView="dashboard" />}
+
         {marketing && (
           <div className={dm.wrap}>
             <section className={dm.hero}>
