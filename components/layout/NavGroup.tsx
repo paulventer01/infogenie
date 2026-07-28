@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import type { NavGroupDef, NavItem } from "@/lib/viewRoutes";
+import { viewToPath } from "@/lib/viewRoutes";
+import { prefetchPanel } from "@/components/features/registry";
 import styles from "../../styles/shell.module.css";
 
 const CHEVRON =
@@ -95,12 +97,18 @@ export default function NavGroup({
                   section.items.map((item, ii) => (
                     <a
                       key={item.view || item.action || ii}
-                      href="#"
+                      href={item.view ? viewToPath(item.view) : "#"}
                       className={styles.link}
                       {...(item.id ? { id: item.id } : {})}
                       {...(item.view ? { "data-view": item.view } : {})}
                       {...(item.title ? { title: item.title } : {})}
                       {...(item.hidden ? { style: { display: "none" } } : {})}
+                      onMouseEnter={() => {
+                        if (item.view) prefetchPanel(item.view);
+                      }}
+                      onFocus={() => {
+                        if (item.view) prefetchPanel(item.view);
+                      }}
                       onClick={(e) => onNavClick(e, item)}
                     >
                       <span className={styles.linkIcon}>{item.icon}</span>

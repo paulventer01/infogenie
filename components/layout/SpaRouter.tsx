@@ -3,11 +3,16 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { pathToViewId } from "@/lib/viewRoutes";
+import { isMigratedView } from "@/lib/migratedViews";
 
 // Bridges Next's URL to the legacy SPA: whenever the pathname changes, it shows
 // the matching #view-* panel via window.navigateTo. On first load it waits for
 // <LegacyScripts/> to finish (ig:legacy-ready) before navigating, since
 // navigateTo only exists once app.js has run.
+//
+// Migrated React panels are owned by <MigratedPanel/> — re-entering legacy
+// navigateTo on every pathname change races lazy chunk eval and leaves the
+// IGDiag breadcrumb stuck on `nav→<view>` during MAIN-THREAD STALL reports.
 export default function SpaRouter() {
   const pathname = usePathname();
 
@@ -15,6 +20,24 @@ export default function SpaRouter() {
     const view = pathToViewId(pathname) || "marketing-brief";
     const go = () => {
       try {
+        if (isMigratedView(view)) {
+          try {
+            (window as unknown as { currentView?: string }).currentView = view;
+          } catch {
+            /* noop */
+          }
+          try {
+            window.IGDiag?.setBreadcrumb?.("idle");
+          } catch {
+            /* noop */
+          }
+          try {
+            window.scrollTo?.(0, 0);
+          } catch {
+            /* noop */
+          }
+          return;
+        }
         window.navigateTo?.(view);
       } catch {
         /* noop */

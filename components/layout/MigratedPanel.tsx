@@ -68,6 +68,19 @@ function PanelFallback() {
   );
 }
 
+/** Mounts only after the lazy panel chunk resolves — clears nav-pending then. */
+function PanelReady({ view, children }: { view: string; children: ReactNode }) {
+  useEffect(() => {
+    try {
+      document.documentElement.removeAttribute("data-ig-nav");
+      window.IGDiag?.setBreadcrumb?.("idle");
+    } catch {
+      /* noop */
+    }
+  }, [view]);
+  return children;
+}
+
 /**
  * Stable host for lazy panels. Keep Suspense + ErrorBoundary mounted across
  * view changes — only the inner panel is keyed. Remounting the boundary (via
@@ -87,7 +100,9 @@ export default function MigratedPanel() {
     <div id="ig-react-panel" data-react-view={view}>
       <PanelErrorBoundary view={view}>
         <Suspense fallback={<PanelFallback />}>
-          <Cmp key={view} />
+          <PanelReady key={view} view={view}>
+            <Cmp />
+          </PanelReady>
         </Suspense>
       </PanelErrorBoundary>
     </div>

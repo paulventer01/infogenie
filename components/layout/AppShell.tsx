@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, startTransition } from "react";
 import { useRouter } from "next/navigation";
 import { NAV_GROUPS, viewToPath, type NavItem } from "@/lib/viewRoutes";
+import { prefetchPanel } from "@/components/features/registry";
 import NavGroup from "./NavGroup";
 import AccountMenu from "./AccountMenu";
 import CompanyContextBar from "./CompanyContextBar";
@@ -154,6 +155,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
     if (!item.view) return;
     const path = viewToPath(item.view);
+    // Mark nav-in-flight so IGDiag doesn't flag lazy chunk eval as a stall.
+    try {
+      document.documentElement.setAttribute("data-ig-nav", "1");
+      window.setTimeout(() => {
+        try {
+          document.documentElement.removeAttribute("data-ig-nav");
+        } catch {
+          /* noop */
+        }
+      }, 4000);
+    } catch {
+      /* noop */
+    }
+    try {
+      prefetchPanel(item.view);
+    } catch {
+      /* noop */
+    }
     // Single owner of the URL update — avoid navigateTo's spa-navigate bridge
     // AND router.push both remounting MigratedPanel (removeChild races).
     startTransition(() => {

@@ -2732,6 +2732,9 @@ function navigateTo(viewId, updateActive = true) {
         if (viewEl) IGFields.scanRoot && IGFields.scanRoot(viewEl);
       }
     } catch(_) {}
+    // Always clear the nav breadcrumb after sync work so later chunk eval /
+    // React commit stalls are not attributed to nav→<view>.
+    try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle'); } catch(_) {}
   }, 0);
 }
 

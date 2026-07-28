@@ -15,6 +15,18 @@ type AppRouter = ReturnType<typeof useRouter>;
 
 export function goToView(router: AppRouter, view: string): void {
   const path = viewToPath(view);
+  try {
+    document.documentElement.setAttribute("data-ig-nav", "1");
+    window.setTimeout(() => {
+      try {
+        document.documentElement.removeAttribute("data-ig-nav");
+      } catch {
+        /* noop */
+      }
+    }, 4000);
+  } catch {
+    /* noop */
+  }
   startTransition(() => {
     router.push(path);
   });
