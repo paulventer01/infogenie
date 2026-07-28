@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, type ErrorInfo, type ReactNode, useEffect, useState } from "react";
+import { Component, Suspense, type ErrorInfo, type ReactNode, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { pathToViewId } from "@/lib/viewRoutes";
 import { MIGRATED_COMPONENTS } from "@/components/features/registry";
@@ -20,6 +20,12 @@ class PanelErrorBoundary extends Component<
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("[MigratedPanel] component crash in view=" + this.props.view, error, info);
+  }
+
+  componentDidUpdate(prevProps: { view: string }) {
+    if (prevProps.view !== this.props.view && this.state.error) {
+      this.setState({ error: null });
+    }
   }
 
   render() {
@@ -46,26 +52,33 @@ class PanelErrorBoundary extends Component<
   }
 }
 
+function PanelFallback() {
+  return (
+    <div
+      style={{
+        padding: "48px 24px",
+        textAlign: "center",
+        color: "#6b7280",
+        fontSize: "0.9rem",
+      }}
+      aria-busy="true"
+    >
+      Loading panel…
+    </div>
+  );
+}
+
 // Renders the native React panel for the currently-routed view, if it has been
 // migrated. Mounted once in the dashboard layout, it resolves the active view
-// from the URL (the same source of truth <SpaRouter/> uses) and renders the
-// matching component from the registry — otherwise it renders nothing and the
-// replayed legacy `#view-*` panel handles the view as before.
+// from the URL and renders the matching lazily-loaded component from the
+// registry — otherwise it renders nothing and the replayed legacy `#view-*`
+// panel handles the view as before.
 //
-// The wrapper deliberately does NOT carry the `.view` class: the legacy
-// `navigateTo` hides every `.view` div on each navigation, so a `.view` wrapper
-// would get hidden out from under React. Because this only mounts for migrated
-// views (whose legacy div is stripped from the dev shell), it is always the sole
-// visible panel for that route.
+// Registry entries are React.lazy loaders so only the active panel's module is
+// fetched/evaluated — avoids multi-second main-thread stalls from importing
+// every migrated panel on first navigation.
 export default function MigratedPanel() {
   const pathname = usePathname();
-  // Feature panels render client-only: the server (and the initial client
-  // render) emit nothing, then we swap in the real component after mount. This
-  // is intentional — these panels are behind auth and load all their data
-  // client-side, so SSR adds no value, and rendering them only after hydration
-  // eliminates an entire class of hydration mismatches (locale-formatted dates,
-  // Date.now()/Math.random(), window/localStorage reads) without having to
-  // audit every one of the 200+ ported components individually.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -74,8 +87,10 @@ export default function MigratedPanel() {
   if (!mounted || !view || !Cmp) return null;
   return (
     <div id="ig-react-panel" data-react-view={view}>
-      <PanelErrorBoundary view={view}>
-        <Cmp />
+      <PanelErrorBoundary key={view} view={view}>
+        <Suspense fallback={<PanelFallback />}>
+          <Cmp />
+        </Suspense>
       </PanelErrorBoundary>
     </div>
   );

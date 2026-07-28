@@ -542,6 +542,60 @@ for (const group of NAV_GROUPS) {
   }
 }
 
+/**
+ * Views trimmed from the default Analyse sidebar (to reduce duplicates) but still
+ * reachable via deep link, nav search, and dashboard module tiles.
+ */
+export const SIDEBAR_HIDDEN_VIEWS: readonly string[] = [
+  "deliverability",
+  "biz-scanner",
+  "linkedin-ads",
+  "ad-swipe",
+  "job-board-spy",
+  "maps-intel",
+  "web-extractor",
+  "recipe-scraper",
+  "dataset-market",
+  "resilient-tracker",
+  "trending-topics",
+  "glassdoor",
+  "reddit",
+  "reddit-pulse",
+  "twitter-pulse",
+  "youtube-monitor",
+  "yt-comment-miner",
+  "podcast-monitor",
+  "quora-mining",
+  "newsletter-tracker",
+  "question-miner",
+  "keyword-map",
+  "intent-map",
+  "google-trends",
+  "bing-webmaster",
+  "spyfu",
+  "majestic",
+  "serpstat",
+  "contentking",
+  "link-prospector",
+  "accessibility",
+  "social-tags",
+  "seo-widget",
+  "review-automation",
+  "ave",
+  "anomaly-detector",
+  "intent-radar",
+  "hashtag-tracker",
+  "influence-score",
+  "project-compare",
+  "geo-insights",
+  "ugc-discovery",
+];
+
+for (const view of SIDEBAR_HIDDEN_VIEWS) {
+  ALL_VIEW_IDS.add(view);
+  if (!VIEW_TO_PATH[view]) VIEW_TO_PATH[view] = `/analyse/${view}`;
+}
+
 /** Canonical dashboard URL for a `data-view` id, or `/` if unknown. */
 export function viewToPath(view: string): string {
   if (view === "home") return "/analyse";
