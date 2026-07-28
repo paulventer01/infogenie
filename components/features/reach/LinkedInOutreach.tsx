@@ -86,7 +86,7 @@ export default function LinkedInOutreach() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await apiGet("/api/linkedin-outreach/sequences");
+    const r = await apiGet<{ ok?: boolean; sequences?: Sequence[] }>("/api/linkedin-outreach/sequences");
     if (r?.sequences) setSequences(r.sequences);
     setLoading(false);
   }, []);
@@ -108,7 +108,7 @@ export default function LinkedInOutreach() {
     });
     setTab("messages");
     setLoadingContacts(true);
-    const r = await apiGet(`/api/linkedin-outreach/contacts/${seq.id}`);
+    const r = await apiGet<{ ok?: boolean; contacts?: Contact[] }>(`/api/linkedin-outreach/contacts/${seq.id}`);
     if (r?.contacts) setContacts(r.contacts);
     setLoadingContacts(false);
   }
@@ -116,7 +116,7 @@ export default function LinkedInOutreach() {
   async function handleCreate() {
     if (!form.name) { showToast("Sequence name required."); return; }
     setSaving(true);
-    const r = await apiPost("/api/linkedin-outreach/sequences", { ...form, followup_1_delay_days: +form.followup_1_delay_days, followup_2_delay_days: +form.followup_2_delay_days, followup_3_delay_days: +form.followup_3_delay_days, daily_connection_limit: +form.daily_connection_limit });
+    const r = await apiPost<{ ok?: boolean; sequence: Sequence }>("/api/linkedin-outreach/sequences", { ...form, followup_1_delay_days: +form.followup_1_delay_days, followup_2_delay_days: +form.followup_2_delay_days, followup_3_delay_days: +form.followup_3_delay_days, daily_connection_limit: +form.daily_connection_limit });
     if (r?.ok) {
       showToast("✅ Sequence created!");
       setSequences(prev => [r.sequence, ...prev]);
@@ -129,7 +129,7 @@ export default function LinkedInOutreach() {
   async function handleSaveMessages() {
     if (!active) return;
     setSaving(true);
-    const r = await apiPut(`/api/linkedin-outreach/sequences/${active.id}`, {
+    const r = await apiPut<{ ok?: boolean }>(`/api/linkedin-outreach/sequences/${active.id}`, {
       connection_message: form.connection_message,
       followup_1_message: form.followup_1_message, followup_1_delay_days: +form.followup_1_delay_days,
       followup_2_message: form.followup_2_message, followup_2_delay_days: +form.followup_2_delay_days,
@@ -144,14 +144,25 @@ export default function LinkedInOutreach() {
     if (!active) return;
     if (!aiForm.value_prop) { showToast("Enter your value proposition first."); return; }
     setGenAi(true);
-    const r = await apiPost(`/api/linkedin-outreach/sequences/${active.id}/ai-generate`, aiForm);
+    const r = await apiPost<{
+      ok?: boolean;
+      error?: string;
+      messages?: {
+        connection_message?: string;
+        followup_1_message?: string;
+        followup_2_message?: string;
+        followup_3_message?: string;
+        tips?: string[];
+        subject_angles?: string[];
+      };
+    }>(`/api/linkedin-outreach/sequences/${active.id}/ai-generate`, aiForm);
     if (r?.ok && r?.messages) {
       setForm(f => ({
         ...f,
-        connection_message: r.messages.connection_message || f.connection_message,
-        followup_1_message: r.messages.followup_1_message || f.followup_1_message,
-        followup_2_message: r.messages.followup_2_message || f.followup_2_message,
-        followup_3_message: r.messages.followup_3_message || f.followup_3_message,
+        connection_message: r.messages?.connection_message || f.connection_message,
+        followup_1_message: r.messages?.followup_1_message || f.followup_1_message,
+        followup_2_message: r.messages?.followup_2_message || f.followup_2_message,
+        followup_3_message: r.messages?.followup_3_message || f.followup_3_message,
       }));
       setAiMessages({ tips: r.messages.tips, subject_angles: r.messages.subject_angles });
       showToast("✅ AI generated your message sequence!");
@@ -169,11 +180,11 @@ export default function LinkedInOutreach() {
       const parts = line.split(/[,\t]/).map(s => s.trim());
       return { first_name: parts[0] || "", last_name: parts[1] || "", title: parts[2] || "", company: parts[3] || "", linkedin_url: parts[4] || "" };
     });
-    const r = await apiPost("/api/linkedin-outreach/contacts", { sequence_id: active.id, contacts: parsed });
+    const r = await apiPost<{ ok?: boolean; added?: number }>("/api/linkedin-outreach/contacts", { sequence_id: active.id, contacts: parsed });
     if (r?.ok) {
       showToast(`✅ Added ${r.added} contact(s)!`);
       setBulkText("");
-      const fresh = await apiGet(`/api/linkedin-outreach/contacts/${active.id}`);
+      const fresh = await apiGet<{ ok?: boolean; contacts?: Contact[] }>(`/api/linkedin-outreach/contacts/${active.id}`);
       if (fresh?.contacts) setContacts(fresh.contacts);
     } else { showToast("Failed to add contacts."); }
     setAddingContacts(false);
