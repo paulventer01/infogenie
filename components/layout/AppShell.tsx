@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, startTransition } from "react";
 import { useRouter } from "next/navigation";
 import { NAV_GROUPS, viewToPath, type NavItem } from "@/lib/viewRoutes";
 import NavGroup from "./NavGroup";
@@ -158,7 +158,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     } catch {
       /* noop */
     }
-    router.push(viewToPath(item.view));
+    const path = viewToPath(item.view);
+    if (typeof window !== "undefined" && window.location.pathname === path) return;
+    startTransition(() => {
+      router.push(path);
+    });
   };
 
   const goBrief = (e?: React.MouseEvent) => {

@@ -8,15 +8,22 @@
 // migrated targets, so <MigratedPanel/> mounts the right React component.
 
 import type { useRouter } from "next/navigation";
+import { startTransition } from "react";
 import { viewToPath } from "@/lib/viewRoutes";
 
 type AppRouter = ReturnType<typeof useRouter>;
 
 export function goToView(router: AppRouter, view: string): void {
+  const path = viewToPath(view);
   try {
     window.navigateTo?.(view);
   } catch {
     /* legacy not loaded yet — router.push still updates the URL */
   }
-  router.push(viewToPath(view));
+  // Skip a second push when navigateTo already bridged via ig:spa-navigate
+  // (LegacyNavBridge). Only push here as a fallback when the path still differs.
+  if (typeof window !== "undefined" && window.location.pathname === path) return;
+  startTransition(() => {
+    router.push(path);
+  });
 }

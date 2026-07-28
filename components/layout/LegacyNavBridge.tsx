@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, startTransition } from "react";
 import { useRouter } from "next/navigation";
 import { viewToPath } from "@/lib/viewRoutes";
 
@@ -11,6 +11,10 @@ import { viewToPath } from "@/lib/viewRoutes";
 // URL so the pathname updates and <MigratedPanel/> mounts the matching React
 // component — otherwise the legacy nav is a silent no-op and the page goes
 // blank (e.g. the dashboard after Analyse completes).
+//
+// router.push is wrapped in startTransition so the previous panel stays
+// responsive while the next route/chunk loads, avoiding MAIN-THREAD STALL
+// reports from IGDiag during nav→<view>.
 export default function LegacyNavBridge() {
   const router = useRouter();
 
@@ -19,9 +23,19 @@ export default function LegacyNavBridge() {
       const view = (e as CustomEvent<{ view?: string }>).detail?.view;
       if (!view) return;
       const path = viewToPath(view);
-      if (path && path !== window.location.pathname) {
+      if (!path || path === window.location.pathname) return;
+      startTransition(() => {
         router.push(path);
-      }
+      });
+      // Drop the nav breadcrumb after the transition so later idle work
+      // (chunk eval, chart teardown) is not attributed to this navigation.
+      requestAnimationFrame(() => {
+        try {
+          window.IGDiag?.setBreadcrumb?.("idle");
+        } catch {
+          /* noop */
+        }
+      });
     };
     document.addEventListener("ig:spa-navigate", onNavigate);
     return () => document.removeEventListener("ig:spa-navigate", onNavigate);
