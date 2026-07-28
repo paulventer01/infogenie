@@ -159,7 +159,12 @@ export default function TechStack() {
       setDetectError(r.error || "failed");
       return;
     }
-    setDetect(r);
+    setDetect({
+      ...r,
+      domain: r.domain || d,
+      total: typeof r.total === "number" ? r.total : 0,
+      groups: Array.isArray(r.groups) ? r.groups : [],
+    });
     setDetectStatus("idle");
   }
 
@@ -501,6 +506,8 @@ export default function TechStack() {
 }
 
 function DetectView({ result }: { result: DetectResult }) {
+  const groups = Array.isArray(result.groups) ? result.groups : [];
+  const total = typeof result.total === "number" ? result.total : 0;
   return (
     <div>
       {result.note && (
@@ -517,7 +524,7 @@ function DetectView({ result }: { result: DetectResult }) {
           {result.note}
         </div>
       )}
-      {!result.groups.length ? (
+      {!groups.length ? (
         <div
           style={{
             background: "#fff",
@@ -529,7 +536,7 @@ function DetectView({ result }: { result: DetectResult }) {
             fontSize: "0.88rem",
           }}
         >
-          No tech detected for {result.domain}.
+          No tech detected for {result.domain || "this domain"}.
         </div>
       ) : (
         <>
@@ -568,7 +575,7 @@ function DetectView({ result }: { result: DetectResult }) {
                   fontWeight: 800,
                 }}
               >
-                {result.total} LIVE TECHNOLOGIES
+                {total} LIVE TECHNOLOGIES
               </div>
             </div>
           </div>
@@ -579,7 +586,7 @@ function DetectView({ result }: { result: DetectResult }) {
               gap: 12,
             }}
           >
-            {result.groups.map((g, gi) => (
+            {groups.map((g, gi) => (
               <div
                 key={gi}
                 style={{
