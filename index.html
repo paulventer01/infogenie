@@ -1600,11 +1600,14 @@
 
 <div id="commandBarBackdrop" onclick="closeCommandBar(event)" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);backdrop-filter:blur(4px);z-index:9999;align-items:flex-start;justify-content:center;padding-top:10vh">
   <div onclick="event.stopPropagation()" style="width:min(640px,92vw);background:white;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">
-    <div style="padding:18px 20px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;gap:12px">
+    <div style="padding:18px 20px 12px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;gap:10px">
+      <button type="button" id="commandBarAttachBtn" onclick="openCommandBarAttach()" title="Attach a Word document (.docx)" aria-label="Attach Word document" style="width:36px;height:36px;border-radius:10px;border:1.5px solid #CBD5E1;background:#F8FAFC;color:#334155;font-size:1.35rem;font-weight:700;line-height:1;cursor:pointer;flex-shrink:0;display:grid;place-items:center;padding:0">+</button>
       <span style="font-size:1.3rem">✨</span>
-      <input id="commandBarInput" type="text" tabindex="0" placeholder="Ask InfoGenie to do something… (e.g. 'show me blended CAC for the last 30 days')" style="flex:1;border:none;outline:none;font-size:1rem;font-weight:500;color:#0F172A;pointer-events:auto;user-select:text;-webkit-user-select:text">
+      <input id="commandBarInput" type="text" tabindex="0" placeholder="Ask InfoGenie to do something… (attach a .docx with + for instructions)" style="flex:1;border:none;outline:none;font-size:1rem;font-weight:500;color:#0F172A;pointer-events:auto;user-select:text;-webkit-user-select:text">
       <kbd style="font-size:0.7rem;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:5px;padding:3px 7px;color:#64748B">esc</kbd>
     </div>
+    <div id="commandBarAttachment" style="display:none;padding:0 20px 12px;border-bottom:1px solid #F1F5F9;font-size:0.78rem;color:#475569"></div>
+    <input type="file" id="commandBarFileInput" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none">
     <div id="commandBarHints" style="padding:14px 20px;font-size:0.78rem;color:#64748B;border-bottom:1px solid #F1F5F9">
       <div style="font-weight:700;color:#0F172A;margin-bottom:8px">Try one of these:</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px">
