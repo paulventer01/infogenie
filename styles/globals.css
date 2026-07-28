@@ -134,3 +134,17 @@ h1, h2, h3, .ig-display {
   font-weight: 800 !important;
   box-shadow: 0 8px 22px rgba(0, 102, 255, 0.28) !important;
 }
+
+/* Left-rail shell coexistence with legacy style.css */
+body:has(#ig-app-shell) {
+  background: #f3f6fb !important;
+}
+html[data-theme="dark"] body:has(#ig-app-shell) {
+  background: #0b1220 !important;
+}
+#ig-shell-content .view,
+#ig-shell-content [id^="view-"],
+#ig-shell-content main {
+  max-width: 100%;
+}
+
