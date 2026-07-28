@@ -3416,8 +3416,19 @@ async function runAnalysis(url, country, industryOverride) {
   queuedCampaigns = [];
   creativeRound = 0;
 
+  // Company profile from smart-detect (powers the marketing command center dashboard)
+  const _cpSignals = (aiDetected && aiDetected.signals) || {};
+  const companyProfile = {
+    domain: cleanUrl,
+    businessSummary: (aiDetected && aiDetected.businessSummary) || '',
+    subNiche: (aiDetected && aiDetected.subNiche) || '',
+    siteTitle: _cpSignals.title || _cpSignals.ogSiteName || '',
+    metaDesc: _cpSignals.metaDesc || _cpSignals.ogDesc || '',
+    analyzedAt: new Date().toISOString(),
+  };
+
   // Store analysis data
-  analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps, sectorOnly };
+  analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps, sectorOnly, companyProfile };
   window.analysisData = analysisData;  // Mirror to window so external modules (Link Suggester, CRO Lab, Analytics Hub, etc.) can read it
   // Notify the global field enhancer (ig_field_enhancer.js) so any Brand /
   // Competitor pickers already rendered refresh their option lists with the
@@ -3482,7 +3493,7 @@ async function runAnalysis(url, country, industryOverride) {
   } catch(_) {}
 
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
-  window.IGDiag && IGDiag.mark('runAnalysis: navigating to marketing-brief', 'comps=' + selectedComps.length);
+  window.IGDiag && IGDiag.mark('runAnalysis: navigating to dashboard', 'comps=' + selectedComps.length);
   // Start a heartbeat that ticks every 250ms — any gap >500ms in the server
   // log proves the main thread was blocked during that window and the prior
   // breadcrumb names the culprit.
@@ -3490,11 +3501,10 @@ async function runAnalysis(url, country, industryOverride) {
   // Stop the heartbeat 15s later — by then the dashboard, all deferred
   // builders and enrichments are well past done in the happy case.
   setTimeout(() => { try { window.IGDiag && IGDiag.stopHeartbeat && IGDiag.stopHeartbeat(); } catch(_) {} }, 15000);
-  navigateTo('marketing-brief');
+  navigateTo('dashboard');
   // Tell any already-mounted React panel (Next.js dev shell) that a fresh
-  // analysis payload is on `window.analysisData`. The Marketing Brief auto-
-  // refreshes when it sees this event so the brief stays in sync with the
-  // latest analysis without requiring a manual page reload.
+  // analysis payload is on `window.analysisData`. Dashboard + Marketing Brief
+  // refresh when they see this event so they stay in sync with the latest run.
   try {
     document.dispatchEvent(new CustomEvent('ig:analysis-ready', { detail: { url: cleanUrl } }));
   } catch(_) {}

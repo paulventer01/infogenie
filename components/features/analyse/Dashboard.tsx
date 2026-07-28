@@ -18,6 +18,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
+import dm from "@/styles/dashboard-marketing.module.css";
+import {
+  buildSwot,
+  buildChannelMix,
+  buildPriorityActions,
+  formatAdSpend,
+  blendedMarketingMetrics,
+} from "@/lib/analysisDashboard";
 
 interface WebsiteKPIs {
   ctr: number;
@@ -56,6 +64,14 @@ interface AnalysisData {
   competitors?: Competitor[];
   sectorOnly?: boolean;
   _yourRealData?: { organicTraffic?: number };
+  companyProfile?: {
+    domain?: string;
+    businessSummary?: string;
+    subNiche?: string;
+    siteTitle?: string;
+    metaDesc?: string;
+    analyzedAt?: string;
+  };
 }
 
 interface ChartInstance {
@@ -173,6 +189,7 @@ export default function Dashboard() {
   const [efficiencyStatus, setEfficiencyStatus] = useState("⏳ Scoring channels…");
   const [efficiencyRec, setEfficiencyRec] = useState("");
   const [spendStatus, setSpendStatus] = useState<{ text: string; color: string }>({ text: "Monthly paid traffic value estimate", color: "#9CA3AF" });
+  const [threatIdx, setThreatIdx] = useState<number | null>(null);
 
   // ── Derived data (computed once) ──────────────────────────────────────────
   const derived = useMemo(() => {
@@ -210,6 +227,35 @@ export default function Dashboard() {
     const sovData = [...sovRows, { name: "You", share: yourSovShare, color: "#00E5FF" }, { name: "Others", share: otherSovShare, color: "#E2E8F0" }];
 
     return { websiteKPIs, industryName, url, avgCTR, avgROAS, yourCTR, yourROAS, realTraffic: !!realTraffic, trafficVal, sovData, yourSovShare };
+  }, [ad, competitors, hasData]);
+
+  const marketing = useMemo(() => {
+    if (!ad || !hasData) return null;
+    const yourDomain = (ad.url || "").replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+    let profile = ad.companyProfile;
+    if (!profile && typeof window !== "undefined") {
+      try {
+        const cached = JSON.parse(localStorage.getItem("ig-ai-detected") || "null");
+        if (cached) {
+          profile = {
+            domain: yourDomain,
+            businessSummary: cached.businessSummary,
+            subNiche: cached.subNiche,
+            analyzedAt: cached.at ? new Date(cached.at).toISOString() : undefined,
+          };
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    const enriched = profile ? { ...ad, companyProfile: profile } : ad;
+    return {
+      swot: buildSwot(enriched, yourDomain),
+      channels: buildChannelMix(competitors),
+      actions: buildPriorityActions(enriched),
+      blended: blendedMarketingMetrics(enriched),
+      profile,
+    };
   }, [ad, competitors, hasData]);
 
   // ── Charts + async live panels ────────────────────────────────────────────
@@ -567,6 +613,167 @@ export default function Dashboard() {
       </div>
 
       <div className="container">
+        {marketing && (
+          <div className={dm.wrap}>
+            <section className={dm.hero}>
+              <div className={dm.heroInner}>
+                <div>
+                  <div className={dm.heroEyebrow}>Marketing Command Center</div>
+                  <h3 className={dm.heroTitle}>
+                    {ad.sectorOnly ? industryName : yourDomain}
+                  </h3>
+                  <p className={dm.heroSub}>
+                    {marketing.profile?.businessSummary ||
+                      (ad.sectorOnly
+                        ? `Sector-wide marketing intelligence for ${industryName} — competitor landscape, channel mix, and growth priorities.`
+                        : `All current marketing intelligence for ${yourDomain} — performance benchmarks, competitive landscape, channel mix, and your next actions.`)}
+                  </p>
+                  <div className={dm.heroTags}>
+                    <span className={dm.heroTag}>{industryName}</span>
+                    <span className={dm.heroTag}>{countryLabel}</span>
+                    <span className={dm.heroTag}>{competitors.length} competitors tracked</span>
+                    {marketing.profile?.subNiche && <span className={dm.heroTag}>{marketing.profile.subNiche}</span>}
+                  </div>
+                </div>
+                <div className={dm.heroAside}>
+                  {marketing.profile?.analyzedAt && (
+                    <span className={dm.analyzedAt}>
+                      Analysed {new Date(marketing.profile.analyzedAt).toLocaleString()}
+                    </span>
+                  )}
+                  <button className="btn-secondary" onClick={() => goToView(router, "battleplan")}>
+                    Open 90-day plan →
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <div className={dm.blendedGrid}>
+              <div className={dm.metricDark}>
+                <div className={dm.metricLabel}>Est. monthly traffic</div>
+                <div className={dm.metricValue} style={{ color: "#00E5FF" }}>
+                  {fmt(marketing.blended.monthlyTraffic)}
+                </div>
+                <div className={`${dm.metricDelta} ${realTraffic ? dm.deltaUp : dm.deltaNeutral}`}>
+                  {realTraffic ? "Live DataForSEO" : "Industry benchmark"}
+                </div>
+              </div>
+              <div className={dm.metricDark}>
+                <div className={dm.metricLabel}>Your ROAS</div>
+                <div className={dm.metricValue} style={{ color: "#A78BFA" }}>
+                  {marketing.blended.roas}×
+                </div>
+                <div className={`${dm.metricDelta} ${marketing.blended.roasVsMarket >= 0 ? dm.deltaUp : dm.deltaDown}`}>
+                  {marketing.blended.roasVsMarket >= 0 ? "▲" : "▼"} {Math.abs(Math.round(marketing.blended.roasVsMarket))}% vs rivals
+                </div>
+              </div>
+              <div className={dm.metricDark}>
+                <div className={dm.metricLabel}>Projected ROAS</div>
+                <div className={dm.metricValue} style={{ color: "#34D399" }}>
+                  {marketing.blended.projectedRoas || improvedROAS}×
+                </div>
+                <div className={`${dm.metricDelta} ${dm.deltaUp}`}>With InfoGenie optimisations</div>
+              </div>
+              <div className={dm.metricDark}>
+                <div className={dm.metricLabel}>Market visibility</div>
+                <div className={dm.metricValue} style={{ color: "#FBBF24" }}>
+                  {marketing.blended.marketShare != null ? `${marketing.blended.marketShare}%` : `${yourSovShare}%`}
+                </div>
+                <div className={dm.metricDelta + " " + dm.deltaNeutral}>Share of tracked competitor traffic</div>
+              </div>
+            </div>
+
+            <div className={dm.twoCol}>
+              <div className={dm.panel}>
+                <h4 className={dm.panelTitle}>🏢 Company profile</h4>
+                {marketing.profile?.siteTitle && (
+                  <p className={dm.profileText}>
+                    <strong>{marketing.profile.siteTitle}</strong>
+                  </p>
+                )}
+                <p className={dm.profileText}>
+                  {marketing.profile?.metaDesc || marketing.profile?.businessSummary || "Run Analyse Now with a website URL to pull live site metadata and a business summary."}
+                </p>
+                <div className={dm.metaRow}>
+                  <div className={dm.metaItem}>
+                    <strong>Domain:</strong> {yourDomain}
+                  </div>
+                  <div className={dm.metaItem}>
+                    <strong>Industry:</strong> {industryName}
+                  </div>
+                  <div className={dm.metaItem}>
+                    <strong>Primary market:</strong> {countryLabel}
+                  </div>
+                  <div className={dm.metaItem}>
+                    <strong>CPA benchmark:</strong> ${websiteKPIs.cpa} · <strong>Conv. rate:</strong> {websiteKPIs.convRate}%
+                  </div>
+                </div>
+              </div>
+              <div className={dm.panel}>
+                <h4 className={dm.panelTitle}>📡 Competitor channel mix</h4>
+                <p className={dm.profileText}>Where rivals invest — use this to spot underserved channels for {yourDomain}.</p>
+                {marketing.channels.length > 0 ? (
+                  <>
+                    <div className={dm.channelBar}>
+                      {marketing.channels.map((ch) => (
+                        <div key={ch.name} style={{ width: `${ch.share}%`, background: ch.color }} title={`${ch.name}: ${ch.share}%`} />
+                      ))}
+                    </div>
+                    <div className={dm.channelLegend}>
+                      {marketing.channels.map((ch) => (
+                        <div key={ch.name} className={dm.channelRow}>
+                          <span className={dm.channelDot} style={{ background: ch.color }} />
+                          <span className={dm.channelName}>{ch.name}</span>
+                          <span className={dm.channelPct}>{ch.share}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className={dm.profileText}>Channel data populates after competitor metrics are validated.</p>
+                )}
+              </div>
+            </div>
+
+            <div className={dm.swotGrid}>
+              {([
+                ["Strengths", marketing.swot.strengths, dm.swotS],
+                ["Weaknesses", marketing.swot.weaknesses, dm.swotW],
+                ["Opportunities", marketing.swot.opportunities, dm.swotO],
+                ["Threats", marketing.swot.threats, dm.swotT],
+              ] as const).map(([label, items, cls]) => (
+                <div key={label} className={`${dm.swotCard} ${cls}`}>
+                  <div className={dm.swotHead}>{label}</div>
+                  <ul className={dm.swotList}>
+                    {items.slice(0, 4).map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+
+            <h4 className={dm.panelTitle} style={{ marginBottom: 12 }}>⚡ Priority marketing actions</h4>
+            <div className={dm.actionGrid}>
+              {marketing.actions.map((action, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={dm.actionCard}
+                  onClick={() => action.view && goToView(router, action.view)}
+                >
+                  <div className={dm.actionTop}>
+                    <span className={dm.actionArea}>{action.area}</span>
+                    <span className={action.impact === "high" ? dm.impactHigh : dm.impactMed}>{action.impact} impact</span>
+                  </div>
+                  <div className={dm.actionTitle}>{action.title}</div>
+                  <div className={dm.actionDetail}>{action.detail}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Competitor chips */}
         {competitors.length > 0 && (
           <div className="competitor-chips">
@@ -575,7 +782,7 @@ export default function Dashboard() {
             </div>
             <div className="cchips-row">
               {competitors.map((c, i) => (
-                <button key={i} className="cchip" title={c.why || `Click to analyse ${c.name}`} onClick={() => callWin("openCompetitorAnalysis", c)}>
+                <button key={i} className="cchip" title={c.why || `Click to analyse ${c.name}`} onClick={() => setThreatIdx(i)}>
                   <span className="cchip-dot" style={{ background: CHIP_DOTS[i % 8] }} />
                   <span className="cchip-name">{c.name}</span>
                   {c.aiDetected && <span className="cchip-ai">AI</span>}
@@ -774,12 +981,10 @@ export default function Dashboard() {
                       <td>{c.traffic && c.traffic !== "—" ? c.traffic : <span style={{ color: "#94a3b8" }} title="No public data available">—</span>}</td>
                       <td><strong>{c.ctr && c.ctr !== "—" ? c.ctr : <span style={{ color: "#94a3b8" }} title="No public data available">—</span>}</strong></td>
                       <td><strong>{roasCell === "—" ? <span style={{ color: "#94a3b8" }} title="No public data available">—</span> : roasCell}</strong></td>
-                      <td id={`adSpendCell-${i}`}>
-                        <span style={{ color: "#94a3b8", fontSize: "0.78rem" }} title="Checking Meta Ad Library…">⏳ checking…</span>
-                      </td>
+                      <td id={`adSpendCell-${i}`}>{formatAdSpend(c)}</td>
                       <td>{channel}</td>
                       <td>
-                        <span className={`threat-badge threat-${lvl} threat-badge-clickable`} onClick={() => callWin("openThreatModal", i)} title="Click for threat details">
+                        <span className={`threat-badge threat-${lvl} threat-badge-clickable`} onClick={() => setThreatIdx(i)} title="Click for threat details">
                           {cap} Threat ↗
                         </span>
                       </td>
@@ -892,6 +1097,50 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {threatIdx != null && competitors[threatIdx] && (
+        <div className={dm.modalBackdrop} onClick={() => setThreatIdx(null)}>
+          <div className={dm.modal} onClick={(e) => e.stopPropagation()}>
+            <h4 className={dm.modalTitle}>
+              {competitors[threatIdx].name} — {(competitors[threatIdx].threatLevel || "medium").toUpperCase()} threat
+            </h4>
+            <div className={dm.modalBody}>
+              <p>{competitors[threatIdx].why || "Direct competitor in your market."}</p>
+              <p style={{ marginTop: 10 }}>
+                <strong>Traffic:</strong> {competitors[threatIdx].traffic || "—"} · <strong>Top channel:</strong>{" "}
+                {competitors[threatIdx].topChannel || "—"} · <strong>ROAS:</strong>{" "}
+                {typeof competitors[threatIdx].roas === "number" ? competitors[threatIdx].roas + "×" : competitors[threatIdx].roas || "—"}
+              </p>
+              {(competitors[threatIdx].suggestions || []).length > 0 && (
+                <>
+                  <p style={{ marginTop: 12, fontWeight: 700 }}>Recommended counter-moves:</p>
+                  <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                    {(competitors[threatIdx].suggestions || []).map((s, si) => (
+                      <li key={si} style={{ marginBottom: 6 }}>
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+            <button type="button" className={dm.modalClose} onClick={() => setThreatIdx(null)}>
+              Close
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ marginLeft: 10 }}
+              onClick={() => {
+                setThreatIdx(null);
+                goToView(router, "competitors");
+              }}
+            >
+              Full competitor analysis →
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
