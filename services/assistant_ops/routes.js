@@ -14,6 +14,7 @@ const __root_require__ = (p) =>
 // and one-time boot migration below on whether this is the live server process
 // (off when required for tests).
 const _runtimeFlags = require('../runtime_flags');
+const { extractWordText } = require('./parse_document');
 
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
@@ -276,7 +277,6 @@ Available capability areas: drip campaigns, Amplitude product-analytics agents, 
 
 // Parse Word (.docx) uploads for the ⌘K command bar attachment button.
 const multer = require('multer');
-const { extractWordText } = require('./parse_document');
 const _cmdDocUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024, files: 1 },
