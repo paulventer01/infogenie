@@ -55,7 +55,7 @@ export default function NavGroup({
   // Intentionally NO legacy classes (nav-group-wrap / nav-dropdown / nav-link).
   // Those style.css rules force hover-only absolute dropdowns and hide panels.
   return (
-    <div className={styles.group} data-group={group.key}>
+    <div className={styles.group} data-group={group.key} data-ig-react-nav="1">
       <button
         className={`${styles.groupBtn} ${open ? styles.groupBtnOpen : ""}`}
         type="button"

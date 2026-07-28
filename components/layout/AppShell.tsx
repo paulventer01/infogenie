@@ -85,6 +85,30 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => obs.disconnect();
   }, []);
 
+  // Legacy ig_navperms.js can leave display:none on React rail nodes; strip it.
+  useEffect(() => {
+    const scrub = () => {
+      document
+        .querySelectorAll(
+          "#ig-side-rail [data-ig-react-nav], #ig-side-rail a[data-view]",
+        )
+        .forEach((node) => {
+          const el = node as HTMLElement;
+          el.style.removeProperty("display");
+          el.removeAttribute("data-perm-hidden");
+        });
+    };
+    scrub();
+    document.addEventListener("ig:navperms-ready", scrub);
+    const t = window.setInterval(scrub, 800);
+    const stop = window.setTimeout(() => window.clearInterval(t), 6000);
+    return () => {
+      document.removeEventListener("ig:navperms-ready", scrub);
+      window.clearInterval(t);
+      window.clearTimeout(stop);
+    };
+  }, []);
+
   useEffect(() => {
     const onReady = () => {
       setNavReady(true);
@@ -110,6 +134,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const onNavClick = (e: React.MouseEvent, item: NavItem) => {
     e.preventDefault();
     setMobileOpen(false);
+    setOpen(true);
     if (item.action === "dashboardDiag") {
       try {
         window._loadDashboardDiag?.();
@@ -138,6 +163,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const goBrief = (e?: React.MouseEvent) => {
     e?.preventDefault();
     setMobileOpen(false);
+    setOpen(true);
     try {
       window.navigateTo?.("marketing-brief");
     } catch {
@@ -149,6 +175,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const goAnalyse = (e?: React.MouseEvent) => {
     e?.preventDefault();
     setMobileOpen(false);
+    setOpen(true);
     try {
       window.navigateTo?.("home");
     } catch {
@@ -242,12 +269,32 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className={styles.railSearch}>
           <input
-            type="search"
+            id="ig-nav-filter"
+            name="ig-nav-tool-filter"
+            type="text"
+            inputMode="search"
             placeholder="Filter tools…"
             value={filter}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            data-lpignore="true"
+            data-form-type="other"
+            readOnly
+            onFocus={(e) => e.currentTarget.removeAttribute("readonly")}
             onChange={(e) => setFilter(e.target.value)}
             aria-label="Filter navigation"
           />
+          {filter.trim() && filteredGroups.length === 0 ? (
+            <button
+              type="button"
+              className={styles.filterClear}
+              onClick={() => setFilter("")}
+            >
+              No matches — clear filter
+            </button>
+          ) : null}
         </div>
 
         <nav className={styles.railNav} id="navGroups">

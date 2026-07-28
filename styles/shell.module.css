@@ -175,8 +175,39 @@
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.14);
 }
 
+.filterClear {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(248, 113, 113, 0.14);
+  color: #fecaca;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.filterClear:hover {
+  background: rgba(248, 113, 113, 0.22);
+}
+
 .shellCollapsed .railSearch {
   display: none;
+}
+
+/* React nav groups must never be collapsed by legacy permission scripts. */
+.rail [data-ig-react-nav] {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.rail a[data-view] {
+  display: flex !important;
 }
 
 /* CRITICAL: column flex — legacy app.js sets display:flex (row default).
