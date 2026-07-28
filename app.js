@@ -2658,8 +2658,12 @@ function navigateTo(viewId, updateActive = true) {
     // Dispatch synchronously (do NOT rAF-defer): a deferred bridge races the
     // AppShell/Next router.push and can remount Suspense mid-reconcile, which
     // throws NotFoundError: removeChild.
+    // Skip when React already owns the route transition (AppShell/goToView set
+    // __igReactRouting) to avoid a double push → double remount.
     try {
-      document.dispatchEvent(new CustomEvent('ig:spa-navigate', { detail: { view: viewId } }));
+      if (!window.__igReactRouting) {
+        document.dispatchEvent(new CustomEvent('ig:spa-navigate', { detail: { view: viewId } }));
+      }
     } catch(_) {}
     try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle'); } catch(_) {}
   }

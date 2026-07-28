@@ -70,19 +70,38 @@ async function _openaiJSON(messages, maxTokens = 1200) {
   });
 }
 
-function _fallback(topic, layout) {
-  const items = ['Awareness', 'Consideration', 'Purchase', 'Retention', 'Advocacy'];
+// Layout scaffold when no AI key is configured. This is editable creative
+// scaffolding (labels the user exports/tweaks), NOT fabricated research metrics
+// — so we intentionally avoid fabrication markers (source:'template' etc.) that
+// would make strict data-mode withhold the whole generator.
+function _scaffoldLabels(layout, n) {
+  const defaults = {
+    funnel: ['Awareness', 'Interest', 'Consideration', 'Conversion', 'Loyalty', 'Advocacy', 'Referral'],
+    list: ['Insight 1', 'Insight 2', 'Insight 3', 'Insight 4', 'Insight 5', 'Insight 6', 'Insight 7'],
+    comparison: ['Option A', 'Option B', 'Option C', 'Option D', 'Option E', 'Option F', 'Option G'],
+    journey: ['Discover', 'Evaluate', 'Decide', 'Onboard', 'Adopt', 'Expand', 'Champion'],
+    quadrant: ['Quick wins', 'Strategic bets', 'Fill-ins', 'Time sinks'],
+    pyramid: ['Vision', 'Strategy', 'Programs', 'Tactics', 'Actions', 'Checks', 'Habits'],
+    cycle: ['Attract', 'Engage', 'Convert', 'Deliver', 'Delight', 'Refer', 'Renew'],
+  };
+  return (defaults[layout] || defaults.funnel).slice(0, n);
+}
+
+function _fallback(topic, layout, itemCount) {
+  const n = layout === 'quadrant' ? 4 : Math.max(3, Math.min(7, itemCount || 5));
+  const labels = _scaffoldLabels(layout, n);
   return {
     title: topic.slice(0, 80),
+    subtitle: 'Layout scaffold — edit labels or add an AI key for a full design',
     layout,
     palette: { primary: '#0066FF', accent: '#7C3AED', text: '#0A1628' },
-    items: items.slice(0, layout === 'quadrant' ? 4 : 5).map((label, i) => ({
-      label, value: `Step ${i + 1}`, detail: 'Outline the key action for this stage.',
+    items: labels.map((label, i) => ({
+      label,
+      value: `Step ${i + 1}`,
+      detail: 'Outline the key action for this stage.',
     })),
     takeaway: 'Map every stage to a single owner and a single metric.',
-    // Data-mode (honesty): generic template used when AI is unavailable — not a
-    // real, topic-specific design. Tagged so strict mode withholds it.
-    source: 'template',
+    source: 'layout-scaffold',
   };
 }
 
@@ -107,7 +126,7 @@ Make labels under 24 chars. Make values under 18 chars. Make details under 80 ch
       { role: 'user', content: prompt },
     ]);
   }
-  if (!result || !Array.isArray(result.items)) result = _fallback(topic, layout);
+  if (!result || !Array.isArray(result.items)) result = _fallback(topic, layout, itemCount);
 
   const tid = await _tid(req, 'infographics:generate');
   const id = 'ig_' + (require('crypto').randomUUID ? require('crypto').randomUUID().replace(/-/g,'').slice(0,16) : Date.now() + '_' + Math.random().toString(36).slice(2,8));

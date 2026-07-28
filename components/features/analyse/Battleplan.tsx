@@ -550,11 +550,11 @@ export default function Battleplan() {
             ))}
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <div style={{ fontSize: "0.67rem", color: "rgba(255,255,255,.4)", marginBottom: 2, textTransform: "uppercase", letterSpacing: ".05em" }}>Opportunity Score</div>
-            <div style={{ fontSize: "2rem", fontWeight: 900, fontFamily: "Sora,sans-serif", color: oppScore >= 70 ? "#10B981" : oppScore >= 50 ? "#F59E0B" : "#60A5FA", lineHeight: 1 }}>
+            <div style={{ fontSize: "0.67rem", color: "#64748B", marginBottom: 2, textTransform: "uppercase", letterSpacing: ".05em" }}>Opportunity Score</div>
+            <div style={{ fontSize: "2rem", fontWeight: 900, fontFamily: "Sora,sans-serif", color: oppScore >= 70 ? "#059669" : oppScore >= 50 ? "#D97706" : "#2563EB", lineHeight: 1 }}>
               {oppScore}
             </div>
-            <div style={{ fontSize: "0.62rem", color: "rgba(255,255,255,.3)" }}>out of 100</div>
+            <div style={{ fontSize: "0.62rem", color: "#94A3B8" }}>out of 100</div>
           </div>
         </div>
       </div>

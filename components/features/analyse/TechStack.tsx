@@ -691,6 +691,7 @@ function CompareView({
   empty: boolean;
 }) {
   const cols = result.domains || [];
+  const matrix = Array.isArray(result.matrix) ? result.matrix : [];
   const byDom: Record<string, CompareRow> = {};
   (result.results || []).forEach((x) => {
     byDom[x.domain] = x;
@@ -756,7 +757,7 @@ function CompareView({
                 color: "#0A1628",
               }}
             >
-              ⚖️ Category Comparison Matrix ({result.matrix.length} categories —
+              ⚖️ Category Comparison Matrix ({matrix.length} categories —
               counts = live tech in category)
             </div>
             <div style={{ overflowX: "auto" }}>
@@ -850,7 +851,7 @@ function CompareView({
                   </tr>
                 </thead>
                 <tbody>
-                  {result.matrix.map((t, ti) => (
+                  {matrix.map((t, ti) => (
                     <tr key={ti} style={{ borderTop: "1px solid #F3F4F6" }}>
                       <td
                         style={{
