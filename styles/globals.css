@@ -1,21 +1,21 @@
 /* ================================
    InfoGenie — Next.js global tokens
-   Light-first brand system: deep navy + electric blue + teal.
+   Signal system: sky + lime on cool slate.
    Display: Sora / Space Grotesk. UI: Plus Jakarta Sans.
    ================================ */
 
 :root {
-  --navy: #0a1628;
-  --navy-2: #0e1f3b;
-  --navy-3: #142545;
-  --teal: #00c9c8;
-  --teal-dark: #00a8a7;
-  --cyan: #00e5ff;
-  --blue: #0066ff;
-  --blue-light: #3389ff;
-  --gold: #f59e0b;
-  --green: #10b981;
-  --red: #ef4444;
+  --navy: #0c1222;
+  --navy-2: #121a2e;
+  --navy-3: #1a2438;
+  --teal: #22c55e;
+  --teal-dark: #16a34a;
+  --cyan: #38bdf8;
+  --blue: #0284c7;
+  --blue-light: #0ea5e9;
+  --gold: #eab308;
+  --green: #22c55e;
+  --red: #e11d48;
   --white: #ffffff;
   --gray-50: #f8fafc;
   --gray-100: #f1f5f9;
@@ -27,24 +27,24 @@
   --gray-700: #334155;
   --gray-800: #1e293b;
   --gray-900: #0f172a;
-  --text-primary: #0a1628;
+  --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #6b88b0;
-  --border: #d1dcf5;
-  --shadow-sm: 0 1px 3px rgba(10, 22, 40, 0.06);
-  --shadow: 0 8px 28px rgba(10, 22, 40, 0.1);
-  --shadow-lg: 0 24px 64px rgba(10, 22, 40, 0.14);
+  --text-muted: #64748b;
+  --border: #d5dde9;
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.05);
+  --shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 24px 64px rgba(15, 23, 42, 0.12);
   --radius: 12px;
   --radius-lg: 16px;
   --radius-xl: 24px;
 
-  --ig-primary: #0066ff;
-  --ig-accent: #00c9c8;
+  --ig-primary: #0284c7;
+  --ig-accent: #16a34a;
   --ig-card-bg: #ffffff;
-  --ig-card-border: #d1dcf5;
-  --ig-page-bg: #eef3fb;
-  --ig-text: #0a1628;
-  --ig-text-muted: #6b88b0;
+  --ig-card-border: #d5dde9;
+  --ig-page-bg: #e8edf5;
+  --ig-text: #0f172a;
+  --ig-text-muted: #64748b;
 
   --font-display: var(--font-sora), "Sora", sans-serif;
   --font-brand: var(--font-space), "Space Grotesk", sans-serif;
@@ -87,8 +87,8 @@ h1, h2, h3, .ig-display {
 .ig-card {
   background: #ffffff !important;
   border: 1px solid var(--ig-card-border) !important;
-  border-radius: 14px !important;
-  box-shadow: var(--shadow-sm), 0 4px 16px rgba(10, 31, 78, 0.06) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--shadow-sm), 0 8px 22px rgba(15, 23, 42, 0.05) !important;
   color: var(--ig-text) !important;
 }
 .ig-card h1, .ig-card h2, .ig-card h3, .ig-card h4,
@@ -101,13 +101,13 @@ h1, h2, h3, .ig-display {
   background: #ffffff !important;
   border: 1.5px solid var(--ig-card-border) !important;
   color: var(--ig-text) !important;
-  border-radius: 10px !important;
+  border-radius: 11px !important;
   font-family: var(--font-ui) !important;
 }
 .ig-input::placeholder { color: var(--ig-text-muted) !important; }
 .ig-input:focus {
   border-color: var(--ig-primary) !important;
-  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.12) !important;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.14) !important;
   outline: none !important;
 }
 
@@ -115,12 +115,12 @@ h1, h2, h3, .ig-display {
   background: #ffffff !important;
   border: 1.5px solid var(--ig-card-border) !important;
   color: var(--ig-text) !important;
-  border-radius: 10px !important;
+  border-radius: 11px !important;
   font-family: var(--font-ui) !important;
 }
 .ig-select:focus {
   border-color: var(--ig-primary) !important;
-  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.12) !important;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.14) !important;
   outline: none !important;
 }
 .ig-select option { background: #ffffff; color: var(--ig-text); }
@@ -129,15 +129,15 @@ h1, h2, h3, .ig-display {
   background: linear-gradient(135deg, var(--ig-primary), var(--ig-accent)) !important;
   color: #fff !important;
   border: none !important;
-  border-radius: 10px !important;
+  border-radius: 11px !important;
   font-family: var(--font-ui) !important;
   font-weight: 800 !important;
-  box-shadow: 0 8px 22px rgba(0, 102, 255, 0.28) !important;
+  box-shadow: 0 8px 22px rgba(2, 132, 199, 0.24) !important;
 }
 
 /* Left-rail shell coexistence with legacy style.css */
 body:has(#ig-app-shell) {
-  background: #f3f6fb !important;
+  background: #e8edf5 !important;
 }
 html[data-theme="dark"] body:has(#ig-app-shell) {
   background: #0b1220 !important;
@@ -147,4 +147,3 @@ html[data-theme="dark"] body:has(#ig-app-shell) {
 #ig-shell-content main {
   max-width: 100%;
 }
-

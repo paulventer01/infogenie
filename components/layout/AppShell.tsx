@@ -19,22 +19,33 @@ const MENU_SVG =
 const CHEVRON_SVG =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';
 
+const BRIEF_SVG =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>';
+
+const SPARK_SVG =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z"/></svg>';
+
 const LS_ANALYSED = "ig:analysed";
 const LS_SIDEBAR = "ig:sidebar-open";
+
+function allGroupsOpen(): Record<string, boolean> {
+  const next: Record<string, boolean> = {};
+  for (const g of NAV_GROUPS) next[g.key] = true;
+  return next;
+}
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [navReady, setNavReady] = useState(true);
   const [open, setOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    analyse: true,
-  });
+  // Open every group by default so menus never look "empty" on first click.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(allGroupsOpen);
   const [filter, setFilter] = useState("");
 
   useEffect(() => {
     try {
-      // Always start expanded so menus are visible; user can collapse via toggle.
+      // Prefer expanded rail so submenus are visible; honor explicit collapse.
       const stored = localStorage.getItem(LS_SIDEBAR);
       if (stored === "0") setOpen(false);
       else setOpen(true);
@@ -56,6 +67,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => {});
+  }, []);
+
+  // Guard against legacy app.js setting #navGroups to horizontal flex.
+  useEffect(() => {
+    const el = document.getElementById("navGroups");
+    if (!el) return;
+    const lock = () => {
+      el.style.display = "flex";
+      el.style.flexDirection = "column";
+      el.style.flexWrap = "nowrap";
+      el.style.alignItems = "stretch";
+    };
+    lock();
+    const obs = new MutationObserver(lock);
+    obs.observe(el, { attributes: true, attributeFilter: ["style"] });
+    return () => obs.disconnect();
   }, []);
 
   useEffect(() => {
@@ -232,9 +259,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 title="Today's Marketing Brief"
                 onClick={goBrief}
               >
-                <span className={styles.gIcon} aria-hidden>
-                  📋
-                </span>
+                <span
+                  className={styles.gIcon}
+                  aria-hidden
+                  dangerouslySetInnerHTML={{ __html: BRIEF_SVG }}
+                />
                 <span className={styles.gLabel}>Brief</span>
               </button>
 
@@ -255,9 +284,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               onClick={goAnalyse}
               title="Run your first analysis to unlock the full menu"
             >
-              <span className={styles.gIcon} aria-hidden>
-                ✨
-              </span>
+              <span
+                className={styles.gIcon}
+                aria-hidden
+                dangerouslySetInnerHTML={{ __html: SPARK_SVG }}
+              />
               <span className={styles.gLabel}>Start with Analyse</span>
             </button>
           )}

@@ -1,37 +1,39 @@
-/* App shell — left collapsible sidebar + main stage. */
+/* App shell — left collapsible sidebar + main stage.
+   Visual system: “Signal” — ink rail, sky + lime accents, cool slate stage. */
 
 .shell {
-  --shell-rail: #0b1220;
-  --shell-rail-2: #111827;
-  --shell-ink: #f8fafc;
-  --shell-muted: #94a3b8;
-  --shell-line: rgba(248, 250, 252, 0.08);
-  --shell-accent: #2dd4bf;
-  --shell-accent-2: #3b82f6;
-  --shell-stage: #f4f6fb;
-  --shell-stage-ink: #111827;
-  --shell-w-open: 280px;
-  --shell-w-closed: 78px;
-  --shell-topbar-bg: rgba(244, 246, 251, 0.9);
-  --shell-topbar-border: rgba(17, 24, 39, 0.06);
-  --shell-icon-bg: #fff;
-  --shell-icon-border: rgba(17, 24, 39, 0.08);
+  --shell-rail: #0c1222;
+  --shell-rail-2: #121a2e;
+  --shell-ink: #f4f7fb;
+  --shell-muted: #8b9bb4;
+  --shell-line: rgba(244, 247, 251, 0.09);
+  --shell-accent: #38bdf8;
+  --shell-accent-2: #22c55e;
+  --shell-stage: #e8edf5;
+  --shell-stage-ink: #0f172a;
+  --shell-w-open: 292px;
+  --shell-w-closed: 76px;
+  --shell-topbar-bg: rgba(232, 237, 245, 0.88);
+  --shell-topbar-border: rgba(15, 23, 42, 0.07);
+  --shell-icon-bg: #ffffff;
+  --shell-icon-border: rgba(15, 23, 42, 0.1);
   --shell-icon-color: #334155;
 
   min-height: 100vh;
   background:
-    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(61, 139, 255, 0.08), transparent 50%),
-    radial-gradient(ellipse 50% 35% at 0% 100%, rgba(30, 224, 200, 0.06), transparent 45%),
-    var(--shell-stage);
+    radial-gradient(ellipse 55% 42% at 100% -5%, rgba(56, 189, 248, 0.16), transparent 55%),
+    radial-gradient(ellipse 48% 38% at -5% 100%, rgba(34, 197, 94, 0.1), transparent 50%),
+    linear-gradient(180deg, #eef2f8 0%, var(--shell-stage) 40%, #e4eaf3 100%);
   color: var(--shell-stage-ink);
+  font-family: var(--font-jakarta), "Plus Jakarta Sans", sans-serif;
 }
 
 :global(html[data-theme="dark"]) .shell {
-  --shell-rail: #050a12;
-  --shell-rail-2: #0a1422;
+  --shell-rail: #05070e;
+  --shell-rail-2: #0a1020;
   --shell-stage: #0b1220;
   --shell-stage-ink: #e8eef8;
-  --shell-topbar-bg: rgba(11, 18, 32, 0.84);
+  --shell-topbar-bg: rgba(11, 18, 32, 0.88);
   --shell-topbar-border: rgba(255, 255, 255, 0.06);
   --shell-icon-bg: rgba(255, 255, 255, 0.05);
   --shell-icon-border: rgba(255, 255, 255, 0.1);
@@ -48,7 +50,7 @@
   display: flex;
   flex-direction: column;
   background:
-    linear-gradient(180deg, rgba(30, 224, 200, 0.06), transparent 28%),
+    linear-gradient(180deg, rgba(56, 189, 248, 0.08), transparent 32%),
     linear-gradient(165deg, var(--shell-rail) 0%, var(--shell-rail-2) 100%);
   border-right: 1px solid var(--shell-line);
   color: var(--shell-ink);
@@ -85,21 +87,26 @@
 }
 
 .brandMark {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   flex-shrink: 0;
-  border-radius: 11px;
-  background: linear-gradient(135deg, var(--shell-accent), var(--shell-accent-2));
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0ea5e9 0%, #22c55e 100%);
   display: grid;
   place-items: center;
-  box-shadow: 0 8px 20px rgba(61, 139, 255, 0.28);
+  animation: brandPulse 4.5s ease-in-out infinite;
+}
+
+@keyframes brandPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
 }
 
 .brandText {
   font-family: var(--font-space), "Space Grotesk", sans-serif;
-  font-size: 1.15rem;
+  font-size: 1.2rem;
   font-weight: 800;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.045em;
   white-space: nowrap;
   overflow: hidden;
   transition: opacity 0.2s, width 0.2s;
@@ -130,8 +137,8 @@
 }
 
 .toggle:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(30, 224, 200, 0.35);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(56, 189, 248, 0.4);
 }
 
 .toggle svg {
@@ -149,11 +156,11 @@
 .railSearch input {
   width: 100%;
   box-sizing: border-box;
-  border-radius: 10px;
+  border-radius: 11px;
   border: 1px solid var(--shell-line);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--shell-ink);
-  padding: 9px 11px;
+  padding: 10px 12px;
   font-size: 0.78rem;
   font-family: var(--font-jakarta), "Plus Jakarta Sans", sans-serif;
   outline: none;
@@ -164,16 +171,24 @@
 }
 
 .railSearch input:focus {
-  border-color: rgba(30, 224, 200, 0.45);
-  box-shadow: 0 0 0 3px rgba(30, 224, 200, 0.12);
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.14);
 }
 
 .shellCollapsed .railSearch {
   display: none;
 }
 
+/* CRITICAL: column flex — legacy app.js sets display:flex (row default).
+   Without flex-direction:column, groups pack horizontally and clip away. */
 .railNav {
   flex: 1;
+  min-height: 0;
+  display: flex !important;
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  gap: 2px;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 8px 10px 18px;
@@ -188,7 +203,7 @@
   align-items: center;
   gap: 10px;
   padding: 10px 11px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   border: none;
   border-radius: 12px;
   background: transparent;
@@ -198,6 +213,7 @@
   font-size: 0.84rem;
   font-weight: 700;
   text-align: left;
+  flex-shrink: 0;
   transition: background 0.15s, color 0.15s;
 }
 
@@ -209,8 +225,8 @@
 
 .groupBtnOpen {
   color: #fff;
-  background: linear-gradient(135deg, rgba(61, 139, 255, 0.22), rgba(30, 224, 200, 0.14));
-  box-shadow: inset 0 0 0 1px rgba(30, 224, 200, 0.18);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.22), rgba(34, 197, 94, 0.14));
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.22);
 }
 
 .gIcon {
@@ -254,6 +270,9 @@
 
 .group {
   margin-bottom: 2px;
+  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
 }
 
 .section {
@@ -263,11 +282,12 @@
 .groupPanel {
   margin: 0 0 8px;
   padding: 4px 0 8px 8px;
-  border-left: 1px solid rgba(30, 224, 200, 0.18);
+  border-left: 2px solid rgba(56, 189, 248, 0.28);
   margin-left: 21px;
   /* Must win over any leaked legacy dropdown rules */
   position: static !important;
   opacity: 1 !important;
+  visibility: visible !important;
   pointer-events: auto !important;
   transform: none !important;
   display: block !important;
@@ -276,10 +296,13 @@
   background: transparent !important;
   box-shadow: none !important;
   min-width: 0 !important;
+  width: auto !important;
+  left: auto !important;
+  top: auto !important;
 }
 
 .shellCollapsed .groupPanel {
-  display: none;
+  display: none !important;
 }
 
 .sectionHead {
@@ -291,7 +314,7 @@
   color: var(--shell-muted);
   font-size: 0.65rem;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   text-align: left;
   cursor: pointer;
@@ -305,16 +328,17 @@
   padding: 7px 8px;
   margin: 1px 0;
   border-radius: 9px;
-  color: #c9d6e8;
+  color: #c5d2e6;
   text-decoration: none;
   font-size: 0.78rem;
   font-weight: 600;
-  transition: background 0.12s, color 0.12s;
+  transition: background 0.12s, color 0.12s, padding-left 0.12s;
 }
 
 .link:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
+  padding-left: 12px;
 }
 
 .linkIcon {
@@ -336,13 +360,19 @@
   padding: 11px 12px;
   border: none;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--shell-accent-2), var(--shell-accent));
+  background: linear-gradient(135deg, #0ea5e9, #22c55e);
   color: #041018;
   font-weight: 800;
   font-size: 0.82rem;
   cursor: pointer;
   font-family: inherit;
-  box-shadow: 0 10px 24px rgba(61, 139, 255, 0.28);
+  letter-spacing: -0.01em;
+  transition: transform 0.15s, filter 0.15s;
+}
+
+.analyseBtn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
 }
 
 .shellCollapsed .analyseBtn {
@@ -377,10 +407,16 @@
   justify-content: space-between;
   gap: 12px;
   min-height: 58px;
-  padding: 10px 18px;
+  padding: 10px 20px;
   background: var(--shell-topbar-bg);
-  backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
   border-bottom: 1px solid var(--shell-topbar-border);
+  animation: topbarIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes topbarIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .topbarLeft {
@@ -404,9 +440,9 @@
 
 .crumb {
   font-family: var(--font-sora), "Sora", sans-serif;
-  font-size: 0.95rem;
+  font-size: 0.98rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   color: var(--shell-stage-ink);
 }
 
@@ -432,13 +468,13 @@
 .plan {
   font-size: 0.68rem;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   padding: 6px 10px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, rgba(61, 139, 255, 0.12), rgba(30, 224, 200, 0.16));
-  color: #0b4f9c;
-  border: 1px solid rgba(61, 139, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(14, 165, 233, 0.12);
+  color: #0369a1;
+  border: 1px solid rgba(14, 165, 233, 0.28);
 }
 
 .manual {
@@ -459,6 +495,12 @@
   flex: 1;
   min-width: 0;
   padding: 0;
+  animation: contentRise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes contentRise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .backdrop {
@@ -512,7 +554,7 @@
     display: block;
   }
   .shellMobileOpen.shellCollapsed .groupPanel {
-    display: block;
+    display: block !important;
   }
   .shellMobileOpen.shellCollapsed .briefBtn,
   .shellMobileOpen.shellCollapsed .groupBtn {
@@ -531,7 +573,11 @@
 @media (prefers-reduced-motion: reduce) {
   .rail,
   .stage,
-  .toggle svg {
+  .toggle svg,
+  .brandMark,
+  .topbar,
+  .content {
+    animation: none;
     transition: none;
   }
 }

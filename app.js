@@ -2695,10 +2695,18 @@ function navigateTo(viewId, updateActive = true) {
   // (battleplan now handled by _lazyBuild above)
   // ── Tier 1+2 Plai-parity modules ─────────────────────────────────────────
   // Show/hide navbar for home vs app
+  // Left-rail shell: #navGroups must stay a COLUMN flex. Legacy top-nav used a
+  // horizontal row; setting display:flex without flex-direction clips every
+  // sidebar group (overflow-x:hidden) so menus appear to "vanish".
   const navGroups = document.getElementById('navGroups');
   const navPlan   = document.getElementById('navPlanBadge');
   const navBtn    = document.getElementById('navAnalyseBtn');
-  if (navGroups) navGroups.style.display = 'flex';
+  if (navGroups) {
+    navGroups.style.display = 'flex';
+    navGroups.style.flexDirection = 'column';
+    navGroups.style.flexWrap = 'nowrap';
+    navGroups.style.alignItems = 'stretch';
+  }
   if (navPlan)   navPlan.style.display   = viewId === 'home' ? 'none'  : 'block';
   if (navBtn)    navBtn.style.display    = viewId === 'home' ? 'none'  : 'block';
   window.scrollTo(0, 0);

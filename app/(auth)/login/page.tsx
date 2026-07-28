@@ -236,8 +236,8 @@ export default function LoginPage() {
           <svg width="44" height="44" viewBox="0 0 40 40" aria-hidden="true">
             <defs>
               <linearGradient id="igAuthLogo" x1="0" y1="0" x2="40" y2="40">
-                <stop offset="0%" stopColor="#00C9C8" />
-                <stop offset="100%" stopColor="#0066FF" />
+                <stop offset="0%" stopColor="#0EA5E9" />
+                <stop offset="100%" stopColor="#22C55E" />
               </linearGradient>
             </defs>
             <circle cx="20" cy="20" r="20" fill="url(#igAuthLogo)" />
@@ -253,11 +253,11 @@ export default function LoginPage() {
           </span>
         </div>
         <h1 className={styles.heroTitle}>
-          Research, launch, and prove growth in one place.
+          One workspace for marketing that moves.
         </h1>
         <p className={styles.heroLead}>
-          InfoGenie replaces the tool sprawl — competitor intel, campaigns, and
-          reporting with a calm, modern workspace.
+          InfoGenie turns competitor signals into campaigns, content, and clear
+          reporting — without the tool sprawl.
         </p>
         <div className={styles.heroMeta}>
           <span>Compete</span>
