@@ -469,7 +469,7 @@ export default function VisitorIntel() {
               <div style={{ padding: 40, textAlign: "center", color: "#9CA3AF" }}>Loading snippet…</div>
             )}
             <div style={{ marginTop: 12, fontSize: ".8rem", color: "#9CA3AF" }}>
-              Paste this into your website's <code>&lt;head&gt;</code> tag — works with any CMS, Webflow, WordPress, Shopify, or custom HTML.
+              Paste this into your website&apos;s <code>&lt;head&gt;</code> tag — works with any CMS, Webflow, WordPress, Shopify, or custom HTML.
             </div>
           </div>
 
@@ -479,7 +479,7 @@ export default function VisitorIntel() {
               ⚠️ Privacy note
             </div>
             <div style={{ fontSize: ".83rem", color: "#78350F", lineHeight: 1.6 }}>
-              This feature identifies companies at the IP level — not individual people. Make sure your website's privacy policy mentions that you use analytics tools to identify company-level visitors for B2B outreach purposes. This is standard practice for B2B intent data (used by Clearbit Reveal, Leadfeeder, Warmly, etc.).
+              This feature identifies companies at the IP level — not individual people. Make sure your website&apos;s privacy policy mentions that you use analytics tools to identify company-level visitors for B2B outreach purposes. This is standard practice for B2B intent data (used by Clearbit Reveal, Leadfeeder, Warmly, etc.).
             </div>
           </div>
         </div>
