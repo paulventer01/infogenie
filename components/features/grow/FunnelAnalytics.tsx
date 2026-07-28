@@ -121,7 +121,10 @@ export default function FunnelAnalytics() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [cfg, r] = await Promise.all([apiGet("/api/funnel-analytics/config"), apiGet("/api/funnel-analytics/funnels")]);
+    const [cfg, r] = await Promise.all([
+      apiGet<{ ok?: boolean; step_types?: StepType[] }>("/api/funnel-analytics/config"),
+      apiGet<{ ok?: boolean; funnels?: Funnel[] }>("/api/funnel-analytics/funnels"),
+    ]);
     if (cfg?.step_types) setStepTypes(cfg.step_types);
     if (r?.funnels) setFunnels(r.funnels);
     setLoading(false);
@@ -131,8 +134,16 @@ export default function FunnelAnalytics() {
 
   async function loadStats(funnelId: number, r: string) {
     setLoadingStats(true);
-    const res = await apiGet(`/api/funnel-analytics/funnels/${funnelId}/stats?range=${r}`);
-    if (res?.ok) setStats(res as Stats);
+    const res = await apiGet<{ ok?: boolean } & Partial<Stats>>(`/api/funnel-analytics/funnels/${funnelId}/stats?range=${r}`);
+    if (res?.ok && res.summary && res.steps && res.utms && res.trend && res.days != null) {
+      setStats({
+        summary: res.summary,
+        steps: res.steps,
+        utms: res.utms,
+        trend: res.trend,
+        days: res.days,
+      });
+    }
     setLoadingStats(false);
   }
 
@@ -149,7 +160,7 @@ export default function FunnelAnalytics() {
     if (!form.name) { showToast("Funnel name required."); return; }
     if (newSteps.some(s => !s.name)) { showToast("All steps need a name."); return; }
     setSaving(true);
-    const r = await apiPost("/api/funnel-analytics/funnels", { ...form, steps: newSteps });
+    const r = await apiPost<{ ok?: boolean; funnel: Funnel }>("/api/funnel-analytics/funnels", { ...form, steps: newSteps });
     if (r?.ok) {
       showToast("✅ Funnel created!");
       setFunnels(prev => [r.funnel, ...prev]);
@@ -175,8 +186,8 @@ export default function FunnelAnalytics() {
   }
 
   async function loadSnippet(funnelId: number) {
-    const r = await apiGet(`/api/funnel-analytics/funnels/${funnelId}/snippet`);
-    if (r?.ok) setSnippet(r.snippet);
+    const r = await apiGet<{ ok?: boolean; snippet?: string }>(`/api/funnel-analytics/funnels/${funnelId}/snippet`);
+    if (r?.ok && r.snippet) setSnippet(r.snippet);
   }
 
   function handleCopy() {
@@ -424,24 +435,25 @@ export default function FunnelAnalytics() {
 
                     {/* Per-step rows */}
                     {stats.steps.map((step, i) => {
-                      const sv = +step.views_all || 0;
-                      const so = +step.optins_all || 0;
-                      const ss = +step.sales_orders || 0;
-                      const sr = +step.revenue_gross || 0;
+                      const sv = +(step.views_all ?? 0);
+                      const so = +(step.optins_all ?? 0);
+                      const ss = +(step.sales_orders ?? 0);
+                      const sr = +(step.revenue_gross ?? 0);
+                      const su = +(step.views_unique ?? 0);
                       return (
                         <div key={step.id} style={{ display: "grid", gridTemplateColumns: "180px repeat(2,1fr) repeat(2,1fr) repeat(3,1fr) repeat(2,1fr)", borderBottom: "1px solid #F1F5F9", background: i % 2 === 0 ? "#fff" : "#FAFBFF" }}>
                           <div style={{ padding: "9px 14px", fontSize: "0.8rem", color: "#374151", fontWeight: 600 }}>
                             {STEP_TYPE_ICONS[step.step_type] || "📄"} {step.name}
                           </div>
                           <div style={{ padding: "9px 10px", textAlign: "center", fontSize: "0.8rem" }}>{sv.toLocaleString()}</div>
-                          <div style={{ padding: "9px 10px", textAlign: "center", fontSize: "0.8rem", color: "#64748B" }}>{(+step.views_unique || 0).toLocaleString()}</div>
+                          <div style={{ padding: "9px 10px", textAlign: "center", fontSize: "0.8rem", color: "#64748B" }}>{su.toLocaleString()}</div>
                           <div style={{ padding: "9px 10px", textAlign: "center", fontSize: "0.8rem" }}>{so.toLocaleString()}</div>
                           <div style={{ padding: "9px 10px", textAlign: "center", fontSize: "0.8rem", color: "#059669" }}>{sv > 0 ? ((so / sv) * 100).toFixed(2) : "0.00"}%</div>
                           <div style={{ padding: "9px 10px", textAlign: "center", fontSize: "0.8rem" }}>{ss.toLocaleString()}</div>
                           <div style={{ padding: "9px 10px", textAlign: "center", fontSize: "0.8rem", color: "#D97706" }}>{so > 0 ? ((ss / so) * 100).toFixed(2) : "0.00"}%</div>
                           <div style={{ padding: "9px 10px", textAlign: "center", fontSize: "0.8rem", color: "#059669" }}>{fmt(sr, active.currency)}</div>
                           <div style={{ padding: "9px 10px", textAlign: "center", fontSize: "0.8rem" }}>{sv > 0 ? fmt(sr / sv, active.currency) : "$0.00"}</div>
-                          <div style={{ padding: "9px 10px", textAlign: "center", fontSize: "0.8rem", color: "#64748B" }}>{(+step.views_unique || 0) > 0 ? fmt(sr / (+step.views_unique || 1), active.currency) : "$0.00"}</div>
+                          <div style={{ padding: "9px 10px", textAlign: "center", fontSize: "0.8rem", color: "#64748B" }}>{su > 0 ? fmt(sr / su, active.currency) : "$0.00"}</div>
                         </div>
                       );
                     })}
@@ -459,10 +471,11 @@ export default function FunnelAnalytics() {
                       <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#0A1628", marginBottom: 16 }}>🪜 Funnel Drop-off Visualisation</div>
                       <div style={{ display: "flex", gap: 0, alignItems: "flex-end" }}>
                         {stats.steps.map((step, i) => {
-                          const maxViews = Math.max(...stats.steps.map(s => +s.views_all || 0), 1);
-                          const views    = +step.views_all || 0;
+                          const maxViews = Math.max(...stats.steps.map(s => +(s.views_all ?? 0)), 1);
+                          const views    = +(step.views_all ?? 0);
                           const barH     = Math.max(20, Math.round((views / maxViews) * 180));
-                          const dropoff  = i > 0 ? (1 - views / Math.max(+stats.steps[i-1].views_all || 1, 1)) * 100 : 0;
+                          const prevViews = +(stats.steps[i - 1]?.views_all ?? 1);
+                          const dropoff  = i > 0 ? (1 - views / Math.max(prevViews, 1)) * 100 : 0;
                           return (
                             <div key={step.id} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "0 4px" }}>
                               {i > 0 && (
@@ -500,11 +513,11 @@ export default function FunnelAnalytics() {
                     </thead>
                     <tbody>
                       {stats.steps.map((s, i) => {
-                        const sv = +s.views_all || 0;
-                        const su = +s.views_unique || 0;
-                        const so = +s.optins_all || 0;
-                        const ss = +s.sales_orders || 0;
-                        const sr = +s.revenue_gross || 0;
+                        const sv = +(s.views_all ?? 0);
+                        const su = +(s.views_unique ?? 0);
+                        const so = +(s.optins_all ?? 0);
+                        const ss = +(s.sales_orders ?? 0);
+                        const sr = +(s.revenue_gross ?? 0);
                         return (
                           <tr key={s.id} style={{ borderBottom: "1px solid #F1F5F9", background: i % 2 === 0 ? "#fff" : "#FAFBFF" }}>
                             <td style={{ padding: "8px 10px", fontWeight: 600 }}>{s.name}</td>
