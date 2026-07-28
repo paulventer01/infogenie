@@ -2,6 +2,27 @@ const express = require('express');
 const path = require('path');
 const https = require('https');
 const fs    = require('fs');
+// Load workspace .env when present so plain `node server.js` picks up
+// DATABASE_URL / SESSION_SECRET (Next.js loads .env automatically; Express does not).
+(function _loadDotEnv() {
+  try {
+    const envPath = path.join(__dirname, '.env');
+    if (!fs.existsSync(envPath)) return;
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+      if (!m) continue;
+      const key = m[1];
+      if (process.env[key] != null && process.env[key] !== '') continue;
+      let val = m[2].trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      process.env[key] = val;
+    }
+  } catch {
+    /* ignore malformed .env */
+  }
+})();
 const multer = require('multer');
 const dns   = require('dns').promises;
 const net   = require('net');
