@@ -2384,7 +2384,7 @@ window.buildHeadlineTester = function() {
         brand: ad.brandName || ad.brand || '',
         // Industry can be either an object ({ name: '…' }) or a plain string
         // depending on which analyser produced it — normalise both shapes.
-        industry: (ad.industry && (ad.industry.name || ad.industry)) || '',
+        industry: (ad.industry && (ad.industry.name || (typeof ad.industry === 'string' ? ad.industry : ''))) || '',
         currentValue: isSelect ? '' : prev,
         context: ctxExtra || ''
       };
