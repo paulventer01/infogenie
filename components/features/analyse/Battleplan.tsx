@@ -483,7 +483,7 @@ export default function Battleplan() {
       </div>
 
       {/* Competitor Tabs */}
-      <div style={{ background: "rgba(255,255,255,.02)", borderBottom: "1px solid rgba(255,255,255,.07)", overflowX: "auto" }}>
+      <div style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0", overflowX: "auto" }}>
         <div style={{ display: "flex", padding: "0 20px", maxWidth: 1200, margin: "0 auto" }}>
           {comps.map((comp, i) => {
             const t = comp.threatLevel || "medium";
@@ -500,12 +500,12 @@ export default function Battleplan() {
                   gap: 8,
                   padding: "10px 18px",
                   border: "none",
-                  borderBottom: `3px solid ${active ? "#00C9C8" : "transparent"}`,
-                  background: active ? "rgba(0,201,200,.08)" : "transparent",
+                  borderBottom: `3px solid ${active ? "#00A8A7" : "transparent"}`,
+                  background: active ? "rgba(0,201,200,.10)" : "transparent",
                   cursor: "pointer",
-                  color: active ? "#00C9C8" : "rgba(255,255,255,.5)",
+                  color: active ? "#0F766E" : "#334155",
                   fontSize: "0.8rem",
-                  fontWeight: active ? 700 : 500,
+                  fontWeight: active ? 700 : 600,
                   whiteSpace: "nowrap",
                   fontFamily: "'Inter',sans-serif",
                   transition: "all .15s",
@@ -523,29 +523,29 @@ export default function Battleplan() {
       </div>
 
       {/* Selected Competitor Summary */}
-      <div style={{ background: "rgba(0,201,200,.06)", borderBottom: "1px solid rgba(0,201,200,.12)", padding: "14px 28px" }}>
+      <div style={{ background: "#F0FDFA", borderBottom: "1px solid #CCFBF1", padding: "14px 28px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 36, height: 36, borderRadius: 8, background: "linear-gradient(135deg,#0066FF,#00C9C8)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "white", fontSize: "0.9rem" }}>
               {initial}
             </div>
             <div>
-              <div style={{ fontWeight: 800, color: "white", fontSize: "0.95rem" }}>{c.name}</div>
-              <div style={{ fontSize: "0.68rem", color: "rgba(255,255,255,.4)" }}>{c.url || ""}</div>
+              <div style={{ fontWeight: 800, color: "#0F172A", fontSize: "0.95rem" }}>{c.name}</div>
+              <div style={{ fontSize: "0.68rem", color: "#64748B" }}>{c.url || ""}</div>
             </div>
           </div>
           <div style={{ flex: 1, display: "flex", gap: 24, flexWrap: "wrap" }}>
             {[
-              { v: traffic, l: "Traffic/mo", color: "#00E5FF" },
-              { v: c.ctr || "—", l: "CTR", color: "#00E5FF" },
-              { v: `${c.roas || "—"}×`, l: "ROAS", color: "#00E5FF" },
-              { v: c.adSpend || "—", l: "Ad Spend", color: "#00E5FF" },
-              { v: c.topChannel || "—", l: "Top Channel", color: "#00E5FF" },
+              { v: traffic, l: "Traffic/mo", color: "#0E7490" },
+              { v: c.ctr || "—", l: "CTR", color: "#0E7490" },
+              { v: `${c.roas || "—"}×`, l: "ROAS", color: "#0E7490" },
+              { v: c.adSpend || "—", l: "Ad Spend", color: "#0E7490" },
+              { v: c.topChannel || "—", l: "Top Channel", color: "#0E7490" },
               { v: threat.toUpperCase(), l: "Threat", color: threatColor },
             ].map((m, i) => (
               <div key={i} style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "0.92rem", fontWeight: 800, color: m.color }}>{m.v}</div>
-                <div style={{ fontSize: "0.62rem", color: "rgba(255,255,255,.4)", textTransform: "uppercase", letterSpacing: ".06em" }}>{m.l}</div>
+                <div style={{ fontSize: "0.62rem", color: "#64748B", textTransform: "uppercase", letterSpacing: ".06em" }}>{m.l}</div>
               </div>
             ))}
           </div>
