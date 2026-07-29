@@ -11,6 +11,8 @@ const CONNECTOR_PLATFORMS = [
   "Google Ads",
   "GA4",
   "LinkedIn Ads",
+  "TikTok Ads",
+  "Email",
   "HubSpot",
 ] as const;
 
@@ -77,7 +79,11 @@ export function syncClientMetrics(
 ): { client: ClientWorkspace; snapshot: MetricSnapshot | null; anomalies: AgencyAlert[] } {
   const connected = client.integrations.filter((i) => i.status === "connected");
   const adConnected = connected.filter(
-    (i) => i.platform.includes("Meta") || i.platform.includes("Google") || i.platform.includes("LinkedIn")
+    (i) =>
+      i.platform.includes("Meta") ||
+      i.platform.includes("Google") ||
+      i.platform.includes("LinkedIn") ||
+      i.platform.includes("TikTok")
   );
 
   if (adConnected.length === 0) {

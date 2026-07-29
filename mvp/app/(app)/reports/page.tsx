@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionClient } from "@/lib/session";
-import { updateActiveClient } from "@/lib/store";
+import { updateActiveClient, writeAgency } from "@/lib/store";
 import { generateWeeklyReport, gatherReportSections } from "@/lib/reports";
+import { bumpHoursSaved } from "@/lib/attribution";
 import { getDataMode } from "@/lib/strict-mode";
 import { PageHeader, NeedAnalysis } from "@/components/PageHeader";
 import styles from "@/styles/mvp.module.css";
@@ -12,7 +13,12 @@ async function generateReport() {
   const ctx = await getSessionClient();
   if (!ctx?.client.analysis) redirect("/");
   const report = generateWeeklyReport(ctx.client, ctx.agency);
+  const hadReport = !!ctx.client.weeklyReport;
   updateActiveClient(ctx.agency, (c) => ({ ...c, weeklyReport: report }));
+  // Re-read after update via bump on agency hours
+  const { readAgency } = await import("@/lib/store");
+  const agency = readAgency();
+  if (agency && !hadReport) writeAgency(bumpHoursSaved(agency, 2.5));
   redirect("/reports");
 }
 
@@ -22,6 +28,10 @@ async function saveReport(formData: FormData) {
   if (!ctx?.client.weeklyReport) redirect("/reports");
   const narrative = String(formData.get("narrative") || "");
   const status = String(formData.get("status") || "draft") as "draft" | "final";
+  const autopilot = formData.get("autopilot") === "on";
+  const nextSend = new Date();
+  nextSend.setDate(nextSend.getDate() + ((1 + 7 - nextSend.getDay()) % 7 || 7));
+  nextSend.setHours(8, 0, 0, 0);
   updateActiveClient(ctx.agency, (c) => ({
     ...c,
     weeklyReport: c.weeklyReport
@@ -29,6 +39,8 @@ async function saveReport(formData: FormData) {
           ...c.weeklyReport,
           narrative,
           status,
+          autopilot,
+          nextSendAt: autopilot ? nextSend.toISOString() : undefined,
           updatedAt: new Date().toISOString(),
         }
       : null,
@@ -119,6 +131,15 @@ export default async function ReportsPage() {
                 <option value="final">Final — ready to send</option>
               </select>
             </div>
+            <label className={styles.checkRow}>
+              <input type="checkbox" name="autopilot" defaultChecked={!!report.autopilot} />
+              Autopilot — schedule Monday 08:00 white-label send (Resend in production)
+            </label>
+            {report.autopilot && report.nextSendAt ? (
+              <p className={styles.muted} style={{ marginBottom: 12 }}>
+                Next send: {new Date(report.nextSendAt).toLocaleString()}
+              </p>
+            ) : null}
             <button className={`${styles.btn} ${styles.btnPrimary}`} type="submit">
               Save report
             </button>

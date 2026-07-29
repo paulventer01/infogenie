@@ -71,6 +71,9 @@ export default async function ResultsPage({
         sub="One narrative tying activity → measurable outcomes. Strict mode withholds metrics that aren't real."
         right={
           <div className={styles.chipRow}>
+            <Link className={`${styles.btn} ${styles.btnGhost}`} href="/attribution">
+              Attribution →
+            </Link>
             <Link className={`${styles.btn} ${styles.btnGhost}`} href="/reports">
               Weekly report →
             </Link>

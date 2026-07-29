@@ -26,6 +26,10 @@ function templatesFor(a: Analysis): Record<ContentDraft["kind"], { title: string
       title: `${a.brandName} vs ${rival}`,
       body: `Hero: The clearer ${a.industry} choice when ${rival} feels bloated.\n\nBullets:\n- ${a.swot.strengths[0]}\n- ${a.actions[0]?.why}\n- Pricing signal: ${a.pricingSignals[0]}\n\nCTA: Start free · Brand colors ${a.brand.colors.primary} / ${a.brand.colors.accent}`,
     },
+    social: {
+      title: `Social pack — ${a.brandName}`,
+      body: `LinkedIn:\n${a.brand.doSay[0] || a.brand.voice} — ${a.actions[0]?.title || "proof-led angle"}.\n\nX/Twitter:\n${a.brandName}: ${a.swot.strengths[0] || "Clearer outcomes"}. vs ${rival}.\n\nInstagram caption:\n${a.ads[0]?.body || a.brand.voice}\n#${a.industry.replace(/\s+/g, "")}\n\nDon't say: ${a.brand.dontSay.join(", ")}`,
+    },
   };
 }
 
@@ -62,7 +66,7 @@ async function bulkGenerate() {
       createdAt: new Date().toISOString(),
     };
   });
-  writeWorkspace({ ...ws, drafts: [...fresh, ...ws.drafts].slice(0, 24) });
+  writeWorkspace({ ...ws, drafts: [...fresh, ...ws.drafts].slice(0, 30) });
   redirect("/create?bulk=1");
 }
 
@@ -86,7 +90,7 @@ export default async function CreatePage({
 
       {sp.bulk ? (
         <div className={`${styles.banner} ${styles.bannerInfo}`}>
-          Generated all four formats from this client&apos;s brand foundation.
+          Generated all five formats from this client&apos;s brand foundation.
         </div>
       ) : null}
 
@@ -130,6 +134,7 @@ export default async function CreatePage({
                 <option value="cold-email">Cold email</option>
                 <option value="ad">Ad creative</option>
                 <option value="landing">Landing page copy</option>
+                <option value="social">Social (LI / X / IG)</option>
               </select>
             </div>
             <button className={`${styles.btn} ${styles.btnPrimary}`} type="submit">
@@ -139,8 +144,8 @@ export default async function CreatePage({
           <form className={styles.panel} action={bulkGenerate}>
             <h2 className={styles.panelTitle}>Bulk pack</h2>
             <p className={styles.muted} style={{ margin: "8px 0 12px" }}>
-              One click: blog + cold email + ad + landing for this client&apos;s voice. Biggest scale
-              lever for multi-client agencies.
+              One click: blog + cold email + ad + landing + social for this client&apos;s voice.
+              Biggest scale lever for multi-client agencies.
             </p>
             <button className={`${styles.btn} ${styles.btnPrimary}`} type="submit">
               Generate all formats

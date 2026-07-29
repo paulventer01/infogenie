@@ -11,8 +11,12 @@ async function runBulkReports() {
   "use server";
   const agency = await getSessionAgency();
   if (!agency) redirect("/");
+  const before = agency.clients.filter((c) => c.weeklyReport).length;
   const updated = generateAllClientReports(agency);
-  writeAgency(updated);
+  const after = updated.clients.filter((c) => c.weeklyReport).length;
+  const newReports = Math.max(0, after - before) || after;
+  const { bumpHoursSaved } = await import("@/lib/attribution");
+  writeAgency(bumpHoursSaved(updated, newReports * 2.5));
   redirect("/reports/bulk?done=1");
 }
 

@@ -5,8 +5,10 @@ import { addClient, switchActiveClient } from "@/lib/store";
 import { allAgencyAlerts, severityLabel } from "@/lib/alerts";
 import { allClientStatuses } from "@/lib/client-status";
 import { getDataMode } from "@/lib/strict-mode";
+import { estimateHoursSaved } from "@/lib/attribution";
 import { PageHeader } from "@/components/PageHeader";
 import styles from "@/styles/mvp.module.css";
+import { buildRecommendations } from "@/lib/recommendations";
 
 async function addClientAction(formData: FormData) {
   "use server";
@@ -60,13 +62,15 @@ export default async function AgencyPage() {
   const critical = alerts.filter((a) => a.severity === "critical" || a.severity === "high");
   const statuses = allClientStatuses(agency);
   const mode = getDataMode(agency);
+  const hoursSaved = estimateHoursSaved(agency);
+  const recCount = buildRecommendations(agency).filter((r) => r.priority === "P0").length;
 
   return (
     <>
       <PageHeader
         eyebrow="Agency · Monday standup"
         title="Command center"
-        sub="All clients at a glance — red/amber/green status, alerts, last report, spend signals. No need to open each workspace."
+        sub="Turns a full day of cross-client reporting and firefighting into minutes — unify platforms, watch campaigns, tell you what to do next."
         right={
           <div className={styles.chipRow}>
             <span className={styles.chip}>Data mode: {mode}</span>
@@ -89,14 +93,14 @@ export default async function AgencyPage() {
         </div>
         <div className={`${styles.panel} ${styles.statPanel}`}>
           <div className={styles.metric}>
-            <span className={styles.metricVal}>{alerts.length}</span>
-            <span className={styles.metricLbl}>Open alerts</span>
+            <span className={styles.metricVal}>{hoursSaved}h</span>
+            <span className={styles.metricLbl}>Reporting hours saved</span>
           </div>
         </div>
         <div className={`${styles.panel} ${styles.statPanel}`}>
           <div className={styles.metric}>
-            <span className={styles.metricVal}>{critical.length}</span>
-            <span className={styles.metricLbl}>Need action today</span>
+            <span className={styles.metricVal}>{recCount || critical.length}</span>
+            <span className={styles.metricLbl}>P0 actions today</span>
           </div>
         </div>
       </div>

@@ -49,7 +49,7 @@ export type BrandFoundation = {
 
 export type ContentDraft = {
   id: string;
-  kind: "blog" | "cold-email" | "ad" | "landing";
+  kind: "blog" | "cold-email" | "ad" | "landing" | "social";
   title: string;
   body: string;
   createdAt: string;
@@ -129,6 +129,8 @@ export type ConnectorPlatform =
   | "Google Ads"
   | "GA4"
   | "LinkedIn Ads"
+  | "TikTok Ads"
+  | "Email"
   | "HubSpot";
 
 export type IntegrationStatus = {
@@ -158,6 +160,9 @@ export type WeeklyReport = {
   generatedAt: string;
   updatedAt: string;
   status: "draft" | "final";
+  /** Autopilot: schedule weekly send (Resend wired in production). */
+  autopilot?: boolean;
+  nextSendAt?: string;
 };
 
 export type ApprovalStatus = "pending" | "approved" | "changes_requested";
@@ -195,6 +200,61 @@ export type ComplianceSettings = {
   dpaSigned: boolean;
 };
 
+export type OptimizationSuggestion = {
+  id: string;
+  clientId: string;
+  channel: string;
+  action: "increase_budget" | "decrease_budget" | "pause" | "raise_bid" | "lower_bid";
+  title: string;
+  why: string;
+  deltaPct: number;
+  status: "proposed" | "applied" | "dismissed";
+  createdAt: string;
+};
+
+export type AutomationTrigger =
+  | "anomaly_cpa"
+  | "report_ready"
+  | "approval_pending"
+  | "budget_overspend"
+  | "schedule_weekly";
+
+export type AutomationAction =
+  | "notify_owner"
+  | "pause_campaigns"
+  | "generate_report"
+  | "request_approval"
+  | "apply_budget_cap";
+
+export type AutomationRule = {
+  id: string;
+  name: string;
+  clientId: string | "all";
+  trigger: AutomationTrigger;
+  action: AutomationAction;
+  enabled: boolean;
+  createdAt: string;
+  lastRunAt?: string;
+};
+
+export type AttributionTouch = {
+  channel: string;
+  role: "first" | "assist" | "last";
+  sharePct: number;
+  conversions: number;
+  revenue: number;
+};
+
+export type AttributionModel = {
+  generatedAt: string;
+  model: "multi-touch-linear" | "last-click" | "first-click";
+  touches: AttributionTouch[];
+  totalSpend: number;
+  totalRevenue: number;
+  blendedRoas: number;
+  note: string;
+};
+
 export type CapacityAssignment = {
   id: string;
   memberId: string;
@@ -220,6 +280,8 @@ export type ClientWorkspace = {
   metricHistory: MetricSnapshot[];
   approvals: ApprovalItem[];
   acknowledgedAlertIds: string[];
+  attribution: AttributionModel | null;
+  optimizations: OptimizationSuggestion[];
 };
 
 export type InstaReport = {
@@ -265,6 +327,9 @@ export type AgencyAccount = {
   compliance: ComplianceSettings;
   /** Demo session role for permission gates. */
   sessionRole: TeamRole;
+  automations: AutomationRule[];
+  /** Cumulative reporting hours saved (success metric). */
+  hoursSavedReporting: number;
 };
 
 /** @deprecated Use ClientWorkspace — kept for migration */

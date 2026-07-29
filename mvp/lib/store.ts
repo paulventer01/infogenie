@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { AgencyAccount, ClientWorkspace, InstaReport, Workspace } from "./types";
 import { defaultIntegrations } from "./connectors";
 import { defaultTeam, seedAssignments } from "./capacity";
+import { defaultAutomations } from "./automations";
 
 const DATA_DIR = join(process.cwd(), ".data");
 const AGENCY_PATH = join(DATA_DIR, "agency.json");
@@ -82,6 +83,8 @@ function emptyClient(name: string, owner: string, domain?: string): ClientWorksp
     metricHistory: [],
     approvals: [],
     acknowledgedAlertIds: [],
+    attribution: null,
+    optimizations: [],
   };
 }
 
@@ -114,9 +117,11 @@ function migrateLegacyWorkspace(raw: Workspace): AgencyAccount {
     metricHistory: raw.metricHistory || [],
     approvals: raw.approvals || [],
     acknowledgedAlertIds: [],
+    attribution: null,
+    optimizations: [],
   });
   const team = defaultTeam();
-  return {
+  const agencyBase = {
     id: raw.id,
     email: raw.email,
     agencyName: "My Agency",
@@ -125,17 +130,22 @@ function migrateLegacyWorkspace(raw: Workspace): AgencyAccount {
     clients: [client],
     prospects: [],
     whiteLabel: defaultWhiteLabel("My Agency"),
-    dataMode: "strict",
+    dataMode: "strict" as const,
     team,
     assignments: seedAssignments([client], team),
     compliance: defaultCompliance(),
-    sessionRole: "owner",
+    sessionRole: "owner" as const,
+    hoursSavedReporting: 0,
+  };
+  return {
+    ...agencyBase,
+    automations: defaultAutomations({ ...agencyBase, automations: [] } as AgencyAccount),
   };
 }
 
 function normalizeClient(c: ClientWorkspace): ClientWorkspace {
   const integrations =
-    c.integrations?.length >= 3 ? c.integrations : defaultIntegrations();
+    c.integrations?.length >= 3 ? mergeIntegrations(c.integrations) : defaultIntegrations();
   return {
     ...c,
     retainerMonthly: c.retainerMonthly ?? 6500,
@@ -144,7 +154,17 @@ function normalizeClient(c: ClientWorkspace): ClientWorkspace {
     integrations,
     metricHistory: c.metricHistory || [],
     approvals: c.approvals || [],
+    attribution: c.attribution ?? null,
+    optimizations: c.optimizations || [],
   };
+}
+
+function mergeIntegrations(
+  existing: ClientWorkspace["integrations"]
+): ClientWorkspace["integrations"] {
+  const defaults = defaultIntegrations();
+  const byPlatform = new Map(existing.map((i) => [i.platform, i]));
+  return defaults.map((d) => byPlatform.get(d.platform) || d);
 }
 
 function parseAgency(raw: unknown): AgencyAccount | null {
@@ -168,6 +188,10 @@ function parseAgency(raw: unknown): AgencyAccount | null {
         ...(agency.compliance || {}),
       },
       sessionRole: normalizeTeamRole(agency.sessionRole ?? "owner"),
+      automations: agency.automations?.length
+        ? agency.automations
+        : defaultAutomations({ ...agency, clients, team, assignments } as AgencyAccount),
+      hoursSavedReporting: agency.hoursSavedReporting ?? 0,
     };
   }
   if (o.email && o.id) return migrateLegacyWorkspace(raw as Workspace);
@@ -214,6 +238,8 @@ export function createAgency(email: string): AgencyAccount {
         { platform: "Google Ads", status: "connected", connectedAt: new Date().toISOString() },
         { platform: "GA4", status: "pending" },
         { platform: "LinkedIn Ads", status: "pending" },
+        { platform: "TikTok Ads", status: "pending" },
+        { platform: "Email", status: "pending" },
         { platform: "HubSpot", status: "connected", connectedAt: new Date().toISOString() },
       ],
     },
@@ -229,6 +255,8 @@ export function createAgency(email: string): AgencyAccount {
         },
         { platform: "GA4", status: "connected", connectedAt: new Date().toISOString() },
         { platform: "LinkedIn Ads", status: "pending" },
+        { platform: "TikTok Ads", status: "pending" },
+        { platform: "Email", status: "connected", connectedAt: new Date().toISOString() },
         { platform: "HubSpot", status: "pending" },
       ],
     },
@@ -239,7 +267,7 @@ export function createAgency(email: string): AgencyAccount {
   ];
 
   const team = defaultTeam();
-  const agency: AgencyAccount = {
+  const agencyDraft: AgencyAccount = {
     id: randomUUID(),
     email: normalized,
     agencyName: "Demo Agency",
@@ -253,6 +281,12 @@ export function createAgency(email: string): AgencyAccount {
     assignments: seedAssignments(clients, team),
     compliance: defaultCompliance(),
     sessionRole: "owner",
+    automations: [],
+    hoursSavedReporting: 4,
+  };
+  const agency: AgencyAccount = {
+    ...agencyDraft,
+    automations: defaultAutomations(agencyDraft),
   };
   return writeAgency(agency);
 }
