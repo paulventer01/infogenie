@@ -160,6 +160,16 @@ export type InstaReport = {
 export type WhiteLabel = {
   agencyName: string;
   accentColor: string;
+  footerText?: string;
+};
+
+export type DataMode = "strict" | "demo";
+
+export type ReportSection = {
+  id: string;
+  title: string;
+  status: "ok" | "empty" | "withheld";
+  body: string;
 };
 
 export type AgencyAccount = {
@@ -167,6 +177,7 @@ export type AgencyAccount = {
   email: string;
   agencyName: string;
   createdAt: string;
+  dataMode: DataMode;
   activeClientId: string | null;
   clients: ClientWorkspace[];
   prospects: InstaReport[];

@@ -66,6 +66,7 @@ function migrateLegacyWorkspace(raw: Workspace): AgencyAccount {
     clients: [client],
     prospects: [],
     whiteLabel: { agencyName: "My Agency", accentColor: "#E8A838" },
+    dataMode: "strict",
   };
 }
 
@@ -85,6 +86,7 @@ function parseAgency(raw: unknown): AgencyAccount | null {
     const agency = raw as AgencyAccount;
     return {
       ...agency,
+      dataMode: agency.dataMode || "strict",
       clients: agency.clients.map(normalizeClient),
     };
   }
@@ -152,6 +154,7 @@ export function createAgency(email: string): AgencyAccount {
     clients,
     prospects: [],
     whiteLabel: { agencyName: "Demo Agency", accentColor: "#E8A838" },
+    dataMode: "strict",
   };
   return writeAgency(agency);
 }

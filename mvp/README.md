@@ -9,13 +9,23 @@ Do not import or modify the legacy Express / SPA app from here.
 
 | Pain | MVP module | Status |
 |------|------------|--------|
-| Reporting eats the week | **Weekly Reports** — auto narrative, edit, export | MVP |
-| No single view across clients | **Command Center** — severity alerts, owners, roster | MVP |
-| Comp research doesn't scale | **Analyse loop** per client workspace | MVP |
-| Tool sprawl | One Day 1–7 path + per-client integrations panel | Partial |
-| Proving ROI | **Results** with honest illustrative mode + report tie-in | MVP |
-| Brand / quality | **Brand Foundation** per workspace | MVP |
-| New business audits | **InstaReports** + public share link | MVP |
+| Reporting eats the week | Weekly Reports + **Batch Reports** + white-label export | MVP |
+| No single view across clients | **Command Center** — RAG board, alerts, last report, spend | MVP |
+| Comp research doesn't scale | Analyse loop per client workspace | MVP |
+| Tool sprawl | One Day 1–7 path + per-client integrations | Partial |
+| Proving ROI | **ROI narrative** + strict mode withhold | MVP |
+| Brand / quality | Brand Foundation per workspace | MVP |
+| New business audits | InstaReports + public share link | MVP |
+
+### Phase 2 agency-scale (implemented in MVP as scaffolds)
+
+- **Strict mode** (default): ROAS/CAC/funnel withheld when Meta/Google not connected — no fabricated KPIs
+- **Batch reports**: generate weekly briefs for all clients in one pass (`/reports/bulk`)
+- **Client health board**: red/amber/green × owner × last report × spend anomaly
+- **White-label exports**: agency header/footer on all client-facing report text
+- **Honest section states**: `ok` / `empty` / `withheld` per report section
+
+Phase 2+ (not yet): PDF export, Resend scheduling, live OAuth, GA4/GSC organic sections
 
 ## The loop (per client workspace)
 

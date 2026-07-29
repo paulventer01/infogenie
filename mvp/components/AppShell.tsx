@@ -8,7 +8,9 @@ import styles from "@/styles/mvp.module.css";
 const AGENCY_NAV = [
   { href: "/agency", label: "Command Center", icon: "◉" },
   { href: "/reports", label: "Weekly Reports", icon: "▤" },
+  { href: "/reports/bulk", label: "Batch Reports", icon: "▥" },
   { href: "/prospects", label: "InstaReports", icon: "◇" },
+  { href: "/settings", label: "Settings", icon: "⚙" },
 ];
 
 const CLIENT_NAV: { day: string; items: { href: string; label: string; icon: string }[] }[] = [
@@ -73,7 +75,9 @@ export default function AppShell({
         <nav className={styles.nav}>
           <div className={styles.navDay}>Agency ops</div>
           {AGENCY_NAV.map((item) => {
-            const active = pathname === item.href;
+            const active =
+              pathname === item.href ||
+              (item.href !== "/agency" && pathname.startsWith(item.href + "/"));
             return (
               <Link
                 key={item.href}

@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionAgency } from "@/lib/session";
-import { addClient } from "@/lib/store";
+import { addClient, switchActiveClient } from "@/lib/store";
 import { allAgencyAlerts, severityLabel } from "@/lib/alerts";
+import { allClientStatuses } from "@/lib/client-status";
+import { getDataMode } from "@/lib/strict-mode";
 import { PageHeader } from "@/components/PageHeader";
 import styles from "@/styles/mvp.module.css";
 
@@ -35,19 +37,44 @@ async function acknowledgeAlert(formData: FormData) {
   redirect("/agency");
 }
 
+async function focusClient(formData: FormData) {
+  "use server";
+  const agency = await getSessionAgency();
+  if (!agency) redirect("/agency");
+  const clientId = String(formData.get("clientId") || "");
+  switchActiveClient(agency, clientId);
+  redirect("/reports");
+}
+
+function ragClass(rag: string) {
+  if (rag === "red") return styles.ragRed;
+  if (rag === "amber") return styles.ragAmber;
+  return styles.ragGreen;
+}
+
 export default async function AgencyPage() {
   const agency = await getSessionAgency();
   if (!agency) redirect("/");
 
   const alerts = allAgencyAlerts(agency).filter((a) => a.status === "open");
   const critical = alerts.filter((a) => a.severity === "critical" || a.severity === "high");
+  const statuses = allClientStatuses(agency);
+  const mode = getDataMode(agency);
 
   return (
     <>
       <PageHeader
         eyebrow="Agency · Monday standup"
         title="Command center"
-        sub="All clients, severity-ranked alerts, and owner assignment — one view before the week starts."
+        sub="All clients at a glance — red/amber/green status, alerts, last report, spend signals. No need to open each workspace."
+        right={
+          <div className={styles.chipRow}>
+            <span className={styles.chip}>Data mode: {mode}</span>
+            <Link className={`${styles.btn} ${styles.btnPrimary}`} href="/reports/bulk">
+              Batch reports →
+            </Link>
+          </div>
+        }
       />
 
       <div className={styles.grid3} style={{ marginBottom: 16 }}>
@@ -71,11 +98,78 @@ export default async function AgencyPage() {
         </div>
       </div>
 
+      <section className={styles.panel} style={{ marginBottom: 16 }}>
+        <div className={styles.panelHead}>
+          <h2 className={styles.panelTitle}>Client health board</h2>
+          <span className={styles.muted}>Severity × client × owner</span>
+        </div>
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Client</th>
+              <th>Owner</th>
+              <th>Alerts</th>
+              <th>Last report</th>
+              <th>Spend signal</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {statuses.map((row) => (
+              <tr key={row.clientId}>
+                <td>
+                  <span className={`${styles.ragDot} ${ragClass(row.rag)}`} title={row.ragLabel} />
+                  <span className={styles.muted} style={{ marginLeft: 6 }}>
+                    {row.ragLabel}
+                  </span>
+                </td>
+                <td>
+                  <strong>{row.name}</strong>
+                  <div className={styles.muted}>{row.domain || "No domain"}</div>
+                </td>
+                <td>{row.owner}</td>
+                <td>{row.openAlerts || "—"}</td>
+                <td>
+                  {row.lastReportDate ? (
+                    <>
+                      {new Date(row.lastReportDate).toLocaleDateString()}
+                      {row.lastReportStatus ? (
+                        <span className={styles.chip} style={{ marginLeft: 6 }}>
+                          {row.lastReportStatus}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span className={styles.muted}>Not generated</span>
+                  )}
+                </td>
+                <td>
+                  {row.spendSignal ? (
+                    <span className={`${styles.severity} ${styles.sevhigh}`}>{row.spendSignal}</span>
+                  ) : (
+                    <span className={styles.muted}>OK</span>
+                  )}
+                </td>
+                <td>
+                  <form action={focusClient}>
+                    <input type="hidden" name="clientId" value={row.clientId} />
+                    <button className={`${styles.btn} ${styles.btnGhost}`} type="submit">
+                      Open →
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
       <div className={styles.grid2}>
         <section className={styles.panel}>
           <div className={styles.panelHead}>
             <h2 className={styles.panelTitle}>Priority queue</h2>
-            <span className={styles.muted}>Severity-ranked</span>
+            <span className={styles.muted}>Cross-workspace</span>
           </div>
           {alerts.length === 0 ? (
             <p className={styles.muted}>No open alerts — all clients look stable.</p>
@@ -113,70 +207,27 @@ export default async function AgencyPage() {
           )}
         </section>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <section className={styles.panel}>
-            <div className={styles.panelHead}>
-              <h2 className={styles.panelTitle}>Client roster</h2>
-            </div>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Client</th>
-                  <th>Owner</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {agency.clients.map((c) => {
-                  const open = c.alerts.filter((a) => a.status === "open").length;
-                  const broken = c.integrations.filter((i) => i.status === "broken").length;
-                  return (
-                    <tr key={c.id}>
-                      <td>
-                        <strong>{c.name}</strong>
-                        <div className={styles.muted}>{c.domain || "No domain"}</div>
-                      </td>
-                      <td>{c.owner}</td>
-                      <td>
-                        {broken > 0 ? (
-                          <span className={`${styles.severity} ${styles.sevhigh}`}>
-                            {broken} integration{broken > 1 ? "s" : ""} broken
-                          </span>
-                        ) : open > 0 ? (
-                          <span className={styles.chip}>{open} alert{open > 1 ? "s" : ""}</span>
-                        ) : (
-                          <span className={styles.chip}>OK</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </section>
-
-          <form className={styles.panel} action={addClientAction}>
-            <h2 className={styles.panelTitle}>Add client workspace</h2>
-            <p className={styles.muted} style={{ marginBottom: 12 }}>
-              One workspace per client — plug integrations and run the Day 1–7 loop inside it.
-            </p>
-            <div className={styles.field}>
-              <label htmlFor="name">Client name</label>
-              <input id="name" name="name" placeholder="Acme Corp" required />
-            </div>
-            <div className={styles.field}>
-              <label htmlFor="owner">Account owner</label>
-              <input id="owner" name="owner" placeholder="jamie" required />
-            </div>
-            <div className={styles.field}>
-              <label htmlFor="domain">Domain (optional)</label>
-              <input id="domain" name="domain" placeholder="acme.com" />
-            </div>
-            <button className={`${styles.btn} ${styles.btnPrimary}`} type="submit">
-              Add workspace →
-            </button>
-          </form>
-        </div>
+        <form className={styles.panel} action={addClientAction}>
+          <h2 className={styles.panelTitle}>Add client workspace</h2>
+          <p className={styles.muted} style={{ marginBottom: 12 }}>
+            One workspace per retainer — integrations, reports, and Day 1–7 loop inside each.
+          </p>
+          <div className={styles.field}>
+            <label htmlFor="name">Client name</label>
+            <input id="name" name="name" placeholder="Acme Corp" required />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="owner">Account owner</label>
+            <input id="owner" name="owner" placeholder="jamie" required />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="domain">Domain (optional)</label>
+            <input id="domain" name="domain" placeholder="acme.com" />
+          </div>
+          <button className={`${styles.btn} ${styles.btnPrimary}`} type="submit">
+            Add workspace →
+          </button>
+        </form>
       </div>
     </>
   );

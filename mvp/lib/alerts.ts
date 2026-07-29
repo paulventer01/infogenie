@@ -53,7 +53,7 @@ export function deriveClientAlerts(client: ClientWorkspace): AgencyAlert[] {
     });
   }
 
-  if (client.results && client.results.cac > 120) {
+  if (client.results && client.results.source === "connected" && client.results.cac > 120) {
     alerts.push({
       id: alertId(client.id, "cpa", "above-target"),
       clientId: client.id,

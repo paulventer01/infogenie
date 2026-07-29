@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionClient } from "@/lib/session";
 import { updateActiveClient } from "@/lib/store";
-import { generateWeeklyReport } from "@/lib/reports";
+import { generateWeeklyReport, gatherReportSections } from "@/lib/reports";
+import { getDataMode } from "@/lib/strict-mode";
 import { PageHeader, NeedAnalysis } from "@/components/PageHeader";
 import styles from "@/styles/mvp.module.css";
 
@@ -9,7 +11,7 @@ async function generateReport() {
   "use server";
   const ctx = await getSessionClient();
   if (!ctx?.client.analysis) redirect("/");
-  const report = generateWeeklyReport(ctx.client);
+  const report = generateWeeklyReport(ctx.client, ctx.agency);
   updateActiveClient(ctx.agency, (c) => ({ ...c, weeklyReport: report }));
   redirect("/reports");
 }
@@ -34,6 +36,12 @@ async function saveReport(formData: FormData) {
   redirect("/reports");
 }
 
+function sectionClass(status: string) {
+  if (status === "withheld") return styles.sectionWithheld;
+  if (status === "empty") return styles.sectionEmpty;
+  return styles.sectionOk;
+}
+
 export default async function ReportsPage() {
   const ctx = await getSessionClient();
   if (!ctx) redirect("/");
@@ -41,6 +49,8 @@ export default async function ReportsPage() {
   if (!client.analysis) return <NeedAnalysis />;
 
   const report = client.weeklyReport;
+  const mode = getDataMode(agency);
+  const sections = gatherReportSections(client, mode);
   const exportText = report?.narrative || "";
 
   return (
@@ -48,26 +58,47 @@ export default async function ReportsPage() {
       <PageHeader
         eyebrow="Agency · Reporting"
         title={`Weekly report — ${client.analysis.brandName}`}
-        sub="Auto-generated brief with editable narrative. Export in minutes, not hours."
+        sub="One-click export with white-label header. Sections withhold when data isn't real (strict mode)."
         right={
-          <form action={generateReport}>
-            <button className={`${styles.btn} ${styles.btnPrimary}`} type="submit">
-              {report ? "Regenerate draft" : "Generate report"}
-            </button>
-          </form>
+          <div className={styles.chipRow}>
+            <Link className={`${styles.btn} ${styles.btnGhost}`} href="/reports/bulk">
+              Batch all clients
+            </Link>
+            <form action={generateReport}>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} type="submit">
+                {report ? "Regenerate" : "Generate report"}
+              </button>
+            </form>
+          </div>
         }
       />
 
       <div className={`${styles.banner} ${styles.bannerInfo}`}>
-        White-label: <strong>{agency.whiteLabel.agencyName}</strong> · Per-client KPIs and
-        narrative — connect Meta/Google for live numbers (Results page uses honest illustrative
-        mode until then).
+        White-label: <strong>{agency.whiteLabel.agencyName}</strong> · Data mode:{" "}
+        <strong>{mode}</strong> — withheld sections never show fabricated KPIs.
       </div>
+
+      <section className={styles.panel} style={{ marginBottom: 16 }}>
+        <h2 className={styles.panelTitle}>Report sections</h2>
+        <div className={styles.sectionGrid}>
+          {sections.map((s) => (
+            <div key={s.id} className={`${styles.sectionCard} ${sectionClass(s.status)}`}>
+              <div className={styles.panelHead}>
+                <strong>{s.title}</strong>
+                <span className={styles.chip}>{s.status}</span>
+              </div>
+              <p className={styles.muted} style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                {s.body}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {!report ? (
         <div className={`${styles.panel} ${styles.empty}`}>
           <p className={styles.muted}>
-            No report yet for this client. Generate a draft from analysis + results snapshot.
+            No report yet. Generate to assemble sections with honest empty/withheld states.
           </p>
         </div>
       ) : (
@@ -79,7 +110,7 @@ export default async function ReportsPage() {
             </div>
             <div className={styles.field}>
               <label htmlFor="narrative">Client-ready copy</label>
-              <textarea id="narrative" name="narrative" defaultValue={report.narrative} rows={22} />
+              <textarea id="narrative" name="narrative" defaultValue={report.narrative} rows={18} />
             </div>
             <div className={styles.field}>
               <label htmlFor="status">Status</label>
@@ -94,14 +125,14 @@ export default async function ReportsPage() {
           </form>
 
           <section className={styles.panel}>
-            <h2 className={styles.panelTitle}>Export preview</h2>
+            <h2 className={styles.panelTitle}>One-click export</h2>
             <p className={styles.muted} style={{ marginBottom: 12 }}>
-              Copy to email, Notion, or PDF. Last updated{" "}
-              {new Date(report.updatedAt).toLocaleString()}.
+              White-label PDF-ready text. Updated {new Date(report.updatedAt).toLocaleString()}.
             </p>
             <pre className={styles.exportBox}>{exportText}</pre>
             <p className={styles.muted} style={{ marginTop: 12 }}>
-              MVP export: select-all copy. Phase 2 adds PDF + scheduled send via Resend.
+              Copy block includes {agency.whiteLabel.agencyName} header/footer. Scheduled send via
+              Resend is Phase 2.
             </p>
           </section>
         </div>

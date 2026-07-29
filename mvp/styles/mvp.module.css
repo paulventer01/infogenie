@@ -546,3 +546,51 @@
   font-size: 0.82rem;
   color: var(--ink-soft);
 }
+
+.ragDot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.ragRed {
+  background: #c62828;
+  box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.2);
+}
+
+.ragAmber {
+  background: #e8a838;
+  box-shadow: 0 0 0 3px rgba(232, 168, 56, 0.25);
+}
+
+.ragGreen {
+  background: #2e7d52;
+  box-shadow: 0 0 0 3px rgba(46, 125, 82, 0.2);
+}
+
+.sectionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.sectionCard {
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+
+.sectionOk {
+  background: rgba(46, 125, 82, 0.06);
+}
+
+.sectionEmpty {
+  background: rgba(11, 61, 74, 0.04);
+}
+
+.sectionWithheld {
+  background: rgba(198, 40, 40, 0.06);
+  border-color: rgba(198, 40, 40, 0.2);
+}
