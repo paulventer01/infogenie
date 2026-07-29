@@ -78,19 +78,19 @@ export default async function AgencyPage() {
       />
 
       <div className={styles.grid3} style={{ marginBottom: 16 }}>
-        <div className={styles.panel}>
+        <div className={`${styles.panel} ${styles.statPanel}`}>
           <div className={styles.metric}>
             <span className={styles.metricVal}>{agency.clients.length}</span>
             <span className={styles.metricLbl}>Client workspaces</span>
           </div>
         </div>
-        <div className={styles.panel}>
+        <div className={`${styles.panel} ${styles.statPanel}`}>
           <div className={styles.metric}>
             <span className={styles.metricVal}>{alerts.length}</span>
             <span className={styles.metricLbl}>Open alerts</span>
           </div>
         </div>
-        <div className={styles.panel}>
+        <div className={`${styles.panel} ${styles.statPanel}`}>
           <div className={styles.metric}>
             <span className={styles.metricVal}>{critical.length}</span>
             <span className={styles.metricLbl}>Need action today</span>

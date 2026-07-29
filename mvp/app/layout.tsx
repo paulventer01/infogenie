@@ -1,22 +1,22 @@
 import type { Metadata } from "next";
-import { Fraunces, Figtree } from "next/font/google";
+import { Outfit, Manrope } from "next/font/google";
 import "@/styles/globals.css";
 
-const display = Fraunces({
+const display = Outfit({
   subsets: ["latin"],
   variable: "--font-display",
-  weight: ["500", "600", "700"],
+  weight: ["500", "600", "700", "800"],
 });
 
-const body = Figtree({
+const body = Manrope({
   subsets: ["latin"],
   variable: "--font-body",
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
   title: "InfoGenie MVP",
-  description: "Thin Day 1–7 marketing loop — analyse, create, launch, reach, prove.",
+  description: "Agency command center — analyse, create, launch, reach, prove.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

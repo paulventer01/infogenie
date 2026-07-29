@@ -22,19 +22,11 @@ export default async function HomePage({
   return (
     <div className={styles.heroGate}>
       <section className={styles.heroCopy}>
-        <p className={styles.eyebrow} style={{ color: "rgba(244,239,230,.7)" }}>
-          Agency MVP · greenfield build
-        </p>
         <h1 className={styles.heroBrand}>InfoGenie</h1>
         <p className={styles.heroLead}>
-          One platform layer per client: analyse → create → reach → report — plus an agency
-          command center for Monday standup.
+          Run every client from one workspace — research, campaigns, and reports without the
+          spreadsheet grind.
         </p>
-        <div className={styles.chipRow}>
-          <span className={styles.chipGold}>Command center</span>
-          <span className={styles.chipGold}>Weekly reports</span>
-          <span className={styles.chipGold}>InstaReports</span>
-        </div>
       </section>
       <section className={styles.heroPanel} id="login">
         <LoginCard error={sp.error} />
@@ -46,13 +38,12 @@ export default async function HomePage({
 function LoginCard({ error }: { error?: string }) {
   return (
     <form className={styles.card} action="/api/session?op=login" method="post">
-      <p className={styles.eyebrow}>Enter the MVP</p>
+      <p className={styles.eyebrow}>Agency access</p>
       <h2 className={styles.panelTitle} style={{ marginBottom: 8 }}>
-        Agency sign in
+        Sign in to your command center
       </h2>
       <p className={styles.muted} style={{ marginBottom: 16 }}>
-        Local demo auth — any email + password <strong>mvp</strong>. Separate from the full
-        InfoGenie app.
+        Demo login — any email + password <strong>mvp</strong>
       </p>
       {error === "password" ? (
         <div className={`${styles.banner} ${styles.bannerWarn}`}>Password must be mvp</div>
@@ -69,7 +60,7 @@ function LoginCard({ error }: { error?: string }) {
         <input id="password" name="password" type="password" placeholder="mvp" required />
       </div>
       <button className={`${styles.btn} ${styles.btnPrimary} ${styles.btnBlock}`} type="submit">
-        Open command center →
+        Enter InfoGenie →
       </button>
     </form>
   );

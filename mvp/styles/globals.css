@@ -1,20 +1,28 @@
 :root {
-  --ink: #102027;
-  --ink-soft: #3d4f56;
-  --paper: #f4efe6;
-  --paper-2: #ebe3d6;
-  --sea: #0b3d4a;
-  --sea-deep: #072a33;
-  --gold: #e8a838;
-  --gold-deep: #c4891f;
-  --foam: #f7fafb;
-  --line: rgba(16, 32, 39, 0.12);
-  --ok: #1f7a4c;
-  --warn: #a15c00;
-  --danger: #a33b2a;
-  --radius: 14px;
-  --font-display: var(--font-display), "Georgia", serif;
-  --font-body: var(--font-body), "Segoe UI", sans-serif;
+  --ink: #0b1220;
+  --ink-soft: #5b6577;
+  --paper: #f3f6fb;
+  --paper-elevated: #ffffff;
+  --line: rgba(11, 18, 32, 0.1);
+  --line-strong: rgba(11, 18, 32, 0.16);
+  --brand: #0f766e;
+  --brand-deep: #0b5f59;
+  --brand-soft: rgba(15, 118, 110, 0.12);
+  --accent: #f97316;
+  --accent-soft: rgba(249, 115, 22, 0.14);
+  --ok: #15803d;
+  --ok-soft: rgba(21, 128, 61, 0.12);
+  --warn: #c2410c;
+  --warn-soft: rgba(194, 65, 12, 0.12);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  --rail: #ffffff;
+  --rail-ink: #0b1220;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 12px 32px rgba(11, 18, 32, 0.06);
+  --font-display: var(--font-display), "Avenir Next", sans-serif;
+  --font-body: var(--font-body), "Avenir Next", sans-serif;
 }
 
 * {
@@ -29,6 +37,7 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
@@ -44,5 +53,5 @@ select {
 }
 
 ::selection {
-  background: rgba(232, 168, 56, 0.35);
+  background: rgba(15, 118, 110, 0.22);
 }

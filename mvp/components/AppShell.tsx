@@ -45,9 +45,9 @@ export default function AppShell({
         id: "agency-ops",
         label: "Agency ops",
         items: [
-          { href: "/agency", label: "Command Center", icon: "◉", badge: openAlertCount },
-          { href: "/reports", label: "Weekly Reports", icon: "▤" },
-          { href: "/reports/bulk", label: "Batch Reports", icon: "▥" },
+          { href: "/agency", label: "Command Center", icon: "◆", badge: openAlertCount },
+          { href: "/reports", label: "Weekly Reports", icon: "▣" },
+          { href: "/reports/bulk", label: "Batch Reports", icon: "▤" },
           { href: "/prospects", label: "InstaReports", icon: "◇" },
           { href: "/settings", label: "Settings", icon: "⚙" },
         ],
@@ -58,7 +58,7 @@ export default function AppShell({
         items: [
           { href: "/dashboard", label: "Dashboard", icon: "◈" },
           { href: "/analyse", label: "Analyse", icon: "◎" },
-          { href: "/competitors", label: "Competitors", icon: "⚔" },
+          { href: "/competitors", label: "Competitors", icon: "⇄" },
           { href: "/ads", label: "Ad Spy", icon: "▣" },
           { href: "/keywords", label: "Keywords", icon: "⌕" },
         ],
@@ -107,11 +107,11 @@ export default function AppShell({
       <aside className={styles.rail}>
         <div className={styles.brand}>
           <div className={styles.brandName}>InfoGenie</div>
-          <div className={styles.brandTag}>MVP · Agency tier</div>
+          <div className={styles.brandTag}>Agency OS</div>
         </div>
 
         <div className={styles.clientBlock}>
-          <div className={styles.navDay}>Workspace</div>
+          <div className={styles.navDay}>Client workspace</div>
           <ClientSwitcher clients={clients} activeClientId={activeClientId} />
         </div>
 
@@ -161,17 +161,13 @@ export default function AppShell({
         </nav>
 
         <div className={styles.railFoot}>
-          <div>{agencyName}</div>
+          <div style={{ fontWeight: 700, color: "var(--ink)" }}>{agencyName}</div>
           <div style={{ marginTop: 4 }}>
             {brandName ? `Client · ${brandName}` : "Select client workspace"}
           </div>
-          <div style={{ opacity: 0.7, marginTop: 4 }}>{email}</div>
-          <form action="/api/session?op=logout" method="post" style={{ marginTop: 10 }}>
-            <button
-              className={`${styles.btn} ${styles.btnGhost}`}
-              type="submit"
-              style={{ color: "#f4efe6", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.25)" }}
-            >
+          <div style={{ opacity: 0.8, marginTop: 4 }}>{email}</div>
+          <form action="/api/session?op=logout" method="post" style={{ marginTop: 12 }}>
+            <button className={`${styles.btn} ${styles.btnGhost}`} type="submit">
               Sign out
             </button>
           </form>
