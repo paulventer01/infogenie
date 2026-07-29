@@ -1,29 +1,8 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { readAgency, getActiveClient } from "@/lib/store";
-import { loginAgency } from "@/lib/session";
+import { readAgency } from "@/lib/store";
 import { SESSION_COOKIE } from "@/lib/session";
 import styles from "@/styles/mvp.module.css";
-
-async function loginAction(formData: FormData) {
-  "use server";
-  const email = String(formData.get("email") || "").trim().toLowerCase();
-  const password = String(formData.get("password") || "");
-  if (!email || !email.includes("@")) {
-    redirect("/?error=email");
-  }
-  if (password !== "mvp") {
-    redirect("/?error=password");
-  }
-  const agency = await loginAgency(email);
-  const jar = await cookies();
-  jar.set(SESSION_COOKIE, agency.id, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-  });
-  redirect("/agency");
-}
 
 export default async function HomePage({
   searchParams,
@@ -58,21 +37,15 @@ export default async function HomePage({
         </div>
       </section>
       <section className={styles.heroPanel} id="login">
-        <LoginCard error={sp.error} action={loginAction} />
+        <LoginCard error={sp.error} />
       </section>
     </div>
   );
 }
 
-function LoginCard({
-  error,
-  action,
-}: {
-  error?: string;
-  action: (formData: FormData) => Promise<void>;
-}) {
+function LoginCard({ error }: { error?: string }) {
   return (
-    <form className={styles.card} action={action}>
+    <form className={styles.card} action="/api/session?op=login" method="post">
       <p className={styles.eyebrow}>Enter the MVP</p>
       <h2 className={styles.panelTitle} style={{ marginBottom: 8 }}>
         Agency sign in
