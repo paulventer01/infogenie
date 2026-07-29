@@ -111,15 +111,45 @@ export type AgencyAlert = {
   detail: string;
   severity: AlertSeverity;
   owner: string;
-  category: "spend" | "cpa" | "deliverability" | "deadline" | "integration" | "reporting";
+  category:
+    | "spend"
+    | "cpa"
+    | "deliverability"
+    | "deadline"
+    | "integration"
+    | "reporting"
+    | "anomaly"
+    | "approval";
   createdAt: string;
   status: "open" | "acknowledged";
 };
 
+export type ConnectorPlatform =
+  | "Meta Ads"
+  | "Google Ads"
+  | "GA4"
+  | "LinkedIn Ads"
+  | "HubSpot";
+
 export type IntegrationStatus = {
-  platform: string;
+  platform: ConnectorPlatform | string;
   status: "connected" | "broken" | "pending";
   note?: string;
+  lastSyncedAt?: string;
+  connectedAt?: string;
+};
+
+export type MetricSnapshot = {
+  id: string;
+  syncedAt: string;
+  source: "live-sync";
+  platforms: string[];
+  spend: number;
+  conversions: number;
+  cac: number;
+  ctr: number;
+  roas: number;
+  sessions?: number;
 };
 
 export type WeeklyReport = {
@@ -130,12 +160,45 @@ export type WeeklyReport = {
   status: "draft" | "final";
 };
 
+export type ApprovalStatus = "pending" | "approved" | "changes_requested";
+
+export type ApprovalItem = {
+  id: string;
+  clientId: string;
+  kind: "draft" | "campaign" | "report";
+  refId: string;
+  title: string;
+  preview: string;
+  status: ApprovalStatus;
+  note?: string;
+  shareToken: string;
+  createdAt: string;
+  updatedAt: string;
+  decidedAt?: string;
+};
+
+export type TeamMember = {
+  id: string;
+  name: string;
+  role: string;
+  weeklyCapacityHours: number;
+  hourlyCost: number;
+};
+
+export type CapacityAssignment = {
+  id: string;
+  memberId: string;
+  clientId: string;
+  hoursThisWeek: number;
+};
+
 export type ClientWorkspace = {
   id: string;
   name: string;
   domain?: string;
   owner: string;
   createdAt: string;
+  retainerMonthly: number;
   analysis: Analysis | null;
   drafts: ContentDraft[];
   campaigns: CampaignDraft[];
@@ -144,6 +207,8 @@ export type ClientWorkspace = {
   weeklyReport: WeeklyReport | null;
   alerts: AgencyAlert[];
   integrations: IntegrationStatus[];
+  metricHistory: MetricSnapshot[];
+  approvals: ApprovalItem[];
   acknowledgedAlertIds: string[];
 };
 
@@ -182,6 +247,8 @@ export type AgencyAccount = {
   clients: ClientWorkspace[];
   prospects: InstaReport[];
   whiteLabel: WhiteLabel;
+  team: TeamMember[];
+  assignments: CapacityAssignment[];
 };
 
 /** @deprecated Use ClientWorkspace — kept for migration */

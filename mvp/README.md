@@ -12,20 +12,20 @@ Do not import or modify the legacy Express / SPA app from here.
 | Reporting eats the week | Weekly Reports + **Batch Reports** + white-label export | MVP |
 | No single view across clients | **Command Center** — RAG board, alerts, last report, spend | MVP |
 | Comp research doesn't scale | Analyse loop per client workspace | MVP |
-| Tool sprawl | One Day 1–7 path + per-client integrations | Partial |
+| Tool sprawl / live data | **Connectors** + sync + anomaly alerts | MVP thin |
+| Approvals chaos | **Approvals** queue + client review link | MVP thin |
+| Capacity / profitability blind | **Capacity & Margin** dashboard | MVP thin |
 | Proving ROI | **ROI narrative** + strict mode withhold | MVP |
 | Brand / quality | Brand Foundation per workspace | MVP |
 | New business audits | InstaReports + public share link | MVP |
 
-### Phase 2 agency-scale (implemented in MVP as scaffolds)
+### Thin Phase-2 slices (intentional, not full platform)
 
-- **Strict mode** (default): ROAS/CAC/funnel withheld when Meta/Google not connected — no fabricated KPIs
-- **Batch reports**: generate weekly briefs for all clients in one pass (`/reports/bulk`)
-- **Client health board**: red/amber/green × owner × last report × spend anomaly
-- **White-label exports**: agency header/footer on all client-facing report text
-- **Honest section states**: `ok` / `empty` / `withheld` per report section
+- **Connectors**: OAuth stub + live metric sync history; anomaly alerts on CPA/spend/conversions deltas
+- **Approvals**: submit draft/campaign/report → pending queue → approve / request changes → `/review/[token]` client link
+- **Capacity**: team utilization + retainer vs labor margin (weekly hours × rate × 4.3)
 
-Phase 2+ (not yet): PDF export, Resend scheduling, live OAuth, GA4/GSC organic sections
+Not included (full-app depth): real Meta/Google OAuth, multi-touch attribution, PDF/Resend, bid optimizer, full automation builder.
 
 ## The loop (per client workspace)
 

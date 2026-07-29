@@ -29,7 +29,7 @@ export function deriveClientAlerts(client: ClientWorkspace): AgencyAlert[] {
         id: alertId(client.id, "integration", integration.platform),
         clientId: client.id,
         title: `${integration.platform} connection broken`,
-        detail: integration.note || "Reconnect OAuth to restore reporting and alerts.",
+        detail: integration.note || "Reconnect to restore reporting and anomaly alerts.",
         severity: "high",
         owner: client.owner,
         category: "integration",
@@ -51,6 +51,13 @@ export function deriveClientAlerts(client: ClientWorkspace): AgencyAlert[] {
       createdAt: now,
       status: "open",
     });
+  }
+
+  // Persist recent anomaly alerts already stored on the client from sync
+  for (const a of client.alerts || []) {
+    if (a.category === "anomaly" && a.status === "open") {
+      alerts.push(a);
+    }
   }
 
   if (client.results && client.results.source === "connected" && client.results.cac > 120) {
@@ -95,14 +102,38 @@ export function deriveClientAlerts(client: ClientWorkspace): AgencyAlert[] {
     });
   }
 
-  return alerts;
+  const pendingApprovals = (client.approvals || []).filter((a) => a.status === "pending");
+  if (pendingApprovals.length > 0) {
+    alerts.push({
+      id: alertId(client.id, "approval", "pending"),
+      clientId: client.id,
+      title: `${pendingApprovals.length} item${pendingApprovals.length > 1 ? "s" : ""} awaiting approval`,
+      detail: pendingApprovals.map((a) => a.title).slice(0, 3).join(" · "),
+      severity: "medium",
+      owner: client.owner,
+      category: "approval",
+      createdAt: now,
+      status: "open",
+    });
+  }
+
+  // Dedupe by id
+  const byId = new Map<string, AgencyAlert>();
+  for (const a of alerts) byId.set(a.id, a);
+  return [...byId.values()];
 }
 
 export function refreshAgencyAlerts(agency: AgencyAccount): AgencyAccount {
   const clients = agency.clients.map((client) => {
     const acknowledged = new Set(client.acknowledgedAlertIds || []);
     const derived = deriveClientAlerts(client).filter((a) => !acknowledged.has(a.id));
-    return { ...client, alerts: derived };
+    // Keep stored anomaly alerts that aren't acknowledged
+    const storedAnomalies = (client.alerts || []).filter(
+      (a) => a.category === "anomaly" && !acknowledged.has(a.id)
+    );
+    const merged = new Map<string, AgencyAlert>();
+    for (const a of [...storedAnomalies, ...derived]) merged.set(a.id, a);
+    return { ...client, alerts: [...merged.values()] };
   });
   return { ...agency, clients };
 }

@@ -46,6 +46,9 @@ export default function AppShell({
         label: "Agency ops",
         items: [
           { href: "/agency", label: "Command Center", icon: "◆", badge: openAlertCount },
+          { href: "/connectors", label: "Connectors", icon: "⌁" },
+          { href: "/approvals", label: "Approvals", icon: "✓" },
+          { href: "/capacity", label: "Capacity & Margin", icon: "%" },
           { href: "/reports", label: "Weekly Reports", icon: "▣" },
           { href: "/reports/bulk", label: "Batch Reports", icon: "▤" },
           { href: "/prospects", label: "InstaReports", icon: "◇" },

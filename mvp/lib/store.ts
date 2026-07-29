@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { AgencyAccount, ClientWorkspace, InstaReport, Workspace } from "./types";
+import { defaultIntegrations } from "./connectors";
+import { defaultTeam, seedAssignments } from "./capacity";
 
 const DATA_DIR = join(process.cwd(), ".data");
 const AGENCY_PATH = join(DATA_DIR, "agency.json");
@@ -18,6 +20,7 @@ function emptyClient(name: string, owner: string, domain?: string): ClientWorksp
     domain,
     owner,
     createdAt: new Date().toISOString(),
+    retainerMonthly: 6500,
     analysis: null,
     drafts: [],
     campaigns: [],
@@ -25,22 +28,21 @@ function emptyClient(name: string, owner: string, domain?: string): ClientWorksp
     results: null,
     weeklyReport: null,
     alerts: [],
-    integrations: [
-      { platform: "Meta Ads", status: "pending" },
-      { platform: "Google Ads", status: "pending" },
-      { platform: "GA4", status: "pending" },
-    ],
+    integrations: defaultIntegrations(),
+    metricHistory: [],
+    approvals: [],
     acknowledgedAlertIds: [],
   };
 }
 
 function migrateLegacyWorkspace(raw: Workspace): AgencyAccount {
-  const client: ClientWorkspace = {
+  const client = normalizeClient({
     id: raw.id,
     name: raw.analysis?.brandName || raw.domain || "Client workspace",
     domain: raw.analysis?.domain || raw.domain,
     owner: raw.email.split("@")[0] || "Unassigned",
     createdAt: raw.createdAt,
+    retainerMonthly: raw.retainerMonthly || 7500,
     analysis: raw.analysis,
     drafts: raw.drafts || [],
     campaigns: raw.campaigns || [],
@@ -50,13 +52,20 @@ function migrateLegacyWorkspace(raw: Workspace): AgencyAccount {
       : null,
     weeklyReport: null,
     alerts: [],
-    integrations: [
-      { platform: "Meta Ads", status: "connected" },
-      { platform: "Google Ads", status: "connected" },
-      { platform: "GA4", status: "pending" },
-    ],
+    integrations: raw.integrations?.length
+      ? raw.integrations
+      : [
+          { platform: "Meta Ads", status: "connected" },
+          { platform: "Google Ads", status: "connected" },
+          { platform: "GA4", status: "pending" },
+          { platform: "LinkedIn Ads", status: "pending" },
+          { platform: "HubSpot", status: "pending" },
+        ],
+    metricHistory: raw.metricHistory || [],
+    approvals: raw.approvals || [],
     acknowledgedAlertIds: [],
-  };
+  });
+  const team = defaultTeam();
   return {
     id: raw.id,
     email: raw.email,
@@ -65,17 +74,24 @@ function migrateLegacyWorkspace(raw: Workspace): AgencyAccount {
     activeClientId: client.id,
     clients: [client],
     prospects: [],
-    whiteLabel: { agencyName: "My Agency", accentColor: "#E8A838" },
+    whiteLabel: { agencyName: "My Agency", accentColor: "#0F766E" },
     dataMode: "strict",
+    team,
+    assignments: seedAssignments([client], team),
   };
 }
 
 function normalizeClient(c: ClientWorkspace): ClientWorkspace {
+  const integrations =
+    c.integrations?.length >= 3 ? c.integrations : defaultIntegrations();
   return {
     ...c,
+    retainerMonthly: c.retainerMonthly ?? 6500,
     acknowledgedAlertIds: c.acknowledgedAlertIds || [],
     alerts: c.alerts || [],
-    integrations: c.integrations || [],
+    integrations,
+    metricHistory: c.metricHistory || [],
+    approvals: c.approvals || [],
   };
 }
 
@@ -84,10 +100,16 @@ function parseAgency(raw: unknown): AgencyAccount | null {
   const o = raw as Record<string, unknown>;
   if (Array.isArray(o.clients)) {
     const agency = raw as AgencyAccount;
+    const clients = agency.clients.map(normalizeClient);
+    const team = agency.team?.length ? agency.team : defaultTeam();
+    const assignments =
+      agency.assignments?.length ? agency.assignments : seedAssignments(clients, team);
     return {
       ...agency,
       dataMode: agency.dataMode || "strict",
-      clients: agency.clients.map(normalizeClient),
+      clients,
+      team,
+      assignments,
     };
   }
   if (o.email && o.id) return migrateLegacyWorkspace(raw as Workspace);
@@ -128,23 +150,37 @@ export function createAgency(email: string): AgencyAccount {
   const clients: ClientWorkspace[] = [
     {
       ...emptyClient("Northwind Retail", owner, "northwind.example"),
+      retainerMonthly: 9000,
       integrations: [
-        { platform: "Meta Ads", status: "connected" },
-        { platform: "Google Ads", status: "connected" },
-        { platform: "HubSpot", status: "connected" },
+        { platform: "Meta Ads", status: "connected", connectedAt: new Date().toISOString() },
+        { platform: "Google Ads", status: "connected", connectedAt: new Date().toISOString() },
+        { platform: "GA4", status: "pending" },
+        { platform: "LinkedIn Ads", status: "pending" },
+        { platform: "HubSpot", status: "connected", connectedAt: new Date().toISOString() },
       ],
     },
     {
       ...emptyClient("Beacon Fintech", "jamie", "beacon.example"),
+      retainerMonthly: 12000,
       integrations: [
-        { platform: "Meta Ads", status: "connected" },
-        { platform: "Google Ads", status: "broken", note: "OAuth token expired" },
-        { platform: "GA4", status: "connected" },
+        { platform: "Meta Ads", status: "connected", connectedAt: new Date().toISOString() },
+        {
+          platform: "Google Ads",
+          status: "broken",
+          note: "OAuth token expired",
+        },
+        { platform: "GA4", status: "connected", connectedAt: new Date().toISOString() },
+        { platform: "LinkedIn Ads", status: "pending" },
+        { platform: "HubSpot", status: "pending" },
       ],
     },
-    emptyClient("Summit B2B", "alex", "summit.example"),
+    {
+      ...emptyClient("Summit B2B", "alex", "summit.example"),
+      retainerMonthly: 5500,
+    },
   ];
 
+  const team = defaultTeam();
   const agency: AgencyAccount = {
     id: randomUUID(),
     email: normalized,
@@ -153,8 +189,10 @@ export function createAgency(email: string): AgencyAccount {
     activeClientId: clients[0].id,
     clients,
     prospects: [],
-    whiteLabel: { agencyName: "Demo Agency", accentColor: "#E8A838" },
+    whiteLabel: { agencyName: "Demo Agency", accentColor: "#0F766E" },
     dataMode: "strict",
+    team,
+    assignments: seedAssignments(clients, team),
   };
   return writeAgency(agency);
 }
@@ -200,10 +238,15 @@ export function addClient(
   domain?: string
 ): AgencyAccount {
   const client = emptyClient(name, owner, domain);
+  const clients = [...agency.clients, client];
   return writeAgency({
     ...agency,
-    clients: [...agency.clients, client],
+    clients,
     activeClientId: client.id,
+    assignments: [
+      ...agency.assignments,
+      ...seedAssignments([client], agency.team).filter((a) => a.clientId === client.id),
+    ],
   });
 }
 
@@ -218,7 +261,6 @@ export function findProspectByToken(token: string): {
   return { agency, prospect };
 }
 
-/** Back-compat helpers used by older call sites */
 export function readWorkspace(): ClientWorkspace | null {
   const agency = readAgency();
   if (!agency) return null;
