@@ -21,10 +21,38 @@ export type ClientProfitability = {
 
 export function defaultTeam(): TeamMember[] {
   return [
-    { id: "tm-lead", name: "You (Lead)", role: "Marketing Manager", weeklyCapacityHours: 40, hourlyCost: 85 },
-    { id: "tm-jamie", name: "Jamie", role: "Strategist", weeklyCapacityHours: 40, hourlyCost: 55 },
-    { id: "tm-alex", name: "Alex", role: "Media Buyer", weeklyCapacityHours: 40, hourlyCost: 50 },
-    { id: "tm-sam", name: "Sam", role: "Content", weeklyCapacityHours: 35, hourlyCost: 45 },
+    {
+      id: "tm-lead",
+      name: "You (Lead)",
+      role: "Marketing Manager",
+      teamRole: "owner",
+      weeklyCapacityHours: 40,
+      hourlyCost: 85,
+    },
+    {
+      id: "tm-jamie",
+      name: "Jamie",
+      role: "Strategist",
+      teamRole: "strategist",
+      weeklyCapacityHours: 40,
+      hourlyCost: 55,
+    },
+    {
+      id: "tm-alex",
+      name: "Alex",
+      role: "Media Buyer",
+      teamRole: "manager",
+      weeklyCapacityHours: 40,
+      hourlyCost: 50,
+    },
+    {
+      id: "tm-sam",
+      name: "Sam",
+      role: "Content",
+      teamRole: "viewer",
+      weeklyCapacityHours: 35,
+      hourlyCost: 45,
+    },
   ];
 }
 

@@ -768,6 +768,99 @@
   opacity: 0.85;
 }
 
+.wlHeader {
+  margin-bottom: 24px;
+  padding-top: 16px;
+  border-top: 4px solid var(--brand);
+}
+
+.wlBrandRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.wlMark {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.wlAgency {
+  margin: 0;
+  font-family: var(--font-display), Manrope, sans-serif;
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.wlTag {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.wlCompliance {
+  margin-top: 10px;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  opacity: 0.9;
+}
+
+.checkRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 10px 0;
+  font-size: 0.92rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.checkRow input {
+  margin-top: 3px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.recItem {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+}
+
+.recAction {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.02rem;
+}
+
+.chipDanger {
+  background: var(--danger-soft);
+  color: #991b1b;
+  border-color: rgba(220, 38, 38, 0.25);
+}
+
+.chipWarn {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: rgba(249, 115, 22, 0.28);
+}
+
+.chipOk {
+  background: var(--ok-soft);
+  color: #166534;
+  border-color: rgba(21, 128, 61, 0.25);
+}
+
 @media (max-width: 920px) {
   .shell {
     grid-template-columns: 1fr;

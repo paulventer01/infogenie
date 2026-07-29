@@ -177,12 +177,22 @@ export type ApprovalItem = {
   decidedAt?: string;
 };
 
+export type TeamRole = "owner" | "manager" | "strategist" | "viewer";
+
 export type TeamMember = {
   id: string;
   name: string;
   role: string;
+  teamRole: TeamRole;
   weeklyCapacityHours: number;
   hourlyCost: number;
+};
+
+export type ComplianceSettings = {
+  gdprAcknowledged: boolean;
+  consentLogged: boolean;
+  dataResidencyNote: string;
+  dpaSigned: boolean;
 };
 
 export type CapacityAssignment = {
@@ -226,6 +236,9 @@ export type WhiteLabel = {
   agencyName: string;
   accentColor: string;
   footerText?: string;
+  tagline?: string;
+  /** When true (default), client-facing pages never show InfoGenie / vendor chrome. */
+  hideVendorBrand: boolean;
 };
 
 export type DataMode = "strict" | "demo";
@@ -249,6 +262,9 @@ export type AgencyAccount = {
   whiteLabel: WhiteLabel;
   team: TeamMember[];
   assignments: CapacityAssignment[];
+  compliance: ComplianceSettings;
+  /** Demo session role for permission gates. */
+  sessionRole: TeamRole;
 };
 
 /** @deprecated Use ClientWorkspace — kept for migration */

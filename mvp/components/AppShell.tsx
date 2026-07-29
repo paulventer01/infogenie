@@ -46,6 +46,7 @@ export default function AppShell({
         label: "Agency ops",
         items: [
           { href: "/agency", label: "Command Center", icon: "◆", badge: openAlertCount },
+          { href: "/recommendations", label: "Recommendations", icon: "→" },
           { href: "/connectors", label: "Connectors", icon: "⌁" },
           { href: "/approvals", label: "Approvals", icon: "✓" },
           { href: "/capacity", label: "Capacity & Margin", icon: "%" },

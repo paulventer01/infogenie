@@ -13,7 +13,8 @@ import { canShowLiveMetrics, getDataMode, hasConnectedAds } from "./strict-mode"
 export function formatWhiteLabelExport(agency: AgencyAccount, narrative: string): string {
   const wl = agency.whiteLabel;
   const footer = wl.footerText || `Prepared by ${wl.agencyName}`;
-  return `${wl.agencyName.toUpperCase()}
+  const tagline = wl.tagline ? `\n${wl.tagline}` : "";
+  return `${wl.agencyName.toUpperCase()}${tagline}
 ${"─".repeat(40)}
 ${footer}
 ${"─".repeat(40)}
@@ -21,7 +22,7 @@ ${"─".repeat(40)}
 ${narrative}
 
 ${"─".repeat(40)}
-${wl.agencyName} · Confidential
+${wl.agencyName} · Confidential · Client data isolated
 `;
 }
 

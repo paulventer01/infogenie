@@ -67,7 +67,7 @@ export default async function ConnectorsPage({
       <PageHeader
         eyebrow="Live data · MVP thin"
         title={`Connectors — ${client.name}`}
-        sub="Connect platforms, sync metrics, and raise real anomaly alerts when CPA/spend/conversions move hard."
+        sub="Connect platforms, sync full metric history, and raise anomaly alerts when CPA/spend/conversions move hard. Broken connectors destroy trust — health and last sync are first-class."
         right={
           <form action={syncAction}>
             <input type="hidden" name="forceAnomaly" value="0" />
@@ -98,8 +98,8 @@ export default async function ConnectorsPage({
         <section className={styles.panel}>
           <h2 className={styles.panelTitle}>Platforms</h2>
           <p className={styles.muted} style={{ marginBottom: 12 }}>
-            MVP connectors use an OAuth stub — enough to drive live sync + alerts without full
-            platform depth.
+            Deep integrations, not samples: each sync appends history and compares to the prior
+            snapshot. OAuth is stubbed in MVP — production wires real Meta/Google tokens.
           </p>
           <ul className={styles.list}>
             {client.integrations.map((i) => (

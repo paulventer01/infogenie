@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { readAgency, writeAgency } from "@/lib/store";
 import { decideApproval, findApprovalByToken } from "@/lib/approvals";
+import { WhiteLabelFooter, WhiteLabelHeader } from "@/components/WhiteLabelChrome";
 import styles from "@/styles/mvp.module.css";
 
 async function clientDecide(formData: FormData) {
@@ -42,16 +43,15 @@ export default async function ReviewPage({
   if (!found) notFound();
 
   const { client, item } = found;
+  const accent = agency.whiteLabel.accentColor || "#0F766E";
 
   return (
-    <div className={styles.sharePage}>
-      <header className={styles.shareHeader}>
-        <p className={styles.eyebrow}>{agency.whiteLabel.agencyName}</p>
-        <h1 className={styles.h1}>Review &amp; approve</h1>
-        <p className={styles.sub}>
-          {client.name} · {item.kind} · {item.title}
-        </p>
-      </header>
+    <div className={styles.sharePage} style={{ ["--wl-accent" as string]: accent }}>
+      <WhiteLabelHeader
+        whiteLabel={agency.whiteLabel}
+        title="Review & approve"
+        sub={`${client.name} · ${item.kind} · ${item.title} · Only this client's data`}
+      />
 
       {sp.done ? (
         <div className={`${styles.banner} ${styles.bannerInfo}`}>
@@ -59,7 +59,9 @@ export default async function ReviewPage({
         </div>
       ) : null}
 
-      <div className={`${styles.banner} ${item.status === "pending" ? styles.bannerWarn : styles.bannerInfo}`}>
+      <div
+        className={`${styles.banner} ${item.status === "pending" ? styles.bannerWarn : styles.bannerInfo}`}
+      >
         Status: <strong>{item.status.replace("_", " ")}</strong>
       </div>
 
@@ -77,7 +79,12 @@ export default async function ReviewPage({
             <input type="hidden" name="token" value={token} />
             <div className={styles.field}>
               <label htmlFor="note">Comment (optional)</label>
-              <textarea id="note" name="note" rows={3} placeholder="Looks good / please tweak headline…" />
+              <textarea
+                id="note"
+                name="note"
+                rows={3}
+                placeholder="Looks good / please tweak headline…"
+              />
             </div>
             <div className={styles.alertActions}>
               <button
@@ -105,9 +112,7 @@ export default async function ReviewPage({
         </p>
       ) : null}
 
-      <footer className={styles.shareFoot}>
-        Powered by InfoGenie MVP · {agency.whiteLabel.agencyName}
-      </footer>
+      <WhiteLabelFooter whiteLabel={agency.whiteLabel} />
     </div>
   );
 }

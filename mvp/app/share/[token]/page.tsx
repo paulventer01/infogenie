@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { findProspectByToken } from "@/lib/store";
 import { buildInstaReportSummary } from "@/lib/reports";
+import { WhiteLabelFooter, WhiteLabelHeader } from "@/components/WhiteLabelChrome";
 import styles from "@/styles/mvp.module.css";
 
 export default async function SharePage({
@@ -14,16 +15,15 @@ export default async function SharePage({
 
   const { agency, prospect } = found;
   const a = prospect.analysis!;
+  const accent = agency.whiteLabel.accentColor || "#0F766E";
 
   return (
-    <div className={styles.sharePage}>
-      <header className={styles.shareHeader}>
-        <p className={styles.eyebrow}>{agency.whiteLabel.agencyName}</p>
-        <h1 className={styles.h1}>Marketing audit — {prospect.prospectName}</h1>
-        <p className={styles.sub}>
-          {a.domain} · {a.industry} · Prepared {new Date(prospect.createdAt).toLocaleDateString()}
-        </p>
-      </header>
+    <div className={styles.sharePage} style={{ ["--wl-accent" as string]: accent }}>
+      <WhiteLabelHeader
+        whiteLabel={agency.whiteLabel}
+        title={`Marketing audit — ${prospect.prospectName}`}
+        sub={`${a.domain} · ${a.industry} · Prepared ${new Date(prospect.createdAt).toLocaleDateString()}`}
+      />
 
       <div className={`${styles.banner} ${styles.bannerInfo}`}>
         {a.source === "scaffold"
@@ -32,7 +32,7 @@ export default async function SharePage({
       </div>
 
       <section className={styles.panel}>
-        <pre className={styles.exportBox}>{buildInstaReportSummary(a)}</pre>
+        <pre className={styles.exportBox}>{buildInstaReportSummary(a, agency)}</pre>
       </section>
 
       <section className={styles.panel} style={{ marginTop: 16 }}>
@@ -60,9 +60,7 @@ export default async function SharePage({
         </table>
       </section>
 
-      <footer className={styles.shareFoot}>
-        Powered by InfoGenie MVP · {agency.whiteLabel.agencyName}
-      </footer>
+      <WhiteLabelFooter whiteLabel={agency.whiteLabel} />
     </div>
   );
 }

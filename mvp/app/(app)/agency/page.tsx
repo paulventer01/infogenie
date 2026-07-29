@@ -70,6 +70,9 @@ export default async function AgencyPage() {
         right={
           <div className={styles.chipRow}>
             <span className={styles.chip}>Data mode: {mode}</span>
+            <Link className={`${styles.btn} ${styles.btnGhost}`} href="/recommendations">
+              Recommendations
+            </Link>
             <Link className={`${styles.btn} ${styles.btnPrimary}`} href="/reports/bulk">
               Batch reports →
             </Link>

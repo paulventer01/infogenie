@@ -13,6 +13,56 @@ function ensure() {
   if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 }
 
+function defaultWhiteLabel(agencyName: string): AgencyAccount["whiteLabel"] {
+  return {
+    agencyName,
+    accentColor: "#0F766E",
+    tagline: "Performance marketing, reported your way",
+    hideVendorBrand: true,
+  };
+}
+
+function defaultCompliance(): AgencyAccount["compliance"] {
+  return {
+    gdprAcknowledged: false,
+    consentLogged: false,
+    dataResidencyNote: "EU / UK processing only (configure with legal)",
+    dpaSigned: false,
+  };
+}
+
+function normalizeTeamRole(raw: unknown): AgencyAccount["sessionRole"] {
+  const v = String(raw || "strategist");
+  if (v === "owner" || v === "manager" || v === "strategist" || v === "viewer") return v;
+  return "strategist";
+}
+
+function normalizeWhiteLabel(
+  raw: AgencyAccount["whiteLabel"] | undefined,
+  agencyName: string
+): AgencyAccount["whiteLabel"] {
+  const base = defaultWhiteLabel(agencyName);
+  if (!raw) return base;
+  return {
+    agencyName: raw.agencyName || agencyName,
+    accentColor: raw.accentColor || base.accentColor,
+    footerText: raw.footerText,
+    tagline: raw.tagline ?? base.tagline,
+    hideVendorBrand: raw.hideVendorBrand !== false,
+  };
+}
+
+function normalizeTeam(team: AgencyAccount["team"] | undefined): AgencyAccount["team"] {
+  const base = defaultTeam();
+  if (!team?.length) return base;
+  return team.map((m, i) => ({
+    ...m,
+    teamRole: normalizeTeamRole(m.teamRole ?? (i === 0 ? "owner" : "strategist")),
+    weeklyCapacityHours: m.weeklyCapacityHours || 40,
+    hourlyCost: m.hourlyCost || 50,
+  }));
+}
+
 function emptyClient(name: string, owner: string, domain?: string): ClientWorkspace {
   return {
     id: randomUUID(),
@@ -74,10 +124,12 @@ function migrateLegacyWorkspace(raw: Workspace): AgencyAccount {
     activeClientId: client.id,
     clients: [client],
     prospects: [],
-    whiteLabel: { agencyName: "My Agency", accentColor: "#0F766E" },
+    whiteLabel: defaultWhiteLabel("My Agency"),
     dataMode: "strict",
     team,
     assignments: seedAssignments([client], team),
+    compliance: defaultCompliance(),
+    sessionRole: "owner",
   };
 }
 
@@ -101,7 +153,7 @@ function parseAgency(raw: unknown): AgencyAccount | null {
   if (Array.isArray(o.clients)) {
     const agency = raw as AgencyAccount;
     const clients = agency.clients.map(normalizeClient);
-    const team = agency.team?.length ? agency.team : defaultTeam();
+    const team = agency.team?.length ? normalizeTeam(agency.team) : defaultTeam();
     const assignments =
       agency.assignments?.length ? agency.assignments : seedAssignments(clients, team);
     return {
@@ -110,6 +162,12 @@ function parseAgency(raw: unknown): AgencyAccount | null {
       clients,
       team,
       assignments,
+      whiteLabel: normalizeWhiteLabel(agency.whiteLabel, agency.agencyName || "Agency"),
+      compliance: {
+        ...defaultCompliance(),
+        ...(agency.compliance || {}),
+      },
+      sessionRole: normalizeTeamRole(agency.sessionRole ?? "owner"),
     };
   }
   if (o.email && o.id) return migrateLegacyWorkspace(raw as Workspace);
@@ -189,10 +247,12 @@ export function createAgency(email: string): AgencyAccount {
     activeClientId: clients[0].id,
     clients,
     prospects: [],
-    whiteLabel: { agencyName: "Demo Agency", accentColor: "#0F766E" },
+    whiteLabel: defaultWhiteLabel("Demo Agency"),
     dataMode: "strict",
     team,
     assignments: seedAssignments(clients, team),
+    compliance: defaultCompliance(),
+    sessionRole: "owner",
   };
   return writeAgency(agency);
 }
