@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { readWorkspace, writeWorkspace } from "@/lib/store";
+import { readAgency, updateActiveClient } from "@/lib/store";
 import { SESSION_COOKIE } from "@/lib/session";
 import { runAnalysis } from "@/lib/analyse";
 
 export async function POST(req: NextRequest) {
   const jar = await cookies();
   const sid = jar.get(SESSION_COOKIE)?.value;
-  const ws = readWorkspace();
-  if (!sid || !ws || ws.id !== sid) {
+  const agency = readAgency();
+  if (!sid || !agency || agency.id !== sid) {
     return NextResponse.json({ ok: false, error: "auth_required" }, { status: 401 });
   }
   const body = (await req.json().catch(() => ({}))) as {
@@ -21,6 +21,13 @@ export async function POST(req: NextRequest) {
     domain,
     industry: body.industry?.trim() || undefined,
   });
-  writeWorkspace({ ...ws, analysis, results: null });
+  updateActiveClient(agency, (c) => ({
+    ...c,
+    analysis,
+    results: null,
+    weeklyReport: null,
+    domain,
+    name: analysis.brandName,
+  }));
   return NextResponse.json({ ok: true, analysis });
 }

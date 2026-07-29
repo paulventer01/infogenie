@@ -18,8 +18,9 @@ async function refreshResults() {
     roas: Math.round((revenue / spend) * 100) / 100,
     cac: Math.round(spend / conversions),
     ctr: 1.8,
-    note: "MVP snapshot — illustrative until ad platforms + Resend are connected. Weekly report draft below uses this workspace's analysis.",
+    note: "Illustrative snapshot — not live platform data. Connect Meta/Google for honest funnel metrics.",
     generatedAt: new Date().toISOString(),
+    source: "illustrative",
   };
   writeWorkspace({ ...ws, results });
   redirect("/results");
@@ -36,13 +37,18 @@ export default async function ResultsPage() {
       <PageHeader
         eyebrow="Day 7 · Prove"
         title="Weekly results"
-        sub="Close the loop with a snapshot and a report draft you can email."
+        sub="Honest funnel view — illustrative until integrations connect. Weekly narrative lives in Reports."
         right={
-          <form action={refreshResults}>
-            <button className={`${styles.btn} ${styles.btnPrimary}`} type="submit">
-              Refresh snapshot
-            </button>
-          </form>
+          <div className={styles.chipRow}>
+            <a className={`${styles.btn} ${styles.btnGhost}`} href="/reports">
+              Open weekly report →
+            </a>
+            <form action={refreshResults}>
+              <button className={`${styles.btn} ${styles.btnPrimary}`} type="submit">
+                Refresh snapshot
+              </button>
+            </form>
+          </div>
         }
       />
 
@@ -52,7 +58,9 @@ export default async function ResultsPage() {
         </div>
       ) : (
         <>
-          <div className={`${styles.banner} ${styles.bannerInfo}`}>{r.note}</div>
+          <div className={`${styles.banner} ${styles.bannerWarn}`}>
+            {r.note} Source: <strong>{r.source}</strong>
+          </div>
           <div className={styles.grid3} style={{ marginBottom: 16 }}>
             <div className={styles.panel}>
               <div className={styles.metric}>

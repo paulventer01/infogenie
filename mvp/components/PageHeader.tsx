@@ -34,7 +34,7 @@ export function NeedAnalysis() {
         The MVP loop starts with a domain. Analyse builds competitors, ads, keywords, and brand
         voice for everything downstream.
       </p>
-      <Link className={`${styles.btn} ${styles.btnPrimary}`} href="/">
+      <Link className={`${styles.btn} ${styles.btnPrimary}`} href="/analyse">
         Analyse a domain →
       </Link>
     </div>

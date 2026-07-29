@@ -422,3 +422,127 @@
     padding: 20px 16px 40px;
   }
 }
+
+.clientBlock {
+  padding: 0 6px 8px;
+}
+
+.clientSelect {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.2);
+  color: #f3f7f8;
+  font-size: 0.86rem;
+}
+
+.navBadge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #1d1405;
+  font-size: 0.68rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.alertRow {
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(11, 61, 74, 0.04);
+  border: 1px solid var(--line);
+}
+
+.alertTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.alertMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.alertActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.severity {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sevcritical {
+  background: rgba(180, 40, 40, 0.15);
+  color: #8b1a1a;
+}
+
+.sevhigh {
+  background: rgba(232, 120, 56, 0.2);
+  color: #8a3d08;
+}
+
+.sevmedium {
+  background: rgba(232, 168, 56, 0.2);
+  color: #7a5208;
+}
+
+.sevlow {
+  background: rgba(11, 61, 74, 0.1);
+  color: var(--sea);
+}
+
+.exportBox {
+  white-space: pre-wrap;
+  font-family: inherit;
+  line-height: 1.55;
+  margin: 0;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(11, 61, 74, 0.04);
+  border: 1px solid var(--line);
+  font-size: 0.88rem;
+  max-height: 480px;
+  overflow: auto;
+}
+
+.sharePage {
+  min-height: 100vh;
+  padding: 40px 24px 64px;
+  max-width: 900px;
+  margin: 0 auto;
+  background:
+    radial-gradient(900px 400px at 0% 0%, rgba(11, 61, 74, 0.08), transparent 55%),
+    var(--paper);
+}
+
+.shareHeader {
+  margin-bottom: 20px;
+}
+
+.shareFoot {
+  margin-top: 32px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}

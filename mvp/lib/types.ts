@@ -82,6 +82,7 @@ export type ResultsSnapshot = {
   spend: number;
   note: string;
   generatedAt: string;
+  source: "illustrative" | "connected";
 };
 
 export type Analysis = {
@@ -101,13 +102,76 @@ export type Analysis = {
   brand: BrandFoundation;
 };
 
-export type Workspace = {
+export type AlertSeverity = "critical" | "high" | "medium" | "low";
+
+export type AgencyAlert = {
   id: string;
-  email: string;
+  clientId: string;
+  title: string;
+  detail: string;
+  severity: AlertSeverity;
+  owner: string;
+  category: "spend" | "cpa" | "deliverability" | "deadline" | "integration" | "reporting";
+  createdAt: string;
+  status: "open" | "acknowledged";
+};
+
+export type IntegrationStatus = {
+  platform: string;
+  status: "connected" | "broken" | "pending";
+  note?: string;
+};
+
+export type WeeklyReport = {
+  id: string;
+  narrative: string;
+  generatedAt: string;
+  updatedAt: string;
+  status: "draft" | "final";
+};
+
+export type ClientWorkspace = {
+  id: string;
+  name: string;
+  domain?: string;
+  owner: string;
   createdAt: string;
   analysis: Analysis | null;
   drafts: ContentDraft[];
   campaigns: CampaignDraft[];
   sequences: ReachSequence[];
   results: ResultsSnapshot | null;
+  weeklyReport: WeeklyReport | null;
+  alerts: AgencyAlert[];
+  integrations: IntegrationStatus[];
+  acknowledgedAlertIds: string[];
 };
+
+export type InstaReport = {
+  id: string;
+  prospectName: string;
+  domain: string;
+  industry: string;
+  analysis: Analysis | null;
+  shareToken: string;
+  createdAt: string;
+};
+
+export type WhiteLabel = {
+  agencyName: string;
+  accentColor: string;
+};
+
+export type AgencyAccount = {
+  id: string;
+  email: string;
+  agencyName: string;
+  createdAt: string;
+  activeClientId: string | null;
+  clients: ClientWorkspace[];
+  prospects: InstaReport[];
+  whiteLabel: WhiteLabel;
+};
+
+/** @deprecated Use ClientWorkspace — kept for migration */
+export type Workspace = ClientWorkspace & { email: string };
