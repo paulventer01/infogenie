@@ -1,44 +1,24 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ClientSwitcher from "@/components/ClientSwitcher";
 import styles from "@/styles/mvp.module.css";
 
-const AGENCY_NAV = [
-  { href: "/agency", label: "Command Center", icon: "◉" },
-  { href: "/reports", label: "Weekly Reports", icon: "▤" },
-  { href: "/reports/bulk", label: "Batch Reports", icon: "▥" },
-  { href: "/prospects", label: "InstaReports", icon: "◇" },
-  { href: "/settings", label: "Settings", icon: "⚙" },
-];
+type NavItem = { href: string; label: string; icon: string; badge?: number };
+type NavSection = { id: string; label: string; items: NavItem[] };
 
-const CLIENT_NAV: { day: string; items: { href: string; label: string; icon: string }[] }[] = [
-  {
-    day: "Day 1 — Analyse",
-    items: [
-      { href: "/dashboard", label: "Dashboard", icon: "◈" },
-      { href: "/competitors", label: "Competitors", icon: "⚔" },
-      { href: "/ads", label: "Ad Spy", icon: "▣" },
-      { href: "/keywords", label: "Keywords", icon: "⌕" },
-    ],
-  },
-  {
-    day: "Day 2–3 — Launch & Create",
-    items: [
-      { href: "/brand", label: "Brand Foundation", icon: "◎" },
-      { href: "/create", label: "Create", icon: "✎" },
-      { href: "/campaigns", label: "Campaigns", icon: "▶" },
-    ],
-  },
-  {
-    day: "Day 5–7 — Reach & Prove",
-    items: [
-      { href: "/reach", label: "Reach", icon: "➔" },
-      { href: "/results", label: "Results", icon: "▦" },
-    ],
-  },
-];
+function isItemActive(pathname: string, href: string) {
+  if (pathname === href) return true;
+  if (href === "/reports") return pathname === "/reports";
+  if (href !== "/" && pathname.startsWith(href + "/")) return true;
+  return false;
+}
+
+function sectionContainsPath(section: NavSection, pathname: string) {
+  return section.items.some((item) => isItemActive(pathname, item.href));
+}
 
 export default function AppShell({
   children,
@@ -59,6 +39,69 @@ export default function AppShell({
 }) {
   const pathname = usePathname();
 
+  const sections: NavSection[] = useMemo(
+    () => [
+      {
+        id: "agency-ops",
+        label: "Agency ops",
+        items: [
+          { href: "/agency", label: "Command Center", icon: "◉", badge: openAlertCount },
+          { href: "/reports", label: "Weekly Reports", icon: "▤" },
+          { href: "/reports/bulk", label: "Batch Reports", icon: "▥" },
+          { href: "/prospects", label: "InstaReports", icon: "◇" },
+          { href: "/settings", label: "Settings", icon: "⚙" },
+        ],
+      },
+      {
+        id: "day-1",
+        label: "Day 1 — Analyse",
+        items: [
+          { href: "/dashboard", label: "Dashboard", icon: "◈" },
+          { href: "/analyse", label: "Analyse", icon: "◎" },
+          { href: "/competitors", label: "Competitors", icon: "⚔" },
+          { href: "/ads", label: "Ad Spy", icon: "▣" },
+          { href: "/keywords", label: "Keywords", icon: "⌕" },
+        ],
+      },
+      {
+        id: "day-2-3",
+        label: "Day 2–3 — Launch & Create",
+        items: [
+          { href: "/brand", label: "Brand Foundation", icon: "◎" },
+          { href: "/create", label: "Create", icon: "✎" },
+          { href: "/campaigns", label: "Campaigns", icon: "▶" },
+        ],
+      },
+      {
+        id: "day-5-7",
+        label: "Day 5–7 — Reach & Prove",
+        items: [
+          { href: "/reach", label: "Reach", icon: "➔" },
+          { href: "/results", label: "Results", icon: "▦" },
+        ],
+      },
+    ],
+    [openAlertCount]
+  );
+
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setOpenSections((prev) => {
+      const next = { ...prev };
+      for (const section of sections) {
+        if (sectionContainsPath(section, pathname)) {
+          next[section.id] = true;
+        }
+      }
+      return next;
+    });
+  }, [pathname, sections]);
+
+  function toggleSection(id: string) {
+    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
   return (
     <div className={styles.shell}>
       <aside className={styles.rail}>
@@ -68,49 +111,53 @@ export default function AppShell({
         </div>
 
         <div className={styles.clientBlock}>
-          <div className={styles.navDay}>Agency</div>
+          <div className={styles.navDay}>Workspace</div>
           <ClientSwitcher clients={clients} activeClientId={activeClientId} />
         </div>
 
-        <nav className={styles.nav}>
-          <div className={styles.navDay}>Agency ops</div>
-          {AGENCY_NAV.map((item) => {
-            const active =
-              pathname === item.href ||
-              (item.href !== "/agency" && pathname.startsWith(item.href + "/"));
+        <nav className={styles.nav} aria-label="Main">
+          {sections.map((section) => {
+            const open = !!openSections[section.id];
+            const hasActive = sectionContainsPath(section, pathname);
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`${styles.navLink} ${active ? styles.navLinkActive : ""}`}
-              >
-                <span className={styles.navIcon}>{item.icon}</span>
-                <span>{item.label}</span>
-                {item.href === "/agency" && openAlertCount > 0 ? (
-                  <span className={styles.navBadge}>{openAlertCount}</span>
-                ) : null}
-              </Link>
+              <div key={section.id} className={styles.navSection}>
+                <button
+                  type="button"
+                  className={`${styles.navToggle} ${hasActive ? styles.navToggleActive : ""}`}
+                  aria-expanded={open}
+                  aria-controls={`nav-panel-${section.id}`}
+                  onClick={() => toggleSection(section.id)}
+                >
+                  <span className={styles.navToggleLabel}>{section.label}</span>
+                  <span className={`${styles.navChevron} ${open ? styles.navChevronOpen : ""}`} aria-hidden>
+                    ▾
+                  </span>
+                </button>
+                <div
+                  id={`nav-panel-${section.id}`}
+                  className={`${styles.navPanel} ${open ? styles.navPanelOpen : ""}`}
+                  hidden={!open}
+                >
+                  {section.items.map((item) => {
+                    const active = isItemActive(pathname, item.href);
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`${styles.navLink} ${active ? styles.navLinkActive : ""}`}
+                      >
+                        <span className={styles.navIcon}>{item.icon}</span>
+                        <span>{item.label}</span>
+                        {item.badge && item.badge > 0 ? (
+                          <span className={styles.navBadge}>{item.badge}</span>
+                        ) : null}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
-
-          {CLIENT_NAV.map((group) => (
-            <div key={group.day}>
-              <div className={styles.navDay}>{group.day}</div>
-              {group.items.map((item) => {
-                const active = pathname === item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`${styles.navLink} ${active ? styles.navLinkActive : ""}`}
-                  >
-                    <span className={styles.navIcon}>{item.icon}</span>
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
         </nav>
 
         <div className={styles.railFoot}>
