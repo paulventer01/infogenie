@@ -467,32 +467,42 @@ export default function MarketingBrief() {
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '20px 14px 52px', fontFamily: "'Inter','Segoe UI',sans-serif" }}>
 
       {/* ── Hero header ───────────────────────────────────────────────────── */}
-      <div style={{ background: 'linear-gradient(135deg,#1E1B4B 0%,#312E81 55%,#4338CA 100%)', borderRadius: 16, padding: '26px 28px 22px', marginBottom: 18, color: '#fff', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: -28, right: -28, width: 150, height: 150, background: 'rgba(255,255,255,0.04)', borderRadius: '50%', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', bottom: -40, right: 55, width: 90, height: 90, background: 'rgba(255,255,255,0.03)', borderRadius: '50%', pointerEvents: 'none' }} />
+      <div style={{
+        background: 'radial-gradient(ellipse 75% 65% at 10% 15%, rgba(15,118,110,0.16), transparent 55%), radial-gradient(ellipse 55% 50% at 92% 85%, rgba(2,132,199,0.14), transparent 50%), linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 48%, #eef4ff 100%)',
+        borderRadius: 16,
+        padding: '26px 28px 22px',
+        marginBottom: 18,
+        color: '#0f172a',
+        position: 'relative',
+        overflow: 'hidden',
+        border: '1px solid rgba(15, 118, 110, 0.16)',
+        boxShadow: '0 10px 28px rgba(15, 23, 42, 0.06)',
+      }}>
+        <div style={{ position: 'absolute', top: -28, right: -28, width: 150, height: 150, background: 'rgba(15,118,110,0.06)', borderRadius: '50%', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: -40, right: 55, width: 90, height: 90, background: 'rgba(2,132,199,0.07)', borderRadius: '50%', pointerEvents: 'none' }} />
 
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#A5B4FC', marginBottom: 6 }}>
+            <div style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#0f766e', marginBottom: 6 }}>
               📋 Today&apos;s Marketing Brief · {formattedDate}
             </div>
-            <h1 style={{ margin: 0, fontSize: '1.22rem', fontWeight: 800, lineHeight: 1.3, color: '#fff' }}>
+            <h1 style={{ margin: 0, fontSize: '1.22rem', fontWeight: 800, lineHeight: 1.3, color: '#0f172a' }}>
               {brief?.headline || 'Your AI Marketing Director'}
             </h1>
             {brief?.greeting && (
-              <p style={{ margin: '8px 0 0', fontSize: '0.82rem', color: '#C7D2FE', lineHeight: 1.5 }}>{brief.greeting}</p>
+              <p style={{ margin: '8px 0 0', fontSize: '0.82rem', color: '#475569', lineHeight: 1.5 }}>{brief.greeting}</p>
             )}
           </div>
           <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', flexWrap: 'wrap', flexShrink: 0 }}>
             <button
               onClick={() => load(true)} disabled={refreshing}
-              style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.12)', color: '#fff', border: '1.5px solid rgba(255,255,255,0.18)', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}
+              style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.75)', color: '#0f172a', border: '1.5px solid rgba(15, 118, 110, 0.22)', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', opacity: refreshing ? 0.6 : 1 }}
             >
               {refreshing ? '⏳ Refreshing…' : '🔄 Refresh'}
             </button>
             <button
               onClick={deliver} disabled={delivering || delivered}
-              style={{ padding: '6px 12px', background: delivered ? '#16A34A' : 'rgba(255,255,255,0.12)', color: '#fff', border: '1.5px solid rgba(255,255,255,0.18)', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+              style={{ padding: '6px 12px', background: delivered ? '#16A34A' : 'linear-gradient(135deg,#0f766e,#0284c7)', color: '#fff', border: delivered ? '1.5px solid #16A34A' : '1.5px solid transparent', borderRadius: 7, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
             >
               {delivered ? '✓ Sent' : delivering ? 'Sending…' : '📤 Send to Slack'}
             </button>
@@ -501,7 +511,7 @@ export default function MarketingBrief() {
 
         {/* Cadence selector */}
         <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#A5B4FC', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cadence:</span>
+          <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cadence:</span>
           {(Object.entries(CADENCES) as [Cadence, CadenceMeta][]).map(([key, meta]) => {
             const isSelected = cadence === key;
             return (
@@ -510,28 +520,28 @@ export default function MarketingBrief() {
                 title={meta.plan + ' plan'}
                 style={{
                   padding: '5px 12px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: savingCadence ? 'default' : 'pointer', transition: 'all 0.18s',
-                  background: isSelected ? '#fff' : 'rgba(255,255,255,0.08)',
-                  border: `2px solid ${isSelected ? '#fff' : 'rgba(255,255,255,0.18)'}`,
-                  color: isSelected ? '#312E81' : '#C7D2FE',
-                  boxShadow: isSelected ? '0 2px 8px rgba(0,0,0,0.18)' : 'none',
+                  background: isSelected ? '#0f766e' : 'rgba(255,255,255,0.8)',
+                  border: `1.5px solid ${isSelected ? '#0f766e' : 'rgba(15, 118, 110, 0.22)'}`,
+                  color: isSelected ? '#fff' : '#334155',
+                  boxShadow: isSelected ? '0 4px 12px rgba(15, 118, 110, 0.22)' : 'none',
                   opacity: savingCadence && !isSelected ? 0.5 : 1,
                 }}
               >
-                {meta.label} <span style={{ opacity: 0.7, fontSize: '0.62rem' }}>({meta.plan})</span>
+                {meta.label} <span style={{ opacity: 0.75, fontSize: '0.62rem' }}>({meta.plan})</span>
                 {isSelected && <span style={{ marginLeft: 5, fontSize: '0.62rem' }}>✓</span>}
               </button>
             );
           })}
-          {savingCadence && <span style={{ fontSize: '0.65rem', color: '#A5B4FC', opacity: 0.8 }}>Saving…</span>}
+          {savingCadence && <span style={{ fontSize: '0.65rem', color: '#0f766e', opacity: 0.85 }}>Saving…</span>}
         </div>
 
         {/* Active pillars */}
         {(brief?.active_pillars || []).length > 0 && (
           <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {(brief!.active_pillars).slice(0, 8).map(p => (
-              <span key={p} style={{ background: 'rgba(255,255,255,0.09)', color: '#E0E7FF', borderRadius: 4, padding: '2px 7px', fontSize: '0.65rem', fontWeight: 600 }}>{p}</span>
+              <span key={p} style={{ background: 'rgba(15, 118, 110, 0.1)', color: '#0f766e', borderRadius: 4, padding: '2px 7px', fontSize: '0.65rem', fontWeight: 700 }}>{p}</span>
             ))}
-            <span style={{ background: 'rgba(255,255,255,0.05)', color: '#A5B4FC', borderRadius: 4, padding: '2px 7px', fontSize: '0.65rem' }}>
+            <span style={{ background: 'rgba(2, 132, 199, 0.1)', color: '#0369a1', borderRadius: 4, padding: '2px 7px', fontSize: '0.65rem', fontWeight: 600 }}>
               via {brief?.generated_by === 'openai' ? 'GPT-4o' : 'template'}
             </span>
           </div>
