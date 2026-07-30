@@ -31,10 +31,8 @@ const SPARK_SVG =
 const LS_ANALYSED = "ig:analysed";
 const LS_SIDEBAR = "ig:sidebar-open";
 
-function allGroupsOpen(): Record<string, boolean> {
-  const next: Record<string, boolean> = {};
-  for (const g of NAV_GROUPS) next[g.key] = true;
-  return next;
+function emptyGroups(): Record<string, boolean> {
+  return {};
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -42,8 +40,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [navReady, setNavReady] = useState(true);
   const [open, setOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
-  // Open every group by default so menus never look "empty" on first click.
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(allGroupsOpen);
+  // Feature dropdowns start closed; open only when the user clicks them.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(emptyGroups);
   const [filter, setFilter] = useState("");
 
   useEffect(() => {
@@ -251,10 +249,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     // If the rail is icon-collapsed, expand it so the submenu is visible.
     if (!open) {
       setOpen(true);
-      setOpenGroups((prev) => ({ ...prev, [key]: true }));
+      setOpenGroups({ [key]: true });
       return;
     }
-    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+    // Accordion: open the clicked feature; close the others.
+    setOpenGroups((prev) => ({ [key]: !prev[key] }));
   };
 
   const shellClass = [
