@@ -6197,17 +6197,46 @@ body,
   box-shadow: 0 1px 3px rgba(15,30,61,.10) !important;
 }
 
-/* ── BLANKET HERO TEXT RULE — every text node inside any hero is light ──
-   Catches inline-styled divs/spans/labels/small that any sub-page may add. */
-.view-header,
-.view-header *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
-.intel-header,
-.intel-header *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
-.comp-hero,
-.comp-hero *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
-[data-bp-hero],
-[data-bp-hero] *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *) {
+/* ── BLANKET HERO TEXT RULE — only for DARK heroes.
+   Light heroes (data-ig-light-hero / .ig-panel-hero / soft gradients) keep ink. */
+.view-header:not([data-ig-light-hero]):not(.ig-panel-hero),
+.view-header:not([data-ig-light-hero]):not(.ig-panel-hero) *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
+.intel-header:not([data-ig-light-hero]):not(.ig-panel-hero),
+.intel-header:not([data-ig-light-hero]):not(.ig-panel-hero) *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
+.comp-hero:not([data-ig-light-hero]):not(.ig-panel-hero),
+.comp-hero:not([data-ig-light-hero]):not(.ig-panel-hero) *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
+[data-bp-hero]:not([data-ig-light-hero]):not(.ig-panel-hero),
+[data-bp-hero]:not([data-ig-light-hero]):not(.ig-panel-hero) *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *) {
   color: #FFFFFF !important;
+}
+
+/* Explicit light-hero ink — beats any leftover white rules */
+.ig-panel-hero,
+.ig-panel-hero *:not(button):not(.btn):not(select):not(option):not(input),
+.ig-comp-hero,
+.ig-comp-hero *:not(button):not(.btn):not(select):not(option):not(input),
+[data-ig-light-hero],
+[data-ig-light-hero] *:not(button):not(.btn):not(select):not(option):not(input) {
+  color: #0f172a !important;
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+.ig-panel-hero .view-sub,
+.ig-comp-hero .view-sub,
+[data-ig-light-hero] .view-sub,
+.ig-panel-hero p,
+.ig-comp-hero p {
+  color: #334155 !important;
+}
+.ig-panel-hero .breadcrumb,
+.ig-comp-hero .breadcrumb,
+.ig-panel-hero .bc-group,
+.ig-comp-hero .bc-group {
+  color: #0f766e !important;
+}
+.ig-panel-hero .bc-sep,
+.ig-comp-hero .bc-sep {
+  color: #94a3b8 !important;
 }
 /* Force the AI-GENERATED hero pill (and similar white pills inside heroes)
    to keep their dark navy text — defeats the blanket rule above. */

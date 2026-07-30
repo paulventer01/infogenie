@@ -158,6 +158,32 @@ body:has(#ig-app-shell)[data-theme="light"] .intel-header .view-sub {
   text-shadow: none !important;
 }
 
+/* Legacy style.css forces .comp-hero * { color:#fff !important } for dark heroes.
+   Our heroes are light — restore readable ink for every text node inside. */
+body:has(#ig-app-shell) .comp-hero,
+body:has(#ig-app-shell) .comp-hero *:not(.atag):not(.badge):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary),
+body:has(#ig-app-shell) .comp-hero p,
+body:has(#ig-app-shell) .comp-hero small,
+body:has(#ig-app-shell) .comp-hero h1,
+body:has(#ig-app-shell) .comp-hero h2,
+body:has(#ig-app-shell) .comp-hero h3,
+body:has(#ig-app-shell) .comp-hero label,
+body:has(#ig-app-shell) .comp-hero .breadcrumb,
+body:has(#ig-app-shell) .comp-hero .breadcrumb *,
+body:has(#ig-app-shell)[data-theme="light"] .comp-hero,
+body:has(#ig-app-shell)[data-theme="light"] .comp-hero *:not(button):not(.btn):not(select):not(option):not(input) {
+  color: #0f172a !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+body:has(#ig-app-shell) .comp-hero [style*="color: #64748b"],
+body:has(#ig-app-shell) .comp-hero [style*="color:#64748b"],
+body:has(#ig-app-shell) .comp-hero [style*="color: #475569"],
+body:has(#ig-app-shell) .comp-hero [style*="color:#475569"] {
+  color: #475569 !important;
+}
+
 body:has(#ig-app-shell) .card,
 body:has(#ig-app-shell) .ig-card,
 body:has(#ig-app-shell) .panel,
@@ -577,7 +603,7 @@ body:has(#ig-app-shell) #ig-react-panel .input-row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ig-space-3);
-  align-items: flex-end;
+  align-items: flex-start;
 }
 
 /* Single form field — keeps label, AI Suggest bar, and control stacked. */

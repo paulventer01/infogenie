@@ -421,31 +421,33 @@ export default function MarketingBrief() {
   }, [load]);
 
   const saveCadence = useCallback(async (c: Cadence) => {
-    if (c === cadence || savingCadence) return;
-    const prev = cadence;
-    // Optimistic UI — selection must move even if the network is slow.
-    setCadence(c);
+    // Always move the selection immediately so the control feels live.
+    setCadence((prev) => {
+      if (prev === c) return prev;
+      return c;
+    });
     setSavingCadence(true);
     try {
       const r = await apiPut<{ ok?: boolean; cadence?: Cadence; error?: string }>(
         '/api/marketing-brief/settings',
         { cadence: c },
       );
-      if (r.ok === false) {
-        setCadence(prev);
-        showToast(r.error || 'Could not save cadence');
+      if (!r || r.ok === false) {
+        showToast((r && r.error) || 'Could not save cadence');
+        // Keep the optimistic selection — preference is still what the user picked;
+        // retry on next interaction. Re-sync from server on next full load.
         return;
       }
-      setCadence(r.cadence || c);
-      setData((d) => (d ? { ...d, cadence: (r.cadence || c) as Cadence } : d));
-      showToast(`Cadence set to ${CADENCES[c].label}`);
+      const next = (r.cadence || c) as Cadence;
+      setCadence(next);
+      setData((d) => (d ? { ...d, cadence: next } : d));
+      showToast(`Cadence set to ${CADENCES[next].label} (${CADENCES[next].plan})`);
     } catch (e: unknown) {
-      setCadence(prev);
       showToast(e instanceof Error ? e.message : 'Could not save cadence');
     } finally {
       setSavingCadence(false);
     }
-  }, [cadence, savingCadence]);
+  }, []);
 
   const deliver = async () => {
     if (!data?.brief) return;
@@ -486,7 +488,10 @@ export default function MarketingBrief() {
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '20px 14px 52px', fontFamily: "'Inter','Segoe UI',sans-serif" }}>
 
       {/* ── Hero header ───────────────────────────────────────────────────── */}
-      <div style={{
+      <div
+        className="ig-panel-hero"
+        data-ig-light-hero="1"
+        style={{
         background: 'radial-gradient(ellipse 75% 65% at 10% 15%, rgba(15,118,110,0.16), transparent 55%), radial-gradient(ellipse 55% 50% at 92% 85%, rgba(2,132,199,0.14), transparent 50%), linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 48%, #eef4ff 100%)',
         borderRadius: 16,
         padding: '26px 28px 22px',
@@ -528,9 +533,10 @@ export default function MarketingBrief() {
           </div>
         </div>
 
-        {/* Cadence selector */}
+        {/* Cadence selector — native radios so clicks always register */}
         <div
-          role="group"
+          id="ig-brief-cadence"
+          role="radiogroup"
           aria-label="Brief cadence"
           style={{
             marginTop: 16,
@@ -539,41 +545,52 @@ export default function MarketingBrief() {
             gap: 8,
             flexWrap: 'wrap',
             position: 'relative',
-            zIndex: 2,
+            zIndex: 5,
           }}
         >
           <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cadence:</span>
           {(Object.entries(CADENCES) as [Cadence, CadenceMeta][]).map(([key, meta]) => {
             const isSelected = cadence === key;
+            const id = `ig-cadence-${key}`;
             return (
-              <button
+              <label
                 key={key}
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  void saveCadence(key);
-                }}
-                aria-pressed={isSelected}
+                htmlFor={id}
                 title={`${meta.plan} plan — ${meta.label} brief cadence`}
                 style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
                   padding: '5px 12px',
                   borderRadius: 6,
                   fontSize: '0.72rem',
                   fontWeight: 700,
-                  cursor: isSelected ? 'default' : 'pointer',
+                  cursor: 'pointer',
                   transition: 'all 0.18s',
-                  background: isSelected ? '#0f766e' : 'rgba(255,255,255,0.8)',
+                  background: isSelected ? '#0f766e' : 'rgba(255,255,255,0.95)',
                   border: `1.5px solid ${isSelected ? '#0f766e' : 'rgba(15, 118, 110, 0.22)'}`,
                   color: isSelected ? '#fff' : '#334155',
                   boxShadow: isSelected ? '0 4px 12px rgba(15, 118, 110, 0.22)' : 'none',
-                  opacity: savingCadence && !isSelected ? 0.7 : 1,
-                  pointerEvents: 'auto',
+                  userSelect: 'none',
                 }}
               >
-                {meta.label} <span style={{ opacity: 0.75, fontSize: '0.62rem' }}>({meta.plan})</span>
-                {isSelected && <span style={{ marginLeft: 5, fontSize: '0.62rem' }}>✓</span>}
-              </button>
+                <input
+                  id={id}
+                  type="radio"
+                  name="ig-brief-cadence"
+                  value={key}
+                  checked={isSelected}
+                  onChange={() => {
+                    void saveCadence(key);
+                  }}
+                  style={{ position: 'absolute', opacity: 0, width: 1, height: 1, pointerEvents: 'none' }}
+                />
+                <span>
+                  {meta.label}{' '}
+                  <span style={{ opacity: 0.75, fontSize: '0.62rem' }}>({meta.plan})</span>
+                  {isSelected && <span style={{ marginLeft: 5, fontSize: '0.62rem' }}>✓</span>}
+                </span>
+              </label>
             );
           })}
           {savingCadence && <span style={{ fontSize: '0.65rem', color: '#0f766e', opacity: 0.85 }}>Saving…</span>}
