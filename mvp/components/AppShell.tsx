@@ -94,20 +94,9 @@ export default function AppShell({
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    setOpenSections((prev) => {
-      const next = { ...prev };
-      for (const section of sections) {
-        if (sectionContainsPath(section, pathname)) {
-          next[section.id] = true;
-        }
-      }
-      return next;
-    });
-  }, [pathname, sections]);
-
   function toggleSection(id: string) {
-    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
+    // Accordion: open only the clicked section; start closed on load.
+    setOpenSections((prev) => ({ [id]: !prev[id] }));
   }
 
   return (
