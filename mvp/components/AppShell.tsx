@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import ClientSwitcher from "@/components/ClientSwitcher";
+import BackNav from "@/components/BackNav";
 import styles from "@/styles/mvp.module.css";
 
 type NavItem = { href: string; label: string; icon: string; badge?: number };
@@ -180,7 +181,12 @@ export default function AppShell({
           </form>
         </div>
       </aside>
-      <main className={styles.main}>{children}</main>
+      <main className={styles.main}>
+        <div className={styles.backBar}>
+          <BackNav fallback="/analyse" />
+        </div>
+        {children}
+      </main>
     </div>
   );
 }
