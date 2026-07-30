@@ -988,7 +988,7 @@ function OfficerCard({
             onClick={onTasks}
             style={{
               padding: "6px 11px",
-              background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               color: "#fff",
               border: "none",
               borderRadius: 8,
@@ -1003,7 +1003,7 @@ function OfficerCard({
             onClick={onReport}
             style={{
               padding: "6px 11px",
-              background: "#0F172A",
+              background: '#eef4ff',
               color: "#fff",
               border: "none",
               borderRadius: 8,
@@ -1193,7 +1193,7 @@ function AvatarPicker({
           display: "block",
           width: "100%",
           padding: "9px 12px",
-          background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+          background: "linear-gradient(135deg,#0f766e,#0284c7)",
           color: "#fff",
           border: "none",
           borderRadius: 8,
@@ -1305,7 +1305,7 @@ function TasksModal({
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff" }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.9 }}>
             📋 Job Responsibilities
           </div>
@@ -1438,7 +1438,7 @@ function TasksModal({
             onClick={save}
             style={{
               padding: "10px 22px",
-              background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               color: "#fff",
               border: "none",
               borderRadius: 8,
@@ -1533,7 +1533,7 @@ function DailyReportModal({
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0F172A,#1E293B)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a' }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.8 }}>
             📊 Daily Report
           </div>
@@ -1639,7 +1639,7 @@ function DailyReportModal({
             }}
             style={{
               padding: "10px 22px",
-              background: "#0F172A",
+              background: '#eef4ff',
               color: "#fff",
               border: "none",
               borderRadius: 8,
@@ -1709,7 +1709,7 @@ function MeetingsPanel({
           onClick={onSchedule}
           style={{
             padding: "9px 16px",
-            background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+            background: "linear-gradient(135deg,#0f766e,#0284c7)",
             color: "#fff",
             border: "none",
             borderRadius: 8,
@@ -1739,7 +1739,7 @@ function MeetingsPanel({
                 <div style={{ display: "flex", gap: 6 }}>
                   <button
                     onClick={() => onView(m)}
-                    style={{ padding: "6px 12px", background: "#0F172A", color: "#fff", border: "none", borderRadius: 7, fontSize: ".74rem", fontWeight: 700, cursor: "pointer" }}
+                    style={{ padding: "6px 12px", background: '#eef4ff', color: "#fff", border: "none", borderRadius: 7, fontSize: ".74rem", fontWeight: 700, cursor: "pointer" }}
                   >
                     View
                   </button>
@@ -1829,7 +1829,7 @@ function ScheduleMeetingModal({
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff" }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.9 }}>
             🗓️ Schedule Meeting
           </div>
@@ -1896,7 +1896,7 @@ function ScheduleMeetingModal({
             disabled={busy}
             style={{
               padding: "10px 22px",
-              background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               color: "#fff",
               border: "none",
               borderRadius: 8,
@@ -1930,7 +1930,7 @@ function MeetingDetailModal({ meeting, onClose }: { meeting: Meeting; onClose: (
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0F172A,#312E81)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a' }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.8 }}>
             📝 Meeting Minutes
           </div>
@@ -2039,8 +2039,8 @@ function SystemStatusPanel({
         <div
           style={{
             padding: "18px 22px",
-            background: "linear-gradient(135deg,#0F172A,#312E81)",
-            color: "#fff",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+            color: '#0f172a',
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -2204,14 +2204,14 @@ function AutoMeetingsPanel({
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             onClick={() => onSettings(s)}
-            style={{ padding: "9px 16px", background: "#0F172A", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: '#eef4ff', color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             ⚙️ Settings
           </button>
           <button
             onClick={runNow}
             disabled={busy}
-            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy ? "⏳ Drafting…" : "▶ Run Now"}
           </button>
@@ -2291,7 +2291,7 @@ function AutoMeetingSettingsModal({
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0F172A,#312E81)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a' }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.85 }}>
             🗓️ Autonomous Meetings
           </div>
@@ -2410,7 +2410,7 @@ function AutoMeetingSettingsModal({
           </button>
           <button
             onClick={save}
-            style={{ padding: "10px 22px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, cursor: "pointer" }}
+            style={{ padding: "10px 22px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, cursor: "pointer" }}
           >
             Save
           </button>
@@ -2515,7 +2515,7 @@ function AutoReportPanel({
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             onClick={() => onSettings(s)}
-            style={{ padding: "9px 16px", background: "#0F172A", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: '#eef4ff', color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             ⚙️ Settings
           </button>
@@ -2539,7 +2539,7 @@ function AutoReportPanel({
             title="Generate now and send via email + Slack"
             onClick={runSend}
             disabled={busy !== null}
-            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy === "send" ? "⏳ Running…" : "▶ Run + Send"}
           </button>
@@ -2622,8 +2622,8 @@ function AutoReportViewer({ run, onClose }: { run: AutoReportRun; onClose: () =>
         <div
           style={{
             padding: "18px 22px",
-            background: "linear-gradient(135deg,#0F172A,#312E81)",
-            color: "#fff",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+            color: '#0f172a',
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -2736,7 +2736,7 @@ function AutoReportSettingsModal({
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0F172A,#312E81)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a' }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.85 }}>
             ⏰ Autonomous Reporting
           </div>
@@ -2820,7 +2820,7 @@ function AutoReportSettingsModal({
           </button>
           <button
             onClick={save}
-            style={{ padding: "10px 22px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, cursor: "pointer" }}
+            style={{ padding: "10px 22px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, cursor: "pointer" }}
           >
             Save
           </button>

@@ -445,7 +445,7 @@ export default function Surveys() {
             </p>
             <pre
               style={{
-                background: "#0f172a",
+                background: '#eef4ff',
                 color: "#e2e8f0",
                 borderRadius: 8,
                 padding: 14,

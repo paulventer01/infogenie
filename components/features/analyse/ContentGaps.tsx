@@ -164,7 +164,7 @@ export default function ContentGaps() {
         className="view-header"
         style={{
           background:
-            "linear-gradient(135deg,#0F172A 0%,#9333EA 50%,#F59E0B 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">

@@ -5,20 +5,25 @@
 }
 
 .hero {
-  background: linear-gradient(135deg, #0a1628 0%, #0f2d5c 48%, #0066ff 100%);
+  background:
+    radial-gradient(ellipse 75% 65% at 10% 15%, rgba(15, 118, 110, 0.16), transparent 55%),
+    radial-gradient(ellipse 55% 50% at 92% 85%, rgba(2, 132, 199, 0.14), transparent 50%),
+    linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 48%, #eef4ff 100%);
   border-radius: 18px;
   padding: 28px 30px;
-  color: #fff;
+  color: #0f172a;
   margin-bottom: 22px;
   position: relative;
   overflow: hidden;
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
 }
 
 .hero::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 85% 20%, rgba(0, 229, 255, 0.18), transparent 45%);
+  background: radial-gradient(circle at 85% 20%, rgba(2, 132, 199, 0.1), transparent 45%);
   pointer-events: none;
 }
 
@@ -34,10 +39,10 @@
 
 .heroEyebrow {
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.72);
+  color: #0f766e;
   margin-bottom: 8px;
 }
 
@@ -46,11 +51,12 @@
   font-weight: 800;
   line-height: 1.15;
   margin: 0 0 8px;
+  color: #0f172a;
 }
 
 .heroSub {
   font-size: 0.92rem;
-  color: rgba(255, 255, 255, 0.82);
+  color: #475569;
   max-width: 640px;
   line-height: 1.55;
   margin: 0;
@@ -68,8 +74,9 @@
   font-weight: 700;
   padding: 5px 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(15, 118, 110, 0.1);
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  color: #0f766e;
 }
 
 .heroAside {
@@ -81,7 +88,7 @@
 
 .analyzedAt {
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.65);
+  color: #64748b;
 }
 
 .blendedGrid {
@@ -104,12 +111,13 @@
 }
 
 .metricDark {
-  background: linear-gradient(160deg, #111827 0%, #1e293b 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #ffffff;
+  border: 1px solid rgba(15, 118, 110, 0.14);
   border-radius: 14px;
   padding: 18px 18px 16px;
-  color: #f8fafc;
+  color: #0f172a;
   min-height: 108px;
+  box-shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 10px 24px rgba(11, 18, 32, 0.05);
 }
 
 .metricLabel {
@@ -117,7 +125,7 @@
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #94a3b8;
+  color: #64748b;
   margin-bottom: 8px;
 }
 

@@ -758,7 +758,7 @@ ${ctx.domain || "yourdomain.com"}`;
       <div
         className="view-header"
         style={{
-          background: "linear-gradient(135deg,#0A1628 0%,#0D2A5E 100%)",
+          background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderBottom: "1px solid rgba(0,229,255,.2)",
         }}
       >

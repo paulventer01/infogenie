@@ -451,19 +451,19 @@ export default function AnalyticsHub() {
 
   return (
     <div className="view active">
-      <div className="view-header" style={{ background: "linear-gradient(135deg,#0F766E 0%,#14B8A6 50%,#06B6D4 100%)" }}>
+      <div className="view-header" style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}>
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#A7F3D0" }}>
-                <span className="bc-group" style={{ color: "rgba(167,243,208,.8)" }}>Grow</span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>›</span> GSC / GA4 Hub
+              <div className="breadcrumb" style={{ color: "#64748b" }}>
+                <span className="bc-group" style={{ color: "#0f766e" }}>Grow</span>{" "}
+                <span className="bc-sep" style={{ color: "#94a3b8" }}>›</span> GSC / GA4 Hub
               </div>
               <h2 className="view-title">📡 GSC / GA4 Analytics Hub</h2>
-              <p className="view-sub">Connect Google Search Console &amp; GA4 — InfoGenie pulls real impressions, clicks, ranks and revenue per page, then highlights top performers and weak performers ready to fix.</p>
+              <p className="view-sub" style={{ color: "#0f172a", opacity: 1, textShadow: "none" }}>Connect Google Search Console &amp; GA4 — InfoGenie pulls real impressions, clicks, ranks and revenue per page, then highlights top performers and weak performers ready to fix.</p>
             </div>
             <div className="vh-actions">
-              <button className="btn-primary" style={{ background: "white", color: "#0F766E" }} onClick={refresh}>📡 Refresh Data</button>
+              <button className="btn-primary" style={{ background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff" }} onClick={refresh}>📡 Refresh Data</button>
             </div>
           </div>
         </div>

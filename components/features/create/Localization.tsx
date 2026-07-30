@@ -316,7 +316,7 @@ export default function Localization() {
                 disabled={busy}
                 style={{
                   padding: "7px 14px",
-                  background: "#0F172A",
+                  background: '#eef4ff',
                   color: "white",
                   border: "none",
                   borderRadius: 6,

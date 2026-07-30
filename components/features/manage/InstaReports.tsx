@@ -187,7 +187,7 @@ export default function InstaReports() {
 
   return (
     <div style={{ fontFamily: "'Inter',sans-serif", background: "var(--ig-page)", minHeight: "100vh", padding: "24px 28px" }}>
-      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "#0A1628", color: "#fff", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: '#eef4ff', color: "#fff", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
 
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>Manage › Reports</div>
@@ -407,7 +407,7 @@ export default function InstaReports() {
               {/* Main report */}
               <div>
                 {/* Report header */}
-                <div style={{ ...card, background: "linear-gradient(135deg,#0A1628,#1E3A5F)", color: "#fff", padding: "28px 32px" }}>
+                <div style={{ ...card, background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a', padding: "28px 32px" }}>
                   <div style={{ fontSize: "0.7rem", color: "#93C5FD", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 8 }}>Digital Marketing Audit</div>
                   <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 900, fontSize: "1.6rem", marginBottom: 4 }}>{activeReport.business_name}</div>
                   {activeReport.website_url && <div style={{ color: "#93C5FD", fontSize: "0.82rem" }}>{activeReport.website_url}</div>}

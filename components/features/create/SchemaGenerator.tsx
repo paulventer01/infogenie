@@ -584,7 +584,7 @@ export default function SchemaGenerator() {
                 </div>
                 <pre
                   style={{
-                    background: "#0F172A",
+                    background: '#eef4ff',
                     color: outputError ? "#FCA5A5" : "#A7F3D0",
                     padding: 14,
                     borderRadius: 8,

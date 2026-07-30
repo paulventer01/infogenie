@@ -669,7 +669,7 @@ export default function AdLibrary() {
                       onClick={() => setCountryMenuOpen(false)}
                       style={{
                         padding: "5px 10px",
-                        background: "#0F172A",
+                        background: '#eef4ff',
                         color: "#fff",
                         border: 0,
                         borderRadius: 4,

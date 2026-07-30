@@ -378,3 +378,294 @@ body:has(#ig-app-shell) ::selection {
   background: rgba(15, 118, 110, 0.22) !important;
   color: #0b1220 !important;
 }
+
+/* ============================================================
+   App-wide UI standardization — light heroes, readable type,
+   neat form/image spacing, aligned panels.
+   ============================================================ */
+
+body:has(#ig-app-shell) {
+  --ig-hero-bg:
+    radial-gradient(ellipse 75% 65% at 10% 15%, rgba(15, 118, 110, 0.16), transparent 55%),
+    radial-gradient(ellipse 55% 50% at 92% 85%, rgba(2, 132, 199, 0.14), transparent 50%),
+    linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 48%, #eef4ff 100%);
+  --ig-hero-ink: #0f172a;
+  --ig-hero-muted: #475569;
+  --ig-hero-accent: #0f766e;
+  --ig-space-1: 6px;
+  --ig-space-2: 10px;
+  --ig-space-3: 14px;
+  --ig-space-4: 18px;
+  --ig-space-5: 24px;
+}
+
+/* Classed headers — include intel / banner / modal chrome */
+body:has(#ig-app-shell) .intel-header,
+body:has(#ig-app-shell) .docs-header,
+body:has(#ig-app-shell) .integ-doc-hero,
+body:has(#ig-app-shell) .cs-exec-banner,
+body:has(#ig-app-shell) .journey-wrap,
+body:has(#ig-app-shell) .mb-hero,
+body:has(#ig-app-shell) .officer-hero,
+body:has(#ig-app-shell) .brief-hero,
+body:has(#ig-app-shell) .dash-hero {
+  background: var(--ig-hero-bg) !important;
+  color: var(--ig-hero-ink) !important;
+  border: 1px solid rgba(15, 118, 110, 0.16) !important;
+  border-radius: var(--v2-radius) !important;
+  box-shadow: var(--v2-shadow) !important;
+  text-shadow: none !important;
+}
+
+body:has(#ig-app-shell) .intel-header .view-title,
+body:has(#ig-app-shell) .intel-header h1,
+body:has(#ig-app-shell) .intel-header h2,
+body:has(#ig-app-shell) .docs-header h1,
+body:has(#ig-app-shell) .docs-header h2,
+body:has(#ig-app-shell) .cs-exec-banner h1,
+body:has(#ig-app-shell) .cs-exec-banner h2 {
+  color: var(--ig-hero-ink) !important;
+  text-shadow: none !important;
+}
+
+/* Catch remaining dark inline heroes (React style attributes) */
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0F172A"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0f172a"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0A1628"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0a1628"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#1E1B4B"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#1e1b4b"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#312E81"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#312e81"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#1E3A5F"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#080f22"],
+body:has(#ig-app-shell) [style*="linear-gradient(160deg,#0d1f38"],
+body:has(#ig-app-shell) [style*="linear-gradient(160deg,#080f22"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg, #0F172A"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg, #0A1628"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg, #1E1B4B"],
+body:has(#ig-app-shell) [style*="linear-gradient(135deg, #312E81"] {
+  background: var(--ig-hero-bg) !important;
+  color: var(--ig-hero-ink) !important;
+  border: 1px solid rgba(15, 118, 110, 0.16) !important;
+  text-shadow: none !important;
+}
+
+/* Readable type inside lightened dark-hero leftovers */
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0F172A"] h1,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0F172A"] h2,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0F172A"] h3,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0F172A"] p,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0F172A"] span,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0A1628"] h1,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0A1628"] h2,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0A1628"] p,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0A1628"] span,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#1E1B4B"] h1,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#1E1B4B"] h2,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#1E1B4B"] p,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#1E1B4B"] span,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#312E81"] h1,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#312E81"] h2,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#312E81"] p,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#312E81"] span {
+  color: var(--ig-hero-ink) !important;
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+
+/* Keep primary/action buttons readable on light heroes */
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0F172A"] button,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0A1628"] button,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#1E1B4B"] button,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#312E81"] button,
+body:has(#ig-app-shell) .view-header button.btn-primary,
+body:has(#ig-app-shell) .intel-header button.btn-primary {
+  color: #fff !important;
+}
+
+/* Standardize light heroes we already wrote */
+body:has(#ig-app-shell) [style*="#e8f6f3"],
+body:has(#ig-app-shell) [style*="#eaf2fb"],
+body:has(#ig-app-shell) [style*="#eef4ff"] {
+  color: var(--ig-hero-ink);
+}
+
+body:has(#ig-app-shell) [style*="#e8f6f3"] h1,
+body:has(#ig-app-shell) [style*="#e8f6f3"] h2,
+body:has(#ig-app-shell) [style*="#e8f6f3"] h3,
+body:has(#ig-app-shell) [style*="#eaf2fb"] h1,
+body:has(#ig-app-shell) [style*="#eaf2fb"] h2,
+body:has(#ig-app-shell) [style*="#eef4ff"] h1,
+body:has(#ig-app-shell) [style*="#eef4ff"] h2 {
+  color: var(--ig-hero-ink) !important;
+  text-shadow: none !important;
+}
+
+/* Panel content rhythm */
+body:has(#ig-app-shell) #ig-react-panel,
+body:has(#ig-app-shell) #ig-shell-content {
+  line-height: 1.55 !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel h1,
+body:has(#ig-app-shell) #ig-react-panel h2,
+body:has(#ig-app-shell) #ig-react-panel h3,
+body:has(#ig-app-shell) #ig-react-panel h4 {
+  color: var(--v2-ink) !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.02em !important;
+  text-shadow: none !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel p,
+body:has(#ig-app-shell) #ig-react-panel li,
+body:has(#ig-app-shell) #ig-react-panel td,
+body:has(#ig-app-shell) #ig-react-panel label,
+body:has(#ig-app-shell) #ig-react-panel .view-sub,
+body:has(#ig-app-shell) #ig-react-panel .breadcrumb {
+  color: var(--v2-ink) !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .breadcrumb,
+body:has(#ig-app-shell) #ig-react-panel .bc-group,
+body:has(#ig-app-shell) #ig-react-panel .bc-sep {
+  color: var(--v2-muted) !important;
+}
+
+/* Forms — consistent padding, gaps, alignment */
+body:has(#ig-app-shell) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+body:has(#ig-app-shell) select,
+body:has(#ig-app-shell) textarea,
+body:has(#ig-app-shell) .ig-input,
+body:has(#ig-app-shell) .ig-select {
+  min-height: 42px !important;
+  padding: 10px 13px !important;
+  line-height: 1.4 !important;
+  margin: 0 !important;
+}
+
+body:has(#ig-app-shell) textarea {
+  min-height: 96px !important;
+  padding: 12px 13px !important;
+  resize: vertical;
+}
+
+body:has(#ig-app-shell) label {
+  color: var(--v2-ink) !important;
+  font-weight: 700 !important;
+  display: inline-block;
+  margin-bottom: var(--ig-space-1) !important;
+  letter-spacing: 0.01em;
+}
+
+body:has(#ig-app-shell) #ig-react-panel form,
+body:has(#ig-app-shell) #ig-react-panel .form,
+body:has(#ig-app-shell) #ig-react-panel .form-grid,
+body:has(#ig-app-shell) #ig-react-panel .settings-form,
+body:has(#ig-app-shell) #ig-react-panel .modal-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ig-space-3);
+}
+
+body:has(#ig-app-shell) #ig-react-panel .form-row,
+body:has(#ig-app-shell) #ig-react-panel .field-row,
+body:has(#ig-app-shell) #ig-react-panel .input-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ig-space-3);
+  align-items: flex-end;
+}
+
+/* Images — neat, rounded, contained */
+body:has(#ig-app-shell) #ig-react-panel img,
+body:has(#ig-app-shell) #ig-shell-content img {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+body:has(#ig-app-shell) #ig-react-panel img:not([width]):not([style*="border-radius"]),
+body:has(#ig-app-shell) #ig-react-panel .thumb,
+body:has(#ig-app-shell) #ig-react-panel .preview img,
+body:has(#ig-app-shell) #ig-react-panel .card img,
+body:has(#ig-app-shell) #ig-react-panel .creative-card img {
+  border-radius: 10px;
+  display: block;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .avatar,
+body:has(#ig-app-shell) #ig-react-panel img[alt*="avatar" i],
+body:has(#ig-app-shell) #ig-react-panel img[src*="/avatars/"] {
+  border-radius: 50% !important;
+  object-fit: cover !important;
+}
+
+/* Cards / sections — consistent spacing */
+body:has(#ig-app-shell) #ig-react-panel .card,
+body:has(#ig-app-shell) #ig-react-panel .ig-card,
+body:has(#ig-app-shell) #ig-react-panel .panel,
+body:has(#ig-app-shell) #ig-react-panel .stat-card,
+body:has(#ig-app-shell) #ig-react-panel .kpi-card {
+  padding: var(--ig-space-4) !important;
+  margin-bottom: var(--ig-space-3);
+}
+
+body:has(#ig-app-shell) #ig-react-panel .container {
+  padding-top: var(--ig-space-4) !important;
+  padding-bottom: var(--ig-space-5) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .view-header,
+body:has(#ig-app-shell) #ig-react-panel .intel-header {
+  margin: 0 0 var(--ig-space-4) !important;
+  padding: var(--ig-space-4) var(--ig-space-5) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .view-header .vh-inner,
+body:has(#ig-app-shell) #ig-react-panel .vh-inner {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: var(--ig-space-4) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .vh-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: var(--ig-space-2) !important;
+  align-items: center !important;
+}
+
+/* Tables neat */
+body:has(#ig-app-shell) th,
+body:has(#ig-app-shell) td {
+  padding: 10px 12px !important;
+  line-height: 1.4 !important;
+  vertical-align: middle !important;
+}
+
+/* Sidebar menus — ensure readable text on light rail */
+body:has(#ig-app-shell) #ig-side-rail,
+body:has(#ig-app-shell) #ig-side-rail a,
+body:has(#ig-app-shell) #ig-side-rail button {
+  color: inherit;
+}
+
+body:has(#ig-app-shell) #ig-side-rail .sectionHeadLabel,
+body:has(#ig-app-shell) #ig-side-rail [class*="sectionHead"] {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+}
+
+/* Placeholder contrast */
+body:has(#ig-app-shell) input::placeholder,
+body:has(#ig-app-shell) textarea::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1 !important;
+}
+

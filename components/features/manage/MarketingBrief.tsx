@@ -126,7 +126,7 @@ function DigestPanel({ digest }: { digest: Digest }) {
   return (
     <div style={{ background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
       {/* Header bar */}
-      <div style={{ background: 'linear-gradient(135deg,#0F172A,#1E3A5F)', padding: '14px 18px 12px' }}>
+      <div style={{ background: 'linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)', padding: '14px 18px 12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div>
             <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#7DD3FC', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>
@@ -202,7 +202,7 @@ function RecCard({ rec, onAct, onDismiss }: {
       border: `1.5px solid ${done ? '#BBF7D0' : '#E2E8F0'}`,
       borderRadius: 9, marginBottom: 8, transition: 'all 0.3s',
     }}>
-      <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,#1E3A5F,#0369A1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', flexShrink: 0 }}>
+      <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,#0f766e,#0284c7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', flexShrink: 0 }}>
         {CAT_ICON[rec.category] || '📌'}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -278,7 +278,7 @@ function RecsPanel({ recs: initialRecs, onNavigateFull }: { recs: Rec[]; onNavig
         </div>
         <button
           onClick={onNavigateFull}
-          style={{ padding: '7px 16px', background: 'linear-gradient(135deg,#1E3A5F,#0369A1)', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
+          style={{ padding: '7px 16px', background: 'linear-gradient(135deg,#0f766e,#0284c7)', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
         >
           Run Decision Engine →
         </button>
@@ -288,7 +288,7 @@ function RecsPanel({ recs: initialRecs, onNavigateFull }: { recs: Rec[]; onNavig
 
   return (
     <div style={{ background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
-      <div style={{ background: 'linear-gradient(135deg,#1E1B4B,#312E81)', padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ background: 'linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)', padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#A5B4FC', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
           🧭 Top Priorities · Decision Engine
         </div>
@@ -603,7 +603,7 @@ export default function MarketingBrief() {
               <span style={{ fontSize: '0.82rem', color: '#94A3B8' }}>No digest generated yet for your brand.</span>
               <button
                 onClick={() => navigate('digest')}
-                style={{ flexShrink: 0, padding: '6px 12px', background: '#0F172A', color: '#fff', border: 'none', borderRadius: 6, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' }}
+                style={{ flexShrink: 0, padding: '6px 12px', background: '#eef4ff', color: '#fff', border: 'none', borderRadius: 6, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' }}
               >
                 Generate Digest →
               </button>

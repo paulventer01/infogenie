@@ -424,7 +424,7 @@ export default function Playbook7Day() {
                 onClick={() => runAutonomous(null)}
                 style={{
                   padding: "11px 18px",
-                  background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+                  background: "linear-gradient(135deg,#0f766e,#0284c7)",
                   color: "#fff",
                   border: "none",
                   borderRadius: 9,

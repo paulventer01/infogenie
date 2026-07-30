@@ -152,7 +152,7 @@ const closeBtnStyle: React.CSSProperties = {
 
 const primaryBtn: React.CSSProperties = {
   padding: "9px 18px",
-  background: "#1E1B4B",
+  background: '#eef4ff',
   border: "2px solid #1E1B4B",
   borderRadius: 8,
   fontSize: "0.78rem",
@@ -427,7 +427,7 @@ export default function AudiencesDynamic() {
                   onClick={() => openBuilder(null)}
                   style={{
                     padding: "11px 22px",
-                    background: "#1E1B4B",
+                    background: '#eef4ff',
                     border: "2px solid #1E1B4B",
                     borderRadius: 9,
                     fontSize: "0.85rem",
@@ -1178,7 +1178,7 @@ function SegmentBuilderModal({
             onClick={addCondition}
             style={{
               padding: "7px 14px",
-              background: "#1E1B4B",
+              background: '#eef4ff',
               border: "2px solid #1E1B4B",
               borderRadius: 7,
               fontSize: "0.72rem",
@@ -1361,7 +1361,7 @@ function SegmentBuilderModal({
               onClick={runPreview}
               style={{
                 padding: "9px 16px",
-                background: "#1E1B4B",
+                background: '#eef4ff',
                 border: "2px solid #1E1B4B",
                 borderRadius: 8,
                 fontSize: "0.75rem",
@@ -1399,7 +1399,7 @@ function SegmentBuilderModal({
             onClick={save}
             style={{
               padding: "10px 22px",
-              background: "#1E1B4B",
+              background: '#eef4ff',
               border: "2px solid #1E1B4B",
               borderRadius: 8,
               fontSize: "0.82rem",
@@ -2193,7 +2193,7 @@ function DripBindingModal({
                   >
                     <span
                       style={{
-                        background: "#1E1B4B",
+                        background: '#eef4ff',
                         color: "#fff",
                         WebkitTextFillColor: "#fff",
                         width: 22,

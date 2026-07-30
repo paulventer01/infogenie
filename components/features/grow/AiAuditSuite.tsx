@@ -581,7 +581,7 @@ export default function AiAuditSuite() {
         className="view-header"
         style={{
           background:
-            "linear-gradient(135deg,#312E81 0%,#4338CA 50%,#7C3AED 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">

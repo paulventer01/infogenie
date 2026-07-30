@@ -658,7 +658,7 @@ export default function Reengage() {
 
   // ── Shared blocks ─────────────────────────────────────────────────────────
   const hero = (
-    <div style={{ background: "linear-gradient(135deg,#0F172A 0%,#1E293B 45%,#334155 100%)", borderRadius: 20, padding: "28px 32px", marginBottom: 24, position: "relative", overflow: "hidden", boxShadow: "0 12px 32px rgba(15,23,42,0.25)" }}>
+    <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", borderRadius: 20, padding: "28px 32px", marginBottom: 24, position: "relative", overflow: "hidden", boxShadow: "0 12px 32px rgba(15,23,42,0.25)" }}>
       <div style={{ position: "absolute", top: -30, right: -30, width: 220, height: 220, background: "radial-gradient(circle,rgba(251,146,60,0.35),transparent 70%)", borderRadius: "50%" }} />
       <div style={{ position: "absolute", bottom: -60, right: 80, width: 180, height: 180, background: "radial-gradient(circle,rgba(245,158,11,0.22),transparent 70%)", borderRadius: "50%" }} />
       <div style={{ position: "absolute", top: 20, left: -40, width: 140, height: 140, background: "radial-gradient(circle,rgba(217,119,6,0.18),transparent 70%)", borderRadius: "50%" }} />
@@ -919,7 +919,7 @@ export default function Reengage() {
                     <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                       <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" style={{ flex: 1, minWidth: 90, padding: "7px 10px", border: "1px solid #E5E7EB", borderRadius: 7, fontSize: "0.74rem" }} />
                       <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@example.com" style={{ flex: 2, minWidth: 140, padding: "7px 10px", border: "1px solid #E5E7EB", borderRadius: 7, fontSize: "0.74rem" }} />
-                      <button onClick={addRealContact} style={{ background: "#0A1628", color: "white", border: "none", borderRadius: 7, padding: "7px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>+ Add</button>
+                      <button onClick={addRealContact} style={{ background: '#eef4ff', color: "white", border: "none", borderRadius: 7, padding: "7px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>+ Add</button>
                     </div>
                     <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: "0.72rem", color: "#374151", cursor: "pointer" }}>
                       <input type="checkbox" checked={dryRun} onChange={(e) => toggleDripDryRun(e.target.checked)} />

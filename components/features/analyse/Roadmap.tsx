@@ -201,7 +201,7 @@ export default function Roadmap() {
         )}
         {status === "idle" && (
           <>
-            <div style={{ background: "linear-gradient(135deg,#312E81 0%,#1E293B 50%,#0F172A 100%)", borderRadius: 18, padding: "28px 32px", color: "white", boxShadow: "0 8px 28px rgba(15,23,42,.35)" }}>
+            <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", borderRadius: 18, padding: "28px 32px", color: "white", boxShadow: "0 8px 28px rgba(15,23,42,.35)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
                 <span style={{ fontSize: "1.4rem" }}>🗺️</span>
                 <div>

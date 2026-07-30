@@ -732,7 +732,7 @@ function Report({
           <button
             onClick={onHandoff}
             style={{
-              background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               color: "#fff",
               border: "none",
               padding: "7px 16px",

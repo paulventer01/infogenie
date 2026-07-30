@@ -236,7 +236,7 @@ export default function KeywordMap() {
       <div
         className="view-header"
         style={{
-          background: "linear-gradient(135deg,#0F172A 0%,#1E3A8A 100%)",
+          background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">

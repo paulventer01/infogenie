@@ -245,7 +245,7 @@ function AnswerBubble({
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
             {isBoardroom && (
-              <span style={{ background: "linear-gradient(135deg,#0F172A,#4F46E5)", color: "#fff", padding: "3px 9px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 800, letterSpacing: ".04em" }}>
+              <span style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a', padding: "3px 9px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 800, letterSpacing: ".04em" }}>
                 🏛️ BOARDROOM
               </span>
             )}
@@ -335,7 +335,7 @@ function AnswerBubble({
 
       {/* Boardroom brief */}
       {isBoardroom && bb && (
-        <div style={{ marginTop: 18, background: "#0F172A", borderRadius: 10, padding: 16, color: "#E2E8F0" }}>
+        <div style={{ marginTop: 18, background: '#eef4ff', borderRadius: 10, padding: 16, color: "#E2E8F0" }}>
           <div style={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: ".06em", color: "#94A3B8", marginBottom: 14, textTransform: "uppercase" }}>🏛️ BOARDROOM BRIEF</div>
 
           {bb.executive_summary && (
@@ -540,7 +540,7 @@ function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
                     {item.mode === "boardroom" && (
-                      <span style={{ background: "#0F172A", color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️ Boardroom</span>
+                      <span style={{ background: '#eef4ff', color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️ Boardroom</span>
                     )}
                     {item.topic && (
                       <span style={{ background: "#F3F4F6", color: "#6B7280", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 600 }}>{TOPIC_LABELS[item.topic] || item.topic}</span>
@@ -662,7 +662,7 @@ function CardGrid({ refreshTick }: { refreshTick: number }) {
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                 {card.pinned && <span>📌</span>}
                 {card.mode === "boardroom" && (
-                  <span style={{ background: "#0F172A", color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️</span>
+                  <span style={{ background: '#eef4ff', color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️</span>
                 )}
                 {typeof aj.confidence === "number" && (
                   <span style={{ fontSize: "0.64rem", color: "#6B7280" }}>
@@ -866,7 +866,7 @@ export default function AskInfoGenie() {
               </div>
 
               {mode === "boardroom" && (
-                <div style={{ background: "#0F172A", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: "0.75rem", color: "#94A3B8" }}>
+                <div style={{ background: '#eef4ff', borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: "0.75rem", color: "#94A3B8" }}>
                   🏛️ <strong style={{ color: "#E2E8F0" }}>Boardroom mode</strong> — two AI passes: analyst answer + executive brief with key metrics, strategic implications, risks &amp; mitigants, and board actions with owners and timelines. Includes predictive intelligence signals.
                 </div>
               )}

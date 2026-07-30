@@ -321,7 +321,7 @@ export default function SiteBuilder() {
                       target="_blank"
                       rel="noreferrer"
                       style={{
-                        background: "#0F172A",
+                        background: '#eef4ff',
                         color: "white",
                         padding: "6px 12px",
                         borderRadius: 6,

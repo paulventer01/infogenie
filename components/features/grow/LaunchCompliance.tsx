@@ -154,7 +154,7 @@ export default function LaunchCompliance() {
 
   return (
     <div style={{ fontFamily: "'Inter',sans-serif", background: "var(--ig-page)", minHeight: "100vh", padding: "24px 28px" }}>
-      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "#0A1628", color: "#fff", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: '#eef4ff', color: "#fff", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
 
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>Grow › Launch Compliance</div>
@@ -281,7 +281,7 @@ export default function LaunchCompliance() {
               {active.landing_page_url && (
                 <div style={card}>
                   <div style={{ fontWeight: 700, color: "#0A1628", fontSize: "0.82rem", marginBottom: 10 }}>📱 Mobile Preview</div>
-                  <div style={{ background: "#0F172A", borderRadius: 20, padding: "10px 6px", display: "inline-block", width: "100%", boxSizing: "border-box" }}>
+                  <div style={{ background: '#eef4ff', borderRadius: 20, padding: "10px 6px", display: "inline-block", width: "100%", boxSizing: "border-box" }}>
                     <div style={{ background: "#1E293B", borderRadius: 4, height: 8, margin: "0 auto 8px", width: 40 }} />
                     <iframe src={active.landing_page_url} style={{ width: "100%", height: 280, border: "none", borderRadius: 10, display: "block" }} sandbox="allow-scripts allow-same-origin" title="Mobile preview" />
                     <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 8 }}>

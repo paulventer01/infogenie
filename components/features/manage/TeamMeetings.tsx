@@ -413,7 +413,7 @@ export default function TeamMeetings() {
                     onClick={() => setDetail(m)}
                     style={{
                       padding: "6px 12px",
-                      background: "#0F172A",
+                      background: '#eef4ff',
                       color: "#fff",
                       border: "none",
                       borderRadius: 7,
@@ -574,8 +574,8 @@ function MeetingDetail({
         <div
           style={{
             padding: "20px 24px",
-            background: "linear-gradient(135deg,#0F172A,#312E81)",
-            color: "#fff",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+            color: '#0f172a',
           }}
         >
           <div

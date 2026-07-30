@@ -500,7 +500,7 @@ export default function Contentscorer() {
         className="view-header"
         style={{
           background:
-            "linear-gradient(135deg,#0F172A 0%,#7C3AED 50%,#22D3EE 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">

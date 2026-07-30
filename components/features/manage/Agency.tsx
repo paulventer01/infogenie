@@ -189,7 +189,7 @@ export default function Agency() {
   );
 
   const hero = (
-    <div style={{ background: "linear-gradient(135deg,#312E81,#4338CA,#6366F1)", borderRadius: 20, padding: "28px 32px", marginBottom: 24, position: "relative", overflow: "hidden" }}>
+    <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", borderRadius: 20, padding: "28px 32px", marginBottom: 24, position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: -40, right: -40, width: 220, height: 220, background: "rgba(255,255,255,.05)", borderRadius: "50%" }} />
       <div style={{ position: "absolute", bottom: -60, right: 100, width: 160, height: 160, background: "rgba(255,255,255,.04)", borderRadius: "50%" }} />
       <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
@@ -474,7 +474,7 @@ function ClientModal({ client, onClose, onSave }: { client: Client | null; onClo
   return (
     <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 20, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,.3)" }}>
-        <div style={{ background: "linear-gradient(135deg,#312E81,#6366F1)", borderRadius: "20px 20px 0 0", padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", borderRadius: "20px 20px 0 0", padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "1rem", fontWeight: 800, color: "white" }}>{client ? "Edit Client" : "Add New Client"}</div>
           <button onClick={onClose} style={{ background: "rgba(255,255,255,.15)", border: "none", borderRadius: "50%", width: 30, height: 30, fontSize: "1rem", color: "white", cursor: "pointer" }}>✕</button>
         </div>
@@ -522,7 +522,7 @@ function GenerateReportModal({ clients, onClose, onGenerate }: { clients: Client
   return (
     <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 18, width: "100%", maxWidth: 420, overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,.3)" }}>
-        <div style={{ background: "linear-gradient(135deg,#312E81,#6366F1)", padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "0.95rem", fontWeight: 800, color: "white" }}>Generate Client Report</div>
           <button onClick={onClose} style={{ background: "rgba(255,255,255,.15)", border: "none", borderRadius: "50%", width: 28, height: 28, color: "white", cursor: "pointer", fontSize: "0.9rem" }}>✕</button>
         </div>

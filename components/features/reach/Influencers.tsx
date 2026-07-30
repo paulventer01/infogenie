@@ -582,7 +582,7 @@ export default function Influencers() {
                 onClick={applyFilters}
                 style={{
                   padding: "8px 16px",
-                  background: "#1E1B4B",
+                  background: '#eef4ff',
                   border: "2px solid #1E1B4B",
                   borderRadius: 7,
                   fontSize: "0.76rem",
@@ -1390,7 +1390,7 @@ function DetailModal({
                   onClick={() => onAddOutreach(i.id)}
                   style={{
                     padding: "7px 14px",
-                    background: "#1E1B4B",
+                    background: '#eef4ff',
                     border: "2px solid #1E1B4B",
                     borderRadius: 6,
                     fontSize: "0.74rem",

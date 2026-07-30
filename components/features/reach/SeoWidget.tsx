@@ -304,7 +304,7 @@ export default function SeoWidget() {
                   </div>
                   <pre
                     style={{
-                      background: "#0F172A",
+                      background: '#eef4ff',
                       color: "#A7F3D0",
                       padding: 12,
                       borderRadius: 8,

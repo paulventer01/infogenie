@@ -433,7 +433,7 @@ export default function Reddit() {
                 onClick={kwSuggest}
                 style={{
                   padding: "3px 8px",
-                  background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+                  background: "linear-gradient(135deg,#0f766e,#0284c7)",
                   border: "none",
                   borderRadius: 5,
                   color: "#fff",

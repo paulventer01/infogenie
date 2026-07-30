@@ -263,7 +263,7 @@ function ChannelsView({ j }: { j: OverviewData }) {
       <div
         style={{
           background:
-            "linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderRadius: 18,
           padding: 30,
           color: "white",
@@ -784,7 +784,7 @@ function CohortsView({ j }: { j: CohortData }) {
       <div
         style={{
           background:
-            "linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderRadius: 18,
           padding: 24,
           color: "white",
@@ -1168,7 +1168,7 @@ function ForecastView({ j }: { j: ForecastData }) {
       <div
         style={{
           background:
-            "linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderRadius: 18,
           padding: 24,
           color: "white",
@@ -1365,7 +1365,7 @@ export default function Attribution() {
         className="view-header"
         style={{
           background:
-            "linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">

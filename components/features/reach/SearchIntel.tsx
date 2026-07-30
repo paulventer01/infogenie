@@ -636,7 +636,7 @@ function AiTab() {
             onClick={createQuery}
             style={{
               padding: "9px 18px",
-              background: "#1E1B4B",
+              background: '#eef4ff',
               border: "2px solid #1E1B4B",
               borderRadius: 7,
               fontSize: "0.78rem",
@@ -860,7 +860,7 @@ function QueryCard({
           onClick={onHistory}
           style={{
             padding: 7,
-            background: "#1E1B4B",
+            background: '#eef4ff',
             border: "2px solid #1E1B4B",
             borderRadius: 6,
             fontSize: "0.7rem",

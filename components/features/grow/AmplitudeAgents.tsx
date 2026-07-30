@@ -335,7 +335,7 @@ export default function AmplitudeAgents() {
     <div className="view-header-wrap">
       <div
         className="view-header"
-        style={{ background: "linear-gradient(135deg,#0F172A 0%,#1E40AF 50%,#0EA5E9 100%)" }}
+        style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}
       >
         <div className="container">
           <div className="vh-inner">

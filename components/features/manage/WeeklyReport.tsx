@@ -301,7 +301,7 @@ export default function WeeklyReport() {
             rel="noopener"
             onClick={onPdfClick}
             style={{
-              background: "#1E1B4B",
+              background: '#eef4ff',
               color: "#fff",
               padding: "8px 14px",
               borderRadius: 6,
@@ -435,7 +435,7 @@ export default function WeeklyReport() {
           <button
             onClick={addSub}
             style={{
-              background: "#1E1B4B",
+              background: '#eef4ff',
               color: "#fff",
               border: "none",
               padding: "7px 14px",

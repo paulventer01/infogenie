@@ -171,11 +171,11 @@ export default function AiTraffic() {
       >
         <div
           style={{
-            background: "linear-gradient(135deg,#0A1628,#1E1B4B)",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
             borderRadius: 12,
             padding: 18,
             marginBottom: 16,
-            color: "#fff",
+            color: '#0f172a',
           }}
         >
           <h3
@@ -358,7 +358,7 @@ export default function AiTraffic() {
               disabled={registering}
               style={{
                 padding: "8px 16px",
-                background: "#0A1628",
+                background: '#eef4ff',
                 border: "none",
                 borderRadius: 6,
                 color: "#fff",

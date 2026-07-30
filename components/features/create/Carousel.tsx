@@ -636,7 +636,7 @@ function CarouselResultView({
         <button
           onClick={onPublisher}
           style={{
-            background: "#0F172A",
+            background: '#eef4ff',
             color: "white",
             border: "none",
             padding: "9px 16px",

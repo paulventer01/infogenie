@@ -205,7 +205,7 @@ export default function Advertise() {
 
   return (
     <div className="view">
-      <div className="view-header" style={{ background: "linear-gradient(135deg,#0A1628 0%,#0D2140 100%)" }}>
+      <div className="view-header" style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}>
         <div className="container">
           <div className="vh-inner">
             <div>

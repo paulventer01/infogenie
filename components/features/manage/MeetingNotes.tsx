@@ -179,8 +179,8 @@ export default function MeetingNotes() {
           onClick={run}
           style={{
             marginTop: 12,
-            background: "linear-gradient(135deg,#1E1B4B,#312E81)",
-            color: "#fff",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+            color: '#0f172a',
             border: "none",
             padding: "12px 24px",
             borderRadius: 8,

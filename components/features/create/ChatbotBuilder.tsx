@@ -466,7 +466,7 @@ export default function ChatbotBuilder() {
                 </div>
                 <div
                   style={{
-                    background: "#0A1628",
+                    background: '#eef4ff',
                     borderRadius: 12,
                     padding: 14,
                     color: "#E5E7EB",

@@ -109,6 +109,9 @@ h1, h2, h3, .ig-display {
   color: var(--ig-text) !important;
   border-radius: 10px !important;
   font-family: var(--font-ui) !important;
+  min-height: 42px !important;
+  padding: 10px 13px !important;
+  line-height: 1.4 !important;
 }
 .ig-input::placeholder { color: var(--ig-text-muted) !important; }
 .ig-input:focus {
@@ -123,6 +126,8 @@ h1, h2, h3, .ig-display {
   color: var(--ig-text) !important;
   border-radius: 10px !important;
   font-family: var(--font-ui) !important;
+  min-height: 42px !important;
+  padding: 10px 13px !important;
 }
 
 ::selection {

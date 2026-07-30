@@ -245,7 +245,7 @@ export default function BlendedPerf() {
         <div
           style={{
             background:
-              "linear-gradient(135deg,#0F172A 0%,#1E293B 50%,#312E81 100%)",
+              "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
             borderRadius: 18,
             padding: "28px 32px",
             color: "white",

@@ -152,7 +152,7 @@ export default function SpyFu() {
 
         {/* ── Search card ── */}
         <div style={{
-          background:"linear-gradient(135deg,#0f172a 0%,#1e3a5f 55%,#0c4a6e 100%)",
+          background:"linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderRadius:16, padding:"28px 28px 24px", marginBottom:24,
           boxShadow:"0 8px 32px rgba(15,23,42,.3)",
         }}>

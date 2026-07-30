@@ -1028,7 +1028,7 @@ Rules:
                 style={{
                   width: "100%",
                   padding: 11,
-                  background: "#0A1628",
+                  background: '#eef4ff',
                   border: "none",
                   borderRadius: 10,
                   fontSize: "0.82rem",
