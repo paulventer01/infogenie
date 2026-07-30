@@ -95,7 +95,7 @@ export default function McpServer() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>🔌 MCP Server</h2>
         <p className="view-sub">
           InfoGenie as an MCP (Model Context Protocol) tool server — connect any AI agent to your

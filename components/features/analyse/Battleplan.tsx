@@ -406,17 +406,22 @@ export default function Battleplan() {
       {/* Page Header */}
       <div
         data-bp-hero
+        data-ig-light-hero="1"
+        className="ig-panel-hero"
         style={{
-          background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+          background:
+            "radial-gradient(ellipse 75% 65% at 10% 15%, rgba(15,118,110,0.16), transparent 55%), radial-gradient(ellipse 55% 50% at 92% 85%, rgba(2,132,199,0.14), transparent 50%), linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 55%, #eef4ff 100%)",
           borderRadius: 18,
           margin: "18px 24px 6px",
           padding: "22px 28px",
-          boxShadow: "0 8px 28px rgba(37,99,235,.18)",
+          border: "1px solid rgba(15, 118, 110, 0.16)",
+          boxShadow: "0 10px 28px rgba(15, 23, 42, 0.06)",
           position: "relative",
           overflow: "hidden",
           minHeight: 130,
           display: "flex",
           alignItems: "center",
+          color: "#0f172a",
         }}
       >
         <div
@@ -426,7 +431,7 @@ export default function Battleplan() {
             right: -40,
             width: 260,
             height: 260,
-            background: "radial-gradient(circle,rgba(255,255,255,.25),transparent 70%)",
+            background: "radial-gradient(circle,rgba(15,118,110,.08),transparent 70%)",
             borderRadius: "50%",
             pointerEvents: "none",
           }}
@@ -446,24 +451,32 @@ export default function Battleplan() {
           }}
         >
           <div>
-            <div style={{ fontSize: "0.65rem", fontWeight: 800, color: '#475569', opacity: 0.9, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 6 }}>
-              Analyse › Battle Plan
+            <div
+              className="breadcrumb"
+              style={{ fontSize: "0.65rem", fontWeight: 800, color: "#0f766e", letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 6 }}
+            >
+              <span className="bc-group">Analyse</span>
+              <span className="bc-sep"> › </span>
+              Battle Plan
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-              <span style={{ fontSize: "1.4rem" }}>⚔️</span>
-              <h1 style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "#FFFFFF", margin: 0, textShadow: "0 1px 2px rgba(15,30,61,.20)" }}>
+              <span style={{ fontSize: "1.4rem" }} aria-hidden>⚔️</span>
+              <h1
+                className="view-title"
+                style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "#0f172a", margin: 0 }}
+              >
                 Battle Plan
               </h1>
               <span
                 className="hero-pill"
-                style={{ background: "#FFFFFF", border: "1px solid rgba(255,255,255,.6)", padding: "3px 12px", borderRadius: 20, fontSize: "0.67rem", fontWeight: 800, color: "#1E3A8A", boxShadow: "0 1px 3px rgba(15,30,61,.10)" }}
+                style={{ background: "#FFFFFF", border: "1px solid rgba(15,118,110,.22)", padding: "3px 12px", borderRadius: 20, fontSize: "0.67rem", fontWeight: 800, color: "#1E3A8A", boxShadow: "0 1px 3px rgba(15,30,61,.10)" }}
               >
                 AI-GENERATED
               </span>
             </div>
-            <div style={{ color: '#334155', opacity: 0.95, fontSize: "0.88rem", fontWeight: 500, textShadow: "0 1px 2px rgba(15,30,61,.18)" }}>
+            <p className="view-sub" style={{ color: "#334155", fontSize: "0.88rem", fontWeight: 500, margin: 0 }}>
               {domain} · {industry} · {comps.length} competitors · Click any action card to execute directly
-            </div>
+            </p>
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button

@@ -160,7 +160,7 @@ export default function Intelligence() {
 
   return (
     <div>
-      <div className="view-header intel-header">
+      <div className="view-header intel-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -174,7 +174,7 @@ export default function Intelligence() {
                 gaps, and live competitor intelligence for your category.
               </p>
             </div>
-            <div className="intel-header-actions">
+            <div className="intel-header-actions ig-panel-hero">
               <div className="intel-live-badge">● Live Monitoring</div>
               <button
                 className="btn-primary"

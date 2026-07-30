@@ -761,7 +761,7 @@ Rules:
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{ background: "linear-gradient(135deg,#7C3AED 0%,#EC4899 100%)" }}
       >
         <div className="container">

@@ -243,7 +243,7 @@ export default function SeoRoadmap() {
   return (
     <div className="view-header-wrap">
       <style dangerouslySetInnerHTML={{ __html: SR_CSS }} />
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

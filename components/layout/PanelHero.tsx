@@ -24,6 +24,7 @@ export default function PanelHero({
   return (
     <div
       className="view-header ig-panel-hero"
+      data-ig-light-hero="1"
       style={{
         background: HERO_BG,
         border: "1px solid rgba(15, 118, 110, 0.16)",

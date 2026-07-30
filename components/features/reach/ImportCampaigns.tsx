@@ -265,7 +265,7 @@ export default function ImportCampaigns() {
 
   const header = (
     <div
-      className="view-header"
+      className="view-header ig-panel-hero"
       style={{ background: "linear-gradient(135deg,#7C2D12 0%,#DC2626 50%,#F97316 100%)" }}
     >
       <div className="container">

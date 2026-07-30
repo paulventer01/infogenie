@@ -756,7 +756,7 @@ ${ctx.domain || "yourdomain.com"}`;
     <div className="view" id="view-autoseo">
       <style dangerouslySetInnerHTML={{ __html: SPIN_CSS }} />
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{
           background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderBottom: "1px solid rgba(0,229,255,.2)",

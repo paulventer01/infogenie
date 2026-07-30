@@ -295,16 +295,25 @@ export default function Social() {
 
   return (
     <div className="view" id="view-social-react">
-      <div className="view-header" style={{ background: "linear-gradient(135deg,#7C3AED 0%,#4F46E5 100%)" }}>
+      <div
+        className="view-header ig-panel-hero"
+        data-ig-light-hero="1"
+        style={{
+          background:
+            "radial-gradient(ellipse 75% 65% at 10% 15%, rgba(124,58,237,0.12), transparent 55%), radial-gradient(ellipse 55% 50% at 92% 85%, rgba(79,70,229,0.10), transparent 50%), linear-gradient(135deg, #f5f3ff 0%, #eef2ff 55%, #eef4ff 100%)",
+          border: "1px solid rgba(124, 58, 237, 0.18)",
+          color: "#0f172a",
+        }}
+      >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#C4B5FD" }}>
-                <span className="bc-group" style={{ color: "rgba(196,181,253,.8)" }}>Create</span>{" "}
-                <span className="bc-sep" style={{ color: '#94a3b8' }}>›</span> Social
+              <div className="breadcrumb" style={{ color: "#0f766e" }}>
+                <span className="bc-group" style={{ color: "#7c3aed" }}>Create</span>{" "}
+                <span className="bc-sep" style={{ color: "#94a3b8" }}>›</span> Social
               </div>
-              <h2 className="view-title">Social Content Generator, Calendar &amp; Scheduling</h2>
-              <p className="view-sub">Create, schedule, and publish AI-generated content across all social platforms from one place</p>
+              <h2 className="view-title" style={{ color: "#0f172a" }}>Social Content Generator, Calendar &amp; Scheduling</h2>
+              <p className="view-sub" style={{ color: "#334155" }}>Create, schedule, and publish AI-generated content across all social platforms from one place</p>
             </div>
             <div className="vh-actions">
               <button className="btn-primary" style={{ background: "white", color: "#7C3AED" }} onClick={() => openCreate()}>

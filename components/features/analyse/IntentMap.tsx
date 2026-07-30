@@ -237,7 +237,7 @@ export default function IntentMap() {
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{ background: "linear-gradient(135deg,#0066FF 0%,#7C3AED 100%)" }}
       >
         <div className="container">

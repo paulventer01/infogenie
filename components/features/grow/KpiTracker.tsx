@@ -519,7 +519,7 @@ export default function KpiTracker() {
 
   return (
     <div>
-      <div className="view-header intel-header">
+      <div className="view-header intel-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

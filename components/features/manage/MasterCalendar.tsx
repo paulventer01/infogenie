@@ -270,7 +270,7 @@ export default function MasterCalendar() {
   return (
     <div className="view-header-wrap">
       <div
-        className="intel-header"
+        className="intel-header ig-panel-hero"
         style={{
           background:
             "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",

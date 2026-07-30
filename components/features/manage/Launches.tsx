@@ -389,7 +389,7 @@ export default function Launches() {
 
   return (
     <div className="view" id="view-launches">
-      <div className="intel-header" style={{ background: "linear-gradient(110deg,#7C3AED 0%,#A855F7 50%,#EC4899 100%)" }}>
+      <div className="intel-header ig-panel-hero" style={{ background: "linear-gradient(110deg,#7C3AED 0%,#A855F7 50%,#EC4899 100%)" }}>
         <div className="breadcrumb" style={{ color: "#FBCFE8" }}>
           <span className="bc-group" style={{ color: "#FBCFE8", opacity: 0.85 }}>
             Manage

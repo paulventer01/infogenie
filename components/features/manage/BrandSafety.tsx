@@ -332,7 +332,7 @@ export default function BrandSafety() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>🔒 Brand Safety &amp; Compliance</h2>
         <p className="view-sub">
           Audit ad copy and landing pages against FTC, GDPR, FCA, ESMA, HIPAA, and ASA rules before

@@ -331,7 +331,7 @@ export default function UnifiedInbox() {
   return (
     <div className="view-header-wrap">
       <style>{BADGE_CSS}</style>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

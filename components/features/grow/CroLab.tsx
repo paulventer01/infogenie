@@ -725,7 +725,7 @@ export default function CroLab() {
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{ background: "linear-gradient(135deg,#7C2D12 0%,#EA580C 50%,#F59E0B 100%)" }}
       >
         <div className="container">

@@ -174,7 +174,7 @@ export default function Localization() {
   }
 
   const header = (
-    <div className="view-header">
+    <div className="view-header ig-panel-hero">
       <div className="container">
         <div className="vh-inner">
           <div>

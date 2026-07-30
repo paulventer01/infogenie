@@ -372,7 +372,7 @@ export default function LeadQualifier() {
   return (
     <>
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{ background: "linear-gradient(135deg,#0C4A6E 0%,#0369A1 50%,#0EA5E9 100%)" }}
       >
         <div className="container">

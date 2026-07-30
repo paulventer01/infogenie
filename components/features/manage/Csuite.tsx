@@ -1450,7 +1450,7 @@ ${content}
   return (
     <div className="view">
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{
           background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderBottom: "1px solid rgba(124,58,237,.25)",
