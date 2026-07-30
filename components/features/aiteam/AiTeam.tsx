@@ -214,6 +214,33 @@ const OFFICERS: Officer[] = [
   },
 ];
 
+/** Soft illustrated portraits shipped with the app — used until a custom avatar is saved. */
+const DEFAULT_AVATARS: Record<string, string> = {
+  marketing: "/avatars/ai-team/marketing.webp",
+  sales: "/avatars/ai-team/sales.webp",
+  analyst: "/avatars/ai-team/analyst.webp",
+  content: "/avatars/ai-team/content.webp",
+  seo: "/avatars/ai-team/seo.webp",
+  cro: "/avatars/ai-team/cro.webp",
+  finance: "/avatars/ai-team/finance.webp",
+  ops: "/avatars/ai-team/ops.webp",
+};
+
+function resolveAvatar(officerId: string, stored?: string, fallbackIcon = "👤"): string {
+  if (typeof stored === "string" && stored.trim()) return stored.trim();
+  return DEFAULT_AVATARS[officerId] || fallbackIcon;
+}
+
+function isAvatarImage(value: string): boolean {
+  return (
+    value.startsWith("/avatars/") ||
+    value.startsWith("/uploads/") ||
+    value.startsWith("http://") ||
+    value.startsWith("https://") ||
+    value.startsWith("data:image/")
+  );
+}
+
 const AVATAR_GALLERY = [
   "📣", "🎯", "📊", "✍️", "🔎", "🧪", "💼", "🛠️", "🤖", "🦊",
   "🐺", "🐯", "🦁", "🐼", "🦄", "🦅", "👨‍💼", "👩‍💼", "👨‍🚀", "👩‍🚀",
@@ -609,9 +636,12 @@ export default function AiTeam() {
           maxWidth: 1200,
           margin: "0 auto 22px",
           padding: "24px 28px",
-          background: "linear-gradient(135deg,#0F172A 0%,#312E81 100%)",
-          color: "white",
+          background:
+            "radial-gradient(ellipse 80% 70% at 8% 20%, rgba(15,118,110,0.16), transparent 55%), radial-gradient(ellipse 60% 50% at 92% 80%, rgba(2,132,199,0.14), transparent 50%), linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 48%, #eef4ff 100%)",
+          color: "#0f172a",
           borderRadius: 18,
+          border: "1px solid rgba(15, 118, 110, 0.16)",
+          boxShadow: "0 10px 28px rgba(15, 23, 42, 0.06)",
         }}
       >
         <div
@@ -629,16 +659,16 @@ export default function AiTeam() {
                 fontSize: ".72rem",
                 letterSpacing: ".18em",
                 textTransform: "uppercase",
-                color: "#A5B4FC",
-                fontWeight: 700,
+                color: "#0f766e",
+                fontWeight: 800,
               }}
             >
               YOUR AI TEAM
             </div>
-            <h1 style={{ margin: "8px 0 6px", fontSize: "1.85rem", fontWeight: 800 }}>
+            <h1 style={{ margin: "8px 0 6px", fontSize: "1.85rem", fontWeight: 800, color: "#0f172a" }}>
               Eight AI executives, one team
             </h1>
-            <p style={{ margin: 0, fontSize: ".92rem", color: "#CBD5E1", maxWidth: 720 }}>
+            <p style={{ margin: 0, fontSize: ".92rem", color: "#475569", maxWidth: 720 }}>
               Each officer handles a function full-time. Click any role to open their
               office. Pick an avatar, assign tasks, run daily reports, and schedule
               cross-functional meetings — all minutes downloadable.
@@ -651,9 +681,9 @@ export default function AiTeam() {
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              background: "rgba(15,23,42,0.5)",
-              border: "1px solid rgba(148,163,184,0.3)",
-              color: "#fff",
+              background: "rgba(255,255,255,0.72)",
+              border: "1px solid rgba(15, 118, 110, 0.22)",
+              color: "#0f172a",
               padding: "8px 14px",
               borderRadius: 99,
               fontSize: ".78rem",
@@ -691,7 +721,7 @@ export default function AiTeam() {
           <OfficerCard
             key={o.id}
             officer={o}
-            avatar={avatars[o.id]}
+            avatar={resolveAvatar(o.id, avatars[o.id], o.icon)}
             taskCount={taskCounts[o.id] || 0}
             onNav={(v) => goToView(router, v)}
             onAvatar={(e) => {
@@ -833,7 +863,7 @@ function OfficerCard({
   onReport: () => void;
 }) {
   const av = typeof avatar === "string" && avatar ? avatar : officer.icon;
-  const isImg = typeof av === "string" && av.startsWith("/uploads/");
+  const isImg = typeof av === "string" && isAvatarImage(av);
   return (
     <div style={card}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 10 }}>
@@ -845,20 +875,23 @@ function OfficerCard({
             onAvatar(e);
           }}
           style={{
-            width: 54,
-            height: 54,
-            borderRadius: 14,
-            background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+            width: 58,
+            height: 58,
+            borderRadius: "50%",
+            background: isImg
+              ? "#e2e8f0"
+              : "linear-gradient(135deg,#0f766e,#0284c7)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             fontSize: 26,
             flexShrink: 0,
-            border: "none",
+            border: "2px solid rgba(15, 118, 110, 0.18)",
             cursor: "pointer",
             padding: 0,
             position: "relative",
             overflow: "hidden",
+            boxShadow: "0 6px 16px rgba(15, 23, 42, 0.08)",
           }}
         >
           {isImg ? (
@@ -866,7 +899,7 @@ function OfficerCard({
             <img
               src={av}
               alt=""
-              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 14 }}
+              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
             />
           ) : (
             av
@@ -874,8 +907,8 @@ function OfficerCard({
           <span
             style={{
               position: "absolute",
-              bottom: -2,
-              right: -2,
+              bottom: -1,
+              right: -1,
               background: "#fff",
               border: "1px solid #E2E8F0",
               borderRadius: "50%",
@@ -1073,7 +1106,48 @@ function AvatarPicker({
           marginBottom: 8,
         }}
       >
-        Pick an emoji
+        Team portraits
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4,1fr)",
+          gap: 6,
+          marginBottom: 12,
+        }}
+      >
+        {Object.entries(DEFAULT_AVATARS).map(([id, src]) => (
+          <button
+            key={id}
+            title={id}
+            onClick={() => pickEmoji(src)}
+            style={{
+              width: 52,
+              height: 52,
+              border: "1px solid #E2E8F0",
+              background: "#fff",
+              borderRadius: "50%",
+              cursor: "pointer",
+              padding: 0,
+              overflow: "hidden",
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </button>
+        ))}
+      </div>
+      <div
+        style={{
+          fontSize: ".7rem",
+          color: "#64748B",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: ".05em",
+          marginBottom: 8,
+        }}
+      >
+        Or pick an emoji
       </div>
       <div
         style={{
@@ -1775,7 +1849,10 @@ function ScheduleMeetingModal({
             Attendees (pick at least 2)
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-            {OFFICERS.map((o) => (
+            {OFFICERS.map((o) => {
+              const av = resolveAvatar(o.id, avatars[o.id], o.icon);
+              const img = isAvatarImage(av);
+              return (
               <label
                 key={o.id}
                 style={{
@@ -1795,9 +1872,16 @@ function ScheduleMeetingModal({
                   onChange={(e) => setPicked((p) => ({ ...p, [o.id]: e.target.checked }))}
                   style={{ margin: 0 }}
                 />
-                {(typeof avatars[o.id] === "string" && avatars[o.id]) || o.icon} {o.title}
+                {img ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={av} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
+                ) : (
+                  <span>{av}</span>
+                )}{" "}
+                {o.title}
               </label>
-            ))}
+              );
+            })}
           </div>
         </div>
         <div style={{ padding: "14px 24px", borderTop: "1px solid #E2E8F0", display: "flex", justifyContent: "flex-end", gap: 8, background: "#F8FAFC" }}>
