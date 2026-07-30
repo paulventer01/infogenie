@@ -7,6 +7,7 @@ import { prefetchPanel } from "@/components/features/registry";
 import NavGroup from "./NavGroup";
 import AccountMenu from "./AccountMenu";
 import CompanyContextBar from "./CompanyContextBar";
+import BackNav from "./BackNav";
 import styles from "../../styles/shell.module.css";
 
 const LOGO_SVG =
@@ -400,6 +401,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               }}
               dangerouslySetInnerHTML={{ __html: MENU_SVG }}
             />
+            <BackNav fallback="/" />
             <div className={styles.crumb}>Workspace</div>
           </div>
           <div className={styles.topbarRight}>

@@ -499,6 +499,44 @@
   position: relative;
 }
 
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px 0 8px;
+  border-radius: 10px;
+  border: 1px solid var(--shell-icon-border);
+  background: var(--shell-icon-bg);
+  color: var(--shell-icon-color);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.backBtn:hover {
+  background: rgba(15, 118, 110, 0.1);
+  border-color: rgba(15, 118, 110, 0.35);
+  color: #0f766e;
+}
+
+.backLabel {
+  line-height: 1;
+}
+
+@media (max-width: 640px) {
+  .backLabel {
+    display: none;
+  }
+  .backBtn {
+    padding: 0;
+    width: 36px;
+    justify-content: center;
+  }
+}
+
 .plan {
   font-size: 0.68rem;
   font-weight: 800;
