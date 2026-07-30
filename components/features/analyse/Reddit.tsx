@@ -1087,7 +1087,7 @@ function Feed({
         style={{
           textAlign: "center",
           padding: "48px 24px",
-          color: "rgba(255,255,255,.3)",
+          color: '#94a3b8',
         }}
       >
         <div style={{ fontSize: "2.5rem", marginBottom: 10 }}>{emptyIcon}</div>
@@ -1215,7 +1215,7 @@ function RedditCard({ p, onReply }: { p: RedditPost; onReply: () => void }) {
                 🔍 SERP
               </span>
             )}
-            <span style={{ fontSize: "0.62rem", color: "rgba(255,255,255,.3)" }}>
+            <span style={{ fontSize: "0.62rem", color: '#94a3b8' }}>
               {(p.ageHours || 0) < 24
                 ? `${p.ageHours}h ago`
                 : `${Math.round((p.ageHours || 0) / 24)}d ago`}
@@ -1253,7 +1253,7 @@ function RedditCard({ p, onReply }: { p: RedditPost; onReply: () => void }) {
           <div
             style={{
               fontSize: "0.56rem",
-              color: "rgba(255,255,255,.3)",
+              color: '#94a3b8',
               fontWeight: 600,
             }}
           >

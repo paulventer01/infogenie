@@ -156,13 +156,13 @@ export default function SpyFu() {
           borderRadius:16, padding:"28px 28px 24px", marginBottom:24,
           boxShadow:"0 8px 32px rgba(15,23,42,.3)",
         }}>
-          <div style={{ color:"rgba(255,255,255,.6)", fontSize:"0.72rem", fontWeight:700, letterSpacing:"0.8px", textTransform:"uppercase", marginBottom:16 }}>
+          <div style={{ color: "#475569", fontSize:"0.72rem", fontWeight:700, letterSpacing:"0.8px", textTransform:"uppercase", marginBottom:16 }}>
             🔍 Intelligence Report
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto", gap:12, alignItems:"flex-end" }}>
             {/* Domain */}
             <div>
-              <label style={{ color:"rgba(255,255,255,.7)", fontSize:"0.72rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px", display:"block", marginBottom:6 }}>
+              <label style={{ color: "#475569", fontSize:"0.72rem", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px", display:"block", marginBottom:6 }}>
                 Domain
               </label>
               <div style={{ position:"relative" }}>
@@ -175,7 +175,7 @@ export default function SpyFu() {
                   style={{
                     width:"100%", padding:"11px 12px 11px 36px", borderRadius:9,
                     border:"1.5px solid rgba(255,255,255,.2)",
-                    background:"rgba(255,255,255,.1)", color:"#fff",
+                    background:"rgba(255,255,255,.1)", color: "#0f172a",
                     fontSize:"0.92rem", boxSizing:"border-box", outline:"none",
                   }}
                 />

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
+import PanelHero from "@/components/layout/PanelHero";
 
 interface BusinessProfile {
   business_name: string;
@@ -95,11 +96,12 @@ export default function LocalListings() {
   if (loading) return <div style={{ padding: 20 }}>Loading Local Listings...</div>;
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: 20 }}>
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: 8 }}>📍 Local Listings & NAP Consistency</h2>
-        <p style={{ color: "#6b7280" }}>Manage your canonical Business Profile and sync it across major platforms.</p>
-      </div>
+    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "8px 4px 40px" }}>
+      <PanelHero
+        group="Reach"
+        title="📍 Local Listings & NAP Consistency"
+        subtitle="Manage your canonical Business Profile and sync it across major platforms."
+      />
 
       <div className="ig-card" style={{ marginBottom: 32 }}>
         <h3 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: 16 }}>Canonical Business Profile (NAP)</h3>

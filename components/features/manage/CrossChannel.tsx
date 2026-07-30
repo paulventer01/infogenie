@@ -565,11 +565,11 @@ export default function CrossChannel() {
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#A7F3D0" }}>
+              <div className="breadcrumb" style={{ color: '#0f766e' }}>
                 <span className="bc-group" style={{ color: "rgba(167,243,208,.75)" }}>
                   Manage
                 </span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>
                   ›
                 </span>{" "}
                 Cross-Channel Report

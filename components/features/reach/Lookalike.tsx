@@ -219,9 +219,9 @@ export default function Lookalike() {
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#BAE6FD" }}>
-                <span className="bc-group" style={{ color: "rgba(186,230,253,.75)" }}>Reach</span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>›</span> Lookalike Audiences
+              <div className="breadcrumb" style={{ color: '#64748b' }}>
+                <span className="bc-group" style={{ color: '#0f766e' }}>Reach</span>{" "}
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>›</span> Lookalike Audiences
               </div>
               <h2 className="view-title">Lookalike Audience Builder</h2>
               <p className="view-sub">
@@ -324,7 +324,7 @@ export default function Lookalike() {
               style={{
                 width: "100%",
                 padding: 14,
-                background: "linear-gradient(135deg,#1E40AF 0%,#0EA5E9 100%)",
+                background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
                 color: "white",
                 border: "none",
                 borderRadius: 12,

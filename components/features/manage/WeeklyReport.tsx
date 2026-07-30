@@ -302,7 +302,7 @@ export default function WeeklyReport() {
             onClick={onPdfClick}
             style={{
               background: '#eef4ff',
-              color: "#fff",
+              color: "#0f172a",
               padding: "8px 14px",
               borderRadius: 6,
               fontSize: "0.76rem",
@@ -317,7 +317,7 @@ export default function WeeklyReport() {
             onClick={doSend}
             style={{
               background: "linear-gradient(135deg,#059669,#10B981)",
-              color: "#fff",
+              color: "#0f172a",
               border: "none",
               padding: "8px 14px",
               borderRadius: 6,
@@ -436,7 +436,7 @@ export default function WeeklyReport() {
             onClick={addSub}
             style={{
               background: '#eef4ff',
-              color: "#fff",
+              color: "#0f172a",
               border: "none",
               padding: "7px 14px",
               borderRadius: 6,

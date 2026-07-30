@@ -251,7 +251,7 @@ function SynthesisPanel({ synthesis }: { synthesis: Synthesis }) {
         <span style={{ fontSize: "1.5rem" }}>👑</span>
         <div>
           <div style={{ fontSize: ".95rem", fontWeight: 800, color: "#fff" }}>CMO Strategy Synthesis</div>
-          <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.75)" }}>Unified executive action plan</div>
+          <div style={{ fontSize: ".72rem", color: '#475569' }}>Unified executive action plan</div>
         </div>
         <div style={{ marginLeft: "auto" }}><ConfidenceBadge score={synthesis.confidence} /></div>
       </div>

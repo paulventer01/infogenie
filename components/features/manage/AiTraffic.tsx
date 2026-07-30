@@ -191,7 +191,7 @@ export default function AiTraffic() {
             style={{
               margin: 0,
               fontSize: "0.8rem",
-              color: "rgba(255,255,255,.65)",
+              color: "#475569",
               lineHeight: 1.45,
             }}
           >
@@ -361,7 +361,7 @@ export default function AiTraffic() {
                 background: '#eef4ff',
                 border: "none",
                 borderRadius: 6,
-                color: "#fff",
+                color: "#0f172a",
                 fontSize: "0.82rem",
                 fontWeight: 800,
                 cursor: "pointer",

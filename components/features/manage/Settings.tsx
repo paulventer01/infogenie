@@ -1693,7 +1693,7 @@ export default function Settings() {
                 href="/source"
                 target="_blank"
                 rel="noopener"
-                style={{ background: "linear-gradient(135deg,#0f2a5e,#1a3a7a)", border: "1px solid rgba(0,229,255,0.3)" }}
+                style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "1px solid rgba(0,229,255,0.3)" }}
               >
                 🧾 View Source Code
               </a>

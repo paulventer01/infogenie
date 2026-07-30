@@ -735,7 +735,7 @@ export default function CroLab() {
                 <span className="bc-group" style={{ color: "rgba(254,215,170,.8)" }}>
                   Grow
                 </span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>
                   ›
                 </span>{" "}
                 CRO Lab

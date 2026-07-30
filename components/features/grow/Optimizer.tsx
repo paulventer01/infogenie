@@ -120,7 +120,7 @@ export default function Optimizer() {
 
   return (
     <div>
-      <div className="intel-header" style={{ background: "linear-gradient(110deg,#0F172A 0%,#1E40AF 50%,#0066FF 100%)" }}>
+      <div className="intel-header" style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}>
         <div className="breadcrumb">
           <span className="bc-group" style={{ opacity: 0.85 }}>Grow</span>{" "}
           <span className="bc-sep" style={{ opacity: 0.55 }}>›</span> AI Optimizer

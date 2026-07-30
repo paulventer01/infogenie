@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
+import PanelHero from "@/components/layout/PanelHero";
 
 interface AudienceRules {
   match: string;
@@ -108,10 +109,12 @@ export default function CampaignComposer() {
   };
 
   return (
-    <div style={{ padding: 20, maxWidth: 1200, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <h2 style={{ margin: 0 }}>Prompt-to-Campaign Builder</h2>
-      </div>
+    <div style={{ padding: "8px 4px 40px", maxWidth: 1200, margin: "0 auto" }}>
+      <PanelHero
+        group="Reach"
+        title="🪄 Prompt-to-Campaign Builder"
+        subtitle="Describe the campaign in plain language and InfoGenie drafts audience rules, channel copy, and send timing."
+      />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: 24, alignItems: "flex-start" }}>
         {/* Main Workspace */}

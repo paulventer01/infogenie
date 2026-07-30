@@ -463,7 +463,7 @@ export default function AnalyticsHub() {
               <p className="view-sub" style={{ color: "#0f172a", opacity: 1, textShadow: "none" }}>Connect Google Search Console &amp; GA4 — InfoGenie pulls real impressions, clicks, ranks and revenue per page, then highlights top performers and weak performers ready to fix.</p>
             </div>
             <div className="vh-actions">
-              <button className="btn-primary" style={{ background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff" }} onClick={refresh}>📡 Refresh Data</button>
+              <button className="btn-primary" style={{ background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#0f172a" }} onClick={refresh}>📡 Refresh Data</button>
             </div>
           </div>
         </div>

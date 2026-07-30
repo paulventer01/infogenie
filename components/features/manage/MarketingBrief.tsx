@@ -132,11 +132,11 @@ function DigestPanel({ digest }: { digest: Digest }) {
             <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#7DD3FC', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>
               🌅 Morning Digest · {ageStr}
             </div>
-            <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#fff', lineHeight: 1.3 }}>{digest.headline}</div>
+            <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.3 }}>{digest.headline}</div>
           </div>
           <button
             onClick={() => navigate('digest')}
-            style={{ flexShrink: 0, padding: '5px 12px', background: 'rgba(255,255,255,0.1)', color: '#BAE6FD', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+            style={{ flexShrink: 0, padding: '5px 12px', background: 'rgba(255,255,255,0.1)', color: '#64748b', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
             Full Digest →
           </button>
@@ -289,12 +289,12 @@ function RecsPanel({ recs: initialRecs, onNavigateFull }: { recs: Rec[]; onNavig
   return (
     <div style={{ background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ background: 'linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)', padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#A5B4FC', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#0f766e', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
           🧭 Top Priorities · Decision Engine
         </div>
         <button
           onClick={onNavigateFull}
-          style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.1)', color: '#C7D2FE', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
+          style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.1)', color: '#475569', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
         >
           All recs →
         </button>
@@ -603,7 +603,7 @@ export default function MarketingBrief() {
               <span style={{ fontSize: '0.82rem', color: '#94A3B8' }}>No digest generated yet for your brand.</span>
               <button
                 onClick={() => navigate('digest')}
-                style={{ flexShrink: 0, padding: '6px 12px', background: '#eef4ff', color: '#fff', border: 'none', borderRadius: 6, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' }}
+                style={{ flexShrink: 0, padding: '6px 12px', background: '#eef4ff', color: '#0f172a', border: 'none', borderRadius: 6, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' }}
               >
                 Generate Digest →
               </button>

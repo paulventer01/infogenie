@@ -669,3 +669,107 @@ body:has(#ig-app-shell) textarea::placeholder {
   opacity: 1 !important;
 }
 
+
+/* form-control / ig-btn used by many Reach panels */
+body:has(#ig-app-shell) .form-control,
+body:has(#ig-app-shell) .form-group input,
+body:has(#ig-app-shell) .form-group select,
+body:has(#ig-app-shell) .form-group textarea {
+  width: 100% !important;
+  min-height: 42px !important;
+  padding: 10px 13px !important;
+  background: #fff !important;
+  border: 1.5px solid var(--v2-border) !important;
+  border-radius: 10px !important;
+  color: var(--v2-ink) !important;
+  font-family: var(--font-ui) !important;
+  line-height: 1.4 !important;
+}
+
+body:has(#ig-app-shell) .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+body:has(#ig-app-shell) .form-group label {
+  margin-bottom: 0 !important;
+  color: var(--v2-ink) !important;
+}
+
+body:has(#ig-app-shell) .ig-btn,
+body:has(#ig-app-shell) .btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  min-height: 40px !important;
+  padding: 0 16px !important;
+  border-radius: 10px !important;
+  font-family: var(--font-ui) !important;
+  font-weight: 700 !important;
+  font-size: 0.84rem !important;
+  line-height: 1.2 !important;
+  cursor: pointer;
+}
+
+body:has(#ig-app-shell) .ig-btn-primary,
+body:has(#ig-app-shell) .btn-primary {
+  background: linear-gradient(135deg, #0f766e, #0284c7) !important;
+  border: none !important;
+  color: #fff !important;
+}
+
+body:has(#ig-app-shell) .ig-btn:not(.ig-btn-primary),
+body:has(#ig-app-shell) .btn-outline,
+body:has(#ig-app-shell) .btn-secondary {
+  background: #fff !important;
+  border: 1.5px solid var(--v2-border) !important;
+  color: var(--v2-ink) !important;
+}
+
+body:has(#ig-app-shell) .ig-stat-card {
+  background: #fff !important;
+  border: 1px solid var(--v2-border) !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
+  box-shadow: var(--v2-shadow) !important;
+}
+
+body:has(#ig-app-shell) .ig-stat-num {
+  color: var(--v2-ink) !important;
+  font-weight: 800 !important;
+  font-size: 1.35rem !important;
+}
+
+body:has(#ig-app-shell) .ig-stat-label {
+  color: #64748b !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  margin-top: 6px !important;
+}
+
+body:has(#ig-app-shell) .ig-panel-header {
+  background: var(--ig-hero-bg) !important;
+  border: 1px solid rgba(15, 118, 110, 0.16) !important;
+  border-radius: 16px !important;
+  padding: 22px 24px !important;
+  margin: 0 0 18px !important;
+  box-shadow: var(--v2-shadow) !important;
+  color: var(--ig-hero-ink) !important;
+}
+
+body:has(#ig-app-shell) .ig-panel-header h1,
+body:has(#ig-app-shell) .ig-panel-header h2 {
+  color: var(--ig-hero-ink) !important;
+  margin: 0 !important;
+}
+
+body:has(#ig-app-shell) .ig-panel-sub {
+  color: #475569 !important;
+  margin: 8px 0 0 !important;
+  line-height: 1.55 !important;
+}

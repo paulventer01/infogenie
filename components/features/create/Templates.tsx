@@ -445,22 +445,22 @@ export default function Templates() {
         className="view-header"
         style={{
           background:
-            "linear-gradient(135deg,#065F46 0%,#10B981 50%,#34D399 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#A7F3D0" }}>
+              <div className="breadcrumb" style={{ color: '#0f766e' }}>
                 <span
                   className="bc-group"
-                  style={{ color: "rgba(167,243,208,.8)" }}
+                  style={{ color: '#0f766e' }}
                 >
                   Create
                 </span>{" "}
                 <span
                   className="bc-sep"
-                  style={{ color: "rgba(255,255,255,.3)" }}
+                  style={{ color: '#94a3b8' }}
                 >
                   ›
                 </span>{" "}
@@ -572,7 +572,7 @@ export default function Templates() {
             <button
               className="btn-primary"
               style={{
-                background: "linear-gradient(135deg,#065F46,#10B981)",
+                background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
                 color: "white",
                 border: "none",
                 padding: "11px 24px",

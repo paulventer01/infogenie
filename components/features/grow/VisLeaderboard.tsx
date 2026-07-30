@@ -298,7 +298,7 @@ export default function VisLeaderboard() {
           <h3 style={{ margin: "0 0 6px", fontFamily: "Sora,sans-serif", fontSize: "1rem" }}>
             🏆 Visibility Rank Table
           </h3>
-          <p style={{ margin: 0, fontSize: "0.8rem", color: "rgba(255,255,255,.65)" }}>
+          <p style={{ margin: 0, fontSize: "0.8rem", color: "#475569" }}>
             See how you and your competitors rank across AI engines — with Δ vs your last run.
           </p>
         </div>

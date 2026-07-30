@@ -273,14 +273,14 @@ export default function MasterCalendar() {
         className="intel-header"
         style={{
           background:
-            "linear-gradient(110deg,#1E40AF 0%,#2563EB 50%,#3B82F6 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
-        <div className="breadcrumb" style={{ color: "#BFDBFE" }}>
-          <span className="bc-group" style={{ color: "#BFDBFE", opacity: 0.85 }}>
+        <div className="breadcrumb" style={{ color: '#475569' }}>
+          <span className="bc-group" style={{ color: '#475569', opacity: 0.85 }}>
             Manage
           </span>{" "}
-          <span className="bc-sep" style={{ color: "#BFDBFE", opacity: 0.55 }}>
+          <span className="bc-sep" style={{ color: '#475569', opacity: 0.55 }}>
             ›
           </span>{" "}
           Master Calendar

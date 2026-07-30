@@ -2043,7 +2043,7 @@ export default function Admin() {
                 <span className="bc-group" style={{ color: "rgba(203,213,225,.8)" }}>
                   Manage
                 </span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>
                   ›
                 </span>{" "}
                 Admin Portal

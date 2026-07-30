@@ -76,20 +76,20 @@ export default function Competitors() {
       <div className="container" style={{ paddingTop: 24 }}>
         <div
           className="comp-hero"
-          style={{ background: "linear-gradient(110deg,#1E40AF 0%,#2563EB 50%,#3B82F6 100%)", borderRadius: 18, padding: "26px 30px", marginBottom: 20, position: "relative", overflow: "hidden", boxShadow: "0 8px 28px rgba(37,99,235,.18)" }}
+          style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", borderRadius: 18, padding: "26px 30px", marginBottom: 20, position: "relative", overflow: "hidden", boxShadow: "0 8px 28px rgba(37,99,235,.18)" }}
         >
           <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 280 }}>
-              <div style={{ fontSize: "0.65rem", fontWeight: 800, color: "#BFDBFE", opacity: 0.9, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 6 }}>
+              <div style={{ fontSize: "0.65rem", fontWeight: 800, color: '#475569', opacity: 0.9, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 6 }}>
                 Analyse › Intelligence Hub
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                 <span style={{ fontSize: "1.4rem" }}>⚡</span>
-                <h1 style={{ fontSize: "1.5rem", fontWeight: 800, color: "#FFFFFF", lineHeight: 1.2, margin: 0, textShadow: "0 1px 2px rgba(15,30,61,.20)" }}>
+                <h1 style={{ fontSize: "1.5rem", fontWeight: 800, color: "#0f172a", lineHeight: 1.2, margin: 0, textShadow: "0 1px 2px rgba(15,30,61,.20)" }}>
                   Competitive Intelligence Engine
                 </h1>
               </div>
-              <div style={{ fontSize: "0.88rem", color: "#E0E7FF", maxWidth: 680, lineHeight: 1.5, fontWeight: 500, opacity: 0.95, textShadow: "0 1px 2px rgba(15,30,61,.18)" }}>
+              <div style={{ fontSize: "0.88rem", color: '#334155', maxWidth: 680, lineHeight: 1.5, fontWeight: 500, opacity: 0.95, textShadow: "0 1px 2px rgba(15,30,61,.18)" }}>
                 Exclusive InfoGenie capabilities — real-time signals, predictive moves, keyword gaps, and your 90-day category domination roadmap
               </div>
             </div>
@@ -99,7 +99,7 @@ export default function Competitors() {
               {heroStat("ai", aiCount, "🤖 AI-detected", 128)}
               {competitors.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginLeft: 8 }}>
-                  <label style={{ fontSize: "0.66rem", fontWeight: 800, color: "#FFFFFF", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6, textShadow: "0 1px 2px rgba(15,30,61,.25)" }}>
+                  <label style={{ fontSize: "0.66rem", fontWeight: 800, color: "#0f172a", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6, textShadow: "0 1px 2px rgba(15,30,61,.25)" }}>
                     Filter
                   </label>
                   <select

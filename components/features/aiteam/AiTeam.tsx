@@ -1004,7 +1004,7 @@ function OfficerCard({
             style={{
               padding: "6px 11px",
               background: '#eef4ff',
-              color: "#fff",
+              color: "#0f172a",
               border: "none",
               borderRadius: 8,
               fontSize: ".72rem",
@@ -1640,7 +1640,7 @@ function DailyReportModal({
             style={{
               padding: "10px 22px",
               background: '#eef4ff',
-              color: "#fff",
+              color: "#0f172a",
               border: "none",
               borderRadius: 8,
               fontWeight: 800,
@@ -1739,13 +1739,13 @@ function MeetingsPanel({
                 <div style={{ display: "flex", gap: 6 }}>
                   <button
                     onClick={() => onView(m)}
-                    style={{ padding: "6px 12px", background: '#eef4ff', color: "#fff", border: "none", borderRadius: 7, fontSize: ".74rem", fontWeight: 700, cursor: "pointer" }}
+                    style={{ padding: "6px 12px", background: '#eef4ff', color: "#0f172a", border: "none", borderRadius: 7, fontSize: ".74rem", fontWeight: 700, cursor: "pointer" }}
                   >
                     View
                   </button>
                   <button
                     onClick={() => downloadFile(`meeting-${m.id}.md`, meetingToMarkdown(m))}
-                    style={{ padding: "6px 12px", background: "#0EA5E9", color: "#fff", border: "none", borderRadius: 7, fontSize: ".74rem", fontWeight: 700, cursor: "pointer" }}
+                    style={{ padding: "6px 12px", background: "#0EA5E9", color: "#0f172a", border: "none", borderRadius: 7, fontSize: ".74rem", fontWeight: 700, cursor: "pointer" }}
                   >
                     📥 Minutes
                   </button>
@@ -2056,7 +2056,7 @@ function SystemStatusPanel({
           </div>
           <button
             onClick={onClose}
-            style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", width: 34, height: 34, borderRadius: "50%", fontSize: "1.1rem", cursor: "pointer" }}
+            style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#0f172a", width: 34, height: 34, borderRadius: "50%", fontSize: "1.1rem", cursor: "pointer" }}
           >
             ×
           </button>
@@ -2204,14 +2204,14 @@ function AutoMeetingsPanel({
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             onClick={() => onSettings(s)}
-            style={{ padding: "9px 16px", background: '#eef4ff', color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: '#eef4ff', color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             ⚙️ Settings
           </button>
           <button
             onClick={runNow}
             disabled={busy}
-            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy ? "⏳ Drafting…" : "▶ Run Now"}
           </button>
@@ -2515,7 +2515,7 @@ function AutoReportPanel({
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             onClick={() => onSettings(s)}
-            style={{ padding: "9px 16px", background: '#eef4ff', color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: '#eef4ff', color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             ⚙️ Settings
           </button>
@@ -2523,7 +2523,7 @@ function AutoReportPanel({
             title="Generate now and view in browser — no email, no Slack"
             onClick={viewNow}
             disabled={busy !== null}
-            style={{ padding: "9px 16px", background: "#0EA5E9", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "#0EA5E9", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy === "view" ? "⏳ Drafting…" : "👁️ View Report"}
           </button>
@@ -2531,7 +2531,7 @@ function AutoReportPanel({
             title="Generate now and download as Markdown — no email, no Slack"
             onClick={downloadNow}
             disabled={busy !== null}
-            style={{ padding: "9px 16px", background: "#10B981", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "#10B981", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy === "dl" ? "⏳ Drafting…" : "📥 Download Report"}
           </button>
@@ -2539,7 +2539,7 @@ function AutoReportPanel({
             title="Generate now and send via email + Slack"
             onClick={runSend}
             disabled={busy !== null}
-            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy === "send" ? "⏳ Running…" : "▶ Run + Send"}
           </button>

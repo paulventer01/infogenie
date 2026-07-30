@@ -213,7 +213,7 @@ export default function FunnelAnalytics() {
 
   return (
     <div style={{ fontFamily: "'Inter',sans-serif", background: "var(--ig-page)", minHeight: "100vh", padding: "24px 28px" }}>
-      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: '#eef4ff', color: "#fff", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: '#eef4ff', color: "#0f172a", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
 
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>Grow › Track ROI</div>
@@ -626,7 +626,7 @@ export default function FunnelAnalytics() {
                   <pre style={{ background: '#eef4ff', color: "#A5F3FC", borderRadius: 10, padding: "16px 20px", fontSize: "0.72rem", lineHeight: 1.7, overflowX: "auto", maxHeight: 400, margin: 0 }}>
                     {snippet}
                   </pre>
-                  <button onClick={handleCopy} style={{ position: "absolute", top: 12, right: 12, padding: "5px 12px", background: copied ? "#059669" : "#1E3A5F", border: "none", borderRadius: 7, color: "#fff", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer" }}>
+                  <button onClick={handleCopy} style={{ position: "absolute", top: 12, right: 12, padding: "5px 12px", background: copied ? "#059669" : "#1E3A5F", border: "none", borderRadius: 7, color: "#0f172a", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer" }}>
                     {copied ? "✅ Copied!" : "📋 Copy"}
                   </button>
                 </div>

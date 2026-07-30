@@ -407,7 +407,7 @@ export default function Battleplan() {
       <div
         data-bp-hero
         style={{
-          background: "linear-gradient(110deg,#1E40AF 0%,#2563EB 50%,#3B82F6 100%)",
+          background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderRadius: 18,
           margin: "18px 24px 6px",
           padding: "22px 28px",
@@ -446,7 +446,7 @@ export default function Battleplan() {
           }}
         >
           <div>
-            <div style={{ fontSize: "0.65rem", fontWeight: 800, color: "#BFDBFE", opacity: 0.9, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 6 }}>
+            <div style={{ fontSize: "0.65rem", fontWeight: 800, color: '#475569', opacity: 0.9, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 6 }}>
               Analyse › Battle Plan
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
@@ -461,7 +461,7 @@ export default function Battleplan() {
                 AI-GENERATED
               </span>
             </div>
-            <div style={{ color: "#E0E7FF", opacity: 0.95, fontSize: "0.88rem", fontWeight: 500, textShadow: "0 1px 2px rgba(15,30,61,.18)" }}>
+            <div style={{ color: '#334155', opacity: 0.95, fontSize: "0.88rem", fontWeight: 500, textShadow: "0 1px 2px rgba(15,30,61,.18)" }}>
               {domain} · {industry} · {comps.length} competitors · Click any action card to execute directly
             </div>
           </div>

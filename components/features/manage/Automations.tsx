@@ -268,7 +268,7 @@ export default function Automations() {
       {/* Hero */}
       <div
         style={{
-          background: "linear-gradient(135deg,#065F46,#047857,#059669)", borderRadius: 20,
+          background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", borderRadius: 20,
           padding: "28px 32px", marginBottom: 24, position: "relative", overflow: "hidden",
         }}
       >
@@ -276,12 +276,12 @@ export default function Automations() {
         <div style={{ position: "absolute", bottom: -50, right: 80, width: 150, height: 150, background: "rgba(255,255,255,.04)", borderRadius: "50%" }} />
         <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: "0.6rem", fontWeight: 800, color: "#A7F3D0", letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 3 }}>Grow › Automations</div>
+            <div style={{ fontSize: "0.6rem", fontWeight: 800, color: '#0f766e', letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 3 }}>Grow › Automations</div>
             <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#BBF7D0", textTransform: "uppercase", letterSpacing: ".12em", marginBottom: 6 }}>Automation Center</div>
-            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "1.7rem", fontWeight: 800, color: "#FFFFFF", lineHeight: 1.2, marginBottom: 8, textShadow: "0 1px 2px rgba(0,0,0,0.25)" }}>
+            <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "1.7rem", fontWeight: 800, color: "#0f172a", lineHeight: 1.2, marginBottom: 8, textShadow: "0 1px 2px rgba(0,0,0,0.25)" }}>
               Your Marketing<br />Runs Itself
             </div>
-            <div style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.95)", maxWidth: 480, lineHeight: 1.55 }}>
+            <div style={{ fontSize: "0.85rem", color: "#475569", maxWidth: 480, lineHeight: 1.55 }}>
               Activate any automation to put it on autopilot. InfoGenie monitors, decides, and acts — so you don&apos;t have to.
             </div>
           </div>

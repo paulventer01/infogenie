@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import PanelHero from "@/components/layout/PanelHero";
 
 interface Geofence {
   id: number;
@@ -142,18 +143,19 @@ export default function Geofencing() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>📍 Geofencing</h1>
-          <p style={{ color: "#6b7280", margin: 0 }}>Location-triggered messages and proximity alerts</p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className={`btn ${activeTab === "fences" ? "btn-primary" : "btn-outline"}`} onClick={() => setActiveTab("fences")}>Fences</button>
-          <button className={`btn ${activeTab === "events" ? "btn-primary" : "btn-outline"}`} onClick={() => setActiveTab("events")}>Event Log</button>
-          <button className={`btn ${activeTab === "simulate" ? "btn-primary" : "btn-outline"}`} onClick={() => setActiveTab("simulate")}>Simulate</button>
-        </div>
-      </div>
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "8px 4px 40px" }}>
+      <PanelHero
+        group="Reach"
+        title="📍 Geofencing"
+        subtitle="Location-triggered messages and proximity alerts"
+        actions={
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className={`btn ${activeTab === "fences" ? "btn-primary" : "btn-outline"}`} onClick={() => setActiveTab("fences")}>Fences</button>
+            <button className={`btn ${activeTab === "events" ? "btn-primary" : "btn-outline"}`} onClick={() => setActiveTab("events")}>Event Log</button>
+            <button className={`btn ${activeTab === "simulate" ? "btn-primary" : "btn-outline"}`} onClick={() => setActiveTab("simulate")}>Simulate</button>
+          </div>
+        }
+      />
 
       {activeTab === "fences" && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: 24 }}>

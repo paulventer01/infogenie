@@ -670,7 +670,7 @@ export default function AdLibrary() {
                       style={{
                         padding: "5px 10px",
                         background: '#eef4ff',
-                        color: "#fff",
+                        color: "#0f172a",
                         border: 0,
                         borderRadius: 4,
                         fontSize: "0.7rem",

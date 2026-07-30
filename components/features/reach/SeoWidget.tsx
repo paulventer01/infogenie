@@ -305,7 +305,7 @@ export default function SeoWidget() {
                   <pre
                     style={{
                       background: '#eef4ff',
-                      color: "#A7F3D0",
+                      color: '#0f766e',
                       padding: 12,
                       borderRadius: 8,
                       fontSize: "0.74rem",
@@ -320,7 +320,7 @@ export default function SeoWidget() {
                     onClick={() => copySnippet(s.id)}
                     style={{
                       background: "#0066FF",
-                      color: "#fff",
+                      color: "#0f172a",
                       border: "none",
                       padding: "6px 14px",
                       borderRadius: 5,

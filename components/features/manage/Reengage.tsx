@@ -665,8 +665,8 @@ export default function Reengage() {
       <div style={{ position: "relative", zIndex: 1 }}>
         <div style={{ fontSize: "0.6rem", fontWeight: 800, color: "#FDBA74", letterSpacing: ".12em", textTransform: "uppercase", marginBottom: 4 }}>Grow › Re-Engage</div>
         <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#FED7AA", textTransform: "uppercase", letterSpacing: ".14em", marginBottom: 6 }}>Re-Engagement Hub</div>
-        <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "1.7rem", fontWeight: 800, color: "#FFFFFF", lineHeight: 1.2, marginBottom: 8, textShadow: "0 1px 2px rgba(0,0,0,0.35)" }}>Turn Lost Leads Into<br />Revenue — Automatically</div>
-        <div style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.92)", maxWidth: 480, lineHeight: 1.55 }}>AI-identifies your highest-value lapsed contacts, generates personalised win-back copy across email, ads, and social — then launches re-engagement campaigns directly from InfoGenie.</div>
+        <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "1.7rem", fontWeight: 800, color: "#0f172a", lineHeight: 1.2, marginBottom: 8, textShadow: "0 1px 2px rgba(0,0,0,0.35)" }}>Turn Lost Leads Into<br />Revenue — Automatically</div>
+        <div style={{ fontSize: "0.85rem", color: "#475569", maxWidth: 480, lineHeight: 1.55 }}>AI-identifies your highest-value lapsed contacts, generates personalised win-back copy across email, ads, and social — then launches re-engagement campaigns directly from InfoGenie.</div>
       </div>
     </div>
   );

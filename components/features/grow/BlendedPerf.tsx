@@ -166,7 +166,7 @@ export default function BlendedPerf() {
             e.preventDefault();
             goToView(router, "true-roas");
           }}
-          style={{ color: "#A7F3D0", textDecoration: "underline" }}
+          style={{ color: '#0f766e', textDecoration: "underline" }}
         >
           💡 Add offline revenue → unlock True ROAS
         </a>
@@ -359,7 +359,7 @@ export default function BlendedPerf() {
               <b>Reported ROAS:</b>{" "}
               {j.roas != null ? j.roas.toFixed(2) + "×" : "—"}
             </span>
-            <span style={{ color: "#A7F3D0" }}>{renderTrueRoasInline()}</span>
+            <span style={{ color: '#0f766e' }}>{renderTrueRoasInline()}</span>
           </div>
         </div>
 
@@ -766,22 +766,22 @@ export default function BlendedPerf() {
         className="view-header"
         style={{
           background:
-            "linear-gradient(135deg,#064E3B 0%,#047857 50%,#10B981 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#A7F3D0" }}>
+              <div className="breadcrumb" style={{ color: '#0f766e' }}>
                 <span
                   className="bc-group"
-                  style={{ color: "rgba(167,243,208,.8)" }}
+                  style={{ color: '#0f766e' }}
                 >
                   Grow
                 </span>{" "}
                 <span
                   className="bc-sep"
-                  style={{ color: "rgba(255,255,255,.3)" }}
+                  style={{ color: '#94a3b8' }}
                 >
                   ›
                 </span>{" "}

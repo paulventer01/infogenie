@@ -117,8 +117,8 @@ function SuggestionModal({
         <div
           style={{
             padding: "18px 22px",
-            background: "linear-gradient(135deg,#0EA5E9,#312E81)",
-            color: "#fff",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+            color: "#0f172a",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -482,8 +482,8 @@ export default function Playbook7Day() {
                 <div
                   style={{
                     padding: "16px 18px",
-                    background: `linear-gradient(135deg,${c},#0F172A)`,
-                    color: "#fff",
+                    background: `linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)`,
+                    color: "#0f172a",
                   }}
                 >
                   <div

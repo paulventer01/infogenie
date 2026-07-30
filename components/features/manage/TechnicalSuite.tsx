@@ -201,7 +201,7 @@ export default function TechnicalSuite() {
             onClick={runAll}
             style={{
               padding: "10px 20px",
-              background: "linear-gradient(135deg,#10B981,#047857)",
+              background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
               border: "none",
               borderRadius: 10,
               fontSize: "0.78rem",
@@ -326,7 +326,7 @@ function TechPanelView({
             disabled={busy}
             style={{
               padding: "9px 18px",
-              background: "linear-gradient(135deg,#10B981,#047857)",
+              background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
               border: "none",
               borderRadius: 9,
               fontSize: "0.76rem",

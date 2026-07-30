@@ -316,7 +316,7 @@ const emptyCard: React.CSSProperties = {
 };
 const moduleBtn: React.CSSProperties = {
   padding: "9px 18px",
-  background: "linear-gradient(135deg,#7C3AED,#4338CA)",
+  background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
   border: "none",
   borderRadius: 9,
   fontSize: "0.76rem",
@@ -596,7 +596,7 @@ export default function AiAuditSuite() {
                 </span>{" "}
                 <span
                   className="bc-sep"
-                  style={{ color: "rgba(255,255,255,.3)" }}
+                  style={{ color: '#94a3b8' }}
                 >
                   ›
                 </span>{" "}
@@ -762,7 +762,7 @@ export default function AiAuditSuite() {
                 disabled={fullRunning}
                 style={{
                   padding: "11px 26px",
-                  background: "linear-gradient(135deg,#7C3AED,#4338CA)",
+                  background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
                   border: "none",
                   borderRadius: 10,
                   fontSize: "0.8rem",

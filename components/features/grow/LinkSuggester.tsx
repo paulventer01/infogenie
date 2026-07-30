@@ -346,7 +346,7 @@ export default function LinkSuggester() {
             disabled={generating}
             style={{
               padding: "13px 32px",
-              background: "linear-gradient(135deg,#1E40AF,#7C3AED)",
+              background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
               color: "white",
               border: "none",
               borderRadius: 10,
@@ -622,16 +622,16 @@ export default function LinkSuggester() {
     <div className="view-header-wrap">
       <div
         className="view-header"
-        style={{ background: "linear-gradient(135deg,#1E3A8A 0%,#3B82F6 50%,#8B5CF6 100%)" }}
+        style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}
       >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#BFDBFE" }}>
-                <span className="bc-group" style={{ color: "rgba(191,219,254,.8)" }}>
+              <div className="breadcrumb" style={{ color: "#64748b" }}>
+                <span className="bc-group" style={{ color: "#0f766e" }}>
                   Grow
                 </span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>
+                <span className="bc-sep" style={{ color: "#94a3b8" }}>
                   ›
                 </span>{" "}
                 Internal Link Suggester

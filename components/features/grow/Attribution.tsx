@@ -1371,7 +1371,7 @@ export default function Attribution() {
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#C7D2FE" }}>
+              <div className="breadcrumb" style={{ color: '#475569' }}>
                 <span
                   className="bc-group"
                   style={{ color: "rgba(199,210,254,.75)" }}
@@ -1380,7 +1380,7 @@ export default function Attribution() {
                 </span>{" "}
                 <span
                   className="bc-sep"
-                  style={{ color: "rgba(255,255,255,.3)" }}
+                  style={{ color: '#94a3b8' }}
                 >
                   ›
                 </span>{" "}

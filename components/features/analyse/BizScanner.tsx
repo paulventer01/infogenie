@@ -157,7 +157,7 @@ export default function BizScanner() {
 
           {/* Card header accent */}
           <div style={{
-            background: "linear-gradient(110deg,#0A1628 0%,#1E3A8A 60%,#2563EB 100%)",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
             padding: "18px 24px",
             display: "flex",
             alignItems: "center",
@@ -171,10 +171,10 @@ export default function BizScanner() {
               fontSize: "1.2rem",
             }}>🔭</div>
             <div>
-              <div style={{ color: "#fff", fontWeight: 700, fontSize: "0.95rem", fontFamily: "Sora,sans-serif" }}>
+              <div style={{ color: "#0f172a", fontWeight: 700, fontSize: "0.95rem", fontFamily: "Sora,sans-serif" }}>
                 Configure Scan
               </div>
-              <div style={{ color: "rgba(255,255,255,.55)", fontSize: "0.75rem" }}>
+              <div style={{ color: "#475569", fontSize: "0.75rem" }}>
                 AI will scan the market and score every opportunity
               </div>
             </div>

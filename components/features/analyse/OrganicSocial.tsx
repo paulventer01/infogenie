@@ -259,7 +259,7 @@ export default function OrganicSocial() {
 
       {/* ── HERO BANNER ─────────────────────────────────────────────────── */}
       <div style={{
-        background: "linear-gradient(135deg, #0A1F4E 0%, #0D2D6B 50%, #0A3A80 100%)",
+        background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         position: "relative", overflow: "hidden",
         borderBottom: "1px solid rgba(255,255,255,.08)",
       }}>
@@ -284,8 +284,8 @@ export default function OrganicSocial() {
             }}>📱</div>
             <div>
               <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-                <span style={{ fontSize:"0.6rem", fontWeight:800, letterSpacing:"0.14em", textTransform:"uppercase", color:"rgba(255,255,255,.5)" }}>ANALYSE</span>
-                <span style={{ color:"rgba(255,255,255,.3)", fontSize:"0.6rem" }}>›</span>
+                <span style={{ fontSize:"0.6rem", fontWeight:800, letterSpacing:"0.14em", textTransform:"uppercase", color: "#475569" }}>ANALYSE</span>
+                <span style={{ color: '#94a3b8', fontSize:"0.6rem" }}>›</span>
                 <span style={{ fontSize:"0.6rem", fontWeight:800, letterSpacing:"0.14em", textTransform:"uppercase", color:"rgba(100,200,255,.9)" }}>ORGANIC SOCIAL MONITOR</span>
                 <span style={{ background:"rgba(0,200,255,.2)", border:"1px solid rgba(0,200,255,.45)", color:"#7FDFFF", fontSize:"0.55rem", fontWeight:800, padding:"2px 8px", borderRadius:20, letterSpacing:"0.06em" }}>● LIVE</span>
               </div>

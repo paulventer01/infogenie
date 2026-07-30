@@ -301,7 +301,7 @@ export default function Social() {
             <div>
               <div className="breadcrumb" style={{ color: "#C4B5FD" }}>
                 <span className="bc-group" style={{ color: "rgba(196,181,253,.8)" }}>Create</span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>›</span> Social
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>›</span> Social
               </div>
               <h2 className="view-title">Social Content Generator, Calendar &amp; Scheduling</h2>
               <p className="view-sub">Create, schedule, and publish AI-generated content across all social platforms from one place</p>
@@ -870,7 +870,7 @@ function PublishingTab({
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: "0.75rem", fontWeight: 600, color: autoPublish ? "#059669" : "#9CA3AF" }}>{autoPublish ? "● Active" : "○ Inactive"}</span>
-              <button onClick={onToggleAutoPublish} style={{ padding: "10px 20px", background: autoPublish ? "linear-gradient(135deg,#059669,#047857)" : "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{autoPublish ? "⏸ Pause Auto-Publish" : "▶ Enable Auto-Publish"}</button>
+              <button onClick={onToggleAutoPublish} style={{ padding: "10px 20px", background: autoPublish ? "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" : "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{autoPublish ? "⏸ Pause Auto-Publish" : "▶ Enable Auto-Publish"}</button>
             </div>
           </div>
           {autoPublish && <div style={{ marginTop: 12, background: "rgba(5,150,105,.08)", border: "1px solid rgba(5,150,105,.2)", borderRadius: 8, padding: "10px 14px", fontSize: "0.75rem", color: "#065F46" }}>✅ Auto-publish is ON — InfoGenie checks every 60 seconds and publishes posts at their scheduled time</div>}

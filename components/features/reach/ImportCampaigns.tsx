@@ -275,7 +275,7 @@ export default function ImportCampaigns() {
               <span className="bc-group" style={{ color: "rgba(254,215,170,.8)" }}>
                 Reach
               </span>{" "}
-              <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>
+              <span className="bc-sep" style={{ color: '#94a3b8' }}>
                 ›
               </span>{" "}
               Import Campaigns

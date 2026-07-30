@@ -362,10 +362,10 @@ function AnswerBubble({
 
           {(bb.key_insights || []).length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#A5B4FC", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>🔑 Key Insights</div>
+              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: '#0f766e', textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>🔑 Key Insights</div>
               {(bb.key_insights!).map((ins, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                  <span style={{ color: "#A5B4FC", fontWeight: 800, fontSize: "0.72rem" }}>▸</span>
+                  <span style={{ color: '#0f766e', fontWeight: 800, fontSize: "0.72rem" }}>▸</span>
                   <span style={{ fontSize: "0.83rem", color: "#CBD5E1" }}>{ins}</span>
                 </div>
               ))}
@@ -402,7 +402,7 @@ function AnswerBubble({
 
           {bb.decision_needed && (
             <div style={{ marginBottom: 12, background: "rgba(99,102,241,.15)", borderRadius: 8, padding: "8px 12px" }}>
-              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#A5B4FC", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>🗳️ Decision Required</div>
+              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: '#0f766e', textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>🗳️ Decision Required</div>
               <div style={{ fontSize: "0.85rem", color: "#E2E8F0" }}>{bb.decision_needed}</div>
             </div>
           )}
@@ -887,7 +887,7 @@ export default function AskInfoGenie() {
                   disabled={asking}
                   style={{
                     background: mode === "boardroom" ? "#0F172A" : "linear-gradient(135deg,#0066FF,#7C3AED)",
-                    color: "#fff", border: 0, padding: "11px 22px", borderRadius: 8, fontWeight: 800, cursor: asking ? "default" : "pointer", fontSize: "0.92rem",
+                    color: "#0f172a", border: 0, padding: "11px 22px", borderRadius: 8, fontWeight: 800, cursor: asking ? "default" : "pointer", fontSize: "0.92rem",
                   }}
                 >{asking ? "⏳" : mode === "boardroom" ? "Brief →" : "Ask →"}</button>
               </div>

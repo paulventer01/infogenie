@@ -414,7 +414,7 @@ export default function TeamMeetings() {
                     style={{
                       padding: "6px 12px",
                       background: '#eef4ff',
-                      color: "#fff",
+                      color: "#0f172a",
                       border: "none",
                       borderRadius: 7,
                       fontSize: ".74rem",
@@ -431,7 +431,7 @@ export default function TeamMeetings() {
                     style={{
                       padding: "6px 12px",
                       background: "#0EA5E9",
-                      color: "#fff",
+                      color: "#0f172a",
                       border: "none",
                       borderRadius: 7,
                       fontSize: ".74rem",

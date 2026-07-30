@@ -421,13 +421,13 @@ export default function Content() {
   return (
     <div className="view" style={{ display: "block" }}>
       <style dangerouslySetInnerHTML={{ __html: SPIN_CSS }} />
-      <div className="view-header" style={{ background: "linear-gradient(135deg,#065F46 0%,#047857 50%,#0F9D58 100%)" }}>
+      <div className="view-header" style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}>
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#6EE7B7" }}>
-                <span className="bc-group" style={{ color: "rgba(110,231,183,.8)" }}>Create</span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>›</span> Content AI
+              <div className="breadcrumb" style={{ color: "#64748b" }}>
+                <span className="bc-group" style={{ color: "#0f766e" }}>Create</span>{" "}
+                <span className="bc-sep" style={{ color: "#94a3b8" }}>›</span> Content AI
               </div>
               <h2 className="view-title">Content Intelligence</h2>
               <p className="view-sub">
@@ -667,7 +667,7 @@ function ClustersTab({
           <button onClick={onSuggest} disabled={suggestBusy} style={{ padding: "11px 16px", background: "white", border: "1.5px solid #059669", borderRadius: 10, fontSize: "0.82rem", fontWeight: 700, color: "#059669", cursor: "pointer", whiteSpace: "nowrap", opacity: suggestBusy ? 0.7 : 1 }}>
             {suggestBusy ? "⏳ Drafting…" : "✨ Suggest Topics"}
           </button>
-          <button onClick={onGenerate} disabled={building} style={{ padding: "11px 22px", background: "linear-gradient(135deg,#065F46,#059669)", border: "none", borderRadius: 10, fontSize: "0.85rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap" }}>
+          <button onClick={onGenerate} disabled={building} style={{ padding: "11px 22px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 10, fontSize: "0.85rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap" }}>
             {building ? "⏳ Building…" : "🧩 Build Cluster"}
           </button>
         </div>
@@ -761,7 +761,7 @@ function GapsTab({
           <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1rem", fontWeight: 800, color: "#0A1628" }}>🔍 Content Gap Analysis</div>
           <div style={{ fontSize: "0.78rem", color: "#6B7280", marginTop: 3 }}>Pages your competitors rank for and AI engines cite — but you&apos;re missing or underperforming on</div>
         </div>
-        <button onClick={onGenerateAll} style={{ padding: "9px 18px", background: "linear-gradient(135deg,#065F46,#059669)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>🧩 Generate Clusters for All Gaps</button>
+        <button onClick={onGenerateAll} style={{ padding: "9px 18px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>🧩 Generate Clusters for All Gaps</button>
       </div>
       <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr auto", padding: "10px 16px", background: "#F9FAFB", borderBottom: "1px solid #E5E7EB", fontSize: "0.65rem", fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".05em" }}>
@@ -827,7 +827,7 @@ function AuditTab({
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={() => onRunLighthouse("mobile")} disabled={lhRunning} style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0F766E,#14B8A6)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>⚡ Lighthouse (mobile)</button>
-          <button onClick={onRunAudit} disabled={auditRunning} style={{ padding: "9px 18px", background: "linear-gradient(135deg,#065F46,#059669)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{auditRunning ? "⏳ Auditing…" : "⚡ Run Full Audit"}</button>
+          <button onClick={onRunAudit} disabled={auditRunning} style={{ padding: "9px 18px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{auditRunning ? "⏳ Auditing…" : "⚡ Run Full Audit"}</button>
         </div>
       </div>
 
@@ -944,9 +944,9 @@ function FunnelTab({
   });
   return (
     <>
-      <div style={{ background: "linear-gradient(135deg,#064E3B,#065F46)", borderRadius: 20, padding: "24px 28px", marginBottom: 24 }}>
-        <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.15rem", fontWeight: 800, color: "#FFFFFF", marginBottom: 6 }}>🎯 Viral Content Funnel Planner</div>
-        <div style={{ fontSize: "0.85rem", color: "#D1FAE5", lineHeight: 1.5 }}>5-stage Instagram growth framework — map every post to a stage and build a funnel that converts strangers into brand evangelists</div>
+      <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", borderRadius: 20, padding: "24px 28px", marginBottom: 24 }}>
+        <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.15rem", fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>🎯 Viral Content Funnel Planner</div>
+        <div style={{ fontSize: "0.85rem", color: "#0f766e", lineHeight: 1.5 }}>5-stage Instagram growth framework — map every post to a stage and build a funnel that converts strangers into brand evangelists</div>
       </div>
       {stages.map((s) => {
         const examples = FORMAT_EXAMPLES[s.id] || [];
@@ -1144,7 +1144,7 @@ function BuildContentModal({ topic, intent, ad, onClose }: { topic: string; inte
                   {ex.expertInsight && (
                     <div style={{ marginBottom: 12 }}>
                       <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "rgba(255,255,255,.5)", marginBottom: 6 }}>Expert Insight</div>
-                      <div style={{ fontSize: "0.82rem", color: "rgba(255,255,255,.75)", lineHeight: 1.6, padding: "8px 12px", background: "rgba(255,255,255,.04)", borderLeft: "3px solid #A78BFA", borderRadius: "0 8px 8px 0" }}>{ex.expertInsight}</div>
+                      <div style={{ fontSize: "0.82rem", color: '#475569', lineHeight: 1.6, padding: "8px 12px", background: "rgba(255,255,255,.04)", borderLeft: "3px solid #A78BFA", borderRadius: "0 8px 8px 0" }}>{ex.expertInsight}</div>
                     </div>
                   )}
                   {ex.extraFAQs && ex.extraFAQs.length > 0 && (

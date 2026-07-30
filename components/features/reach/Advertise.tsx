@@ -211,7 +211,7 @@ export default function Advertise() {
             <div>
               <div className="breadcrumb" style={{ color: "#00C9C8" }}>
                 <span className="bc-group" style={{ color: "rgba(0,229,255,.7)" }}>Reach</span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>›</span> Advertise
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>›</span> Advertise
               </div>
               <h2 className="view-title">Multi-Channel Advertising Hub</h2>
               <p className="view-sub">
