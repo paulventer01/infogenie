@@ -9,8 +9,35 @@ import NavGroup from "./NavGroup";
 import AccountMenu from "./AccountMenu";
 import CompanyContextBar from "./CompanyContextBar";
 import BackNav from "./BackNav";
-import LiveAppTimer from "./LiveAppTimer";
+import dynamic from "next/dynamic";
 import styles from "../../styles/shell.module.css";
+
+/** Client-only — never SSR, so the ticking clock cannot hydrate-mismatch. */
+const LiveAppTimer = dynamic(() => import("./LiveAppTimer"), {
+  ssr: false,
+  loading: () => (
+    <div
+      title="Starting live session timer…"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "5px 10px",
+        borderRadius: 999,
+        background: "rgba(15, 118, 110, 0.1)",
+        border: "1px solid rgba(15, 118, 110, 0.22)",
+        color: "#0f766e",
+        fontSize: "0.72rem",
+        fontWeight: 700,
+        fontVariantNumeric: "tabular-nums",
+        minWidth: 168,
+        whiteSpace: "nowrap",
+      }}
+    >
+      Live --:--:-- · Up --
+    </div>
+  ),
+});
 
 const LOGO_SVG =
   '<svg width="20" height="20" viewBox="0 0 40 40" fill="none"><path d="M13 20 Q20 10 27 20 Q20 30 13 20Z" fill="white" opacity="0.95"/><circle cx="20" cy="20" r="4" fill="white"/></svg>';
