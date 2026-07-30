@@ -7,6 +7,7 @@ import LegacyScripts from "@/components/layout/LegacyScripts";
 import SpaRouter from "@/components/layout/SpaRouter";
 import LegacyNavBridge from "@/components/layout/LegacyNavBridge";
 import MigratedPanel from "@/components/layout/MigratedPanel";
+import LiveAppTimerPortal from "@/components/layout/LiveAppTimerPortal";
 
 // Dashboard shell: collapsible left sidebar + main stage for all panels.
 export default async function DashboardLayout({
@@ -32,6 +33,7 @@ export default async function DashboardLayout({
       <SpaRouter />
       <LegacyNavBridge />
       <LegacyScripts scripts={scripts} />
+      <LiveAppTimerPortal />
     </>
   );
 }
