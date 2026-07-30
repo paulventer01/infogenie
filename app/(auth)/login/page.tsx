@@ -236,8 +236,8 @@ export default function LoginPage() {
           <svg width="44" height="44" viewBox="0 0 40 40" aria-hidden="true">
             <defs>
               <linearGradient id="igAuthLogo" x1="0" y1="0" x2="40" y2="40">
-                <stop offset="0%" stopColor="#0EA5E9" />
-                <stop offset="100%" stopColor="#22C55E" />
+                <stop offset="0%" stopColor="#0F766E" />
+                <stop offset="100%" stopColor="#0284C7" />
               </linearGradient>
             </defs>
             <circle cx="20" cy="20" r="20" fill="url(#igAuthLogo)" />

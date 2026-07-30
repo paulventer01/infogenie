@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, Sora, Space_Grotesk } from "next/font/google";
+import { Outfit, Manrope } from "next/font/google";
 import Script from "next/script";
 import "../styles/globals.css";
 import "../styles/theme-v2.css";
@@ -10,28 +10,22 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Fonts via next/font only (no hand-authored <link> in <head> — see
-// test/layout-fonts-guard.test.js). Sora = display/brand, Space Grotesk = logo,
-// Plus Jakarta Sans = UI body. Inter retired as the default stack.
-const sora = Sora({
+// Outfit = display/brand (MVP), Manrope = UI body. Loaded via next/font only
+// (no hand-authored <link> in <head> — see test/layout-fonts-guard.test.js).
+const outfit = Outfit({
   subsets: ["latin"],
-  variable: "--font-sora",
+  variable: "--font-outfit",
+  weight: ["500", "600", "700", "800"],
   display: "swap",
 });
 
-const spaceGrotesk = Space_Grotesk({
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-space",
+  variable: "--font-manrope",
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  variable: "--font-jakarta",
-  display: "swap",
-});
-
-// Default to light theme; honor an explicit dark preference if stored.
 const themeInit = `(function(){try{var t=localStorage.getItem('ig-theme');if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}else{document.documentElement.setAttribute('data-theme','light');if(!t)localStorage.setItem('ig-theme','light');}}catch(e){document.documentElement.setAttribute('data-theme','light');}}());`;
 
 const clarityInit = `(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i+"?ref=bwt";y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","xg1cxshout");`;
@@ -44,7 +38,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${sora.variable} ${spaceGrotesk.variable} ${jakarta.variable}`}
+      className={`${outfit.variable} ${manrope.variable}`}
       data-theme="light"
       suppressHydrationWarning
     >

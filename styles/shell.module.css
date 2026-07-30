@@ -1,36 +1,39 @@
-/* App shell — left collapsible sidebar + main stage.
-   Visual system: “Signal” — ink rail, sky + lime accents, cool slate stage. */
+/* App shell — light MVP-inspired rail + stage.
+   Teal primary (MVP) + sky accents (complete app). */
 
 .shell {
-  --shell-rail: #0c1222;
-  --shell-rail-2: #121a2e;
-  --shell-ink: #f4f7fb;
-  --shell-muted: #8b9bb4;
-  --shell-line: rgba(244, 247, 251, 0.09);
-  --shell-accent: #38bdf8;
-  --shell-accent-2: #22c55e;
-  --shell-stage: #e8edf5;
-  --shell-stage-ink: #0f172a;
-  --shell-w-open: 292px;
+  --shell-rail: #ffffff;
+  --shell-rail-2: #f8fafc;
+  --shell-ink: #0b1220;
+  --shell-muted: #5b6577;
+  --shell-line: rgba(11, 18, 32, 0.1);
+  --shell-accent: #0f766e;
+  --shell-accent-2: #0284c7;
+  --shell-stage: #f3f6fb;
+  --shell-stage-ink: #0b1220;
+  --shell-w-open: 280px;
   --shell-w-closed: 76px;
-  --shell-topbar-bg: rgba(232, 237, 245, 0.88);
-  --shell-topbar-border: rgba(15, 23, 42, 0.07);
+  --shell-topbar-bg: rgba(243, 246, 251, 0.9);
+  --shell-topbar-border: rgba(11, 18, 32, 0.08);
   --shell-icon-bg: #ffffff;
-  --shell-icon-border: rgba(15, 23, 42, 0.1);
+  --shell-icon-border: rgba(11, 18, 32, 0.1);
   --shell-icon-color: #334155;
 
   min-height: 100vh;
   background:
-    radial-gradient(ellipse 55% 42% at 100% -5%, rgba(56, 189, 248, 0.16), transparent 55%),
-    radial-gradient(ellipse 48% 38% at -5% 100%, rgba(34, 197, 94, 0.1), transparent 50%),
-    linear-gradient(180deg, #eef2f8 0%, var(--shell-stage) 40%, #e4eaf3 100%);
+    radial-gradient(900px 420px at 85% -8%, rgba(15, 118, 110, 0.14), transparent 58%),
+    radial-gradient(700px 360px at 0% 100%, rgba(2, 132, 199, 0.1), transparent 55%),
+    linear-gradient(180deg, #eef3f9 0%, var(--shell-stage) 42%, #e8eef6 100%);
   color: var(--shell-stage-ink);
-  font-family: var(--font-jakarta), "Plus Jakarta Sans", sans-serif;
+  font-family: var(--font-manrope), "Manrope", sans-serif;
 }
 
 :global(html[data-theme="dark"]) .shell {
-  --shell-rail: #05070e;
-  --shell-rail-2: #0a1020;
+  --shell-rail: #0b1220;
+  --shell-rail-2: #121a2a;
+  --shell-ink: #e8eef8;
+  --shell-muted: #94a3b8;
+  --shell-line: rgba(232, 238, 248, 0.1);
   --shell-stage: #0b1220;
   --shell-stage-ink: #e8eef8;
   --shell-topbar-bg: rgba(11, 18, 32, 0.88);
@@ -50,12 +53,13 @@
   display: flex;
   flex-direction: column;
   background:
-    linear-gradient(180deg, rgba(56, 189, 248, 0.08), transparent 32%),
-    linear-gradient(165deg, var(--shell-rail) 0%, var(--shell-rail-2) 100%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.94)),
+    var(--shell-rail);
   border-right: 1px solid var(--shell-line);
   color: var(--shell-ink);
   transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   overflow: hidden;
+  backdrop-filter: blur(10px);
 }
 
 .shellCollapsed .rail {
@@ -90,8 +94,8 @@
   width: 38px;
   height: 38px;
   flex-shrink: 0;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #0ea5e9 0%, #22c55e 100%);
+  border-radius: 11px;
+  background: linear-gradient(135deg, #0f766e 0%, #0284c7 100%);
   display: grid;
   place-items: center;
   animation: brandPulse 4.5s ease-in-out infinite;
@@ -103,13 +107,14 @@
 }
 
 .brandText {
-  font-family: var(--font-space), "Space Grotesk", sans-serif;
-  font-size: 1.2rem;
+  font-family: var(--font-outfit), "Outfit", sans-serif;
+  font-size: 1.35rem;
   font-weight: 800;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.04em;
   white-space: nowrap;
   overflow: hidden;
   transition: opacity 0.2s, width 0.2s;
+  color: var(--shell-ink);
 }
 
 .brandText em {
@@ -128,7 +133,7 @@
   flex-shrink: 0;
   border-radius: 10px;
   border: 1px solid var(--shell-line);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(15, 118, 110, 0.06);
   color: var(--shell-ink);
   cursor: pointer;
   display: grid;
@@ -137,8 +142,8 @@
 }
 
 .toggle:hover {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(15, 118, 110, 0.35);
 }
 
 .toggle svg {
@@ -156,13 +161,13 @@
 .railSearch input {
   width: 100%;
   box-sizing: border-box;
-  border-radius: 11px;
+  border-radius: 10px;
   border: 1px solid var(--shell-line);
-  background: rgba(255, 255, 255, 0.05);
+  background: #fff;
   color: var(--shell-ink);
   padding: 10px 12px;
   font-size: 0.78rem;
-  font-family: var(--font-jakarta), "Plus Jakarta Sans", sans-serif;
+  font-family: var(--font-manrope), "Manrope", sans-serif;
   outline: none;
 }
 
@@ -171,8 +176,8 @@
 }
 
 .railSearch input:focus {
-  border-color: rgba(56, 189, 248, 0.5);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.14);
+  border-color: rgba(15, 118, 110, 0.45);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
 }
 
 .filterClear {
@@ -182,8 +187,8 @@
   padding: 6px 8px;
   border: none;
   border-radius: 8px;
-  background: rgba(248, 113, 113, 0.14);
-  color: #fecaca;
+  background: rgba(220, 38, 38, 0.1);
+  color: #991b1b;
   font-size: 0.68rem;
   font-weight: 700;
   cursor: pointer;
@@ -192,14 +197,13 @@
 }
 
 .filterClear:hover {
-  background: rgba(248, 113, 113, 0.22);
+  background: rgba(220, 38, 38, 0.16);
 }
 
 .shellCollapsed .railSearch {
   display: none;
 }
 
-/* React nav groups must never be collapsed by legacy permission scripts. */
 .rail [data-ig-react-nav] {
   display: block !important;
   visibility: visible !important;
@@ -210,8 +214,6 @@
   display: flex !important;
 }
 
-/* CRITICAL: column flex — legacy app.js sets display:flex (row default).
-   Without flex-direction:column, groups pack horizontally and clip away. */
 .railNav {
   flex: 1;
   min-height: 0;
@@ -224,7 +226,7 @@
   overflow-x: hidden;
   padding: 8px 10px 18px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-color: rgba(15, 118, 110, 0.2) transparent;
 }
 
 .briefBtn,
@@ -236,11 +238,11 @@
   padding: 10px 11px;
   margin-bottom: 2px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
-  color: var(--shell-ink);
+  color: var(--shell-muted);
   cursor: pointer;
-  font-family: var(--font-jakarta), "Plus Jakarta Sans", sans-serif;
+  font-family: var(--font-manrope), "Manrope", sans-serif;
   font-size: 0.84rem;
   font-weight: 700;
   text-align: left;
@@ -251,13 +253,14 @@
 .briefBtn:hover,
 .groupBtn:hover,
 .groupBtnOpen {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(15, 118, 110, 0.08);
+  color: var(--shell-ink);
 }
 
 .groupBtnOpen {
-  color: #fff;
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.22), rgba(34, 197, 94, 0.14));
-  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.22);
+  color: var(--shell-accent);
+  background: rgba(15, 118, 110, 0.12);
+  box-shadow: inset 3px 0 0 #0f766e;
 }
 
 .gIcon {
@@ -313,9 +316,8 @@
 .groupPanel {
   margin: 0 0 8px;
   padding: 4px 0 8px 8px;
-  border-left: 2px solid rgba(56, 189, 248, 0.28);
+  border-left: 2px solid rgba(15, 118, 110, 0.22);
   margin-left: 21px;
-  /* Must win over any leaked legacy dropdown rules */
   position: static !important;
   opacity: 1 !important;
   visibility: visible !important;
@@ -358,8 +360,8 @@
   gap: 8px;
   padding: 7px 8px;
   margin: 1px 0;
-  border-radius: 9px;
-  color: #c5d2e6;
+  border-radius: 8px;
+  color: var(--shell-muted);
   text-decoration: none;
   font-size: 0.78rem;
   font-weight: 600;
@@ -367,8 +369,8 @@
 }
 
 .link:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: rgba(2, 132, 199, 0.1);
+  color: #0369a1;
   padding-left: 12px;
 }
 
@@ -390,15 +392,16 @@
   width: 100%;
   padding: 11px 12px;
   border: none;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #0ea5e9, #22c55e);
-  color: #041018;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0f766e, #0284c7);
+  color: #fff;
   font-weight: 800;
   font-size: 0.82rem;
   cursor: pointer;
   font-family: inherit;
   letter-spacing: -0.01em;
   transition: transform 0.15s, filter 0.15s;
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.22);
 }
 
 .analyseBtn:hover {
@@ -470,7 +473,7 @@
 }
 
 .crumb {
-  font-family: var(--font-sora), "Sora", sans-serif;
+  font-family: var(--font-outfit), "Outfit", sans-serif;
   font-size: 0.98rem;
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -503,9 +506,9 @@
   text-transform: uppercase;
   padding: 6px 10px;
   border-radius: 8px;
-  background: rgba(14, 165, 233, 0.12);
+  background: rgba(2, 132, 199, 0.12);
   color: #0369a1;
-  border: 1px solid rgba(14, 165, 233, 0.28);
+  border: 1px solid rgba(2, 132, 199, 0.28);
 }
 
 .manual {
@@ -543,7 +546,7 @@
     width: min(86vw, 300px);
     transform: translateX(-105%);
     transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-    box-shadow: 16px 0 40px rgba(0, 0, 0, 0.28);
+    box-shadow: 16px 0 40px rgba(11, 18, 32, 0.12);
   }
 
   .shellMobileOpen .rail {
@@ -568,7 +571,7 @@
     position: fixed;
     inset: 0;
     z-index: 1150;
-    background: rgba(4, 10, 18, 0.45);
+    background: rgba(11, 18, 32, 0.35);
     border: none;
     cursor: pointer;
   }
