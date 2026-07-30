@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, startTransition } from "react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import PanelHero from "@/components/layout/PanelHero";
 
@@ -77,7 +77,12 @@ export default function Geofencing() {
   const [simResult, setSimResult] = useState<CheckInResponse | null>(null);
 
   useEffect(() => {
-    loadData();
+    const t = window.setTimeout(() => {
+      startTransition(() => {
+        void loadData();
+      });
+    }, 0);
+    return () => window.clearTimeout(t);
   }, []);
 
   async function loadData() {

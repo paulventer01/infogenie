@@ -10,36 +10,19 @@
 import type { useRouter } from "next/navigation";
 import { startTransition } from "react";
 import { viewToPath } from "@/lib/viewRoutes";
+import { markNavPending } from "@/lib/navPending";
 
 type AppRouter = ReturnType<typeof useRouter>;
 
 export function goToView(router: AppRouter, view: string): void {
   const path = viewToPath(view);
-  try {
-    document.documentElement.setAttribute("data-ig-nav", "1");
-    window.setTimeout(() => {
-      try {
-        document.documentElement.removeAttribute("data-ig-nav");
-      } catch {
-        /* noop */
-      }
-    }, 4000);
-  } catch {
-    /* noop */
-  }
+  markNavPending("nav→" + view);
   startTransition(() => {
     router.push(path);
   });
   try {
-    (window as unknown as { __igReactRouting?: boolean }).__igReactRouting = true;
     window.navigateTo?.(view);
   } catch {
     /* legacy not loaded yet — router.push still updates the URL */
-  } finally {
-    try {
-      (window as unknown as { __igReactRouting?: boolean }).__igReactRouting = false;
-    } catch {
-      /* noop */
-    }
   }
 }

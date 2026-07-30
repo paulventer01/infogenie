@@ -3,6 +3,7 @@
 import { Component, Suspense, type ErrorInfo, type ReactNode, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { pathToViewId } from "@/lib/viewRoutes";
+import { settleNavPending } from "@/lib/navPending";
 import { MIGRATED_COMPONENTS } from "@/components/features/registry";
 
 class PanelErrorBoundary extends Component<
@@ -68,15 +69,10 @@ function PanelFallback() {
   );
 }
 
-/** Mounts only after the lazy panel chunk resolves — clears nav-pending then. */
+/** Mounts only after the lazy panel chunk resolves — settles nav-pending after paint. */
 function PanelReady({ view, children }: { view: string; children: ReactNode }) {
   useEffect(() => {
-    try {
-      document.documentElement.removeAttribute("data-ig-nav");
-      window.IGDiag?.setBreadcrumb?.("idle");
-    } catch {
-      /* noop */
-    }
+    settleNavPending(view);
   }, [view]);
   return children;
 }

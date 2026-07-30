@@ -2663,9 +2663,11 @@ function navigateTo(viewId, updateActive = true) {
     try {
       if (!window.__igReactRouting) {
         document.dispatchEvent(new CustomEvent('ig:spa-navigate', { detail: { view: viewId } }));
+        // Only clear breadcrumb for non-React bridges; React panels keep
+        // nav-pending until MigratedPanel settleNavPending after first paint.
+        try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle'); } catch(_) {}
       }
     } catch(_) {}
-    try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle'); } catch(_) {}
   }
   currentView = viewId;
   try { window.currentView = viewId; } catch(_) {}
@@ -2724,8 +2726,12 @@ function navigateTo(viewId, updateActive = true) {
   // Resume field-enhancer after all synchronous build work is done.
   // requestAnimationFrame fires after the browser has painted the new view,
   // so the scan sees the final DOM and doesn't fight with layout.
+  // When React owns the transition (__igReactRouting), MigratedPanel's
+  // settleNavPending resumes IGFields after the panel's first paint — do not
+  // clear markers / resume here or mount work is misreported as idle stalls.
   (window.requestAnimationFrame || setTimeout)(function() {
     try {
+      if (window.__igReactRouting) return;
       if (window.IGFields) {
         IGFields.resume && IGFields.resume({ scan: false });
         const viewEl = document.getElementById('view-' + viewId);

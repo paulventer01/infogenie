@@ -31,5 +31,11 @@ declare global {
       mark?: (...args: unknown[]) => void;
       err?: (...args: unknown[]) => void;
     };
+    // ig_field_enhancer.js — pause during nav, scan scoped roots after settle.
+    IGFields?: {
+      pause?: () => void;
+      resume?: (opts?: { scan?: boolean }) => void;
+      scanRoot?: (root: Element | null) => void;
+    };
   }
 }

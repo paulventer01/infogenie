@@ -27,15 +27,9 @@ export default function LegacyNavBridge() {
       startTransition(() => {
         router.push(path);
       });
-      // Drop the nav breadcrumb after the transition so later idle work
-      // (chunk eval, chart teardown) is not attributed to this navigation.
-      requestAnimationFrame(() => {
-        try {
-          window.IGDiag?.setBreadcrumb?.("idle");
-        } catch {
-          /* noop */
-        }
-      });
+      // Do NOT clear IGDiag breadcrumb / data-ig-nav here — MigratedPanel
+      // settleNavPending owns that after first paint, otherwise idle work
+      // during mount is misreported as MAIN-THREAD STALL.
     };
     document.addEventListener("ig:spa-navigate", onNavigate);
     return () => document.removeEventListener("ig:spa-navigate", onNavigate);
