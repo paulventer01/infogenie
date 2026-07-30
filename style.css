@@ -7703,8 +7703,14 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
 .attr-tab:hover { color: #312E81; }
 .attr-tab-active { color: #4338CA; border-bottom-color: #4338CA; }
 
-/* ── Marketing Journey stages panel on Dashboard ─────────────────────── */
-.journey-wrap { background: linear-gradient(135deg,#0F172A 0%,#1E1B4B 50%,#312E81 100%); border-radius: 18px; padding: 28px; color: white; margin-top: 22px; box-shadow: 0 8px 28px rgba(67,56,202,.18); }
+/* ── Marketing Journey stages panel — removed from product UI ─────────── */
+#journeyStagesPanel,
+.journey-wrap {
+  display: none !important;
+}
+
+/* Legacy journey styles retained below (unused) for reference only */
+.journey-wrap-legacy { background: linear-gradient(135deg,#0F172A 0%,#1E1B4B 50%,#312E81 100%); border-radius: 18px; padding: 28px; color: white; margin-top: 22px; box-shadow: 0 8px 28px rgba(67,56,202,.18); }
 .journey-head { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; }
 .journey-head h3 { font-size: 1.4rem; font-weight: 800; margin: 0; }
 .journey-head p  { font-size: .82rem; opacity: .82; margin: 6px 0 0; max-width: 540px; }

@@ -9,6 +9,7 @@ import NavGroup from "./NavGroup";
 import AccountMenu from "./AccountMenu";
 import CompanyContextBar from "./CompanyContextBar";
 import BackNav from "./BackNav";
+import LiveAppTimer from "./LiveAppTimer";
 import styles from "../../styles/shell.module.css";
 
 const LOGO_SVG =
@@ -391,6 +392,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className={styles.crumb}>Workspace</div>
           </div>
           <div className={styles.topbarRight}>
+            <LiveAppTimer />
             <div className={styles.plan} id="navPlanBadge">
               Pro
             </div>

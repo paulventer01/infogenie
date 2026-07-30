@@ -8406,6 +8406,11 @@ async function launchReengage(dryRun) {
 // ── Populate "Est. Ad Spend / Mo" column with real Meta Ad Library counts + transparent $ range estimate
 
 window._renderJourneyStages = function() {
+  // "Your Marketing Journey" panel removed from the dashboard.
+  try {
+    document.getElementById('journeyStagesPanel')?.remove();
+  } catch (_) {}
+  return;
   const host = document.getElementById('dashLivePanels');
   if (!host) return;
   // Avoid duplicating if the panel is already there

@@ -547,6 +547,7 @@ export default function Dashboard() {
       competitorsCount: competitors.length, sectorOnly: !!ad.sectorOnly,
     });
     callWin("_populateAdSpendColumn", competitors);
+    // Journey panel removed — keep call as a no-op cleanup for any leftover DOM.
     callWin("_renderJourneyStages");
 
     return () => {
