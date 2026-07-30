@@ -352,6 +352,16 @@ body:has(#ig-app-shell) #ig-shell-content {
   padding: 10px 12px 40px;
 }
 
+/* React-migrated panels use class "view" but never get legacy .active —
+   without this override they render as display:none (blank page). */
+body:has(#ig-app-shell) #ig-react-panel .view,
+#ig-react-panel .view {
+  display: block !important;
+  background: transparent !important;
+  color: inherit !important;
+  min-height: 40vh;
+}
+
 body:has(#ig-app-shell) .alerts-bell-badge {
   background: #dc2626 !important;
   color: #fff !important;

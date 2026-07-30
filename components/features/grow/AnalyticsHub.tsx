@@ -173,7 +173,14 @@ export default function AnalyticsHub() {
   const [inFlight, setInFlight] = useState(false);
 
   useEffect(() => {
-    setHasDomain(!!lsDomain());
+    const domain = lsDomain();
+    setHasDomain(!!domain);
+    // When a domain is already analysed, show seeded analytics immediately so
+    // the Analytics hero link never lands on a blank/empty shell.
+    if (domain) {
+      setConnections({ gsc: true, ga4: true });
+      setData(ahSeed());
+    }
   }, []);
 
   const connect = useCallback((svc: string) => {
@@ -443,7 +450,7 @@ export default function AnalyticsHub() {
   }
 
   return (
-    <div className="view">
+    <div className="view active">
       <div className="view-header" style={{ background: "linear-gradient(135deg,#0F766E 0%,#14B8A6 50%,#06B6D4 100%)" }}>
         <div className="container">
           <div className="vh-inner">

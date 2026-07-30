@@ -89,8 +89,10 @@ export default function NavGroup({
                     className={styles.sectionHead}
                     onClick={() => toggleSection(sectionKey)}
                   >
-                    {section.header}
-                    <span aria-hidden>{isCollapsed ? " +" : " –"}</span>
+                    <span className={styles.sectionHeadLabel}>{section.header}</span>
+                    <span className={styles.sectionHeadToggle} aria-hidden>
+                      {isCollapsed ? "+" : "–"}
+                    </span>
                   </button>
                 ) : null}
                 {!isCollapsed &&
