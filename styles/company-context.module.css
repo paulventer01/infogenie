@@ -1,7 +1,7 @@
 .bar {
-  background: linear-gradient(90deg, #0a1628 0%, #0f2d5c 100%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  color: #f8fafc;
+  background: linear-gradient(90deg, #e7f5f2 0%, #eaf3fb 52%, #eef6ff 100%);
+  border-bottom: 1px solid rgba(15, 118, 110, 0.16);
+  color: #0f172a;
 }
 
 .inner {
@@ -18,17 +18,18 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(15, 118, 110, 0.08);
+  border: 1px solid rgba(15, 118, 110, 0.18);
   border-radius: 10px;
   padding: 6px 12px;
   cursor: pointer;
   color: inherit;
   font: inherit;
+  text-decoration: none;
 }
 
 .domainBtn:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(15, 118, 110, 0.14);
 }
 
 .globe {
@@ -38,18 +39,19 @@
 .domain {
   font-weight: 800;
   font-size: 0.88rem;
+  color: #0f172a;
 }
 
 .industry {
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.65);
+  color: #475569;
   padding-left: 8px;
-  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  border-left: 1px solid rgba(15, 23, 42, 0.14);
 }
 
 .meta {
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.55);
+  color: #64748b;
 }
 
 .actions {
@@ -62,22 +64,32 @@
 
 .linkBtn {
   background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.75);
+  border: 1px solid transparent;
+  color: #334155;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-family: inherit;
+  line-height: 1.2;
 }
 
 .linkBtn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
+  color: #0f766e;
+  background: rgba(15, 118, 110, 0.1);
+  border-color: rgba(15, 118, 110, 0.18);
+}
+
+.linkBtnActive {
+  color: #0f766e;
+  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(15, 118, 110, 0.22);
 }
 
 .primaryBtn {
-  background: #0066ff;
+  background: linear-gradient(135deg, #0f766e, #0284c7);
   border: none;
   color: #fff;
   font-size: 0.72rem;
@@ -85,8 +97,11 @@
   padding: 6px 12px;
   border-radius: 8px;
   cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+  line-height: 1.2;
 }
 
 .primaryBtn:hover {
-  background: #0052cc;
+  filter: brightness(1.05);
 }

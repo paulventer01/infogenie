@@ -57,7 +57,7 @@ export default function DomainOverview({ overview, currentView = "dashboard" }: 
         })}
       </nav>
 
-      <h4 className={ov.sectionTitle}>Domain snapshot</h4>
+      <h4 className={ov.sectionTitle} id="ig-domain-snapshot">Domain snapshot</h4>
       <div className={ov.strip}>
         {overview.snapshot.map((kpi) => (
           <button

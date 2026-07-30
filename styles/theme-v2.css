@@ -146,6 +146,18 @@ body:has(#ig-app-shell) .panel-header h2 {
   text-shadow: none !important;
 }
 
+/* Subtitles were forced white by legacy style.css — unreadable on light headers */
+body:has(#ig-app-shell) .view-sub,
+body:has(#ig-app-shell) .view-header .view-sub,
+body:has(#ig-app-shell) .intel-header .view-sub,
+body:has(#ig-app-shell)[data-theme="light"] .view-sub,
+body:has(#ig-app-shell)[data-theme="light"] .view-header .view-sub,
+body:has(#ig-app-shell)[data-theme="light"] .intel-header .view-sub {
+  color: #0f172a !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
 body:has(#ig-app-shell) .card,
 body:has(#ig-app-shell) .ig-card,
 body:has(#ig-app-shell) .panel,

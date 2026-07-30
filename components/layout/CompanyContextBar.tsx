@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
+import { viewToPath } from "@/lib/viewRoutes";
 import styles from "../../styles/company-context.module.css";
 
 interface AnalysisData {
@@ -10,6 +12,13 @@ interface AnalysisData {
   industry?: { name?: string };
   competitors?: unknown[];
 }
+
+const ACTIONS: { label: string; view: string; hash?: string }[] = [
+  { label: "Overview", view: "dashboard", hash: "#ig-domain-snapshot" },
+  { label: "Competitors", view: "competitors" },
+  { label: "Plan", view: "battleplan" },
+  { label: "Analytics", view: "analytics-hub" },
+];
 
 function readDomain(): { domain: string; industry: string; competitors: number } | null {
   if (typeof window === "undefined") return null;
@@ -30,9 +39,20 @@ function readDomain(): { domain: string; industry: string; competitors: number }
   };
 }
 
+function scrollToHash(hash?: string) {
+  if (!hash) return;
+  const id = hash.replace(/^#/, "");
+  window.requestAnimationFrame(() => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    else window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
 /** Persistent domain context bar — Semrush-style "you are analysing X" */
 export default function CompanyContextBar() {
   const router = useRouter();
+  const pathname = usePathname();
   const [ctx, setCtx] = useState<ReturnType<typeof readDomain>>(null);
 
   useEffect(() => {
@@ -44,33 +64,68 @@ export default function CompanyContextBar() {
 
   if (!ctx?.domain) return null;
 
+  const overviewHref = `${viewToPath("dashboard")}#ig-domain-snapshot`;
+
   return (
     <div className={styles.bar}>
       <div className={styles.inner}>
-        <button type="button" className={styles.domainBtn} onClick={() => goToView(router, "dashboard")} title="Open company overview">
+        <Link
+          href={overviewHref}
+          className={styles.domainBtn}
+          title="Open company overview"
+          onClick={(e) => {
+            e.preventDefault();
+            goToView(router, "dashboard");
+            scrollToHash("#ig-domain-snapshot");
+          }}
+        >
           <span className={styles.globe}>🌐</span>
           <span className={styles.domain}>{ctx.domain}</span>
           {ctx.industry ? <span className={styles.industry}>{ctx.industry}</span> : null}
-        </button>
+        </Link>
         {ctx.competitors > 0 ? (
           <span className={styles.meta}>{ctx.competitors} competitors tracked</span>
         ) : null}
         <div className={styles.actions}>
-          <button type="button" className={styles.linkBtn} onClick={() => goToView(router, "dashboard")}>
-            Overview
-          </button>
-          <button type="button" className={styles.linkBtn} onClick={() => goToView(router, "competitors")}>
-            Competitors
-          </button>
-          <button type="button" className={styles.linkBtn} onClick={() => goToView(router, "battleplan")}>
-            Plan
-          </button>
-          <button type="button" className={styles.linkBtn} onClick={() => goToView(router, "analytics-hub")}>
-            Analytics
-          </button>
-          <button type="button" className={styles.primaryBtn} onClick={() => goToView(router, "home")}>
+          {ACTIONS.map((action) => {
+            const href = viewToPath(action.view) + (action.hash || "");
+            const active =
+              pathname === viewToPath(action.view) ||
+              pathname.endsWith(`/${action.view}`);
+            return (
+              <Link
+                key={action.view}
+                href={href}
+                className={`${styles.linkBtn} ${active ? styles.linkBtnActive : ""}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  const alreadyHere =
+                    pathname === viewToPath(action.view) ||
+                    pathname.endsWith(`/${action.view}`);
+                  if (alreadyHere && action.hash) {
+                    scrollToHash(action.hash);
+                    return;
+                  }
+                  goToView(router, action.view);
+                  if (action.hash) {
+                    window.setTimeout(() => scrollToHash(action.hash), 350);
+                  }
+                }}
+              >
+                {action.label}
+              </Link>
+            );
+          })}
+          <Link
+            href={viewToPath("home")}
+            className={styles.primaryBtn}
+            onClick={(e) => {
+              e.preventDefault();
+              goToView(router, "home");
+            }}
+          >
             Re-analyse
-          </button>
+          </Link>
         </div>
       </div>
     </div>

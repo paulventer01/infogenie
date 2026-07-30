@@ -602,7 +602,7 @@ export default function Dashboard() {
               <h2 className="view-title">
                 {ad.sectorOnly ? `Sector Overview: ${industryName}` : `Intelligence Report: ${url}`}
               </h2>
-              <p className="view-sub">
+              <p className="view-sub" style={{ color: "#0f172a", opacity: 1, textShadow: "none" }}>
                 {ad.sectorOnly
                   ? `Industry-wide intelligence · ${competitors.length} top competitors mapped · No website yet — add one anytime to personalise this report`
                   : `${industryName} · ${competitors.length} competitors analysed · AI recommendations generated`}
