@@ -1,4 +1,8 @@
+"use client";
+
 import React, { useEffect, useState, useCallback } from 'react';
+import { apiPut } from '@/lib/api';
+import { showToast } from '@/hooks/useToast';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -417,16 +421,31 @@ export default function MarketingBrief() {
   }, [load]);
 
   const saveCadence = useCallback(async (c: Cadence) => {
+    if (c === cadence || savingCadence) return;
+    const prev = cadence;
+    // Optimistic UI — selection must move even if the network is slow.
+    setCadence(c);
     setSavingCadence(true);
     try {
-      await fetch('/api/marketing-brief/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cadence: c }),
-      });
-      setCadence(c);
-    } catch { /* ignore */ } finally { setSavingCadence(false); }
-  }, []);
+      const r = await apiPut<{ ok?: boolean; cadence?: Cadence; error?: string }>(
+        '/api/marketing-brief/settings',
+        { cadence: c },
+      );
+      if (r.ok === false) {
+        setCadence(prev);
+        showToast(r.error || 'Could not save cadence');
+        return;
+      }
+      setCadence(r.cadence || c);
+      setData((d) => (d ? { ...d, cadence: (r.cadence || c) as Cadence } : d));
+      showToast(`Cadence set to ${CADENCES[c].label}`);
+    } catch (e: unknown) {
+      setCadence(prev);
+      showToast(e instanceof Error ? e.message : 'Could not save cadence');
+    } finally {
+      setSavingCadence(false);
+    }
+  }, [cadence, savingCadence]);
 
   const deliver = async () => {
     if (!data?.brief) return;
@@ -510,21 +529,46 @@ export default function MarketingBrief() {
         </div>
 
         {/* Cadence selector */}
-        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div
+          role="group"
+          aria-label="Brief cadence"
+          style={{
+            marginTop: 16,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+            position: 'relative',
+            zIndex: 2,
+          }}
+        >
           <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Cadence:</span>
           {(Object.entries(CADENCES) as [Cadence, CadenceMeta][]).map(([key, meta]) => {
             const isSelected = cadence === key;
             return (
               <button
-                key={key} onClick={() => saveCadence(key)} disabled={savingCadence}
-                title={meta.plan + ' plan'}
+                key={key}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void saveCadence(key);
+                }}
+                aria-pressed={isSelected}
+                title={`${meta.plan} plan — ${meta.label} brief cadence`}
                 style={{
-                  padding: '5px 12px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: savingCadence ? 'default' : 'pointer', transition: 'all 0.18s',
+                  padding: '5px 12px',
+                  borderRadius: 6,
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  cursor: isSelected ? 'default' : 'pointer',
+                  transition: 'all 0.18s',
                   background: isSelected ? '#0f766e' : 'rgba(255,255,255,0.8)',
                   border: `1.5px solid ${isSelected ? '#0f766e' : 'rgba(15, 118, 110, 0.22)'}`,
                   color: isSelected ? '#fff' : '#334155',
                   boxShadow: isSelected ? '0 4px 12px rgba(15, 118, 110, 0.22)' : 'none',
-                  opacity: savingCadence && !isSelected ? 0.5 : 1,
+                  opacity: savingCadence && !isSelected ? 0.7 : 1,
+                  pointerEvents: 'auto',
                 }}
               >
                 {meta.label} <span style={{ opacity: 0.75, fontSize: '0.62rem' }}>({meta.plan})</span>
