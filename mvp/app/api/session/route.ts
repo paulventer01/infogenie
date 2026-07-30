@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   }
 
   const agency = await loginAgency(email);
-  const res = NextResponse.redirect(publicUrl(req, "/agency"));
+  const res = NextResponse.redirect(publicUrl(req, "/analyse"));
   res.cookies.set(SESSION_COOKIE, agency.id, {
     httpOnly: true,
     sameSite: "lax",

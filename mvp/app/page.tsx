@@ -16,7 +16,7 @@ export default async function HomePage({
   const authed = !!(sid && agency && agency.id === sid);
 
   if (authed) {
-    redirect("/agency");
+    redirect("/analyse");
   }
 
   return (
