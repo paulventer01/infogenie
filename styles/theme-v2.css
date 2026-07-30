@@ -580,6 +580,38 @@ body:has(#ig-app-shell) #ig-react-panel .input-row {
   align-items: flex-end;
 }
 
+/* Single form field — keeps label, AI Suggest bar, and control stacked. */
+body:has(#ig-app-shell) #ig-react-panel .ig-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .ig-field > label {
+  display: block !important;
+  margin: 0 !important;
+  font-size: 0.78rem;
+  font-weight: 700 !important;
+  color: #334155 !important;
+  line-height: 1.3;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .ig-field > [data-ig-bar] {
+  margin: 0 !important;
+  order: 0;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .ig-field > input,
+body:has(#ig-app-shell) #ig-react-panel .ig-field > textarea,
+body:has(#ig-app-shell) #ig-react-panel .ig-field > select {
+  width: 100% !important;
+  margin: 0 !important;
+  box-sizing: border-box;
+}
+
 /* Images — neat, rounded, contained */
 body:has(#ig-app-shell) #ig-react-panel img,
 body:has(#ig-app-shell) #ig-shell-content img {
