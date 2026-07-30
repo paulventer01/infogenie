@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, startTransition } from "react";
-import { useRouter } from "next/navigation";
-import { NAV_GROUPS, viewToPath, type NavItem } from "@/lib/viewRoutes";
+import { usePathname, useRouter } from "next/navigation";
+import { NAV_GROUPS, pathToViewId, viewToPath, type NavItem } from "@/lib/viewRoutes";
 import { prefetchPanel } from "@/components/features/registry";
 import { markNavPending } from "@/lib/navPending";
 import NavGroup from "./NavGroup";
@@ -38,6 +38,8 @@ function emptyGroups(): Record<string, boolean> {
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const activeView = useMemo(() => pathToViewId(pathname || ""), [pathname]);
   const [navReady, setNavReady] = useState(true);
   const [open, setOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -336,6 +338,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   key={group.key}
                   group={group}
                   open={!!openGroups[group.key] || !!filter.trim()}
+                  activeView={activeView}
+                  expandSections={!!filter.trim()}
                   onToggle={() => toggleGroup(group.key)}
                   onNavClick={onNavClick}
                 />
