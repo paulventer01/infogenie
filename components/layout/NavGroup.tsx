@@ -16,17 +16,19 @@ interface NavGroupProps {
   onNavClick: (e: React.MouseEvent, item: NavItem) => void;
 }
 
-const LS_KEY = "ig-nav-collapsed-sections";
+/** Tracks which nested section keys are open. Missing key = closed. */
+const LS_KEY = "ig-nav-open-sections-v2";
 
-function loadCollapsed(): Record<string, boolean> {
+function loadOpenSections(): Record<string, boolean> {
   try {
-    return JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+    const raw = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   } catch {
     return {};
   }
 }
 
-function saveCollapsed(state: Record<string, boolean>) {
+function saveOpenSections(state: Record<string, boolean>) {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(state));
   } catch {
@@ -40,16 +42,17 @@ export default function NavGroup({
   onToggle,
   onNavClick,
 }: NavGroupProps) {
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // Nested sub-menus start closed; open only when the user clicks +.
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    setCollapsed(loadCollapsed());
+    setOpenSections(loadOpenSections());
   }, []);
 
   const toggleSection = (sectionKey: string) => {
-    setCollapsed((prev) => {
+    setOpenSections((prev) => {
       const next = { ...prev, [sectionKey]: !prev[sectionKey] };
-      saveCollapsed(next);
+      saveOpenSections(next);
       return next;
     });
   };
@@ -80,22 +83,24 @@ export default function NavGroup({
         <div className={styles.groupPanel}>
           {group.sections.map((section, si) => {
             const sectionKey = `${group.key}-${si}`;
-            const isCollapsed = !!collapsed[sectionKey];
+            // Headered sections default closed; header-less sections stay visible.
+            const sectionOpen = section.header ? !!openSections[sectionKey] : true;
             return (
               <div key={si} className={styles.section}>
                 {section.header ? (
                   <button
                     type="button"
                     className={styles.sectionHead}
+                    aria-expanded={sectionOpen}
                     onClick={() => toggleSection(sectionKey)}
                   >
                     <span className={styles.sectionHeadLabel}>{section.header}</span>
                     <span className={styles.sectionHeadToggle} aria-hidden>
-                      {isCollapsed ? "+" : "–"}
+                      {sectionOpen ? "–" : "+"}
                     </span>
                   </button>
                 ) : null}
-                {!isCollapsed &&
+                {sectionOpen &&
                   section.items.map((item, ii) => (
                     <a
                       key={item.view || item.action || ii}
