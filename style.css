@@ -8150,3 +8150,111 @@ body:has(#counterTargetBanner) #launchCampaignBtn{display:none !important}
 [data-theme="dark"] .ig-admin-tab.active { color: #fff; border-bottom-color: #e2e8f0; background: #0f172a; }
 .ig-demo-badge { vertical-align: middle; }
 .ig-data-unavailable { font-size: 14px; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT-HERO INK — definitive overrides (must stay at EOF).
+   Heroes across InfoGenie are light gradients; force readable dark text and
+   kill any leftover white/pale-blue rules from older dark-hero themes.
+   ═══════════════════════════════════════════════════════════════════════════ */
+body:has(#ig-app-shell) .view-header,
+body:has(#ig-app-shell) .intel-header,
+body:has(#ig-app-shell) .comp-hero,
+body:has(#ig-app-shell) [data-bp-hero],
+body:has(#ig-app-shell) .ig-panel-hero,
+body:has(#ig-app-shell) .ig-comp-hero,
+body:has(#ig-app-shell) [data-ig-light-hero],
+#ig-react-panel .view-header,
+#ig-react-panel .intel-header,
+#ig-react-panel .comp-hero,
+#ig-react-panel [data-bp-hero],
+#ig-react-panel .ig-panel-hero {
+  color: #0f172a !important;
+}
+
+body:has(#ig-app-shell) .view-header *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+body:has(#ig-app-shell) .intel-header *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+body:has(#ig-app-shell) .comp-hero *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]),
+body:has(#ig-app-shell) [data-bp-hero] *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+body:has(#ig-app-shell) .ig-panel-hero *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+#ig-react-panel .view-header *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+#ig-react-panel .intel-header *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+#ig-react-panel [data-bp-hero] *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]) {
+  color: #0f172a !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+body:has(#ig-app-shell) .view-header h1,
+body:has(#ig-app-shell) .view-header h2,
+body:has(#ig-app-shell) .view-header h3,
+body:has(#ig-app-shell) .view-header .view-title,
+body:has(#ig-app-shell) .intel-header h1,
+body:has(#ig-app-shell) .intel-header .ih-title,
+body:has(#ig-app-shell) .intel-header .view-title,
+body:has(#ig-app-shell) [data-bp-hero] h1,
+body:has(#ig-app-shell) [data-bp-hero] .view-title,
+#ig-react-panel .view-title,
+#ig-react-panel .ih-title {
+  color: #0f172a !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+body:has(#ig-app-shell) .view-header .view-sub,
+body:has(#ig-app-shell) .view-header .subtitle,
+body:has(#ig-app-shell) .view-header p,
+body:has(#ig-app-shell) .view-header small,
+body:has(#ig-app-shell) .intel-header .view-sub,
+body:has(#ig-app-shell) .intel-header .ih-sub,
+body:has(#ig-app-shell) .intel-header p,
+body:has(#ig-app-shell) [data-bp-hero] p,
+body:has(#ig-app-shell) [data-bp-hero] .view-sub,
+#ig-react-panel .view-sub,
+#ig-react-panel .ih-sub {
+  color: #334155 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: #334155 !important;
+}
+
+body:has(#ig-app-shell) .view-header .breadcrumb,
+body:has(#ig-app-shell) .view-header .breadcrumb *,
+body:has(#ig-app-shell) .intel-header .breadcrumb,
+body:has(#ig-app-shell) .intel-header .breadcrumb *,
+body:has(#ig-app-shell) [data-bp-hero] .breadcrumb,
+body:has(#ig-app-shell) [data-bp-hero] .breadcrumb *,
+body:has(#ig-app-shell) .breadcrumb .bc-group,
+body:has(#ig-app-shell) .bc-group,
+#ig-react-panel .breadcrumb,
+#ig-react-panel .breadcrumb * {
+  color: #0f766e !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #0f766e !important;
+}
+
+body:has(#ig-app-shell) .bc-sep,
+#ig-react-panel .bc-sep {
+  color: #94a3b8 !important;
+  -webkit-text-fill-color: #94a3b8 !important;
+}
+
+body:has(#ig-app-shell) .hero-pill,
+body:has(#ig-app-shell) .view-header .hero-pill,
+body:has(#ig-app-shell) .intel-header .hero-pill,
+body:has(#ig-app-shell) [data-bp-hero] .hero-pill,
+#ig-react-panel .hero-pill {
+  color: #1E3A8A !important;
+  -webkit-text-fill-color: #1E3A8A !important;
+  background: #FFFFFF !important;
+  border-color: rgba(15, 118, 110, 0.22) !important;
+}
+
+body:has(#ig-app-shell) .view-header .btn-primary,
+body:has(#ig-app-shell) .intel-header .btn-primary,
+body:has(#ig-app-shell) [data-bp-hero] .btn-primary,
+body:has(#ig-app-shell) .view-header button.btn-primary,
+body:has(#ig-app-shell) [data-bp-hero] button.btn-primary {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+}
