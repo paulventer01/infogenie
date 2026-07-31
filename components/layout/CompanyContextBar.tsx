@@ -18,6 +18,7 @@ const ACTIONS: { label: string; view: string; hash?: string }[] = [
   { label: "Competitors", view: "competitors" },
   { label: "Plan", view: "battleplan" },
   { label: "Analytics", view: "analytics-hub" },
+  { label: "Budget", view: "budget" },
 ];
 
 function readDomain(): { domain: string; industry: string; competitors: number } | null {

@@ -464,6 +464,7 @@ const COMPONENT_MATRIX = {
   'meeting-notes':        'manage.projects.view',
   'team-meetings':        'manage.projects.view',
   'stakeholders':         'manage.projects.view',
+  'budget':               'manage.budget.view',
   'budget-board':         'manage.budget.view',
   'customer-360':         'brand.view',
   'ask-infogenie':        'manage.ask.use',

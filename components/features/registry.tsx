@@ -50,6 +50,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   launches: L("launches", () => import("@/components/features/manage/Launches")),
   "ai-traffic": L("ai-traffic", () => import("@/components/features/manage/AiTraffic")),
   heatmaps: L("heatmaps", () => import("@/components/features/manage/Heatmaps")),
+  budget: L("budget", () => import("@/components/features/manage/Budget")),
   "budget-board": L("budget-board", () => import("@/components/features/manage/BudgetBoard")),
   "customer-360": L("customer-360", () => import("@/components/features/manage/Customer360")),
   "utm-builder": L("utm-builder", () => import("@/components/features/manage/UtmBuilder")),

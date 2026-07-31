@@ -428,6 +428,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "heatmaps", icon: "🖋️", label: "Heatmaps + Session Replay" },
           { view: "action-queue", icon: "📹", label: "Daily Action Queue (what to do today)" },
           { view: "marketing-okr", icon: "📷", label: "Marketing OKRs (live campaign data)" },
+          { view: "budget", icon: "💰", label: "Budget (spend · ROI · 3-month plan)" },
           { view: "budget-board", icon: "🪙", label: "Budget Board (monitor + spend)" },
           { view: "budget-caps", icon: "🚦", label: "Budget Caps (platform daily + lifetime limits)" },
           { view: "utm-builder", icon: "📸", label: "UTM Architecture (link builder + presets)" },

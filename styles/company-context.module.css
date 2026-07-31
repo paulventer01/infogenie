@@ -1,6 +1,6 @@
 .bar {
   background: linear-gradient(90deg, #e7f5f2 0%, #eaf3fb 52%, #eef6ff 100%);
-  border-bottom: 1px solid rgba(15, 118, 110, 0.16);
+  border-bottom: 1px solid rgba(15, 118, 110, 0.22);
   color: #0f172a;
 }
 
@@ -18,18 +18,18 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(15, 118, 110, 0.08);
-  border: 1px solid rgba(15, 118, 110, 0.18);
+  background: rgba(15, 118, 110, 0.1);
+  border: 1px solid rgba(15, 118, 110, 0.22);
   border-radius: 10px;
   padding: 6px 12px;
   cursor: pointer;
-  color: inherit;
+  color: #0f172a;
   font: inherit;
   text-decoration: none;
 }
 
 .domainBtn:hover {
-  background: rgba(15, 118, 110, 0.14);
+  background: rgba(15, 118, 110, 0.16);
 }
 
 .globe {
@@ -39,19 +39,20 @@
 .domain {
   font-weight: 800;
   font-size: 0.88rem;
-  color: #0f172a;
+  color: #0f172a !important;
 }
 
 .industry {
   font-size: 0.72rem;
-  color: #475569;
+  color: #334155 !important;
   padding-left: 8px;
-  border-left: 1px solid rgba(15, 23, 42, 0.14);
+  border-left: 1px solid rgba(15, 23, 42, 0.18);
 }
 
 .meta {
-  font-size: 0.72rem;
-  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #334155 !important;
 }
 
 .actions {
@@ -65,7 +66,7 @@
 .linkBtn {
   background: transparent;
   border: 1px solid transparent;
-  color: #334155;
+  color: #0f172a !important;
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;
@@ -77,21 +78,21 @@
 }
 
 .linkBtn:hover {
-  color: #0f766e;
-  background: rgba(15, 118, 110, 0.1);
-  border-color: rgba(15, 118, 110, 0.18);
+  color: #0f766e !important;
+  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(15, 118, 110, 0.22);
 }
 
 .linkBtnActive {
-  color: #0f766e;
-  background: rgba(15, 118, 110, 0.12);
-  border-color: rgba(15, 118, 110, 0.22);
+  color: #0f766e !important;
+  background: rgba(15, 118, 110, 0.16);
+  border-color: rgba(15, 118, 110, 0.28);
 }
 
 .primaryBtn {
   background: linear-gradient(135deg, #0f766e, #0284c7);
   border: none;
-  color: #fff;
+  color: #ffffff !important;
   font-size: 0.72rem;
   font-weight: 700;
   padding: 6px 12px;
@@ -104,4 +105,37 @@
 
 .primaryBtn:hover {
   filter: brightness(1.05);
+}
+
+/* Dark theme — keep bar readable */
+:global(html[data-theme="dark"]) .bar {
+  background: linear-gradient(90deg, #0f1f2a 0%, #0f172a 52%, #111827 100%);
+  border-bottom-color: rgba(45, 212, 191, 0.22);
+  color: #f8fafc;
+}
+
+:global(html[data-theme="dark"]) .domainBtn {
+  background: rgba(45, 212, 191, 0.12);
+  border-color: rgba(45, 212, 191, 0.28);
+  color: #f8fafc;
+}
+
+:global(html[data-theme="dark"]) .domain {
+  color: #f8fafc !important;
+}
+
+:global(html[data-theme="dark"]) .industry,
+:global(html[data-theme="dark"]) .meta {
+  color: #cbd5e1 !important;
+}
+
+:global(html[data-theme="dark"]) .linkBtn {
+  color: #e2e8f0 !important;
+}
+
+:global(html[data-theme="dark"]) .linkBtn:hover,
+:global(html[data-theme="dark"]) .linkBtnActive {
+  color: #5eead4 !important;
+  background: rgba(45, 212, 191, 0.14);
+  border-color: rgba(45, 212, 191, 0.3);
 }
