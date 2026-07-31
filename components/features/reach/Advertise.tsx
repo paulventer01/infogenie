@@ -348,7 +348,8 @@ export default function Advertise() {
                       <button
                         onClick={() => toast("⚙️ Optimising — adjusting bids and targeting")}
                         title="Trigger InfoGenie AI to re-optimise bids, budgets, and targeting for this campaign right now."
-                        style={{ padding: "5px 12px", background: "var(--ig-panel)", border: "none", borderRadius: 7, fontSize: "0.7rem", fontWeight: 700, color: "white", cursor: "pointer" }}
+                        className="btn-primary"
+                        style={{ padding: "5px 12px", fontSize: "0.7rem" }}
                       >
                         ⚡ Optimise
                       </button>

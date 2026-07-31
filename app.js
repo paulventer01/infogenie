@@ -1596,7 +1596,7 @@ function buildLaunchModal(camp, idx) {
         </div>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
           <button id="lm-close-success" style="padding:10px 20px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
-          <button id="lm-view-campaign" style="padding:10px 20px;background:var(--ig-panel);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">👁 View Campaign</button>
+          <button id="lm-view-campaign" class="btn-primary" style="padding:10px 20px;font-size:0.85rem">👁 View Campaign</button>
           <button id="lm-view-results" style="padding:10px 20px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📊 View Results →</button>
         </div>
       </div>`;
@@ -4293,7 +4293,7 @@ function buildCampaigns() {
       <div class="data-table-card" style="margin-bottom:24px;background:linear-gradient(135deg,#F8FAFF,#EFF6FF);border:1.5px solid #BFDBFE">
         <div class="dtc-header">
           <h3 style="color:#1D4ED8">✍️ InfoGenie Improved Ads</h3>
-          <span class="atag" style="background:#1D4ED8">${allAds.length} Ready-to-Use</span>
+          <span class="atag atag-solid atag-solid--blue">${allAds.length} Ready-to-Use</span>
         </div>
         <p style="font-size:0.73rem;color:#3B82F6;margin:0 0 16px 0;line-height:1.5;max-width:640px">AI-refined versions of your competitors' top ads · Copy to clipboard or send straight to the Creative Studio for launch.</p>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
@@ -4306,7 +4306,7 @@ function buildCampaigns() {
     <div class="data-table-card" style="margin-bottom:24px;background:linear-gradient(135deg,#FEFBFF,#F3E8FF);border:1.5px solid #DDD6FE">
       <div class="dtc-header">
         <h3 style="color:#5B21B6">🧪 A/B Test Manager</h3>
-        <span class="atag" style="background:#7C3AED">${(window._abTests||[]).length} Tests Running</span>
+        <span class="atag atag-solid atag-solid--purple">${(window._abTests||[]).length} Tests Running</span>
       </div>
       <p style="font-size:0.8rem;color:#5B21B6;margin:0 0 16px 0">Set up split tests between two campaign variants to measure which delivers better ROAS in your live environment.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -4394,7 +4394,7 @@ function buildCampaigns() {
       return `<div class="data-table-card" id="launched-campaigns-section" style="margin-bottom:24px;border:1.5px solid #00C9C8">
         <div class="dtc-header">
           <h3 style="color:#0A1628">🚀 Launched Campaigns</h3>
-          <span class="atag" style="background:linear-gradient(135deg,#00C9C8,#0066FF)">${(window._launchedCampaigns||[]).length} Live</span>
+          <span class="atag atag-solid atag-solid--teal">${(window._launchedCampaigns||[]).length} Live</span>
         </div>
         <div class="dtc-flush" style="display:flex;flex-direction:column;gap:14px;padding:14px">
           ${(window._launchedCampaigns||[]).map((c, ci) => {

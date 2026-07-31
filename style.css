@@ -879,6 +879,18 @@ body {
   text-shadow: 0 1px 2px rgba(15,30,61,.25);
 }
 .atag.live-tag { border-color: rgba(167,243,208,.7); color: #FFFFFF; background: rgba(16,185,129,.35); text-shadow: 0 1px 2px rgba(15,30,61,.25); }
+/* Solid-colour count/status pills — white label on blue/purple/teal fills */
+.atag-solid,
+[data-theme="light"] .atag-solid {
+  color: #FFFFFF !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+.atag-solid--blue   { background: #1D4ED8 !important; }
+.atag-solid--purple { background: #7C3AED !important; }
+.atag-solid--teal   { background: linear-gradient(135deg, #00C9C8, #0066FF) !important; }
+.atag-solid--green  { background: #10B981 !important; }
+.atag-solid--red    { background: #EF4444 !important; }
 .live-dot-inline {
   display: inline-block;
   width: 6px; height: 6px;
@@ -2919,8 +2931,9 @@ body {
   padding: 3px 10px;
   border-radius: 20px;
   background: linear-gradient(135deg, var(--teal), var(--blue));
-  color: white;
+  color: #FFFFFF;
 }
+[data-theme="light"] .intel-exclusive-badge { color: #FFFFFF !important; }
 
 /* Keyword gap table */
 .kwgap-table { width: 100%; border-collapse: collapse; background: white; border-radius: var(--radius-lg); overflow: hidden; border: 1.5px solid var(--border); }
@@ -6204,7 +6217,7 @@ p, span, label, td, li {
 [data-theme="light"] .view-title { color: #0f172a !important; }
 [data-theme="light"] .view-sub   { color: #334155 !important; opacity: 1; }
 [data-theme="light"] .breadcrumb { color: #0f766e !important; opacity: 1; }
-[data-theme="light"] .atag {
+[data-theme="light"] .atag:not([style*="background"]):not(.atag-solid) {
   background: rgba(0,0,0,.05);
   border-color: rgba(0,0,0,.1);
   color: #374151;
@@ -6317,8 +6330,10 @@ body,
 [data-theme="light"] .intel-header .view-title { color: #0f172a !important; }
 [data-theme="light"] .view-sub { color: #334155 !important; opacity: 1; }
 [data-theme="light"] .intel-header .view-sub   { color: #334155 !important; opacity: 1; }
-[data-theme="light"] .vh-actions .atag,
-[data-theme="light"] .atag { color: #1E3A5F; background: rgba(255,255,255,.95); border-color: rgba(15,118,110,.22); }
+[data-theme="light"] .vh-actions .atag:not([style*="background"]):not(.atag-solid),
+[data-theme="light"] .atag:not([style*="background"]):not(.atag-solid) { color: #1E3A5F; background: rgba(255,255,255,.95); border-color: rgba(15,118,110,.22); }
+[data-theme="light"] .atag[style*="background"]:not([style*="color:"]):not([style*="color "]),
+[data-theme="light"] .atag.atag-solid { color: #FFFFFF !important; border-color: rgba(255,255,255,.35) !important; text-shadow: 0 1px 2px rgba(0,0,0,.22); }
 [data-theme="light"] .atag.live-tag { color: #047857; background: rgba(255,255,255,.95); border-color: rgba(5,150,105,.45); }
 
 /* ── Nav links in scrollable row ── */
@@ -8458,4 +8473,93 @@ body:has(#ig-app-shell) .view-header button.btn-primary,
 body:has(#ig-app-shell) [data-bp-hero] button.btn-primary {
   color: #FFFFFF !important;
   -webkit-text-fill-color: #FFFFFF !important;
+}
+
+/* ============================================================
+   GLOBAL TEXT CONTRAST — badges, buttons, heroes, tiles
+   Ensures labels stay readable on coloured fills in light mode.
+   ============================================================ */
+
+/* Primary / gradient CTAs — always white label */
+.btn-primary,
+.btn-nav-analyse,
+.btn-camp-launch,
+.btn-qcc-launch,
+.counter-banner-launch,
+[data-theme="light"] .btn-primary,
+[data-theme="light"] .btn-nav-analyse {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+}
+
+/* Filled status pills inside cards / section headers */
+.dtc-header .atag-solid,
+.data-table-card .atag-solid,
+[data-theme="light"] .dtc-header .atag-solid,
+[data-theme="light"] .data-table-card .atag-solid {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+}
+
+/* Badges with inline solid/gradient backgrounds (not light pastels) */
+.badge[style*="background:linear-gradient"],
+.badge[style*="background:#0"],
+.badge[style*="background:#1"],
+.badge[style*="background:#2"],
+.badge[style*="background:#3"],
+.badge[style*="background:#4"],
+.badge[style*="background:#5"],
+.badge[style*="background:#6"],
+.badge[style*="background:#7"],
+.badge[style*="background:#8"],
+.badge[style*="background:#9"],
+[data-theme="light"] .badge[style*="background:linear-gradient"],
+[data-theme="light"] .badge[style*="background:#0"],
+[data-theme="light"] .badge[style*="background:#1"],
+[data-theme="light"] .badge[style*="background:#2"],
+[data-theme="light"] .badge[style*="background:#3"],
+[data-theme="light"] .badge[style*="background:#4"],
+[data-theme="light"] .badge[style*="background:#5"],
+[data-theme="light"] .badge[style*="background:#6"],
+[data-theme="light"] .badge[style*="background:#7"],
+[data-theme="light"] .badge[style*="background:#8"],
+[data-theme="light"] .badge[style*="background:#9"] {
+  color: #FFFFFF !important;
+}
+
+/* Hero / gradient panels — keep white headings & KPI labels */
+.camp-hero,
+.camp-hero .camp-hero-title,
+.camp-hero .camp-hero-sub,
+.camp-hero .camp-kpi-lbl,
+.camp-hero .camp-kpi-val,
+.camp-hero .camp-kpi-val--roas,
+.camp-hero .camp-kpi-val--cpa,
+.camp-hero .camp-kpi-val--lift,
+.camp-hero .camp-kpi-val--count,
+[data-theme="light"] .camp-hero,
+[data-theme="light"] .camp-hero .camp-hero-title,
+[data-theme="light"] .camp-hero .camp-hero-sub,
+[data-theme="light"] .camp-hero .camp-kpi-lbl,
+[data-theme="light"] .camp-hero .camp-kpi-val,
+[data-theme="light"] .camp-hero .camp-kpi-val--roas,
+[data-theme="light"] .camp-hero .camp-kpi-val--cpa,
+[data-theme="light"] .camp-hero .camp-kpi-val--lift,
+[data-theme="light"] .camp-hero .camp-kpi-val--count {
+  color: #FFFFFF;
+}
+
+/* Counter-campaign banner avatar initials */
+.counter-banner-avatar,
+[data-theme="light"] .counter-banner-avatar {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+}
+
+/* Never use panel token as a dark CTA fill in light mode */
+[data-theme="light"] button[style*="background:var(--ig-panel)"][style*="color:white"],
+[data-theme="light"] button[style*="background:var(--ig-panel)"][style*="color: white"],
+[data-theme="light"] button[style*="background: var(--ig-panel)"][style*="color:white"] {
+  background: linear-gradient(135deg, #0066FF, #00C9C8) !important;
+  color: #FFFFFF !important;
 }

@@ -1099,7 +1099,7 @@ export default function Dashboard() {
           <div className="data-table-card" style={{ marginBottom: 32 }}>
             <div className="dtc-header">
               <h3 title="Real-time AI-generated alerts about competitor activity — ad spend changes, new creatives, pricing shifts and market opportunities detected in the last 72 hours.">🔔 Live AI Alert Feed</h3>
-              <span className="atag" style={{ background: "#EF4444", color: "white" }} title="Competitor signals are monitored continuously. New alerts appear as soon as the AI detects a significant change.">● Live Monitoring</span>
+              <span className="atag atag-solid atag-solid--red" title="Competitor signals are monitored continuously. New alerts appear as soon as the AI detects a significant change.">● Live Monitoring</span>
             </div>
             <div className="dtc-flush" style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {alertRows.map((c, i) => {
