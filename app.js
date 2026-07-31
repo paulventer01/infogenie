@@ -11537,7 +11537,10 @@ window._safeUrl = function(u) {
   }
 
   // Conservative — must be a recognisable label-like token, not embedded in unrelated phrasing.
-  const RE_BRAND   = /(^|[\s>_-])(brand|company|advertiser|target brand|business name|client name|competitor name)([\s<_:-]|$)/i;
+  // NOTE: do NOT match "client name" — Admin → Clients uses that label for a
+  // NEW client record. Treating it as a brand field auto-fills the DOM value
+  // without updating React state, so "+ Add Client" sees an empty name.
+  const RE_BRAND   = /(^|[\s>_-])(brand|company|advertiser|target brand|business name|competitor name)([\s<_:-]|$)/i;
   const RE_COUNTRY = /(^|[\s>_-])(country|countries|region|geo(graphy)?|market(s)?)([\s<_:-]|$)/i;
   const RE_KW      = /(^|[\s>_-])(keyword(s)?|search term(s)?|seed term(s)?|tracking term(s)?|monitoring term(s)?|topics? to|terms? to)([\s<_:-]|$)/i;
   // Hard skips — even if matched above, ignore these contexts.
@@ -11566,11 +11569,27 @@ window._safeUrl = function(u) {
     return null;
   }
 
+  // React controlled inputs ignore bare `el.value = …`. Use the native
+  // prototype setter so React's onChange / state stay in sync (same pattern
+  // as ig_field_enhancer.js).
+  const _nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')
+    && Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  const _nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')
+    && Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+  function _faeSetValue(el, value) {
+    const s = String(value == null ? '' : value);
+    const setter = el.tagName === 'TEXTAREA' ? _nativeTextareaSetter : _nativeInputSetter;
+    if (setter) setter.call(el, s);
+    else el.value = s;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
   function makeBrandPicker(input) {
     const brand = getBrand();
     const comps = getCompetitors();
     if (!brand && comps.length === 0) return; // nothing to offer
-    if (!input.value && brand) input.value = brand;
+    if (!input.value && brand) _faeSetValue(input, brand);
     const sel = document.createElement('select');
     sel.dataset.fae = '1'; // tag generated picker so enhance() never re-processes it (prevents observer feedback loop)
     sel.style.cssText = 'width:100%;padding:6px 9px;border:1.5px solid #D1D5DB;border-radius:6px;font-size:0.76rem;background:#F0FDF4;margin-bottom:5px;box-sizing:border-box;color:#065F46;font-weight:600';
@@ -11578,7 +11597,7 @@ window._safeUrl = function(u) {
       '<option value="">— Pick from your analysis (or type manually below) —</option>' +
       (brand ? '<option value="' + _esc(brand) + '">' + _esc(brand) + ' (your brand)</option>' : '') +
       comps.map(n => '<option value="' + _esc(n) + '">' + _esc(n) + '</option>').join('');
-    sel.addEventListener('change', () => { if (sel.value) { input.value = sel.value; input.dispatchEvent(new Event('change', {bubbles:true})); input.dispatchEvent(new Event('input', {bubbles:true})); } });
+    sel.addEventListener('change', () => { if (sel.value) _faeSetValue(input, sel.value); });
     input.parentElement.insertBefore(sel, input);
   }
 

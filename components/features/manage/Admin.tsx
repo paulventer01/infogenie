@@ -674,6 +674,7 @@ function ClientsTab() {
   const [newWs, setNewWs] = useState("");
   const [newName, setNewName] = useState("");
   const [newSite, setNewSite] = useState("");
+  const nameRef = useRef<HTMLInputElement>(null);
   // Read the active client preview context the legacy SPA may have set (guarded).
   const [previewId, setPreviewId] = useState<number | null>(() => {
     if (typeof window === "undefined") return null;
@@ -704,11 +705,15 @@ function ClientsTab() {
   }, [reloadKey]);
 
   async function addClient() {
-    const name = newName.trim();
+    // Prefer React state; fall back to the live DOM value in case a legacy
+    // field enhancer wrote to the input without syncing controlled state.
+    const domName = (nameRef.current && nameRef.current.value) || "";
+    const name = (newName || domName).trim();
     if (!name) {
       toast("⚠️ Enter a client name");
       return;
     }
+    if (name !== newName.trim()) setNewName(name);
     const r = await adminSend("/clients", "POST", {
       tenantId: Number(newWs),
       name,
@@ -719,7 +724,15 @@ function ClientsTab() {
       setNewName("");
       setNewSite("");
       setReloadKey((k) => k + 1);
-    } else toast("⚠️ " + errText(r));
+    } else {
+      const friendly: Record<string, string> = {
+        bad_name: "Enter a client name (2–120 characters)",
+        bad_tenant: "Choose a workspace",
+        tenant_not_found: "Workspace not found",
+        duplicate_name_in_workspace: "A client with that name already exists in this workspace",
+      };
+      toast("⚠️ " + (friendly[r.error || ""] || errText(r)));
+    }
   }
   async function setClientMode(id: number, mode: string) {
     const r = await adminSend("/clients/" + id, "PATCH", { data_mode: mode });
@@ -779,13 +792,28 @@ function ClientsTab() {
             ))}
           </select>
         </div>
-        <div style={{ flex: 1, minWidth: 160 }}>
+        <div style={{ flex: 1, minWidth: 160 }} data-no-autofill="1">
           <label style={lbl}>CLIENT NAME</label>
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Acme Corp" style={inp} />
+          <input
+            ref={nameRef}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Acme Corp"
+            style={inp}
+            data-no-autofill="1"
+            autoComplete="off"
+          />
         </div>
-        <div style={{ flex: 1, minWidth: 160 }}>
+        <div style={{ flex: 1, minWidth: 160 }} data-no-autofill="1">
           <label style={lbl}>WEBSITE (optional)</label>
-          <input value={newSite} onChange={(e) => setNewSite(e.target.value)} placeholder="acme.com" style={inp} />
+          <input
+            value={newSite}
+            onChange={(e) => setNewSite(e.target.value)}
+            placeholder="acme.com"
+            style={inp}
+            data-no-autofill="1"
+            autoComplete="off"
+          />
         </div>
         <button onClick={addClient} style={{ padding: "8px 16px", background: "#1E293B", color: "#fff", border: "none", borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
           + Add Client

@@ -36,6 +36,7 @@ const ROUTE_GROUPS = [
   // self-serve-create is allowed by design) — so gate to the universally-held
   // dashboard.view rather than a restrictive admin key (would 403 normal users).
   { prefix: '/api/tenants',                   view: 'dashboard.view' },
+  { prefix: '/api/workspaces',                view: 'tenant.settings.manage' },
 
   // ── Tenant integrations & credentials ─────────────────────────────────────
   { prefix: '/api/credentials',               view: 'tenant.credentials.manage' },

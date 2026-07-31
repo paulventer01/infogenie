@@ -252,6 +252,10 @@ app.use('/api/auth', _authService.router);
 // Logged-in users need to query/switch their own tenant memberships regardless
 // of platform-owner status. Each route inside enforces its own auth check.
 app.use('/api/tenants', _tenantRouter);
+// /api/workspaces — Workspaces & Team panel (tenant-scoped memberships +
+// members + recent audit). Same auth exemption as /api/tenants; route
+// enforces login itself.
+app.use('/api/workspaces', require('./services/workspaces/api'));
 // Data-mode enforcement: wrap res.json on every /api response so fabricated
 // data is either badged (demo) or replaced with an honest "data unavailable"
 // message (strict). Wraps res.json at request start; reads the resolved
