@@ -2968,11 +2968,11 @@ app.post('/api/ecom-video/generate', async (req, res) => {
   try {
     const _tenantCtx = require('./services/tenants/context');
     const tid = await _tenantCtx.resolveTenantId(req, { label: 'ecom-video:generate' });
-    if (!tid) return res.status(400).json({ error: 'no_tenant' });
+    if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
     const OpenAI = require('openai');
     const oa = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
     const { product_name, product_description, target_audience, video_style, platform, persona_name } = req.body;
-    if (!product_name) return res.status(400).json({ error: 'product_name required' });
+    if (!product_name) return res.status(400).json({ ok: false, error: 'product_name required' });
 
     const completion = await oa.chat.completions.create({
       model: 'gpt-5',
@@ -3013,8 +3013,8 @@ Return JSON: {"title":"...","duration_seconds":30,"hook":"...","scenes":[{"scene
         source: 'template'
       };
     }
-    res.json({ storyboard: result, source: result.source || 'gpt-5' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json({ ok: true, storyboard: result, source: result.source || 'gpt-5' });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // ── Veo 3 Video Generation ─────────────────────────────────────────────────
