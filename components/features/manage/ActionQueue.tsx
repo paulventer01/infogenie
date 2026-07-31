@@ -318,6 +318,11 @@ export default function ActionQueue() {
                           <p style={{ color: "#334155", fontSize: "0.87rem", margin: "10px 0" }}>
                             {rec.recommendation}
                           </p>
+                          {rec.why_best && (
+                            <p style={{ color: "#78716C", fontSize: "0.82rem", margin: "0 0 10px", fontStyle: "italic" }}>
+                              <strong style={{ fontStyle: "normal", color: "#B45309" }}>Why best:</strong> {rec.why_best}
+                            </p>
+                          )}
                           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: "0.79rem", color: "#64748b", marginBottom: 12 }}>
                             <span>💰 Cost: {rec.cost_estimate}</span>
                             <span>📊 Sources: {rec.data_sources}</span>
