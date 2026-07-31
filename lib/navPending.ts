@@ -8,6 +8,7 @@ function clearMarkers(idle = true): void {
   try {
     document.documentElement.removeAttribute(NAV_ATTR);
     window.__igReactRouting = false;
+    window.__igPendingView = undefined;
     if (idle) window.IGDiag?.setBreadcrumb?.("idle");
   } catch {
     /* noop */
@@ -30,6 +31,10 @@ export function markNavPending(reason = "nav"): void {
   try {
     document.documentElement.setAttribute(NAV_ATTR, "1");
     window.__igReactRouting = true;
+    // Stash the target view so legacy navigateTo can skip a duplicate
+    // ig:spa-navigate when React already owns this same transition.
+    const m = /^nav→(.+)$/.exec(reason);
+    window.__igPendingView = m ? m[1] : reason;
     window.IGDiag?.setBreadcrumb?.(reason);
   } catch {
     /* noop */

@@ -121,10 +121,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       } catch {
         /* noop */
       }
+      // Belt-and-suspenders: always land on Brief after analysis so the stage
+      // never stays on blank /analyse (legacy home hidden, no React panel).
+      try {
+        markNavPending("nav→marketing-brief");
+        prefetchPanel("marketing-brief");
+      } catch {
+        /* noop */
+      }
+      startTransition(() => {
+        router.push("/manage/marketing-brief");
+      });
     };
     document.addEventListener("ig:analysis-ready", onReady);
     return () => document.removeEventListener("ig:analysis-ready", onReady);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     try {
@@ -182,12 +193,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     e?.preventDefault();
     setMobileOpen(false);
     setOpen(true);
+    markNavPending("nav→marketing-brief");
+    try {
+      prefetchPanel("marketing-brief");
+    } catch {
+      /* noop */
+    }
+    startTransition(() => {
+      router.push("/manage/marketing-brief");
+    });
     try {
       window.navigateTo?.("marketing-brief");
     } catch {
       /* noop */
     }
-    router.push("/manage/marketing-brief");
   };
 
   const goAnalyse = (e?: React.MouseEvent) => {
@@ -321,9 +340,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <>
               <button
                 type="button"
-                className={styles.briefBtn}
+                className={`${styles.briefBtn}${activeView === "marketing-brief" ? ` ${styles.groupBtnOpen}` : ""}`}
                 title="Today's Marketing Brief"
                 onClick={goBrief}
+                aria-current={activeView === "marketing-brief" ? "page" : undefined}
               >
                 <span
                   className={styles.gIcon}

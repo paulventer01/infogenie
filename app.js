@@ -2661,16 +2661,23 @@ function navigateTo(viewId, updateActive = true) {
     // Dispatch synchronously (do NOT rAF-defer): a deferred bridge races the
     // AppShell/Next router.push and can remount Suspense mid-reconcile, which
     // throws NotFoundError: removeChild.
-    // Skip when React already owns the route transition (AppShell/goToView set
-    // __igReactRouting) to avoid a double push → double remount.
+    // Bridge to the Next URL when React has not already started this same
+    // transition. AppShell/goToView set __igPendingView + router.push first —
+    // skip the duplicate event in that case. But if __igReactRouting is only a
+    // stale leftover (or was never paired with a push for THIS view), we must
+    // still dispatch — otherwise Analyse completion hides #view-home and leaves
+    // a blank /analyse stage with no React panel mounted.
     try {
-      if (!window.__igReactRouting) {
-        // Guard IGDiag during the React panel mount that follows. Without this,
-        // analyse→dashboard first paint (~700ms, 1k+ nodes) is reported as a
-        // MAIN-THREAD STALL even though it is expected route work.
+      const reactOwnsThis = !!(window.__igReactRouting && window.__igPendingView === viewId);
+      const path = (window.location && window.location.pathname) || '';
+      const alreadyOnView = viewId === 'home'
+        ? (path === '/analyse' || path === '/' || path === '')
+        : (path === '/manage/' + viewId || path.endsWith('/' + viewId));
+      if (!reactOwnsThis && !alreadyOnView) {
         try {
           document.documentElement.setAttribute('data-ig-nav', '1');
           window.__igReactRouting = true;
+          window.__igPendingView = viewId;
           window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('nav→' + viewId);
         } catch(_) {}
         document.dispatchEvent(new CustomEvent('ig:spa-navigate', { detail: { view: viewId } }));
@@ -3133,7 +3140,7 @@ async function runAnalysis(url, country, industryOverride) {
   // NOTE: overlay stays visible. The two slowest API calls
   // (competitor-metrics ~12s + ai-validate-metrics ~13s) still run below,
   // and we don't want the user staring at a blank home page for ~25s.
-  // The overlay is hidden right before navigateTo('dashboard') further down.
+  // The overlay is hidden right before navigateTo('marketing-brief') further down.
 
   // ── If URL was given but user didn't type an industry, take the sub-niche
   //    that smart-detect inferred from the website and use it to fetch a
@@ -3623,19 +3630,21 @@ async function runAnalysis(url, country, industryOverride) {
     await wait(250);
     _igHideLoadingOverlay(overlay);
     if (window._runAnalysisSafetyTimer) { clearTimeout(window._runAnalysisSafetyTimer); window._runAnalysisSafetyTimer = null; }
-    showToast(`✅ Dashboard ready in ${_totalSec}s`);
+    showToast(`✅ Brief ready in ${_totalSec}s`);
   } catch(_) {}
 
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
-  window.IGDiag && IGDiag.mark('runAnalysis: navigating to dashboard', 'comps=' + selectedComps.length);
+  // Land on Today's Marketing Brief (not the blank /analyse home, and not the
+  // dashboard) so the post-analysis workspace always has a React panel mounted.
+  window.IGDiag && IGDiag.mark('runAnalysis: navigating to marketing-brief', 'comps=' + selectedComps.length);
   // Start a heartbeat that ticks every 250ms — any gap >500ms in the server
   // log proves the main thread was blocked during that window and the prior
   // breadcrumb names the culprit.
   try { window.IGDiag && IGDiag.startHeartbeat && IGDiag.startHeartbeat('post-analyse', 250); } catch(_) {}
-  // Stop the heartbeat 15s later — by then the dashboard, all deferred
+  // Stop the heartbeat 15s later — by then the brief, all deferred
   // builders and enrichments are well past done in the happy case.
   setTimeout(() => { try { window.IGDiag && IGDiag.stopHeartbeat && IGDiag.stopHeartbeat(); } catch(_) {} }, 15000);
-  navigateTo('dashboard');
+  navigateTo('marketing-brief');
   // Tell any already-mounted React panel (Next.js dev shell) that a fresh
   // analysis payload is on `window.analysisData`. Dashboard + Marketing Brief
   // refresh when they see this event so they stay in sync with the latest run.
@@ -3644,7 +3653,7 @@ async function runAnalysis(url, country, industryOverride) {
   } catch(_) {}
   showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
 
-  // Build the landing view (dashboard) immediately and defer all other views
+  // Pre-build the dashboard in the background and defer all other views
   // to a background queue with generous gaps. This prevents the main thread
   // from being saturated while the global field enhancer's MutationObserver
   // decorates the freshly-rendered inputs. Each non-dashboard view is ALSO

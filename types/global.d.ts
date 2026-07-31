@@ -24,6 +24,8 @@ declare global {
     // Set by AppShell/goToView while React owns the URL transition so
     // navigateTo skips dispatching ig:spa-navigate (avoids double remount).
     __igReactRouting?: boolean;
+    /** View id React is currently routing to (paired with __igReactRouting). */
+    __igPendingView?: string;
     // ig_diag.js watchdog / breadcrumb helper.
     IGDiag?: {
       setBreadcrumb?: (s: string) => void;
