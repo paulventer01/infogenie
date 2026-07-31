@@ -4036,6 +4036,11 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 // (buildCompetitors/renderCompetitorCards/buildCompMonitor/buildCompCard + backlink helpers + generateBlogMonitor/generatePageResponse/pageTrackerCounterAd; attached to window there).
 
 // ===== BUILD CAMPAIGNS =====
+function _igCompInitials(name) {
+  if (!name) return '?';
+  return String(name).split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+}
+
 function buildCampaigns() {
   const wrap = document.getElementById('campaignsWrap');
   if (!wrap) return;
@@ -4173,24 +4178,34 @@ function buildCampaigns() {
   // ── Counter-campaign target banner (set when user clicks "Launch counter-campaign" in competitor modal) ──
   const _ct = window._counterTarget;
   const _ctFresh = _ct && (Date.now() - (_ct.at || 0) < 30 * 60 * 1000); // valid for 30 min
+  const _ctComp = _ctFresh ? (competitors.find((c) => c.name === _ct.name) || {}) : null;
+  const _ctLogo = _ctFresh ? (_ct.logo || _ctComp?.logo || _igCompInitials(_ct.name)) : '';
+  const _ctUrl = _ctFresh ? (_ct.url || _ctComp?.url || _ctComp?.domain || '') : '';
+  const _ctRoas = _ctFresh ? (_ct.roas || _ctComp?.roas || '—') : '';
+  const _ctCtr = _ctFresh ? (_ct.ctr || _ctComp?.ctr || '—') : '';
+  const _ctTraffic = _ctFresh ? (_ct.traffic || _ctComp?.traffic || '—') : '';
+  const _ctAdSpend = _ctFresh ? (_ct.adSpend || _ctComp?.adSpend || '—') : '';
+  const _ctTopChannel = _ctFresh
+    ? (_ct.topChannel || (_ctComp?.campaigns && _ctComp.campaigns[0]?.channel) || '—')
+    : '';
   const counterBanner = _ctFresh ? `
     <div class="counter-banner" id="counterTargetBanner">
       <div class="counter-banner-strip">
         <span class="counter-banner-pulse"></span>
         <span class="counter-banner-eyebrow">⚔️ COUNTER-CAMPAIGN TARGET</span>
-        <span class="counter-banner-threat counter-banner-threat-${(_ct.threatLevel||'medium').toLowerCase()}">${(_ct.threatLevel||'medium').toUpperCase()} THREAT</span>
+        <span class="counter-banner-threat counter-banner-threat-${(_ct.threatLevel || _ctComp?.threatLevel || 'medium').toLowerCase()}">${(_ct.threatLevel || _ctComp?.threatLevel || 'medium').toUpperCase()} THREAT</span>
       </div>
       <div class="counter-banner-main">
-        <div class="counter-banner-avatar">${_ct.logo}</div>
+        <div class="counter-banner-avatar" aria-hidden="true">${_ctLogo}</div>
         <div class="counter-banner-body">
-          <div class="counter-banner-title">You are launching a campaign <em>against</em> <strong>${_ct.name}</strong> <span class="counter-banner-url">(${_ct.url || 'unknown domain'})</span></div>
-          ${_ct.positioning ? `<div class="counter-banner-pos">📍 Their positioning: <em>${_ct.positioning}</em></div>` : ''}
+          <div class="counter-banner-title">You are launching a campaign <em>against</em> <strong>${_ct.name}</strong> <span class="counter-banner-url">(${_ctUrl || 'unknown domain'})</span></div>
+          ${(_ct.positioning || _ctComp?.positioning) ? `<div class="counter-banner-pos">📍 Their positioning: <em>${_ct.positioning || _ctComp.positioning}</em></div>` : ''}
           <div class="counter-banner-stats">
-            <span title="Their estimated Return on Ad Spend">ROAS <strong>${_ct.roas || '—'}×</strong></span>
-            <span title="Their estimated Click-Through Rate">CTR <strong>${_ct.ctr || '—'}</strong></span>
-            <span title="Their estimated monthly traffic">Traffic <strong>${_ct.traffic || '—'}</strong></span>
-            <span title="Their estimated monthly ad spend">Spend <strong>${_ct.adSpend || '—'}</strong></span>
-            <span title="Their dominant channel — the one we will hit hardest">Top channel <strong>${_ct.topChannel}</strong></span>
+            <span title="Their estimated Return on Ad Spend">ROAS <strong>${_ctRoas}×</strong></span>
+            <span title="Their estimated Click-Through Rate">CTR <strong>${_ctCtr}</strong></span>
+            <span title="Their estimated monthly traffic">Traffic <strong>${_ctTraffic}</strong></span>
+            <span title="Their estimated monthly ad spend">Spend <strong>${_ctAdSpend}</strong></span>
+            <span title="Their dominant channel — the one we will hit hardest">Top channel <strong>${_ctTopChannel}</strong></span>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
@@ -4226,10 +4241,10 @@ function buildCampaigns() {
         </div>
       </div>
       <div class="camp-kpis">
-        <div><div class="camp-kpi-val" style="color:var(--teal)">${projROAS}×</div><div class="camp-kpi-lbl">Projected ROAS</div></div>
-        <div><div class="camp-kpi-val" style="color:#10B981">-35%</div><div class="camp-kpi-lbl">CPA Reduction</div></div>
-        <div><div class="camp-kpi-val" style="color:#F59E0B">+25%</div><div class="camp-kpi-lbl">Conversion Lift</div></div>
-        <div><div class="camp-kpi-val" style="color:white">${campaignRecs.length}</div><div class="camp-kpi-lbl">Campaigns Ready</div></div>
+        <div><div class="camp-kpi-val camp-kpi-val--roas">${projROAS}×</div><div class="camp-kpi-lbl">Projected ROAS</div></div>
+        <div><div class="camp-kpi-val camp-kpi-val--cpa">-35%</div><div class="camp-kpi-lbl">CPA Reduction</div></div>
+        <div><div class="camp-kpi-val camp-kpi-val--lift">+25%</div><div class="camp-kpi-lbl">Conversion Lift</div></div>
+        <div><div class="camp-kpi-val camp-kpi-val--count">${campaignRecs.length}</div><div class="camp-kpi-lbl">Campaigns Ready</div></div>
       </div>
     </div>
     ${audiencePanel}
@@ -5182,7 +5197,16 @@ function _bpGet(compIdx) {
   if (!comp) return null;
   return {
     name: comp.name || 'Competitor',
-    channel: comp.topChannel || null,
+    url: comp.url || comp.domain || '',
+    domain: comp.domain || comp.url || '',
+    roas: comp.roas,
+    ctr: comp.ctr,
+    traffic: comp.traffic,
+    adSpend: comp.adSpend,
+    threatLevel: comp.threatLevel,
+    positioning: comp.positioning,
+    logo: comp.logo,
+    channel: comp.topChannel || (comp.campaigns && comp.campaigns[0] && comp.campaigns[0].channel) || null,
     keywords: (comp.topKeywords || ['competitor brand alternative', 'industry best tool', 'vs competitor']).slice(0, 8),
     campaigns: (comp.campaigns || []).slice(0, 4),
     audiences: (comp.audiences || [{ label: 'High-Intent Buyers', pct: 38 }]).slice(0, 3),
@@ -5260,6 +5284,13 @@ function _bpOpenCounter(compIdx, itemIdx, kind) {
     counterAngle: angle,
     source: 'battleplan',
     at: Date.now(),
+    url: entry.url || entry.domain || '',
+    roas: entry.roas,
+    ctr: entry.ctr,
+    traffic: entry.traffic,
+    adSpend: entry.adSpend,
+    topChannel: entry.channel || (entry.campaigns && entry.campaigns[0] && entry.campaigns[0].channel) || '',
+    threatLevel: entry.threatLevel || 'medium',
   };
 
   showToast('⚔️ Opening counter-campaign launcher vs ' + compName + '…');
