@@ -5,8 +5,10 @@
 // recommended campaigns from legacy window globals (same sources as Results).
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
+import { viewToPath } from "@/lib/viewRoutes";
 import { useToast } from "@/hooks/useToast";
 import styles from "@/styles/budget-hub.module.css";
 
@@ -78,7 +80,44 @@ declare global {
     _lastCampRecs?: Rec[];
     _igLaunch?: (idx: number) => void;
     buildLaunchModal?: (camp: unknown, idx: number) => void;
+    buildCampaigns?: () => void;
+    generateCampaignRecs?: (
+      industry: AnalysisData["industry"] | string,
+      competitors: unknown[],
+      url?: string,
+    ) => Rec[];
   }
+}
+
+/** Ensure recommended campaigns exist after analysis even if Campaigns was never opened. */
+function ensureCampRecs(): Rec[] {
+  if (Array.isArray(window._lastCampRecs) && window._lastCampRecs.length) {
+    return window._lastCampRecs;
+  }
+  const ad = window.analysisData;
+  if (!ad?.url) return [];
+  try {
+    if (typeof window.generateCampaignRecs === "function") {
+      const recs = window.generateCampaignRecs(
+        ad.industry || "your market",
+        ad.competitors || [],
+        ad.url,
+      );
+      if (Array.isArray(recs) && recs.length) {
+        window._lastCampRecs = recs;
+        return recs;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    // buildCampaigns now seeds _lastCampRecs even without #campaignsWrap
+    window.buildCampaigns?.();
+  } catch {
+    /* ignore */
+  }
+  return Array.isArray(window._lastCampRecs) ? window._lastCampRecs : [];
 }
 
 function num(v: unknown, fallback = 0): number {
@@ -108,7 +147,7 @@ function parseBudget(c: Campaign | Rec): number {
 
 function loadCamps(): CampRow[] {
   const live = (typeof window !== "undefined" && window._launchedCampaigns) || [];
-  const recs = (typeof window !== "undefined" && window._lastCampRecs) || [];
+  const recs = typeof window !== "undefined" ? ensureCampRecs() : [];
   const rows: CampRow[] = [];
 
   live.forEach((c, i) => {
@@ -410,12 +449,26 @@ export default function Budget() {
               </p>
             </div>
             <div className="vh-actions">
-              <button type="button" className="btn-secondary" onClick={() => goToView(router, "budget-board")}>
+              <Link
+                href={viewToPath("budget-board")}
+                className="btn-secondary"
+                onClick={(e) => {
+                  e.preventDefault();
+                  goToView(router, "budget-board");
+                }}
+              >
                 🪙 Budget Board
-              </button>
-              <button type="button" className="btn-primary" onClick={() => goToView(router, "campaigns")}>
+              </Link>
+              <Link
+                href={viewToPath("campaigns")}
+                className="btn-primary"
+                onClick={(e) => {
+                  e.preventDefault();
+                  goToView(router, "campaigns");
+                }}
+              >
                 🚀 Campaigns
-              </button>
+              </Link>
             </div>
           </div>
         </div>
@@ -454,11 +507,28 @@ export default function Budget() {
               Run an analysis and launch campaigns to populate this Budget hub — or open Budget Board to set a monthly target and log spend manually.
             </p>
             <div className={styles.emptyActions}>
-              <button type="button" className="btn-primary" onClick={() => goToView(router, "home")}>
-                Run Analysis
-              </button>
-              <button type="button" className="btn-secondary" onClick={() => goToView(router, "campaigns")}>
+              <Link
+                href={viewToPath("budget-board")}
+                className="btn-primary"
+                onClick={(e) => {
+                  e.preventDefault();
+                  goToView(router, "budget-board");
+                }}
+              >
+                🪙 Open Budget Board
+              </Link>
+              <Link
+                href={viewToPath("campaigns")}
+                className="btn-secondary"
+                onClick={(e) => {
+                  e.preventDefault();
+                  goToView(router, "campaigns");
+                }}
+              >
                 Open Campaigns
+              </Link>
+              <button type="button" className="btn-secondary" onClick={() => goToView(router, "home")}>
+                Run Analysis
               </button>
             </div>
           </div>

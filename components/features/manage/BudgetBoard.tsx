@@ -10,6 +10,18 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
 
+function suggestedTargetFromAnalysis(): string {
+  try {
+    const ad = (window as unknown as { analysisData?: { websiteKPIs?: { adSpend?: number } } })
+      .analysisData;
+    const spend = Number(ad?.websiteKPIs?.adSpend);
+    if (Number.isFinite(spend) && spend > 0) return String(Math.round(spend));
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+
 interface ChannelBreakdown {
   channel: string;
   allocated_cents?: number;
@@ -81,6 +93,12 @@ export default function BudgetBoard() {
       "/api/budget/summary?month=" + encodeURIComponent(m),
     );
     setSummary({ ...s, by_channel: s.by_channel || [] });
+    if ((s.target_cents || 0) <= 0 && !target) {
+      const suggested = suggestedTargetFromAnalysis();
+      if (suggested) setTarget(suggested);
+    } else if ((s.target_cents || 0) > 0) {
+      setTarget(String(Math.round((s.target_cents || 0) / 100)));
+    }
     const er = await apiGet<{ events?: SpendEvent[] }>("/api/budget/spend/recent");
     setRecent(er.events || []);
   }
@@ -93,6 +111,12 @@ export default function BudgetBoard() {
       );
       if (cancelled) return;
       setSummary({ ...s, by_channel: s.by_channel || [] });
+      if ((s.target_cents || 0) <= 0) {
+        const suggested = suggestedTargetFromAnalysis();
+        if (suggested) setTarget(suggested);
+      } else {
+        setTarget(String(Math.round((s.target_cents || 0) / 100)));
+      }
       const er = await apiGet<{ events?: SpendEvent[] }>("/api/budget/spend/recent");
       if (cancelled) return;
       setRecent(er.events || []);
