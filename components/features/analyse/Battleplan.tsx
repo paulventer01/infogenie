@@ -76,10 +76,13 @@ function callWin(name: string, ...args: number[]): void {
   if (typeof fn === "function") {
     try {
       fn(...args);
+      return;
     } catch {
-      /* legacy handler not available */
+      /* legacy handler error */
     }
   }
+  const w = window as unknown as { showToast?: (m: string) => void };
+  w.showToast?.(`⚠️ Action not ready — refresh the page and try again (${name})`);
 }
 
 function fmtT(n: number): string {

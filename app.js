@@ -5157,7 +5157,313 @@ window.openViewCampaignModal = function(record) {
 // BUILD INTELLIGENCE HUB → moved to public/js/ig_compete.js
 // (buildIntelligence/exportIntelligenceReport/_loadJsPDF/openExclusiveModal/closeExclusiveModal; attached to window there).
 // ===================================================
-// ── Battle Plan + Full Attack Plan modal moved to public/js/ig_compete.js (switchBattlePlanComp/buildBattlePlan/bp*/openFullAttackPlanModal/renderAttackPlan; attached to window there).
+// ── Battle Plan action handlers (React panel calls window.bp* / openFullAttackPlanModal).
+//    ig_compete.js was never shipped — wire them here so Execute / Launch buttons work.
+
+function _bpGet(compIdx) {
+  const cached = window._bpCache && window._bpCache[compIdx];
+  if (cached) return cached;
+  const comp = analysisData && analysisData.competitors && analysisData.competitors[compIdx];
+  if (!comp) return null;
+  return {
+    name: comp.name || 'Competitor',
+    channel: comp.topChannel || null,
+    keywords: (comp.topKeywords || ['competitor brand alternative', 'industry best tool', 'vs competitor']).slice(0, 8),
+    campaigns: (comp.campaigns || []).slice(0, 4),
+    audiences: (comp.audiences || [{ label: 'High-Intent Buyers', pct: 38 }]).slice(0, 3),
+    suggestions: (comp.suggestions || []).slice(0, 4),
+    adCopy: comp.adCopy || null,
+  };
+}
+
+function _bpSafe(s, max) {
+  return String(s == null ? '' : s).replace(/[<>]/g, '').slice(0, max || 200);
+}
+
+function _bpPlatform(ch) {
+  const c = String(ch || '').toLowerCase();
+  if (c.includes('google') || c.includes('search')) return 'Google Ads';
+  if (c.includes('tiktok')) return 'TikTok Ads';
+  if (c.includes('linkedin')) return 'LinkedIn Ads';
+  if (c.includes('youtube')) return 'YouTube';
+  return 'Meta Ads';
+}
+
+function _bpOpenCounter(compIdx, itemIdx, kind) {
+  const entry = _bpGet(compIdx);
+  if (!entry) {
+    showToast('⚠️ Run an analysis first — enter your website on the home page');
+    navigateTo('home');
+    return;
+  }
+  const compName = _bpSafe(entry.name, 80);
+  let platform = _bpPlatform(entry.channel);
+  let headline = '';
+  let body = '';
+  let angle = 'Direct Response';
+  let weakness = '';
+
+  if (kind === 'weakness' || kind === 'priority') {
+    const s = entry.suggestions[itemIdx] || entry.suggestions[0] || 'Exploit competitor weakness';
+    weakness = _bpSafe(s, 200);
+    angle = 'Weakness Exploit';
+    headline = 'Beat ' + compName + ': ' + _bpSafe(s, 55);
+    body = 'Counter-campaign vs ' + compName + '. Exploit: ' + weakness + '. Channel: ' + platform + '.';
+  } else if (kind === 'campaign') {
+    const camp = entry.campaigns[itemIdx] || entry.campaigns[0] || {};
+    platform = _bpPlatform(camp.channel) || platform;
+    angle = 'Campaign Counter';
+    const cname = _bpSafe(camp.name, 80) || 'their campaign';
+    headline = 'Counter: ' + cname;
+    body = 'Outbid ' + compName + ' on ' + (camp.channel || platform) + ' with superior creative.';
+    weakness = body;
+  } else {
+    angle = 'Quick Win';
+    weakness = entry.suggestions[0] || ('Fast counter-move vs ' + compName);
+    headline = 'Quick win vs ' + compName;
+    body = _bpSafe(weakness, 300);
+  }
+
+  const camp = {
+    name: 'Counter ' + compName + ' — ' + angle,
+    platform,
+    budget: '$2,000/mo',
+    description: body,
+    objective: 'Counter-Position vs. ' + compName,
+    tags: [platform, 'Counter-Campaign', compName],
+    estROAS: '3.2',
+    estCTR: '4.5%',
+    estCPA: '$32',
+    seedHeadline: headline,
+    seedBody: body,
+    seedCTA: 'Get Started',
+  };
+
+  window._counterTarget = {
+    name: compName,
+    weakness,
+    counterAngle: angle,
+    source: 'battleplan',
+    at: Date.now(),
+  };
+
+  showToast('⚔️ Opening counter-campaign launcher vs ' + compName + '…');
+  try {
+    buildLaunchModal(camp, 0);
+  } catch (e) {
+    console.error('[bp] buildLaunchModal failed:', e);
+    showToast('⚠️ Could not open launcher: ' + (e && e.message || e));
+  }
+}
+
+window.bpLC = function(compIdx, itemIdx) { _bpOpenCounter(compIdx, itemIdx || 0, 'priority'); };
+window.bpCC = function(compIdx, itemIdx) { _bpOpenCounter(compIdx, itemIdx || 0, 'campaign'); };
+window.bpQW = function(compIdx, itemIdx) { _bpOpenCounter(compIdx, itemIdx || 0, 'quickwin'); };
+
+window.bpCS = function(compIdx, itemIdx) {
+  const entry = _bpGet(compIdx);
+  if (!entry) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+  const copy = entry.adCopy && entry.adCopy[itemIdx];
+  const headline = (copy && copy.headline) || ('Beat ' + entry.name + ': counter creative');
+  const body = (copy && copy.body) || (entry.suggestions[itemIdx] || entry.suggestions[0] || '');
+  const platform = entry.channel || 'Meta Ads';
+  if (typeof openAdInCreativeStudio === 'function') {
+    openAdInCreativeStudio(headline, body, platform);
+  } else {
+    showToast('📝 Opening Creative Studio…');
+    navigateTo('smart-creative');
+  }
+};
+
+window.bpGA = function(compIdx, itemIdx) {
+  const entry = _bpGet(compIdx);
+  if (!entry) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+  const kw = entry.keywords[itemIdx] || entry.keywords[0] || 'competitor alternative';
+  const compName = _bpSafe(entry.name, 80);
+  const camp = {
+    name: 'Keyword Attack: "' + _bpSafe(kw, 50) + '" vs ' + compName,
+    platform: 'Google Ads',
+    budget: '$1,500/mo',
+    description: 'Bid on "' + kw + '" to steal traffic from ' + compName + '.',
+    objective: 'Keyword conquest',
+    tags: ['Google Ads', 'Keyword Attack', compName],
+    estROAS: '3.5', estCTR: '5.2%', estCPA: '$28',
+    seedHeadline: kw + ' — better than ' + compName,
+    seedBody: 'Why switch from ' + compName + '? ' + (entry.suggestions[0] || ''),
+    seedCTA: 'Compare Now',
+  };
+  window._counterTarget = { name: compName, weakness: kw, source: 'battleplan-kw', at: Date.now() };
+  showToast('🔑 Building Google Ads brief for "' + kw + '"…');
+  buildLaunchModal(camp, 0);
+};
+
+window.bpBC = function(compIdx, itemIdx) {
+  const entry = _bpGet(compIdx);
+  if (!entry) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+  const kw = entry.keywords[itemIdx] || entry.keywords[0] || entry.suggestions[0] || 'competitor comparison';
+  try {
+    sessionStorage.setItem('ig-content-prefill', JSON.stringify({
+      topic: 'Content to outrank ' + entry.name + ': ' + kw,
+      competitor: entry.name,
+      keyword: kw,
+    }));
+  } catch (_) {}
+  showToast('📝 Opening Content tools — pre-filled for "' + kw + '"');
+  navigateTo('content-modes');
+};
+
+window.bpTA = function(compIdx, itemIdx) {
+  const entry = _bpGet(compIdx);
+  if (!entry) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+  const aud = entry.audiences[itemIdx] || entry.audiences[0] || { label: 'High-Intent Buyers' };
+  const label = aud.label || 'High-Intent Buyers';
+  const platform = _bpPlatform(entry.channel);
+  const compName = _bpSafe(entry.name, 80);
+  const camp = {
+    name: 'Target: ' + label + ' (vs ' + compName + ')',
+    platform,
+    budget: '$2,000/mo',
+    description: 'Capture the "' + label + '" segment ' + compName + ' underserves.',
+    tags: [platform, 'Audience Gap', compName],
+    estROAS: '3.4', estCTR: '4.0%', estCPA: '$30',
+    seedHeadline: label + ' — choose us over ' + compName,
+    seedBody: entry.suggestions[0] || '',
+    seedCTA: 'Start Free',
+  };
+  showToast('🎯 Targeting "' + label + '" vs ' + compName + '…');
+  buildLaunchModal(camp, 0);
+};
+
+function _apCloseModal() {
+  const m = document.getElementById('attackPlanModal');
+  if (m) { m.classList.add('hidden'); m.style.display = 'none'; }
+}
+
+function _apSwitchTab(tab) {
+  const body = document.getElementById('attackPlanModalBody');
+  if (!body || !window._apPlanData) return;
+  const plan = window._apPlanData;
+  document.querySelectorAll('#apTabBar button').forEach(btn => {
+    const on = btn.getAttribute('data-tab') === tab;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('data-active', on ? 'true' : 'false');
+  });
+  let html = '';
+  if (tab === 'overview') {
+    html = '<div style="padding:20px 24px;color:#0F172A;line-height:1.6">'
+      + '<p style="font-size:0.95rem;margin:0 0 16px">' + _bpSafe(plan.executiveSummary || 'Strategic attack plan generated.', 800) + '</p>'
+      + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">'
+      + '<div style="background:#F0FDF4;border-radius:10px;padding:14px;text-align:center"><div style="font-size:1.4rem;font-weight:800;color:#059669">' + (plan.opportunityScore || '—') + '</div><div style="font-size:0.7rem;color:#64748B">Opportunity</div></div>'
+      + '<div style="background:#EFF6FF;border-radius:10px;padding:14px;text-align:center"><div style="font-size:1.4rem;font-weight:800;color:#0066FF">' + _bpSafe(plan.estimatedROILift || '—', 12) + '</div><div style="font-size:0.7rem;color:#64748B">ROI lift</div></div>'
+      + '<div style="background:#FEF3C7;border-radius:10px;padding:14px;text-align:center"><div style="font-size:1.4rem;font-weight:800;color:#D97706">' + _bpSafe(plan.timeToResults || '—', 20) + '</div><div style="font-size:0.7rem;color:#64748B">Time to results</div></div>'
+      + '</div></div>';
+  } else if (tab === 'weekly') {
+    html = '<div style="padding:20px 24px">' + (plan.weeklyPlan || []).map(w =>
+      '<div style="border:1px solid #E2E8F0;border-radius:10px;padding:14px;margin-bottom:10px">'
+      + '<div style="font-weight:800;color:#0F172A;margin-bottom:4px">' + _bpSafe(w.week, 40) + ' — ' + _bpSafe(w.focus, 80) + '</div>'
+      + '<ul style="margin:8px 0 0 18px;color:#475569;font-size:0.85rem">' + (w.actions || []).map(a => '<li>' + _bpSafe(a, 120) + '</li>').join('') + '</ul>'
+      + '<div style="font-size:0.75rem;color:#64748B;margin-top:8px">KPI: ' + _bpSafe(w.kpi, 80) + '</div></div>'
+    ).join('') + '</div>';
+  } else if (tab === 'keywords') {
+    html = '<div style="padding:20px 24px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:0.82rem">'
+      + '<tr style="background:#F8FAFC"><th style="text-align:left;padding:8px">Keyword</th><th>Volume</th><th>CPC</th><th>Priority</th></tr>'
+      + (plan.keywordTargets || []).map(k =>
+        '<tr><td style="padding:8px;border-top:1px solid #E2E8F0">' + _bpSafe(k.keyword, 60) + '</td>'
+        + '<td style="text-align:center;border-top:1px solid #E2E8F0">' + _bpSafe(k.volume, 20) + '</td>'
+        + '<td style="text-align:center;border-top:1px solid #E2E8F0">' + _bpSafe(k.cpc, 12) + '</td>'
+        + '<td style="text-align:center;border-top:1px solid #E2E8F0;font-weight:700">' + _bpSafe(k.priority, 12) + '</td></tr>'
+      ).join('') + '</table></div>';
+  } else {
+    html = '<div style="padding:20px 24px">' + (plan.criticalWins || []).map(w =>
+      '<div style="border-left:4px solid #10B981;padding:10px 14px;margin-bottom:10px;background:#F0FDF4;border-radius:0 8px 8px 0">'
+      + '<div style="font-weight:700;color:#0F172A">' + _bpSafe(w.win, 120) + '</div>'
+      + '<div style="font-size:0.75rem;color:#64748B;margin-top:4px">Impact: ' + _bpSafe(w.impact, 20) + ' · ' + _bpSafe(w.timeframe, 30) + '</div></div>'
+    ).join('') + '</div>';
+  }
+  body.innerHTML = html;
+}
+
+function renderAttackPlan(plan, competitor) {
+  let modal = document.getElementById('attackPlanModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'attackPlanModal';
+    modal.className = 'modal-backdrop';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:20px';
+    modal.onclick = (e) => { if (e.target === modal) _apCloseModal(); };
+    document.body.appendChild(modal);
+  }
+  window._apPlanData = plan;
+  modal.innerHTML = '<div style="background:white;border-radius:16px;max-width:720px;width:100%;max-height:90vh;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4)">'
+    + '<div style="background:linear-gradient(135deg,#0066FF,#00C9C8);padding:20px 24px;color:white;display:flex;justify-content:space-between;align-items:flex-start">'
+    + '<div><div style="font-weight:800;font-size:1.1rem">⚔️ Full Attack Plan vs ' + _bpSafe(competitor, 60) + '</div>'
+    + '<div style="font-size:0.78rem;opacity:.85;margin-top:4px">8-week strategy · keywords · channels · quick wins</div></div>'
+    + '<button type="button" onclick="window._apCloseModal && window._apCloseModal()" style="background:rgba(255,255,255,.2);border:none;width:32px;height:32px;border-radius:8px;color:white;font-size:1rem;cursor:pointer">✕</button></div>'
+    + '<div id="apTabBar" style="display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid #E2E8F0">'
+    + ['overview','weekly','keywords','wins'].map((t, i) =>
+      '<button type="button" data-tab="' + t + '" class="' + (i === 0 ? 'active' : '') + '" data-active="' + (i === 0 ? 'true' : 'false') + '" onclick="window._apSwitchTab && window._apSwitchTab(\'' + t + '\')" style="padding:8px 14px;border-radius:8px;border:1px solid transparent;font-size:0.78rem;font-weight:700;cursor:pointer">'
+      + (t === 'overview' ? 'Overview' : t === 'weekly' ? '8-Week Plan' : t === 'keywords' ? 'Keywords' : 'Quick Wins') + '</button>'
+    ).join('')
+    + '</div><div id="attackPlanModalBody" style="max-height:60vh;overflow:auto"></div>'
+    + '<div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;gap:10px;justify-content:flex-end">'
+    + '<button type="button" onclick="window._apCloseModal && window._apCloseModal()" style="padding:10px 18px;background:#F1F5F9;border:none;border-radius:8px;font-weight:600;cursor:pointer">Close</button>'
+    + '<button type="button" onclick="window.bpLC && window.bpLC(window._apCompIdx||0,0);window._apCloseModal && window._apCloseModal()" style="padding:10px 18px;background:linear-gradient(135deg,#EF4444,#DC2626);border:none;border-radius:8px;color:white;font-weight:700;cursor:pointer">⚡ Execute Top Priority</button>'
+    + '</div></div>';
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  _apSwitchTab('overview');
+}
+
+window._apCloseModal = _apCloseModal;
+window._apSwitchTab = _apSwitchTab;
+window.renderAttackPlan = renderAttackPlan;
+
+window.openFullAttackPlanModal = function(compIdx) {
+  const comps = (analysisData && analysisData.competitors) || [];
+  const comp = comps[compIdx] || comps[0];
+  if (!comp) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+  window._apCompIdx = compIdx;
+  const myDomain = (analysisData && analysisData.url) || 'yourdomain.com';
+  const industry = (analysisData && analysisData.industry && analysisData.industry.name) || 'your industry';
+  showToast('⚔️ Generating Full Attack Plan vs ' + (comp.name || 'competitor') + '…');
+  let modal = document.getElementById('attackPlanModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'attackPlanModal';
+    modal.className = 'modal-backdrop';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);padding:20px';
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  modal.innerHTML = '<div style="background:white;border-radius:16px;padding:40px;text-align:center;max-width:400px"><div style="font-size:2rem;margin-bottom:12px">⏳</div><div style="font-weight:700;color:#0F172A">Building attack plan…</div><div style="font-size:0.85rem;color:#64748B;margin-top:8px">Usually 15–30 seconds</div></div>';
+  fetch('/api/ai-attack-plan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      myDomain,
+      competitor: comp.name,
+      industry,
+      competitorData: {
+        traffic: comp.traffic || comp.trafficMo,
+        adSpend: comp.adSpend,
+        channels: comp.topChannel ? [comp.topChannel] : [],
+        weaknesses: comp.suggestions || [],
+      },
+      prefillKeywords: (comp.topKeywords || []).slice(0, 5),
+    }),
+  })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('Attack plan request failed')))
+    .then(plan => {
+      renderAttackPlan(plan, comp.name);
+      showToast('✅ Attack plan ready vs ' + comp.name);
+    })
+    .catch(err => {
+      console.error('[openFullAttackPlanModal]', err);
+      _apCloseModal();
+      showToast('⚠️ Could not generate attack plan — try again or use Execute Top Priority');
+    });
+};
 
 function closePlanModal() {
   const modal = document.getElementById('planModal');
