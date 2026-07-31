@@ -80,6 +80,40 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/** API payloads sometimes omit list fields — normalize before render/copy. */
+function normalizeRun(raw: Partial<BriefRun> & { related_kws?: RelatedKw[] } | null | undefined): BriefRun | null {
+  if (!raw || typeof raw !== "object") return null;
+  const brief = (raw.brief && typeof raw.brief === "object" ? raw.brief : {}) as Brief;
+  const related = Array.isArray(raw.related_keywords)
+    ? raw.related_keywords
+    : Array.isArray(raw.related_kws)
+      ? raw.related_kws
+      : [];
+  const competitorPages = Array.isArray(raw.competitor_pages) ? raw.competitor_pages : [];
+  return {
+    id: Number(raw.id) || 0,
+    keyword: String(raw.keyword || ""),
+    brief: {
+      title: brief.title || "",
+      seo_title: brief.seo_title || "",
+      meta_description: brief.meta_description || "",
+      target_word_count: Number(brief.target_word_count) || 0,
+      headings: Array.isArray(brief.headings) ? brief.headings : [],
+      must_cover_topics: Array.isArray(brief.must_cover_topics) ? brief.must_cover_topics : [],
+      entities: Array.isArray(brief.entities) ? brief.entities : [],
+      questions_to_answer: Array.isArray(brief.questions_to_answer) ? brief.questions_to_answer : [],
+      unique_angle: brief.unique_angle || "",
+      recommendations: Array.isArray(brief.recommendations) ? brief.recommendations : [],
+      source: brief.source,
+    },
+    related_keywords: related,
+    competitor_pages: competitorPages,
+    serp_snapshot: Array.isArray(raw.serp_snapshot) ? raw.serp_snapshot : [],
+    avg_word_count: Number(raw.avg_word_count) || 0,
+    created_at: String(raw.created_at || ""),
+  };
+}
+
 // ── Copy to clipboard helper ───────────────────────────────────────────────
 function buildMarkdown(run: BriefRun): string {
   const b = run.brief;
@@ -142,8 +176,10 @@ export default function ContentBrief() {
       const r = await apiPost<BriefRun & { ok: boolean; error?: string }>("/api/content-brief/generate", {
         keyword: keyword.trim(),
       });
-      if (!r.ok) { setError(r.error || "Generation failed"); return; }
-      setRun(r as BriefRun);
+      if (r.ok === false) { setError(r.error || "Generation failed"); return; }
+      const normalized = normalizeRun(r);
+      if (!normalized?.keyword) { setError(r.error || "Generation failed"); return; }
+      setRun(normalized);
       setActiveTab("brief");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed");
@@ -154,9 +190,11 @@ export default function ContentBrief() {
 
   const loadRun = useCallback(async (id: number) => {
     try {
-      const r = await apiGet<BriefRun & { ok: boolean }>(`/api/content-brief/${id}`);
-      setRun(r as BriefRun);
-      setKeyword(r.keyword);
+      const r = await apiGet<BriefRun & { ok?: boolean }>(`/api/content-brief/${id}`);
+      const normalized = normalizeRun(r);
+      if (!normalized) return;
+      setRun(normalized);
+      setKeyword(normalized.keyword);
       setActiveTab("brief");
     } catch {}
   }, []);

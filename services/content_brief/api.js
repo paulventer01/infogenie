@@ -284,7 +284,26 @@ router.get('/:id', async (req, res) => {
   );
   if (!row.rows.length) return _err(res, 404, 'not found');
   const r = row.rows[0];
-  res.json({ ok: true, ...r });
+  const competitorPages = Array.isArray(r.competitor_pages) ? r.competitor_pages : [];
+  const relatedKeywords = Array.isArray(r.related_kws) ? r.related_kws
+    : Array.isArray(r.related_keywords) ? r.related_keywords : [];
+  const serpSnapshot = Array.isArray(r.serp_snapshot) ? r.serp_snapshot : [];
+  const avgWords = competitorPages.length
+    ? Math.round(competitorPages.reduce((s, p) => s + (Number(p.words) || 0), 0) / competitorPages.length)
+    : 0;
+  // Map DB columns → React panel shape (related_kws → related_keywords).
+  res.json({
+    ok: true,
+    id: r.id,
+    keyword: r.keyword,
+    brief: r.brief || {},
+    related_keywords: relatedKeywords,
+    competitor_pages: competitorPages,
+    serp_snapshot: serpSnapshot,
+    avg_word_count: avgWords,
+    source: r.source,
+    created_at: r.created_at,
+  });
 });
 
 // ── DELETE /:id ────────────────────────────────────────────────────────────
