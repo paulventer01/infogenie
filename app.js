@@ -2794,6 +2794,64 @@ function _injectNextStep(viewId) {
   view.appendChild(banner);
 }
 
+// ===== LOADING OVERLAY (analyse progress) =====
+// AppShell's .content keeps a transform from its entrance animation, which
+// turns position:fixed into "fixed to the content box". The loading card was
+// then centered in a tall off-screen area — users only saw a dark veil.
+// Always portal the overlay onto document.body while it is visible.
+function _igShowLoadingOverlay(targetLabel) {
+  const overlay = document.getElementById('loadingOverlay');
+  if (!overlay) return null;
+  if (!overlay.dataset.igHomeParent) {
+    overlay.dataset.igHomeParent = '1';
+    overlay._igHomeParent = overlay.parentNode;
+  }
+  try {
+    if (overlay.parentNode !== document.body) document.body.appendChild(overlay);
+  } catch (_) {}
+  overlay.classList.remove('hidden');
+  overlay.style.display = 'flex';
+  const targetEl = document.getElementById('loadingTargetValue');
+  if (targetEl) targetEl.textContent = targetLabel || 'your market';
+  const list = document.getElementById('loadingActivityList');
+  if (list) list.innerHTML = '';
+  window._igLoadingActStart = performance.now();
+  return overlay;
+}
+
+function _igHideLoadingOverlay(overlay) {
+  const el = overlay || document.getElementById('loadingOverlay');
+  if (!el) return;
+  el.style.display = 'none';
+  el.classList.add('hidden');
+  try {
+    if (el._igHomeParent && el.parentNode === document.body) {
+      el._igHomeParent.appendChild(el);
+    }
+  } catch (_) {}
+}
+
+function _igLoadingActivity(message, state) {
+  const list = document.getElementById('loadingActivityList');
+  if (!list) return;
+  // Mark previous active rows as done
+  list.querySelectorAll('li.is-active').forEach((li) => {
+    li.classList.remove('is-active');
+    li.classList.add('is-done');
+  });
+  const li = document.createElement('li');
+  if (state === 'done') li.className = 'is-done';
+  else li.className = 'is-active';
+  const sec = window._igLoadingActStart
+    ? ((performance.now() - window._igLoadingActStart) / 1000).toFixed(1)
+    : '0.0';
+  li.innerHTML = `<span>${String(message || '').replace(/</g, '&lt;')}</span><span class="loading-act-time">${sec}s</span>`;
+  list.appendChild(li);
+  try { list.scrollTop = list.scrollHeight; } catch (_) {}
+  const statusText = document.getElementById('loadingStatusText');
+  if (statusText && state !== 'done') statusText.textContent = message;
+}
+
 // ===== ANALYSIS FLOW =====
 async function runAnalysis(url, country, industryOverride) {
   // ── Pause field enhancer during the analyse-flow render burst ──────────────
@@ -2910,10 +2968,17 @@ async function runAnalysis(url, country, industryOverride) {
     hintEl.style.color = '#00C9C8';
   }
 
-  // Show loading
-  const overlay = document.getElementById('loadingOverlay');
-  overlay.classList.remove('hidden');
-  overlay.style.display = 'flex';
+  // Show loading — portal to body so the card is actually visible.
+  const targetLabel = sectorOnly
+    ? (industryOverride || industry.name || 'sector overview')
+    : cleanUrl;
+  const overlay = _igShowLoadingOverlay(targetLabel);
+  _igLoadingActivity(
+    sectorOnly
+      ? `Starting sector analysis for “${targetLabel}”`
+      : `Opening ${cleanUrl} — scraping site signals`,
+    'active',
+  );
 
   // ── Safety net ─────────────────────────────────────────────────────────────
   // The overlay is now hidden late in the flow (after competitor-metrics +
@@ -2924,8 +2989,7 @@ async function runAnalysis(url, country, industryOverride) {
   window._runAnalysisSafetyTimer = setTimeout(() => {
     try {
       if (overlay && overlay.style.display !== 'none') {
-        overlay.style.display = 'none';
-        overlay.classList.add('hidden');
+        _igHideLoadingOverlay(overlay);
         if (window._elapsedTimer) { clearInterval(window._elapsedTimer); window._elapsedTimer = null; }
         showToast('⚠ Analyse took longer than expected — opening dashboard with available data');
         window.IGDiag && IGDiag.err && IGDiag.err('runAnalysis: safety watchdog fired (90s)', 'overlay was still visible');
@@ -2951,11 +3015,11 @@ async function runAnalysis(url, country, industryOverride) {
     ? `Industry set to: ${industry.name} ✓`
     : `Auto-detected industry: ${industry.name}`;
   const steps = [
-    { id: 'lst1', label: detectionLabel, duration: 250 },
-    { id: 'lst2', label: `Found ${industry.competitors.length} targeted competitors in ${industry.name}`, duration: 300 },
-    { id: 'lst3', label: 'Analysing campaign performance, CTR, and ROAS...', duration: 350 },
-    { id: 'lst4', label: 'Generating AI campaign recommendations...', duration: 300 },
-    { id: 'lst5', label: 'Building full intelligence report...', duration: 200 }
+    { id: 'lst1', label: detectionLabel, activity: `Classifying niche → ${industry.name}`, duration: 250 },
+    { id: 'lst2', label: `Found ${industry.competitors.length} targeted competitors in ${industry.name}`, activity: `Shortlisting ${industry.competitors.length} rivals in ${industry.name}`, duration: 300 },
+    { id: 'lst3', label: 'Analysing campaign performance, CTR, and ROAS...', activity: 'Reading campaign performance signals (CTR / ROAS / spend)', duration: 350 },
+    { id: 'lst4', label: 'Generating AI campaign recommendations...', activity: 'Drafting AI campaign recommendations & creative angles', duration: 300 },
+    { id: 'lst5', label: 'Building full intelligence report...', activity: 'Assembling intelligence report structure', duration: 200 }
   ];
   
   const bar = document.getElementById('loadingBarFill');
@@ -2965,8 +3029,10 @@ async function runAnalysis(url, country, industryOverride) {
   // Reset steps
   steps.forEach(s => {
     const el = document.getElementById(s.id);
+    if (!el) return;
     el.classList.remove('active', 'done');
-    el.querySelector('.lstep-check').classList.add('hidden');
+    const check = el.querySelector('.lstep-check');
+    if (check) check.classList.add('hidden');
   });
   
   bar.style.width = '0%';
@@ -2978,8 +3044,9 @@ async function runAnalysis(url, country, industryOverride) {
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i];
     const el = document.getElementById(s.id);
-    el.classList.add('active');
-    statusText.textContent = s.label;
+    if (el) el.classList.add('active');
+    if (statusText) statusText.textContent = s.label;
+    _igLoadingActivity(s.activity || s.label, 'active');
     
     await wait(s.duration);
     
@@ -2988,15 +3055,24 @@ async function runAnalysis(url, country, industryOverride) {
     bar.style.width = progress + '%';
     pct.textContent = progress + '%';
     
-    el.classList.remove('active');
-    el.classList.add('done');
-    el.querySelector('.lstep-check').classList.remove('hidden');
-    el.querySelector('.lstep-dot').style.background = 'var(--green)';
+    if (el) {
+      el.classList.remove('active');
+      el.classList.add('done');
+      const check = el.querySelector('.lstep-check');
+      if (check) check.classList.remove('hidden');
+      el.querySelector('.lstep-dot').style.background = 'var(--green)';
+    }
   }
   
   bar.style.width = '95%';
   pct.textContent = '95%';
   statusText.textContent = 'Fetching live competitor intelligence...';
+  _igLoadingActivity(
+    sectorOnly
+      ? `Calling AI sector matcher for “${targetLabel}”`
+      : `Running AI smart-detect on ${cleanUrl}`,
+    'active',
+  );
 
   // ── Await live AI smart-detection result (already running in background) ───
   // If it returned real competitors + a sharper industry name, override the DB.
@@ -3015,7 +3091,23 @@ async function runAnalysis(url, country, industryOverride) {
   if (_elapsedEl) _elapsedEl.textContent = _runSec + 's';
   window._lastRunDuration = parseFloat(_runSec);
   window._analysisStartedAt = null;
+  if (aiDetected && aiDetected.ok) {
+    const n = Array.isArray(aiDetected.competitors) ? aiDetected.competitors.length : 0;
+    const niche = aiDetected.subNiche || aiDetected.industryName || industry.name;
+    _igLoadingActivity(
+      n
+        ? `AI matched ${n} competitors in ${niche}`
+        : `AI classified niche as ${niche}`,
+      'active',
+    );
+  } else if (sectorDetected && sectorDetected.ok) {
+    const n = Array.isArray(sectorDetected.competitors) ? sectorDetected.competitors.length : 0;
+    _igLoadingActivity(`Sector match returned ${n} competitors`, 'active');
+  } else {
+    _igLoadingActivity('Using industry database competitors (live AI unavailable)', 'active');
+  }
   statusText.textContent = `✅ Industry & competitors locked in — fetching live metrics…`;
+  _igLoadingActivity('Industry & competitors locked — fetching live metrics', 'active');
   // NOTE: overlay stays visible. The two slowest API calls
   // (competitor-metrics ~12s + ai-validate-metrics ~13s) still run below,
   // and we don't want the user staring at a blank home page for ~25s.
@@ -3140,6 +3232,7 @@ async function runAnalysis(url, country, industryOverride) {
       // pulled from DataForSEO domain_rank_overview + keywords_for_site.
       try {
         statusText.textContent = 'Pulling live competitor traffic & ad-spend data...';
+        _igLoadingActivity('Pulling live competitor traffic & ad-spend data', 'active');
         const domainList = aiCompetitorPool.map(c => c.domain).filter(Boolean);
         if (domainList.length) {
           // 25s hard timeout — DataForSEO can be slow but should never hang the UI.
@@ -3195,6 +3288,7 @@ async function runAnalysis(url, country, industryOverride) {
       // DataForSEO returned nothing.
       try {
         statusText.textContent = 'AI is validating competitor data accuracy...';
+        _igLoadingActivity('AI validating competitor metrics for accuracy', 'active');
         window.IGDiag && IGDiag.mark('ai-validate-metrics: start', `n=${aiCompetitorPool.length}`);
         const aiPayload = aiCompetitorPool.map(c => ({
           name: c.name,
@@ -3503,9 +3597,9 @@ async function runAnalysis(url, country, industryOverride) {
     const _totalSec = ((performance.now() - _runStart) / 1000).toFixed(1);
     if (_elapsedEl) _elapsedEl.textContent = _totalSec + 's';
     if (statusText) statusText.textContent = `✅ Intelligence report ready in ${_totalSec}s!`;
+    _igLoadingActivity(`Intelligence report ready in ${_totalSec}s`, 'done');
     await wait(250);
-    overlay.style.display = 'none';
-    overlay.classList.add('hidden');
+    _igHideLoadingOverlay(overlay);
     if (window._runAnalysisSafetyTimer) { clearTimeout(window._runAnalysisSafetyTimer); window._runAnalysisSafetyTimer = null; }
     showToast(`✅ Dashboard ready in ${_totalSec}s`);
   } catch(_) {}

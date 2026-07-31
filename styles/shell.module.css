@@ -647,12 +647,14 @@
   flex: 1;
   min-width: 0;
   padding: 0;
+  /* Avoid leaving a transform after the entrance animation — transforms create
+     a containing block for position:fixed and trapped the analyse overlay. */
   animation: contentRise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes contentRise {
   from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 
 .backdrop {

@@ -805,11 +805,12 @@
   </section>
 </div>
 
-<!-- LOADING OVERLAY -->
-<div class="loading-overlay hidden" id="loadingOverlay">
+<!-- LOADING OVERLAY — portaled to document.body while running so it isn't
+     trapped by AppShell .content transform (which made the card sit off-screen). -->
+<div class="loading-overlay hidden" id="loadingOverlay" role="dialog" aria-modal="true" aria-labelledby="loadingTitle" aria-live="polite">
   <div class="loading-card">
     <div class="loading-logo-wrap">
-      <svg width="48" height="48" viewBox="0 0 40 40" fill="none">
+      <svg width="48" height="48" viewBox="0 0 40 40" fill="none" aria-hidden="true">
         <circle cx="20" cy="20" r="20" fill="url(#lgGrad)"/>
         <path d="M13 20 Q20 10 27 20 Q20 30 13 20Z" fill="white" opacity="0.9"/>
         <circle cx="20" cy="20" r="4" fill="white"/>
@@ -822,26 +823,39 @@
       </svg>
       <span class="loading-brand">InfoGenie</span>
     </div>
-    <p class="loading-title">AI Intelligence Engine Running</p>
+    <p class="loading-title" id="loadingTitle">AI is analysing your market</p>
+    <div class="loading-target" id="loadingTarget">
+      <span class="loading-target-pulse" aria-hidden="true"></span>
+      <span class="loading-target-label">Target</span>
+      <strong id="loadingTargetValue">—</strong>
+    </div>
     <div class="loading-steps-list">
-      <div class="lstep" id="lst1"><div class="lstep-dot"></div><div class="lstep-text"><strong>Detecting industry & market segment</strong><br/><small>Analysing domain, content & structure</small></div><div class="lstep-check hidden">✓</div></div>
-      <div class="lstep" id="lst2"><div class="lstep-dot"></div><div class="lstep-text"><strong>Identifying top competitors</strong><br/><small>Scanning industry database & ad libraries</small></div><div class="lstep-check hidden">✓</div></div>
-      <div class="lstep" id="lst3"><div class="lstep-dot"></div><div class="lstep-text"><strong>Analysing competitor campaigns</strong><br/><small>CTR, ROAS, ad spend, audience data</small></div><div class="lstep-check hidden">✓</div></div>
-      <div class="lstep" id="lst4"><div class="lstep-dot"></div><div class="lstep-text"><strong>Generating AI recommendations</strong><br/><small>Campaign strategy & creative briefs</small></div><div class="lstep-check hidden">✓</div></div>
-      <div class="lstep" id="lst5"><div class="lstep-dot"></div><div class="lstep-text"><strong>Building intelligence report</strong><br/><small>ROI projections & audience targeting</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst1"><div class="lstep-dot"></div><div class="lstep-text"><strong>Detecting industry &amp; market segment</strong><br/><small>Reading site signals &amp; niche</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst2"><div class="lstep-dot"></div><div class="lstep-text"><strong>Identifying top competitors</strong><br/><small>Mapping real rivals in your niche</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst3"><div class="lstep-dot"></div><div class="lstep-text"><strong>Analysing competitor campaigns</strong><br/><small>Traffic, spend signals &amp; channels</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst4"><div class="lstep-dot"></div><div class="lstep-text"><strong>Generating AI recommendations</strong><br/><small>Strategy, creative &amp; targeting</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst5"><div class="lstep-dot"></div><div class="lstep-text"><strong>Building intelligence report</strong><br/><small>Dashboard, battle plan &amp; next steps</small></div><div class="lstep-check hidden">✓</div></div>
+    </div>
+    <div class="loading-activity" id="loadingActivity" aria-live="polite">
+      <div class="loading-activity-head">Live activity</div>
+      <ul class="loading-activity-list" id="loadingActivityList"></ul>
     </div>
     <div class="loading-progress-wrap">
       <div class="loading-bar-track"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
       <span class="loading-pct" id="loadingPct">0%</span>
-      <span id="loadingElapsedPill" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#0066FF,#00D8D7);color:#FFFFFF;padding:4px 12px;border-radius:999px;font-size:0.78rem;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:0 4px 12px rgba(0,102,255,.35);white-space:nowrap;margin-left:6px" title="Live elapsed time for this analysis run">
-        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#FFFFFF;box-shadow:0 0 0 0 rgba(255,255,255,.85);animation:pulseDot 1.2s infinite ease-out"></span>
+      <span id="loadingElapsedPill" class="loading-elapsed-pill" title="Live elapsed time for this analysis run">
+        <span class="loading-elapsed-dot" aria-hidden="true"></span>
         ⏱ <span id="loadingElapsedTime">0.0s</span>
       </span>
     </div>
-    <div class="loading-status-text" id="loadingStatusText">Initialising InfoGenie AI Engine...</div>
+    <div class="loading-status-text" id="loadingStatusText">Initialising InfoGenie AI Engine…</div>
   </div>
 </div>
-<style>@keyframes pulseDot{0%{box-shadow:0 0 0 0 rgba(0,201,200,.7)}70%{box-shadow:0 0 0 10px rgba(0,201,200,0)}100%{box-shadow:0 0 0 0 rgba(0,201,200,0)}}</style>
+<style>
+@keyframes pulseDot{0%{box-shadow:0 0 0 0 rgba(0,201,200,.7)}70%{box-shadow:0 0 0 10px rgba(0,201,200,0)}100%{box-shadow:0 0 0 0 rgba(0,201,200,0)}}
+@keyframes igLoadPulse{0%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:.55}100%{transform:scale(1);opacity:1}}
+@keyframes igActIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+</style>
 
 <!-- DASHBOARD VIEW -->
 
