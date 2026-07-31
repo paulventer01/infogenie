@@ -201,12 +201,12 @@ export default function TechnicalSuite() {
             onClick={runAll}
             style={{
               padding: "10px 20px",
-              background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+              background: "linear-gradient(135deg,#0F766E 0%,#0284C7 100%)",
               border: "none",
               borderRadius: 10,
               fontSize: "0.78rem",
               fontWeight: 700,
-              color: "white",
+              color: "#FFFFFF",
               cursor: "pointer",
               whiteSpace: "nowrap",
             }}
@@ -326,12 +326,12 @@ function TechPanelView({
             disabled={busy}
             style={{
               padding: "9px 18px",
-              background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+              background: "linear-gradient(135deg,#0F766E 0%,#0284C7 100%)",
               border: "none",
               borderRadius: 9,
               fontSize: "0.76rem",
               fontWeight: 700,
-              color: "white",
+              color: "#FFFFFF",
               cursor: busy ? "default" : "pointer",
               whiteSpace: "nowrap",
               opacity: busy ? 0.7 : 1,
