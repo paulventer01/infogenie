@@ -633,7 +633,7 @@ export default function Battleplan() {
         </div>
 
         {/* Bottom CTA */}
-        <div style={{ marginTop: 24, background: "linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06))", border: "1px solid rgba(0,201,200,.2)", borderRadius: 14, padding: "20px 24px" }}>
+        <div className="bp-attack-cta" style={{ marginTop: 24, background: "linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06))", border: "1px solid rgba(0,201,200,.2)", borderRadius: 14, padding: "20px 24px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
             <div>
               <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.95rem", fontWeight: 800, color: "#0F172A", marginBottom: 4 }}>🚀 Launch Full Attack Plan</div>
@@ -668,8 +668,9 @@ export default function Battleplan() {
                 🚀 Generate Attack Plan
               </button>
               <button
+                type="button"
+                className="bp-cta-secondary"
                 onClick={() => goToView(router, "intelligence")}
-                style={{ padding: "11px 20px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, fontSize: "0.82rem", fontWeight: 600, color: "white", cursor: "pointer", whiteSpace: "nowrap" }}
               >
                 📊 Deep Intelligence
               </button>
