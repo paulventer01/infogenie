@@ -90,6 +90,7 @@ const EMPTY_CHANNEL: ChannelData = {
 function normalizeBlended(raw: Partial<BlendedData> & {
   data_unavailable?: boolean;
   message?: string;
+  source?: string;
 } | null): BlendedData | null {
   if (!raw || typeof raw !== "object") return null;
   if (raw.data_unavailable || raw.source === "data_unavailable") {
@@ -351,8 +352,8 @@ export default function BlendedPerf() {
                     height: 26,
                     borderRadius: 8,
                     fontSize: "0.85rem",
-                    background: j.channels[c.key].ok ? c.color : "#475569",
-                    opacity: j.channels[c.key].ok ? 1 : 0.4,
+                    background: channelOf(j, c.key).ok ? c.color : "#475569",
+                    opacity: channelOf(j, c.key).ok ? 1 : 0.4,
                   }}
                 >
                   {c.icon}
@@ -443,7 +444,7 @@ export default function BlendedPerf() {
           }}
         >
           {CHANNELS.map((c) => {
-            const d = j.channels[c.key];
+            const d = channelOf(j, c.key);
             if (!d.ok) {
               const { headline, fixHint } = diagnose(c.key, d.error);
               const fixSecrets = SECRETS[c.key];
@@ -748,7 +749,7 @@ export default function BlendedPerf() {
               Amplitude conversion source
             </div>
           </div>
-          {j.amplitude.ok ? (
+          {j.amplitude?.ok ? (
             (j.amplitude.conversions || 0) > 0 ? (
               <>
                 <div
