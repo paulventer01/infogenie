@@ -648,10 +648,10 @@ export default function Battleplan() {
               <select
                 id="attackPlanCompSelect"
                 defaultValue={String(idx)}
-                style={{ padding: "10px 14px", background: "#1A2E4A", border: "1px solid rgba(0,201,200,.3)", borderRadius: 9, fontSize: "0.82rem", fontWeight: 600, color: "white", cursor: "pointer", width: "100%", appearance: "auto" }}
+                style={{ padding: "10px 14px", borderRadius: 9, fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", width: "100%", appearance: "auto" }}
               >
                 {comps.map((cc, i) => (
-                  <option key={i} value={i} style={{ background: "#1A2E4A", color: "white" }}>
+                  <option key={i} value={i}>
                     {cc.name || "Competitor " + (i + 1)}
                   </option>
                 ))}
