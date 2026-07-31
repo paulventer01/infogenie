@@ -70,6 +70,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "action-queue": L("action-queue", () => import("@/components/features/manage/ActionQueue")),
   "ad-comment-monitor": L("ad-comment-monitor", () => import("@/components/features/grow/AdCommentMonitor")),
   "ask-infogenie": L("ask-infogenie", () => import("@/components/features/manage/AskInfoGenie")),
+  "strategic-intelligence": L("strategic-intelligence", () => import("@/components/features/manage/StrategicIntelligence")),
   "marketing-memory": L("marketing-memory", () => import("@/components/features/manage/MarketingMemory")),
   "predictive-intelligence": L("predictive-intelligence", () => import("@/components/features/manage/PredictiveIntelligence")),
   "agent-goals": L("agent-goals", () => import("@/components/features/manage/AgentGoals")),

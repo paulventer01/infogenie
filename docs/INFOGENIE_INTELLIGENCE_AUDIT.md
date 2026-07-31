@@ -50,10 +50,24 @@ Every action surface now aims for:
 3. **Why best** — why this beats the obvious alternative  
 4. **Follow-through** — deep-link to the executing tool  
 
-## Recommended next waves (not in this PR)
+## Strategic Intelligence moat (shipped)
+
+New Manage surface: **Strategic Intelligence** (`/manage/strategic-intelligence`) + `/api/strategic/*`.
+
+| Capability | What shipped |
+|------------|--------------|
+| Root-cause decomposition | Cause tree + ranked fix sequence + why-best |
+| NL scenario modelling | “What if largest customer churns?” / “+8% price −5% volume” → base/downside/upside |
+| Institutional memory | Business facts + decisions with 90-day review + outcome write-back into Marketing Memory |
+| External benchmarking | “Should I be worried?” vs sector/network peers (e.g. CAC payback 14 vs ~9) |
+| Write-back catalog | Queue mutations to Meta/Google/HubSpot/Slack/GA annotations — competitors stop at read |
+
+Ask InfoGenie auto-routes scenario / root-cause / benchmark questions into this engine. Brief pulls due decision reviews as foresight signals.
+
+## Recommended next waves
 
 1. Wire real GSC/GA4 OAuth into Analytics Hub (replace preview).  
-2. Collapse duplicate nav (Analytics Hub, Action Center → Battle Plan).  
-3. Feed experiment / True ROAS outcomes back into Decision Engine priority scoring.  
-4. Auto-log provenance on every analyse run.  
+2. Live execute write-backs when OAuth present (today: queue + internal annotation).  
+3. Collapse duplicate nav (Analytics Hub, Action Center → Battle Plan).  
+4. Feed experiment / True ROAS outcomes into Decision Engine scoring.  
 5. Weekly learning rollup: “what we acted on, what worked.”

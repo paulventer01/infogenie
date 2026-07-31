@@ -28,6 +28,10 @@ const NODE_TYPE_META: Record<string, { label: string; icon: string; color: strin
   lead_event:           { label: "Lead Event",           icon: "🎯", color: "#10B981" },
   manual_observation:   { label: "Manual Observation",   icon: "📌", color: "#6B7280" },
   ai_synthesis:         { label: "AI Synthesis",         icon: "🧠", color: "#06B6D4" },
+  business_fact:        { label: "Business Fact",        icon: "📚", color: "#0F766E" },
+  strategic_decision:   { label: "Strategic Decision",   icon: "⚖️", color: "#1D4ED8" },
+  outcome_review:       { label: "Outcome Review",       icon: "✅", color: "#059669" },
+  benchmark_insight:    { label: "Benchmark Insight",    icon: "📶", color: "#B45309" },
 };
 
 const ALL_TYPES = Object.keys(NODE_TYPE_META);

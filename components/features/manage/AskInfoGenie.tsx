@@ -91,17 +91,18 @@ interface IndexStatus {
 }
 
 const SUGGESTIONS_STANDARD = [
+  "What if we raise prices 8% and lose 5% of volume?",
+  "What happens if our largest customer churns?",
+  "Why is ROAS down — root-cause decomposition?",
+  "Should I be worried about our CAC payback vs peers?",
   "Which landing page is converting best?",
-  "Are any campaigns over budget?",
-  "What is my ROAS by campaign?",
-  "Which leads should I call first?",
   "What changed in the last 7 days?",
 ];
 
 const SUGGESTIONS_BOARDROOM = [
   "Summarise our marketing performance for the board",
   "What is our biggest growth risk this quarter?",
-  "Where should we double-down on ad spend?",
+  "Should I be worried about CAC payback vs comparable firms?",
   "What decisions need leadership sign-off?",
 ];
 

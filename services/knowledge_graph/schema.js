@@ -10,7 +10,8 @@ async function ensureKnowledgeGraphSchema() {
       tenant_id       INTEGER NOT NULL,
       node_type       TEXT NOT NULL CHECK (node_type IN (
                         'campaign_result','competitor_signal','content_performance',
-                        'audience_shift','lead_event','manual_observation','ai_synthesis'
+                        'audience_shift','lead_event','manual_observation','ai_synthesis',
+                        'business_fact','strategic_decision','outcome_review','benchmark_insight'
                       )),
       source_ref      TEXT,
       summary         TEXT NOT NULL,

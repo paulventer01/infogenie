@@ -66,6 +66,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/bulk-reports',              view: 'reports.view', write: 'reports.export' },
   { prefix: '/api/digest',                    view: 'reports.view', write: 'reports.export' },
   { prefix: '/api/marketing-brief',           view: 'reports.view', write: 'reports.export' },
+  { prefix: '/api/strategic',                 view: 'reports.view', write: 'reports.export' },
   { prefix: '/api/exports',                   view: 'reports.view', write: 'reports.export' },
   { prefix: '/api/infographics',              view: 'reports.view', write: 'reports.export' },
 
@@ -468,6 +469,7 @@ const COMPONENT_MATRIX = {
   'budget-board':         'manage.budget.view',
   'customer-360':         'brand.view',
   'ask-infogenie':        'manage.ask.use',
+  'strategic-intelligence':'manage.ask.use',
   'playbook-7day':        'manage.playbook.use',
   'ai-providers':         'manage.ai_providers.view',
   'signal-triggers':      'manage.signals.manage',

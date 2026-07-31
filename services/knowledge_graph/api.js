@@ -61,7 +61,11 @@ async function ingestMemoryNode({ tenant_id, node_type, summary, detail = {}, so
   if (!_db.hasDb()) return null;
   if (!tenant_id || !node_type || !summary) return null;
 
-  const validTypes = ['campaign_result','competitor_signal','content_performance','audience_shift','lead_event','manual_observation','ai_synthesis'];
+  const validTypes = [
+    'campaign_result','competitor_signal','content_performance','audience_shift',
+    'lead_event','manual_observation','ai_synthesis',
+    'business_fact','strategic_decision','outcome_review','benchmark_insight',
+  ];
   if (!validTypes.includes(node_type)) return null;
 
   try {

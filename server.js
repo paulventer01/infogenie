@@ -3396,6 +3396,9 @@ app.use('/api/rcs',                _rcsRouter);
 app.use('/api/llm-kb',             _llmKbRouter);
 app.use('/api/knowledge-graph',    _kgApi.router);
 app.use('/api/predictions',        _predictionsApi.router);
+const _strategicSchema = require('./services/strategic_intelligence/schema');
+const _strategicApi    = require('./services/strategic_intelligence/api');
+app.use('/api/strategic',          _strategicApi.router);
 // Knowledge Graph monthly rollup — fires daily at 03:00-ish (off-peak).
 if (_runtimeFlags.backgroundEnabled()) {
   const _kgRollupDelay = (() => {
@@ -3440,6 +3443,7 @@ BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _llmKbSchema.ensureLlmKbSchema();
   await _kgSchema.ensureKnowledgeGraphSchema();
   await _predictionsSchema.ensurePredictionsSchema();
+  await _strategicSchema.ensureStrategicIntelligenceSchema();
   await _privacySchema.ensurePrivacyComplianceSchema();
   await _brandDnaSchema.ensureBrandDnaSchema();
   await _workflowBuilderSchema.ensureWorkflowBuilderSchema();

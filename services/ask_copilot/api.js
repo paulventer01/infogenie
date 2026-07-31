@@ -295,6 +295,14 @@ async function _answerBoardroom(q, standardResult, chunks, predictions, liveBloc
   };
 }
 
+function _strategicIntent(q) {
+  const lq = q.toLowerCase();
+  if (/\bwhat if\b|\bwhat happens if\b|scenario|raise prices|lose \d+%|churns?\b|cut (ad )?spend/i.test(lq)) return 'scenario';
+  if (/root cause|why (is|are|did|does)|decompos|what'?s driving|diagnose why/i.test(lq)) return 'root_cause';
+  if (/should i (be )?worr|benchmark|comparable firms|peer|sector median|cac payback/i.test(lq)) return 'benchmark';
+  return null;
+}
+
 router.post('/ask', _safe(async (req, res) => {
   const q          = String(req.body?.question || '').trim().slice(0, 1200);
   const mode       = req.body?.mode === 'boardroom' ? 'boardroom' : 'standard';
@@ -306,6 +314,60 @@ router.post('/ask', _safe(async (req, res) => {
 
   const userId = req.user?.id || null;
   const topic  = _deriveTopic(q);
+  const stratIntent = _strategicIntent(q);
+
+  // Route natural-language scenario / root-cause / benchmark questions into Strategic Intelligence
+  if (stratIntent) {
+    try {
+      const strat = require('../strategic_intelligence/api');
+      const sj =
+        stratIntent === 'scenario' ? await strat.runScenario(tid, q, req.body?.assumptions || {})
+        : stratIntent === 'root_cause' ? await strat.runRootCause(tid, q)
+        : await strat.runBenchmarkWorry(tid, req.body?.vertical || 'saas', req.body?.your_metrics || {});
+      if (sj && sj.ok) {
+        const headline = sj.headline || sj.primary_cause || sj.interpreted_question || 'Strategic analysis';
+        const answer = sj.summary || sj.recommendation || sj.primary_cause || sj.answer
+          || (sj.scenarios ? sj.scenarios.map(s => `${s.name}: ${s.narrative}`).join('\n') : JSON.stringify(sj).slice(0, 800));
+        const actions = (sj.actions || sj.fix_sequence || []).map(a => ({
+          label: a.label || a.action || 'Act',
+          description: a.why_best || a.impact || a.description || '',
+          effort: a.effort || 'medium',
+          impact: a.impact || 'high',
+        }));
+        if (sj.why_best) {
+          actions.unshift({ label: 'Why this is the best route', description: sj.why_best, effort: 'n/a', impact: 'strategic' });
+        }
+        const answer_json = {
+          question: q, mode, topic: stratIntent,
+          headline: String(headline).slice(0, 160),
+          answer: String(answer),
+          confidence: sj.confidence_pct || 65,
+          evidence: (sj.evidence || sj.comparisons || []).slice(0, 6).map((e, i) => ({
+            index: i + 1,
+            type: stratIntent,
+            content: typeof e === 'string' ? e : (e.takeaway || e.evidence || JSON.stringify(e)),
+            relevance: 80,
+          })),
+          risk_flags: sj.risks || sj.risks_if_ignored || [],
+          recommended_actions: actions,
+          strategic: sj,
+          why_best: sj.why_best,
+          source: 'strategic-intelligence',
+          created_at: new Date().toISOString(),
+        };
+        if (_db.hasDb()) {
+          const pool = _db.getPool();
+          pool.query(
+            `INSERT INTO ask_history (tenant_id, user_id, question, answer_json, mode, topic) VALUES ($1,$2,$3,$4,$5,$6)`,
+            [tid, userId, q, answer_json, mode, stratIntent],
+          ).catch(() => {});
+        }
+        return res.json({ ok: true, ...answer_json });
+      }
+    } catch (e) {
+      console.warn('[ask-copilot] strategic route failed:', e.message);
+    }
+  }
 
   if (!_hasOpenAI()) {
     return res.json({

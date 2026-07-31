@@ -278,6 +278,16 @@ async function _gatherSignals(pool, tid) {
     }
   } catch { /* table may not exist */ }
 
+  // 14 · Institutional memory — due decision reviews + business facts
+  try {
+    const { gatherStrategicSignals } = require('../strategic_intelligence/api');
+    const strat = await gatherStrategicSignals(pool, tid);
+    if (strat.length) {
+      activePillars.push('institutional-memory');
+      signals.push(...strat);
+    }
+  } catch { /* optional */ }
+
   return { signals, activePillars };
 }
 
