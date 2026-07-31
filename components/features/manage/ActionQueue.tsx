@@ -5,7 +5,9 @@
 // actionable "what to do today" dashboard inspired by Madgicx.
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiGet, apiPost } from "@/lib/api";
+import { goToView } from "@/lib/nav";
 
 interface Recommendation {
   id: number;
@@ -75,6 +77,7 @@ function ConfidencePill({ pct }: { pct: number }) {
 }
 
 export default function ActionQueue() {
+  const router = useRouter();
   const [recs, setRecs]           = useState<Recommendation[]>([]);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -451,10 +454,28 @@ export default function ActionQueue() {
                   })}
                 </>
               ) : (
-                <div style={{ color: "#94a3b8", fontSize: "0.83rem" }}>
+                <div style={{ color: "#64748b", fontSize: "0.83rem", lineHeight: 1.45, marginBottom: 12 }}>
                   Set your monthly budget in the Budget Board to see goals here.
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() => goToView(router, "budget-board")}
+                style={{
+                  width: "100%",
+                  marginTop: budget ? 10 : 0,
+                  padding: "9px 12px",
+                  background: "linear-gradient(135deg,#0F766E,#0284C7)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 800,
+                  fontSize: "0.78rem",
+                  cursor: "pointer",
+                }}
+              >
+                Open Budget Board →
+              </button>
             </div>
 
             {/* Campaign health */}
