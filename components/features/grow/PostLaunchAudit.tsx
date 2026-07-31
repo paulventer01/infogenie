@@ -207,10 +207,17 @@ export default function PostLaunchAudit() {
                       </div>
                     </div>
                     <div style={{ marginTop: 10, display: "flex", gap: 12, fontSize: "0.72rem", color: "#64748B" }}>
-                      {checks.map(c => {
+                      {checks.map((c, i) => {
                         const b = statusBadge(c.status);
                         const m = CHECK_META[c.check_type];
-                        return <span key={c.id} style={{ background: b.bg, color: b.color, padding: "2px 8px", borderRadius: 99, fontWeight: 600 }}>{m?.icon} {m?.label.split(" ")[0]}</span>;
+                        return (
+                          <span
+                            key={`${a.id}-${c.check_type || "check"}-${c.id ?? i}`}
+                            style={{ background: b.bg, color: b.color, padding: "2px 8px", borderRadius: 99, fontWeight: 600 }}
+                          >
+                            {m?.icon} {m?.label.split(" ")[0]}
+                          </span>
+                        );
                       })}
                     </div>
                     {a.scheduled_for && (
@@ -251,12 +258,12 @@ export default function PostLaunchAudit() {
 
           {/* Check cards */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            {(active.checks || []).map(check => {
+            {(active.checks || []).map((check, i) => {
               const meta = CHECK_META[check.check_type] || { label: check.check_type, icon: "🔍", description: "" };
               const badge = statusBadge(check.status);
               const details = check.details || {};
               return (
-                <div key={check.id} style={{ ...card, borderLeft: `4px solid ${check.status === "pass" ? "#10B981" : check.status === "fail" ? "#EF4444" : "#CBD5E1"}` }}>
+                <div key={`${active.id}-${check.check_type || "check"}-${check.id ?? i}`} style={{ ...card, borderLeft: `4px solid ${check.status === "pass" ? "#10B981" : check.status === "fail" ? "#EF4444" : "#CBD5E1"}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <span style={{ fontSize: "1.3rem" }}>{meta.icon}</span>
