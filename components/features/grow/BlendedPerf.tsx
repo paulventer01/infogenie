@@ -81,6 +81,62 @@ const fmtMoney = (n: number | null | undefined) =>
   "$" + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 const fmtNum = (n: number | null | undefined) => Number(n || 0).toLocaleString();
 
+const EMPTY_CHANNEL: ChannelData = {
+  ok: false,
+  error: "not-configured",
+};
+
+/** Strict-mode / partial API payloads may omit channels — never crash on .ok/.meta. */
+function normalizeBlended(raw: Partial<BlendedData> & {
+  data_unavailable?: boolean;
+  message?: string;
+} | null): BlendedData | null {
+  if (!raw || typeof raw !== "object") return null;
+  if (raw.data_unavailable || raw.source === "data_unavailable") {
+    return null;
+  }
+  const ch = (raw.channels && typeof raw.channels === "object"
+    ? raw.channels
+    : {}) as Partial<BlendedData["channels"]>;
+  const amp = (raw.amplitude && typeof raw.amplitude === "object"
+    ? raw.amplitude
+    : { ok: false, error: "not-configured" }) as AmplitudeData;
+  return {
+    ok: raw.ok !== false,
+    error: raw.error,
+    days: raw.days,
+    totalSpend: raw.totalSpend,
+    mer: raw.mer ?? null,
+    ltvCac: raw.ltvCac ?? null,
+    cac: raw.cac ?? null,
+    ltvAssumed: raw.ltvAssumed ?? null,
+    netSales: raw.netSales ?? null,
+    customers: raw.customers,
+    customerSource: raw.customerSource,
+    totalRevenue: raw.totalRevenue,
+    roas: raw.roas ?? null,
+    roasNote: raw.roasNote,
+    channels: {
+      meta: ch.meta || { ...EMPTY_CHANNEL },
+      google: ch.google || { ...EMPTY_CHANNEL },
+      tiktok: ch.tiktok || { ...EMPTY_CHANNEL },
+    },
+    amplitude: {
+      ok: !!amp.ok,
+      error: amp.error,
+      conversions: amp.conversions,
+      conversionEvents: Array.isArray(amp.conversionEvents)
+        ? amp.conversionEvents
+        : [],
+      note: amp.note,
+    },
+  };
+}
+
+function channelOf(data: BlendedData, key: ChannelKey): ChannelData {
+  return data.channels?.[key] || { ...EMPTY_CHANNEL };
+}
+
 function diagnose(key: ChannelKey, error?: string): { headline: string; fixHint: string } {
   const errStr = String(error || "").toLowerCase();
   if (error === "not-configured")
@@ -134,13 +190,27 @@ export default function BlendedPerf() {
     setState("loading");
     setError("");
     setTrueRoas(null);
-    const res = await apiGet<BlendedData>("/api/blended-roas?days=" + d);
-    if (!res.ok) {
-      setError(res.error || "Failed");
+    const res = await apiGet<
+      BlendedData & { data_unavailable?: boolean; message?: string; source?: string }
+    >("/api/blended-roas?days=" + d);
+    if (res.ok === false || res.data_unavailable || res.source === "data_unavailable") {
+      setError(
+        res.message ||
+          res.error ||
+          "Blended performance data is unavailable. Connect ad platforms in Settings, or enable Demo Data Mode.",
+      );
+      setData(null);
       setState("error");
       return;
     }
-    setData(res);
+    const normalized = normalizeBlended(res);
+    if (!normalized) {
+      setError(res.message || res.error || "Failed");
+      setData(null);
+      setState("error");
+      return;
+    }
+    setData(normalized);
     setState("done");
     const t = await apiGet<TrueRoasSummary>(
       "/api/true-roas/summary?days=" + d,
@@ -238,7 +308,7 @@ export default function BlendedPerf() {
       );
 
     const j = data;
-    const okCount = CHANNELS.filter((c) => j.channels[c.key].ok).length;
+    const okCount = CHANNELS.filter((c) => channelOf(j, c.key).ok).length;
     return (
       <>
         {/* Blended Summary hero */}
@@ -272,7 +342,7 @@ export default function BlendedPerf() {
               {CHANNELS.map((c) => (
                 <span
                   key={c.key}
-                  title={`${c.name} · ${j.channels[c.key].ok ? "live" : "not connected"}`}
+                  title={`${c.name} · ${channelOf(j, c.key).ok ? "live" : "not connected"}`}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
