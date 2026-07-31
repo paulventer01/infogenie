@@ -623,7 +623,7 @@ window._igLaunch = function(idx) {
         <div style="font-size:2rem;margin-bottom:12px">⚠️</div>
         <div style="font-weight:800;font-size:1rem;color:#0A1628;margin-bottom:8px">Couldn't open Launch modal</div>
         <div style="font-size:0.82rem;color:#6B7280;margin-bottom:20px">${err.message}</div>
-        <button onclick="document.getElementById('campLaunchRichModal').classList.add('hidden');document.getElementById('campLaunchRichModal').removeAttribute('style')" style="padding:10px 24px;background:#0066FF;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700">Close</button>
+        <button onclick="closeCampLaunchRichModal()" style="padding:10px 24px;background:#0066FF;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700">Close</button>
       </div>`;
     } else {
       alert('Error opening launch: ' + err.message);
@@ -1212,9 +1212,12 @@ function buildLaunchModal(camp, idx) {
     alert('Launch modal not found. Please refresh the page and try again.');
     return;
   }
+  _igPortalToBody(modal);
   modal.classList.remove('hidden');
   modal.removeAttribute('style');
-  modal.style.cssText = 'display:flex !important; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; background:rgba(0,0,0,.65); backdrop-filter:blur(4px); padding:20px;';
+  modal.style.cssText = 'display:flex !important;position:fixed;inset:0;z-index:20000;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:20px;overflow-y:auto;';
+  try { window.scrollTo(0, 0); } catch (_) {}
+  document.documentElement.style.overflow = 'hidden';
 
   // Data
   const name       = camp.name || 'Campaign';
@@ -1260,28 +1263,28 @@ function buildLaunchModal(camp, idx) {
 
   inner.innerHTML = `
     <style>@keyframes spin{to{transform:rotate(360deg)}} @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}</style>
-    <div style="background:var(--ig-grad);padding:24px 28px;border-radius:20px 20px 0 0">
+    <div class="camp-launch-modal-header">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <div style="font-size:1rem;font-weight:800;font-family:Sora,sans-serif;color:white">🚀 Campaign Launch Brief</div>
-        <span id="lm-ai-badge" style="background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);border-radius:6px;padding:3px 10px;font-size:0.68rem;font-weight:700;color:#A5B4FC">${spin}GPT-4 Building Brief...</span>
+        <div class="camp-launch-title">🚀 Campaign Launch Brief</div>
+        <span id="lm-ai-badge" class="camp-launch-ai-badge">${spin}GPT-4 Building Brief...</span>
       </div>
-      <div style="font-size:0.8rem;color:rgba(255,255,255,.6);margin-bottom:16px">${name} · ${platform}</div>
+      <div class="camp-launch-subtitle">${name} · ${platform}</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Projected Return on Ad Spend — estimated revenue earned per $1 of budget, based on your industry benchmarks and campaign settings.">
-          <div id="lm-roas-val" style="font-size:1.1rem;font-weight:800;color:#00E5FF">${projROAS}×</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Proj. ROAS</div>
+        <div class="camp-launch-kpi" title="Projected Return on Ad Spend — estimated revenue earned per $1 of budget, based on your industry benchmarks and campaign settings.">
+          <div id="lm-roas-val" class="camp-launch-kpi-val" style="color:#00E5FF">${projROAS}×</div>
+          <div class="camp-launch-kpi-label">Proj. ROAS</div>
         </div>
-        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Estimated number of completed goals (purchases, sign-ups, calls) this campaign is projected to generate each month.">
-          <div id="lm-conv-val" style="font-size:1.1rem;font-weight:800;color:#10B981">${projConv}</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Est. Conversions</div>
+        <div class="camp-launch-kpi" title="Estimated number of completed goals (purchases, sign-ups, calls) this campaign is projected to generate each month.">
+          <div id="lm-conv-val" class="camp-launch-kpi-val" style="color:#10B981">${projConv}</div>
+          <div class="camp-launch-kpi-label">Est. Conversions</div>
         </div>
-        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Estimated monthly revenue attributable to this campaign, calculated from projected ROAS × monthly budget.">
-          <div id="lm-rev-val" style="font-size:1.1rem;font-weight:800;color:#F59E0B">${projRev}</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Est. Revenue</div>
+        <div class="camp-launch-kpi" title="Estimated monthly revenue attributable to this campaign, calculated from projected ROAS × monthly budget.">
+          <div id="lm-rev-val" class="camp-launch-kpi-val" style="color:#F59E0B">${projRev}</div>
+          <div class="camp-launch-kpi-label">Est. Revenue</div>
         </div>
-        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Maximum amount spent per day. InfoGenie divides your monthly budget by 30 to set this cap automatically.">
-          <div id="lm-daily-val" style="font-size:1.1rem;font-weight:800;color:white">$${dailyBudg}/day</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Daily Budget</div>
+        <div class="camp-launch-kpi" title="Maximum amount spent per day. InfoGenie divides your monthly budget by 30 to set this cap automatically.">
+          <div id="lm-daily-val" class="camp-launch-kpi-val">$${dailyBudg}/day</div>
+          <div class="camp-launch-kpi-label">Daily Budget</div>
         </div>
       </div>
     </div>
@@ -1900,7 +1903,7 @@ function buildLaunchModal(camp, idx) {
                   this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
                   this.closest('.cl-item').style.background='#D1FAE5';}
                 " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#1D4ED8;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;cursor:pointer">💾 Save Keywords</button>
-                <button onclick="var _m=document.getElementById('campLaunchRichModal');if(_m){_m.classList.add('hidden');_m.style.display='none';}var _m2=document.getElementById('launchModal');if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}navigateTo('competitors');"
+                <button onclick="var _m=document.getElementById('campLaunchRichModal');if(_m){closeCampLaunchRichModal();}var _m2=document.getElementById('launchModal');if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}navigateTo('competitors');"
                   style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#6B7280;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer">→ Keyword Gap Analysis</button>
               </div>
             </div>`;
@@ -1919,7 +1922,7 @@ function buildLaunchModal(camp, idx) {
                   this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
                   this.closest('.cl-item').style.background='#D1FAE5';}
                 " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#7C3AED;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:6px;cursor:pointer">💾 Save Copy</button>
-                <button onclick="var _m=document.getElementById('campLaunchRichModal');if(_m){_m.classList.add('hidden');_m.style.display='none';}var _m2=document.getElementById('launchModal');if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}navigateTo('creative');"
+                <button onclick="var _m=document.getElementById('campLaunchRichModal');if(_m){closeCampLaunchRichModal();}var _m2=document.getElementById('launchModal');if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}navigateTo('creative');"
                   style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#6B7280;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer">→ AI Creative Studio</button>
               </div>
             </div>`;
@@ -2809,13 +2812,7 @@ function _injectNextStep(viewId) {
 function _igShowLoadingOverlay(targetLabel) {
   const overlay = document.getElementById('loadingOverlay');
   if (!overlay) return null;
-  if (!overlay.dataset.igHomeParent) {
-    overlay.dataset.igHomeParent = '1';
-    overlay._igHomeParent = overlay.parentNode;
-  }
-  try {
-    if (overlay.parentNode !== document.body) document.body.appendChild(overlay);
-  } catch (_) {}
+  _igPortalToBody(overlay);
   overlay.classList.remove('hidden');
   overlay.style.display = 'flex';
   const targetEl = document.getElementById('loadingTargetValue');
@@ -2831,6 +2828,24 @@ function _igHideLoadingOverlay(overlay) {
   if (!el) return;
   el.style.display = 'none';
   el.classList.add('hidden');
+  _igRestoreFromBody(el);
+}
+
+// Portal fixed overlays/modals to document.body so they aren't trapped inside
+// AppShell's transformed .content box (same root cause as the loading overlay).
+function _igPortalToBody(el) {
+  if (!el) return;
+  if (!el.dataset.igHomeParent) {
+    el.dataset.igHomeParent = '1';
+    el._igHomeParent = el.parentNode;
+  }
+  try {
+    if (el.parentNode !== document.body) document.body.appendChild(el);
+  } catch (_) {}
+}
+
+function _igRestoreFromBody(el) {
+  if (!el) return;
   try {
     if (el._igHomeParent && el.parentNode === document.body) {
       el._igHomeParent.appendChild(el);
@@ -6775,6 +6790,8 @@ function closeCampLaunchRichModal() {
   if (!modal) return;
   modal.classList.add('hidden');
   modal.removeAttribute('style');
+  document.documentElement.style.overflow = '';
+  _igRestoreFromBody(modal);
 }
 
 function confirmCampLaunch(name, platform, budget) {

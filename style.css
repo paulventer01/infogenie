@@ -1912,6 +1912,63 @@ body {
   padding: 20px;
   backdrop-filter: blur(4px);
 }
+
+/* Campaign Launch Brief — portaled to body; keep header readable in all themes */
+#campLaunchRichModal {
+  z-index: 20000;
+}
+#campLaunchRichModal > .modal-box {
+  max-height: min(90vh, 920px);
+  margin: auto;
+  width: min(760px, 100%);
+  overflow-y: auto;
+}
+#campLaunchRichModal .camp-launch-modal-header {
+  background: linear-gradient(135deg, #0C1222 0%, #0EA5E9 100%);
+  padding: 24px 28px;
+  border-radius: 20px 20px 0 0;
+  color: #FFFFFF;
+}
+#campLaunchRichModal .camp-launch-title {
+  font-size: 1rem;
+  font-weight: 800;
+  font-family: Sora, sans-serif;
+  color: #FFFFFF !important;
+}
+#campLaunchRichModal .camp-launch-subtitle {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.88) !important;
+  margin-bottom: 16px;
+}
+#campLaunchRichModal .camp-launch-ai-badge {
+  background: rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #C7D2FE !important;
+}
+#campLaunchRichModal .camp-launch-kpi {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+#campLaunchRichModal .camp-launch-kpi-val {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #FFFFFF !important;
+}
+#campLaunchRichModal .camp-launch-kpi-label {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.78) !important;
+  margin-top: 2px;
+}
+[data-theme="light"] #campLaunchRichModal .camp-launch-modal-header,
+[data-theme="light"] #campLaunchRichModal .camp-launch-modal-header *:not(button) {
+  color: inherit;
+}
 .modal-box {
   background: white;
   border-radius: var(--radius-xl);
