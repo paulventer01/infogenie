@@ -782,6 +782,17 @@ export default function MarketingBrief() {
     } catch { /* ignore */ } finally { setDelivering(false); }
   };
 
+  const brief = data?.brief ?? null;
+  const digest = data?.digest ?? null;
+  const recommendations = data?.recommendations ?? [];
+  // Must stay above any early returns — Rules of Hooks
+  const todayActions = useMemo(
+    () => mergeTodoActions(brief, recommendations),
+    // compTick forces rebuild when analysisData arrives
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [brief, recommendations, compTick],
+  );
+
   const formattedDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   if (loading) return (
@@ -799,14 +810,6 @@ export default function MarketingBrief() {
       <div style={{ fontSize: '0.82rem', color: '#64748B', marginBottom: 14 }}>{error}</div>
       <button onClick={() => load()} style={{ padding: '8px 18px', background: '#6366F1', color: '#fff', border: 'none', borderRadius: 7, fontWeight: 700, cursor: 'pointer' }}>Retry</button>
     </div>
-  );
-
-  const { brief, digest, recommendations } = data || {};
-  const todayActions = useMemo(
-    () => mergeTodoActions(brief || null, recommendations || []),
-    // compTick forces rebuild when analysisData arrives
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [brief, recommendations, compTick],
   );
 
   return (
