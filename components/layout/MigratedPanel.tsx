@@ -1,9 +1,9 @@
 "use client";
 
-import { Component, Suspense, type ErrorInfo, type ReactNode, useEffect, useState } from "react";
+import { Component, Suspense, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { pathToViewId } from "@/lib/viewRoutes";
-import { settleNavPending } from "@/lib/navPending";
+import { markNavPending, settleNavPending } from "@/lib/navPending";
 import { MIGRATED_COMPONENTS } from "@/components/features/registry";
 
 class PanelErrorBoundary extends Component<
@@ -82,14 +82,25 @@ function PanelReady({ view, children }: { view: string; children: ReactNode }) {
  * view changes — only the inner panel is keyed. Remounting the boundary (via
  * key={view}) while Suspense is resolving races React's DOM reconciler and
  * throws NotFoundError: removeChild.
+ *
+ * Arm markNavPending synchronously when the view changes (before Suspense may
+ * evaluate the lazy chunk). useEffect is too late for that window. AppShell
+ * also calls markNavPending on click; this covers direct URL loads / back-forward.
  */
 export default function MigratedPanel() {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
+  const armedView = useRef<string | null>(null);
   useEffect(() => setMounted(true), []);
 
   const view = pathToViewId(pathname);
   const Cmp = view ? MIGRATED_COMPONENTS[view] : undefined;
+
+  if (mounted && view && Cmp && armedView.current !== view) {
+    armedView.current = view;
+    markNavPending("nav→" + view);
+  }
+
   if (!mounted || !view || !Cmp) return null;
 
   return (

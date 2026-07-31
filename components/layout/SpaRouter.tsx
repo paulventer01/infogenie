@@ -10,9 +10,11 @@ import { isMigratedView } from "@/lib/migratedViews";
 // <LegacyScripts/> to finish (ig:legacy-ready) before navigating, since
 // navigateTo only exists once app.js has run.
 //
-// Migrated React panels are owned by <MigratedPanel/> — re-entering legacy
-// navigateTo on every pathname change races lazy chunk eval and leaves the
-// IGDiag breadcrumb stuck on `nav→<view>` during MAIN-THREAD STALL reports.
+// Migrated React panels are owned by <MigratedPanel/> — do not call legacy
+// navigateTo (that races lazy chunk eval). Also do NOT clear the IGDiag
+// breadcrumb to `idle` here: markNavPending / settleNavPending own that
+// lifecycle. Clearing early made real panel-mount work look like
+// `last=idle · view=<panel>` MAIN-THREAD STALL false positives.
 export default function SpaRouter() {
   const pathname = usePathname();
 
@@ -23,11 +25,6 @@ export default function SpaRouter() {
         if (isMigratedView(view)) {
           try {
             (window as unknown as { currentView?: string }).currentView = view;
-          } catch {
-            /* noop */
-          }
-          try {
-            window.IGDiag?.setBreadcrumb?.("idle");
           } catch {
             /* noop */
           }

@@ -88,8 +88,16 @@ export function settleNavPending(view?: string): void {
     resumeFields(true);
   };
 
-  // Dashboard (and similarly large panels) commit 1k+ nodes on first paint.
-  const settleMs = view === "dashboard" || view === "competitors" || view === "battleplan" ? 2800 : 1600;
+  // Large / form-heavy panels commit 1k+ nodes (and often hydrate from API)
+  // after first paint — keep the stall guard up long enough to cover that.
+  const heavy =
+    view === "dashboard" ||
+    view === "competitors" ||
+    view === "battleplan" ||
+    view === "white-label" ||
+    view === "settings" ||
+    view === "csuite";
+  const settleMs = heavy ? 2800 : 1600;
 
   try {
     requestAnimationFrame(() => {
