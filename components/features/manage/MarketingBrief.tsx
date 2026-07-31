@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiPut } from '@/lib/api';
 import { showToast } from '@/hooks/useToast';
+import { goToView } from '@/lib/nav';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,10 +29,30 @@ interface Brief {
   greeting: string;
   signals: BriefSignal[];
   sections: BriefSection[];
+  actions?: BriefAction[];
   active_pillars: string[];
   generated_by: string;
   created_at: string;
   delivered_to: { channel: string; at: string; ok: boolean }[];
+}
+
+interface BriefAction {
+  label?: string;
+  rationale?: string;
+  expected_impact?: string;
+  view?: string;
+  priority?: number;
+}
+
+interface TodoAction {
+  key: string;
+  answer: string;
+  recommendation: string;
+  followThrough: string;
+  view: string;
+  impact: string;
+  source: "brief" | "competitive" | "decision";
+  priority: number;
 }
 
 interface DigestSection { title: string; body: string }
@@ -86,12 +108,250 @@ const CAT_ICON: Record<string, string> = {
   seo: '🔍', lifecycle: '🔄', competitive: '⚔️',
 };
 
+const CAT_TO_VIEW: Record<string, string> = {
+  budget: 'budget',
+  channel: 'campaigns',
+  creative: 'creative',
+  audience: 'audience',
+  seo: 'seo-roadmap',
+  lifecycle: 'reengage',
+  competitive: 'battleplan',
+};
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function navigate(view: string) {
   if (!view) return;
+  // Prefer Next router when available (set by MarketingBrief root)
+  const r = (window as unknown as { __igBriefRouter?: { push: (p: string) => void } }).__igBriefRouter;
+  if (r) {
+    try {
+      goToView(r as Parameters<typeof goToView>[0], view);
+      return;
+    } catch { /* fall through */ }
+  }
   document.dispatchEvent(new CustomEvent('ig:spa-navigate', { detail: { view } }));
-  if (typeof (window as any).navigateTo === 'function') (window as any).navigateTo(view);
+  try {
+    const w = window as unknown as { navigateTo?: (v: string) => void };
+    if (typeof w.navigateTo === 'function') w.navigateTo(view);
+  } catch { /* ignore */ }
+}
+
+function buildCompetitiveTodos(): TodoAction[] {
+  if (typeof window === 'undefined') return [];
+  const ad = (window as unknown as {
+    analysisData?: {
+      url?: string;
+      industry?: { name?: string } | string;
+      competitors?: {
+        name?: string;
+        roas?: number | string;
+        ctr?: string | number;
+        topChannel?: string;
+        suggestions?: string[];
+        topKeywords?: string[];
+        threatLevel?: string;
+      }[];
+      websiteKPIs?: { roas?: number | string };
+    };
+  }).analysisData;
+  if (!ad?.competitors?.length) return [];
+
+  const comps = ad.competitors;
+  const top = comps[0];
+  const industry = typeof ad.industry === 'string' ? ad.industry : ad.industry?.name || 'your market';
+  const yourRoas = parseFloat(String(ad.websiteKPIs?.roas || 2.8)) || 2.8;
+  const topRoas = parseFloat(String(top?.roas || 3.5)) || 3.5;
+  const todos: TodoAction[] = [];
+
+  todos.push({
+    key: 'comp-counter-top',
+    answer: `${top?.name || 'Your top competitor'} is the primary threat in ${industry}${top?.topChannel ? ` (strongest on ${top.topChannel})` : ''}, running ~${topRoas.toFixed(1)}× ROAS vs your ~${yourRoas.toFixed(1)}× benchmark.`,
+    recommendation: `Build and launch a counter-campaign against ${top?.name || 'them'} this week — hit their weakest messaging and steal share on their primary channel.`,
+    followThrough: 'Open Battle Plan →',
+    view: 'battleplan',
+    impact: 'Direct competitive advantage',
+    source: 'competitive',
+    priority: 1,
+  });
+
+  const weak = comps.find((c) => parseFloat(String(c.roas || 99)) < yourRoas) || comps[comps.length - 1];
+  if (weak && weak.name !== top?.name) {
+    todos.push({
+      key: 'comp-steal-share',
+      answer: `${weak.name} shows a softer ROAS (~${parseFloat(String(weak.roas || 2)).toFixed(1)}×) — an opening to take share with better creative and tighter targeting.`,
+      recommendation: `Prioritise a lookalike / conquest campaign aimed at ${weak.name}'s audience before they recover.`,
+      followThrough: 'Open Campaigns →',
+      view: 'campaigns',
+      impact: 'Capture competitor share',
+      source: 'competitive',
+      priority: 2,
+    });
+  }
+
+  const kwComp = comps.find((c) => (c.topKeywords || []).length > 0) || top;
+  const kw = (kwComp?.topKeywords || [])[0];
+  if (kw) {
+    todos.push({
+      key: 'comp-keyword',
+      answer: `${kwComp?.name || 'Competitors'} rank/bid around “${kw}” — a high-intent term in ${industry}.`,
+      recommendation: `Create a Search conquest play for “${kw}” with a comparison landing angle vs ${kwComp?.name || 'the leader'}.`,
+      followThrough: 'Keyword / SEO roadmap →',
+      view: 'seo-roadmap',
+      impact: 'Win high-intent demand',
+      source: 'competitive',
+      priority: 3,
+    });
+  }
+
+  const tip = (top?.suggestions || [])[0];
+  if (tip) {
+    todos.push({
+      key: 'comp-suggestion',
+      answer: `Competitive intel flags a concrete gap vs ${top?.name || 'the field'}.`,
+      recommendation: tip,
+      followThrough: 'Open Competitors →',
+      view: 'competitors',
+      impact: 'Close a known weakness',
+      source: 'competitive',
+      priority: 4,
+    });
+  }
+
+  return todos;
+}
+
+function mergeTodoActions(brief: Brief | null, recs: Rec[]): TodoAction[] {
+  const out: TodoAction[] = [];
+  const seen = new Set<string>();
+
+  const push = (a: TodoAction) => {
+    const sig = `${a.view}|${a.recommendation.slice(0, 48)}`;
+    if (seen.has(sig)) return;
+    seen.add(sig);
+    out.push(a);
+  };
+
+  buildCompetitiveTodos().forEach(push);
+
+  (brief?.actions || []).forEach((a, i) => {
+    push({
+      key: `brief-${i}-${a.view || 'x'}`,
+      answer: a.rationale || 'Signal from today’s Marketing Brief.',
+      recommendation: a.label || 'Take the recommended action.',
+      followThrough: a.view ? `Open ${a.view.replace(/-/g, ' ')} →` : 'Open Action Queue →',
+      view: a.view || 'action-queue',
+      impact: a.expected_impact || 'Advance today’s plan',
+      source: 'brief',
+      priority: a.priority || 10 + i,
+    });
+  });
+
+  recs.slice(0, 4).forEach((r) => {
+    push({
+      key: `rec-${r.id}`,
+      answer: `${r.category} opportunity with ${r.confidence_pct}% confidence${r.data_sources ? ` · ${r.data_sources}` : ''}.`,
+      recommendation: r.recommendation || r.title,
+      followThrough: `Act in ${CAT_TO_VIEW[r.category] || 'action-queue'} →`,
+      view: CAT_TO_VIEW[r.category] || 'action-queue',
+      impact: r.expected_impact || r.title,
+      source: 'decision',
+      priority: 20 + (100 - (r.priority_score || 0)),
+    });
+  });
+
+  if (!out.length) {
+    out.push({
+      key: 'fallback-analyse',
+      answer: 'No live competitive or decision signals yet for today’s brief.',
+      recommendation: 'Run a fresh competitor analysis, then return here for a ranked “what to do today” list.',
+      followThrough: 'Run Analysis →',
+      view: 'home',
+      impact: 'Unlock strategic actions',
+      source: 'brief',
+      priority: 99,
+    });
+  }
+
+  return out.sort((a, b) => a.priority - b.priority).slice(0, 6);
+}
+
+function WhatToDoToday({ actions }: { actions: TodoAction[] }) {
+  return (
+    <div
+      id="ig-what-to-do-today"
+      style={{
+        background: 'linear-gradient(135deg,#0C1222 0%,#0F766E 55%,#0284C7 100%)',
+        borderRadius: 16,
+        padding: '20px 22px',
+        marginBottom: 8,
+        color: '#fff',
+        boxShadow: '0 10px 28px rgba(15,23,42,0.18)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 14, alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)', marginBottom: 4 }}>
+            ⚔️ What to do today
+          </div>
+          <div style={{ fontFamily: 'Sora,sans-serif', fontSize: '1.15rem', fontWeight: 800, color: '#FFFFFF' }}>
+            Strategic actions to gain advantage over competitors
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.85)', marginTop: 4, maxWidth: 640, lineHeight: 1.45 }}>
+            Each item has a defensible answer, a clear recommendation, and a follow-through button that takes you to the exact tool to execute it.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate('action-queue')}
+          style={{ padding: '8px 14px', background: '#fff', color: '#0F766E', border: 'none', borderRadius: 9, fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
+        >
+          Full Action Queue →
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {actions.map((a, idx) => (
+          <div
+            key={a.key}
+            style={{
+              background: 'rgba(255,255,255,0.97)',
+              borderRadius: 12,
+              padding: '14px 16px',
+              color: '#0F172A',
+              border: '1px solid rgba(255,255,255,0.35)',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#0F766E,#0284C7)', color: '#fff', fontWeight: 800, fontSize: '0.78rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {idx + 1}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#0F766E', marginBottom: 3 }}>
+                  Answer · {a.source === 'competitive' ? 'Competitive intel' : a.source === 'decision' ? 'Decision Engine' : 'Morning Brief'}
+                </div>
+                <div style={{ fontSize: '0.84rem', color: '#334155', lineHeight: 1.45, marginBottom: 8 }}>{a.answer}</div>
+                <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#1D4ED8', marginBottom: 3 }}>
+                  Recommendation
+                </div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0F172A', lineHeight: 1.4, marginBottom: 8 }}>{a.recommendation}</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ background: '#ECFDF5', color: '#047857', borderRadius: 6, padding: '3px 8px', fontSize: '0.7rem', fontWeight: 700 }}>{a.impact}</span>
+                  <button
+                    type="button"
+                    onClick={() => navigate(a.view)}
+                    style={{ marginLeft: 'auto', padding: '8px 14px', background: 'linear-gradient(135deg,#0066FF,#0EA5E9)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer' }}
+                  >
+                    Follow-through · {a.followThrough}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function SectionLabel({ label }: { label: string }) {
@@ -236,6 +496,16 @@ function RecCard({ rec, onAct, onDismiss }: {
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+        <button
+          onClick={() => navigate(CAT_TO_VIEW[rec.category] || 'action-queue')}
+          title="Open the tool to execute this"
+          style={{
+            padding: '4px 10px', background: '#EEF2FF', color: '#1D4ED8',
+            border: '1px solid #C7D2FE', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer',
+          }}
+        >
+          Go →
+        </button>
         <button
           onClick={handleAct}
           disabled={acting || done}
@@ -383,6 +653,7 @@ function HistoryTab() {
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function MarketingBrief() {
+  const router = useRouter();
   const [data, setData]             = useState<MergedPayload | null>(null);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -392,6 +663,16 @@ export default function MarketingBrief() {
   const [tab, setTab]               = useState<'brief' | 'history'>('brief');
   const [cadence, setCadence]       = useState<Cadence>('daily');
   const [savingCadence, setSavingCadence] = useState(false);
+  const [compTick, setCompTick]     = useState(0);
+
+  useEffect(() => {
+    (window as unknown as { __igBriefRouter?: typeof router }).__igBriefRouter = router;
+    return () => {
+      try {
+        delete (window as unknown as { __igBriefRouter?: typeof router }).__igBriefRouter;
+      } catch { /* ignore */ }
+    };
+  }, [router]);
 
   const load = useCallback(async (force = false) => {
     force ? setRefreshing(true) : setLoading(true);
@@ -415,9 +696,16 @@ export default function MarketingBrief() {
 
   // Auto-refresh when a fresh analysis completes so the brief reflects new data
   useEffect(() => {
-    const onAnalysis = () => { load(true); };
+    const onAnalysis = () => {
+      load(true);
+      setCompTick((t) => t + 1);
+    };
     document.addEventListener('ig:analysis-ready', onAnalysis);
-    return () => document.removeEventListener('ig:analysis-ready', onAnalysis);
+    document.addEventListener('ig:analysis-updated', onAnalysis);
+    return () => {
+      document.removeEventListener('ig:analysis-ready', onAnalysis);
+      document.removeEventListener('ig:analysis-updated', onAnalysis);
+    };
   }, [load]);
 
   const saveCadence = useCallback(async (c: Cadence) => {
@@ -483,6 +771,12 @@ export default function MarketingBrief() {
   );
 
   const { brief, digest, recommendations } = data || {};
+  const todayActions = useMemo(
+    () => mergeTodoActions(brief || null, recommendations || []),
+    // compTick forces rebuild when analysisData arrives
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [brief, recommendations, compTick],
+  );
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '20px 14px 52px', fontFamily: "'Inter','Segoe UI',sans-serif" }}>
@@ -626,6 +920,10 @@ export default function MarketingBrief() {
       {/* ── Today's Brief tab ─────────────────────────────────────────────── */}
       {tab === 'brief' && (
         <>
+          {/* ── What to do today — answer · recommendation · follow-through ─ */}
+          <SectionLabel label="⚔️ What to do today" />
+          <WhatToDoToday actions={todayActions} />
+
           {/* Signal count chips + inline opportunity cards */}
           {(brief?.signals || []).length > 0 && (
             <>

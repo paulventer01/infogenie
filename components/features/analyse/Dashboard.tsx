@@ -794,6 +794,31 @@ export default function Dashboard() {
                 </button>
               ))}
             </div>
+
+            <button
+              type="button"
+              onClick={() => goToView(router, "marketing-brief")}
+              style={{
+                marginTop: 14,
+                width: "100%",
+                textAlign: "left",
+                padding: "14px 16px",
+                borderRadius: 12,
+                border: "1.5px solid rgba(15,118,110,0.25)",
+                background: "linear-gradient(135deg,#ecfdf5,#eff6ff)",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ fontSize: "0.68rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#0f766e", marginBottom: 4 }}>
+                ⚔️ What to do today
+              </div>
+              <div style={{ fontWeight: 800, color: "#0f172a", fontSize: "0.92rem", marginBottom: 4 }}>
+                Open Brief for answer · recommendation · follow-through on each action
+              </div>
+              <div style={{ fontSize: "0.78rem", color: "#475569" }}>
+                Ranked competitive moves with one-click execution paths →
+              </div>
+            </button>
           </div>
         )}
 
