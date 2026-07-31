@@ -2468,23 +2468,23 @@ body {
   background: white;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 6px;
+  padding: 8px;
   display: flex;
-  gap: 4px;
+  gap: 6px;
   margin-bottom: 24px;
   flex-wrap: wrap;
+  align-items: stretch;
   position: sticky;
   top: 72px;
   z-index: 100;
   box-shadow: var(--shadow-sm);
 }
 .stab {
-  flex: 1;
-  min-width: 130px;
-  display: flex;
+  flex: 0 0 auto;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: 6px;
+  padding: 10px 12px;
   border-radius: 8px;
   border: none;
   background: transparent;
@@ -2495,10 +2495,18 @@ body {
   transition: all 0.2s;
   font-family: var(--font-inter, 'Inter'), sans-serif;
   white-space: nowrap;
+  line-height: 1.25;
+  max-width: none;
+  overflow: visible;
 }
 .stab:hover { background: var(--gray-100); color: var(--navy); }
 .stab.active { background: var(--navy); color: white; }
-.stab-icon { font-size: 1rem; }
+.stab-icon { font-size: 1rem; flex-shrink: 0; line-height: 1; }
+.stab-label {
+  white-space: nowrap;
+  overflow: visible;
+  flex: 0 0 auto;
+}
 .stab-count {
   background: rgba(0,201,200,.15);
   color: var(--teal-dark);
@@ -2506,7 +2514,8 @@ body {
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 8px;
-  margin-left: auto;
+  flex-shrink: 0;
+  margin-left: 2px;
 }
 .stab.active .stab-count { background: rgba(255,255,255,.15); color: rgba(255,255,255,.8); }
 

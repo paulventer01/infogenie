@@ -361,6 +361,19 @@ body:has(#ig-app-shell) .tab-btn {
   font-weight: 700 !important;
 }
 
+body:has(#ig-app-shell) .settings-tab-bar .stab {
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+  white-space: nowrap !important;
+}
+
+body:has(#ig-app-shell) .settings-tab-bar .stab-label {
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
 body:has(#ig-app-shell) .tab.active,
 body:has(#ig-app-shell) .stab.active,
 body:has(#ig-app-shell) .tab-btn.active,

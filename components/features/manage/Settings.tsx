@@ -1709,7 +1709,7 @@ export default function Settings() {
                 onClick={() => setActiveTab(key)}
               >
                 <span className="stab-icon">{cat.icon}</span>
-                {cat.label}
+                <span className="stab-label">{cat.label}</span>
                 <span className="stab-count">{cat.items.length}</span>
               </button>
             ))}
