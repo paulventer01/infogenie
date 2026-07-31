@@ -251,9 +251,14 @@
       if (_wdHidden || document.hidden) return; // throttled/suspended ≠ frozen
       if (gap > _WD_THRESHOLD) {
         // Skip expected first-paint costs while a React route transition is
-        // loading a lazy panel chunk (nav click → Suspense resolve).
+        // loading a lazy panel chunk (nav click → Suspense resolve), and while
+        // MigratedPanel is settling after mount (breadcrumb panel:<view>).
         try {
           if (window.__igReactRouting || document.documentElement.getAttribute('data-ig-nav') === '1') {
+            return;
+          }
+          const bc = String(_breadcrumb || '');
+          if (bc.indexOf('nav→') === 0 || bc.indexOf('panel:') === 0 || bc.indexOf('post-analyse') === 0) {
             return;
           }
         } catch(_) {}

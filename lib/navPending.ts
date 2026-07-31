@@ -59,9 +59,15 @@ export function markNavPending(reason = "nav"): void {
 /**
  * Clear nav markers only after paint + a short settle window so first-commit
  * work (lazy panel mount, field decoration) is not reported as a stall.
+ *
+ * Always re-asserts the guard here — analyse → dashboard goes through
+ * legacy `navigateTo` + `ig:spa-navigate` and historically skipped
+ * `markNavPending`, which let IGDiag flag expected Dashboard mount work.
  */
 export function settleNavPending(view?: string): void {
   try {
+    document.documentElement.setAttribute(NAV_ATTR, "1");
+    window.__igReactRouting = true;
     if (view) window.IGDiag?.setBreadcrumb?.("panel:" + view);
   } catch {
     /* noop */
@@ -77,16 +83,18 @@ export function settleNavPending(view?: string): void {
     resumeFields(true);
   };
 
+  // Dashboard (and similarly large panels) commit 1k+ nodes on first paint.
+  const settleMs = view === "dashboard" || view === "competitors" || view === "battleplan" ? 2800 : 1600;
+
   try {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (clearTimer) clearTimeout(clearTimer);
-        // Keep the guard up long enough to cover first paint + enhancer chunks.
-        clearTimer = setTimeout(finish, 1200);
+        clearTimer = setTimeout(finish, settleMs);
       });
     });
   } catch {
     if (clearTimer) clearTimeout(clearTimer);
-    clearTimer = setTimeout(finish, 1200);
+    clearTimer = setTimeout(finish, settleMs);
   }
 }

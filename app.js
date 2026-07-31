@@ -2662,10 +2662,17 @@ function navigateTo(viewId, updateActive = true) {
     // __igReactRouting) to avoid a double push → double remount.
     try {
       if (!window.__igReactRouting) {
+        // Guard IGDiag during the React panel mount that follows. Without this,
+        // analyse→dashboard first paint (~700ms, 1k+ nodes) is reported as a
+        // MAIN-THREAD STALL even though it is expected route work.
+        try {
+          document.documentElement.setAttribute('data-ig-nav', '1');
+          window.__igReactRouting = true;
+          window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('nav→' + viewId);
+        } catch(_) {}
         document.dispatchEvent(new CustomEvent('ig:spa-navigate', { detail: { view: viewId } }));
-        // Only clear breadcrumb for non-React bridges; React panels keep
-        // nav-pending until MigratedPanel settleNavPending after first paint.
-        try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle'); } catch(_) {}
+        // Do NOT set breadcrumb to idle here — MigratedPanel settleNavPending
+        // clears the guard after first paint.
       }
     } catch(_) {}
   }
