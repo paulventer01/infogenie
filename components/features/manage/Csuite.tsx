@@ -187,10 +187,11 @@ function ROIPanel({ d }: { d: CsData }) {
         style={{
           fontSize: "0.65rem",
           fontWeight: 700,
-          color: "rgba(0,201,200,.8)",
+          color: "#FFFFFF",
           textTransform: "uppercase",
           letterSpacing: ".1em",
           marginBottom: 6,
+          textShadow: "0 1px 2px rgba(0,0,0,.35)",
         }}
       >
         💼 Investment Performance Overview
@@ -205,6 +206,7 @@ function ROIPanel({ d }: { d: CsData }) {
               fontWeight: 700,
               verticalAlign: "middle",
               marginLeft: 6,
+              textShadow: "none",
             }}
           >
             ESTIMATED
@@ -212,7 +214,7 @@ function ROIPanel({ d }: { d: CsData }) {
         )}
       </div>
       {noData && (
-        <div style={{ fontSize: "0.72rem", color: "rgba(255,255,255,.35)", marginBottom: 12 }}>
+        <div style={{ fontSize: "0.72rem", color: "rgba(255,255,255,.85)", marginBottom: 12 }}>
           No campaigns launched yet — showing estimated benchmarks for a $5K/mo budget
         </div>
       )}
