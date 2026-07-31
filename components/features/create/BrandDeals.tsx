@@ -155,19 +155,20 @@ export default function BrandDeals() {
   async function load() {
     setLoading(true);
     const [dealsData, statsData, personasData] = await Promise.all([
-      apiGet<{ ok: boolean; deals?: Deal[] }>("/api/brand-deals"),
-      apiGet<{ ok: boolean; stats?: Stats }>("/api/brand-deals/stats/summary"),
-      apiGet<{ ok: boolean; personas?: Persona[] }>("/api/personas"),
+      apiGet<{ ok?: boolean; deals?: Deal[]; error?: string }>("/api/brand-deals"),
+      apiGet<{ ok?: boolean; stats?: Stats }>("/api/brand-deals/stats/summary"),
+      apiGet<{ ok?: boolean; personas?: Persona[] }>("/api/personas"),
     ]);
     setLoading(false);
-    if (!dealsData.ok) {
+    // Success is ok:true OR a deals array (API historically omitted ok).
+    if (dealsData.ok === false || (dealsData.ok !== true && !Array.isArray(dealsData.deals))) {
       setLoadError(true);
       return;
     }
     setLoadError(false);
     setDeals(dealsData.deals || []);
     setStats(statsData.stats || {});
-    setPersonas((personasData.personas || []).filter((p) => p.is_active));
+    setPersonas((personasData.personas || []).filter((p) => p.is_active !== false));
   }
 
   useEffect(() => {
@@ -225,9 +226,15 @@ export default function BrandDeals() {
       persona_id: parseInt(form.persona_id) || null,
     };
     const r = editId
-      ? await apiPut(`/api/brand-deals/${editId}`, body)
-      : await apiPost("/api/brand-deals", body);
-    if (!r.ok) {
+      ? await apiPut<{ ok?: boolean; deal?: Deal; error?: string }>(
+          `/api/brand-deals/${editId}`,
+          body,
+        )
+      : await apiPost<{ ok?: boolean; deal?: Deal; error?: string }>(
+          "/api/brand-deals",
+          body,
+        );
+    if (r.ok === false || (r.ok !== true && !r.deal)) {
       setSaveStatus({ type: "error", text: r.error || "Save failed." });
       return;
     }
@@ -252,13 +259,13 @@ export default function BrandDeals() {
     setPitchLoading(true);
     setPitchError("");
     setPitch(null);
-    const r = await apiPost<{ ok: boolean; pitch?: Pitch }>(
+    const r = await apiPost<{ ok?: boolean; pitch?: Pitch; error?: string }>(
       `/api/brand-deals/${pitchId}/generate-pitch`,
       { pitch_type: pitchType },
     );
     setPitchLoading(false);
-    if (!r.ok) {
-      setPitchError("Generation failed.");
+    if (r.ok === false || (r.ok !== true && !r.pitch)) {
+      setPitchError(r.error || "Generation failed.");
       return;
     }
     setPitch(r.pitch || {});
