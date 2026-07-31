@@ -68,6 +68,15 @@ interface Digest {
   created_at: string;
 }
 
+interface RecEntity {
+  name?: string;
+  channel?: string;
+  roas?: number | null;
+  daily_budget?: number | null;
+  kind?: string;
+  competitor?: string | null;
+  type?: string;
+}
 interface Rec {
   id: number;
   category: string;
@@ -80,6 +89,14 @@ interface Rec {
   priority_score: number;
   data_sources?: string;
   why_best?: string;
+  problem_summary?: string;
+  change_summary?: string;
+  entities?: {
+    from?: RecEntity[];
+    to?: RecEntity[];
+    affected?: RecEntity[];
+    metrics?: Record<string, unknown>;
+  };
 }
 
 interface MergedPayload {
@@ -502,6 +519,37 @@ function RecCard({ rec, onAct, onDismiss }: {
             {rec.confidence_pct}% conf
           </span>
         </div>
+        {rec.problem_summary && (
+          <div style={{ fontSize: '0.76rem', color: '#9A3412', background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 6, padding: '6px 8px', marginBottom: 6, lineHeight: 1.4 }}>
+            <strong>Not working:</strong> {rec.problem_summary}
+          </div>
+        )}
+        {rec.change_summary && (
+          <div style={{ fontSize: '0.76rem', color: '#1E3A8A', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6, padding: '6px 8px', marginBottom: 6, lineHeight: 1.4 }}>
+            <strong>Change:</strong> {rec.change_summary}
+          </div>
+        )}
+        {/* Named entities — From → To clarity */}
+        {(rec.entities?.from?.length || rec.entities?.to?.length || rec.entities?.affected?.length) ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 7, alignItems: 'center' }}>
+            {(rec.entities?.from || []).map((e, i) => (
+              <span key={`f-${i}`} style={{ background: '#FEE2E2', color: '#991B1B', borderRadius: 5, padding: '2px 7px', fontSize: '0.68rem', fontWeight: 700 }}>
+                From: {e.name}{e.roas != null ? ` · ${e.roas}×` : ''}{e.channel ? ` · ${e.channel}` : ''}
+              </span>
+            ))}
+            {(rec.entities?.from?.length && rec.entities?.to?.length) ? <span style={{ color: '#64748B', fontSize: '0.72rem', fontWeight: 800 }}>→</span> : null}
+            {(rec.entities?.to || []).map((e, i) => (
+              <span key={`t-${i}`} style={{ background: '#DCFCE7', color: '#166534', borderRadius: 5, padding: '2px 7px', fontSize: '0.68rem', fontWeight: 700 }}>
+                To: {e.name}{e.roas != null ? ` · ${e.roas}×` : ''}{e.channel ? ` · ${e.channel}` : ''}
+              </span>
+            ))}
+            {(rec.entities?.affected || []).map((e, i) => (
+              <span key={`a-${i}`} style={{ background: '#F1F5F9', color: '#334155', borderRadius: 5, padding: '2px 7px', fontSize: '0.68rem', fontWeight: 600 }}>
+                {e.type ? `${e.type}: ` : ''}{e.name}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <div style={{ fontSize: '0.77rem', color: '#475569', lineHeight: 1.45, marginBottom: 6 }}>{rec.recommendation}</div>
         {rec.why_best && (
           <div style={{ fontSize: '0.74rem', color: '#78716C', lineHeight: 1.4, marginBottom: 6, fontStyle: 'italic' }}>
@@ -563,8 +611,35 @@ function RecCard({ rec, onAct, onDismiss }: {
 
 function RecsPanel({ recs: initialRecs, onNavigateFull }: { recs: Rec[]; onNavigateFull: () => void }) {
   const [recs, setRecs] = useState(initialRecs);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => { setRecs(initialRecs); }, [initialRecs]);
+
+  const refreshGrounded = async () => {
+    setRefreshing(true);
+    try {
+      const analysis_snapshot =
+        typeof window !== 'undefined'
+          ? (window as unknown as { analysisData?: Record<string, unknown> }).analysisData || null
+          : null;
+      const res = await fetch('/api/decision-engine/analyse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ replace_open: true, analysis_snapshot }),
+      });
+      const d = await res.json();
+      if (d.ok && d.recommendations?.length) {
+        setRecs(d.recommendations.slice(0, 5));
+        showToast('Priorities refreshed with named campaigns');
+      } else {
+        showToast('Could not refresh priorities');
+      }
+    } catch {
+      showToast('Could not refresh priorities');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleDismiss = async (id: number) => {
     try {
@@ -593,16 +668,27 @@ function RecsPanel({ recs: initialRecs, onNavigateFull }: { recs: Rec[]; onNavig
 
   return (
     <div style={{ background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
-      <div style={{ background: 'linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)', padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ background: 'linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)', padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#0f766e', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
           🧭 Top Priorities · Decision Engine
         </div>
-        <button
-          onClick={onNavigateFull}
-          style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.1)', color: '#475569', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
-        >
-          All recs →
-        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            type="button"
+            onClick={refreshGrounded}
+            disabled={refreshing}
+            title="Regenerate with named campaigns / From→To clarity"
+            style={{ padding: '4px 10px', background: '#0F766E', color: '#fff', border: 'none', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', opacity: refreshing ? 0.7 : 1 }}
+          >
+            {refreshing ? 'Naming…' : '↻ Name campaigns'}
+          </button>
+          <button
+            onClick={onNavigateFull}
+            style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.1)', color: '#475569', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}
+          >
+            All recs →
+          </button>
+        </div>
       </div>
       <div style={{ padding: '10px 12px 4px' }}>
         {recs.map(rec => (

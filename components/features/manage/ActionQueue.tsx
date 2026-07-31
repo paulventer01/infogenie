@@ -19,6 +19,13 @@ interface Recommendation {
   priority_score: number;
   data_sources: string;
   why_best?: string;
+  problem_summary?: string;
+  change_summary?: string;
+  entities?: {
+    from?: { name?: string; channel?: string; roas?: number | null }[];
+    to?: { name?: string; channel?: string; roas?: number | null }[];
+    affected?: { name?: string; type?: string }[];
+  };
   acted_at?: string | null;
   created_at: string;
 }
@@ -107,7 +114,14 @@ export default function ActionQueue() {
 
   async function refresh() {
     setRefreshing(true);
-    const r = await apiPost<AnalyseR>("/api/decision-engine/analyse", {});
+    const analysis_snapshot =
+      typeof window !== "undefined"
+        ? (window as unknown as { analysisData?: Record<string, unknown> }).analysisData || null
+        : null;
+    const r = await apiPost<AnalyseR>("/api/decision-engine/analyse", {
+      replace_open: true,
+      analysis_snapshot,
+    });
     setRefreshing(false);
     if (r.ok) {
       setForesight({
@@ -308,6 +322,20 @@ export default function ActionQueue() {
                           <div style={{ color: "#64748b", fontSize: "0.82rem", marginTop: 3 }}>
                             {rec.expected_impact} · {rec.time_to_result}
                           </div>
+                          {(rec.entities?.from?.length || rec.entities?.to?.length) ? (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                              {(rec.entities?.from || []).map((e, i) => (
+                                <span key={`f-${i}`} style={{ background: "#FEE2E2", color: "#991B1B", borderRadius: 5, padding: "2px 7px", fontSize: "0.68rem", fontWeight: 700 }}>
+                                  From: {e.name}{e.roas != null ? ` · ${e.roas}×` : ""}
+                                </span>
+                              ))}
+                              {(rec.entities?.to || []).map((e, i) => (
+                                <span key={`t-${i}`} style={{ background: "#DCFCE7", color: "#166534", borderRadius: 5, padding: "2px 7px", fontSize: "0.68rem", fontWeight: 700 }}>
+                                  To: {e.name}{e.roas != null ? ` · ${e.roas}×` : ""}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                         <span style={{ color: "#94a3b8", fontSize: "0.8rem", flexShrink: 0 }}>{isOpen ? "▲" : "▼"}</span>
                       </div>
@@ -315,6 +343,16 @@ export default function ActionQueue() {
                       {/* Expanded detail */}
                       {isOpen && (
                         <div style={{ padding: "0 16px 14px 16px", borderTop: "1px solid #f1f5f9" }}>
+                          {rec.problem_summary && (
+                            <p style={{ color: "#9A3412", fontSize: "0.82rem", margin: "10px 0 6px", background: "#FFF7ED", padding: "8px 10px", borderRadius: 8 }}>
+                              <strong>Not working:</strong> {rec.problem_summary}
+                            </p>
+                          )}
+                          {rec.change_summary && (
+                            <p style={{ color: "#1E3A8A", fontSize: "0.82rem", margin: "0 0 8px", background: "#EFF6FF", padding: "8px 10px", borderRadius: 8 }}>
+                              <strong>Change:</strong> {rec.change_summary}
+                            </p>
+                          )}
                           <p style={{ color: "#334155", fontSize: "0.87rem", margin: "10px 0" }}>
                             {rec.recommendation}
                           </p>
