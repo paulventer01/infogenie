@@ -169,7 +169,8 @@ function ROIPanel({ d }: { d: CsData }) {
     : Math.round(budget * roas);
   const profit = totalRev - totalSpend;
   const roi = totalSpend > 0 ? Math.round((profit / totalSpend) * 100) : 0;
-  const roiColor = roi >= 100 ? "#059669" : roi >= 0 ? "#D97706" : "#EF4444";
+  // Light tints — hero uses --ig-grad2 (teal→green); #059669 disappears on that bg
+  const roiColor = roi >= 100 ? "#6EE7B7" : roi >= 0 ? "#FBBF24" : "#FCA5A5";
   const roiIcon = roi >= 100 ? "📈" : roi >= 0 ? "⚠️" : "📉";
 
   return (
@@ -406,11 +407,19 @@ function ROIPanel({ d }: { d: CsData }) {
           flexWrap: "wrap",
         }}
       >
-        <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,.35)" }}>ROI formula:</span>
-        <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,.5)", fontStyle: "italic" }}>
+        <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,.7)" }}>ROI formula:</span>
+        <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,.85)", fontStyle: "italic" }}>
           (Revenue − Spend) ÷ Spend × 100
         </span>
-        <span style={{ marginLeft: "auto", fontSize: "0.75rem", fontWeight: 700, color: roiColor }}>
+        <span
+          style={{
+            marginLeft: "auto",
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            color: roiColor,
+            textShadow: "0 1px 2px rgba(0,0,0,.35)",
+          }}
+        >
           {fmtMoney(Math.abs(profit))} {profit >= 0 ? "returned above" : "in deficit against"}{" "}
           {fmtMoney(totalSpend)} invested
         </span>
