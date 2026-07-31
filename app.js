@@ -3644,13 +3644,6 @@ async function runAnalysis(url, country, industryOverride) {
   // Stop the heartbeat 15s later — by then the brief, all deferred
   // builders and enrichments are well past done in the happy case.
   setTimeout(() => { try { window.IGDiag && IGDiag.stopHeartbeat && IGDiag.stopHeartbeat(); } catch(_) {} }, 15000);
-  // Seed campaign recommendations immediately so Budget Overview / Brief /
-  // Action Queue have rows without requiring a visit to the Campaigns panel.
-  try {
-    window._lastCampRecs = generateCampaignRecs(industry, selectedComps || (analysisData && analysisData.competitors) || [], cleanUrl);
-  } catch (e) {
-    console.warn('post-analyse generateCampaignRecs failed:', e);
-  }
   navigateTo('marketing-brief');
   // Tell any already-mounted React panel (Next.js dev shell) that a fresh
   // analysis payload is on `window.analysisData`. Dashboard + Marketing Brief
@@ -4059,19 +4052,6 @@ function _igCompInitials(name) {
 }
 
 function buildCampaigns() {
-  // Always materialise campaign recommendations when analysisData exists —
-  // even if the Campaigns React host (#campaignsWrap) is not mounted yet.
-  // Budget Overview / Action Queue read window._lastCampRecs and otherwise
-  // stay empty until the user happens to visit Campaigns first.
-  if (analysisData) {
-    try {
-      const { url, industry, competitors } = analysisData;
-      window._lastCampRecs = generateCampaignRecs(industry, competitors || [], url);
-    } catch (e) {
-      console.warn('generateCampaignRecs failed:', e);
-    }
-  }
-
   const wrap = document.getElementById('campaignsWrap');
   if (!wrap) return;
   if (!analysisData) {
@@ -4090,7 +4070,7 @@ function buildCampaigns() {
   const avgROAS = avg(competitors.map(c => c.roas));
   const projROAS = (avgROAS * 1.3).toFixed(1);
   
-  const campaignRecs = window._lastCampRecs || generateCampaignRecs(industry, competitors, url);
+  const campaignRecs = generateCampaignRecs(industry, competitors, url);
   window._lastCampRecs = campaignRecs;
   
   const cards = campaignRecs.map((camp, idx) => `
@@ -5074,10 +5054,6 @@ window.generateAiVisibilityAudit = async function() {
 
 
 function generateCampaignRecs(industry, competitors, url) {
-  // Normalise industry — callers may pass a string or { name }.
-  if (typeof industry === 'string') industry = { name: industry };
-  if (!industry || typeof industry !== 'object') industry = { name: 'your market' };
-  if (!industry.name) industry.name = 'your market';
   // Safety: ensure competitors is a non-empty array
   if (!Array.isArray(competitors) || competitors.length === 0) {
     competitors = [{ name: 'top competitor', ctr: '4.2%', roas: 3.5, topKeywords: ['your keywords'], audiences: [{ label: 'High-value segment', pct: '48' }] }];
