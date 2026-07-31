@@ -282,6 +282,10 @@ export default function Budget() {
     } catch {
       /* ignore */
     }
+    window.requestAnimationFrame(() => {
+      const el = document.getElementById("budget-camp-detail");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   function goToCampaignFull(row: CampRow) {
@@ -299,6 +303,93 @@ export default function Budget() {
         }
       }, 400);
     }
+  }
+
+  function renderCampaignDetail(row: CampRow) {
+    const bump = Math.round(20 + row.roas * 3);
+    const suggestedBudget = Math.round(row.monthlyBudget * (1 + bump / 100));
+    return (
+      <section id="budget-camp-detail" className={`${styles.card} ${styles.detail}`}>
+        <div className={styles.cardHead}>
+          <div>
+            <h3>Campaign breakdown — {row.name}</h3>
+            <p>
+              {row.platform} · {row.source === "live" ? "Live tracking" : "From recommendations"} · status{" "}
+              <strong>{row.status}</strong>
+            </p>
+          </div>
+          <div className={styles.detailActions}>
+            <button type="button" className="btn-secondary" onClick={() => setSelected(null)}>
+              Close
+            </button>
+            <button type="button" className="btn-primary" onClick={() => goToCampaignFull(row)}>
+              Open full campaign →
+            </button>
+          </div>
+        </div>
+        <div className={styles.detailGrid}>
+          <div>
+            <span>Spend MTD</span>
+            <strong>{money(row.spend)}</strong>
+          </div>
+          <div>
+            <span>Monthly budget</span>
+            <strong>{money(row.monthlyBudget)}</strong>
+          </div>
+          <div>
+            <span>Suggested budget</span>
+            <strong>{money(suggestedBudget)}</strong>
+          </div>
+          <div>
+            <span>ROAS</span>
+            <strong>{row.roas.toFixed(1)}×</strong>
+          </div>
+          <div>
+            <span>CTR</span>
+            <strong>{row.ctr}</strong>
+          </div>
+          <div>
+            <span>CPA</span>
+            <strong>{row.cpa}</strong>
+          </div>
+          <div>
+            <span>Conversions</span>
+            <strong>{row.conversions}</strong>
+          </div>
+          <div>
+            <span>Est. revenue</span>
+            <strong>{money(row.spend * row.roas)}</strong>
+          </div>
+          <div>
+            <span>Utilisation</span>
+            <strong>
+              {row.monthlyBudget ? Math.min(100, Math.round((row.spend / row.monthlyBudget) * 100)) : 0}%
+            </strong>
+          </div>
+          <div>
+            <span>Scale suggestion</span>
+            <strong>+{bump}%</strong>
+          </div>
+        </div>
+        <div className={styles.projRow}>
+          {monthLabels.map((label, i) => {
+            const factor = 1 + i * 0.06;
+            const proj = Math.round(suggestedBudget * factor);
+            return (
+              <div key={label} className={styles.projCell}>
+                <div className={styles.projMonth}>{label}</div>
+                <div className={styles.projAmt}>{money(proj)}</div>
+                <div className={styles.muted}>Projected spend (scaled)</div>
+              </div>
+            );
+          })}
+        </div>
+        <p className={styles.footnote}>
+          Click <strong>Open full campaign</strong> to launch or edit this campaign in Campaign Intelligence —
+          headlines, budget, dates, and creative.
+        </p>
+      </section>
+    );
   }
 
   const empty = rows.length === 0;
@@ -439,75 +530,6 @@ export default function Budget() {
               </div>
             </section>
 
-            {/* Selected campaign breakdown */}
-            {selected ? (
-              <section className={`${styles.card} ${styles.detail}`}>
-                <div className={styles.cardHead}>
-                  <div>
-                    <h3>Campaign breakdown — {selected.name}</h3>
-                    <p>
-                      {selected.platform} · {selected.source === "live" ? "Live tracking" : "From recommendations"}
-                    </p>
-                  </div>
-                  <button type="button" className="btn-primary" onClick={() => goToCampaignFull(selected)}>
-                    Open full campaign →
-                  </button>
-                </div>
-                <div className={styles.detailGrid}>
-                  <div>
-                    <span>Spend MTD</span>
-                    <strong>{money(selected.spend)}</strong>
-                  </div>
-                  <div>
-                    <span>Monthly budget</span>
-                    <strong>{money(selected.monthlyBudget)}</strong>
-                  </div>
-                  <div>
-                    <span>ROAS</span>
-                    <strong>{selected.roas.toFixed(1)}×</strong>
-                  </div>
-                  <div>
-                    <span>CTR</span>
-                    <strong>{selected.ctr}</strong>
-                  </div>
-                  <div>
-                    <span>CPA</span>
-                    <strong>{selected.cpa}</strong>
-                  </div>
-                  <div>
-                    <span>Conversions</span>
-                    <strong>{selected.conversions}</strong>
-                  </div>
-                  <div>
-                    <span>Est. revenue</span>
-                    <strong>{money(selected.spend * selected.roas)}</strong>
-                  </div>
-                  <div>
-                    <span>Utilisation</span>
-                    <strong>
-                      {selected.monthlyBudget
-                        ? Math.min(100, Math.round((selected.spend / selected.monthlyBudget) * 100))
-                        : 0}
-                      %
-                    </strong>
-                  </div>
-                </div>
-                <div className={styles.projRow}>
-                  {monthLabels.map((label, i) => {
-                    const factor = 1 + i * 0.06;
-                    const proj = Math.round(selected.monthlyBudget * factor);
-                    return (
-                      <div key={label} className={styles.projCell}>
-                        <div className={styles.projMonth}>{label}</div>
-                        <div className={styles.projAmt}>{money(proj)}</div>
-                        <div className={styles.muted}>Projected spend</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ) : null}
-
             {/* 2–4 ROI + best/worst */}
             <div className={styles.twoCol}>
               <section className={styles.card}>
@@ -645,7 +667,7 @@ export default function Budget() {
                 <div className={styles.cardHead}>
                   <div>
                     <h3>6. Campaigns to stop or pause</h3>
-                    <p>ROAS well below the blend, or already paused.</p>
+                    <p>ROAS well below the blend, or already paused. Click a campaign for full details.</p>
                   </div>
                 </div>
                 {stopList.length === 0 ? (
@@ -653,14 +675,26 @@ export default function Budget() {
                 ) : (
                   <ul className={styles.actionList}>
                     {stopList.map((r) => (
-                      <li key={r.key}>
-                        <button type="button" onClick={() => openCampaign(r)}>
+                      <li
+                        key={r.key}
+                        className={`${styles.actionItem} ${selected?.key === r.key ? styles.actionItemActive : ""}`}
+                      >
+                        <button type="button" className={styles.actionMain} onClick={() => openCampaign(r)}>
                           <strong>{r.name}</strong>
                           <span>
-                            {r.roas.toFixed(1)}× · {money(r.spend)} spend
+                            {r.roas.toFixed(1)}× · {money(r.spend)} spend · {r.platform}
                           </span>
                         </button>
-                        <em>Pause &amp; reallocate</em>
+                        <button
+                          type="button"
+                          className={styles.actionCta}
+                          onClick={() => {
+                            openCampaign(r);
+                            goToCampaignFull(r);
+                          }}
+                        >
+                          Pause &amp; reallocate
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -670,7 +704,7 @@ export default function Budget() {
                 <div className={styles.cardHead}>
                   <div>
                     <h3>7. Campaigns that need more budget</h3>
-                    <p>Above-blend ROAS — candidates to scale.</p>
+                    <p>Above-blend ROAS — click any campaign to see full details and scale suggestion.</p>
                   </div>
                 </div>
                 {scaleList.length === 0 ? (
@@ -678,20 +712,36 @@ export default function Budget() {
                 ) : (
                   <ul className={styles.actionList}>
                     {scaleList.map((r) => (
-                      <li key={r.key}>
-                        <button type="button" onClick={() => openCampaign(r)}>
+                      <li
+                        key={r.key}
+                        className={`${styles.actionItem} ${selected?.key === r.key ? styles.actionItemActive : ""}`}
+                      >
+                        <button type="button" className={styles.actionMain} onClick={() => openCampaign(r)}>
                           <strong>{r.name}</strong>
                           <span>
-                            {r.roas.toFixed(1)}× · +{Math.round(20 + r.roas * 3)}% suggested
+                            {r.roas.toFixed(1)}× · +{Math.round(20 + r.roas * 3)}% suggested · {r.platform}
                           </span>
+                          <span className={styles.actionHint}>Click for full campaign details ↓</span>
                         </button>
-                        <em>Increase budget</em>
+                        <button
+                          type="button"
+                          className={styles.actionCta}
+                          onClick={() => {
+                            openCampaign(r);
+                            goToCampaignFull(r);
+                          }}
+                        >
+                          Increase budget
+                        </button>
                       </li>
                     ))}
                   </ul>
                 )}
               </section>
             </div>
+
+            {/* Selected campaign breakdown — shown under stop/scale so clicks in §6–7 land here */}
+            {selected ? renderCampaignDetail(selected) : null}
 
             {/* 8. Overall 3-month budget + mix */}
             <section className={styles.card}>

@@ -378,18 +378,31 @@
   gap: 8px;
 }
 
-.actionList li {
+.actionItem {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1.5px solid #e2e8f0;
   border-radius: 10px;
   background: #ffffff;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.actionList button {
+.actionItem:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+}
+
+.actionItemActive {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.actionMain {
   background: none;
   border: none;
   text-align: left;
@@ -397,29 +410,55 @@
   padding: 0;
   font-family: inherit;
   flex: 1;
+  min-width: 0;
 }
 
-.actionList strong {
+.actionMain strong {
   display: block;
-  color: #0f172a;
+  color: #1d4ed8;
   font-size: 0.85rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-.actionList span {
+.actionMain span {
   display: block;
   font-size: 0.72rem;
   color: #64748b;
   margin-top: 2px;
 }
 
-.actionList em {
+.actionHint {
+  color: #2563eb !important;
+  font-weight: 700;
+  margin-top: 4px !important;
+}
+
+.actionCta {
   font-style: normal;
   font-size: 0.7rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #1d4ed8;
+  color: #ffffff;
+  background: #1d4ed8;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
   white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.actionCta:hover {
+  background: #1e40af;
+}
+
+.detailActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .mix {
