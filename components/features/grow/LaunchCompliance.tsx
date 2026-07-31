@@ -314,7 +314,7 @@ export default function LaunchCompliance() {
                     type="button"
                     title="What this status means"
                     onClick={() => setInfoPanel("status")}
-                    style={{ background: b.bg, color: b.color, padding: "6px 14px", borderRadius: 99, fontSize: "0.82rem", fontWeight: 700, border: "pointer", border: infoPanel === "status" ? "2px solid #334155" : "2px solid transparent" }}
+                    style={{ background: b.bg, color: b.color, padding: "6px 14px", borderRadius: 99, fontSize: "0.82rem", fontWeight: 700, cursor: "pointer", border: infoPanel === "status" ? "2px solid #334155" : "2px solid transparent" }}
                   >
                     {b.label}
                   </button>

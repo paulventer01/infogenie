@@ -534,6 +534,8 @@ app.post('/api/live-kpis', async (req, res) => {
       cpa:        liveCPA,
       roas:       liveROAS,
       convRate:   liveConvRate,
+      provenance: 'market_derived',
+      provenance_label: 'Market-derived from SERP position + industry benchmarks — not your ad-account truth',
       meta: {
         avgCPC:       avgCPC > 0 ? avgCPC.toFixed(2) : null,
         avgPosition:  avgPosition.toFixed(1),
@@ -541,7 +543,8 @@ app.post('/api/live-kpis', async (req, res) => {
         organicTraffic,
         paidTraffic,
         keywordsWithCPC,
-        source: 'DataForSEO'
+        source: 'DataForSEO',
+        measurement: 'derived',
       }
     });
 

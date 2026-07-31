@@ -3879,7 +3879,7 @@ async function enrichKPIsWithLiveData(domain, industryKey, country) {
     : country === 'Canada'    ? 'Canada'
     : 'United States';
 
-  const liveBadge = (title) => `<span title="${title}" style="font-size:.65rem;background:#10B98120;color:#10B981;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px">LIVE</span>`;
+  const liveBadge = (title) => `<span title="${title}" style="font-size:.65rem;background:#F59E0B20;color:#B45309;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px">DERIVED</span>`;
 
   try {
     const res = await fetch('/api/live-kpis', {
@@ -3895,7 +3895,7 @@ async function enrichKPIsWithLiveData(domain, industryKey, country) {
     const competitors = analysisData?.competitors || [];
     const avgCTR  = avg(competitors.map(c => parseFloat(c.ctr)));
     const avgROAS = avg(competitors.map(c => c.roas));
-    const src = `DataForSEO · avg position ${d.meta?.avgPosition || '—'} · avg CPC $${d.meta?.avgCPC || '—'}`;
+    const src = `DataForSEO derived · avg position ${d.meta?.avgPosition || '—'} · avg CPC $${d.meta?.avgCPC || '—'} — not ad-account truth`;
 
     // Store live values back onto analysisData for downstream use
     if (!analysisData.websiteKPIs) analysisData.websiteKPIs = {};
@@ -3903,6 +3903,7 @@ async function enrichKPIsWithLiveData(domain, industryKey, country) {
     if (d.roas     !== null) analysisData.websiteKPIs._liveROAS     = d.roas;
     if (d.cpa      !== null) analysisData.websiteKPIs._liveCPA      = d.cpa;
     if (d.convRate !== null) analysisData.websiteKPIs._liveConvRate = d.convRate;
+    analysisData.websiteKPIs._kpiProvenance = d.provenance || 'market_derived';
 
     // Update each KPI card in-place
     const kpiGrid = document.getElementById('kpiGrid');
@@ -3912,9 +3913,9 @@ async function enrichKPIsWithLiveData(domain, industryKey, country) {
 
     // Shared ribbon helpers — keep parity with the initial buildDashboard render
     const _domain = (analysisData?.url || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0];
-    const ribbonLive = `<div class="kpi-ribbon kpi-ribbon-live" title="Live data from DataForSEO for ${_domain}">📡 LIVE — YOUR SITE</div>`;
+    const ribbonLive = `<div class="kpi-ribbon kpi-ribbon-live" title="Market-derived from DataForSEO SERP + industry benchmarks for ${_domain} — not your ad account">📡 MARKET-DERIVED — ${_domain}</div>`;
     const ribbonInd  = `<div class="kpi-ribbon kpi-ribbon-ind"  title="Broad industry benchmark — not your data">🏷️ INDUSTRY BENCHMARK</div>`;
-    const srcLive    = `<div class="kpi-source kpi-source-live" title="Live measurement from DataForSEO for your domain ${_domain}.">📡 DataForSEO live · <strong>${_domain}</strong></div>`;
+    const srcLive    = `<div class="kpi-source kpi-source-live" title="Derived from DataForSEO for ${_domain}. Connect Ads/GA4 for account-truth ROAS.">📡 DataForSEO derived · <strong>${_domain}</strong></div>`;
     const srcIndLine = `<div class="kpi-source kpi-source-ind"  title="Broad industry benchmark for ${industry?.name || 'your industry'} — not your data, not a specific competitor.">🏷️ Industry benchmark · <strong>${industry?.name || 'your industry'}</strong></div>`;
 
     // CTR card

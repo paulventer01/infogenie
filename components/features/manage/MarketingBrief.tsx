@@ -9,16 +9,17 @@ import { goToView } from '@/lib/nav';
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface BriefSignal {
-  kind: 'warning' | 'win' | 'opportunity' | 'info';
+  kind: 'warning' | 'win' | 'opportunity' | 'info' | 'risk' | 'foresight';
   pillar: string;
   headline: string;
   detail?: string;
   action_view?: string;
+  horizon?: string;
 }
 
 interface BriefSection {
   title: string;
-  kind: 'warning' | 'win' | 'opportunity' | 'info';
+  kind: 'warning' | 'win' | 'opportunity' | 'info' | 'risk' | 'foresight';
   items: string[];
 }
 
@@ -40,6 +41,7 @@ interface BriefAction {
   label?: string;
   rationale?: string;
   expected_impact?: string;
+  why_best?: string;
   view?: string;
   priority?: number;
 }
@@ -48,6 +50,7 @@ interface TodoAction {
   key: string;
   answer: string;
   recommendation: string;
+  whyBest: string;
   followThrough: string;
   view: string;
   impact: string;
@@ -76,6 +79,7 @@ interface Rec {
   time_to_result?: string;
   priority_score: number;
   data_sources?: string;
+  why_best?: string;
 }
 
 interface MergedPayload {
@@ -98,8 +102,10 @@ const CADENCES: Record<Cadence, CadenceMeta> = {
 
 const KIND_STYLE: Record<string, { bg: string; border: string; badge: string; icon: string }> = {
   warning:     { bg: '#FFF7ED', border: '#FED7AA', badge: '#EA580C', icon: '⚠️' },
+  risk:        { bg: '#FEF2F2', border: '#FECACA', badge: '#DC2626', icon: '🔮' },
   win:         { bg: '#F0FDF4', border: '#BBF7D0', badge: '#16A34A', icon: '✅' },
   opportunity: { bg: '#EFF6FF', border: '#BFDBFE', badge: '#2563EB', icon: '💡' },
+  foresight:   { bg: '#ECFDF5', border: '#A7F3D0', badge: '#059669', icon: '🔭' },
   info:        { bg: '#F8FAFC', border: '#E2E8F0', badge: '#64748B', icon: 'ℹ️' },
 };
 
@@ -168,6 +174,7 @@ function buildCompetitiveTodos(): TodoAction[] {
     key: 'comp-counter-top',
     answer: `${top?.name || 'Your top competitor'} is the primary threat in ${industry}${top?.topChannel ? ` (strongest on ${top.topChannel})` : ''}, running ~${topRoas.toFixed(1)}× ROAS vs your ~${yourRoas.toFixed(1)}× benchmark.`,
     recommendation: `Build and launch a counter-campaign against ${top?.name || 'them'} this week — hit their weakest messaging and steal share on their primary channel.`,
+    whyBest: 'Direct counter-positioning against the #1 threat protects share faster than broad brand campaigns that ignore who is winning today.',
     followThrough: 'Open Battle Plan →',
     view: 'battleplan',
     impact: 'Direct competitive advantage',
@@ -181,6 +188,7 @@ function buildCompetitiveTodos(): TodoAction[] {
       key: 'comp-steal-share',
       answer: `${weak.name} shows a softer ROAS (~${parseFloat(String(weak.roas || 2)).toFixed(1)}×) — an opening to take share with better creative and tighter targeting.`,
       recommendation: `Prioritise a lookalike / conquest campaign aimed at ${weak.name}'s audience before they recover.`,
+      whyBest: 'Attacking a soft ROAS competitor converts existing market demand faster than cold prospecting into a new audience.',
       followThrough: 'Open Campaigns →',
       view: 'campaigns',
       impact: 'Capture competitor share',
@@ -196,6 +204,7 @@ function buildCompetitiveTodos(): TodoAction[] {
       key: 'comp-keyword',
       answer: `${kwComp?.name || 'Competitors'} rank/bid around “${kw}” — a high-intent term in ${industry}.`,
       recommendation: `Create a Search conquest play for “${kw}” with a comparison landing angle vs ${kwComp?.name || 'the leader'}.`,
+      whyBest: 'High-intent conquest keywords beat broad awareness spend because buyers are already searching with purchase language.',
       followThrough: 'Keyword / SEO roadmap →',
       view: 'seo-roadmap',
       impact: 'Win high-intent demand',
@@ -210,6 +219,7 @@ function buildCompetitiveTodos(): TodoAction[] {
       key: 'comp-suggestion',
       answer: `Competitive intel flags a concrete gap vs ${top?.name || 'the field'}.`,
       recommendation: tip,
+      whyBest: 'Closing a named competitive gap is higher-certainty than inventing a new angle without evidence.',
       followThrough: 'Open Competitors →',
       view: 'competitors',
       impact: 'Close a known weakness',
@@ -235,12 +245,18 @@ function mergeTodoActions(brief: Brief | null, recs: Rec[]): TodoAction[] {
   buildCompetitiveTodos().forEach(push);
 
   (brief?.actions || []).forEach((a, i) => {
+    const viewRaw = a.view || 'action-queue';
+    const view =
+      viewRaw === 'battle' || viewRaw === 'war-room' ? 'battleplan'
+      : viewRaw === 'decision-engine' ? 'action-queue'
+      : viewRaw;
     push({
-      key: `brief-${i}-${a.view || 'x'}`,
+      key: `brief-${i}-${view}`,
       answer: a.rationale || 'Signal from today’s Marketing Brief.',
       recommendation: a.label || 'Take the recommended action.',
-      followThrough: a.view ? `Open ${a.view.replace(/-/g, ' ')} →` : 'Open Action Queue →',
-      view: a.view || 'action-queue',
+      whyBest: a.why_best || 'This is the highest-leverage next step given today’s live signals and the least setup required to move the needle.',
+      followThrough: `Open ${view.replace(/-/g, ' ')} →`,
+      view,
       impact: a.expected_impact || 'Advance today’s plan',
       source: 'brief',
       priority: a.priority || 10 + i,
@@ -252,6 +268,7 @@ function mergeTodoActions(brief: Brief | null, recs: Rec[]): TodoAction[] {
       key: `rec-${r.id}`,
       answer: `${r.category} opportunity with ${r.confidence_pct}% confidence${r.data_sources ? ` · ${r.data_sources}` : ''}.`,
       recommendation: r.recommendation || r.title,
+      whyBest: r.why_best || `Best route in ${r.category}: expected ${r.expected_impact || 'material lift'} at ${r.cost_estimate || 'controlled cost'} within ${r.time_to_result || 'weeks'}.`,
       followThrough: `Act in ${CAT_TO_VIEW[r.category] || 'action-queue'} →`,
       view: CAT_TO_VIEW[r.category] || 'action-queue',
       impact: r.expected_impact || r.title,
@@ -265,6 +282,7 @@ function mergeTodoActions(brief: Brief | null, recs: Rec[]): TodoAction[] {
       key: 'fallback-analyse',
       answer: 'No live competitive or decision signals yet for today’s brief.',
       recommendation: 'Run a fresh competitor analysis, then return here for a ranked “what to do today” list.',
+      whyBest: 'Without mapped competitor and performance data, any recommendation lacks credibility — analysis is the least-setup unlock for everything downstream.',
       followThrough: 'Run Analysis →',
       view: 'home',
       impact: 'Unlock strategic actions',
@@ -298,7 +316,7 @@ function WhatToDoToday({ actions }: { actions: TodoAction[] }) {
             Strategic actions to gain advantage over competitors
           </div>
           <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.85)', marginTop: 4, maxWidth: 640, lineHeight: 1.45 }}>
-            Each item has a defensible answer, a clear recommendation, and a follow-through button that takes you to the exact tool to execute it.
+            Each item diagnoses the problem, recommends the best route, explains why that route wins, and links you to the exact tool to execute.
           </div>
         </div>
         <button
@@ -335,6 +353,14 @@ function WhatToDoToday({ actions }: { actions: TodoAction[] }) {
                   Recommendation
                 </div>
                 <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0F172A', lineHeight: 1.4, marginBottom: 8 }}>{a.recommendation}</div>
+                {a.whyBest && (
+                  <>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#B45309', marginBottom: 3 }}>
+                      Why this is the best route
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: '#57534E', lineHeight: 1.45, marginBottom: 8 }}>{a.whyBest}</div>
+                  </>
+                )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ background: '#ECFDF5', color: '#047857', borderRadius: 6, padding: '3px 8px', fontSize: '0.7rem', fontWeight: 700 }}>{a.impact}</span>
                   <button
@@ -477,6 +503,11 @@ function RecCard({ rec, onAct, onDismiss }: {
           </span>
         </div>
         <div style={{ fontSize: '0.77rem', color: '#475569', lineHeight: 1.45, marginBottom: 6 }}>{rec.recommendation}</div>
+        {rec.why_best && (
+          <div style={{ fontSize: '0.74rem', color: '#78716C', lineHeight: 1.4, marginBottom: 6, fontStyle: 'italic' }}>
+            Why best: {rec.why_best}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {rec.expected_impact && (
             <span style={{ background: '#EFF6FF', color: '#2563EB', borderRadius: 4, padding: '1px 6px', fontSize: '0.68rem', fontWeight: 600 }}>
@@ -924,11 +955,51 @@ export default function MarketingBrief() {
           <SectionLabel label="⚔️ What to do today" />
           <WhatToDoToday actions={todayActions} />
 
+          {/* Future risks & opportunities — foresight layer */}
+          {((brief?.signals || []).some(s => s.kind === 'risk' || s.kind === 'foresight')
+            || (brief?.sections || []).some(s => s.kind === 'risk' || s.kind === 'foresight')) && (
+            <>
+              <SectionLabel label="🔮 Future risks & opportunities" />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 10, marginBottom: 8 }}>
+                {(brief!.sections || []).filter(s => s.kind === 'risk' || s.kind === 'foresight').map((s, i) => (
+                  <BriefSectionCard key={`foresight-sec-${i}`} section={s} />
+                ))}
+                {(brief!.signals || [])
+                  .filter(s => s.kind === 'risk' || s.kind === 'foresight')
+                  .slice(0, 6)
+                  .map((s, i) => {
+                    const st = KIND_STYLE[s.kind] || KIND_STYLE.info;
+                    return (
+                      <div key={`foresight-sig-${i}`} style={{ background: st.bg, border: `1.5px solid ${st.border}`, borderRadius: 10, padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                          <span>{st.icon}</span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: st.badge }}>
+                            {s.kind === 'risk' ? 'Risk' : 'Opportunity'}{s.horizon ? ` · ${s.horizon}` : ''}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#0F172A', lineHeight: 1.35, marginBottom: 4 }}>{s.headline}</div>
+                        {s.detail && <div style={{ fontSize: '0.78rem', color: '#475569', lineHeight: 1.45 }}>{s.detail}</div>}
+                        {s.action_view && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(s.action_view === 'crisis' ? 'crisis-radar' : s.action_view!)}
+                            style={{ marginTop: 8, padding: '5px 10px', background: '#fff', border: `1px solid ${st.border}`, borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, color: st.badge, cursor: 'pointer' }}
+                          >
+                            Investigate →
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            </>
+          )}
+
           {/* Signal count chips + inline opportunity cards */}
           {(brief?.signals || []).length > 0 && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8, marginBottom: 12 }}>
-                {(['warning', 'win', 'opportunity'] as const).map(kind => {
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(110px,1fr))', gap: 8, marginBottom: 12 }}>
+                {(['warning', 'risk', 'win', 'opportunity', 'foresight'] as const).map(kind => {
                   const count = (brief!.signals || []).filter(s => s.kind === kind).length;
                   if (!count) return null;
                   const s = KIND_STYLE[kind];
@@ -973,15 +1044,15 @@ export default function MarketingBrief() {
           <SectionLabel label="🧭 Top Priorities" />
           <RecsPanel
             recs={recommendations || []}
-            onNavigateFull={() => navigate('decision-engine')}
+            onNavigateFull={() => navigate('action-queue')}
           />
 
           {/* ── Signal Headlines (warnings, wins, info — not opportunities) ── */}
-          {(brief?.sections || []).filter(s => s.kind !== 'opportunity').length > 0 && (
+          {(brief?.sections || []).filter(s => s.kind !== 'opportunity' && s.kind !== 'risk' && s.kind !== 'foresight').length > 0 && (
             <>
               <SectionLabel label="📡 Signal Headlines" />
               <div style={{ marginBottom: 8 }}>
-                {(brief!.sections).filter(s => s.kind !== 'opportunity').map((s, i) => (
+                {(brief!.sections).filter(s => s.kind !== 'opportunity' && s.kind !== 'risk' && s.kind !== 'foresight').map((s, i) => (
                   <BriefSectionCard key={i} section={s} />
                 ))}
               </div>

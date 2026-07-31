@@ -15,12 +15,15 @@ async function ensureDecisionEngineSchema() {
       time_to_result VARCHAR(100),
       priority_score NUMERIC(6,2) DEFAULT 0,
       data_sources TEXT,
+      why_best TEXT,
       acted_at TIMESTAMPTZ,
       dismissed_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_decision_rec_tenant ON decision_recommendations(tenant_id, created_at DESC);
   `);
+  // Additive migration for existing installs
+  await p.query(`ALTER TABLE decision_recommendations ADD COLUMN IF NOT EXISTS why_best TEXT`).catch(() => {});
 }
 
 module.exports = { ensureDecisionEngineSchema };
