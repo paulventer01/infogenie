@@ -30,6 +30,7 @@ import NewProject from "@/components/features/manage/NewProject";
 import MarketingOKR from "@/components/features/manage/MarketingOKR";
 import MasterCalendar from "@/components/features/manage/MasterCalendar";
 import BrandCalendar from "@/components/features/manage/BrandCalendar";
+import CalendarAssistant from "@/components/features/manage/CalendarAssistant";
 import Launches from "@/components/features/manage/Launches";
 import AiTraffic from "@/components/features/manage/AiTraffic";
 import Heatmaps from "@/components/features/manage/Heatmaps";
@@ -283,6 +284,7 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "marketing-okr": MarketingOKR,
   "master-calendar": MasterCalendar,
   "brand-calendar": BrandCalendar,
+  "calendar-assistant": CalendarAssistant,
   launches: Launches,
   "ai-traffic": AiTraffic,
   heatmaps: Heatmaps,
