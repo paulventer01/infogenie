@@ -88,9 +88,9 @@ In **shadow** mode (default): the full path runs for logging/UX warnings, but **
 services/ai_governance/
   schema.js          # policy, events, output_checks, data_quality_rules
   policy.js          # resolve tenant policy + risk appetite
-  context_pack.js    # mandatory retrieval bundle before LLM
-  output_gate.js     # brand safety + PII + content filters
-  orchestrator.js    # govern({ tenant, user, surface, action, payload })
+  context_pack.js    # best-effort retrieval bundle before LLM
+  output_gate.js     # brand safety + PII + content filters (warn-first)
+  orchestrator.js    # govern(...) — fail-open; shadow never delays
   hooks.js           # adapters for brief, spine, safe-agent, content, email
   api.js             # REST + status dashboard
 ```
@@ -275,7 +275,7 @@ CREATE TABLE data_quality_scores (
 | Optimizer run | `ad_campaigns`, `pixel_configs` | Warn + continue |
 | Ecosystem Spine suggest | `audience_segments`, `attribution_runs` | Soft warn + continue |
 
-#### Mandatory provenance logging
+#### Provenance logging (best-effort)
 
 Create `services/ai_governance/provenance_bridge.js`:
 
