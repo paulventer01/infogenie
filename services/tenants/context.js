@@ -23,8 +23,10 @@
 // commit cannot break the running app for existing users.
 
 const _db = require('../../db');
+const { multitenantMode } = require('../security/prod_defaults');
 
-const MODE = (process.env.MULTITENANT_ENFORCEMENT || 'off').toLowerCase();
+// Evaluated once at module load. Production default is 'on' when unset.
+const MODE = multitenantMode();
 function mode() { return MODE; }
 function isOff()     { return MODE === 'off'; }
 function isShadow()  { return MODE === 'shadow'; }

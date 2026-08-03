@@ -171,10 +171,20 @@ async function runAll() {
 }
 
 function startCron(everyHours = 6) {
+  // When the shared job scheduler owns crisis.radar, skip inline timers.
+  if (process.env.INFOGENIE_JOBS === '1') {
+    console.log('[crisis-radar] cron deferred to job scheduler');
+    return;
+  }
   if (_cronTimer) return;
   const tick = () => { runAll().catch(e => console.warn('[crisis-radar] tick failed:', e.message)); };
   _cronTimer = setInterval(tick, Math.max(1, everyHours) * 3600 * 1000);
   setTimeout(tick, 60 * 1000); // first run 1min after boot
 }
 
-module.exports = { runAll, startCron };
+function stopCron() {
+  if (_cronTimer) clearInterval(_cronTimer);
+  _cronTimer = null;
+}
+
+module.exports = { runAll, startCron, stopCron };
