@@ -427,8 +427,9 @@ router.delete('/workspaces/:id/members/:userId', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
-// Grant or revoke a platform role — body { roleKey: 'platform_admin' | null }.
-// Owners cannot be demoted here; only platform_admin can be granted (not owner).
+// Grant or revoke a platform role — body { roleKey: 'platform_owner' | 'platform_admin' | null }.
+// Bootstrap owners (users.is_owner) cannot be demoted here. Platform Owner / Admin
+// are grantable to other users via platform_users (not via workspace membership).
 router.patch('/users/:id/platform-role', async (req, res) => {
   const uid = Number(req.params.id);
   if (!Number.isInteger(uid)) return _err(res, 400, 'bad_id');
@@ -454,8 +455,13 @@ router.patch('/users/:id/platform-role', async (req, res) => {
       });
       return res.json({ ok: true, platformRole: null });
     }
-    if (roleKey !== 'platform_admin') return _err(res, 400, 'only_platform_admin_grantable');
-    const role = await p.query(`SELECT id, name FROM roles WHERE tenant_id IS NULL AND key='platform_admin' LIMIT 1`);
+    if (roleKey !== 'platform_admin' && roleKey !== 'platform_owner') {
+      return _err(res, 400, 'bad_platform_role');
+    }
+    const role = await p.query(
+      `SELECT id, name, key FROM roles WHERE tenant_id IS NULL AND key=$1 AND scope='platform' LIMIT 1`,
+      [roleKey],
+    );
     if (!role.rows[0]) return _err(res, 400, 'role_not_found');
     await p.query(`INSERT INTO platform_users (user_id, role_id, granted_by, granted_at)
       VALUES ($1,$2,$3,now())
@@ -466,7 +472,7 @@ router.patch('/users/:id/platform-role', async (req, res) => {
       targetUserId: uid, targetEmail: ux.rows[0].email,
       oldRole, newRole: role.rows[0].name,
     });
-    res.json({ ok: true, platformRole: 'platform_admin' });
+    res.json({ ok: true, platformRole: role.rows[0].key });
   } catch (e) { _err(res, 500, e.message); }
 });
 

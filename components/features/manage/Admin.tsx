@@ -921,12 +921,25 @@ function UsersTab() {
   }, [reloadKey]);
 
   const tenantRoles = roles.filter((r) => r.scope === "tenant");
+  const platformRoles = roles.filter((r) => r.scope === "platform");
 
   async function setPlatformRole(userId: number, roleKey: string) {
     const r = await adminSend("/users/" + userId + "/platform-role", "PATCH", { roleKey });
     if (r.ok) toast("✓ Platform role updated");
-    else toast("⚠️ " + errText(r));
+    else {
+      const friendly: Record<string, string> = {
+        cannot_change_owner: "Bootstrap Platform Owner can’t be changed here",
+        bad_platform_role: "Pick Platform Owner or Platform Admin",
+      };
+      toast("⚠️ " + (friendly[r.error || ""] || errText(r)));
+    }
     setReloadKey((k) => k + 1);
+  }
+
+  function platformRoleValue(u: User): string {
+    if (u.is_owner || u.platform_role === "platform_owner") return "platform_owner";
+    if (u.platform_role === "platform_admin") return "platform_admin";
+    return "none";
   }
   async function setMemberRole(tenantId: number, userId: number, roleKey: string) {
     const r = await adminSend("/workspaces/" + tenantId + "/members/" + userId, "PATCH", { roleKey });
@@ -1106,14 +1119,25 @@ function UsersTab() {
           <thead style={{ background: "#F8FAFC" }}>
             <tr>
               <th style={thStyle}>USER</th>
-              <th style={thStyle}>PLATFORM ROLE</th>
-              <th style={thStyle}>WORKSPACES &amp; ROLES</th>
+              <th style={thStyle}>
+                PLATFORM ROLE
+                <div style={{ fontWeight: 500, color: "#94A3B8", fontSize: 10, marginTop: 2, textTransform: "none", letterSpacing: 0 }}>
+                  Platform Owner / Admin
+                </div>
+              </th>
+              <th style={thStyle}>
+                WORKSPACES &amp; ROLES
+                <div style={{ fontWeight: 500, color: "#94A3B8", fontSize: 10, marginTop: 2, textTransform: "none", letterSpacing: 0 }}>
+                  Tenant roles only
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody>
             {users.map((u) => {
               const mems = u.memberships || [];
               const availWs = workspaces.filter((w) => !mems.some((m) => m.tenantId === w.id));
+              const platVal = platformRoleValue(u);
               return (
                 <tr key={u.id} style={{ borderTop: "1px solid #F1F5F9" }}>
                   <td style={{ padding: "11px 16px", verticalAlign: "top" }}>
@@ -1122,35 +1146,61 @@ function UsersTab() {
                   </td>
                   <td style={{ padding: "11px 16px", verticalAlign: "top" }}>
                     {u.is_owner ? (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#7E22CE", background: "#F3E8FF", padding: "3px 9px", borderRadius: 99 }}>
-                        OWNER
-                      </span>
+                      <select
+                        value="platform_owner"
+                        disabled
+                        title="Bootstrap Platform Owner — locked"
+                        style={{ fontSize: 12, padding: "4px 8px", border: "1px solid #E9D5FF", borderRadius: 7, background: "#F3E8FF", color: "#7E22CE", fontWeight: 700 }}
+                      >
+                        <option value="platform_owner">Platform Owner</option>
+                      </select>
                     ) : (
                       <select
-                        value={u.platform_role === "platform_admin" ? "platform_admin" : "none"}
+                        value={platVal}
                         onChange={(e) => setPlatformRole(u.id, e.target.value)}
-                        style={{ fontSize: 12, padding: "4px 8px", border: "1px solid #E2E8F0", borderRadius: 7 }}
+                        style={{ fontSize: 12, padding: "4px 8px", border: "1px solid #E2E8F0", borderRadius: 7, minWidth: 160 }}
                       >
                         <option value="none">Regular user</option>
-                        <option value="platform_admin">Platform Admin</option>
+                        {(platformRoles.length
+                          ? platformRoles
+                          : [
+                              { key: "platform_owner", name: "Platform Owner" },
+                              { key: "platform_admin", name: "Platform Admin" },
+                            ]
+                        ).map((r) => (
+                          <option key={r.key} value={r.key}>
+                            {r.name}
+                          </option>
+                        ))}
                       </select>
                     )}
                   </td>
                   <td style={{ padding: "11px 16px", verticalAlign: "top" }}>
                     {mems.length ? (
                       mems.map((m) => (
-                        <div key={m.tenantId} style={{ display: "flex", alignItems: "center", gap: 6, margin: "3px 0" }}>
+                        <div key={m.tenantId} style={{ display: "flex", alignItems: "center", gap: 6, margin: "3px 0", flexWrap: "wrap" }}>
                           <span style={{ fontSize: 12, color: "#334155", minWidth: 120 }}>{m.tenant}</span>
                           <select
                             value={(tenantRoles.find((r) => r.name === m.role)?.key) || ""}
                             onChange={(e) => setMemberRole(m.tenantId, u.id, e.target.value)}
+                            title="Workspace (tenant) role — Platform Owner/Admin are set under Platform Role"
                             style={{ fontSize: 11, padding: "3px 6px", border: "1px solid #E2E8F0", borderRadius: 6 }}
                           >
-                            {tenantRoles.map((r) => (
-                              <option key={r.key} value={r.key}>
-                                {r.name}
+                            <optgroup label="Workspace roles">
+                              {tenantRoles.map((r) => (
+                                <option key={r.key} value={r.key}>
+                                  {r.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Platform roles → use Platform Role column">
+                              <option value="__platform_owner" disabled>
+                                Platform Owner
                               </option>
-                            ))}
+                              <option value="__platform_admin" disabled>
+                                Platform Admin
+                              </option>
+                            </optgroup>
                           </select>
                           <button onClick={() => removeMember(m.tenantId, u.id)} title="Remove from workspace" style={{ border: "1px solid #FECACA", background: "#FEF2F2", color: "#B91C1C", borderRadius: 6, fontSize: 11, padding: "3px 7px", cursor: "pointer" }}>
                             Remove
