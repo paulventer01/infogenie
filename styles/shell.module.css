@@ -512,19 +512,25 @@
   margin-left: var(--shell-w-closed);
 }
 
-.topbar {
+.stickyHeader {
   position: sticky;
   top: 0;
   z-index: 900;
+  background: var(--shell-topbar-bg);
+  backdrop-filter: blur(18px) saturate(140%);
+  border-bottom: 1px solid var(--shell-topbar-border);
+  box-shadow: 0 4px 18px rgba(11, 18, 32, 0.06);
+}
+
+.topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   min-height: 58px;
   padding: 10px 20px;
-  background: var(--shell-topbar-bg);
-  backdrop-filter: blur(18px) saturate(140%);
-  border-bottom: 1px solid var(--shell-topbar-border);
+  background: transparent;
+  border-bottom: none;
   animation: topbarIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 

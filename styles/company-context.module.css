@@ -1,4 +1,6 @@
 .bar {
+  position: relative;
+  z-index: 1;
   background: linear-gradient(90deg, #e7f5f2 0%, #eaf3fb 52%, #eef6ff 100%);
   border-bottom: 1px solid rgba(15, 118, 110, 0.22);
   color: #0f172a;

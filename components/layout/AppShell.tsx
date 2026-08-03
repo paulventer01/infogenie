@@ -399,6 +399,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className={styles.stage}>
+        <div className={styles.stickyHeader}>
         <header className={styles.topbar}>
           <div className={styles.topbarLeft}>
             <button
@@ -471,6 +472,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <CompanyContextBar />
+        </div>
         <div className={styles.content} id="ig-shell-content">
           {children}
         </div>
