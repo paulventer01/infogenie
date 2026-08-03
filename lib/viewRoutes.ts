@@ -164,14 +164,23 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "2 · Write the message",
+        header: "2 · Content Studio",
         items: [
-          { view: "content", icon: "🧬", label: "Content AI (blogs · long-form)" },
+          { view: "content-studio", icon: "🧬", label: "Content Studio — start here" },
+          { view: "content", icon: "✍️", label: "Content AI (blogs · long-form)" },
+          { view: "content-autopilot", icon: "🦾", label: "Content Autopilot" },
+          { view: "bulk-rewriter", icon: "🖊️", label: "Bulk Content Rewriter" },
           { view: "headline-tester", icon: "🏹", label: "Headline Tester" },
           { view: "press-release", icon: "📄", label: "Press Release Writer" },
           { view: "cold-email", icon: "✉️", label: "Cold Email Writer" },
           { view: "email-personalizer", icon: "📨", label: "Email Personalizer (1-to-1)" },
-          { view: "email-broadcast", icon: "📧", label: "Email Broadcast + Tracking" },
+        ],
+      },
+      {
+        header: "3 · Lifecycle email",
+        items: [
+          { view: "lifecycle-email", icon: "📧", label: "Lifecycle Email — start here" },
+          { view: "email-broadcast", icon: "📨", label: "Email Broadcast + Tracking" },
           { view: "email-analytics", icon: "🖥️", label: "Email Campaign Analytics" },
           { view: "whatsapp", icon: "💬", label: "WhatsApp Channel" },
           { view: "voice-caller", icon: "📞", label: "AI Voice Caller" },
@@ -180,7 +189,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "3 · Design the visuals",
+        header: "4 · Design the visuals",
         items: [
           { view: "creative", icon: "🖌️", label: "AI Creative (single ad)" },
           { view: "smart-creative", icon: "✨", label: "Smart Creative Builder (multi)" },
@@ -195,8 +204,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "4 · Build pages & bots",
+        header: "5 · Build pages & bots",
         items: [
+          { view: "conversational-ai", icon: "🤖", label: "Conversational AI — start here" },
           { view: "landing-pages", icon: "🚀", label: "AI Landing Pages (A/B · leads · ad package)" },
           { view: "landing-builder", icon: "🌎", label: "Landing Page Builder" },
           { view: "site-builder", icon: "🏗️", label: "Site Builder (multi-page)" },
@@ -206,12 +216,11 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "5 · Plan the campaign",
+        header: "6 · Plan the campaign",
         items: [
           { view: "campaigns", icon: "🛫", label: "Campaign Strategy" },
           { view: "content-calendar", icon: "🗓️", label: "Content Calendar" },
           { view: "content-modes", icon: "✍️", label: "Content Modes" },
-          { view: "content-autopilot", icon: "🦾", label: "Content Autopilot" },
           { view: "ad-creative", icon: "🖍️", label: "Ad Creative Gen" },
           { view: "idea-feed", icon: "🕯️", label: "Idea Swipe Feed" },
           { view: "pitch-deck", icon: "🧮", label: "Pitch Deck Builder" },
@@ -263,8 +272,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "3 · Launch paid ads",
+        header: "3 · Paid search & social",
         items: [
+          { view: "paid-search-social", icon: "💳", label: "Paid Search & Social — start here" },
           { view: "advertise", icon: "📣", label: "Advertise Hub (Meta · Google · TikTok)" },
           { view: "import-campaigns", icon: "📥", label: "Import Existing Campaigns" },
           { view: "opt-folders", icon: "📁", label: "Campaign Folders" },
@@ -272,8 +282,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "4 · Publish organically",
+        header: "4 · Social command center",
         items: [
+          { view: "social-command-center", icon: "📱", label: "Social Command Center — start here" },
           { view: "social-publisher", icon: "📤", label: "Social Publisher (15 platforms)" },
           { view: "discovery", icon: "🔭", label: "Influencer Discovery" },
           { view: "influencers", icon: "💫", label: "Influencer CRM" },
@@ -314,6 +325,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "8 · Next-gen messaging",
         items: [
+          { view: "messaging-channels", icon: "🗃️", label: "Messaging Channels (SMS · WhatsApp · Push)" },
           { view: "rcs-campaigns",     icon: "💭", label: "RCS & Apple Messages (rich interactive messaging)" },
           { view: "linkedin-outreach", icon: "💼", label: "LinkedIn Outreach Automation (sequences)" },
           { view: "email-warmup",      icon: "🔥", label: "Email Warm-Up (inbox trust builder)" },
@@ -335,6 +347,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "1 · Set the targets",
         items: [
+          { view: "growth-hub", icon: "🚀", label: "Growth Marketing — start here" },
           { view: "goals", icon: "📎", label: "Goals & Targets" },
           { view: "kpi-tracker", icon: "💹", label: "KPI Tracker (live)" },
           { view: "action-center", icon: "🎥", label: "Action Center (do this next)" },
@@ -380,8 +393,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "4 · Improve SEO & content",
+        header: "4 · Improve SEO & conversion",
         items: [
+          { view: "conversion-lab", icon: "🧪", label: "Conversion Lab — start here" },
           { view: "autoseo", icon: "✈️", label: "AutoSEO Pro (autonomous)" },
           { view: "contentscorer", icon: "📝", label: "Content Scorer" },
           { view: "link-suggester", icon: "⛓️", label: "Internal Link Suggester" },
@@ -621,6 +635,22 @@ export const VIEW_ID_ALIASES: Record<string, string> = {
   "lead-aggregator":   "lead-gen",
   "acquisition-engine":"lead-gen",
   "marketing-simulator":"digital-twin",
+  // Relabel-first hub shortcuts (marketing taxonomy discoverability)
+  "sem":               "paid-search-social",
+  "ppc":               "paid-search-social",
+  "paid-search":       "paid-search-social",
+  "paid-social":       "paid-search-social",
+  "content-marketing": "content-studio",
+  "ai-content":        "content-studio",
+  "social-media":      "social-command-center",
+  "organic-social-hub":"social-command-center",
+  "email-marketing":   "lifecycle-email",
+  "email-automation":  "lifecycle-email",
+  "sms-marketing":     "messaging-channels",
+  "push-notifications":"messaging-channels",
+  "chatbot":           "conversational-ai",
+  "cro":               "conversion-lab",
+  "growth-marketing":  "growth-hub",
 };
 
 /**

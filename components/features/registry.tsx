@@ -295,4 +295,12 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "project-compare": L("project-compare", () => import("@/components/features/analyse/ProjectCompare")),
   "geo-insights": L("geo-insights", () => import("@/components/features/analyse/GeoInsights")),
   "ugc-discovery": L("ugc-discovery", () => import("@/components/features/analyse/UgcDiscovery")),
+  "paid-search-social": L("paid-search-social", () => import("@/components/features/shared/MarketingHubPanel")),
+  "content-studio": L("content-studio", () => import("@/components/features/shared/MarketingHubPanel")),
+  "social-command-center": L("social-command-center", () => import("@/components/features/shared/MarketingHubPanel")),
+  "lifecycle-email": L("lifecycle-email", () => import("@/components/features/shared/MarketingHubPanel")),
+  "messaging-channels": L("messaging-channels", () => import("@/components/features/shared/MarketingHubPanel")),
+  "conversational-ai": L("conversational-ai", () => import("@/components/features/shared/MarketingHubPanel")),
+  "conversion-lab": L("conversion-lab", () => import("@/components/features/shared/MarketingHubPanel")),
+  "growth-hub": L("growth-hub", () => import("@/components/features/shared/MarketingHubPanel")),
 };

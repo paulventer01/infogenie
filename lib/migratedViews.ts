@@ -338,6 +338,15 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "marketing-okr",      legacyModule: null },
   { view: "action-queue",       legacyModule: null },
   { view: "ad-comment-monitor", legacyModule: null },
+  // Relabel-first marketing hubs (tile landing pages)
+  { view: "paid-search-social", legacyModule: null },
+  { view: "content-studio", legacyModule: null },
+  { view: "social-command-center", legacyModule: null },
+  { view: "lifecycle-email", legacyModule: null },
+  { view: "messaging-channels", legacyModule: null },
+  { view: "conversational-ai", legacyModule: null },
+  { view: "conversion-lab", legacyModule: null },
+  { view: "growth-hub", legacyModule: null },
 ];
 
 /** Set of view ids now rendered by React. */

@@ -29,6 +29,7 @@ import {
 import MarketingIntelPanels from "./MarketingIntelPanels";
 import DomainOverview from "./DomainOverview";
 import OverviewWidgets from "./OverviewWidgets";
+import MessagingChannelStrip from "./MessagingChannelStrip";
 import { buildCompanyOverview } from "@/lib/companyOverview";
 
 interface WebsiteKPIs {
@@ -667,6 +668,7 @@ export default function Dashboard() {
         {companyOverview && (
           <>
             <DomainOverview overview={companyOverview} currentView="dashboard" />
+            <MessagingChannelStrip />
             {companyOverview.widgets?.length > 0 && (
               <OverviewWidgets widgets={companyOverview.widgets} />
             )}
