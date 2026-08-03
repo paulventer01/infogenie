@@ -24,6 +24,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.89.0",
+    "@aws-sdk/client-s3": "^3.1101.0",
+    "@sentry/node": "^10.69.0",
     "@types/node": "^20.19.43",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
@@ -37,6 +39,7 @@
     "express": "^4.22.1",
     "express-session": "^1.19.0",
     "google-trends-api": "^4.9.2",
+    "ioredis": "^6.0.0",
     "jsdom": "^29.1.1",
     "multer": "^2.1.1",
     "next": "^15.5.19",

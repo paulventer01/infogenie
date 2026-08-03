@@ -10,9 +10,12 @@ function _hasDb() { return !!process.env.DATABASE_URL; }
 function getPool() {
   if (!_hasDb()) return null;
   if (!_pool) {
+    const max = Number(process.env.PG_POOL_MAX || (process.env.NODE_ENV === 'production' ? 10 : 5));
     _pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      max: 5, idleTimeoutMillis: 30000, ssl: { rejectUnauthorized: false }
+      max: Number.isFinite(max) && max > 0 ? max : 5,
+      idleTimeoutMillis: 30000,
+      ssl: { rejectUnauthorized: false }
     });
     _pool.on('error', e => console.error('[db] pool error:', e.message));
   }

@@ -57,10 +57,15 @@ const __EXPRESS_PORT = Number(process.env.EXPRESS_PORT) || 5000;
 // Only bind a port when this is the live server process. Required as a module
 // for tests (buildApp) this is off, so requiring the app never grabs a port.
 if (_runtimeFlags.backgroundEnabled()) {
-  app.listen(__EXPRESS_PORT, '0.0.0.0', () => {
+  const _httpServer = app.listen(__EXPRESS_PORT, '0.0.0.0', () => {
     console.log(`InfoGenie listening on port ${__EXPRESS_PORT} (preview pane)`);
     startMsg();
   });
+  try {
+    require('../infra/shutdown').registerServer(_httpServer);
+  } catch (e) {
+    console.warn('[shutdown] registerServer failed:', e.message);
+  }
 }
 
 // ── POST /api/smart-detect ────────────────────────────────────────────────────

@@ -114,10 +114,19 @@ async function _safeRun() {
   finally { _running = false; }
 }
 function startOptimizerCron(intervalHours = 6) {
+  if (process.env.INFOGENIE_JOBS === '1') {
+    console.log('[optimizer] rules cron deferred to job scheduler');
+    return false;
+  }
   if (_timer) return false;
   setTimeout(_safeRun, 90000);
   _timer = setInterval(_safeRun, intervalHours * 3600 * 1000);
   return true;
 }
 
-module.exports = { runOptimizerOnce, evaluateCampaign, startOptimizerCron };
+function stopOptimizerCron() {
+  if (_timer) clearInterval(_timer);
+  _timer = null;
+}
+
+module.exports = { runOptimizerOnce, evaluateCampaign, startOptimizerCron, stopOptimizerCron };
