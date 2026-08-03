@@ -181,18 +181,20 @@ Prioritize gaps that **strengthen the loop**: *discover → create → reach →
 
 ## Relabel first (quick wins — no net-new product)
 
-These are **partially covered** today. Fix positioning before building:
+**Status: shipped** — hub landing pages + nav regrouping.
 
-| Infographic type | InfoGenie home today | Action |
+| Infographic type | Hub / nav entry | URL |
 |---|---|---|
-| SEM / PPC (#7–8) | Advertise Hub, Google/Meta/TikTok Insights, Optimizer | Add landing page “Paid Search & Social” hub tile |
-| Content / AI content (#11–12) | Content AI, Autopilot, Bulk Rewriter | Merge under **Create → Content Studio** |
-| Organic / paid social (#21–23) | Social Publisher + ad insights | Single **Social Command Center** nav entry |
-| Email + automation (#37–38) | Broadcast + Automations + Re-Engage | Badge as “Lifecycle Email” |
-| SMS / WhatsApp (#39–40) | Omnichannel + WhatsApp Channel | Surface channel icons on dashboard |
-| Conversational (#42) | Chatbot Builder, Reply Assistant, Ask InfoGenie | Group under **Conversational AI** |
-| CRO (#49) | CRO Lab, Heatmaps, A/B, Conversion Boosters | One **Conversion Lab** entry point |
-| Growth (#50) | Methodology, MMM, Digital Twin, Lead Gen | Already strong — document in sales deck |
+| SEM / PPC (#7–8) | **Paid Search & Social — start here** (Grow) | `/grow/paid-search-social` |
+| Content / AI content (#11–12) | **Content Studio** (Create §2) | `/create/content-studio` |
+| Organic / paid social (#21–23) | **Social Command Center** (Reach §4) | `/reach/social-command-center` |
+| Email + automation (#37–38) | **Lifecycle Email** (Create §3) | `/create/lifecycle-email` |
+| SMS / WhatsApp (#39–40) | **Messaging Channels** + dashboard strip | `/reach/messaging-channels` |
+| Conversational (#42) | **Conversational AI** (Create §5) | `/create/conversational-ai` |
+| CRO (#49) | **Conversion Lab** (Grow §4) | `/grow/conversion-lab` |
+| Growth (#50) | **Growth Marketing — start here** (Grow §1) | `/grow/growth-hub` |
+
+URL aliases (`ppc`, `sem`, `cro`, `email-marketing`, `social-media`, etc.) resolve to these hubs.
 
 ---
 
