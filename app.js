@@ -2617,6 +2617,28 @@ function buildCreativeModal(camp, idx) {
 }
 
 // ===== NAVIGATION =====
+// Guard IGDiag while legacy React-hosted panels synchronously dump large DOM
+// subtrees (e.g. buildCampaigns → #campaignsWrap). PanelReady settleNavPending
+// fires before these builders run in useEffect, so rebuilds need their own guard.
+function _igBeginLegacyPanelBuild(viewId) {
+  try {
+    if (window.__igReactRouting || document.documentElement.getAttribute('data-ig-nav') === '1') return null;
+    var cv = (typeof currentView !== 'undefined' ? currentView : (window.currentView || ''));
+    if (cv !== viewId) return null;
+    document.documentElement.setAttribute('data-ig-nav', '1');
+    window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('panel:' + viewId);
+    return function() {
+      setTimeout(function() {
+        try {
+          if (window.__igReactRouting) return;
+          document.documentElement.removeAttribute('data-ig-nav');
+          window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle');
+        } catch(_) {}
+      }, 2800);
+    };
+  } catch(_) { return null; }
+}
+
 function navigateTo(viewId, updateActive = true) {
   // ── Permission guard (defense-in-depth; the server still enforces) ──────────
   // Block switching to a view the signed-in role isn't granted and redirect to
@@ -4068,6 +4090,8 @@ function _igCompInitials(name) {
 function buildCampaigns() {
   const wrap = document.getElementById('campaignsWrap');
   if (!wrap) return;
+  const _igEnd = _igBeginLegacyPanelBuild('campaigns');
+  try {
   if (!analysisData) {
     wrap.innerHTML = `
       <div style="text-align:center; padding:60px 24px">
@@ -4592,6 +4616,9 @@ function buildCampaigns() {
       </div>
     </div>
   `;
+  } finally {
+    if (_igEnd) _igEnd();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

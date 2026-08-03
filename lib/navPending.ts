@@ -92,6 +92,7 @@ export function settleNavPending(view?: string): void {
   // after first paint — keep the stall guard up long enough to cover that.
   const heavy =
     view === "home" ||
+    view === "campaigns" ||
     view === "dashboard" ||
     view === "competitors" ||
     view === "battleplan" ||
