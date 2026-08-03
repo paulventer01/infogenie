@@ -5,11 +5,13 @@
 // Origin check is a cheap second line that also covers same-site subdomain
 // confusion. API-key / Bearer clients and public webhooks are exempt.
 //
-// Flip to enforce with SECURITY_CSRF=on (default shadow: log only).
+// Production defaults to SECURITY_CSRF=on (via prod_defaults); otherwise shadow.
 'use strict';
 
+const { csrfMode } = require('./prod_defaults');
+
 function mode() {
-  const m = String(process.env.SECURITY_CSRF || 'shadow').toLowerCase();
+  const m = csrfMode();
   if (m === 'on' || m === 'off' || m === 'shadow') return m;
   return 'shadow';
 }
@@ -34,7 +36,7 @@ function expectedOrigins(req) {
     out.add(`https://${host}`);
     out.add(`http://${host}`);
   }
-  const pub = (process.env.PUBLIC_BASE_URL || process.env.APP_URL || '').replace(/\/$/, '');
+  const pub = (process.env.PUBLIC_BASE_URL || process.env.APP_URL || process.env.PUBLIC_URL || '').replace(/\/$/, '');
   if (pub) {
     try {
       out.add(new URL(pub).origin);
@@ -42,8 +44,6 @@ function expectedOrigins(req) {
       /* ignore */
     }
   }
-  // Dev / tunnel convenience: allow any *.trycloudflare.com / localhost variants
-  // only when not in production.
   return out;
 }
 
@@ -105,6 +105,7 @@ function csrfGuard(req, res, next) {
 module.exports = {
   csrfGuard,
   mode,
+  csrfMode: mode,
   requestOrigin,
   originAllowed,
   expectedOrigins,

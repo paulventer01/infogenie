@@ -45,10 +45,19 @@ async function _safeRun() {
   finally { _running = false; }
 }
 function startIngestCron(intervalMinutes = 60) {
+  if (process.env.INFOGENIE_JOBS === '1') {
+    console.log('[optimizer] ingest cron deferred to job scheduler');
+    return false;
+  }
   if (_timer) return false;
   setTimeout(_safeRun, 30000);
   _timer = setInterval(_safeRun, intervalMinutes * 60 * 1000);
   return true;
 }
 
-module.exports = { ingestOnce, startIngestCron };
+function stopIngestCron() {
+  if (_timer) clearInterval(_timer);
+  _timer = null;
+}
+
+module.exports = { ingestOnce, startIngestCron, stopIngestCron };

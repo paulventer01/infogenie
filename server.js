@@ -50,6 +50,17 @@ const _permEnforce      = require('./services/tenants/permission_enforce');
 const _authGate         = require('./services/auth_gate');
 const _runtimeFlags     = require('./services/runtime_flags');
 const _security         = require('./services/security');
+const { initSentry, captureException } = require('./services/infra/sentry');
+const { logger, requestLogger } = require('./services/infra/logger');
+const { withRetry, isTransientError } = require('./services/infra/retry');
+const { getBreaker } = require('./services/infra/circuit_breaker');
+const { closeRedis } = require('./services/infra/redis');
+const {
+  onShutdown, installSignalHandlers,
+} = require('./services/infra/shutdown');
+
+// Optional Sentry — no-op without SENTRY_DSN.
+try { initSentry(); } catch (_) { /* ignore */ }
 
 // Background work — port binding, the drip cron tick below, the register-time
 // crons in services/officer + services/assistant_ops routes, and the BOOT_TASKS
@@ -60,6 +71,10 @@ const _security         = require('./services/security');
 // process-level handlers and any route module so every guard downstream reads
 // the right value.
 _runtimeFlags.setBackground(require.main === module);
+// Prefer shared job scheduler for drip / crisis / digest / optimizer crons.
+if (_runtimeFlags.backgroundEnabled() && process.env.INFOGENIE_JOBS !== '0') {
+  process.env.INFOGENIE_JOBS = '1';
+}
 
 // ── Global async safety net ──────────────────────────────────────────────────
 // Node 15+ crashes the whole process on any unhandled promise rejection. In a
@@ -136,37 +151,52 @@ function _rebuildAiClients() {
 async function openaiChatWithRetry(params, opts = {}) {
   const { fallbackModel = 'gpt-5-mini', retries = 2 } = opts;
   const primary = params.model;
-  let primaryErr = null;        // preserve original cause for diagnostics
+  const breaker = getBreaker('openai', { failureThreshold: 5, openMs: 30_000 });
+  let primaryErr = null;
   let lastTransient = false;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await openai.chat.completions.create(params);
-    } catch (e) {
-      primaryErr = e;
-      const msg = (e && e.message) || '';
-      const status = (e && (e.status || e.statusCode)) || 0;
-      lastTransient = /500|502|503|504|timeout|ECONN|ETIMEDOUT|fetch failed|no body/i.test(msg)
-        || [500, 502, 503, 504, 408, 429].includes(status);
-      if (!lastTransient) break;       // don't retry 400/401/403/404 etc
-      if (attempt < retries) {
-        await new Promise(r => setTimeout(r, 350 * (attempt + 1)));
+
+  const attemptPrimary = async () => {
+    return withRetry(
+      () => breaker.exec(() => openai.chat.completions.create(params)),
+      {
+        retries,
+        minDelayMs: 350,
+        shouldRetry: (e) => {
+          const msg = (e && e.message) || '';
+          const status = (e && (e.status || e.statusCode)) || 0;
+          return /500|502|503|504|timeout|ECONN|ETIMEDOUT|fetch failed|no body|CIRCUIT_OPEN|429/i.test(msg)
+            || [500, 502, 503, 504, 408, 429].includes(status)
+            || e.code === 'CIRCUIT_OPEN';
+        },
+        onRetry: (e, n) => logger.warn('openai_retry', { attempt: n, error: e.message, model: primary }),
       }
-    }
+    );
+  };
+
+  try {
+    return await attemptPrimary();
+  } catch (e) {
+    primaryErr = e;
+    const msg = (e && e.message) || '';
+    const status = (e && (e.status || e.statusCode)) || 0;
+    lastTransient = /500|502|503|504|timeout|ECONN|ETIMEDOUT|fetch failed|no body|CIRCUIT_OPEN|429/i.test(msg)
+      || [500, 502, 503, 504, 408, 429].includes(status)
+      || e.code === 'CIRCUIT_OPEN';
   }
-  // Fallback model attempt — ONLY if last error was transient AND model differs.
-  // Non-transient errors (auth, bad request, etc.) won't be fixed by switching
-  // model and would obscure the real root cause.
+
   if (lastTransient && fallbackModel && fallbackModel !== primary) {
     try {
-      console.warn(`[openai-retry] ${primary} failed (${primaryErr?.message}) — falling back to ${fallbackModel}`);
-      return await openai.chat.completions.create({ ...params, model: fallbackModel });
+      logger.warn('openai_fallback', { primary, fallbackModel, error: primaryErr?.message });
+      return await breaker.exec(() => openai.chat.completions.create({ ...params, model: fallbackModel }));
     } catch (e) {
+      captureException(e, { primary, fallbackModel });
       const merged = new Error(`primary(${primary}): ${primaryErr?.message || primaryErr} | fallback(${fallbackModel}): ${e.message || e}`);
       merged.primaryError = primaryErr;
       merged.fallbackError = e;
       throw merged;
     }
   }
+  if (primaryErr) captureException(primaryErr, { model: primary });
   throw primaryErr || new Error('openai retry failed');
 }
 
@@ -183,13 +213,15 @@ app.use((req, res, next) => {
   const corsOrigin = process.env.CORS_ORIGIN || '*';
   res.setHeader('Access-Control-Allow-Origin', corsOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-InfoGenie-Key, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-InfoGenie-Key, X-Requested-With, X-Request-Id');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
+app.use(requestLogger());
 
 // Capture the raw request body alongside the parsed JSON so HMAC-signed
 // webhooks (Resend / Svix) can verify against the exact bytes that were
@@ -198,6 +230,9 @@ app.use(express.json({ limit: '5mb', verify: (req, _res, buf) => { req.rawBody =
 
 // Trust the Replit proxy so req.ip returns the real client IP for budget caps.
 app.set('trust proxy', true);
+
+// Liveness / readiness — public, no auth (for LB + k8s probes).
+app.use('/api', require('./services/health/api'));
 
 // ── Session store (Postgres-backed, falls back to in-memory if no DB) ────────
 // Required for the real per-user auth flow (signup / login / social OAuth).
@@ -234,13 +269,13 @@ app.use(expressSession({
 // Populate req.user from req.session (if any). Runs before the static-file
 // + API-key gate so every downstream route can read req.user.
 app.use(_authService.loadUserFromSession);
-// CSRF Origin/Referer guard for cookie-authenticated mutations (shadow by default).
+// CSRF Origin/Referer guard for cookie-authenticated mutations (shadow by default in dev).
 app.use(_security.csrfGuard);
 // Attach tenant context (active tenant, role, permission set) to req. Phase 1
 // is non-enforcing — this just makes req.tenant / req.can(perm) available to
 // any route that wants to read it. No existing route is gated yet.
 app.use(_tenantMiddleware.loadTenantContext);
-// Auth abuse rate limit (login / signup / reset) — applied before the router.
+// Auth abuse rate limit (login / signup / reset) — Redis-backed when REDIS_URL set.
 const _authAbuse = _security.authAbuseLimiter();
 app.use('/api/auth/login', _authAbuse);
 app.use('/api/auth/signup', _authAbuse);
@@ -410,6 +445,8 @@ app.use((req, res, next) => {
 // webhooks, status pings) are allowlisted and stay open even when auth is on.
 const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/auth\//,                  // session/token auth + OAuth callbacks
+  /^\/api\/health$/,                 // liveness probe
+  /^\/api\/ready$/,                  // readiness probe
   /^\/api\/diag-beacon$/,            // client breadcrumb mirror — fire-and-forget
   /^\/api\/diag-capture/,            // dashboard-diag capture/replay (temp tool)
   /^\/api\/drips\/webhook\/resend$/, // Svix-signed inbound webhook
@@ -1149,8 +1186,9 @@ function getDataForSEOAuth() {
 async function callDataForSEO(endpoint, body, timeoutMs = 18000) {
   const auth = getDataForSEOAuth();
   if (!auth) throw new Error('DataForSEO credentials not configured');
+  const breaker = getBreaker('dataforseo', { failureThreshold: 5, openMs: 45_000 });
 
-  return new Promise((resolve, reject) => {
+  const once = () => new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const options = {
       hostname: 'api.dataforseo.com',
@@ -1167,6 +1205,11 @@ async function callDataForSEO(endpoint, body, timeoutMs = 18000) {
       let raw = '';
       apiRes.on('data', chunk => { raw += chunk; });
       apiRes.on('end', () => {
+        if (apiRes.statusCode >= 500 || apiRes.statusCode === 429) {
+          const err = new Error(`DataForSEO HTTP ${apiRes.statusCode}`);
+          err.status = apiRes.statusCode;
+          return reject(err);
+        }
         try {
           resolve(JSON.parse(raw));
         } catch(e) {
@@ -1180,6 +1223,16 @@ async function callDataForSEO(endpoint, body, timeoutMs = 18000) {
     req.write(data);
     req.end();
   });
+
+  return withRetry(
+    () => breaker.exec(once),
+    {
+      retries: 2,
+      minDelayMs: 400,
+      shouldRetry: isTransientError,
+      onRetry: (e, n) => logger.warn('dataforseo_retry', { attempt: n, error: e.message, endpoint }),
+    }
+  );
 }
 
 // ── Competitor domain map (used when user doesn't specify) ───────────────────
@@ -1207,8 +1260,9 @@ function getRapidApiKey(envName = 'RAPIDAPI_KEY') {
 async function callRapidAPI(host, path, method = 'GET', body = null) {
   const key = getRapidApiKey();
   if (!key) throw new Error('RAPIDAPI_KEY not configured');
+  const breaker = getBreaker('rapidapi', { failureThreshold: 5, openMs: 45_000 });
 
-  return new Promise((resolve, reject) => {
+  const once = () => new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
     const options = {
       hostname: host,
@@ -1226,6 +1280,11 @@ async function callRapidAPI(host, path, method = 'GET', body = null) {
       let raw = '';
       res.on('data', chunk => { raw += chunk; });
       res.on('end', () => {
+        if (res.statusCode >= 500 || res.statusCode === 429) {
+          const err = new Error(`RapidAPI HTTP ${res.statusCode}`);
+          err.status = res.statusCode;
+          return reject(err);
+        }
         try { resolve(JSON.parse(raw)); }
         catch(e) { resolve({ _raw: raw }); }
       });
@@ -1235,6 +1294,16 @@ async function callRapidAPI(host, path, method = 'GET', body = null) {
     if (data) req.write(data);
     req.end();
   });
+
+  return withRetry(
+    () => breaker.exec(once),
+    {
+      retries: 2,
+      minDelayMs: 300,
+      shouldRetry: isTransientError,
+      onRetry: (e, n) => logger.warn('rapidapi_retry', { attempt: n, error: e.message, host }),
+    }
+  );
 }
 
 // ── POST /api/competitor-news ─────────────────────────────────────────────────
@@ -1658,6 +1727,18 @@ async function _dripTickInner(tid) {
     }
     enr.history = enr.history || [];
     enr.history.push(entry);
+    // Transient failures (rate limits / timeouts) — retry same step later; do not advance.
+    const _transientFail = !entry.ok && (
+      entry.failureType === 'rate' ||
+      /timeout|429|503|ECONN|ETIMEDOUT|rate.?limit/i.test(String(entry.error || ''))
+    );
+    if (_transientFail) {
+      enr.retryCount = (enr.retryCount || 0) + 1;
+      enr.nextSendAt = now + Math.min(60, 5 * enr.retryCount) * 60_000;
+      mutated = true;
+      continue;
+    }
+    enr.retryCount = 0;
     enr.currentStep += 1;
     if (enr.currentStep >= enr.sequence.length) {
       enr.status = 'completed';
@@ -1673,11 +1754,10 @@ async function _dripTickInner(tid) {
   if (mutated) await _dripSave(tid, list);
 }
 
-// Tick every 60 seconds. Errors in the engine should never crash the server.
-// Guarded so importing the app for tests (buildApp) starts no timers.
-if (_runtimeFlags.backgroundEnabled()) {
+// Drip tick is owned by the shared job scheduler when INFOGENIE_JOBS=1.
+// Fallback inline timer only when jobs are explicitly disabled.
+if (_runtimeFlags.backgroundEnabled() && process.env.INFOGENIE_JOBS === '0') {
   setInterval(() => { _dripTick().catch(e => console.error('[drip] tick error:', e.message)); }, 60_000);
-  // Also fire once 5 seconds after boot so freshly-enrolled day-0 sends go out.
   setTimeout(() => { _dripTick().catch(()=>{}); }, 5_000);
 }
 
@@ -4663,6 +4743,45 @@ app.use('/api/contentking', _contentkingRouter);
 // ─── Profound (LLM brand-mention tracker) ───────────────────────────────────
 // Profound · Shopify · AppsFlyer routes → services/external_connectors/routes.js
 require('./services/external_connectors/routes')(app, { _missingCreds });
+
+// ── System design hardening: job scheduler + graceful shutdown ───────────────
+BOOT_TASKS.push(async () => {
+  if (!_runtimeFlags.backgroundEnabled()) return;
+  if (process.env.INFOGENIE_JOBS !== '1') return;
+  try {
+    const { registerCoreJobs } = require('./services/jobs/handlers');
+    const { startJobs, stopJobs } = require('./services/jobs/scheduler');
+    const { ensureJobsSchema } = require('./services/jobs/schema');
+    if (_db.hasDb()) await ensureJobsSchema();
+
+    await registerCoreJobs({
+      dripTick: _dripTick,
+      crisisDetector: _crisisDetector,
+      digestRouter: _digestRouter,
+      optimizerIngest: _optimizerIngest,
+      optimizerRules: _optimizerRules,
+    });
+    await startJobs();
+    onShutdown('jobs', () => stopJobs());
+    onShutdown('redis', () => closeRedis());
+    onShutdown('postgres', async () => {
+      try {
+        const pool = _db.getPool && _db.getPool();
+        if (pool && typeof pool.end === 'function') await pool.end();
+      } catch (_) { /* ignore */ }
+    });
+    installSignalHandlers();
+    logger.info('hardening_boot_complete', {
+      jobs: true,
+      permissionMode: require('./services/security/prod_defaults').permissionMode(),
+      multitenantMode: require('./services/security/prod_defaults').multitenantMode(),
+      csrfMode: require('./services/security/prod_defaults').csrfMode(),
+    });
+  } catch (e) {
+    console.error('[jobs] boot failed:', e.message);
+    captureException(e, { phase: 'jobs_boot' });
+  }
+});
 
 // ── App builder export (for the test harness) ────────────────────────────────
 // server.js builds and wires the Express `app` above at require time. Because
