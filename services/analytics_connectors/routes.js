@@ -16,6 +16,27 @@ module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
   const { _chargeBudget, _credentialsVault, _missingCreds, _send429IfBudget } = ctx;
+  const _tenantCtx = require('./services/tenants/context');
+  const { recordJourneyEvent } = require('./services/company_overview/journey');
+
+  function _domainFromSiteUrl(siteUrl) {
+    const s = String(siteUrl || '');
+    if (s.startsWith('sc-domain:')) return s.slice('sc-domain:'.length).replace(/^www\./, '');
+    try {
+      return new URL(s).hostname.replace(/^www\./, '').toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+
+  async function _markAnalyticsJourney(req, siteUrl, source) {
+    const dom = _domainFromSiteUrl(siteUrl);
+    if (!dom) return;
+    try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'analytics:journey' });
+      await recordJourneyEvent(tid, dom, 'analytics', { source });
+    } catch (_) { /* non-fatal */ }
+  }
 
 app.post('/api/meta-ad-library/search', async (req, res) => {
   const { query = '', domain = '', country = 'US', limit = 25 } = req.body || {};
@@ -470,6 +491,7 @@ app.post('/api/gsc/query', async (req, res) => {
     });
     const j = await r.json();
     if (j.error) return res.json({ ok:false, configured:true, error: j.error.message });
+    void _markAnalyticsJourney(req, siteUrl, 'gsc');
     res.json({
       ok:true, configured:true, siteUrl, days,
       rows: (j.rows || []).map(row => ({

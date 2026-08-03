@@ -16,7 +16,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiPost } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
 import dm from "@/styles/dashboard-marketing.module.css";
 import {
@@ -179,11 +179,43 @@ export default function Dashboard() {
   // mounted, app.js fires `ig:analysis-ready`; we re-read so the report (charts,
   // tables, live panels) refreshes instead of showing the previous run.
   const [ad, setAd] = useState<AnalysisData | null>(getAnalysisData);
+  const [journeyStatus, setJourneyStatus] = useState<Record<string, boolean> | null>(null);
   useEffect(() => {
     const onReady = () => setAd(getAnalysisData());
     document.addEventListener("ig:analysis-ready", onReady);
     return () => document.removeEventListener("ig:analysis-ready", onReady);
   }, []);
+
+  const analysedDomain = useMemo(() => {
+    if (!ad?.url) return "";
+    return ad.url.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+  }, [ad?.url]);
+
+  useEffect(() => {
+    if (!analysedDomain) {
+      setJourneyStatus(null);
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      void apiGet<{ ok: boolean; status?: Record<string, boolean> }>(
+        `/api/company-overview/journey-status?domain=${encodeURIComponent(analysedDomain)}`,
+      )
+        .then((r) => {
+          if (!cancelled && r?.ok && r.status) setJourneyStatus(r.status);
+        })
+        .catch(() => {
+          if (!cancelled) setJourneyStatus(null);
+        });
+    };
+    load();
+    const onJourney = () => load();
+    document.addEventListener("ig:journey-updated", onJourney);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("ig:journey-updated", onJourney);
+    };
+  }, [analysedDomain]);
   const competitors = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
   const hasData = !!(ad && ad.websiteKPIs && competitors.length > 0);
 
@@ -235,9 +267,14 @@ export default function Dashboard() {
 
   const companyOverview = useMemo(() => {
     if (!ad || !hasData) return null;
-    const dom = (ad.url || "").replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
-    return buildCompanyOverview(dom, ad.industry?.name || "your industry", ad as Record<string, unknown>);
-  }, [ad, hasData]);
+    const dom = analysedDomain || "your-site.com";
+    return buildCompanyOverview(
+      dom,
+      ad.industry?.name || "your industry",
+      ad as Record<string, unknown>,
+      journeyStatus,
+    );
+  }, [ad, hasData, analysedDomain, journeyStatus]);
 
   const marketing = useMemo(() => {
     if (!ad || !hasData) return null;

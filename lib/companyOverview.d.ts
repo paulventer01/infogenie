@@ -67,6 +67,7 @@ export function buildCompanyOverview(
   domain: string,
   industryName: string,
   analysisData: Record<string, unknown> | null | undefined,
+  journeyStatus?: Record<string, boolean> | null,
 ): CompanyOverview;
 
 export function buildOverviewWidgets(

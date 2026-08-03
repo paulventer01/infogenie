@@ -143,6 +143,11 @@ export default function SeoAuditor() {
     }
     setResult(r);
     setStatus("idle");
+    try {
+      document.dispatchEvent(new CustomEvent("ig:journey-updated"));
+    } catch {
+      /* noop */
+    }
   }
 
   async function addToTasks() {

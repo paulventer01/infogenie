@@ -483,6 +483,11 @@ export default function GeoAudit() {
     setResult(r);
     setStatus("idle");
     loadList();
+    try {
+      document.dispatchEvent(new CustomEvent("ig:journey-updated"));
+    } catch {
+      /* noop */
+    }
   }
 
   const gradeColor = result ? GRADE_COLORS[result.grade] || "#64748b" : "#64748b";

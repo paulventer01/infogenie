@@ -29,6 +29,7 @@ interface SummaryResult {
   ok: boolean;
   error?: string;
   note?: string;
+  source?: string;
   summary?: Summary;
 }
 interface ReferringDomain {
@@ -130,6 +131,13 @@ export default function Backlinks() {
     setSummaryNote(sumR.note || "");
     setDomains(domR.domains || []);
     setAnalyzeStatus("done");
+    if (sumR.ok && sumR.source !== "placeholder") {
+      try {
+        document.dispatchEvent(new CustomEvent("ig:journey-updated"));
+      } catch {
+        /* noop */
+      }
+    }
   }
 
   async function runResearch() {

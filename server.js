@@ -2562,11 +2562,6 @@ BOOT_TASKS.push(async () => {
     if (_db.hasDb()) {
       await _authSchema.ensureAuthSchema();
       try {
-        await require('./services/auth/preview_seed').ensurePreviewUser();
-      } catch (e) {
-        console.warn('[auth/preview] seed skipped:', e.message);
-      }
-      try {
         await _credentialsVault.ensureCredentialsSchema();
       } catch (e) {
         console.error('[credentials-vault] schema init failed:', e.message);
@@ -2594,6 +2589,11 @@ BOOT_TASKS.push(async () => {
       } catch (e) {
         console.error('[tenants] schema init failed:', e.message);
         if (process.env.NODE_ENV === 'production') process.exit(1);
+      }
+      try {
+        await require('./services/auth/preview_seed').ensurePreviewUser();
+      } catch (e) {
+        console.warn('[auth/preview] seed skipped:', e.message);
       }
       // Admin Portal (Task 10): clients + issues tables, tenant data-mode
       // default column, platform data-mode default seed. Runs after tenants
@@ -2694,6 +2694,9 @@ app.use('/api/okr',             _okrRouter);
 app.use('/api/brand-calendar',  _bcalRouter);
 app.use('/api/budget',          _budgetRouter);
 app.use('/api/web-analytics',   _webAnalRouter);
+const _companyOverviewSchema = require('./services/company_overview/schema');
+const _companyOverviewRouter = require('./services/company_overview/api');
+app.use('/api/company-overview', _companyOverviewRouter);
 app.use('/api/playbook',        require('./services/playbook_7day/api'));
 BOOT_TASKS.push(async () => {
   try {
@@ -2702,6 +2705,7 @@ BOOT_TASKS.push(async () => {
       await _okrSchema.ensureOkrSchema();
       await _bcalSchema.ensureBrandCalendarSchema();
       await _budgetSchema.ensureBudgetSchema();
+      await _companyOverviewSchema.ensureCompanyOverviewSchema();
       console.log('[projects + brand-calendar + budget-board + web-analytics] ready');
     }
   } catch (e) { console.error('[projects-pack] init failed:', e.message); }

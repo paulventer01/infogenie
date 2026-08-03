@@ -56,6 +56,7 @@ const ROUTE_GROUPS = [
 
   // ── Dashboard / analytics / reports ───────────────────────────────────────
   { prefix: '/api/web-analytics',             view: 'analytics.view', write: 'analytics.view' },
+  { prefix: '/api/company-overview',          view: 'dashboard.view' },
   { prefix: '/api/attribution',               view: 'analytics.view' },
   { prefix: '/api/web-vitals',                view: 'analytics.view' },
   { prefix: '/api/heatmaps',                  view: 'analytics.view' },

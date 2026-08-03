@@ -209,6 +209,11 @@ export default function SerpTracker() {
       r.target?.position ? `✅ Ranked #${r.target.position}` : "⚠️ Not in top 10",
     );
     refresh();
+    try {
+      document.dispatchEvent(new CustomEvent("ig:journey-updated"));
+    } catch {
+      /* noop */
+    }
   }
 
   async function scanAll() {
@@ -220,6 +225,11 @@ export default function SerpTracker() {
     }
     toast(`✅ Scanned ${r.scanned}/${r.total}`);
     refresh();
+    try {
+      document.dispatchEvent(new CustomEvent("ig:journey-updated"));
+    } catch {
+      /* noop */
+    }
   }
 
   async function del(id: number) {
