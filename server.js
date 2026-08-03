@@ -3968,6 +3968,21 @@ app.use('/api/remarketing', _remarketingRouter);
 app.use('/api/referrals', _referralRouter);
 app.use('/api/affiliates', _affiliateRouter);
 
+// ── Centralized Marketing Ecosystem spine ───────────────────────────────────
+const _marketingSpineSchema = require('./services/marketing_spine/schema');
+const _marketingSpineRouter = require('./services/marketing_spine/api');
+const _agentOrchSchema = require('./services/agent_orchestrator/schema');
+const _agentOrchRouter = require('./services/agent_orchestrator/api');
+const _channelStudiosRouter = require('./services/channel_studios/api');
+const _executionHubRouter = require('./services/execution_hub/api');
+const _segmentSchema = require('./services/segment_connector/schema');
+const _segmentRouter = require('./services/segment_connector/api');
+app.use('/api/marketing-spine', _marketingSpineRouter);
+app.use('/api/agent-orchestrator', _agentOrchRouter);
+app.use('/api/channel-studios', _channelStudiosRouter);
+app.use('/api/execution-hub', _executionHubRouter);
+app.use('/api/segment', _segmentRouter);
+
 BOOT_TASKS.push(async () => { try {
   if (process.env.DATABASE_URL) {
     const { ensureSeoCrawlerSchema } = require('./services/seo_crawler/schema');
@@ -3985,7 +4000,10 @@ BOOT_TASKS.push(async () => { try {
     await _voiceSeoSchema.ensureVoiceSeoSchema();
     await _referralSchema.ensureReferralSchema();
     await _affiliateSchema.ensureAffiliateSchema();
-    console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags + gap-priority ready');
+    await _marketingSpineSchema.ensureMarketingSpineSchema();
+    await _agentOrchSchema.ensureAgentOrchestratorSchema();
+    await _segmentSchema.ensureSegmentSchema();
+    console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags + gap-priority + ecosystem-spine ready');
   }
 } catch (e) { console.warn('[tier28-32] schema init failed:', e.message); }});
 BOOT_TASKS.push(async () => { try {

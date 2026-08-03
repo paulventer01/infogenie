@@ -312,4 +312,11 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "short-form-video": L("short-form-video", () => import("@/components/features/create/ShortFormVideo")),
   "push-marketing": L("push-marketing", () => import("@/components/features/reach/PushMarketing")),
   "social-commerce": L("social-commerce", () => import("@/components/features/reach/SocialCommerce")),
+  // Centralized Marketing Ecosystem
+  "ecosystem-spine": L("ecosystem-spine", () => import("@/components/features/grow/EcosystemSpine")),
+  "agent-orchestrator": L("agent-orchestrator", () => import("@/components/features/manage/AgentOrchestrator")),
+  "newsletter-studio": L("newsletter-studio", () => import("@/components/features/create/NewsletterStudio")),
+  "podcast-studio": L("podcast-studio", () => import("@/components/features/create/PodcastStudio")),
+  "interactive-leads": L("interactive-leads", () => import("@/components/features/reach/InteractiveLeads")),
+  "execution-hub": L("execution-hub", () => import("@/components/features/manage/ExecutionHub")),
 };

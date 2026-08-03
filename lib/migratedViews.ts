@@ -357,6 +357,13 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "short-form-video", legacyModule: null },
   { view: "push-marketing", legacyModule: null },
   { view: "social-commerce", legacyModule: null },
+  // Centralized Marketing Ecosystem
+  { view: "ecosystem-spine", legacyModule: null },
+  { view: "agent-orchestrator", legacyModule: null },
+  { view: "newsletter-studio", legacyModule: null },
+  { view: "podcast-studio", legacyModule: null },
+  { view: "interactive-leads", legacyModule: null },
+  { view: "execution-hub", legacyModule: null },
 ];
 
 /** Set of view ids now rendered by React. */
