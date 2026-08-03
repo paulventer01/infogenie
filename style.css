@@ -7955,14 +7955,32 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
   color: #FFFFFF !important;
 }
 
-/* ── Unified hero size: every page hero card has the same dimensions ── */
+/* ── Unified hero size: stack hero copy vertically (breadcrumb → title → subtitle) ── */
 .view-header,
 .intel-header,
 .comp-hero,
 [data-bp-hero] {
   min-height: 130px !important;
   display: flex !important;
-  align-items: center !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+}
+.intel-header .breadcrumb {
+  margin-bottom: 8px !important;
+}
+.intel-header .ih-title {
+  margin: 0 0 8px !important;
+  font-size: 1.35rem !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.02em !important;
+}
+.intel-header .ih-sub {
+  margin: 0 !important;
+  font-size: 0.9rem !important;
+  line-height: 1.55 !important;
+  max-width: 720px !important;
 }
 .view-header > .container,
 .intel-header > .container { width: 100%; }
