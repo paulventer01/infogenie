@@ -91,6 +91,7 @@ export function settleNavPending(view?: string): void {
   // Large / form-heavy panels commit 1k+ nodes (and often hydrate from API)
   // after first paint — keep the stall guard up long enough to cover that.
   const heavy =
+    view === "home" ||
     view === "dashboard" ||
     view === "competitors" ||
     view === "battleplan" ||

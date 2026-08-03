@@ -2755,9 +2755,23 @@ function navigateTo(viewId, updateActive = true) {
         if (viewEl) IGFields.scanRoot && IGFields.scanRoot(viewEl);
       }
     } catch(_) {}
-    // Always clear the nav breadcrumb after sync work so later chunk eval /
-    // React commit stalls are not attributed to nav→<view>.
-    try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle'); } catch(_) {}
+    // scanRoot queues chunked decoration across many rAFs — clearing the
+    // breadcrumb to idle immediately made IGDiag flag home's ~800-node form as
+    // a MAIN-THREAD STALL (`last=idle · view=home`). Keep panel:<view> up on
+    // form-heavy legacy panels until decoration has had time to settle.
+    const heavyLegacy = viewId === 'home';
+    const clearIdle = () => {
+      try {
+        if (window.__igReactRouting) return;
+        window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle');
+      } catch(_) {}
+    };
+    if (heavyLegacy) {
+      try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('panel:' + viewId); } catch(_) {}
+      setTimeout(clearIdle, 2800);
+    } else {
+      clearIdle();
+    }
   }, 0);
 }
 

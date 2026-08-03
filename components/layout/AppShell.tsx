@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, startTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { NAV_GROUPS, pathToViewId, viewToPath, type NavItem } from "@/lib/viewRoutes";
 import { prefetchPanel } from "@/components/features/registry";
-import { markNavPending } from "@/lib/navPending";
+import { markNavPending, settleNavPending } from "@/lib/navPending";
 import NavGroup from "./NavGroup";
 import AccountMenu from "./AccountMenu";
 import CompanyContextBar from "./CompanyContextBar";
@@ -213,12 +213,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     e?.preventDefault();
     setMobileOpen(false);
     setOpen(true);
+    markNavPending("nav→home");
+    startTransition(() => {
+      router.push("/analyse");
+    });
     try {
       window.navigateTo?.("home");
     } catch {
       /* noop */
     }
-    router.push("/analyse");
+    settleNavPending("home");
   };
 
   const filteredGroups = useMemo(() => {

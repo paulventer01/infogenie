@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { pathToViewId } from "@/lib/viewRoutes";
 import { isMigratedView } from "@/lib/migratedViews";
+import { markNavPending, settleNavPending } from "@/lib/navPending";
 
 // Bridges Next's URL to the legacy SPA: whenever the pathname changes, it shows
 // the matching #view-* panel via window.navigateTo. On first load it waits for
@@ -35,7 +36,9 @@ export default function SpaRouter() {
           }
           return;
         }
+        markNavPending("nav→" + view);
         window.navigateTo?.(view);
+        settleNavPending(view);
       } catch {
         /* noop */
       }
