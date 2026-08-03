@@ -21,18 +21,23 @@ These rules are **non-negotiable** for any implementation PR. If a change violat
 | H4 | **Generate always auto** | `generate_*` tiers are locked to `auto` in the default policy. UI may warn; must not require human approval for drafts/briefs/analysis. |
 | H5 | **Missing context = enrich, don’t refuse** | If brand foundation / memory is thin, still run the model; attach whatever context exists; log “ungrounded”. No “insufficient data” hard stop in default mode. |
 | H6 | **Fail open on orchestrator errors** | If `govern()` throws, times out, or Brand Safety is down → **allow** the action and log `governance_degraded`. Never take the app offline. |
-| H7 | **`block` tier is rare + opt-in** | Default policy uses `block` for **zero** action types. Tenants (e.g. finance) may add `suggest`/`block` themselves; we do not ship restrictive defaults. |
-| H8 | **No new friction without a switch** | Any path that can delay or stop a user action must be behind an explicit tenant setting that defaults **off**. |
+| H7 | **`block` tier is rare + opt-in** | Default policy uses `block` for **zero** action types. Only `launch_campaign` and `scale_budget` default to `suggest` (optional glance). |
+| H8 | **No new friction without a switch** | Any path that can **delay or stop** a user action must be behind `enforce` (tenant opt-in). Shadow mode never delays. |
+| H9 | **`suggest` under shadow = soft cue** | In `shadow`, tier `suggest` means log + optional “worth a glance” UI — action **still proceeds**. Only in `enforce` does `suggest` wait for approval. |
 
 ### Default posture (ship this)
 
 ```
-Mode:     shadow
-Appetite: aggressive   (prefer speed; still log everything)
-Tiers:    almost everything = auto
-Output:   warn on caution; never auto-block
-Context:  prefer RAG; never require it to proceed
+AI_GOVERNANCE_MODE=shadow          # never blocks by default
+generate_*          → auto
+apply_calendar      → auto         # Spine stays fast
+send_email          → auto         # warn only on PII/critical
+publish_social      → auto
+launch_campaign     → suggest      # optional human glance
+scale_budget        → suggest
 ```
+
+Appetite: `aggressive` · Output: warn on caution, never auto-block · Context: prefer RAG, never require it to proceed
 
 ### What “restrictive” looks like (explicitly forbidden as defaults)
 
@@ -164,7 +169,7 @@ CREATE TABLE ai_governance_policies (
 );
 ```
 
-**Default `action_tiers` (non-restrictive — ship this):**
+**Default `action_tiers` (ship this — matches §0 posture):**
 
 ```json
 {
@@ -177,19 +182,26 @@ CREATE TABLE ai_governance_policies (
   "send_email": "auto",
   "publish_social": "auto",
   "crm_push": "auto",
-  "launch_campaign": "auto",
-  "scale_budget": "auto"
+  "launch_campaign": "suggest",
+  "scale_budget": "suggest"
 }
 ```
 
-**Optional stricter presets** (tenant chooses; never applied by default):
+| Tier | Meaning under `shadow` (default) | Meaning under `enforce` (tenant opt-in) |
+|------|----------------------------------|----------------------------------------|
+| `auto` | Run immediately; log | Run immediately; log |
+| `suggest` | Run immediately; soft “worth a glance” cue | Queue for human approve before execute |
+| `block` | Log “would block”; still run | Stop until policy change / override |
 
-| Preset | When to offer | Changes |
-|--------|---------------|---------|
-| Balanced | Mid-market teams | `launch_campaign` / `scale_budget` → `suggest` |
-| Conservative | Finance / health / regulated | those + `send_email` → `suggest`; mode can go `enforce` |
+**Optional stricter presets** (tenant chooses):
 
-UI copy for the Policy tab: *“Defaults keep InfoGenie fast. Tighten only what you need.”*
+| Preset | When to offer | Changes vs default |
+|--------|---------------|--------------------|
+| Aggressive (default) | Everyone | As above — launch/budget `suggest`, rest `auto`, mode `shadow` |
+| Balanced | Mid-market | + `send_email` / `publish_social` → `suggest` |
+| Conservative | Finance / health / regulated | Balanced + mode can go `enforce` |
+
+UI copy for the Policy tab: *“Defaults keep InfoGenie fast. Launch & budget changes are flagged for an optional glance — nothing waits unless you turn on Enforce.”*
 
 #### API
 
@@ -205,9 +217,9 @@ UI copy for the Policy tab: *“Defaults keep InfoGenie fast. Tighten only what 
 
 - Policy document editor (versioned)
 - Risk appetite selector — default selected: **aggressive**
-- Action tier matrix (grid: action type × auto/suggest/block) — defaults all **auto**
+- Action tier matrix — defaults: `generate_*` / `apply_calendar` / `send_email` / `publish_social` = **auto**; `launch_campaign` / `scale_budget` = **suggest**
 - Ethics / accountability owner field
-- Enforcement mode toggle (shadow vs enforce) — admin only; **confirm dialog** when enabling enforce: “This can delay or stop actions. Shadow mode is recommended.”
+- Enforcement mode toggle (shadow vs enforce) — admin only; **confirm dialog** when enabling enforce: “This can delay launch/budget (and any suggest tiers). Shadow mode is recommended.”
 - Preset buttons: Aggressive (default) / Balanced / Conservative
 
 #### Wire into existing modules
@@ -610,7 +622,7 @@ Add to `lib/viewRoutes.ts` → Manage → “3 · AI tools & config” (near Saf
 
 | Metric | Target | Notes |
 |--------|--------|-------|
-| **Friction (hard)** | 0 user-facing blocks under default policy | Regression test in CI |
+| **Friction (hard)** | 0 user-facing blocks / waits under default (`shadow`) policy | Regression test in CI; `suggest` = soft cue only |
 | Governed AI calls logged | ≥90% of Brief/Decision/Spine applies | Observability |
 | Context pack attached when available | ≥85% | Best-effort; not a hard gate |
 | Insights with provenance | ≥90% of Brief/Decision outputs | Logging success |
@@ -649,9 +661,10 @@ Any PR claiming Phase A+ must pass:
 
 1. `mode=shadow` + brand-safety `block` verdict → action **still succeeds**
 2. `govern()` throws → action **still succeeds** + `governance_degraded` event
-3. Default policy → all `action_tiers` values are `auto`
-4. Spine Apply under defaults → no `pending_review` status
-5. New tenant → `default_mode=shadow`, `risk_appetite=aggressive`, `require_context=false`, `block_on_caution=false`
+3. Default policy → `generate_*`, `apply_calendar`, `send_email`, `publish_social` = `auto`; `launch_campaign` + `scale_budget` = `suggest`
+4. Spine Apply under defaults → no `pending_review` status (always proceeds)
+5. `mode=shadow` + `launch_campaign` tier `suggest` → action **still succeeds** (soft cue only; no queue)
+6. New tenant → `default_mode=shadow`, `risk_appetite=aggressive`, `require_context=false`, `block_on_caution=false`
 
 ---
 
