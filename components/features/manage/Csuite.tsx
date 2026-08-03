@@ -289,7 +289,7 @@ function ROIPanel({ d }: { d: CsData }) {
               fontFamily: "Sora,sans-serif",
               fontSize: "1.5rem",
               fontWeight: 800,
-              color: "#A7F3D0",
+              color: "#ECFDF5",
               lineHeight: 1,
             }}
           >
