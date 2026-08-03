@@ -177,6 +177,65 @@ body:has(#ig-app-shell)[data-theme="light"] .comp-hero *:not(button):not(.btn):n
   text-shadow: none !important;
 }
 
+/* C-Suite role tabs sit on a light hero — inactive labels must be dark ink */
+body:has(#ig-app-shell) .ig-panel-hero .cs-role-tabs {
+  background: rgba(11, 18, 32, 0.06) !important;
+  border: 1px solid rgba(11, 18, 32, 0.14) !important;
+}
+body:has(#ig-app-shell) .ig-panel-hero .cs-role-btn {
+  color: #1e293b !important;
+  text-shadow: none !important;
+  background: transparent !important;
+}
+body:has(#ig-app-shell) .ig-panel-hero .cs-role-btn:hover:not(.active) {
+  color: #0b1220 !important;
+  background: rgba(11, 18, 32, 0.08) !important;
+}
+body:has(#ig-app-shell) .ig-panel-hero .cs-role-btn.active {
+  background: linear-gradient(135deg, #0f766e, #0284c7) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.35) !important;
+}
+
+/* Investment Performance card — keep light text on teal/green shell */
+body:has(#ig-app-shell) .cs-roi-panel {
+  color: #ffffff !important;
+}
+body:has(#ig-app-shell) .cs-roi-panel [style*="color:#F0FDFA"],
+body:has(#ig-app-shell) .cs-roi-panel [style*="color: #F0FDFA"] {
+  color: #f0fdfa !important;
+}
+body:has(#ig-app-shell) .cs-roi-panel [style*="color:rgba(240,253,250"],
+body:has(#ig-app-shell) .cs-roi-panel [style*="color: rgba(240,253,250"] {
+  color: rgba(240, 253, 250, 0.92) !important;
+}
+body:has(#ig-app-shell) .cs-roi-panel [style*="color:#FFFFFF"],
+body:has(#ig-app-shell) .cs-roi-panel [style*="color: #FFFFFF"],
+body:has(#ig-app-shell) .cs-roi-panel [style*="color:#fff"],
+body:has(#ig-app-shell) .cs-roi-panel [style*="color:white"] {
+  color: #ffffff !important;
+}
+body:has(#ig-app-shell) .cs-roi-panel [style*="color:#FECACA"],
+body:has(#ig-app-shell) .cs-roi-panel [style*="color: #FECACA"] {
+  color: #fecaca !important;
+}
+body:has(#ig-app-shell) .cs-roi-panel [style*="color:#A7F3D0"],
+body:has(#ig-app-shell) .cs-roi-panel [style*="color: #A7F3D0"] {
+  color: #ecfdf5 !important;
+}
+body:has(#ig-app-shell) .cs-roi-panel [style*="color:#C7D2FE"],
+body:has(#ig-app-shell) .cs-roi-panel [style*="color: #C7D2FE"] {
+  color: #c7d2fe !important;
+}
+body:has(#ig-app-shell) .cs-roi-panel [style*="color:#ECFDF5"],
+body:has(#ig-app-shell) .cs-roi-panel [style*="color: #ECFDF5"] {
+  color: #ecfdf5 !important;
+}
+body:has(#ig-app-shell) .cs-roi-panel [style*="color:#FDE68A"],
+body:has(#ig-app-shell) .cs-roi-panel [style*="color: #FDE68A"] {
+  color: #fde68a !important;
+}
+
 body:has(#ig-app-shell) .comp-hero [style*="color: #64748b"],
 body:has(#ig-app-shell) .comp-hero [style*="color:#64748b"],
 body:has(#ig-app-shell) .comp-hero [style*="color: #475569"],

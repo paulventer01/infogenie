@@ -169,18 +169,22 @@ function ROIPanel({ d }: { d: CsData }) {
     : Math.round(budget * roas);
   const profit = totalRev - totalSpend;
   const roi = totalSpend > 0 ? Math.round((profit / totalSpend) * 100) : 0;
-  // Light tints — hero uses --ig-grad2 (teal→green); #059669 disappears on that bg
-  const roiColor = roi >= 100 ? "#6EE7B7" : roi >= 0 ? "#FBBF24" : "#FCA5A5";
+  // High-contrast accents on the dark teal→green ROI shell
+  const roiColor = roi >= 100 ? "#ECFDF5" : roi >= 0 ? "#FDE68A" : "#FECACA";
   const roiIcon = roi >= 100 ? "📈" : roi >= 0 ? "⚠️" : "📉";
+  const labelColor = "#F0FDFA";
+  const subColor = "rgba(240,253,250,.88)";
 
   return (
     <div
+      className="cs-roi-panel"
       style={{
-        background: "var(--ig-grad2)",
-        border: "1px solid rgba(0,201,200,.18)",
+        background: "linear-gradient(135deg, #0f766e 0%, #15803d 100%)",
+        border: "1px solid rgba(15,118,110,.35)",
         borderRadius: 16,
         padding: "22px 28px",
         marginBottom: 22,
+        color: "#FFFFFF",
       }}
     >
       <div
@@ -191,7 +195,6 @@ function ROIPanel({ d }: { d: CsData }) {
           textTransform: "uppercase",
           letterSpacing: ".1em",
           marginBottom: 6,
-          textShadow: "0 1px 2px rgba(0,0,0,.35)",
         }}
       >
         💼 Investment Performance Overview
@@ -206,7 +209,6 @@ function ROIPanel({ d }: { d: CsData }) {
               fontWeight: 700,
               verticalAlign: "middle",
               marginLeft: 6,
-              textShadow: "none",
             }}
           >
             ESTIMATED
@@ -214,7 +216,7 @@ function ROIPanel({ d }: { d: CsData }) {
         )}
       </div>
       {noData && (
-        <div style={{ fontSize: "0.72rem", color: "rgba(255,255,255,.85)", marginBottom: 12 }}>
+        <div style={{ fontSize: "0.72rem", color: subColor, marginBottom: 12 }}>
           No campaigns launched yet — showing estimated benchmarks for a $5K/mo budget
         </div>
       )}
@@ -227,8 +229,8 @@ function ROIPanel({ d }: { d: CsData }) {
       >
         <div
           style={{
-            background: "rgba(239,68,68,.08)",
-            border: "1px solid rgba(239,68,68,.2)",
+            background: "rgba(0,0,0,.18)",
+            border: "1px solid rgba(255,255,255,.22)",
             borderRadius: 12,
             padding: "14px 16px",
           }}
@@ -236,8 +238,8 @@ function ROIPanel({ d }: { d: CsData }) {
           <div
             style={{
               fontSize: "0.62rem",
-              fontWeight: 600,
-              color: "rgba(255,255,255,.45)",
+              fontWeight: 700,
+              color: labelColor,
               textTransform: "uppercase",
               letterSpacing: ".07em",
               marginBottom: 6,
@@ -250,13 +252,13 @@ function ROIPanel({ d }: { d: CsData }) {
               fontFamily: "Sora,sans-serif",
               fontSize: "1.5rem",
               fontWeight: 800,
-              color: "#F87171",
+              color: "#FECACA",
               lineHeight: 1,
             }}
           >
             {fmtMoney(totalSpend)}
           </div>
-          <div style={{ fontSize: "0.68rem", color: "rgba(255,255,255,.35)", marginTop: 5 }}>
+          <div style={{ fontSize: "0.68rem", color: subColor, marginTop: 5 }}>
             {fmtMoney(budget || totalSpend)}/mo budget · {camps.length} campaign
             {camps.length !== 1 ? "s" : ""}
           </div>
@@ -264,8 +266,8 @@ function ROIPanel({ d }: { d: CsData }) {
 
         <div
           style={{
-            background: "rgba(5,150,105,.08)",
-            border: "1px solid rgba(5,150,105,.2)",
+            background: "rgba(0,0,0,.18)",
+            border: "1px solid rgba(255,255,255,.22)",
             borderRadius: 12,
             padding: "14px 16px",
           }}
@@ -273,8 +275,8 @@ function ROIPanel({ d }: { d: CsData }) {
           <div
             style={{
               fontSize: "0.62rem",
-              fontWeight: 600,
-              color: "rgba(255,255,255,.45)",
+              fontWeight: 700,
+              color: labelColor,
               textTransform: "uppercase",
               letterSpacing: ".07em",
               marginBottom: 6,
@@ -287,21 +289,21 @@ function ROIPanel({ d }: { d: CsData }) {
               fontFamily: "Sora,sans-serif",
               fontSize: "1.5rem",
               fontWeight: 800,
-              color: "#34D399",
+              color: "#A7F3D0",
               lineHeight: 1,
             }}
           >
             {fmtMoney(totalRev)}
           </div>
-          <div style={{ fontSize: "0.68rem", color: "rgba(255,255,255,.35)", marginTop: 5 }}>
+          <div style={{ fontSize: "0.68rem", color: subColor, marginTop: 5 }}>
             {fmtMoney(projRevMonth)}/mo projected · {effectiveRoas}× ROAS
           </div>
         </div>
 
         <div
           style={{
-            background: "rgba(99,102,241,.08)",
-            border: "1px solid rgba(99,102,241,.2)",
+            background: "rgba(0,0,0,.18)",
+            border: "1px solid rgba(255,255,255,.22)",
             borderRadius: 12,
             padding: "14px 16px",
           }}
@@ -309,8 +311,8 @@ function ROIPanel({ d }: { d: CsData }) {
           <div
             style={{
               fontSize: "0.62rem",
-              fontWeight: 600,
-              color: "rgba(255,255,255,.45)",
+              fontWeight: 700,
+              color: labelColor,
               textTransform: "uppercase",
               letterSpacing: ".07em",
               marginBottom: 6,
@@ -323,22 +325,22 @@ function ROIPanel({ d }: { d: CsData }) {
               fontFamily: "Sora,sans-serif",
               fontSize: "1.5rem",
               fontWeight: 800,
-              color: profit >= 0 ? "#818CF8" : "#F87171",
+              color: profit >= 0 ? "#C7D2FE" : "#FECACA",
               lineHeight: 1,
             }}
           >
             {profit >= 0 ? "+" : "-"}
             {fmtMoney(Math.abs(profit))}
           </div>
-          <div style={{ fontSize: "0.68rem", color: "rgba(255,255,255,.35)", marginTop: 5 }}>
+          <div style={{ fontSize: "0.68rem", color: subColor, marginTop: 5 }}>
             Revenue minus total spend
           </div>
         </div>
 
         <div
           style={{
-            background: "rgba(255,255,255,.04)",
-            border: "1px solid rgba(255,255,255,.1)",
+            background: "rgba(0,0,0,.18)",
+            border: "1px solid rgba(255,255,255,.22)",
             borderRadius: 12,
             padding: "14px 16px",
             position: "relative",
@@ -348,8 +350,8 @@ function ROIPanel({ d }: { d: CsData }) {
           <div
             style={{
               fontSize: "0.62rem",
-              fontWeight: 600,
-              color: "rgba(255,255,255,.45)",
+              fontWeight: 700,
+              color: labelColor,
               textTransform: "uppercase",
               letterSpacing: ".07em",
               marginBottom: 6,
@@ -369,7 +371,7 @@ function ROIPanel({ d }: { d: CsData }) {
             {roi >= 0 ? "+" : ""}
             {roi}%
           </div>
-          <div style={{ fontSize: "0.68rem", color: "rgba(255,255,255,.35)", marginTop: 5 }}>
+          <div style={{ fontSize: "0.68rem", color: subColor, marginTop: 5 }}>
             {roi >= 100
               ? "Exceeding target — scale spend"
               : roi >= 0
@@ -383,7 +385,7 @@ function ROIPanel({ d }: { d: CsData }) {
               left: 0,
               right: 0,
               height: 3,
-              background: "rgba(255,255,255,.06)",
+              background: "rgba(255,255,255,.15)",
             }}
           >
             <div
@@ -401,7 +403,7 @@ function ROIPanel({ d }: { d: CsData }) {
         style={{
           marginTop: 14,
           padding: "10px 14px",
-          background: "rgba(255,255,255,.03)",
+          background: "rgba(0,0,0,.16)",
           borderRadius: 8,
           display: "flex",
           alignItems: "center",
@@ -409,8 +411,8 @@ function ROIPanel({ d }: { d: CsData }) {
           flexWrap: "wrap",
         }}
       >
-        <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,.7)" }}>ROI formula:</span>
-        <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,.85)", fontStyle: "italic" }}>
+        <span style={{ fontSize: "0.72rem", color: labelColor }}>ROI formula:</span>
+        <span style={{ fontSize: "0.75rem", color: "#FFFFFF", fontStyle: "italic" }}>
           (Revenue − Spend) ÷ Spend × 100
         </span>
         <span
@@ -419,7 +421,6 @@ function ROIPanel({ d }: { d: CsData }) {
             fontSize: "0.75rem",
             fontWeight: 700,
             color: roiColor,
-            textShadow: "0 1px 2px rgba(0,0,0,.35)",
           }}
         >
           {fmtMoney(Math.abs(profit))} {profit >= 0 ? "returned above" : "in deficit against"}{" "}

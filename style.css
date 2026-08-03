@@ -5800,6 +5800,31 @@ p, span, label, td, li {
 .cs-role-btn.active { background:linear-gradient(135deg,#7C3AED,#4F46E5); color:#FFFFFF; box-shadow:0 2px 8px rgba(124,58,237,.45); text-shadow:none; }
 .cs-role-btn:hover:not(.active) { color:#FFFFFF; background:rgba(255,255,255,.12); }
 
+/* Light heroes (C-Suite etc.) — inactive tabs need dark ink, not white-on-white */
+.ig-panel-hero .cs-role-tabs,
+.view-header.ig-panel-hero .cs-role-tabs {
+  background: rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(15, 23, 42, 0.14);
+}
+.ig-panel-hero .cs-role-btn,
+.view-header.ig-panel-hero .cs-role-btn {
+  color: #1e293b !important;
+  text-shadow: none !important;
+  background: transparent;
+}
+.ig-panel-hero .cs-role-btn:hover:not(.active),
+.view-header.ig-panel-hero .cs-role-btn:hover:not(.active) {
+  color: #0f172a !important;
+  background: rgba(15, 23, 42, 0.08);
+}
+.ig-panel-hero .cs-role-btn.active,
+.view-header.ig-panel-hero .cs-role-btn.active {
+  background: linear-gradient(135deg, #7C3AED, #4F46E5) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.45);
+  text-shadow: none !important;
+}
+
 /* Executive scorecard grid */
 .cs-kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:14px; margin-bottom:28px; }
 .cs-kpi { background:white; border:1px solid #E2E8F0; border-radius:14px; padding:18px 20px; position:relative; overflow:hidden; }
@@ -6727,6 +6752,47 @@ h3:hover {
 [data-theme="light"] [style*="background:var(--ig-grad2)"] [style*="color:rgba(255,255,255"],
 [data-theme="light"] [style*="background:var(--ig-page)"] [style*="color:rgba(255,255,255"] {
   color: #64748B !important;
+}
+
+/* C-Suite ROI panel: lock light-on-dark (defeat light-theme white→slate washout) */
+.cs-roi-panel {
+  color: #ffffff !important;
+}
+.cs-roi-panel [style*="color:#F0FDFA"],
+.cs-roi-panel [style*="color: #F0FDFA"] {
+  color: #f0fdfa !important;
+}
+.cs-roi-panel [style*="color:rgba(240,253,250"],
+.cs-roi-panel [style*="color: rgba(240,253,250"] {
+  color: rgba(240, 253, 250, 0.92) !important;
+}
+.cs-roi-panel [style*="color:#FFFFFF"],
+.cs-roi-panel [style*="color: #FFFFFF"],
+.cs-roi-panel [style*="color:#fff"],
+.cs-roi-panel [style*="color:#FFF"],
+.cs-roi-panel [style*="color:white"],
+.cs-roi-panel [style*="color: white"] {
+  color: #ffffff !important;
+}
+.cs-roi-panel [style*="color:#FECACA"],
+.cs-roi-panel [style*="color: #FECACA"] {
+  color: #fecaca !important;
+}
+.cs-roi-panel [style*="color:#A7F3D0"],
+.cs-roi-panel [style*="color: #A7F3D0"] {
+  color: #a7f3d0 !important;
+}
+.cs-roi-panel [style*="color:#C7D2FE"],
+.cs-roi-panel [style*="color: #C7D2FE"] {
+  color: #c7d2fe !important;
+}
+.cs-roi-panel [style*="color:#ECFDF5"],
+.cs-roi-panel [style*="color: #ECFDF5"] {
+  color: #ecfdf5 !important;
+}
+.cs-roi-panel [style*="color:#FDE68A"],
+.cs-roi-panel [style*="color: #FDE68A"] {
+  color: #fde68a !important;
 }
 
 /* Borders inside converted panels */
