@@ -111,6 +111,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "5 · AI search & mentions",
         items: [
           { view: "geo-audit", icon: "🛸", label: "AI Results / GEO Audit" },
+          { view: "aeo-optimizer", icon: "💬", label: "Answer Engine Optimization (AEO)" },
           { view: "mentions", icon: "🌐", label: "Mentions Hub" },
           { view: "social-listening", icon: "👂", label: "Social Listening" },
           { view: "media-intel", icon: "📰", label: "Media Intelligence" },

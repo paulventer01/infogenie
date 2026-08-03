@@ -53,6 +53,10 @@ async function queryJourneyStatus(tenantId, domain) {
     pool.query(
       `SELECT 1 FROM geo_audit_runs
        WHERE tenant_id = $1 AND lower(url) LIKE $2
+       LIMIT 1
+       UNION ALL
+       SELECT 1 FROM aeo_runs
+       WHERE tenant_id = $1 AND lower(url) LIKE $2
        LIMIT 1`,
       [tenantId, likeDom],
     ).catch(() => ({ rowCount: 0 })),

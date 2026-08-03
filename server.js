@@ -3859,6 +3859,9 @@ const _stRouter  = require('./services/social_tags/api');
 app.use('/api/white-label', _wlRouter);
 app.use('/api/seo-crawler', _scrRouter);
 app.use('/api/geo-audit', _geoRouter);
+const _aeoSchema = require('./services/aeo/schema');
+const _aeoRouter = require('./services/aeo/api');
+app.use('/api/aeo', _aeoRouter);
 app.use('/api/ai-visibility', _aiVisRouter);
 app.use('/api/local-seo', _lsRouter);
 app.use('/api/social-tags', _stRouter);
@@ -3872,6 +3875,7 @@ BOOT_TASKS.push(async () => { try {
     const { ensureSocialTagsSchema } = require('./services/social_tags/schema');
     await ensureSeoCrawlerSchema();
     await ensureGeoAuditSchema();
+    await _aeoSchema.ensureAeoSchema();
     await ensureLocalSeoSchema();
     await ensureSocialTagsSchema();
     console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags ready');

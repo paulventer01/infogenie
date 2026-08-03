@@ -228,6 +228,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "hashtag-intel": L("hashtag-intel", () => import("@/components/features/reach/HashtagIntel")),
   "search-intel": L("search-intel", () => import("@/components/features/reach/SearchIntel")),
   "geo-audit": L("geo-audit", () => import("@/components/features/reach/GeoAudit")),
+  "aeo-optimizer": L("aeo-optimizer", () => import("@/components/features/reach/AeoOptimizer")),
   "local-seo": L("local-seo", () => import("@/components/features/reach/LocalSeo")),
   "seo-auditor": L("seo-auditor", () => import("@/components/features/reach/SeoAuditor")),
   "content-score": L("content-score", () => import("@/components/features/reach/ContentScore")),

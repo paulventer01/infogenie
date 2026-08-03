@@ -57,6 +57,7 @@ const PLAIN_TABLES = [
   'ad_sets', 'ad_set_performance_hourly',
   'bandit_allocations', 'optimizer_dayparting', 'creative_fatigue_forecasts',
   'lead_intel_leads', 'lead_intel_review_queue', 'lead_intel_search_terms', 'lead_intel_negative_suggestions',
+  'aeo_runs',
   'offline_conversions',
   'cb_widgets', 'cb_events',
   'bookings', 'linksell_leads', 'linksell_orders',
