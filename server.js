@@ -2697,7 +2697,18 @@ app.use('/api/web-analytics',   _webAnalRouter);
 const _companyOverviewSchema = require('./services/company_overview/schema');
 const _companyOverviewRouter = require('./services/company_overview/api');
 app.use('/api/company-overview', _companyOverviewRouter);
+const _leadIntelSchema = require('./services/lead_intelligence/schema');
+const _leadIntelRouter = require('./services/lead_intelligence/api');
+app.use('/api/lead-intelligence', _leadIntelRouter);
 app.use('/api/playbook',        require('./services/playbook_7day/api'));
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _leadIntelSchema.ensureLeadIntelligenceSchema();
+      console.log('[lead-intelligence] schema ready');
+    }
+  } catch (e) { console.error('[lead-intelligence] init failed:', e.message); }
+});
 BOOT_TASKS.push(async () => {
   try {
     if (_db.hasDb()) {

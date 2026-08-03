@@ -12,6 +12,7 @@ const MODELS = {
   'gemini-1.5-flash':           { provider:'google',    label:'Gemini 1.5 Flash',  color:'#4285F4' },
   'gemini-1.5-pro':             { provider:'google',    label:'Gemini 1.5 Pro',    color:'#4285F4' },
   'llama-3.1-8b-instruct':      { provider:'cloudflare',label:'Llama 3.1 8B',      color:'#6366F1' },
+  'glm-5.2':                    { provider:'zai',       label:'GLM 5.2 (Z.ai)',      color:'#2563EB' },
   'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo': { provider:'rapidapi_llama', label:'Llama 3.2 Vision 11B', color:'#0064E0' },
 };
 
@@ -47,6 +48,22 @@ function _callLlama(model, messages, max_tokens) {
     req.on('error', () => resolve(null));
     req.setTimeout(60000, () => req.destroy());
     req.write(body); req.end();
+  });
+}
+
+function _callZai(model, messages, max_tokens) {
+  const key = process.env.ZAI_API_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return Promise.resolve(null);
+  const base = (process.env.ZAI_API_BASE_URL || 'https://api.z.ai/api/paas/v4').replace(/\/$/, '');
+  const body = JSON.stringify({ model, messages, temperature: 0.7, max_tokens: max_tokens || 800 });
+  const start = Date.now();
+  return new Promise(resolve => {
+    const u = new URL(base + '/chat/completions');
+    const req = _https.request({ hostname: u.hostname, path: u.pathname, method: 'POST', headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'Accept-Language': 'en-US,en' } }, r => {
+      let d = ''; r.on('data', c => d += c);
+      r.on('end', () => { try { if (r.statusCode !== 200) return resolve(null); const j = JSON.parse(d); resolve({ text: j.choices[0].message.content, latency_ms: Date.now() - start, tokens: j.usage?.completion_tokens || 0 }); } catch { resolve(null); } });
+    });
+    req.on('error', () => resolve(null)); req.setTimeout(60000, () => req.destroy()); req.write(body); req.end();
   });
 }
 
@@ -118,6 +135,7 @@ router.get('/models', (req, res) => {
     google:         !!(process.env.GEMINI_API_KEY && !/^_DUMMY/i.test(process.env.GEMINI_API_KEY||'')),
     cloudflare:     !!(process.env.CLOUDFLARE_AI_TOKEN && !/^_DUMMY/i.test(process.env.CLOUDFLARE_AI_TOKEN||'')),
     rapidapi_llama: _hasLlama(),
+    zai:            !!(process.env.ZAI_API_KEY && !/^_DUMMY/i.test(process.env.ZAI_API_KEY || '')),
   };
   res.json({ ok:true, models: Object.entries(MODELS).map(([id,m])=>({ id, label:m.label, color:m.color, provider:m.provider, available:avail[m.provider]||false })) });
 });
@@ -134,6 +152,7 @@ router.post('/run', async (req, res) => {
     else if (meta.provider==='anthropic') result = await _callAnthropic(modelId, messages, max_tokens);
     else if (meta.provider==='google') result = await _callGemini(modelId, messages, max_tokens);
     else if (meta.provider==='rapidapi_llama') result = await _callLlama(modelId, messages, max_tokens);
+    else if (meta.provider==='zai') result = await _callZai(modelId, messages, max_tokens);
     if (!result) return { model_id:modelId, label:meta.label, color:meta.color, provider:meta.provider, output:null, error:'unavailable_or_not_configured', latency_ms:0, tokens:0 };
     return { model_id:modelId, label:meta.label, color:meta.color, provider:meta.provider, output:result.text, latency_ms:result.latency_ms, tokens:result.tokens, error:null };
   });

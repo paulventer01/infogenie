@@ -348,6 +348,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "social-analytics", icon: "🖇️", label: "Organic Social Analytics" },
           { view: "post-performance", icon: "⚗️", label: "Post Performance" },
           { view: "optimizer", icon: "🦿", label: "AI Campaign Optimizer (auto)" },
+          { view: "lead-intelligence", icon: "🎯", label: "Lead Intelligence (GLM)" },
           { view: "ad-comment-monitor", icon: "🗨️", label: "Ad Comment Monitor (Meta)" },
           { view: "auto-operator", icon: "🧫", label: "Autonomous Marketing Operator" },
           { view: "safe-agent", icon: "🔒", label: "Safe Agent (propose → approve → execute)" },

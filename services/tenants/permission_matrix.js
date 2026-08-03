@@ -129,6 +129,7 @@ const ROUTE_GROUPS = [
   // ── Grow ──────────────────────────────────────────────────────────────────
   { prefix: '/api/launch',                    view: 'grow.campaigns.view',     write: 'grow.campaigns.launch' },
   { prefix: '/api/optimizer',                 view: 'grow.optimizer.view',     write: 'grow.optimizer.control' },
+  { prefix: '/api/lead-intelligence',          view: 'grow.optimizer.view',     write: 'grow.optimizer.control' },
   { prefix: '/api/kpi-analysis',              view: 'grow.optimizer.view',     write: 'grow.optimizer.control' },
   { prefix: '/api/landing-pages',             view: 'grow.landing_pages.view', write: 'grow.landing_pages.edit' },
   { prefix: '/api/site-builder',              view: 'grow.landing_pages.view', write: 'grow.landing_pages.edit' },
@@ -363,6 +364,7 @@ const COMPONENT_MATRIX = {
   'linkedin-ads':         'grow.campaigns.view',
   'agent-goals':          'grow.campaigns.view',
   'optimizer':            'grow.optimizer.view',
+  'lead-intelligence':    'grow.optimizer.view',
   'opt-folders':          'grow.optimizer.view',
   'cro-lab':              'grow.cro.view',
   'conversion-boosters':  'grow.cro.view',

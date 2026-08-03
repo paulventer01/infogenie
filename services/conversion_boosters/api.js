@@ -258,6 +258,17 @@ router.post('/lead/:id', express.json({ limit: '4kb' }), _safeAsync(async (req, 
       [widget.tenant_id, inboxSource, sourceId, sourceUrl, email, widget.name + ' lead capture', 'Captured email: ' + email + (sourceUrl ? ' (from ' + sourceUrl + ')' : ''), JSON.stringify(data)]
     );
   } catch (_) { /* unified_inbox table may not exist yet — non-fatal */ }
+  // Lead Intelligence — auto-classify form captures with UTM attribution.
+  try {
+    const { ingestLead } = require('../lead_intelligence/ingest');
+    await ingestLead(widget.tenant_id, {
+      channel: 'form',
+      email,
+      page_url: sourceUrl,
+      source_ref: 'cb-' + id,
+      message: 'Conversion booster: ' + widget.name,
+    });
+  } catch (_) { /* lead_intel schema may not be ready yet */ }
   res.json({ ok: true, redirectUrl: (widget.type === 'exit_intent' && req.body?.honour ? null : null) });
 }));
 

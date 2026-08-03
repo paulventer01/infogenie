@@ -46,6 +46,11 @@ const PRESETS = [
     base_url: "https://api.groq.com/openai/v1",
     model: "llama-3.1-70b-versatile",
   },
+  {
+    name: "Z.ai GLM 5.2",
+    base_url: "https://api.z.ai/api/paas/v4",
+    model: "glm-5.2",
+  },
   { name: "DeepSeek Chat", base_url: "https://api.deepseek.com", model: "deepseek-chat" },
   { name: "Mistral Large", base_url: "https://api.mistral.ai/v1", model: "mistral-large-latest" },
   {

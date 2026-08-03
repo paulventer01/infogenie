@@ -246,6 +246,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "social-analytics": L("social-analytics", () => import("@/components/features/grow/SocialAnalytics")),
   "post-performance": L("post-performance", () => import("@/components/features/grow/PostPerformance")),
   optimizer: L("optimizer", () => import("@/components/features/grow/Optimizer")),
+  "lead-intelligence": L("lead-intelligence", () => import("@/components/features/grow/LeadIntelligence")),
   "auto-operator": L("auto-operator", () => import("@/components/features/grow/AutoOperator")),
   "safe-agent": L("safe-agent", () => import("@/components/features/grow/SafeAgent")),
   "analytics-hub": L("analytics-hub", () => import("@/components/features/grow/AnalyticsHub")),

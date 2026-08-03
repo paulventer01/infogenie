@@ -37,6 +37,7 @@ const REGISTRY = [
   { key: 'CLOUDFLARE_ACCOUNT_ID', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare Account ID', desc: 'Workers AI (Llama 3.1) — account identifier', secret: false, settingsIds: ['cloudflare'] },
   { key: 'CLOUDFLARE_AI_TOKEN', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare AI Token', desc: 'Workers AI (Llama 3.1) — API token', secret: true, test: 'cloudflare', settingsIds: ['cloudflare'] },
   { key: 'RAPIDAPI_KEY', group: 'AI Models', service: 'RapidAPI', label: 'RapidAPI Key', desc: 'Multi-purpose RapidAPI key — Meta Llama 3.2 Vision (LLM fallback) + Google SEO Keyword Research (keyword-research-for-seo)', secret: true, test: 'rapidapi_llama', settingsIds: ['rapidapi'] },
+  { key: 'ZAI_API_KEY', group: 'AI Models', service: 'Z.ai (GLM)', label: 'Z.ai API Key', desc: 'GLM 5.2 from chat.z.ai — lead classification, analysis, search-term review', secret: true, aliases: ['GLM_API_KEY'], test: 'zai', settingsIds: ['zai', 'glm'] },
 
   // ── Data & Intelligence ─────────────────────────────────────────────────────
   { key: 'DATAFORSEO_LOGIN', group: 'Data & Intelligence', service: 'DataForSEO', label: 'DataForSEO Login', desc: 'SEO/SERP/keyword data — account login', secret: false, test: 'dataforseo', settingsIds: ['dataforseo', 'dataseo'] },
@@ -346,6 +347,20 @@ async function _runTest(keyName) {
       if (r.status === 401 || r.status === 403) return _BAD('Perplexity rejected the key (HTTP ' + r.status + ')');
       if (r.ok || r.status === 400 || r.status === 422) return _OK('Perplexity authenticated');
       return _HTTP('Perplexity', r);
+    }
+    if (entry.test === 'zai') {
+      const key = resolvePlatformKey('ZAI_API_KEY');
+      if (!key) return _UNCONF();
+      const base = (process.env.ZAI_API_BASE_URL || 'https://api.z.ai/api/paas/v4').replace(/\/$/, '');
+      const r = await _fetchT(base + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key, 'Accept-Language': 'en-US,en' },
+        body: JSON.stringify({ model: process.env.ZAI_MODEL || 'glm-5.2', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
+      });
+      if (r.ok) return _OK('Z.ai GLM reachable');
+      if (r.status === 401 || r.status === 403) return _BAD('Z.ai rejected the key (HTTP ' + r.status + ')');
+      if (r.status === 400 || r.status === 422) return _OK('Z.ai authenticated');
+      return _HTTP('Z.ai', r);
     }
     if (entry.test === 'cloudflare') {
       const token = resolvePlatformKey('CLOUDFLARE_AI_TOKEN');
