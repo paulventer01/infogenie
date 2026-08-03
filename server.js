@@ -2562,6 +2562,11 @@ BOOT_TASKS.push(async () => {
     if (_db.hasDb()) {
       await _authSchema.ensureAuthSchema();
       try {
+        await require('./services/auth/preview_seed').ensurePreviewUser();
+      } catch (e) {
+        console.warn('[auth/preview] seed skipped:', e.message);
+      }
+      try {
         await _credentialsVault.ensureCredentialsSchema();
       } catch (e) {
         console.error('[credentials-vault] schema init failed:', e.message);

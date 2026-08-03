@@ -409,6 +409,27 @@
   margin-bottom: 12px;
 }
 
+.previewHint {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e3a8a;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 0.76rem;
+  margin-bottom: 12px;
+}
+
+.previewHint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.74rem;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
 .feedbackTop {
   margin-bottom: 0;
   margin-top: 12px;

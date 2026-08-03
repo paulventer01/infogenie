@@ -70,6 +70,7 @@ export default function LoginPage() {
   const [busyLabel, setBusyLabel] = useState("");
   const [forgotBusy, setForgotBusy] = useState(false);
   const [providers, setProviders] = useState<string[]>([]);
+  const [previewHost, setPreviewHost] = useState(false);
 
   const showErr = useCallback((msg: string) => {
     setErr(msg);
@@ -102,7 +103,20 @@ export default function LoginPage() {
 
     try {
       const sawLogin = localStorage.getItem("ig-saw-login");
-      setMode(sawLogin ? "login" : "signup");
+      // Preview tunnels: always land on Log In with demo creds prefilled.
+      const host = window.location.hostname || "";
+      const isPreview =
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host.endsWith(".trycloudflare.com");
+      setPreviewHost(isPreview);
+      if (isPreview) {
+        setMode("login");
+        setEmail("demo@infogenie.local");
+        setPass("preview123");
+      } else {
+        setMode(sawLogin ? "login" : "signup");
+      }
       localStorage.setItem("ig-saw-login", "1");
     } catch {
       setMode("login");
@@ -229,6 +243,8 @@ export default function LoginPage() {
       ? "Create account →"
       : "Log In →";
 
+  const isPreviewHost = previewHost;
+
   return (
     <div className={styles.shell}>
       <section className={styles.hero} aria-label="InfoGenie">
@@ -276,6 +292,15 @@ export default function LoginPage() {
             ? "Start with email — you can invite your team later."
             : "Sign in to continue to your dashboard."}
         </p>
+
+        {isPreviewHost && mode === "login" && (
+          <div className={styles.previewHint}>
+            <strong>Preview login</strong>
+            <span>
+              <code>demo@infogenie.local</code> / <code>preview123</code>
+            </span>
+          </div>
+        )}
 
         <div className={styles.tabs}>
           <button
