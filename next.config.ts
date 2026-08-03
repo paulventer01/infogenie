@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: [
     "*.trycloudflare.com",
     "change-ranking-reprints-previous.trycloudflare.com",
+    "beast-vermont-graphical-nation.trycloudflare.com",
     "localhost",
     "127.0.0.1",
   ],
