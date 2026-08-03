@@ -152,7 +152,7 @@ export default function LeadIntelligence() {
         <p className="ih-sub">
           Classifies inbound calls, forms, and WhatsApp enquiries as qualified, junk, or sales-ready — tied to ad source.
           Includes search-term waste review, negative keyword suggestions, specialist queue, and client transparency reports.
-          Powered by <strong>Z.ai GLM 5.2</strong> when configured (Manage → Admin → Platform APIs).
+          Powered by <strong>Z.ai GLM 5.2</strong> via the AutoClaw Coding endpoint when configured (Manage → AutoClaw or Admin → Platform APIs).
         </p>
       </div>
 

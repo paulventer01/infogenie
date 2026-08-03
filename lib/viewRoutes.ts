@@ -448,6 +448,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "predictive-intelligence", icon: "🪬", label: "Predictive Intelligence (90-day AI forecast)" },
           { view: "agent-goals", icon: "⚙️", label: "AI Marketing Agent" },
           { view: "ai-providers", icon: "🔈", label: "AI Providers (bring your own LLM)" },
+          { view: "autoclaw", icon: "🦞", label: "AutoClaw (Z.ai GLM agent)" },
           { view: "model-compare", icon: "⚖️", label: "Model Comparison (A/B prompts)" },
           { view: "vertical-playbooks", icon: "🔇", label: "Vertical Playbooks (industry packs)" },
         ],

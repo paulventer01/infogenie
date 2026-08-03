@@ -47,6 +47,11 @@ const PRESETS = [
     model: "llama-3.1-70b-versatile",
   },
   {
+    name: "Z.ai GLM 5.2 (AutoClaw Coding)",
+    base_url: "https://api.z.ai/api/coding/paas/v4",
+    model: "glm-5.2",
+  },
+  {
     name: "Z.ai GLM 5.2",
     base_url: "https://api.z.ai/api/paas/v4",
     model: "glm-5.2",

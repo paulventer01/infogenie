@@ -37,7 +37,7 @@ const REGISTRY = [
   { key: 'CLOUDFLARE_ACCOUNT_ID', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare Account ID', desc: 'Workers AI (Llama 3.1) — account identifier', secret: false, settingsIds: ['cloudflare'] },
   { key: 'CLOUDFLARE_AI_TOKEN', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare AI Token', desc: 'Workers AI (Llama 3.1) — API token', secret: true, test: 'cloudflare', settingsIds: ['cloudflare'] },
   { key: 'RAPIDAPI_KEY', group: 'AI Models', service: 'RapidAPI', label: 'RapidAPI Key', desc: 'Multi-purpose RapidAPI key — Meta Llama 3.2 Vision (LLM fallback) + Google SEO Keyword Research (keyword-research-for-seo)', secret: true, test: 'rapidapi_llama', settingsIds: ['rapidapi'] },
-  { key: 'ZAI_API_KEY', group: 'AI Models', service: 'Z.ai (GLM)', label: 'Z.ai API Key', desc: 'GLM 5.2 from chat.z.ai — lead classification, analysis, search-term review', secret: true, aliases: ['GLM_API_KEY'], test: 'zai', settingsIds: ['zai', 'glm'] },
+  { key: 'ZAI_API_KEY', group: 'AI Models', service: 'Z.ai / AutoClaw', label: 'Z.ai API Key', desc: 'GLM 5.2 via chat.z.ai / autoclaw.z.ai — lead classification, agent tasks, Coding Plan endpoint', secret: true, aliases: ['GLM_API_KEY', 'Z_AI_API_KEY'], test: 'zai', settingsIds: ['zai', 'glm', 'autoclaw'] },
 
   // ── Data & Intelligence ─────────────────────────────────────────────────────
   { key: 'DATAFORSEO_LOGIN', group: 'Data & Intelligence', service: 'DataForSEO', label: 'DataForSEO Login', desc: 'SEO/SERP/keyword data — account login', secret: false, test: 'dataforseo', settingsIds: ['dataforseo', 'dataseo'] },
@@ -351,7 +351,7 @@ async function _runTest(keyName) {
     if (entry.test === 'zai') {
       const key = resolvePlatformKey('ZAI_API_KEY');
       if (!key) return _UNCONF();
-      const base = (process.env.ZAI_API_BASE_URL || 'https://api.z.ai/api/paas/v4').replace(/\/$/, '');
+      const base = (process.env.ZAI_API_BASE_URL || process.env.ZAI_CODING_BASE_URL || 'https://api.z.ai/api/coding/paas/v4').replace(/\/$/, '');
       const r = await _fetchT(base + '/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key, 'Accept-Language': 'en-US,en' },

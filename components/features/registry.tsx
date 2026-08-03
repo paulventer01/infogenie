@@ -75,6 +75,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "predictive-intelligence": L("predictive-intelligence", () => import("@/components/features/manage/PredictiveIntelligence")),
   "agent-goals": L("agent-goals", () => import("@/components/features/manage/AgentGoals")),
   "ai-providers": L("ai-providers", () => import("@/components/features/manage/AiProviders")),
+  autoclaw: L("autoclaw", () => import("@/components/features/manage/AutoClaw")),
   "meeting-notes": L("meeting-notes", () => import("@/components/features/manage/MeetingNotes")),
   "team-meetings": L("team-meetings", () => import("@/components/features/manage/TeamMeetings")),
   infographics: L("infographics", () => import("@/components/features/manage/Infographics")),

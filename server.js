@@ -2700,7 +2700,18 @@ app.use('/api/company-overview', _companyOverviewRouter);
 const _leadIntelSchema = require('./services/lead_intelligence/schema');
 const _leadIntelRouter = require('./services/lead_intelligence/api');
 app.use('/api/lead-intelligence', _leadIntelRouter);
+const _autoclawSchema = require('./services/autoclaw/schema');
+const _autoclawRouter = require('./services/autoclaw/api');
+app.use('/api/autoclaw', _autoclawRouter);
 app.use('/api/playbook',        require('./services/playbook_7day/api'));
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _autoclawSchema.ensureAutoclawSchema();
+      console.log('[autoclaw] schema ready');
+    }
+  } catch (e) { console.error('[autoclaw] init failed:', e.message); }
+});
 BOOT_TASKS.push(async () => {
   try {
     if (_db.hasDb()) {
