@@ -104,7 +104,7 @@ async function forecastCreative(creative, runId) {
     reason = `CTR stable or improving (slope ${(fit.slope * 1000).toFixed(2)}‰/day). No action needed.`;
   }
 
-  // tenant_id inherited from the parent ad_creatives row (which was populated
+  // tenant_id inherited from the parent optimizer_ad_creatives row (which was populated
   // from its parent ad_campaigns row during the Phase 2A backfill).
   await _db.getPool().query(`
     INSERT INTO creative_fatigue_forecasts
@@ -136,7 +136,7 @@ async function runFatigueForecastOnce(opts = {}) {
   const r = await _db.getPool().query(`
     SELECT DISTINCT ON (cr.campaign_id)
       cr.*, c.optimizer_enabled, c.status AS campaign_status
-    FROM ad_creatives cr
+    FROM optimizer_ad_creatives cr
     JOIN ad_campaigns c ON c.id = cr.campaign_id
     WHERE cr.status = 'active'
       AND c.optimizer_enabled = true

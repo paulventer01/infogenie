@@ -8,7 +8,7 @@ const { addTenantIdColumn, markTenantIdNotNull } = require('../tenants/migration
 // so two tenants can independently mirror the same platform campaign id.
 const _TENANT_TABLES = [
   'ad_campaigns', 'ad_performance_hourly', 'optimizer_actions',
-  'ad_creatives', 'creative_refreshes', 'ad_sets',
+  'optimizer_ad_creatives', 'creative_refreshes', 'ad_sets',
   'ad_set_performance_hourly', 'bandit_allocations',
   'optimizer_dayparting', 'creative_fatigue_forecasts',
 ];
@@ -80,7 +80,9 @@ async function ensureOptimizerSchema() {
     -- ── Phase 8: 72h Creative Auto-Refresh ──────────────────────────────────
     -- Tracks individual ads (under a campaign) so we can rotate creative when
     -- it goes stale. Each row is one Meta/Google/TikTok ad object.
-    CREATE TABLE IF NOT EXISTS ad_creatives (
+    -- Named optimizer_ad_creatives (not ad_creatives) to avoid colliding with
+    -- services/ad_creative/schema.js which owns ad_creatives for DALL·E assets.
+    CREATE TABLE IF NOT EXISTS optimizer_ad_creatives (
       id              SERIAL PRIMARY KEY,
       campaign_id     INTEGER NOT NULL REFERENCES ad_campaigns(id) ON DELETE CASCADE,
       platform_ad_id  TEXT NOT NULL,
@@ -99,12 +101,12 @@ async function ensureOptimizerSchema() {
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (campaign_id, platform_ad_id)
     );
-    CREATE INDEX IF NOT EXISTS idx_ad_creatives_camp ON ad_creatives(campaign_id);
+    CREATE INDEX IF NOT EXISTS idx_optimizer_ad_creatives_camp ON optimizer_ad_creatives(campaign_id);
     -- Google Ads RSA support (multi-headline / multi-description). Meta rows
     -- leave these NULL and use the singular headline/body columns above.
-    ALTER TABLE ad_creatives ADD COLUMN IF NOT EXISTS headlines    JSONB;
-    ALTER TABLE ad_creatives ADD COLUMN IF NOT EXISTS descriptions JSONB;
-    ALTER TABLE ad_creatives ADD COLUMN IF NOT EXISTS final_url    TEXT;
+    ALTER TABLE optimizer_ad_creatives ADD COLUMN IF NOT EXISTS headlines    JSONB;
+    ALTER TABLE optimizer_ad_creatives ADD COLUMN IF NOT EXISTS descriptions JSONB;
+    ALTER TABLE optimizer_ad_creatives ADD COLUMN IF NOT EXISTS final_url    TEXT;
 
     -- Audit log of every creative-refresh decision (generated copy/image,
     -- whether it was uploaded, which old ad got paused).
@@ -211,7 +213,7 @@ async function ensureOptimizerSchema() {
     CREATE TABLE IF NOT EXISTS creative_fatigue_forecasts (
       id                 BIGSERIAL PRIMARY KEY,
       campaign_id        INTEGER REFERENCES ad_campaigns(id) ON DELETE CASCADE,
-      creative_id        INTEGER REFERENCES ad_creatives(id) ON DELETE CASCADE,
+      creative_id        INTEGER REFERENCES optimizer_ad_creatives(id) ON DELETE CASCADE,
       platform_ad_id     TEXT,
       window_days        INTEGER DEFAULT 14,
       samples            INTEGER DEFAULT 0,
