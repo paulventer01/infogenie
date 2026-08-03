@@ -1,26 +1,67 @@
 # InfoGenie — AI Governance Build Spec
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Date:** 2026-08-03  
 **Branch target:** `cursor/ai-governance-767a` (net-new, builds on `ecosystem-spine`)  
 **Framework:** 4 Layers of AI Governance (Policy → Data → Retrieval → Output)
 
 ---
 
+## 0. Non-restrictive defaults (HARD REQUIREMENTS)
+
+Governance must answer **“Can we prove what AI did?”** — not **“Can AI do less?”**
+
+These rules are **non-negotiable** for any implementation PR. If a change violates them, it is out of scope.
+
+| # | Hard rule | Meaning |
+|---|-----------|---------|
+| H1 | **Shadow-first forever as platform default** | `AI_GOVERNANCE_MODE` defaults to `shadow` in **dev and prod**. Enforce is **opt-in per tenant** (admin toggle), never a global prod flip. |
+| H2 | **Never slow Brief → action → calendar** | Generate + Spine Suggest + Spine Apply stay on tier `auto`. No approval queue on the core marketing loop. |
+| H3 | **Caution ≠ block** | Brand safety / data quality `caution` = UI warning + log only. Never stop the action unless `AI_GOVERNANCE_BLOCK_ON_CAUTION=1` (off by default). |
+| H4 | **Generate always auto** | `generate_*` tiers are locked to `auto` in the default policy. UI may warn; must not require human approval for drafts/briefs/analysis. |
+| H5 | **Missing context = enrich, don’t refuse** | If brand foundation / memory is thin, still run the model; attach whatever context exists; log “ungrounded”. No “insufficient data” hard stop in default mode. |
+| H6 | **Fail open on orchestrator errors** | If `govern()` throws, times out, or Brand Safety is down → **allow** the action and log `governance_degraded`. Never take the app offline. |
+| H7 | **`block` tier is rare + opt-in** | Default policy uses `block` for **zero** action types. Tenants (e.g. finance) may add `suggest`/`block` themselves; we do not ship restrictive defaults. |
+| H8 | **No new friction without a switch** | Any path that can delay or stop a user action must be behind an explicit tenant setting that defaults **off**. |
+
+### Default posture (ship this)
+
+```
+Mode:     shadow
+Appetite: aggressive   (prefer speed; still log everything)
+Tiers:    almost everything = auto
+Output:   warn on caution; never auto-block
+Context:  prefer RAG; never require it to proceed
+```
+
+### What “restrictive” looks like (explicitly forbidden as defaults)
+
+- Every AI call waiting for approval  
+- Blocking content/brief generation when data is incomplete  
+- Treating brand-safety `caution` as `block`  
+- Putting Ecosystem Spine Apply behind a review queue  
+- Turning on `enforce` for all tenants on day one  
+
+---
+
 ## 1. Problem statement
 
-InfoGenie has **strong point solutions** (Safe Agent, Brand Safety, Marketing Memory, Data Provenance, Privacy Compliance, RBAC) but they are **not wired as a mandatory platform layer**. AI can still:
+InfoGenie has **strong point solutions** (Safe Agent, Brand Safety, Marketing Memory, Data Provenance, Privacy Compliance, RBAC) but they are **not wired as a unified audit + control plane**. AI can still:
 
 - Generate without retrieving trusted internal facts
-- Apply side effects (calendar, email, ads) without output/compliance gates
-- Return memory nodes regardless of user role
+- Apply side effects without a consistent audit trail
+- Return memory nodes without clear role filtering (when tenants want it)
 - Ship insights without provenance or freshness metadata
 
-**Goal:** Every AI path follows:
+**Goal:** Prefer this path for every AI call — **observability first, restriction only when a tenant opts in**:
 
 ```
-Policy check → Data quality gate → Context retrieval → Model call → Output validation → Audit log → (optional) human approval → Execute
+Policy check → Data quality *warn* → Context retrieval (best-effort)
+  → Model call → Output *scan* → Audit log → Execute
+                 (optional human review only if tenant set tier=suggest/block)
 ```
+
+In **shadow** mode (default): the full path runs for logging/UX warnings, but **execution is never delayed**.
 
 ---
 
@@ -28,11 +69,14 @@ Policy check → Data quality gate → Context retrieval → Model call → Outp
 
 | Principle | Implementation |
 |-----------|----------------|
+| **Advise, don't block** | Default = log + warn. Blocking is opt-in per tenant / per action. |
 | **Extend, don't duplicate** | Wrap existing services; one governance orchestrator |
-| **Fail closed in prod** | `AI_GOVERNANCE_MODE=enforce` blocks; `shadow` logs only |
+| **Fail open** | Orchestrator/service errors → allow + `governance_degraded` log |
+| **Shadow-first** | Platform default `shadow`; `enforce` is tenant opt-in only |
 | **Tenant + role scoped** | Governance respects `permission_matrix.js` |
-| **Opt-in execution tiers** | `auto` / `suggest` / `block` per action type |
+| **Opt-in execution tiers** | `auto` / `suggest` / `block` — defaults heavily `auto` |
 | **Universal audit** | Every governed call writes `ai_governance_events` |
+| **Preserve speed** | Core loop (Brief / Spine / Create) must feel unchanged |
 
 ---
 
@@ -60,7 +104,7 @@ lib/viewRoutes.ts                                # Manage → AI Governance Hub
 
 ### Integration pattern
 
-All high-risk surfaces call **one function** before LLM or side-effect:
+Surfaces call **one function** before LLM or side-effect. In default (`shadow` + `auto`) this is **non-blocking**:
 
 ```js
 const { govern } = require('../ai_governance/orchestrator');
@@ -71,9 +115,14 @@ const result = await govern({
   surface: 'marketing_brief',      // enum
   action: 'generate',              // generate | apply | send | publish
   payload: { prompt, draft, meta },
-  executionTier: 'suggest',        // from policy
 });
-// result: { allowed, contextPack, outputChecks, auditId, blockReason? }
+// result: {
+//   allowed: true,              // false ONLY if mode=enforce AND tier/check blocks
+//   proceeded: true,            // always true in shadow mode
+//   warnings: [...],            // caution messages for UI banners
+//   contextPack, outputChecks, auditId
+// }
+// Callers MUST continue on allowed/proceeded unless they explicitly honor enforce.
 ```
 
 ---
@@ -98,11 +147,14 @@ const result = await govern({
 CREATE TABLE ai_governance_policies (
   id              TEXT PRIMARY KEY,
   tenant_id       INTEGER NOT NULL REFERENCES tenants(id),
-  -- Risk appetite
-  default_mode    TEXT NOT NULL DEFAULT 'shadow',  -- shadow | enforce
-  risk_appetite   TEXT NOT NULL DEFAULT 'balanced', -- conservative | balanced | aggressive
-  -- Per action-type tiers (auto | suggest | block)
+  -- Risk appetite — defaults NON-RESTRICTIVE
+  default_mode    TEXT NOT NULL DEFAULT 'shadow',     -- shadow | enforce (enforce = tenant opt-in)
+  risk_appetite   TEXT NOT NULL DEFAULT 'aggressive', -- aggressive | balanced | conservative
+  -- Per action-type tiers (auto | suggest | block) — see defaults below
   action_tiers    JSONB NOT NULL DEFAULT '{}',
+  -- Soft warnings only unless tenant opts into hard gates
+  block_on_caution BOOLEAN NOT NULL DEFAULT false,
+  require_context  BOOLEAN NOT NULL DEFAULT false,
   -- Formal policy doc (markdown) + version
   policy_document TEXT,
   policy_version  INTEGER NOT NULL DEFAULT 1,
@@ -112,20 +164,32 @@ CREATE TABLE ai_governance_policies (
 );
 ```
 
-**Default `action_tiers`:**
+**Default `action_tiers` (non-restrictive — ship this):**
 
 ```json
 {
   "generate_content": "auto",
   "generate_brief": "auto",
-  "apply_calendar": "suggest",
-  "send_email": "suggest",
-  "launch_campaign": "block",
-  "scale_budget": "block",
-  "publish_social": "suggest",
-  "crm_push": "suggest"
+  "generate_decision": "auto",
+  "generate_analysis": "auto",
+  "spine_suggest": "auto",
+  "apply_calendar": "auto",
+  "send_email": "auto",
+  "publish_social": "auto",
+  "crm_push": "auto",
+  "launch_campaign": "auto",
+  "scale_budget": "auto"
 }
 ```
+
+**Optional stricter presets** (tenant chooses; never applied by default):
+
+| Preset | When to offer | Changes |
+|--------|---------------|---------|
+| Balanced | Mid-market teams | `launch_campaign` / `scale_budget` → `suggest` |
+| Conservative | Finance / health / regulated | those + `send_email` → `suggest`; mode can go `enforce` |
+
+UI copy for the Policy tab: *“Defaults keep InfoGenie fast. Tighten only what you need.”*
 
 #### API
 
@@ -140,21 +204,22 @@ CREATE TABLE ai_governance_policies (
 #### UI: AI Governance Hub — **Policy tab**
 
 - Policy document editor (versioned)
-- Risk appetite selector (conservative / balanced / aggressive)
-- Action tier matrix (grid: action type × auto/suggest/block)
+- Risk appetite selector — default selected: **aggressive**
+- Action tier matrix (grid: action type × auto/suggest/block) — defaults all **auto**
 - Ethics / accountability owner field
-- Enforcement mode toggle (shadow vs enforce) — admin only
+- Enforcement mode toggle (shadow vs enforce) — admin only; **confirm dialog** when enabling enforce: “This can delay or stop actions. Shadow mode is recommended.”
+- Preset buttons: Aggressive (default) / Balanced / Conservative
 
 #### Wire into existing modules
 
 | Module | Change |
 |--------|--------|
-| `services/marketing_spine/actions.js` | `applyAction()` → call `govern()` first; respect `action_tiers.apply_calendar` |
-| `services/safe_agent/api.js` | Merge Safe Agent proposals into governance audit stream |
-| `services/decision_engine/api.js` | `/act/:id` requires tier check |
+| `services/marketing_spine/actions.js` | `applyAction()` → call `govern()` first; default tier `auto` → always proceeds; log + optional warnings |
+| `services/safe_agent/api.js` | Merge Safe Agent proposals into governance audit stream (no new approval step) |
+| `services/decision_engine/api.js` | `/act/:id` → audit via `govern()`; no new gate unless tenant set tier |
 | `server.js` | Mount `/api/ai-governance` |
 
-**Done when:** Tenant admin can set risk appetite; calendar apply respects tier; all governed events appear in one audit log.
+**Done when:** Tenant admin can set risk appetite; Spine Apply still instant under defaults; all governed events appear in one audit log; shadow mode never delays a response.
 
 ---
 
@@ -198,16 +263,17 @@ CREATE TABLE data_quality_scores (
 #### Service: `services/ai_governance/data_quality.js`
 
 - `scoreSource(tenantId, sourceKey)` — freshness, null rate, connector health
-- `gateBeforeAi(tenantId, requiredSources[])` — returns `{ ok, blockers[] }`
+- `assessBeforeAi(tenantId, preferredSources[])` — returns `{ ok: true, warnings[] }` under defaults  
+  - Never returns a hard block unless `mode=enforce` **and** tenant set `require_context=true` (default **false**)
 
-**Required sources by surface:**
+**Preferred sources by surface (warnings only by default):**
 
-| Surface | Required sources |
-|---------|------------------|
-| Marketing Brief | `brand_foundation`, `optimizer` OR `google_ads_insights`, `decision_engine` |
-| Content AI | `brand_foundation`, `seo_tasks` OR `keyword_explorer` |
-| Optimizer run | `ad_campaigns`, `pixel_configs` |
-| Ecosystem Spine suggest | `audience_segments`, `attribution_runs` (soft warn if missing) |
+| Surface | Preferred sources | Default if missing |
+|---------|-------------------|--------------------|
+| Marketing Brief | `brand_foundation`, `optimizer` OR `google_ads_insights` | Warn + continue |
+| Content AI | `brand_foundation`, `seo_tasks` OR `keyword_explorer` | Warn + continue |
+| Optimizer run | `ad_campaigns`, `pixel_configs` | Warn + continue |
+| Ecosystem Spine suggest | `audience_segments`, `attribution_runs` | Soft warn + continue |
 
 #### Mandatory provenance logging
 
@@ -223,7 +289,7 @@ Create `services/ai_governance/provenance_bridge.js`:
 - Staleness alerts (“Brief used 14-day-old SERP data”)
 - Lineage drill-down per insight key (reuse Data Provenance panel)
 
-**Done when:** Brief generation refuses (enforce mode) or warns (shadow) when brand foundation missing; every governed output has provenance row.
+**Done when:** Brief generation **always runs** under defaults and shows a soft warning when brand foundation is missing; every governed output has a provenance row when logging succeeds.
 
 ---
 
@@ -284,7 +350,7 @@ async function queryMemoryNodes(tenant_id, question, queryVec, { userId, limit }
 }
 ```
 
-#### Mandatory retrieval surfaces (Phase 1)
+#### Best-effort retrieval surfaces (Phase 1)
 
 | Surface | File to patch |
 |---------|---------------|
@@ -294,21 +360,26 @@ async function queryMemoryNodes(tenant_id, question, queryVec, { userId, limit }
 | Ask InfoGenie | `services/ask_copilot/api.js` (already partial) |
 | Ecosystem Spine suggest | `services/marketing_spine/actions.js` |
 
-**Prompt injection template** (shared):
+**Prompt injection template** (shared — non-restrictive):
 
 ```
-SYSTEM: Answer using ONLY the provided context_pack. Cite sources as [memory:ID] or [provenance:KEY].
-If context is insufficient, say "insufficient grounded data" — do not invent metrics.
+SYSTEM: Prefer answering from the provided context_pack when relevant.
+Cite sources as [memory:ID] or [provenance:KEY] when used.
+If context is thin, still be helpful using general marketing expertise —
+but clearly mark any numeric claims that are not grounded in context as estimates.
 CONTEXT_PACK: {{JSON}}
 ```
+
+Do **not** use “answer ONLY from context / refuse if insufficient” as the platform default.
+(Tenants with `require_context=true` may opt into a stricter system prompt.)
 
 #### UI: **Context tab**
 
 - Retrieval coverage % (how many AI calls used context pack last 7d)
 - Memory nodes by type + permission class
-- “Ungrounded outputs” list (generations that skipped retrieval)
+- “Ungrounded outputs” list (generations that ran with thin/empty packs) — **informational only**
 
-**Done when:** Brief + Decision Engine always attach context pack; memory query filters by role; ungrounded calls visible in dashboard.
+**Done when:** Brief + Decision Engine attach context pack when available; role filter works when enabled; thin-context calls still succeed and are visible in the dashboard.
 
 ---
 
@@ -327,15 +398,26 @@ CONTEXT_PACK: {{JSON}}
 
 #### Service: `services/ai_governance/output_gate.js`
 
-Pipeline (sequential, fail-fast in enforce mode):
+Pipeline (sequential). **Default behavior = scan + warn + proceed:**
 
 ```
 1. PII scan        → privacy_compliance patterns
 2. Brand safety    → brand_safety/check (jurisdictions from policy)
-3. Claim scan      → require citation if numbers/ROAS/% in output
-4. Content filter  → blocklist + policy_document rules
+3. Claim scan      → flag uncited numbers/ROAS/% (warn only by default)
+4. Content filter  → policy_document rules (warn only by default)
 5. Risk score      → aggregate → pass | caution | block
 ```
+
+**When does `block` actually stop an action?**
+
+| Condition | Default |
+|-----------|---------|
+| Mode = `shadow` | Never stops (log only) |
+| Mode = `enforce` + verdict `caution` | Never stops (`block_on_caution=false`) |
+| Mode = `enforce` + verdict `block` (e.g. raw PII in outbound email) | Stops **only** if tenant enabled enforce |
+| Orchestrator / Brand Safety error | Never stops (fail open) |
+
+Recommended: only treat **critical PII in outbound send** as a hard `block` candidate even under enforce; everything else stays caution.
 
 #### Schema: `ai_governance_output_checks`
 
@@ -373,30 +455,31 @@ CREATE TABLE ai_governance_events (
 );
 ```
 
-#### Outbound gates (mandatory before side effect)
+#### Outbound hooks (scan before side effect — non-blocking by default)
 
-| Action | Gate before |
-|--------|-------------|
-| Email send | `email-broadcast` send route |
-| Social publish | `social-publisher` post route |
-| Calendar apply | `marketing_spine/actions.js` `applyAction` |
-| Safe Agent execute | `safe_agent/api.js` approve |
-| CRM push | `crm-sync/push` |
+| Action | Hook | Default outcome |
+|--------|------|-----------------|
+| Email send | `email-broadcast` send route | Warn + send |
+| Social publish | `social-publisher` post route | Warn + publish |
+| Calendar apply | `marketing_spine/actions.js` `applyAction` | Warn + apply |
+| Safe Agent execute | `safe_agent/api.js` approve | Unchanged (already human-approved) |
+| CRM push | `crm-sync/push` | Warn + push |
 
 #### Monitoring & alerts
 
-- Cron: `services/ai_governance/monitor.js` — scan last 24h for `verdict=block` rate spike
+- Cron: `services/ai_governance/monitor.js` — scan last 24h for caution/block *rates* (observability)
 - Hook: optional `SENTRY_DSN` for `governance_block` events (when env set)
-- Dashboard widget: “Outputs caught pre-production” counter
+- Dashboard widget: “Warnings logged” + “Would-have-blocked (shadow)” counters — not “actions stopped”
 
 #### UI: **Output tab**
 
-- 24h pass / caution / block chart
-- Recent blocked outputs with rewrite suggestions (from Brand Safety)
+- 24h pass / caution / would-block chart
+- Recent cautions with rewrite suggestions (from Brand Safety) — **one-click dismiss / continue**
 - PII flags
 - Link to AI Audit Suite hallucination runs
+- Banner: “Shadow mode — nothing is blocked”
 
-**Done when:** Email send and calendar apply cannot proceed on `block` verdict in enforce mode; all checks logged.
+**Done when:** Under defaults, email send and calendar apply always proceed; checks are logged; enforce mode (opt-in) can stop only critical `block` verdicts.
 
 ---
 
@@ -424,11 +507,13 @@ flowchart LR
   RAG --> LLM[Model call]
   LLM --> OUT
   OUT --> AUDIT[ai_governance_events]
-  AUDIT -->|suggest/block| HUMAN[Human review]
-  AUDIT -->|auto + pass| EXEC[Execute]
+  AUDIT -->|default: auto| EXEC[Execute]
+  AUDIT -.->|only if tenant opt-in suggest/block| HUMAN[Human review]
   EXEC --> MEM[Marketing Memory ingest]
   MEM --> MON[Monitor & improve]
 ```
+
+**Default path is the solid line (Execute).** Human review is a dashed opt-in path.
 
 ---
 
@@ -436,19 +521,19 @@ flowchart LR
 
 ### Phase A — Foundation (ship first)
 
-**Scope:** Schema + orchestrator + hub shell + spine/safe-agent hooks
+**Scope:** Schema + orchestrator + hub shell + spine/safe-agent **hooks** (audit-only under defaults)
 
 | Task | Files |
 |------|-------|
 | Create `services/ai_governance/*` | schema, policy, orchestrator, api |
 | Mount API | `server.js` |
 | AI Governance Hub UI | `components/features/manage/AiGovernanceHub.tsx` |
-| Wire calendar apply gate | `marketing_spine/actions.js` |
+| Wire calendar apply hook (non-blocking) | `marketing_spine/actions.js` |
 | Wire Safe Agent audit merge | `safe_agent/api.js` |
 | Permissions | `permission_matrix.js` |
-| Tests | `test/ai-governance.test.js` |
+| Tests | `test/ai-governance.test.js` — **must assert fail-open + shadow never blocks** |
 
-**Exit criteria:** Policy CRUD works; calendar apply blocked in enforce when brand safety fails; audit log visible.
+**Exit criteria:** Policy CRUD works; Spine Apply remains instant under defaults; audit log visible; unit tests prove `shadow` + orchestrator failure never deny.
 
 ### Phase B — Data + provenance
 
@@ -459,33 +544,33 @@ flowchart LR
 | Brief data gate | `marketing_brief/generator.js` |
 | Hub Data tab | UI |
 
-**Exit criteria:** Brief warns on stale/missing sources; provenance row per governed generation.
+**Exit criteria:** Brief always runs; soft warning on stale/missing sources; provenance row per governed generation when logging works.
 
-### Phase C — Permission-aware RAG
+### Phase C — Permission-aware RAG (best-effort)
 
 | Task | Files |
 |------|-------|
 | `context_pack.js` | unified bundle |
-| Memory role filter | `knowledge_graph/api.js` |
+| Memory role filter | `knowledge_graph/api.js` (off unless tenant enables stricter roles) |
 | Patch Brief, Decision Engine, Ask | respective generators |
 | Hub Context tab | UI |
 
-**Exit criteria:** ≥80% of Brief/Decision calls show context pack in audit; role cannot retrieve restricted memory types.
+**Exit criteria:** ≥80% of Brief/Decision calls show a context pack when memory exists; thin-context calls still succeed; role filter does not break demo/admin workflows.
 
-### Phase D — Universal output gate
+### Phase D — Universal output scan (warn-first)
 
 | Task | Files |
 |------|-------|
 | `output_gate.js` | full pipeline |
-| Email + social gates | `email_broadcast`, `social_publisher` |
+| Email + social hooks | `email_broadcast`, `social_publisher` |
 | Monitor cron | `ai_governance/monitor.js` |
 | Hub Output tab | UI |
 
-**Exit criteria:** No email send with critical brand-safety flag in enforce mode; block rate visible on dashboard.
+**Exit criteria:** Under defaults, send/publish never blocked; caution banners work; shadow “would-have-blocked” rate visible; enforce (opt-in) can stop critical PII only.
 
-### Phase E — Enterprise polish
+### Phase E — Enterprise polish (opt-in presets)
 
-- Policy templates by vertical (finance, health, agency)
+- Policy templates by vertical (finance, health, agency) — **applied only when tenant selects them**
 - Export audit log (CSV/PDF) for compliance reviews
 - Webhook on `governance_block` for Slack/email
 - SOC2-style retention policy on `ai_governance_events`
@@ -495,15 +580,19 @@ flowchart LR
 ## 10. Configuration
 
 ```env
-# Governance
-AI_GOVERNANCE_MODE=shadow          # shadow | enforce (prod default: enforce)
-AI_GOVERNANCE_BLOCK_ON_CAUTION=0   # 1 = treat caution as block
-AI_GOVERNANCE_REQUIRE_CONTEXT=1    # 1 = block ungrounded generations in enforce
+# Governance — NON-RESTRICTIVE PLATFORM DEFAULTS
+AI_GOVERNANCE_MODE=shadow          # shadow | enforce  (NEVER default to enforce)
+AI_GOVERNANCE_BLOCK_ON_CAUTION=0   # must stay 0 unless tenant opts in
+AI_GOVERNANCE_REQUIRE_CONTEXT=0    # must stay 0 — enrich, don't refuse
+AI_GOVERNANCE_FAIL_OPEN=1          # 1 = allow on orchestrator errors (required)
 AI_GOVERNANCE_DEFAULT_JURISDICTIONS=ftc,gdpr
+AI_GOVERNANCE_DEFAULT_APPETITE=aggressive
 
 # Existing (required for full Layer 4)
 SENTRY_DSN=                        # optional alerting
 ```
+
+**Prod note:** Do **not** flip the platform env to `enforce`. Tenants enable enforce in the Hub UI; the env only sets the *platform default for new tenants* (must remain `shadow`).
 
 ---
 
@@ -519,22 +608,26 @@ Add to `lib/viewRoutes.ts` → Manage → “3 · AI tools & config” (near Saf
 
 ## 12. Success metrics
 
-| Metric | Target (90 days post Phase D) |
-|--------|-------------------------------|
-| Governed AI calls with context pack | ≥85% |
-| Outputs blocked pre-production | measurable baseline + trend down for false positives |
-| Insights with provenance | ≥90% of Brief/Decision outputs |
-| Permission-filtered memory queries | 100% |
-| Enterprise audit export usage | ≥1 export/month per agency tenant |
+| Metric | Target | Notes |
+|--------|--------|-------|
+| **Friction (hard)** | 0 user-facing blocks under default policy | Regression test in CI |
+| Governed AI calls logged | ≥90% of Brief/Decision/Spine applies | Observability |
+| Context pack attached when available | ≥85% | Best-effort; not a hard gate |
+| Insights with provenance | ≥90% of Brief/Decision outputs | Logging success |
+| Spine Apply p95 latency delta | &lt; 150ms vs pre-governance | Must not feel slower |
+| Tenants on Aggressive preset | ≥70% | Confirms defaults stay light |
+| Tenants who enable enforce | Opt-in only — no target to maximize | Restriction is a choice |
 
 ---
 
 ## 13. Explicit non-goals
 
-- Building an ethics committee workflow product (use policy owner + review queue instead)
+- Making InfoGenie slower or more approval-heavy by default
+- Building an ethics committee workflow product (use policy owner + optional review queue)
 - Replacing HubSpot/Salesforce DLP
 - Training custom models
 - Full SOC2 certification (spec supports audit trail only)
+- Global `enforce` mode for all customers
 
 ---
 
@@ -542,23 +635,35 @@ Add to `lib/viewRoutes.ts` → Manage → “3 · AI tools & config” (near Saf
 
 | Ecosystem Spine | AI Governance |
 |-----------------|---------------|
-| **What** to do (actions) | **Whether** AI may do it safely |
+| **What** to do (actions) | **Record how** AI acted — and warn when useful |
 | `marketing_actions` | `ai_governance_events` |
-| `suggest → apply` | `govern → review → execute` |
+| `suggest → apply` (fast) | `govern → log → execute` (default); review only if tenant opts in |
 
-**Integration:** `marketing_spine/actions.js` `applyAction()` calls `govern()` before any mutation. Ecosystem Spine becomes the **execution layer**; AI Governance becomes the **control plane**.
+**Integration:** `marketing_spine/actions.js` `applyAction()` calls `govern()` before mutation. Under defaults, `govern()` returns immediately with `proceeded: true`. Ecosystem Spine stays the **execution layer**; AI Governance is an **audit + optional safety** plane — not a brake pedal.
 
 ---
 
-## 15. Immediate next PR (recommended)
+## 15. Acceptance tests (non-restrictive)
+
+Any PR claiming Phase A+ must pass:
+
+1. `mode=shadow` + brand-safety `block` verdict → action **still succeeds**
+2. `govern()` throws → action **still succeeds** + `governance_degraded` event
+3. Default policy → all `action_tiers` values are `auto`
+4. Spine Apply under defaults → no `pending_review` status
+5. New tenant → `default_mode=shadow`, `risk_appetite=aggressive`, `require_context=false`, `block_on_caution=false`
+
+---
+
+## 16. Immediate next PR (recommended)
 
 **Branch:** `cursor/ai-governance-767a`  
-**PR title:** AI Governance Hub — Phase A foundation
+**PR title:** AI Governance Hub — Phase A foundation (shadow-first, non-restrictive)
 
 1. `services/ai_governance/{schema,policy,orchestrator,output_gate,api}.js`
-2. `components/features/manage/AiGovernanceHub.tsx`
-3. Gate on `marketing_spine/actions.js` + `safe_agent/api.js`
-4. `test/ai-governance.test.js`
-5. Add **Governance** tab link next to Ecosystem in `CompanyContextBar.tsx` (optional)
+2. `components/features/manage/AiGovernanceHub.tsx` — Aggressive preset selected by default
+3. Non-blocking hooks on `marketing_spine/actions.js` + `safe_agent/api.js`
+4. `test/ai-governance.test.js` including §15 acceptance tests
+5. Optional: **Governance** link next to Ecosystem in `CompanyContextBar.tsx`
 
 Estimated surface area: ~12 files, ~1,200 LOC — extends existing modules, no rewrites.
