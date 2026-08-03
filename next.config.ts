@@ -4,6 +4,14 @@ const EXPRESS = process.env.EXPRESS_PROXY_TARGET || "http://localhost:8000";
 const isProd = process.env.NODE_ENV === "production";
 
 const nextConfig: NextConfig = {
+  // Preview tunnels (cloudflared) hit Next as a cross-origin host; without this,
+  // Next 15 blocks /_next/* and the app appears blank after login.
+  allowedDevOrigins: [
+    "*.trycloudflare.com",
+    "change-ranking-reprints-previous.trycloudflare.com",
+    "localhost",
+    "127.0.0.1",
+  ],
   async headers() {
     const csp = [
       "default-src 'self'",

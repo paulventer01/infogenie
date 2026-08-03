@@ -262,7 +262,9 @@ app.use(expressSession({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    // true behind HTTPS proxies/tunnels (cloudflared); boolean true only in prod.
+    // 'auto' uses req.secure which works with trust proxy + X-Forwarded-Proto.
+    secure: process.env.NODE_ENV === 'production' ? true : 'auto',
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days inactivity
   },
 }));
