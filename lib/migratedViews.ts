@@ -347,6 +347,15 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "conversational-ai", legacyModule: null },
   { view: "conversion-lab", legacyModule: null },
   { view: "growth-hub", legacyModule: null },
+  // Gap-priority build (P0/P1 roadmap)
+  { view: "zero-click-hub", legacyModule: null },
+  { view: "voice-seo", legacyModule: null },
+  { view: "remarketing-suite", legacyModule: null },
+  { view: "referral-manager", legacyModule: null },
+  { view: "affiliate-hub", legacyModule: null },
+  { view: "short-form-video", legacyModule: null },
+  { view: "push-marketing", legacyModule: null },
+  { view: "social-commerce", legacyModule: null },
 ];
 
 /** Set of view ids now rendered by React. */

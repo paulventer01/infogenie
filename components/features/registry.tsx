@@ -303,4 +303,12 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "conversational-ai": L("conversational-ai", () => import("@/components/features/shared/MarketingHubPanel")),
   "conversion-lab": L("conversion-lab", () => import("@/components/features/shared/MarketingHubPanel")),
   "growth-hub": L("growth-hub", () => import("@/components/features/shared/MarketingHubPanel")),
+  "zero-click-hub": L("zero-click-hub", () => import("@/components/features/analyse/ZeroClickHub")),
+  "voice-seo": L("voice-seo", () => import("@/components/features/analyse/VoiceSeo")),
+  "remarketing-suite": L("remarketing-suite", () => import("@/components/features/grow/RemarketingSuite")),
+  "referral-manager": L("referral-manager", () => import("@/components/features/reach/ReferralManager")),
+  "affiliate-hub": L("affiliate-hub", () => import("@/components/features/manage/AffiliateHub")),
+  "short-form-video": L("short-form-video", () => import("@/components/features/create/ShortFormVideo")),
+  "push-marketing": L("push-marketing", () => import("@/components/features/reach/PushMarketing")),
+  "social-commerce": L("social-commerce", () => import("@/components/features/reach/SocialCommerce")),
 };

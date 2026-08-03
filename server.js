@@ -3945,6 +3945,23 @@ app.use('/api/aeo', _aeoRouter);
 app.use('/api/ai-visibility', _aiVisRouter);
 app.use('/api/local-seo', _lsRouter);
 app.use('/api/social-tags', _stRouter);
+
+// ── Gap-priority build (zero-click, voice SEO, remarketing, referrals, affiliates) ──
+const _zeroClickSchema = require('./services/zero_click/schema');
+const _zeroClickRouter = require('./services/zero_click/api');
+const _voiceSeoSchema = require('./services/voice_seo/schema');
+const _voiceSeoRouter = require('./services/voice_seo/api');
+const _remarketingRouter = require('./services/remarketing/api');
+const _referralSchema = require('./services/referrals/schema');
+const _referralRouter = require('./services/referrals/api');
+const _affiliateSchema = require('./services/affiliates/schema');
+const _affiliateRouter = require('./services/affiliates/api');
+app.use('/api/zero-click', _zeroClickRouter);
+app.use('/api/voice-seo', _voiceSeoRouter);
+app.use('/api/remarketing', _remarketingRouter);
+app.use('/api/referrals', _referralRouter);
+app.use('/api/affiliates', _affiliateRouter);
+
 BOOT_TASKS.push(async () => { try {
   if (process.env.DATABASE_URL) {
     const { ensureSeoCrawlerSchema } = require('./services/seo_crawler/schema');
@@ -3958,7 +3975,11 @@ BOOT_TASKS.push(async () => { try {
     await _aeoSchema.ensureAeoSchema();
     await ensureLocalSeoSchema();
     await ensureSocialTagsSchema();
-    console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags ready');
+    await _zeroClickSchema.ensureZeroClickSchema();
+    await _voiceSeoSchema.ensureVoiceSeoSchema();
+    await _referralSchema.ensureReferralSchema();
+    await _affiliateSchema.ensureAffiliateSchema();
+    console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags + gap-priority ready');
   }
 } catch (e) { console.warn('[tier28-32] schema init failed:', e.message); }});
 BOOT_TASKS.push(async () => { try {

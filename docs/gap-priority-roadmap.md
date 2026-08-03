@@ -222,13 +222,13 @@ flowchart LR
 ```
 
 **Recommended build order (single team):**
-1. Zero-Click & AI SERP Hub
-2. Retargeting & Remarketing Suite
-3. Voice Search Optimization (fast follow to AEO)
-4. Referral Program Manager
-5. Affiliate Program Hub
-6. Short-Form Video Workflow
-7. Push + Social Commerce (parallel if 2 engineers)
+1. Zero-Click & AI SERP Hub — **shipped** (`/analyse/zero-click-hub`)
+2. Retargeting & Remarketing Suite — **shipped** (`/grow/remarketing-suite`)
+3. Voice Search Optimization (fast follow to AEO) — **shipped** (`/analyse/voice-seo`)
+4. Referral Program Manager — **shipped** (`/reach/referral-manager`)
+5. Affiliate Program Hub — **shipped** (`/manage/affiliate-hub`)
+6. Short-Form Video Workflow — **shipped** (`/create/short-form-video`)
+7. Push + Social Commerce (parallel if 2 engineers) — **shipped** (`/reach/push-marketing`, `/reach/social-commerce`)
 
 ---
 
@@ -264,4 +264,4 @@ If P0 + P1 + Relabel complete:
 
 ---
 
-*Last updated: 2026-08-03 · Branch: `cursor/full-app-hardening-767a`*
+*Last updated: 2026-08-03 · Branch: `cursor/gap-priority-build-767a`*

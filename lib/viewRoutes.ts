@@ -112,6 +112,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
         items: [
           { view: "geo-audit", icon: "🛸", label: "AI Results / GEO Audit" },
           { view: "aeo-optimizer", icon: "💬", label: "Answer Engine Optimization (AEO)" },
+          { view: "zero-click-hub", icon: "👁️", label: "Zero-Click Hub (snippets · PAA · AI Overview)" },
+          { view: "voice-seo", icon: "🎙️", label: "Voice Search SEO" },
           { view: "mentions", icon: "🌐", label: "Mentions Hub" },
           { view: "social-listening", icon: "👂", label: "Social Listening" },
           { view: "media-intel", icon: "📰", label: "Media Intelligence" },
@@ -197,6 +199,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "canva", icon: "🎨", label: "Canva Template Launcher" },
           { view: "ugc-avatars", icon: "🧑‍🎤", label: "UGC Avatar Videos" },
           { view: "video-script", icon: "🎬", label: "Video Script Generator" },
+          { view: "short-form-video", icon: "📹", label: "Short-Form Video Workflow" },
           { view: "voiceover", icon: "🔊", label: "AI Voiceovers" },
           { view: "audio-summary", icon: "🎙️", label: "Audio Summary Generator (article → MP3)" },
           { view: "creative-intel", icon: "💡", label: "Creative Intel (what performs)" },
@@ -269,6 +272,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "hubspot-sync", icon: "🔁", label: "HubSpot CRM Sync" },
           { view: "crm-sync", icon: "♻️", label: "CRM Sync (ActiveCampaign · ConvertKit)" },
           { view: "hunter", icon: "🗄️", label: "Hunter.io Email Finder" },
+          { view: "referral-manager", icon: "🌟", label: "Referral Program Manager" },
         ],
       },
       {
@@ -290,6 +294,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "influencers", icon: "💫", label: "Influencer CRM" },
           { view: "tiktok-downloader", icon: "⬇️", label: "TikTok Asset Downloader" },
           { view: "hashtag-intel", icon: "🔖", label: "Hashtag Intelligence (Instagram & TikTok)" },
+          { view: "social-commerce", icon: "🛍️", label: "Social Commerce Hub" },
         ],
       },
       {
@@ -326,6 +331,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "8 · Next-gen messaging",
         items: [
           { view: "messaging-channels", icon: "🗃️", label: "Messaging Channels (SMS · WhatsApp · Push)" },
+          { view: "push-marketing", icon: "🔔", label: "Push Notification Marketing" },
           { view: "rcs-campaigns",     icon: "💭", label: "RCS & Apple Messages (rich interactive messaging)" },
           { view: "linkedin-outreach", icon: "💼", label: "LinkedIn Outreach Automation (sequences)" },
           { view: "email-warmup",      icon: "🔥", label: "Email Warm-Up (inbox trust builder)" },
@@ -363,6 +369,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "post-performance", icon: "⚗️", label: "Post Performance" },
           { view: "optimizer", icon: "🦿", label: "AI Campaign Optimizer (auto)" },
           { view: "lead-intelligence", icon: "🎯", label: "Lead Intelligence (GLM)" },
+          { view: "remarketing-suite", icon: "🔄", label: "Remarketing Suite" },
           { view: "ad-comment-monitor", icon: "🗨️", label: "Ad Comment Monitor (Meta)" },
           { view: "auto-operator", icon: "🧫", label: "Autonomous Marketing Operator" },
           { view: "safe-agent", icon: "🔒", label: "Safe Agent (propose → approve → execute)" },
@@ -449,6 +456,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "budget-caps", icon: "🚦", label: "Budget Caps (platform daily + lifetime limits)" },
           { view: "utm-builder", icon: "📸", label: "UTM Architecture (link builder + presets)" },
           { view: "pixel-manager", icon: "🎞️", label: "Pixel Manager (Meta CAPI · LinkedIn · TikTok)" },
+          { view: "affiliate-hub", icon: "🤝", label: "Affiliate Program Hub" },
           { view: "launch-compliance", icon: "☑️", label: "Launch Compliance Checklist (brand · copy · legal · mobile)" },
           { view: "post-launch-audit", icon: "📽️", label: "Post-Launch Audit (live data + lead flow 24-48h)" },
           { view: "customer-360", icon: "🎚️", label: "Customer 360 (unified account view)" },
