@@ -77,6 +77,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/customer-360',              view: 'brand.view',          write: 'brand.edit' },
   { prefix: '/api/brand-calendar',            view: 'brand.calendar.view', write: 'brand.calendar.edit' },
   { prefix: '/api/content-calendar',          view: 'brand.calendar.view', write: 'brand.calendar.edit' },
+  { prefix: '/api/calendar-assistant',        view: 'brand.calendar.view', write: 'brand.calendar.edit' },
 
   // ── Compete ───────────────────────────────────────────────────────────────
   { prefix: '/api/battle-cards',              view: 'compete.battle_cards.view', write: 'compete.battle_cards.edit' },
@@ -315,6 +316,7 @@ const COMPONENT_MATRIX = {
   'brand-calendar':       'brand.calendar.view',
   'master-calendar':      'brand.calendar.view',
   'content-calendar':     'brand.calendar.view',
+  'calendar-assistant':   'brand.calendar.view',
 
   // Compete
   'competitors':          'compete.competitors.view',

@@ -438,6 +438,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "new-project", icon: "👋", label: "+ New Marketing Project" },
           { view: "master-calendar", icon: "📆", label: "Master Calendar (everything)" },
           { view: "brand-calendar", icon: "🕰️", label: "Brand Calendar (10 categories)" },
+          { view: "calendar-assistant", icon: "📅", label: "Calendar Assistant (AI schedule · conflicts)" },
           { view: "social", icon: "🙌", label: "Social Calendar" },
           { view: "launches", icon: "👏", label: "Product Launch Calendar" },
         ],

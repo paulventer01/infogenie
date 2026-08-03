@@ -2772,6 +2772,9 @@ const _webAnalRouter   = require('./services/web_analytics/api');
 app.use('/api/projects',        _projectsRouter);
 app.use('/api/okr',             _okrRouter);
 app.use('/api/brand-calendar',  _bcalRouter);
+const _calAsstSchema = require('./services/calendar_assistant/schema');
+const _calAsstRouter = require('./services/calendar_assistant/api');
+app.use('/api/calendar-assistant', _calAsstRouter);
 app.use('/api/budget',          _budgetRouter);
 app.use('/api/web-analytics',   _webAnalRouter);
 const _companyOverviewSchema = require('./services/company_overview/schema');
@@ -2806,9 +2809,10 @@ BOOT_TASKS.push(async () => {
       await _projectsSchema.ensureProjectsSchema();
       await _okrSchema.ensureOkrSchema();
       await _bcalSchema.ensureBrandCalendarSchema();
+      await _calAsstSchema.ensureCalendarAssistantSchema();
       await _budgetSchema.ensureBudgetSchema();
       await _companyOverviewSchema.ensureCompanyOverviewSchema();
-      console.log('[projects + brand-calendar + budget-board + web-analytics] ready');
+      console.log('[projects + brand-calendar + calendar-assistant + budget-board + web-analytics] ready');
     }
   } catch (e) { console.error('[projects-pack] init failed:', e.message); }
 });

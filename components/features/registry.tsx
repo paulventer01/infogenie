@@ -47,6 +47,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "marketing-okr": L("marketing-okr", () => import("@/components/features/manage/MarketingOKR")),
   "master-calendar": L("master-calendar", () => import("@/components/features/manage/MasterCalendar")),
   "brand-calendar": L("brand-calendar", () => import("@/components/features/manage/BrandCalendar")),
+  "calendar-assistant": L("calendar-assistant", () => import("@/components/features/manage/CalendarAssistant")),
   launches: L("launches", () => import("@/components/features/manage/Launches")),
   "ai-traffic": L("ai-traffic", () => import("@/components/features/manage/AiTraffic")),
   heatmaps: L("heatmaps", () => import("@/components/features/manage/Heatmaps")),

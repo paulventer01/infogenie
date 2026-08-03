@@ -71,6 +71,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "new-project", legacyModule: null },
   { view: "master-calendar", legacyModule: null },
   { view: "brand-calendar", legacyModule: null },
+  { view: "calendar-assistant", legacyModule: null },
   { view: "launches", legacyModule: null },
   { view: "ai-traffic", legacyModule: null },
   { view: "heatmaps", legacyModule: null },
