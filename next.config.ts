@@ -4,6 +4,11 @@ const EXPRESS = process.env.EXPRESS_PROXY_TARGET || "http://localhost:8000";
 const isProd = process.env.NODE_ENV === "production";
 
 const nextConfig: NextConfig = {
+  // Root-cause / scenario AI often exceeds the default 30s rewrite proxy budget;
+  // without this the browser gets a blank 500 and the UI stays on "Decomposing…".
+  experimental: {
+    proxyTimeout: 120_000,
+  },
   // Preview tunnels (cloudflared) hit Next as a cross-origin host; without this,
   // Next 15 blocks /_next/* and the app appears blank after login.
   allowedDevOrigins: [

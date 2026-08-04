@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { apiGet, apiPost, apiDelete, apiFetch } from "@/lib/api";
 import { showToast } from "@/hooks/useToast";
 
 type Tab = "moat" | "root" | "scenario" | "memory" | "benchmark" | "writeback";
@@ -66,6 +66,7 @@ export default function StrategicIntelligence() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [writebacks, setWritebacks] = useState<{ catalog: { system_key: string; system_label: string; action_key: string; action_label: string; description: string; moat: string; risk: string }[]; recent: { id: number; system_key: string; action_key: string; status: string; created_at: string }[]; moat_note?: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [rootError, setRootError] = useState("");
   const [factForm, setFactForm] = useState({ category: "seasonality", title: "", fact: "", why_it_matters: "" });
   const [decForm, setDecForm] = useState({ title: "", decision: "", hypothesis: "", expected_impact: "" });
   const [payback, setPayback] = useState("14");
@@ -98,20 +99,38 @@ export default function StrategicIntelligence() {
 
   const runRoot = async () => {
     setBusy(true);
+    setRootError("");
+    setRootResult(null);
+    const ac = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ac ? window.setTimeout(() => ac.abort(), 55_000) : 0;
     try {
-      const r = await apiPost<Record<string, unknown>>("/api/strategic/root-cause", { problem });
-      if (r.ok && !r.data_unavailable) {
+      const r = await apiFetch<Record<string, unknown>>("/api/strategic/root-cause", {
+        method: "POST",
+        body: JSON.stringify({ problem }),
+        ...(ac ? { signal: ac.signal } : {}),
+      });
+      if (r.ok && !r.data_unavailable && (r.primary_cause || r.fix_sequence)) {
         setRootResult(r);
         showToast("Root-cause decomposition ready");
         loadMoat();
       } else if (r.data_unavailable) {
-        setRootResult(null);
-        showToast(String(r.message || "Root-cause analysis unavailable — check AI providers / data mode"));
+        setRootError(String(r.message || "Root-cause analysis unavailable — check AI providers / data mode"));
+        showToast(String(r.message || "Root-cause analysis unavailable"));
       } else {
-        setRootResult(null);
-        showToast(String(r.error || "Root-cause failed"));
+        const msg = String(r.error || "Root-cause failed — try again");
+        setRootError(msg);
+        showToast(msg);
       }
-    } finally { setBusy(false); }
+    } catch (e) {
+      const msg = e instanceof Error && e.name === "AbortError"
+        ? "Timed out waiting for analysis — try again"
+        : (e instanceof Error ? e.message : "Root-cause failed");
+      setRootError(msg);
+      showToast(msg);
+    } finally {
+      if (timer) window.clearTimeout(timer);
+      setBusy(false);
+    }
   };
 
   const runScenario = async () => {
@@ -243,9 +262,19 @@ export default function StrategicIntelligence() {
           <div style={{ fontWeight: 800, marginBottom: 6 }}>Root-cause decomposition</div>
           <p style={{ fontSize: "0.82rem", color: "#64748B", marginTop: 0 }}>Break the symptom into a cause tree with a ranked fix sequence and why that sequence is best.</p>
           <textarea value={problem} onChange={(e) => setProblem(e.target.value)} rows={3} style={{ width: "100%", border: "1.5px solid #CBD5E1", borderRadius: 8, padding: 10, fontSize: "0.88rem" }} />
-          <button type="button" disabled={busy} onClick={runRoot} style={{ marginTop: 10, padding: "9px 16px", background: "linear-gradient(135deg,#0F766E,#0284C7)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, cursor: "pointer" }}>
+          <button type="button" disabled={busy} onClick={runRoot} style={{ marginTop: 10, padding: "9px 16px", background: "linear-gradient(135deg,#0F766E,#0284C7)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.85 : 1 }}>
             {busy ? "Decomposing…" : "Decompose root cause"}
           </button>
+          {busy && (
+            <p style={{ margin: "10px 0 0", fontSize: "0.8rem", color: "#64748B" }}>
+              Building a cause tree and ranked fix sequence… this usually finishes within ~20 seconds.
+            </p>
+          )}
+          {!!rootError && !busy && (
+            <div style={{ marginTop: 12, padding: "10px 12px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, color: "#991B1B", fontSize: "0.82rem" }}>
+              {rootError}
+            </div>
+          )}
           {rootResult && (
             <div style={{ marginTop: 16 }} data-ig-no-enhance>
               {rootResult.analysis_mode === "heuristic" && (

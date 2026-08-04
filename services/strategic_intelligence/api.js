@@ -99,26 +99,10 @@ function _normalizeScenario(body, question) {
 }
 
 async function _chatJson(prompt, maxTokens = 1800, tenantId = null) {
-  try {
-    if (_chatForCategory) {
-      const r = await _chatForCategory('analysis', [{ role: 'user', content: prompt }], {
-        tenantId: tenantId || undefined,
-        max_tokens: maxTokens,
-        temperature: 0.25,
-        response_format: { type: 'json_object' },
-        model: 'gpt-4o',
-      });
-      const raw = r?.content;
-      if (raw && typeof raw === 'string') {
-        const cleaned = raw.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
-        return JSON.parse(cleaned);
-      }
-    }
-  } catch (e) {
-    console.warn('[strategic] ai:', e.message);
-  }
-  // Legacy OpenAI SDK path when chat router is unavailable
-  try {
+  // Stay under the Next.js rewrite proxy budget so the UI never hangs on Decomposing….
+  const AI_BUDGET_MS = Number(process.env.STRATEGIC_AI_BUDGET_MS) || 16000;
+
+  const tryOpenAI = async () => {
     const OpenAI = require('openai');
     const { resolvePlatformKey } = require('../credentials/platform_keys');
     const key = resolvePlatformKey('AI_INTEGRATIONS_OPENAI_API_KEY')
@@ -126,17 +110,60 @@ async function _chatJson(prompt, maxTokens = 1800, tenantId = null) {
       || process.env.AI_INTEGRATIONS_OPENAI_API_KEY
       || process.env.OPENAI_API_KEY;
     if (!key || /^_DUMMY/i.test(key)) return null;
-    const client = new OpenAI({ apiKey: key });
+    const client = new OpenAI({ apiKey: key, timeout: AI_BUDGET_MS });
     const r = await client.chat.completions.create({
-      model: 'gpt-4o',
+      model: process.env.STRATEGIC_AI_MODEL || 'gpt-4o-mini',
       response_format: { type: 'json_object' },
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.25,
       max_tokens: maxTokens,
     });
     return JSON.parse(r.choices[0].message.content);
+  };
+
+  const tryRouter = async () => {
+    if (!_chatForCategory) return null;
+    const r = await _chatForCategory('writing', [{ role: 'user', content: prompt }], {
+      tenantId: tenantId || undefined,
+      max_tokens: maxTokens,
+      temperature: 0.25,
+      response_format: { type: 'json_object' },
+      model: 'gpt-4o-mini',
+      useAutoclaw: false,
+      timeoutMs: Math.min(AI_BUDGET_MS, 14000),
+    });
+    const raw = r?.content;
+    if (!raw || typeof raw !== 'string') return null;
+    const cleaned = raw.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+    return JSON.parse(cleaned);
+  };
+
+  const run = async () => {
+    // Prefer fast OpenAI first — Autoclaw/Z.ai high-reasoning can exceed proxy timeouts.
+    try {
+      const oai = await tryOpenAI();
+      if (oai) return oai;
+    } catch (e) {
+      console.warn('[strategic] openai:', e.message);
+    }
+    try {
+      const via = await tryRouter();
+      if (via) return via;
+    } catch (e) {
+      console.warn('[strategic] router:', e.message);
+    }
+    return null;
+  };
+
+  try {
+    return await Promise.race([
+      run(),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`strategic ai budget ${AI_BUDGET_MS}ms exceeded`)), AI_BUDGET_MS);
+      }),
+    ]);
   } catch (e) {
-    console.warn('[strategic] openai fallback:', e.message);
+    console.warn('[strategic] ai:', e.message);
     return null;
   }
 }
