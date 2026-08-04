@@ -3977,11 +3977,14 @@ const _channelStudiosRouter = require('./services/channel_studios/api');
 const _executionHubRouter = require('./services/execution_hub/api');
 const _segmentSchema = require('./services/segment_connector/schema');
 const _segmentRouter = require('./services/segment_connector/api');
+const _aiGovSchema = require('./services/ai_governance/schema');
+const _aiGovRouter = require('./services/ai_governance/api');
 app.use('/api/marketing-spine', _marketingSpineRouter);
 app.use('/api/agent-orchestrator', _agentOrchRouter);
 app.use('/api/channel-studios', _channelStudiosRouter);
 app.use('/api/execution-hub', _executionHubRouter);
 app.use('/api/segment', _segmentRouter);
+app.use('/api/ai-governance', _aiGovRouter);
 
 BOOT_TASKS.push(async () => { try {
   if (process.env.DATABASE_URL) {
@@ -4003,7 +4006,8 @@ BOOT_TASKS.push(async () => { try {
     await _marketingSpineSchema.ensureMarketingSpineSchema();
     await _agentOrchSchema.ensureAgentOrchestratorSchema();
     await _segmentSchema.ensureSegmentSchema();
-    console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags + gap-priority + ecosystem-spine ready');
+    await _aiGovSchema.ensureAiGovernanceSchema();
+    console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags + gap-priority + ecosystem-spine + ai-governance ready');
   }
 } catch (e) { console.warn('[tier28-32] schema init failed:', e.message); }});
 BOOT_TASKS.push(async () => { try {

@@ -322,6 +322,35 @@ async function applyAction(tid, actionId) {
   if (action.status === 'applied') return { ok: true, already: true, result: action.result };
   if (action.status === 'dismissed') throw new Error('action_dismissed');
 
+  // AI Governance — audit-only under defaults (shadow + apply_calendar=auto).
+  // Never delays Spine Apply unless tenant opts into enforce + non-auto tier.
+  let governance = null;
+  try {
+    const { governSafe } = require('../ai_governance/hooks');
+    governance = await governSafe({
+      tenantId: tid,
+      surface: 'marketing_spine',
+      action: action.action_type === 'create_calendar_item' ? 'apply_calendar' : 'apply',
+      payload: {
+        title: action.title,
+        preview: action.rationale || action.title,
+        action_type: action.action_type,
+        actionId,
+      },
+    });
+    if (governance && governance.proceeded === false) {
+      return {
+        ok: false,
+        pending_review: governance.status === 'pending_review',
+        blocked: governance.status === 'blocked',
+        governance,
+        error: governance.blockReason || 'governance_blocked',
+      };
+    }
+  } catch (e) {
+    console.warn('[marketing-spine] governance hook failed open:', e.message);
+  }
+
   let result;
   try {
     switch (action.action_type) {
@@ -365,7 +394,7 @@ async function applyAction(tid, actionId) {
     }
 
     await _persistRun(tid, 'apply', { actionId }, result);
-    return { ok: true, result };
+    return { ok: true, result, governance };
   } catch (e) {
     await _db.getPool().query(
       `UPDATE marketing_actions SET status='failed', error=$1 WHERE id=$2 AND tenant_id=$3`,

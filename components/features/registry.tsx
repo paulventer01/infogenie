@@ -315,6 +315,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   // Centralized Marketing Ecosystem
   "ecosystem-spine": L("ecosystem-spine", () => import("@/components/features/grow/EcosystemSpine")),
   "agent-orchestrator": L("agent-orchestrator", () => import("@/components/features/manage/AgentOrchestrator")),
+  "ai-governance": L("ai-governance", () => import("@/components/features/manage/AiGovernanceHub")),
   "newsletter-studio": L("newsletter-studio", () => import("@/components/features/create/NewsletterStudio")),
   "podcast-studio": L("podcast-studio", () => import("@/components/features/create/PodcastStudio")),
   "interactive-leads": L("interactive-leads", () => import("@/components/features/reach/InteractiveLeads")),

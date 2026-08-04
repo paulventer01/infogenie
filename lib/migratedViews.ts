@@ -360,6 +360,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   // Centralized Marketing Ecosystem
   { view: "ecosystem-spine", legacyModule: null },
   { view: "agent-orchestrator", legacyModule: null },
+  { view: "ai-governance", legacyModule: null },
   { view: "newsletter-studio", legacyModule: null },
   { view: "podcast-studio", legacyModule: null },
   { view: "interactive-leads", legacyModule: null },
