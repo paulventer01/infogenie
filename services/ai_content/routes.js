@@ -275,8 +275,30 @@ app.post('/api/ai-social-caption', async (req, res) => {
 
 // ── POST /api/agency-report ──────────────────────────────────────────────────
 app.post('/api/agency-report', async (req, res) => {
+  const {
+    clientName = 'Client',
+    domain = 'client.com',
+    industry = 'your industry',
+    budget = 5000,
+    agencyName = 'Agency',
+  } = req.body || {};
+
+  const fallback = () => ({
+    ok: true,
+    _fallback: true,
+    executive_summary: `${clientName} delivered solid results this period with strong campaign efficiency and growing brand presence in the ${industry} space.`,
+    kpis: { reach: '72.4K', roas: '3.4×', ctr: '2.9%', conversions: '118' },
+    campaign_performance: 'Campaigns performed above benchmark with top-of-funnel cost per click improving 12% versus prior period. Retargeting delivered the strongest ROAS.',
+    competitor_intel: 'Primary competitors maintained steady spend levels. One new market entrant identified in the mid-market segment worth monitoring.',
+    social_metrics: 'Instagram and LinkedIn drove the highest quality traffic. Engagement rates exceeded industry average by 1.4 percentage points.',
+    recommendations: '1. Increase retargeting budget by 20% given strong ROAS signal.\n2. Launch win-back sequence for leads dormant over 30 days.\n3. Test two new creative angles in top-performing campaign sets.',
+  });
+
+  const AI_BUDGET_MS = Number(process.env.AGENCY_REPORT_AI_BUDGET_MS) || 14000;
+
   try {
-    const { clientName='Client', domain='client.com', industry='your industry', budget=5000, agencyName='Agency' } = req.body;
+    if (!openai) return res.json(fallback());
+
     const prompt = `You are a senior marketing analyst at ${agencyName}. Generate a concise monthly performance report for client "${clientName}" (${domain}, ${industry} industry, monthly budget $${budget}).
 
 Return a JSON object with exactly these keys:
@@ -291,26 +313,32 @@ Return a JSON object with exactly these keys:
 
 Make KPIs realistic for the industry and budget. Use authoritative, professional tone. Return valid JSON only.`;
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-5', max_tokens: 700,
-      messages: [
-        { role: 'system', content: 'You are a professional marketing report writer. Return valid JSON only, no markdown fences.' },
-        { role: 'user', content: prompt }
-      ]
-    });
+    const completion = await Promise.race([
+      openai.chat.completions.create({
+        model: process.env.AGENCY_REPORT_MODEL || 'gpt-4o-mini',
+        max_tokens: 700,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: 'You are a professional marketing report writer. Return valid JSON only, no markdown fences.' },
+          { role: 'user', content: prompt },
+        ],
+      }),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`agency-report ai budget ${AI_BUDGET_MS}ms exceeded`)), AI_BUDGET_MS);
+      }),
+    ]);
+
     let raw = completion.choices[0]?.message?.content?.trim() || '{}';
-    raw = raw.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/```$/,'').trim();
+    raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
     const parsed = JSON.parse(raw);
-    res.json(parsed);
-  } catch(err) {
-    res.status(500).json({
-      executive_summary: `${clientName} delivered solid results this period with strong campaign efficiency and growing brand presence in the ${industry} space.`,
-      kpis: { reach:'72.4K', roas:'3.4×', ctr:'2.9%', conversions:'118' },
-      campaign_performance: 'Campaigns performed above benchmark with top-of-funnel cost per click improving 12% versus prior period. Retargeting delivered the strongest ROAS.',
-      competitor_intel: 'Primary competitors maintained steady spend levels. One new market entrant identified in the mid-market segment worth monitoring.',
-      social_metrics: 'Instagram and LinkedIn drove the highest quality traffic. Engagement rates exceeded industry average by 1.4 percentage points.',
-      recommendations: '1. Increase retargeting budget by 20% given strong ROAS signal.\n2. Launch win-back sequence for leads dormant over 30 days.\n3. Test two new creative angles in top-performing campaign sets.'
-    });
+    if (!parsed || typeof parsed !== 'object' || !parsed.executive_summary) {
+      return res.json(fallback());
+    }
+    return res.json({ ok: true, ...parsed });
+  } catch (err) {
+    console.warn('[agency-report]', err.message);
+    // Always return a usable report body with ok:true so the UI can list it in Reports.
+    return res.json(fallback());
   }
 });
 

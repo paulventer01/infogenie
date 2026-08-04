@@ -10,7 +10,7 @@
 // client, generate-report and report-preview modals are ported to React
 // overlays (replacing the legacy DOM-built modals + window.open preview).
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
 import { useToast } from "@/hooks/useToast";
@@ -78,6 +78,27 @@ function dateStr() {
   return new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+const REPORTS_LS_KEY = "ig_agency_reports_v1";
+
+function loadStoredReports(): AgencyReport[] {
+  try {
+    const raw = localStorage.getItem(REPORTS_LS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistReports(reports: AgencyReport[]) {
+  try {
+    localStorage.setItem(REPORTS_LS_KEY, JSON.stringify(reports.slice(-40)));
+  } catch {
+    /* ignore quota */
+  }
+}
+
 interface ClientForm {
   name: string;
   domain: string;
@@ -97,10 +118,19 @@ export default function Agency() {
   const [reports, setReports] = useState<AgencyReport[]>([]);
   const [schedules, setSchedules] = useState<Record<string, boolean>>({});
   const [brand, setBrand] = useState<Brand>({ name: "My Agency", color: "#6366F1", footer: "Prepared exclusively for {client} by {agency}", reportFreq: "monthly" });
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
 
   const [clientModal, setClientModal] = useState<{ editId: string | null } | null>(null);
   const [genModal, setGenModal] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setReports(loadStoredReports());
+  }, []);
+
+  useEffect(() => {
+    persistReports(reports);
+  }, [reports]);
 
   const totalRevenue = clients.reduce((a, c) => a + c.revenue, 0);
   const totalBudget = clients.reduce((a, c) => a + c.budget, 0);
@@ -109,19 +139,54 @@ export default function Agency() {
   async function generateClientReport(clientId: string) {
     const c = clients.find((x) => x.id === clientId);
     if (!c) return;
-    toast(`⏳ Generating report for ${c.name}…`);
-    const data = await apiPost<{ ok: boolean } & ReportContent>("/api/agency-report", {
-      clientName: c.name, domain: c.domain, industry: c.industry, budget: c.budget, agencyName: brand.name,
-    });
-    if (!data || data.ok === false) {
-      toast("⚠️ Report generation failed — please retry");
+    if (generatingId) {
+      toast("⏳ A report is already generating — please wait");
       return;
     }
-    const rId = "rpt_" + Date.now();
-    setReports((prev) => [...prev, { id: rId, clientId, generatedAt: new Date().toLocaleString(), type: "Full Report", status: "draft", content: data }]);
-    setClients((prev) => prev.map((x) => (x.id === clientId ? { ...x, lastReport: dateStr() } : x)));
-    toast(`✅ Report for ${c.name} ready — view in Reports tab`);
-    setTab("reports");
+    setGeneratingId(clientId);
+    toast(`⏳ Generating report for ${c.name}…`);
+    try {
+      const data = await apiPost<{ ok?: boolean; error?: string } & ReportContent>("/api/agency-report", {
+        clientName: c.name,
+        domain: c.domain,
+        industry: c.industry,
+        budget: c.budget,
+        agencyName: brand.name,
+      });
+      const hasContent = !!(data?.executive_summary || data?.campaign_performance || data?.recommendations);
+      if (!hasContent || data?.ok === false) {
+        toast("⚠️ Report generation failed — " + (data?.error || "please retry"));
+        return;
+      }
+      const content: ReportContent = {
+        executive_summary: data.executive_summary,
+        kpis: data.kpis,
+        campaign_performance: data.campaign_performance,
+        competitor_intel: data.competitor_intel,
+        social_metrics: data.social_metrics,
+        recommendations: data.recommendations,
+      };
+      const rId = "rpt_" + Date.now();
+      setReports((prev) => [
+        ...prev,
+        {
+          id: rId,
+          clientId,
+          generatedAt: new Date().toLocaleString(),
+          type: "Full Report",
+          status: "draft",
+          content,
+        },
+      ]);
+      setClients((prev) => prev.map((x) => (x.id === clientId ? { ...x, lastReport: dateStr() } : x)));
+      toast(`✅ Report for ${c.name} ready — open in Reports`);
+      setTab("reports");
+      setPreviewId(rId);
+    } catch (e) {
+      toast("⚠️ Report generation failed — " + (e instanceof Error ? e.message : "please retry"));
+    } finally {
+      setGeneratingId(null);
+    }
   }
 
   function switchToClient(id: string) {
@@ -260,7 +325,23 @@ export default function Agency() {
                 <div style={{ fontSize: "0.7rem", color: "#9CA3AF", marginBottom: 12 }}>Contact: <span style={{ color: "#374151", fontWeight: 600 }}>{c.contact}</span> · <span style={{ color: "#6366F1" }}>{c.email}</span></div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
                   <button onClick={() => switchToClient(c.id)} style={{ padding: 8, background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 9, fontSize: "0.7rem", fontWeight: 700, color: "white", cursor: "pointer" }}>🔄 Switch</button>
-                  <button onClick={() => generateClientReport(c.id)} style={{ padding: 8, background: "#F5F3FF", border: "1px solid #C7D2FE", borderRadius: 9, fontSize: "0.7rem", fontWeight: 700, color: "#4F46E5", cursor: "pointer" }}>📊 Report</button>
+                  <button
+                    onClick={() => generateClientReport(c.id)}
+                    disabled={!!generatingId}
+                    style={{
+                      padding: 8,
+                      background: generatingId === c.id ? "#EEF2FF" : "#F5F3FF",
+                      border: "1px solid #C7D2FE",
+                      borderRadius: 9,
+                      fontSize: "0.7rem",
+                      fontWeight: 700,
+                      color: "#4F46E5",
+                      cursor: generatingId ? "wait" : "pointer",
+                      opacity: generatingId && generatingId !== c.id ? 0.55 : 1,
+                    }}
+                  >
+                    {generatingId === c.id ? "⏳…" : "📊 Report"}
+                  </button>
                   <button onClick={() => setClientModal({ editId: c.id })} style={{ padding: 8, background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 9, fontSize: "0.7rem", fontWeight: 600, color: "#6B7280", cursor: "pointer" }}>✏️ Edit</button>
                 </div>
               </div>

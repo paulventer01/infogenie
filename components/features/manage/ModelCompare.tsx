@@ -211,11 +211,12 @@ export default function ModelCompare() {
 
   useEffect(() => {
     let cancelled = false;
-    // Pause legacy field enhancer while this panel mounts — avoids MAIN-THREAD
-    // STALL reports from whole-doc scans on the compare form.
+    // Pause legacy field enhancer for the whole lifetime of this panel —
+    // resuming mid-mount was still triggering MAIN-THREAD STALL reports once
+    // the breadcrumb flipped back to idle.
     try {
       const w = window as unknown as {
-        IGFields?: { pause?: () => void; resume?: (o?: { scan?: boolean }) => void };
+        IGFields?: { pause?: () => void };
         IGDiag?: { setBreadcrumb?: (s: string) => void };
       };
       w.IGFields?.pause?.();
@@ -244,27 +245,25 @@ export default function ModelCompare() {
       const defaults = [...byo, ...platform].slice(0, 3).map((m) => m.id);
       setModels(d.models);
       setSelected(new Set(defaults));
-    })().finally(() => {
       try {
-        const w = window as unknown as {
-          IGFields?: { pause?: () => void; resume?: (o?: { scan?: boolean }) => void };
-          IGDiag?: { setBreadcrumb?: (s: string) => void };
-        };
         document.documentElement.removeAttribute("data-ig-nav");
-        w.IGDiag?.setBreadcrumb?.("idle");
-        w.IGFields?.resume?.({ scan: false });
+        const w = window as unknown as { IGDiag?: { setBreadcrumb?: (s: string) => void } };
+        // Keep panel: breadcrumb so IGDiag watchdog ignores expected paint cost.
+        w.IGDiag?.setBreadcrumb?.("panel:model-compare");
       } catch {
         /* optional */
       }
-    });
+    })();
 
     return () => {
       cancelled = true;
       try {
         const w = window as unknown as {
           IGFields?: { resume?: (o?: { scan?: boolean }) => void };
+          IGDiag?: { setBreadcrumb?: (s: string) => void };
         };
         document.documentElement.removeAttribute("data-ig-nav");
+        w.IGDiag?.setBreadcrumb?.("idle");
         w.IGFields?.resume?.({ scan: false });
       } catch {
         /* optional */
