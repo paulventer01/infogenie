@@ -173,8 +173,10 @@
     if (el.disabled || el.readOnly) return false;
     if (el.tagName === 'INPUT' && SKIP_TYPES.has((el.type || 'text').toLowerCase())) return false;
     if (el.tagName === 'SELECT') return false; // selects get skipped globally
-    // Skip fields explicitly opted out via data-ig-skip attribute
+    // Skip fields explicitly opted out via data-ig-skip / data-ig-no-enhance
+    // (React panels that ship their own suggest UX — Brand Deals, Marketing Goals).
     if (el.dataset.igSkip !== undefined) return false;
+    if (el.closest && el.closest('[data-ig-no-enhance], [data-ig-skip]')) return false;
     // Skip the auth wall (login / signup / forgot-password): those fields are
     // personal credentials with no brand context yet — AI Suggest would be
     // both useless and confusing. Covers password reset page too.
