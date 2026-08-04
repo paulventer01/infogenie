@@ -13,6 +13,8 @@ const router  = express.Router();
 const _db     = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { normalizeChatParams, isKimi, isMoonshotBaseUrl } = require('../ai_compat');
+const { compatibleCategories, isCompatible } = require('./capabilities');
+const { expandProviderAssignments } = require('./schema');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _redact(row) {
@@ -38,21 +40,57 @@ function _chatBody(baseUrl, model, messages, opts = {}) {
   return normalizeChatParams(raw, { baseUrl });
 }
 
+async function _assignmentsForTenant(pool, tid) {
+  const r = await pool.query(
+    `SELECT provider_id, category, enabled, is_default
+       FROM ai_provider_assignments WHERE tenant_id=$1`,
+    [tid],
+  );
+  return r.rows;
+}
+
+function _attachMeta(row, assignRows) {
+  const mine = assignRows.filter((a) => a.provider_id === row.id);
+  const compatible = compatibleCategories(row);
+  if (!compatible.includes(row.category)) compatible.push(row.category);
+  return _redact({
+    ...row,
+    compatible_categories: compatible,
+    categories: mine.map((a) => a.category),
+    assignments: mine.map((a) => ({
+      category: a.category,
+      enabled: !!a.enabled,
+      is_default: !!a.is_default,
+    })),
+  });
+}
+
 // ── List all providers (redacted) — tenant-scoped
 router.get('/list', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, items: [] });
   try {
     const tid = await _tid(req, 'ai-providers:list');
-    const r = await _db.getPool().query(
+    const pool = _db.getPool();
+    const r = await pool.query(
       `SELECT id, name, base_url, model, category, is_default, enabled, notes, api_key, created_at, updated_at
-         FROM ai_providers WHERE tenant_id=$1 ORDER BY category, is_default DESC, name`,
-      [tid]
+         FROM ai_providers WHERE tenant_id=$1 ORDER BY name`,
+      [tid],
     );
-    res.json({ ok: true, items: r.rows.map(_redact) });
+    const assigns = await _assignmentsForTenant(pool, tid);
+    res.json({
+      ok: true,
+      items: r.rows.map((row) => _attachMeta(row, assigns)),
+      category_capabilities: {
+        writing: 'Chat LLMs (copy, email, creative)',
+        analysis: 'Chat LLMs (plans, scoring, Q&A)',
+        vision: 'Multimodal models (screenshots, brand audits)',
+        audio: 'TTS / speech endpoints only',
+      },
+    });
   } catch (e) { _err(res, 500, e.message); }
 });
 
-// ── Create
+// ── Create — expands into all compatible category tiles
 router.post('/create', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 500, 'database not configured');
   const { name, base_url, api_key, model, category, is_default = false, notes = '' } = req.body || {};
@@ -62,15 +100,31 @@ router.post('/create', async (req, res) => {
   try {
     const tid = await _tid(req, 'ai-providers:create');
     const pool = _db.getPool();
-    // "default" flag is per-tenant scoped — clearing it only resets this tenant's
-    // existing default within the category.
-    if (is_default) await pool.query(`UPDATE ai_providers SET is_default=FALSE WHERE category=$1 AND tenant_id=$2`, [category, tid]);
+    if (is_default) {
+      await pool.query(
+        `UPDATE ai_providers SET is_default=FALSE WHERE category=$1 AND tenant_id=$2`,
+        [category, tid],
+      );
+      await pool.query(
+        `UPDATE ai_provider_assignments SET is_default=FALSE WHERE tenant_id=$1 AND category=$2`,
+        [tid, category],
+      );
+    }
     const r = await pool.query(
       `INSERT INTO ai_providers (tenant_id, name, base_url, api_key, model, category, is_default, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-      [tid, String(name).slice(0,80), base_url.trim(), api_key.trim(), String(model).slice(0,120), category, !!is_default, String(notes||'').slice(0,300)]
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, tenant_id, name, base_url, model, category, notes`,
+      [tid, String(name).slice(0,80), base_url.trim(), api_key.trim(), String(model).slice(0,120), category, !!is_default, String(notes||'').slice(0,300)],
     );
-    res.json({ ok: true, id: r.rows[0].id });
+    const row = r.rows[0];
+    const cats = await expandProviderAssignments(pool, row);
+    if (is_default) {
+      await pool.query(
+        `UPDATE ai_provider_assignments SET is_default=TRUE, enabled=TRUE
+         WHERE provider_id=$1 AND category=$2`,
+        [row.id, category],
+      );
+    }
+    res.json({ ok: true, id: row.id, categories: cats });
   } catch (e) { _err(res, 500, e.message); }
 });
 
@@ -153,19 +207,32 @@ async function getDefaultProvider(category, tid) {
   return list[0] || null;
 }
 
-/** Enabled providers for a category — default first, then by updated_at. */
+/** Enabled providers for a category via assignments — default first. */
 async function getEnabledProviders(category, tid) {
   if (!_db.hasDb()) return [];
   if (!VALID_CATEGORIES.includes(category)) return [];
   if (!Number.isFinite(+tid)) return [];
   try {
     const r = await _db.getPool().query(
-      `SELECT id, name, base_url, api_key, model, is_default, enabled
-         FROM ai_providers
-        WHERE category=$1 AND tenant_id=$2 AND enabled=TRUE
-        ORDER BY is_default DESC, updated_at DESC`,
-      [category, +tid],
+      `SELECT p.id, p.name, p.base_url, p.api_key, p.model,
+              a.is_default, a.enabled
+         FROM ai_provider_assignments a
+         JOIN ai_providers p ON p.id = a.provider_id
+        WHERE a.tenant_id=$1 AND a.category=$2 AND a.enabled=TRUE
+        ORDER BY a.is_default DESC, a.updated_at DESC`,
+      [+tid, category],
     );
+    // Fallback for tenants not yet backfilled: old single-category rows
+    if (!r.rows.length) {
+      const legacy = await _db.getPool().query(
+        `SELECT id, name, base_url, api_key, model, is_default, enabled
+           FROM ai_providers
+          WHERE category=$1 AND tenant_id=$2 AND enabled=TRUE
+          ORDER BY is_default DESC, updated_at DESC`,
+        [category, +tid],
+      );
+      return legacy.rows;
+    }
     return r.rows;
   } catch { return []; }
 }
@@ -194,7 +261,6 @@ async function _callOneProvider(p, messages, opts = {}) {
 }
 
 // Cascade through all enabled providers in the category (default first).
-// "Select all" on a tile enables this pool — they work together as failover.
 async function chatViaProvider(category, messages, opts = {}) {
   const list = await getEnabledProviders(category, opts.tenantId);
   if (!list.length) return null;
@@ -208,10 +274,8 @@ async function chatViaProvider(category, messages, opts = {}) {
 }
 
 /**
- * Set which providers are active for a category.
+ * Set which providers are active for a category (assignment-based).
  * body: { ids: number[], primaryId?: number|null }
- * - ids = enabled pool (empty → all disabled → built-in)
- * - primaryId = default within the pool (optional; first id if omitted)
  */
 router.post('/category/:category/selection', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 500, 'database not configured');
@@ -228,32 +292,47 @@ router.post('/category/:category/selection', async (req, res) => {
   try {
     const tid = await _tid(req, 'ai-providers:selection');
     const pool = _db.getPool();
-    // Only touch providers that belong to this tenant + category
+
     const owned = await pool.query(
-      `SELECT id FROM ai_providers WHERE tenant_id=$1 AND category=$2`,
-      [tid, category],
+      `SELECT id, name, base_url, model, category, notes, tenant_id
+         FROM ai_providers WHERE tenant_id=$1`,
+      [tid],
     );
-    const ownedIds = new Set(owned.rows.map((r) => r.id));
+    const byId = new Map(owned.rows.map((r) => [r.id, r]));
     for (const id of ids) {
-      if (!ownedIds.has(id)) return _err(res, 400, 'provider_not_in_category');
+      const p = byId.get(id);
+      if (!p) return _err(res, 400, 'provider_not_found');
+      if (!isCompatible(p, category) && p.category !== category) {
+        return _err(res, 400, 'provider_incompatible_with_category');
+      }
+      // Ensure assignment row exists for this category
+      await pool.query(
+        `INSERT INTO ai_provider_assignments (provider_id, tenant_id, category, enabled, is_default)
+         VALUES ($1,$2,$3,FALSE,FALSE)
+         ON CONFLICT (provider_id, category) DO NOTHING`,
+        [id, tid, category],
+      );
     }
 
     await pool.query(
-      `UPDATE ai_providers SET enabled=FALSE, is_default=FALSE, updated_at=NOW()
-       WHERE tenant_id=$1 AND category=$2`,
+      `UPDATE ai_provider_assignments
+          SET enabled=FALSE, is_default=FALSE, updated_at=NOW()
+        WHERE tenant_id=$1 AND category=$2`,
       [tid, category],
     );
 
     if (ids.length) {
       await pool.query(
-        `UPDATE ai_providers SET enabled=TRUE, updated_at=NOW()
-         WHERE tenant_id=$1 AND category=$2 AND id = ANY($3::int[])`,
+        `UPDATE ai_provider_assignments
+            SET enabled=TRUE, updated_at=NOW()
+          WHERE tenant_id=$1 AND category=$2 AND provider_id = ANY($3::int[])`,
         [tid, category, ids],
       );
       if (primaryId) {
         await pool.query(
-          `UPDATE ai_providers SET is_default=TRUE, updated_at=NOW()
-           WHERE tenant_id=$1 AND category=$2 AND id=$3`,
+          `UPDATE ai_provider_assignments
+              SET is_default=TRUE, enabled=TRUE, updated_at=NOW()
+            WHERE tenant_id=$1 AND category=$2 AND provider_id=$3`,
           [tid, category, primaryId],
         );
       }
@@ -266,6 +345,32 @@ router.post('/category/:category/selection', async (req, res) => {
       mode: enabled.length > 1 ? 'cascade' : (enabled.length === 1 ? 'single' : 'builtin'),
       enabled: enabled.map((p) => ({ id: p.id, name: p.name, model: p.model, is_default: p.is_default })),
     });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+/** Expand every provider into all compatible tiles (enabled). */
+router.post('/expand-compatible', async (req, res) => {
+  if (!_db.hasDb()) return _err(res, 500, 'database not configured');
+  try {
+    const tid = await _tid(req, 'ai-providers:expand');
+    const pool = _db.getPool();
+    const r = await pool.query(
+      `SELECT id, tenant_id, name, base_url, model, category, notes
+         FROM ai_providers WHERE tenant_id=$1`,
+      [tid],
+    );
+    const report = [];
+    for (const row of r.rows) {
+      const cats = await expandProviderAssignments(pool, row);
+      // Enable all compatible assignments so tiles light up
+      await pool.query(
+        `UPDATE ai_provider_assignments SET enabled=TRUE, updated_at=NOW()
+         WHERE provider_id=$1 AND tenant_id=$2`,
+        [row.id, tid],
+      );
+      report.push({ id: row.id, name: row.name, categories: cats });
+    }
+    res.json({ ok: true, expanded: report.length, providers: report });
   } catch (e) { _err(res, 500, e.message); }
 });
 

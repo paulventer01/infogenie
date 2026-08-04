@@ -18,6 +18,9 @@ interface Provider {
   api_key_preview?: string;
   is_default?: boolean;
   enabled?: boolean;
+  compatible_categories?: string[];
+  categories?: string[];
+  assignments?: { category: string; enabled?: boolean; is_default?: boolean }[];
 }
 interface ActiveEntry {
   name: string;
@@ -120,6 +123,8 @@ export default function AiProviders() {
 
   async function load() {
     try {
+      // Expand existing providers into all compatible tiles (idempotent)
+      await apiPost("/api/ai-providers/expand-compatible", {});
       const [list, act] = await Promise.all([
         apiGet<{ items?: Provider[] }>("/api/ai-providers/list"),
         apiGet<{ active?: Record<string, ActiveEntry> }>("/api/ai-providers/active"),
@@ -135,6 +140,8 @@ export default function AiProviders() {
     let cancelled = false;
     (async () => {
       try {
+        await apiPost("/api/ai-providers/expand-compatible", {});
+        if (cancelled) return;
         const [list, act] = await Promise.all([
           apiGet<{ items?: Provider[] }>("/api/ai-providers/list"),
           apiGet<{ active?: Record<string, ActiveEntry> }>("/api/ai-providers/active"),
@@ -218,13 +225,34 @@ export default function AiProviders() {
     load();
   }
 
+  function providersForTile(catKey: string) {
+    return (items || []).filter((p) => {
+      const compat = p.compatible_categories || [p.category];
+      return compat.includes(catKey) || p.category === catKey;
+    });
+  }
+
   function openPicker(catKey: string) {
-    const inCat = (items || []).filter((p) => p.category === catKey);
-    const enabled = inCat.filter((p) => p.enabled !== false).map((p) => String(p.id));
+    const inCat = providersForTile(catKey);
+    const enabled = inCat
+      .filter((p) => p.assignments?.some((a) => a.category === catKey && a.enabled))
+      .map((p) => String(p.id));
+    // Fallback: if assignments missing, treat home-category enabled providers as selected
+    const selected =
+      enabled.length > 0
+        ? enabled
+        : inCat
+            .filter((p) => p.category === catKey && p.enabled !== false)
+            .map((p) => String(p.id));
     const primary =
-      String(inCat.find((p) => p.is_default)?.id || enabled[0] || "");
+      String(
+        inCat.find((p) => p.assignments?.some((a) => a.category === catKey && a.is_default))?.id
+          || inCat.find((p) => p.category === catKey && p.is_default)?.id
+          || selected[0]
+          || "",
+      );
     setPickerCat(catKey);
-    setPickerSelected(enabled);
+    setPickerSelected(selected);
     setPickerPrimary(primary);
     setPickerMsg("");
     setCat(catKey);
@@ -246,8 +274,8 @@ export default function AiProviders() {
   }
 
   function selectAllInPicker() {
-    if (!pickerCat || !items) return;
-    const ids = items.filter((p) => p.category === pickerCat).map((p) => String(p.id));
+    if (!pickerCat) return;
+    const ids = providersForTile(pickerCat).map((p) => String(p.id));
     setPickerSelected(ids);
     if (!ids.includes(pickerPrimary)) setPickerPrimary(ids[0] || "");
   }
@@ -287,7 +315,7 @@ export default function AiProviders() {
   }
 
   const pickerMeta = CATS.find((c) => c.key === pickerCat);
-  const pickerProviders = (items || []).filter((p) => p.category === pickerCat);
+  const pickerProviders = pickerCat ? providersForTile(pickerCat) : [];
 
   return (
     <div className="view-header-wrap">
@@ -328,10 +356,10 @@ export default function AiProviders() {
                 color: "#075985",
               }}
             >
-              <strong>How this works:</strong> InfoGenie ships with OpenAI, Claude, Perplexity,
-              Gemini and Cloudflare AI built in. Click a category tile (Writing / Analysis / Vision /
-              Audio) to choose providers for that lane. Select one primary, or <em>Select all</em>{" "}
-              for a cascade pool (primary first, then failover). Empty = built-ins.
+              <strong>How this works:</strong> Add a provider once — InfoGenie places it on every
+              compatible tile (chat → Writing + Analysis; multimodal like Kimi K3 → also Vision;
+              TTS-only → Audio). Click a tile to choose primary / cascade pool, or Select all.
+              Empty tile = built-ins.
             </div>
 
             <div
@@ -344,7 +372,7 @@ export default function AiProviders() {
             >
               {CATS.map((c) => {
                 const a = active[c.key];
-                const count = (items || []).filter((p) => p.category === c.key).length;
+                const count = providersForTile(c.key).length;
                 const open = pickerCat === c.key;
                 return (
                   <button
@@ -384,7 +412,7 @@ export default function AiProviders() {
                         : "— (using built-in)"}
                     </div>
                     <div style={{ fontSize: "0.68rem", color: "#94A3B8", marginTop: 6 }}>
-                      {count} provider{count === 1 ? "" : "s"} configured
+                      {count} compatible provider{count === 1 ? "" : "s"}
                     </div>
                   </button>
                 );
@@ -450,8 +478,12 @@ export default function AiProviders() {
 
                 {pickerProviders.length === 0 ? (
                   <div style={{ marginTop: 14, fontSize: "0.85rem", color: "#94A3B8" }}>
-                    No providers in this category yet. Use <strong>Add Provider</strong> below
-                    (category is pre-filled), then come back to this tile.
+                    No compatible providers for this tile yet.
+                    {pickerCat === "audio"
+                      ? " Audio needs a TTS / speech endpoint (chat LLMs are excluded)."
+                      : pickerCat === "vision"
+                        ? " Add a multimodal model (e.g. Kimi K3, GPT-4o)."
+                        : " Add a chat LLM below — it will appear on Writing & Analysis automatically."}
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
@@ -752,12 +784,36 @@ export default function AiProviders() {
                           )}
                         </div>
                         <div style={{ fontSize: "0.78rem", color: "#6B7280", marginTop: 3 }}>
-                          {it.category} ·{" "}
+                          home: {it.category} ·{" "}
                           <code style={{ background: "#F3F4F6", padding: "1px 5px", borderRadius: 3 }}>
                             {it.model}
                           </code>{" "}
                           · {it.base_url} · key {it.api_key_preview || "(not set)"}
                         </div>
+                        {(it.compatible_categories || it.categories || []).length > 0 && (
+                          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                            {(it.compatible_categories || it.categories || []).map((c) => {
+                              const on = it.assignments?.some((a) => a.category === c && a.enabled);
+                              return (
+                                <span
+                                  key={c}
+                                  style={{
+                                    fontSize: "0.65rem",
+                                    fontWeight: 700,
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.04em",
+                                    padding: "2px 6px",
+                                    borderRadius: 4,
+                                    background: on ? "#D1FAE5" : "#F1F5F9",
+                                    color: on ? "#065F46" : "#64748B",
+                                  }}
+                                >
+                                  {c}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
                         {t && t.text && (
                           <div
                             style={{
