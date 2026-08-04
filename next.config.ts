@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     "*.trycloudflare.com",
     "change-ranking-reprints-previous.trycloudflare.com",
     "beast-vermont-graphical-nation.trycloudflare.com",
+    "noon-everyone-spell-attention.trycloudflare.com",
     "protected-type-bare-bailey.trycloudflare.com",
     "localhost",
     "127.0.0.1",
