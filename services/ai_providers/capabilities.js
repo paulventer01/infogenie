@@ -43,15 +43,12 @@ function isChatLlm(p) {
  */
 function compatibleCategories(provider) {
   if (isAudioOnly(provider)) return ['audio'];
-  const out = [];
-  if (isChatLlm(provider)) {
-    // Chat models: every text tile + Audio (voiceover/script generation)
-    out.push('writing', 'analysis', 'audio');
-    if (isVisionCapable(provider)) out.push('vision');
-  } else if (isVisionCapable(provider)) {
-    out.push('vision');
+  // Product requirement: chat / BYO presets appear on every tile so they can
+  // cascade together under Writing · Analysis · Vision · Audio.
+  if (isChatLlm(provider) || isVisionCapable(provider)) {
+    return [...ALL];
   }
-  return [...new Set(out.filter((c) => ALL.includes(c)))];
+  return [];
 }
 
 function isCompatible(provider, category) {

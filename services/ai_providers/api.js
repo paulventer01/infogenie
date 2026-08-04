@@ -15,6 +15,7 @@ const _tenantCtx = require('../tenants/context');
 const { normalizeChatParams, isKimi, isMoonshotBaseUrl } = require('../ai_compat');
 const { compatibleCategories, isCompatible } = require('./capabilities');
 const { expandProviderAssignments, ensureTenantAssignments } = require('./schema');
+const { PRESET_CATALOG, resolvePresetKey, matchConfigured } = require('./presets');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _redact(row) {
@@ -79,15 +80,140 @@ router.get('/list', async (req, res) => {
       [tid],
     );
     const assigns = await _assignmentsForTenant(pool, tid);
+    const items = r.rows.map((row) => _attachMeta(row, assigns));
+    const presets = PRESET_CATALOG.map((preset) => {
+      const matched = matchConfigured(preset, items);
+      return {
+        id: preset.id,
+        name: preset.name,
+        base_url: preset.base_url,
+        model: preset.model,
+        tiles: preset.tiles,
+        configured: !!matched,
+        provider_id: matched ? matched.id : null,
+        key_ready: !!resolvePresetKey(preset) || !!matched,
+        requires_custom_url: !!preset.requiresCustomUrl,
+        allow_empty_key: !!preset.allowEmptyKey,
+      };
+    });
     res.json({
       ok: true,
-      items: r.rows.map((row) => _attachMeta(row, assigns)),
+      items,
+      presets,
       category_capabilities: {
         writing: 'Chat LLMs (copy, email, creative)',
         analysis: 'Chat LLMs (plans, scoring, Q&A)',
-        vision: 'Multimodal models (screenshots, brand audits)',
+        vision: 'Multimodal + chat cascade',
         audio: 'Voiceover scripts + TTS endpoints',
       },
+    });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+/**
+ * Create every catalog preset that has a resolvable API key (or empty-key OK),
+ * expand onto all tiles, and enable them so Select-all cascade works.
+ */
+router.post('/activate-presets', async (req, res) => {
+  if (!_db.hasDb()) return _err(res, 500, 'database not configured');
+  const onlyKeyReady = req.body?.onlyKeyReady !== false;
+  try {
+    const tid = await _tid(req, 'ai-providers:activate-presets');
+    const pool = _db.getPool();
+    const existing = await pool.query(
+      `SELECT id, name, base_url, model, api_key, category, notes, tenant_id
+         FROM ai_providers WHERE tenant_id=$1`,
+      [tid],
+    );
+    const created = [];
+    const skipped = [];
+    const reused = [];
+
+    for (const preset of PRESET_CATALOG) {
+      if (preset.requiresCustomUrl && /YOUR-RESOURCE/i.test(preset.base_url)) {
+        skipped.push({ id: preset.id, reason: 'needs_custom_azure_url' });
+        continue;
+      }
+      const matched = matchConfigured(preset, existing.rows);
+      if (matched) {
+        await expandProviderAssignments(pool, {
+          id: matched.id,
+          tenant_id: tid,
+          name: matched.name,
+          base_url: matched.base_url,
+          model: matched.model,
+          category: matched.category || 'writing',
+          notes: matched.notes,
+        });
+        await pool.query(
+          `UPDATE ai_provider_assignments SET enabled=TRUE, updated_at=NOW()
+           WHERE provider_id=$1 AND tenant_id=$2`,
+          [matched.id, tid],
+        );
+        reused.push({ id: preset.id, provider_id: matched.id });
+        continue;
+      }
+
+      const apiKey = resolvePresetKey(preset);
+      if (!apiKey && onlyKeyReady) {
+        skipped.push({ id: preset.id, reason: 'missing_api_key' });
+        continue;
+      }
+
+      const ins = await pool.query(
+        `INSERT INTO ai_providers (tenant_id, name, base_url, api_key, model, category, is_default, notes)
+         VALUES ($1,$2,$3,$4,$5,'writing',FALSE,$6)
+         RETURNING id, tenant_id, name, base_url, model, category, notes`,
+        [
+          tid,
+          preset.name,
+          preset.base_url,
+          apiKey || 'PENDING_SET_API_KEY',
+          preset.model,
+          'Seeded from preset catalog · ' + preset.id,
+        ],
+      );
+      const row = ins.rows[0];
+      await expandProviderAssignments(pool, row);
+      await pool.query(
+        `UPDATE ai_provider_assignments SET enabled=TRUE, updated_at=NOW()
+         WHERE provider_id=$1 AND tenant_id=$2`,
+        [row.id, tid],
+      );
+      await pool.query(`UPDATE ai_providers SET enabled=TRUE WHERE id=$1`, [row.id]);
+      created.push({ id: preset.id, provider_id: row.id });
+      existing.rows.push(row);
+    }
+
+    for (const cat of VALID_CATEGORIES) {
+      const cur = await pool.query(
+        `SELECT provider_id FROM ai_provider_assignments
+          WHERE tenant_id=$1 AND category=$2 AND is_default=TRUE AND enabled=TRUE LIMIT 1`,
+        [tid, cat],
+      );
+      if (!cur.rows.length) {
+        const first = await pool.query(
+          `SELECT provider_id FROM ai_provider_assignments
+            WHERE tenant_id=$1 AND category=$2 AND enabled=TRUE
+            ORDER BY provider_id ASC LIMIT 1`,
+          [tid, cat],
+        );
+        if (first.rows[0]) {
+          await pool.query(
+            `UPDATE ai_provider_assignments SET is_default=TRUE
+             WHERE tenant_id=$1 AND category=$2 AND provider_id=$3`,
+            [tid, cat, first.rows[0].provider_id],
+          );
+        }
+      }
+    }
+
+    res.json({
+      ok: true,
+      created: created.length,
+      reused: reused.length,
+      skipped,
+      details: { created, reused },
     });
   } catch (e) { _err(res, 500, e.message); }
 });
