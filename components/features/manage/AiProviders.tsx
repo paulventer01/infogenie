@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { markNavPending, settleNavPending } from "@/lib/navPending";
 
 interface Provider {
   id: string;
@@ -123,8 +124,6 @@ export default function AiProviders() {
 
   async function load() {
     try {
-      // Expand existing providers into all compatible tiles (idempotent)
-      await apiPost("/api/ai-providers/expand-compatible", {});
       const [list, act] = await Promise.all([
         apiGet<{ items?: Provider[] }>("/api/ai-providers/list"),
         apiGet<{ active?: Record<string, ActiveEntry> }>("/api/ai-providers/active"),
@@ -138,10 +137,11 @@ export default function AiProviders() {
 
   useEffect(() => {
     let cancelled = false;
+    // Keep IGDiag nav guard up while the panel fetches — avoids false
+    // MAIN-THREAD STALL reports during first paint + network settle.
+    markNavPending("panel:ai-providers");
     (async () => {
       try {
-        await apiPost("/api/ai-providers/expand-compatible", {});
-        if (cancelled) return;
         const [list, act] = await Promise.all([
           apiGet<{ items?: Provider[] }>("/api/ai-providers/list"),
           apiGet<{ active?: Record<string, ActiveEntry> }>("/api/ai-providers/active"),
@@ -151,6 +151,8 @@ export default function AiProviders() {
         setActive(act.active || {});
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) settleNavPending("ai-providers");
       }
     })();
     return () => {

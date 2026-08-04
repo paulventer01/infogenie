@@ -14,7 +14,7 @@ const _db     = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { normalizeChatParams, isKimi, isMoonshotBaseUrl } = require('../ai_compat');
 const { compatibleCategories, isCompatible } = require('./capabilities');
-const { expandProviderAssignments } = require('./schema');
+const { expandProviderAssignments, ensureTenantAssignments } = require('./schema');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _redact(row) {
@@ -71,6 +71,8 @@ router.get('/list', async (req, res) => {
   try {
     const tid = await _tid(req, 'ai-providers:list');
     const pool = _db.getPool();
+    // Cheap insert-missing only (no-op when already expanded)
+    try { await ensureTenantAssignments(pool, tid); } catch (_) { /* non-fatal */ }
     const r = await pool.query(
       `SELECT id, name, base_url, model, category, is_default, enabled, notes, api_key, created_at, updated_at
          FROM ai_providers WHERE tenant_id=$1 ORDER BY name`,
@@ -84,7 +86,7 @@ router.get('/list', async (req, res) => {
         writing: 'Chat LLMs (copy, email, creative)',
         analysis: 'Chat LLMs (plans, scoring, Q&A)',
         vision: 'Multimodal models (screenshots, brand audits)',
-        audio: 'TTS / speech endpoints only',
+        audio: 'Voiceover scripts + TTS endpoints',
       },
     });
   } catch (e) { _err(res, 500, e.message); }
@@ -348,29 +350,14 @@ router.post('/category/:category/selection', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
-/** Expand every provider into all compatible tiles (enabled). */
+/** Expand every provider into all compatible tiles (enabled). Fast no-op when complete. */
 router.post('/expand-compatible', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 500, 'database not configured');
   try {
     const tid = await _tid(req, 'ai-providers:expand');
     const pool = _db.getPool();
-    const r = await pool.query(
-      `SELECT id, tenant_id, name, base_url, model, category, notes
-         FROM ai_providers WHERE tenant_id=$1`,
-      [tid],
-    );
-    const report = [];
-    for (const row of r.rows) {
-      const cats = await expandProviderAssignments(pool, row);
-      // Enable all compatible assignments so tiles light up
-      await pool.query(
-        `UPDATE ai_provider_assignments SET enabled=TRUE, updated_at=NOW()
-         WHERE provider_id=$1 AND tenant_id=$2`,
-        [row.id, tid],
-      );
-      report.push({ id: row.id, name: row.name, categories: cats });
-    }
-    res.json({ ok: true, expanded: report.length, providers: report });
+    const result = await ensureTenantAssignments(pool, tid);
+    res.json({ ok: true, expanded: result.providers, inserted: result.inserted });
   } catch (e) { _err(res, 500, e.message); }
 });
 

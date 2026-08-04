@@ -96,15 +96,59 @@ async function _backfillAssignments(pool) {
 async function expandProviderAssignments(pool, providerRow) {
   const cats = compatibleCategories(providerRow);
   if (!cats.includes(providerRow.category)) cats.push(providerRow.category);
+  // Insert-only — never rewrite existing rows on every page load
   for (const cat of cats) {
     await pool.query(
       `INSERT INTO ai_provider_assignments (provider_id, tenant_id, category, enabled, is_default)
        VALUES ($1,$2,$3,TRUE,FALSE)
-       ON CONFLICT (provider_id, category) DO UPDATE SET updated_at=NOW()`,
+       ON CONFLICT (provider_id, category) DO NOTHING`,
       [providerRow.id, providerRow.tenant_id, cat],
     );
   }
   return cats;
 }
 
-module.exports = { ensureAiProvidersSchema, expandProviderAssignments, _backfillAssignments };
+/**
+ * Fast ensure: only inserts missing assignment rows for a tenant.
+ * Returns how many inserts were attempted (0 = already complete).
+ */
+async function ensureTenantAssignments(pool, tid) {
+  const r = await pool.query(
+    `SELECT id, tenant_id, name, base_url, model, category, notes
+       FROM ai_providers WHERE tenant_id=$1`,
+    [tid],
+  );
+  if (!r.rows.length) return { providers: 0, inserted: 0 };
+
+  // Existing assignment keys
+  const existing = await pool.query(
+    `SELECT provider_id, category FROM ai_provider_assignments WHERE tenant_id=$1`,
+    [tid],
+  );
+  const have = new Set(existing.rows.map((a) => `${a.provider_id}:${a.category}`));
+  let inserted = 0;
+  for (const row of r.rows) {
+    const cats = compatibleCategories(row);
+    if (!cats.includes(row.category)) cats.push(row.category);
+    for (const cat of cats) {
+      const key = `${row.id}:${cat}`;
+      if (have.has(key)) continue;
+      await pool.query(
+        `INSERT INTO ai_provider_assignments (provider_id, tenant_id, category, enabled, is_default)
+         VALUES ($1,$2,$3,TRUE,FALSE)
+         ON CONFLICT (provider_id, category) DO NOTHING`,
+        [row.id, tid, cat],
+      );
+      inserted += 1;
+      have.add(key);
+    }
+  }
+  return { providers: r.rows.length, inserted };
+}
+
+module.exports = {
+  ensureAiProvidersSchema,
+  expandProviderAssignments,
+  ensureTenantAssignments,
+  _backfillAssignments,
+};
