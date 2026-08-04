@@ -200,6 +200,35 @@ export default function AiProviders() {
         setItems(list.items || []);
         if (list.presets?.length) setPresets(list.presets);
         setActive(act.active || {});
+
+        // If providers exist but tiles are still single-model (Kimi-only),
+        // heal into a full ecosystem cascade once — non-blocking.
+        const configured = list.items || [];
+        const pools = Object.values(act.active || {});
+        const underCascaded =
+          configured.length > 1 &&
+          pools.some((a) => a && (a.pool_size || 0) < configured.length);
+        const singleOnly =
+          configured.length >= 1 &&
+          pools.every((a) => !a || (a.pool_size || 0) <= 1) &&
+          (list.presets || []).some((p) => p.key_ready && !p.configured);
+        if (underCascaded || singleOnly) {
+          try {
+            await apiPost("/api/ai-providers/enable-ecosystem", { onlyKeyReady: true });
+            if (cancelled) return;
+            const [list2, act2] = await Promise.all([
+              apiGet<{ items?: Provider[]; presets?: PresetItem[] }>("/api/ai-providers/list"),
+              apiGet<{ active?: Record<string, ActiveEntry> }>("/api/ai-providers/active"),
+            ]);
+            if (cancelled) return;
+            setItems(list2.items || []);
+            if (list2.presets?.length) setPresets(list2.presets);
+            setActive(act2.active || {});
+            setActivateMsg("AI ecosystem cascade synced — all usable providers work together.");
+          } catch {
+            /* non-fatal */
+          }
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -237,15 +266,24 @@ export default function AiProviders() {
         created?: number;
         reused?: number;
         skipped?: { id: string; reason: string }[];
-      }>("/api/ai-providers/activate-presets", { onlyKeyReady: true });
+        ecosystem?: Record<string, { pool_size?: number; mode?: string; providers?: { name: string }[] }>;
+        message?: string;
+      }>("/api/ai-providers/enable-ecosystem", { onlyKeyReady: true });
       if (!r.ok) {
-        setActivateMsg(r.error || "Could not activate presets");
+        setActivateMsg(r.error || "Could not enable AI ecosystem");
         return;
       }
+      const pools = r.ecosystem
+        ? Object.entries(r.ecosystem)
+            .map(([cat, info]) => `${cat}: ${(info.providers || []).map((p) => p.name).join(" → ") || "built-in"}`)
+            .join(" · ")
+        : "";
       const skipN = r.skipped?.length || 0;
       setActivateMsg(
-        `Placed on all tiles — ${r.created || 0} created, ${r.reused || 0} expanded` +
-          (skipN ? ` · ${skipN} skipped (need key / custom URL)` : ""),
+        (r.message || "Ecosystem cascade enabled") +
+          ` — ${r.created || 0} created, ${r.reused || 0} joined` +
+          (skipN ? ` · ${skipN} need an API key` : "") +
+          (pools ? ` · ${pools}` : ""),
       );
       await load();
     } catch (e) {
@@ -474,10 +512,10 @@ export default function AiProviders() {
                 color: "#075985",
               }}
             >
-              <strong>How this works:</strong> Every preset (Kimi, Groq, Z.ai, DeepSeek, Mistral,
-              OpenRouter, Together, Ollama, Azure) appears under <em>Writing</em>, <em>Analysis</em>,{" "}
-              <em>Vision</em>, and <em>Audio</em>. Place them once, then Select all on a tile so they
-              cascade together. Empty selection = built-ins.
+              <strong>AI ecosystem:</strong> Kimi, Groq, Z.ai, DeepSeek, Mistral, OpenRouter,
+              Together, Ollama, and Azure are peers — not a single-model setup. Enable the
+              ecosystem once and every usable provider cascades together under Writing · Analysis ·
+              Vision · Audio (primary first, then the rest on failure).
             </div>
 
             <div
@@ -494,27 +532,89 @@ export default function AiProviders() {
                 disabled={activateBusy}
                 onClick={placeAllPresets}
                 style={{
-                  padding: "9px 16px",
+                  padding: "10px 18px",
                   borderRadius: 8,
                   border: "none",
-                  background: "#0F766E",
+                  background: "linear-gradient(135deg,#0050CC,#0066FF)",
                   color: "#fff",
                   fontWeight: 800,
-                  fontSize: "0.82rem",
+                  fontSize: "0.85rem",
                   cursor: activateBusy ? "wait" : "pointer",
+                  boxShadow: "0 8px 20px rgba(0,102,255,0.25)",
                 }}
               >
-                {activateBusy ? "Placing…" : "Place all presets on every tile"}
+                {activateBusy ? "Enabling…" : "Enable full AI ecosystem"}
               </button>
-              <span style={{ fontSize: "0.78rem", color: "#64748B", maxWidth: 420 }}>
-                Seeds key-ready presets and enables them on Writing · Analysis · Vision · Audio so
-                Select all can cascade them.
+              <span style={{ fontSize: "0.78rem", color: "#64748B", maxWidth: 460 }}>
+                Seeds every key-ready preset and puts all configured providers into one cascade pool
+                on every tile so they work together — not Kimi alone.
               </span>
               {activateMsg && (
                 <span style={{ fontSize: "0.8rem", color: "#0F766E", fontWeight: 600, width: "100%" }}>
                   {activateMsg}
                 </span>
               )}
+            </div>
+
+            {/* Ecosystem status across tiles */}
+            <div
+              style={{
+                background: "#fff",
+                border: "1px solid #E2E8F0",
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 18,
+              }}
+            >
+              <div style={{ fontWeight: 800, color: "#0A1628", marginBottom: 8, fontSize: "0.9rem" }}>
+                Ecosystem cascade status
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))",
+                  gap: 10,
+                }}
+              >
+                {CATS.map((c) => {
+                  const a = active[c.key];
+                  const pool = a?.pool || [];
+                  return (
+                    <div
+                      key={c.key}
+                      style={{
+                        background: "#F8FAFF",
+                        border: "1px solid #E2E8F0",
+                        borderRadius: 10,
+                        padding: 10,
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, fontSize: "0.78rem", color: "#0F172A" }}>
+                        {c.label.replace(/^[^\s]+\s/, "")}
+                        <span style={{ marginLeft: 6, color: "#64748B", fontWeight: 600 }}>
+                          {a?.mode === "cascade"
+                            ? `cascade ×${a.pool_size}`
+                            : a
+                              ? "single"
+                              : "built-in"}
+                        </span>
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: "0.72rem", color: "#475569", lineHeight: 1.45 }}>
+                        {pool.length
+                          ? pool.map((p) => p.name).join(" → ")
+                          : "No BYO providers — using built-ins"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {(items || []).length > 0 &&
+                Object.values(active).some((a) => a && (a.pool_size || 0) < (items || []).length) && (
+                  <div style={{ marginTop: 10, fontSize: "0.78rem", color: "#92400E" }}>
+                    Some configured providers are not yet in every cascade. Click{" "}
+                    <strong>Enable full AI ecosystem</strong> so they all work together.
+                  </div>
+                )}
             </div>
 
             <div
@@ -898,26 +998,26 @@ export default function AiProviders() {
                       type="button"
                       onClick={() => applyPreset(p)}
                       style={{
-                        background: p.model === "kimi-k3" ? "#ECFDF5" : p.configured ? "#F0FDF4" : "#F3F4F6",
-                        border: p.model === "kimi-k3" ? "1px solid #A7F3D0" : "1px solid #E5E7EB",
-                        color: p.model === "kimi-k3" ? "#0F766E" : "#374151",
+                        background: p.configured ? "#ECFDF5" : "#F3F4F6",
+                        border: p.configured ? "1px solid #A7F3D0" : "1px solid #E5E7EB",
+                        color: p.configured ? "#0F766E" : "#374151",
                         padding: "5px 10px",
                         borderRadius: 14,
                         fontSize: "0.74rem",
                         cursor: "pointer",
-                        fontWeight: p.model === "kimi-k3" || p.configured ? 700 : 400,
+                        fontWeight: p.configured ? 700 : 400,
                       }}
                     >
                       {p.name}
-                      {p.configured ? " ✓" : ""}
+                      {p.configured ? " ✓" : p.key_ready ? "" : " · needs key"}
                     </button>
                   ))}
                 </div>
                 {(model === "kimi-k3" || /moonshot\.ai|kimi\.ai/i.test(url)) && (
-                  <p style={{ margin: "8px 0 0", fontSize: "0.72rem", color: "#0F766E", lineHeight: 1.4 }}>
-                    Kimi K3 always thinks. InfoGenie sends <code>reasoning_effort=high</code> by default
-                    (override with <code>KIMI_REASONING_EFFORT</code>) and omits fixed sampling params.
-                    Get a key at platform.kimi.ai — K3 requires a small top-up to unlock.
+                  <p style={{ margin: "8px 0 0", fontSize: "0.72rem", color: "#64748B", lineHeight: 1.4 }}>
+                    Moonshot tip: Kimi K3 sends <code>reasoning_effort=high</code> by default. It is one
+                    peer in the cascade — enable the full ecosystem so Groq, Z.ai, DeepSeek and others
+                    run with it.
                   </p>
                 )}
               </div>

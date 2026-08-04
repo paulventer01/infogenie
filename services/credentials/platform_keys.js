@@ -39,6 +39,11 @@ const REGISTRY = [
   { key: 'RAPIDAPI_KEY', group: 'AI Models', service: 'RapidAPI', label: 'RapidAPI Key', desc: 'Multi-purpose RapidAPI key — Meta Llama 3.2 Vision (LLM fallback) + Google SEO Keyword Research (keyword-research-for-seo)', secret: true, test: 'rapidapi_llama', settingsIds: ['rapidapi'] },
   { key: 'ZAI_API_KEY', group: 'AI Models', service: 'Z.ai / AutoClaw', label: 'Z.ai API Key', desc: 'GLM 5.2 via chat.z.ai / autoclaw.z.ai — lead classification, agent tasks, Coding Plan endpoint', secret: true, aliases: ['GLM_API_KEY', 'Z_AI_API_KEY'], test: 'zai', settingsIds: ['zai', 'glm', 'autoclaw'] },
   { key: 'MOONSHOT_API_KEY', group: 'AI Models', service: 'Moonshot / Kimi', label: 'Moonshot API Key', desc: 'Kimi K3 via api.moonshot.ai — long-context analysis, vision, agentic research (OpenAI-compatible)', secret: true, aliases: ['KIMI_API_KEY'], test: 'moonshot', settingsIds: ['moonshot', 'kimi'] },
+  { key: 'GROQ_API_KEY', group: 'AI Models', service: 'Groq', label: 'Groq API Key', desc: 'Llama 3.1 70B and other Groq OpenAI-compatible chat models', secret: true, settingsIds: ['groq'] },
+  { key: 'DEEPSEEK_API_KEY', group: 'AI Models', service: 'DeepSeek', label: 'DeepSeek API Key', desc: 'DeepSeek Chat — OpenAI-compatible analysis & writing', secret: true, settingsIds: ['deepseek'] },
+  { key: 'MISTRAL_API_KEY', group: 'AI Models', service: 'Mistral', label: 'Mistral API Key', desc: 'Mistral Large and other Mistral OpenAI-compatible models', secret: true, settingsIds: ['mistral'] },
+  { key: 'OPENROUTER_API_KEY', group: 'AI Models', service: 'OpenRouter', label: 'OpenRouter API Key', desc: 'Multi-model gateway (Llama, Claude, GPT and more) via OpenRouter', secret: true, settingsIds: ['openrouter'] },
+  { key: 'TOGETHER_API_KEY', group: 'AI Models', service: 'Together AI', label: 'Together API Key', desc: 'Together AI OpenAI-compatible chat models', secret: true, settingsIds: ['together'] },
 
   // ── Data & Intelligence ─────────────────────────────────────────────────────
   { key: 'DATAFORSEO_LOGIN', group: 'Data & Intelligence', service: 'DataForSEO', label: 'DataForSEO Login', desc: 'SEO/SERP/keyword data — account login', secret: false, test: 'dataforseo', settingsIds: ['dataforseo', 'dataseo'] },

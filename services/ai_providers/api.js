@@ -29,6 +29,94 @@ async function _tid(req, label) {
 
 const VALID_CATEGORIES = ['writing', 'analysis', 'vision', 'audio'];
 
+function _hasUsableKey(apiKey) {
+  if (apiKey == null) return false;
+  const k = String(apiKey).trim();
+  if (!k) return false;
+  if (/^PENDING_/i.test(k)) return false;
+  if (/^_DUMMY/i.test(k)) return false;
+  return true;
+}
+
+/**
+ * Put every usable configured provider onto every compatible tile and enable
+ * them as one cascade pool so the AI ecosystem works together (not one model).
+ */
+async function syncEcosystemCascade(pool, tid) {
+  const providers = await pool.query(
+    `SELECT id, name, base_url, model, category, notes, api_key, tenant_id, enabled
+       FROM ai_providers WHERE tenant_id=$1`,
+    [tid],
+  );
+  const usable = providers.rows.filter((p) => p.enabled !== false && _hasUsableKey(p.api_key));
+  const byCategory = { writing: [], analysis: [], vision: [], audio: [] };
+
+  for (const p of usable) {
+    const cats = compatibleCategories(p);
+    if (!cats.includes(p.category)) cats.push(p.category);
+    for (const cat of cats) {
+      if (!VALID_CATEGORIES.includes(cat)) continue;
+      await pool.query(
+        `INSERT INTO ai_provider_assignments (provider_id, tenant_id, category, enabled, is_default)
+         VALUES ($1,$2,$3,TRUE,FALSE)
+         ON CONFLICT (provider_id, category)
+         DO UPDATE SET enabled=TRUE, updated_at=NOW()`,
+        [p.id, tid, cat],
+      );
+      byCategory[cat].push(p);
+    }
+  }
+
+  const summary = {};
+  for (const cat of VALID_CATEGORIES) {
+    const ids = byCategory[cat].map((p) => p.id);
+    // Clear defaults, then enable the full pool and pick a primary
+    await pool.query(
+      `UPDATE ai_provider_assignments
+          SET is_default=FALSE, updated_at=NOW()
+        WHERE tenant_id=$1 AND category=$2`,
+      [tid, cat],
+    );
+    if (!ids.length) {
+      summary[cat] = { pool_size: 0, mode: 'builtin', ids: [] };
+      continue;
+    }
+    await pool.query(
+      `UPDATE ai_provider_assignments
+          SET enabled=TRUE, updated_at=NOW()
+        WHERE tenant_id=$1 AND category=$2 AND provider_id = ANY($3::int[])`,
+      [tid, cat, ids],
+    );
+    // Prefer catalog order for primary (first matching PRESET_CATALOG), else lowest id
+    let primaryId = ids[0];
+    for (const preset of PRESET_CATALOG) {
+      const hit = byCategory[cat].find(
+        (p) =>
+          String(p.model || '').toLowerCase() === String(preset.model).toLowerCase() &&
+          String(p.base_url || '').replace(/\/+$/, '') === String(preset.base_url).replace(/\/+$/, ''),
+      );
+      if (hit) {
+        primaryId = hit.id;
+        break;
+      }
+    }
+    await pool.query(
+      `UPDATE ai_provider_assignments
+          SET is_default=TRUE, enabled=TRUE, updated_at=NOW()
+        WHERE tenant_id=$1 AND category=$2 AND provider_id=$3`,
+      [tid, cat, primaryId],
+    );
+    summary[cat] = {
+      pool_size: ids.length,
+      mode: ids.length > 1 ? 'cascade' : 'single',
+      ids,
+      primary_id: primaryId,
+      providers: byCategory[cat].map((p) => ({ id: p.id, name: p.name, model: p.model })),
+    };
+  }
+  return summary;
+}
+
 function _chatBody(baseUrl, model, messages, opts = {}) {
   const raw = {
     model,
@@ -182,31 +270,10 @@ router.post('/activate-presets', async (req, res) => {
       );
       await pool.query(`UPDATE ai_providers SET enabled=TRUE WHERE id=$1`, [row.id]);
       created.push({ id: preset.id, provider_id: row.id });
-      existing.rows.push(row);
+      existing.rows.push({ ...row, api_key: apiKey || 'PENDING_SET_API_KEY' });
     }
 
-    for (const cat of VALID_CATEGORIES) {
-      const cur = await pool.query(
-        `SELECT provider_id FROM ai_provider_assignments
-          WHERE tenant_id=$1 AND category=$2 AND is_default=TRUE AND enabled=TRUE LIMIT 1`,
-        [tid, cat],
-      );
-      if (!cur.rows.length) {
-        const first = await pool.query(
-          `SELECT provider_id FROM ai_provider_assignments
-            WHERE tenant_id=$1 AND category=$2 AND enabled=TRUE
-            ORDER BY provider_id ASC LIMIT 1`,
-          [tid, cat],
-        );
-        if (first.rows[0]) {
-          await pool.query(
-            `UPDATE ai_provider_assignments SET is_default=TRUE
-             WHERE tenant_id=$1 AND category=$2 AND provider_id=$3`,
-            [tid, cat, first.rows[0].provider_id],
-          );
-        }
-      }
-    }
+    const ecosystem = await syncEcosystemCascade(pool, tid);
 
     res.json({
       ok: true,
@@ -214,6 +281,84 @@ router.post('/activate-presets', async (req, res) => {
       reused: reused.length,
       skipped,
       details: { created, reused },
+      ecosystem,
+    });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+/**
+ * Activate key-ready catalog presets AND put every usable provider into a
+ * cascade pool on Writing · Analysis · Vision · Audio so they work together.
+ */
+router.post('/enable-ecosystem', async (req, res) => {
+  if (!_db.hasDb()) return _err(res, 500, 'database not configured');
+  try {
+    // Reuse activate-presets logic by calling the same path internals
+    const tid = await _tid(req, 'ai-providers:enable-ecosystem');
+    const pool = _db.getPool();
+    const onlyKeyReady = req.body?.onlyKeyReady !== false;
+
+    const existing = await pool.query(
+      `SELECT id, name, base_url, model, api_key, category, notes, tenant_id
+         FROM ai_providers WHERE tenant_id=$1`,
+      [tid],
+    );
+    const created = [];
+    const skipped = [];
+    const reused = [];
+
+    for (const preset of PRESET_CATALOG) {
+      if (preset.requiresCustomUrl && /YOUR-RESOURCE/i.test(preset.base_url)) {
+        skipped.push({ id: preset.id, reason: 'needs_custom_azure_url' });
+        continue;
+      }
+      const matched = matchConfigured(preset, existing.rows);
+      if (matched) {
+        await expandProviderAssignments(pool, {
+          id: matched.id,
+          tenant_id: tid,
+          name: matched.name,
+          base_url: matched.base_url,
+          model: matched.model,
+          category: matched.category || 'writing',
+          notes: matched.notes,
+        });
+        reused.push({ id: preset.id, provider_id: matched.id });
+        continue;
+      }
+      const apiKey = resolvePresetKey(preset);
+      if (!apiKey && onlyKeyReady) {
+        skipped.push({ id: preset.id, reason: 'missing_api_key' });
+        continue;
+      }
+      const ins = await pool.query(
+        `INSERT INTO ai_providers (tenant_id, name, base_url, api_key, model, category, is_default, notes)
+         VALUES ($1,$2,$3,$4,$5,'writing',FALSE,$6)
+         RETURNING id, tenant_id, name, base_url, model, category, notes, api_key`,
+        [
+          tid,
+          preset.name,
+          preset.base_url,
+          apiKey || 'PENDING_SET_API_KEY',
+          preset.model,
+          'Seeded from preset catalog · ' + preset.id,
+        ],
+      );
+      const row = ins.rows[0];
+      await expandProviderAssignments(pool, row);
+      await pool.query(`UPDATE ai_providers SET enabled=TRUE WHERE id=$1`, [row.id]);
+      created.push({ id: preset.id, provider_id: row.id });
+      existing.rows.push(row);
+    }
+
+    const ecosystem = await syncEcosystemCascade(pool, tid);
+    res.json({
+      ok: true,
+      created: created.length,
+      reused: reused.length,
+      skipped,
+      ecosystem,
+      message: 'All usable AI providers are cascading together across Writing, Analysis, Vision, and Audio.',
     });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -252,6 +397,8 @@ router.post('/create', async (req, res) => {
         [row.id, category],
       );
     }
+    // Keep the whole ecosystem cascading together whenever a provider is added
+    try { await syncEcosystemCascade(pool, tid); } catch (_) { /* non-fatal */ }
     res.json({ ok: true, id: row.id, categories: cats });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -390,7 +537,8 @@ async function _callOneProvider(p, messages, opts = {}) {
 
 // Cascade through all enabled providers in the category (default first).
 async function chatViaProvider(category, messages, opts = {}) {
-  const list = await getEnabledProviders(category, opts.tenantId);
+  const list = (await getEnabledProviders(category, opts.tenantId))
+    .filter((p) => _hasUsableKey(p.api_key));
   if (!list.length) return null;
   for (const p of list) {
     try {
@@ -511,3 +659,4 @@ module.exports = router;
 module.exports.getDefaultProvider = getDefaultProvider;
 module.exports.getEnabledProviders = getEnabledProviders;
 module.exports.chatViaProvider = chatViaProvider;
+module.exports.syncEcosystemCascade = syncEcosystemCascade;
