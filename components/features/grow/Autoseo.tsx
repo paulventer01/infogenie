@@ -1407,7 +1407,7 @@ ${ctx.domain || "yourdomain.com"}`;
                           onClick={() => publishSingleArticle(idx)}
                           style={{
                             padding: "5px 10px",
-                            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+                            background: "linear-gradient(135deg,#0f766e,#0284c7)",
                             border: "none",
                             borderRadius: 7,
                             fontSize: "0.67rem",
@@ -2584,7 +2584,7 @@ ${ctx.domain || "yourdomain.com"}`;
               onClick={() => toast("✅ AutoSEO settings saved!")}
               style={{
                 padding: 10,
-                background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+                background: "linear-gradient(135deg,#0f766e,#0284c7)",
                 border: "none",
                 borderRadius: 10,
                 fontSize: "0.8rem",

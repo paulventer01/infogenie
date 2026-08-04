@@ -667,7 +667,7 @@ function FunnelHealth({ funnel }: { funnel: Model["funnel"] }) {
           }}
           style={{
             padding: "9px 16px",
-            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+            background: "linear-gradient(135deg,#0f766e,#0284c7)",
             border: "none",
             borderRadius: 10,
             fontSize: "0.75rem",
