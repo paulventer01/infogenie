@@ -29,18 +29,32 @@ interface ApiResponse {
 }
 
 async function api(path: string, opts?: RequestInit): Promise<ApiResponse> {
-  const r = await fetch(path, {
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    ...(opts || {}),
-  });
-  const ct = r.headers.get("content-type") || "";
-  const body: ApiResponse =
-    ct.indexOf("application/json") !== -1
-      ? await r.json().catch(() => ({}))
-      : {};
-  if (!r.ok) return { error: body.error || `Request failed (${r.status})` };
-  return body;
+  try {
+    const r = await fetch(path, {
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      ...(opts || {}),
+    });
+    const ct = r.headers.get("content-type") || "";
+    const body: ApiResponse =
+      ct.indexOf("application/json") !== -1
+        ? await r.json().catch(() => ({}))
+        : {};
+    if (!r.ok) return { error: body.error || `Request failed (${r.status})` };
+    return body;
+  } catch (e) {
+    // Tunnel blips / offline Express / blocked requests surface as
+    // TypeError: Failed to fetch — never let that escape as an uncaught
+    // Next.js overlay error on the login page.
+    return {
+      error:
+        e instanceof Error && e.message
+          ? e.message === "Failed to fetch"
+            ? "Network error — could not reach InfoGenie. Check your connection and try again."
+            : e.message
+          : "Network error — please try again.",
+    };
+  }
 }
 
 // Where to send the user after a successful login/signup. Honors a `?next=`
@@ -202,16 +216,21 @@ export default function LoginPage() {
     if (mode === "login") {
       setBusy(true);
       setBusyLabel("Signing in…");
-      const r = await api("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email: e, password: p }),
-      });
-      if (r.error) {
+      try {
+        const r = await api("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email: e, password: p }),
+        });
+        if (r.error) {
+          setBusy(false);
+          showErr(r.error);
+          return;
+        }
+        window.location.href = nextDest();
+      } catch {
         setBusy(false);
-        showErr(r.error);
-        return;
+        showErr("Network error — could not sign in. Please try again.");
       }
-      window.location.href = nextDest();
       return;
     }
 
@@ -225,16 +244,21 @@ export default function LoginPage() {
     const body: { name: string; email: string; password: string; next?: string } =
       { name: (name || "").trim(), email: e, password: p };
     if (dest && dest !== "/") body.next = dest;
-    const s = await api("/api/auth/signup", {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-    if (s.error) {
+    try {
+      const s = await api("/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      if (s.error) {
+        setBusy(false);
+        showErr(s.error);
+        return;
+      }
+      window.location.href = nextDest();
+    } catch {
       setBusy(false);
-      showErr(s.error);
-      return;
+      showErr("Network error — could not create account. Please try again.");
     }
-    window.location.href = nextDest();
   }
 
   const submitLabel = busy

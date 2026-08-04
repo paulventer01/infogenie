@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
   // Next 15 blocks /_next/* and the app appears blank after login.
   allowedDevOrigins: [
     "*.trycloudflare.com",
+    "thompson-attorney-themes-settled.trycloudflare.com",
     "change-ranking-reprints-previous.trycloudflare.com",
     "beast-vermont-graphical-nation.trycloudflare.com",
     "noon-everyone-spell-attention.trycloudflare.com",
@@ -25,7 +26,8 @@ const nextConfig: NextConfig = {
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://www.clarity.ms",
+      // Clarity loads https://scripts.clarity.ms; Amplitude CDN is used by legacy shell.
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://www.clarity.ms https://scripts.clarity.ms https://cdn.amplitude.com",
       "connect-src 'self' https: wss:",
       "worker-src 'self' blob:",
     ].join("; ");

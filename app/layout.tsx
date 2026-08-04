@@ -8,6 +8,9 @@ export const metadata: Metadata = {
   title: "InfoGenie",
   description: "AI Marketing Intelligence — for your team",
   robots: { index: false, follow: false },
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+  },
 };
 
 // Outfit = display/brand (MVP), Manrope = UI body. Loaded via next/font only

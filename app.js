@@ -146,11 +146,17 @@
   // above keeps working without code changes elsewhere; the source of truth
   // is the HttpOnly session cookie owned by the server.
   async function _authFetch(path, opts){
-    const r = await fetch(path, Object.assign({ credentials:'same-origin', headers:{'Content-Type':'application/json'} }, opts || {}));
-    const ct = r.headers.get('content-type') || '';
-    const body = ct.includes('application/json') ? await r.json().catch(()=>({})) : {};
-    if (!r.ok) return { error: body.error || (`Request failed (${r.status})`), status:r.status };
-    return body;
+    try {
+      const r = await fetch(path, Object.assign({ credentials:'same-origin', headers:{'Content-Type':'application/json'} }, opts || {}));
+      const ct = r.headers.get('content-type') || '';
+      const body = ct.includes('application/json') ? await r.json().catch(()=>({})) : {};
+      if (!r.ok) return { error: body.error || (`Request failed (${r.status})`), status:r.status };
+      return body;
+    } catch (e) {
+      // Network/tunnel failures throw TypeError: Failed to fetch — return a
+      // soft error so callers don't surface an uncaught Next overlay.
+      return { error: (e && e.message) || 'Failed to fetch', status: 0, network: true };
+    }
   }
   window._auth = {
     current(){ return curUser(); },
