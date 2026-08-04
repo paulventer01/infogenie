@@ -226,6 +226,10 @@ async function _loadByo(tid) {
 }
 
 function _byoAsModel(row) {
+  let host = '';
+  try { host = new URL(row.base_url).host; } catch { host = String(row.base_url || '').slice(0, 40); }
+  const model = row.model || '';
+  const hintParts = [model, host].filter(Boolean);
   return {
     id: 'byo:' + row.id,
     label: row.name || ('Provider #' + row.id),
@@ -233,10 +237,11 @@ function _byoAsModel(row) {
     provider: 'byo',
     available: true,
     source: 'ai-providers',
-    model: row.model || '',
-    hint: row.model || row.base_url || '',
+    model,
+    hint: hintParts.join(' · ') || 'AI Provider',
   };
 }
+
 
 async function _judge(prompt, task_type, results) {
   const resultsText = results
