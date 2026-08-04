@@ -4,17 +4,16 @@ const assert = require('node:assert/strict');
 const { compatibleCategories, isCompatible } = require('../services/ai_providers/capabilities');
 
 describe('AI provider category compatibility', () => {
-  it('puts Kimi K3 on writing, analysis, and vision', () => {
+  it('puts Kimi K3 on writing, analysis, vision, and audio', () => {
     const cats = compatibleCategories({
       name: 'Kimi K3 (Moonshot)',
       model: 'kimi-k3',
       base_url: 'https://api.moonshot.ai/v1',
     });
-    assert.deepEqual(cats.sort(), ['analysis', 'vision', 'writing']);
-    assert.equal(isCompatible({ model: 'kimi-k3', base_url: 'https://api.moonshot.ai/v1' }, 'audio'), false);
+    assert.deepEqual(cats.sort(), ['analysis', 'audio', 'vision', 'writing']);
   });
 
-  it('puts generic chat LLMs on writing + analysis only', () => {
+  it('puts generic chat LLMs on writing, analysis, and audio (not vision)', () => {
     const cats = compatibleCategories({
       name: 'DeepSeek Chat',
       model: 'deepseek-chat',
@@ -22,8 +21,8 @@ describe('AI provider category compatibility', () => {
     });
     assert.ok(cats.includes('writing'));
     assert.ok(cats.includes('analysis'));
+    assert.ok(cats.includes('audio'));
     assert.equal(cats.includes('vision'), false);
-    assert.equal(cats.includes('audio'), false);
   });
 
   it('routes TTS endpoints to audio only', () => {

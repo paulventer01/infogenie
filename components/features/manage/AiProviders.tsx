@@ -357,9 +357,8 @@ export default function AiProviders() {
               }}
             >
               <strong>How this works:</strong> Add a provider once — InfoGenie places it on every
-              compatible tile (chat → Writing + Analysis; multimodal like Kimi K3 → also Vision;
-              TTS-only → Audio). Click a tile to choose primary / cascade pool, or Select all.
-              Empty tile = built-ins.
+              tile it can serve (chat → Writing, Analysis, Audio; multimodal like Kimi K3 → also
+              Vision). Click a tile to choose primary / cascade pool, or Select all. Empty = built-ins.
             </div>
 
             <div
@@ -478,12 +477,8 @@ export default function AiProviders() {
 
                 {pickerProviders.length === 0 ? (
                   <div style={{ marginTop: 14, fontSize: "0.85rem", color: "#94A3B8" }}>
-                    No compatible providers for this tile yet.
-                    {pickerCat === "audio"
-                      ? " Audio needs a TTS / speech endpoint (chat LLMs are excluded)."
-                      : pickerCat === "vision"
-                        ? " Add a multimodal model (e.g. Kimi K3, GPT-4o)."
-                        : " Add a chat LLM below — it will appear on Writing & Analysis automatically."}
+                    No compatible providers for this tile yet. Add an OpenAI-compatible LLM below —
+                    it will be placed on every tile it can serve.
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>

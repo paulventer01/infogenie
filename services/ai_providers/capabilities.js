@@ -1,6 +1,10 @@
 /**
  * Which AI Provider categories a given endpoint/model can serve.
- * Chat LLMs → writing + analysis; multimodal → also vision; TTS-ish → audio only.
+ *
+ * Policy (product requirement): place each BYO provider on every tile it can
+ * usefully serve — chat LLMs cover Writing, Analysis, and Audio (scripts /
+ * voiceover copy); multimodal models also cover Vision. Dedicated TTS
+ * endpoints stay Audio-only.
  */
 
 const ALL = ['writing', 'analysis', 'vision', 'audio'];
@@ -11,7 +15,7 @@ function _blob(p = {}) {
 
 function isAudioOnly(p) {
   const s = _blob(p);
-  return /\b(tts|elevenlabs|eleven\.labs|speechify|openai\/tts|audio\.speech|whisper-tts|voice-over|vocode)\b/.test(s)
+  return /\b(tts|elevenlabs|eleven\.labs|speechify|openai\/tts|audio\.speech|whisper-tts|vocode)\b/.test(s)
     || /\/audio\/speech\b/.test(s);
 }
 
@@ -41,12 +45,12 @@ function compatibleCategories(provider) {
   if (isAudioOnly(provider)) return ['audio'];
   const out = [];
   if (isChatLlm(provider)) {
-    out.push('writing', 'analysis');
+    // Chat models: every text tile + Audio (voiceover/script generation)
+    out.push('writing', 'analysis', 'audio');
     if (isVisionCapable(provider)) out.push('vision');
   } else if (isVisionCapable(provider)) {
     out.push('vision');
   }
-  // Prefer not to put chat models on audio — wrong modality
   return [...new Set(out.filter((c) => ALL.includes(c)))];
 }
 
