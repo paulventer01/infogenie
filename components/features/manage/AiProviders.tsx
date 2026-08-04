@@ -126,6 +126,13 @@ const FALLBACK_PRESETS: PresetItem[] = [
     tiles: ["writing", "analysis", "vision", "audio"],
   },
   {
+    id: "ollama-cloud",
+    name: "Ollama Cloud",
+    base_url: "https://ollama.com/v1",
+    model: "gpt-oss:120b",
+    tiles: ["writing", "analysis", "vision", "audio"],
+  },
+  {
     id: "azure-openai",
     name: "Azure OpenAI",
     base_url: "https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT",
@@ -513,9 +520,9 @@ export default function AiProviders() {
               }}
             >
               <strong>AI ecosystem:</strong> Kimi, Groq, Z.ai, DeepSeek, Mistral, OpenRouter,
-              Together, Ollama, and Azure are peers — not a single-model setup. Enable the
-              ecosystem once and every usable provider cascades together under Writing · Analysis ·
-              Vision · Audio (primary first, then the rest on failure).
+              Together, Ollama (local + Cloud), and Azure are peers — not a single-model setup.
+              Enable the ecosystem once and every usable provider cascades together under Writing ·
+              Analysis · Vision · Audio (primary first, then the rest on failure).
             </div>
 
             <div

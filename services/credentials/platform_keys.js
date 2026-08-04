@@ -44,6 +44,7 @@ const REGISTRY = [
   { key: 'MISTRAL_API_KEY', group: 'AI Models', service: 'Mistral', label: 'Mistral API Key', desc: 'Mistral Large and other Mistral OpenAI-compatible models', secret: true, settingsIds: ['mistral'] },
   { key: 'OPENROUTER_API_KEY', group: 'AI Models', service: 'OpenRouter', label: 'OpenRouter API Key', desc: 'Multi-model gateway (Llama, Claude, GPT and more) via OpenRouter', secret: true, settingsIds: ['openrouter'] },
   { key: 'TOGETHER_API_KEY', group: 'AI Models', service: 'Together AI', label: 'Together API Key', desc: 'Together AI OpenAI-compatible chat models', secret: true, settingsIds: ['together'] },
+  { key: 'OLLAMA_API_KEY', group: 'AI Models', service: 'Ollama Cloud', label: 'Ollama API Key', desc: 'Cloud models via https://ollama.com/v1 (OpenAI-compatible). Create at ollama.com/settings/keys', secret: true, settingsIds: ['ollama', 'ollama_cloud'] },
 
   // ── Data & Intelligence ─────────────────────────────────────────────────────
   { key: 'DATAFORSEO_LOGIN', group: 'Data & Intelligence', service: 'DataForSEO', label: 'DataForSEO Login', desc: 'SEO/SERP/keyword data — account login', secret: false, test: 'dataforseo', settingsIds: ['dataforseo', 'dataseo'] },

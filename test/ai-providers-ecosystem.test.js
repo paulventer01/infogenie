@@ -18,6 +18,7 @@ describe('AI provider ecosystem cascade', () => {
       'openrouter',
       'together',
       'ollama-local',
+      'ollama-cloud',
       'azure-openai',
     ]) {
       assert.ok(ids.includes(need), need);

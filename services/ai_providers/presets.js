@@ -78,6 +78,14 @@ const PRESET_CATALOG = [
     tiles: ['writing', 'analysis', 'vision', 'audio'],
   },
   {
+    id: 'ollama-cloud',
+    name: 'Ollama Cloud',
+    base_url: 'https://ollama.com/v1',
+    model: 'gpt-oss:120b',
+    envKeys: ['OLLAMA_API_KEY'],
+    tiles: ['writing', 'analysis', 'vision', 'audio'],
+  },
+  {
     id: 'azure-openai',
     name: 'Azure OpenAI',
     base_url: 'https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT',
