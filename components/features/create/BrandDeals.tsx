@@ -340,6 +340,9 @@ export default function BrandDeals() {
     setSaveStatus(null);
     setSuggesting(null);
     setModalOpen(true);
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   }
 
   function openEdit(d: Deal) {
@@ -365,6 +368,9 @@ export default function BrandDeals() {
     setSaveStatus(null);
     setSuggesting(null);
     setModalOpen(true);
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   }
 
   async function suggestField(field: keyof DealForm, label: string) {
@@ -489,6 +495,454 @@ export default function BrandDeals() {
         ) : loading ? (
           <div style={{ textAlign: "center", padding: 32 }}>
             <span className="ig-spinner" />
+          </div>
+        ) : modalOpen ? (
+          <div
+            className="ig-card"
+            data-ig-no-enhance=""
+            style={{
+              borderRadius: IG.radius,
+              border: `1px solid ${IG.border}`,
+              boxShadow: IG.shadow,
+              overflow: "hidden",
+              background: IG.surface,
+              width: "100%",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: 16,
+                padding: "20px 22px 16px",
+                borderBottom: `1px solid ${IG.border}`,
+                background:
+                  "linear-gradient(135deg, rgba(15,118,110,0.08) 0%, rgba(2,132,199,0.06) 100%)",
+              }}
+            >
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    fontSize: "0.66rem",
+                    fontWeight: 800,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    color: IG.teal,
+                    marginBottom: 4,
+                  }}
+                >
+                  Brand deal pipeline
+                </div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "1.25rem",
+                    fontWeight: 800,
+                    color: IG.ink,
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  {editId ? "Edit deal" : "New brand deal"}
+                </h3>
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    fontSize: "0.86rem",
+                    color: IG.muted,
+                    lineHeight: 1.45,
+                    maxWidth: 560,
+                  }}
+                >
+                  Brand, commercial terms, and dates — scroll to complete every section,
+                  then create the deal.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setModalOpen(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: IG.radiusSm,
+                  border: `1px solid ${IG.border}`,
+                  background: IG.surface,
+                  color: IG.muted,
+                  fontSize: "1.2rem",
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: "18px 22px 8px" }}>
+              <section style={sectionStyle}>
+                <h4 style={sectionTitleStyle}>Brand & contact</h4>
+                <div style={{ marginBottom: 12 }}>
+                  <FieldLabel>Brand name *</FieldLabel>
+                  {(workspaceBrand || competitors.length > 0) && (
+                    <select
+                      data-ig-skip=""
+                      className="ig-select"
+                      style={{ ...inputStyle, marginBottom: 8, color: IG.teal, fontWeight: 600 }}
+                      defaultValue=""
+                      onChange={(e) => {
+                        if (e.target.value) setField("brand_name", e.target.value);
+                        e.target.value = "";
+                      }}
+                    >
+                      <option value="">Pick from your analysis…</option>
+                      {workspaceBrand && (
+                        <option value={workspaceBrand}>{workspaceBrand} (my brand)</option>
+                      )}
+                      {competitors.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <input
+                    data-ig-skip=""
+                    className="ig-input"
+                    style={inputStyle}
+                    value={form.brand_name}
+                    onChange={(e) => setField("brand_name", e.target.value)}
+                    placeholder="e.g. LUMI Skincare"
+                  />
+                  {(workspaceBrand || competitors.length > 0) && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                      {workspaceBrand && (
+                        <button
+                          type="button"
+                          style={{
+                            ...chipStyle,
+                            background: IG.soft,
+                            borderColor: "rgba(15,118,110,0.3)",
+                          }}
+                          onClick={() => setField("brand_name", workspaceBrand)}
+                        >
+                          My brand · {workspaceBrand}
+                        </button>
+                      )}
+                      {competitors.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          style={chipStyle}
+                          onClick={() => setField("brand_name", c)}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <FieldLabel
+                      action={
+                        <button
+                          type="button"
+                          style={suggestBtnStyle}
+                          disabled={suggesting === "contact_name"}
+                          onClick={() => suggestField("contact_name", "Contact Name")}
+                        >
+                          {suggesting === "contact_name" ? "…" : "Suggest"}
+                        </button>
+                      }
+                    >
+                      Contact name
+                    </FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      className="ig-input"
+                      style={inputStyle}
+                      value={form.contact_name}
+                      onChange={(e) => setField("contact_name", e.target.value)}
+                      placeholder="Sarah Lee"
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel
+                      action={
+                        <button
+                          type="button"
+                          style={suggestBtnStyle}
+                          disabled={suggesting === "contact_email"}
+                          onClick={() => suggestField("contact_email", "Contact Email")}
+                        >
+                          {suggesting === "contact_email" ? "…" : "Suggest"}
+                        </button>
+                      }
+                    >
+                      Contact email
+                    </FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      className="ig-input"
+                      style={inputStyle}
+                      type="email"
+                      value={form.contact_email}
+                      onChange={(e) => setField("contact_email", e.target.value)}
+                      placeholder="sarah@brand.com"
+                    />
+                  </div>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <FieldLabel
+                      action={
+                        <button
+                          type="button"
+                          style={suggestBtnStyle}
+                          disabled={suggesting === "product"}
+                          onClick={() => suggestField("product", "Product")}
+                        >
+                          {suggesting === "product" ? "…" : "Suggest"}
+                        </button>
+                      }
+                    >
+                      Product / offer
+                    </FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      className="ig-input"
+                      style={inputStyle}
+                      value={form.product}
+                      onChange={(e) => setField("product", e.target.value)}
+                      placeholder="Vitamin C Serum launch kit"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section style={sectionStyle}>
+                <h4 style={sectionTitleStyle}>Commercial terms</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <FieldLabel>Deal type</FieldLabel>
+                    <select
+                      data-ig-skip=""
+                      className="ig-select"
+                      style={inputStyle}
+                      value={form.deal_type}
+                      onChange={(e) => setField("deal_type", e.target.value)}
+                    >
+                      {DEAL_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t.replace(/_/g, " ")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <FieldLabel>Status</FieldLabel>
+                    <select
+                      data-ig-skip=""
+                      className="ig-select"
+                      style={inputStyle}
+                      value={form.status}
+                      onChange={(e) => setField("status", e.target.value)}
+                    >
+                      {STATUS_OPTS.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <FieldLabel>Offered rate ($)</FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      className="ig-input"
+                      style={inputStyle}
+                      type="number"
+                      value={form.offered_rate}
+                      onChange={(e) => setField("offered_rate", e.target.value)}
+                      placeholder="500"
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel>Negotiated rate ($)</FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      className="ig-input"
+                      style={inputStyle}
+                      type="number"
+                      value={form.negotiated_rate}
+                      onChange={(e) => setField("negotiated_rate", e.target.value)}
+                      placeholder="650"
+                    />
+                  </div>
+                  {personas.length > 0 && (
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <FieldLabel>Persona</FieldLabel>
+                      <select
+                        data-ig-skip=""
+                        className="ig-select"
+                        style={inputStyle}
+                        value={form.persona_id}
+                        onChange={(e) => setField("persona_id", e.target.value)}
+                      >
+                        <option value="">None</option>
+                        {personas.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section style={{ ...sectionStyle, marginBottom: 8 }}>
+                <h4 style={sectionTitleStyle}>Timeline & scope</h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                    marginBottom: 12,
+                  }}
+                >
+                  <div>
+                    <FieldLabel>Follow-up date</FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      className="ig-input"
+                      style={inputStyle}
+                      type="date"
+                      value={form.follow_up_date}
+                      onChange={(e) => setField("follow_up_date", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel>Deadline</FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      className="ig-input"
+                      style={inputStyle}
+                      type="date"
+                      value={form.deadline}
+                      onChange={(e) => setField("deadline", e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <FieldLabel
+                    action={
+                      <button
+                        type="button"
+                        style={suggestBtnStyle}
+                        disabled={suggesting === "deliverables"}
+                        onClick={() => suggestField("deliverables", "Deliverables")}
+                      >
+                        {suggesting === "deliverables" ? "…" : "Suggest"}
+                      </button>
+                    }
+                  >
+                    Deliverables
+                  </FieldLabel>
+                  <input
+                    data-ig-skip=""
+                    className="ig-input"
+                    style={inputStyle}
+                    value={form.deliverables}
+                    onChange={(e) => setField("deliverables", e.target.value)}
+                    placeholder="e.g. 2 Instagram posts, 1 Reel, 3 stories"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Notes</FieldLabel>
+                  <textarea
+                    data-ig-skip=""
+                    className="ig-textarea"
+                    style={{ ...inputStyle, minHeight: 88, resize: "vertical" }}
+                    rows={3}
+                    value={form.notes}
+                    onChange={(e) => setField("notes", e.target.value)}
+                    placeholder="Context, talking points, or negotiation history"
+                  />
+                </div>
+              </section>
+
+              {saveStatus && (
+                <div
+                  style={{
+                    marginBottom: 10,
+                    padding: "10px 12px",
+                    borderRadius: IG.radiusSm,
+                    fontSize: "0.84rem",
+                    fontWeight: 600,
+                    background: saveStatus.type === "error" ? "#FEF2F2" : IG.soft,
+                    color: saveStatus.type === "error" ? "#991B1B" : IG.teal,
+                    border:
+                      saveStatus.type === "error"
+                        ? "1px solid #FECACA"
+                        : "1px solid rgba(15,118,110,0.25)",
+                  }}
+                >
+                  {saveStatus.text}
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                justifyContent: "flex-end",
+                flexWrap: "wrap",
+                padding: "14px 22px 18px",
+                borderTop: `1px solid ${IG.border}`,
+                background: IG.panel2,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: IG.radiusSm,
+                  border: `1px solid ${IG.border}`,
+                  background: IG.surface,
+                  color: IG.muted,
+                  fontWeight: 700,
+                  fontSize: "0.86rem",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                Back to pipeline
+              </button>
+              <button
+                type="button"
+                onClick={save}
+                disabled={!form.brand_name.trim()}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: IG.radiusSm,
+                  border: "none",
+                  background: form.brand_name.trim() ? IG.grad : "#94A3B8",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: "0.86rem",
+                  cursor: form.brand_name.trim() ? "pointer" : "not-allowed",
+                  fontFamily: "inherit",
+                  boxShadow: form.brand_name.trim()
+                    ? "0 8px 18px rgba(15, 118, 110, 0.28)"
+                    : "none",
+                }}
+              >
+                {editId ? "Save changes" : "Create deal"}
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -837,474 +1291,6 @@ export default function BrandDeals() {
         )}
       </div>
 
-      {modalOpen && (
-        <div
-          className="ig-modal-overlay"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setModalOpen(false);
-          }}
-          style={{
-            background: "rgba(15, 23, 42, 0.45)",
-            backdropFilter: "blur(4px)",
-          }}
-        >
-          <div
-            className="ig-modal"
-            data-ig-no-enhance=""
-            style={{
-              maxWidth: 640,
-              width: "min(640px, calc(100vw - 28px))",
-              borderRadius: 16,
-              border: `1px solid ${IG.border}`,
-              boxShadow: "0 24px 64px rgba(11, 18, 32, 0.2)",
-              overflow: "hidden",
-              background: IG.surface,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                gap: 16,
-                padding: "18px 20px 14px",
-                borderBottom: `1px solid ${IG.border}`,
-                background:
-                  "linear-gradient(135deg, rgba(15,118,110,0.08) 0%, rgba(2,132,199,0.06) 100%)",
-              }}
-            >
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div
-                  style={{
-                    fontSize: "0.66rem",
-                    fontWeight: 800,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    color: IG.teal,
-                    marginBottom: 4,
-                  }}
-                >
-                  Brand deal pipeline
-                </div>
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: "1.2rem",
-                    fontWeight: 800,
-                    color: IG.ink,
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  {editId ? "Edit deal" : "New brand deal"}
-                </h3>
-                <p
-                  style={{
-                    margin: "6px 0 0",
-                    fontSize: "0.82rem",
-                    color: IG.muted,
-                    lineHeight: 1.45,
-                  }}
-                >
-                  Brand, commercial terms, and dates — ready for your kanban board.
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={() => setModalOpen(false)}
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: IG.radiusSm,
-                  border: `1px solid ${IG.border}`,
-                  background: IG.surface,
-                  color: IG.muted,
-                  fontSize: "1.15rem",
-                  lineHeight: 1,
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={{ padding: "14px 20px 6px", maxHeight: "68vh", overflowY: "auto" }}>
-              <section style={sectionStyle}>
-                <h4 style={sectionTitleStyle}>Brand & contact</h4>
-                <div style={{ marginBottom: 12 }}>
-                  <FieldLabel>Brand name *</FieldLabel>
-                  {(workspaceBrand || competitors.length > 0) && (
-                    <select
-                      data-ig-skip=""
-                      className="ig-select"
-                      style={{ ...inputStyle, marginBottom: 8, color: IG.teal, fontWeight: 600 }}
-                      defaultValue=""
-                      onChange={(e) => {
-                        if (e.target.value) setField("brand_name", e.target.value);
-                        e.target.value = "";
-                      }}
-                    >
-                      <option value="">Pick from your analysis…</option>
-                      {workspaceBrand && (
-                        <option value={workspaceBrand}>{workspaceBrand} (my brand)</option>
-                      )}
-                      {competitors.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <input
-                    data-ig-skip=""
-                    className="ig-input"
-                    style={inputStyle}
-                    value={form.brand_name}
-                    onChange={(e) => setField("brand_name", e.target.value)}
-                    placeholder="e.g. LUMI Skincare"
-                  />
-                  {(workspaceBrand || competitors.length > 0) && (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 6,
-                        marginTop: 8,
-                      }}
-                    >
-                      {workspaceBrand && (
-                        <button
-                          type="button"
-                          style={{
-                            ...chipStyle,
-                            background: IG.soft,
-                            borderColor: "rgba(15,118,110,0.3)",
-                          }}
-                          onClick={() => setField("brand_name", workspaceBrand)}
-                        >
-                          My brand · {workspaceBrand}
-                        </button>
-                      )}
-                      {competitors.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          style={chipStyle}
-                          onClick={() => setField("brand_name", c)}
-                        >
-                          {c}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                  }}
-                >
-                  <div>
-                    <FieldLabel
-                      action={
-                        <button
-                          type="button"
-                          style={suggestBtnStyle}
-                          disabled={suggesting === "contact_name"}
-                          onClick={() => suggestField("contact_name", "Contact Name")}
-                        >
-                          {suggesting === "contact_name" ? "…" : "Suggest"}
-                        </button>
-                      }
-                    >
-                      Contact name
-                    </FieldLabel>
-                    <input
-                      data-ig-skip=""
-                      style={inputStyle}
-                      value={form.contact_name}
-                      onChange={(e) => setField("contact_name", e.target.value)}
-                      placeholder="Sarah Lee"
-                    />
-                  </div>
-                  <div>
-                    <FieldLabel
-                      action={
-                        <button
-                          type="button"
-                          style={suggestBtnStyle}
-                          disabled={suggesting === "contact_email"}
-                          onClick={() => suggestField("contact_email", "Contact Email")}
-                        >
-                          {suggesting === "contact_email" ? "…" : "Suggest"}
-                        </button>
-                      }
-                    >
-                      Contact email
-                    </FieldLabel>
-                    <input
-                      data-ig-skip=""
-                      style={inputStyle}
-                      type="email"
-                      value={form.contact_email}
-                      onChange={(e) => setField("contact_email", e.target.value)}
-                      placeholder="sarah@brand.com"
-                    />
-                  </div>
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <FieldLabel
-                      action={
-                        <button
-                          type="button"
-                          style={suggestBtnStyle}
-                          disabled={suggesting === "product"}
-                          onClick={() => suggestField("product", "Product")}
-                        >
-                          {suggesting === "product" ? "…" : "Suggest"}
-                        </button>
-                      }
-                    >
-                      Product / offer
-                    </FieldLabel>
-                    <input
-                      data-ig-skip=""
-                      style={inputStyle}
-                      value={form.product}
-                      onChange={(e) => setField("product", e.target.value)}
-                      placeholder="Vitamin C Serum launch kit"
-                    />
-                  </div>
-                </div>
-              </section>
-
-              {/* Commercial terms */}
-              <section style={sectionStyle}>
-                <h4 style={sectionTitleStyle}>Commercial terms</h4>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                  }}
-                >
-                  <div>
-                    <FieldLabel>Deal type</FieldLabel>
-                    <select
-                      data-ig-skip=""
-                      style={inputStyle}
-                      value={form.deal_type}
-                      onChange={(e) => setField("deal_type", e.target.value)}
-                    >
-                      {DEAL_TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {t.replace(/_/g, " ")}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <FieldLabel>Status</FieldLabel>
-                    <select
-                      data-ig-skip=""
-                      style={inputStyle}
-                      value={form.status}
-                      onChange={(e) => setField("status", e.target.value)}
-                    >
-                      {STATUS_OPTS.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <FieldLabel>Offered rate ($)</FieldLabel>
-                    <input
-                      data-ig-skip=""
-                      style={inputStyle}
-                      type="number"
-                      value={form.offered_rate}
-                      onChange={(e) => setField("offered_rate", e.target.value)}
-                      placeholder="500"
-                    />
-                  </div>
-                  <div>
-                    <FieldLabel>Negotiated rate ($)</FieldLabel>
-                    <input
-                      data-ig-skip=""
-                      style={inputStyle}
-                      type="number"
-                      value={form.negotiated_rate}
-                      onChange={(e) => setField("negotiated_rate", e.target.value)}
-                      placeholder="650"
-                    />
-                  </div>
-                  {personas.length > 0 && (
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <FieldLabel>Persona</FieldLabel>
-                      <select
-                        data-ig-skip=""
-                        style={inputStyle}
-                        value={form.persona_id}
-                        onChange={(e) => setField("persona_id", e.target.value)}
-                      >
-                        <option value="">None</option>
-                        {personas.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              {/* Timeline & scope */}
-              <section style={{ ...sectionStyle, marginBottom: 8 }}>
-                <h4 style={sectionTitleStyle}>Timeline & scope</h4>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    marginBottom: 12,
-                  }}
-                >
-                  <div>
-                    <FieldLabel>Follow-up date</FieldLabel>
-                    <input
-                      data-ig-skip=""
-                      style={inputStyle}
-                      type="date"
-                      value={form.follow_up_date}
-                      onChange={(e) => setField("follow_up_date", e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <FieldLabel>Deadline</FieldLabel>
-                    <input
-                      data-ig-skip=""
-                      style={inputStyle}
-                      type="date"
-                      value={form.deadline}
-                      onChange={(e) => setField("deadline", e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <FieldLabel
-                    action={
-                      <button
-                        type="button"
-                        style={suggestBtnStyle}
-                        disabled={suggesting === "deliverables"}
-                        onClick={() => suggestField("deliverables", "Deliverables")}
-                      >
-                        {suggesting === "deliverables" ? "…" : "Suggest"}
-                      </button>
-                    }
-                  >
-                    Deliverables
-                  </FieldLabel>
-                  <input
-                    data-ig-skip=""
-                    style={inputStyle}
-                    value={form.deliverables}
-                    onChange={(e) => setField("deliverables", e.target.value)}
-                    placeholder="e.g. 2 Instagram posts, 1 Reel, 3 stories"
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Notes</FieldLabel>
-                  <textarea
-                    data-ig-skip=""
-                    style={{ ...inputStyle, minHeight: 72, resize: "vertical" }}
-                    rows={3}
-                    value={form.notes}
-                    onChange={(e) => setField("notes", e.target.value)}
-                    placeholder="Context, talking points, or negotiation history"
-                  />
-                </div>
-              </section>
-
-              {saveStatus && (
-                <div
-                  style={{
-                    marginBottom: 10,
-                    padding: "10px 12px",
-                    borderRadius: IG.radiusSm,
-                    fontSize: "0.84rem",
-                    fontWeight: 600,
-                    background: saveStatus.type === "error" ? "#FEF2F2" : IG.soft,
-                    color: saveStatus.type === "error" ? "#991B1B" : IG.teal,
-                    border:
-                      saveStatus.type === "error"
-                        ? "1px solid #FECACA"
-                        : "1px solid rgba(15,118,110,0.25)",
-                  }}
-                >
-                  {saveStatus.text}
-                </div>
-              )}
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                justifyContent: "flex-end",
-                padding: "14px 20px 16px",
-                borderTop: `1px solid ${IG.border}`,
-                background: IG.panel2,
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setModalOpen(false)}
-                style={{
-                  padding: "10px 16px",
-                  borderRadius: IG.radiusSm,
-                  border: `1px solid ${IG.border}`,
-                  background: IG.surface,
-                  color: IG.muted,
-                  fontWeight: 700,
-                  fontSize: "0.86rem",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={save}
-                disabled={!form.brand_name.trim()}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: IG.radiusSm,
-                  border: "none",
-                  background: form.brand_name.trim() ? IG.grad : "#94A3B8",
-                  color: "#fff",
-                  fontWeight: 800,
-                  fontSize: "0.86rem",
-                  cursor: form.brand_name.trim() ? "pointer" : "not-allowed",
-                  fontFamily: "inherit",
-                  boxShadow: form.brand_name.trim()
-                    ? "0 8px 18px rgba(15, 118, 110, 0.28)"
-                    : "none",
-                }}
-              >
-                {editId ? "Save changes" : "Create deal"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {pitchId != null && (
         <div
           className="ig-modal-overlay"
@@ -1312,21 +1298,29 @@ export default function BrandDeals() {
             if (e.target === e.currentTarget) setPitchId(null);
           }}
           style={{
-            background: "rgba(15, 23, 42, 0.45)",
-            backdropFilter: "blur(4px)",
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            padding: "32px 16px",
+            overflowY: "auto",
+            background: "rgba(11, 18, 32, 0.5)",
+            backdropFilter: "blur(6px)",
           }}
         >
           <div
             className="ig-modal"
             data-ig-no-enhance=""
             style={{
-              maxWidth: 600,
-              width: "min(600px, calc(100vw - 32px))",
-              borderRadius: 18,
-              border: "1px solid #D1DCF5",
-              boxShadow: "0 24px 60px rgba(15, 23, 42, 0.18)",
+              width: "min(640px, 100%)",
+              margin: "0 auto",
+              borderRadius: 16,
+              border: `1px solid ${IG.border}`,
+              boxShadow: "0 24px 64px rgba(11, 18, 32, 0.22)",
               overflow: "hidden",
-              background: "#fff",
+              background: IG.surface,
             }}
           >
             <div
@@ -1463,13 +1457,13 @@ export default function BrandDeals() {
                   padding: "10px 18px",
                   borderRadius: 10,
                   border: "none",
-                  background: "linear-gradient(135deg, #0050CC 0%, #0066FF 100%)",
+                  background: IG.grad,
                   color: "#fff",
                   fontWeight: 800,
                   fontSize: "0.88rem",
                   cursor: "pointer",
                   fontFamily: "inherit",
-                  boxShadow: "0 8px 20px rgba(0, 102, 255, 0.28)",
+                  boxShadow: "0 8px 18px rgba(15, 118, 110, 0.28)",
                 }}
               >
                 Generate pitch
