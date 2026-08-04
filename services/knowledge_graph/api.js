@@ -19,6 +19,10 @@ function _safe(h) {
     if (!res.headersSent) _err(res, 500, 'Internal server error');
   });
 }
+/** InfoGenie uses session `req.user` (not Passport `isAuthenticated`). */
+function _authed(req) {
+  return !!(req.user || req.apiKeyUser || req.viaApiKey);
+}
 
 function _openAIKey() {
   return process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
@@ -192,7 +196,7 @@ async function runMonthlyRollup() {
 
 // POST /api/knowledge-graph/ingest
 router.post('/ingest', _safe(async (req, res) => {
-  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  if (!_authed(req)) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:ingest' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -206,7 +210,7 @@ router.post('/ingest', _safe(async (req, res) => {
 
 // POST /api/knowledge-graph/query
 router.post('/query', _safe(async (req, res) => {
-  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  if (!_authed(req)) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:query' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -262,7 +266,7 @@ router.post('/query', _safe(async (req, res) => {
 
 // GET /api/knowledge-graph/nodes
 router.get('/nodes', _safe(async (req, res) => {
-  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  if (!_authed(req)) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:nodes' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -295,7 +299,7 @@ router.get('/nodes', _safe(async (req, res) => {
 
 // GET /api/knowledge-graph/health
 router.get('/health', _safe(async (req, res) => {
-  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  if (!_authed(req)) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:health' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -324,9 +328,9 @@ router.get('/health', _safe(async (req, res) => {
 
 // POST /api/knowledge-graph/rollup (admin/cron — owner only)
 router.post('/rollup', _safe(async (req, res) => {
-  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  if (!_authed(req)) return _err(res, 401, 'auth required');
   const user = req.user || req.apiKeyUser;
-  if (!user?.is_owner && !user?.is_admin) return _err(res, 403, 'owner or admin required');
+  if (!user?.isOwner && !user?.is_owner && !user?.is_admin) return _err(res, 403, 'owner or admin required');
   const result = await runMonthlyRollup();
   res.json({ ok: true, ...result });
 }));
