@@ -867,8 +867,8 @@ export default function AskInfoGenie() {
               </div>
 
               {mode === "boardroom" && (
-                <div style={{ background: '#eef4ff', borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: "0.75rem", color: "#94A3B8" }}>
-                  🏛️ <strong style={{ color: "#E2E8F0" }}>Boardroom mode</strong> — two AI passes: analyst answer + executive brief with key metrics, strategic implications, risks &amp; mitigants, and board actions with owners and timelines. Includes predictive intelligence signals.
+                <div style={{ background: "rgba(15, 118, 110, 0.08)", border: "1px solid rgba(15, 118, 110, 0.2)", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: "0.75rem", color: "#334155" }}>
+                  <strong style={{ color: "#0f766e" }}>Boardroom mode</strong> — two AI passes: analyst answer + executive brief with key metrics, strategic implications, risks &amp; mitigants, and board actions with owners and timelines. Includes predictive intelligence signals.
                 </div>
               )}
 
@@ -887,10 +887,25 @@ export default function AskInfoGenie() {
                   onClick={() => ask()}
                   disabled={asking}
                   style={{
-                    background: mode === "boardroom" ? "#0F172A" : "linear-gradient(135deg,#0066FF,#7C3AED)",
-                    color: "#0f172a", border: 0, padding: "11px 22px", borderRadius: 8, fontWeight: 800, cursor: asking ? "default" : "pointer", fontSize: "0.92rem",
+                    background:
+                      mode === "boardroom"
+                        ? "linear-gradient(135deg, #0f766e 0%, #0284c7 100%)"
+                        : "linear-gradient(135deg, #0f766e 0%, #0284c7 100%)",
+                    color: "#ffffff",
+                    WebkitTextFillColor: "#ffffff",
+                    border: 0,
+                    padding: "11px 22px",
+                    borderRadius: 8,
+                    fontWeight: 800,
+                    cursor: asking ? "default" : "pointer",
+                    fontSize: "0.92rem",
+                    opacity: asking ? 0.7 : 1,
+                    whiteSpace: "nowrap",
+                    boxShadow: "0 8px 18px rgba(15, 118, 110, 0.22)",
                   }}
-                >{asking ? "⏳" : mode === "boardroom" ? "Brief →" : "Ask →"}</button>
+                >
+                  {asking ? "…" : mode === "boardroom" ? "Brief →" : "Ask →"}
+                </button>
               </div>
 
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
