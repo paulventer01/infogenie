@@ -151,32 +151,90 @@ function RevenueChart({ data }: { data: MonthlyBreakdown[] }) {
   const worst = data.map(d => Number(d.worst) || 0);
   const allVals = [...best, ...exp, ...worst];
   const max = Math.max(...allVals, 1);
-  const W = 280, H = 100, PAD = 12;
-  const xs = data.map((_, i) => PAD + (i / Math.max(1, data.length - 1)) * (W - PAD * 2));
-  const ys = (vals: number[]) => vals.map(v => H - PAD - (v / max) * (H - PAD * 2));
+  // Extra right pad for end-value labels; bottom pad for month ticks.
+  const W = 320, H = 118, PAD_L = 10, PAD_R = 44, PAD_T = 14, PAD_B = 22;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+  const xs = data.map((_, i) => PAD_L + (i / Math.max(1, data.length - 1)) * plotW);
+  const yAt = (v: number) => PAD_T + plotH - (v / max) * plotH;
+  const ys = (vals: number[]) => vals.map(yAt);
   function polyline(vals: number[], stroke: string, dash?: string) {
-    const pts = xs.map((x, i) => `${x},${ys(vals)[i]}`).join(' ');
+    const pts = xs.map((x, i) => `${x},${ys(vals)[i]}`).join(" ");
     return <polyline points={pts} fill="none" stroke={stroke} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dash} />;
   }
-  const fmt = (v: number) => v >= 1000 ? `${Math.round(v / 1000)}k` : String(v);
+  const fmt = (v: number) => {
+    if (v >= 1000) {
+      const k = v / 1000;
+      return `$${k >= 10 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, "")}k`;
+    }
+    return `$${Math.round(v)}`;
+  };
+  // Spread end labels when series finish close together so they don't collide.
+  const endLabels = [
+    { key: "best", color: "#10B981", value: best[best.length - 1], y: yAt(best[best.length - 1]) },
+    { key: "exp", color: "#3B82F6", value: exp[exp.length - 1], y: yAt(exp[exp.length - 1]) },
+    { key: "worst", color: "#EF4444", value: worst[worst.length - 1], y: yAt(worst[worst.length - 1]) },
+  ].sort((a, b) => a.y - b.y);
+  const MIN_GAP = 13;
+  for (let i = 1; i < endLabels.length; i++) {
+    if (endLabels[i].y - endLabels[i - 1].y < MIN_GAP) {
+      endLabels[i].y = endLabels[i - 1].y + MIN_GAP;
+    }
+  }
+  // Keep nudged labels inside the SVG.
+  const maxY = H - PAD_B + 2;
+  for (let i = endLabels.length - 1; i >= 0; i--) {
+    if (endLabels[i].y > maxY) endLabels[i].y = maxY - (endLabels.length - 1 - i) * MIN_GAP;
+    if (endLabels[i].y < PAD_T) endLabels[i].y = PAD_T + i * MIN_GAP;
+  }
+  const labelX = xs[xs.length - 1] + 8;
+  const monthLabel = (raw: string, i: number) => {
+    const s = String(raw || "").trim();
+    if (!s || /^month$/i.test(s)) return `M${i + 1}`;
+    if (/^month\s*\d+/i.test(s)) return s.replace(/month\s*/i, "M");
+    return s.length > 8 ? `${s.slice(0, 7)}…` : s;
+  };
   return (
-    <div style={{ marginTop: 4 }}>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+    <div style={{ marginTop: 4, overflow: "visible" }}>
+      <svg
+        width={W}
+        height={H}
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ width: "100%", height: "auto", display: "block", overflow: "visible" }}
+      >
         {polyline(best, "#10B981")}
         {polyline(exp, "#3B82F6")}
         {polyline(worst, "#EF4444", "4 3")}
         {xs.map((x, i) => (
           <g key={i}>
             <circle cx={x} cy={ys(exp)[i]} r={3} fill="#3B82F6" />
-            <text x={x} y={H - 1} textAnchor="middle" fontSize={9} fill="var(--text-muted,#9CA3AF)">{data[i].month as string}</text>
+            <text
+              x={x}
+              y={H - 6}
+              textAnchor={i === 0 ? "start" : i === xs.length - 1 ? "end" : "middle"}
+              fontSize={9}
+              fill="var(--text-muted,#9CA3AF)"
+            >
+              {monthLabel(String(data[i].month ?? ""), i)}
+            </text>
           </g>
         ))}
-        <text x={xs[xs.length-1] + 4} y={ys(best)[best.length-1]} fontSize={9} fill="#10B981" textAnchor="start">{fmt(best[best.length-1])}</text>
-        <text x={xs[xs.length-1] + 4} y={ys(exp)[exp.length-1]} fontSize={9} fill="#3B82F6" textAnchor="start">{fmt(exp[exp.length-1])}</text>
-        <text x={xs[xs.length-1] + 4} y={ys(worst)[worst.length-1]} fontSize={9} fill="#EF4444" textAnchor="start">{fmt(worst[worst.length-1])}</text>
+        {endLabels.map((l) => (
+          <text
+            key={l.key}
+            x={labelX}
+            y={l.y + 3}
+            fontSize={9}
+            fontWeight={700}
+            fill={l.color}
+            textAnchor="start"
+          >
+            {fmt(l.value)}
+          </text>
+        ))}
       </svg>
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 4 }}>
-        {[["#10B981","Best"], ["#3B82F6","Expected"], ["#EF4444","Worst"]].map(([c, l]) => (
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 6 }}>
+        {([["#10B981", "Best"], ["#3B82F6", "Expected"], ["#EF4444", "Worst"]] as const).map(([c, l]) => (
           <span key={l} style={{ fontSize: ".7rem", display: "flex", alignItems: "center", gap: 4, color: "var(--text-muted,#6B7280)" }}>
             <span style={{ width: 18, height: 2, background: c, display: "inline-block", borderRadius: 2 }} />{l}
           </span>
