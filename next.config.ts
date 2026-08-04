@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
   // Next 15 blocks /_next/* and the app appears blank after login.
   allowedDevOrigins: [
     "*.trycloudflare.com",
+    "musician-dust-dealtime-ignored.trycloudflare.com",
     "thompson-attorney-themes-settled.trycloudflare.com",
     "change-ranking-reprints-previous.trycloudflare.com",
     "beast-vermont-graphical-nation.trycloudflare.com",
