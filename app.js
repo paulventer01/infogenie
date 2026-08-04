@@ -1069,6 +1069,9 @@ window.openWpCredentialsModal = function(afterSave) {
   }
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
+  modal.style.alignItems = 'flex-start';
+  modal.style.paddingTop = '72px';
+  modal.style.justifyContent = 'center';
 };
 
 window.closeWpCredentialsModal = function() {

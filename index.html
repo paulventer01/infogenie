@@ -1562,14 +1562,14 @@
 </style>
 
 <!-- ══ WORDPRESS CREDENTIALS MODAL ══════════════════════════════════════════ -->
-<div id="wpCredentialsModal" class="hidden" style="position:fixed;inset:0;z-index:11000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:20px">
-  <div style="background:white;border-radius:18px;width:100%;max-width:480px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-    <div style="background:linear-gradient(135deg,#0066FF,#0A1628);padding:22px 26px;display:flex;align-items:center;justify-content:space-between">
+<div id="wpCredentialsModal" class="hidden" data-ig-no-enhance style="position:fixed;inset:0;z-index:11000;display:flex;align-items:flex-start;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:72px 20px 24px;overflow-y:auto">
+  <div class="wp-cred-dialog" style="background:white;border-radius:18px;width:100%;max-width:480px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3);margin-top:0">
+    <div class="wp-cred-header" style="background:linear-gradient(135deg,#0066FF,#0A1628);padding:22px 26px;display:flex;align-items:center;justify-content:space-between">
       <div>
-        <div style="font-size:1rem;font-weight:800;color:white;font-family:'Sora',sans-serif;margin-bottom:3px">🟦 Connect WordPress</div>
-        <div style="font-size:0.75rem;color:rgba(255,255,255,.55)">Publish AI landing pages directly to your WordPress site</div>
+        <div class="wp-cred-title" style="font-size:1rem;font-weight:800;color:#ffffff;font-family:'Sora',sans-serif;margin-bottom:3px">🟦 Connect WordPress</div>
+        <div class="wp-cred-sub" style="font-size:0.75rem;color:rgba(255,255,255,.88);line-height:1.4">Publish AI landing pages directly to your WordPress site</div>
       </div>
-      <button onclick="closeWpCredentialsModal()" style="width:30px;height:30px;background:rgba(255,255,255,.1);border:none;border-radius:8px;color:white;font-size:1rem;cursor:pointer">✕</button>
+      <button type="button" onclick="closeWpCredentialsModal()" aria-label="Close" style="width:30px;height:30px;background:rgba(255,255,255,.1);border:none;border-radius:8px;color:#ffffff;font-size:1rem;cursor:pointer;flex-shrink:0">✕</button>
     </div>
     <div style="padding:24px 26px;display:flex;flex-direction:column;gap:14px">
       <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;font-size:0.78rem;color:#1D4ED8;line-height:1.5">
@@ -1589,8 +1589,8 @@
         <input id="wp-app-password" type="password" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.84rem;outline:none;font-family:'Inter',sans-serif;letter-spacing:.05em" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
       </div>
       <div style="display:flex;gap:10px;margin-top:4px">
-        <button onclick="closeWpCredentialsModal()" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:9px;font-size:0.84rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
-        <button onclick="saveWpCredentials()" style="flex:2;padding:11px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:9px;font-size:0.84rem;font-weight:700;color:white;cursor:pointer">🟦 Connect &amp; Save</button>
+        <button type="button" onclick="closeWpCredentialsModal()" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:9px;font-size:0.84rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
+        <button type="button" onclick="saveWpCredentials()" style="flex:2;padding:11px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:9px;font-size:0.84rem;font-weight:700;color:white;cursor:pointer">🟦 Connect &amp; Save</button>
       </div>
     </div>
   </div>

@@ -8691,3 +8691,32 @@ body:has(#ig-app-shell) [data-bp-hero] button.btn-primary {
   background: linear-gradient(135deg, #0066FF, #00C9C8) !important;
   color: #FFFFFF !important;
 }
+
+/* ── Connect WordPress modal — keep header text white on dark gradient ─────
+   Light-mode universal sweeps flip color:white / rgba(255,…) to dark ink when
+   the element itself has no background. The WP modal puts the gradient on the
+   parent header, so title/subtitle were rendered dark-on-navy (invisible). */
+#wpCredentialsModal .wp-cred-header,
+#wpCredentialsModal .wp-cred-header *,
+[data-theme="light"] #wpCredentialsModal .wp-cred-header,
+[data-theme="light"] #wpCredentialsModal .wp-cred-header *,
+body:has(#ig-app-shell) #wpCredentialsModal .wp-cred-header,
+body:has(#ig-app-shell) #wpCredentialsModal .wp-cred-header * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+#wpCredentialsModal .wp-cred-sub,
+[data-theme="light"] #wpCredentialsModal .wp-cred-sub,
+body:has(#ig-app-shell) #wpCredentialsModal .wp-cred-sub {
+  color: rgba(255, 255, 255, 0.88) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.88) !important;
+}
+/* Sit the dialog in the upper viewport (not vertically centered / low). */
+#wpCredentialsModal:not(.hidden) {
+  align-items: flex-start !important;
+  padding-top: 72px !important;
+  padding-bottom: 24px !important;
+  overflow-y: auto !important;
+}

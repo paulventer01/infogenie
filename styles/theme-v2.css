@@ -930,3 +930,18 @@ html[data-theme="dark"] body:has(#ig-app-shell) .ac-cmd-stat {
 html[data-theme="dark"] body:has(#ig-app-shell) .ac-cmd-stat-label {
   color: #94a3b8 !important;
 }
+
+/* Connect WordPress modal — preserve light text on dark header chrome */
+body:has(#ig-app-shell) #wpCredentialsModal .wp-cred-header,
+body:has(#ig-app-shell) #wpCredentialsModal .wp-cred-header * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+body:has(#ig-app-shell) #wpCredentialsModal .wp-cred-sub {
+  color: rgba(255, 255, 255, 0.88) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.88) !important;
+}
+body:has(#ig-app-shell) #wpCredentialsModal:not(.hidden) {
+  align-items: flex-start !important;
+  padding-top: 72px !important;
+}
