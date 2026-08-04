@@ -312,6 +312,15 @@ router.get('/models', async (req, res) => {
     let tid = null;
     try { tid = await _tenantCtx.resolveTenantId(req, { label: 'model-compare:models' }); } catch { /* guest */ }
     const byo = await _loadByo(tid);
+    // Dedupe identical name+model BYO rows (e.g. double-added Ollama).
+    const seenByo = new Set();
+    const byoUnique = [];
+    for (const row of byo) {
+      const key = `${String(row.name || '').toLowerCase()}|${String(row.model || '').toLowerCase()}|${String(row.base_url || '').toLowerCase()}`;
+      if (seenByo.has(key)) continue;
+      seenByo.add(key);
+      byoUnique.push(row);
+    }
     const builtIn = Object.entries(MODELS).map(([id, m]) => ({
       id,
       label: m.label,
@@ -322,7 +331,7 @@ router.get('/models', async (req, res) => {
       hint: _providerAvailable(m) ? 'Ready' : 'Add API key in Settings or AI Providers',
     }));
     // Prefer unique BYO rows; keep built-ins even if a BYO mirrors the same model.
-    const models = [...byo.map(_byoAsModel), ...builtIn];
+    const models = [...byoUnique.map(_byoAsModel), ...builtIn];
     const available_count = models.filter((m) => m.available).length;
     res.json({
       ok: true,
