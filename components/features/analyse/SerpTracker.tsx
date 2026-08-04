@@ -84,6 +84,15 @@ const COUNTRIES: [string, string][] = [
   ["global", "🌐 Global"],
 ];
 
+const COUNTRY_LABEL: Record<string, string> = Object.fromEntries(COUNTRIES);
+
+/** Display label for a stored country code (heals legacy "globa" truncation). */
+function countryLabel(code: string | null | undefined): string {
+  const raw = String(code || "us").toLowerCase().trim();
+  const key = raw === "globa" ? "global" : raw;
+  return COUNTRY_LABEL[key] || raw.toUpperCase();
+}
+
 function getAnalysisData(): AnalysisData {
   if (typeof window === "undefined") return {};
   return (window as unknown as { analysisData?: AnalysisData }).analysisData || {};
@@ -484,13 +493,13 @@ export default function SerpTracker() {
                       <td
                         style={{
                           padding: "9px 12px",
-                          color: "#6B7280",
-                          textTransform: "uppercase",
-                          fontSize: "0.74rem",
-                          fontWeight: 700,
+                          color: "#374151",
+                          fontSize: "0.82rem",
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
                         }}
                       >
-                        {k.country}
+                        {countryLabel(k.country)}
                       </td>
                       <td style={{ padding: "9px 12px" }}>
                         <span
