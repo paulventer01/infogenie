@@ -1519,7 +1519,7 @@ function PresentationModal({ ctx, onClose }: { ctx: StudioCtx; onClose: () => vo
               <button
                 onClick={downloadPptx}
                 style={{
-                  background: '#eef4ff',
+                  background: 'linear-gradient(135deg,#0f766e,#0284c7)',
                   color: "white",
                   border: 0,
                   padding: "10px 16px",

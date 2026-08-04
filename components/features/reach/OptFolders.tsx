@@ -1007,7 +1007,7 @@ export default function OptFolders() {
               onClick={runOptFolders}
               disabled={loading}
               style={{
-                background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+                background: "linear-gradient(135deg,#0f766e,#0284c7)",
                 color: "white",
                 border: "none",
                 padding: "11px 24px",

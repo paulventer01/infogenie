@@ -1028,7 +1028,7 @@ Rules:
                 style={{
                   width: "100%",
                   padding: 11,
-                  background: '#eef4ff',
+                  background: 'linear-gradient(135deg,#0f766e,#0284c7)',
                   border: "none",
                   borderRadius: 10,
                   fontSize: "0.82rem",

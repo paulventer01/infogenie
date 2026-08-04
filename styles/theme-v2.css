@@ -945,3 +945,49 @@ body:has(#ig-app-shell) #wpCredentialsModal:not(.hidden) {
   align-items: flex-start !important;
   padding-top: 72px !important;
 }
+
+/* ── Contrast safety net: never keep white labels on light CTA fills ─────────
+   Pastel hero gradient (#e8f6f3…) was reused as primary button backgrounds
+   while color stayed white → invisible Save / Run / Generate labels. */
+body:has(#ig-app-shell) button[style*="#e8f6f3"],
+body:has(#ig-app-shell) button[style*="#eaf2fb"],
+body:has(#ig-app-shell) button[style*="#eef4ff"],
+body:has(#ig-app-shell) [role="button"][style*="#e8f6f3"],
+body:has(#ig-app-shell) [role="button"][style*="#eef4ff"] {
+  background: linear-gradient(135deg, #0f766e, #0284c7) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border-color: transparent !important;
+}
+
+/* Glass/white-on-white buttons left over from dark-header designs */
+body:has(#ig-app-shell) button[style*="background:rgba(255,255,255,0."][style*="color:#fff"],
+body:has(#ig-app-shell) button[style*="background:rgba(255,255,255,0."][style*="color: #fff"],
+body:has(#ig-app-shell) button[style*="background:rgba(255,255,255,0."][style*="color:white"],
+body:has(#ig-app-shell) button[style*="background: rgba(255,255,255,0."][style*="color:#fff"],
+body:has(#ig-app-shell) button[style*="background: rgba(255,255,255,0."][style*="color:white"] {
+  background: linear-gradient(135deg, #0f766e, #0284c7) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border: none !important;
+}
+
+/* Lightened former-dark heroes: keep CTA buttons teal+white, not white-on-pastel */
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0F172A"] button,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0f172a"] button,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0A1628"] button,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#0a1628"] button,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#1E1B4B"] button,
+body:has(#ig-app-shell) [style*="linear-gradient(135deg,#312E81"] button {
+  background: linear-gradient(135deg, #0f766e, #0284c7) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border: none !important;
+}
+
+/* Light hero shells must keep dark ink for body copy (buttons exempt via rules above) */
+body:has(#ig-app-shell) [style*="#e8f6f3"]:not(button):not([role="button"]),
+body:has(#ig-app-shell) [style*="#eaf2fb"]:not(button):not([role="button"]),
+body:has(#ig-app-shell) [style*="#eef4ff"]:not(button):not([role="button"]) {
+  color: var(--ig-hero-ink, #0f172a);
+}

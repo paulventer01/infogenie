@@ -177,7 +177,7 @@ export default function ProductLibrary() {
               <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "0.88rem" }}>{selectedId ? "Edit Product" : "New Product"}</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => { setEditing(null); setSelectedId(null); }} style={{ padding: "5px 14px", background: "#F3F4F6", border: "1px solid #E5E7EB", borderRadius: 8, fontSize: "0.75rem", cursor: "pointer" }}>Cancel</button>
-                <button onClick={save} disabled={saving} style={{ padding: "5px 14px", background: saving ? "#F3F4F6" : "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 8, color: saving ? "#9CA3AF" : "#fff", fontWeight: 700, fontSize: "0.75rem", cursor: saving ? "not-allowed" : "pointer" }}>
+                <button onClick={save} disabled={saving} style={{ padding: "5px 14px", background: saving ? "#E5E7EB" : "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 8, color: saving ? "#6B7280" : "#fff", fontWeight: 700, fontSize: "0.75rem", cursor: saving ? "not-allowed" : "pointer", boxShadow: saving ? "none" : "0 4px 12px rgba(15,118,110,0.22)" }}>
                   {saving ? "Saving…" : "Save Product"}
                 </button>
               </div>

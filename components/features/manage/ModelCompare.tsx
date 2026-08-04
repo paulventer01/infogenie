@@ -3,7 +3,7 @@
 // Model Comparison — run a prompt across platform + BYO AI Providers models.
 // API: GET /api/model-compare/models, POST /api/model-compare/run
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
@@ -129,8 +129,8 @@ function FieldLabel({
   children,
   action,
 }: {
-  children: React.ReactNode;
-  action?: React.ReactNode;
+  children: ReactNode;
+  action?: ReactNode;
 }) {
   return (
     <div

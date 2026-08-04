@@ -1027,7 +1027,7 @@ ${ctx.domain || "yourdomain.com"}`;
               disabled={genLoading}
               style={{
                 padding: "9px 18px",
-                background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+                background: "linear-gradient(135deg,#0f766e,#0284c7)",
                 border: "none",
                 borderRadius: 9,
                 fontSize: "0.78rem",
@@ -1173,7 +1173,7 @@ ${ctx.domain || "yourdomain.com"}`;
           onClick={generateArticleTopics}
           style={{
             padding: "12px 28px",
-            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+            background: "linear-gradient(135deg,#0f766e,#0284c7)",
             border: "none",
             borderRadius: 10,
             fontSize: "0.88rem",
@@ -2136,7 +2136,7 @@ ${ctx.domain || "yourdomain.com"}`;
             onClick={addKeywordsToCalendar}
             style={{
               padding: "8px 16px",
-              background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               border: "none",
               borderRadius: 8,
               fontSize: "0.75rem",
@@ -3046,7 +3046,7 @@ ${ctx.domain || "yourdomain.com"}`;
                 setEditIdx(null);
                 publishSingleArticle(idx);
               }}
-              style={{ padding: "10px 14px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 9, fontSize: "0.82rem", fontWeight: 700, color: "white", cursor: "pointer" }}
+              style={{ padding: "10px 14px", background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 9, fontSize: "0.82rem", fontWeight: 700, color: "white", cursor: "pointer" }}
             >
               🚀 Publish Now
             </button>
@@ -3227,7 +3227,7 @@ ${ctx.domain || "yourdomain.com"}`;
             <button
               onClick={() => runArticleFactCheck(idx)}
               disabled={factChecking}
-              style={{ padding: "8px 16px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 8, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: factChecking ? "not-allowed" : "pointer" }}
+              style={{ padding: "8px 16px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 8, fontSize: "0.78rem", fontWeight: 700, color: "#0f172a", cursor: factChecking ? "not-allowed" : "pointer" }}
             >
               {factChecking ? "⏳ Scraping & checking…" : fc ? "🔄 Re-check Facts" : "🔍 Check Facts"}
             </button>
@@ -3246,7 +3246,7 @@ ${ctx.domain || "yourdomain.com"}`;
                   setPreviewIdx(null);
                   publishSingleArticle(idx);
                 }}
-                style={{ padding: "8px 16px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 8, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}
+                style={{ padding: "8px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 8, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}
               >
                 🟦 Publish to WP
               </button>

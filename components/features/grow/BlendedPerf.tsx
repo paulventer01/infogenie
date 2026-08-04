@@ -319,7 +319,7 @@ export default function BlendedPerf() {
               "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
             borderRadius: 18,
             padding: "28px 32px",
-            color: "white",
+            color: "#0f172a",
             marginBottom: 22,
             boxShadow: "0 8px 28px rgba(15,23,42,.35)",
           }}

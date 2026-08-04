@@ -10925,7 +10925,7 @@ window._safeUrl = function(u) {
                     <div style="font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.85">Day ${d.day} · Lead: ${officerEmoji[d.officer]||''} ${_e(d.officer)}</div>
                     <div style="font-size:1.05rem;font-weight:800;margin-top:4px">${_e(d.title)}</div>
                   </div>
-                  <button data-pb-runday="${d.day}" title="Assign just this day's steps to officers" style="padding:7px 11px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:7px;font-weight:700;cursor:pointer;font-size:.72rem;white-space:nowrap">▶ Run Day ${d.day}</button>
+                  <button data-pb-runday="${d.day}" title="Assign just this day's steps to officers" style="padding:7px 11px;background:linear-gradient(135deg,#0f766e,#0284c7);border:none;color:#fff;border-radius:7px;font-weight:700;cursor:pointer;font-size:.72rem;white-space:nowrap;box-shadow:0 4px 12px rgba(15,118,110,.25)">▶ Run Day ${d.day}</button>
                 </div>
                 <div style="font-size:.78rem;opacity:.9;margin-top:6px;line-height:1.4">${_e(d.objective)}</div>
                 <div style="font-size:.7rem;opacity:.85;margin-top:6px">${dayDone}/${d.steps.length} steps done</div>

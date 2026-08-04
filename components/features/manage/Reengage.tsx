@@ -919,7 +919,7 @@ export default function Reengage() {
                     <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
                       <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" style={{ flex: 1, minWidth: 90, padding: "7px 10px", border: "1px solid #E5E7EB", borderRadius: 7, fontSize: "0.74rem" }} />
                       <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@example.com" style={{ flex: 2, minWidth: 140, padding: "7px 10px", border: "1px solid #E5E7EB", borderRadius: 7, fontSize: "0.74rem" }} />
-                      <button onClick={addRealContact} style={{ background: '#eef4ff', color: "white", border: "none", borderRadius: 7, padding: "7px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>+ Add</button>
+                      <button onClick={addRealContact} style={{ background: 'linear-gradient(135deg,#0f766e,#0284c7)', color: "white", border: "none", borderRadius: 7, padding: "7px 14px", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>+ Add</button>
                     </div>
                     <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, fontSize: "0.72rem", color: "#374151", cursor: "pointer" }}>
                       <input type="checkbox" checked={dryRun} onChange={(e) => toggleDripDryRun(e.target.checked)} />

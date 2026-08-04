@@ -482,7 +482,7 @@ function Hero({ summary }: { summary: Summary | null }) {
           "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         borderRadius: 18,
         padding: "28px 32px",
-        color: "white",
+        color: "#0f172a",
         boxShadow: "0 8px 28px rgba(6,78,59,.35)",
       }}
     >

@@ -266,7 +266,7 @@ function ChannelsView({ j }: { j: OverviewData }) {
             "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderRadius: 18,
           padding: 30,
-          color: "white",
+          color: "#0f172a",
           marginBottom: 22,
           boxShadow: "0 8px 28px rgba(67,56,202,.28)",
         }}
@@ -787,7 +787,7 @@ function CohortsView({ j }: { j: CohortData }) {
             "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderRadius: 18,
           padding: 24,
-          color: "white",
+          color: "#0f172a",
           marginBottom: 18,
         }}
       >
@@ -1171,7 +1171,7 @@ function ForecastView({ j }: { j: ForecastData }) {
             "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderRadius: 18,
           padding: 24,
-          color: "white",
+          color: "#0f172a",
           marginBottom: 18,
         }}
       >

@@ -667,7 +667,7 @@ function ClustersTab({
           <button onClick={onSuggest} disabled={suggestBusy} style={{ padding: "11px 16px", background: "white", border: "1.5px solid #059669", borderRadius: 10, fontSize: "0.82rem", fontWeight: 700, color: "#059669", cursor: "pointer", whiteSpace: "nowrap", opacity: suggestBusy ? 0.7 : 1 }}>
             {suggestBusy ? "⏳ Drafting…" : "✨ Suggest Topics"}
           </button>
-          <button onClick={onGenerate} disabled={building} style={{ padding: "11px 22px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 10, fontSize: "0.85rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap" }}>
+          <button onClick={onGenerate} disabled={building} style={{ padding: "11px 22px", background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 10, fontSize: "0.85rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap" }}>
             {building ? "⏳ Building…" : "🧩 Build Cluster"}
           </button>
         </div>
@@ -761,7 +761,7 @@ function GapsTab({
           <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1rem", fontWeight: 800, color: "#0A1628" }}>🔍 Content Gap Analysis</div>
           <div style={{ fontSize: "0.78rem", color: "#6B7280", marginTop: 3 }}>Pages your competitors rank for and AI engines cite — but you&apos;re missing or underperforming on</div>
         </div>
-        <button onClick={onGenerateAll} style={{ padding: "9px 18px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>🧩 Generate Clusters for All Gaps</button>
+        <button onClick={onGenerateAll} style={{ padding: "9px 18px", background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>🧩 Generate Clusters for All Gaps</button>
       </div>
       <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr auto", padding: "10px 16px", background: "#F9FAFB", borderBottom: "1px solid #E5E7EB", fontSize: "0.65rem", fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".05em" }}>
@@ -827,7 +827,7 @@ function AuditTab({
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={() => onRunLighthouse("mobile")} disabled={lhRunning} style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0F766E,#14B8A6)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>⚡ Lighthouse (mobile)</button>
-          <button onClick={onRunAudit} disabled={auditRunning} style={{ padding: "9px 18px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{auditRunning ? "⏳ Auditing…" : "⚡ Run Full Audit"}</button>
+          <button onClick={onRunAudit} disabled={auditRunning} style={{ padding: "9px 18px", background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{auditRunning ? "⏳ Auditing…" : "⚡ Run Full Audit"}</button>
         </div>
       </div>
 

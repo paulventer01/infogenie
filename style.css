@@ -8720,3 +8720,12 @@ body:has(#ig-app-shell) #wpCredentialsModal .wp-cred-sub {
   padding-bottom: 24px !important;
   overflow-y: auto !important;
 }
+
+/* ── Global CTA contrast safety (white text on pastel fills) ──────────────── */
+button[style*="#e8f6f3"],
+button[style*="#eaf2fb"],
+button[style*="#eef4ff"] {
+  background: linear-gradient(135deg, #0f766e, #0284c7) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}

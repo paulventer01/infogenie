@@ -518,14 +518,15 @@ export default function Playbook7Day() {
                       onClick={() => runAutonomous(d.day)}
                       style={{
                         padding: "7px 11px",
-                        background: "rgba(255,255,255,0.18)",
-                        border: "1px solid rgba(255,255,255,0.3)",
+                        background: "linear-gradient(135deg,#0f766e,#0284c7)",
+                        border: "none",
                         color: "#fff",
                         borderRadius: 7,
                         fontWeight: 700,
                         cursor: "pointer",
                         fontSize: ".72rem",
                         whiteSpace: "nowrap",
+                        boxShadow: "0 4px 12px rgba(15,118,110,0.25)",
                       }}
                     >
                       ▶ Run Day {d.day}
