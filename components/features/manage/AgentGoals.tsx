@@ -123,18 +123,44 @@ function fmtDate(s?: string | null): string {
   }
 }
 
+const suggestBtnStyle: CSSProperties = {
+  border: `1px solid rgba(15, 118, 110, 0.25)`,
+  background: IG.soft,
+  color: IG.teal,
+  borderRadius: 8,
+  padding: "3px 9px",
+  fontSize: "0.68rem",
+  fontWeight: 700,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  lineHeight: 1.3,
+  whiteSpace: "nowrap",
+};
+
 function FieldLabel({
   children,
   hint,
+  action,
 }: {
   children: ReactNode;
   hint?: string;
+  action?: ReactNode;
 }) {
   return (
     <div style={{ marginBottom: 6 }}>
-      <label style={{ ...labelStyle, marginBottom: hint ? 2 : 0 }}>
-        {children}
-      </label>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          minHeight: 22,
+          marginBottom: hint ? 2 : 0,
+        }}
+      >
+        <label style={{ ...labelStyle, marginBottom: 0 }}>{children}</label>
+        {action}
+      </div>
       {hint ? (
         <div style={{ fontSize: "0.72rem", color: IG.muted, lineHeight: 1.35 }}>
           {hint}
@@ -143,6 +169,55 @@ function FieldLabel({
     </div>
   );
 }
+
+interface AnalysisData {
+  brandName?: string;
+  brand?: string;
+  companyName?: string;
+  url?: string;
+  domain?: string;
+  industry?: string | { name?: string };
+  competitors?: (string | { name?: string; brand?: string; domain?: string })[];
+}
+
+function readAnalysis(): AnalysisData {
+  return (window as unknown as { analysisData?: AnalysisData }).analysisData || {};
+}
+
+function analysisBrand(): string {
+  const a = readAnalysis();
+  const direct = a.brandName || a.brand || a.companyName;
+  if (direct) return String(direct).trim();
+  const dom = String(a.url || a.domain || "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .split("/")[0]
+    .split(".")[0]
+    .trim();
+  if (!dom) return "";
+  return dom.charAt(0).toUpperCase() + dom.slice(1);
+}
+
+function analysisIndustry(): string {
+  const a = readAnalysis();
+  if (!a.industry) return "";
+  return typeof a.industry === "string" ? a.industry : a.industry.name || "";
+}
+
+function analysisCompetitors(): string[] {
+  const a = readAnalysis();
+  return (a.competitors || [])
+    .map((c) =>
+      typeof c === "string"
+        ? c
+        : String(c?.name || c?.brand || c?.domain || "").trim(),
+    )
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+type SuggestField = "title" | "description" | "criteria";
+
 
 function PrimaryBtn({
   children,
@@ -275,6 +350,10 @@ export default function AgentGoals() {
   const [formMsg, setFormMsg] = useState<{ text: string; kind: "info" | "error" } | null>(
     null,
   );
+  const [suggesting, setSuggesting] = useState<SuggestField | null>(null);
+  const [workspaceBrand, setWorkspaceBrand] = useState("");
+  const [workspaceIndustry, setWorkspaceIndustry] = useState("");
+  const [competitors, setCompetitors] = useState<string[]>([]);
 
   async function load() {
     setLoadError(false);
@@ -297,8 +376,20 @@ export default function AgentGoals() {
       }
       setGoals(data.goals || []);
     })();
+    setWorkspaceBrand(analysisBrand());
+    setWorkspaceIndustry(analysisIndustry());
+    setCompetitors(analysisCompetitors());
+    const refresh = () => {
+      setWorkspaceBrand(analysisBrand());
+      setWorkspaceIndustry(analysisIndustry());
+      setCompetitors(analysisCompetitors());
+    };
+    window.addEventListener("ig:analysis-updated", refresh);
+    window.addEventListener("ig:analysis-ready", refresh);
     return () => {
       cancelled = true;
+      window.removeEventListener("ig:analysis-updated", refresh);
+      window.removeEventListener("ig:analysis-ready", refresh);
     };
   }, []);
 
@@ -308,12 +399,79 @@ export default function AgentGoals() {
     setMCriteria("");
     setMDeadline("");
     setFormMsg(null);
+    setSuggesting(null);
+    setWorkspaceBrand(analysisBrand());
+    setWorkspaceIndustry(analysisIndustry());
+    setCompetitors(analysisCompetitors());
     setShowForm(true);
     requestAnimationFrame(() => {
       document
         .getElementById("ig-goal-form")
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+  }
+
+  async function suggestField(field: SuggestField) {
+    setSuggesting(field);
+    setFormMsg(null);
+    const prompts: Record<SuggestField, { label: string; field: string }> = {
+      title: {
+        label: "Goal title",
+        field:
+          'Generate ONE concrete marketing goal title for this brand (≤ 14 words). Example shape: "Grow Instagram following 20% in 90 days". Reply with the title only — no quotes or preamble.',
+      },
+      description: {
+        label: "Goal description",
+        field:
+          "Write 1–2 sentences describing what success looks like for this marketing goal. Be specific to the brand, industry, and channels. Reply with the description only.",
+      },
+      criteria: {
+        label: "Success criteria",
+        field:
+          "Write 2–4 measurable success criteria for this marketing goal (followers, engagement, pipeline, deals, traffic, etc.). Use short bullet-like phrases separated by · . Reply with the criteria only.",
+      },
+    };
+    const meta = prompts[field];
+    try {
+      const r = await apiPost<{ ok?: boolean; value?: string; error?: string }>(
+        "/api/studio/ai-suggest",
+        {
+          field: meta.field,
+          fieldLabel: meta.label,
+          brand: workspaceBrand || analysisBrand(),
+          industry: workspaceIndustry || analysisIndustry(),
+          competitors: competitors.length ? competitors : analysisCompetitors(),
+          currentValue:
+            field === "title"
+              ? mTitle
+              : field === "description"
+                ? mDesc
+                : mCriteria,
+          context: [
+            mTitle ? `Goal title: ${mTitle}` : "",
+            mDesc ? `Description: ${mDesc}` : "",
+            mCriteria ? `Criteria so far: ${mCriteria}` : "",
+            mDeadline ? `Deadline: ${mDeadline}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        },
+      );
+      const v = String(r?.value || "").trim();
+      if (!v) throw new Error(r?.error || "Empty suggestion");
+      if (field === "title") setMTitle(v);
+      else if (field === "description") setMDesc(v);
+      else setMCriteria(v);
+    } catch (e) {
+      setFormMsg({
+        kind: "error",
+        text:
+          "AI Suggest failed: " +
+          (e instanceof Error ? e.message : String(e)),
+      });
+    } finally {
+      setSuggesting(null);
+    }
   }
 
   function closeForm() {
@@ -779,16 +937,50 @@ export default function AgentGoals() {
               <div style={sectionStyle}>
                 <div
                   style={{
-                    fontSize: "0.8rem",
-                    fontWeight: 800,
-                    color: IG.ink,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
                     marginBottom: 14,
+                    flexWrap: "wrap",
                   }}
                 >
-                  Outcome
+                  <div
+                    style={{
+                      fontSize: "0.8rem",
+                      fontWeight: 800,
+                      color: IG.ink,
+                    }}
+                  >
+                    Outcome
+                  </div>
+                  {(workspaceBrand || workspaceIndustry) && (
+                    <div
+                      style={{
+                        fontSize: "0.72rem",
+                        color: IG.teal,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Grounded in {workspaceBrand || "your brand"}
+                      {workspaceIndustry ? ` · ${workspaceIndustry}` : ""}
+                    </div>
+                  )}
                 </div>
                 <div style={{ marginBottom: 14 }}>
-                  <FieldLabel hint="One sentence that names the result you want.">
+                  <FieldLabel
+                    hint="One sentence that names the result you want."
+                    action={
+                      <button
+                        type="button"
+                        style={suggestBtnStyle}
+                        disabled={suggesting === "title"}
+                        onClick={() => suggestField("title")}
+                      >
+                        {suggesting === "title" ? "…" : "AI Suggest"}
+                      </button>
+                    }
+                  >
                     Goal title *
                   </FieldLabel>
                   <input
@@ -801,7 +993,19 @@ export default function AgentGoals() {
                   />
                 </div>
                 <div>
-                  <FieldLabel hint="Context helps the plan match your brand and channels.">
+                  <FieldLabel
+                    hint="Context helps the plan match your brand and channels."
+                    action={
+                      <button
+                        type="button"
+                        style={suggestBtnStyle}
+                        disabled={suggesting === "description"}
+                        onClick={() => suggestField("description")}
+                      >
+                        {suggesting === "description" ? "…" : "AI Suggest"}
+                      </button>
+                    }
+                  >
                     Description
                   </FieldLabel>
                   <textarea
@@ -826,7 +1030,19 @@ export default function AgentGoals() {
                   How you’ll measure it
                 </div>
                 <div style={{ marginBottom: 14 }}>
-                  <FieldLabel hint="Numbers and thresholds the AI can grade against.">
+                  <FieldLabel
+                    hint="Numbers and thresholds the AI can grade against."
+                    action={
+                      <button
+                        type="button"
+                        style={suggestBtnStyle}
+                        disabled={suggesting === "criteria"}
+                        onClick={() => suggestField("criteria")}
+                      >
+                        {suggesting === "criteria" ? "…" : "AI Suggest"}
+                      </button>
+                    }
+                  >
                     Success criteria
                   </FieldLabel>
                   <textarea
