@@ -42,6 +42,11 @@ const CATS = [
 
 const PRESETS = [
   {
+    name: "Kimi K3 (Moonshot)",
+    base_url: "https://api.moonshot.ai/v1",
+    model: "kimi-k3",
+  },
+  {
     name: "Groq Llama 3.1 70B",
     base_url: "https://api.groq.com/openai/v1",
     model: "llama-3.1-70b-versatile",
@@ -381,19 +386,27 @@ export default function AiProviders() {
                       key={p.name}
                       onClick={() => applyPreset(p)}
                       style={{
-                        background: "#F3F4F6",
-                        border: "1px solid #E5E7EB",
-                        color: "#374151",
+                        background: p.model === "kimi-k3" ? "#ECFDF5" : "#F3F4F6",
+                        border: p.model === "kimi-k3" ? "1px solid #A7F3D0" : "1px solid #E5E7EB",
+                        color: p.model === "kimi-k3" ? "#0F766E" : "#374151",
                         padding: "5px 10px",
                         borderRadius: 14,
                         fontSize: "0.74rem",
                         cursor: "pointer",
+                        fontWeight: p.model === "kimi-k3" ? 700 : 400,
                       }}
                     >
                       {p.name}
                     </button>
                   ))}
                 </div>
+                {(model === "kimi-k3" || /moonshot\.ai|kimi\.ai/i.test(url)) && (
+                  <p style={{ margin: "8px 0 0", fontSize: "0.72rem", color: "#0F766E", lineHeight: 1.4 }}>
+                    Kimi K3 always thinks. InfoGenie sends <code>reasoning_effort=high</code> by default
+                    (override with <code>KIMI_REASONING_EFFORT</code>) and omits fixed sampling params.
+                    Get a key at platform.kimi.ai — K3 requires a small top-up to unlock.
+                  </p>
+                )}
               </div>
               <button
                 onClick={addProvider}

@@ -12,6 +12,7 @@ const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const { normalizeChatParams, isKimi, isMoonshotBaseUrl } = require('../ai_compat');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _redact(row) {
@@ -24,6 +25,18 @@ async function _tid(req, label) {
 }
 
 const VALID_CATEGORIES = ['writing', 'analysis', 'vision', 'audio'];
+
+function _chatBody(baseUrl, model, messages, opts = {}) {
+  const raw = {
+    model,
+    messages,
+    max_tokens: opts.max_tokens || 800,
+    temperature: opts.temperature ?? 0.7,
+    ...(opts.response_format ? { response_format: opts.response_format } : {}),
+    ...(opts.reasoning_effort ? { reasoning_effort: opts.reasoning_effort } : {}),
+  };
+  return normalizeChatParams(raw, { baseUrl });
+}
 
 // ── List all providers (redacted) — tenant-scoped
 router.get('/list', async (req, res) => {
@@ -112,17 +125,23 @@ router.post('/test/:id', async (req, res) => {
     const p = r.rows[0];
     const url = p.base_url.replace(/\/+$/, '') + '/chat/completions';
     const started = Date.now();
+    const body = _chatBody(p.base_url, p.model, [{ role: 'user', content: 'Say "ok" in one word.' }], {
+      max_tokens: 32,
+      // Kimi always thinks — keep connection tests cheap
+      reasoning_effort: (isKimi(p.model) || isMoonshotBaseUrl(p.base_url)) ? 'low' : undefined,
+      temperature: 0.7,
+    });
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.api_key },
-      body: JSON.stringify({ model: p.model, messages: [{ role: 'user', content: 'Say "ok" in one word.' }], max_tokens: 10 })
+      body: JSON.stringify(body),
     });
     const txt = await resp.text();
     let parsed = null; try { parsed = JSON.parse(txt); } catch {}
     const ms = Date.now() - started;
     if (!resp.ok) return res.json({ ok: false, status: resp.status, latency_ms: ms, error: (parsed && (parsed.error?.message || parsed.error)) || txt.slice(0, 300) });
     const sample = parsed?.choices?.[0]?.message?.content || '';
-    res.json({ ok: true, status: resp.status, latency_ms: ms, sample });
+    res.json({ ok: true, status: resp.status, latency_ms: ms, sample, model: p.model });
   } catch (e) { _err(res, 500, e.message); }
 });
 
@@ -149,14 +168,26 @@ async function chatViaProvider(category, messages, opts = {}) {
   const p = await getDefaultProvider(category, opts.tenantId);
   if (!p) return null;
   try {
+    const body = _chatBody(p.base_url, p.model, messages, {
+      max_tokens: opts.max_tokens || 800,
+      temperature: opts.temperature ?? 0.7,
+      response_format: opts.response_format,
+      reasoning_effort: opts.reasoning_effort,
+    });
     const resp = await fetch(p.base_url.replace(/\/+$/, '') + '/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.api_key },
-      body: JSON.stringify({ model: p.model, messages, max_tokens: opts.max_tokens || 800, temperature: opts.temperature ?? 0.7, ...(opts.response_format ? { response_format: opts.response_format } : {}) })
+      body: JSON.stringify(body),
     });
     if (!resp.ok) return null;
     const j = await resp.json();
-    return { provider: p.name, model: p.model, content: j?.choices?.[0]?.message?.content || '' };
+    const msg = j?.choices?.[0]?.message || {};
+    return {
+      provider: p.name,
+      model: p.model,
+      content: msg.content || '',
+      reasoning_content: msg.reasoning_content || null,
+    };
   } catch { return null; }
 }
 

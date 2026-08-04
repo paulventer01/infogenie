@@ -38,6 +38,7 @@ const REGISTRY = [
   { key: 'CLOUDFLARE_AI_TOKEN', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare AI Token', desc: 'Workers AI (Llama 3.1) — API token', secret: true, test: 'cloudflare', settingsIds: ['cloudflare'] },
   { key: 'RAPIDAPI_KEY', group: 'AI Models', service: 'RapidAPI', label: 'RapidAPI Key', desc: 'Multi-purpose RapidAPI key — Meta Llama 3.2 Vision (LLM fallback) + Google SEO Keyword Research (keyword-research-for-seo)', secret: true, test: 'rapidapi_llama', settingsIds: ['rapidapi'] },
   { key: 'ZAI_API_KEY', group: 'AI Models', service: 'Z.ai / AutoClaw', label: 'Z.ai API Key', desc: 'GLM 5.2 via chat.z.ai / autoclaw.z.ai — lead classification, agent tasks, Coding Plan endpoint', secret: true, aliases: ['GLM_API_KEY', 'Z_AI_API_KEY'], test: 'zai', settingsIds: ['zai', 'glm', 'autoclaw'] },
+  { key: 'MOONSHOT_API_KEY', group: 'AI Models', service: 'Moonshot / Kimi', label: 'Moonshot API Key', desc: 'Kimi K3 via api.moonshot.ai — long-context analysis, vision, agentic research (OpenAI-compatible)', secret: true, aliases: ['KIMI_API_KEY'], test: 'moonshot', settingsIds: ['moonshot', 'kimi'] },
 
   // ── Data & Intelligence ─────────────────────────────────────────────────────
   { key: 'DATAFORSEO_LOGIN', group: 'Data & Intelligence', service: 'DataForSEO', label: 'DataForSEO Login', desc: 'SEO/SERP/keyword data — account login', secret: false, test: 'dataforseo', settingsIds: ['dataforseo', 'dataseo'] },
@@ -361,6 +362,27 @@ async function _runTest(keyName) {
       if (r.status === 401 || r.status === 403) return _BAD('Z.ai rejected the key (HTTP ' + r.status + ')');
       if (r.status === 400 || r.status === 422) return _OK('Z.ai authenticated');
       return _HTTP('Z.ai', r);
+    }
+    if (entry.test === 'moonshot') {
+      const key = resolvePlatformKey('MOONSHOT_API_KEY');
+      if (!key) return _UNCONF();
+      const { normalizeChatParams } = require('../ai_compat');
+      const base = (process.env.MOONSHOT_API_BASE_URL || 'https://api.moonshot.ai/v1').replace(/\/$/, '');
+      const body = JSON.stringify(normalizeChatParams({
+        model: process.env.KIMI_MODEL || 'kimi-k3',
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 16,
+        reasoning_effort: 'low',
+      }));
+      const r = await _fetchT(base + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+        body,
+      });
+      if (r.ok) return _OK('Moonshot Kimi reachable');
+      if (r.status === 401 || r.status === 403) return _BAD('Moonshot rejected the key (HTTP ' + r.status + ')');
+      if (r.status === 400 || r.status === 402 || r.status === 422) return _OK('Moonshot authenticated');
+      return _HTTP('Moonshot', r);
     }
     if (entry.test === 'cloudflare') {
       const token = resolvePlatformKey('CLOUDFLARE_AI_TOKEN');
