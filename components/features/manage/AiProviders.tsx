@@ -22,6 +22,10 @@ interface Provider {
 interface ActiveEntry {
   name: string;
   model: string;
+  id?: number | string;
+  pool_size?: number;
+  mode?: string;
+  pool?: { id: number | string; name: string; model: string; is_default?: boolean }[];
 }
 interface TestState {
   loading?: boolean;
@@ -108,6 +112,11 @@ export default function AiProviders() {
   const [model, setModel] = useState("");
   const [key, setKey] = useState("");
   const [isDefault, setIsDefault] = useState(true);
+  const [pickerCat, setPickerCat] = useState<string | null>(null);
+  const [pickerSelected, setPickerSelected] = useState<string[]>([]);
+  const [pickerPrimary, setPickerPrimary] = useState<string>("");
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [pickerMsg, setPickerMsg] = useState("");
 
   async function load() {
     try {
@@ -209,6 +218,77 @@ export default function AiProviders() {
     load();
   }
 
+  function openPicker(catKey: string) {
+    const inCat = (items || []).filter((p) => p.category === catKey);
+    const enabled = inCat.filter((p) => p.enabled !== false).map((p) => String(p.id));
+    const primary =
+      String(inCat.find((p) => p.is_default)?.id || enabled[0] || "");
+    setPickerCat(catKey);
+    setPickerSelected(enabled);
+    setPickerPrimary(primary);
+    setPickerMsg("");
+    setCat(catKey);
+  }
+
+  function closePicker() {
+    setPickerCat(null);
+    setPickerMsg("");
+  }
+
+  function togglePickerId(id: string) {
+    setPickerSelected((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      if (!next.includes(pickerPrimary)) {
+        setPickerPrimary(next[0] || "");
+      }
+      return next;
+    });
+  }
+
+  function selectAllInPicker() {
+    if (!pickerCat || !items) return;
+    const ids = items.filter((p) => p.category === pickerCat).map((p) => String(p.id));
+    setPickerSelected(ids);
+    if (!ids.includes(pickerPrimary)) setPickerPrimary(ids[0] || "");
+  }
+
+  function clearPickerSelection() {
+    setPickerSelected([]);
+    setPickerPrimary("");
+  }
+
+  async function applyPicker() {
+    if (!pickerCat) return;
+    setPickerBusy(true);
+    setPickerMsg("");
+    const r = await apiPost<{
+      ok: boolean;
+      error?: string;
+      mode?: string;
+      enabled?: { name: string }[];
+    }>("/api/ai-providers/category/" + pickerCat + "/selection", {
+      ids: pickerSelected.map(Number),
+      primaryId: pickerPrimary ? Number(pickerPrimary) : null,
+    });
+    setPickerBusy(false);
+    if (!r.ok) {
+      setPickerMsg(r.error || "Could not save selection");
+      return;
+    }
+    const n = r.enabled?.length || 0;
+    setPickerMsg(
+      n === 0
+        ? "Using built-in providers for this category."
+        : n === 1
+          ? `Primary set to ${r.enabled?.[0]?.name}.`
+          : `Cascade pool of ${n} providers — tries primary first, then the rest.`,
+    );
+    await load();
+  }
+
+  const pickerMeta = CATS.find((c) => c.key === pickerCat);
+  const pickerProviders = (items || []).filter((p) => p.category === pickerCat);
+
   return (
     <div className="view-header-wrap">
       <div className="view-header ig-panel-hero">
@@ -249,9 +329,9 @@ export default function AiProviders() {
               }}
             >
               <strong>How this works:</strong> InfoGenie ships with OpenAI, Claude, Perplexity,
-              Gemini and Cloudflare AI built in. Add your own OpenAI-compatible endpoint here, mark
-              it as <em>default</em> for a category, and the matching features will route through it
-              first. Empty = fall back to built-ins.
+              Gemini and Cloudflare AI built in. Click a category tile (Writing / Analysis / Vision /
+              Audio) to choose providers for that lane. Select one primary, or <em>Select all</em>{" "}
+              for a cascade pool (primary first, then failover). Empty = built-ins.
             </div>
 
             <div
@@ -264,17 +344,29 @@ export default function AiProviders() {
             >
               {CATS.map((c) => {
                 const a = active[c.key];
+                const count = (items || []).filter((p) => p.category === c.key).length;
+                const open = pickerCat === c.key;
                 return (
-                  <div
+                  <button
                     key={c.key}
+                    type="button"
+                    onClick={() => (open ? closePicker() : openPicker(c.key))}
                     style={{
-                      background: "#fff",
-                      border: "1px solid #E5E7EB",
+                      textAlign: "left",
+                      background: open ? "#ECFDF5" : "#fff",
+                      border: open ? "2px solid #0F766E" : "1px solid #E5E7EB",
                       borderRadius: 10,
                       padding: 12,
+                      cursor: "pointer",
+                      boxShadow: open ? "0 4px 14px rgba(15,118,110,0.12)" : "none",
                     }}
                   >
-                    <div style={{ fontWeight: 800, color: "#0A1628" }}>{c.label}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ fontWeight: 800, color: "#0A1628" }}>{c.label}</div>
+                      <span style={{ fontSize: "0.68rem", color: "#64748B", fontWeight: 700 }}>
+                        {open ? "Close" : "Choose →"}
+                      </span>
+                    </div>
                     <div style={{ fontSize: "0.72rem", color: "#6B7280", margin: "4px 0 8px" }}>
                       {c.hint}
                     </div>
@@ -285,12 +377,194 @@ export default function AiProviders() {
                         fontWeight: 700,
                       }}
                     >
-                      {a ? a.name + " · " + a.model : "— (using built-in)"}
+                      {a
+                        ? a.pool_size && a.pool_size > 1
+                          ? `${a.name} · cascade ×${a.pool_size}`
+                          : `${a.name} · ${a.model}`
+                        : "— (using built-in)"}
                     </div>
-                  </div>
+                    <div style={{ fontSize: "0.68rem", color: "#94A3B8", marginTop: 6 }}>
+                      {count} provider{count === 1 ? "" : "s"} configured
+                    </div>
+                  </button>
                 );
               })}
             </div>
+
+            {pickerCat && pickerMeta && (
+              <div
+                style={{
+                  background: "#fff",
+                  border: "1px solid #A7F3D0",
+                  borderRadius: 12,
+                  padding: 16,
+                  marginBottom: 18,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: "1rem", color: "#0F172A" }}>
+                      Providers for {pickerMeta.label.replace(/^[^\s]+\s/, "")}
+                    </div>
+                    <div style={{ fontSize: "0.78rem", color: "#64748B", marginTop: 4, maxWidth: 560 }}>
+                      Pick one primary, or select several to run as a cascade pool (tries primary
+                      first, then the rest on failure). Clear all to use built-in models.
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={selectAllInPicker}
+                      disabled={!pickerProviders.length}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #A7F3D0",
+                        background: "#ECFDF5",
+                        color: "#0F766E",
+                        fontWeight: 700,
+                        fontSize: "0.78rem",
+                        cursor: pickerProviders.length ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearPickerSelection}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #E5E7EB",
+                        background: "#F8FAFC",
+                        color: "#475569",
+                        fontWeight: 700,
+                        fontSize: "0.78rem",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Use built-in
+                    </button>
+                  </div>
+                </div>
+
+                {pickerProviders.length === 0 ? (
+                  <div style={{ marginTop: 14, fontSize: "0.85rem", color: "#94A3B8" }}>
+                    No providers in this category yet. Use <strong>Add Provider</strong> below
+                    (category is pre-filled), then come back to this tile.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
+                    {pickerProviders.map((p) => {
+                      const id = String(p.id);
+                      const checked = pickerSelected.includes(id);
+                      const isPrimary = pickerPrimary === id;
+                      return (
+                        <div
+                          key={id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: checked ? "1px solid #6EE7B7" : "1px solid #E5E7EB",
+                            background: checked ? "#F0FDF4" : "#F8FAFC",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => togglePickerId(id)}
+                            style={{ width: 16, height: 16 }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 800, color: "#0F172A", fontSize: "0.9rem" }}>
+                              {p.name}
+                              {isPrimary && checked && (
+                                <span
+                                  style={{
+                                    marginLeft: 8,
+                                    fontSize: "0.65rem",
+                                    background: "#D1FAE5",
+                                    color: "#065F46",
+                                    padding: "2px 6px",
+                                    borderRadius: 8,
+                                  }}
+                                >
+                                  PRIMARY
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: "0.75rem", color: "#64748B" }}>
+                              {p.model} · {p.base_url}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!checked}
+                            onClick={() => setPickerPrimary(id)}
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 6,
+                              border: "1px solid #E5E7EB",
+                              background: isPrimary ? "#FEF3C7" : "#fff",
+                              color: "#92400E",
+                              fontSize: "0.72rem",
+                              fontWeight: 700,
+                              cursor: checked ? "pointer" : "not-allowed",
+                              opacity: checked ? 1 : 0.45,
+                            }}
+                          >
+                            Set primary
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    disabled={pickerBusy}
+                    onClick={applyPicker}
+                    style={{
+                      padding: "9px 16px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "#0F766E",
+                      color: "#fff",
+                      fontWeight: 800,
+                      fontSize: "0.82rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {pickerBusy ? "Saving…" : "Apply to this tile"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closePicker}
+                    style={{
+                      padding: "9px 14px",
+                      borderRadius: 8,
+                      border: "1px solid #E5E7EB",
+                      background: "#fff",
+                      fontWeight: 600,
+                      fontSize: "0.82rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  {pickerMsg && (
+                    <span style={{ fontSize: "0.8rem", color: "#0F766E", fontWeight: 600 }}>
+                      {pickerMsg}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div
               style={{

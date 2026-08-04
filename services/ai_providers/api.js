@@ -149,58 +149,147 @@ router.post('/test/:id', async (req, res) => {
 // Requires a tid; returns null if not provided (forcing callers to be
 // tenant-aware). Returns { name, base_url, api_key, model } or null.
 async function getDefaultProvider(category, tid) {
-  if (!_db.hasDb()) return null;
-  if (!VALID_CATEGORIES.includes(category)) return null;
-  if (!Number.isFinite(+tid)) return null;
-  try {
-    const r = await _db.getPool().query(
-      `SELECT name, base_url, api_key, model FROM ai_providers
-        WHERE category=$1 AND tenant_id=$2 AND enabled=TRUE
-        ORDER BY is_default DESC, updated_at DESC LIMIT 1`,
-      [category, +tid]
-    );
-    return r.rows[0] || null;
-  } catch { return null; }
+  const list = await getEnabledProviders(category, tid);
+  return list[0] || null;
 }
 
-// Lightweight OpenAI-compatible chat call using a user-configured provider.
-async function chatViaProvider(category, messages, opts = {}) {
-  const p = await getDefaultProvider(category, opts.tenantId);
-  if (!p) return null;
+/** Enabled providers for a category — default first, then by updated_at. */
+async function getEnabledProviders(category, tid) {
+  if (!_db.hasDb()) return [];
+  if (!VALID_CATEGORIES.includes(category)) return [];
+  if (!Number.isFinite(+tid)) return [];
   try {
-    const body = _chatBody(p.base_url, p.model, messages, {
-      max_tokens: opts.max_tokens || 800,
-      temperature: opts.temperature ?? 0.7,
-      response_format: opts.response_format,
-      reasoning_effort: opts.reasoning_effort,
-    });
-    const resp = await fetch(p.base_url.replace(/\/+$/, '') + '/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.api_key },
-      body: JSON.stringify(body),
-    });
-    if (!resp.ok) return null;
-    const j = await resp.json();
-    const msg = j?.choices?.[0]?.message || {};
-    return {
-      provider: p.name,
-      model: p.model,
-      content: msg.content || '',
-      reasoning_content: msg.reasoning_content || null,
-    };
-  } catch { return null; }
+    const r = await _db.getPool().query(
+      `SELECT id, name, base_url, api_key, model, is_default, enabled
+         FROM ai_providers
+        WHERE category=$1 AND tenant_id=$2 AND enabled=TRUE
+        ORDER BY is_default DESC, updated_at DESC`,
+      [category, +tid],
+    );
+    return r.rows;
+  } catch { return []; }
 }
+
+async function _callOneProvider(p, messages, opts = {}) {
+  const body = _chatBody(p.base_url, p.model, messages, {
+    max_tokens: opts.max_tokens || 800,
+    temperature: opts.temperature ?? 0.7,
+    response_format: opts.response_format,
+    reasoning_effort: opts.reasoning_effort,
+  });
+  const resp = await fetch(p.base_url.replace(/\/+$/, '') + '/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + p.api_key },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) return null;
+  const j = await resp.json();
+  const msg = j?.choices?.[0]?.message || {};
+  return {
+    provider: p.name,
+    model: p.model,
+    content: msg.content || '',
+    reasoning_content: msg.reasoning_content || null,
+  };
+}
+
+// Cascade through all enabled providers in the category (default first).
+// "Select all" on a tile enables this pool — they work together as failover.
+async function chatViaProvider(category, messages, opts = {}) {
+  const list = await getEnabledProviders(category, opts.tenantId);
+  if (!list.length) return null;
+  for (const p of list) {
+    try {
+      const out = await _callOneProvider(p, messages, opts);
+      if (out && out.content) return { ...out, cascade_tried: list.length };
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
+/**
+ * Set which providers are active for a category.
+ * body: { ids: number[], primaryId?: number|null }
+ * - ids = enabled pool (empty → all disabled → built-in)
+ * - primaryId = default within the pool (optional; first id if omitted)
+ */
+router.post('/category/:category/selection', async (req, res) => {
+  if (!_db.hasDb()) return _err(res, 500, 'database not configured');
+  const category = String(req.params.category || '');
+  if (!VALID_CATEGORIES.includes(category)) return _err(res, 400, 'bad_category');
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter((n) => Number.isInteger(n) && n > 0) : [];
+  let primaryId = req.body?.primaryId != null ? Number(req.body.primaryId) : null;
+  if (primaryId != null && !Number.isInteger(primaryId)) primaryId = null;
+  if (primaryId != null && ids.length && !ids.includes(primaryId)) {
+    return _err(res, 400, 'primary_not_in_selection');
+  }
+  if (!primaryId && ids.length) primaryId = ids[0];
+
+  try {
+    const tid = await _tid(req, 'ai-providers:selection');
+    const pool = _db.getPool();
+    // Only touch providers that belong to this tenant + category
+    const owned = await pool.query(
+      `SELECT id FROM ai_providers WHERE tenant_id=$1 AND category=$2`,
+      [tid, category],
+    );
+    const ownedIds = new Set(owned.rows.map((r) => r.id));
+    for (const id of ids) {
+      if (!ownedIds.has(id)) return _err(res, 400, 'provider_not_in_category');
+    }
+
+    await pool.query(
+      `UPDATE ai_providers SET enabled=FALSE, is_default=FALSE, updated_at=NOW()
+       WHERE tenant_id=$1 AND category=$2`,
+      [tid, category],
+    );
+
+    if (ids.length) {
+      await pool.query(
+        `UPDATE ai_providers SET enabled=TRUE, updated_at=NOW()
+         WHERE tenant_id=$1 AND category=$2 AND id = ANY($3::int[])`,
+        [tid, category, ids],
+      );
+      if (primaryId) {
+        await pool.query(
+          `UPDATE ai_providers SET is_default=TRUE, updated_at=NOW()
+           WHERE tenant_id=$1 AND category=$2 AND id=$3`,
+          [tid, category, primaryId],
+        );
+      }
+    }
+
+    const enabled = await getEnabledProviders(category, tid);
+    res.json({
+      ok: true,
+      category,
+      mode: enabled.length > 1 ? 'cascade' : (enabled.length === 1 ? 'single' : 'builtin'),
+      enabled: enabled.map((p) => ({ id: p.id, name: p.name, model: p.model, is_default: p.is_default })),
+    });
+  } catch (e) { _err(res, 500, e.message); }
+});
 
 router.get('/active', async (req, res) => {
   const tid = await _tid(req, 'ai-providers:active');
   const out = {};
   for (const cat of VALID_CATEGORIES) {
-    const p = await getDefaultProvider(cat, tid);
-    out[cat] = p ? { name: p.name, model: p.model } : null;
+    const list = await getEnabledProviders(cat, tid);
+    const primary = list[0] || null;
+    out[cat] = primary
+      ? {
+          name: primary.name,
+          model: primary.model,
+          id: primary.id,
+          pool_size: list.length,
+          mode: list.length > 1 ? 'cascade' : 'single',
+          pool: list.map((p) => ({ id: p.id, name: p.name, model: p.model, is_default: !!p.is_default })),
+        }
+      : null;
   }
   res.json({ ok: true, active: out });
 });
 
 module.exports = router;
 module.exports.getDefaultProvider = getDefaultProvider;
+module.exports.getEnabledProviders = getEnabledProviders;
 module.exports.chatViaProvider = chatViaProvider;
