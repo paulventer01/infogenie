@@ -10,7 +10,6 @@
 
 const express = require('express');
 const router = express.Router();
-const OpenAI = require('openai');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { WRITEBACK_CATALOG } = require('./writeback_catalog');
@@ -18,22 +17,116 @@ const { WRITEBACK_CATALOG } = require('./writeback_catalog');
 let _ingestMemoryNode = null;
 try { _ingestMemoryNode = require('../knowledge_graph/api').ingestMemoryNode; } catch (_) {}
 
+let _chatForCategory = null;
+try { _chatForCategory = require('../ai/chat_router').chatForCategory; } catch (_) {}
+
 function _err(res, code, msg) { return res.status(code).json({ ok: false, error: msg }); }
 
 async function _tid(req, label) {
   return _tenantCtx.resolveTenantId(req, { label });
 }
 
-function _openai() {
-  const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-  if (!key || /^_DUMMY/i.test(key)) return null;
-  return new OpenAI({ apiKey: key });
+function _pickStr(obj, ...keys) {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return '';
 }
 
-async function _chatJson(prompt, maxTokens = 1800) {
-  const client = _openai();
-  if (!client) return null;
+function _asArray(v) {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === 'object') return Object.values(v);
+  if (typeof v === 'string' && v.trim()) {
+    try {
+      const parsed = JSON.parse(v);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (_) {}
+    return v.split(/\n+/).map((s) => s.replace(/^\d+[\).\s-]+/, '').trim()).filter(Boolean)
+      .map((action, i) => ({ step: i + 1, action }));
+  }
+  return [];
+}
+
+/** Normalize LLM / heuristic payloads so the UI always gets snake_case fields. */
+function _normalizeRootCause(body, problem) {
+  if (!body || typeof body !== 'object') return null;
+  const fix = _asArray(body.fix_sequence || body.fixSequence || body.fixes || body.actions)
+    .map((s, i) => {
+      if (typeof s === 'string') return { step: i + 1, action: s, impact: '', effort: 'medium', owner: 'marketing' };
+      return {
+        step: Number(s.step) || i + 1,
+        action: String(s.action || s.step_action || s.label || s.title || '').trim(),
+        impact: String(s.impact || s.why || '').trim(),
+        effort: String(s.effort || 'medium'),
+        owner: String(s.owner || 'marketing'),
+      };
+    })
+    .filter((s) => s.action);
+  const primary = _pickStr(body, 'primary_cause', 'primaryCause', 'primary', 'root_cause', 'rootCause', 'cause');
+  const why = _pickStr(body, 'why_best', 'whyBest', 'why_this_sequence', 'rationale', 'why');
+  if (!primary && !why && !fix.length) return null;
+  return {
+    ...body,
+    primary_cause: primary || `Unable to isolate a single primary cause for: ${problem}`,
+    why_best: why || 'This sequence attacks the largest controllable lever first, then creative and funnel quality.',
+    fix_sequence: fix.length ? fix : [
+      { step: 1, action: 'Audit bottom-quartile ROAS campaigns and cut or pause spend', owner: 'marketing', impact: 'Stop bleed', effort: 'low' },
+      { step: 2, action: 'Refresh creatives and offers on remaining paid traffic', owner: 'marketing', impact: 'Recover CTR', effort: 'medium' },
+      { step: 3, action: 'Re-test landing conversion on the top traffic source', owner: 'product', impact: 'Lift CVR', effort: 'medium' },
+    ],
+    contributing_causes: _asArray(body.contributing_causes || body.contributingCauses),
+    evidence: _asArray(body.evidence),
+    tree: _asArray(body.tree),
+  };
+}
+
+function _normalizeScenario(body, question) {
+  if (!body || typeof body !== 'object') return null;
+  const recommendation = _pickStr(body, 'recommendation', 'rec', 'advice');
+  const why = _pickStr(body, 'why_best', 'whyBest', 'rationale', 'why');
+  if (!recommendation && !why && !_asArray(body.scenarios).length) return null;
+  return {
+    ...body,
+    recommendation: recommendation || `Quantify “${question.slice(0, 80)}” with linked CRM + billing data, then decide with a review date.`,
+    why_best: why || 'Pilot + dated review beats a permanent change with no falsifiable hypothesis.',
+    scenarios: _asArray(body.scenarios),
+    decomposition: _asArray(body.decomposition),
+    risks: _asArray(body.risks),
+    opportunities: _asArray(body.opportunities),
+    watch_signals: _asArray(body.watch_signals || body.watchSignals),
+  };
+}
+
+async function _chatJson(prompt, maxTokens = 1800, tenantId = null) {
   try {
+    if (_chatForCategory) {
+      const r = await _chatForCategory('analysis', [{ role: 'user', content: prompt }], {
+        tenantId: tenantId || undefined,
+        max_tokens: maxTokens,
+        temperature: 0.25,
+        response_format: { type: 'json_object' },
+        model: 'gpt-4o',
+      });
+      const raw = r?.content;
+      if (raw && typeof raw === 'string') {
+        const cleaned = raw.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+        return JSON.parse(cleaned);
+      }
+    }
+  } catch (e) {
+    console.warn('[strategic] ai:', e.message);
+  }
+  // Legacy OpenAI SDK path when chat router is unavailable
+  try {
+    const OpenAI = require('openai');
+    const { resolvePlatformKey } = require('../credentials/platform_keys');
+    const key = resolvePlatformKey('AI_INTEGRATIONS_OPENAI_API_KEY')
+      || resolvePlatformKey('OPENAI_API_KEY')
+      || process.env.AI_INTEGRATIONS_OPENAI_API_KEY
+      || process.env.OPENAI_API_KEY;
+    if (!key || /^_DUMMY/i.test(key)) return null;
+    const client = new OpenAI({ apiKey: key });
     const r = await client.chat.completions.create({
       model: 'gpt-4o',
       response_format: { type: 'json_object' },
@@ -43,7 +136,7 @@ async function _chatJson(prompt, maxTokens = 1800) {
     });
     return JSON.parse(r.choices[0].message.content);
   } catch (e) {
-    console.warn('[strategic] ai:', e.message);
+    console.warn('[strategic] openai fallback:', e.message);
     return null;
   }
 }
@@ -125,34 +218,43 @@ Return strict JSON:
   "confidence_pct": 70
 }`;
 
-  let body = await _chatJson(prompt);
+  // Heuristic decomposition is intentional product analysis (not fabricated metrics).
+  // Do NOT set _estimated/_fabricated — strict data-mode would withhold the whole answer.
+  const heuristic = {
+    primary_cause: 'Insufficient linked performance data to isolate a single cause — start with the largest spend leak and the sharpest conversion drop.',
+    contributing_causes: [
+      { cause: 'Budget concentration on underperforming channels', weight_pct: 35, evidence: 'Campaign ROAS spread in optimizer snapshot' },
+      { cause: 'Creative / offer fatigue', weight_pct: 25, evidence: 'Common after 30+ days without refresh' },
+      { cause: 'Audience saturation', weight_pct: 20, evidence: 'Frequency-driven CPM inflation pattern' },
+      { cause: 'Landing / funnel friction', weight_pct: 20, evidence: 'Conversion rate below sector median' },
+    ],
+    tree: [
+      { level: 1, node: problem, children: [
+        { level: 2, node: 'Demand quality', children: [{ level: 3, node: 'Audience / keyword mismatch', children: [] }] },
+        { level: 2, node: 'Offer & creative', children: [{ level: 3, node: 'Fatigue / weak hook', children: [] }] },
+        { level: 2, node: 'Funnel conversion', children: [{ level: 3, node: 'Page speed / proof / CTA', children: [] }] },
+      ]},
+    ],
+    evidence: ctx.campaigns.slice(0, 3).map(c => `${c.name}: ROAS ${c.roas ?? '—'} · $${c.daily_budget || 0}/day`),
+    fix_sequence: [
+      { step: 1, action: 'Pause or cut the bottom ROAS campaigns by 30%', owner: 'marketing', impact: 'Stop bleed', effort: 'low' },
+      { step: 2, action: 'Refresh creatives on remaining spend', owner: 'marketing', impact: 'Recover CTR', effort: 'medium' },
+      { step: 3, action: 'Re-test landing conversion on top traffic source', owner: 'product', impact: 'Lift CVR', effort: 'medium' },
+    ],
+    why_best: 'Stop the largest controllable cash leak before optimising creatives or inventing new channels — least setup, highest immediate credibility.',
+    risks_if_ignored: ['Blended ROAS continues to erode', 'Learned account history becomes harder to trust'],
+    confidence_pct: 55,
+    analysis_mode: 'heuristic',
+    source: 'heuristic-analysis',
+  };
+
+  let raw = await _chatJson(prompt, 1800, tid);
+  let body = _normalizeRootCause(raw, problem);
   if (!body) {
-    body = {
-      primary_cause: 'Insufficient linked performance data to isolate a single cause — start with the largest spend leak and the sharpest conversion drop.',
-      contributing_causes: [
-        { cause: 'Budget concentration on underperforming channels', weight_pct: 35, evidence: 'Campaign ROAS spread in optimizer snapshot' },
-        { cause: 'Creative / offer fatigue', weight_pct: 25, evidence: 'Common after 30+ days without refresh' },
-        { cause: 'Audience saturation', weight_pct: 20, evidence: 'Frequency-driven CPM inflation pattern' },
-        { cause: 'Landing / funnel friction', weight_pct: 20, evidence: 'Conversion rate below sector median' },
-      ],
-      tree: [
-        { level: 1, node: problem, children: [
-          { level: 2, node: 'Demand quality', children: [{ level: 3, node: 'Audience / keyword mismatch', children: [] }] },
-          { level: 2, node: 'Offer & creative', children: [{ level: 3, node: 'Fatigue / weak hook', children: [] }] },
-          { level: 2, node: 'Funnel conversion', children: [{ level: 3, node: 'Page speed / proof / CTA', children: [] }] },
-        ]},
-      ],
-      evidence: ctx.campaigns.slice(0, 3).map(c => `${c.name}: ROAS ${c.roas ?? '—'} · $${c.daily_budget || 0}/day`),
-      fix_sequence: [
-        { step: 1, action: 'Pause or cut the bottom ROAS campaigns by 30%', owner: 'marketing', impact: 'Stop bleed', effort: 'low' },
-        { step: 2, action: 'Refresh creatives on remaining spend', owner: 'marketing', impact: 'Recover CTR', effort: 'medium' },
-        { step: 3, action: 'Re-test landing conversion on top traffic source', owner: 'product', impact: 'Lift CVR', effort: 'medium' },
-      ],
-      why_best: 'Stop the largest controllable cash leak before optimising creatives or inventing new channels — least setup, highest immediate credibility.',
-      risks_if_ignored: ['Blended ROAS continues to erode', 'Learned account history becomes harder to trust'],
-      confidence_pct: 55,
-      _estimated: true,
-    };
+    body = _normalizeRootCause(heuristic, problem);
+  } else {
+    body.analysis_mode = body.analysis_mode || 'ai';
+    body.source = body.source || 'ai-analysis';
   }
 
   let id = null;
@@ -224,43 +326,50 @@ Return strict JSON:
   "confidence_pct": 65
 }`;
 
-  let body = await _chatJson(prompt, 2000);
+  const isChurn = /churn|largest customer|top account/i.test(question);
+  const isPrice = /price|pricing|raise|increase.*%|volume/i.test(question);
+  const heuristic = {
+    interpreted_question: question,
+    assumptions_used: isPrice
+      ? [{ name: 'price_lift', value: '8%', basis: 'inferred' }, { name: 'volume_loss', value: '5%', basis: 'inferred' }]
+      : isChurn
+        ? [{ name: 'largest_customer_revenue_share', value: '18% (inferred)', basis: 'sector' }]
+        : [{ name: 'horizon', value: '90 days', basis: 'inferred' }],
+    decomposition: [
+      { driver: 'Revenue', sensitivity: 'high', note: 'Direct top-line impact' },
+      { driver: 'Gross margin', sensitivity: 'high', note: 'Price/volume mix' },
+      { driver: 'CAC / payback', sensitivity: 'medium', note: 'If growth spend adjusts' },
+    ],
+    scenarios: isPrice ? [
+      { name: 'base', probability_pct: 55, metrics: { revenue_delta_pct: 2.4, margin_delta_pct: 5.0, cash_impact: 'Net positive if elasticity holds', cac_payback_months: null }, narrative: 'Price +8% with −5% volume ≈ +2.4% revenue and stronger unit margin.' },
+      { name: 'downside', probability_pct: 25, metrics: { revenue_delta_pct: -4.0, margin_delta_pct: 1.0, cash_impact: 'Near-term cash dip if churn spikes', cac_payback_months: null }, narrative: 'Elasticity worse than assumed; volume loss exceeds 8%.' },
+      { name: 'upside', probability_pct: 20, metrics: { revenue_delta_pct: 6.0, margin_delta_pct: 7.0, cash_impact: 'Frees budget for growth tests', cac_payback_months: null }, narrative: 'Volume loss <3%; brand pricing power confirmed.' },
+    ] : [
+      { name: 'base', probability_pct: 50, metrics: { revenue_delta_pct: isChurn ? -18 : -5, margin_delta_pct: isChurn ? -10 : -2, cash_impact: 'Reallocate saved CAC to pipeline rebuild', cac_payback_months: 11 }, narrative: isChurn ? 'Largest-customer churn removes a material revenue block; concentration risk materialises.' : 'Scenario modelled with sector defaults until account-truth data is linked.' },
+      { name: 'downside', probability_pct: 30, metrics: { revenue_delta_pct: isChurn ? -28 : -12, margin_delta_pct: -15, cash_impact: 'Hiring/spend freeze required', cac_payback_months: 16 }, narrative: 'Secondary accounts hesitate; sales cycle stretches.' },
+      { name: 'upside', probability_pct: 20, metrics: { revenue_delta_pct: isChurn ? -8 : 3, margin_delta_pct: 0, cash_impact: 'Recover via mid-market expansion', cac_payback_months: 9 }, narrative: 'Replacement demand closes within two quarters.' },
+    ],
+    recommendation: isChurn
+      ? 'Run concentration stress test monthly; assign an executive sponsor to the top 5 accounts and build a 90-day replacement pipeline now.'
+      : isPrice
+        ? 'Pilot the +8% price on a non-strategic segment for 30 days before company-wide rollout; watch churn and win-rate weekly.'
+        : 'Quantify the scenario with linked CRM + billing data, then lock a decision with a review date.',
+    why_best: 'Pilot + dated review beats a permanent change with no falsifiable hypothesis — institutional memory can then tell you if it worked.',
+    risks: ['Assumption error without account-truth revenue data', 'Competitive response'],
+    opportunities: ['Clarify pricing power', 'Reduce customer concentration'],
+    watch_signals: ['Gross retention', 'Win rate', 'CAC payback', 'Expansion revenue'],
+    confidence_pct: 52,
+    analysis_mode: 'heuristic',
+    source: 'heuristic-analysis',
+  };
+
+  let raw = await _chatJson(prompt, 2000, tid);
+  let body = _normalizeScenario(raw, question);
   if (!body) {
-    const isChurn = /churn|largest customer|top account/i.test(question);
-    const isPrice = /price|pricing|raise|increase.*%|volume/i.test(question);
-    body = {
-      interpreted_question: question,
-      assumptions_used: isPrice
-        ? [{ name: 'price_lift', value: '8%', source: 'inferred' }, { name: 'volume_loss', value: '5%', source: 'inferred' }]
-        : isChurn
-          ? [{ name: 'largest_customer_revenue_share', value: '18% (inferred)', source: 'sector' }]
-          : [{ name: 'horizon', value: '90 days', source: 'inferred' }],
-      decomposition: [
-        { driver: 'Revenue', sensitivity: 'high', note: 'Direct top-line impact' },
-        { driver: 'Gross margin', sensitivity: 'high', note: 'Price/volume mix' },
-        { driver: 'CAC / payback', sensitivity: 'medium', note: 'If growth spend adjusts' },
-      ],
-      scenarios: isPrice ? [
-        { name: 'base', probability_pct: 55, metrics: { revenue_delta_pct: 2.4, margin_delta_pct: 5.0, cash_impact: 'Net positive if elasticity holds', cac_payback_months: null }, narrative: 'Price +8% with −5% volume ≈ +2.4% revenue and stronger unit margin.' },
-        { name: 'downside', probability_pct: 25, metrics: { revenue_delta_pct: -4.0, margin_delta_pct: 1.0, cash_impact: 'Near-term cash dip if churn spikes', cac_payback_months: null }, narrative: 'Elasticity worse than assumed; volume loss exceeds 8%.' },
-        { name: 'upside', probability_pct: 20, metrics: { revenue_delta_pct: 6.0, margin_delta_pct: 7.0, cash_impact: 'Frees budget for growth tests', cac_payback_months: null }, narrative: 'Volume loss <3%; brand pricing power confirmed.' },
-      ] : [
-        { name: 'base', probability_pct: 50, metrics: { revenue_delta_pct: isChurn ? -18 : -5, margin_delta_pct: isChurn ? -10 : -2, cash_impact: 'Reallocate saved CAC to pipeline rebuild', cac_payback_months: 11 }, narrative: isChurn ? 'Largest-customer churn removes a material revenue block; concentration risk materialises.' : 'Scenario modelled with sector defaults until account-truth data is linked.' },
-        { name: 'downside', probability_pct: 30, metrics: { revenue_delta_pct: isChurn ? -28 : -12, margin_delta_pct: -15, cash_impact: 'Hiring/spend freeze required', cac_payback_months: 16 }, narrative: 'Secondary accounts hesitate; sales cycle stretches.' },
-        { name: 'upside', probability_pct: 20, metrics: { revenue_delta_pct: isChurn ? -8 : 3, margin_delta_pct: 0, cash_impact: 'Recover via mid-market expansion', cac_payback_months: 9 }, narrative: 'Replacement demand closes within two quarters.' },
-      ],
-      recommendation: isChurn
-        ? 'Run concentration stress test monthly; assign an executive sponsor to the top 5 accounts and build a 90-day replacement pipeline now.'
-        : isPrice
-          ? 'Pilot the +8% price on a non-strategic segment for 30 days before company-wide rollout; watch churn and win-rate weekly.'
-          : 'Quantify the scenario with linked CRM + billing data, then lock a decision with a review date.',
-      why_best: 'Pilot + dated review beats a permanent change with no falsifiable hypothesis — institutional memory can then tell you if it worked.',
-      risks: ['Assumption error without account-truth revenue data', 'Competitive response'],
-      opportunities: ['Clarify pricing power', 'Reduce customer concentration'],
-      watch_signals: ['Gross retention', 'Win rate', 'CAC payback', 'Expansion revenue'],
-      confidence_pct: 52,
-      _estimated: true,
-    };
+    body = _normalizeScenario(heuristic, question);
+  } else {
+    body.analysis_mode = body.analysis_mode || 'ai';
+    body.source = body.source || 'ai-analysis';
   }
 
   let id = null;
@@ -272,7 +381,7 @@ Return strict JSON:
         JSON.stringify(body.decomposition || []), JSON.stringify(body.scenarios || []),
         body.recommendation || null, body.why_best || null,
         JSON.stringify(body.risks || []), JSON.stringify(body.opportunities || []),
-        body._estimated ? 'template' : 'gpt-4o']
+        body.analysis_mode === 'heuristic' ? 'heuristic' : 'ai']
     );
     id = ins.rows[0]?.id;
   } catch (e) { console.warn('[strategic] scenario persist:', e.message); }
@@ -492,7 +601,7 @@ async function runBenchmarkWorry(tid, verticalIn = 'saas', your = {}) {
 Vertical: ${vertical}
 Comparisons: ${JSON.stringify(comparisons)}
 Answer: should leadership be worried? Be direct.
-Return JSON: {"worried":true|false,"headline":"...","summary":"...","actions":[{"label":"...","why_best":"..."}],"confidence_pct":70}`, 900);
+Return JSON: {"worried":true|false,"headline":"...","summary":"...","actions":[{"label":"...","why_best":"..."}],"confidence_pct":70}`, 900, tid);
   if (!ai) {
     ai = {
       worried: worries.length > 0,

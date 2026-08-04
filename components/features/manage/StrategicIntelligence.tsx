@@ -100,8 +100,17 @@ export default function StrategicIntelligence() {
     setBusy(true);
     try {
       const r = await apiPost<Record<string, unknown>>("/api/strategic/root-cause", { problem });
-      if (r.ok) { setRootResult(r); showToast("Root-cause decomposition ready"); loadMoat(); }
-      else showToast("Root-cause failed");
+      if (r.ok && !r.data_unavailable) {
+        setRootResult(r);
+        showToast("Root-cause decomposition ready");
+        loadMoat();
+      } else if (r.data_unavailable) {
+        setRootResult(null);
+        showToast(String(r.message || "Root-cause analysis unavailable — check AI providers / data mode"));
+      } else {
+        setRootResult(null);
+        showToast(String(r.error || "Root-cause failed"));
+      }
     } finally { setBusy(false); }
   };
 
@@ -109,8 +118,17 @@ export default function StrategicIntelligence() {
     setBusy(true);
     try {
       const r = await apiPost<Record<string, unknown>>("/api/strategic/scenario", { question: scenarioQ });
-      if (r.ok) { setScenarioResult(r); showToast("Scenario modelled"); loadMoat(); }
-      else showToast("Scenario failed");
+      if (r.ok && !r.data_unavailable) {
+        setScenarioResult(r);
+        showToast("Scenario modelled");
+        loadMoat();
+      } else if (r.data_unavailable) {
+        setScenarioResult(null);
+        showToast(String(r.message || "Scenario modelling unavailable — check AI providers / data mode"));
+      } else {
+        setScenarioResult(null);
+        showToast(String(r.error || "Scenario failed"));
+      }
     } finally { setBusy(false); }
   };
 
@@ -229,17 +247,37 @@ export default function StrategicIntelligence() {
             {busy ? "Decomposing…" : "Decompose root cause"}
           </button>
           {rootResult && (
-            <div style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 16 }} data-ig-no-enhance>
+              {rootResult.analysis_mode === "heuristic" && (
+                <div style={{ marginBottom: 10, fontSize: "0.75rem", color: "#92400E", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "8px 10px" }}>
+                  Heuristic decomposition (no live AI response) — still actionable; connect an AI provider for account-specific synthesis.
+                </div>
+              )}
               <div style={{ fontWeight: 800, color: "#0F172A" }}>Primary cause</div>
-              <p style={{ color: "#334155" }}>{String(rootResult.primary_cause || "")}</p>
+              <p style={{ color: "#334155", lineHeight: 1.55 }}>
+                {String(rootResult.primary_cause || rootResult.primaryCause || "No primary cause returned.")}
+              </p>
               <div style={{ fontWeight: 800, color: "#B45309" }}>Why this fix sequence is best</div>
-              <p style={{ color: "#57534E" }}>{String(rootResult.why_best || "")}</p>
+              <p style={{ color: "#57534E", lineHeight: 1.55 }}>
+                {String(rootResult.why_best || rootResult.whyBest || "No rationale returned.")}
+              </p>
               <div style={{ fontWeight: 800 }}>Fix sequence</div>
               <ol style={{ paddingLeft: 18, color: "#334155", fontSize: "0.86rem" }}>
-                {((rootResult.fix_sequence as { step?: number; action?: string; impact?: string }[]) || []).map((s, i) => (
-                  <li key={i} style={{ marginBottom: 4 }}><strong>{s.action}</strong>{s.impact ? ` — ${s.impact}` : ""}</li>
+                {((rootResult.fix_sequence as { step?: number; action?: string; impact?: string; effort?: string; owner?: string }[])
+                  || (rootResult.fixSequence as { step?: number; action?: string; impact?: string }[])
+                  || []).map((s, i) => (
+                  <li key={i} style={{ marginBottom: 6 }}>
+                    <strong>{s.action || "Step"}</strong>
+                    {s.impact ? ` — ${s.impact}` : ""}
+                    {s.owner || s.effort ? (
+                      <span style={{ color: "#64748B" }}> ({[s.owner, s.effort].filter(Boolean).join(" · ")})</span>
+                    ) : null}
+                  </li>
                 ))}
               </ol>
+              {!((rootResult.fix_sequence as unknown[]) || []).length && (
+                <p style={{ color: "#94A3B8", fontSize: "0.84rem" }}>No fix sequence returned.</p>
+              )}
             </div>
           )}
         </div>
