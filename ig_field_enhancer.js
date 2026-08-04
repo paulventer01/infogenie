@@ -175,6 +175,9 @@
     if (el.tagName === 'SELECT') return false; // selects get skipped globally
     // Skip fields explicitly opted out via data-ig-skip attribute
     if (el.dataset.igSkip !== undefined) return false;
+    // Opt-out for React panels that own their own field chrome (brand chips,
+    // AI suggest, layout). Prevents stacked purple pills breaking forms.
+    if (el.closest('[data-ig-no-enhance]')) return false;
     // Skip the auth wall (login / signup / forgot-password): those fields are
     // personal credentials with no brand context yet — AI Suggest would be
     // both useless and confusing. Covers password reset page too.

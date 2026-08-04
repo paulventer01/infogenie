@@ -8,7 +8,7 @@
 //
 // See `docs/react-panel-migration.md` for the porting pattern.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 
 interface Persona {
@@ -64,6 +64,15 @@ interface Msg {
   type: "info" | "error";
   text: string;
 }
+interface AnalysisData {
+  brandName?: string;
+  brand?: string;
+  companyName?: string;
+  url?: string;
+  domain?: string;
+  industry?: string | { name?: string };
+  competitors?: (string | { name?: string; brand?: string; domain?: string })[];
+}
 
 const DEAL_STATUS_COLORS: Record<string, string> = {
   inquiry: "#94a3b8",
@@ -118,6 +127,36 @@ function formatDate(s?: string) {
   }
 }
 
+function readAnalysis(): AnalysisData {
+  return (window as unknown as { analysisData?: AnalysisData }).analysisData || {};
+}
+
+function analysisBrand(): string {
+  const a = readAnalysis();
+  const direct = a.brandName || a.brand || a.companyName;
+  if (direct) return String(direct).trim();
+  const dom = String(a.url || a.domain || "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .split("/")[0]
+    .split(".")[0]
+    .trim();
+  if (!dom) return "";
+  return dom.charAt(0).toUpperCase() + dom.slice(1);
+}
+
+function analysisCompetitors(): string[] {
+  const a = readAnalysis();
+  return (a.competitors || [])
+    .map((c) =>
+      typeof c === "string"
+        ? c
+        : String(c?.name || c?.brand || c?.domain || "").trim(),
+    )
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
 const EMPTY_FORM: DealForm = {
   brand_name: "",
   contact_name: "",
@@ -133,6 +172,90 @@ const EMPTY_FORM: DealForm = {
   deliverables: "",
   notes: "",
 };
+
+/* Shared form chrome — keeps the modal cohesive without purple enhancer clutter */
+const labelStyle: CSSProperties = {
+  display: "block",
+  fontSize: "0.72rem",
+  fontWeight: 700,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "#64748B",
+  marginBottom: 6,
+};
+const inputStyle: CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid #D1DCF5",
+  background: "#F8FAFF",
+  color: "#0A1628",
+  fontSize: "0.9rem",
+  fontFamily: "inherit",
+  outline: "none",
+};
+const sectionStyle: CSSProperties = {
+  border: "1px solid #E2E8F0",
+  borderRadius: 14,
+  padding: "16px 16px 14px",
+  background: "#fff",
+  marginBottom: 14,
+};
+const sectionTitleStyle: CSSProperties = {
+  margin: "0 0 12px",
+  fontSize: "0.82rem",
+  fontWeight: 800,
+  color: "#0A1628",
+  letterSpacing: "-0.01em",
+};
+const chipStyle: CSSProperties = {
+  border: "1px solid #C7D8F5",
+  background: "#F0F4FF",
+  color: "#1E3A8A",
+  borderRadius: 999,
+  padding: "5px 11px",
+  fontSize: "0.72rem",
+  fontWeight: 700,
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+const suggestBtnStyle: CSSProperties = {
+  border: "1px solid #BFDBFE",
+  background: "#EFF6FF",
+  color: "#1D4ED8",
+  borderRadius: 8,
+  padding: "3px 8px",
+  fontSize: "0.68rem",
+  fontWeight: 700,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  lineHeight: 1.3,
+};
+
+function FieldLabel({
+  children,
+  action,
+}: {
+  children: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 8,
+        marginBottom: 6,
+        minHeight: 22,
+      }}
+    >
+      <label style={{ ...labelStyle, marginBottom: 0 }}>{children}</label>
+      {action}
+    </div>
+  );
+}
 
 export default function BrandDeals() {
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -151,27 +274,39 @@ export default function BrandDeals() {
   const [pitch, setPitch] = useState<Pitch | null>(null);
   const [pitchLoading, setPitchLoading] = useState(false);
   const [pitchError, setPitchError] = useState("");
+  const [suggesting, setSuggesting] = useState<keyof DealForm | null>(null);
+  const [workspaceBrand, setWorkspaceBrand] = useState("");
+  const [competitors, setCompetitors] = useState<string[]>([]);
 
   async function load() {
     setLoading(true);
     const [dealsData, statsData, personasData] = await Promise.all([
-      apiGet<{ ok: boolean; deals?: Deal[] }>("/api/brand-deals"),
-      apiGet<{ ok: boolean; stats?: Stats }>("/api/brand-deals/stats/summary"),
-      apiGet<{ ok: boolean; personas?: Persona[] }>("/api/personas"),
+      apiGet<{ ok?: boolean; deals?: Deal[]; error?: string }>("/api/brand-deals"),
+      apiGet<{ ok?: boolean; stats?: Stats }>("/api/brand-deals/stats/summary"),
+      apiGet<{ ok?: boolean; personas?: Persona[] }>("/api/personas"),
     ]);
     setLoading(false);
-    if (!dealsData.ok) {
+    // Success is ok:true OR a deals array (API historically omitted ok).
+    if (dealsData.ok === false || (dealsData.ok !== true && !Array.isArray(dealsData.deals))) {
       setLoadError(true);
       return;
     }
     setLoadError(false);
     setDeals(dealsData.deals || []);
     setStats(statsData.stats || {});
-    setPersonas((personasData.personas || []).filter((p) => p.is_active));
+    setPersonas((personasData.personas || []).filter((p) => p.is_active !== false));
   }
 
   useEffect(() => {
     load();
+    setWorkspaceBrand(analysisBrand());
+    setCompetitors(analysisCompetitors());
+    const refresh = () => {
+      setWorkspaceBrand(analysisBrand());
+      setCompetitors(analysisCompetitors());
+    };
+    window.addEventListener("ig:analysis-updated", refresh);
+    return () => window.removeEventListener("ig:analysis-updated", refresh);
   }, []);
 
   function setField(k: keyof DealForm, v: string) {
@@ -180,13 +315,19 @@ export default function BrandDeals() {
 
   function openNew() {
     setEditId(null);
-    setForm(EMPTY_FORM);
+    const brand = analysisBrand();
+    setWorkspaceBrand(brand);
+    setCompetitors(analysisCompetitors());
+    setForm({ ...EMPTY_FORM, brand_name: brand || "" });
     setSaveStatus(null);
+    setSuggesting(null);
     setModalOpen(true);
   }
 
   function openEdit(d: Deal) {
     setEditId(d.id);
+    setWorkspaceBrand(analysisBrand());
+    setCompetitors(analysisCompetitors());
     setForm({
       brand_name: d.brand_name || "",
       contact_name: d.contact_name || "",
@@ -204,7 +345,40 @@ export default function BrandDeals() {
       notes: d.notes || "",
     });
     setSaveStatus(null);
+    setSuggesting(null);
     setModalOpen(true);
+  }
+
+  async function suggestField(field: keyof DealForm, label: string) {
+    setSuggesting(field);
+    try {
+      const ad = readAnalysis();
+      const industry =
+        (ad.industry &&
+          (typeof ad.industry === "string" ? ad.industry : ad.industry.name)) ||
+        "";
+      const r = await apiPost<{ ok?: boolean; value?: string; error?: string }>(
+        "/api/studio/ai-suggest",
+        {
+          field: `Generate a realistic value for the brand-deal form field "${label}". Reply with ONE short value only — no preamble.`,
+          fieldLabel: label,
+          brand: form.brand_name || ad.brandName || ad.brand || "",
+          industry,
+          currentValue: form[field] || "",
+          context: `Deal type: ${form.deal_type}; product: ${form.product}`,
+        },
+      );
+      const v = String(r?.value || "").trim();
+      if (!v) throw new Error(r?.error || "Empty suggestion");
+      setField(field, v);
+    } catch (e) {
+      setSaveStatus({
+        type: "error",
+        text: "AI Suggest failed: " + (e instanceof Error ? e.message : String(e)),
+      });
+    } finally {
+      setSuggesting(null);
+    }
   }
 
   async function save() {
@@ -524,192 +698,456 @@ export default function BrandDeals() {
           onClick={(e) => {
             if (e.target === e.currentTarget) setModalOpen(false);
           }}
+          style={{
+            background: "rgba(15, 23, 42, 0.45)",
+            backdropFilter: "blur(4px)",
+          }}
         >
-          <div className="ig-modal" style={{ maxWidth: 640 }}>
-            <div className="ig-modal-header">
-              <h3>{editId ? "✏️ Edit Deal" : "+ New Brand Deal"}</h3>
+          <div
+            className="ig-modal"
+            data-ig-no-enhance=""
+            style={{
+              maxWidth: 720,
+              width: "min(720px, calc(100vw - 32px))",
+              borderRadius: 18,
+              border: "1px solid #D1DCF5",
+              boxShadow: "0 24px 60px rgba(15, 23, 42, 0.18)",
+              overflow: "hidden",
+              background: "linear-gradient(180deg, #F8FAFF 0%, #FFFFFF 120px)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: 16,
+                padding: "20px 22px 12px",
+                borderBottom: "1px solid #E8EEF8",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: "0.68rem",
+                    fontWeight: 800,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    color: "#64748B",
+                    marginBottom: 4,
+                  }}
+                >
+                  Brand Deal Pipeline
+                </div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "1.25rem",
+                    fontWeight: 800,
+                    color: "#0A1628",
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  {editId ? "Edit deal" : "New brand deal"}
+                </h3>
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    fontSize: "0.84rem",
+                    color: "#64748B",
+                    lineHeight: 1.45,
+                    maxWidth: 460,
+                  }}
+                >
+                  Capture the brand, commercial terms, and follow-up dates in one
+                  clean card — ready for your kanban pipeline.
+                </p>
+              </div>
               <button
-                className="ig-modal-close"
+                type="button"
+                aria-label="Close"
                 onClick={() => setModalOpen(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  border: "1px solid #E2E8F0",
+                  background: "#fff",
+                  color: "#475569",
+                  fontSize: "1.2rem",
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
               >
                 ×
               </button>
             </div>
-            <div className="ig-modal-body">
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                }}
-              >
-                <div>
-                  <label className="ig-label">Brand Name *</label>
+
+            <div style={{ padding: "16px 22px 8px", maxHeight: "70vh", overflowY: "auto" }}>
+              {/* Brand & contact */}
+              <section style={sectionStyle}>
+                <h4 style={sectionTitleStyle}>Brand & contact</h4>
+                <div style={{ marginBottom: 14 }}>
+                  <FieldLabel>Brand name *</FieldLabel>
                   <input
-                    className="ig-input"
+                    data-ig-skip=""
+                    style={inputStyle}
                     value={form.brand_name}
                     onChange={(e) => setField("brand_name", e.target.value)}
                     placeholder="e.g. LUMI Skincare"
                   />
-                </div>
-                <div>
-                  <label className="ig-label">Contact Name</label>
-                  <input
-                    className="ig-input"
-                    value={form.contact_name}
-                    onChange={(e) => setField("contact_name", e.target.value)}
-                    placeholder="Sarah Lee"
-                  />
-                </div>
-                <div>
-                  <label className="ig-label">Contact Email</label>
-                  <input
-                    className="ig-input"
-                    type="email"
-                    value={form.contact_email}
-                    onChange={(e) => setField("contact_email", e.target.value)}
-                    placeholder="sarah@brand.com"
-                  />
-                </div>
-                <div>
-                  <label className="ig-label">Product</label>
-                  <input
-                    className="ig-input"
-                    value={form.product}
-                    onChange={(e) => setField("product", e.target.value)}
-                    placeholder="Vitamin C Serum"
-                  />
-                </div>
-                <div>
-                  <label className="ig-label">Deal Type</label>
-                  <select
-                    className="ig-select"
-                    value={form.deal_type}
-                    onChange={(e) => setField("deal_type", e.target.value)}
-                  >
-                    {DEAL_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t.replace(/_/g, " ")}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="ig-label">Offered Rate ($)</label>
-                  <input
-                    className="ig-input"
-                    type="number"
-                    value={form.offered_rate}
-                    onChange={(e) => setField("offered_rate", e.target.value)}
-                    placeholder="500"
-                  />
-                </div>
-                <div>
-                  <label className="ig-label">Negotiated Rate ($)</label>
-                  <input
-                    className="ig-input"
-                    type="number"
-                    value={form.negotiated_rate}
-                    onChange={(e) => setField("negotiated_rate", e.target.value)}
-                    placeholder="650"
-                  />
-                </div>
-                <div>
-                  <label className="ig-label">Status</label>
-                  <select
-                    className="ig-select"
-                    value={form.status}
-                    onChange={(e) => setField("status", e.target.value)}
-                  >
-                    {STATUS_OPTS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {personas.length > 0 && (
-                  <div>
-                    <label className="ig-label">Persona</label>
-                    <select
-                      className="ig-select"
-                      value={form.persona_id}
-                      onChange={(e) => setField("persona_id", e.target.value)}
+                  {(workspaceBrand || competitors.length > 0) && (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 6,
+                        marginTop: 8,
+                        alignItems: "center",
+                      }}
                     >
-                      <option value="">None</option>
-                      {personas.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          fontWeight: 700,
+                          color: "#94A3B8",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                        }}
+                      >
+                        Quick fill
+                      </span>
+                      {workspaceBrand && (
+                        <button
+                          type="button"
+                          style={{
+                            ...chipStyle,
+                            background: "#ECFDF5",
+                            borderColor: "#A7F3D0",
+                            color: "#065F46",
+                          }}
+                          onClick={() => setField("brand_name", workspaceBrand)}
+                        >
+                          My brand · {workspaceBrand}
+                        </button>
+                      )}
+                      {competitors.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          style={chipStyle}
+                          onClick={() => setField("brand_name", c)}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <FieldLabel
+                      action={
+                        <button
+                          type="button"
+                          style={suggestBtnStyle}
+                          disabled={suggesting === "contact_name"}
+                          onClick={() => suggestField("contact_name", "Contact Name")}
+                        >
+                          {suggesting === "contact_name" ? "…" : "Suggest"}
+                        </button>
+                      }
+                    >
+                      Contact name
+                    </FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      style={inputStyle}
+                      value={form.contact_name}
+                      onChange={(e) => setField("contact_name", e.target.value)}
+                      placeholder="Sarah Lee"
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel
+                      action={
+                        <button
+                          type="button"
+                          style={suggestBtnStyle}
+                          disabled={suggesting === "contact_email"}
+                          onClick={() => suggestField("contact_email", "Contact Email")}
+                        >
+                          {suggesting === "contact_email" ? "…" : "Suggest"}
+                        </button>
+                      }
+                    >
+                      Contact email
+                    </FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      style={inputStyle}
+                      type="email"
+                      value={form.contact_email}
+                      onChange={(e) => setField("contact_email", e.target.value)}
+                      placeholder="sarah@brand.com"
+                    />
+                  </div>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <FieldLabel
+                      action={
+                        <button
+                          type="button"
+                          style={suggestBtnStyle}
+                          disabled={suggesting === "product"}
+                          onClick={() => suggestField("product", "Product")}
+                        >
+                          {suggesting === "product" ? "…" : "Suggest"}
+                        </button>
+                      }
+                    >
+                      Product / offer
+                    </FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      style={inputStyle}
+                      value={form.product}
+                      onChange={(e) => setField("product", e.target.value)}
+                      placeholder="Vitamin C Serum launch kit"
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* Commercial terms */}
+              <section style={sectionStyle}>
+                <h4 style={sectionTitleStyle}>Commercial terms</h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <FieldLabel>Deal type</FieldLabel>
+                    <select
+                      data-ig-skip=""
+                      style={inputStyle}
+                      value={form.deal_type}
+                      onChange={(e) => setField("deal_type", e.target.value)}
+                    >
+                      {DEAL_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t.replace(/_/g, " ")}
                         </option>
                       ))}
                     </select>
                   </div>
-                )}
-                <div>
-                  <label className="ig-label">Follow-up Date</label>
+                  <div>
+                    <FieldLabel>Status</FieldLabel>
+                    <select
+                      data-ig-skip=""
+                      style={inputStyle}
+                      value={form.status}
+                      onChange={(e) => setField("status", e.target.value)}
+                    >
+                      {STATUS_OPTS.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <FieldLabel>Offered rate ($)</FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      style={inputStyle}
+                      type="number"
+                      value={form.offered_rate}
+                      onChange={(e) => setField("offered_rate", e.target.value)}
+                      placeholder="500"
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel>Negotiated rate ($)</FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      style={inputStyle}
+                      type="number"
+                      value={form.negotiated_rate}
+                      onChange={(e) => setField("negotiated_rate", e.target.value)}
+                      placeholder="650"
+                    />
+                  </div>
+                  {personas.length > 0 && (
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <FieldLabel>Persona</FieldLabel>
+                      <select
+                        data-ig-skip=""
+                        style={inputStyle}
+                        value={form.persona_id}
+                        onChange={(e) => setField("persona_id", e.target.value)}
+                      >
+                        <option value="">None</option>
+                        {personas.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* Timeline & scope */}
+              <section style={{ ...sectionStyle, marginBottom: 8 }}>
+                <h4 style={sectionTitleStyle}>Timeline & scope</h4>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: 12,
+                    marginBottom: 12,
+                  }}
+                >
+                  <div>
+                    <FieldLabel>Follow-up date</FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      style={inputStyle}
+                      type="date"
+                      value={form.follow_up_date}
+                      onChange={(e) => setField("follow_up_date", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel>Deadline</FieldLabel>
+                    <input
+                      data-ig-skip=""
+                      style={inputStyle}
+                      type="date"
+                      value={form.deadline}
+                      onChange={(e) => setField("deadline", e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <FieldLabel
+                    action={
+                      <button
+                        type="button"
+                        style={suggestBtnStyle}
+                        disabled={suggesting === "deliverables"}
+                        onClick={() => suggestField("deliverables", "Deliverables")}
+                      >
+                        {suggesting === "deliverables" ? "…" : "Suggest"}
+                      </button>
+                    }
+                  >
+                    Deliverables
+                  </FieldLabel>
                   <input
-                    className="ig-input"
-                    type="date"
-                    value={form.follow_up_date}
-                    onChange={(e) => setField("follow_up_date", e.target.value)}
+                    data-ig-skip=""
+                    style={inputStyle}
+                    value={form.deliverables}
+                    onChange={(e) => setField("deliverables", e.target.value)}
+                    placeholder="e.g. 2 Instagram posts, 1 Reel, 3 stories"
                   />
                 </div>
                 <div>
-                  <label className="ig-label">Deadline</label>
-                  <input
-                    className="ig-input"
-                    type="date"
-                    value={form.deadline}
-                    onChange={(e) => setField("deadline", e.target.value)}
+                  <FieldLabel>Notes</FieldLabel>
+                  <textarea
+                    data-ig-skip=""
+                    style={{ ...inputStyle, minHeight: 72, resize: "vertical" }}
+                    rows={3}
+                    value={form.notes}
+                    onChange={(e) => setField("notes", e.target.value)}
+                    placeholder="Context, talking points, or negotiation history"
                   />
                 </div>
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <label className="ig-label">Deliverables</label>
-                <input
-                  className="ig-input"
-                  value={form.deliverables}
-                  onChange={(e) => setField("deliverables", e.target.value)}
-                  placeholder="e.g. 2x Instagram posts, 1x Reel, 3 stories"
-                />
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <label className="ig-label">Notes</label>
-                <textarea
-                  className="ig-textarea"
-                  rows={2}
-                  value={form.notes}
-                  onChange={(e) => setField("notes", e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="ig-modal-footer">
+              </section>
+
               {saveStatus && (
                 <div
-                  className={`ig-alert ig-alert-${saveStatus.type}`}
-                  style={{ margin: "8px 0" }}
+                  style={{
+                    marginBottom: 10,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    fontSize: "0.84rem",
+                    fontWeight: 600,
+                    background: saveStatus.type === "error" ? "#FEF2F2" : "#EFF6FF",
+                    color: saveStatus.type === "error" ? "#991B1B" : "#1E40AF",
+                    border:
+                      saveStatus.type === "error"
+                        ? "1px solid #FECACA"
+                        : "1px solid #BFDBFE",
+                  }}
                 >
                   {saveStatus.text}
                 </div>
               )}
-              <div
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                justifyContent: "flex-end",
+                padding: "14px 22px 18px",
+                borderTop: "1px solid #E8EEF8",
+                background: "#fff",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
                 style={{
-                  display: "flex",
-                  gap: 8,
-                  justifyContent: "flex-end",
-                  marginTop: 8,
+                  padding: "10px 16px",
+                  borderRadius: 10,
+                  border: "1px solid #E2E8F0",
+                  background: "#fff",
+                  color: "#475569",
+                  fontWeight: 700,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
                 }}
               >
-                <button
-                  className="btn btn-outline"
-                  onClick={() => setModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button className="btn btn-primary" onClick={save}>
-                  {editId ? "Save Changes" : "Create Deal"}
-                </button>
-              </div>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={save}
+                disabled={!form.brand_name.trim()}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: form.brand_name.trim()
+                    ? "linear-gradient(135deg, #0050CC 0%, #0066FF 100%)"
+                    : "#94A3B8",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: "0.88rem",
+                  cursor: form.brand_name.trim() ? "pointer" : "not-allowed",
+                  fontFamily: "inherit",
+                  boxShadow: form.brand_name.trim()
+                    ? "0 8px 20px rgba(0, 102, 255, 0.28)"
+                    : "none",
+                }}
+              >
+                {editId ? "Save changes" : "Create deal"}
+              </button>
             </div>
           </div>
         </div>
@@ -721,28 +1159,79 @@ export default function BrandDeals() {
           onClick={(e) => {
             if (e.target === e.currentTarget) setPitchId(null);
           }}
+          style={{
+            background: "rgba(15, 23, 42, 0.45)",
+            backdropFilter: "blur(4px)",
+          }}
         >
-          <div className="ig-modal" style={{ maxWidth: 600 }}>
-            <div className="ig-modal-header">
-              <h3>📧 AI Pitch Generator</h3>
+          <div
+            className="ig-modal"
+            data-ig-no-enhance=""
+            style={{
+              maxWidth: 600,
+              width: "min(600px, calc(100vw - 32px))",
+              borderRadius: 18,
+              border: "1px solid #D1DCF5",
+              boxShadow: "0 24px 60px rgba(15, 23, 42, 0.18)",
+              overflow: "hidden",
+              background: "#fff",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: 16,
+                padding: "20px 22px 12px",
+                borderBottom: "1px solid #E8EEF8",
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "1.15rem",
+                    fontWeight: 800,
+                    color: "#0A1628",
+                  }}
+                >
+                  AI pitch generator
+                </h3>
+                <p style={{ margin: "6px 0 0", fontSize: "0.84rem", color: "#64748B" }}>
+                  Draft an outreach email grounded in this deal.
+                </p>
+              </div>
               <button
-                className="ig-modal-close"
+                type="button"
+                aria-label="Close"
                 onClick={() => setPitchId(null)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  border: "1px solid #E2E8F0",
+                  background: "#fff",
+                  color: "#475569",
+                  fontSize: "1.2rem",
+                  cursor: "pointer",
+                }}
               >
                 ×
               </button>
             </div>
-            <div className="ig-modal-body">
+            <div style={{ padding: "16px 22px" }}>
               <div style={{ marginBottom: 12 }}>
-                <label className="ig-label">Pitch Type</label>
+                <FieldLabel>Pitch type</FieldLabel>
                 <select
-                  className="ig-select"
+                  data-ig-skip=""
+                  style={inputStyle}
                   value={pitchType}
                   onChange={(e) => setPitchType(e.target.value)}
                 >
-                  <option value="initial">Initial Pitch</option>
+                  <option value="initial">Initial pitch</option>
                   <option value="follow_up">Follow-up</option>
-                  <option value="counter">Counter Offer</option>
+                  <option value="counter">Counter offer</option>
                 </select>
               </div>
               <div>
@@ -757,12 +1246,13 @@ export default function BrandDeals() {
                 {pitch && !pitchLoading && (
                   <div
                     style={{
-                      background: "var(--bg-subtle,#f8f9fa)",
-                      borderRadius: 10,
+                      background: "#F8FAFF",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: 12,
                       padding: 16,
                     }}
                   >
-                    <div style={{ fontWeight: 600, marginBottom: 10 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 10, color: "#0A1628" }}>
                       Subject: {pitch.subject || ""}
                     </div>
                     <div
@@ -770,6 +1260,7 @@ export default function BrandDeals() {
                         fontSize: "0.88rem",
                         lineHeight: 1.7,
                         whiteSpace: "pre-wrap",
+                        color: "#334155",
                       }}
                     >
                       {pitch.body || ""}
@@ -778,10 +1269,11 @@ export default function BrandDeals() {
                       <div style={{ marginTop: 12 }}>
                         <div
                           style={{
-                            fontSize: "0.78rem",
-                            fontWeight: 600,
-                            color: "var(--text-muted)",
-                            marginBottom: 4,
+                            fontSize: "0.72rem",
+                            fontWeight: 800,
+                            color: "#64748B",
+                            marginBottom: 6,
+                            letterSpacing: "0.04em",
                           }}
                         >
                           KEY POINTS
@@ -791,7 +1283,8 @@ export default function BrandDeals() {
                             key={i}
                             style={{
                               fontSize: "0.82rem",
-                              color: "var(--text-muted)",
+                              color: "#475569",
+                              marginBottom: 4,
                             }}
                           >
                             • {kp}
@@ -803,9 +1296,31 @@ export default function BrandDeals() {
                 )}
               </div>
             </div>
-            <div className="ig-modal-footer">
-              <button className="btn btn-primary" onClick={doPitch}>
-                ✨ Generate Pitch
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                padding: "14px 22px 18px",
+                borderTop: "1px solid #E8EEF8",
+              }}
+            >
+              <button
+                type="button"
+                onClick={doPitch}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: "linear-gradient(135deg, #0050CC 0%, #0066FF 100%)",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  boxShadow: "0 8px 20px rgba(0, 102, 255, 0.28)",
+                }}
+              >
+                Generate pitch
               </button>
             </div>
           </div>
