@@ -63,6 +63,104 @@ const IG = {
   shadow: "0 1px 0 rgba(11, 18, 32, 0.04), 0 12px 32px rgba(11, 18, 32, 0.06)",
 };
 
+const suggestBtnStyle: CSSProperties = {
+  border: "1px solid rgba(15, 118, 110, 0.25)",
+  background: IG.soft,
+  color: IG.teal,
+  borderRadius: 8,
+  padding: "3px 9px",
+  fontSize: "0.68rem",
+  fontWeight: 700,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  lineHeight: 1.3,
+  whiteSpace: "nowrap",
+};
+
+interface AnalysisData {
+  brandName?: string;
+  brand?: string;
+  companyName?: string;
+  url?: string;
+  domain?: string;
+  industry?: string | { name?: string };
+  competitors?: (string | { name?: string; brand?: string; domain?: string })[];
+}
+
+function readAnalysis(): AnalysisData {
+  return (window as unknown as { analysisData?: AnalysisData }).analysisData || {};
+}
+
+function analysisBrand(): string {
+  const a = readAnalysis();
+  const direct = a.brandName || a.brand || a.companyName;
+  if (direct) return String(direct).trim();
+  const dom = String(a.url || a.domain || "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .split("/")[0]
+    .split(".")[0]
+    .trim();
+  if (!dom) return "";
+  return dom.charAt(0).toUpperCase() + dom.slice(1);
+}
+
+function analysisIndustry(): string {
+  const a = readAnalysis();
+  if (!a.industry) return "";
+  return typeof a.industry === "string" ? a.industry : a.industry.name || "";
+}
+
+function analysisCompetitors(): string[] {
+  const a = readAnalysis();
+  return (a.competitors || [])
+    .map((c) =>
+      typeof c === "string"
+        ? c
+        : String(c?.name || c?.brand || c?.domain || "").trim(),
+    )
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+type SuggestField = "system" | "prompt";
+
+function FieldLabel({
+  children,
+  action,
+}: {
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 8,
+        marginBottom: 6,
+        minHeight: 22,
+      }}
+    >
+      <label
+        style={{
+          display: "block",
+          fontSize: 12,
+          fontWeight: 700,
+          color: IG.muted,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          margin: 0,
+        }}
+      >
+        {children}
+      </label>
+      {action}
+    </div>
+  );
+}
+
 function Badge({
   text,
   tone,
@@ -108,6 +206,8 @@ export default function ModelCompare() {
   const [results, setResults] = useState<RunResult[] | null>(null);
   const [judgment, setJudgment] = useState<Judgment | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState<SuggestField | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,6 +291,59 @@ export default function ModelCompare() {
       }
       return next;
     });
+  }
+
+  async function suggestField(field: SuggestField) {
+    setSuggesting(field);
+    setSuggestError(null);
+    const brand = analysisBrand();
+    const industry = analysisIndustry();
+    const competitors = analysisCompetitors();
+    const prompts: Record<
+      SuggestField,
+      { label: string; field: string }
+    > = {
+      system: {
+        label: "System prompt",
+        field: `Write a concise system prompt (1–3 sentences) for an AI doing "${taskType}" work for this brand. Set tone, expertise, and constraints. Reply with the system prompt only — no quotes or preamble.`,
+      },
+      prompt: {
+        label: "User prompt",
+        field: `Write one high-quality user prompt for a "${taskType}" model comparison. Make it specific to the brand/industry and useful for A/B comparing models. Reply with the prompt only — no quotes or preamble.`,
+      },
+    };
+    const meta = prompts[field];
+    try {
+      const r = await apiPost<{ ok?: boolean; value?: string; error?: string }>(
+        "/api/studio/ai-suggest",
+        {
+          field: meta.field,
+          fieldLabel: meta.label,
+          brand,
+          industry,
+          competitors,
+          currentValue: field === "system" ? systemPrompt : prompt,
+          context: [
+            `Task type: ${taskType}`,
+            systemPrompt ? `Current system prompt: ${systemPrompt}` : "",
+            prompt ? `Current user prompt: ${prompt}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        },
+      );
+      const v = String(r?.value || "").trim();
+      if (!v) throw new Error(r?.error || "Empty suggestion");
+      if (field === "system") setSystemPrompt(v);
+      else setPrompt(v);
+    } catch (e) {
+      setSuggestError(
+        "AI Suggest failed: " +
+          (e instanceof Error ? e.message : String(e)),
+      );
+    } finally {
+      setSuggesting(null);
+    }
   }
 
   async function run() {
@@ -480,19 +633,25 @@ export default function ModelCompare() {
                   </select>
                 </div>
                 <div style={{ marginBottom: 12 }}>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: IG.muted,
-                      letterSpacing: "0.04em",
-                      textTransform: "uppercase",
-                      marginBottom: 6,
-                    }}
+                  <FieldLabel
+                    action={
+                      <button
+                        type="button"
+                        style={{
+                          ...suggestBtnStyle,
+                          opacity: suggesting === "system" ? 0.65 : 1,
+                          cursor:
+                            suggesting === "system" ? "wait" : "pointer",
+                        }}
+                        disabled={suggesting === "system"}
+                        onClick={() => suggestField("system")}
+                      >
+                        {suggesting === "system" ? "…" : "✨ AI Suggest"}
+                      </button>
+                    }
                   >
                     System prompt
-                  </label>
+                  </FieldLabel>
                   <textarea
                     rows={2}
                     value={systemPrompt}
@@ -502,19 +661,25 @@ export default function ModelCompare() {
                   />
                 </div>
                 <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: IG.muted,
-                      letterSpacing: "0.04em",
-                      textTransform: "uppercase",
-                      marginBottom: 6,
-                    }}
+                  <FieldLabel
+                    action={
+                      <button
+                        type="button"
+                        style={{
+                          ...suggestBtnStyle,
+                          opacity: suggesting === "prompt" ? 0.65 : 1,
+                          cursor:
+                            suggesting === "prompt" ? "wait" : "pointer",
+                        }}
+                        disabled={suggesting === "prompt"}
+                        onClick={() => suggestField("prompt")}
+                      >
+                        {suggesting === "prompt" ? "…" : "✨ AI Suggest"}
+                      </button>
+                    }
                   >
                     Prompt
-                  </label>
+                  </FieldLabel>
                   <textarea
                     rows={5}
                     value={prompt}
@@ -523,6 +688,21 @@ export default function ModelCompare() {
                     style={{ ...inputStyle, resize: "vertical" }}
                   />
                 </div>
+                {suggestError && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "8px 10px",
+                      borderRadius: IG.radiusSm,
+                      fontSize: 12,
+                      color: "#991b1b",
+                      background: "rgba(220,38,38,0.08)",
+                      border: "1px solid rgba(220,38,38,0.25)",
+                    }}
+                  >
+                    {suggestError}
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={run}
