@@ -11591,7 +11591,8 @@ window._safeUrl = function(u) {
     if (!input) return null;
     if (input.dataset && input.dataset.fae) return null;
     if (input.dataset && input.dataset.noAutofill) return null;
-    if (input.closest && input.closest('[data-no-autofill]')) return null;
+    if (input.dataset && input.dataset.igSkip !== undefined) return null;
+    if (input.closest && input.closest('[data-no-autofill], [data-ig-no-enhance]')) return null;
     const tag = (input.tagName || '').toLowerCase();
     const type = (input.type || '').toLowerCase();
     if (tag !== 'input' && tag !== 'select' && tag !== 'textarea') return null;

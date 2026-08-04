@@ -173,46 +173,64 @@ const EMPTY_FORM: DealForm = {
   notes: "",
 };
 
-/* Shared form chrome — keeps the modal cohesive without purple enhancer clutter */
+/* InfoGenie teal design tokens — match theme-v2 / ig-card language */
+const IG = {
+  ink: "#0b1220",
+  muted: "#5b6577",
+  border: "rgba(11, 18, 32, 0.1)",
+  surface: "#ffffff",
+  stage: "#f3f6fb",
+  panel2: "#f8fafc",
+  teal: "#0f766e",
+  blue: "#0284c7",
+  green: "#16a34a",
+  warm: "#f97316",
+  soft: "rgba(15, 118, 110, 0.12)",
+  shadow: "0 1px 0 rgba(11, 18, 32, 0.04), 0 12px 32px rgba(11, 18, 32, 0.06)",
+  grad: "linear-gradient(135deg, #0f766e 0%, #0284c7 100%)",
+  radius: 12,
+  radiusSm: 8,
+};
+
 const labelStyle: CSSProperties = {
   display: "block",
-  fontSize: "0.72rem",
+  fontSize: "0.7rem",
   fontWeight: 700,
-  letterSpacing: "0.04em",
+  letterSpacing: "0.06em",
   textTransform: "uppercase",
-  color: "#64748B",
+  color: IG.muted,
   marginBottom: 6,
 };
 const inputStyle: CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
   padding: "10px 12px",
-  borderRadius: 10,
-  border: "1px solid #D1DCF5",
-  background: "#F8FAFF",
-  color: "#0A1628",
+  borderRadius: IG.radiusSm,
+  border: `1.5px solid ${IG.border}`,
+  background: IG.surface,
+  color: IG.ink,
   fontSize: "0.9rem",
   fontFamily: "inherit",
   outline: "none",
 };
 const sectionStyle: CSSProperties = {
-  border: "1px solid #E2E8F0",
-  borderRadius: 14,
+  border: `1px solid ${IG.border}`,
+  borderRadius: IG.radius,
   padding: "16px 16px 14px",
-  background: "#fff",
-  marginBottom: 14,
+  background: IG.panel2,
+  marginBottom: 12,
 };
 const sectionTitleStyle: CSSProperties = {
   margin: "0 0 12px",
-  fontSize: "0.82rem",
+  fontSize: "0.88rem",
   fontWeight: 800,
-  color: "#0A1628",
+  color: IG.ink,
   letterSpacing: "-0.01em",
 };
 const chipStyle: CSSProperties = {
-  border: "1px solid #C7D8F5",
-  background: "#F0F4FF",
-  color: "#1E3A8A",
+  border: `1px solid ${IG.border}`,
+  background: IG.surface,
+  color: IG.teal,
   borderRadius: 999,
   padding: "5px 11px",
   fontSize: "0.72rem",
@@ -221,9 +239,9 @@ const chipStyle: CSSProperties = {
   fontFamily: "inherit",
 };
 const suggestBtnStyle: CSSProperties = {
-  border: "1px solid #BFDBFE",
-  background: "#EFF6FF",
-  color: "#1D4ED8",
+  border: `1px solid rgba(15, 118, 110, 0.25)`,
+  background: IG.soft,
+  color: IG.teal,
   borderRadius: 8,
   padding: "3px 8px",
   fontSize: "0.68rem",
@@ -474,225 +492,346 @@ export default function BrandDeals() {
           </div>
         ) : (
           <>
+            {/* Metric strip — matches InfoGenie ig-card language */}
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(4,1fr)",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
                 gap: 12,
-                marginBottom: 24,
+                marginBottom: 22,
               }}
             >
               {(
                 [
-                  ["💬 Inquiries", stats.inquiries || 0, "#94a3b8"],
-                  ["🤝 Active Deals", stats.active || 0, "#22c55e"],
-                  ["✅ Completed", stats.completed || 0, "#16a34a"],
-                  ["💰 Total Earned", formatMoney(stats.total_earned || 0), "#667eea"],
-                ] as [string, string | number, string][]
-              ).map(([l, v, c], i) => (
+                  ["Inquiries", stats.inquiries || 0, "#5b6577", "💬"],
+                  ["Active deals", stats.active || 0, IG.green, "🤝"],
+                  ["Completed", stats.completed || 0, IG.teal, "✅"],
+                  ["Total earned", formatMoney(stats.total_earned || 0), IG.blue, "💰"],
+                ] as [string, string | number, string, string][]
+              ).map(([l, v, c, icon]) => (
                 <div
-                  key={i}
+                  key={l}
                   className="ig-card"
-                  style={{ textAlign: "center", padding: 16 }}
+                  style={{
+                    padding: "16px 18px",
+                    borderRadius: IG.radius,
+                    boxShadow: IG.shadow,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                  }}
                 >
                   <div
-                    style={{ fontSize: "1.4rem", fontWeight: 700, color: c }}
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 10,
+                      background: IG.soft,
+                      color: IG.teal,
+                      display: "grid",
+                      placeItems: "center",
+                      fontSize: "1.1rem",
+                      flexShrink: 0,
+                    }}
                   >
-                    {v}
+                    {icon}
                   </div>
-                  <div
-                    style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}
-                  >
-                    {l}
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        color: IG.muted,
+                        marginBottom: 2,
+                      }}
+                    >
+                      {l}
+                    </div>
+                    <div style={{ fontSize: "1.35rem", fontWeight: 800, color: c, letterSpacing: "-0.02em" }}>
+                      {v}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
 
+            {/* Pipeline board */}
             <div
+              className="ig-card"
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 16,
+                padding: 18,
+                borderRadius: IG.radius,
+                boxShadow: IG.shadow,
+                marginBottom: 8,
               }}
             >
-              <h3 style={{ margin: 0 }}>Deal Pipeline</h3>
-              <button className="btn btn-primary" onClick={openNew}>
-                + New Deal
-              </button>
-            </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  marginBottom: 16,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: "1.05rem",
+                      fontWeight: 800,
+                      color: IG.ink,
+                      letterSpacing: "-0.02em",
+                    }}
+                  >
+                    Deal pipeline
+                  </h3>
+                  <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: IG.muted }}>
+                    Move deals from inquiry to paid — click a card to edit or generate a pitch.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={openNew}
+                  style={{
+                    background: IG.grad,
+                    border: "none",
+                    borderRadius: IG.radiusSm,
+                    padding: "10px 16px",
+                    fontWeight: 800,
+                    fontSize: "0.85rem",
+                    boxShadow: "0 8px 18px rgba(15, 118, 110, 0.22)",
+                  }}
+                >
+                  + New deal
+                </button>
+              </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-                gap: 16,
-                alignItems: "start",
-              }}
-            >
-              {KANBAN.map((status) => {
-                const groupDeals = deals.filter((d) => d.status === status);
-                const col = DEAL_STATUS_COLORS[status] || "#94a3b8";
-                return (
-                  <div key={status}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                  gap: 12,
+                  alignItems: "stretch",
+                }}
+              >
+                {KANBAN.map((status) => {
+                  const groupDeals = deals.filter((d) => d.status === status);
+                  const col = DEAL_STATUS_COLORS[status] || "#94a3b8";
+                  return (
                     <div
+                      key={status}
                       style={{
+                        background: IG.stage,
+                        border: `1px solid ${IG.border}`,
+                        borderRadius: IG.radius,
+                        minHeight: 220,
                         display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        marginBottom: 10,
+                        flexDirection: "column",
+                        overflow: "hidden",
                       }}
                     >
                       <div
                         style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: "50%",
-                          background: col,
-                        }}
-                      />
-                      <span
-                        style={{
-                          fontWeight: 600,
-                          textTransform: "capitalize",
-                          fontSize: "0.85rem",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "11px 12px",
+                          background: IG.surface,
+                          borderBottom: `1px solid ${IG.border}`,
                         }}
                       >
-                        {status}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.78rem",
-                          color: "var(--text-muted)",
-                        }}
-                      >
-                        ({groupDeals.length})
-                      </span>
-                    </div>
-                    {groupDeals.map((d) => {
-                      const dcol = DEAL_STATUS_COLORS[d.status || ""] || "#94a3b8";
-                      return (
-                        <div
-                          key={d.id}
-                          className="ig-card"
+                        <span
                           style={{
-                            marginBottom: 8,
-                            padding: 12,
-                            borderLeft: `3px solid ${dcol}`,
+                            width: 8,
+                            height: 8,
+                            borderRadius: "50%",
+                            background: col,
+                            boxShadow: `0 0 0 3px ${col}22`,
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontWeight: 800,
+                            textTransform: "capitalize",
+                            fontSize: "0.8rem",
+                            color: IG.ink,
+                            flex: 1,
                           }}
                         >
+                          {status}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "0.68rem",
+                            fontWeight: 800,
+                            color: IG.teal,
+                            background: IG.soft,
+                            borderRadius: 999,
+                            padding: "2px 8px",
+                          }}
+                        >
+                          {groupDeals.length}
+                        </span>
+                      </div>
+
+                      <div style={{ padding: 10, flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+                        {groupDeals.length === 0 ? (
                           <div
                             style={{
-                              fontWeight: 600,
-                              fontSize: "0.9rem",
-                              marginBottom: 2,
+                              flex: 1,
+                              display: "grid",
+                              placeItems: "center",
+                              textAlign: "center",
+                              padding: "18px 10px",
+                              color: IG.muted,
+                              fontSize: "0.75rem",
+                              border: `1px dashed ${IG.border}`,
+                              borderRadius: IG.radiusSm,
+                              background: "rgba(255,255,255,0.55)",
                             }}
                           >
-                            {d.brand_name}
+                            No deals yet
                           </div>
-                          {d.product && (
-                            <div
-                              style={{
-                                fontSize: "0.8rem",
-                                color: "var(--text-muted)",
-                                marginBottom: 4,
-                              }}
-                            >
-                              {d.product}
-                            </div>
-                          )}
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              marginBottom: 8,
-                            }}
-                          >
-                            <span
-                              className="ig-badge ig-badge-xs"
-                              style={{ textTransform: "capitalize" }}
-                            >
-                              {(d.deal_type || "").replace(/_/g, " ")}
-                            </span>
-                            {(d.negotiated_rate || d.offered_rate) && (
-                              <span
+                        ) : (
+                          groupDeals.map((d) => {
+                            const dcol = DEAL_STATUS_COLORS[d.status || ""] || "#94a3b8";
+                            return (
+                              <div
+                                key={d.id}
+                                className="ig-card"
                                 style={{
-                                  fontSize: "0.85rem",
-                                  fontWeight: 600,
-                                  color: dcol,
+                                  padding: 12,
+                                  borderRadius: IG.radiusSm,
+                                  borderLeft: `3px solid ${dcol}`,
+                                  boxShadow: "0 1px 2px rgba(11,18,32,0.04)",
+                                  cursor: "pointer",
                                 }}
+                                onClick={() => openEdit(d)}
                               >
-                                {formatMoney(
-                                  d.negotiated_rate || d.offered_rate,
-                                  d.currency || "USD",
+                                <div
+                                  style={{
+                                    fontWeight: 800,
+                                    fontSize: "0.88rem",
+                                    color: IG.ink,
+                                    marginBottom: 2,
+                                  }}
+                                >
+                                  {d.brand_name}
+                                </div>
+                                {d.product && (
+                                  <div
+                                    style={{
+                                      fontSize: "0.76rem",
+                                      color: IG.muted,
+                                      marginBottom: 6,
+                                    }}
+                                  >
+                                    {d.product}
+                                  </div>
                                 )}
-                              </span>
-                            )}
-                          </div>
-                          {d.persona_name && (
-                            <div
-                              style={{
-                                fontSize: "0.78rem",
-                                color: "var(--text-muted)",
-                                marginBottom: 8,
-                              }}
-                            >
-                              👤 {d.persona_name}
-                            </div>
-                          )}
-                          {d.follow_up_date && (
-                            <div
-                              style={{
-                                fontSize: "0.75rem",
-                                color: "#f59e0b",
-                                marginBottom: 6,
-                              }}
-                            >
-                              📅 Follow up: {formatDate(d.follow_up_date)}
-                            </div>
-                          )}
-                          <div
-                            style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-                          >
-                            <button
-                              className="btn btn-xs btn-outline"
-                              onClick={() => openEdit(d)}
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              className="btn btn-xs btn-outline"
-                              onClick={() => openPitch(d.id)}
-                            >
-                              📧 Pitch
-                            </button>
-                            <select
-                              className="ig-select"
-                              style={{
-                                fontSize: "0.75rem",
-                                padding: "2px 6px",
-                                height: "auto",
-                              }}
-                              value={d.status || "inquiry"}
-                              onChange={(e) =>
-                                changeStatus(d.id, e.target.value)
-                              }
-                            >
-                              {STATUS_OPTS.map((s) => (
-                                <option key={s} value={s}>
-                                  {s}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    marginBottom: 8,
+                                    gap: 6,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: "0.65rem",
+                                      fontWeight: 700,
+                                      textTransform: "capitalize",
+                                      color: IG.teal,
+                                      background: IG.soft,
+                                      borderRadius: 6,
+                                      padding: "2px 7px",
+                                    }}
+                                  >
+                                    {(d.deal_type || "").replace(/_/g, " ")}
+                                  </span>
+                                  {(d.negotiated_rate || d.offered_rate) != null && (
+                                    <span
+                                      style={{
+                                        fontSize: "0.82rem",
+                                        fontWeight: 800,
+                                        color: dcol,
+                                      }}
+                                    >
+                                      {formatMoney(
+                                        d.negotiated_rate || d.offered_rate,
+                                        d.currency || "USD",
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                                {d.follow_up_date && (
+                                  <div
+                                    style={{
+                                      fontSize: "0.72rem",
+                                      color: IG.warm,
+                                      marginBottom: 8,
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    Follow up {formatDate(d.follow_up_date)}
+                                  </div>
+                                )}
+                                <div
+                                  style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button
+                                    type="button"
+                                    className="btn btn-xs btn-outline"
+                                    onClick={() => openEdit(d)}
+                                    style={{ borderRadius: 6, fontWeight: 700 }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-xs btn-outline"
+                                    onClick={() => openPitch(d.id)}
+                                    style={{ borderRadius: 6, fontWeight: 700 }}
+                                  >
+                                    Pitch
+                                  </button>
+                                  <select
+                                    className="ig-select"
+                                    style={{
+                                      fontSize: "0.72rem",
+                                      padding: "2px 6px",
+                                      height: "auto",
+                                      borderRadius: 6,
+                                      flex: 1,
+                                      minWidth: 90,
+                                    }}
+                                    value={d.status || "inquiry"}
+                                    onChange={(e) => changeStatus(d.id, e.target.value)}
+                                  >
+                                    {STATUS_OPTS.map((s) => (
+                                      <option key={s} value={s}>
+                                        {s}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </>
         )}
@@ -713,13 +852,13 @@ export default function BrandDeals() {
             className="ig-modal"
             data-ig-no-enhance=""
             style={{
-              maxWidth: 720,
-              width: "min(720px, calc(100vw - 32px))",
-              borderRadius: 18,
-              border: "1px solid #D1DCF5",
-              boxShadow: "0 24px 60px rgba(15, 23, 42, 0.18)",
+              maxWidth: 640,
+              width: "min(640px, calc(100vw - 28px))",
+              borderRadius: 16,
+              border: `1px solid ${IG.border}`,
+              boxShadow: "0 24px 64px rgba(11, 18, 32, 0.2)",
               overflow: "hidden",
-              background: "linear-gradient(180deg, #F8FAFF 0%, #FFFFFF 120px)",
+              background: IG.surface,
             }}
           >
             <div
@@ -728,29 +867,31 @@ export default function BrandDeals() {
                 alignItems: "flex-start",
                 justifyContent: "space-between",
                 gap: 16,
-                padding: "20px 22px 12px",
-                borderBottom: "1px solid #E8EEF8",
+                padding: "18px 20px 14px",
+                borderBottom: `1px solid ${IG.border}`,
+                background:
+                  "linear-gradient(135deg, rgba(15,118,110,0.08) 0%, rgba(2,132,199,0.06) 100%)",
               }}
             >
-              <div>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div
                   style={{
-                    fontSize: "0.68rem",
+                    fontSize: "0.66rem",
                     fontWeight: 800,
                     letterSpacing: "0.08em",
                     textTransform: "uppercase",
-                    color: "#64748B",
+                    color: IG.teal,
                     marginBottom: 4,
                   }}
                 >
-                  Brand Deal Pipeline
+                  Brand deal pipeline
                 </div>
                 <h3
                   style={{
                     margin: 0,
-                    fontSize: "1.25rem",
+                    fontSize: "1.2rem",
                     fontWeight: 800,
-                    color: "#0A1628",
+                    color: IG.ink,
                     letterSpacing: "-0.02em",
                   }}
                 >
@@ -759,14 +900,12 @@ export default function BrandDeals() {
                 <p
                   style={{
                     margin: "6px 0 0",
-                    fontSize: "0.84rem",
-                    color: "#64748B",
+                    fontSize: "0.82rem",
+                    color: IG.muted,
                     lineHeight: 1.45,
-                    maxWidth: 460,
                   }}
                 >
-                  Capture the brand, commercial terms, and follow-up dates in one
-                  clean card — ready for your kanban pipeline.
+                  Brand, commercial terms, and dates — ready for your kanban board.
                 </p>
               </div>
               <button
@@ -774,13 +913,13 @@ export default function BrandDeals() {
                 aria-label="Close"
                 onClick={() => setModalOpen(false)}
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  border: "1px solid #E2E8F0",
-                  background: "#fff",
-                  color: "#475569",
-                  fontSize: "1.2rem",
+                  width: 34,
+                  height: 34,
+                  borderRadius: IG.radiusSm,
+                  border: `1px solid ${IG.border}`,
+                  background: IG.surface,
+                  color: IG.muted,
+                  fontSize: "1.15rem",
                   lineHeight: 1,
                   cursor: "pointer",
                   flexShrink: 0,
@@ -790,14 +929,36 @@ export default function BrandDeals() {
               </button>
             </div>
 
-            <div style={{ padding: "16px 22px 8px", maxHeight: "70vh", overflowY: "auto" }}>
-              {/* Brand & contact */}
+            <div style={{ padding: "14px 20px 6px", maxHeight: "68vh", overflowY: "auto" }}>
               <section style={sectionStyle}>
                 <h4 style={sectionTitleStyle}>Brand & contact</h4>
-                <div style={{ marginBottom: 14 }}>
+                <div style={{ marginBottom: 12 }}>
                   <FieldLabel>Brand name *</FieldLabel>
+                  {(workspaceBrand || competitors.length > 0) && (
+                    <select
+                      data-ig-skip=""
+                      className="ig-select"
+                      style={{ ...inputStyle, marginBottom: 8, color: IG.teal, fontWeight: 600 }}
+                      defaultValue=""
+                      onChange={(e) => {
+                        if (e.target.value) setField("brand_name", e.target.value);
+                        e.target.value = "";
+                      }}
+                    >
+                      <option value="">Pick from your analysis…</option>
+                      {workspaceBrand && (
+                        <option value={workspaceBrand}>{workspaceBrand} (my brand)</option>
+                      )}
+                      {competitors.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <input
                     data-ig-skip=""
+                    className="ig-input"
                     style={inputStyle}
                     value={form.brand_name}
                     onChange={(e) => setField("brand_name", e.target.value)}
@@ -810,28 +971,15 @@ export default function BrandDeals() {
                         flexWrap: "wrap",
                         gap: 6,
                         marginTop: 8,
-                        alignItems: "center",
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: "0.68rem",
-                          fontWeight: 700,
-                          color: "#94A3B8",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.04em",
-                        }}
-                      >
-                        Quick fill
-                      </span>
                       {workspaceBrand && (
                         <button
                           type="button"
                           style={{
                             ...chipStyle,
-                            background: "#ECFDF5",
-                            borderColor: "#A7F3D0",
-                            color: "#065F46",
+                            background: IG.soft,
+                            borderColor: "rgba(15,118,110,0.3)",
                           }}
                           onClick={() => setField("brand_name", workspaceBrand)}
                         >
@@ -855,7 +1003,7 @@ export default function BrandDeals() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                    gridTemplateColumns: "1fr 1fr",
                     gap: 12,
                   }}
                 >
@@ -938,7 +1086,7 @@ export default function BrandDeals() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                    gridTemplateColumns: "1fr 1fr",
                     gap: 12,
                   }}
                 >
@@ -1021,7 +1169,7 @@ export default function BrandDeals() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gridTemplateColumns: "1fr 1fr",
                     gap: 12,
                     marginBottom: 12,
                   }}
@@ -1088,15 +1236,15 @@ export default function BrandDeals() {
                   style={{
                     marginBottom: 10,
                     padding: "10px 12px",
-                    borderRadius: 10,
+                    borderRadius: IG.radiusSm,
                     fontSize: "0.84rem",
                     fontWeight: 600,
-                    background: saveStatus.type === "error" ? "#FEF2F2" : "#EFF6FF",
-                    color: saveStatus.type === "error" ? "#991B1B" : "#1E40AF",
+                    background: saveStatus.type === "error" ? "#FEF2F2" : IG.soft,
+                    color: saveStatus.type === "error" ? "#991B1B" : IG.teal,
                     border:
                       saveStatus.type === "error"
                         ? "1px solid #FECACA"
-                        : "1px solid #BFDBFE",
+                        : "1px solid rgba(15,118,110,0.25)",
                   }}
                 >
                   {saveStatus.text}
@@ -1109,9 +1257,9 @@ export default function BrandDeals() {
                 display: "flex",
                 gap: 10,
                 justifyContent: "flex-end",
-                padding: "14px 22px 18px",
-                borderTop: "1px solid #E8EEF8",
-                background: "#fff",
+                padding: "14px 20px 16px",
+                borderTop: `1px solid ${IG.border}`,
+                background: IG.panel2,
               }}
             >
               <button
@@ -1119,12 +1267,12 @@ export default function BrandDeals() {
                 onClick={() => setModalOpen(false)}
                 style={{
                   padding: "10px 16px",
-                  borderRadius: 10,
-                  border: "1px solid #E2E8F0",
-                  background: "#fff",
-                  color: "#475569",
+                  borderRadius: IG.radiusSm,
+                  border: `1px solid ${IG.border}`,
+                  background: IG.surface,
+                  color: IG.muted,
                   fontWeight: 700,
-                  fontSize: "0.88rem",
+                  fontSize: "0.86rem",
                   cursor: "pointer",
                   fontFamily: "inherit",
                 }}
@@ -1137,18 +1285,16 @@ export default function BrandDeals() {
                 disabled={!form.brand_name.trim()}
                 style={{
                   padding: "10px 18px",
-                  borderRadius: 10,
+                  borderRadius: IG.radiusSm,
                   border: "none",
-                  background: form.brand_name.trim()
-                    ? "linear-gradient(135deg, #0050CC 0%, #0066FF 100%)"
-                    : "#94A3B8",
+                  background: form.brand_name.trim() ? IG.grad : "#94A3B8",
                   color: "#fff",
                   fontWeight: 800,
-                  fontSize: "0.88rem",
+                  fontSize: "0.86rem",
                   cursor: form.brand_name.trim() ? "pointer" : "not-allowed",
                   fontFamily: "inherit",
                   boxShadow: form.brand_name.trim()
-                    ? "0 8px 20px rgba(0, 102, 255, 0.28)"
+                    ? "0 8px 18px rgba(15, 118, 110, 0.28)"
                     : "none",
                 }}
               >
