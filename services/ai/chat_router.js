@@ -80,33 +80,65 @@ async function _callZai(messages, opts = {}) {
 /**
  * @param {'writing'|'analysis'|'vision'|'audio'} category
  * @param {Array<{role:string,content:string}>} messages
- * @param {{ tenantId?: number, max_tokens?: number, temperature?: number, response_format?: object, useAutoclaw?: boolean, model?: string }} opts
+ * @param {{ tenantId?: number, max_tokens?: number, temperature?: number, response_format?: object, useAutoclaw?: boolean, model?: string, useContextPack?: boolean, surface?: string, requireContext?: boolean }} opts
  */
 async function chatForCategory(category, messages, opts = {}) {
+  let msgs = Array.isArray(messages) ? messages : [];
+  let contextPack = null;
+
+  // M1: inject Marketing Memory + brand foundation when tenant is known
+  if (opts.tenantId != null && opts.useContextPack !== false) {
+    try {
+      const { buildContextPack, injectContextIntoMessages } = require('../ai_governance/context_pack');
+      contextPack = await buildContextPack({
+        tenantId: opts.tenantId,
+        question: opts.question,
+        surface: opts.surface || category,
+        messages: msgs,
+        requireContext: !!opts.requireContext,
+        limit: opts.contextLimit || 6,
+      });
+      const inj = injectContextIntoMessages(msgs, contextPack);
+      msgs = inj.messages;
+      opts._contextPack = contextPack;
+      opts._contextPackInjected = inj.injected;
+    } catch (e) {
+      console.warn('[chat_router] context_pack failed (fail-open):', e.message);
+    }
+  }
+
   if (opts.tenantId != null) {
-    const via = await chatViaProvider(category, messages, opts);
-    if (via && via.content) return via;
+    const via = await chatViaProvider(category, msgs, opts);
+    if (via && via.content) {
+      if (contextPack) via.context_pack_id = contextPack.id;
+      return via;
+    }
   }
 
   // AutoClaw / Z.ai coding endpoint (preferred for analysis & agentic tasks)
   const preferCoding = opts.useAutoclaw !== false && (category === 'analysis' || opts.useAutoclaw);
-  const zai = await _callZai(messages, {
+  const zai = await _callZai(msgs, {
     ...opts,
     endpointMode: preferCoding ? (process.env.ZAI_ENDPOINT_MODE || 'auto') : 'zai-global',
     reasoning_effort: opts.reasoning_effort || (preferCoding ? 'high' : undefined),
   });
-  if (zai?.content) return zai;
+  if (zai?.content) {
+    if (contextPack) zai.context_pack_id = contextPack.id;
+    return zai;
+  }
 
   const oaiKey = _openaiKey();
   if (oaiKey) {
     const base = (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
-    return await _callOpenAICompat({
+    const out = await _callOpenAICompat({
       baseUrl: base,
       apiKey: oaiKey,
       model: opts.model || 'gpt-4o-mini',
-      messages,
+      messages: msgs,
       opts,
     });
+    if (contextPack) out.context_pack_id = contextPack.id;
+    return out;
   }
 
   return null;

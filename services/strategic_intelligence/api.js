@@ -131,6 +131,7 @@ async function _chatJson(prompt, maxTokens = 1800, tenantId = null) {
       model: 'gpt-4o-mini',
       useAutoclaw: false,
       timeoutMs: Math.min(AI_BUDGET_MS, 14000),
+      surface: 'strategic_intelligence',
     });
     const raw = r?.content;
     if (!raw || typeof raw !== 'string') return null;

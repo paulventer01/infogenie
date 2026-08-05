@@ -74,7 +74,7 @@ router.get('/status', _route(async (req, res) => {
     layers: {
       policy: { ready: true, mode: policy.default_mode, appetite: policy.risk_appetite },
       data: { ready: false, note: 'Phase B' },
-      context: { ready: false, note: 'Phase C' },
+      context: { ready: true, note: 'Phase C — buildContextPack on chatForCategory + Ask InfoGenie' },
       output: { ready: true, note: 'Phase A light scan; full gate in Phase D' },
     },
     last24h: counts,
@@ -258,6 +258,22 @@ router.post('/demo-event', express.json(), _route(async (req, res) => {
     },
   });
   res.json({ ok: true, result });
+}));
+
+/** Preview a context pack for the current tenant (M1 debugging / Hub Context tab) */
+router.post('/context-pack', express.json(), _route(async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'ai-gov:context-pack' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const { buildContextPack } = require('./context_pack');
+  const pack = await buildContextPack({
+    tenantId: tid,
+    userId: req.user?.id || null,
+    question: String(req.body?.question || '').slice(0, 2000),
+    surface: String(req.body?.surface || 'preview'),
+    requireContext: !!req.body?.require_context,
+    limit: Number(req.body?.limit) || 6,
+  });
+  res.json({ ok: true, pack });
 }));
 
 module.exports = router;

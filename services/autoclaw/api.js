@@ -122,6 +122,7 @@ router.post('/chat', express.json(), _route(async (req, res) => {
     temperature: req.body?.temperature ?? 0.4,
     useAutoclaw: true,
     model: req.body?.model,
+    surface: 'autoclaw',
   });
   if (!result) return res.json({ ok: false, error: 'no_ai_provider' });
   res.json({ ok: true, ...result });
