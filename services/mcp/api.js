@@ -113,6 +113,88 @@ const TOOLS = [
       required: [],
     },
   },
+  // ── Expanded data tools ──────────────────────────────────────────────────
+  {
+    name: 'list_social_drafts',
+    description: 'List social post drafts (calendar/queue) for a profile.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        profile_id: { type: 'string' },
+        status: { type: 'string', description: 'draft|pending_approval|scheduled|published' },
+        limit: { type: 'number' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_evergreen_rules',
+    description: 'List evergreen repost rules (performance → calendar).',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'list_inbox_threads',
+    description: 'List social inbox threads with triage priority.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        triage_status: { type: 'string' },
+        priority: { type: 'string' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_brand_context',
+    description: 'Get brand foundation context block for this tenant (voice, banned words, positioning).',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'list_ai_providers',
+    description: 'List configured BYO AI providers / cascade pool for this tenant.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  },
+  // ── Action tools ─────────────────────────────────────────────────────────
+  {
+    name: 'ingest_memory_observation',
+    description: 'Write a manual observation into Marketing Memory (action).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        summary: { type: 'string' },
+        importance: { type: 'number' },
+      },
+      required: ['summary'],
+    },
+  },
+  {
+    name: 'create_social_draft',
+    description: 'Create a social post draft for later approval/publish (action).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        profile_id: { type: 'string' },
+        text: { type: 'string' },
+        platforms: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['profile_id', 'text'],
+    },
+  },
+  {
+    name: 'rate_ai_output',
+    description: 'Submit thumbs up/down feedback on an AI output (continuous learning).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        surface: { type: 'string' },
+        rating: { type: 'number', description: '1 up, -1 down, 0 neutral' },
+        comment: { type: 'string' },
+        output_text: { type: 'string' },
+        call_trace_id: { type: 'number' },
+      },
+      required: ['rating'],
+    },
+  },
 ];
 
 // MCP discovery endpoint — returns available tools
@@ -133,11 +215,12 @@ router.post('/call', async (req, res) => {
     if (!name) return res.status(400).json({ error: { code: -32600, message: 'tool name required' } });
     const tid = await _tenantCtx.resolveTenantId(req, { label: 'mcp:call' });
     if (!tid) return res.status(400).json({ error: { code: -32000, message: 'no_tenant' } });
-    const p = _pool();
+    const p = _db.hasDb() ? _pool() : null;
     let result = null;
 
     switch(name) {
       case 'list_segments': {
+        if (!p) { result = { segments: [], count: 0, note: 'database not configured' }; break; }
         const r = await p.query(
           `SELECT id,name,description,member_count,enabled,last_evaluated_at FROM audience_segments
            WHERE tenant_id=$1 ORDER BY member_count DESC LIMIT 50`, [tid]
@@ -271,6 +354,159 @@ router.post('/call', async (req, res) => {
           insight: insightFromWinners(payload),
           winners: payload.winners || [],
         };
+        break;
+      }
+      case 'list_social_drafts': {
+        try {
+          const drafts = require('../social_drafts/api');
+          // Prefer in-memory list helper via HTTP-less path: call list through mem if exposed
+          if (typeof drafts._listForTenant === 'function') {
+            let rows = drafts._listForTenant(tid) || [];
+            if (args.profile_id) rows = rows.filter((d) => String(d.profile_id) === String(args.profile_id));
+            if (args.status) rows = rows.filter((d) => d.status === args.status);
+            result = { drafts: rows.slice(0, Math.min(Number(args.limit) || 50, 100)) };
+          } else if (p) {
+            const lim = Math.min(Number(args.limit) || 50, 100);
+            const params = [tid];
+            let sql = `SELECT id, profile_id, status, text, platforms, scheduled_for, created_at
+                       FROM social_post_drafts WHERE tenant_id=$1`;
+            if (args.profile_id) { params.push(args.profile_id); sql += ` AND profile_id=$${params.length}`; }
+            if (args.status) { params.push(args.status); sql += ` AND status=$${params.length}`; }
+            params.push(lim);
+            sql += ` ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT $${params.length}`;
+            const r = await p.query(sql, params);
+            result = { drafts: r.rows };
+          } else {
+            result = { drafts: [], note: 'no drafts store available' };
+          }
+        } catch (e) {
+          result = { drafts: [], error: e.message };
+        }
+        break;
+      }
+      case 'list_evergreen_rules': {
+        try {
+          const evergreen = require('../social_evergreen/api');
+          if (typeof evergreen._listForTenant === 'function') {
+            result = { rules: evergreen._listForTenant(tid) || [] };
+          } else if (p) {
+            const r = await p.query(
+              `SELECT id, text, platforms, interval_days, next_run_at, is_active, repost_count
+               FROM social_evergreen_posts WHERE tenant_id=$1 ORDER BY next_run_at ASC LIMIT 50`,
+              [tid],
+            );
+            result = { rules: r.rows };
+          } else {
+            result = { rules: [] };
+          }
+        } catch (e) {
+          result = { rules: [], error: e.message };
+        }
+        break;
+      }
+      case 'list_inbox_threads': {
+        try {
+          // Hit inbox mem via internal require of routes is awkward; use demo seed through HTTP-less
+          const inbox = require('../social_inbox/api');
+          if (typeof inbox._threadsForTenant === 'function') {
+            let threads = inbox._threadsForTenant(tid) || [];
+            if (args.triage_status) threads = threads.filter((t) => t.triage_status === args.triage_status);
+            if (args.priority) threads = threads.filter((t) => t.priority === args.priority);
+            result = { threads };
+          } else {
+            result = { threads: [], note: 'inbox helper unavailable' };
+          }
+        } catch (e) {
+          result = { threads: [], error: e.message };
+        }
+        break;
+      }
+      case 'get_brand_context': {
+        try {
+          const { getBrandContextBlock } = require('../brand_foundation/api');
+          const block = await getBrandContextBlock(tid);
+          result = { ok: true, brand_context: block || '', has_brand: !!block };
+        } catch (e) {
+          result = { ok: false, brand_context: '', error: e.message };
+        }
+        break;
+      }
+      case 'list_ai_providers': {
+        try {
+          if (!p) { result = { providers: [], note: 'database not configured' }; break; }
+          const r = await p.query(
+            `SELECT id, name, model, base_url, category, enabled, is_default
+             FROM ai_providers WHERE tenant_id=$1 ORDER BY enabled DESC, id ASC LIMIT 50`,
+            [tid],
+          );
+          result = { providers: r.rows };
+        } catch (e) {
+          result = { providers: [], error: e.message };
+        }
+        break;
+      }
+      case 'ingest_memory_observation': {
+        const summary = String(args.summary || '').trim();
+        if (!summary) return res.status(400).json({ error: { code: -32602, message: 'summary required' } });
+        const { ingestMemoryNode } = require('../knowledge_graph/api');
+        const id = await ingestMemoryNode({
+          tenant_id: tid,
+          node_type: 'manual_observation',
+          summary,
+          detail: { via: 'mcp_server' },
+          importance: args.importance != null ? Number(args.importance) : 0.6,
+        });
+        result = { ok: !!id, id };
+        break;
+      }
+      case 'create_social_draft': {
+        const profile_id = String(args.profile_id || args.profileId || '').trim();
+        const text = String(args.text || '').trim();
+        if (!profile_id || !text) {
+          return res.status(400).json({ error: { code: -32602, message: 'profile_id and text required' } });
+        }
+        const platforms = Array.isArray(args.platforms) && args.platforms.length
+          ? args.platforms.map((x) => String(x).toLowerCase())
+          : ['instagram'];
+        // Use social drafts in-memory insert via requiring and posting through internal helper
+        try {
+          const draftsApi = require('../social_drafts/api');
+          if (typeof draftsApi._createForTenant === 'function') {
+            const draft = await draftsApi._createForTenant(tid, {
+              profile_id,
+              text,
+              platforms,
+              status: 'draft',
+              meta: { via: 'mcp_server' },
+            });
+            result = { ok: true, draft };
+          } else {
+            result = {
+              ok: false,
+              error: 'create helper unavailable — use POST /api/social-drafts',
+              hint: { profile_id, text, platforms },
+            };
+          }
+        } catch (e) {
+          result = { ok: false, error: e.message };
+        }
+        break;
+      }
+      case 'rate_ai_output': {
+        const rating = Number(args.rating);
+        if (![ -1, 0, 1 ].includes(rating)) {
+          return res.status(400).json({ error: { code: -32602, message: 'rating must be -1, 0, or 1' } });
+        }
+        const { recordFeedback } = require('../ai_feedback/store');
+        const saved = await recordFeedback({
+          tenant_id: tid,
+          surface: args.surface || 'mcp',
+          rating,
+          comment: args.comment,
+          output_text: args.output_text,
+          call_trace_id: args.call_trace_id,
+        });
+        result = { ok: true, feedback: saved };
         break;
       }
       default:

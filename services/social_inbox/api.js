@@ -445,5 +445,9 @@ router.post('/sync', _safeAsync(async (req, res) => {
 router._resetMem = () => { _memThreads.clear(); _memMessages.clear(); _seq = 1; };
 router._TRIAGE_STATUSES = TRIAGE_STATUSES;
 router._PRIORITIES = PRIORITIES;
+router._threadsForTenant = (tid) => {
+  _seedDemo(tid);
+  return (_memThreads.get(tid) || []).map(_normalizeThread);
+};
 
 module.exports = router;

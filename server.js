@@ -3651,6 +3651,18 @@ const _commentsRouter = require('./services/comments/api');
 app.use('/api/surveys',        _surveysRouter);
 app.use('/api/email-designer', _emailDesignerRouter);
 app.use('/api/mcp',            _mcpRouter);
+const _mcpClientRouter = require('./services/mcp_client/api');
+app.use('/api/mcp-client',     _mcpClientRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (process.env.DATABASE_URL) {
+      await require('./services/mcp_client/store').ensureSchema();
+      console.log('[mcp-client] schema ready');
+    }
+  } catch (e) {
+    console.warn('[mcp-client] schema:', e.message);
+  }
+});
 app.use('/api/drips',          _smartSendRouter);   // adds /api/drips/smart-send-time + /api/drips/translate
 app.use('/api/comments',       _commentsRouter);    // F13 team collaboration asset comments
 // ── Today's Marketing Brief ──

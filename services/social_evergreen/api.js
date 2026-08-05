@@ -520,5 +520,6 @@ router.post('/from-winners', _safeAsync(async (req, res) => {
 
 router._runDue = runDue;
 router._resetMem = () => { _mem.clear(); _seq = 1; };
+router._listForTenant = (tid) => _list(tid).map((r) => ({ ...r }));
 
 module.exports = router;

@@ -191,6 +191,7 @@ const ROUTE_GROUPS = [
   // MCP server: exposes InfoGenie as an MCP tool server — an integration
   // surface (tool calls read tenant data), so gate to integrations.manage.
   { prefix: '/api/mcp',                       view: 'tenant.integrations.manage' },
+  { prefix: '/api/mcp-client',                view: 'tenant.integrations.manage', write: 'tenant.integrations.manage' },
   // AI Segments + Audience↔Ad Sync ride on the existing /api/audiences group;
   // Inbox Monitor rides on /api/deliverability — both already mapped above.
 

@@ -725,6 +725,8 @@ router.delete('/:id', _safeAsync(async (req, res) => {
 // Test helpers + cross-module hooks
 router._mem = _mem;
 router._resetMem = () => { _mem.clear(); _memSeq = 1; _settings.clear(); };
+router._listForTenant = (tid) => _memList(tid).map((r) => ({ ...r }));
+router._createForTenant = async (tid, fields) => _insertDraft(tid, fields);
 router._approveAndPublish = _approveAndPublish;
 router._rejectDraft = _rejectDraft;
 router._getDraft = _getDraft;

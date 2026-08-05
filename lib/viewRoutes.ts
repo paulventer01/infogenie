@@ -319,7 +319,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "6 · First-party data spine",
         items: [
           { view: "identity-spine", icon: "🪪", label: "Identity Spine (CDP · LTV · propensity)" },
-          { view: "mcp-server", icon: "🔌", label: "MCP Server (AI tool integrations)" },
+          { view: "mcp-server", icon: "🔌", label: "MCP Ecosystem (server + client)" },
         ],
       },
       {
