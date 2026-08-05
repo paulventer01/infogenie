@@ -402,4 +402,66 @@ router.get('/posts-performance', async (req, res) => {
   res.json({ ok:true, profileId, range: dateRange, sort, posts: enriched, totals, accountCount: accounts.length });
 });
 
+// ── Best times to post — derived from historical post engagement ───────────────
+router.get('/best-times', async (req, res) => {
+  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', slots:[], note:'Add ZERNIO_API_KEY to see best times.' });
+  const profileId = String(req.query.profileId || '').trim();
+  const platform = String(req.query.platform || '').toLowerCase().trim();
+  if (!profileId) return _err(res, 400, 'profileId required');
+
+  const postsR = await _zernio('GET', `/posts?profileId=${encodeURIComponent(profileId)}`);
+  if (!postsR.ok) return _err(res, 400, _friendlyError(postsR.error, postsR.status));
+  const rawPosts = postsR.data?.posts || postsR.data?.data || (Array.isArray(postsR.data) ? postsR.data : []);
+
+  const buckets = {}; // key: "dow-hour" -> { eng, impressions, count }
+  let considered = 0;
+  for (const p of rawPosts) {
+    const plats = (p.platforms || []).map(x => String(x).toLowerCase());
+    if (platform && plats.length && !plats.includes(platform) && String(p.platform || '').toLowerCase() !== platform) continue;
+    const when = p.publishedAt || p.scheduledFor || p.createdAt;
+    if (!when) continue;
+    const d = new Date(when);
+    if (isNaN(d.getTime())) continue;
+    const e = p?.analytics || p?.engagement || p?.stats || {};
+    const impressions = Number(e.impressions || e.views || e.reach || 0);
+    const eng = Number(e.likes || 0) + Number(e.comments || 0) + Number(e.shares || 0) + Number(e.clicks || 0);
+    const key = `${d.getUTCDay()}-${d.getUTCHours()}`;
+    if (!buckets[key]) buckets[key] = { dow: d.getUTCDay(), hour: d.getUTCHours(), eng: 0, impressions: 0, count: 0 };
+    buckets[key].eng += eng;
+    buckets[key].impressions += impressions;
+    buckets[key].count += 1;
+    considered += 1;
+  }
+
+  const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const slots = Object.values(buckets)
+    .filter(b => b.count >= 1)
+    .map(b => ({
+      day: DOW[b.dow],
+      dow: b.dow,
+      hour: b.hour,
+      label: `${DOW[b.dow]} ${String(b.hour).padStart(2, '0')}:00 UTC`,
+      score: b.impressions > 0 ? Number(((b.eng / b.impressions) * 100).toFixed(2)) : b.eng / Math.max(b.count, 1),
+      posts: b.count,
+    }))
+    .sort((a, b) => b.score - a.score || b.posts - a.posts)
+    .slice(0, 3);
+
+  const defaults = [
+    { day: 'Tue', dow: 2, hour: 10, label: 'Tue 10:00 UTC', score: null, posts: 0, default: true },
+    { day: 'Wed', dow: 3, hour: 14, label: 'Wed 14:00 UTC', score: null, posts: 0, default: true },
+    { day: 'Thu', dow: 4, hour: 9, label: 'Thu 09:00 UTC', score: null, posts: 0, default: true },
+  ];
+
+  res.json({
+    ok: true,
+    profileId,
+    platform: platform || null,
+    postsConsidered: considered,
+    enoughData: considered >= 10,
+    slots: considered >= 10 ? slots : defaults,
+    note: considered >= 10 ? null : 'Not enough history — using defaults',
+  });
+});
+
 module.exports = router;

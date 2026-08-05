@@ -326,6 +326,25 @@ export default function Social() {
 
       <div className="container">
         <div style={{ padding: "28px 0" }}>
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "12px 14px",
+              borderRadius: 10,
+              border: "1px solid #FDBA74",
+              background: "#FFF7ED",
+              color: "#9A3412",
+              fontSize: "0.82rem",
+              lineHeight: 1.5,
+            }}
+          >
+            <strong>Moved:</strong> Planning + publishing now live in{" "}
+            <a href="/reach/social-publisher" style={{ color: "#C2410C", fontWeight: 800 }}>
+              Social Publisher
+            </a>{" "}
+            (Calendar · Compose · Queue · Ideas). This page keeps the legacy local planner for reference;
+            new posts should be created on Social Publisher so they publish via Zernio.
+          </div>
           {tabBar}
           {tab === "calendar" && (
             <CalendarTab

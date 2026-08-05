@@ -197,6 +197,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/ecom-video',                view: 'creator.view', write: 'creator.edit' },
   { prefix: '/api/tools',                     view: 'creator.view', write: 'creator.edit' },
   { prefix: '/api/social-publisher',          view: 'creator.view', write: 'creator.publish' },
+  { prefix: '/api/social-drafts',             view: 'creator.view', write: 'creator.publish' },
   { prefix: '/api/advocacy',                  view: 'creator.view', write: 'creator.publish' },
   { prefix: '/api/wordpress',                 view: 'creator.view', write: 'creator.publish' },
   { prefix: '/api/video-script',              view: 'creator.view', write: 'creator.edit' },

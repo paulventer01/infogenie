@@ -3824,6 +3824,15 @@ require('./services/public_pages/routes')(app, {});
 // ── Tier 15 ────────────────────────────────────────────────────────────────
 const _socialPublisherRouter = require('./services/social_publisher/api');
 app.use('/api/social-publisher', _socialPublisherRouter);
+const _socialDraftsSchema = require('./services/social_drafts/schema');
+const _socialDraftsRouter = require('./services/social_drafts/api');
+app.use('/api/social-drafts', _socialDraftsRouter);
+BOOT_TASKS.push(async () => { try {
+  if (process.env.DATABASE_URL) {
+    await _socialDraftsSchema.ensureSocialDraftsSchema();
+    console.log('[tier15] social-drafts schema ready');
+  }
+} catch (e) { console.warn('[tier15] social-drafts schema init failed:', e.message); }});
 
 // ── Tier 16 ────────────────────────────────────────────────────────────────
 const _emailPersonalizerRouter = require('./services/email_personalizer/api');
