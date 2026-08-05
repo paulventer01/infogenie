@@ -846,8 +846,46 @@ async function gatherStrategicSignals(pool, tid) {
       });
     }
   } catch (_) {}
+  // Social × Search — GSC visibility for Instagram/TikTok/YouTube/X content
+  try {
+    const { fetchSocialSearchWinners, insightFromWinners } = require('../gsc_social_search/winners');
+    const payload = await fetchSocialSearchWinners({ limit: 5, allowDemo: true, days: 28 });
+    const insight = insightFromWinners(payload);
+    if (insight) {
+      signals.push({
+        ...insight,
+        detail: `${insight.detail}${payload.source === 'gsc_search' ? '' : ' (demo until GSC is connected)'}`,
+      });
+    }
+  } catch (_) {}
   return signals;
 }
+
+/** Social × Search insight for Strategic Intelligence UI */
+router.get('/social-search', async (req, res) => {
+  const tid = await _tid(req, 'strategic:social-search');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  try {
+    const { fetchSocialSearchWinners, insightFromWinners } = require('../gsc_social_search/winners');
+    const payload = await fetchSocialSearchWinners({
+      siteUrl: req.query.siteUrl || process.env.GSC_SITE_URL,
+      days: Number(req.query.days) || 28,
+      limit: 8,
+      allowDemo: true,
+    });
+    res.json({
+      ok: true,
+      insight: insightFromWinners(payload),
+      winners: payload.winners || [],
+      configured: payload.configured,
+      source: payload.source,
+      siteUrl: payload.siteUrl,
+      note: payload.note || null,
+    });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
 
 module.exports = {
   router,

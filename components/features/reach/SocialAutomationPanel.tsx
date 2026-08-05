@@ -38,6 +38,12 @@ interface Winner {
   platforms?: string[];
   engTotal?: number;
   memory_id?: number;
+  page_url?: string;
+  clicks?: number;
+  impressions?: number;
+  ctr?: number;
+  position?: number | null;
+  search_channel?: string;
 }
 
 export default function SocialAutomationPanel({ profileId, platforms, draftText, draftPlatforms }: Props) {
@@ -48,6 +54,7 @@ export default function SocialAutomationPanel({ profileId, platforms, draftText,
   const [intervalDays, setIntervalDays] = useState(30);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [gscNote, setGscNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [p, e] = await Promise.all([
@@ -66,7 +73,13 @@ export default function SocialAutomationPanel({ profileId, platforms, draftText,
     setBusy(true);
     setMsg(null);
     const q = profileId ? `?profileId=${encodeURIComponent(profileId)}` : "";
-    const r = await apiGet<{ ok: boolean; winners?: Winner[]; error?: string }>(`/api/social-evergreen/suggest-winners${q}`);
+    const r = await apiGet<{
+      ok: boolean;
+      winners?: Winner[];
+      error?: string;
+      gsc_social?: { configured?: boolean; source?: string; note?: string };
+      channels?: Record<string, boolean>;
+    }>(`/api/social-evergreen/suggest-winners${q}`);
     setBusy(false);
     if (!r.ok) {
       setMsg(r.error || "Could not suggest winners");
@@ -75,7 +88,21 @@ export default function SocialAutomationPanel({ profileId, platforms, draftText,
     const list = r.winners || [];
     setWinners(list);
     setPicked(new Set(list.map((_, i) => i).slice(0, 3)));
-    setMsg(list.length ? `Found ${list.length} performance candidates` : "No winners yet");
+    const gsc = r.gsc_social;
+    setGscNote(
+      gsc
+        ? gsc.configured
+          ? `GSC social×search: ${gsc.source}${gsc.note ? ` — ${gsc.note}` : ""}`
+          : gsc.note || "GSC demo — connect Search Console for live social×search"
+        : null,
+    );
+    const ch = r.channels || {};
+    const bits = [
+      ch.gsc_search ? "search" : null,
+      ch.zernio ? "native eng" : null,
+      ch.memory ? "memory" : null,
+    ].filter(Boolean);
+    setMsg(list.length ? `Found ${list.length} candidates (${bits.join(" + ") || "mixed"})` : "No winners yet");
   }
 
   async function createFromWinners() {
@@ -181,8 +208,13 @@ export default function SocialAutomationPanel({ profileId, platforms, draftText,
           📈 Performance → evergreen
         </h3>
         <p style={{ margin: "0 0 12px", fontSize: "0.78rem", color: "#6B7280" }}>
-          Suggest winners from engagement + marketing memory, then schedule them as evergreen.
+          Suggest winners from native engagement, Google Search Console social×search (clicks/impressions), and marketing memory — then schedule as evergreen.
         </p>
+        {gscNote && (
+          <div style={{ fontSize: "0.7rem", color: "#075985", background: "#E0F2FE", padding: "6px 10px", borderRadius: 6, marginBottom: 10 }}>
+            {gscNote}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
           <button type="button" onClick={suggestWinners} disabled={busy} style={primaryBtn}>
             Suggest winners
@@ -213,6 +245,9 @@ export default function SocialAutomationPanel({ profileId, platforms, draftText,
                   <div style={{ fontSize: "0.66rem", color: "#6B7280", marginTop: 3 }}>
                     {w.source || "source"} · score {w.engTotal ?? "—"}
                     {(w.platforms || []).length ? ` · ${(w.platforms || []).join(", ")}` : ""}
+                    {w.clicks != null ? ` · ${w.clicks} clicks` : ""}
+                    {w.impressions != null ? ` · ${w.impressions} impr` : ""}
+                    {w.position != null ? ` · pos ${w.position}` : ""}
                   </div>
                 </div>
               </label>

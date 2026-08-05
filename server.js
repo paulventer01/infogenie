@@ -3833,6 +3833,8 @@ const _socialEvergreenRouter = require('./services/social_evergreen/api');
 app.use('/api/social-evergreen', _socialEvergreenRouter);
 const _socialInboxRouter = require('./services/social_inbox/api');
 app.use('/api/social-inbox', _socialInboxRouter);
+const _gscSocialSearchRouter = require('./services/gsc_social_search/api');
+app.use('/api/gsc-social-search', _gscSocialSearchRouter);
 BOOT_TASKS.push(async () => { try {
   if (process.env.DATABASE_URL) {
     await _socialDraftsSchema.ensureSocialDraftsSchema();

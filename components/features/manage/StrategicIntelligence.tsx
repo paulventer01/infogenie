@@ -71,10 +71,29 @@ export default function StrategicIntelligence() {
   const [decForm, setDecForm] = useState({ title: "", decision: "", hypothesis: "", expected_impact: "" });
   const [payback, setPayback] = useState("14");
   const [vertical, setVertical] = useState("saas");
+  const [socialSearch, setSocialSearch] = useState<{
+    insight?: { headline?: string; detail?: string; metrics?: { clicks?: number; impressions?: number } };
+    source?: string;
+    configured?: boolean;
+    note?: string | null;
+    winners?: { page_url?: string; clicks?: number; impressions?: number; platforms?: string[] }[];
+  } | null>(null);
 
   const loadMoat = useCallback(async () => {
     const r = await apiGet<MoatStatus>("/api/strategic/moat-status");
     if (r.ok) setMoat(r);
+  }, []);
+
+  const loadSocialSearch = useCallback(async () => {
+    const r = await apiGet<{
+      ok?: boolean;
+      insight?: { headline?: string; detail?: string; metrics?: { clicks?: number; impressions?: number } };
+      source?: string;
+      configured?: boolean;
+      note?: string | null;
+      winners?: { page_url?: string; clicks?: number; impressions?: number; platforms?: string[] }[];
+    }>("/api/strategic/social-search");
+    if (r.ok) setSocialSearch(r);
   }, []);
 
   const loadMemory = useCallback(async () => {
@@ -95,7 +114,8 @@ export default function StrategicIntelligence() {
     loadMoat();
     loadMemory();
     loadWritebacks();
-  }, [loadMoat, loadMemory, loadWritebacks]);
+    loadSocialSearch();
+  }, [loadMoat, loadMemory, loadWritebacks, loadSocialSearch]);
 
   const runRoot = async () => {
     setBusy(true);
@@ -243,6 +263,25 @@ export default function StrategicIntelligence() {
               A tool that gets meaningfully better after eighteen months is nearly impossible to displace — because it remembers your seasonality, your definition of a qualified lead, and whether the March spend cut worked by June.
             </p>
           </div>
+          {socialSearch?.insight && (
+            <div style={{ background: "#F0F9FF", border: "1.5px solid #BAE6FD", borderRadius: 12, padding: 16 }}>
+              <div style={{ fontSize: "0.68rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#0369A1", marginBottom: 6 }}>
+                Social × Search
+              </div>
+              <div style={{ fontWeight: 800, color: "#0F172A", marginBottom: 6 }}>{socialSearch.insight.headline}</div>
+              <p style={{ fontSize: "0.82rem", color: "#475569", margin: "0 0 8px", lineHeight: 1.45 }}>{socialSearch.insight.detail}</p>
+              <div style={{ fontSize: "0.7rem", color: "#64748B" }}>
+                Source: {socialSearch.source || "—"}
+                {socialSearch.configured ? " · GSC connected" : " · demo until GSC connected"}
+              </div>
+              {(socialSearch.winners || []).slice(0, 3).map((w, i) => (
+                <div key={i} style={{ fontSize: "0.72rem", color: "#0F172A", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {(w.platforms || [])[0] || "social"} · {w.clicks ?? 0} clicks · {w.impressions ?? 0} impr · {(w.page_url || "").slice(0, 64)}
+                </div>
+              ))}
+            </div>
+          )}
+
           {(moat.due_reviews || []).length > 0 && (
             <div style={{ background: "#FEF2F2", border: "1.5px solid #FECACA", borderRadius: 12, padding: 16 }}>
               <div style={{ fontWeight: 800, color: "#DC2626", marginBottom: 8 }}>Decision reviews due</div>

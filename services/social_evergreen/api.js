@@ -344,7 +344,28 @@ router.get('/suggest-winners', _safeAsync(async (req, res) => {
     } catch (_) {}
   }
 
-  // 2) Marketing memory recent outcomes (always available as fallback / supplement)
+  // 2) GSC social × search — Instagram/TikTok/YouTube/X earning Google clicks/impressions
+  let gsc_social = null;
+  try {
+    const { fetchSocialSearchWinners } = require('../gsc_social_search/winners');
+    gsc_social = await fetchSocialSearchWinners({
+      siteUrl: req.query.siteUrl || req.query.site_url || process.env.GSC_SITE_URL,
+      days: Number(req.query.days) || 28,
+      limit: 8,
+      allowDemo: !winners.length, // only inject demo GSC rows if we have nothing else yet
+    });
+    for (const w of gsc_social.winners || []) {
+      // Prefer live GSC; skip pure demo when we already have zernio/memory rows
+      if (w.source === 'gsc_search_demo' && winners.length) continue;
+      winners.push({
+        ...w,
+        // Boost search-channel winners so they compete with native eng scores
+        engTotal: Math.round((w.engTotal || 0) * (w.source === 'gsc_search' ? 1.15 : 1)),
+      });
+    }
+  } catch (_) {}
+
+  // 3) Marketing memory recent outcomes (always available as fallback / supplement)
   try {
     const { buildContextPack } = require('../ai_governance/context_pack');
     const pack = await buildContextPack({
@@ -367,7 +388,7 @@ router.get('/suggest-winners', _safeAsync(async (req, res) => {
     }
   } catch (_) {}
 
-  // 3) Demo fallback so UI always has something to plan from
+  // 4) Demo fallback so UI always has something to plan from
   if (!winners.length) {
     winners.push(
       {
@@ -386,7 +407,19 @@ router.get('/suggest-winners', _safeAsync(async (req, res) => {
   }
 
   winners.sort((a, b) => (b.engTotal || 0) - (a.engTotal || 0));
-  res.json({ ok: true, winners: winners.slice(0, 10), profileId: profileId || null });
+  res.json({
+    ok: true,
+    winners: winners.slice(0, 10),
+    profileId: profileId || null,
+    channels: {
+      zernio: winners.some((w) => w.source === 'zernio'),
+      gsc_search: winners.some((w) => w.source === 'gsc_search' || w.source === 'gsc_search_demo'),
+      memory: winners.some((w) => w.source === 'memory'),
+    },
+    gsc_social: gsc_social
+      ? { configured: gsc_social.configured, source: gsc_social.source, siteUrl: gsc_social.siteUrl, note: gsc_social.note }
+      : null,
+  });
 }));
 
 router.post('/from-winners', _safeAsync(async (req, res) => {

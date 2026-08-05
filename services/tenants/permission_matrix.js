@@ -200,6 +200,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/social-drafts',             view: 'creator.view', write: 'creator.publish' },
   { prefix: '/api/social-workflows',          view: 'creator.view', write: 'creator.publish' },
   { prefix: '/api/social-evergreen',          view: 'creator.view', write: 'creator.publish' },
+  { prefix: '/api/gsc-social-search',         view: 'creator.view', write: 'creator.publish' },
   { prefix: '/api/social-inbox',              view: 'reach.inbox.view', write: 'reach.inbox.reply' },
   { prefix: '/api/advocacy',                  view: 'creator.view', write: 'creator.publish' },
   { prefix: '/api/wordpress',                 view: 'creator.view', write: 'creator.publish' },
