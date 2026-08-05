@@ -109,18 +109,14 @@ export default function SocialIdeasPanel({ platforms, onUseCaption }: Props) {
     setBusyId(arch.id);
     setError(null);
     const prompt = arch.prompt.replace(/\{brand\}/g, brandCtx.brand).replace(/\{industry\}/g, brandCtx.industry);
-    const r = await apiPost<{ ok: boolean; error?: string; caption?: string; text?: string }>(
+    const r = await apiPost<{ ok?: boolean; error?: string; caption?: string; text?: string }>(
       "/api/ai-social-caption",
       { prompt, brand: brandCtx.brand, industry: brandCtx.industry },
     );
     setBusyId(null);
-    if (!r.ok) {
-      setError(r.error || "Caption generation failed");
-      return;
-    }
     const text = String(r.caption || r.text || "").trim();
     if (!text) {
-      setError("Empty caption returned");
+      setError(r.error || "Caption generation failed");
       return;
     }
     setPreview({ text, archetype: arch });
