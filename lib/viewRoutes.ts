@@ -393,7 +393,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "1 · Set the targets",
         items: [
+          { view: "agent-goals", icon: "🏁", label: "Marketing Goals (set · plan · track)" },
           { view: "goals", icon: "🎯", label: "Goals & Targets" },
+          { view: "flywheel", icon: "🔁", label: "Growth Goals Loop" },
           { view: "kpi-tracker", icon: "📈", label: "KPI Tracker (live)" },
           { view: "action-center", icon: "🎬", label: "Action Center (do this next)" },
         ],
@@ -502,7 +504,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "ask-infogenie", icon: "💬", label: "Ask InfoGenie (your data)" },
           { view: "marketing-memory", icon: "🧠", label: "Marketing Memory (knowledge graph)" },
           { view: "predictive-intelligence", icon: "🔮", label: "Predictive Intelligence (90-day AI forecast)" },
-          { view: "agent-goals", icon: "🤖", label: "AI Marketing Agent" },
           { view: "ai-providers", icon: "🧠", label: "AI Providers (bring your own LLM)" },
           { view: "model-compare", icon: "⚖️", label: "Model Comparison (A/B prompts)" },
           { view: "vertical-playbooks", icon: "📋", label: "Vertical Playbooks (industry packs)" },
@@ -515,7 +516,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "team-meetings", icon: "📋", label: "Minutes of Meeting (AI Team)" },
           { view: "playbook-7day", icon: "📖", label: "7-Day Marketing Playbook" },
           { view: "growth-methodology", icon: "🎯", label: "Growth Methodology (5-stage)" },
-          { view: "flywheel", icon: "🌀", label: "Performance Growth Flywheel" },
         ],
       },
       {

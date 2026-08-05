@@ -46,23 +46,23 @@ router.get('/summary', async (req, res) => {
     ]);
 
     const stages = {
-      research:     { count: competitorCount + adSwipeCount,    label: 'Sources tracked',    lastAction: competitorCount > 0 ? 'Competitor profiles' : null, view: 'competitors', tools: [{ label: '🧠 Intelligence Hub', view: 'intelligence' }, { label: '🕵️ Ad Library Spy', view: 'ad-library' }] },
-      gaps:         { count: contentScoreCount + bulkAuditCount, label: 'Audits completed',  lastAction: contentScoreCount > 0 ? 'Content scored' : null,      view: 'content-score', tools: [{ label: '📊 Content Scorer', view: 'content-score' }, { label: '🔍 SEO Crawler', view: 'seo-crawler' }] },
-      opportunities:{ count: serpCount + keywordMapCount,        label: 'Keywords mapped',   lastAction: serpCount > 0 ? 'SERP tracked' : null,               view: 'keyword-explorer', tools: [{ label: '🔑 Keyword Explorer', view: 'keyword-explorer' }, { label: '🗺️ Keyword Map', view: 'keyword-map' }] },
-      execute:      { count: campaignCount + calendarCount,      label: 'Items live',        lastAction: campaignCount > 0 ? 'Campaigns active' : null,       view: 'campaigns', tools: [{ label: '🚀 Campaign Launch', view: 'campaigns' }, { label: '📅 Content Calendar', view: 'content-calendar' }] },
-      evaluate:     { count: banditCount + perfCount,            label: 'Optimizer cycles',  lastAction: banditCount > 0 ? 'Bandit ran' : null,               view: 'optimizer', tools: [{ label: '🤖 AI Optimizer', view: 'optimizer' }, { label: '📈 iROAS', view: 'iroas' }] },
-      report:       { count: digestCount + broadcastCount,       label: 'Reports sent',      lastAction: digestCount > 0 ? 'Digest sent' : null,              view: 'weekly-report', tools: [{ label: '📬 Weekly Report', view: 'weekly-report' }, { label: '💰 Budget Board', view: 'budget-board' }] },
+      research:     { count: competitorCount + adSwipeCount,    label: 'Sources tracked',    lastAction: competitorCount > 0 ? 'Competitor profiles' : null, view: 'competitors', tools: [{ label: 'Intelligence Hub', view: 'intelligence' }, { label: 'Ad Library Spy', view: 'ad-library' }] },
+      gaps:         { count: contentScoreCount + bulkAuditCount, label: 'Audits completed',  lastAction: contentScoreCount > 0 ? 'Content scored' : null,      view: 'content-score', tools: [{ label: 'Content Scorer', view: 'content-score' }, { label: 'SEO Crawler', view: 'seo-crawler' }] },
+      opportunities:{ count: serpCount + keywordMapCount,        label: 'Keywords mapped',   lastAction: serpCount > 0 ? 'SERP tracked' : null,               view: 'keyword-explorer', tools: [{ label: 'Keyword Explorer', view: 'keyword-explorer' }, { label: 'Keyword Map', view: 'keyword-map' }] },
+      execute:      { count: campaignCount + calendarCount,      label: 'Items live',        lastAction: campaignCount > 0 ? 'Campaigns active' : null,       view: 'campaigns', tools: [{ label: 'Campaign Launch', view: 'campaigns' }, { label: 'Content Calendar', view: 'content-calendar' }] },
+      evaluate:     { count: banditCount + perfCount,            label: 'Optimizer cycles',  lastAction: banditCount > 0 ? 'Bandit ran' : null,               view: 'optimizer', tools: [{ label: 'AI Optimizer', view: 'optimizer' }, { label: 'iROAS', view: 'iroas' }] },
+      report:       { count: digestCount + broadcastCount,       label: 'Reports sent',      lastAction: digestCount > 0 ? 'Digest sent' : null,              view: 'weekly-report', tools: [{ label: 'Weekly Report', view: 'weekly-report' }, { label: 'Budget Board', view: 'budget-board' }] },
     };
 
     const order = ['research','gaps','opportunities','execute','evaluate','report'];
     const minStage = order.reduce((min, s) => stages[s].count < stages[min].count ? s : min, 'research');
     const nextMessages = {
-      research:      'Profile 3+ competitors to feed the flywheel with market intel.',
-      gaps:          'Run a content audit to spot where you\'re falling behind competitors.',
-      opportunities: 'Map your top keywords to pages — find quick-win ranking gaps.',
-      execute:       'Launch a campaign or schedule content to start driving traffic.',
-      evaluate:      'Turn on the AI Optimizer so it reallocates budget to winning ads.',
-      report:        'Set up a weekly digest to close the loop and share results with your team.',
+      research:      'Set a marketing goal, then profile 3+ competitors so the loop has market intel.',
+      gaps:          'Audit content gaps that block your current marketing goal.',
+      opportunities: 'Map keywords to pages — pick quick wins aligned to your goal.',
+      execute:       'Launch a campaign or schedule content that advances the goal.',
+      evaluate:      'Turn on the AI Optimizer so budget follows what is working.',
+      report:        'Close the loop with a weekly digest — then set the next goal.',
     };
 
     res.json({
