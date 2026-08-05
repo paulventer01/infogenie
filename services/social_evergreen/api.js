@@ -351,7 +351,7 @@ router.get('/suggest-winners', _safeAsync(async (req, res) => {
       tenantId: tid,
       question: 'top performing social posts and campaign results',
       surface: 'evergreen_winners',
-      limit: 8,
+      limit: 4, // lean context — efficient cascade surface
     });
     for (const n of [...(pack.recent_outcomes || []), ...(pack.memory_nodes || [])]) {
       const text = String(n.summary || '').trim();

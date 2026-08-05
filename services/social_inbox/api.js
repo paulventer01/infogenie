@@ -357,21 +357,79 @@ router.get('/board', _safeAsync(async (req, res) => {
   res.json({ ok: true, columns, triage_statuses: TRIAGE_STATUSES, priorities: PRIORITIES });
 }));
 
+/**
+ * Fast-tier AI refine for ambiguous previews (heuristic already ran).
+ * Heuristics stay primary — AI only nudges when enabled and confidence is soft.
+ */
+async function _aiRefineTriage(tid, preview, threadType, heuristicPriority) {
+  try {
+    const { chatForCategory } = require('../ai/chat_router');
+    const r = await chatForCategory(
+      'writing',
+      [
+        {
+          role: 'system',
+          content:
+            'Classify a social inbox message. Reply with ONLY JSON: {"priority":"p0|p1|p2|p3","labels":["..."]} — no markdown.',
+        },
+        {
+          role: 'user',
+          content: `Type: ${threadType || 'dm'}\nHeuristic priority: ${heuristicPriority}\nPreview:\n${String(preview || '').slice(0, 500)}`,
+        },
+      ],
+      {
+        tenantId: tid,
+        surface: 'social_inbox_triage',
+        tier: 'fast',
+        escalate: false,
+        useContextPack: false,
+        max_tokens: 80,
+        temperature: 0.1,
+      },
+    );
+    const raw = String(r?.content || '').trim().replace(/^```json\s*|```$/g, '');
+    const j = JSON.parse(raw);
+    const priority = PRIORITIES.includes(j.priority) ? j.priority : null;
+    const labels = Array.isArray(j.labels) ? j.labels.map((l) => String(l).slice(0, 40)).slice(0, 6) : null;
+    return { priority, labels, cascade_tier: r?.cascade_tier || 'fast' };
+  } catch (_) {
+    return null;
+  }
+}
+
 /** Auto-triage all open threads (priority + labels) — like issue assignment */
 router.post('/triage/auto', _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'social-inbox:triage-auto');
   if (!tid) return _err(res, 400, 'no_tenant');
   _seedDemo(tid);
+  const useAi = req.body?.use_ai === true;
   const threads = _memThreads.get(tid) || [];
   let updated = 0;
+  let ai_refined = 0;
   for (const t of threads) {
     if (t.triage_status === 'closed') continue;
     t.priority = _inferPriority(t.preview, t.thread_type);
     t.labels = _inferLabels(t.preview, t.thread_type);
     if (!t.triage_status || t.triage_status === 'new') t.triage_status = 'open';
+    // Efficient cascade: only spend AI on soft/ambiguous (p2) when requested
+    if (useAi && t.priority === 'p2') {
+      const ai = await _aiRefineTriage(tid, t.preview, t.thread_type, t.priority);
+      if (ai?.priority) {
+        t.priority = ai.priority;
+        if (ai.labels?.length) t.labels = [...new Set([...(t.labels || []), ...ai.labels])].slice(0, 8);
+        t.meta = { ...(t.meta || {}), triage_ai: { cascade_tier: ai.cascade_tier, at: new Date().toISOString() } };
+        ai_refined += 1;
+      }
+    }
     updated += 1;
   }
-  res.json({ ok: true, updated, threads: threads.map(_normalizeThread) });
+  res.json({
+    ok: true,
+    updated,
+    ai_refined,
+    use_ai: useAi,
+    threads: threads.map(_normalizeThread),
+  });
 }));
 
 router.post('/sync', _safeAsync(async (req, res) => {

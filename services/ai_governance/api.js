@@ -75,6 +75,13 @@ router.get('/status', _route(async (req, res) => {
       policy: { ready: true, mode: policy.default_mode, appetite: policy.risk_appetite },
       data: { ready: false, note: 'Phase B' },
       context: { ready: true, note: 'Phase C — buildContextPack on chatForCategory + Ask InfoGenie' },
+      efficiency: (() => {
+        try {
+          return require('../ai/efficient_cascade').cascadeStatus();
+        } catch (_) {
+          return { ready: false, note: 'cascade module unavailable' };
+        }
+      })(),
       output: { ready: true, note: 'Phase A light scan; full gate in Phase D' },
     },
     last24h: counts,

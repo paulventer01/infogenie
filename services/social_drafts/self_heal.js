@@ -43,7 +43,7 @@ function _heuristicScan(text) {
   };
 }
 
-async function _aiRewrite(tenantId, text, flags) {
+async function _aiRewrite(tenantId, text, flags, { escalate = false } = {}) {
   try {
     const { chatForCategory } = require('../ai/chat_router');
     const issues = (flags || []).map((f) => `- ${f.rule}: ${f.fix || f.issue}`).join('\n');
@@ -63,14 +63,21 @@ async function _aiRewrite(tenantId, text, flags) {
       {
         tenantId,
         surface: 'social_self_heal',
-        max_tokens: 500,
+        tier: escalate ? 'strong' : 'fast',
+        escalate: escalate ? false : { minChars: 12 },
+        max_tokens: escalate ? 700 : 400,
         temperature: 0.4,
-        useAutoclaw: false,
+        useAutoclaw: escalate ? true : false,
       },
     );
     const out = String(r?.content || '').trim();
     if (!out || out.length < 10) return null;
-    return out.replace(/^["']|["']$/g, '');
+    return {
+      text: out.replace(/^["']|["']$/g, ''),
+      cascade_tier: r?.cascade_tier || (escalate ? 'strong' : 'fast'),
+      escalated_from: r?.escalated_from || null,
+      model: r?.model || null,
+    };
   } catch (_) {
     return null;
   }
@@ -111,6 +118,7 @@ async function selfHealDraft(tenantId, text, opts = {}) {
   const maxAttempts = Math.min(MAX_ATTEMPTS, Math.max(1, Number(opts.maxAttempts) || MAX_ATTEMPTS));
   let current = String(text || '');
   const attempts = [];
+  let usedEscalate = false;
 
   for (let i = 0; i < maxAttempts; i++) {
     const scan = _heuristicScan(current);
@@ -129,7 +137,14 @@ async function selfHealDraft(tenantId, text, opts = {}) {
     });
 
     if (verdict === 'pass') {
-      return { ok: true, passed: true, text: current, attempts, final_verdict: 'pass' };
+      return {
+        ok: true,
+        passed: true,
+        text: current,
+        attempts,
+        final_verdict: 'pass',
+        cascade: { used_escalate: usedEscalate },
+      };
     }
 
     // Last attempt — return best effort
@@ -141,12 +156,26 @@ async function selfHealDraft(tenantId, text, opts = {}) {
         attempts,
         final_verdict: verdict,
         needs_human: true,
+        cascade: { used_escalate: usedEscalate },
       };
     }
 
-    const rewritten = await _aiRewrite(tenantId, current, flags);
-    if (!rewritten || rewritten === current) {
-      // Can't improve further
+    // Efficient cascade: fast rewrite first; escalate to strong only if still critical or rewrite weak
+    const escalate = verdict === 'fail' && i >= 1;
+    if (escalate) usedEscalate = true;
+    const rewritten = await _aiRewrite(tenantId, current, flags, { escalate });
+    const nextText = rewritten?.text || null;
+    if (!nextText || nextText === current) {
+      // One strong-tier retry if fast rewrite failed and we haven't escalated yet
+      if (!escalate && verdict === 'fail') {
+        usedEscalate = true;
+        const strong = await _aiRewrite(tenantId, current, flags, { escalate: true });
+        if (strong?.text && strong.text !== current) {
+          current = strong.text;
+          attempts[attempts.length - 1].cascade_tier = strong.cascade_tier;
+          continue;
+        }
+      }
       return {
         ok: true,
         passed: false,
@@ -155,12 +184,22 @@ async function selfHealDraft(tenantId, text, opts = {}) {
         final_verdict: verdict,
         needs_human: true,
         rewrite_failed: true,
+        cascade: { used_escalate: usedEscalate },
       };
     }
-    current = rewritten;
+    attempts[attempts.length - 1].cascade_tier = rewritten.cascade_tier;
+    current = nextText;
   }
 
-  return { ok: true, passed: false, text: current, attempts, final_verdict: 'caution', needs_human: true };
+  return {
+    ok: true,
+    passed: false,
+    text: current,
+    attempts,
+    final_verdict: 'caution',
+    needs_human: true,
+    cascade: { used_escalate: usedEscalate },
+  };
 }
 
 module.exports = { selfHealDraft, _heuristicScan };

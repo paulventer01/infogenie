@@ -1,8 +1,15 @@
 // Unified AI chat router — BYO → AutoClaw/Z.ai GLM → OpenAI fallback.
+// Efficient cascade: fast tier by default for high-volume surfaces; escalate to strong when needed.
 
 const { chatViaProvider } = require('../ai_providers/api');
 const { resolvePlatformKey } = require('../credentials/platform_keys');
 const { zaiApiKey, detectZaiEndpoint, configuredEndpointMode } = require('../autoclaw/zai_client');
+const {
+  resolveCascadePlan,
+  applyPlanToOpts,
+  shouldEscalate,
+  cascadeStatus,
+} = require('./efficient_cascade');
 
 const ZAI_MODEL_DEFAULT = process.env.ZAI_MODEL || 'glm-5.2';
 
@@ -10,7 +17,7 @@ function _openaiKey() {
   return resolvePlatformKey('AI_INTEGRATIONS_OPENAI_API_KEY') || process.env.OPENAI_API_KEY || null;
 }
 
-async function _callOpenAICompat({ baseUrl, apiKey, model, messages, opts = {} }) {
+async function _callOpenAICompat({ baseUrl, apiKey, model, messages, opts = {}, providerTag = 'openai' }) {
   const payload = {
     model,
     messages,
@@ -42,7 +49,7 @@ async function _callOpenAICompat({ baseUrl, apiKey, model, messages, opts = {} }
   const j = await resp.json();
   const msg = j?.choices?.[0]?.message || {};
   const content = msg.content || msg.reasoning_content || '';
-  return { provider: 'zai', model, content, endpoint: baseUrl };
+  return { provider: providerTag, model, content, endpoint: baseUrl };
 }
 
 async function _callZai(messages, opts = {}) {
@@ -67,6 +74,7 @@ async function _callZai(messages, opts = {}) {
         model: a.model,
         messages,
         opts: { ...opts, reasoning_effort: a.reasoning_effort },
+        providerTag: 'zai',
       });
     } catch (e) {
       const retryable = e.status === 429 || e.status === 503 || /1302|1305|rate|overload/i.test(e.message);
@@ -77,16 +85,52 @@ async function _callZai(messages, opts = {}) {
   return null;
 }
 
-/**
- * @param {'writing'|'analysis'|'vision'|'audio'} category
- * @param {Array<{role:string,content:string}>} messages
- * @param {{ tenantId?: number, max_tokens?: number, temperature?: number, response_format?: object, useAutoclaw?: boolean, model?: string, useContextPack?: boolean, surface?: string, requireContext?: boolean }} opts
- */
-async function chatForCategory(category, messages, opts = {}) {
-  let msgs = Array.isArray(messages) ? messages : [];
-  let contextPack = null;
+async function _callGeminiFlash(messages, opts = {}) {
+  const key = resolvePlatformKey('GEMINI_API_KEY') || process.env.GEMINI_API_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return null;
+  try {
+    const model = opts.gemini_model || process.env.AI_FAST_GEMINI_MODEL || 'gemini-1.5-flash';
+    const parts = messages.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: String(m.content || '') }],
+    })).filter((m) => m.parts[0].text);
+    // Gemini needs alternating roles — flatten system into first user
+    const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n');
+    const contents = [];
+    if (system) contents.push({ role: 'user', parts: [{ text: system }] });
+    for (const m of messages) {
+      if (m.role === 'system') continue;
+      contents.push({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: String(m.content || '') }],
+      });
+    }
+    void parts;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents,
+        generationConfig: {
+          maxOutputTokens: opts.max_tokens || 500,
+          temperature: opts.temperature ?? 0.3,
+        },
+      }),
+      signal: AbortSignal.timeout(opts.timeoutMs || 25000),
+    });
+    if (!resp.ok) return null;
+    const j = await resp.json();
+    const content = j?.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('') || '';
+    if (!content) return null;
+    return { provider: 'gemini', model, content };
+  } catch (_) {
+    return null;
+  }
+}
 
-  // M1: inject Marketing Memory + brand foundation when tenant is known
+async function _injectContext(msgs, opts, category) {
+  let contextPack = null;
   if (opts.tenantId != null && opts.useContextPack !== false) {
     try {
       const { buildContextPack, injectContextIntoMessages } = require('../ai_governance/context_pack');
@@ -106,17 +150,67 @@ async function chatForCategory(category, messages, opts = {}) {
       console.warn('[chat_router] context_pack failed (fail-open):', e.message);
     }
   }
+  return { msgs, contextPack };
+}
 
+async function _dispatch(category, msgs, opts, contextPack) {
   if (opts.tenantId != null) {
     const via = await chatViaProvider(category, msgs, opts);
     if (via && via.content) {
       if (contextPack) via.context_pack_id = contextPack.id;
+      via.cascade_tier = opts._cascade?.tier || null;
       return via;
     }
   }
 
-  // AutoClaw / Z.ai coding endpoint (preferred for analysis & agentic tasks)
+  const plan = opts._cascade;
   const preferCoding = opts.useAutoclaw !== false && (category === 'analysis' || opts.useAutoclaw);
+
+  // Fast tier: prefer cheap OpenAI/Gemini before AutoClaw high-reasoning
+  if (plan?.tier === 'fast') {
+    const oaiKey = _openaiKey();
+    if (oaiKey) {
+      try {
+        const base = (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+        const out = await _callOpenAICompat({
+          baseUrl: base,
+          apiKey: oaiKey,
+          model: opts.model || 'gpt-4o-mini',
+          messages: msgs,
+          opts,
+          providerTag: 'openai',
+        });
+        if (out?.content) {
+          if (contextPack) out.context_pack_id = contextPack.id;
+          out.cascade_tier = 'fast';
+          return out;
+        }
+      } catch (e) {
+        console.warn('[chat_router] fast OpenAI failed:', e.message);
+      }
+    }
+    const gem = await _callGeminiFlash(msgs, opts);
+    if (gem?.content) {
+      if (contextPack) gem.context_pack_id = contextPack.id;
+      gem.cascade_tier = 'fast';
+      return gem;
+    }
+    // Soft Z.ai without high reasoning as last fast fallback
+    const zaiFast = await _callZai(msgs, {
+      ...opts,
+      endpointMode: 'zai-global',
+      reasoning_effort: undefined,
+      model: opts.model || ZAI_MODEL_DEFAULT,
+    });
+    if (zaiFast?.content) {
+      if (contextPack) zaiFast.context_pack_id = contextPack.id;
+      zaiFast.cascade_tier = 'fast';
+      return zaiFast;
+    }
+    return null;
+  }
+
+  // Strong / default: AutoClaw coding endpoint first for analysis
   const zai = await _callZai(msgs, {
     ...opts,
     endpointMode: preferCoding ? (process.env.ZAI_ENDPOINT_MODE || 'auto') : 'zai-global',
@@ -124,6 +218,7 @@ async function chatForCategory(category, messages, opts = {}) {
   });
   if (zai?.content) {
     if (contextPack) zai.context_pack_id = contextPack.id;
+    zai.cascade_tier = plan?.tier || 'strong';
     return zai;
   }
 
@@ -136,12 +231,77 @@ async function chatForCategory(category, messages, opts = {}) {
       model: opts.model || 'gpt-4o-mini',
       messages: msgs,
       opts,
+      providerTag: 'openai',
     });
     if (contextPack) out.context_pack_id = contextPack.id;
+    out.cascade_tier = plan?.tier || null;
     return out;
   }
 
   return null;
 }
 
-module.exports = { chatForCategory, ZAI_MODEL_DEFAULT };
+/**
+ * @param {'writing'|'analysis'|'vision'|'audio'} category
+ * @param {Array<{role:string,content:string}>} messages
+ * @param {{ tenantId?: number, max_tokens?: number, temperature?: number, response_format?: object, useAutoclaw?: boolean, model?: string, useContextPack?: boolean, surface?: string, requireContext?: boolean, tier?: 'fast'|'strong'|'auto', escalate?: boolean|object }} opts
+ */
+async function chatForCategory(category, messages, opts = {}) {
+  const plan = resolveCascadePlan({
+    category,
+    surface: opts.surface || category,
+    tier: opts.tier,
+  });
+  const callOpts = applyPlanToOpts(opts, plan);
+  let msgs = Array.isArray(messages) ? messages : [];
+  const { msgs: withCtx, contextPack } = await _injectContext(msgs, callOpts, category);
+  msgs = withCtx;
+
+  let result = await _dispatch(category, msgs, callOpts, contextPack);
+
+  // Optional one-shot escalate: fast → strong when weak / caller gate
+  const esc = opts.escalate;
+  const wantEscalate = esc === true
+    || (esc && typeof esc === 'object')
+    || (esc == null && plan.tier === 'fast' && plan.escalate_default && opts.autoEscalate === true);
+
+  if (wantEscalate && plan.tier === 'fast' && shouldEscalate(result, typeof esc === 'object' ? esc : {})) {
+    const strongPlan = resolveCascadePlan({
+      category,
+      surface: opts.surface || category,
+      tier: 'strong',
+    });
+    const strongOpts = applyPlanToOpts({ ...opts, escalate: false, autoEscalate: false, tier: 'strong' }, strongPlan);
+    // Reuse same context pack; don't rebuild
+    strongOpts._contextPack = contextPack;
+    const escalated = await _dispatch(category, msgs, strongOpts, contextPack);
+    if (escalated?.content) {
+      escalated.escalated_from = 'fast';
+      escalated.cascade_tier = 'strong';
+      if (contextPack) escalated.context_pack_id = contextPack.id;
+      return escalated;
+    }
+  }
+
+  if (result && contextPack && !result.context_pack_id) result.context_pack_id = contextPack.id;
+  return result;
+}
+
+/**
+ * Explicit cascade helper: always try fast first, escalate when gate says so.
+ */
+async function chatWithCascade(category, messages, opts = {}) {
+  return chatForCategory(category, messages, {
+    ...opts,
+    tier: opts.tier || 'fast',
+    autoEscalate: opts.autoEscalate !== false,
+    escalate: opts.escalate != null ? opts.escalate : true,
+  });
+}
+
+module.exports = {
+  chatForCategory,
+  chatWithCascade,
+  cascadeStatus,
+  ZAI_MODEL_DEFAULT,
+};

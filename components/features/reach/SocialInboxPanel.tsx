@@ -133,9 +133,12 @@ export default function SocialInboxPanel() {
     load();
   }
 
-  async function autoTriage() {
+  async function autoTriage(useAi = false) {
     setBusy(true);
-    const r = await apiPost<{ ok: boolean; updated?: number; error?: string }>("/api/social-inbox/triage/auto", {});
+    const r = await apiPost<{ ok: boolean; updated?: number; ai_refined?: number; error?: string }>(
+      "/api/social-inbox/triage/auto",
+      { use_ai: useAi },
+    );
     setBusy(false);
     if (!r.ok) {
       setError(r.error || "Auto-triage failed");
@@ -228,8 +231,11 @@ export default function SocialInboxPanel() {
           <button type="button" onClick={() => setView(view === "board" ? "list" : "board")} style={ghostBtn}>
             {view === "board" ? "☰ List" : "▦ Board"}
           </button>
-          <button type="button" onClick={autoTriage} disabled={busy} style={ghostBtn}>
+          <button type="button" onClick={() => autoTriage(false)} disabled={busy} style={ghostBtn}>
             ✦ Auto-triage
+          </button>
+          <button type="button" onClick={() => autoTriage(true)} disabled={busy} style={ghostBtn} title="Heuristics first; fast model only for ambiguous P2">
+            ✦ Auto-triage + AI
           </button>
           <button type="button" onClick={sync} disabled={busy} style={ghostBtn}>
             🔄 Sync
