@@ -82,6 +82,15 @@ router.get('/status', _route(async (req, res) => {
           return { ready: false, note: 'cascade module unavailable' };
         }
       })(),
+      vector: (() => {
+        try {
+          return { ready: true, note: 'pgvector when available; JSONB cosine fallback — see /api/knowledge-graph/health' };
+        } catch (_) {
+          return { ready: false };
+        }
+      })(),
+      observability: { ready: true, note: 'AI call traces at /api/ai-traces — latency, tier, est. cost' },
+      feedback: { ready: true, note: 'AI output ratings at /api/ai-feedback — dislike → memory + escalate candidates' },
       output: { ready: true, note: 'Phase A light scan; full gate in Phase D' },
     },
     last24h: counts,

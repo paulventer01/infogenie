@@ -135,6 +135,8 @@ const ROUTE_GROUPS = [
   { prefix: '/api/marketing-spine',           view: 'grow.campaigns.view',     write: 'grow.campaigns.edit' },
   { prefix: '/api/agent-orchestrator',        view: 'brand.calendar.view',     write: 'brand.calendar.edit' },
   { prefix: '/api/ai-governance',             view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
+  { prefix: '/api/ai-traces',                 view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
+  { prefix: '/api/ai-feedback',               view: 'grow.campaigns.view',     write: 'grow.campaigns.view' },
   { prefix: '/api/channel-studios',           view: 'reach.audiences.view',    write: 'reach.audiences.edit' },
   { prefix: '/api/execution-hub',             view: 'tenant.integrations.manage', write: 'tenant.integrations.manage' },
   { prefix: '/api/segment',                   view: 'tenant.integrations.manage', write: 'tenant.integrations.manage' },

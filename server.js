@@ -3835,6 +3835,21 @@ const _socialInboxRouter = require('./services/social_inbox/api');
 app.use('/api/social-inbox', _socialInboxRouter);
 const _gscSocialSearchRouter = require('./services/gsc_social_search/api');
 app.use('/api/gsc-social-search', _gscSocialSearchRouter);
+const _aiTracesRouter = require('./services/ai_traces/api');
+app.use('/api/ai-traces', _aiTracesRouter);
+const _aiFeedbackRouter = require('./services/ai_feedback/api');
+app.use('/api/ai-feedback', _aiFeedbackRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (process.env.DATABASE_URL) {
+      await require('./services/ai_traces/schema').ensureAiTracesSchema();
+      await require('./services/ai_feedback/schema').ensureAiFeedbackSchema();
+      console.log('[ai-infra] traces + feedback schema ready');
+    }
+  } catch (e) {
+    console.warn('[ai-infra] schema init:', e.message);
+  }
+});
 BOOT_TASKS.push(async () => { try {
   if (process.env.DATABASE_URL) {
     await _socialDraftsSchema.ensureSocialDraftsSchema();

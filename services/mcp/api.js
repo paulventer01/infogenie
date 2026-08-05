@@ -77,7 +77,42 @@ const TOOLS = [
       properties: { status: { type: 'string', description: 'Filter: active|completed|cancelled|paused' } },
       required: []
     }
-  }
+  },
+  {
+    name: 'query_marketing_memory',
+    description: 'Semantic search over Marketing Memory (RAG). Returns top relevant memory nodes for a question.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: 'Natural-language question' },
+        limit: { type: 'number', description: 'Max nodes (default 6)' },
+      },
+      required: ['question'],
+    },
+  },
+  {
+    name: 'get_ai_observability',
+    description: 'AI call-trace stats (latency, cost estimate, cascade tiers) + feedback approval rates for this tenant.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        hours: { type: 'number', description: 'Lookback window hours (default 24)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_social_search_winners',
+    description: 'Social × Search winners from Google Search Console (Instagram/TikTok/YouTube/X earning Google clicks).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max winners (default 5)' },
+        days: { type: 'number', description: 'GSC lookback days (default 28)' },
+      },
+      required: [],
+    },
+  },
 ];
 
 // MCP discovery endpoint — returns available tools
@@ -190,6 +225,52 @@ router.post('/call', async (req, res) => {
       }
       case 'get_drip_enrollments': {
         result = { message: 'Drip enrollments are stored in kv_store. Use GET /api/drips to retrieve them.', status_filter: args.status || 'all' };
+        break;
+      }
+      case 'query_marketing_memory': {
+        const question = String(args.question || '').trim();
+        if (!question) return res.status(400).json({ error: { code: -32602, message: 'question required' } });
+        const { queryMemoryNodes, embedText, vectorStatus } = require('../knowledge_graph/api');
+        const vec = await embedText(question);
+        const nodes = await queryMemoryNodes(tid, question, vec, Math.min(Number(args.limit) || 6, 20));
+        const vs = await vectorStatus();
+        result = {
+          question,
+          nodes: nodes.map((n) => ({
+            id: n.id,
+            node_type: n.node_type,
+            summary: n.summary,
+            score: n.score,
+            retrieval: n.retrieval,
+          })),
+          vector: vs,
+        };
+        break;
+      }
+      case 'get_ai_observability': {
+        const hours = Number(args.hours) || 24;
+        const { traceStats } = require('../ai_traces/store');
+        const { feedbackStats } = require('../ai_feedback/store');
+        const [traces, feedback] = await Promise.all([
+          traceStats({ tenantId: tid, hours }),
+          feedbackStats({ tenantId: tid, hours: Math.max(hours, 24 * 7) }),
+        ]);
+        result = { traces, feedback };
+        break;
+      }
+      case 'get_social_search_winners': {
+        const { fetchSocialSearchWinners, insightFromWinners } = require('../gsc_social_search/winners');
+        const payload = await fetchSocialSearchWinners({
+          limit: Math.min(Number(args.limit) || 5, 15),
+          days: Number(args.days) || 28,
+          allowDemo: true,
+        });
+        result = {
+          source: payload.source,
+          configured: payload.configured,
+          insight: insightFromWinners(payload),
+          winners: payload.winners || [],
+        };
         break;
       }
       default:

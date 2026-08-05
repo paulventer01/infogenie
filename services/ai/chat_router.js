@@ -29,6 +29,7 @@ async function _callOpenAICompat({ baseUrl, apiKey, model, messages, opts = {}, 
   if (opts.reasoning_effort) payload.reasoning_effort = opts.reasoning_effort;
   if (opts.thinking) payload.thinking = opts.thinking;
 
+  const t0 = Date.now();
   const resp = await fetch(baseUrl.replace(/\/+$/, '') + '/chat/completions', {
     method: 'POST',
     headers: {
@@ -44,12 +45,22 @@ async function _callOpenAICompat({ baseUrl, apiKey, model, messages, opts = {}, 
     const txt = await resp.text().catch(() => '');
     const err = new Error(`AI HTTP ${resp.status}: ${txt.slice(0, 200)}`);
     err.status = resp.status;
+    err.latency_ms = Date.now() - t0;
     throw err;
   }
   const j = await resp.json();
   const msg = j?.choices?.[0]?.message || {};
   const content = msg.content || msg.reasoning_content || '';
-  return { provider: providerTag, model, content, endpoint: baseUrl };
+  const usage = j?.usage || {};
+  return {
+    provider: providerTag,
+    model,
+    content,
+    endpoint: baseUrl,
+    latency_ms: Date.now() - t0,
+    prompt_tokens: usage.prompt_tokens ?? usage.input_tokens ?? null,
+    completion_tokens: usage.completion_tokens ?? usage.output_tokens ?? null,
+  };
 }
 
 async function _callZai(messages, opts = {}) {
@@ -246,44 +257,100 @@ async function _dispatch(category, msgs, opts, contextPack) {
  * @param {Array<{role:string,content:string}>} messages
  * @param {{ tenantId?: number, max_tokens?: number, temperature?: number, response_format?: object, useAutoclaw?: boolean, model?: string, useContextPack?: boolean, surface?: string, requireContext?: boolean, tier?: 'fast'|'strong'|'auto', escalate?: boolean|object }} opts
  */
+async function _feedbackForcesStrong(tenantId, surface) {
+  if (tenantId == null || !surface) return false;
+  try {
+    const { feedbackStats } = require('../ai_feedback/store');
+    const stats = await feedbackStats({ tenantId, hours: 24 * 14 });
+    return (stats.escalate_candidates || []).some((c) => c.surface === surface);
+  } catch {
+    return false;
+  }
+}
+
+async function _recordCallTrace(payload) {
+  try {
+    const { recordTrace } = require('../ai_traces/store');
+    return await recordTrace(payload);
+  } catch (_) {
+    return null;
+  }
+}
+
 async function chatForCategory(category, messages, opts = {}) {
+  const surface = opts.surface || category;
+  let tierOverride = opts.tier;
+  // Continuous learning: surfaces with high dislike rates start on strong
+  if ((!tierOverride || tierOverride === 'auto' || tierOverride === 'fast')
+      && opts.tenantId != null
+      && await _feedbackForcesStrong(opts.tenantId, surface)) {
+    tierOverride = 'strong';
+  }
+
   const plan = resolveCascadePlan({
     category,
-    surface: opts.surface || category,
-    tier: opts.tier,
+    surface,
+    tier: tierOverride,
   });
   const callOpts = applyPlanToOpts(opts, plan);
   let msgs = Array.isArray(messages) ? messages : [];
   const { msgs: withCtx, contextPack } = await _injectContext(msgs, callOpts, category);
   msgs = withCtx;
 
-  let result = await _dispatch(category, msgs, callOpts, contextPack);
+  const t0 = Date.now();
+  let result = null;
+  let errorMsg = null;
+  try {
+    result = await _dispatch(category, msgs, callOpts, contextPack);
 
-  // Optional one-shot escalate: fast → strong when weak / caller gate
-  const esc = opts.escalate;
-  const wantEscalate = esc === true
-    || (esc && typeof esc === 'object')
-    || (esc == null && plan.tier === 'fast' && plan.escalate_default && opts.autoEscalate === true);
+    // Optional one-shot escalate: fast → strong when weak / caller gate
+    const esc = opts.escalate;
+    const wantEscalate = esc === true
+      || (esc && typeof esc === 'object')
+      || (esc == null && plan.tier === 'fast' && plan.escalate_default && opts.autoEscalate === true);
 
-  if (wantEscalate && plan.tier === 'fast' && shouldEscalate(result, typeof esc === 'object' ? esc : {})) {
-    const strongPlan = resolveCascadePlan({
-      category,
-      surface: opts.surface || category,
-      tier: 'strong',
-    });
-    const strongOpts = applyPlanToOpts({ ...opts, escalate: false, autoEscalate: false, tier: 'strong' }, strongPlan);
-    // Reuse same context pack; don't rebuild
-    strongOpts._contextPack = contextPack;
-    const escalated = await _dispatch(category, msgs, strongOpts, contextPack);
-    if (escalated?.content) {
-      escalated.escalated_from = 'fast';
-      escalated.cascade_tier = 'strong';
-      if (contextPack) escalated.context_pack_id = contextPack.id;
-      return escalated;
+    if (wantEscalate && plan.tier === 'fast' && shouldEscalate(result, typeof esc === 'object' ? esc : {})) {
+      const strongPlan = resolveCascadePlan({
+        category,
+        surface,
+        tier: 'strong',
+      });
+      const strongOpts = applyPlanToOpts({ ...opts, escalate: false, autoEscalate: false, tier: 'strong' }, strongPlan);
+      // Reuse same context pack; don't rebuild
+      strongOpts._contextPack = contextPack;
+      const escalated = await _dispatch(category, msgs, strongOpts, contextPack);
+      if (escalated?.content) {
+        escalated.escalated_from = 'fast';
+        escalated.cascade_tier = 'strong';
+        if (contextPack) escalated.context_pack_id = contextPack.id;
+        result = escalated;
+      }
     }
+
+    if (result && contextPack && !result.context_pack_id) result.context_pack_id = contextPack.id;
+  } catch (e) {
+    errorMsg = e.message;
+    throw e;
+  } finally {
+    const trace = await _recordCallTrace({
+      tenant_id: opts.tenantId,
+      surface,
+      category,
+      provider: result?.provider || null,
+      model: result?.model || callOpts.model || null,
+      cascade_tier: result?.cascade_tier || plan.tier,
+      escalated_from: result?.escalated_from || null,
+      context_pack_id: result?.context_pack_id || contextPack?.id || null,
+      latency_ms: result?.latency_ms != null ? result.latency_ms : (Date.now() - t0),
+      prompt_tokens: result?.prompt_tokens ?? null,
+      completion_tokens: result?.completion_tokens ?? null,
+      status: errorMsg ? 'error' : (result?.content ? 'ok' : 'empty'),
+      error: errorMsg,
+      meta: { feedback_forced_strong: tierOverride === 'strong' && opts.tier !== 'strong' },
+    });
+    if (result && trace?.id) result.call_trace_id = trace.id;
   }
 
-  if (result && contextPack && !result.context_pack_id) result.context_pack_id = contextPack.id;
   return result;
 }
 

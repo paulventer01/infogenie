@@ -38,8 +38,7 @@ function _lastUserText(messages) {
 async function _safeEmbed(text) {
   try {
     const kg = require('../knowledge_graph/api');
-    // knowledge_graph doesn't export _embed — use query path via open embed if available
-    if (typeof kg._embed === 'function') return await kg._embed(text);
+    if (typeof kg.embedText === 'function') return await kg.embedText(text);
   } catch (_) {}
   try {
     const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
