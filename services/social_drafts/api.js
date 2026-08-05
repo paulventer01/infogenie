@@ -349,6 +349,28 @@ router.post('/bulk', _safeAsync(async (req, res) => {
   res.json({ ok: true, created: created.length, drafts: created });
 }));
 
+router.get('/settings', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'social-drafts:settings');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  res.json({ ok: true, settings: await _getSettings(tid) });
+}));
+
+router.put('/settings', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'social-drafts:settings-put');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const settings = await _setSettings(tid, {
+    require_approval: !!req.body?.require_approval,
+  });
+  res.json({ ok: true, settings });
+}));
+
+router.get('/approvals/queue', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'social-drafts:approvals-queue');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const drafts = await _listDrafts(tid, { status: 'pending_approval' });
+  res.json({ ok: true, drafts });
+}));
+
 router.get('/:id', _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'social-drafts:get');
   if (!tid) return _err(res, 400, 'no_tenant');
@@ -407,8 +429,187 @@ router.post('/:id/publish', _safeAsync(async (req, res) => {
     zernio_post_id: zid ? String(zid) : draft.zernio_post_id,
     meta: { ...(draft.meta || {}), published_at: new Date().toISOString() },
   });
+
+  // Fire cross-post workflows after successful publish
+  try {
+    const wf = require('../social_workflows/api');
+    if (typeof wf._onSocialPublished === 'function') {
+      wf._onSocialPublished(tid, updated).catch(() => {});
+    }
+  } catch (_) {}
+
   res.json({ ok: true, draft: updated, post: result.post, scheduled: !!draft.scheduled_for });
 }));
+
+// ── Approval settings + queue (works with or without approval_workflows DB) ──
+const _settings = new Map(); // tid -> { require_approval: bool }
+
+async function _getSettings(tid) {
+  if (_db.hasDb()) {
+    try {
+      const p = await _db.getPool();
+      await p.query(`
+        CREATE TABLE IF NOT EXISTS social_publisher_settings (
+          tenant_id INT PRIMARY KEY,
+          require_approval BOOLEAN DEFAULT FALSE,
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )`);
+      const r = await p.query(`SELECT * FROM social_publisher_settings WHERE tenant_id=$1`, [tid]);
+      if (r.rows[0]) return { require_approval: !!r.rows[0].require_approval };
+    } catch (_) {}
+  }
+  return _settings.get(tid) || { require_approval: false };
+}
+
+async function _setSettings(tid, patch) {
+  const cur = await _getSettings(tid);
+  const next = { ...cur, ...patch };
+  _settings.set(tid, next);
+  if (_db.hasDb()) {
+    try {
+      const p = await _db.getPool();
+      await p.query(`
+        INSERT INTO social_publisher_settings(tenant_id, require_approval, updated_at)
+        VALUES ($1,$2,NOW())
+        ON CONFLICT (tenant_id) DO UPDATE SET require_approval=$2, updated_at=NOW()`,
+        [tid, !!next.require_approval]);
+    } catch (_) {}
+  }
+  return next;
+}
+
+router.post('/:id/submit-approval', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'social-drafts:submit-approval');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const draft = await _getDraft(tid, req.params.id);
+  if (!draft) return _err(res, 404, 'not found');
+  if (!['draft', 'approved'].includes(draft.status)) {
+    return _err(res, 400, `Cannot submit approval from status "${draft.status}"`);
+  }
+  if (!draft.platforms?.length) return _err(res, 400, 'select at least one platform');
+
+  const updated = await _updateDraft(tid, draft.id, {
+    status: 'pending_approval',
+    meta: {
+      ...(draft.meta || {}),
+      submitted_for_approval_at: new Date().toISOString(),
+      submitted_by: req.user?.email || req.user?.id || null,
+    },
+  });
+
+  let approval_request = null;
+  if (_db.hasDb()) {
+    try {
+      const p = await _db.getPool();
+      const desc = JSON.stringify({
+        draft_id: draft.id,
+        text: (draft.text || '').slice(0, 500),
+        platforms: draft.platforms,
+        scheduled_for: draft.scheduled_for,
+        media_urls: draft.media_urls,
+      });
+      const r = await p.query(
+        `INSERT INTO approval_requests(tenant_id,action_type,title,description,proposed_by,channel,simulation_result,status)
+         VALUES ($1,'social_post_publish',$2,$3,$4,$5,$6,'pending') RETURNING *`,
+        [
+          tid,
+          `Social post: ${(draft.text || '').slice(0, 80)}`,
+          desc,
+          req.user?.email || null,
+          (draft.platforms || []).join(','),
+          JSON.stringify({ simulation_verdict: 'caution', expected_outcome: 'Publish social post after review' }),
+        ],
+      );
+      approval_request = r.rows[0];
+      await _updateDraft(tid, draft.id, {
+        meta: { ...(updated.meta || {}), approval_request_id: approval_request.id },
+      });
+    } catch (_) { /* table may not exist yet */ }
+  }
+
+  res.json({ ok: true, draft: updated, approval_request });
+}));
+
+router.post('/:id/withdraw-approval', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'social-drafts:withdraw');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const draft = await _getDraft(tid, req.params.id);
+  if (!draft) return _err(res, 404, 'not found');
+  if (draft.status !== 'pending_approval') return _err(res, 400, 'not pending approval');
+  const updated = await _updateDraft(tid, draft.id, {
+    status: 'draft',
+    meta: { ...(draft.meta || {}), withdrawn_at: new Date().toISOString() },
+  });
+  res.json({ ok: true, draft: updated });
+}));
+
+router.post('/:id/approve', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'social-drafts:approve');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const result = await _approveAndPublish(tid, req.params.id, { notes: req.body?.notes || null, skipZernio: !!req.body?.skip_publish });
+  if (!result.ok) return _err(res, 400, result.error);
+  res.json(result);
+}));
+
+router.post('/:id/reject', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'social-drafts:reject');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const draft = await _rejectDraft(tid, req.params.id, req.body?.notes || null);
+  if (!draft) return _err(res, 404, 'not found');
+  res.json({ ok: true, draft });
+}));
+
+async function _approveAndPublish(tid, draftId, opts = {}) {
+  const draft = await _getDraft(tid, draftId);
+  if (!draft) return { ok: false, error: 'not found' };
+  if (draft.status !== 'pending_approval' && draft.status !== 'approved') {
+    // allow approve from pending only
+    if (draft.status !== 'pending_approval') return { ok: false, error: `cannot approve status "${draft.status}"` };
+  }
+  await _updateDraft(tid, draftId, {
+    status: 'approved',
+    meta: {
+      ...(draft.meta || {}),
+      approved_at: new Date().toISOString(),
+      reviewer_notes: opts.notes || null,
+    },
+  });
+  if (opts.skipZernio || opts.skip_publish) {
+    return { ok: true, draft: await _getDraft(tid, draftId), published: false };
+  }
+  const fresh = await _getDraft(tid, draftId);
+  if (!fresh.platforms?.length) return { ok: false, error: 'no platforms' };
+  const result = await _publishViaZernio({}, fresh);
+  if (!result.ok) {
+    await _updateDraft(tid, draftId, { status: 'failed', meta: { ...(fresh.meta || {}), last_error: result.error } });
+    return { ok: false, error: result.error };
+  }
+  const zid = result.post?._id || result.post?.id || null;
+  const nextStatus = fresh.scheduled_for ? 'scheduled' : 'published';
+  const updated = await _updateDraft(tid, draftId, {
+    status: nextStatus,
+    zernio_post_id: zid ? String(zid) : null,
+    meta: { ...(fresh.meta || {}), published_at: new Date().toISOString(), published_via: 'approval' },
+  });
+  try {
+    const wf = require('../social_workflows/api');
+    if (typeof wf._onSocialPublished === 'function') wf._onSocialPublished(tid, updated).catch(() => {});
+  } catch (_) {}
+  return { ok: true, draft: updated, post: result.post, published: true };
+}
+
+async function _rejectDraft(tid, draftId, notes) {
+  const draft = await _getDraft(tid, draftId);
+  if (!draft) return null;
+  return await _updateDraft(tid, draftId, {
+    status: 'draft',
+    meta: {
+      ...(draft.meta || {}),
+      rejected_at: new Date().toISOString(),
+      reviewer_notes: notes || null,
+    },
+  });
+}
 
 router.delete('/:id', _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'social-drafts:delete');
@@ -438,8 +639,14 @@ router.delete('/:id', _safeAsync(async (req, res) => {
   res.json({ ok });
 }));
 
-// Test helpers
+// Test helpers + cross-module hooks
 router._mem = _mem;
-router._resetMem = () => { _mem.clear(); _memSeq = 1; };
+router._resetMem = () => { _mem.clear(); _memSeq = 1; _settings.clear(); };
+router._approveAndPublish = _approveAndPublish;
+router._rejectDraft = _rejectDraft;
+router._getDraft = _getDraft;
+router._insertDraft = _insertDraft;
+router._updateDraft = _updateDraft;
+router._getSettings = _getSettings;
 
 module.exports = router;

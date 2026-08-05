@@ -8,6 +8,9 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
 import SocialCalendarView, { type SocialDraft } from "./SocialCalendarView";
 import SocialIdeasPanel from "./SocialIdeasPanel";
+import SocialApprovalsPanel from "./SocialApprovalsPanel";
+import SocialAutomationPanel from "./SocialAutomationPanel";
+import SocialInboxPanel from "./SocialInboxPanel";
 
 interface Platform {
   id: string;
@@ -88,7 +91,7 @@ interface StatusMsg {
   kind: StatusKind;
 }
 
-type TabId = "calendar" | "compose" | "queue" | "ideas";
+type TabId = "calendar" | "compose" | "queue" | "ideas" | "approvals" | "automate" | "inbox";
 
 const STATUS_COLORS: Record<StatusKind, [string, string, string]> = {
   ok: ["#ECFDF5", "#A7F3D0", "#065F46"],
@@ -100,6 +103,9 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "calendar", label: "📅 Calendar" },
   { id: "compose", label: "✍️ Compose" },
   { id: "queue", label: "📋 Queue" },
+  { id: "approvals", label: "✅ Approvals" },
+  { id: "automate", label: "🔁 Automate" },
+  { id: "inbox", label: "💬 Inbox" },
   { id: "ideas", label: "💡 Ideas" },
 ];
 
@@ -397,6 +403,51 @@ export default function SocialPublisher() {
     setCalRefresh((n) => n + 1);
   }
 
+  async function submitForApproval() {
+    // Ensure draft exists then submit
+    const t = text.trim();
+    const platforms = Array.from(selected);
+    if (!profileId || (!t && !media.trim()) || !platforms.length) {
+      setResult({ color: "#991B1B", text: "⚠ Profile, text, and platforms required." });
+      return;
+    }
+    setResult({ color: "#6B7280", text: "Submitting for approval…" });
+    let draftId = editingDraftId;
+    const body: Record<string, unknown> = {
+      profileId,
+      text: t,
+      platforms,
+      meta: draftMeta,
+    };
+    if (schedule) body.scheduled_for = new Date(schedule).toISOString();
+    if (media.trim()) body.media_urls = [media.trim()];
+
+    if (draftId) {
+      const pr = await apiPatch<{ ok: boolean; error?: string }>(`/api/social-drafts/${draftId}`, body);
+      if (!pr.ok) {
+        setResult({ color: "#991B1B", text: `❌ ${pr.error}` });
+        return;
+      }
+    } else {
+      const r = await apiPost<{ ok: boolean; error?: string; draft?: SocialDraft }>("/api/social-drafts", body);
+      if (!r.ok || !r.draft) {
+        setResult({ color: "#991B1B", text: `❌ ${r.error || "save failed"}` });
+        return;
+      }
+      draftId = r.draft.id;
+      setEditingDraftId(draftId);
+    }
+
+    const sub = await apiPost<{ ok: boolean; error?: string }>(`/api/social-drafts/${draftId}/submit-approval`, {});
+    if (!sub.ok) {
+      setResult({ color: "#991B1B", text: `❌ ${sub.error}` });
+      return;
+    }
+    setResult({ color: "#9A3412", text: `✅ Submitted for approval (draft #${draftId}).` });
+    setCalRefresh((n) => n + 1);
+    setTab("approvals");
+  }
+
   async function publishDirect() {
     // Legacy path: post straight to Zernio without draft (still available)
     const t = text.trim();
@@ -618,6 +669,24 @@ export default function SocialPublisher() {
           />
         )}
 
+        {tab === "approvals" && (
+          <SocialApprovalsPanel
+            refreshKey={calRefresh}
+            onEditDraft={loadDraftIntoCompose}
+          />
+        )}
+
+        {tab === "automate" && (
+          <SocialAutomationPanel
+            profileId={profileId}
+            platforms={SP_PLATFORMS}
+            draftText={text}
+            draftPlatforms={Array.from(selected)}
+          />
+        )}
+
+        {tab === "inbox" && <SocialInboxPanel />}
+
         {tab === "compose" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "start" }}>
             <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 16 }}>
@@ -728,9 +797,12 @@ export default function SocialPublisher() {
                   <input type="url" value={media} onChange={(e) => setMedia(e.target.value)} placeholder="https://example.com/image.jpg" style={{ width: "100%", padding: 7, border: "1px solid #D1D5DB", borderRadius: 6, fontSize: "0.78rem", boxSizing: "border-box" }} />
                 </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
                 <button onClick={() => saveDraft(false)} style={{ background: "#F3F4F6", color: "#0A1628", border: "1px solid #E5E7EB", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
                   💾 Save draft
+                </button>
+                <button onClick={submitForApproval} style={{ background: "#FFF7ED", color: "#C2410C", border: "1px solid #FDBA74", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
+                  ✅ Submit for approval
                 </button>
                 <button onClick={() => saveDraft(true)} style={{ background: "linear-gradient(135deg,#0D9488 0%,#14B8A6 100%)", color: "#fff", border: "none", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
                   📤 Save &amp; publish
