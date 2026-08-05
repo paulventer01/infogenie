@@ -357,7 +357,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "1 · Set the targets",
         items: [
           { view: "agent-goals", icon: "🏁", label: "Marketing Goals (set · plan · track)" },
-          { view: "flywheel", icon: "🔁", label: "Growth Goals Loop" },
           { view: "growth-hub", icon: "🚀", label: "Growth Marketing — start here" },
           { view: "ecosystem-spine", icon: "🕸️", label: "Ecosystem Spine (audiences · attribution · close-loop)" },
           { view: "goals", icon: "📎", label: "Goals & Targets" },
@@ -496,6 +495,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "team-meetings", icon: "💴", label: "Minutes of Meeting (AI Team)" },
           { view: "playbook-7day", icon: "📖", label: "7-Day Marketing Playbook" },
           { view: "growth-methodology", icon: "💶", label: "Growth Methodology (5-stage)" },
+          { view: "flywheel", icon: "🔁", label: "Performance Growth Flywheel" },
         ],
       },
       {
