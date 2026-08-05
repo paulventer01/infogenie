@@ -52,6 +52,7 @@ const REGISTRY = [
   { key: 'FIRECRAWL_API_KEY', group: 'Data & Intelligence', service: 'Firecrawl', label: 'Firecrawl API Key', desc: 'Website crawling & scraping', secret: true, test: 'firecrawl', settingsIds: ['firecrawl'] },
   { key: 'APOLLO_API_KEY', group: 'Data & Intelligence', service: 'Apollo', label: 'Apollo API Key', desc: 'B2B contact & company enrichment', secret: true, test: 'apollo', settingsIds: ['apollo'] },
   { key: 'ZERNIO_API_KEY', group: 'Data & Intelligence', service: 'Zernio', label: 'Zernio API Key', desc: 'Social publishing', secret: true, settingsIds: ['zernio'] },
+  { key: 'OMNISOCIALS_API_KEY', group: 'Data & Intelligence', service: 'OmniSocials', label: 'OmniSocials API Key', desc: 'Social DM/comment inbox (optional — demo mode without it)', secret: true, settingsIds: ['omnisocials'] },
   { key: 'MODASH_API_KEY', group: 'Data & Intelligence', service: 'Modash', label: 'Modash API Key', desc: 'Influencer Discovery — real follower counts, engagement rates & audience-quality scores (IG/TikTok/YouTube)', secret: true, test: 'modash', settingsIds: ['modash'] },
   { key: 'BUILTWITH_API_KEY', group: 'Data & Intelligence', service: 'BuiltWith', label: 'BuiltWith API Key', desc: 'Tech-stack detection', secret: true, test: 'builtwith', settingsIds: ['builtwith'] },
   { key: 'GOOGLE_PAGESPEED_API_KEY', group: 'Data & Intelligence', service: 'Google PageSpeed', label: 'PageSpeed API Key', desc: 'Core Web Vitals & page performance audits', secret: true, test: 'pagespeed', settingsIds: ['pagespeed', 'google_pagespeed'] },

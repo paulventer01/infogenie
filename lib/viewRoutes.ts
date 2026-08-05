@@ -292,7 +292,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "4 · Social command center",
         items: [
           { view: "social-command-center", icon: "📱", label: "Social Command Center — start here" },
-          { view: "social-publisher", icon: "📤", label: "Social Publisher (15 platforms)" },
+          { view: "social-publisher", icon: "📤", label: "Social Publisher (calendar · drafts · 15 platforms)" },
           { view: "discovery", icon: "🔭", label: "Influencer Discovery" },
           { view: "influencers", icon: "💫", label: "Influencer CRM" },
           { view: "tiktok-downloader", icon: "⬇️", label: "TikTok Asset Downloader" },
@@ -444,7 +444,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "brand-calendar", icon: "🕰️", label: "Brand Calendar (10 categories)" },
           { view: "calendar-assistant", icon: "📅", label: "Calendar Assistant (AI schedule · conflicts)" },
           { view: "agent-orchestrator", icon: "🤖", label: "Agent Orchestrator (cross-module suggest → apply)" },
-          { view: "social", icon: "🙌", label: "Social Calendar" },
+          { view: "social", icon: "🙌", label: "Social Calendar → Publisher" },
+          { view: "social-publisher", icon: "📤", label: "Social Publisher (calendar · drafts · 15 platforms)" },
           { view: "launches", icon: "👏", label: "Product Launch Calendar" },
         ],
       },

@@ -3824,6 +3824,25 @@ require('./services/public_pages/routes')(app, {});
 // ── Tier 15 ────────────────────────────────────────────────────────────────
 const _socialPublisherRouter = require('./services/social_publisher/api');
 app.use('/api/social-publisher', _socialPublisherRouter);
+const _socialDraftsSchema = require('./services/social_drafts/schema');
+const _socialDraftsRouter = require('./services/social_drafts/api');
+app.use('/api/social-drafts', _socialDraftsRouter);
+const _socialWorkflowsRouter = require('./services/social_workflows/api');
+app.use('/api/social-workflows', _socialWorkflowsRouter);
+const _socialEvergreenRouter = require('./services/social_evergreen/api');
+app.use('/api/social-evergreen', _socialEvergreenRouter);
+const _socialInboxRouter = require('./services/social_inbox/api');
+app.use('/api/social-inbox', _socialInboxRouter);
+BOOT_TASKS.push(async () => { try {
+  if (process.env.DATABASE_URL) {
+    await _socialDraftsSchema.ensureSocialDraftsSchema();
+    console.log('[tier15] social-drafts schema ready');
+  }
+  // Evergreen hourly tick
+  setInterval(() => {
+    try { _socialEvergreenRouter._runDue().catch(() => {}); } catch (_) {}
+  }, 60 * 60 * 1000);
+} catch (e) { console.warn('[tier15] social-drafts schema init failed:', e.message); }});
 
 // ── Tier 16 ────────────────────────────────────────────────────────────────
 const _emailPersonalizerRouter = require('./services/email_personalizer/api');

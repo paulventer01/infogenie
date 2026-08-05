@@ -58,7 +58,8 @@ export const MARKETING_HUBS: Record<string, MarketingHubDef> = {
     subtitle:
       "Organic social, paid social, and performance — publish everywhere, monitor engagement, and track post ROI.",
     tiles: [
-      { view: "social-publisher", icon: "📤", label: "Social Publisher", desc: "15 platforms — schedule & publish", tag: "Organic" },
+      { view: "social-publisher", icon: "📤", label: "Social Publisher", desc: "Calendar · approvals · inbox · automate", tag: "Organic" },
+      { view: "unified-inbox", icon: "📬", label: "Unified Inbox", desc: "Reviews · email · social DMs" },
       { view: "social-analytics", icon: "🖇️", label: "Organic Social Analytics", desc: "Engagement & follower growth" },
       { view: "post-performance", icon: "⚗️", label: "Post Performance", desc: "Top posts & content patterns" },
       { view: "organic-social", icon: "👀", label: "Organic Social Monitor", desc: "Competitor organic activity" },
