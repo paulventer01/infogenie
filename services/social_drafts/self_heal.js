@@ -1,10 +1,12 @@
 /**
  * Self-heal loop for social drafts — verify → fix → re-verify before approval.
- * Loop-engineering pattern: like "tests fail → fix → merge" for social copy.
+ * Built on shared Evaluator–Optimizer (`services/ai/evaluator_optimizer`).
  *
  * Fail-open on AI outages: heuristic scan still runs; if AI rewrite unavailable,
  * returns caution with original text so humans can still review.
  */
+const { runEvaluatorOptimizer } = require('../ai/evaluator_optimizer');
+
 const MAX_ATTEMPTS = 3;
 
 const CRITICAL_PATTERNS = [
@@ -88,7 +90,6 @@ async function _voiceSoftCheck(tenantId, text) {
     const { getBrandContextBlock } = require('../brand_foundation/api');
     const brand = await getBrandContextBlock(tenantId);
     if (!brand) return { ok: true, score: 100 };
-    // Lightweight banned-word hit from brand block line
     const bannedLine = brand.split('\n').find((l) => /BANNED WORDS:/i.test(l));
     if (!bannedLine) return { ok: true, score: 90 };
     const words = bannedLine.replace(/.*BANNED WORDS:/i, '').split(/[,;]/).map((w) => w.trim()).filter(Boolean);
@@ -116,89 +117,50 @@ async function _voiceSoftCheck(tenantId, text) {
  */
 async function selfHealDraft(tenantId, text, opts = {}) {
   const maxAttempts = Math.min(MAX_ATTEMPTS, Math.max(1, Number(opts.maxAttempts) || MAX_ATTEMPTS));
-  let current = String(text || '');
-  const attempts = [];
-  let usedEscalate = false;
 
-  for (let i = 0; i < maxAttempts; i++) {
-    const scan = _heuristicScan(current);
-    const voice = await _voiceSoftCheck(tenantId, current);
-    const flags = [...(scan.flags || []), ...(voice.flags || [])];
-    let verdict = scan.overall_verdict;
-    if (!voice.ok && verdict === 'pass') verdict = 'caution';
-    if (!voice.ok && flags.some((f) => f.severity === 'critical')) verdict = 'fail';
-
-    attempts.push({
-      attempt: i + 1,
-      verdict,
-      risk_score: scan.risk_score,
-      flags,
-      text_preview: current.slice(0, 160),
-    });
-
-    if (verdict === 'pass') {
+  const result = await runEvaluatorOptimizer({
+    tenantId,
+    content: String(text || ''),
+    maxAttempts,
+    evaluate: async (current) => {
+      const scan = _heuristicScan(current);
+      const voice = await _voiceSoftCheck(tenantId, current);
+      const flags = [...(scan.flags || []), ...(voice.flags || [])];
+      let verdict = scan.overall_verdict;
+      if (!voice.ok && verdict === 'pass') verdict = 'caution';
+      if (!voice.ok && flags.some((f) => f.severity === 'critical')) verdict = 'fail';
       return {
-        ok: true,
-        passed: true,
-        text: current,
-        attempts,
-        final_verdict: 'pass',
-        cascade: { used_escalate: usedEscalate },
+        verdict,
+        score: 100 - (scan.risk_score || 0),
+        flags,
+        source: scan.source,
+        meta: { risk_score: scan.risk_score },
       };
-    }
+    },
+    optimize: async (current, evaluation, ctx) => {
+      const rewritten = await _aiRewrite(tenantId, current, evaluation.flags, { escalate: ctx.escalate });
+      return rewritten?.text || null;
+    },
+    shouldEscalate: (evaluation, attemptIndex) => evaluation?.verdict === 'fail' && attemptIndex >= 1,
+  });
 
-    // Last attempt — return best effort
-    if (i === maxAttempts - 1) {
-      return {
-        ok: true,
-        passed: false,
-        text: current,
-        attempts,
-        final_verdict: verdict,
-        needs_human: true,
-        cascade: { used_escalate: usedEscalate },
-      };
-    }
-
-    // Efficient cascade: fast rewrite first; escalate to strong only if still critical or rewrite weak
-    const escalate = verdict === 'fail' && i >= 1;
-    if (escalate) usedEscalate = true;
-    const rewritten = await _aiRewrite(tenantId, current, flags, { escalate });
-    const nextText = rewritten?.text || null;
-    if (!nextText || nextText === current) {
-      // One strong-tier retry if fast rewrite failed and we haven't escalated yet
-      if (!escalate && verdict === 'fail') {
-        usedEscalate = true;
-        const strong = await _aiRewrite(tenantId, current, flags, { escalate: true });
-        if (strong?.text && strong.text !== current) {
-          current = strong.text;
-          attempts[attempts.length - 1].cascade_tier = strong.cascade_tier;
-          continue;
-        }
-      }
-      return {
-        ok: true,
-        passed: false,
-        text: current,
-        attempts,
-        final_verdict: verdict,
-        needs_human: true,
-        rewrite_failed: true,
-        cascade: { used_escalate: usedEscalate },
-      };
-    }
-    attempts[attempts.length - 1].cascade_tier = rewritten.cascade_tier;
-    current = nextText;
-  }
-
+  // Preserve prior response shape for social drafts API + tests
   return {
-    ok: true,
-    passed: false,
-    text: current,
-    attempts,
-    final_verdict: 'caution',
-    needs_human: true,
-    cascade: { used_escalate: usedEscalate },
+    ok: result.ok,
+    passed: result.passed,
+    text: result.content,
+    attempts: (result.attempts || []).map((a) => ({
+      attempt: a.attempt,
+      verdict: a.verdict,
+      risk_score: a.meta?.risk_score ?? (a.verdict === 'fail' ? 80 : a.verdict === 'caution' ? 40 : 5),
+      flags: a.flags,
+      text_preview: a.text_preview,
+      cascade_tier: a.cascade_tier,
+    })),
+    final_verdict: result.final_verdict,
+    needs_human: result.needs_human,
+    rewrite_failed: result.rewrite_failed,
+    cascade: result.cascade,
   };
 }
 

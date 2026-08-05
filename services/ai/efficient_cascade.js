@@ -16,6 +16,7 @@ const FAST_SURFACES = new Set([
   'caption_polish',
   'compose_assist',
   'inbox_reply_suggest',
+  'seo_article_eval',
   'writing',
 ]);
 

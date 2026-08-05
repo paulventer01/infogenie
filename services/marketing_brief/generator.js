@@ -306,6 +306,22 @@ async function _gatherSignals(pool, tid) {
           action_label: 'Open Growth Autopilot',
         });
       }
+      // Outcome-driven replan foresight from plan meta (if present)
+      try {
+        const plan = await store.getPlan(tid);
+        const rp = plan?.meta?.replan;
+        if (rp?.summary) {
+          signals.push({
+            kind: 'foresight',
+            pillar: 'seo-autopilot',
+            horizon: '30d',
+            headline: 'Growth Plan replan from environment feedback',
+            detail: rp.summary,
+            action_view: 'seo-growth-autopilot',
+            action_label: 'Review Replan',
+          });
+        }
+      } catch { /* optional */ }
       if (failed.length) {
         signals.push({
           kind: 'warning',

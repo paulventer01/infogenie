@@ -93,6 +93,14 @@ export default function SeoGrowthAutopilot() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [threads, setThreads] = useState<RedditThread[]>([]);
   const [draft, setDraft] = useState<{ reply?: string; aeo_snippet?: string; title?: string } | null>(null);
+  const [feedback, setFeedback] = useState<{
+    summary?: string;
+    winners?: { keyword: string; score: number; reasons?: string[] }[];
+    losers?: { keyword: string; score: number; reasons?: string[] }[];
+    sources?: string[];
+    demo?: boolean;
+  } | null>(null);
+  const [replanMeta, setReplanMeta] = useState<{ at?: string; summary?: string; changes_count?: number } | null>(null);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
@@ -100,9 +108,10 @@ export default function SeoGrowthAutopilot() {
   const load = useCallback(async () => {
     setLoading(true);
     setErr("");
-    const [p, r] = await Promise.all([
-      apiGet<{ ok?: boolean; plan?: Plan }>("/api/seo-autopilot/plan"),
+    const [p, r, fb] = await Promise.all([
+      apiGet<{ ok?: boolean; plan?: Plan & { meta?: { replan?: { at?: string; summary?: string; changes_count?: number } } } }>("/api/seo-autopilot/plan"),
       apiGet<{ ok?: boolean; runs?: Run[] }>("/api/seo-autopilot/runs?limit=12"),
+      apiGet<{ ok?: boolean; feedback?: typeof feedback; replan?: typeof replanMeta }>("/api/seo-autopilot/feedback"),
     ]);
     if (p.plan) {
       setPlan(p.plan);
@@ -112,8 +121,10 @@ export default function SeoGrowthAutopilot() {
       setKeywords(p.plan.keywords || []);
       setCalendar(p.plan.calendar || []);
       if (p.plan.destinations?.length) setDestinations(p.plan.destinations as Destination[]);
+      setReplanMeta(p.plan.meta?.replan || fb.replan || null);
     }
     setRuns(r.runs || []);
+    if (fb.feedback) setFeedback(fb.feedback);
     setLoading(false);
   }, []);
 
@@ -220,6 +231,35 @@ export default function SeoGrowthAutopilot() {
     if (!r.ok) setErr(r.error || "Destination test failed");
     else setErr("");
     alert(JSON.stringify(r.results || r, null, 2).slice(0, 800));
+  };
+
+  const loadFeedback = async () => {
+    setBusy("feedback");
+    const r = await apiGet<{ ok?: boolean; feedback?: typeof feedback; error?: string }>("/api/seo-autopilot/feedback");
+    setBusy("");
+    if (!r.ok) { setErr(r.error || "Feedback failed"); return; }
+    setFeedback(r.feedback || null);
+  };
+
+  const runReplan = async () => {
+    setBusy("replan");
+    setErr("");
+    const r = await apiPost<{
+      ok?: boolean;
+      error?: string;
+      plan?: Plan;
+      changes?: unknown[];
+      feedback?: typeof feedback;
+    }>("/api/seo-autopilot/replan", { apply: true });
+    setBusy("");
+    if (!r.ok) { setErr(r.error || "Replan failed"); return; }
+    if (r.plan) {
+      setPlan(r.plan);
+      setCalendar(r.plan.calendar || []);
+      setReplanMeta((r.plan as Plan & { meta?: { replan?: typeof replanMeta } }).meta?.replan || null);
+    }
+    if (r.feedback) setFeedback(r.feedback as typeof feedback);
+    load();
   };
 
   const discoverReddit = async () => {
@@ -433,6 +473,52 @@ export default function SeoGrowthAutopilot() {
                 </span>
               )}
             </div>
+          </section>
+
+          {/* Environment feedback + replan */}
+          <section style={{ display: "grid", gap: 10 }}>
+            <h3 style={{ margin: 0, fontSize: "1rem", color: "#0F172A" }}>
+              Autopilot loop · feedback & replan
+            </h3>
+            <p style={{ margin: 0, fontSize: "0.85rem", color: "#64748B" }}>
+              Evaluator–Optimizer revises each article before publish. Environment signals (runs, SERP, GSC) score keywords so the calendar defers losers and doubles down on winners.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {btn("Refresh feedback", loadFeedback, false, "feedback")}
+              {btn("Replan calendar now", runReplan, true, "replan")}
+            </div>
+            {feedback?.summary && (
+              <div style={{ padding: "12px 14px", background: "#F0F9FF", borderRadius: 8, fontSize: "0.85rem", color: "#0C4A6E" }}>
+                {feedback.summary}
+                {feedback.demo ? " (demo scores until GSC/SERP connected)" : ""}
+              </div>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "#047857", marginBottom: 6 }}>WINNERS</div>
+                {(feedback?.winners || []).length ? (feedback?.winners || []).map((w) => (
+                  <div key={w.keyword} style={{ fontSize: "0.8rem", padding: "6px 0", borderBottom: "1px solid #E2E8F0" }}>
+                    <strong>{w.keyword}</strong> · {w.score}
+                    <div style={{ color: "#64748B", fontSize: "0.72rem" }}>{(w.reasons || []).slice(0, 2).join(" · ")}</div>
+                  </div>
+                )) : <div style={{ fontSize: "0.8rem", color: "#94A3B8" }}>No winners yet — publish a few posts.</div>}
+              </div>
+              <div>
+                <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "#B45309", marginBottom: 6 }}>DEFER / SKIP</div>
+                {(feedback?.losers || []).length ? (feedback?.losers || []).map((w) => (
+                  <div key={w.keyword} style={{ fontSize: "0.8rem", padding: "6px 0", borderBottom: "1px solid #E2E8F0" }}>
+                    <strong>{w.keyword}</strong> · {w.score}
+                    <div style={{ color: "#64748B", fontSize: "0.72rem" }}>{(w.reasons || []).slice(0, 2).join(" · ")}</div>
+                  </div>
+                )) : <div style={{ fontSize: "0.8rem", color: "#94A3B8" }}>No losers flagged.</div>}
+              </div>
+            </div>
+            {replanMeta?.at && (
+              <div style={{ fontSize: "0.75rem", color: "#64748B" }}>
+                Last replan {new Date(replanMeta.at).toLocaleString()}
+                {replanMeta.changes_count != null ? ` · ${replanMeta.changes_count} changes` : ""}
+              </div>
+            )}
           </section>
 
           {/* Runs */}

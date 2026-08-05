@@ -13,6 +13,9 @@ const { researchKeywords, buildCalendar } = require('./generate');
 const { publishAll } = require('./destinations');
 const { runPlanOnce, runDuePlans } = require('./runner');
 const { discoverThreads, draftBrandReply } = require('./reddit_aeo');
+const { gatherEnvironmentFeedback } = require('./feedback');
+const { replanFromFeedback } = require('./replan');
+const { evaluateSeoArticle, optimizeSeoArticle } = require('./eval_optimize');
 
 const _safeAsync = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const _err = (res, code, msg) => res.status(code).json({ ok: false, error: msg });
@@ -35,7 +38,8 @@ router.get('/status', _safeAsync(async (req, res) => {
     destinations: ['wordpress', 'shopify', 'webhook', 'webflow'],
     next_run_at: plan?.next_run_at || null,
     last_run_at: plan?.last_run_at || null,
-    note: 'Growth Plan: niche → keywords → 30-day calendar → autopilot. Publishes to WordPress, Shopify, Webflow, or webhook.',
+    note: 'Growth Plan: niche → keywords → 30-day calendar → autopilot. Evaluator–Optimizer on articles; environment feedback (GSC/SERP/runs) drives calendar replan.',
+    capabilities: ['eval_optimizer', 'environment_feedback', 'outcome_replan', 'multi_destination', 'reddit_aeo'],
   });
 }));
 
@@ -213,6 +217,52 @@ router.post('/reddit-aeo/draft-reply', _safeAsync(async (req, res) => {
   });
   if (!result.ok) return _err(res, 400, result.error);
   res.json({ ok: true, tenant_id: tid, ...result });
+}));
+
+/** Environment feedback — GSC / SERP / prior runs (autonomous loop sensors). */
+router.get('/feedback', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'seo-autopilot:feedback');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const plan = await store.getPlan(tid);
+  const feedback = await gatherEnvironmentFeedback(tid, plan);
+  res.json({ ok: true, feedback, replan: plan?.meta?.replan || null });
+}));
+
+/** Outcome-driven calendar replan from environment feedback. */
+router.post('/replan', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'seo-autopilot:replan');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const apply = req.body?.apply !== false;
+  const result = await replanFromFeedback(tid, { apply });
+  if (!result.ok) return _err(res, 404, result.error || 'replan_failed');
+  res.json({
+    ok: true,
+    applied: result.applied,
+    changes: result.changes,
+    feedback: {
+      summary: result.feedback?.summary,
+      winners: result.feedback?.winners,
+      losers: result.feedback?.losers,
+      sources: result.feedback?.sources,
+    },
+    plan: result.plan,
+  });
+}));
+
+/** Dry-run Evaluator–Optimizer on article HTML. */
+router.post('/evaluate-article', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'seo-autopilot:eval');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const html = String(req.body?.html || req.body?.content || '');
+  if (!html) return _err(res, 400, 'html required');
+  const keyword = req.body?.keyword;
+  const title = req.body?.title;
+  if (req.body?.optimize) {
+    const result = await optimizeSeoArticle(tid, html, { keyword, title, maxAttempts: 3 });
+    return res.json({ ok: true, ...result });
+  }
+  const evaluation = evaluateSeoArticle(html, { keyword });
+  res.json({ ok: true, evaluation });
 }));
 
 router._store = store;
