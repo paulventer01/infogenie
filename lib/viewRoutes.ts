@@ -356,6 +356,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "1 · Set the targets",
         items: [
+          { view: "agent-goals", icon: "🏁", label: "Marketing Goals (set · plan · track)" },
+          { view: "flywheel", icon: "🔁", label: "Growth Goals Loop" },
           { view: "growth-hub", icon: "🚀", label: "Growth Marketing — start here" },
           { view: "ecosystem-spine", icon: "🕸️", label: "Ecosystem Spine (audiences · attribution · close-loop)" },
           { view: "goals", icon: "📎", label: "Goals & Targets" },
@@ -479,7 +481,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "ask-infogenie", icon: "🎧", label: "Ask InfoGenie (your data)" },
           { view: "strategic-intelligence", icon: "🧠", label: "Strategic Intelligence (root-cause · scenarios · write-back)" },
           { view: "marketing-memory", icon: "🔉", label: "Marketing Memory (knowledge graph)" },
-          { view: "predictive-intelligence", icon: "🪬", label: "Predictive Intelligence (90-day AI forecast)" },          { view: "ai-governance", icon: "🛡️", label: "AI Governance Hub (shadow-first audit · policy)" },
+          { view: "predictive-intelligence", icon: "🪬", label: "Predictive Intelligence (90-day AI forecast)" },
+          { view: "ai-governance", icon: "🛡️", label: "AI Governance Hub (shadow-first audit · policy)" },
           { view: "ai-providers", icon: "🔈", label: "AI Providers (bring your own LLM)" },
           { view: "autoclaw", icon: "🦞", label: "AutoClaw (Z.ai GLM agent)" },
           { view: "model-compare", icon: "⚖️", label: "Model Comparison (A/B prompts)" },
@@ -493,7 +496,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "team-meetings", icon: "💴", label: "Minutes of Meeting (AI Team)" },
           { view: "playbook-7day", icon: "📖", label: "7-Day Marketing Playbook" },
           { view: "growth-methodology", icon: "💶", label: "Growth Methodology (5-stage)" },
-          { view: "flywheel", icon: "🌀", label: "Performance Growth Flywheel" },
         ],
       },
       {
@@ -581,6 +583,9 @@ for (const group of NAV_GROUPS) {
     }
   }
 }
+
+// Keep the established bookmark path for Growth Goals Loop.
+VIEW_TO_PATH.flywheel = "/manage/flywheel";
 
 /**
  * Views trimmed from the default Analyse sidebar (to reduce duplicates) but still

@@ -852,13 +852,13 @@ export default function AgentGoals() {
           <div className="vh-inner">
             <div>
               <div className="breadcrumb">
-                <span className="bc-group">Manage</span>{" "}
+                <span className="bc-group">Grow</span>{" "}
                 <span className="bc-sep">›</span> Marketing Goals
               </div>
               <h2 className="view-title">Marketing Goals</h2>
               <p className="view-sub">
-                Set the outcome you want. InfoGenie builds a concrete plan,
-                tracks the work, and grades how close you are.
+                Set the outcome you want. InfoGenie builds an execution plan,
+                tracks the work, and grades how close you are — with a clear next move.
               </p>
             </div>
           </div>

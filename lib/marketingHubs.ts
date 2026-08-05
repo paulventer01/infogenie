@@ -139,7 +139,7 @@ export const MARKETING_HUBS: Record<string, MarketingHubDef> = {
       "Growth methodology, forecasting, experimentation, and full-funnel ROI — scale what works.",
     tiles: [
       { view: "growth-methodology", icon: "💶", label: "Growth Methodology", desc: "5-stage growth framework", tag: "Framework" },
-      { view: "flywheel", icon: "🌀", label: "Performance Flywheel", desc: "Compounding growth loops" },
+      { view: "flywheel", icon: "🔁", label: "Growth Goals Loop", desc: "Set goals · six-stage compounding loop" },
       { view: "digital-twin", icon: "🪞", label: "Digital Twin", desc: "What-if scenario simulator" },
       { view: "mmm", icon: "🎛️", label: "Media Mix Modeler", desc: "Optimal budget allocation" },
       { view: "lead-gen", icon: "🧲", label: "Lead Generation", desc: "Find & qualify new leads" },
