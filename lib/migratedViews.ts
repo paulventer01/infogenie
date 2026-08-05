@@ -279,6 +279,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "product-library", legacyModule: null },
   { view: "email-analytics", legacyModule: null },
   { view: "autoseo", legacyModule: null },
+  { view: "seo-growth-autopilot", legacyModule: null },
   { view: "contentscorer", legacyModule: null },
   { view: "link-suggester", legacyModule: null },
   { view: "cro-lab", legacyModule: null },

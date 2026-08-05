@@ -268,6 +268,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "marketing-brief": L("marketing-brief", () => import("@/components/features/manage/MarketingBrief")),
   mmm: L("mmm", () => import("@/components/features/grow/Mmm")),
   autoseo: L("autoseo", () => import("@/components/features/grow/Autoseo")),
+  "seo-growth-autopilot": L("seo-growth-autopilot", () => import("@/components/features/grow/SeoGrowthAutopilot")),
   contentscorer: L("contentscorer", () => import("@/components/features/grow/Contentscorer")),
   "link-suggester": L("link-suggester", () => import("@/components/features/grow/LinkSuggester")),
   "cro-lab": L("cro-lab", () => import("@/components/features/grow/CroLab")),

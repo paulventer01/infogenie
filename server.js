@@ -3663,6 +3663,21 @@ BOOT_TASKS.push(async () => {
     console.warn('[mcp-client] schema:', e.message);
   }
 });
+// ── SEO Growth Autopilot (daily publish loop · multi-dest · Growth Plan · Reddit AEO) ──
+const _seoAutopilotRouter = require('./services/seo_autopilot/api');
+const _seoAutopilotCron = require('./services/seo_autopilot/runner').startCron;
+app.use('/api/seo-autopilot', _seoAutopilotRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await require('./services/seo_autopilot/schema').ensureSeoAutopilotSchema();
+      console.log('[seo-autopilot] schema ready');
+    }
+    _seoAutopilotCron();
+  } catch (e) {
+    console.warn('[seo-autopilot] init:', e.message);
+  }
+});
 app.use('/api/drips',          _smartSendRouter);   // adds /api/drips/smart-send-time + /api/drips/translate
 app.use('/api/comments',       _commentsRouter);    // F13 team collaboration asset comments
 // ── Today's Marketing Brief ──

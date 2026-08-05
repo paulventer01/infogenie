@@ -232,6 +232,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/seo-tasks',                 view: 'seo.view', write: 'seo.tasks.manage' },
   { prefix: '/api/serp-tracker',              view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/geo-audit',                 view: 'seo.view', write: 'seo.run' },
+  { prefix: '/api/seo-autopilot',             view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/aeo',                       view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/zero-click',                view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/voice-seo',                 view: 'seo.view', write: 'seo.run' },
@@ -480,6 +481,7 @@ const COMPONENT_MATRIX = {
 
   // SEO
   'autoseo':              'seo.view',
+  'seo-growth-autopilot': 'seo.view',
   'technical-suite':      'seo.view',
   'seo-auditor':          'seo.view',
   'seo-crawler':          'seo.view',

@@ -288,6 +288,57 @@ async function _gatherSignals(pool, tid) {
     }
   } catch { /* optional */ }
 
+  // 15 · SEO Growth Autopilot — recent publish runs → Marketing Brief
+  try {
+    const store = require('../seo_autopilot/store');
+    const runs = await store.recentRunSignals(tid, 48);
+    if (runs.length) {
+      activePillars.push('seo-autopilot');
+      const ok = runs.filter((r) => r.status === 'ok');
+      const failed = runs.filter((r) => r.status !== 'ok');
+      if (ok.length) {
+        signals.push({
+          kind: 'win',
+          pillar: 'seo-autopilot',
+          headline: `SEO Autopilot published ${ok.length} article${ok.length > 1 ? 's' : ''} in the last 48h`,
+          detail: ok.slice(0, 3).map((r) => `"${r.title || r.keyword}"`).join(', '),
+          action_view: 'seo-growth-autopilot',
+          action_label: 'Open Growth Autopilot',
+        });
+      }
+      if (failed.length) {
+        signals.push({
+          kind: 'warning',
+          pillar: 'seo-autopilot',
+          headline: `${failed.length} autopilot run${failed.length > 1 ? 's' : ''} need attention`,
+          detail: failed.slice(0, 2).map((r) => r.error || r.status).join(' · '),
+          action_view: 'seo-growth-autopilot',
+          action_label: 'Review Autopilot',
+        });
+      }
+    } else {
+      // Fallback: DB query when store mem empty but table exists
+      const r = await pool.query(
+        `SELECT status, keyword, title, error, created_at FROM seo_autopilot_runs
+         WHERE tenant_id=$1 AND created_at > ${since24h}
+         ORDER BY created_at DESC LIMIT 8`, [tid]);
+      if (r.rows.length) {
+        activePillars.push('seo-autopilot');
+        const ok = r.rows.filter((x) => x.status === 'ok');
+        signals.push({
+          kind: ok.length ? 'win' : 'warning',
+          pillar: 'seo-autopilot',
+          headline: ok.length
+            ? `SEO Autopilot shipped ${ok.length} post${ok.length > 1 ? 's' : ''} today`
+            : 'SEO Autopilot runs need review',
+          detail: r.rows.slice(0, 3).map((x) => x.title || x.keyword || x.status).join(', '),
+          action_view: 'seo-growth-autopilot',
+          action_label: 'Open Growth Autopilot',
+        });
+      }
+    }
+  } catch { /* optional */ }
+
   return { signals, activePillars };
 }
 

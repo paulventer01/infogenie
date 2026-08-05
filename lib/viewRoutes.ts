@@ -407,6 +407,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "4 · Improve SEO & conversion",
         items: [
           { view: "conversion-lab", icon: "🧪", label: "Conversion Lab — start here" },
+          { view: "seo-growth-autopilot", icon: "🚀", label: "SEO Growth Autopilot (Growth Plan)" },
           { view: "autoseo", icon: "✈️", label: "AutoSEO Pro (autonomous)" },
           { view: "contentscorer", icon: "📝", label: "Content Scorer" },
           { view: "link-suggester", icon: "⛓️", label: "Internal Link Suggester" },
