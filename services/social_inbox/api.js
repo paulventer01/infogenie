@@ -88,10 +88,42 @@ async function _ensureSchema() {
   `);
 }
 
+const TRIAGE_STATUSES = ['open', 'in_progress', 'waiting', 'closed'];
+const PRIORITIES = ['p0', 'p1', 'p2', 'p3'];
+
+function _normalizeThread(t) {
+  return {
+    ...t,
+    triage_status: t.triage_status || (t.status === 'replied' || t.status === 'closed' ? 'closed' : 'open'),
+    priority: t.priority || 'p2',
+    assignee: t.assignee || null,
+    labels: Array.isArray(t.labels) ? t.labels : [],
+  };
+}
+
+function _inferPriority(preview, threadType) {
+  const p = String(preview || '').toLowerCase();
+  if (/refund|angry|lawsuit|scam|urgent|asap|complaint/.test(p)) return 'p0';
+  if (/price|buy|demo|webinar|brand kit|partnership|collab/.test(p)) return 'p1';
+  if (threadType === 'dm') return 'p1';
+  if (/fire|love|hook|recipe|amazing/.test(p)) return 'p3';
+  return 'p2';
+}
+
+function _inferLabels(preview, threadType) {
+  const p = String(preview || '').toLowerCase();
+  const labels = [threadType || 'dm'];
+  if (/buy|price|demo|webinar|kit/.test(p)) labels.push('sales');
+  if (/refund|angry|complaint/.test(p)) labels.push('support');
+  if (/collab|partner|brand/.test(p)) labels.push('partnership');
+  if (/recipe|hook|how|tip/.test(p)) labels.push('content');
+  return [...new Set(labels)];
+}
+
 function _seedDemo(tid) {
   if (_memThreads.has(tid) && _memThreads.get(tid).length) return;
   const now = Date.now();
-  const threads = [
+  const raw = [
     {
       id: _seq++,
       tenant_id: tid,
@@ -131,7 +163,34 @@ function _seedDemo(tid) {
       status: 'replied',
       last_message_at: new Date(now - 86400000).toISOString(),
     },
+    {
+      id: _seq++,
+      tenant_id: tid,
+      provider: 'demo',
+      external_thread_id: 'demo-ig-2',
+      platform: 'instagram',
+      thread_type: 'dm',
+      author: '@upset.buyer',
+      preview: 'This is urgent — I want a refund, this feels like a scam',
+      unread: true,
+      status: 'new',
+      last_message_at: new Date(now - 1800000).toISOString(),
+    },
   ];
+  const threads = raw.map((t) => _normalizeThread({
+    ...t,
+    priority: _inferPriority(t.preview, t.thread_type),
+    labels: _inferLabels(t.preview, t.thread_type),
+    triage_status: t.status === 'replied' ? 'closed' : 'open',
+    assignee: null,
+  }));
+  // Sort open p0 first like an issue board
+  threads.sort((a, b) => {
+    const po = { p0: 0, p1: 1, p2: 2, p3: 3 };
+    if (a.triage_status === 'closed' && b.triage_status !== 'closed') return 1;
+    if (b.triage_status === 'closed' && a.triage_status !== 'closed') return -1;
+    return (po[a.priority] ?? 9) - (po[b.priority] ?? 9);
+  });
   _memThreads.set(tid, threads);
   for (const t of threads) {
     _memMessages.set(`${tid}:${t.id}`, [
@@ -162,11 +221,13 @@ router.get('/threads', _safeAsync(async (req, res) => {
   if (!tid) return _err(res, 400, 'no_tenant');
   const platform = String(req.query.platform || '').toLowerCase();
   const status = String(req.query.status || '');
+  const triage = String(req.query.triage_status || '');
+  const priority = String(req.query.priority || '').toLowerCase();
 
   if (_hasOmni()) {
     const r = await _omni('GET', '/inbox/conversations');
     if (!r.ok) return _err(res, 400, r.error);
-    let threads = (Array.isArray(r.data) ? r.data : r.data?.conversations || []).map((c, i) => ({
+    let threads = (Array.isArray(r.data) ? r.data : r.data?.conversations || []).map((c, i) => _normalizeThread({
       id: c.id || i,
       provider: 'omnisocials',
       external_thread_id: String(c.id || c.thread_id || i),
@@ -177,17 +238,23 @@ router.get('/threads', _safeAsync(async (req, res) => {
       unread: c.unread !== false,
       status: c.status || (c.unread ? 'new' : 'replied'),
       last_message_at: c.last_message_at || c.updated_at || null,
+      priority: c.priority || _inferPriority(c.preview || c.snippet, c.type),
+      labels: c.labels || _inferLabels(c.preview || c.snippet, c.type),
     }));
     if (platform) threads = threads.filter((t) => t.platform === platform);
     if (status) threads = threads.filter((t) => t.status === status);
+    if (triage) threads = threads.filter((t) => t.triage_status === triage);
+    if (priority) threads = threads.filter((t) => t.priority === priority);
     return res.json({ ok: true, threads, source: 'omnisocials' });
   }
 
   _seedDemo(tid);
-  let threads = [...(_memThreads.get(tid) || [])];
+  let threads = (_memThreads.get(tid) || []).map(_normalizeThread);
   if (platform) threads = threads.filter((t) => t.platform === platform);
   if (status) threads = threads.filter((t) => t.status === status);
-  res.json({ ok: true, threads, source: 'demo' });
+  if (triage) threads = threads.filter((t) => t.triage_status === triage);
+  if (priority) threads = threads.filter((t) => t.priority === priority);
+  res.json({ ok: true, threads, source: 'demo', triage_statuses: TRIAGE_STATUSES, priorities: PRIORITIES });
 }));
 
 router.get('/threads/:id/messages', _safeAsync(async (req, res) => {
@@ -256,7 +323,55 @@ router.patch('/threads/:id', _safeAsync(async (req, res) => {
   if (!t) return _err(res, 404, 'not found');
   if (req.body?.status) t.status = String(req.body.status);
   if (req.body?.unread != null) t.unread = !!req.body.unread;
-  res.json({ ok: true, thread: t });
+  if (req.body?.triage_status && TRIAGE_STATUSES.includes(req.body.triage_status)) {
+    t.triage_status = req.body.triage_status;
+    if (t.triage_status === 'closed') t.status = 'closed';
+    if (t.triage_status === 'open' && t.status === 'closed') t.status = 'new';
+  }
+  if (req.body?.priority && PRIORITIES.includes(String(req.body.priority).toLowerCase())) {
+    t.priority = String(req.body.priority).toLowerCase();
+  }
+  if (req.body?.assignee !== undefined) t.assignee = req.body.assignee ? String(req.body.assignee).slice(0, 120) : null;
+  if (Array.isArray(req.body?.labels)) t.labels = req.body.labels.map((l) => String(l).slice(0, 40)).slice(0, 8);
+  res.json({ ok: true, thread: _normalizeThread(t) });
+}));
+
+/** Issue-board view: columns by triage_status */
+router.get('/board', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'social-inbox:board');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  _seedDemo(tid);
+  const threads = (_memThreads.get(tid) || []).map(_normalizeThread);
+  const columns = {};
+  for (const s of TRIAGE_STATUSES) columns[s] = [];
+  for (const t of threads) {
+    const key = TRIAGE_STATUSES.includes(t.triage_status) ? t.triage_status : 'open';
+    columns[key].push(t);
+  }
+  for (const s of TRIAGE_STATUSES) {
+    columns[s].sort((a, b) => {
+      const po = { p0: 0, p1: 1, p2: 2, p3: 3 };
+      return (po[a.priority] ?? 9) - (po[b.priority] ?? 9);
+    });
+  }
+  res.json({ ok: true, columns, triage_statuses: TRIAGE_STATUSES, priorities: PRIORITIES });
+}));
+
+/** Auto-triage all open threads (priority + labels) — like issue assignment */
+router.post('/triage/auto', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'social-inbox:triage-auto');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  _seedDemo(tid);
+  const threads = _memThreads.get(tid) || [];
+  let updated = 0;
+  for (const t of threads) {
+    if (t.triage_status === 'closed') continue;
+    t.priority = _inferPriority(t.preview, t.thread_type);
+    t.labels = _inferLabels(t.preview, t.thread_type);
+    if (!t.triage_status || t.triage_status === 'new') t.triage_status = 'open';
+    updated += 1;
+  }
+  res.json({ ok: true, updated, threads: threads.map(_normalizeThread) });
 }));
 
 router.post('/sync', _safeAsync(async (req, res) => {
@@ -270,5 +385,7 @@ router.post('/sync', _safeAsync(async (req, res) => {
 }));
 
 router._resetMem = () => { _memThreads.clear(); _memMessages.clear(); _seq = 1; };
+router._TRIAGE_STATUSES = TRIAGE_STATUSES;
+router._PRIORITIES = PRIORITIES;
 
 module.exports = router;

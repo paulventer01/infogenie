@@ -32,11 +32,22 @@ interface Props {
   draftPlatforms?: string[];
 }
 
+interface Winner {
+  source?: string;
+  text: string;
+  platforms?: string[];
+  engTotal?: number;
+  memory_id?: number;
+}
+
 export default function SocialAutomationPanel({ profileId, platforms, draftText, draftPlatforms }: Props) {
   const [presets, setPresets] = useState<Preset[]>([]);
   const [rules, setRules] = useState<EvergreenRule[]>([]);
+  const [winners, setWinners] = useState<Winner[]>([]);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
   const [intervalDays, setIntervalDays] = useState(30);
   const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     const [p, e] = await Promise.all([
@@ -50,6 +61,53 @@ export default function SocialAutomationPanel({ profileId, platforms, draftText,
   useEffect(() => {
     load();
   }, [load]);
+
+  async function suggestWinners() {
+    setBusy(true);
+    setMsg(null);
+    const q = profileId ? `?profileId=${encodeURIComponent(profileId)}` : "";
+    const r = await apiGet<{ ok: boolean; winners?: Winner[]; error?: string }>(`/api/social-evergreen/suggest-winners${q}`);
+    setBusy(false);
+    if (!r.ok) {
+      setMsg(r.error || "Could not suggest winners");
+      return;
+    }
+    const list = r.winners || [];
+    setWinners(list);
+    setPicked(new Set(list.map((_, i) => i).slice(0, 3)));
+    setMsg(list.length ? `Found ${list.length} performance candidates` : "No winners yet");
+  }
+
+  async function createFromWinners() {
+    if (!profileId) {
+      setMsg("Pick a profile first");
+      return;
+    }
+    setBusy(true);
+    const selected = winners.filter((_, i) => picked.has(i));
+    const r = await apiPost<{ ok: boolean; created?: number; rules?: unknown[]; error?: string }>("/api/social-evergreen/from-winners", {
+      profileId,
+      interval_days: intervalDays,
+      winners: selected.length ? selected : undefined,
+    });
+    setBusy(false);
+    if (!r.ok) {
+      setMsg(r.error || "Failed to create evergreen from winners");
+      return;
+    }
+    const n = typeof r.created === "number" ? r.created : (r.rules || []).length;
+    setMsg(`Created ${n} evergreen rule(s) from winners`);
+    load();
+  }
+
+  function togglePick(i: number) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
 
   async function togglePreset(id: string, enabled: boolean) {
     await apiPost(`/api/social-workflows/presets/${id}/toggle`, { enabled });
@@ -120,6 +178,51 @@ export default function SocialAutomationPanel({ profileId, platforms, draftText,
 
       <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 16 }}>
         <h3 style={{ margin: "0 0 6px", fontFamily: "Sora,sans-serif", fontSize: "0.95rem", color: "#0A1628" }}>
+          📈 Performance → evergreen
+        </h3>
+        <p style={{ margin: "0 0 12px", fontSize: "0.78rem", color: "#6B7280" }}>
+          Suggest winners from engagement + marketing memory, then schedule them as evergreen.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <button type="button" onClick={suggestWinners} disabled={busy} style={primaryBtn}>
+            Suggest winners
+          </button>
+          <button type="button" onClick={createFromWinners} disabled={busy || (!winners.length && !profileId)} style={{ ...primaryBtn, background: "#0A1628" }}>
+            Create evergreen from winners
+          </button>
+        </div>
+        {!!winners.length && (
+          <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+            {winners.map((w, i) => (
+              <label
+                key={`${w.source}-${i}`}
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "flex-start",
+                  border: "1px solid #E5E7EB",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: picked.has(i) ? "#F0FDFA" : "#F9FAFB",
+                  cursor: "pointer",
+                }}
+              >
+                <input type="checkbox" checked={picked.has(i)} onChange={() => togglePick(i)} style={{ marginTop: 3 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: "0.78rem", color: "#0A1628", lineHeight: 1.4 }}>{w.text.slice(0, 180)}{w.text.length > 180 ? "…" : ""}</div>
+                  <div style={{ fontSize: "0.66rem", color: "#6B7280", marginTop: 3 }}>
+                    {w.source || "source"} · score {w.engTotal ?? "—"}
+                    {(w.platforms || []).length ? ` · ${(w.platforms || []).join(", ")}` : ""}
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 16 }}>
+        <h3 style={{ margin: "0 0 6px", fontFamily: "Sora,sans-serif", fontSize: "0.95rem", color: "#0A1628" }}>
           ♻️ Evergreen reposts
         </h3>
         <p style={{ margin: "0 0 12px", fontSize: "0.78rem", color: "#6B7280" }}>
@@ -142,7 +245,7 @@ export default function SocialAutomationPanel({ profileId, platforms, draftText,
             Set evergreen from Compose
           </button>
         </div>
-        {msg && <div style={{ fontSize: "0.78rem", color: "#065F46", marginBottom: 8 }}>{msg}</div>}
+        {msg && <div style={{ fontSize: "0.78rem", color: msg.toLowerCase().includes("fail") || msg.toLowerCase().includes("could not") || msg.toLowerCase().includes("pick") ? "#991B1B" : "#065F46", marginBottom: 8 }}>{msg}</div>}
         {!rules.length ? (
           <div style={{ color: "#9CA3AF", fontSize: "0.78rem", fontStyle: "italic" }}>No evergreen rules yet.</div>
         ) : (

@@ -438,14 +438,76 @@ export default function SocialPublisher() {
       setEditingDraftId(draftId);
     }
 
-    const sub = await apiPost<{ ok: boolean; error?: string }>(`/api/social-drafts/${draftId}/submit-approval`, {});
+    const sub = await apiPost<{
+      ok: boolean;
+      error?: string;
+      hint?: string;
+      draft?: SocialDraft;
+      self_heal?: { passed?: boolean; final_verdict?: string; attempts?: unknown[] };
+    }>(`/api/social-drafts/${draftId}/submit-approval`, {});
     if (!sub.ok) {
+      if (sub.error === "self_heal_failed") {
+        if (sub.draft?.text) setText(sub.draft.text);
+        setResult({
+          color: "#991B1B",
+          text: `❌ Self-heal blocked submit (${sub.self_heal?.final_verdict || "fail"}). Edit the caption, run Self-heal, or fix claims manually.`,
+        });
+        return;
+      }
       setResult({ color: "#991B1B", text: `❌ ${sub.error}` });
       return;
     }
-    setResult({ color: "#9A3412", text: `✅ Submitted for approval (draft #${draftId}).` });
+    const healNote = sub.self_heal
+      ? ` · self-heal ${sub.self_heal.passed ? "passed" : sub.self_heal.final_verdict || "caution"}`
+      : "";
+    if (sub.draft?.text && sub.draft.text !== t) setText(sub.draft.text);
+    setResult({ color: "#9A3412", text: `✅ Submitted for approval (draft #${draftId})${healNote}.` });
     setCalRefresh((n) => n + 1);
     setTab("approvals");
+  }
+
+  async function runSelfHeal() {
+    const t = text.trim();
+    if (!profileId || !t) {
+      setResult({ color: "#991B1B", text: "⚠ Profile and text required for self-heal." });
+      return;
+    }
+    setResult({ color: "#6B7280", text: "Running self-heal (verify → fix → re-verify)…" });
+    let draftId = editingDraftId;
+    if (!draftId) {
+      const r = await apiPost<{ ok: boolean; error?: string; draft?: SocialDraft }>("/api/social-drafts", {
+        profileId,
+        text: t,
+        platforms: Array.from(selected).length ? Array.from(selected) : ["instagram"],
+        meta: draftMeta,
+      });
+      if (!r.ok || !r.draft) {
+        setResult({ color: "#991B1B", text: `❌ ${r.error || "save failed"}` });
+        return;
+      }
+      draftId = r.draft.id;
+      setEditingDraftId(draftId);
+    } else {
+      await apiPatch(`/api/social-drafts/${draftId}`, { text: t, profileId, platforms: Array.from(selected), meta: draftMeta });
+    }
+    const heal = await apiPost<{
+      ok: boolean;
+      error?: string;
+      draft?: SocialDraft;
+      self_heal?: { passed?: boolean; final_verdict?: string; text?: string; attempts?: unknown[] };
+    }>(`/api/social-drafts/${draftId}/self-heal`, {});
+    if (!heal.ok) {
+      setResult({ color: "#991B1B", text: `❌ ${heal.error || "self-heal failed"}` });
+      return;
+    }
+    if (heal.draft?.text) setText(heal.draft.text);
+    else if (heal.self_heal?.text) setText(heal.self_heal.text);
+    const v = heal.self_heal?.final_verdict || (heal.self_heal?.passed ? "pass" : "caution");
+    setResult({
+      color: heal.self_heal?.passed ? "#065F46" : v === "fail" ? "#991B1B" : "#92400E",
+      text: `🩹 Self-heal ${heal.self_heal?.passed ? "passed" : v} (${heal.self_heal?.attempts?.length || 0} attempt(s)).`,
+    });
+    setCalRefresh((n) => n + 1);
   }
 
   async function publishDirect() {
@@ -801,13 +863,16 @@ export default function SocialPublisher() {
                 <button onClick={() => saveDraft(false)} style={{ background: "#F3F4F6", color: "#0A1628", border: "1px solid #E5E7EB", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
                   💾 Save draft
                 </button>
+                <button onClick={runSelfHeal} style={{ background: "#ECFDF5", color: "#065F46", border: "1px solid #A7F3D0", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
+                  🩹 Self-heal
+                </button>
                 <button onClick={submitForApproval} style={{ background: "#FFF7ED", color: "#C2410C", border: "1px solid #FDBA74", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
                   ✅ Submit for approval
                 </button>
                 <button onClick={() => saveDraft(true)} style={{ background: "linear-gradient(135deg,#0D9488 0%,#14B8A6 100%)", color: "#fff", border: "none", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
                   📤 Save &amp; publish
                 </button>
-                <button onClick={publishDirect} style={{ background: "linear-gradient(135deg,#FF5722 0%,#FF7043 100%)", color: "#fff", border: "none", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
+                <button onClick={publishDirect} style={{ background: "linear-gradient(135deg,#FF5722 0%,#FF7043 100%)", color: "#fff", border: "none", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer", gridColumn: "1 / -1" }}>
                   ⚡ Publish now
                 </button>
               </div>

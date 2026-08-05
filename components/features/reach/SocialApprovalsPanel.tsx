@@ -9,6 +9,12 @@ interface Props {
   refreshKey?: number;
 }
 
+function selfHealMeta(d: SocialDraft): { healed?: boolean; passed?: boolean; final_verdict?: string; attempts?: number } | null {
+  const m = d.meta?.self_heal;
+  if (!m || typeof m !== "object") return null;
+  return m as { healed?: boolean; passed?: boolean; final_verdict?: string; attempts?: number };
+}
+
 export default function SocialApprovalsPanel({ onEditDraft, refreshKey = 0 }: Props) {
   const [drafts, setDrafts] = useState<SocialDraft[]>([]);
   const [requireApproval, setRequireApproval] = useState(false);
@@ -68,7 +74,7 @@ export default function SocialApprovalsPanel({ onEditDraft, refreshKey = 0 }: Pr
             ✅ Approvals
           </h3>
           <div style={{ fontSize: "0.72rem", color: "#6B7280", marginTop: 2 }}>
-            Review drafts before they publish to Zernio
+            Self-heal runs before review · then approve to publish
           </div>
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.78rem", fontWeight: 700, color: "#374151", cursor: "pointer" }}>
@@ -94,29 +100,50 @@ export default function SocialApprovalsPanel({ onEditDraft, refreshKey = 0 }: Pr
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          {drafts.map((d) => (
-            <div key={d.id} style={{ border: "1px solid #FED7AA", background: "#FFF7ED", borderRadius: 8, padding: 12 }}>
-              <div style={{ fontSize: "0.82rem", color: "#0A1628", lineHeight: 1.45, marginBottom: 8 }}>
-                {(d.text || "").slice(0, 220)}
-                {(d.text || "").length > 220 ? "…" : ""}
+          {drafts.map((d) => {
+            const sh = selfHealMeta(d);
+            return (
+              <div key={d.id} style={{ border: "1px solid #FED7AA", background: "#FFF7ED", borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: "0.82rem", color: "#0A1628", lineHeight: 1.45, marginBottom: 8 }}>
+                  {(d.text || "").slice(0, 220)}
+                  {(d.text || "").length > 220 ? "…" : ""}
+                </div>
+                <div style={{ fontSize: "0.7rem", color: "#9A3412", marginBottom: 6 }}>
+                  {(d.platforms || []).join(" · ")}
+                  {d.scheduled_for ? ` · ${new Date(d.scheduled_for).toLocaleString()}` : ""}
+                </div>
+                {sh && (
+                  <div
+                    style={{
+                      fontSize: "0.68rem",
+                      fontWeight: 700,
+                      marginBottom: 8,
+                      color: sh.passed ? "#065F46" : sh.final_verdict === "fail" ? "#991B1B" : "#92400E",
+                      background: sh.passed ? "#ECFDF5" : sh.final_verdict === "fail" ? "#FEF2F2" : "#FFFBEB",
+                      display: "inline-block",
+                      padding: "3px 8px",
+                      borderRadius: 4,
+                    }}
+                  >
+                    Self-heal: {sh.passed ? "passed" : sh.final_verdict || "caution"}
+                    {sh.healed ? " · text rewritten" : ""}
+                    {sh.attempts != null ? ` · ${sh.attempts} attempt(s)` : ""}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" disabled={busy === d.id} onClick={() => approve(d.id)} style={btn("#0D9488", "#fff")}>
+                    Approve &amp; publish
+                  </button>
+                  <button type="button" disabled={busy === d.id} onClick={() => reject(d.id)} style={btn("#FEF2F2", "#991B1B")}>
+                    Reject
+                  </button>
+                  <button type="button" onClick={() => onEditDraft?.(d)} style={btn("#F3F4F6", "#374151")}>
+                    View
+                  </button>
+                </div>
               </div>
-              <div style={{ fontSize: "0.7rem", color: "#9A3412", marginBottom: 8 }}>
-                {(d.platforms || []).join(" · ")}
-                {d.scheduled_for ? ` · ${new Date(d.scheduled_for).toLocaleString()}` : ""}
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" disabled={busy === d.id} onClick={() => approve(d.id)} style={btn("#0D9488", "#fff")}>
-                  Approve &amp; publish
-                </button>
-                <button type="button" disabled={busy === d.id} onClick={() => reject(d.id)} style={btn("#FEF2F2", "#991B1B")}>
-                  Reject
-                </button>
-                <button type="button" onClick={() => onEditDraft?.(d)} style={btn("#F3F4F6", "#374151")}>
-                  View
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

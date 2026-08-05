@@ -481,12 +481,63 @@ async function _setSettings(tid, patch) {
 router.post('/:id/submit-approval', _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'social-drafts:submit-approval');
   if (!tid) return _err(res, 400, 'no_tenant');
-  const draft = await _getDraft(tid, req.params.id);
+  let draft = await _getDraft(tid, req.params.id);
   if (!draft) return _err(res, 404, 'not found');
   if (!['draft', 'approved'].includes(draft.status)) {
     return _err(res, 400, `Cannot submit approval from status "${draft.status}"`);
   }
   if (!draft.platforms?.length) return _err(res, 400, 'select at least one platform');
+
+  // Loop must-have: self-heal before human review (verify → fix → re-verify)
+  let self_heal = null;
+  const skipHeal = req.body?.skip_self_heal === true;
+  if (!skipHeal && draft.text) {
+    try {
+      const { selfHealDraft } = require('./self_heal');
+      self_heal = await selfHealDraft(tid, draft.text, { maxAttempts: 3 });
+      if (self_heal.text && self_heal.text !== draft.text) {
+        draft = await _updateDraft(tid, draft.id, {
+          text: self_heal.text,
+          meta: {
+            ...(draft.meta || {}),
+            self_heal: {
+              healed: true,
+              passed: self_heal.passed,
+              final_verdict: self_heal.final_verdict,
+              attempts: self_heal.attempts?.length || 0,
+              at: new Date().toISOString(),
+            },
+            original_text: draft.text,
+          },
+        });
+      } else {
+        draft = await _updateDraft(tid, draft.id, {
+          meta: {
+            ...(draft.meta || {}),
+            self_heal: {
+              healed: false,
+              passed: self_heal.passed,
+              final_verdict: self_heal.final_verdict,
+              attempts: self_heal.attempts?.length || 0,
+              at: new Date().toISOString(),
+            },
+          },
+        });
+      }
+      // Block submission if still failing critically unless force=true
+      if (!self_heal.passed && self_heal.final_verdict === 'fail' && req.body?.force !== true) {
+        return res.status(400).json({
+          ok: false,
+          error: 'self_heal_failed',
+          hint: 'Draft still fails safety checks after auto-rewrite. Edit manually or pass force=true.',
+          self_heal,
+          draft,
+        });
+      }
+    } catch (e) {
+      self_heal = { ok: false, error: e.message };
+    }
+  }
 
   const updated = await _updateDraft(tid, draft.id, {
     status: 'pending_approval',
@@ -503,21 +554,26 @@ router.post('/:id/submit-approval', _safeAsync(async (req, res) => {
       const p = await _db.getPool();
       const desc = JSON.stringify({
         draft_id: draft.id,
-        text: (draft.text || '').slice(0, 500),
+        text: (updated.text || draft.text || '').slice(0, 500),
         platforms: draft.platforms,
         scheduled_for: draft.scheduled_for,
         media_urls: draft.media_urls,
+        self_heal: self_heal ? { passed: self_heal.passed, verdict: self_heal.final_verdict } : null,
       });
       const r = await p.query(
         `INSERT INTO approval_requests(tenant_id,action_type,title,description,proposed_by,channel,simulation_result,status)
          VALUES ($1,'social_post_publish',$2,$3,$4,$5,$6,'pending') RETURNING *`,
         [
           tid,
-          `Social post: ${(draft.text || '').slice(0, 80)}`,
+          `Social post: ${(updated.text || draft.text || '').slice(0, 80)}`,
           desc,
           req.user?.email || null,
           (draft.platforms || []).join(','),
-          JSON.stringify({ simulation_verdict: 'caution', expected_outcome: 'Publish social post after review' }),
+          JSON.stringify({
+            simulation_verdict: self_heal?.passed ? 'safe' : 'caution',
+            expected_outcome: 'Publish social post after review',
+            self_heal_passed: !!self_heal?.passed,
+          }),
         ],
       );
       approval_request = r.rows[0];
@@ -527,7 +583,34 @@ router.post('/:id/submit-approval', _safeAsync(async (req, res) => {
     } catch (_) { /* table may not exist yet */ }
   }
 
-  res.json({ ok: true, draft: updated, approval_request });
+  res.json({ ok: true, draft: updated, approval_request, self_heal });
+}));
+
+router.post('/:id/self-heal', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'social-drafts:self-heal');
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const draft = await _getDraft(tid, req.params.id);
+  if (!draft) return _err(res, 404, 'not found');
+  if (draft.status === 'pending_approval') {
+    return _err(res, 400, 'Withdraw approval before self-heal, or heal before submit.');
+  }
+  const { selfHealDraft } = require('./self_heal');
+  const result = await selfHealDraft(tid, draft.text || '', { maxAttempts: Number(req.body?.max_attempts) || 3 });
+  const updated = await _updateDraft(tid, draft.id, {
+    text: result.text,
+    meta: {
+      ...(draft.meta || {}),
+      self_heal: {
+        healed: result.text !== draft.text,
+        passed: result.passed,
+        final_verdict: result.final_verdict,
+        attempts: result.attempts,
+        at: new Date().toISOString(),
+      },
+      original_text: draft.meta?.original_text || draft.text,
+    },
+  });
+  res.json({ ok: true, draft: updated, self_heal: result });
 }));
 
 router.post('/:id/withdraw-approval', _safeAsync(async (req, res) => {
