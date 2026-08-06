@@ -561,6 +561,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         items: [
           { view: "finance-officer", icon: "🖱️", label: "Finance Officer" },
           { view: "ops-officer", icon: "⚒️", label: "Operations Officer" },
+          { view: "technical-manager", icon: "🛡️", label: "Technical Manager (platform · security · live status)" },
         ],
       },
     ],

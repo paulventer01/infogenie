@@ -2784,6 +2784,8 @@ app.use('/api/metrics',         _canonicalMetricsRouter);
 const _capacitySchema = require('./services/capacity/schema');
 const _capacityRouter = require('./services/capacity/api');
 app.use('/api/capacity',        _capacityRouter);
+const _technicalManagerRouter = require('./services/technical_manager/api');
+app.use('/api/technical-manager', _technicalManagerRouter);
 BOOT_TASKS.push(async () => {
   try {
     if (_db.hasDb()) {

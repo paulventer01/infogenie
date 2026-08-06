@@ -131,8 +131,8 @@ app.post('/api/officer/brief', async (req, res) => {
   try {
     const role  = String(req.body?.role  || '').trim().toLowerCase();
     const facts = req.body?.facts && typeof req.body.facts === 'object' ? req.body.facts : {};
-    if (!['finance','ops'].includes(role)) {
-      return res.status(400).json({ ok:false, error:'role must be "finance" or "ops"' });
+    if (!['finance','ops','technical'].includes(role)) {
+      return res.status(400).json({ ok:false, error:'role must be "finance", "ops", or "technical"' });
     }
     const roleSpec = role === 'finance'
       ? {
@@ -141,6 +141,14 @@ app.post('/api/officer/brief', async (req, res) => {
           highlightHint: 'spend efficiency wins, healthy unit economics, cohorts pulling weight',
           riskHint:      'over-spend, deteriorating CAC, LTV/CAC < 3, channels burning cash',
           actionHint:    'budget reallocations, channel pauses, LTV improvement levers, payment-terms moves',
+        }
+      : role === 'technical'
+      ? {
+          title: 'AI Technical Manager',
+          focus: 'end-to-end InfoGenie platform health: APIs, LLMs/AI providers, auth/sessions, tokens/credentials, security threats, update safety, tooling gaps, and real-time system status for daily management meetings.',
+          highlightHint: 'healthy services, secured tokens, providers online, clean readiness probes',
+          riskHint:      'down APIs, dummy/missing tokens, vault disabled, LLM outages, permission gaps, unsafe updates',
+          actionHint:    'immediate remediation steps with approval gates before installs or risky changes',
         }
       : {
           title: 'AI Chief Operations Officer',
@@ -193,6 +201,8 @@ Rules:
     if (!aiResult || typeof aiResult !== 'object' || !aiResult.summary) {
       const isEmpty = role === 'finance'
         ? (!facts.totalSpend && !facts.totalRevenue && !facts.customers)
+        : role === 'technical'
+        ? (!facts.overall && !facts.counts)
         : (!facts.campaigns?.total && !facts.leads?.unqualified && !facts.assets?.missing);
       aiResult = isEmpty
         ? {
@@ -204,6 +214,11 @@ Rules:
                   { title:'Connect Meta / Google / TikTok ad accounts', detail:'So I can compute live spend, CAC and ROAS.', priority:'high' },
                   { title:'Wire HubSpot or send orders to /api/orders',  detail:'So I can compute true blended ROAS and LTV.',  priority:'high' },
                 ]
+              : role === 'technical'
+              ? [
+                  { title:'Run Technical Manager scan', detail:'Open the Technical Manager desk for live API/LLM/auth status.', priority:'high' },
+                  { title:'Enable credential vault encryption', detail:'Set CREDENTIAL_ENCRYPTION_KEY so tokens are stored safely.', priority:'high' },
+                ]
               : [
                   { title:'Launch a campaign',           detail:'So I can start running QA on it.',                   priority:'high' },
                   { title:'Upload your brand assets',    detail:'Logos, colours, voice — so creatives stay on-brand.', priority:'high' },
@@ -212,8 +227,22 @@ Rules:
         : {
             summary: role === 'finance'
               ? `30-day spend ${facts.totalSpend != null ? '$'+facts.totalSpend : 'pending'}, revenue ${facts.totalRevenue != null ? '$'+facts.totalRevenue : 'pending'}. Review the dashboard for the full breakdown.`
+              : role === 'technical'
+              ? `Platform status ${facts.overall || 'unknown'}: ${facts.counts?.critical || 0} critical / ${facts.counts?.high || 0} high events. ${facts.counts?.integrations_configured || 0} integrations configured. Plan of action ready for management approval where required.`
               : `Tracking ${facts.campaigns?.total||0} campaigns, ${facts.leads?.qualified||0} qualified leads, ${facts.assets?.uploaded||0} brand assets. See the checklist for cleanup tasks.`,
-            highlights: [], risks: [], actions: [],
+            highlights: role === 'technical' && Array.isArray(facts.integrations?.configured)
+              ? facts.integrations.configured.slice(0, 3).map((n) => `${n} connected`)
+              : [],
+            risks: role === 'technical' && Array.isArray(facts.events)
+              ? facts.events.filter((e) => e.severity === 'critical' || e.severity === 'high').slice(0, 4).map((e) => e.message)
+              : [],
+            actions: role === 'technical' && Array.isArray(facts.plan_of_action)
+              ? facts.plan_of_action.slice(0, 4).map((p) => ({
+                  title: p.action,
+                  detail: p.problem,
+                  priority: p.severity === 'critical' ? 'high' : 'med',
+                }))
+              : [],
           };
     }
 
@@ -240,7 +269,8 @@ app.post('/api/officer/tasks', async (req, res) => {
       seo:       ['Run weekly on-page audit','Track keyword rankings daily','Build internal link plan monthly','Audit competitor backlinks','Submit fresh sitemaps','Monitor Core Web Vitals','Optimise meta titles + descriptions','Identify content gaps vs SERPs','Run GEO audit for AI search visibility','Schema markup review','Local SEO citations','Disavow toxic backlinks'],
       cro:       ['Run weekly A/B tests on top pages','Analyse heatmaps + session recordings','Document every winning experiment','Build conversion playbook','Implement urgency + social proof boosters','Test pricing page variants','Optimise checkout flow','Reduce form-field friction','Run mobile-first usability audits','Personalise CTAs by traffic source','Test exit-intent overlays','Maintain experiment backlog'],
       finance:   ['Track marketing P&L weekly','Compute CAC by channel monthly','Calculate LTV/CAC ratio','Flag overspending campaigns','Forecast 90-day cash flow','Approve budget reallocations','Audit invoices vs platform spend','Tax-prep marketing line items','Negotiate annual platform contracts','Report MER monthly','Set channel budget caps','Variance analysis vs plan'],
-      ops:       ['Run weekly campaign QA scan','Audit brand asset library completeness','Check lead routing health daily','Maintain SOPs for every workflow','Onboard new tools + integrations','Quarterly access review','Vendor relationship management','Backup critical data weekly','Track team capacity vs workload','Run incident postmortems','Maintain compliance + privacy register','Schedule team standups']
+      ops:       ['Run weekly campaign QA scan','Audit brand asset library completeness','Check lead routing health daily','Maintain SOPs for every workflow','Onboard new tools + integrations','Quarterly access review','Vendor relationship management','Backup critical data weekly','Track team capacity vs workload','Run incident postmortems','Maintain compliance + privacy register','Schedule team standups'],
+      technical: ['Monitor every API + readiness probe','Watch LLM and AI provider health','Audit auth sessions and tokens','Scan for security threats continuously','Validate update safety before install','Draft incident plans for approval','Research missing monitoring tools','Send real-time system status updates','Attend daily management meetings','Review nav/pages/code integrity','Track credential vault encryption','Report tooling gaps urgently']
     };
     const key = role.toLowerCase();
     let tasks = null;
@@ -282,11 +312,11 @@ const _TASKS_KEY = 'officer_tasks_v1';
 const _officerScope = require('./services/tenants/kv_scope');
 const _officerCtx   = require('./services/tenants/context');
 const _officerKey = (base, tid) => _officerScope.tkey(base, tid);
-const _OFFICER_ROLES = ['marketing','sales','analyst','content','seo','cro','finance','ops'];
+const _OFFICER_ROLES = ['marketing','sales','analyst','content','seo','cro','finance','ops','technical'];
 const _OFFICER_TITLES = {
   marketing:'Marketing Officer', sales:'Sales Officer', analyst:'Analyst Officer',
   content:'Content Officer', seo:'SEO Officer', cro:'CRO Officer',
-  finance:'Finance Officer', ops:'Operations Officer'
+  finance:'Finance Officer', ops:'Operations Officer', technical:'Technical Manager'
 };
 app.get('/api/officer/tasks-store', async (req, res) => {
   try {
@@ -324,7 +354,7 @@ app.post('/api/officer/tasks-store', async (req, res) => {
 // filename uses our own ext so we never trust client-supplied filenames.
 const _OFFICER_AVATAR_DIR = path.join(__dirname, 'uploads', 'officer-avatars');
 try { if (!fs.existsSync(_OFFICER_AVATAR_DIR)) fs.mkdirSync(_OFFICER_AVATAR_DIR, { recursive: true }); } catch(_){}
-const _OFFICER_ROLES_WL = ['marketing','sales','analyst','content','seo','cro','finance','ops'];
+const _OFFICER_ROLES_WL = ['marketing','sales','analyst','content','seo','cro','finance','ops','technical'];
 const _AVATAR_MIME_EXT = { 'image/jpeg':'.jpg', 'image/png':'.png', 'image/gif':'.gif', 'image/webp':'.webp' };
 const _officerAvatarUpload = multer({
   storage: multer.diskStorage({
@@ -394,7 +424,7 @@ app.post('/api/officer/avatars', async (req, res) => {
     if (!_db.hasDb()) return res.status(503).json({ error: 'database not configured' });
     const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:avatars:post' });
     if (tid == null) return res.status(400).json({ error: 'no_tenant' });
-    const ALLOWED_ROLES = ['marketing','sales','analyst','content','seo','cro','finance','ops'];
+    const ALLOWED_ROLES = ['marketing','sales','analyst','content','seo','cro','finance','ops','technical'];
     const safeRole = String(role).toLowerCase();
     if (!ALLOWED_ROLES.includes(safeRole)) return res.status(400).json({ error: 'unknown role' });
     const key = _officerKey(_AVATAR_KEY, tid);
@@ -518,7 +548,7 @@ app.get('/api/officer/meetings', async (req, res) => {
 app.post('/api/officer/meetings', async (req, res) => {
   try {
     const attendees = Array.isArray(req.body?.attendees)
-      ? req.body.attendees.filter(s => typeof s==='string').slice(0,8)
+      ? req.body.attendees.filter(s => typeof s==='string').slice(0,12)
       : [];
     const topic = String(req.body?.topic || '').trim().slice(0,300);
     const tasksByRole = (req.body?.tasksByRole && typeof req.body.tasksByRole==='object' && !Array.isArray(req.body.tasksByRole))
@@ -709,7 +739,7 @@ async function _runAutonomousDailyReports({ manualTrigger = false, skipDelivery 
   catch { console.warn('[autoreport] stored timezone invalid, falling back to UTC:', _tz); _tz = 'UTC'; settings.timezone = 'UTC'; }
   const tasksStore = (await _db.kvGet(_officerKey(_TASKS_KEY, tid), {})) || {};
 
-  // Generate all 8 reports in parallel
+  // Generate all officer reports in parallel (includes Technical Manager)
   const reports = await Promise.all(_OFFICER_ROLES.map(role => {
     const tasks = Array.isArray(tasksStore[role]) ? tasksStore[role] : [];
     return _generateOfficerReportInternal(role, _OFFICER_TITLES[role], tasks, tid)
@@ -854,7 +884,7 @@ if (_runtimeFlags.backgroundEnabled()) {
 // ── Autonomous Officer Meetings ───────────────────────────────────────────
 // The AI Team self-schedules cross-functional meetings on a recurring cadence
 // (daily or weekly on a chosen weekday). Topics rotate through a curated set
-// so meetings stay relevant. All 8 officers attend by default. Minutes use
+// so meetings stay relevant. All AI officers attend by default. Minutes use
 // the same AI minute-taker as manual meetings, then are saved into the
 // existing officer_meetings_v1 store so they appear in both the AI Team
 // meetings panel and the new Manage → Team Meetings calendar.
@@ -866,7 +896,8 @@ const _AUTOMTG_DEFAULTS = { enabled:false, frequency:'weekly', dayOfWeek:1, hour
   'Budget pacing + reallocation across paid channels',
   'Customer feedback loop — wins, complaints, churn signals',
   'Competitive intel briefing — moves observed in the last 7 days',
-  'Quarterly OKR check-in and risk register'
+  'Quarterly OKR check-in and risk register',
+  'Technical Manager system status — APIs, LLMs, auth, tokens, security, update safety'
 ], lastScheduledRunDate:'' };
 
 // One-time boot migration: move legacy GLOBAL officer singletons into the
@@ -999,7 +1030,7 @@ async function _runAutonomousMeeting({ manualTrigger = false, tenantId = null } 
 
   let parsed = null;
   if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
-    const prompt = `You are the meeting secretary. Draft minutes for an AUTONOMOUSLY-SCHEDULED recurring cross-functional meeting attended by all 8 AI officers.\n\nATTENDEES: ${attendees.join(', ')}\nTOPIC: ${topic}\n\nASSIGNED RESPONSIBILITIES BY OFFICER:\n${JSON.stringify(tasksByRole, null, 2)}\n\nGenerate realistic minutes. The ACTION ITEMS section is the to-do list — every item must have an owner role and a due date.\n\nReturn ONLY this JSON: {"discussion":["<paragraph>",...], "decisions":["<decision>",...], "actionItems":[{"owner":"<role>","action":"<verb-led>","dueIn":"24h|3d|7d|14d"}]}`;
+    const prompt = `You are the meeting secretary. Draft minutes for an AUTONOMOUSLY-SCHEDULED recurring cross-functional meeting attended by all AI officers including the Technical Manager (platform health, APIs, LLMs, auth, security, updates).\n\nATTENDEES: ${attendees.join(', ')}\nTOPIC: ${topic}\n\nASSIGNED RESPONSIBILITIES BY OFFICER:\n${JSON.stringify(tasksByRole, null, 2)}\n\nGenerate realistic minutes. The ACTION ITEMS section is the to-do list — every item must have an owner role and a due date. Include at least one Technical Manager system-status update.\n\nReturn ONLY this JSON: {"discussion":["<paragraph>",...], "decisions":["<decision>",...], "actionItems":[{"owner":"<role>","action":"<verb-led>","dueIn":"24h|3d|7d|14d"}]}`;
     try {
       const completion = await Promise.race([
         openai.chat.completions.create({

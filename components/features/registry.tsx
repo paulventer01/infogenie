@@ -280,6 +280,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "ai-team": L("ai-team", () => import("@/components/features/aiteam/AiTeam")),
   "finance-officer": L("finance-officer", () => import("@/components/features/aiteam/FinanceOfficer")),
   "ops-officer": L("ops-officer", () => import("@/components/features/aiteam/OpsOfficer")),
+  "technical-manager": L("technical-manager", () => import("@/components/features/aiteam/TechnicalManager")),
   surveys: L("surveys", () => import("@/components/features/reach/Surveys")),
   "email-designer": L("email-designer", () => import("@/components/features/reach/EmailDesigner")),
   "mcp-server": L("mcp-server", () => import("@/components/features/reach/McpServer")),

@@ -172,6 +172,11 @@ router.get('/summary', _safe(async (req, res) => {
       },
     });
   }
+  // Ensure senior Technical Manager always appears on the human roster
+  try {
+    const { ensureCapacityMember } = require('../technical_manager/api');
+    await ensureCapacityMember(tid);
+  } catch (_) { /* optional */ }
   res.json(await _buildSummary(tid));
 }));
 

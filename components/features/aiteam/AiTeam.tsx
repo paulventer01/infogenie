@@ -1,7 +1,7 @@
 "use client";
 
 // Native React port of the legacy `ai-team` panel (was `window.buildAiTeam` +
-// `#view-ai-team`). Mirrors the eight AI-officer roster, the avatar picker
+// `#view-ai-team`). Mirrors the AI-officer roster (incl. Technical Manager), the avatar picker
 // (emoji gallery + image upload), per-officer Tasks and Daily Report modals, the
 // cross-functional Officer Meetings list + scheduler, the autonomous Daily
 // Report scheduler, the autonomous Team Meetings scheduler, and the live
@@ -212,6 +212,14 @@ const OFFICERS: Officer[] = [
     isNew: true,
     links: [["ops-officer", "Open Operations Office"]],
   },
+  {
+    id: "technical",
+    icon: "🛡️",
+    title: "Technical Manager",
+    role: "APIs, LLMs, auth, tokens, security, updates — live system status",
+    isNew: true,
+    links: [["technical-manager", "Open Technical Manager desk"]],
+  },
 ];
 
 /** Soft illustrated portraits shipped with the app — used until a custom avatar is saved. */
@@ -224,6 +232,7 @@ const DEFAULT_AVATARS: Record<string, string> = {
   cro: "/avatars/ai-team/cro.webp",
   finance: "/avatars/ai-team/finance.webp",
   ops: "/avatars/ai-team/ops.webp",
+  technical: "/avatars/ai-team/ops.webp",
 };
 
 function resolveAvatar(officerId: string, stored?: string, fallbackIcon = "👤"): string {
@@ -2220,7 +2229,7 @@ function AutoMeetingsPanel({
       <div style={{ fontSize: ".82rem", color: "#475569", lineHeight: 1.5 }}>
         When ON, the AI Team auto-schedules a recurring cross-functional meeting and
         the AI minute-taker drafts notes (with a clear to-do list of action items per
-        officer). All 8 officers attend by default. Browse all minutes anytime via{" "}
+        officer). All officers including the Technical Manager attend by default. Browse all minutes anytime via{" "}
         <strong>Manage → Minutes of Meeting</strong>.
       </div>
     </div>
