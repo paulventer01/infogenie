@@ -580,6 +580,19 @@ router.post('/upload', _upload.single('file'), async (req, res) => {
   if (!items.length) return _err(res, 400, 'No valid rows found (need columns: revenue + deal_id or email)');
   const tid = await _tid(req, 'true-roas:upload');
   const out = await _insertConversions('csv', items, tid);
+  // Institutional memory — offline revenue closes the True ROAS learning loop
+  try {
+    const { ingestMemoryNode } = require('../knowledge_graph/api');
+    const cents = items.reduce((s, it) => s + (Number(it.revenue_cents) || 0), 0);
+    await ingestMemoryNode({
+      tenant_id: tid,
+      node_type: 'campaign_result',
+      summary: `True ROAS offline revenue upload: ${items.length} deal(s), $${(cents / 100).toFixed(2)}`,
+      detail: { source: 'csv', count: items.length, revenue_cents: cents, inserted: out?.inserted },
+      source_ref: `true-roas:upload:${Date.now()}`,
+      importance: 0.72,
+    });
+  } catch (_) { /* knowledge graph optional */ }
   res.json({ ok: true, parsed: items.length, ...out });
 });
 
