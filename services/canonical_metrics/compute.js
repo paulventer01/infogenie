@@ -235,6 +235,157 @@ async function computeCanonicalMetrics(tid, opts = {}) {
     provenance.push(_provenance('agent_goals', 'goals_vs_actuals', `unavailable: ${e.message}`));
   }
 
+  // 5) Prior-period comparison (same length window immediately before)
+  out.prior = null;
+  out.deltas = {};
+  try {
+    const priorStart = days * 2;
+    const r = await pool.query(
+      `SELECT
+         COALESCE(SUM(p.spend),0)::float8 AS spend,
+         COALESCE(SUM(p.revenue),0)::float8 AS revenue,
+         COALESCE(SUM(p.conversions),0)::float8 AS conversions
+       FROM ad_performance_hourly p
+       JOIN ad_campaigns c ON c.id = p.campaign_id
+       WHERE c.tenant_id = $1
+         AND p.bucket_hour >= now() - ($2 || ' days')::interval
+         AND p.bucket_hour <  now() - ($3 || ' days')::interval`,
+      [tid, String(priorStart), String(days)],
+    );
+    const priorSpend = Number(r.rows[0]?.spend || 0);
+    const priorRev = Number(r.rows[0]?.revenue || 0);
+    const priorConv = Number(r.rows[0]?.conversions || 0);
+    let priorOffline = 0;
+    try {
+      const o = await pool.query(
+        `SELECT COALESCE(SUM(revenue_cents),0)::bigint AS cents
+           FROM offline_conversions
+          WHERE tenant_id=$1
+            AND closed_at >= now() - ($2 || ' days')::interval
+            AND closed_at <  now() - ($3 || ' days')::interval`,
+        [tid, String(priorStart), String(days)],
+      );
+      priorOffline = Number(o.rows[0]?.cents || 0) / 100;
+    } catch (_) { /* optional */ }
+    const priorTotalRev = priorRev + priorOffline;
+    out.prior = {
+      days,
+      spend: _round(priorSpend) || 0,
+      online_revenue: _round(priorRev) || 0,
+      offline_revenue: _round(priorOffline) || 0,
+      total_revenue: _round(priorTotalRev) || 0,
+      conversions: priorConv,
+      blended_roas: priorSpend > 0 && priorRev > 0 ? _round(priorRev / priorSpend) : null,
+      true_roas: priorSpend > 0 && priorTotalRev > 0 ? _round(priorTotalRev / priorSpend) : null,
+      cac: priorConv > 0 ? _round(priorSpend / priorConv) : null,
+    };
+    const deltaPct = (cur, prev) => {
+      if (prev == null || prev === 0 || cur == null) return null;
+      return _round(((cur - prev) / Math.abs(prev)) * 100, 1);
+    };
+    out.deltas = {
+      spend_pct: deltaPct(out.spend, out.prior.spend),
+      revenue_pct: deltaPct(out.total_revenue, out.prior.total_revenue),
+      blended_roas_pct: deltaPct(out.blended_roas, out.prior.blended_roas),
+      true_roas_pct: deltaPct(out.true_roas, out.prior.true_roas),
+      cac_pct: deltaPct(out.cac, out.prior.cac),
+      conversions_pct: deltaPct(out.conversions, out.prior.conversions),
+    };
+    provenance.push(_provenance('ad_performance_hourly', 'prior,deltas', `prior ${days}d window`));
+  } catch (e) {
+    provenance.push(_provenance('prior_period', '*', `unavailable: ${e.message}`));
+  }
+
+  // 6) Daily series for charts / pacing burn
+  out.daily = [];
+  try {
+    const r = await pool.query(
+      `SELECT to_char(p.bucket_hour,'YYYY-MM-DD') AS day,
+              COALESCE(SUM(p.spend),0)::float8 AS spend,
+              COALESCE(SUM(p.revenue),0)::float8 AS revenue
+         FROM ad_performance_hourly p
+         JOIN ad_campaigns c ON c.id = p.campaign_id
+        WHERE c.tenant_id = $1
+          AND p.bucket_hour >= now() - ($2)::interval
+        GROUP BY 1 ORDER BY 1`,
+      [tid, interval],
+    );
+    out.daily = r.rows.map((row) => ({
+      day: row.day,
+      spend: _round(row.spend) || 0,
+      revenue: _round(row.revenue) || 0,
+    }));
+    if (out.daily.length) provenance.push(_provenance('ad_performance_hourly', 'daily'));
+  } catch (_) { /* optional */ }
+
+  // 7) Budget pacing (current calendar month) from spend_events + budgets
+  out.pacing = null;
+  try {
+    const { computePacing, _ymNow } = require('./pacing');
+    const period = _ymNow();
+    const bRow = await pool.query(
+      `SELECT target_cents, by_channel FROM budgets
+        WHERE tenant_id=$1 AND period_month=$2
+        ORDER BY created_at DESC LIMIT 1`,
+      [tid, period],
+    );
+    const sRow = await pool.query(
+      `SELECT channel, COALESCE(SUM(amount_cents),0)::bigint AS spent
+         FROM spend_events
+        WHERE tenant_id=$1 AND to_char(occurred_at,'YYYY-MM')=$2
+        GROUP BY channel`,
+      [tid, period],
+    );
+    const allocByCh = bRow.rows[0]?.by_channel || {};
+    const spentByCh = {};
+    let spent = 0;
+    for (const row of sRow.rows) {
+      spentByCh[row.channel] = Number(row.spent);
+      spent += Number(row.spent);
+    }
+    // If budget-board spend is empty, fall back to optimizer spend this month
+    if (spent === 0 && out.spend_cents > 0) {
+      spent = Math.round((out.spend / Math.max(days, 1)) * new Date().getUTCDate() * 100);
+    }
+    const by_channel = Object.keys({ ...allocByCh, ...spentByCh }).map((ch) => ({
+      channel: ch,
+      allocated_cents: Number(allocByCh[ch] || 0),
+      spent_cents: Number(spentByCh[ch] || 0),
+      utilization: allocByCh[ch]
+        ? Math.round((Number(spentByCh[ch] || 0) / Number(allocByCh[ch])) * 100)
+        : null,
+    }));
+    out.pacing = computePacing({
+      period_month: period,
+      target_cents: Number(bRow.rows[0]?.target_cents || 0),
+      spent_cents: spent,
+      by_channel,
+    });
+    // Merge ROAS waste into pacing actions
+    for (const w of (out.waste_channels || []).slice(0, 3)) {
+      out.pacing.actions.push({
+        priority: 'high',
+        action: `Cut underwater ${w.channel}`,
+        detail: `ROAS ${w.roas ?? 'n/a'} — ~$${(w.waste_cents / 100).toFixed(0)} waste in the last ${days}d.`,
+      });
+    }
+    provenance.push(_provenance('budgets+spend_events', 'pacing'));
+  } catch (e) {
+    provenance.push(_provenance('pacing', '*', `unavailable: ${e.message}`));
+  }
+
+  // KPI dictionary for UI / report consumers
+  out.kpis = [
+    { key: 'spend', label: 'Spend', value: out.spend, unit: '$', delta_pct: out.deltas.spend_pct },
+    { key: 'total_revenue', label: 'Revenue', value: out.total_revenue, unit: '$', delta_pct: out.deltas.revenue_pct },
+    { key: 'blended_roas', label: 'Blended ROAS', value: out.blended_roas, unit: 'x', delta_pct: out.deltas.blended_roas_pct },
+    { key: 'true_roas', label: 'True ROAS', value: out.true_roas, unit: 'x', delta_pct: out.deltas.true_roas_pct },
+    { key: 'cac', label: 'CAC', value: out.cac, unit: '$', delta_pct: out.deltas.cac_pct },
+    { key: 'conversions', label: 'Conversions', value: out.conversions, unit: '', delta_pct: out.deltas.conversions_pct },
+    { key: 'mer', label: 'MER', value: out.mer, unit: '%', delta_pct: null },
+    { key: 'waste_cents', label: 'Waste', value: _round((out.waste_cents || 0) / 100), unit: '$', delta_pct: null },
+  ];
+
   // Round money fields
   out.spend = _round(out.spend) || 0;
   out.online_revenue = _round(out.online_revenue) || 0;

@@ -106,55 +106,63 @@ router.get('/summary', async (req, res) => {
          GROUP BY day ORDER BY day`,
       [tid]
     );
-    // Live pacing: project month-end spend from days elapsed vs days in month.
-    const [y, m] = period.split('-').map(Number);
-    const daysInMonth = (y && m) ? new Date(y, m, 0).getDate() : 30;
-    const now = new Date();
-    const isCurrentMonth = period === _ymNow();
-    const dayOfMonth = isCurrentMonth ? now.getUTCDate() : daysInMonth;
-    const expected_spend_cents = target_cents
-      ? Math.round(target_cents * (dayOfMonth / daysInMonth))
-      : 0;
-    const projected_month_end_cents = dayOfMonth > 0
-      ? Math.round(total_spent * (daysInMonth / dayOfMonth))
-      : total_spent;
-    const pace_pct = expected_spend_cents > 0
-      ? Math.round((total_spent / expected_spend_cents) * 100)
-      : (target_cents ? Math.round((total_spent / target_cents) * 100) : null);
-    let pace_status = 'unknown';
-    if (pace_pct != null) {
-      if (pace_pct >= 120) pace_status = 'overspending';
-      else if (pace_pct >= 105) pace_status = 'ahead';
-      else if (pace_pct >= 85) pace_status = 'on_pace';
-      else if (pace_pct >= 60) pace_status = 'underspending';
-      else pace_status = 'far_behind';
-    }
-    const waste_channels = by_channel
-      .filter(c => c.allocated_cents > 0 && c.spent_cents > c.allocated_cents * 1.15)
-      .map(c => ({
-        channel: c.channel,
-        over_cents: c.spent_cents - c.allocated_cents,
-        utilization: c.utilization,
-      }));
+    const { computePacing } = require('../canonical_metrics/pacing');
+    const pacing = computePacing({
+      period_month: period,
+      target_cents,
+      spent_cents: total_spent,
+      by_channel,
+    });
 
     res.json({
       period_month: period,
       target_cents,
       spent_cents: total_spent,
-      remaining_cents: target_cents - total_spent,
+      remaining_cents: pacing.remaining_cents,
       utilization_pct: target_cents ? Math.round(total_spent / target_cents * 100) : null,
       by_channel,
       daily_30d: tRow.rows.map(r => ({ day: r.day, spent_cents: Number(r.spent) })),
-      // Live pacing / waste
-      day_of_month: dayOfMonth,
-      days_in_month: daysInMonth,
-      expected_spend_cents,
-      projected_month_end_cents,
-      pace_pct,
-      pace_status,
-      waste_channels,
+      ...pacing,
+      pacing,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Dedicated pacing endpoint (same math, focused payload for narrative / alerts)
+router.get('/pacing', async (req, res) => {
+  try {
+    if (!hasDb()) {
+      return res.json({ ok: true, pace_status: 'unknown', actions: [] });
+    }
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'budgets:pacing' });
+    const period = req.query.month || _ymNow();
+    const bRow = await pool.query(
+      `SELECT target_cents, by_channel FROM budgets WHERE tenant_id=$1 AND period_month=$2 ORDER BY created_at DESC LIMIT 1`,
+      [tid, period],
+    );
+    const target_cents = bRow.rows[0]?.target_cents || 0;
+    const allocByCh = bRow.rows[0]?.by_channel || {};
+    const sRow = await pool.query(
+      `SELECT channel, SUM(amount_cents)::bigint AS spent
+         FROM spend_events
+         WHERE tenant_id=$1 AND to_char(occurred_at,'YYYY-MM') = $2
+         GROUP BY channel`,
+      [tid, period],
+    );
+    const spentByCh = {};
+    let total_spent = 0;
+    sRow.rows.forEach((r) => { spentByCh[r.channel] = Number(r.spent); total_spent += Number(r.spent); });
+    const channels = new Set([...Object.keys(allocByCh), ...Object.keys(spentByCh)]);
+    const by_channel = Array.from(channels).map((ch) => ({
+      channel: ch,
+      allocated_cents: Number(allocByCh[ch] || 0),
+      spent_cents: spentByCh[ch] || 0,
+      utilization: allocByCh[ch] ? Math.round((spentByCh[ch] || 0) / Number(allocByCh[ch]) * 100) : null,
+    }));
+    const { computePacing } = require('../canonical_metrics/pacing');
+    const pacing = computePacing({ period_month: period, target_cents, spent_cents: total_spent, by_channel });
+    res.json({ ok: true, ...pacing });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 module.exports = router;

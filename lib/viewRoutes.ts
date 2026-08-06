@@ -460,6 +460,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "heatmaps", icon: "🖋️", label: "Heatmaps + Session Replay" },
           { view: "action-queue", icon: "📹", label: "Daily Action Queue (what to do today)" },
           { view: "marketing-okr", icon: "📷", label: "Marketing OKRs (live campaign data)" },
+          { view: "canonical-metrics", icon: "📐", label: "Canonical Metrics (SSOT · pacing · goals)" },
 
           { view: "agent-goals", icon: "🏁", label: "Marketing Goals (set · plan · track)" },
           { view: "budget", icon: "💰", label: "Budget (spend · ROI · 3-month plan)" },
@@ -587,6 +588,8 @@ for (const group of NAV_GROUPS) {
 
 // Keep the established bookmark path for Growth Goals Loop.
 VIEW_TO_PATH.flywheel = "/manage/flywheel";
+VIEW_TO_PATH["canonical-metrics"] = "/manage/canonical-metrics";
+VIEW_TO_PATH.capacity = "/manage/capacity";
 
 /**
  * Views trimmed from the default Analyse sidebar (to reduce duplicates) but still

@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Team Capacity & Workload — missing priority gap surface.
- * Members, weekly hours, utilization, open agent tasks.
+ * Team Capacity & Workload — operational roster, utilization, queue matching.
  */
 
 import { useEffect, useState } from "react";
@@ -26,8 +25,6 @@ interface Member {
   load: string;
   open_assignments: number;
   assignments?: Assignment[];
-  skills?: string[] | string;
-  notes?: string;
 }
 interface AgentTask {
   id: string | number;
@@ -38,10 +35,25 @@ interface AgentTask {
   goal_title?: string;
   estimated_hours?: number;
 }
+interface Recommendation {
+  task_id: string | number;
+  task_title: string;
+  goal_title?: string;
+  estimated_hours?: number;
+  priority?: string;
+  suggested_member_id?: string | null;
+  suggested_member_name?: string | null;
+  reason?: string;
+}
+interface Alert {
+  severity: string;
+  message: string;
+}
 interface Totals {
   members: number;
   weekly_hours: number;
   allocated_hours: number;
+  remaining_hours?: number;
   utilization_pct: number;
   overloaded: number;
   at_capacity: number;
@@ -53,6 +65,8 @@ interface Summary {
   ok?: boolean;
   members: Member[];
   agent_workload: AgentTask[];
+  recommendations?: Recommendation[];
+  alerts?: Alert[];
   totals: Totals;
 }
 
@@ -69,25 +83,19 @@ export default function Capacity() {
   const [name, setName] = useState("");
   const [role, setRole] = useState("marketer");
   const [hours, setHours] = useState("40");
-  const [assignMember, setAssignMember] = useState("");
-  const [assignItem, setAssignItem] = useState("");
-  const [assignHours, setAssignHours] = useState("2");
+  const [busy, setBusy] = useState(false);
 
   async function refresh() {
     const r = await apiGet<Summary>("/api/capacity/summary");
     setData({
       members: r.members || [],
       agent_workload: r.agent_workload || [],
+      recommendations: r.recommendations || [],
+      alerts: r.alerts || [],
       totals: r.totals || {
-        members: 0,
-        weekly_hours: 0,
-        allocated_hours: 0,
-        utilization_pct: 0,
-        overloaded: 0,
-        at_capacity: 0,
-        available: 0,
-        unassigned_task_hours: 0,
-        open_agent_tasks: 0,
+        members: 0, weekly_hours: 0, allocated_hours: 0, remaining_hours: 0,
+        utilization_pct: 0, overloaded: 0, at_capacity: 0, available: 0,
+        unassigned_task_hours: 0, open_agent_tasks: 0,
       },
     });
   }
@@ -97,19 +105,11 @@ export default function Capacity() {
   }, []);
 
   async function addMember() {
-    if (!name.trim()) {
-      toast("Name required");
-      return;
-    }
+    if (!name.trim()) { toast("Name required"); return; }
     const r = await apiPost<{ ok: boolean; error?: string }>("/api/capacity/members", {
-      member_name: name.trim(),
-      role,
-      weekly_hours: +hours || 40,
+      member_name: name.trim(), role, weekly_hours: +hours || 40,
     });
-    if (!r.ok) {
-      toast(r.error || "Failed");
-      return;
-    }
+    if (!r.ok) { toast(r.error || "Failed"); return; }
     setName("");
     toast("Member added");
     refresh();
@@ -121,22 +121,23 @@ export default function Capacity() {
     refresh();
   }
 
-  async function addAssignment() {
-    if (!assignMember || !assignItem.trim()) {
-      toast("Pick a member and work item");
-      return;
-    }
-    const r = await apiPost<{ ok: boolean; error?: string }>("/api/capacity/assignments", {
-      member_id: assignMember,
-      work_item: assignItem.trim(),
-      hours: +assignHours || 2,
+  async function seedUsers() {
+    setBusy(true);
+    const r = await apiPost<{ ok: boolean; seeded?: number; note?: string; error?: string }>("/api/capacity/seed-from-users", {});
+    setBusy(false);
+    if (!r.ok) { toast(r.error || "Seed failed"); return; }
+    toast(r.seeded ? `Seeded ${r.seeded} teammate(s)` : (r.note || "No new members"));
+    refresh();
+  }
+
+  async function assignBest(taskId: string | number) {
+    setBusy(true);
+    const r = await apiPost<{ ok: boolean; member_name?: string; error?: string }>("/api/capacity/assign-best", {
+      task_id: taskId,
     });
-    if (!r.ok) {
-      toast(r.error || "Failed");
-      return;
-    }
-    setAssignItem("");
-    toast("Assigned");
+    setBusy(false);
+    if (!r.ok) { toast(r.error || "Assign failed — add teammates with free hours"); return; }
+    toast(`Assigned to ${r.member_name}`);
     refresh();
   }
 
@@ -145,25 +146,78 @@ export default function Capacity() {
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(180deg,#F0F9FF 0%,#F8FAFC 40%)", padding: "28px 32px" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <h1 style={{ margin: 0, fontSize: "1.55rem", color: "#0F172A" }}>Team Capacity & Workload</h1>
-        <p style={{ margin: "6px 0 22px", color: "#64748B" }}>
-          See who has room this week, what is already allocated, and open agent tasks still unassigned.
-        </p>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 18 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: "1.55rem", color: "#0F172A" }}>Team Capacity & Workload</h1>
+            <p style={{ margin: "6px 0 0", color: "#64748B" }}>
+              Who has hours this week, what is already allocated, and which open Marketing Goal tasks should go where.
+            </p>
+          </div>
+          <button type="button" disabled={busy} onClick={seedUsers} style={{ ...btnStyle, background: "#0369A1" }}>
+            Seed from workspace users
+          </button>
+        </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 22 }}>
+        {(data?.alerts || []).map((a, i) => (
+          <div key={i} style={{
+            marginBottom: 10, padding: "10px 14px", borderRadius: 10, fontSize: "0.88rem",
+            background: a.severity === "high" ? "#FEF2F2" : "#FFFBEB",
+            border: `1px solid ${a.severity === "high" ? "#FECACA" : "#FDE68A"}`,
+            color: a.severity === "high" ? "#991B1B" : "#92400E",
+          }}>
+            {a.message}
+          </div>
+        ))}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginBottom: 20 }}>
           {[
             ["Members", t?.members ?? "—"],
             ["Weekly hours", t?.weekly_hours ?? "—"],
             ["Allocated", t?.allocated_hours ?? "—"],
+            ["Remaining", t?.remaining_hours ?? "—"],
             ["Utilization", t ? `${t.utilization_pct}%` : "—"],
             ["Overloaded", t?.overloaded ?? "—"],
-            ["Open agent tasks", t?.open_agent_tasks ?? "—"],
+            ["Open queue", t?.open_agent_tasks ?? "—"],
+            ["Unassigned hrs", t?.unassigned_task_hours ?? "—"],
           ].map(([label, val]) => (
-            <div key={String(label)} style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: "14px 16px" }}>
-              <div style={{ fontSize: "0.68rem", color: "#64748B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
-              <div style={{ fontSize: "1.35rem", fontWeight: 700, color: "#0F172A", marginTop: 4 }}>{val}</div>
+            <div key={String(label)} style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: "12px 14px" }}>
+              <div style={{ fontSize: "0.66rem", color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>{label}</div>
+              <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#0F172A", marginTop: 4 }}>{val}</div>
             </div>
           ))}
+        </div>
+
+        <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 16, marginBottom: 18 }}>
+          <h3 style={{ margin: "0 0 10px", fontSize: "1rem" }}>Recommended assignments</h3>
+          {(data?.recommendations || []).length === 0 ? (
+            <div style={{ color: "#64748B", fontSize: "0.9rem" }}>No open agent tasks to place — or everyone is clear.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {(data?.recommendations || []).slice(0, 8).map((r) => (
+                <div key={String(r.task_id)} style={{
+                  display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center",
+                  padding: "10px 12px", background: "#F8FAFC", borderRadius: 8,
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: "#0F172A" }}>{r.task_title}</div>
+                    <div style={{ fontSize: "0.82rem", color: "#64748B" }}>
+                      {r.goal_title || "Goal"} · {r.estimated_hours || 1}h · {r.priority || "—"}
+                      {r.suggested_member_name ? ` → ${r.suggested_member_name}` : ""}
+                    </div>
+                    <div style={{ fontSize: "0.78rem", color: "#94A3B8" }}>{r.reason}</div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busy || !r.suggested_member_id}
+                    onClick={() => assignBest(r.task_id)}
+                    style={btnStyle}
+                  >
+                    Assign best
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 22 }}>
@@ -177,18 +231,13 @@ export default function Capacity() {
             </div>
           </div>
           <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 18 }}>
-            <h3 style={{ margin: "0 0 12px", fontSize: "1rem" }}>Assign work</h3>
-            <div style={{ display: "grid", gap: 8 }}>
-              <select value={assignMember} onChange={(e) => setAssignMember(e.target.value)} style={inputStyle}>
-                <option value="">Select member…</option>
-                {(data?.members || []).map((m) => (
-                  <option key={m.id} value={m.id}>{m.member_name}</option>
-                ))}
-              </select>
-              <input placeholder="Work item" value={assignItem} onChange={(e) => setAssignItem(e.target.value)} style={inputStyle} />
-              <input placeholder="Hours" value={assignHours} onChange={(e) => setAssignHours(e.target.value)} style={inputStyle} />
-              <button type="button" onClick={addAssignment} style={btnStyle}>Assign</button>
-            </div>
+            <h3 style={{ margin: "0 0 8px", fontSize: "1rem" }}>How to use this</h3>
+            <ol style={{ margin: 0, paddingLeft: 18, color: "#475569", fontSize: "0.88rem", lineHeight: 1.55 }}>
+              <li>Seed or add your marketers with weekly hour budgets.</li>
+              <li>Open Marketing Goals create agent tasks automatically.</li>
+              <li>Use <strong>Assign best</strong> to place queue items on the least-loaded person.</li>
+              <li>Watch overloaded alerts before committing more work.</li>
+            </ol>
           </div>
         </div>
 
@@ -196,7 +245,7 @@ export default function Capacity() {
         <div style={{ display: "grid", gap: 10, marginBottom: 28 }}>
           {(data?.members || []).length === 0 && (
             <div style={{ padding: 18, background: "#fff", border: "1px dashed #CBD5E1", borderRadius: 12, color: "#64748B" }}>
-              No teammates yet — add someone above to start tracking capacity.
+              No teammates yet — seed from workspace users or add someone above.
             </div>
           )}
           {(data?.members || []).map((m) => (
@@ -204,7 +253,10 @@ export default function Capacity() {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                 <div>
                   <div style={{ fontWeight: 700, color: "#0F172A" }}>{m.member_name}</div>
-                  <div style={{ fontSize: "0.85rem", color: "#64748B" }}>{m.role || "marketer"} · {m.allocated_hours}/{m.weekly_hours}h</div>
+                  <div style={{ fontSize: "0.85rem", color: "#64748B" }}>
+                    {m.role || "marketer"} · {m.allocated_hours}/{m.weekly_hours}h
+                    · {Math.max(0, m.weekly_hours - m.allocated_hours)}h free
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   <span style={{
@@ -235,7 +287,7 @@ export default function Capacity() {
           ))}
         </div>
 
-        <h3 style={{ margin: "0 0 10px" }}>Unassigned agent tasks</h3>
+        <h3 style={{ margin: "0 0 10px" }}>Open agent task queue</h3>
         <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, overflow: "hidden" }}>
           {(data?.agent_workload || []).length === 0 ? (
             <div style={{ padding: 18, color: "#64748B" }}>No open agent tasks — Marketing Goals queue is clear.</div>
@@ -248,6 +300,7 @@ export default function Capacity() {
                   <th style={th}>Priority</th>
                   <th style={th}>Est. hours</th>
                   <th style={th}>Due</th>
+                  <th style={th} />
                 </tr>
               </thead>
               <tbody>
@@ -258,6 +311,11 @@ export default function Capacity() {
                     <td style={td}>{w.priority || "—"}</td>
                     <td style={td}>{w.estimated_hours ?? "—"}</td>
                     <td style={td}>{w.due_date ? String(w.due_date).slice(0, 10) : "—"}</td>
+                    <td style={td}>
+                      <button type="button" disabled={busy} onClick={() => assignBest(w.id)} style={{ ...btnStyle, padding: "6px 10px", fontSize: "0.78rem" }}>
+                        Assign best
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -270,20 +328,11 @@ export default function Capacity() {
 }
 
 const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: 9,
-  border: "1px solid #CBD5E1",
-  borderRadius: 8,
-  boxSizing: "border-box",
+  width: "100%", padding: 9, border: "1px solid #CBD5E1", borderRadius: 8, boxSizing: "border-box",
 };
 const btnStyle: React.CSSProperties = {
-  padding: "9px 14px",
-  border: "none",
-  borderRadius: 8,
-  background: "#0F766E",
-  color: "#fff",
-  fontWeight: 600,
-  cursor: "pointer",
+  padding: "9px 14px", border: "none", borderRadius: 8, background: "#0F766E",
+  color: "#fff", fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
 };
 const th: React.CSSProperties = { padding: "10px 12px", color: "#64748B", fontWeight: 700, fontSize: "0.72rem", textTransform: "uppercase" };
 const td: React.CSSProperties = { padding: "10px 12px", color: "#0F172A" };

@@ -19,11 +19,27 @@ interface ReportSection {
   wins?: string[];
   risks?: string[];
   next_actions?: string[];
+  client_paragraphs?: string[];
   tone?: string;
+  metrics_snapshot?: {
+    spend?: number;
+    blended_roas?: number | null;
+    true_roas?: number | null;
+    pace_status?: string | null;
+    pace_pct?: number | null;
+  } | null;
 }
 interface Report {
   title: string;
   sections: ReportSection[];
+  narrative?: {
+    executive_summary?: string;
+    wins?: string[];
+    risks?: string[];
+    next_actions?: string[];
+    client_paragraphs?: string[];
+    tone?: string;
+  };
 }
 interface PreviewResult {
   ok: boolean;
@@ -371,8 +387,18 @@ export default function WeeklyReport() {
                 >
                   <div style={{ fontWeight: 700, color: "#0A1628" }}>{s.title}</div>
                   {s.kind === "narrative" ? (
-                    <div style={{ fontSize: "0.82rem", color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
-                      <p style={{ margin: "0 0 8px" }}>{s.body || ""}</p>
+                    <div style={{ fontSize: "0.86rem", color: "#0F172A", marginTop: 8, lineHeight: 1.55 }}>
+                      {(s.client_paragraphs || [s.body || ""]).map((p, pi) => (
+                        <p key={pi} style={{ margin: "0 0 10px" }}>{p}</p>
+                      ))}
+                      {s.metrics_snapshot && (
+                        <div style={{ fontSize: "0.78rem", color: "#64748B", marginBottom: 8 }}>
+                          Snapshot: spend ${s.metrics_snapshot.spend ?? 0}
+                          {s.metrics_snapshot.blended_roas != null ? ` · ROAS ${s.metrics_snapshot.blended_roas}x` : ""}
+                          {s.metrics_snapshot.true_roas != null ? ` · True ROAS ${s.metrics_snapshot.true_roas}x` : ""}
+                          {s.metrics_snapshot.pace_status ? ` · pace ${s.metrics_snapshot.pace_status.replace(/_/g, " ")} (${s.metrics_snapshot.pace_pct ?? "—"}%)` : ""}
+                        </div>
+                      )}
                       {(s.wins || []).length > 0 && (
                         <div style={{ marginBottom: 6 }}>
                           <strong>Wins:</strong> {(s.wins || []).join(" · ")}
@@ -384,10 +410,26 @@ export default function WeeklyReport() {
                         </div>
                       )}
                       {(s.next_actions || []).length > 0 && (
-                        <div>
+                        <div style={{ marginBottom: 8 }}>
                           <strong>Next:</strong> {(s.next_actions || []).join(" · ")}
                         </div>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const text = (s.client_paragraphs || [s.body || ""]).join("\n\n");
+                          navigator.clipboard?.writeText(text).then(
+                            () => toast("✓ Client narrative copied"),
+                            () => toast("Copy failed"),
+                          );
+                        }}
+                        style={{
+                          padding: "6px 12px", borderRadius: 6, border: "1px solid #CBD5E1",
+                          background: "#fff", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer",
+                        }}
+                      >
+                        Copy client narrative
+                      </button>
                     </div>
                   ) : s.kind === "table" ? (
                     <div style={{ fontSize: "0.74rem", color: "#6B7280", marginTop: 3 }}>

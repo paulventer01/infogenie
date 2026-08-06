@@ -302,6 +302,7 @@ const COMPONENT_MATRIX = {
   'growth-methodology':   'dashboard.view',
   'flywheel':             'dashboard.view',
   'capacity':             'manage.projects.view',
+  'canonical-metrics':    'analytics.view',
   'intelligence':         'dashboard.view',
   'csuite':               'dashboard.view',
   'finance-officer':      'dashboard.view',

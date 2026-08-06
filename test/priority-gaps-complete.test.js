@@ -10,6 +10,7 @@ const {
   normalizeSeoArticle,
 } = require('../services/calendar_assistant/agenda');
 const { readMetric } = require('../services/canonical_metrics/compute');
+const { computePacing } = require('../services/canonical_metrics/pacing');
 const matrix = require('../services/tenants/permission_matrix');
 
 describe('canonical metrics helpers', () => {
@@ -31,6 +32,38 @@ describe('canonical metrics helpers', () => {
     assert.equal(readMetric(snap, 'ads.trueRoas'), 3.1);
     assert.equal(readMetric(snap, 'roas'), 2.4);
     assert.equal(readMetric(snap, 'unknown.metric'), null);
+  });
+});
+
+describe('live pacing engine', () => {
+  it('flags overspend and emits throttle actions', () => {
+    const pacing = computePacing({
+      period_month: '2026-08',
+      target_cents: 300000,
+      spent_cents: 200000,
+      by_channel: [
+        { channel: 'Meta Ads', allocated_cents: 100000, spent_cents: 150000, utilization: 150 },
+      ],
+      now: new Date('2026-08-10T12:00:00Z'),
+    });
+    assert.equal(pacing.day_of_month, 10);
+    assert.ok(pacing.pace_pct > 100);
+    assert.ok(['overspending', 'ahead'].includes(pacing.pace_status));
+    assert.ok(pacing.actions.some((a) => /Throttle|Reallocate/i.test(a.action)));
+    assert.ok(pacing.recommended_daily_cents >= 0);
+    assert.equal(pacing.waste_channels.length, 1);
+  });
+
+  it('flags underspend mid-month', () => {
+    const pacing = computePacing({
+      period_month: '2026-08',
+      target_cents: 300000,
+      spent_cents: 20000,
+      by_channel: [],
+      now: new Date('2026-08-20T12:00:00Z'),
+    });
+    assert.ok(['underspending', 'far_behind'].includes(pacing.pace_status));
+    assert.ok(pacing.actions.some((a) => /Release|Scale/i.test(a.action + a.detail)));
   });
 });
 
@@ -75,12 +108,11 @@ describe('permission matrix coverage for new surfaces', () => {
     assert.equal(matrix.requiredPermissionForRequest('/api/capacity/summary', 'GET').matched, true);
   });
 
-  it('maps capacity view in COMPONENT_MATRIX', () => {
-    assert.equal(matrix.COMPONENT_MATRIX?.capacity || matrix.viewPermission?.('capacity'), matrix.COMPONENT_MATRIX?.capacity ? matrix.COMPONENT_MATRIX.capacity : undefined);
-    // Prefer direct COMPONENT_MATRIX lookup
+  it('maps capacity + canonical-metrics views', () => {
     const { COMPONENT_MATRIX } = matrix;
     assert.ok(COMPONENT_MATRIX);
     assert.equal(COMPONENT_MATRIX.capacity, 'manage.projects.view');
+    assert.equal(COMPONENT_MATRIX['canonical-metrics'], 'analytics.view');
   });
 });
 

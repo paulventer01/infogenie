@@ -16,6 +16,11 @@ interface ChannelBreakdown {
   spent_cents?: number;
   utilization?: number | null;
 }
+interface PaceAction {
+  priority?: string;
+  action: string;
+  detail: string;
+}
 interface Summary {
   target_cents?: number;
   spent_cents?: number;
@@ -24,9 +29,14 @@ interface Summary {
   by_channel: ChannelBreakdown[];
   projected_month_end_cents?: number;
   expected_spend_cents?: number;
+  recommended_daily_cents?: number;
+  actual_daily_cents?: number;
+  days_remaining?: number;
   pace_pct?: number | null;
   pace_status?: string;
   waste_channels?: { channel: string; over_cents: number; utilization?: number | null }[];
+  actions?: PaceAction[];
+  pacing?: { actions?: PaceAction[] };
 }
 interface SpendEvent {
   occurred_at?: string;
@@ -255,7 +265,7 @@ export default function BudgetBoard() {
         {(summary?.waste_channels || []).length > 0 && (
           <div
             style={{
-              marginBottom: 16,
+              marginBottom: 12,
               padding: "12px 14px",
               background: "#FEF3C7",
               border: "1px solid #FCD34D",
@@ -268,6 +278,34 @@ export default function BudgetBoard() {
             {(summary?.waste_channels || [])
               .map((w) => `${w.channel} (+${money(w.over_cents)})`)
               .join(" · ")}
+          </div>
+        )}
+
+        {((summary?.actions || summary?.pacing?.actions || []).length > 0) && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "14px 16px",
+              background: "#fff",
+              border: "1px solid #BBF7D0",
+              borderRadius: 10,
+            }}
+          >
+            <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "#15803D", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+              Pacing actions
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "#475569", marginBottom: 8 }}>
+              Actual burn {money(summary?.actual_daily_cents || 0)}/day ·
+              recommended {money(summary?.recommended_daily_cents || 0)}/day ·
+              {summary?.days_remaining ?? 0} days left
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, color: "#0F172A", fontSize: "0.9rem" }}>
+              {(summary?.actions || summary?.pacing?.actions || []).slice(0, 5).map((a, i) => (
+                <li key={i} style={{ marginBottom: 4 }}>
+                  <strong>{a.action}</strong> — {a.detail}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 

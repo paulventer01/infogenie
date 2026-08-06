@@ -88,15 +88,66 @@ async function _buildSummary(tid) {
   const totalHours = members.reduce((s, m) => s + m.weekly_hours, 0);
   const usedHours = members.reduce((s, m) => s + m.allocated_hours, 0);
   const unassignedHours = agentWork.reduce((s, w) => s + w.estimated_hours, 0);
+  const remainingHours = Math.max(0, totalHours - usedHours);
+
+  // Recommendations: pair top unassigned tasks with least-loaded members
+  const sortedMembers = [...members].sort((a, b) => a.utilization_pct - b.utilization_pct);
+  const recommendations = [];
+  const alreadyAssignedRefs = new Set(
+    assignR.rows.filter((a) => a.source_ref).map((a) => String(a.source_ref)),
+  );
+  const openTasks = agentWork.filter((t) => !alreadyAssignedRefs.has(`agent_task:${t.id}`));
+  for (const task of openTasks.slice(0, 12)) {
+    const candidate = sortedMembers.find((m) => {
+      const room = m.weekly_hours - m.allocated_hours;
+      return room >= (task.estimated_hours || 1) && m.load !== 'overloaded';
+    }) || sortedMembers[0] || null;
+    recommendations.push({
+      task_id: task.id,
+      task_title: task.title,
+      goal_title: task.goal_title,
+      estimated_hours: task.estimated_hours,
+      priority: task.priority,
+      due_date: task.due_date,
+      suggested_member_id: candidate?.id || null,
+      suggested_member_name: candidate?.member_name || null,
+      reason: candidate
+        ? `${candidate.member_name} has ${Math.max(0, candidate.weekly_hours - candidate.allocated_hours)}h free (${candidate.utilization_pct}% util)`
+        : 'No teammates configured — add capacity members first',
+    });
+  }
+
+  const alerts = [];
+  if (members.some((m) => m.load === 'overloaded')) {
+    alerts.push({
+      severity: 'high',
+      message: `${members.filter((m) => m.load === 'overloaded').length} teammate(s) overloaded — rebalance before accepting more work.`,
+    });
+  }
+  if (openTasks.length && remainingHours < unassignedHours) {
+    alerts.push({
+      severity: 'medium',
+      message: `Queue needs ~${unassignedHours}h but only ${remainingHours}h free this week.`,
+    });
+  }
+  if (!members.length) {
+    alerts.push({
+      severity: 'medium',
+      message: 'No capacity roster yet — seed from workspace users or add members.',
+    });
+  }
 
   return {
     ok: true,
     members,
     agent_workload: agentWork,
+    recommendations,
+    alerts,
     totals: {
       members: members.length,
       weekly_hours: totalHours,
       allocated_hours: usedHours,
+      remaining_hours: remainingHours,
       utilization_pct: totalHours > 0 ? Math.round((usedHours / totalHours) * 100) : 0,
       overloaded: members.filter((m) => m.load === 'overloaded').length,
       at_capacity: members.filter((m) => m.load === 'at_capacity').length,
@@ -208,6 +259,94 @@ router.patch('/assignments/:id', _safe(async (req, res) => {
     [status, req.params.id, tid],
   );
   res.json({ ok: true });
+}));
+
+// Auto-assign an agent task (or arbitrary work) to the least-loaded member
+router.post('/assign-best', _safe(async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:assign-best' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  if (!_db.hasDb()) return _err(res, 503, 'database not configured');
+  const summary = await _buildSummary(tid);
+  const taskId = req.body?.task_id;
+  const workItem = String(req.body?.work_item || '').trim();
+  const hours = Number(req.body?.hours) || null;
+  const dueDate = req.body?.due_date || null;
+
+  let rec = null;
+  if (taskId != null) {
+    rec = (summary.recommendations || []).find((r) => String(r.task_id) === String(taskId));
+  }
+  if (!rec && workItem) {
+    const candidate = [...summary.members].sort((a, b) => a.utilization_pct - b.utilization_pct)
+      .find((m) => m.load !== 'overloaded');
+    rec = {
+      task_title: workItem,
+      estimated_hours: hours || 2,
+      suggested_member_id: candidate?.id,
+      suggested_member_name: candidate?.member_name,
+      due_date: dueDate,
+    };
+  }
+  if (!rec?.suggested_member_id) {
+    return _err(res, 400, 'no_available_member');
+  }
+
+  const aid = _id('asg_');
+  const title = rec.task_title || workItem;
+  const est = hours || rec.estimated_hours || 2;
+  const sourceRef = taskId != null ? `agent_task:${taskId}` : null;
+  await _db.getPool().query(
+    `INSERT INTO capacity_assignments
+       (id, tenant_id, member_id, work_item, source, source_ref, hours, due_date, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open')`,
+    [aid, tid, rec.suggested_member_id, title, taskId != null ? 'agent_tasks' : 'manual', sourceRef, est, rec.due_date || dueDate],
+  );
+  res.json({
+    ok: true,
+    id: aid,
+    member_id: rec.suggested_member_id,
+    member_name: rec.suggested_member_name,
+    hours: est,
+    work_item: title,
+  });
+}));
+
+// Seed roster from tenant_users when empty
+router.post('/seed-from-users', _safe(async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:seed' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  if (!_db.hasDb()) return _err(res, 503, 'database not configured');
+  const pool = _db.getPool();
+  const existing = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM team_capacity WHERE tenant_id=$1 AND active=true`,
+    [tid],
+  );
+  if ((existing.rows[0]?.n || 0) > 0 && !req.body?.force) {
+    return res.json({ ok: true, seeded: 0, note: 'roster already has members' });
+  }
+  const users = await pool.query(
+    `SELECT u.id, u.name, u.email, r.key AS role_key, r.name AS role_name
+       FROM tenant_users tu
+       JOIN users u ON u.id = tu.user_id
+       LEFT JOIN roles r ON r.id = tu.role_id
+      WHERE tu.tenant_id=$1 AND tu.status IN ('active','invited')
+      ORDER BY u.name NULLS LAST, u.email
+      LIMIT 40`,
+    [tid],
+  ).catch(() => ({ rows: [] }));
+  let seeded = 0;
+  for (const u of users.rows) {
+    const name = (u.name || u.email || `User ${u.id}`).trim();
+    const mid = _id('cap_');
+    await pool.query(
+      `INSERT INTO team_capacity
+         (id, tenant_id, member_name, role, weekly_hours, allocated_hours, skills, notes, active, updated_at)
+       VALUES ($1,$2,$3,$4,40,0,'[]',$5,true,NOW())`,
+      [mid, tid, name, u.role_name || u.role_key || 'marketer', `seeded from user ${u.id}`],
+    );
+    seeded += 1;
+  }
+  res.json({ ok: true, seeded });
 }));
 
 module.exports = router;

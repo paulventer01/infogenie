@@ -43,6 +43,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "vertical-playbooks": L("vertical-playbooks", () => import("@/components/features/manage/VerticalPlaybooks")),
   flywheel: L("flywheel", () => import("@/components/features/manage/Flywheel")),
   capacity: L("capacity", () => import("@/components/features/aiteam/Capacity")),
+  "canonical-metrics": L("canonical-metrics", () => import("@/components/features/manage/CanonicalMetrics")),
   "playbook-7day": L("playbook-7day", () => import("@/components/features/manage/Playbook7Day")),
   "new-project": L("new-project", () => import("@/components/features/manage/NewProject")),
   "marketing-okr": L("marketing-okr", () => import("@/components/features/manage/MarketingOKR")),

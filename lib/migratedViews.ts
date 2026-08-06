@@ -59,6 +59,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   // to drop), so its suppression relies solely on stripping the `#view-*` div.
   { view: "flywheel", legacyModule: "ig_growth_flywheel.js" },
   { view: "capacity", legacyModule: null },
+  { view: "canonical-metrics", legacyModule: null },
   { view: "playbook-7day", legacyModule: null },
   // ── Remainder of the Manage group (Phase 3 batch 2) ──────────────────────
   // Every panel below either lives inline in app.js or in a SHARED public/js
