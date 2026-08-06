@@ -1,15 +1,11 @@
 "use client";
 
-// Native React port of the legacy `master-calendar` panel (was
-// `window.buildMasterCalendar` inline in app.js + `#view-master-calendar` in
-// index.html). The legacy builder has NO API — it renders the in-memory SPA
-// state that the other legacy builders populate (window._autoSeoArticles /
-// _autoSeoSchedule / _launchedCampaigns / _socialPosts) together with the
-// window._artDate scheduling helper. We read that state once on mount through a
-// guarded, typed accessor (no other data source exists) and render it in JSX;
-// month navigation and the type filter are React state.
+// Master Calendar — unified agenda from `/api/calendar-assistant/master`
+// (brand + content + campaigns + social + SEO). Legacy window state is still
+// merged as a fallback for in-memory SPA data that has not been persisted yet.
 
 import { useEffect, useMemo, useState } from "react";
+import { apiGet } from "@/lib/api";
 
 interface LegacyArticle {
   title?: string;
@@ -43,8 +39,8 @@ interface LegacyState {
   _artDate?: (i: number, sch: AutoSeoSchedule) => string;
 }
 
-type McFilter = "all" | "article" | "campaign" | "social";
-type EventType = "article" | "campaign" | "social";
+type McFilter = "all" | "article" | "campaign" | "social" | "brand" | "content";
+type EventType = "article" | "campaign" | "social" | "brand" | "content";
 
 interface CalEvent {
   date: string;
@@ -57,6 +53,16 @@ interface CalEvent {
   label: string;
   budget?: number;
   roas?: string | number;
+}
+
+interface ApiAgendaEvent {
+  id?: string;
+  source?: string;
+  title?: string;
+  start?: string;
+  status?: string;
+  channel?: string | null;
+  notes?: string;
 }
 
 function readLegacy(): LegacyState {
@@ -90,66 +96,108 @@ const TYPE_ICON: Record<EventType, string> = {
   article: "📝",
   campaign: "🚀",
   social: "📱",
+  brand: "🏷️",
+  content: "🗓️",
 };
 const TYPE_LABEL: Record<EventType, string> = {
   article: "📝 Article",
   campaign: "🚀 Campaign",
   social: "📱 Social",
+  brand: "🏷️ Brand",
+  content: "🗓️ Content",
 };
 const FILTERS: { key: McFilter; label: string }[] = [
   { key: "all", label: "All Events" },
   { key: "article", label: "📝 Articles" },
   { key: "campaign", label: "🚀 Campaigns" },
   { key: "social", label: "📱 Social" },
+  { key: "brand", label: "🏷️ Brand" },
+  { key: "content", label: "🗓️ Content" },
 ];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function mapSource(source?: string): EventType {
+  if (source === "campaign") return "campaign";
+  if (source === "social") return "social";
+  if (source === "article") return "article";
+  if (source === "content") return "content";
+  return "brand";
+}
+
+function styleFor(type: EventType, status: string, risk: boolean) {
+  if (risk) return { color: "#D97706", bg: "#FEF3C7", label: "⚠️ At Risk" };
+  if (type === "campaign") {
+    const live = status === "active" || status === "live";
+    return { color: live ? "#7C3AED" : "#6B7280", bg: live ? "#F5F3FF" : "#F3F4F6", label: live ? "🔵 Live" : "Ended" };
+  }
+  if (type === "social" || type === "content") {
+    const done = status === "published" || status === "done";
+    return { color: done ? "#059669" : "#9333EA", bg: done ? "#DCFCE7" : "#F5F3FF", label: done ? "Published" : "📅 Scheduled" };
+  }
+  if (type === "article") {
+    if (status === "published") return { color: "#059669", bg: "#DCFCE7", label: "Published" };
+    if (status === "generated") return { color: "#1D4ED8", bg: "#DBEAFE", label: "Written" };
+    return { color: "#6B7280", bg: "#F3F4F6", label: "Pending" };
+  }
+  return { color: "#0F766E", bg: "#CCFBF1", label: status || "Planned" };
+}
 
 export default function MasterCalendar() {
   const today = useMemo(() => new Date(), []);
   const todayIso = useMemo(() => isoOf(today), [today]);
 
   const [snap, setSnap] = useState<LegacyState>({});
+  const [apiEvents, setApiEvents] = useState<CalEvent[]>([]);
   const [filter, setFilter] = useState<McFilter>("all");
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [viewYear, setViewYear] = useState(today.getFullYear());
 
   useEffect(() => {
     setSnap(readLegacy());
-  }, []);
+    let cancelled = false;
+    (async () => {
+      const from = new Date(Date.now() - 45 * 864e5).toISOString();
+      const to = new Date(Date.now() + 60 * 864e5).toISOString();
+      const r = await apiGet<{ ok?: boolean; events?: ApiAgendaEvent[] }>(
+        `/api/calendar-assistant/master?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      );
+      if (cancelled || !r?.events) return;
+      const mapped: CalEvent[] = r.events.map((e) => {
+        const date = (e.start || todayIso).slice(0, 10);
+        const type = mapSource(e.source);
+        const status = e.status || "planned";
+        const risk = type === "campaign" && /paused|risk/i.test(status);
+        const sty = styleFor(type, status, risk);
+        return {
+          date,
+          type,
+          title: e.title || "Untitled",
+          status: type === "campaign" && (status === "active" || status === "live") ? "live" : status,
+          risk,
+          color: sty.color,
+          bg: sty.bg,
+          label: sty.label,
+        };
+      });
+      setApiEvents(mapped);
+    })().catch(() => { /* keep legacy */ });
+    return () => { cancelled = true; };
+  }, [todayIso]);
 
   const events = useMemo<CalEvent[]>(() => {
     const sch: AutoSeoSchedule = snap._autoSeoSchedule || {};
-    const out: CalEvent[] = [];
+    const out: CalEvent[] = [...apiEvents];
+    const seen = new Set(out.map((e) => `${e.type}:${e.date}:${e.title}`));
 
     (snap._autoSeoArticles || []).forEach((a, i) => {
       const d = articleDate(snap, i, sch, todayIso);
+      const title = a.title || "Article #" + (i + 1);
+      const key = `article:${d}:${title}`;
+      if (seen.has(key)) return;
       const isPast = d < todayIso;
       const risk = isPast && a.status !== "published" && a.status !== "generated";
-      out.push({
-        date: d,
-        type: "article",
-        title: a.title || "Article #" + (i + 1),
-        status: a.status || "pending",
-        risk,
-        color:
-          a.status === "published"
-            ? "#059669"
-            : a.status === "generated"
-              ? "#1D4ED8"
-              : "#6B7280",
-        bg:
-          a.status === "published"
-            ? "#DCFCE7"
-            : a.status === "generated"
-              ? "#DBEAFE"
-              : "#F3F4F6",
-        label:
-          a.status === "published"
-            ? "Published"
-            : a.status === "generated"
-              ? "Written"
-              : "Pending",
-      });
+      const sty = styleFor("article", a.status || "pending", risk);
+      out.push({ date: d, type: "article", title, status: a.status || "pending", risk, ...sty });
     });
 
     (snap._launchedCampaigns || []).forEach((c) => {
@@ -158,43 +206,35 @@ export default function MasterCalendar() {
       try {
         const dt = new Date(raw);
         if (!isNaN(dt.getTime())) d = isoOf(dt);
-      } catch {
-        /* keep todayIso */
-      }
+      } catch { /* keep todayIso */ }
+      const title = (c.name || "Campaign") + " · " + (c.platform || "");
+      const key = `campaign:${d}:${title}`;
+      if (seen.has(key)) return;
       const roas = parseFloat(String(c.metrics && c.metrics.roas)) || 0;
       const risk = roas > 0 && roas < 2;
       const isLive = c.status === "active";
+      const sty = styleFor("campaign", isLive ? "live" : "ended", risk);
       out.push({
-        date: d,
-        type: "campaign",
-        title: (c.name || "Campaign") + " · " + (c.platform || ""),
-        status: isLive ? "live" : "ended",
-        risk,
-        color: risk ? "#D97706" : isLive ? "#7C3AED" : "#6B7280",
-        bg: risk ? "#FEF3C7" : isLive ? "#F5F3FF" : "#F3F4F6",
-        label: risk ? "⚠️ At Risk" : isLive ? "🔵 Live" : "Ended",
-        budget: c.budget,
-        roas: c.metrics && c.metrics.roas,
+        date: d, type: "campaign", title,
+        status: isLive ? "live" : "ended", risk,
+        color: sty.color, bg: sty.bg, label: sty.label,
+        budget: c.budget, roas: c.metrics && c.metrics.roas,
       });
     });
 
     (snap._socialPosts || []).forEach((p) => {
       const d = p.scheduledDate || todayIso;
+      const title = (p.caption || "Social post").substring(0, 45);
+      const key = `social:${d}:${title}`;
+      if (seen.has(key)) return;
       const isPast = d < todayIso;
-      out.push({
-        date: d,
-        type: "social",
-        title: (p.caption || "Social post").substring(0, 45),
-        status: p.status || (isPast ? "published" : "scheduled"),
-        risk: false,
-        color: isPast ? "#059669" : "#9333EA",
-        bg: isPast ? "#DCFCE7" : "#F5F3FF",
-        label: isPast ? "Published" : "📅 Scheduled",
-      });
+      const status = p.status || (isPast ? "published" : "scheduled");
+      const sty = styleFor("social", status, false);
+      out.push({ date: d, type: "social", title, status, risk: false, ...sty });
     });
 
     return out;
-  }, [snap, todayIso]);
+  }, [snap, todayIso, apiEvents]);
 
   const in7Iso = useMemo(
     () => isoOf(new Date(Date.now() + 7 * 864e5)),

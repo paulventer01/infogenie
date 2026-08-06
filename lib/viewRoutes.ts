@@ -496,6 +496,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "playbook-7day", icon: "📖", label: "7-Day Marketing Playbook" },
           { view: "growth-methodology", icon: "💶", label: "Growth Methodology (5-stage)" },
           { view: "flywheel", icon: "🔁", label: "Performance Growth Flywheel" },
+          { view: "capacity", icon: "👥", label: "Team Capacity & Workload" },
         ],
       },
       {

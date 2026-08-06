@@ -767,5 +767,87 @@ router.post('/dismiss/:id', async (req, res) => {
   res.json({ ok:true, learned:true });
 });
 
+// POST /api/decision-engine/outcome/:id — record measured result after acting
+router.post('/outcome/:id', async (req, res) => {
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'decision-engine:outcome' });
+    if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
+    const result = String(req.body?.result || req.body?.outcome_result || '').trim();
+    if (!result) return res.status(400).json({ ok: false, error: 'result required (won|lost|mixed|inconclusive)' });
+    const notes = String(req.body?.notes || req.body?.outcome_notes || '').trim();
+    const metric = req.body?.metric && typeof req.body.metric === 'object' ? req.body.metric : {};
+    const p = await _db.getPool();
+    const upd = await p.query(
+      `UPDATE decision_recommendations
+          SET outcome_result=$1, outcome_notes=$2, outcome_metric=$3, outcome_at=NOW()
+        WHERE id=$4 AND tenant_id=$5
+        RETURNING id, title, category, expected_impact, entities, acted_at`,
+      [result, notes || null, JSON.stringify(metric), req.params.id, tid],
+    );
+    const row = upd.rows[0];
+    if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
+
+    if (_ingestMemoryNode) {
+      try {
+        await _ingestMemoryNode({
+          tenant_id: tid,
+          node_type: 'campaign_result',
+          summary: `Outcome ${result} for Decision Engine rec (${row.category}): ${row.title}`,
+          detail: {
+            outcome: 'measured',
+            outcome_result: result,
+            notes,
+            metric,
+            category: row.category,
+            title: row.title,
+            expected_impact: row.expected_impact,
+            entities: row.entities,
+            decision_id: row.id,
+            acted_at: row.acted_at,
+          },
+          source_ref: `decision:${row.id}:outcome:${result}`,
+          importance: result === 'won' ? 0.9 : result === 'lost' ? 0.85 : 0.7,
+        });
+      } catch (e) {
+        console.warn('[decision-engine] outcome memory ingest failed:', e.message);
+      }
+    }
+    res.json({ ok: true, learned: true, id: row.id, result });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /api/decision-engine/learning — rollup for flywheel / weekly report
+router.get('/learning', async (req, res) => {
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'decision-engine:learning' });
+    if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
+    const p = await _db.getPool();
+    const stats = await p.query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE acted_at IS NOT NULL)::int AS acted,
+         COUNT(*) FILTER (WHERE dismissed_at IS NOT NULL)::int AS dismissed,
+         COUNT(*) FILTER (WHERE outcome_result IS NOT NULL)::int AS measured,
+         COUNT(*) FILTER (WHERE outcome_result = 'won')::int AS won,
+         COUNT(*) FILTER (WHERE outcome_result = 'lost')::int AS lost
+       FROM decision_recommendations
+       WHERE tenant_id=$1 AND created_at >= NOW() - INTERVAL '90 days'`,
+      [tid],
+    ).catch(() => ({ rows: [{}] }));
+    const recent = await p.query(
+      `SELECT id, title, category, outcome_result, outcome_notes, outcome_at, expected_impact, acted_at
+         FROM decision_recommendations
+        WHERE tenant_id=$1 AND outcome_at IS NOT NULL
+        ORDER BY outcome_at DESC LIMIT 10`,
+      [tid],
+    ).catch(() => ({ rows: [] }));
+    res.json({ ok: true, window_days: 90, stats: stats.rows[0] || {}, recent: recent.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;
 module.exports.runAnalyse = runAnalyse;

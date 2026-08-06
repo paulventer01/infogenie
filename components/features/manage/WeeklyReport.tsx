@@ -16,6 +16,10 @@ interface ReportSection {
   kind?: string;
   rows?: unknown[];
   body?: string;
+  wins?: string[];
+  risks?: string[];
+  next_actions?: string[];
+  tone?: string;
 }
 interface Report {
   title: string;
@@ -366,7 +370,26 @@ export default function WeeklyReport() {
                   }}
                 >
                   <div style={{ fontWeight: 700, color: "#0A1628" }}>{s.title}</div>
-                  {s.kind === "table" ? (
+                  {s.kind === "narrative" ? (
+                    <div style={{ fontSize: "0.82rem", color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
+                      <p style={{ margin: "0 0 8px" }}>{s.body || ""}</p>
+                      {(s.wins || []).length > 0 && (
+                        <div style={{ marginBottom: 6 }}>
+                          <strong>Wins:</strong> {(s.wins || []).join(" · ")}
+                        </div>
+                      )}
+                      {(s.risks || []).length > 0 && (
+                        <div style={{ marginBottom: 6 }}>
+                          <strong>Risks:</strong> {(s.risks || []).join(" · ")}
+                        </div>
+                      )}
+                      {(s.next_actions || []).length > 0 && (
+                        <div>
+                          <strong>Next:</strong> {(s.next_actions || []).join(" · ")}
+                        </div>
+                      )}
+                    </div>
+                  ) : s.kind === "table" ? (
                     <div style={{ fontSize: "0.74rem", color: "#6B7280", marginTop: 3 }}>
                       {(s.rows || []).length} row(s)
                     </div>

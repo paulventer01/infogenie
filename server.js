@@ -2779,6 +2779,19 @@ const _calAsstRouter = require('./services/calendar_assistant/api');
 app.use('/api/calendar-assistant', _calAsstRouter);
 app.use('/api/budget',          _budgetRouter);
 app.use('/api/web-analytics',   _webAnalRouter);
+const _canonicalMetricsRouter = require('./services/canonical_metrics/api');
+app.use('/api/metrics',         _canonicalMetricsRouter);
+const _capacitySchema = require('./services/capacity/schema');
+const _capacityRouter = require('./services/capacity/api');
+app.use('/api/capacity',        _capacityRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _capacitySchema.ensureCapacitySchema();
+      console.log('[capacity] schema ready');
+    }
+  } catch (e) { console.error('[capacity] init failed:', e.message); }
+});
 const _companyOverviewSchema = require('./services/company_overview/schema');
 const _companyOverviewRouter = require('./services/company_overview/api');
 app.use('/api/company-overview', _companyOverviewRouter);

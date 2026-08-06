@@ -106,6 +106,37 @@ router.get('/summary', async (req, res) => {
          GROUP BY day ORDER BY day`,
       [tid]
     );
+    // Live pacing: project month-end spend from days elapsed vs days in month.
+    const [y, m] = period.split('-').map(Number);
+    const daysInMonth = (y && m) ? new Date(y, m, 0).getDate() : 30;
+    const now = new Date();
+    const isCurrentMonth = period === _ymNow();
+    const dayOfMonth = isCurrentMonth ? now.getUTCDate() : daysInMonth;
+    const expected_spend_cents = target_cents
+      ? Math.round(target_cents * (dayOfMonth / daysInMonth))
+      : 0;
+    const projected_month_end_cents = dayOfMonth > 0
+      ? Math.round(total_spent * (daysInMonth / dayOfMonth))
+      : total_spent;
+    const pace_pct = expected_spend_cents > 0
+      ? Math.round((total_spent / expected_spend_cents) * 100)
+      : (target_cents ? Math.round((total_spent / target_cents) * 100) : null);
+    let pace_status = 'unknown';
+    if (pace_pct != null) {
+      if (pace_pct >= 120) pace_status = 'overspending';
+      else if (pace_pct >= 105) pace_status = 'ahead';
+      else if (pace_pct >= 85) pace_status = 'on_pace';
+      else if (pace_pct >= 60) pace_status = 'underspending';
+      else pace_status = 'far_behind';
+    }
+    const waste_channels = by_channel
+      .filter(c => c.allocated_cents > 0 && c.spent_cents > c.allocated_cents * 1.15)
+      .map(c => ({
+        channel: c.channel,
+        over_cents: c.spent_cents - c.allocated_cents,
+        utilization: c.utilization,
+      }));
+
     res.json({
       period_month: period,
       target_cents,
@@ -113,7 +144,15 @@ router.get('/summary', async (req, res) => {
       remaining_cents: target_cents - total_spent,
       utilization_pct: target_cents ? Math.round(total_spent / target_cents * 100) : null,
       by_channel,
-      daily_30d: tRow.rows.map(r => ({ day: r.day, spent_cents: Number(r.spent) }))
+      daily_30d: tRow.rows.map(r => ({ day: r.day, spent_cents: Number(r.spent) })),
+      // Live pacing / waste
+      day_of_month: dayOfMonth,
+      days_in_month: daysInMonth,
+      expected_spend_cents,
+      projected_month_end_cents,
+      pace_pct,
+      pace_status,
+      waste_channels,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

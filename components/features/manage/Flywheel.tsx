@@ -84,10 +84,21 @@ interface StageData {
   tools: { label: string; view: string }[];
 }
 
+interface LearningStrip {
+  acted?: number;
+  dismissed?: number;
+  measured?: number;
+  won?: number;
+  lost?: number;
+  compound_message?: string;
+  recent?: { title?: string; outcome_result?: string; category?: string }[];
+}
+
 interface FlywheelData {
   stages: Record<StageId, StageData>;
   order: StageId[];
   nextAction: { stage: StageId; message: string; view: string };
+  learning?: LearningStrip;
 }
 
 const IG = {
@@ -421,6 +432,30 @@ export default function Flywheel() {
                   <span>Loop coverage</span>
                 </div>
               </div>
+
+              {data.learning && (
+                <div
+                  style={{
+                    position: "relative",
+                    marginTop: 16,
+                    padding: "14px 16px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(11,18,32,.1)",
+                    background: "rgba(255,255,255,.85)",
+                  }}
+                >
+                  <div style={{ fontSize: ".68rem", fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: IG.teal, marginBottom: 6 }}>
+                    Learning loop
+                  </div>
+                  <div style={{ fontSize: ".9rem", fontWeight: 700, color: IG.ink, marginBottom: 4 }}>
+                    {(data.learning.won || 0)} wins · {(data.learning.lost || 0)} losses · {(data.learning.measured || 0)} measured
+                    <span style={{ color: IG.muted, fontWeight: 600 }}> · {(data.learning.acted || 0)} acted / {(data.learning.dismissed || 0)} dismissed</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: ".82rem", color: IG.muted, lineHeight: 1.45 }}>
+                    {data.learning.compound_message}
+                  </p>
+                </div>
+              )}
 
               <div className="ig-fw-loop">
                 <div className="ig-fw-loop-head">

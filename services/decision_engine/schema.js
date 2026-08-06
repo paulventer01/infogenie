@@ -29,6 +29,11 @@ async function ensureDecisionEngineSchema() {
   await p.query(`ALTER TABLE decision_recommendations ADD COLUMN IF NOT EXISTS entities JSONB DEFAULT '{}'`).catch(() => {});
   await p.query(`ALTER TABLE decision_recommendations ADD COLUMN IF NOT EXISTS problem_summary TEXT`).catch(() => {});
   await p.query(`ALTER TABLE decision_recommendations ADD COLUMN IF NOT EXISTS change_summary TEXT`).catch(() => {});
+  // Outcome compounding — close the learning loop after act/dismiss
+  await p.query(`ALTER TABLE decision_recommendations ADD COLUMN IF NOT EXISTS outcome_result TEXT`).catch(() => {});
+  await p.query(`ALTER TABLE decision_recommendations ADD COLUMN IF NOT EXISTS outcome_notes TEXT`).catch(() => {});
+  await p.query(`ALTER TABLE decision_recommendations ADD COLUMN IF NOT EXISTS outcome_metric JSONB DEFAULT '{}'`).catch(() => {});
+  await p.query(`ALTER TABLE decision_recommendations ADD COLUMN IF NOT EXISTS outcome_at TIMESTAMPTZ`).catch(() => {});
 }
 
 module.exports = { ensureDecisionEngineSchema };

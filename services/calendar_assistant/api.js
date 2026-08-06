@@ -37,7 +37,7 @@ async function _loadAgenda(tid, from, to) {
   if (from) { brandParams.push(from); brandConds.push(`scheduled_at >= $${brandParams.length}`); }
   if (to) { brandParams.push(to); brandConds.push(`scheduled_at <= $${brandParams.length}`); }
 
-  const [brand, content] = await Promise.all([
+  const [brand, content, campaigns, social, seo] = await Promise.all([
     p.query(
       `SELECT * FROM brand_calendar_items WHERE ${brandConds.join(' AND ')} ORDER BY scheduled_at ASC LIMIT 500`,
       brandParams,
@@ -47,11 +47,43 @@ async function _loadAgenda(tid, from, to) {
        WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 20`,
       [tid],
     ).catch(() => ({ rows: [] })),
+    p.query(
+      `SELECT id, name, platform, status, budget, launched_at, created_at
+         FROM ad_campaigns
+        WHERE tenant_id = $1
+          AND COALESCE(launched_at, created_at) >= COALESCE($2::timestamptz, now() - interval '90 days')
+          AND COALESCE(launched_at, created_at) <= COALESCE($3::timestamptz, now() + interval '90 days')
+        ORDER BY COALESCE(launched_at, created_at) ASC
+        LIMIT 200`,
+      [tid, from || null, to || null],
+    ).catch(() => ({ rows: [] })),
+    // social_posts / scheduled drafts — best-effort across schema variants
+    p.query(
+      `SELECT id, caption, title, platform, channel, status, scheduled_at, created_at
+         FROM social_posts
+        WHERE tenant_id = $1
+          AND COALESCE(scheduled_at, created_at) >= COALESCE($2::timestamptz, now() - interval '30 days')
+          AND COALESCE(scheduled_at, created_at) <= COALESCE($3::timestamptz, now() + interval '60 days')
+        ORDER BY COALESCE(scheduled_at, created_at) ASC
+        LIMIT 300`,
+      [tid, from || null, to || null],
+    ).catch(() => ({ rows: [] })),
+    p.query(
+      `SELECT id, title, status, publish_at, scheduled_at, destination
+         FROM seo_autopilot_articles
+        WHERE tenant_id = $1
+        ORDER BY COALESCE(publish_at, scheduled_at, created_at) ASC
+        LIMIT 200`,
+      [tid],
+    ).catch(() => ({ rows: [] })),
   ]);
 
   return buildAgenda({
     brandItems: brand.rows,
     contentRuns: content.rows,
+    campaigns: campaigns.rows,
+    socialPosts: social.rows,
+    seoArticles: seo.rows,
     from,
     to,
   });
@@ -77,12 +109,18 @@ router.get('/agenda', _route(async (req, res) => {
   const to = req.query.to || new Date(Date.now() + 21 * 864e5).toISOString();
   const events = await _loadAgenda(tid, from, to);
   const conflictReport = detectConflicts(events);
+  const bySource = {};
+  for (const e of events) {
+    bySource[e.source] = (bySource[e.source] || 0) + 1;
+  }
   res.json({
     ok: true,
     from,
     to,
     events,
     count: events.length,
+    bySource,
+    unified: true,
     healthScore: conflictReport.healthScore,
     conflictSummary: {
       overlaps: conflictReport.overlapCount,
@@ -90,6 +128,17 @@ router.get('/agenda', _route(async (req, res) => {
       busyDays: conflictReport.busyDayCount,
     },
   });
+}));
+
+// Master Calendar façade — same unified agenda, wider default window
+router.get('/master', _route(async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'calendar-assistant:master' });
+  const from = req.query.from || new Date(Date.now() - 14 * 864e5).toISOString();
+  const to = req.query.to || new Date(Date.now() + 45 * 864e5).toISOString();
+  const events = await _loadAgenda(tid, from, to);
+  const bySource = {};
+  for (const e of events) bySource[e.source] = (bySource[e.source] || 0) + 1;
+  res.json({ ok: true, from, to, events, count: events.length, bySource, unified: true });
 }));
 
 router.get('/conflicts', _route(async (req, res) => {

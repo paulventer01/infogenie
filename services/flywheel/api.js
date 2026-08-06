@@ -65,10 +65,50 @@ router.get('/summary', async (req, res) => {
       report:        'Close the loop with a weekly digest — then set the next goal.',
     };
 
+    // Institutional memory / learning strip from Decision Engine outcomes
+    let learning = {
+      acted: 0, dismissed: 0, measured: 0, won: 0, lost: 0,
+      recent: [], compound_message: 'Record outcomes on acted recommendations to compound learning.',
+    };
+    try {
+      const pool = _db.getPool();
+      const lr = await pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE acted_at IS NOT NULL)::int AS acted,
+           COUNT(*) FILTER (WHERE dismissed_at IS NOT NULL)::int AS dismissed,
+           COUNT(*) FILTER (WHERE outcome_result IS NOT NULL)::int AS measured,
+           COUNT(*) FILTER (WHERE outcome_result = 'won')::int AS won,
+           COUNT(*) FILTER (WHERE outcome_result = 'lost')::int AS lost
+         FROM decision_recommendations
+         WHERE tenant_id=$1 AND created_at >= NOW() - INTERVAL '90 days'`,
+        [tid],
+      );
+      const recent = await pool.query(
+        `SELECT title, outcome_result, outcome_at, category
+           FROM decision_recommendations
+          WHERE tenant_id=$1 AND outcome_at IS NOT NULL
+          ORDER BY outcome_at DESC LIMIT 5`,
+        [tid],
+      );
+      const s = lr.rows[0] || {};
+      learning = {
+        acted: s.acted || 0,
+        dismissed: s.dismissed || 0,
+        measured: s.measured || 0,
+        won: s.won || 0,
+        lost: s.lost || 0,
+        recent: recent.rows || [],
+        compound_message: (s.measured || 0) > 0
+          ? `${s.won || 0} wins / ${s.lost || 0} losses measured — the next analyse run will prefer what worked.`
+          : 'Act on recommendations, then log outcomes so the loop compounds.',
+      };
+    } catch (_) { /* decision_recommendations may be empty */ }
+
     res.json({
       stages,
       order,
       nextAction: { stage: minStage, message: nextMessages[minStage], view: stages[minStage].view },
+      learning,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

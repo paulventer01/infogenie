@@ -22,6 +22,11 @@ interface Summary {
   remaining_cents?: number;
   utilization_pct?: number | null;
   by_channel: ChannelBreakdown[];
+  projected_month_end_cents?: number;
+  expected_spend_cents?: number;
+  pace_pct?: number | null;
+  pace_status?: string;
+  waste_channels?: { channel: string; over_cents: number; utilization?: number | null }[];
 }
 interface SpendEvent {
   occurred_at?: string;
@@ -146,6 +151,16 @@ export default function BudgetBoard() {
 
   const remaining = summary?.remaining_cents ?? 0;
   const util = summary?.utilization_pct;
+  const pace = summary?.pace_pct;
+  const paceStatus = summary?.pace_status || "unknown";
+  const paceColor =
+    paceStatus === "overspending" || paceStatus === "ahead"
+      ? "#DC2626"
+      : paceStatus === "on_pace"
+        ? "#16A34A"
+        : paceStatus === "underspending" || paceStatus === "far_behind"
+          ? "#F59E0B"
+          : "#64748B";
   const kpis = summary
     ? [
         { label: "Target", val: money(summary.target_cents || 0), color: "#0F172A" },
@@ -159,6 +174,16 @@ export default function BudgetBoard() {
           label: "Utilization",
           val: util == null ? "—" : util + "%",
           color: (util ?? 0) > 100 ? "#DC2626" : (util ?? 0) > 80 ? "#F59E0B" : "#16A34A",
+        },
+        {
+          label: "Pace",
+          val: pace == null ? "—" : `${pace}% · ${paceStatus.replace(/_/g, " ")}`,
+          color: paceColor,
+        },
+        {
+          label: "Projected month-end",
+          val: money(summary.projected_month_end_cents || 0),
+          color: (summary.projected_month_end_cents || 0) > (summary.target_cents || 0) ? "#DC2626" : "#0F172A",
         },
       ]
     : [];
@@ -196,9 +221,9 @@ export default function BudgetBoard() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4,1fr)",
+            gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
             gap: 12,
-            marginBottom: 20,
+            marginBottom: 12,
           }}
         >
           {kpis.map((k) => (
@@ -222,10 +247,29 @@ export default function BudgetBoard() {
               >
                 {k.label}
               </div>
-              <div style={{ fontSize: "1.4rem", fontWeight: 800, color: k.color }}>{k.val}</div>
+              <div style={{ fontSize: "1.15rem", fontWeight: 800, color: k.color }}>{k.val}</div>
             </div>
           ))}
         </div>
+
+        {(summary?.waste_channels || []).length > 0 && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "12px 14px",
+              background: "#FEF3C7",
+              border: "1px solid #FCD34D",
+              borderRadius: 10,
+              color: "#92400E",
+              fontSize: "0.88rem",
+            }}
+          >
+            <strong>Channel overspend:</strong>{" "}
+            {(summary?.waste_channels || [])
+              .map((w) => `${w.channel} (+${money(w.over_cents)})`)
+              .join(" · ")}
+          </div>
+        )}
 
         <div
           style={{

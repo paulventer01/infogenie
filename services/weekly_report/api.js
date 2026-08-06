@@ -108,16 +108,147 @@ async function _gatherSections(brand, tid) {
     rows: yt.map(r => [String(r.channel_name||'').slice(0,40), String(r.video_count||0), String(r.total_views||0)])
   });
 
+  // 9) Canonical metrics snapshot (SSOT)
+  try {
+    const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
+    const m = await computeCanonicalMetrics(tid, { days: 7 });
+    sections.push({
+      title: '📐 Canonical Metrics (7 days)',
+      kind: 'table',
+      headers: ['Metric', 'Value'],
+      rows: [
+        ['Spend', `$${Number(m.spend || 0).toFixed(2)}`],
+        ['Blended ROAS', m.blended_roas != null ? String(m.blended_roas) : '—'],
+        ['True ROAS', m.true_roas != null ? String(m.true_roas) : '—'],
+        ['CAC', m.cac != null ? `$${m.cac}` : '—'],
+        ['Waste (underwater channels)', `$${(Number(m.waste_cents || 0) / 100).toFixed(2)}`],
+      ],
+    });
+    if (m.goals_vs_actuals?.length) {
+      sections.push({
+        title: '🎯 Goals vs Actuals',
+        kind: 'table',
+        headers: ['Goal', 'Target', 'Actual', 'Status'],
+        rows: m.goals_vs_actuals.slice(0, 10).map(g => [
+          String(g.label || '').slice(0, 50),
+          String(g.target ?? '—'),
+          String(g.actual ?? '—'),
+          String(g.status || '—'),
+        ]),
+      });
+    }
+  } catch (_) { /* optional */ }
+
+  // 10) Institutional memory — decision outcomes this week
+  const learned = await safe(
+    `SELECT title, category, acted_at, dismissed_at, outcome_result, outcome_notes, expected_impact
+       FROM decision_recommendations
+      WHERE tenant_id=$1
+        AND (acted_at >= ${since} OR dismissed_at >= ${since} OR outcome_at >= ${since})
+      ORDER BY COALESCE(outcome_at, acted_at, dismissed_at) DESC
+      LIMIT 15`,
+    [tid],
+  );
+  if (learned.length) {
+    sections.push({
+      title: `🧠 Learning Loop — ${learned.length} decision outcome(s)`,
+      kind: 'table',
+      headers: ['Decision', 'Category', 'Action', 'Result'],
+      rows: learned.map(r => [
+        String(r.title || '').slice(0, 50),
+        r.category || '',
+        r.acted_at ? 'acted' : r.dismissed_at ? 'dismissed' : '—',
+        String(r.outcome_result || r.expected_impact || '').slice(0, 60),
+      ]),
+    });
+  }
+
   if (!sections.length) sections.push({ title: 'No activity', kind:'text', body:`No data captured for "${brand}" in the last 7 days. Add the brand to Crisis Radar watchlist, run a Voice of Customer scan, or enable AI Optimizer to start collecting data.` });
   return sections;
 }
 
+function _hasOpenAI() {
+  const k = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  return !!(k && !/^_DUMMY/i.test(k));
+}
+
+async function _buildNarrative(brand, sections) {
+  const digest = sections.map(s => {
+    if (s.kind === 'text') return `${s.title}: ${s.body || ''}`;
+    const rows = (s.rows || []).slice(0, 4).map(r => Array.isArray(r) ? r.join(' | ') : String(r)).join('; ');
+    return `${s.title}: ${rows}`;
+  }).join('\n').slice(0, 3500);
+
+  const fallback = {
+    executive_summary: `Weekly intelligence for ${brand}: ${sections.length} section(s) covering performance, brand signals, and learning outcomes.`,
+    wins: sections.filter(s => /SoV|YouTube|Goals|Canonical/i.test(s.title)).slice(0, 3).map(s => s.title.replace(/^[^\w]+/, '')),
+    risks: sections.filter(s => /Crisis|Learning|Waste|Optimizer/i.test(s.title)).slice(0, 3).map(s => s.title.replace(/^[^\w]+/, '')),
+    next_actions: [
+      'Act on the highest-priority item in the Daily Action Queue',
+      'Review Budget Board pacing before the week closes',
+      'Close the loop on any open Decision Engine recommendations',
+    ],
+    tone: 'deterministic',
+  };
+  if (!fallback.wins.length) fallback.wins = ['Data collection active — keep instrumentation running'];
+  if (!fallback.risks.length) fallback.risks = ['No critical brand incidents flagged in the digest'];
+
+  if (!_hasOpenAI()) return fallback;
+
+  try {
+    const OpenAI = require('openai');
+    const client = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+    });
+    const resp = await client.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: 'You write concise client-ready marketing weekly narratives. Return JSON: {"executive_summary":"2-3 sentences","wins":["..."],"risks":["..."],"next_actions":["..."]}',
+        },
+        {
+          role: 'user',
+          content: `Brand: ${brand}\nWeekly digest:\n${digest}`,
+        },
+      ],
+    });
+    const raw = resp.choices?.[0]?.message?.content || '{}';
+    const parsed = JSON.parse(raw);
+    return {
+      executive_summary: String(parsed.executive_summary || fallback.executive_summary),
+      wins: Array.isArray(parsed.wins) ? parsed.wins.slice(0, 5) : fallback.wins,
+      risks: Array.isArray(parsed.risks) ? parsed.risks.slice(0, 5) : fallback.risks,
+      next_actions: Array.isArray(parsed.next_actions) ? parsed.next_actions.slice(0, 5) : fallback.next_actions,
+      tone: 'ai',
+    };
+  } catch (e) {
+    console.warn('[weekly-report] narrative AI failed:', e.message);
+    return fallback;
+  }
+}
+
 async function _buildReport(brand, tid) {
   const sections = await _gatherSections(brand, tid);
+  const narrative = await _buildNarrative(brand, sections);
+  // Put narrative first so PDF/email lead with the story
+  const narrativeSection = {
+    title: '✍️ Executive Narrative',
+    kind: 'narrative',
+    body: narrative.executive_summary,
+    wins: narrative.wins,
+    risks: narrative.risks,
+    next_actions: narrative.next_actions,
+    tone: narrative.tone,
+  };
   return {
     title: `${brand} — Weekly Intelligence Report`,
     generated_at: new Date().toISOString(),
-    sections
+    narrative,
+    sections: [narrativeSection, ...sections],
   };
 }
 

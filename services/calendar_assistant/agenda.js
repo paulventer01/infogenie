@@ -53,7 +53,68 @@ function normalizeContentPost(post, run, idx) {
   };
 }
 
-function buildAgenda({ brandItems = [], contentRuns = [], from, to }) {
+function normalizeCampaign(row) {
+  const start = _parseStart(row.launched_at || row.created_at || row.start_date);
+  if (!start) return null;
+  const end = new Date(start.getTime() + DEFAULT_DURATION_MIN * 60000);
+  return {
+    id: row.id || `camp_${start.toISOString()}`,
+    source: 'campaign',
+    calendar: 'campaigns',
+    category: row.platform || 'campaign',
+    title: row.name || row.title || 'Campaign',
+    start: start.toISOString(),
+    end: end.toISOString(),
+    status: row.status || 'active',
+    notes: row.budget != null ? `Budget: ${row.budget}` : '',
+    channel: row.platform || null,
+  };
+}
+
+function normalizeSocialPost(row) {
+  const start = _parseStart(row.scheduled_at || row.scheduledDate || row.created_at, row.best_time);
+  if (!start) return null;
+  const end = new Date(start.getTime() + DEFAULT_DURATION_MIN * 60000);
+  return {
+    id: row.id || `soc_${start.toISOString()}`,
+    source: 'social',
+    calendar: 'social',
+    category: row.platform || row.channel || 'social',
+    title: String(row.caption || row.title || row.copy || 'Social post').slice(0, 80),
+    start: start.toISOString(),
+    end: end.toISOString(),
+    status: row.status || 'scheduled',
+    notes: '',
+    channel: row.platform || row.channel || null,
+  };
+}
+
+function normalizeSeoArticle(row, idx = 0) {
+  const start = _parseStart(row.publish_at || row.scheduled_at || row.customDate || row.date);
+  if (!start) return null;
+  const end = new Date(start.getTime() + DEFAULT_DURATION_MIN * 60000);
+  return {
+    id: row.id || `seo_${idx}_${start.toISOString()}`,
+    source: 'article',
+    calendar: 'seo',
+    category: 'article',
+    title: row.title || `Article #${idx + 1}`,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    status: row.status || 'pending',
+    notes: row.destination || '',
+  };
+}
+
+function buildAgenda({
+  brandItems = [],
+  contentRuns = [],
+  campaigns = [],
+  socialPosts = [],
+  seoArticles = [],
+  from,
+  to,
+}) {
   const events = [];
   for (const row of brandItems) {
     const e = normalizeBrandItem(row);
@@ -67,6 +128,18 @@ function buildAgenda({ brandItems = [], contentRuns = [], from, to }) {
       if (e) events.push(e);
     });
   }
+  for (const row of campaigns) {
+    const e = normalizeCampaign(row);
+    if (e) events.push(e);
+  }
+  for (const row of socialPosts) {
+    const e = normalizeSocialPost(row);
+    if (e) events.push(e);
+  }
+  seoArticles.forEach((row, i) => {
+    const e = normalizeSeoArticle(row, i);
+    if (e) events.push(e);
+  });
 
   const fromMs = from ? new Date(from).getTime() : null;
   const toMs = to ? new Date(to).getTime() : null;
@@ -214,4 +287,7 @@ module.exports = {
   findFreeSlots,
   normalizeBrandItem,
   normalizeContentPost,
+  normalizeCampaign,
+  normalizeSocialPost,
+  normalizeSeoArticle,
 };
