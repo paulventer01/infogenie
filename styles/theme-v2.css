@@ -626,6 +626,116 @@ body:has(#ig-app-shell) #ig-react-panel .breadcrumb {
   text-shadow: none !important;
 }
 
+/* Technical Manager — keep dark teal hero; beat #ig-react-panel h1/p ink overrides */
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero {
+  border-radius: 16px;
+  padding: 22px 24px;
+  margin-bottom: 18px;
+  background: linear-gradient(135deg, #0f172a 0%, #134e4a 55%, #0f766e 100%) !important;
+  border: 1px solid #115e59 !important;
+  color: #f1f5f9 !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: flex-start;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__copy {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #99f6e4 !important;
+  margin-bottom: 8px;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero h1,
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero .tm-tech-hero__title {
+  margin: 0 0 8px !important;
+  font-size: 28px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em !important;
+  line-height: 1.15 !important;
+  color: #ffffff !important;
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero p,
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero .tm-tech-hero__body {
+  margin: 0 !important;
+  max-width: 720px;
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+  color: #f1f5f9 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__status {
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__status-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ccfbf1 !important;
+  margin-bottom: 6px;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__status-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border-width: 2px;
+  border-style: solid;
+  background: #ffffff !important;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__status-btn,
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__status-btn span {
+  /* keep severity color from inline style; do not force white from dark-hero button rules */
+  text-shadow: none !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__status-caret {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__meta,
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #ccfbf1 !important;
+  opacity: 1 !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__hint {
+  margin-top: 4px;
+  color: #99f6e4 !important;
+}
+
 body:has(#ig-app-shell) #ig-react-panel .breadcrumb,
 body:has(#ig-app-shell) #ig-react-panel .bc-group,
 body:has(#ig-app-shell) #ig-react-panel .bc-sep {

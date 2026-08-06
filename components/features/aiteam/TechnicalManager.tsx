@@ -1,284 +1,613 @@
 "use client";
 
-/**
- * Technical Manager — senior AI Team officer.
- * Continuously monitors APIs, LLMs, auth, tokens, security, tooling gaps;
- * produces live status + plan-of-action for management approval.
- */
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { api } from "@/lib/api";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { apiGet, apiPost } from "@/lib/api";
-import { goToView } from "@/lib/nav";
-import { BriefList, ActionsCard } from "./FinanceOfficer";
+type Severity = "critical" | "high" | "medium" | "low" | "info";
 
-interface EventRow {
-  severity: string;
-  area: string;
-  message: string;
-  action?: string | null;
-  at?: string;
-}
-interface PlanStep {
-  step: number;
-  severity: string;
-  area: string;
-  problem: string;
+type TechEvent = {
+  id: string;
+  severity: Severity;
+  category: string;
+  title: string;
+  detail: string;
+  surface: string;
+  recommendation: string;
+  at: string;
+};
+
+type PlanStep = {
+  id: string;
+  order: number;
   action: string;
-  approval_required?: boolean;
-  status?: string;
-}
-interface Snapshot {
-  overall?: string;
-  runtime?: { uptime_sec?: number; memory_mb?: number; node?: string };
-  postgres?: { ok?: boolean; configured?: boolean; error?: string };
-  auth?: { session_secret?: boolean; credential_encryption?: boolean };
-  llm?: { openai_configured?: boolean; openai_dummy?: boolean; provider_count?: number };
-  integrations?: { configured?: string[]; dummy?: string[]; missing_recommended?: string[] };
-  security?: { permission_enforcement?: boolean; vault_enabled?: boolean };
-  events?: EventRow[];
-  plan_of_action?: PlanStep[];
-  tooling_gaps?: { need: string; suggestion: string; urgency: string }[];
-  counts?: {
-    events?: number;
-    critical?: number;
-    high?: number;
-    integrations_configured?: number;
-    tooling_gaps?: number;
-    actions_pending_approval?: number;
+  owner: string;
+  risk: string;
+  requiresApproval: boolean;
+};
+
+type TechPlan = {
+  id: string;
+  title: string;
+  severity: Severity;
+  summary: string;
+  steps: PlanStep[];
+  status: string;
+  createdAt: string;
+};
+
+type TechScan = {
+  ok: boolean;
+  overallStatus: Severity;
+  scannedAt: string;
+  nextAutoRefreshSec: number;
+  summary: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    info: number;
+    events: number;
+    integrations: number;
+    toolingGaps: number;
+    awaitingApproval: number;
   };
-  meeting_note?: string;
-  generated_at?: string;
-}
-interface Brief {
-  summary?: string;
-  highlights?: (string | { title?: string })[];
-  risks?: (string | { title?: string })[];
-  actions?: { title?: string; detail?: string; priority?: string }[];
-}
+  systems: {
+    postgres: { ok: boolean; detail: string };
+    auth: { ok: boolean; detail: string; activeSessions: number };
+    llm: { ok: boolean; detail: string; providers: string[] };
+    vault: { ok: boolean; detail: string };
+    tokens: { ok: boolean; detail: string; recentFailures: number };
+  };
+  events: TechEvent[];
+  plan: TechPlan | null;
+  meetingNote: string;
+  roster: { id: string; name: string; role: string; status: string } | null;
+};
 
-const CARD =
-  "background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)";
+const SEV_COLOR: Record<Severity, string> = {
+  critical: "#DC2626",
+  high: "#EA580C",
+  medium: "#CA8A04",
+  low: "#2563EB",
+  info: "#64748B",
+};
 
-function styleObj(css: string): React.CSSProperties {
-  const out: Record<string, string> = {};
-  css.split(";").forEach((rule) => {
-    const i = rule.indexOf(":");
-    if (i === -1) return;
-    const key = rule.slice(0, i).trim();
-    const val = rule.slice(i + 1).trim();
-    if (!key) return;
-    const jsKey = key.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-    out[jsKey] = val;
-  });
-  return out as React.CSSProperties;
-}
+const SEV_BG: Record<Severity, string> = {
+  critical: "#FEF2F2",
+  high: "#FFF7ED",
+  medium: "#FEFCE8",
+  low: "#EFF6FF",
+  info: "#F8FAFC",
+};
 
-function overallColor(o?: string) {
-  if (o === "healthy") return "#15803D";
-  if (o === "watch") return "#CA8A04";
-  if (o === "degraded") return "#EA580C";
-  if (o === "critical") return "#B91C1C";
-  return "#64748B";
-}
-
-function sevColor(s: string) {
-  if (s === "critical") return "#B91C1C";
-  if (s === "high") return "#EA580C";
-  if (s === "medium") return "#CA8A04";
-  return "#64748B";
+function formatTime(iso?: string) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  } catch {
+    return iso;
+  }
 }
 
 export default function TechnicalManager() {
-  const router = useRouter();
+  const [scan, setScan] = useState<TechScan | null>(null);
   const [loading, setLoading] = useState(true);
-  const [snap, setSnap] = useState<Snapshot>({});
-  const [brief, setBrief] = useState<Brief | null>(null);
-  const [liveAt, setLiveAt] = useState<string>("");
-  const [rosterOk, setRosterOk] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [filterSeverity, setFilterSeverity] = useState<Severity | "all">("all");
+  const [statusPanelOpen, setStatusPanelOpen] = useState(false);
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    const scan = await apiPost<{ ok: boolean; snapshot?: Snapshot }>("/api/technical-manager/scan", {});
-    const snapshot = scan.ok ? scan.snapshot || {} : {};
-    setSnap(snapshot);
-    setLiveAt(new Date().toLocaleTimeString());
-
-    const br = await apiPost<{ ok: boolean; brief?: Brief }>("/api/officer/brief", {
-      role: "technical",
-      facts: snapshot,
-    });
-    if (br.ok) setBrief(br.brief ?? null);
-
-    const roster = await apiPost<{ ok: boolean }>("/api/technical-manager/ensure-roster", {});
-    setRosterOk(!!roster.ok);
-    setLoading(false);
+  const load = useCallback(async (force = false) => {
+    setError("");
+    try {
+      const path = force ? "/api/technical-manager/scan?force=1" : "/api/technical-manager/scan";
+      const data = await api<TechScan>(path);
+      setScan(data);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load Technical Manager status");
+    } finally {
+      setLoading(false);
+      setBusy(false);
+    }
   }, []);
 
   useEffect(() => {
     load(false);
-    const t = setInterval(() => load(true), 30000); // live status every 30s
-    return () => clearInterval(t);
+    const t = window.setInterval(() => load(false), 30000);
+    return () => window.clearInterval(t);
   }, [load]);
 
-  const c = snap.counts || {};
+  const criticalEvents = useMemo(
+    () => (scan?.events || []).filter((e) => e.severity === "critical"),
+    [scan]
+  );
+  const highEvents = useMemo(
+    () => (scan?.events || []).filter((e) => e.severity === "high"),
+    [scan]
+  );
+
+  const visibleEvents = useMemo(() => {
+    const events = scan?.events || [];
+    if (filterSeverity === "all") return events;
+    return events.filter((e) => e.severity === filterSeverity);
+  }, [scan, filterSeverity]);
+
+  function openStatusIssues(severity: Severity | "all" = "all") {
+    setFilterSeverity(severity);
+    setStatusPanelOpen(true);
+    window.requestAnimationFrame(() => {
+      document.getElementById("tm-status-issues")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  if (loading && !scan) {
+    return <div style={{ padding: 24, color: "var(--fg-muted)" }}>Technical Manager is scanning the platform…</div>;
+  }
+
+  const overall = (scan?.overallStatus || "info") as Severity;
+  const s = scan?.summary;
+  const statusLabel = overall.toUpperCase();
 
   return (
-    <div>
-      <div
-        style={styleObj(
-          "max-width:1200px;margin:0 auto 22px;padding:24px 28px;color:white;border-radius:18px;background:linear-gradient(135deg,#0F172A 0%,#1E3A5F 55%,#0F766E 100%)",
-        )}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
-          <div>
-            <div style={{ fontSize: ".72rem", letterSpacing: ".18em", textTransform: "uppercase", color: "#99F6E4", fontWeight: 700 }}>
-              Technical Manager · Senior role
-            </div>
-            <h1 style={{ margin: "8px 0 6px", fontSize: "1.85rem", fontWeight: 800 }}>
-              Entire-system monitor
-            </h1>
-            <p style={{ margin: 0, fontSize: ".92rem", color: "#E2E8F0", maxWidth: 720 }}>
-              Watches every API, LLM, AI connection, auth session, token, security surface, menu and code path.
-              Reports every event — however small — and prepares approval-gated plans when anything breaks.
-              Attends daily management meetings with live status.
-            </p>
+    <div style={{ padding: "20px 24px 48px", maxWidth: 1280, margin: "0 auto" }}>
+      {/* Hero uses .tm-tech-hero — theme-v2 forces dark ink on #ig-react-panel h1/p */}
+      <div className="tm-tech-hero">
+        <div className="tm-tech-hero__copy">
+          <div className="tm-tech-hero__eyebrow">Technical Manager · Senior role</div>
+          <h1 className="tm-tech-hero__title">Entire-system monitor</h1>
+          <p className="tm-tech-hero__body">
+            Watches every API, LLM, AI connection, auth session, token, security surface, menu and code path.
+            Reports every event — however small — and prepares approval-gated plans when anything breaks.
+            Attends daily management meetings with live status.
+          </p>
+        </div>
+
+        <div className="tm-tech-hero__status">
+          <div className="tm-tech-hero__status-label">Live status</div>
+          <button
+            type="button"
+            className="tm-tech-hero__status-btn"
+            onClick={() => openStatusIssues(overall === "info" || overall === "low" ? "all" : overall)}
+            title="Click to view issues for this status"
+            style={{ borderColor: SEV_COLOR[overall], color: SEV_COLOR[overall] }}
+          >
+            {statusLabel}
+            <span className="tm-tech-hero__status-caret">▾</span>
+          </button>
+          <div className="tm-tech-hero__meta">
+            Updated {formatTime(scan?.scannedAt)} · auto {scan?.nextAutoRefreshSec || 30}s
           </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: "0.7rem", color: "#99F6E4", fontWeight: 700 }}>LIVE STATUS</div>
-            <div style={{ fontSize: "1.4rem", fontWeight: 800, color: overallColor(snap.overall), background: "#fff", padding: "6px 14px", borderRadius: 10, marginTop: 6 }}>
-              {(snap.overall || "…").toUpperCase()}
-            </div>
-            <div style={{ fontSize: "0.75rem", color: "#CBD5E1", marginTop: 6 }}>Updated {liveAt || "—"} · auto 30s</div>
-          </div>
+          <div className="tm-tech-hero__hint">Click status to view issues</div>
         </div>
       </div>
 
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 28px 40px" }}>
-        {loading && !snap.overall ? (
-          <div style={styleObj(CARD + ";text-align:center;color:#64748B")}>Scanning InfoGenie platform…</div>
-        ) : (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 12, marginBottom: 16 }}>
-              {[
-                ["Overall", (snap.overall || "—").toUpperCase()],
-                ["Critical", c.critical ?? 0],
-                ["High", c.high ?? 0],
-                ["Events", c.events ?? 0],
-                ["Integrations", c.integrations_configured ?? 0],
-                ["Tooling gaps", c.tooling_gaps ?? 0],
-                ["Awaiting approval", c.actions_pending_approval ?? 0],
-                ["Postgres", snap.postgres?.ok ? "OK" : "DOWN"],
-                ["LLM", snap.llm?.openai_configured && !snap.llm?.openai_dummy ? "OK" : "RISK"],
-                ["Vault", snap.auth?.credential_encryption ? "ON" : "OFF"],
-              ].map(([label, val]) => (
-                <div key={String(label)} style={styleObj(CARD + ";padding:14px")}>
-                  <div style={{ fontSize: ".68rem", color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>{label}</div>
-                  <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "#0F172A", marginTop: 4 }}>{val}</div>
-                </div>
-              ))}
+      {error ? (
+        <div
+          style={{
+            marginBottom: 14,
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            color: "#991B1B",
+            fontSize: 13,
+          }}
+        >
+          {error}
+        </div>
+      ) : null}
+
+      {/* Clickable severity summary */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+          gap: 10,
+          marginBottom: 14,
+        }}
+      >
+        {[
+          { label: "Overall", value: statusLabel, color: SEV_COLOR[overall], onClick: () => openStatusIssues(overall === "info" || overall === "low" ? "all" : overall) },
+          { label: "Critical", value: s?.critical ?? 0, color: SEV_COLOR.critical, onClick: () => openStatusIssues("critical") },
+          { label: "High", value: s?.high ?? 0, color: SEV_COLOR.high, onClick: () => openStatusIssues("high") },
+          { label: "Events", value: s?.events ?? 0, color: "var(--fg)", onClick: () => openStatusIssues("all") },
+          { label: "Integrations", value: s?.integrations ?? 0, color: "var(--fg)", onClick: undefined },
+          { label: "Tooling gaps", value: s?.toolingGaps ?? 0, color: SEV_COLOR.high, onClick: () => openStatusIssues("high") },
+        ].map((card) => (
+          <button
+            key={card.label}
+            type="button"
+            onClick={card.onClick}
+            disabled={!card.onClick}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              padding: "12px 14px",
+              background: "var(--bg-elevated)",
+              textAlign: "left",
+              cursor: card.onClick ? "pointer" : "default",
+              opacity: card.onClick ? 1 : 0.85,
+            }}
+          >
+            <div style={{ fontSize: 11, color: "var(--fg-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              {card.label}
             </div>
+            <div style={{ marginTop: 4, fontSize: 22, fontWeight: 800, color: card.color }}>{card.value}</div>
+          </button>
+        ))}
+      </div>
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-              <button type="button" onClick={() => load(false)} style={btnPrimary}>Refresh scan now</button>
-              <button type="button" onClick={() => goToView(router, "capacity")} style={btnGhost}>
-                Open Team Capacity roster {rosterOk ? "✓" : ""}
-              </button>
-              <button type="button" onClick={() => goToView(router, "ai-team")} style={btnGhost}>AI Team meetings</button>
-              <button type="button" onClick={() => goToView(router, "ai-providers")} style={btnGhost}>AI Providers</button>
-              <button type="button" onClick={() => goToView(router, "ai-governance")} style={btnGhost}>AI Governance</button>
-            </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: 10,
+          marginBottom: 16,
+        }}
+      >
+        {[
+          { label: "Awaiting approval", value: s?.awaitingApproval ?? 0, ok: (s?.awaitingApproval || 0) === 0 },
+          { label: "Postgres", value: scan?.systems.postgres.ok ? "OK" : "DOWN", ok: !!scan?.systems.postgres.ok },
+          { label: "LLM", value: scan?.systems.llm.ok ? "OK" : "RISK", ok: !!scan?.systems.llm.ok },
+          { label: "Vault", value: scan?.systems.vault.ok ? "OK" : "OFF", ok: !!scan?.systems.vault.ok },
+        ].map((card) => (
+          <div
+            key={card.label}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              padding: "12px 14px",
+              background: card.ok ? "var(--bg-elevated)" : "#FEF2F2",
+            }}
+          >
+            <div style={{ fontSize: 11, color: "var(--fg-muted)", fontWeight: 700, textTransform: "uppercase" }}>{card.label}</div>
+            <div style={{ marginTop: 4, fontSize: 18, fontWeight: 800, color: card.ok ? "var(--fg)" : "#DC2626" }}>{card.value}</div>
+          </div>
+        ))}
+      </div>
 
-            {snap.meeting_note && (
-              <div style={styleObj(CARD + ";margin-bottom:16px;background:#ECFDF5;border-color:#A7F3D0")}>
-                <strong style={{ color: "#065F46" }}>Daily management meetings:</strong>{" "}
-                <span style={{ color: "#047857" }}>{snap.meeting_note}</span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            load(true);
+          }}
+          style={{
+            padding: "8px 14px",
+            borderRadius: 8,
+            border: "none",
+            background: "var(--accent)",
+            color: "#fff",
+            fontWeight: 700,
+            cursor: busy ? "wait" : "pointer",
+            fontSize: 13,
+          }}
+        >
+          {busy ? "Scanning…" : "Refresh scan now"}
+        </button>
+        <a href="#/manage/capacity" style={linkBtn}>Open Team Capacity roster ✓</a>
+        <a href="#/ai-team/meetings" style={linkBtn}>AI Team meetings</a>
+        <a href="#/ai-team/providers" style={linkBtn}>AI Providers</a>
+        <a href="#/ai-team/governance" style={linkBtn}>AI Governance</a>
+      </div>
+
+      {scan?.meetingNote ? (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: "1px solid #A7F3D0",
+            background: "#ECFDF5",
+            color: "#065F46",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>Daily management meetings:</strong> {scan.meetingNote}
+        </div>
+      ) : null}
+
+      {/* Status issues panel — opened by CRITICAL / severity clicks */}
+      {statusPanelOpen ? (
+        <div
+          id="tm-status-issues"
+          style={{
+            marginBottom: 16,
+            borderRadius: 14,
+            border: `2px solid ${SEV_COLOR[overall]}`,
+            background: SEV_BG[overall],
+            padding: 16,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: SEV_COLOR[overall] }}>
+                Status detail · {statusLabel}
               </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16, marginBottom: 16 }}>
-              <div style={styleObj(CARD)}>
-                <h3 style={{ margin: "0 0 10px", fontSize: "1rem" }}>Live event stream</h3>
-                {(snap.events || []).length === 0 ? (
-                  <div style={{ color: "#16A34A", fontWeight: 600 }}>No events — all monitored surfaces quiet.</div>
-                ) : (
-                  <div style={{ display: "grid", gap: 8, maxHeight: 360, overflow: "auto" }}>
-                    {(snap.events || []).map((e, i) => (
-                      <div key={i} style={{ borderLeft: `3px solid ${sevColor(e.severity)}`, padding: "8px 10px", background: "#F8FAFC", borderRadius: 6 }}>
-                        <div style={{ fontSize: "0.72rem", fontWeight: 800, color: sevColor(e.severity), textTransform: "uppercase" }}>
-                          {e.severity} · {e.area}
-                        </div>
-                        <div style={{ fontSize: "0.88rem", color: "#0F172A", marginTop: 2 }}>{e.message}</div>
-                        {e.action && <div style={{ fontSize: "0.8rem", color: "#64748B", marginTop: 2 }}>→ {e.action}</div>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div style={styleObj(CARD)}>
-                <h3 style={{ margin: "0 0 10px", fontSize: "1rem" }}>Plan of action (approval-gated)</h3>
-                {(snap.plan_of_action || []).length === 0 ? (
-                  <div style={{ color: "#64748B" }}>No remediation plan required right now.</div>
-                ) : (
-                  <ol style={{ margin: 0, paddingLeft: 18, color: "#334155", fontSize: "0.88rem", lineHeight: 1.5 }}>
-                    {(snap.plan_of_action || []).map((p) => (
-                      <li key={p.step} style={{ marginBottom: 8 }}>
-                        <strong>{p.action}</strong>
-                        <div style={{ color: "#64748B" }}>{p.problem}</div>
-                        {p.approval_required && (
-                          <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#B45309", background: "#FEF3C7", padding: "2px 6px", borderRadius: 4 }}>
-                            Pending management approval
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </div>
-            </div>
-
-            <div style={styleObj(CARD + ";margin-bottom:16px")}>
-              <h3 style={{ margin: "0 0 10px", fontSize: "1rem" }}>Tooling gaps & improvement research</h3>
-              <p style={{ margin: "0 0 10px", color: "#64748B", fontSize: "0.88rem" }}>
-                If a monitor or control is missing from InfoGenie, the Technical Manager flags it urgently for procurement / build.
+              <h2 style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 800, color: "var(--fg)" }}>
+                {criticalEvents.length + highEvents.length > 0
+                  ? `${criticalEvents.length} critical · ${highEvents.length} high`
+                  : "No critical or high issues right now"}
+              </h2>
+              <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--fg-muted)", lineHeight: 1.45 }}>
+                Click a severity chip to filter the live event stream below. Plans that need approval stay gated until a human confirms.
               </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStatusPanelOpen(false)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--bg-elevated)",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "var(--fg)",
+              }}
+            >
+              Close
+            </button>
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+            {(["all", "critical", "high", "medium", "low", "info"] as const).map((sev) => {
+              const active = filterSeverity === sev;
+              const count =
+                sev === "all"
+                  ? scan?.events?.length || 0
+                  : (scan?.events || []).filter((e) => e.severity === sev).length;
+              const color = sev === "all" ? "var(--fg)" : SEV_COLOR[sev];
+              return (
+                <button
+                  key={sev}
+                  type="button"
+                  onClick={() => setFilterSeverity(sev)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    border: active ? `2px solid ${color}` : "1px solid var(--border)",
+                    background: active ? "#fff" : "var(--bg-elevated)",
+                    color,
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {sev} · {count}
+                </button>
+              );
+            })}
+          </div>
+
+          {criticalEvents.length > 0 ? (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: SEV_COLOR.critical, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Critical issues
+              </div>
               <div style={{ display: "grid", gap: 8 }}>
-                {(snap.tooling_gaps || []).map((g, i) => (
-                  <div key={i} style={{ padding: "10px 12px", background: "#F8FAFC", borderRadius: 8, border: "1px solid #E2E8F0" }}>
-                    <div style={{ fontWeight: 700, color: "#0F172A" }}>{g.need}</div>
-                    <div style={{ fontSize: "0.86rem", color: "#475569" }}>{g.suggestion}</div>
-                    <div style={{ fontSize: "0.72rem", fontWeight: 700, color: sevColor(g.urgency), marginTop: 4 }}>{g.urgency} urgency</div>
+                {criticalEvents.map((ev) => (
+                  <div
+                    key={ev.id}
+                    style={{
+                      border: "1px solid #FECACA",
+                      borderRadius: 10,
+                      padding: "12px 14px",
+                      background: "#fff",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: 14, color: "#991B1B" }}>{ev.title}</div>
+                    <div style={{ marginTop: 4, fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{ev.detail}</div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: "var(--fg-muted)" }}>
+                      {ev.surface} · {ev.category}
+                    </div>
+                    {ev.recommendation ? (
+                      <div style={{ marginTop: 8, fontSize: 12, color: "#065F46", fontWeight: 600 }}>
+                        Fix: {ev.recommendation}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
             </div>
+          ) : null}
 
-            {brief ? (
-              <>
-                <div style={styleObj(CARD + ";margin-bottom:16px")}>
-                  <div style={{ fontSize: ".7rem", color: "#64748B", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
-                    Technical Manager briefing
+          {highEvents.length > 0 ? (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: SEV_COLOR.high, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                High issues
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {highEvents.map((ev) => (
+                  <div
+                    key={ev.id}
+                    style={{
+                      border: "1px solid #FED7AA",
+                      borderRadius: 10,
+                      padding: "12px 14px",
+                      background: "#fff",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: 14, color: "#9A3412" }}>{ev.title}</div>
+                    <div style={{ marginTop: 4, fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{ev.detail}</div>
+                    {ev.recommendation ? (
+                      <div style={{ marginTop: 8, fontSize: 12, color: "#065F46", fontWeight: 600 }}>
+                        Fix: {ev.recommendation}
+                      </div>
+                    ) : null}
                   </div>
-                  <p style={{ margin: 0, fontSize: ".95rem", color: "#0F172A", lineHeight: 1.55 }}>{brief.summary || ""}</p>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16, marginBottom: 16 }}>
-                  <BriefList title="Healthy signals" items={brief.highlights} color="#15803D" />
-                  <BriefList title="Threats & risks" items={brief.risks} color="#B91C1C" />
-                </div>
-                <ActionsCard actions={brief.actions} />
-              </>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 0.9fr)", gap: 14 }}>
+        <section style={panel}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+            <h2 style={h2}>
+              Live event stream
+              {filterSeverity !== "all" ? (
+                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: SEV_COLOR[filterSeverity] }}>
+                  · {filterSeverity}
+                </span>
+              ) : null}
+            </h2>
+            {filterSeverity !== "all" ? (
+              <button
+                type="button"
+                onClick={() => setFilterSeverity("all")}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--accent)",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                Clear filter
+              </button>
             ) : null}
-          </>
-        )}
+          </div>
+          <p style={muted}>Every detected event, including small ones. Newest first.</p>
+          <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+            {visibleEvents.length ? (
+              visibleEvents.map((ev) => (
+                <article
+                  key={ev.id}
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    background: SEV_BG[ev.severity] || "var(--bg-elevated)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase", color: SEV_COLOR[ev.severity] }}>
+                      {ev.severity} · {ev.category}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--fg-muted)" }}>{formatTime(ev.at)}</div>
+                  </div>
+                  <div style={{ marginTop: 4, fontWeight: 700, fontSize: 14, color: "var(--fg)" }}>{ev.title}</div>
+                  <div style={{ marginTop: 4, fontSize: 13, color: "var(--fg-muted)", lineHeight: 1.45 }}>{ev.detail}</div>
+                  <div style={{ marginTop: 6, fontSize: 12, color: "var(--fg-muted)" }}>
+                    Surface: <strong style={{ color: "var(--fg)" }}>{ev.surface}</strong>
+                  </div>
+                  {ev.recommendation ? (
+                    <div style={{ marginTop: 6, fontSize: 12, color: "var(--fg)" }}>
+                      Recommended: {ev.recommendation}
+                    </div>
+                  ) : null}
+                </article>
+              ))
+            ) : (
+              <div style={{ padding: 16, color: "var(--fg-muted)", fontSize: 13 }}>
+                {filterSeverity === "all" ? "No events in this scan window." : `No ${filterSeverity} events in this scan.`}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section style={panel}>
+          <h2 style={h2}>Plan of action (approval-gated)</h2>
+          {scan?.plan ? (
+            <>
+              <div style={{ marginTop: 8, fontSize: 11, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase", color: SEV_COLOR[scan.plan.severity] }}>
+                {scan.plan.status} · {scan.plan.severity}
+              </div>
+              <div style={{ marginTop: 4, fontWeight: 800, fontSize: 16, color: "var(--fg)" }}>{scan.plan.title}</div>
+              <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--fg-muted)", lineHeight: 1.5 }}>{scan.plan.summary}</p>
+              <ol style={{ margin: "12px 0 0", paddingLeft: 18, display: "grid", gap: 10 }}>
+                {scan.plan.steps.map((step) => (
+                  <li key={step.id} style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>
+                    <div style={{ fontWeight: 700 }}>{step.action}</div>
+                    <div style={{ fontSize: 12, color: "var(--fg-muted)", marginTop: 2 }}>
+                      Owner: {step.owner} · Risk: {step.risk}
+                      {step.requiresApproval ? " · requires human approval" : ""}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  background: "#FFFBEB",
+                  border: "1px solid #FDE68A",
+                  fontSize: 12,
+                  color: "#92400E",
+                  lineHeight: 1.45,
+                }}
+              >
+                No remediation step executes automatically. Approve in AI Governance / Operations after reviewing blast radius.
+              </div>
+            </>
+          ) : (
+            <p style={{ marginTop: 10, fontSize: 13, color: "var(--fg-muted)", lineHeight: 1.5 }}>
+              No approval-gated plan required. Platform is within normal operating bounds for this scan.
+            </p>
+          )}
+
+          <h3 style={{ ...h2, marginTop: 22, fontSize: 14 }}>Subsystem detail</h3>
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+            {[
+              ["Postgres", scan?.systems.postgres.detail],
+              ["Auth / sessions", scan?.systems.auth.detail],
+              ["LLM providers", scan?.systems.llm.detail],
+              ["Credential vault", scan?.systems.vault.detail],
+              ["Tokens / keys", scan?.systems.tokens.detail],
+            ].map(([label, detail]) => (
+              <div key={String(label)} style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--fg)" }}>{label}</div>
+                <div style={{ fontSize: 12, color: "var(--fg-muted)", marginTop: 2, lineHeight: 1.4 }}>{detail || "—"}</div>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );
 }
 
-const btnPrimary: React.CSSProperties = {
-  padding: "9px 14px", border: "none", borderRadius: 8, background: "#0F766E", color: "#fff", fontWeight: 700, cursor: "pointer",
+const panel: React.CSSProperties = {
+  border: "1px solid var(--border)",
+  borderRadius: 14,
+  padding: 16,
+  background: "var(--bg-elevated)",
 };
-const btnGhost: React.CSSProperties = {
-  padding: "9px 14px", border: "1px solid #CBD5E1", borderRadius: 8, background: "#fff", color: "#0F172A", fontWeight: 600, cursor: "pointer",
+
+const h2: React.CSSProperties = {
+  margin: 0,
+  fontSize: 16,
+  fontWeight: 800,
+  color: "var(--fg)",
+};
+
+const muted: React.CSSProperties = {
+  margin: "6px 0 0",
+  fontSize: 13,
+  color: "var(--fg-muted)",
+  lineHeight: 1.45,
+};
+
+const linkBtn: React.CSSProperties = {
+  padding: "8px 14px",
+  borderRadius: 8,
+  border: "1px solid var(--border)",
+  background: "var(--bg-elevated)",
+  color: "var(--fg)",
+  fontWeight: 600,
+  fontSize: 13,
+  textDecoration: "none",
+  display: "inline-flex",
+  alignItems: "center",
 };
