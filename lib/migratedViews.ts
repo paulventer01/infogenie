@@ -61,6 +61,10 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "capacity", legacyModule: null },
   { view: "canonical-metrics", legacyModule: null },
   { view: "playbook-7day", legacyModule: null },
+  // Registry panels that were missing from this list (SpaRouter legacy race risk)
+  { view: "aeo-optimizer", legacyModule: null },
+  { view: "autoclaw", legacyModule: null },
+  { view: "lead-intelligence", legacyModule: null },
   // ── Remainder of the Manage group (Phase 3 batch 2) ──────────────────────
   // Every panel below either lives inline in app.js or in a SHARED public/js
   // module (ig_manage_pack.js, ig_reach_automation.js, ig_mentions_gaps.js,

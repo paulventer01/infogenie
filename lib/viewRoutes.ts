@@ -384,7 +384,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "3 · Track full-funnel ROI",
         items: [
-          { view: "analytics-hub", icon: "🥇", label: "GSC & GA4 Hub" },
+          // Analytics Hub lives under Analyse — link from dashboard/ROI tools, do not re-list here
           { view: "amplitude-agents", icon: "🥈", label: "Amplitude AI Agents" },
           { view: "blended-perf", icon: "💎", label: "Blended Performance (CAC)" },
           { view: "attribution", icon: "🥉", label: "Attribution Modeling" },
@@ -399,12 +399,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "5 · Next-gen ad channels",
-        items: [
-          { view: "ctv-streaming", icon: "📺", label: "CTV & Streaming Audio (Roku · Hulu · Spotify)" },
-        ],
-      },
-      {
         header: "4 · Improve SEO & conversion",
         items: [
           { view: "conversion-lab", icon: "🧪", label: "Conversion Lab — start here" },
@@ -413,10 +407,16 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "contentscorer", icon: "📝", label: "Content Scorer" },
           { view: "link-suggester", icon: "⛓️", label: "Internal Link Suggester" },
           { view: "cro-lab",        icon: "💢", label: "CRO Lab (page tests)" },
-          { view: "bulk-rewriter",  icon: "🖊️", label: "Bulk Content Rewriter (AI rewrite up to 20 articles)" },
+          // Bulk rewriter lives under Create → Content Studio (single destination)
           { view: "ai-audit-suite", icon: "💯", label: "AI Audit Suite (deep)" },
           { view: "vis-leaderboard", icon: "🧑‍🤝‍🧑", label: "Visibility Rank Table (Δ)" },
           { action: "wpConnect", icon: "🟦", label: "Connect to WordPress" },
+        ],
+      },
+      {
+        header: "5 · Next-gen ad channels",
+        items: [
+          { view: "ctv-streaming", icon: "📺", label: "CTV & Streaming Audio (Roku · Hulu · Spotify)" },
         ],
       },
     ],
@@ -446,8 +446,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "brand-calendar", icon: "🕰️", label: "Brand Calendar (10 categories)" },
           { view: "calendar-assistant", icon: "📅", label: "Calendar Assistant (AI schedule · conflicts)" },
           { view: "agent-orchestrator", icon: "🤖", label: "Agent Orchestrator (cross-module suggest → apply)" },
-          { view: "social", icon: "🙌", label: "Social Calendar → Publisher" },
-          { view: "social-publisher", icon: "📤", label: "Social Publisher (calendar · drafts · 15 platforms)" },
+          { view: "social", icon: "🙌", label: "Social Calendar (schedule view)" },
+          // Social Publisher lives under Reach → Social command center (single destination)
           { view: "launches", icon: "👏", label: "Product Launch Calendar" },
         ],
       },
@@ -461,8 +461,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "action-queue", icon: "📹", label: "Daily Action Queue (what to do today)" },
           { view: "marketing-okr", icon: "📷", label: "Marketing OKRs (live campaign data)" },
           { view: "canonical-metrics", icon: "📐", label: "Canonical Metrics (SSOT · pacing · goals)" },
-
-          { view: "agent-goals", icon: "🏁", label: "Marketing Goals (set · plan · track)" },
+          // Marketing Goals live under Grow → Set the targets (single destination)
           { view: "budget", icon: "💰", label: "Budget (spend · ROI · 3-month plan)" },
           { view: "budget-board", icon: "🪙", label: "Budget Board (monitor + spend)" },
           { view: "budget-caps", icon: "🚦", label: "Budget Caps (platform daily + lifetime limits)" },
@@ -482,8 +481,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "strategic-intelligence", icon: "🧠", label: "Strategic Intelligence (root-cause · scenarios · write-back)" },
           { view: "marketing-memory", icon: "🔉", label: "Marketing Memory (knowledge graph)" },
           { view: "predictive-intelligence", icon: "🪬", label: "Predictive Intelligence (90-day AI forecast)" },
-          { view: "ai-governance", icon: "🛡️", label: "AI Governance Hub (shadow-first audit · policy)" },
-          { view: "ai-providers", icon: "🔈", label: "AI Providers (bring your own LLM)" },
+          // AI Providers + Governance live under AI Team → Team ops (single destination)
           { view: "autoclaw", icon: "🦞", label: "AutoClaw (Z.ai GLM agent)" },
           { view: "model-compare", icon: "⚖️", label: "Model Comparison (A/B prompts)" },
           { view: "vertical-playbooks", icon: "🔇", label: "Vertical Playbooks (industry packs)" },
@@ -492,12 +490,11 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "4 · Team & frameworks",
         items: [
-          { view: "meeting-notes", icon: "✏️", label: "Meeting Notes" },
-          { view: "team-meetings", icon: "💴", label: "Minutes of Meeting (AI Team)" },
+          { view: "meeting-notes", icon: "✏️", label: "Meeting Notes (transcript summarize)" },
+          // Team Capacity + AI Team minutes live under AI Team → Team ops
           { view: "playbook-7day", icon: "📖", label: "7-Day Marketing Playbook" },
           { view: "growth-methodology", icon: "💶", label: "Growth Methodology (5-stage)" },
           { view: "flywheel", icon: "🔁", label: "Performance Growth Flywheel" },
-          { view: "capacity", icon: "👥", label: "Team Capacity & Workload" },
         ],
       },
       {
@@ -564,6 +561,17 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "technical-manager", icon: "🛡️", label: "Technical Manager (platform · security · live status)" },
         ],
       },
+      {
+        // Paths stay under /manage/* via VIEW_TO_PATH overrides below — listed here
+        // so officer workflow (roster → capacity → meetings) is discoverable.
+        header: "Team ops",
+        items: [
+          { view: "capacity", icon: "👥", label: "Team Capacity & Workload" },
+          { view: "team-meetings", icon: "💴", label: "Minutes of Meeting" },
+          { view: "ai-providers", icon: "🔈", label: "AI Providers (BYO LLM)" },
+          { view: "ai-governance", icon: "🛡️", label: "AI Governance Hub" },
+        ],
+      },
     ],
   },
 ];
@@ -587,10 +595,13 @@ for (const group of NAV_GROUPS) {
   }
 }
 
-// Keep the established bookmark path for Growth Goals Loop.
+// Keep established bookmark paths when nav ownership moves (AI Team ops, etc.).
 VIEW_TO_PATH.flywheel = "/manage/flywheel";
 VIEW_TO_PATH["canonical-metrics"] = "/manage/canonical-metrics";
 VIEW_TO_PATH.capacity = "/manage/capacity";
+VIEW_TO_PATH["team-meetings"] = "/manage/team-meetings";
+VIEW_TO_PATH["ai-providers"] = "/manage/ai-providers";
+VIEW_TO_PATH["ai-governance"] = "/manage/ai-governance";
 
 /**
  * Views trimmed from the default Analyse sidebar (to reduce duplicates) but still
