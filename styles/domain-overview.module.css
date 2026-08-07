@@ -157,3 +157,29 @@
   color: var(--ig-text-muted, #64748b);
   margin: 0 0 12px;
 }
+
+.snapshotHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin: 0 0 12px;
+}
+
+.snapshotHead .sectionTitle {
+  margin: 0;
+}
+
+.snapshotOwner {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ig-text-muted, #64748b);
+  line-height: 1.35;
+}
+
+.snapshotOwner strong {
+  color: var(--ig-text, #0f172a);
+  font-weight: 800;
+}

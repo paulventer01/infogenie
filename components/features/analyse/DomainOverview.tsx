@@ -57,15 +57,23 @@ export default function DomainOverview({ overview, currentView = "dashboard" }: 
         })}
       </nav>
 
-      <h4 className={ov.sectionTitle} id="ig-domain-snapshot">Domain snapshot</h4>
-      <div className={ov.strip}>
+      <div className={ov.snapshotHead} id="ig-domain-snapshot">
+        <h4 className={ov.sectionTitle}>Domain snapshot</h4>
+        {overview.domain ? (
+          <p className={ov.snapshotOwner}>
+            Metrics for <strong>{overview.domain}</strong>
+            {overview.industry ? <span> · {overview.industry}</span> : null}
+          </p>
+        ) : null}
+      </div>
+      <div className={ov.strip} aria-label={overview.domain ? `Domain snapshot for ${overview.domain}` : "Domain snapshot"}>
         {overview.snapshot.map((kpi) => (
           <button
             key={kpi.key}
             type="button"
             className={ov.stripCard}
             onClick={() => goToView(router, kpi.view)}
-            title={kpi.cta || `Open ${kpi.label}`}
+            title={kpi.cta || `${kpi.label} for ${overview.domain || "this domain"}`}
           >
             <span className={ov.stripLabel}>{kpi.label}</span>
             <span className={ov.stripValue}>{kpi.value}</span>
