@@ -120,6 +120,17 @@
   box-shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 10px 24px rgba(11, 18, 32, 0.05);
 }
 
+.metricOwner {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #0066ff;
+  letter-spacing: 0.01em;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .metricLabel {
   font-size: 0.68rem;
   font-weight: 700;

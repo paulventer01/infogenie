@@ -12,10 +12,26 @@
   border: 1px solid var(--ig-border, #e2e8f0);
   border-radius: 10px;
   padding: 12px 14px;
-  min-height: 88px;
+  min-height: 96px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  gap: 2px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.stripOwner {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--ig-primary, #0066ff);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .stripLabel {
@@ -122,6 +138,17 @@
 .moduleCard:hover {
   border-color: var(--ig-primary-border, #c7d2fe);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.moduleOwner {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--ig-primary, #0066ff);
+  letter-spacing: 0.01em;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .moduleIcon {

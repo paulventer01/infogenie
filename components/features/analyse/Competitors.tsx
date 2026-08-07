@@ -182,6 +182,9 @@ export default function Competitors() {
                     ["Source", c._dataSource === "DataForSEO" ? "📡 Live" : "📊 Benchmark"],
                   ].map(([label, val], k) => (
                     <div key={k} style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 10px" }}>
+                      <div style={{ fontSize: "0.6rem", fontWeight: 800, color: "#0066FF", letterSpacing: ".01em", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {c.name || c.url || c.domain || "Competitor"}
+                      </div>
                       <div style={{ fontSize: "0.62rem", color: "#94A3B8", textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
                       <div style={{ fontSize: "0.86rem", fontWeight: 800, color: "#0A1628" }}>{val}</div>
                     </div>

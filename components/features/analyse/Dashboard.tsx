@@ -670,7 +670,10 @@ export default function Dashboard() {
             <DomainOverview overview={companyOverview} currentView="dashboard" />
             <MessagingChannelStrip />
             {companyOverview.widgets?.length > 0 && (
-              <OverviewWidgets widgets={companyOverview.widgets} />
+              <OverviewWidgets
+                widgets={companyOverview.widgets}
+                domain={companyOverview.domain || yourDomain}
+              />
             )}
           </>
         )}
@@ -711,38 +714,45 @@ export default function Dashboard() {
             </section>
 
             <div className={dm.blendedGrid}>
-              <div className={dm.metricDark}>
-                <div className={dm.metricLabel}>Est. monthly traffic</div>
-                <div className={dm.metricValue} style={{ color: "#00E5FF" }}>
-                  {fmt(marketing.blended.monthlyTraffic)}
+              {[
+                {
+                  label: "Est. monthly traffic",
+                  value: fmt(marketing.blended.monthlyTraffic),
+                  color: "#00E5FF",
+                  delta: realTraffic ? "Live DataForSEO" : "Industry benchmark",
+                  deltaCls: realTraffic ? dm.deltaUp : dm.deltaNeutral,
+                },
+                {
+                  label: "Your ROAS",
+                  value: `${marketing.blended.roas}×`,
+                  color: "#A78BFA",
+                  delta: `${marketing.blended.roasVsMarket >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(marketing.blended.roasVsMarket))}% vs rivals`,
+                  deltaCls: marketing.blended.roasVsMarket >= 0 ? dm.deltaUp : dm.deltaDown,
+                },
+                {
+                  label: "Projected ROAS",
+                  value: `${marketing.blended.projectedRoas || improvedROAS}×`,
+                  color: "#34D399",
+                  delta: "With InfoGenie optimisations",
+                  deltaCls: dm.deltaUp,
+                },
+                {
+                  label: "Market visibility",
+                  value: marketing.blended.marketShare != null ? `${marketing.blended.marketShare}%` : `${yourSovShare}%`,
+                  color: "#FBBF24",
+                  delta: "Share of tracked competitor traffic",
+                  deltaCls: dm.deltaNeutral,
+                },
+              ].map((m) => (
+                <div key={m.label} className={dm.metricDark}>
+                  <div className={dm.metricOwner}>{yourDomain}</div>
+                  <div className={dm.metricLabel}>{m.label}</div>
+                  <div className={dm.metricValue} style={{ color: m.color }}>
+                    {m.value}
+                  </div>
+                  <div className={`${dm.metricDelta} ${m.deltaCls}`}>{m.delta}</div>
                 </div>
-                <div className={`${dm.metricDelta} ${realTraffic ? dm.deltaUp : dm.deltaNeutral}`}>
-                  {realTraffic ? "Live DataForSEO" : "Industry benchmark"}
-                </div>
-              </div>
-              <div className={dm.metricDark}>
-                <div className={dm.metricLabel}>Your ROAS</div>
-                <div className={dm.metricValue} style={{ color: "#A78BFA" }}>
-                  {marketing.blended.roas}×
-                </div>
-                <div className={`${dm.metricDelta} ${marketing.blended.roasVsMarket >= 0 ? dm.deltaUp : dm.deltaDown}`}>
-                  {marketing.blended.roasVsMarket >= 0 ? "▲" : "▼"} {Math.abs(Math.round(marketing.blended.roasVsMarket))}% vs rivals
-                </div>
-              </div>
-              <div className={dm.metricDark}>
-                <div className={dm.metricLabel}>Projected ROAS</div>
-                <div className={dm.metricValue} style={{ color: "#34D399" }}>
-                  {marketing.blended.projectedRoas || improvedROAS}×
-                </div>
-                <div className={`${dm.metricDelta} ${dm.deltaUp}`}>With InfoGenie optimisations</div>
-              </div>
-              <div className={dm.metricDark}>
-                <div className={dm.metricLabel}>Market visibility</div>
-                <div className={dm.metricValue} style={{ color: "#FBBF24" }}>
-                  {marketing.blended.marketShare != null ? `${marketing.blended.marketShare}%` : `${yourSovShare}%`}
-                </div>
-                <div className={dm.metricDelta + " " + dm.deltaNeutral}>Share of tracked competitor traffic</div>
-              </div>
+              ))}
             </div>
 
             <div className={dm.twoCol}>
@@ -881,10 +891,11 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* KPI grid */}
+        {/* KPI grid — ownership is printed on each tile (no floating title tooltips) */}
         <div className="kpi-grid">
-          <div className="kpi-card kpi-blue" title={`Click-Through Rate: the % of people who click your ad after seeing it. Industry avg for ${industryName} competitors is ${avgCTR.toFixed(2)}%.`}>
-            <div className="kpi-ribbon kpi-ribbon-you" title={`This number is your site's data: ${yourDomain}`}>📍 YOUR SITE</div>
+          <div className="kpi-card kpi-blue">
+            <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
+            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">📊</div>
             <div className="kpi-label">Your CTR Benchmark</div>
@@ -895,8 +906,9 @@ export default function Dashboard() {
             <div className="kpi-source kpi-source-you">📍 Your site · <strong>{yourDomain}</strong></div>
           </div>
 
-          <div className="kpi-card kpi-teal" title={`Return on Ad Spend: revenue earned per £/$1 spent on ads. Your competitors average ${avgROAS.toFixed(1)}× ROAS.`}>
-            <div className="kpi-ribbon kpi-ribbon-you" title={`This number is your site's data: ${yourDomain}`}>📍 YOUR SITE</div>
+          <div className="kpi-card kpi-teal">
+            <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
+            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">🎯</div>
             <div className="kpi-label">Your ROAS Benchmark</div>
@@ -907,8 +919,9 @@ export default function Dashboard() {
             <div className="kpi-source kpi-source-you">📍 Your site · <strong>{yourDomain}</strong></div>
           </div>
 
-          <div className="kpi-card kpi-green" title="Cost Per Acquisition: estimated ad spend to win one new customer in your industry.">
-            <div className="kpi-ribbon kpi-ribbon-ind" title={`Broad industry benchmark for ${industryName} — not your data`}>🏷️ INDUSTRY BENCHMARK</div>
+          <div className="kpi-card kpi-green">
+            <div className="kpi-ribbon kpi-ribbon-ind">🏷️ INDUSTRY BENCHMARK</div>
+            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{industryName}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">💰</div>
             <div className="kpi-label">CPA Benchmark</div>
@@ -917,12 +930,13 @@ export default function Dashboard() {
             <div className="kpi-source kpi-source-ind">🏷️ Industry benchmark · <strong>{industryName}</strong></div>
           </div>
 
-          <div className="kpi-card kpi-gold" title={`Estimated organic visits per month${realTraffic ? " — sourced from DataForSEO live data" : " — AI-estimated industry benchmark for your domain"}.`}>
+          <div className="kpi-card kpi-gold">
             {realTraffic ? (
-              <div className="kpi-ribbon kpi-ribbon-live" title={`Live data pulled from DataForSEO for ${yourDomain}`}>📡 LIVE — YOUR SITE</div>
+              <div className="kpi-ribbon kpi-ribbon-live">📡 LIVE — YOUR SITE</div>
             ) : (
-              <div className="kpi-ribbon kpi-ribbon-you" title={`This number is your site's data: ${yourDomain}`}>📍 YOUR SITE</div>
+              <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
             )}
+            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{yourDomain}</div>
             {realTraffic ? (
               <span style={{ fontSize: ".65rem", background: "#10B98120", color: "#10B981", padding: "2px 6px", borderRadius: 10, fontWeight: 700 }}>LIVE</span>
             ) : (
@@ -939,8 +953,9 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="kpi-card kpi-purple" title={`Conversion Rate: % of visitors who take a desired action (sign up, purchase). ${industryName} market average is 3.1%.`}>
-            <div className="kpi-ribbon kpi-ribbon-you" title={`This number is your site's data: ${yourDomain}`}>📍 YOUR SITE</div>
+          <div className="kpi-card kpi-purple">
+            <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
+            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">📈</div>
             <div className="kpi-label">Your Conv. Rate</div>
@@ -949,8 +964,9 @@ export default function Dashboard() {
             <div className="kpi-source kpi-source-you">📍 Your site · <strong>{yourDomain}</strong></div>
           </div>
 
-          <div className="kpi-card kpi-blue" title="AI-calculated score combining your CTR, ROAS and conversion benchmarks vs. competitor averages. Higher = more growth opportunity.">
-            <div className="kpi-ribbon kpi-ribbon-ai" title={`AI composite score for ${yourDomain} vs the ${competitors.length} tracked competitors`}>🤖 YOUR SITE vs RIVALS</div>
+          <div className="kpi-card kpi-blue">
+            <div className="kpi-ribbon kpi-ribbon-ai">🤖 YOUR SITE vs RIVALS</div>
+            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#0066FF20", color: "#0066FF", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>AI SCORE</span>
             <div className="kpi-icon">🚀</div>
             <div className="kpi-label">AI Opportunity Score</div>
@@ -968,7 +984,7 @@ export default function Dashboard() {
             ) : (
               "Connect Google Analytics or Google Ads to replace estimates with your real figures."
             )}{" "}
-            Hover any card for a full explanation.
+            Each tile shows the company or industry the figure belongs to.
           </span>
         </div>
 

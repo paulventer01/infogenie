@@ -33,6 +33,7 @@ interface Props {
 /** Semrush-style KPI strip, journey rail, and module tiles for the company dashboard. */
 export default function DomainOverview({ overview, currentView = "dashboard" }: Props) {
   const router = useRouter();
+  const owner = overview.domain || "this domain";
 
   return (
     <>
@@ -48,7 +49,7 @@ export default function DomainOverview({ overview, currentView = "dashboard" }: 
               type="button"
               className={cls}
               onClick={() => goToView(router, step.view)}
-              title={step.desc}
+              aria-label={`${step.label}: ${step.desc}`}
             >
               <span className={ov.journeyNum}>{step.done && !isCurrent ? "✓" : step.step}</span>
               {step.label}
@@ -73,8 +74,9 @@ export default function DomainOverview({ overview, currentView = "dashboard" }: 
             type="button"
             className={ov.stripCard}
             onClick={() => goToView(router, kpi.view)}
-            title={kpi.cta || `${kpi.label} for ${overview.domain || "this domain"}`}
+            aria-label={`${kpi.label} for ${owner}${kpi.cta ? ` — ${kpi.cta}` : ""}`}
           >
+            <span className={ov.stripOwner}>{owner}</span>
             <span className={ov.stripLabel}>{kpi.label}</span>
             <span className={ov.stripValue}>{kpi.value}</span>
             <span className={ov.stripHint}>
@@ -87,7 +89,7 @@ export default function DomainOverview({ overview, currentView = "dashboard" }: 
       </div>
 
       <h4 className={ov.sectionTitle}>Explore by area</h4>
-      <div className={ov.moduleGrid}>
+      <div className={ov.moduleGrid} aria-label={`Explore areas for ${owner}`}>
         {overview.modules.map((mod) => (
           <button
             key={mod.key}
@@ -95,7 +97,9 @@ export default function DomainOverview({ overview, currentView = "dashboard" }: 
             className={ov.moduleCard}
             onClick={() => goToView(router, mod.view)}
             style={{ borderLeftColor: mod.color, borderLeftWidth: 3 }}
+            aria-label={`${mod.label} for ${owner}`}
           >
+            <div className={ov.moduleOwner}>{owner}</div>
             <div className={ov.moduleIcon}>{MODULE_ICONS[mod.key] || "📊"}</div>
             <div className={ov.moduleTitle}>{mod.label}</div>
             <div className={ov.moduleDesc}>{mod.desc}</div>

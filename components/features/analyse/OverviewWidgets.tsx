@@ -14,23 +14,27 @@ const TONE_CLASS: Record<string, string> = {
 
 interface Props {
   widgets: OverviewWidget[];
+  /** Analysed domain — shown on every report tile so ownership is obvious. */
+  domain?: string;
 }
 
 /** SE Ranking Project Overview-style report cards with View Full Report CTAs. */
-export default function OverviewWidgets({ widgets }: Props) {
+export default function OverviewWidgets({ widgets, domain }: Props) {
   const router = useRouter();
+  const owner = (domain || "").replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
 
   return (
     <section className={ow.section} aria-label="Project overview reports">
       <div className={ow.head}>
         <h4 className={ow.title}>Project overview</h4>
         <p className={ow.sub}>
-          All analysis for this company in one place — open any report for the full detail.
+          All analysis for {owner || "this company"} in one place — open any report for the full detail.
         </p>
       </div>
       <div className={ow.grid}>
         {widgets.map((w) => (
           <article key={w.id} className={ow.card} style={{ borderTopColor: w.accent }}>
+            {owner ? <div className={ow.cardOwner}>{owner}</div> : null}
             <div className={ow.cardHead}>
               <h5 className={ow.cardTitle}>{w.title}</h5>
               <button
