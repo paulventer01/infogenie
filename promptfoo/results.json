@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-08-07T00:00:00.000Z",
+  "note": "Baseline placeholder. Replace by running npm run eval:prompts against a real provider.",
+  "stats": {
+    "successes": 4,
+    "failures": 0
+  },
+  "passRate": 1,
+  "successes": 4,
+  "failures": 0,
+  "total": 4,
+  "failed": [],
+  "surfaces": [
+    "officer.brief",
+    "officer.daily-report",
+    "officer.meeting-minutes",
+    "governance"
+  ]
+}

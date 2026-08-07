@@ -271,7 +271,25 @@ async function _feedbackForcesStrong(tenantId, surface) {
 async function _recordCallTrace(payload) {
   try {
     const { recordTrace } = require('../ai_traces/store');
-    return await recordTrace(payload);
+    const traced = await recordTrace(payload);
+    try {
+      const { emitLlmSpan } = require('../ops_tooling/otel');
+      emitLlmSpan({
+        provider: payload.provider || traced?.provider,
+        model: payload.model || traced?.model,
+        category: payload.category,
+        surface: payload.surface,
+        tenant_id: payload.tenant_id,
+        cascade_tier: payload.cascade_tier,
+        prompt_tokens: payload.prompt_tokens,
+        completion_tokens: payload.completion_tokens,
+        latency_ms: payload.latency_ms,
+        cost_usd: traced?.cost_usd ?? payload.cost_usd,
+        status: payload.status || (payload.error ? 'error' : 'ok'),
+        error: payload.error,
+      });
+    } catch (_) { /* otel optional */ }
+    return traced;
   } catch (_) {
     return null;
   }

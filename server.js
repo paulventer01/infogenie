@@ -51,6 +51,7 @@ const _authGate         = require('./services/auth_gate');
 const _runtimeFlags     = require('./services/runtime_flags');
 const _security         = require('./services/security');
 const { initSentry, captureException } = require('./services/infra/sentry');
+const { initOtel } = require('./services/ops_tooling/otel');
 const { logger, requestLogger } = require('./services/infra/logger');
 const { withRetry, isTransientError } = require('./services/infra/retry');
 const { getBreaker } = require('./services/infra/circuit_breaker');
@@ -61,6 +62,7 @@ const {
 
 // Optional Sentry — no-op without SENTRY_DSN.
 try { initSentry(); } catch (_) { /* ignore */ }
+try { initOtel(); } catch (_) { /* ignore */ }
 
 // Background work — port binding, the drip cron tick below, the register-time
 // crons in services/officer + services/assistant_ops routes, and the BOOT_TASKS
@@ -2792,6 +2794,8 @@ const _capacityRouter = require('./services/capacity/api');
 app.use('/api/capacity',        _capacityRouter);
 const _technicalManagerRouter = require('./services/technical_manager/api');
 app.use('/api/technical-manager', _technicalManagerRouter);
+const _opsToolingRouter = require('./services/ops_tooling/api');
+app.use('/api/ops-tooling', _opsToolingRouter);
 BOOT_TASKS.push(async () => {
   try {
     if (_db.hasDb()) {

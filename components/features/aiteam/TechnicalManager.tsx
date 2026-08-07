@@ -64,6 +64,7 @@ type TechScan = {
     surfaces: { ok: boolean; detail: string };
   };
   surfaces: Snapshot["surfaces"] | null;
+  opsTooling: Snapshot["ops_tooling"] | null;
   events: TechEvent[];
   plan: TechPlan | null;
   meetingNote: string;
@@ -119,6 +120,10 @@ type Snapshot = {
     surfaces_ok?: boolean;
     pages_missing_registry?: number;
     api_probes_failed?: number;
+    ops_stack_configured?: number;
+    ops_stack_total?: number;
+    synthetics_failed?: number;
+    llm_cost_usd_24h?: number | null;
   };
   surfaces?: {
     ok?: boolean;
@@ -135,6 +140,32 @@ type Snapshot = {
     missing_registry?: string[];
     missing_components?: string[];
     probes?: Array<{ path: string; ok: boolean; status: number; ms?: number; error?: string }>;
+  };
+  ops_tooling?: {
+    ok?: boolean;
+    overall?: string;
+    ship_order?: string[];
+    deferred?: string[];
+    stack?: Array<{
+      id: string;
+      name: string;
+      order: number;
+      configured: boolean;
+      ok: boolean;
+      summary: string;
+      detail?: Record<string, unknown>;
+    }>;
+    synthetics?: {
+      provider?: string;
+      ok?: boolean;
+      checks?: Array<{ id: string; name: string; path?: string; ok: boolean; status?: number; ms?: number; error?: string | null }>;
+      counts?: { total?: number; failed?: number; critical_failed?: number };
+      note?: string;
+    };
+    finops?: {
+      metrics?: { cost_usd?: number; calls?: number; error_rate?: number; latency_p95_ms?: number | null };
+      alerts?: Array<{ severity: string; message: string }>;
+    };
   };
 };
 
@@ -311,6 +342,7 @@ function snapshotToScan(snap: Snapshot): TechScan {
       },
     },
     surfaces: snap.surfaces || null,
+    opsTooling: snap.ops_tooling || null,
     events,
     plan,
     meetingNote: snap.meeting_note || "",
@@ -614,6 +646,85 @@ export default function TechnicalManager() {
                   {p.ok ? "●" : "○"} {p.path} · HTTP {p.status || "—"}
                   {typeof p.ms === "number" ? ` · ${p.ms}ms` : ""}
                   {p.error ? ` · ${p.error}` : ""}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {scan?.opsTooling ? (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "14px 16px",
+            borderRadius: 14,
+            border: `1px solid ${scan.opsTooling.ok === false ? "#FECACA" : "#99F6E4"}`,
+            background: scan.opsTooling.ok === false ? "#FEF2F2" : "#F0FDFA",
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "#0F766E" }}>
+            Ops tooling stack · ship order
+          </div>
+          <div style={{ marginTop: 4, fontSize: 15, fontWeight: 800, color: "var(--fg)" }}>
+            {(scan.opsTooling.stack || []).filter((x) => x.configured).length}/
+            {(scan.opsTooling.stack || []).length} configured · synthetics{" "}
+            {scan.opsTooling.synthetics?.ok === false ? "FAILING" : "OK"}
+            {typeof scan.opsTooling.finops?.metrics?.cost_usd === "number"
+              ? ` · LLM $${scan.opsTooling.finops.metrics.cost_usd.toFixed(2)}/24h`
+              : ""}
+          </div>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--fg-muted)", lineHeight: 1.45 }}>
+            Checkly → OpenTelemetry/SigNoz → Nango → GitGuardian → Promptfoo → LLM FinOps.
+            Deferred: Infisical, incident.io/PagerDuty, Uptrace.
+          </p>
+          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            {(scan.opsTooling.stack || []).map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "28px 1fr auto",
+                  gap: 10,
+                  alignItems: "start",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  background: "#fff",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <div style={{ fontWeight: 800, color: "#0F766E", fontSize: 13 }}>{item.order}</div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: "var(--fg)" }}>{item.name}</div>
+                  <div style={{ marginTop: 2, fontSize: 12, color: "var(--fg-muted)", lineHeight: 1.4 }}>{item.summary}</div>
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: !item.ok ? "#DC2626" : item.configured ? "#065F46" : "#CA8A04",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {!item.ok ? "Issue" : item.configured ? "Live" : "Setup"}
+                </div>
+              </div>
+            ))}
+          </div>
+          {scan.opsTooling.synthetics?.checks?.length ? (
+            <div style={{ marginTop: 12, display: "grid", gap: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--fg-muted)" }}>
+                Synthetic journeys ({scan.opsTooling.synthetics.provider || "local"})
+              </div>
+              {scan.opsTooling.synthetics.checks.slice(0, 8).map((c) => (
+                <div key={c.id} style={{ fontSize: 12, color: c.ok ? "#065F46" : "#991B1B", fontWeight: 600 }}>
+                  {c.ok ? "●" : "○"} {c.name}
+                  {c.path ? ` · ${c.path}` : ""}
+                  {typeof c.status === "number" ? ` · HTTP ${c.status}` : ""}
+                  {typeof c.ms === "number" ? ` · ${c.ms}ms` : ""}
+                  {c.error ? ` · ${c.error}` : ""}
                 </div>
               ))}
             </div>

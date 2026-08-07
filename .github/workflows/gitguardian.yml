@@ -1,0 +1,29 @@
+name: GitGuardian
+
+on:
+  push:
+    branches: [main, 'cursor/**']
+  pull_request:
+
+jobs:
+  scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: GitGuardian scan
+        if: ${{ secrets.GITGUARDIAN_API_KEY != '' }}
+        uses: GitGuardian/ggshield-action@v1
+        env:
+          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Local heuristic secret scan (always)
+        run: node scripts/secret-scan.js

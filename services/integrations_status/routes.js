@@ -38,7 +38,21 @@ app.get('/api/integrations/status', (req, res) => {
   if (process.env.SHOPIFY_SHOP && process.env.SHOPIFY_ADMIN_TOKEN) configured.push('shopify');
   if (process.env.APPSFLYER_API_TOKEN && process.env.APPSFLYER_APP_ID) configured.push('appsflyer');
   if (process.env.APIFY_API_KEY && !/^_DUMMY/i.test(process.env.APIFY_API_KEY)) configured.push('apify');
-  res.json({ configured });
+  if (process.env.NANGO_SECRET_KEY && !/^_DUMMY/i.test(process.env.NANGO_SECRET_KEY)) configured.push('nango');
+  if (process.env.CHECKLY_API_KEY && !/^_DUMMY/i.test(process.env.CHECKLY_API_KEY)) configured.push('checkly');
+  else if ((process.env.BETTERSTACK_API_KEY || process.env.BETTER_UPTIME_API_TOKEN) && !/^_DUMMY/i.test(process.env.BETTERSTACK_API_KEY || process.env.BETTER_UPTIME_API_TOKEN || '')) configured.push('betterstack');
+  if ((process.env.OTEL_EXPORTER_OTLP_ENDPOINT || process.env.SIGNOZ_OTLP_ENDPOINT) && !/^_DUMMY/i.test(process.env.OTEL_EXPORTER_OTLP_ENDPOINT || process.env.SIGNOZ_OTLP_ENDPOINT || '')) configured.push('otel-signoz');
+  if (process.env.GITGUARDIAN_API_KEY && !/^_DUMMY/i.test(process.env.GITGUARDIAN_API_KEY)) configured.push('gitguardian');
+  if (process.env.TRACELOOP_API_KEY && !/^_DUMMY/i.test(process.env.TRACELOOP_API_KEY)) configured.push('traceloop');
+  res.json({
+    configured,
+    nango: {
+      ready: !!(process.env.NANGO_SECRET_KEY && !/^_DUMMY/i.test(process.env.NANGO_SECRET_KEY)),
+      connect_path: '/api/ops-tooling/nango/connect-session',
+      status_path: '/api/ops-tooling/nango/status',
+      providers: ['meta', 'google-ads', 'hubspot', 'shopify'],
+    },
+  });
 });
 
 // ── POST /api/openai — generic chat-completion proxy for client-side AI calls ─
