@@ -216,7 +216,7 @@ const OFFICERS: Officer[] = [
     id: "technical",
     icon: "🛡️",
     title: "Technical Manager",
-    role: "APIs, LLMs, auth, tokens, security, updates — live system status",
+    role: "Every page & feature live — APIs, LLMs, auth, vault, security, updates",
     isNew: true,
     links: [["technical-manager", "Open Technical Manager desk"]],
   },
