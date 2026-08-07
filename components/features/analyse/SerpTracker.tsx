@@ -60,9 +60,22 @@ interface OpenAiResult {
   ok?: boolean;
   choices?: { message?: { content?: string } }[];
 }
+interface AnalysisCompetitor {
+  name?: string;
+  domain?: string;
+  url?: string;
+  topKeywords?: string[];
+}
 interface AnalysisData {
   url?: string;
+  brandName?: string;
+  industryKey?: string;
+  industryName?: string;
+  subNiche?: string;
   keywords?: (string | { keyword?: string; term?: string })[];
+  competitors?: AnalysisCompetitor[];
+  industry?: { name?: string; keywords?: string[] };
+  companyProfile?: { subNiche?: string; businessSummary?: string };
 }
 
 const COUNTRIES: [string, string][] = [
@@ -98,6 +111,45 @@ function getAnalysisData(): AnalysisData {
   return (window as unknown as { analysisData?: AnalysisData }).analysisData || {};
 }
 
+/** Keywords already discovered during the initial website analysis. */
+function analysisKeywordPool(): string[] {
+  const ad = getAnalysisData();
+  const seen = new Set<string>();
+  const pool: string[] = [];
+  const push = (raw: unknown) => {
+    let s = "";
+    if (typeof raw === "string") s = raw;
+    else if (raw && typeof raw === "object") {
+      const o = raw as { keyword?: string; term?: string };
+      s = o.keyword || o.term || "";
+    }
+    const t = String(s || "").trim();
+    if (!t || t.length > 80) return;
+    const key = t.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    pool.push(t);
+  };
+  (ad.keywords || []).forEach(push);
+  (ad.competitors || []).forEach((c) => (c.topKeywords || []).forEach(push));
+  (ad.industry?.keywords || []).forEach(push);
+  if (ad.subNiche) push(ad.subNiche);
+  if (ad.companyProfile?.subNiche) push(ad.companyProfile.subNiche);
+  return pool;
+}
+
+function analysisNicheLabel(): string {
+  const ad = getAnalysisData();
+  return (
+    ad.subNiche ||
+    ad.companyProfile?.subNiche ||
+    ad.industryName ||
+    ad.industry?.name ||
+    ad.industryKey ||
+    ""
+  );
+}
+
 function toast(msg: string) {
   (window as unknown as { showToast?: (m: string) => void }).showToast?.(msg);
 }
@@ -114,6 +166,11 @@ export default function SerpTracker() {
     .replace(/^https?:\/\//, "")
     .replace(/^www\./, "")
     .split("/")[0];
+  const seedPool = analysisKeywordPool();
+  const kwPlaceholder =
+    seedPool[0] ||
+    analysisNicheLabel() ||
+    "keyword from your analysis";
 
   const [keyword, setKeyword] = useState("");
   const [domainV, setDomainV] = useState(autoDomain);
@@ -164,23 +221,24 @@ export default function SerpTracker() {
   }
 
   async function suggest() {
-    const fromAnalysis = (getAnalysisData().keywords || [])
-      .map((k) => (typeof k === "string" ? k : k.keyword || k.term || ""))
-      .filter(Boolean)
-      .slice(0, 10);
+    const fromAnalysis = analysisKeywordPool().slice(0, 24);
     if (fromAnalysis.length) {
       const idx = kwIdx.current % fromAnalysis.length;
       setKeyword(fromAnalysis[idx]);
       kwIdx.current = idx + 1;
+      toast(`✨ Keyword from your analysis (${idx + 1}/${fromAnalysis.length})`);
       return;
     }
-    const domain = domainV || getAnalysisData().url || "";
+    const ad = getAnalysisData();
+    const domain = domainV || ad.url || "";
     if (!domain) {
       toast(
         "⚠️ Run an analysis first or enter your domain — then AI Suggest will fill keywords from it.",
       );
       return;
     }
+    const niche = analysisNicheLabel();
+    const summary = ad.companyProfile?.businessSummary || "";
     setSuggesting(true);
     try {
       const r = await apiPost<OpenAiResult>("/api/openai", {
@@ -188,7 +246,15 @@ export default function SerpTracker() {
         messages: [
           {
             role: "user",
-            content: `Suggest one high-value SEO keyword to track in Google SERP rankings for the website "${domain}". Reply with ONLY the keyword phrase — no explanation, no quotes.`,
+            content: [
+              `Suggest one high-value SEO keyword to track in Google SERP rankings for the website "${domain}".`,
+              niche ? `Industry / sub-niche: ${niche}.` : "",
+              summary ? `Business: ${summary}` : "",
+              "The keyword MUST be directly relevant to this exact business and industry — not a random or adjacent vertical.",
+              "Reply with ONLY the keyword phrase — no explanation, no quotes.",
+            ]
+              .filter(Boolean)
+              .join(" "),
           },
         ],
       });
@@ -196,6 +262,7 @@ export default function SerpTracker() {
         .trim()
         .replace(/^["'.]+|["'.]+$/g, "");
       if (suggested) setKeyword(suggested);
+      else toast("No suggestion returned — enter a keyword manually.");
     } catch {
       toast("AI Suggest failed — enter keyword manually.");
     } finally {
@@ -332,7 +399,7 @@ export default function SerpTracker() {
               <input
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                placeholder="best running shoes"
+                placeholder={kwPlaceholder}
                 style={trInput}
               />
             </div>
@@ -354,7 +421,7 @@ export default function SerpTracker() {
               <input
                 value={domainV}
                 onChange={(e) => setDomainV(e.target.value)}
-                placeholder="nike.com"
+                placeholder={autoDomain || "yourdomain.com"}
                 style={{
                   ...trInput,
                   background: autoDomain ? "#F0FDF4" : "#fff",

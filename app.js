@@ -3178,7 +3178,7 @@ async function runAnalysis(url, country, industryOverride) {
     const n = Array.isArray(sectorDetected.competitors) ? sectorDetected.competitors.length : 0;
     _igLoadingActivity(`Sector match returned ${n} competitors`, 'active');
   } else {
-    _igLoadingActivity('Using industry database competitors (live AI unavailable)', 'active');
+    _igLoadingActivity(`Using same-industry shortlist for ${industry.name} (live AI unavailable)`, 'active');
   }
   statusText.textContent = `✅ Industry & competitors locked in — fetching live metrics…`;
   _igLoadingActivity('Industry & competitors locked — fetching live metrics', 'active');
@@ -3223,18 +3223,69 @@ async function runAnalysis(url, country, industryOverride) {
 
   // ── Sector AI result takes PRIORITY when available — it returns real
   //    same-niche competitors with much better coverage than the static DB.
-  if (sectorDetected && sectorDetected.ok && Array.isArray(sectorDetected.competitors) && sectorDetected.competitors.length >= 3) {
+  //    Accept any non-empty same-niche list (accuracy > arbitrary ">= 3").
+  if (sectorDetected && sectorDetected.ok && Array.isArray(sectorDetected.competitors) && sectorDetected.competitors.length >= 1) {
     // Reshape to look like the smart-detect payload so the existing handler picks it up.
     aiDetected = {
       ok: true,
       industryName: sectorDetected.industryName || (industryOverride && industryOverride.trim()) || (aiDetected && aiDetected.industryName) || 'Detected industry',
-      businessSummary: '',
+      industryKey: (aiDetected && aiDetected.industryKey) || industryKey,
+      businessSummary: (aiDetected && aiDetected.businessSummary) || '',
+      subNiche: sectorDetected.subNiche || (aiDetected && aiDetected.subNiche) || '',
       competitors: sectorDetected.competitors,
+      signals: (aiDetected && aiDetected.signals) || {},
       _source: 'sector',
     };
     if (hintEl) {
       hintEl.textContent = `✓ AI-matched ${sectorDetected.competitors.length} ${sectorDetected.industryName || 'industry'} competitors`;
       hintEl.style.color = '#00C9C8';
+    }
+  }
+
+  // Last resort before static INDUSTRY_DB: ask sector-competitors for the
+  // detected industry name so we never invent rivals from a different vertical.
+  // Skip when the user already typed an industry (sectorPromise covered that)
+  // or when smart-detect/sector already returned a same-niche list.
+  if (
+    !hasIndustry &&
+    !(aiDetected && aiDetected.ok && Array.isArray(aiDetected.competitors) && aiDetected.competitors.length >= 1) &&
+    industry && industry.name
+  ) {
+    const _lrCtl = new AbortController();
+    const _lrT0 = performance.now();
+    const _lrTo = setTimeout(() => _lrCtl.abort(), 25000);
+    _igLoadingActivity(`Matching same-industry competitors for ${industry.name}`, 'active');
+    try {
+      const r = await fetch('/api/sector-competitors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          industry: industry.name,
+          country: country || '',
+          urlHint: hasUrl ? cleanUrl : '',
+        }),
+        signal: _lrCtl.signal,
+      });
+      clearTimeout(_lrTo);
+      if (r.ok) {
+        const lr = await r.json();
+        if (lr && lr.ok && Array.isArray(lr.competitors) && lr.competitors.length >= 1) {
+          aiDetected = {
+            ok: true,
+            industryName: lr.industryName || industry.name,
+            industryKey,
+            businessSummary: '',
+            subNiche: lr.subNiche || '',
+            competitors: lr.competitors,
+            signals: {},
+            _source: 'sector-last-resort',
+          };
+          window.IGDiag && IGDiag.mark('sector-competitors-last-resort: ok', `${lr.competitors.length} in ${((performance.now()-_lrT0)/1000).toFixed(1)}s`);
+        }
+      }
+    } catch (e) {
+      clearTimeout(_lrTo);
+      window.IGDiag && IGDiag.err('sector-competitors-last-resort: failed', (e && e.name || 'err'));
     }
   }
 
@@ -3245,7 +3296,15 @@ async function runAnalysis(url, country, industryOverride) {
       displayIndustryName = aiDetected.industryName;
       industry.name = aiDetected.industryName; // patch in-memory for downstream use
     }
-    if (Array.isArray(aiDetected.competitors) && aiDetected.competitors.length >= 3) {
+    // Prefer the AI/sector industry bucket when it maps to a known key so
+    // seed keywords stay in the same vertical as the analysed site.
+    if (aiDetected.industryKey && typeof INDUSTRY_DB !== 'undefined' && INDUSTRY_DB[aiDetected.industryKey]) {
+      industryKey = aiDetected.industryKey;
+      if (Array.isArray(INDUSTRY_DB[industryKey].keywords)) {
+        industry.keywords = INDUSTRY_DB[industryKey].keywords;
+      }
+    }
+    if (Array.isArray(aiDetected.competitors) && aiDetected.competitors.length >= 1) {
       // Convert AI competitors into the same shape the rest of the UI expects.
       aiCompetitorPool = aiDetected.competitors.map((c, idx) => {
         const threats = ['critical','high','medium'];
@@ -3613,8 +3672,38 @@ async function runAnalysis(url, country, industryOverride) {
     analyzedAt: new Date().toISOString(),
   };
 
+  // Seed keyword suggestions immediately from the analysis (industry seeds +
+  // any competitor topKeywords already on the pool). Enrichment later overlays
+  // live DataForSEO terms — Rank Tracker "AI Suggest" must not wait for that.
+  const _seedKwSeen = new Set();
+  const _seedKeywords = [];
+  const _pushSeedKw = (raw) => {
+    const s = typeof raw === 'string' ? raw : (raw && (raw.keyword || raw.term)) || '';
+    const t = String(s || '').trim();
+    if (!t || t.length > 80) return;
+    const key = t.toLowerCase();
+    if (_seedKwSeen.has(key)) return;
+    _seedKwSeen.add(key);
+    _seedKeywords.push(t);
+  };
+  (selectedComps || []).forEach(c => (c.topKeywords || []).forEach(_pushSeedKw));
+  (industry && industry.keywords || []).forEach(_pushSeedKw);
+  if (companyProfile.subNiche) _pushSeedKw(companyProfile.subNiche);
+
   // Store analysis data
-  analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps, sectorOnly, companyProfile };
+  analysisData = {
+    url: cleanUrl,
+    country,
+    industryKey,
+    industryName: displayIndustryName,
+    subNiche: companyProfile.subNiche || '',
+    industry,
+    websiteKPIs,
+    competitors: selectedComps,
+    sectorOnly,
+    companyProfile,
+    keywords: _seedKeywords.slice(0, 30),
+  };
   window.analysisData = analysisData;  // Mirror to window so external modules (Link Suggester, CRO Lab, Analytics Hub, etc.) can read it
   // Notify the global field enhancer (ig_field_enhancer.js) so any Brand /
   // Competitor pickers already rendered refresh their option lists with the
@@ -3912,12 +4001,23 @@ async function enrichCompetitorKwAudiences(domain, industryKey, country) {
 
     if (enriched > 0) {
       console.log(`[kw-audience-enrich] ${enriched} competitor fields updated with keywords + AI audiences`);
-      // Store for downstream use (keyword suggestions, battle plans, etc.)
-      analysisData.keywords = (analysisData.competitors || [])
-        .flatMap(c => c.topKeywords || [])
-        .filter((k, i, a) => k && a.indexOf(k) === i)
-        .slice(0, 30);
+      // Merge live competitor keywords with seeds from the initial analysis so
+      // Rank Tracker / AI Suggest keep both sets available.
+      const merged = [];
+      const seenKw = new Set();
+      const pushKw = (k) => {
+        const t = String(k || '').trim();
+        if (!t) return;
+        const key = t.toLowerCase();
+        if (seenKw.has(key)) return;
+        seenKw.add(key);
+        merged.push(t);
+      };
+      (analysisData.competitors || []).forEach(c => (c.topKeywords || []).forEach(pushKw));
+      (analysisData.keywords || []).forEach(pushKw);
+      analysisData.keywords = merged.slice(0, 30);
       window.buildCompetitors && window.buildCompetitors();
+      try { window.dispatchEvent(new CustomEvent('ig:analysis-updated')); } catch (_) {}
     }
   } catch (err) {
     console.warn('Competitor keyword/audience enrichment failed (non-fatal):', err.message);
@@ -11556,10 +11656,30 @@ window._safeUrl = function(u) {
   }
   function getKeywords() {
     const d = window.analysisData || {};
-    // Primary: analysisData.keywords (populated by keyword explorer / SEO tools after a full analysis)
-    if (Array.isArray(d.keywords) && d.keywords.length) {
-      return d.keywords.map(k => typeof k === 'string' ? k : (k && (k.keyword || k.term))).filter(Boolean).slice(0, 12);
+    const seen = new Set();
+    const out = [];
+    const push = (raw) => {
+      const s = typeof raw === 'string' ? raw : (raw && (raw.keyword || raw.term)) || '';
+      const t = String(s || '').trim();
+      if (!t) return;
+      const key = t.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(t);
+    };
+    // Primary: analysisData.keywords (seeded at analyse time + enriched later)
+    if (Array.isArray(d.keywords)) d.keywords.forEach(push);
+    // Competitor topKeywords from the initial analysis / enrichment
+    if (Array.isArray(d.competitors)) {
+      d.competitors.forEach(c => {
+        if (Array.isArray(c && c.topKeywords)) c.topKeywords.forEach(push);
+      });
     }
+    // Industry seed terms for the analysed vertical (same industry only)
+    if (d.industry && Array.isArray(d.industry.keywords)) d.industry.keywords.forEach(push);
+    if (d.subNiche) push(d.subNiche);
+    if (d.companyProfile && d.companyProfile.subNiche) push(d.companyProfile.subNiche);
+    if (out.length) return out.slice(0, 12);
     // Fallback: Intent Map keywords (available after running the Keyword-Page Map tool)
     const im = window._intentMap;
     if (im && Array.isArray(im.keywords) && im.keywords.length) {
