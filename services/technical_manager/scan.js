@@ -7,6 +7,7 @@
 
 const _db = require('../../db');
 const { scanSurfaces } = require('./surfaces');
+const { collectOpsToolingStatus } = require('../ops_tooling/status');
 
 function _envPresent(key) {
   const v = process.env[key];
@@ -172,6 +173,21 @@ async function runTechnicalScan(tid = null) {
     surfaces = { ok: false, error: e.message, counts: {} };
   }
 
+  // ── Ops tooling stack (Checkly → OTEL/SigNoz → Nango → GG → Promptfoo → FinOps)
+  let ops_tooling = null;
+  try {
+    ops_tooling = await collectOpsToolingStatus({
+      tenantId: tid,
+      tenantKey: tid != null ? `tenant-${tid}` : null,
+    });
+    for (const ev of ops_tooling.events || []) {
+      events.push(_event(ev.severity, ev.area || 'ops_tooling', ev.message, ev.action || null));
+    }
+  } catch (e) {
+    events.push(_event('high', 'ops_tooling', `Ops tooling status failed: ${e.message}`, 'Inspect services/ops_tooling'));
+    ops_tooling = { ok: false, error: e.message, stack: [] };
+  }
+
   // ── Update / tooling research stubs (deterministic recommendations) ───────
   const tooling_gaps = [];
   if (!integrations.configured.includes('hubspot') && !integrations.configured.includes('amplitude')) {
@@ -200,11 +216,25 @@ async function runTechnicalScan(tid = null) {
     suggestion: 'Evaluate Snyk / Dependabot / npm audit CI gates before applying package updates',
     urgency: 'medium',
   });
-  // External synthetic uptime remains a gap only when local journey probes already pass.
-  if (surfaces?.ok) {
+  // External synthetic uptime remains a gap only when Checkly/Better Stack is not wired.
+  if (!ops_tooling?.env_presence?.CHECKLY_API_KEY && !ops_tooling?.env_presence?.BETTERSTACK_API_KEY) {
     tooling_gaps.push({
       need: 'External multi-region synthetic uptime',
-      suggestion: 'Add external uptime checks (e.g. Better Stack / Checkly) against /api/health and /api/ready from outside the host',
+      suggestion: 'Set CHECKLY_API_KEY (or BETTERSTACK_API_KEY) and deploy checkly/infogenie.checks.js against PUBLIC_BASE_URL',
+      urgency: 'medium',
+    });
+  }
+  if (!ops_tooling?.env_presence?.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    tooling_gaps.push({
+      need: 'SigNoz / OpenTelemetry export',
+      suggestion: 'Set SIGNOZ_OTLP_ENDPOINT (or OTEL_EXPORTER_OTLP_ENDPOINT) so API/Postgres/LLM traces leave the host',
+      urgency: 'medium',
+    });
+  }
+  if (!ops_tooling?.env_presence?.NANGO_SECRET_KEY) {
+    tooling_gaps.push({
+      need: 'Nango OAuth connector layer',
+      suggestion: 'Set NANGO_SECRET_KEY to unify Meta/Google/HubSpot/Shopify refresh + reconnect UX',
       urgency: 'medium',
     });
   }
@@ -256,12 +286,13 @@ async function runTechnicalScan(tid = null) {
     officer_stack: officerStack,
     tooling_gaps,
     surfaces,
+    ops_tooling,
     events: events.sort((a, b) => {
       const rank = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
       return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9);
     }),
     plan_of_action,
-    meeting_note: 'Technical Manager attends daily management meetings and reports live system status — including every page, subpage and feature surface — to all officers.',
+    meeting_note: 'Technical Manager attends daily management meetings and reports live system status — including every page, subpage and feature surface — plus Checkly synthetics, SigNoz telemetry, Nango connectors, GitGuardian, Promptfoo, and LLM FinOps.',
     counts: {
       events: events.length,
       critical,
@@ -273,6 +304,10 @@ async function runTechnicalScan(tid = null) {
       surfaces_ok: !!surfaces?.ok,
       pages_missing_registry: surfaces?.counts?.missing_registry || 0,
       api_probes_failed: surfaces?.counts?.api_probes_failed || 0,
+      ops_stack_configured: (ops_tooling?.stack || []).filter((s) => s.configured).length,
+      ops_stack_total: (ops_tooling?.stack || []).length,
+      synthetics_failed: ops_tooling?.synthetics?.counts?.failed || 0,
+      llm_cost_usd_24h: ops_tooling?.finops?.metrics?.cost_usd ?? null,
     },
   };
 }

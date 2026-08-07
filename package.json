@@ -20,7 +20,10 @@
     "lint:css-important": "node scripts/check-light-theme-important.js",
     "lint:css-specificity": "node scripts/check-light-theme-specificity.js",
     "lint:css": "npm run lint:css-important && npm run lint:css-specificity",
-    "lint": "npm run lint:fabrication && npm run lint:script-tags && npm run lint:duplicate-globals && npm run lint:css"
+    "lint": "npm run lint:fabrication && npm run lint:script-tags && npm run lint:duplicate-globals && npm run lint:css",
+    "eval:prompts": "node scripts/eval-prompts.js",
+    "scan:secrets": "node scripts/secret-scan.js",
+    "checkly:smoke": "node checkly/infogenie.checks.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.89.0",

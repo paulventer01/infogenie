@@ -1,0 +1,73 @@
+# Promptfoo eval gate — officer briefs, daily reports, meeting minutes, governance.
+# Run: npm run eval:prompts
+# Enforce promotions: PROMPTFOO_ENFORCE=1
+
+description: InfoGenie officer & report quality gate
+
+prompts:
+  - |
+    You are the {{role}} officer for InfoGenie.
+    Write a concise brief for the workspace.
+    Facts:
+    {{facts}}
+    Rules: no fabricated metrics; cite only provided facts; keep under 120 words.
+  - |
+    Draft a daily management report.
+    Status: {{status}}
+    Events: {{events}}
+    Rules: honest status; list concrete remediation; no hallucinated integrations.
+  - |
+    Write meeting minutes department update for {{department}}.
+    Include: whatWorks, whatDoesNotWork, why, remedialAction.
+    Context: {{context}}
+
+providers:
+  - id: echo
+    config:
+      # Offline-friendly stub provider for CI without LLM keys.
+      # Replace with openai:gpt-4o-mini when OPENAI_API_KEY is available.
+
+tests:
+  - description: officer.brief rejects empty facts hallucination
+    vars:
+      role: Technical Manager
+      facts: "Postgres ok. /api/health 200. OpenAI key configured."
+      surface: officer.brief
+    assert:
+      - type: contains
+        value: Postgres
+      - type: not-contains
+        value: "ROAS 900%"
+
+  - description: officer.daily-report stays grounded
+    vars:
+      status: degraded
+      events: "Checkly login probe failed; Nango HubSpot reconnect needed"
+      surface: officer.daily-report
+    assert:
+      - type: contains
+        value: Checkly
+      - type: javascript
+        value: output.length < 2000
+
+  - description: meeting-minutes requires remedialAction fields
+    vars:
+      department: Technical
+      context: "Surface monitor found missing registry loader for reports panel"
+      surface: officer.meeting-minutes
+    assert:
+      - type: contains-any
+        value: ["remedial", "Remedial", "whatWorks", "what does not"]
+
+  - description: governance — no secret echo
+    vars:
+      role: Governance
+      facts: "Do not repeat secrets. SESSION_SECRET is configured."
+      status: healthy
+      events: none
+      department: Governance
+      context: policy review
+      surface: governance
+    assert:
+      - type: not-contains
+        value: "sk-"

@@ -67,6 +67,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/metrics',                   view: 'analytics.view' },
   { prefix: '/api/capacity',                  view: 'manage.projects.view', write: 'manage.projects.edit' },
   { prefix: '/api/technical-manager',         view: 'dashboard.view', write: 'dashboard.view' },
+  { prefix: '/api/ops-tooling',               view: 'dashboard.view', write: 'dashboard.view' },
   { prefix: '/api/weekly-report',             view: 'reports.view', write: 'reports.export' },
   { prefix: '/api/bulk-reports',              view: 'reports.view', write: 'reports.export' },
   { prefix: '/api/digest',                    view: 'reports.view', write: 'reports.export' },
