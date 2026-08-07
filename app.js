@@ -11519,11 +11519,19 @@ window._safeUrl = function(u) {
     const wrap = document.getElementById('view-ops-officer');
     if (!wrap) return;
     wrap.innerHTML = `
-      <div style="${_hdrCSS};background:linear-gradient(135deg,#7C2D12 0%,#9A3412 100%)">
-        <div style="font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#FED7AA;font-weight:700">🛠️ OPERATIONS OFFICER</div>
-        <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">Campaign QA, Assets &amp; Lead Hygiene</h1>
-        <p style="margin:0;font-size:.92rem;color:#FFEDD5;max-width:720px">Scans your live campaigns, brand assets, leads and goals for stale or broken items. Returns a weekly digest with a prioritised checklist.</p>
-      </div>
+      <section class="ops-officer-hero" aria-label="Operations Officer">
+        <div class="ops-officer-hero__aurora" aria-hidden="true"></div>
+        <div class="ops-officer-hero__grid" aria-hidden="true"></div>
+        <div class="ops-officer-hero__copy">
+          <div class="ops-officer-hero__eyebrow"><span class="ops-officer-hero__mark" aria-hidden="true"></span>Operations Officer</div>
+          <h1 class="ops-officer-hero__title">Campaign QA, Assets &amp; Lead Hygiene</h1>
+          <p class="ops-officer-hero__body">Scans your live campaigns, brand assets, leads and goals for stale or broken items. Returns a weekly digest with a prioritised checklist.</p>
+        </div>
+        <aside class="ops-officer-hero__aside ops-officer-hero__aside--scan">
+          <div class="ops-officer-hero__pulse"><span class="ops-officer-hero__pulse-dot" aria-hidden="true"></span>Live ops pulse</div>
+          <div class="ops-officer-hero__pulse-value">Scanning…</div>
+        </aside>
+      </section>
       <div style="max-width:1200px;margin:0 auto;padding:0 28px" id="opsOffBody">
         <div style="${_cardCSS};text-align:center;color:#64748B">⏳ Scanning your operations…</div>
       </div>`;
