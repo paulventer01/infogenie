@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
+import { markNavPending, settleNavPending } from "@/lib/navPending";
 
 const PALETTE = ["#7C3AED", "#0891B2", "#F59E0B", "#15803D", "#B91C1C", "#1E40AF"];
 
@@ -146,11 +147,36 @@ export default function SovTracker() {
     const initial = preferred || list[0]?.target_brand || "";
     setTarget(initial);
     setLoading(false);
-    if (initial) loadSeries(initial, "30");
+    if (initial) await loadSeries(initial, "30");
   }, [loadSeries]);
 
+  // Keep IGDiag nav guard up through first fetch + Chart.js paint so expected
+  // mount work is not reported as last=idle · view=sov-tracker stalls.
   useEffect(() => {
-    load();
+    let cancelled = false;
+    markNavPending("panel:sov-tracker");
+    // Heartbeat invalidates PanelReady's settle timer while targets/series load.
+    const heartbeat = window.setInterval(() => {
+      if (!cancelled) markNavPending("panel:sov-tracker");
+    }, 1200);
+    (async () => {
+      try {
+        await load();
+      } finally {
+        window.clearInterval(heartbeat);
+        if (cancelled) return;
+        // Chart construction is rAF-deferred — settle after that frame.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!cancelled) settleNavPending("sov-tracker");
+          });
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+      window.clearInterval(heartbeat);
+    };
   }, [load]);
 
   // Render / destroy the Chart.js instance whenever series data changes.

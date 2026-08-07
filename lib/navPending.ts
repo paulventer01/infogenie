@@ -3,6 +3,8 @@
 const NAV_ATTR = "data-ig-nav";
 let clearTimer: ReturnType<typeof setTimeout> | null = null;
 let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+/** Bumped by markNavPending so a stale settleNavPending finish is ignored. */
+let navEpoch = 0;
 
 function clearMarkers(idle = true): void {
   try {
@@ -28,6 +30,7 @@ function resumeFields(scoped = true): void {
 }
 
 export function markNavPending(reason = "nav"): void {
+  navEpoch += 1;
   try {
     document.documentElement.setAttribute(NAV_ATTR, "1");
     window.__igReactRouting = true;
@@ -70,6 +73,7 @@ export function markNavPending(reason = "nav"): void {
  * `markNavPending`, which let IGDiag flag expected Dashboard mount work.
  */
 export function settleNavPending(view?: string): void {
+  const epoch = navEpoch;
   try {
     document.documentElement.setAttribute(NAV_ATTR, "1");
     window.__igReactRouting = true;
@@ -79,13 +83,33 @@ export function settleNavPending(view?: string): void {
   }
 
   const finish = () => {
+    // A later markNavPending (panel still loading) supersedes this settle.
+    if (epoch !== navEpoch) return;
     if (safetyTimer) {
       clearTimeout(safetyTimer);
       safetyTimer = null;
     }
-    clearMarkers(true);
-    // Decorate only the active React panel — avoid a full-document scan.
+    // Keep panel:<view> + data-ig-nav through the field-enhancer scan — clearing
+    // to idle first was producing false MAIN-THREAD STALL reports
+    // (last=idle · view=<panel>) when decoration ran after settle.
+    try {
+      document.documentElement.setAttribute(NAV_ATTR, "1");
+      window.__igReactRouting = true;
+      if (view) window.IGDiag?.setBreadcrumb?.("panel:" + view);
+    } catch {
+      /* noop */
+    }
     resumeFields(true);
+    try {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (epoch !== navEpoch) return;
+          clearMarkers(true);
+        });
+      });
+    } catch {
+      if (epoch === navEpoch) clearMarkers(true);
+    }
   };
 
   // Large / form-heavy panels commit 1k+ nodes (and often hydrate from API)
@@ -98,17 +122,20 @@ export function settleNavPending(view?: string): void {
     view === "battleplan" ||
     view === "white-label" ||
     view === "settings" ||
-    view === "csuite";
+    view === "csuite" ||
+    view === "sov-tracker";
   const settleMs = heavy ? 2800 : 1600;
 
   try {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        if (epoch !== navEpoch) return;
         if (clearTimer) clearTimeout(clearTimer);
         clearTimer = setTimeout(finish, settleMs);
       });
     });
   } catch {
+    if (epoch !== navEpoch) return;
     if (clearTimer) clearTimeout(clearTimer);
     clearTimer = setTimeout(finish, settleMs);
   }
