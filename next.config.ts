@@ -4,6 +4,10 @@ const EXPRESS = process.env.EXPRESS_PROXY_TARGET || "http://localhost:8000";
 const isProd = process.env.NODE_ENV === "production";
 
 const nextConfig: NextConfig = {
+  // Hide the black Next.js "N" / route indicator in preview tunnels and local
+  // demos — it reads as a stray UI mark on the workspace canvas.
+  // Compile/runtime error overlays still surface when something is actually broken.
+  devIndicators: false,
   // Root-cause / scenario AI often exceeds the default 30s rewrite proxy budget;
   // without this the browser gets a blank 500 and the UI stays on "Decomposing…".
   experimental: {
@@ -13,6 +17,7 @@ const nextConfig: NextConfig = {
   // Next 15 blocks /_next/* and the app appears blank after login.
   allowedDevOrigins: [
     "*.trycloudflare.com",
+    "referrals-explaining-explicitly-conferencing.trycloudflare.com",
     "musician-dust-dealtime-ignored.trycloudflare.com",
     "thompson-attorney-themes-settled.trycloudflare.com",
     "change-ranking-reprints-previous.trycloudflare.com",
