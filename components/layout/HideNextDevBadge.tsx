@@ -22,9 +22,18 @@ function sweep() {
     document.querySelectorAll(BADGE_SEL).forEach(hideNode);
     // Next 15 mounts the black "N" / error badge inside nextjs-portal shadow roots.
     document.querySelectorAll("nextjs-portal").forEach((portal) => {
-      const root = (portal as HTMLElement).shadowRoot;
-      if (!root) return;
-      root.querySelectorAll(BADGE_SEL).forEach(hideNode);
+      const host = portal as HTMLElement;
+      const root = host.shadowRoot;
+      if (root) root.querySelectorAll(BADGE_SEL).forEach(hideNode);
+      // The portal host itself can paint as a dark pill on panel heroes.
+      if (host.getAttribute("data-nextjs-toast") != null || host.querySelector?.(BADGE_SEL)) {
+        hideNode(host);
+      }
+      // Always collapse empty/decorative portal chrome that sits in the corner.
+      const rect = host.getBoundingClientRect?.();
+      if (rect && rect.width > 0 && rect.width < 48 && rect.height < 48) {
+        hideNode(host);
+      }
     });
   } catch {
     /* noop */
