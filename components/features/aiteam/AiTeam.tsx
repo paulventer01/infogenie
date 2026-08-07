@@ -52,9 +52,20 @@ interface DailyReportResponse {
 }
 
 interface ActionItem {
+  id?: string;
   owner?: string;
   action?: string;
   dueIn?: string;
+  /** agreed → in_progress → implemented */
+  status?: "agreed" | "in_progress" | "implemented";
+  implementedAt?: string | null;
+}
+interface DepartmentUpdate {
+  officer?: string;
+  whatWorks?: string;
+  whatDoesNotWork?: string;
+  why?: string;
+  remedialAction?: string;
 }
 interface Meeting {
   id: string;
@@ -63,8 +74,10 @@ interface Meeting {
   attendees?: string[];
   discussion?: string[];
   decisions?: string[];
+  departmentUpdates?: DepartmentUpdate[];
   actionItems?: ActionItem[];
   autonomous?: boolean;
+  mandatoryAttendance?: boolean;
 }
 
 interface SystemCheck {
@@ -351,14 +364,27 @@ function meetingToMarkdown(m: Meeting): string {
   lines.push(`# Meeting Minutes — ${m.topic || ""}`);
   lines.push(`_${new Date(m.scheduledAt || Date.now()).toLocaleString()}_\n`);
   lines.push(`**Attendees:** ${(m.attendees || []).join(", ")}\n`);
+  if (m.mandatoryAttendance) lines.push(`_Mandatory full-team attendance_\n`);
   lines.push(`## Discussion`);
   (m.discussion || []).forEach((p) => lines.push(`\n${p}`));
+  if ((m.departmentUpdates || []).length) {
+    lines.push(`\n## Department Updates`);
+    (m.departmentUpdates || []).forEach((u) => {
+      lines.push(`\n### ${u.officer || "Officer"}`);
+      lines.push(`- **What works:** ${u.whatWorks || "—"}`);
+      lines.push(`- **What does not work:** ${u.whatDoesNotWork || "—"}`);
+      lines.push(`- **Why:** ${u.why || "—"}`);
+      lines.push(`- **Remedial action:** ${u.remedialAction || "—"}`);
+    });
+  }
   lines.push(`\n## Decisions`);
   (m.decisions || []).forEach((d) => lines.push(`- ${d}`));
   if (!(m.decisions || []).length) lines.push(`_None_`);
   lines.push(`\n## Action Items / Plan of Action`);
   (m.actionItems || []).forEach((a) =>
-    lines.push(`- **${a.owner || "?"}** — ${a.action || ""} _(due: ${a.dueIn || "—"})_`),
+    lines.push(
+      `- **${a.owner || "?"}** — ${a.action || ""} _(due: ${a.dueIn || "—"} · ${a.status || "agreed"}${a.implementedAt ? ` · done ${a.implementedAt}` : ""})_`,
+    ),
   );
   if (!(m.actionItems || []).length) lines.push(`_None_`);
   return lines.join("\n");
@@ -784,7 +810,14 @@ export default function AiTeam() {
         />
       )}
       {meetingDetail && (
-        <MeetingDetailModal meeting={meetingDetail} onClose={() => setMeetingDetail(null)} />
+        <MeetingDetailModal
+          meeting={meetingDetail}
+          onClose={() => setMeetingDetail(null)}
+          onUpdated={(m) => {
+            setMeetingDetail(m);
+            setMeetingsRefresh((n) => n + 1);
+          }}
+        />
       )}
       {autoMeetingSettings && (
         <AutoMeetingSettingsModal
@@ -1829,8 +1862,38 @@ function ScheduleMeetingModal({
 }
 
 // ── Meeting detail modal ─────────────────────────────────────────────────────
-function MeetingDetailModal({ meeting, onClose }: { meeting: Meeting; onClose: () => void }) {
-  const m = meeting;
+function MeetingDetailModal({
+  meeting,
+  onClose,
+  onUpdated,
+}: {
+  meeting: Meeting;
+  onClose: () => void;
+  onUpdated?: (m: Meeting) => void;
+}) {
+  const [m, setM] = useState(meeting);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setM(meeting);
+  }, [meeting]);
+
+  async function setActionStatus(actionId: string, status: "agreed" | "in_progress" | "implemented") {
+    setBusyId(actionId);
+    const j = await apiPost<{ ok?: boolean; meeting?: Meeting; error?: string }>(
+      `/api/officer/meetings/${encodeURIComponent(m.id)}/action-status`,
+      { actionId, status },
+    );
+    setBusyId(null);
+    if (j.error || !j.meeting) {
+      alert(j.error || "Failed to update action");
+      return;
+    }
+    setM(j.meeting);
+    onUpdated?.(j.meeting);
+    showToast(status === "implemented" ? "✓ Action marked implemented" : "✓ Action status updated");
+  }
+
   return (
     <div style={overlayStyle} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div
@@ -1854,6 +1917,11 @@ function MeetingDetailModal({ meeting, onClose }: { meeting: Meeting; onClose: (
           <p style={{ margin: 0, fontSize: ".8rem", opacity: 0.85 }}>
             {new Date(m.scheduledAt || Date.now()).toLocaleString()} · {(m.attendees || []).join(" · ")}
           </p>
+          {m.mandatoryAttendance ? (
+            <p style={{ margin: "8px 0 0", fontSize: ".75rem", opacity: 0.9 }}>
+              Full-team attendance required · each officer reports what works / what doesn’t / why / remedy
+            </p>
+          ) : null}
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px" }}>
           <div style={{ marginBottom: 18 }}>
@@ -1868,8 +1936,43 @@ function MeetingDetailModal({ meeting, onClose }: { meeting: Meeting; onClose: (
               <div style={{ color: "#94A3B8", fontStyle: "italic" }}>No discussion notes</div>
             )}
           </div>
+
+          {(m.departmentUpdates || []).length ? (
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: ".78rem", fontWeight: 800, color: "#0F172A", marginBottom: 8 }}>
+                Department updates (mandatory)
+              </div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {(m.departmentUpdates || []).map((u, i) => (
+                  <div
+                    key={`${u.officer || "officer"}-${i}`}
+                    style={{ border: "1px solid #E2E8F0", borderRadius: 10, padding: "12px 14px", background: "#F8FAFC" }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: ".9rem", color: "#0F172A", marginBottom: 8 }}>
+                      {u.officer || "Officer"}
+                    </div>
+                    <div style={{ display: "grid", gap: 6, fontSize: ".82rem", lineHeight: 1.45, color: "#334155" }}>
+                      <div>
+                        <strong style={{ color: "#047857" }}>What works:</strong> {u.whatWorks || "—"}
+                      </div>
+                      <div>
+                        <strong style={{ color: "#B45309" }}>What does not work:</strong> {u.whatDoesNotWork || "—"}
+                      </div>
+                      <div>
+                        <strong>Why:</strong> {u.why || "—"}
+                      </div>
+                      <div>
+                        <strong style={{ color: "#0F766E" }}>Remedial action:</strong> {u.remedialAction || "—"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           <div style={{ marginBottom: 18 }}>
-            <div style={{ fontSize: ".78rem", fontWeight: 800, color: "#0F172A", marginBottom: 6 }}>✅ Decisions</div>
+            <div style={{ fontSize: ".78rem", fontWeight: 800, color: "#0F172A", marginBottom: 6 }}>✅ Decisions (agreed)</div>
             {(m.decisions || []).length ? (
               <ul style={{ margin: "0 0 0 18px", padding: 0, fontSize: ".88rem", lineHeight: 1.7, color: "#0F172A" }}>
                 {(m.decisions || []).map((d, i) => (
@@ -1881,21 +1984,69 @@ function MeetingDetailModal({ meeting, onClose }: { meeting: Meeting; onClose: (
             )}
           </div>
           <div>
-            <div style={{ fontSize: ".78rem", fontWeight: 800, color: "#0F172A", marginBottom: 6 }}>📋 Plan of Action</div>
+            <div style={{ fontSize: ".78rem", fontWeight: 800, color: "#0F172A", marginBottom: 6 }}>
+              📋 Plan of Action — implement once agreed
+            </div>
             {(m.actionItems || []).length ? (
               <div style={{ display: "grid", gap: 6 }}>
-                {(m.actionItems || []).map((a, i) => (
-                  <div
-                    key={i}
-                    style={{ border: "1px solid #E2E8F0", borderRadius: 8, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: ".86rem", color: "#0F172A", fontWeight: 600 }}>{a.action || ""}</div>
-                      <div style={{ fontSize: ".7rem", color: "#64748B", marginTop: 2 }}>Owner: {a.owner || "?"}</div>
+                {(m.actionItems || []).map((a, i) => {
+                  const id = a.id || `idx_${i}`;
+                  const status = a.status || "agreed";
+                  const done = status === "implemented";
+                  return (
+                    <div
+                      key={id}
+                      style={{
+                        border: "1px solid #E2E8F0",
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        gap: 10,
+                        background: done ? "#ECFDF5" : "#fff",
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: ".86rem", color: "#0F172A", fontWeight: 600 }}>{a.action || ""}</div>
+                        <div style={{ fontSize: ".7rem", color: "#64748B", marginTop: 2 }}>
+                          Owner: {a.owner || "?"} · due {a.dueIn || "—"}
+                          {a.implementedAt ? ` · implemented ${new Date(a.implementedAt).toLocaleString()}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                        <span
+                          style={{
+                            ...pill,
+                            background: done ? "#DCFCE7" : status === "in_progress" ? "#FEF3C7" : "#E0E7FF",
+                            color: done ? "#166534" : status === "in_progress" ? "#92400E" : "#3730A3",
+                          }}
+                        >
+                          {status}
+                        </span>
+                        {!done ? (
+                          <button
+                            type="button"
+                            disabled={busyId === id}
+                            onClick={() => setActionStatus(id, "implemented")}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              border: "none",
+                              background: "linear-gradient(135deg,#0f766e,#0284c7)",
+                              color: "#fff",
+                              fontSize: ".72rem",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {busyId === id ? "…" : "Mark implemented"}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                    <span style={{ ...pill, background: "#F1F5F9", color: "#0F172A" }}>due {a.dueIn || "—"}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div style={{ color: "#94A3B8", fontStyle: "italic" }}>None</div>
@@ -2066,6 +2217,7 @@ function AutoMeetingsPanel({
     timezone: "UTC",
   });
   const [busy, setBusy] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -2081,27 +2233,47 @@ function AutoMeetingsPanel({
   }, [refresh]);
 
   const dowName = DOW_SHORT[s.dayOfWeek | 0] || "Mon";
-  const statusNode = s.enabled ? (
-    <span style={{ ...pill, background: "#DCFCE7", color: "#166534" }}>
-      ● ON · {s.frequency === "weekly" ? dowName + " " : ""}
-      {String(s.hour).padStart(2, "0")}:{String(s.minute).padStart(2, "0")} {s.timezone}
-    </span>
-  ) : (
-    <span style={{ ...pill, background: "#F1F5F9", color: "#475569" }}>○ OFF</span>
-  );
+  const scheduleLabel = s.enabled
+    ? `${s.frequency === "weekly" ? dowName + " " : ""}${String(s.hour).padStart(2, "0")}:${String(s.minute).padStart(2, "0")} ${s.timezone}`
+    : "Scheduler idle";
+
+  async function toggleEnabled() {
+    if (toggling) return;
+    setToggling(true);
+    const nextEnabled = !s.enabled;
+    const j = await apiPost<{ ok?: boolean; settings?: AutoMeetingSettings; error?: string }>(
+      "/api/officer/auto-meetings",
+      {
+        enabled: nextEnabled,
+        frequency: s.frequency,
+        dayOfWeek: s.dayOfWeek,
+        hour: s.hour,
+        minute: s.minute,
+        timezone: s.timezone,
+      },
+    );
+    setToggling(false);
+    if (j.error || !j.settings) {
+      alert(j.error || "Failed to update switch");
+      return;
+    }
+    setS((prev) => ({ ...prev, ...j.settings }));
+    showToast(nextEnabled ? "✓ Auto team meetings ON — full roster attends" : "○ Auto team meetings OFF");
+    onSelfRefresh();
+  }
 
   async function runNow() {
     setBusy(true);
     const j = await apiPost<{ meeting?: Meeting; error?: string }>(
       "/api/officer/auto-meetings/run-now",
     );
+    setBusy(false);
     if (j.error) {
-      setBusy(false);
       alert("Failed: " + j.error);
       onSelfRefresh();
       return;
     }
-    showToast("✓ Meeting created with AI minutes");
+    showToast("✓ Full-team meeting created with department updates");
     onMeetingCreated(j.meeting || null);
     onSelfRefresh();
   }
@@ -2113,8 +2285,52 @@ function AutoMeetingsPanel({
           <div style={{ fontSize: ".7rem", color: "#64748B", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>
             Autonomous
           </div>
-          <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0F172A" }}>
-            🗓️ Auto-Scheduled Team Meetings {statusNode}
+          <div style={{ fontSize: "1.15rem", fontWeight: 800, color: "#0F172A", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span>🗓️ Auto-Scheduled Team Meetings</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={s.enabled}
+              aria-label="Auto-scheduled team meetings"
+              title={s.enabled ? "Turn off auto-scheduled team meetings" : "Turn on auto-scheduled team meetings"}
+              disabled={toggling}
+              onClick={toggleEnabled}
+              style={{
+                position: "relative",
+                width: 56,
+                height: 32,
+                borderRadius: 999,
+                border: "none",
+                cursor: toggling ? "wait" : "pointer",
+                background: s.enabled ? "#0f766e" : "#CBD5E1",
+                transition: "background 0.18s ease",
+                flexShrink: 0,
+                padding: 0,
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  top: 3,
+                  left: s.enabled ? 27 : 3,
+                  width: 26,
+                  height: 26,
+                  borderRadius: "50%",
+                  background: "#fff",
+                  boxShadow: "0 1px 4px rgba(15,23,42,0.25)",
+                  transition: "left 0.18s ease",
+                }}
+              />
+            </button>
+            <span
+              style={{
+                ...pill,
+                background: s.enabled ? "#DCFCE7" : "#F1F5F9",
+                color: s.enabled ? "#166534" : "#475569",
+              }}
+            >
+              {s.enabled ? `ON · ${scheduleLabel}` : "OFF"}
+            </span>
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -2134,10 +2350,20 @@ function AutoMeetingsPanel({
         </div>
       </div>
       <div style={{ fontSize: ".82rem", color: "#475569", lineHeight: 1.5 }}>
-        When ON, the AI Team auto-schedules a recurring cross-functional meeting and
-        the AI minute-taker drafts notes (with a clear to-do list of action items per
-        officer). All 8 officers attend by default. Browse all minutes anytime via{" "}
-        <strong>Manage → Minutes of Meeting</strong>.
+        {s.enabled ? (
+          <>
+            <strong style={{ color: "#0F172A" }}>ON:</strong> the entire AI executive team must attend every
+            auto-scheduled meeting. Each officer reports what works, what does not work, why, and the
+            remedial action. Once agreed, actions are tracked until implemented. Browse minutes via{" "}
+            <strong>Manage → Minutes of Meeting</strong>.
+          </>
+        ) : (
+          <>
+            <strong style={{ color: "#0F172A" }}>OFF:</strong> flip the switch to require full-team attendance
+            with department updates (what works / what doesn’t / why / remedy) and implementation tracking
+            for agreed actions. Schedule time in Settings.
+          </>
+        )}
       </div>
     </div>
   );
@@ -2236,7 +2462,7 @@ function AutoMeetingSettingsModal({
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: ".92rem", color: "#0F172A" }}>Auto-schedule team meetings</div>
               <div style={{ fontSize: ".76rem", color: "#64748B" }}>
-                Server creates the meeting + drafts minutes on the schedule below.
+                Full roster attends. Each officer reports what works / what doesn’t / why / remedy; agreed actions are tracked to implementation.
               </div>
             </div>
           </label>

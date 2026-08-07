@@ -976,6 +976,9 @@ app.post('/api/officer/auto-meetings/run-now', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// require() is rebased to app root inside register() — use the services path.
+const { normalizeFullTeamMinutes: _normalizeFullTeamMinutes } = require('./services/officer/meeting_minutes');
+
 async function _runAutonomousMeeting({ manualTrigger = false, tenantId = null } = {}) {
   const _db = require('./db');
   if (!_db.hasDb()) throw new Error('database not configured');
@@ -983,6 +986,7 @@ async function _runAutonomousMeeting({ manualTrigger = false, tenantId = null } 
   const tid = tenantId;
   const settings = (await _db.kvGet(_officerKey(_AUTOMTG_KEY, tid), _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
   const tasksStore = (await _db.kvGet(_officerKey(_TASKS_KEY, tid), {})) || {};
+  // Entire AI executive roster is mandatory when auto-meetings are used.
   const attendees = _OFFICER_ROLES.map(r => _OFFICER_TITLES[r]);
   const tasksByRole = {};
   attendees.forEach((t, i) => { tasksByRole[t] = Array.isArray(tasksStore[_OFFICER_ROLES[i]]) ? tasksStore[_OFFICER_ROLES[i]].slice(0,8) : []; });
@@ -991,32 +995,52 @@ async function _runAutonomousMeeting({ manualTrigger = false, tenantId = null } 
   const wk = Math.floor(Date.now() / (7 * 86400000));
   const topic = topics[wk % topics.length];
 
-  const FALLBACK = {
-    discussion: [`Auto-scheduled cross-functional meeting on "${topic}". AI minute-taker is offline — please regenerate manually.`],
-    decisions: [],
-    actionItems: attendees.map(a => ({ owner:a, action:`Follow up on "${topic}"`, dueIn:'7d' }))
-  };
-
   let parsed = null;
   if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
-    const prompt = `You are the meeting secretary. Draft minutes for an AUTONOMOUSLY-SCHEDULED recurring cross-functional meeting attended by all 8 AI officers.\n\nATTENDEES: ${attendees.join(', ')}\nTOPIC: ${topic}\n\nASSIGNED RESPONSIBILITIES BY OFFICER:\n${JSON.stringify(tasksByRole, null, 2)}\n\nGenerate realistic minutes. The ACTION ITEMS section is the to-do list — every item must have an owner role and a due date.\n\nReturn ONLY this JSON: {"discussion":["<paragraph>",...], "decisions":["<decision>",...], "actionItems":[{"owner":"<role>","action":"<verb-led>","dueIn":"24h|3d|7d|14d"}]}`;
+    const prompt = `You are the meeting secretary for InfoGenie's AI executive team.
+
+This is a MANDATORY full-team meeting. EVERY attendee listed MUST appear in departmentUpdates — no absences.
+
+ATTENDEES (all required): ${attendees.join(', ')}
+TOPIC: ${topic}
+
+ASSIGNED RESPONSIBILITIES BY OFFICER:
+${JSON.stringify(tasksByRole, null, 2)}
+
+For EACH officer produce a department update with exactly these fields:
+- whatWorks: what is working in their department
+- whatDoesNotWork: what is not working
+- why: why it is not working (or "n/a" if nothing broken)
+- remedialAction: the concrete fix they propose
+
+Then:
+- decisions: agreed remedies the team accepts
+- actionItems: verb-led tasks owned by a role, status starts as "agreed", with dueIn
+
+Return ONLY this JSON:
+{
+  "discussion": ["<paragraph>", "..."],
+  "departmentUpdates": [{"officer":"<exact attendee title>","whatWorks":"...","whatDoesNotWork":"...","why":"...","remedialAction":"..."}],
+  "decisions": ["<agreed decision>", "..."],
+  "actionItems":[{"owner":"<attendee title>","action":"<verb-led>","dueIn":"24h|3d|7d|14d","status":"agreed"}]
+}`;
     try {
       const completion = await Promise.race([
         openai.chat.completions.create({
           model: 'gpt-5-mini', response_format: { type: 'json_object' },
-          max_tokens: 1800, temperature: 0.6,
+          max_tokens: 3200, temperature: 0.5,
           messages: [
-            { role:'system', content:'You are a precise meeting secretary. Output strict JSON only.' },
+            { role:'system', content:'You are a precise meeting secretary. Output strict JSON only. Every listed attendee must have a department update.' },
             { role:'user', content: prompt }
           ]
         }),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_18s')), 18000))
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_25s')), 25000))
       ]);
       const j = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
-      if (Array.isArray(j.discussion) && j.discussion.length) parsed = j;
+      if (j && typeof j === 'object') parsed = j;
     } catch (e) { console.warn('[auto-meeting] AI failed:', e.message); }
   }
-  const minutes = parsed || FALLBACK;
+  const minutes = _normalizeFullTeamMinutes(parsed, attendees, topic);
   const id = 'mtg_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
   const record = { id, scheduledAt: new Date().toISOString(), attendees, topic, autonomous: true, manualTrigger, ...minutes };
 
@@ -1079,6 +1103,49 @@ if (_runtimeFlags.backgroundEnabled()) {
   setInterval(_autoMeetingTickGuarded, 60 * 1000);
   setTimeout(_autoMeetingTickGuarded, 12000);
 }
+
+// Mark an agreed meeting action as in_progress / implemented after the team agrees.
+app.post('/api/officer/meetings/:id/action-status', async (req, res) => {
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.status(503).json({ ok: false, error: 'database not configured' });
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:meetings:action-status' });
+    if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
+    const meetingId = String(req.params.id || '').trim();
+    const actionId = String(req.body?.actionId || '').trim();
+    const status = String(req.body?.status || '').trim();
+    if (!meetingId || !actionId) return res.status(400).json({ ok: false, error: 'meeting id + actionId required' });
+    if (!['agreed', 'in_progress', 'implemented'].includes(status)) {
+      return res.status(400).json({ ok: false, error: 'status must be agreed|in_progress|implemented' });
+    }
+    const key = _officerKey(_MEETINGS_KEY, tid);
+    const cur = (await _db.kvGet(key, [])) || [];
+    const list = Array.isArray(cur) ? cur : [];
+    const idx = list.findIndex((m) => m && m.id === meetingId);
+    if (idx < 0) return res.status(404).json({ ok: false, error: 'meeting not found' });
+    const meeting = { ...list[idx] };
+    const actions = Array.isArray(meeting.actionItems) ? meeting.actionItems.map((a, i) => ({
+      ...a,
+      id: a.id || `act_${i + 1}`,
+    })) : [];
+    let target = actions.findIndex((a) => a.id === actionId);
+    // Support clients that pass idx_N for older minutes without action ids.
+    if (target < 0 && /^idx_\d+$/.test(actionId)) {
+      const n = parseInt(actionId.slice(4), 10);
+      if (Number.isFinite(n) && n >= 0 && n < actions.length) target = n;
+    }
+    if (target < 0) return res.status(404).json({ ok: false, error: 'action not found' });
+    actions[target] = {
+      ...actions[target],
+      status,
+      implementedAt: status === 'implemented' ? new Date().toISOString() : null,
+    };
+    meeting.actionItems = actions;
+    list[idx] = meeting;
+    await _db.kvSet(key, list);
+    res.json({ ok: true, meeting });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
 
 app.delete('/api/officer/meetings/:id', async (req, res) => {
   try {
