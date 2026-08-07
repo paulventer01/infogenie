@@ -31,6 +31,7 @@ import DomainOverview from "./DomainOverview";
 import OverviewWidgets from "./OverviewWidgets";
 import MessagingChannelStrip from "./MessagingChannelStrip";
 import { buildCompanyOverview } from "@/lib/companyOverview";
+import { restoreCanvasForReact } from "@/lib/domSafety";
 
 interface WebsiteKPIs {
   ctr: number;
@@ -309,13 +310,41 @@ export default function Dashboard() {
   // ── Charts + async live panels ────────────────────────────────────────────
   useEffect(() => {
     if (!derived || !ad) return;
+    let alive = true;
     const Chart = getChart();
     const instances: ChartInstance[] = [];
     chartsRef.current = instances;
+    const canvasIds = [
+      "ctrChart",
+      "roasChart",
+      "trendChart",
+      "sovChart",
+      "forecastChart",
+      "efficiencyChart",
+      "spendChart",
+    ];
+    const destroyOnCanvas = (el: HTMLCanvasElement | null) => {
+      if (!el || !Chart) return;
+      try {
+        const existing =
+          typeof (Chart as unknown as { getChart?: (c: HTMLCanvasElement) => ChartInstance | undefined }).getChart ===
+          "function"
+            ? (Chart as unknown as { getChart: (c: HTMLCanvasElement) => ChartInstance | undefined }).getChart(el)
+            : undefined;
+        if (existing) {
+          existing.destroy();
+          const idx = instances.indexOf(existing);
+          if (idx >= 0) instances.splice(idx, 1);
+        }
+      } catch {
+        /* already gone */
+      }
+    };
     const make = (id: string, cfg: unknown) => {
-      if (!Chart) return;
+      if (!alive || !Chart) return;
       const el = document.getElementById(id) as HTMLCanvasElement | null;
       if (!el) return;
+      destroyOnCanvas(el);
       const ctx = el.getContext("2d");
       if (!ctx) return;
       try {
@@ -423,8 +452,10 @@ export default function Dashboard() {
       return Math.min(Math.round(t * 0.03 * 3), 1_500_000);
     };
     const renderSpend = (labels: (string | undefined)[], vals: number[], source: string) => {
+      if (!alive) return;
       const el = document.getElementById("spendChart") as HTMLCanvasElement | null;
       if (!el || !Chart) return;
+      destroyOnCanvas(el);
       const ctx = el.getContext("2d");
       if (!ctx) return;
       const colors = labels.map((l, i) => (l === "You" ? "rgba(0,229,255,0.9)" : (SOV_PALETTE[i - 1] || "#6B7280") + "BB"));
@@ -444,7 +475,9 @@ export default function Dashboard() {
       } catch {
         /* chart failed */
       }
-      setSpendStatus(source === "DataForSEO" ? { text: "🔴 Live via DataForSEO", color: "#10B981" } : { text: "Estimated from competitor data", color: "#9CA3AF" });
+      if (alive) {
+        setSpendStatus(source === "DataForSEO" ? { text: "🔴 Live via DataForSEO", color: "#10B981" } : { text: "Estimated from competitor data", color: "#9CA3AF" });
+      }
     };
     const staticLabels = ["You", ...competitors.slice(0, 6).map((c) => c.name)];
     const staticVals = [
@@ -468,6 +501,7 @@ export default function Dashboard() {
     apiPost<{ success?: boolean; yourSpend?: number; competitors?: { domain?: string; adSpend?: number }[] }>("/api/competitor-spend", {
       domains: compDomains, names: compBrandNames, yourDomain: url, yourBudget,
     }).then((data) => {
+      if (!alive) return;
       if (!data || !data.success || !Array.isArray(data.competitors)) return;
       const trafficSpendFloor = staticTrafficFloor;
       const liveLabels = ["You", ...data.competitors.map((c, ci) => competitors[ci]?.name || c.domain)];
@@ -495,6 +529,7 @@ export default function Dashboard() {
     }>("/api/ai-forecast", {
       domain: url, industry: industryName, competitors: compNames, currentROAS: yourROAS, monthlyBudget: campaignBudget, trafficMo: trafficVal,
     }).then((data) => {
+      if (!alive) return;
       if (!data) {
         setForecastStatus("Forecast temporarily unavailable");
         return;
@@ -505,6 +540,7 @@ export default function Dashboard() {
       const labels = data.weeks || data.months || ["Wk 1", "Wk 2", "Wk 3", "Wk 4", "Wk 5", "Wk 6", "Wk 7", "Wk 8", "Wk 9", "Wk 10", "Wk 11", "Wk 12", "Wk 13"];
       const el = document.getElementById("forecastChart") as HTMLCanvasElement | null;
       if (el && Chart) {
+        destroyOnCanvas(el);
         const ctx = el.getContext("2d");
         if (ctx) {
           try {
@@ -545,6 +581,7 @@ export default function Dashboard() {
     apiPost<{ topChannel?: string; channels?: { name: string; score: number; roi?: string }[]; insight?: string }>("/api/budget-efficiency", {
       industry: industryName, competitors: compNames, monthlyBudget: campaignBudget,
     }).then((data) => {
+      if (!alive) return;
       if (!data) {
         setEfficiencyStatus("Scoring temporarily unavailable");
         return;
@@ -552,6 +589,7 @@ export default function Dashboard() {
       setEfficiencyStatus(`Top channel: ${data.topChannel || "—"}`);
       const el = document.getElementById("efficiencyChart") as HTMLCanvasElement | null;
       if (el && Chart && data.channels) {
+        destroyOnCanvas(el);
         const ctx = el.getContext("2d");
         if (ctx) {
           const effColors = data.channels.map((c) => (c.score >= 80 ? "rgba(16,185,129,0.82)" : c.score >= 65 ? "rgba(0,102,255,0.75)" : "rgba(245,158,11,0.75)"));
@@ -589,9 +627,10 @@ export default function Dashboard() {
     callWin("_renderJourneyStages");
 
     return () => {
-      // Destroy charts while their canvases are still in React's tree. Deferring
-      // teardown lets Chart.js detach nodes React still expects to removeChild,
-      // which throws NotFoundError during view switches.
+      alive = false;
+      // Destroy charts while their canvases are still in React's tree. Late
+      // fetch callbacks are gated on `alive` so they cannot re-wrap canvases
+      // after unmount (that races React removeChild → NotFoundError).
       instances.forEach((c) => {
         try {
           c.destroy();
@@ -600,6 +639,11 @@ export default function Dashboard() {
         }
       });
       chartsRef.current = [];
+      // Chart.js responsive mode may leave a sizing wrapper — unwrap so React
+      // finds each <canvas> where its fiber expects it.
+      canvasIds.forEach((id) => {
+        restoreCanvasForReact(document.getElementById(id) as HTMLCanvasElement | null);
+      });
     };
   }, [derived, ad, competitors]);
 

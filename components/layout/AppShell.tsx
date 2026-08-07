@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { NAV_GROUPS, pathToViewId, viewToPath, type NavItem } from "@/lib/viewRoutes";
 import { prefetchPanel } from "@/components/features/registry";
 import { markNavPending, settleNavPending } from "@/lib/navPending";
+import { installDomSafetyPatch } from "@/lib/domSafety";
 import NavGroup from "./NavGroup";
 import AccountMenu from "./AccountMenu";
 import CompanyContextBar from "./CompanyContextBar";
@@ -48,6 +49,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [filter, setFilter] = useState("");
 
   useEffect(() => {
+    // Install before any panel charts / field-enhancer DOM moves race React 19.
+    installDomSafetyPatch();
     try {
       // Prefer expanded rail so submenus are visible; honor explicit collapse.
       const stored = localStorage.getItem(LS_SIDEBAR);

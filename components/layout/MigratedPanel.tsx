@@ -1,16 +1,37 @@
 "use client";
 
-import { Component, Suspense, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  Component,
+  Suspense,
+  type ErrorInfo,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { usePathname } from "next/navigation";
 import { pathToViewId } from "@/lib/viewRoutes";
 import { markNavPending, settleNavPending } from "@/lib/navPending";
+import { installDomSafetyPatch, isDomReconcileError } from "@/lib/domSafety";
 import { MIGRATED_COMPONENTS } from "@/components/features/registry";
 
 class PanelErrorBoundary extends Component<
-  { children: ReactNode; view: string },
+  {
+    children: ReactNode;
+    view: string;
+    /** Bumps when we need a clean remount after a DOM reconcile glitch. */
+    remountKey: number;
+    onDomGlitch: () => void;
+  },
   { error: Error | null }
 > {
-  constructor(props: { children: ReactNode; view: string }) {
+  constructor(props: {
+    children: ReactNode;
+    view: string;
+    remountKey: number;
+    onDomGlitch: () => void;
+  }) {
     super(props);
     this.state = { error: null };
   }
@@ -20,17 +41,29 @@ class PanelErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    if (isDomReconcileError(error)) {
+      console.warn(
+        "[MigratedPanel] DOM reconcile glitch in view=" + this.props.view + " — remounting panel",
+        error.message,
+      );
+      // Recover on next tick so we don't setState during the error path twice.
+      queueMicrotask(() => this.props.onDomGlitch());
+      return;
+    }
     console.error("[MigratedPanel] component crash in view=" + this.props.view, error, info);
   }
 
-  componentDidUpdate(prevProps: { view: string }) {
-    if (prevProps.view !== this.props.view && this.state.error) {
+  componentDidUpdate(prevProps: { view: string; remountKey: number }) {
+    if (
+      (prevProps.view !== this.props.view || prevProps.remountKey !== this.props.remountKey) &&
+      this.state.error
+    ) {
       this.setState({ error: null });
     }
   }
 
   render() {
-    if (this.state.error) {
+    if (this.state.error && !isDomReconcileError(this.state.error)) {
       return (
         <div
           style={{
@@ -48,6 +81,10 @@ class PanelErrorBoundary extends Component<
           </div>
         </div>
       );
+    }
+    // Dom glitch: render null for one frame while remountKey bumps.
+    if (this.state.error && isDomReconcileError(this.state.error)) {
+      return <PanelFallback />;
     }
     return this.props.children;
   }
@@ -83,31 +120,42 @@ function PanelReady({ view, children }: { view: string; children: ReactNode }) {
  * key={view}) while Suspense is resolving races React's DOM reconciler and
  * throws NotFoundError: removeChild.
  *
- * Arm markNavPending synchronously when the view changes (before Suspense may
- * evaluate the lazy chunk). useEffect is too late for that window. AppShell
- * also calls markNavPending on click; this covers direct URL loads / back-forward.
+ * Arm markNavPending in useLayoutEffect (not during render) when the view
+ * changes. AppShell also calls markNavPending on click; this covers direct URL
+ * loads / back-forward.
  */
 export default function MigratedPanel() {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
+  const [remountKey, setRemountKey] = useState(0);
   const armedView = useRef<string | null>(null);
-  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    installDomSafetyPatch();
+    setMounted(true);
+  }, []);
 
   const view = pathToViewId(pathname);
   const Cmp = view ? MIGRATED_COMPONENTS[view] : undefined;
 
-  if (mounted && view && Cmp && armedView.current !== view) {
+  useLayoutEffect(() => {
+    if (!mounted || !view || !Cmp) return;
+    if (armedView.current === view) return;
     armedView.current = view;
     markNavPending("nav→" + view);
-  }
+  }, [mounted, view, Cmp]);
+
+  const onDomGlitch = () => {
+    setRemountKey((k) => k + 1);
+  };
 
   if (!mounted || !view || !Cmp) return null;
 
   return (
     <div id="ig-react-panel" data-react-view={view}>
-      <PanelErrorBoundary view={view}>
+      <PanelErrorBoundary view={view} remountKey={remountKey} onDomGlitch={onDomGlitch}>
         <Suspense fallback={<PanelFallback />}>
-          <PanelReady key={view} view={view}>
+          <PanelReady key={`${view}:${remountKey}`} view={view}>
             <Cmp />
           </PanelReady>
         </Suspense>
