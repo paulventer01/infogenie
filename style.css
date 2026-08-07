@@ -7051,7 +7051,7 @@ h3:hover {
 [data-theme="light"] .module-card *,
 [data-theme="light"] .data-table-card *:not(.atag):not(.badge):not(button):not(.tag),
 [data-theme="light"] .chart-box *:not(.atag):not(.badge):not(button):not(.chart-tag),
-[data-theme="light"] .kpi-card *:not(.atag):not(.badge):not(button):not(.kpi-up):not(.kpi-down),
+[data-theme="light"] .kpi-card *:not(.atag):not(.badge):not(button):not(.kpi-up):not(.kpi-down):not(.kpi-owner):not(.kpi-source):not(.kpi-source *),
 [data-theme="light"] .roi-card *:not(.atag):not(.badge):not(button) {
   color: inherit;
 }
@@ -7854,7 +7854,7 @@ h3:hover {
 
 /* ── KPI tile "whose data" RIBBONS — bold, unmissable ───────────────────── */
 .kpi-card { position: relative; }
-.kpi-ribbon { position: absolute; top: 0; left: 0; right: 0; padding: 6px 12px; font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #FFFFFF !important; border-radius: 14px 14px 0 0; text-align: center; line-height: 1.2; box-shadow: 0 2px 6px rgba(0,0,0,.08); text-shadow: 0 1px 2px rgba(15,30,61,.25); }
+.kpi-ribbon { position: absolute; top: 0; left: 0; right: 0; padding: 6px 12px; font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #FFFFFF !important; border-radius: 14px 14px 0 0; text-align: center; line-height: 1.2; box-shadow: 0 2px 6px rgba(0,0,0,.08); text-shadow: 0 1px 2px rgba(15,30,61,.25); z-index: 1; }
 [data-theme="light"] .kpi-ribbon, [data-theme="dark"] .kpi-ribbon { color: #FFFFFF; }
 .kpi-ribbon * { color: #FFFFFF !important; }
 .kpi-ribbon-you  { background: linear-gradient(135deg, #0066FF, #2563EB); }
@@ -7862,8 +7862,23 @@ h3:hover {
 .kpi-ribbon-live { background: linear-gradient(135deg, #10B981, #059669); animation: kpi-ribbon-pulse 2s ease-in-out infinite; }
 .kpi-ribbon-ai   { background: linear-gradient(135deg, #06B6D4, #0891B2); }
 @keyframes kpi-ribbon-pulse { 0%,100% { box-shadow: 0 2px 6px rgba(16,185,129,.3) } 50% { box-shadow: 0 2px 14px rgba(16,185,129,.7) } }
-/* Add top padding to tiles so the ribbon doesn't overlap the badge/icon */
-.kpi-card { padding-top: 38px !important; }
+/* Add top padding to tiles so the ribbon doesn't overlap the owner name / badge */
+.kpi-card { padding-top: 44px !important; }
+.kpi-owner {
+  display: block;
+  position: relative;
+  z-index: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #0066FF;
+  letter-spacing: 0.01em;
+  margin: 0 0 8px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kpi-owner-ind { color: #7C3AED; }
 
 /* (Reverted — root cause was a broken selector group above that was applying a
    navy gradient background to all .kpi-card children in light mode. Fixed there.) */

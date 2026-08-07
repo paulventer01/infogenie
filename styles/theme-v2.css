@@ -888,9 +888,14 @@ body:has(#ig-app-shell) #ig-react-panel img[src*="/avatars/"] {
 body:has(#ig-app-shell) #ig-react-panel .card,
 body:has(#ig-app-shell) #ig-react-panel .ig-card,
 body:has(#ig-app-shell) #ig-react-panel .panel,
-body:has(#ig-app-shell) #ig-react-panel .stat-card,
-body:has(#ig-app-shell) #ig-react-panel .kpi-card {
+body:has(#ig-app-shell) #ig-react-panel .stat-card {
   padding: var(--ig-space-4) !important;
+  margin-bottom: var(--ig-space-3);
+}
+
+/* KPI cards keep extra top padding so content clears the absolute .kpi-ribbon */
+body:has(#ig-app-shell) #ig-react-panel .kpi-card {
+  padding: 44px var(--ig-space-4) var(--ig-space-4) !important;
   margin-bottom: var(--ig-space-3);
 }
 

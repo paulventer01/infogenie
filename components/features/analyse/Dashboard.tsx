@@ -939,7 +939,7 @@ export default function Dashboard() {
         <div className="kpi-grid">
           <div className="kpi-card kpi-blue">
             <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
-            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{yourDomain}</div>
+            <div className="kpi-owner" title={yourDomain}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">📊</div>
             <div className="kpi-label">Your CTR Benchmark</div>
@@ -952,7 +952,7 @@ export default function Dashboard() {
 
           <div className="kpi-card kpi-teal">
             <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
-            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{yourDomain}</div>
+            <div className="kpi-owner" title={yourDomain}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">🎯</div>
             <div className="kpi-label">Your ROAS Benchmark</div>
@@ -965,7 +965,7 @@ export default function Dashboard() {
 
           <div className="kpi-card kpi-green">
             <div className="kpi-ribbon kpi-ribbon-ind">🏷️ INDUSTRY BENCHMARK</div>
-            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{industryName}</div>
+            <div className="kpi-owner kpi-owner-ind" title={industryName}>{industryName}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">💰</div>
             <div className="kpi-label">CPA Benchmark</div>
@@ -980,7 +980,7 @@ export default function Dashboard() {
             ) : (
               <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
             )}
-            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{yourDomain}</div>
+            <div className="kpi-owner" title={yourDomain}>{yourDomain}</div>
             {realTraffic ? (
               <span style={{ fontSize: ".65rem", background: "#10B98120", color: "#10B981", padding: "2px 6px", borderRadius: 10, fontWeight: 700 }}>LIVE</span>
             ) : (
@@ -999,7 +999,7 @@ export default function Dashboard() {
 
           <div className="kpi-card kpi-purple">
             <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
-            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{yourDomain}</div>
+            <div className="kpi-owner" title={yourDomain}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">📈</div>
             <div className="kpi-label">Your Conv. Rate</div>
@@ -1010,7 +1010,7 @@ export default function Dashboard() {
 
           <div className="kpi-card kpi-blue">
             <div className="kpi-ribbon kpi-ribbon-ai">🤖 YOUR SITE vs RIVALS</div>
-            <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0066FF", marginBottom: 4 }}>{yourDomain}</div>
+            <div className="kpi-owner" title={yourDomain}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#0066FF20", color: "#0066FF", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>AI SCORE</span>
             <div className="kpi-icon">🚀</div>
             <div className="kpi-label">AI Opportunity Score</div>
