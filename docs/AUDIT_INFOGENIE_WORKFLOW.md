@@ -53,6 +53,8 @@ Brief → Analyse (understand) → Create (assets) → Reach (distribute)
 2. **Fixed Grow section order** — “4 · Improve SEO & conversion” now before “5 · Next-gen ad channels”
 3. **AI Team Team ops** — Capacity, Minutes, AI Providers, AI Governance listed under AI Team; removed from Manage duplicates; bookmark paths preserved via `VIEW_TO_PATH` overrides
 4. **Migration gap** — Added `aeo-optimizer`, `autoclaw`, `lead-intelligence` to `MIGRATED_VIEWS` (were registry-only → SpaRouter race risk)
+5. **Budget Hub consolidation** — Manage nav lists one **Budget Hub**; Overview / Board / Caps are tabs with deep links `/manage/budget`, `/manage/budget-board`, `/manage/budget-caps` (`BudgetHub.tsx`)
+6. **Search & AI Visibility hub** — Analyse → **Search & AI Visibility — start here** (`seo-ai-visibility`) tile launcher for GEO / AEO / zero-click / voice / auditor / crawler
 
 ---
 

@@ -173,7 +173,7 @@ const CHANNEL_MIX = [
   { channel: "Testing & Contingency", pct: 4, color: "#64748B" },
 ];
 
-export default function Budget() {
+export default function Budget({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const toast = useToast();
   const [rows, setRows] = useState<CampRow[]>([]);
@@ -395,31 +395,39 @@ export default function Budget() {
   const empty = rows.length === 0;
 
   return (
-    <div className={styles.page}>
-      <div className={`view-header ig-panel-hero ${styles.hero}`}>
-        <div className="container">
-          <div className="vh-inner">
-            <div>
-              <div className="breadcrumb">
-                <span className="bc-group">Manage</span> <span className="bc-sep">›</span> Budget
+    <div className={styles.page} style={embedded ? { minHeight: "auto", background: "transparent" } : undefined}>
+      {!embedded ? (
+        <div className={`view-header ig-panel-hero ${styles.hero}`}>
+          <div className="container">
+            <div className="vh-inner">
+              <div>
+                <div className="breadcrumb">
+                  <span className="bc-group">Manage</span> <span className="bc-sep">›</span> Budget
+                </div>
+                <h2 className="view-title">Budget Overview</h2>
+                <p className="view-sub">
+                  Spend, ROI, and 3-month allocation
+                  {domain ? ` for ${domain}` : ""} — across every live and recommended campaign
+                </p>
               </div>
-              <h2 className="view-title">Budget Overview</h2>
-              <p className="view-sub">
-                Spend, ROI, and 3-month allocation
-                {domain ? ` for ${domain}` : ""} — across every live and recommended campaign
-              </p>
-            </div>
-            <div className="vh-actions">
-              <button type="button" className="btn-secondary" onClick={() => goToView(router, "budget-board")}>
-                🪙 Budget Board
-              </button>
-              <button type="button" className="btn-primary" onClick={() => goToView(router, "campaigns")}>
-                🚀 Campaigns
-              </button>
+              <div className="vh-actions">
+                <button type="button" className="btn-secondary" onClick={() => goToView(router, "budget-board")}>
+                  🪙 Budget Board
+                </button>
+                <button type="button" className="btn-primary" onClick={() => goToView(router, "campaigns")}>
+                  🚀 Campaigns
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="container" style={{ paddingTop: 4, paddingBottom: 0, display: "flex", justifyContent: "flex-end" }}>
+          <button type="button" className="btn-primary" onClick={() => goToView(router, "campaigns")}>
+            🚀 Campaigns
+          </button>
+        </div>
+      )}
 
       <div className={`container ${styles.body}`}>
         {/* KPI strip */}

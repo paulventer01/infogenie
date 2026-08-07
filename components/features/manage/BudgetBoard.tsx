@@ -79,7 +79,7 @@ const greenInput: React.CSSProperties = {
   borderRadius: 8,
 };
 
-export default function BudgetBoard() {
+export default function BudgetBoard({ embedded = false }: { embedded?: boolean } = {}) {
   const toast = useToast();
   const [month, setMonth] = useState(ymToday());
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -199,7 +199,13 @@ export default function BudgetBoard() {
     : [];
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F0FDF4", padding: "28px 32px" }}>
+    <div
+      style={{
+        minHeight: embedded ? "auto" : "100vh",
+        background: embedded ? "transparent" : "#F0FDF4",
+        padding: embedded ? "8px 24px 32px" : "28px 32px",
+      }}
+    >
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         <div
           style={{
@@ -207,14 +213,20 @@ export default function BudgetBoard() {
             justifyContent: "space-between",
             alignItems: "center",
             marginBottom: 20,
+            gap: 12,
+            flexWrap: "wrap",
           }}
         >
-          <div>
-            <h1 style={{ margin: 0, fontSize: "1.6rem", color: "#0F172A" }}>💰 Budget Board</h1>
-            <p style={{ margin: "6px 0 0", color: "#64748B", fontSize: "0.92rem" }}>
-              Set a monthly target, log every dollar spent, see where it&apos;s going.
-            </p>
-          </div>
+          {!embedded ? (
+            <div>
+              <h1 style={{ margin: 0, fontSize: "1.6rem", color: "#0F172A" }}>💰 Budget Board</h1>
+              <p style={{ margin: "6px 0 0", color: "#64748B", fontSize: "0.92rem" }}>
+                Set a monthly target, log every dollar spent, see where it&apos;s going.
+              </p>
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0F766E" }}>Monthly pacing & spend log</div>
+          )}
           <input
             type="month"
             value={month}

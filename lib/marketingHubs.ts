@@ -148,6 +148,24 @@ export const MARKETING_HUBS: Record<string, MarketingHubDef> = {
       { view: "revenue-forecast", icon: "🏅", label: "Revenue Forecast", desc: "90-day AI revenue projection" },
     ],
   },
+  "seo-ai-visibility": {
+    id: "seo-ai-visibility",
+    group: "Analyse",
+    title: "🔍 Search & AI Visibility",
+    subtitle:
+      "Classic SEO plus answer engines — audit the site, win AI Overviews / GEO / AEO, and track zero-click surfaces from one hub.",
+    tiles: [
+      { view: "geo-audit", icon: "🛸", label: "GEO Audit", desc: "How you appear in AI answer results", tag: "AI search" },
+      { view: "aeo-optimizer", icon: "💬", label: "AEO Optimizer", desc: "Answer Engine Optimization playbooks" },
+      { view: "zero-click-hub", icon: "👁️", label: "Zero-Click Hub", desc: "Snippets · PAA · AI Overviews" },
+      { view: "voice-seo", icon: "🎙️", label: "Voice Search SEO", desc: "Spoken-query & assistant readiness" },
+      { view: "search-intel", icon: "🔮", label: "AI Visibility Pulse", desc: "Cross-engine visibility tracking" },
+      { view: "seo-auditor", icon: "🧭", label: "Website Audit", desc: "Technical & on-page SEO health", tag: "Classic SEO" },
+      { view: "seo-crawler", icon: "🕸️", label: "Full-Site Crawler", desc: "Crawl errors, indexation, depth" },
+      { view: "content-score", icon: "📜", label: "Content Score", desc: "On-page optimize vs target query" },
+      { view: "seo-roadmap", icon: "🗾", label: "SEO Roadmap", desc: "Prioritized fix backlog" },
+    ],
+  },
 };
 
 export const MARKETING_HUB_IDS = Object.keys(MARKETING_HUBS);

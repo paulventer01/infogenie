@@ -83,6 +83,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "heatmaps", legacyModule: null },
   { view: "budget", legacyModule: null },
   { view: "budget-board", legacyModule: null },
+  { view: "seo-ai-visibility", legacyModule: null },
   { view: "ask-infogenie", legacyModule: null },
   { view: "strategic-intelligence", legacyModule: null },
   { view: "marketing-memory", legacyModule: null },

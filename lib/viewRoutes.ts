@@ -110,6 +110,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "5 · AI search & mentions",
         items: [
+          { view: "seo-ai-visibility", icon: "🔍", label: "Search & AI Visibility — start here" },
           { view: "geo-audit", icon: "🛸", label: "AI Results / GEO Audit" },
           { view: "aeo-optimizer", icon: "💬", label: "Answer Engine Optimization (AEO)" },
           { view: "zero-click-hub", icon: "👁️", label: "Zero-Click Hub (snippets · PAA · AI Overview)" },
@@ -462,9 +463,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "marketing-okr", icon: "📷", label: "Marketing OKRs (live campaign data)" },
           { view: "canonical-metrics", icon: "📐", label: "Canonical Metrics (SSOT · pacing · goals)" },
           // Marketing Goals live under Grow → Set the targets (single destination)
-          { view: "budget", icon: "💰", label: "Budget (spend · ROI · 3-month plan)" },
-          { view: "budget-board", icon: "🪙", label: "Budget Board (monitor + spend)" },
-          { view: "budget-caps", icon: "🚦", label: "Budget Caps (platform daily + lifetime limits)" },
+          { view: "budget", icon: "💰", label: "Budget Hub (overview · board · caps)" },
+          // budget-board + budget-caps stay deep-linkable (VIEW_TO_PATH below); not listed again in nav
           { view: "utm-builder", icon: "📸", label: "UTM Architecture (link builder + presets)" },
           { view: "pixel-manager", icon: "🎞️", label: "Pixel Manager (Meta CAPI · LinkedIn · TikTok)" },
           { view: "affiliate-hub", icon: "🤝", label: "Affiliate Program Hub" },
@@ -602,6 +602,11 @@ VIEW_TO_PATH.capacity = "/manage/capacity";
 VIEW_TO_PATH["team-meetings"] = "/manage/team-meetings";
 VIEW_TO_PATH["ai-providers"] = "/manage/ai-providers";
 VIEW_TO_PATH["ai-governance"] = "/manage/ai-governance";
+// Budget Hub deep links (tabs) — not listed separately in the Manage nav
+ALL_VIEW_IDS.add("budget-board");
+ALL_VIEW_IDS.add("budget-caps");
+VIEW_TO_PATH["budget-board"] = "/manage/budget-board";
+VIEW_TO_PATH["budget-caps"] = "/manage/budget-caps";
 
 /**
  * Views trimmed from the default Analyse sidebar (to reduce duplicates) but still
@@ -690,6 +695,10 @@ export const VIEW_ID_ALIASES: Record<string, string> = {
   "chatbot":           "conversational-ai",
   "cro":               "conversion-lab",
   "growth-marketing":  "growth-hub",
+  // Search & AI Visibility hub discoverability
+  "ai-visibility":     "seo-ai-visibility",
+  "geo-visibility":    "seo-ai-visibility",
+  "answer-engine":     "seo-ai-visibility",
 };
 
 /**
