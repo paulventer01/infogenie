@@ -626,6 +626,252 @@ body:has(#ig-app-shell) #ig-react-panel .breadcrumb {
   text-shadow: none !important;
 }
 
+/* Operations Officer — light atmospheric hero (fixes dark-orange + forced ink contrast) */
+@keyframes opsHeroIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes opsMarkDraw {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes opsPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.35); }
+  50% { opacity: 0.75; box-shadow: 0 0 0 6px rgba(15, 118, 110, 0); }
+}
+
+body:has(#ig-app-shell) .ops-officer-hero {
+  position: relative;
+  overflow: hidden;
+  max-width: 1200px;
+  margin: 0 auto 22px;
+  padding: 28px 30px;
+  border-radius: 20px;
+  border: 1px solid rgba(15, 118, 110, 0.18) !important;
+  background:
+    radial-gradient(ellipse 70% 80% at 0% 0%, rgba(14, 165, 233, 0.16), transparent 55%),
+    radial-gradient(ellipse 55% 60% at 100% 20%, rgba(245, 158, 11, 0.14), transparent 50%),
+    linear-gradient(135deg, #f4fbf9 0%, #eef7fb 48%, #f8fafc 100%) !important;
+  color: #0f172a !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  justify-content: space-between;
+  align-items: stretch;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  animation: opsHeroIn 0.55s ease both;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__aurora {
+  position: absolute;
+  inset: -20% -10% auto auto;
+  width: 55%;
+  height: 140%;
+  background: linear-gradient(120deg, rgba(15, 118, 110, 0.12), rgba(2, 132, 199, 0.08), transparent 70%);
+  transform: rotate(12deg);
+  pointer-events: none;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(90deg, rgba(0,0,0,0.55), transparent 85%);
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__copy {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 420px;
+  min-width: 0;
+  animation: opsHeroIn 0.65s ease 0.06s both;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display) !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase;
+  color: #0f766e !important;
+  margin-bottom: 10px;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__mark {
+  width: 28px;
+  height: 3px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #0f766e, #0284c7);
+  transform-origin: left center;
+  animation: opsMarkDraw 0.7s ease 0.15s both;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__title,
+body:has(#ig-app-shell) #ig-react-panel .ops-officer-hero__title {
+  margin: 0 0 10px !important;
+  font-family: var(--font-display) !important;
+  font-size: clamp(1.55rem, 2.4vw, 2rem) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em !important;
+  line-height: 1.18 !important;
+  color: #0f172a !important;
+  max-width: 22ch;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__body,
+body:has(#ig-app-shell) #ig-react-panel .ops-officer-hero__body {
+  margin: 0 0 18px !important;
+  max-width: 540px;
+  font-size: 0.95rem !important;
+  line-height: 1.55 !important;
+  color: #475569 !important;
+  opacity: 1 !important;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__cta {
+  appearance: none;
+  border: none !important;
+  border-radius: 12px !important;
+  padding: 11px 16px !important;
+  min-height: 42px;
+  font-family: var(--font-ui) !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  cursor: pointer;
+  background: linear-gradient(135deg, #0f766e, #0284c7) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  transition: transform 0.18s ease, filter 0.18s ease;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__cta:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__cta--ghost {
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+  border: 1px solid rgba(15, 118, 110, 0.22) !important;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__aside {
+  position: relative;
+  z-index: 1;
+  flex: 0 1 260px;
+  min-width: 220px;
+  padding: 4px 4px 4px 18px;
+  border-radius: 0;
+  background: transparent !important;
+  border: none !important;
+  border-left: 1px solid rgba(15, 118, 110, 0.18) !important;
+  backdrop-filter: none;
+  animation: opsHeroIn 0.7s ease 0.12s both;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0f766e !important;
+  margin-bottom: 8px;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__pulse-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #0f766e;
+  animation: opsPulse 2s ease-in-out infinite;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__aside--warn .ops-officer-hero__pulse,
+body:has(#ig-app-shell) .ops-officer-hero__aside--warn .ops-officer-hero__pulse-value {
+  color: #b45309 !important;
+}
+body:has(#ig-app-shell) .ops-officer-hero__aside--warn .ops-officer-hero__pulse-dot {
+  background: #d97706;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__aside--ok .ops-officer-hero__pulse-value {
+  color: #047857 !important;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__pulse-value {
+  font-family: var(--font-display) !important;
+  font-size: 1.35rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.02em;
+  color: #0f172a !important;
+  margin-bottom: 14px;
+  line-height: 1.2;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__ticks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__ticks li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px !important;
+  color: #64748b !important;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__ticks li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+body:has(#ig-app-shell) .ops-officer-hero__ticks strong {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  body:has(#ig-app-shell) .ops-officer-hero {
+    padding: 22px 18px;
+  }
+  body:has(#ig-app-shell) .ops-officer-hero__aside {
+    flex: 1 1 100%;
+    padding: 16px 0 0;
+    border-left: none !important;
+    border-top: 1px solid rgba(15, 118, 110, 0.18) !important;
+  }
+  body:has(#ig-app-shell) .ops-officer-hero__title {
+    max-width: none;
+  }
+}
+
 /* Technical Manager — keep dark teal hero; beat #ig-react-panel h1/p ink overrides */
 body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero {
   border-radius: 16px;
