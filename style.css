@@ -7247,7 +7247,7 @@ h3:hover {
 }
 [data-theme="light"] .ich-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .cs-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
-[data-theme="light"] .kpi-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .kpi-card *:not(button):not(.btn):not(.badge):not(.atag):not(.kpi-owner):not(.kpi-source):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .cal-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .battle-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .reddit-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]) {
@@ -7870,7 +7870,7 @@ h3:hover {
   z-index: 0;
   font-size: 0.72rem;
   font-weight: 800;
-  color: #0066FF;
+  color: #0066FF !important; /* beat light-theme .kpi-card * { color: inherit } */
   letter-spacing: 0.01em;
   margin: 0 0 8px;
   line-height: 1.25;
@@ -7878,7 +7878,7 @@ h3:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.kpi-owner-ind { color: #7C3AED; }
+.kpi-owner-ind { color: #7C3AED !important; }
 
 /* (Reverted — root cause was a broken selector group above that was applying a
    navy gradient background to all .kpi-card children in light mode. Fixed there.) */
