@@ -133,3 +133,20 @@ h1, h2, h3, .ig-display {
 ::selection {
   background: rgba(15, 118, 110, 0.22);
 }
+
+/* ── Hide Next.js black "N" / route badge on every page ─────────────────────
+   `devIndicators: false` hides it when idle, but Next re-injects the badge when
+   any runtime issue is recorded. The badge host is often a dark pill that
+   reads as a stray UI mark on panel heroes. Prefer HideNextDevBadge for
+   shadow-DOM portals; these rules cover light-DOM fallbacks. */
+[data-next-badge-root],
+[data-next-badge],
+[data-nextjs-toast] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}

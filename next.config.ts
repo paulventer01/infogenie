@@ -6,7 +6,9 @@ const isProd = process.env.NODE_ENV === "production";
 const nextConfig: NextConfig = {
   // Hide the black Next.js "N" / route indicator in preview tunnels and local
   // demos — it reads as a stray UI mark on the workspace canvas.
-  // Compile/runtime error overlays still surface when something is actually broken.
+  // Note: Next may still re-inject the badge when runtime issues fire; see
+  // HideNextDevBadge + globals.css for a hard hide across all pages.
+  // Compile/runtime error dialog overlays still surface when something is broken.
   devIndicators: false,
   // Root-cause / scenario AI often exceeds the default 30s rewrite proxy budget;
   // without this the browser gets a blank 500 and the UI stays on "Decomposing…".

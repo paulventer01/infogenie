@@ -3,6 +3,7 @@ import { Outfit, Manrope } from "next/font/google";
 import Script from "next/script";
 import "../styles/globals.css";
 import "../styles/theme-v2.css";
+import HideNextDevBadge from "@/components/layout/HideNextDevBadge";
 
 export const metadata: Metadata = {
   title: "InfoGenie",
@@ -56,6 +57,7 @@ export default function RootLayout({
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{ __html: clarityInit }}
         />
+        <HideNextDevBadge />
         {children}
       </body>
     </html>
