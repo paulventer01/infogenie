@@ -12,10 +12,11 @@ import { goToView } from "@/lib/nav";
 import AgentGoals from "@/components/features/manage/AgentGoals";
 import Goals from "@/components/features/grow/Goals";
 import CanonicalMetrics from "@/components/features/manage/CanonicalMetrics";
+import ContributionRecord from "@/components/features/grow/ContributionRecord";
 import MarketingOKR from "@/components/features/manage/MarketingOKR";
 import KpiTracker from "@/components/features/grow/KpiTracker";
 
-type TabId = "marketing" | "targets" | "metrics" | "okr" | "kpi";
+type TabId = "marketing" | "targets" | "metrics" | "contribution" | "okr" | "kpi";
 
 const TABS: Array<{ id: TabId; view: string; label: string; blurb: string }> = [
   {
@@ -34,7 +35,13 @@ const TABS: Array<{ id: TabId; view: string; label: string; blurb: string }> = [
     id: "metrics",
     view: "canonical-metrics",
     label: "Metrics SSOT",
-    blurb: "Spend, ROAS, CAC, waste, and goals vs actuals — one engine",
+    blurb: "Versioned spend, CPA, CAC, LTV, ROAS — labelled measured/modelled/projected",
+  },
+  {
+    id: "contribution",
+    view: "contribution-record",
+    label: "Contribution",
+    blurb: "Platform ROAS beside causal iROAS / MMM — budget ranked by incremental impact",
   },
   {
     id: "okr",
@@ -53,12 +60,15 @@ const TABS: Array<{ id: TabId; view: string; label: string; blurb: string }> = [
 const RELATED: Array<{ view: string; label: string }> = [
   { view: "action-center", label: "Action Center" },
   { view: "budget", label: "Budget Hub" },
+  { view: "iroas", label: "iROAS tests" },
+  { view: "mmm", label: "MMM" },
   { view: "flywheel", label: "Growth Flywheel" },
 ];
 
 function viewToTab(view: string | null): TabId {
   if (view === "goals") return "targets";
   if (view === "canonical-metrics") return "metrics";
+  if (view === "contribution-record") return "contribution";
   if (view === "marketing-okr") return "okr";
   if (view === "kpi-tracker") return "kpi";
   return "marketing";
@@ -172,6 +182,7 @@ export default function GoalsHub() {
         {tab === "marketing" ? <AgentGoals embedded /> : null}
         {tab === "targets" ? <Goals embedded /> : null}
         {tab === "metrics" ? <CanonicalMetrics embedded /> : null}
+        {tab === "contribution" ? <ContributionRecord embedded /> : null}
         {tab === "okr" ? <MarketingOKR embedded /> : null}
         {tab === "kpi" ? <KpiTracker embedded /> : null}
       </div>
