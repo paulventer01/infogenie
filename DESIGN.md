@@ -55,6 +55,18 @@ colors:
   tm-hero-start: "#0f172a"
   tm-hero-mid: "#134e4a"
   tm-hero-end: "#0f766e"
+  hub-accent: "#4F46E5"
+  aiteam-tab-accent: "#7C3AED"
+  contribution-accent: "#C2410C"
+  onboarding-blue: "#0066FF"
+  onboarding-aqua: "#14B8A6"
+  metrics-card-border: "#D1FAE5"
+  kind-measured-bg: "#ECFDF5"
+  kind-measured-fg: "#065F46"
+  kind-modelled-bg: "#FFF7ED"
+  kind-modelled-fg: "#9A3412"
+  kind-projected-bg: "#EFF6FF"
+  kind-projected-fg: "#1D4ED8"
 
 typography:
   display-family: "Outfit, Avenir Next, sans-serif"
@@ -207,13 +219,15 @@ InfoGenie is a **dense operational marketing-intelligence console**, not a consu
 - **Typography dual-stack:** **Outfit** (display, brand, page titles — heavy 700–800, tight negative tracking) and **Manrope** (UI body, controls, tables). Body ≈ 15px. Hierarchy comes more from **weight + tracking** than from huge size jumps.
 - **Surfaces:** Mostly **flat white cards** with a **1px low-contrast border** (`rgba(11,18,32,0.1)`) plus a **soft dual-layer shadow** (hairline top + large soft umbra). Depth is restrained — panels do not float aggressively.
 - **Corners:** Soft but not pill-like for containers — typically **10–12px** controls/cards, **16px** heroes, **24px** auth panels. Pills (`999px`) are reserved for chips/filters, not primary buttons.
-- **Density:** Operational. Feature screens pack KPIs, tables, filters, and action bars. Page padding is modest (`10px 12px 40px` in shell content). Vertical rhythm uses a 6 / 10 / 14 / 18 / 24px scale.
+- **Density:** Dual. The **workspace home** is a spacious marketing command (centered hero, analyse card, stats). **Tool pages** are operational — KPIs, tables, filters, modest page padding (`10px 12px 40px`). Vertical rhythm uses a 6 / 10 / 14 / 18 / 24px scale.
 - **Heroes:** Most feature pages open with a **pastel light hero** (mint → ice → lavender: `#e8f6f3 → #eaf2fb → #eef4ff`) with teal/sky radial washes, dark ink `#0f172a`, and a teal-tinted border. This is the opposite of dark neon dashboards.
 - **Exceptions that define character:**
   - **Technical Manager** keeps an intentional **dark teal technical hero** (`#0f172a → #134e4a → #0f766e`).
   - **Ops Officer** uses a lighter atmospheric hero with grid texture and **no box-shadow**.
-- **Navigation:** Fixed **280px** white left rail (collapses to **76px**). Nav group icons are small inline SVGs; **nav leaf items use emoji** as icons. Active nav uses a **teal soft fill** and **3px inset left bar**, not a heavy filled pill.
-- **Motion:** Restrained — rail width 0.28s cubic-bezier, brand mark subtle pulse, focus rings. No glassmorphism, no purple glow, no multi-layer neon.
+  - **Goals Hub** uses indigo `#4F46E5` tabs; **AI Team** top tabs use violet `#7C3AED`; **Contribution** uses orange wash `#C2410C`; **onboarding** uses legacy blue→aqua `#0066FF→#14B8A6`.
+  - **Auth** allows frosted glass on the form panel; workspace stage may show a faint square grid.
+- **Navigation:** Fixed **280px** white left rail (collapses to **76px**). Nav group icons are small inline SVGs; **nav leaf items often use emoji**. Active nav uses a **teal soft fill** and **3px inset left bar**, not a heavy filled pill.
+- **Motion:** Restrained — rail width 0.28s cubic-bezier, brand mark subtle pulse, auth orbs, focus rings. No mesh-purple glow, no multi-layer neon.
 
 ### What must never be substituted
 
