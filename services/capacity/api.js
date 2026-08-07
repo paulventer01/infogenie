@@ -316,19 +316,25 @@ router.post('/assign-best', _safe(async (req, res) => {
   });
 }));
 
-// Seed roster from tenant_users when empty
+// Seed roster from tenant_users — merges any workspace users not already listed
 router.post('/seed-from-users', _safe(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:seed' });
   if (!tid) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');
   const pool = _db.getPool();
+
   const existing = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM team_capacity WHERE tenant_id=$1 AND active=true`,
+    `SELECT id, member_name, notes FROM team_capacity WHERE tenant_id=$1 AND active=true`,
     [tid],
-  );
-  if ((existing.rows[0]?.n || 0) > 0 && !req.body?.force) {
-    return res.json({ ok: true, seeded: 0, note: 'roster already has members' });
+  ).catch(() => ({ rows: [] }));
+  const taken = new Set();
+  for (const m of existing.rows || []) {
+    const nm = String(m.member_name || '').trim().toLowerCase();
+    if (nm) taken.add(nm);
+    const noteMatch = String(m.notes || '').match(/seeded from user (\d+)/i);
+    if (noteMatch) taken.add(`user:${noteMatch[1]}`);
   }
+
   const users = await pool.query(
     `SELECT u.id, u.name, u.email, r.key AS role_key, r.name AS role_name
        FROM tenant_users tu
@@ -339,9 +345,25 @@ router.post('/seed-from-users', _safe(async (req, res) => {
       LIMIT 40`,
     [tid],
   ).catch(() => ({ rows: [] }));
+
+  if (!users.rows.length) {
+    return res.json({
+      ok: true,
+      seeded: 0,
+      added: [],
+      note: 'No workspace users found to seed. Invite teammates, then try again.',
+    });
+  }
+
   let seeded = 0;
+  const added = [];
   for (const u of users.rows) {
     const name = (u.name || u.email || `User ${u.id}`).trim();
+    const keyName = name.toLowerCase();
+    const keyEmail = String(u.email || '').trim().toLowerCase();
+    const keyUser = `user:${u.id}`;
+    if (taken.has(keyName) || taken.has(keyUser) || (keyEmail && taken.has(keyEmail))) continue;
+
     const mid = _id('cap_');
     await pool.query(
       `INSERT INTO team_capacity
@@ -350,8 +372,20 @@ router.post('/seed-from-users', _safe(async (req, res) => {
       [mid, tid, name, u.role_name || u.role_key || 'marketer', `seeded from user ${u.id}`],
     );
     seeded += 1;
+    added.push(name);
+    taken.add(keyName);
+    taken.add(keyUser);
+    if (keyEmail) taken.add(keyEmail);
   }
-  res.json({ ok: true, seeded });
+
+  res.json({
+    ok: true,
+    seeded,
+    added,
+    note: seeded
+      ? undefined
+      : 'All workspace users are already on the roster',
+  });
 }));
 
 module.exports = router;

@@ -84,6 +84,7 @@ export default function Capacity() {
   const [role, setRole] = useState("marketer");
   const [hours, setHours] = useState("40");
   const [busy, setBusy] = useState(false);
+  const [seedMsg, setSeedMsg] = useState<{ tone: "ok" | "warn" | "err"; text: string } | null>(null);
 
   async function refresh() {
     const r = await apiGet<Summary>("/api/capacity/summary");
@@ -123,11 +124,34 @@ export default function Capacity() {
 
   async function seedUsers() {
     setBusy(true);
-    const r = await apiPost<{ ok: boolean; seeded?: number; note?: string; error?: string }>("/api/capacity/seed-from-users", {});
-    setBusy(false);
-    if (!r.ok) { toast(r.error || "Seed failed"); return; }
-    toast(r.seeded ? `Seeded ${r.seeded} teammate(s)` : (r.note || "No new members"));
-    refresh();
+    setSeedMsg(null);
+    try {
+      const r = await apiPost<{
+        ok: boolean;
+        seeded?: number;
+        added?: string[];
+        note?: string;
+        error?: string;
+      }>("/api/capacity/seed-from-users", {});
+      if (!r.ok) {
+        const text = r.error || "Seed failed";
+        setSeedMsg({ tone: "err", text });
+        toast(text);
+        return;
+      }
+      const text = r.seeded
+        ? `Added ${r.seeded} teammate(s) from workspace users${r.added?.length ? `: ${r.added.join(", ")}` : ""}`
+        : (r.note || "No new members to add — everyone from the workspace is already on the roster");
+      setSeedMsg({ tone: r.seeded ? "ok" : "warn", text });
+      toast(text);
+      await refresh();
+    } catch (e: unknown) {
+      const text = e instanceof Error ? e.message : "Seed failed";
+      setSeedMsg({ tone: "err", text });
+      toast(text);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function assignBest(taskId: string | number) {
@@ -153,10 +177,39 @@ export default function Capacity() {
               Who has hours this week, what is already allocated, and which open Marketing Goal tasks should go where.
             </p>
           </div>
-          <button type="button" disabled={busy} onClick={seedUsers} style={{ ...btnStyle, background: "#0369A1" }}>
-            Seed from workspace users
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => { void seedUsers(); }}
+            style={{
+              ...btnStyle,
+              background: "#0369A1",
+              color: "#FFFFFF",
+              opacity: busy ? 0.75 : 1,
+              cursor: busy ? "wait" : "pointer",
+            }}
+          >
+            {busy ? "Seeding…" : "Seed from workspace users"}
           </button>
         </div>
+
+        {seedMsg ? (
+          <div
+            role="status"
+            style={{
+              marginBottom: 12,
+              padding: "10px 14px",
+              borderRadius: 10,
+              fontSize: "0.88rem",
+              lineHeight: 1.45,
+              background: seedMsg.tone === "ok" ? "#ECFDF5" : seedMsg.tone === "warn" ? "#FFFBEB" : "#FEF2F2",
+              border: `1px solid ${seedMsg.tone === "ok" ? "#A7F3D0" : seedMsg.tone === "warn" ? "#FDE68A" : "#FECACA"}`,
+              color: seedMsg.tone === "ok" ? "#065F46" : seedMsg.tone === "warn" ? "#92400E" : "#991B1B",
+            }}
+          >
+            {seedMsg.text}
+          </div>
+        ) : null}
 
         {(data?.alerts || []).map((a, i) => (
           <div key={i} style={{
