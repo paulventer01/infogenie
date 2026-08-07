@@ -116,4 +116,140 @@ router.patch('/:id/resolve', _safe(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// POST /api/anomaly-detector/spend-scan — pacing + waste anomalies from canonical metrics
+router.post('/spend-scan', _safe(async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'anomaly_detector:spend-scan' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const days = Math.min(90, Math.max(7, parseInt(req.body?.days, 10) || 30));
+  const anomalies = [];
+
+  let metrics = null;
+  try {
+    const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
+    metrics = await computeCanonicalMetrics(tid, { days });
+  } catch (e) {
+    console.warn('[anomaly-detector] canonical metrics:', e.message);
+  }
+
+  if (metrics) {
+    for (const w of metrics.waste_channels || []) {
+      anomalies.push({
+        anomaly_type: 'spend_waste',
+        severity: w.waste_cents >= 50000 ? 'high' : 'medium',
+        channel: w.channel,
+        spike_factor: w.roas != null && w.roas > 0 ? +(1 / w.roas).toFixed(2) : null,
+        baseline_value: w.revenue,
+        current_value: w.spend,
+        ai_explanation: `Channel “${w.channel}” is underwater — spend $${Number(w.spend).toFixed(0)} vs revenue $${Number(w.revenue).toFixed(0)} (ROAS ${w.roas ?? 'n/a'}).`,
+        recommended_action: `Pause or cut budget on “${w.channel}” until creative/audience is refreshed; reallocate to channels with ROAS ≥ 1.`,
+      });
+    }
+    if (metrics.blended_roas != null && metrics.blended_roas < 1 && metrics.spend >= 100) {
+      anomalies.push({
+        anomaly_type: 'blended_roas_crash',
+        severity: metrics.blended_roas < 0.5 ? 'critical' : 'high',
+        channel: 'blended',
+        spike_factor: metrics.blended_roas,
+        baseline_value: 1,
+        current_value: metrics.blended_roas,
+        ai_explanation: `Blended ROAS is ${metrics.blended_roas}x over the last ${days}d — below break-even.`,
+        recommended_action: 'Freeze non-performing campaigns and shift budget to proven winners before next spend cycle.',
+      });
+    }
+  }
+
+  // Budget pacing anomalies (current month)
+  if (_db.hasDb()) {
+    try {
+      const period = new Date().toISOString().slice(0, 7);
+      const [y, m] = period.split('-').map(Number);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      const dayOfMonth = new Date().getUTCDate();
+      const bRow = await _db.getPool().query(
+        `SELECT target_cents FROM budgets WHERE tenant_id=$1 AND period_month=$2 ORDER BY created_at DESC LIMIT 1`,
+        [tid, period],
+      );
+      const target = Number(bRow.rows[0]?.target_cents || 0);
+      const sRow = await _db.getPool().query(
+        `SELECT COALESCE(SUM(amount_cents),0)::bigint AS spent FROM spend_events
+          WHERE tenant_id=$1 AND to_char(occurred_at,'YYYY-MM')=$2`,
+        [tid, period],
+      );
+      const spent = Number(sRow.rows[0]?.spent || 0);
+      if (target > 0 && dayOfMonth > 0) {
+        const expected = Math.round(target * (dayOfMonth / daysInMonth));
+        const pacePct = expected > 0 ? Math.round((spent / expected) * 100) : 0;
+        const projected = Math.round(spent * (daysInMonth / dayOfMonth));
+        if (pacePct >= 120) {
+          anomalies.push({
+            anomaly_type: 'budget_overspend_pace',
+            severity: pacePct >= 150 ? 'critical' : 'high',
+            channel: 'budget',
+            spike_factor: +(pacePct / 100).toFixed(2),
+            baseline_value: expected / 100,
+            current_value: spent / 100,
+            ai_explanation: `Spend is at ${pacePct}% of expected pace — projected month-end $${(projected / 100).toFixed(0)} vs target $${(target / 100).toFixed(0)}.`,
+            recommended_action: 'Throttle daily budgets on the highest-spend channels until pace returns under 105%.',
+          });
+        } else if (pacePct > 0 && pacePct <= 50 && dayOfMonth >= 10) {
+          anomalies.push({
+            anomaly_type: 'budget_underspend_pace',
+            severity: 'medium',
+            channel: 'budget',
+            spike_factor: +(pacePct / 100).toFixed(2),
+            baseline_value: expected / 100,
+            current_value: spent / 100,
+            ai_explanation: `Spend is only ${pacePct}% of expected pace with ${daysInMonth - dayOfMonth} days left — risk of missing delivery goals.`,
+            recommended_action: 'Scale winning campaigns or release held budget so the month closes on plan.',
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[anomaly-detector] budget pace:', e.message);
+    }
+  }
+
+  // Persist top anomalies
+  if (_db.hasDb() && anomalies.length) {
+    const pool = _db.getPool();
+    for (const a of anomalies.slice(0, 10)) {
+      try {
+        await pool.query(
+          `INSERT INTO anomaly_detections
+             (brand,anomaly_type,severity,spike_factor,baseline_value,current_value,ai_explanation,recommended_action,affected_channels,signals,tenant_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [
+            req.body?.brand || 'spend',
+            a.anomaly_type, a.severity, a.spike_factor,
+            a.baseline_value, a.current_value,
+            a.ai_explanation, a.recommended_action,
+            JSON.stringify([a.channel]), JSON.stringify([{ channel: a.channel, flagged: true }]),
+            tid,
+          ],
+        );
+      } catch (_) { /* table may lack columns in older envs */ }
+    }
+  }
+
+  const top = anomalies.sort((a, b) => {
+    const rank = { critical: 0, high: 1, medium: 2, low: 3, none: 4 };
+    return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9);
+  })[0] || null;
+
+  res.json({
+    ok: true,
+    days,
+    anomaly_count: anomalies.length,
+    severity: top?.severity || 'none',
+    anomaly_type: top?.anomaly_type || 'no_anomaly',
+    anomalies,
+    metrics: metrics ? {
+      spend: metrics.spend,
+      blended_roas: metrics.blended_roas,
+      true_roas: metrics.true_roas,
+      waste_cents: metrics.waste_cents,
+    } : null,
+  });
+}));
+
 module.exports = router;

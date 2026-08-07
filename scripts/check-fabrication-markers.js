@@ -41,6 +41,8 @@ const ALLOWLIST = new Map([
     '_fallbackTarget/_fallbackLabel in /api/goals/suggest return AI-suggested goal target VALUES/LABELS for a form field (user-editable suggestions, flagged with fallback:true in the response), not fabricated metrics dressed as real measurements. Pre-existing helpers moved verbatim from server.js (which the lint never scanned).'],
   ['services/market_signals/routes.js',
     '_templateImageCache is an in-memory LRU cache (Map) memoizing AI-generated template image URLs — a performance cache, not a synthetic-when-AI-unavailable data fallback. Name matches the _template* regex only incidentally. Pre-existing helper moved verbatim from server.js (which the lint never scanned).'],
+  ['services/infographics/api.js',
+    '_fallback returns a layout scaffold (editable funnel/journey labels for SVG export), not fabricated research metrics. Tagged source:"layout-scaffold" (not a fabrication marker) so strict data-mode does not disable the Infographic Generator when no AI key is configured.'],
 ]);
 
 function walk(dir, out = []) {

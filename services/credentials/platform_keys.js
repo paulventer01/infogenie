@@ -37,6 +37,14 @@ const REGISTRY = [
   { key: 'CLOUDFLARE_ACCOUNT_ID', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare Account ID', desc: 'Workers AI (Llama 3.1) — account identifier', secret: false, settingsIds: ['cloudflare'] },
   { key: 'CLOUDFLARE_AI_TOKEN', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare AI Token', desc: 'Workers AI (Llama 3.1) — API token', secret: true, test: 'cloudflare', settingsIds: ['cloudflare'] },
   { key: 'RAPIDAPI_KEY', group: 'AI Models', service: 'RapidAPI', label: 'RapidAPI Key', desc: 'Multi-purpose RapidAPI key — Meta Llama 3.2 Vision (LLM fallback) + Google SEO Keyword Research (keyword-research-for-seo)', secret: true, test: 'rapidapi_llama', settingsIds: ['rapidapi'] },
+  { key: 'ZAI_API_KEY', group: 'AI Models', service: 'Z.ai / AutoClaw', label: 'Z.ai API Key', desc: 'GLM 5.2 via chat.z.ai / autoclaw.z.ai — lead classification, agent tasks, Coding Plan endpoint', secret: true, aliases: ['GLM_API_KEY', 'Z_AI_API_KEY'], test: 'zai', settingsIds: ['zai', 'glm', 'autoclaw'] },
+  { key: 'MOONSHOT_API_KEY', group: 'AI Models', service: 'Moonshot / Kimi', label: 'Moonshot API Key', desc: 'Kimi K3 via api.moonshot.ai — long-context analysis, vision, agentic research (OpenAI-compatible)', secret: true, aliases: ['KIMI_API_KEY'], test: 'moonshot', settingsIds: ['moonshot', 'kimi'] },
+  { key: 'GROQ_API_KEY', group: 'AI Models', service: 'Groq', label: 'Groq API Key', desc: 'Llama 3.1 70B and other Groq OpenAI-compatible chat models', secret: true, settingsIds: ['groq'] },
+  { key: 'DEEPSEEK_API_KEY', group: 'AI Models', service: 'DeepSeek', label: 'DeepSeek API Key', desc: 'DeepSeek Chat — OpenAI-compatible analysis & writing', secret: true, settingsIds: ['deepseek'] },
+  { key: 'MISTRAL_API_KEY', group: 'AI Models', service: 'Mistral', label: 'Mistral API Key', desc: 'Mistral Large and other Mistral OpenAI-compatible models', secret: true, settingsIds: ['mistral'] },
+  { key: 'OPENROUTER_API_KEY', group: 'AI Models', service: 'OpenRouter', label: 'OpenRouter API Key', desc: 'Multi-model gateway (Llama, Claude, GPT and more) via OpenRouter', secret: true, settingsIds: ['openrouter'] },
+  { key: 'TOGETHER_API_KEY', group: 'AI Models', service: 'Together AI', label: 'Together API Key', desc: 'Together AI OpenAI-compatible chat models', secret: true, settingsIds: ['together'] },
+  { key: 'OLLAMA_API_KEY', group: 'AI Models', service: 'Ollama Cloud', label: 'Ollama API Key', desc: 'Cloud models via https://ollama.com/v1 (OpenAI-compatible). Create at ollama.com/settings/keys', secret: true, settingsIds: ['ollama', 'ollama_cloud'] },
 
   // ── Data & Intelligence ─────────────────────────────────────────────────────
   { key: 'DATAFORSEO_LOGIN', group: 'Data & Intelligence', service: 'DataForSEO', label: 'DataForSEO Login', desc: 'SEO/SERP/keyword data — account login', secret: false, test: 'dataforseo', settingsIds: ['dataforseo', 'dataseo'] },
@@ -44,6 +52,7 @@ const REGISTRY = [
   { key: 'FIRECRAWL_API_KEY', group: 'Data & Intelligence', service: 'Firecrawl', label: 'Firecrawl API Key', desc: 'Website crawling & scraping', secret: true, test: 'firecrawl', settingsIds: ['firecrawl'] },
   { key: 'APOLLO_API_KEY', group: 'Data & Intelligence', service: 'Apollo', label: 'Apollo API Key', desc: 'B2B contact & company enrichment', secret: true, test: 'apollo', settingsIds: ['apollo'] },
   { key: 'ZERNIO_API_KEY', group: 'Data & Intelligence', service: 'Zernio', label: 'Zernio API Key', desc: 'Social publishing', secret: true, settingsIds: ['zernio'] },
+  { key: 'OMNISOCIALS_API_KEY', group: 'Data & Intelligence', service: 'OmniSocials', label: 'OmniSocials API Key', desc: 'Social DM/comment inbox (optional — demo mode without it)', secret: true, settingsIds: ['omnisocials'] },
   { key: 'MODASH_API_KEY', group: 'Data & Intelligence', service: 'Modash', label: 'Modash API Key', desc: 'Influencer Discovery — real follower counts, engagement rates & audience-quality scores (IG/TikTok/YouTube)', secret: true, test: 'modash', settingsIds: ['modash'] },
   { key: 'BUILTWITH_API_KEY', group: 'Data & Intelligence', service: 'BuiltWith', label: 'BuiltWith API Key', desc: 'Tech-stack detection', secret: true, test: 'builtwith', settingsIds: ['builtwith'] },
   { key: 'GOOGLE_PAGESPEED_API_KEY', group: 'Data & Intelligence', service: 'Google PageSpeed', label: 'PageSpeed API Key', desc: 'Core Web Vitals & page performance audits', secret: true, test: 'pagespeed', settingsIds: ['pagespeed', 'google_pagespeed'] },
@@ -346,6 +355,41 @@ async function _runTest(keyName) {
       if (r.status === 401 || r.status === 403) return _BAD('Perplexity rejected the key (HTTP ' + r.status + ')');
       if (r.ok || r.status === 400 || r.status === 422) return _OK('Perplexity authenticated');
       return _HTTP('Perplexity', r);
+    }
+    if (entry.test === 'zai') {
+      const key = resolvePlatformKey('ZAI_API_KEY');
+      if (!key) return _UNCONF();
+      const base = (process.env.ZAI_API_BASE_URL || process.env.ZAI_CODING_BASE_URL || 'https://api.z.ai/api/coding/paas/v4').replace(/\/$/, '');
+      const r = await _fetchT(base + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key, 'Accept-Language': 'en-US,en' },
+        body: JSON.stringify({ model: process.env.ZAI_MODEL || 'glm-5.2', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
+      });
+      if (r.ok) return _OK('Z.ai GLM reachable');
+      if (r.status === 401 || r.status === 403) return _BAD('Z.ai rejected the key (HTTP ' + r.status + ')');
+      if (r.status === 400 || r.status === 422) return _OK('Z.ai authenticated');
+      return _HTTP('Z.ai', r);
+    }
+    if (entry.test === 'moonshot') {
+      const key = resolvePlatformKey('MOONSHOT_API_KEY');
+      if (!key) return _UNCONF();
+      const { normalizeChatParams } = require('../ai_compat');
+      const base = (process.env.MOONSHOT_API_BASE_URL || 'https://api.moonshot.ai/v1').replace(/\/$/, '');
+      const body = JSON.stringify(normalizeChatParams({
+        model: process.env.KIMI_MODEL || 'kimi-k3',
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 16,
+        reasoning_effort: 'low',
+      }));
+      const r = await _fetchT(base + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+        body,
+      });
+      if (r.ok) return _OK('Moonshot Kimi reachable');
+      if (r.status === 401 || r.status === 403) return _BAD('Moonshot rejected the key (HTTP ' + r.status + ')');
+      if (r.status === 400 || r.status === 402 || r.status === 422) return _OK('Moonshot authenticated');
+      return _HTTP('Moonshot', r);
     }
     if (entry.test === 'cloudflare') {
       const token = resolvePlatformKey('CLOUDFLARE_AI_TOKEN');

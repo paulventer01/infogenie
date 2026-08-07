@@ -205,13 +205,13 @@ export default function Advertise() {
 
   return (
     <div className="view">
-      <div className="view-header" style={{ background: "linear-gradient(135deg,#0A1628 0%,#0D2140 100%)" }}>
+      <div className="view-header ig-panel-hero" style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}>
         <div className="container">
           <div className="vh-inner">
             <div>
               <div className="breadcrumb" style={{ color: "#00C9C8" }}>
                 <span className="bc-group" style={{ color: "rgba(0,229,255,.7)" }}>Reach</span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>›</span> Advertise
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>›</span> Advertise
               </div>
               <h2 className="view-title">Multi-Channel Advertising Hub</h2>
               <p className="view-sub">
@@ -348,7 +348,8 @@ export default function Advertise() {
                       <button
                         onClick={() => toast("⚙️ Optimising — adjusting bids and targeting")}
                         title="Trigger InfoGenie AI to re-optimise bids, budgets, and targeting for this campaign right now."
-                        style={{ padding: "5px 12px", background: "var(--ig-panel)", border: "none", borderRadius: 7, fontSize: "0.7rem", fontWeight: 700, color: "white", cursor: "pointer" }}
+                        className="btn-primary"
+                        style={{ padding: "5px 12px", fontSize: "0.7rem" }}
                       >
                         ⚡ Optimise
                       </button>

@@ -20,8 +20,11 @@
 // it, so the bespoke check it used to carry is gone.
 
 const matrix = require('./permission_matrix');
+const { permissionMode } = require('../security/prod_defaults');
 
-const MODE = (process.env.PERMISSION_ENFORCEMENT || 'shadow').toLowerCase();
+// Evaluated once at module load (tests delete require.cache + set env before require).
+// Production default is 'on' when PERMISSION_ENFORCEMENT is unset.
+const MODE = permissionMode();
 function mode()     { return MODE; }
 function isOff()    { return MODE === 'off'; }
 function isShadow() { return MODE === 'shadow'; }

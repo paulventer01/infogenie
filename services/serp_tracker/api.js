@@ -10,7 +10,25 @@ async function _tid(req, label) {
   return await _tenantCtx.resolveTenantId(req, { label });
 }
 
-const COUNTRY_TO_LOC = { us:2840, gb:2826, ca:2124, au:2036, in:2356, de:2276, fr:2250, jp:2392, br:2076, mx:2484, za:2710, nl:2528, es:2724, it:2380, sg:2702 };
+// ISO-ish country codes used by the Track form. "global" is intentional (6 chars)
+ // — never truncate below that or it stores as "globa".
+const ALLOWED_COUNTRIES = new Set([
+  'us', 'gb', 'au', 'ca', 'za', 'de', 'fr', 'es', 'it', 'nl', 'br', 'mx', 'in', 'sg', 'ae', 'jp', 'global',
+]);
+const COUNTRY_TO_LOC = {
+  us: 2840, gb: 2826, ca: 2124, au: 2036, in: 2356, de: 2276, fr: 2250, jp: 2392,
+  br: 2076, mx: 2484, za: 2710, nl: 2528, es: 2724, it: 2380, sg: 2702, ae: 2784,
+  // No DataForSEO "worldwide" location — fall back to US organic when scanning.
+  global: 2840,
+};
+
+function _normCountry(raw) {
+  let c = String(raw || 'us').toLowerCase().trim().slice(0, 16);
+  // Repair rows truncated by the old .slice(0, 5) bug ("globa" → "global").
+  if (c === 'globa') c = 'global';
+  if (!ALLOWED_COUNTRIES.has(c)) c = 'us';
+  return c;
+}
 
 async function _serpSearch(q, country) {
   const login = process.env.DATAFORSEO_LOGIN, pw = process.env.DATAFORSEO_PASSWORD;
@@ -44,6 +62,11 @@ router.get('/keywords', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
     const tid = await _tid(req, 'serp:keywords-list');
+    // Heal legacy truncated "globa" values from the old .slice(0, 5) bug.
+    await _db.getPool().query(
+      `UPDATE serp_tracker_keywords SET country='global' WHERE tenant_id=$1 AND country='globa'`,
+      [tid]
+    ).catch(() => {});
     const r = await _db.getPool().query(`
       SELECT k.*, lr.target_position AS last_position, lr.ran_at AS last_run_at
       FROM serp_tracker_keywords k
@@ -60,7 +83,7 @@ router.post('/keywords', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const keyword = String(req.body?.keyword||'').trim().slice(0, 200);
   const target_domain = _normDomain(req.body?.target_domain||'');
-  const country = String(req.body?.country||'us').toLowerCase().slice(0, 5);
+  const country = _normCountry(req.body?.country);
   if (!keyword || !target_domain) return _err(res, 400, 'keyword + target_domain required');
   try {
     const tid = await _tid(req, 'serp:keywords-add');
@@ -156,3 +179,5 @@ router.get('/history/:id', async (req, res) => {
 });
 
 module.exports = router;
+module.exports._normCountry = _normCountry;
+module.exports.ALLOWED_COUNTRIES = ALLOWED_COUNTRIES;

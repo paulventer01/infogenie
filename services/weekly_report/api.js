@@ -108,16 +108,266 @@ async function _gatherSections(brand, tid) {
     rows: yt.map(r => [String(r.channel_name||'').slice(0,40), String(r.video_count||0), String(r.total_views||0)])
   });
 
+  // 9) Canonical metrics snapshot (SSOT)
+  try {
+    const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
+    const m = await computeCanonicalMetrics(tid, { days: 7 });
+    sections.push({
+      title: '📐 Canonical Metrics (7 days)',
+      kind: 'table',
+      headers: ['Metric', 'Value'],
+      rows: [
+        ['Spend', `$${Number(m.spend || 0).toFixed(2)}`],
+        ['Blended ROAS', m.blended_roas != null ? String(m.blended_roas) : '—'],
+        ['True ROAS', m.true_roas != null ? String(m.true_roas) : '—'],
+        ['CAC', m.cac != null ? `$${m.cac}` : '—'],
+        ['Waste (underwater channels)', `$${(Number(m.waste_cents || 0) / 100).toFixed(2)}`],
+      ],
+    });
+    if (m.goals_vs_actuals?.length) {
+      sections.push({
+        title: '🎯 Goals vs Actuals',
+        kind: 'table',
+        headers: ['Goal', 'Target', 'Actual', 'Status'],
+        rows: m.goals_vs_actuals.slice(0, 10).map(g => [
+          String(g.label || '').slice(0, 50),
+          String(g.target ?? '—'),
+          String(g.actual ?? '—'),
+          String(g.status || '—'),
+        ]),
+      });
+    }
+  } catch (_) { /* optional */ }
+
+  // 10) Institutional memory — decision outcomes this week
+  const learned = await safe(
+    `SELECT title, category, acted_at, dismissed_at, outcome_result, outcome_notes, expected_impact
+       FROM decision_recommendations
+      WHERE tenant_id=$1
+        AND (acted_at >= ${since} OR dismissed_at >= ${since} OR outcome_at >= ${since})
+      ORDER BY COALESCE(outcome_at, acted_at, dismissed_at) DESC
+      LIMIT 15`,
+    [tid],
+  );
+  if (learned.length) {
+    sections.push({
+      title: `🧠 Learning Loop — ${learned.length} decision outcome(s)`,
+      kind: 'table',
+      headers: ['Decision', 'Category', 'Action', 'Result'],
+      rows: learned.map(r => [
+        String(r.title || '').slice(0, 50),
+        r.category || '',
+        r.acted_at ? 'acted' : r.dismissed_at ? 'dismissed' : '—',
+        String(r.outcome_result || r.expected_impact || '').slice(0, 60),
+      ]),
+    });
+  }
+
   if (!sections.length) sections.push({ title: 'No activity', kind:'text', body:`No data captured for "${brand}" in the last 7 days. Add the brand to Crisis Radar watchlist, run a Voice of Customer scan, or enable AI Optimizer to start collecting data.` });
   return sections;
 }
 
+function _hasOpenAI() {
+  const k = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  return !!(k && !/^_DUMMY/i.test(k));
+}
+
+function _money(n) {
+  return `$${Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function _deltaPhrase(pct, invertGood = false) {
+  if (pct == null || !Number.isFinite(Number(pct))) return null;
+  const n = Number(pct);
+  const up = n >= 0;
+  const good = invertGood ? !up : up;
+  const arrow = up ? 'up' : 'down';
+  return { text: `${arrow} ${Math.abs(n).toFixed(1)}% vs prior period`, good };
+}
+
+/**
+ * Client-ready narrative grounded in canonical metrics + pacing + goals.
+ * Deterministic path always produces real numbers (not generic fluff).
+ */
+async function _buildClientNarrative(brand, tid, sections = []) {
+  let metrics = null;
+  try {
+    const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
+    metrics = await computeCanonicalMetrics(tid, { days: 7 });
+  } catch (_) { /* optional */ }
+
+  const wins = [];
+  const risks = [];
+  const next_actions = [];
+  const facts = [];
+
+  if (metrics) {
+    facts.push(`Spend ${_money(metrics.spend)} over 7 days`);
+    if (metrics.blended_roas != null) facts.push(`blended ROAS ${metrics.blended_roas}x`);
+    if (metrics.true_roas != null) facts.push(`true ROAS ${metrics.true_roas}x`);
+    if (metrics.cac != null) facts.push(`CAC $${metrics.cac}`);
+
+    const roasDelta = _deltaPhrase(metrics.deltas?.blended_roas_pct);
+    if (roasDelta?.good) wins.push(`Efficiency ${roasDelta.text}`);
+    else if (roasDelta && !roasDelta.good) risks.push(`Efficiency ${roasDelta.text}`);
+
+    const revDelta = _deltaPhrase(metrics.deltas?.revenue_pct);
+    if (revDelta?.good) wins.push(`Revenue ${revDelta.text} (${_money(metrics.total_revenue)})`);
+    else if (metrics.total_revenue > 0) wins.push(`Revenue ${_money(metrics.total_revenue)} this week`);
+
+    if ((metrics.waste_cents || 0) >= 5000) {
+      risks.push(`${_money(metrics.waste_cents / 100)} in underwater-channel waste`);
+      const top = (metrics.waste_channels || [])[0];
+      if (top) next_actions.push(`Pause or cut ${top.channel} (ROAS ${top.roas ?? 'n/a'}) and reallocate to winners`);
+    }
+
+    const pace = metrics.pacing;
+    if (pace && pace.pace_status && pace.pace_status !== 'unknown') {
+      const paceLine = `Budget pacing is ${pace.pace_status.replace(/_/g, ' ')} at ${pace.pace_pct ?? '—'}% of expected (${_money(pace.spent_cents / 100)} of ${_money(pace.target_cents / 100)} target; projected month-end ${_money(pace.projected_month_end_cents / 100)})`;
+      facts.push(paceLine);
+      if (pace.pace_status === 'overspending' || pace.pace_status === 'ahead') {
+        risks.push(paceLine);
+      } else if (pace.pace_status === 'on_pace') {
+        wins.push(paceLine);
+      } else {
+        risks.push(paceLine);
+      }
+      for (const a of (pace.actions || []).slice(0, 2)) {
+        next_actions.push(`${a.action}: ${a.detail}`);
+      }
+    }
+
+    const offTrack = (metrics.goals_vs_actuals || []).filter((g) => g.status === 'off-track' || g.status === 'at-risk');
+    const onTrack = (metrics.goals_vs_actuals || []).filter((g) => g.status === 'on-track');
+    if (onTrack.length) wins.push(`${onTrack.length} goal(s) on track`);
+    if (offTrack.length) {
+      risks.push(`${offTrack.length} goal(s) at risk / off track`);
+      next_actions.push(`Focus this week on “${String(offTrack[0].label || '').slice(0, 60)}” (${offTrack[0].pct ?? 0}% of target)`);
+    }
+  }
+
+  // Brand/intel signals from gathered sections
+  for (const s of sections) {
+    if (/Crisis/i.test(s.title) && (s.rows || []).length) {
+      risks.push(`${(s.rows || []).length} crisis incident(s) in the last 7 days`);
+    }
+    if (/Share of Voice/i.test(s.title) && (s.rows || []).length) {
+      const top = s.rows[0];
+      if (Array.isArray(top)) wins.push(`SoV leader: ${top[0]} at ${top[1]}%`);
+    }
+    if (/Learning Loop/i.test(s.title) && (s.rows || []).length) {
+      wins.push(`${(s.rows || []).length} decision outcome(s) recorded into institutional memory`);
+    }
+  }
+
+  if (!wins.length) wins.push('Instrumentation active — continue collecting performance and brand signals');
+  if (!risks.length) risks.push('No critical pacing or brand risks flagged from available data');
+  if (!next_actions.length) {
+    next_actions.push('Review Daily Action Queue and act on the top recommendation');
+    next_actions.push('Confirm Budget Board target is set so pacing can guide spend');
+  }
+
+  const headlineFacts = facts.length
+    ? facts.slice(0, 4).join('; ')
+    : `${sections.length} intelligence section(s) compiled`;
+  const executive_summary =
+    `${brand} this week: ${headlineFacts}. ` +
+    `${wins[0]}. ${risks[0] !== 'No critical pacing or brand risks flagged from available data' ? `Watch: ${risks[0]}.` : 'No critical risks raised.'} ` +
+    `Priority next step: ${next_actions[0]}`;
+
+  const client_paragraphs = [
+    executive_summary,
+    wins.length ? `What went well: ${wins.slice(0, 3).join('; ')}.` : null,
+    risks.length ? `What needs attention: ${risks.slice(0, 3).join('; ')}.` : null,
+    next_actions.length ? `Recommended actions: ${next_actions.slice(0, 3).map((a, i) => `${i + 1}) ${a}`).join(' ')}` : null,
+  ].filter(Boolean);
+
+  const base = {
+    executive_summary,
+    wins: wins.slice(0, 5),
+    risks: risks.slice(0, 5),
+    next_actions: next_actions.slice(0, 5),
+    client_paragraphs,
+    metrics_snapshot: metrics ? {
+      spend: metrics.spend,
+      blended_roas: metrics.blended_roas,
+      true_roas: metrics.true_roas,
+      cac: metrics.cac,
+      waste_cents: metrics.waste_cents,
+      pace_status: metrics.pacing?.pace_status || null,
+      pace_pct: metrics.pacing?.pace_pct ?? null,
+    } : null,
+    tone: 'deterministic',
+  };
+
+  if (!_hasOpenAI()) return base;
+
+  try {
+    const OpenAI = require('openai');
+    const client = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+    });
+    const resp = await client.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      temperature: 0.25,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You polish client-ready marketing weekly narratives. Keep every number from the facts. ' +
+            'Return JSON: {"executive_summary":"2-3 sentences with numbers","wins":["..."],"risks":["..."],"next_actions":["..."],"client_paragraphs":["para1","para2","para3"]}',
+        },
+        {
+          role: 'user',
+          content: `Brand: ${brand}\nGround-truth facts (do not invent numbers):\n${JSON.stringify({
+            executive_summary: base.executive_summary,
+            wins: base.wins,
+            risks: base.risks,
+            next_actions: base.next_actions,
+            metrics: base.metrics_snapshot,
+          }, null, 2)}`,
+        },
+      ],
+    });
+    const parsed = JSON.parse(resp.choices?.[0]?.message?.content || '{}');
+    return {
+      ...base,
+      executive_summary: String(parsed.executive_summary || base.executive_summary),
+      wins: Array.isArray(parsed.wins) ? parsed.wins.slice(0, 5) : base.wins,
+      risks: Array.isArray(parsed.risks) ? parsed.risks.slice(0, 5) : base.risks,
+      next_actions: Array.isArray(parsed.next_actions) ? parsed.next_actions.slice(0, 5) : base.next_actions,
+      client_paragraphs: Array.isArray(parsed.client_paragraphs) && parsed.client_paragraphs.length
+        ? parsed.client_paragraphs.slice(0, 5)
+        : base.client_paragraphs,
+      tone: 'ai',
+    };
+  } catch (e) {
+    console.warn('[weekly-report] narrative AI failed:', e.message);
+    return base;
+  }
+}
+
 async function _buildReport(brand, tid) {
   const sections = await _gatherSections(brand, tid);
+  const narrative = await _buildClientNarrative(brand, tid, sections);
+  const narrativeSection = {
+    title: '✍️ Client Narrative',
+    kind: 'narrative',
+    body: narrative.executive_summary,
+    wins: narrative.wins,
+    risks: narrative.risks,
+    next_actions: narrative.next_actions,
+    client_paragraphs: narrative.client_paragraphs,
+    metrics_snapshot: narrative.metrics_snapshot,
+    tone: narrative.tone,
+  };
   return {
-    title: `${brand} — Weekly Intelligence Report`,
+    title: `${brand} — Weekly Client Report`,
     generated_at: new Date().toISOString(),
-    sections
+    narrative,
+    sections: [narrativeSection, ...sections],
   };
 }
 
@@ -189,6 +439,16 @@ router.post('/preview', _safeAsync(async (req, res) => {
   res.json({ ok:true, report });
 }));
 
+// Client narrative only — for copy/paste into decks without full digest tables
+router.post('/client-narrative', _safeAsync(async (req, res) => {
+  const brand = String(req.body?.brand || req.query.brand || '').trim();
+  if (!brand) return _err(res, 400, 'brand required');
+  const tid = await _tid(req, 'wr:client-narrative');
+  const sections = await _gatherSections(brand, tid);
+  const narrative = await _buildClientNarrative(brand, tid, sections);
+  res.json({ ok: true, brand, narrative });
+}));
+
 router.get('/pdf', _safeAsync(async (req, res) => {
   const brand = String(req.query.brand || '').trim();
   if (!brand) return _err(res, 400, 'brand required');
@@ -209,16 +469,24 @@ router.post('/send', _safeAsync(async (req, res) => {
   const tid = await _tid(req, 'wr:send');
   const report = await _buildReport(brand, tid);
   const safeBrand = _escHtml(brand);
-  const summary = report.sections.map(s => `<li><strong>${_escHtml(s.title)}</strong></li>`).join('');
+  const narr = report.narrative || {};
+  const paras = (narr.client_paragraphs || [narr.executive_summary]).map(p => `<p style="line-height:1.55;color:#0F172A">${_escHtml(p)}</p>`).join('');
+  const actions = (narr.next_actions || []).map(a => `<li>${_escHtml(a)}</li>`).join('');
+  const summary = report.sections.filter(s => s.kind !== 'narrative').map(s => `<li><strong>${_escHtml(s.title)}</strong></li>`).join('');
   const pdfPath = `/api/weekly-report/pdf?brand=${encodeURIComponent(brand)}`;
-  const html = `<div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;padding:20px">
-    <h1 style="color:#1E1B4B">${safeBrand} — Weekly Intelligence</h1>
-    <p style="color:#475569">Generated ${_escHtml(new Date().toLocaleString())}</p>
-    <p>Here's what InfoGenie tracked for <strong>${safeBrand}</strong> over the last 7 days:</p>
-    <ul style="line-height:1.8">${summary}</ul>
-    <p style="margin-top:24px;padding:16px;background:#F1F5F9;border-radius:8px;font-size:0.9rem;color:#475569">📥 Download the full PDF report inside InfoGenie at <code>${_escHtml(pdfPath)}</code>, or sign in to drill into any section.</p>
+  const html = `<div style="font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;padding:20px">
+    <h1 style="color:#0F172A;margin:0 0 8px">${safeBrand} — Weekly Client Report</h1>
+    <p style="color:#64748B;margin:0 0 18px">Generated ${_escHtml(new Date().toLocaleString())}</p>
+    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:16px 18px;margin-bottom:18px">
+      <div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#0F766E;margin-bottom:8px">Client narrative</div>
+      ${paras}
+      ${actions ? `<ol style="margin:12px 0 0;padding-left:18px;color:#334155;line-height:1.6">${actions}</ol>` : ''}
+    </div>
+    <p style="color:#475569;margin:0 0 8px">Supporting sections:</p>
+    <ul style="line-height:1.8;color:#334155">${summary}</ul>
+    <p style="margin-top:24px;padding:16px;background:#F1F5F9;border-radius:8px;font-size:0.9rem;color:#475569">Full PDF: <code>${_escHtml(pdfPath)}</code></p>
   </div>`;
-  await _sendViaResend({ to: email, subject: `${brand} — Weekly Intelligence Report`, html });
+  await _sendViaResend({ to: email, subject: `${brand} — Weekly Client Report`, html });
   if (_db.hasDb && _db.hasDb()) {
     try {
       await _db.getPool().query('INSERT INTO weekly_report_runs (tenant_id, brand, sections_count, sent_to) VALUES ($1,$2,$3,$4)', [tid, brand, report.sections.length, email]);

@@ -310,7 +310,7 @@ export default function TrueRoas() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -479,10 +479,10 @@ function Hero({ summary }: { summary: Summary | null }) {
     <div
       style={{
         background:
-          "linear-gradient(135deg,#064E3B 0%,#065F46 50%,#047857 100%)",
+          "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         borderRadius: 18,
         padding: "28px 32px",
-        color: "white",
+        color: "#0f172a",
         boxShadow: "0 8px 28px rgba(6,78,59,.35)",
       }}
     >

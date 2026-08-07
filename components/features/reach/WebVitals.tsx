@@ -114,8 +114,8 @@ function RunCard({ run, label }: { run: Run | null | undefined; label: string })
     >
       <div
         style={{
-          background: "linear-gradient(135deg,#6366F1 0%,#4338CA 100%)",
-          color: "#fff",
+          background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+          color: "#0f172a",
           padding: "14px 20px",
           fontWeight: 800,
           fontSize: "1rem",
@@ -371,7 +371,7 @@ export default function WebVitals() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

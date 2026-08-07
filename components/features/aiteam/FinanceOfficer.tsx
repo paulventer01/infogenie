@@ -287,7 +287,7 @@ export default function FinanceOfficer() {
     <div>
       <div
         style={styleObj(
-          "max-width:1200px;margin:0 auto 22px;padding:24px 28px;color:white;border-radius:18px;background:linear-gradient(135deg,#064E3B 0%,#065F46 100%)",
+          "max-width:1200px;margin:0 auto 22px;padding:24px 28px;color:white;border-radius:18px;background:linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         )}
       >
         <div
@@ -295,7 +295,7 @@ export default function FinanceOfficer() {
             fontSize: ".72rem",
             letterSpacing: ".18em",
             textTransform: "uppercase",
-            color: "#6EE7B7",
+            color: "#0f766e",
             fontWeight: 700,
           }}
         >
@@ -304,7 +304,7 @@ export default function FinanceOfficer() {
         <h1 style={{ margin: "8px 0 6px", fontSize: "1.85rem", fontWeight: 800 }}>
           Marketing P&amp;L, Live
         </h1>
-        <p style={{ margin: 0, fontSize: ".92rem", color: "#D1FAE5", maxWidth: 720 }}>
+        <p style={{ margin: 0, fontSize: ".92rem", color: "#0f766e", maxWidth: 720 }}>
           Spend, revenue, CAC, LTV/CAC and ROAS — pulled from your connected ad accounts and
           CRM in real time. Re-runs the AI brief on every load.
         </p>

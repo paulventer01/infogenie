@@ -90,11 +90,22 @@ export async function apiBlob(
   path: string,
   opts: RequestInit = {},
 ): Promise<Blob> {
-  const res = await fetch(path, {
-    credentials: "same-origin",
-    ...opts,
-    headers: { ...JSON_HEADERS, ...(opts.headers || {}) },
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      credentials: "same-origin",
+      ...opts,
+      headers: { ...JSON_HEADERS, ...(opts.headers || {}) },
+    });
+  } catch (e) {
+    throw new Error(
+      e instanceof Error && e.message === "Failed to fetch"
+        ? "Network error — could not download file"
+        : e instanceof Error
+          ? e.message
+          : "network_error",
+    );
+  }
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
   return res.blob();
 }

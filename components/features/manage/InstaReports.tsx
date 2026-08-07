@@ -90,9 +90,9 @@ export default function InstaReports() {
   const load = useCallback(async () => {
     setLoading(true);
     const [cfg, r, pr] = await Promise.all([
-      apiGet("/api/insta-reports/config"),
-      apiGet("/api/insta-reports/reports"),
-      apiGet("/api/insta-reports/prospects"),
+      apiGet<{ ok?: boolean; sections?: Section[] }>("/api/insta-reports/config"),
+      apiGet<{ ok?: boolean; reports?: Report[] }>("/api/insta-reports/reports"),
+      apiGet<{ ok?: boolean; prospects?: Prospect[] }>("/api/insta-reports/prospects"),
     ]);
     if (cfg?.sections) setSections(cfg.sections);
     if (r?.reports) setReports(r.reports);
@@ -108,11 +108,11 @@ export default function InstaReports() {
       const parts = line.split(/[,\t]/).map(s => s.trim());
       return { business_name: parts[0] || "", contact_name: parts[1] || "", email: parts[2] || "", website_url: parts[3] || "", industry: parts[4] || "", location: parts[5] || "" };
     }).filter(p => p.business_name);
-    const r = await apiPost("/api/insta-reports/prospects/bulk", { prospects: parsed });
+    const r = await apiPost<{ ok?: boolean; added?: number }>("/api/insta-reports/prospects/bulk", { prospects: parsed });
     if (r?.ok) {
       showToast(`✅ Imported ${r.added} prospect(s)`);
       setBulkText("");
-      const fresh = await apiGet("/api/insta-reports/prospects");
+      const fresh = await apiGet<{ ok?: boolean; prospects?: Prospect[] }>("/api/insta-reports/prospects");
       if (fresh?.prospects) setProspects(fresh.prospects);
     }
   }
@@ -122,19 +122,19 @@ export default function InstaReports() {
     let prospectId = selectedProspect?.id;
     if (!prospectId) {
       if (!prospectForm.business_name) { showToast("Business name required."); setSaving(false); return; }
-      const pr = await apiPost("/api/insta-reports/prospects", prospectForm);
+      const pr = await apiPost<{ ok?: boolean; prospect: Prospect }>("/api/insta-reports/prospects", prospectForm);
       if (!pr?.ok) { showToast("Failed to create prospect."); setSaving(false); return; }
       prospectId = pr.prospect.id;
       setProspects(prev => [pr.prospect, ...prev]);
     }
-    const r = await apiPost("/api/insta-reports/reports", { prospect_id: prospectId, sections_enabled: enabledSections });
+    const r = await apiPost<{ ok?: boolean; report: Report; prospect: Prospect }>("/api/insta-reports/reports", { prospect_id: prospectId, sections_enabled: enabledSections });
     if (r?.ok) {
       showToast("✅ Report created — generating now…");
       setReports(prev => [{ ...r.report, business_name: r.prospect.business_name, email: r.prospect.email, website_url: r.prospect.website_url, contact_name: r.prospect.contact_name, industry: r.prospect.industry, send_count: 0, report_data: {} }, ...prev]);
       setGenerating(true);
-      const gen = await apiPost(`/api/insta-reports/reports/${r.report.id}/generate`, {});
+      const gen = await apiPost<{ ok?: boolean }>(`/api/insta-reports/reports/${r.report.id}/generate`, {});
       if (gen?.ok) {
-        const fresh = await apiGet(`/api/insta-reports/reports/${r.report.id}`);
+        const fresh = await apiGet<{ ok?: boolean; report: Report }>(`/api/insta-reports/reports/${r.report.id}`);
         if (fresh?.ok) {
           setActiveReport(fresh.report);
           setReports(prev => prev.map(rp => rp.id === r.report.id ? fresh.report : rp));
@@ -187,7 +187,7 @@ export default function InstaReports() {
 
   return (
     <div style={{ fontFamily: "'Inter',sans-serif", background: "var(--ig-page)", minHeight: "100vh", padding: "24px 28px" }}>
-      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "#0A1628", color: "#fff", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: '#eef4ff', color: "#0f172a", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
 
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>Manage › Reports</div>
@@ -407,7 +407,7 @@ export default function InstaReports() {
               {/* Main report */}
               <div>
                 {/* Report header */}
-                <div style={{ ...card, background: "linear-gradient(135deg,#0A1628,#1E3A5F)", color: "#fff", padding: "28px 32px" }}>
+                <div style={{ ...card, background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a', padding: "28px 32px" }}>
                   <div style={{ fontSize: "0.7rem", color: "#93C5FD", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 8 }}>Digital Marketing Audit</div>
                   <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 900, fontSize: "1.6rem", marginBottom: 4 }}>{activeReport.business_name}</div>
                   {activeReport.website_url && <div style={{ color: "#93C5FD", fontSize: "0.82rem" }}>{activeReport.website_url}</div>}
@@ -417,7 +417,7 @@ export default function InstaReports() {
                       <div style={{ fontSize: "0.65rem", color: "#93C5FD" }}>Overall Grade</div>
                     </div>
                     <div style={{ textAlign: "center" }}>
-                      <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 900, fontSize: "2.5rem", color: "#fff" }}>{overallScore}/100</div>
+                      <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 900, fontSize: "2.5rem", color: "#0f172a" }}>{overallScore}/100</div>
                       <div style={{ fontSize: "0.65rem", color: "#93C5FD" }}>Score</div>
                     </div>
                     {(rd.recommendations as ReportSection)?.estimated_opportunity && (

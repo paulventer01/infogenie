@@ -86,7 +86,7 @@ export default function LinkedInOutreach() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await apiGet("/api/linkedin-outreach/sequences");
+    const r = await apiGet<{ ok?: boolean; sequences?: Sequence[] }>("/api/linkedin-outreach/sequences");
     if (r?.sequences) setSequences(r.sequences);
     setLoading(false);
   }, []);
@@ -108,7 +108,7 @@ export default function LinkedInOutreach() {
     });
     setTab("messages");
     setLoadingContacts(true);
-    const r = await apiGet(`/api/linkedin-outreach/contacts/${seq.id}`);
+    const r = await apiGet<{ ok?: boolean; contacts?: Contact[] }>(`/api/linkedin-outreach/contacts/${seq.id}`);
     if (r?.contacts) setContacts(r.contacts);
     setLoadingContacts(false);
   }
@@ -116,7 +116,7 @@ export default function LinkedInOutreach() {
   async function handleCreate() {
     if (!form.name) { showToast("Sequence name required."); return; }
     setSaving(true);
-    const r = await apiPost("/api/linkedin-outreach/sequences", { ...form, followup_1_delay_days: +form.followup_1_delay_days, followup_2_delay_days: +form.followup_2_delay_days, followup_3_delay_days: +form.followup_3_delay_days, daily_connection_limit: +form.daily_connection_limit });
+    const r = await apiPost<{ ok?: boolean; sequence: Sequence }>("/api/linkedin-outreach/sequences", { ...form, followup_1_delay_days: +form.followup_1_delay_days, followup_2_delay_days: +form.followup_2_delay_days, followup_3_delay_days: +form.followup_3_delay_days, daily_connection_limit: +form.daily_connection_limit });
     if (r?.ok) {
       showToast("✅ Sequence created!");
       setSequences(prev => [r.sequence, ...prev]);
@@ -129,7 +129,7 @@ export default function LinkedInOutreach() {
   async function handleSaveMessages() {
     if (!active) return;
     setSaving(true);
-    const r = await apiPut(`/api/linkedin-outreach/sequences/${active.id}`, {
+    const r = await apiPut<{ ok?: boolean }>(`/api/linkedin-outreach/sequences/${active.id}`, {
       connection_message: form.connection_message,
       followup_1_message: form.followup_1_message, followup_1_delay_days: +form.followup_1_delay_days,
       followup_2_message: form.followup_2_message, followup_2_delay_days: +form.followup_2_delay_days,
@@ -144,14 +144,25 @@ export default function LinkedInOutreach() {
     if (!active) return;
     if (!aiForm.value_prop) { showToast("Enter your value proposition first."); return; }
     setGenAi(true);
-    const r = await apiPost(`/api/linkedin-outreach/sequences/${active.id}/ai-generate`, aiForm);
+    const r = await apiPost<{
+      ok?: boolean;
+      error?: string;
+      messages?: {
+        connection_message?: string;
+        followup_1_message?: string;
+        followup_2_message?: string;
+        followup_3_message?: string;
+        tips?: string[];
+        subject_angles?: string[];
+      };
+    }>(`/api/linkedin-outreach/sequences/${active.id}/ai-generate`, aiForm);
     if (r?.ok && r?.messages) {
       setForm(f => ({
         ...f,
-        connection_message: r.messages.connection_message || f.connection_message,
-        followup_1_message: r.messages.followup_1_message || f.followup_1_message,
-        followup_2_message: r.messages.followup_2_message || f.followup_2_message,
-        followup_3_message: r.messages.followup_3_message || f.followup_3_message,
+        connection_message: r.messages?.connection_message || f.connection_message,
+        followup_1_message: r.messages?.followup_1_message || f.followup_1_message,
+        followup_2_message: r.messages?.followup_2_message || f.followup_2_message,
+        followup_3_message: r.messages?.followup_3_message || f.followup_3_message,
       }));
       setAiMessages({ tips: r.messages.tips, subject_angles: r.messages.subject_angles });
       showToast("✅ AI generated your message sequence!");
@@ -169,11 +180,11 @@ export default function LinkedInOutreach() {
       const parts = line.split(/[,\t]/).map(s => s.trim());
       return { first_name: parts[0] || "", last_name: parts[1] || "", title: parts[2] || "", company: parts[3] || "", linkedin_url: parts[4] || "" };
     });
-    const r = await apiPost("/api/linkedin-outreach/contacts", { sequence_id: active.id, contacts: parsed });
+    const r = await apiPost<{ ok?: boolean; added?: number }>("/api/linkedin-outreach/contacts", { sequence_id: active.id, contacts: parsed });
     if (r?.ok) {
       showToast(`✅ Added ${r.added} contact(s)!`);
       setBulkText("");
-      const fresh = await apiGet(`/api/linkedin-outreach/contacts/${active.id}`);
+      const fresh = await apiGet<{ ok?: boolean; contacts?: Contact[] }>(`/api/linkedin-outreach/contacts/${active.id}`);
       if (fresh?.contacts) setContacts(fresh.contacts);
     } else { showToast("Failed to add contacts."); }
     setAddingContacts(false);
@@ -194,14 +205,14 @@ export default function LinkedInOutreach() {
   const card:   React.CSSProperties = { background: "#fff", border: "1px solid #E8EEF8", borderRadius: 14, padding: "20px 24px", marginBottom: 16, boxShadow: "0 2px 8px rgba(10,20,50,.06)" };
   const input:  React.CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid #CBD5E1", borderRadius: 8, fontSize: "0.85rem", color: "#0A1628", boxSizing: "border-box" };
   const lbl:    React.CSSProperties = { display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#374151", textTransform: "uppercase" as const, letterSpacing: ".06em", marginBottom: 5 };
-  const btnPri: React.CSSProperties = { padding: "10px 22px", background: "linear-gradient(135deg,#0A66C2,#7C3AED)", border: "none", borderRadius: 9, color: "#fff", fontWeight: 700, fontSize: "0.84rem", cursor: "pointer" };
+  const btnPri: React.CSSProperties = { padding: "10px 22px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "none", borderRadius: 9, color: "#0f172a", fontWeight: 700, fontSize: "0.84rem", cursor: "pointer" };
 
   const connectRate = active ? (Number(active.connected_count) / Math.max(1, Number(active.sent_count)) * 100).toFixed(0) : "0";
   const replyRate   = active ? (Number(active.replied_count) / Math.max(1, Number(active.connected_count)) * 100).toFixed(0) : "0";
 
   return (
     <div style={{ fontFamily: "'Inter',sans-serif", background: "var(--ig-page)", minHeight: "100vh", padding: "24px 28px" }}>
-      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "#0A1628", color: "#fff", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: '#eef4ff', color: "#0f172a", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
 
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>Reach › Outreach</div>

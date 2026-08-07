@@ -196,7 +196,7 @@ export default function Carousel() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -636,7 +636,7 @@ function CarouselResultView({
         <button
           onClick={onPublisher}
           style={{
-            background: "#0F172A",
+            background: 'linear-gradient(135deg,#0f766e,#0284c7)',
             color: "white",
             border: "none",
             padding: "9px 16px",

@@ -588,7 +588,7 @@ export default function JobBoardSpy() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -728,8 +728,8 @@ export default function JobBoardSpy() {
             disabled={scanning}
             style={{
               width: "100%",
-              background: "linear-gradient(135deg,#0F172A,#1E293B)",
-              color: "#fff",
+              background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+              color: '#0f172a',
               border: "none",
               padding: "11px 20px",
               borderRadius: 6,

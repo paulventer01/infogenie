@@ -113,7 +113,7 @@ export default function AcquisitionEngine() {
 
   return (
     <>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>🚀 AI Acquisition Engine</h2>
         <p className="view-sub">
           Finds prospects, scores them, writes emails, and tracks meetings — fully autonomous.

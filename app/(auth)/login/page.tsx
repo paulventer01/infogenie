@@ -29,18 +29,32 @@ interface ApiResponse {
 }
 
 async function api(path: string, opts?: RequestInit): Promise<ApiResponse> {
-  const r = await fetch(path, {
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    ...(opts || {}),
-  });
-  const ct = r.headers.get("content-type") || "";
-  const body: ApiResponse =
-    ct.indexOf("application/json") !== -1
-      ? await r.json().catch(() => ({}))
-      : {};
-  if (!r.ok) return { error: body.error || `Request failed (${r.status})` };
-  return body;
+  try {
+    const r = await fetch(path, {
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      ...(opts || {}),
+    });
+    const ct = r.headers.get("content-type") || "";
+    const body: ApiResponse =
+      ct.indexOf("application/json") !== -1
+        ? await r.json().catch(() => ({}))
+        : {};
+    if (!r.ok) return { error: body.error || `Request failed (${r.status})` };
+    return body;
+  } catch (e) {
+    // Tunnel blips / offline Express / blocked requests surface as
+    // TypeError: Failed to fetch — never let that escape as an uncaught
+    // Next.js overlay error on the login page.
+    return {
+      error:
+        e instanceof Error && e.message
+          ? e.message === "Failed to fetch"
+            ? "Network error — could not reach InfoGenie. Check your connection and try again."
+            : e.message
+          : "Network error — please try again.",
+    };
+  }
 }
 
 // Where to send the user after a successful login/signup. Honors a `?next=`
@@ -70,6 +84,7 @@ export default function LoginPage() {
   const [busyLabel, setBusyLabel] = useState("");
   const [forgotBusy, setForgotBusy] = useState(false);
   const [providers, setProviders] = useState<string[]>([]);
+  const [previewHost, setPreviewHost] = useState(false);
 
   const showErr = useCallback((msg: string) => {
     setErr(msg);
@@ -102,7 +117,20 @@ export default function LoginPage() {
 
     try {
       const sawLogin = localStorage.getItem("ig-saw-login");
-      setMode(sawLogin ? "login" : "signup");
+      // Preview tunnels: always land on Log In with demo creds prefilled.
+      const host = window.location.hostname || "";
+      const isPreview =
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host.endsWith(".trycloudflare.com");
+      setPreviewHost(isPreview);
+      if (isPreview) {
+        setMode("login");
+        setEmail("demo@infogenie.local");
+        setPass("preview123");
+      } else {
+        setMode(sawLogin ? "login" : "signup");
+      }
       localStorage.setItem("ig-saw-login", "1");
     } catch {
       setMode("login");
@@ -188,21 +216,26 @@ export default function LoginPage() {
     if (mode === "login") {
       setBusy(true);
       setBusyLabel("Signing in…");
-      const r = await api("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email: e, password: p }),
-      });
-      if (r.error) {
+      try {
+        const r = await api("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email: e, password: p }),
+        });
+        if (r.error) {
+          setBusy(false);
+          showErr(r.error);
+          return;
+        }
+        window.location.href = nextDest();
+      } catch {
         setBusy(false);
-        showErr(r.error);
-        return;
+        showErr("Network error — could not sign in. Please try again.");
       }
-      window.location.href = nextDest();
       return;
     }
 
-    if (p.length < 8) {
-      showErr("Password must be at least 8 characters.");
+    if (p.length < 10 || !/[A-Za-z]/.test(p) || !/[0-9]/.test(p)) {
+      showErr("Password must be at least 10 characters with a letter and a number.");
       return;
     }
     setBusy(true);
@@ -211,16 +244,21 @@ export default function LoginPage() {
     const body: { name: string; email: string; password: string; next?: string } =
       { name: (name || "").trim(), email: e, password: p };
     if (dest && dest !== "/") body.next = dest;
-    const s = await api("/api/auth/signup", {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-    if (s.error) {
+    try {
+      const s = await api("/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      if (s.error) {
+        setBusy(false);
+        showErr(s.error);
+        return;
+      }
+      window.location.href = nextDest();
+    } catch {
       setBusy(false);
-      showErr(s.error);
-      return;
+      showErr("Network error — could not create account. Please try again.");
     }
-    window.location.href = nextDest();
   }
 
   const submitLabel = busy
@@ -229,12 +267,20 @@ export default function LoginPage() {
       ? "Create account →"
       : "Log In →";
 
+  const isPreviewHost = previewHost;
+
   return (
-    <div className={styles.card}>
-      <div className={styles.head}>
-        <div className={styles.brand}>
-          <svg width="36" height="36" viewBox="0 0 40 40">
-            <circle cx="20" cy="20" r="20" fill="rgba(255,255,255,.18)" />
+    <div className={styles.shell}>
+      <section className={styles.hero} aria-label="InfoGenie">
+        <div className={styles.brandMark}>
+          <svg width="44" height="44" viewBox="0 0 40 40" aria-hidden="true">
+            <defs>
+              <linearGradient id="igAuthLogo" x1="0" y1="0" x2="40" y2="40">
+                <stop offset="0%" stopColor="#0F766E" />
+                <stop offset="100%" stopColor="#0284C7" />
+              </linearGradient>
+            </defs>
+            <circle cx="20" cy="20" r="20" fill="url(#igAuthLogo)" />
             <path
               d="M13 20 Q20 10 27 20 Q20 30 13 20Z"
               fill="white"
@@ -246,12 +292,40 @@ export default function LoginPage() {
             Info<em>Genie</em>
           </span>
         </div>
-        <div className={styles.tag}>
-          AI Marketing Intelligence — for your team
+        <h1 className={styles.heroTitle}>
+          One workspace for marketing that moves.
+        </h1>
+        <p className={styles.heroLead}>
+          InfoGenie turns competitor signals into campaigns, content, and clear
+          reporting — without the tool sprawl.
+        </p>
+        <div className={styles.heroMeta}>
+          <span>Compete</span>
+          <span>Create</span>
+          <span>Reach</span>
+          <span>Grow</span>
         </div>
-      </div>
+      </section>
 
-      <div className={styles.body}>
+      <div className={styles.panel}>
+        <h2 className={styles.panelTitle}>
+          {mode === "signup" ? "Create your workspace" : "Welcome back"}
+        </h2>
+        <p className={styles.panelSub}>
+          {mode === "signup"
+            ? "Start with email — you can invite your team later."
+            : "Sign in to continue to your dashboard."}
+        </p>
+
+        {isPreviewHost && mode === "login" && (
+          <div className={styles.previewHint}>
+            <strong>Preview login</strong>
+            <span>
+              <code>demo@infogenie.local</code> / <code>preview123</code>
+            </span>
+          </div>
+        )}
+
         <div className={styles.tabs}>
           <button
             type="button"
@@ -287,7 +361,7 @@ export default function LoginPage() {
             </div>
             <div className={styles.divider}>
               <div className={styles.line} />
-              <span>or use email</span>
+              <span>or email</span>
               <div className={styles.line} />
             </div>
           </>
@@ -347,7 +421,7 @@ export default function LoginPage() {
             />
             {mode === "signup" && (
               <div className={styles.hint}>
-                Min 8 characters. Hashed server-side with bcrypt.
+                At least 10 characters, with a letter and a number.
               </div>
             )}
           </div>

@@ -82,7 +82,10 @@ export default function EmailWarmup() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [cfg, accs] = await Promise.all([apiGet("/api/email-warmup/config"), apiGet("/api/email-warmup/accounts")]);
+    const [cfg, accs] = await Promise.all([
+      apiGet<{ ok?: boolean; providers?: Provider[] }>("/api/email-warmup/config"),
+      apiGet<{ ok?: boolean; accounts?: Account[] }>("/api/email-warmup/accounts"),
+    ]);
     if (cfg?.providers) setProviders(cfg.providers);
     if (accs?.accounts) setAccounts(accs.accounts);
     setLoading(false);
@@ -97,7 +100,7 @@ export default function EmailWarmup() {
     setLogData(null);
     setTab("detail");
     setLoadingLog(true);
-    const r = await apiGet(`/api/email-warmup/accounts/${acc.id}/log`);
+    const r = await apiGet<{ ok?: boolean; log?: LogEntry[]; schedule?: ScheduleEntry[] }>(`/api/email-warmup/accounts/${acc.id}/log`);
     if (r?.log) setLogData({ log: r.log, schedule: r.schedule || [] });
     setLoadingLog(false);
   }
@@ -105,7 +108,7 @@ export default function EmailWarmup() {
   async function handleCreate() {
     if (!form.email) { showToast("Email address required."); return; }
     setSaving(true);
-    const r = await apiPost("/api/email-warmup/accounts", {
+    const r = await apiPost<{ ok?: boolean; account: Account }>("/api/email-warmup/accounts", {
       ...form,
       smtp_port: +form.smtp_port,
       max_volume: +form.max_volume,
@@ -121,7 +124,7 @@ export default function EmailWarmup() {
   }
 
   async function handlePause(id: number) {
-    const r = await apiPost(`/api/email-warmup/accounts/${id}/pause`, {});
+    const r = await apiPost<{ ok?: boolean; status: string }>(`/api/email-warmup/accounts/${id}/pause`, {});
     if (r?.ok) {
       const next = r.status;
       setAccounts(prev => prev.map(a => a.id === id ? { ...a, status: next } : a));
@@ -132,7 +135,7 @@ export default function EmailWarmup() {
 
   async function handleCheckBlacklist(id: number) {
     setCheckingBL(true);
-    const r = await apiPost(`/api/email-warmup/accounts/${id}/check-blacklist`, {});
+    const r = await apiPost<{ ok?: boolean; clean: boolean; lists_hit: number; domain: string }>(`/api/email-warmup/accounts/${id}/check-blacklist`, {});
     if (r?.ok) {
       setBlResult({ clean: r.clean, lists_hit: r.lists_hit, domain: r.domain });
       showToast(r.clean ? "✅ Not on any blacklist!" : `⚠️ Found on ${r.lists_hit} blacklist(s)`);
@@ -143,7 +146,7 @@ export default function EmailWarmup() {
 
   async function handleLogDay(id: number) {
     if (!logDayForm.sent_volume) { showToast("Enter sent volume."); return; }
-    const r = await apiPost(`/api/email-warmup/accounts/${id}/log-day`, {
+    const r = await apiPost<{ ok?: boolean; day: number; next_day_volume: number; reputation_score: number }>(`/api/email-warmup/accounts/${id}/log-day`, {
       sent_volume:    +logDayForm.sent_volume,
       delivered_count:+logDayForm.delivered_count || 0,
       bounced_count:  +logDayForm.bounced_count || 0,
@@ -160,7 +163,7 @@ export default function EmailWarmup() {
 
   async function handleGetAdvice(id: number) {
     setLoadingAdvice(true);
-    const r = await apiPost(`/api/email-warmup/accounts/${id}/ai-advice`, {});
+    const r = await apiPost<{ ok?: boolean; advice: AiAdvice; error?: string }>(`/api/email-warmup/accounts/${id}/ai-advice`, {});
     if (r?.ok) setAdvice(r.advice);
     else showToast(r?.error?.includes("key") ? "⚠️ OpenAI key required — configure it in AI Providers." : "Advice generation failed.");
     setLoadingAdvice(false);
@@ -175,7 +178,7 @@ export default function EmailWarmup() {
 
   return (
     <div style={{ fontFamily: "'Inter',sans-serif", background: "var(--ig-page)", minHeight: "100vh", padding: "24px 28px" }}>
-      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "#0A1628", color: "#fff", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: '#eef4ff', color: "#0f172a", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
 
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>Reach › Deliverability</div>

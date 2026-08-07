@@ -177,7 +177,7 @@ function PersonaEditModal({
           </button>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={onClose} style={{ padding: "9px 16px", border: "1px solid var(--border,#E5E7EB)", borderRadius: 8, background: "var(--card-bg,#fff)", fontWeight: 700, cursor: "pointer", fontSize: ".8rem" }}>Cancel</button>
-            <button onClick={save} disabled={saving} style={{ padding: "9px 18px", border: "none", borderRadius: 8, background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: ".8rem" }}>
+            <button onClick={save} disabled={saving} style={{ padding: "9px 18px", border: "none", borderRadius: 8, background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: ".8rem" }}>
               {saving ? "Saving…" : "Save Override"}
             </button>
           </div>
@@ -247,11 +247,11 @@ function ContributionAccordion({ agent, index }: { agent: AgentContribution; ind
 function SynthesisPanel({ synthesis }: { synthesis: Synthesis }) {
   return (
     <div style={{ border: "2px solid #7C3AED40", borderRadius: 14, overflow: "hidden", background: "linear-gradient(135deg,#7C3AED06,#0EA5E908)" }}>
-      <div style={{ padding: "16px 20px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ padding: "16px 20px", background: "linear-gradient(135deg,#0f766e,#0284c7)", display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: "1.5rem" }}>👑</span>
         <div>
           <div style={{ fontSize: ".95rem", fontWeight: 800, color: "#fff" }}>CMO Strategy Synthesis</div>
-          <div style={{ fontSize: ".72rem", color: "rgba(255,255,255,.75)" }}>Unified executive action plan</div>
+          <div style={{ fontSize: ".72rem", color: '#475569' }}>Unified executive action plan</div>
         </div>
         <div style={{ marginLeft: "auto" }}><ConfidenceBadge score={synthesis.confidence} /></div>
       </div>
@@ -542,7 +542,7 @@ export default function BriefingRoom() {
               <button
                 onClick={runBriefing}
                 disabled={running || !challenge.trim()}
-                style={{ padding: "12px 28px", borderRadius: 10, border: "none", cursor: running || !challenge.trim() ? "not-allowed" : "pointer", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", fontSize: ".88rem", fontWeight: 800, opacity: running || !challenge.trim() ? 0.6 : 1, display: "flex", alignItems: "center", gap: 8 }}
+                style={{ padding: "12px 28px", borderRadius: 10, border: "none", cursor: running || !challenge.trim() ? "not-allowed" : "pointer", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", fontSize: ".88rem", fontWeight: 800, opacity: running || !challenge.trim() ? 0.6 : 1, display: "flex", alignItems: "center", gap: 8 }}
               >
                 {running ? (
                   <>
@@ -571,7 +571,7 @@ export default function BriefingRoom() {
               <div style={{ fontSize: "2.5rem", marginBottom: 12 }}>🧠</div>
               <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--text,#111827)", marginBottom: 6 }}>No session yet</div>
               <div style={{ fontSize: ".85rem", color: "var(--text-muted,#6B7280)", marginBottom: 16 }}>Go to <strong>Team & Briefing</strong> to run your first strategy session.</div>
-              <button onClick={() => setActiveTab("team")} style={{ padding: "10px 22px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: ".85rem" }}>
+              <button onClick={() => setActiveTab("team")} style={{ padding: "10px 22px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: ".85rem" }}>
                 Start Briefing
               </button>
             </div>
@@ -608,7 +608,7 @@ export default function BriefingRoom() {
                   <input type="date" value={historyTo} onChange={e => setHistoryTo(e.target.value)} style={{ padding: "8px 10px", border: "1px solid var(--border,#E5E7EB)", borderRadius: 7, fontSize: ".83rem", background: "var(--card-bg,#fff)", color: "var(--text,#374151)" }} />
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={searchHistory} style={{ padding: "9px 16px", border: "none", borderRadius: 7, background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: ".8rem", whiteSpace: "nowrap" }}>Search</button>
+                  <button onClick={searchHistory} style={{ padding: "9px 16px", border: "none", borderRadius: 7, background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: ".8rem", whiteSpace: "nowrap" }}>Search</button>
                   <button onClick={clearHistoryFilters} style={{ padding: "9px 12px", border: "1px solid var(--border,#E5E7EB)", borderRadius: 7, background: "var(--card-bg,#fff)", color: "var(--text,#374151)", fontWeight: 700, cursor: "pointer", fontSize: ".8rem" }}>Clear</button>
                 </div>
               </div>

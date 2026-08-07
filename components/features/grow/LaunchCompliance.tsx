@@ -70,6 +70,10 @@ export default function LaunchCompliance() {
   const [copyPreview, setCopyPreview] = useState(false);
   const [toast, setToast]           = useState("");
   const [form, setForm]             = useState({ campaign_name: "", platform: "general", landing_page_url: "", ad_copy: "" });
+  const [infoPanel, setInfoPanel]   = useState<null | "status" | "brand-score" | "brand-check" | "proofread">(null);
+  const [brandCheckInfo, setBrandCheckInfo] = useState<{ score: number | null; found: boolean; message: string } | null>(null);
+  const [proofreadRunning, setProofreadRunning] = useState(false);
+  const [brandRunning, setBrandRunning] = useState(false);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
 
@@ -116,24 +120,77 @@ export default function LaunchCompliance() {
 
   async function handleProofread() {
     if (!active) return;
+    setInfoPanel("proofread");
+    setCatTab("copy");
+    if (!String(active.ad_copy || "").trim()) {
+      showToast("Add ad copy to this checklist first, then run AI Proofread.");
+      return;
+    }
     setSaving(true);
-    const r = await apiPost<{ ok: boolean; error?: string; feedback?: Checklist["ai_feedback"] }>(`/api/launch-compliance/checklists/${active.id}/proofread`, { ad_copy: active.ad_copy });
-    if (r?.ok) {
-      setActive(prev => prev ? { ...prev, ai_feedback: r.feedback ?? null } : null);
-      showToast("✅ AI proofreading complete!");
-      setCopyPreview(true);
-    } else { showToast(r?.error || "Proofread failed."); }
+    setProofreadRunning(true);
+    try {
+      const r = await apiPost<{ ok: boolean; error?: string; feedback?: Checklist["ai_feedback"] }>(
+        `/api/launch-compliance/checklists/${active.id}/proofread`,
+        { ad_copy: active.ad_copy },
+      );
+      if (r?.ok) {
+        setActive((prev) => (prev ? { ...prev, ai_feedback: r.feedback ?? null } : null));
+        setCopyPreview(true);
+        showToast("✅ AI proofreading complete!");
+      } else {
+        showToast(r?.error || "Proofread failed.");
+      }
+    } catch {
+      showToast("Proofread request failed — check your connection and try again.");
+    }
+    setProofreadRunning(false);
     setSaving(false);
   }
 
   async function handleBrandCheck() {
     if (!active) return;
+    setInfoPanel("brand-check");
+    setCatTab("brand");
     setSaving(true);
-    const r = await apiPost<{ ok: boolean; error?: string; brand_score?: number | null; brand_found?: boolean }>(`/api/launch-compliance/checklists/${active.id}/brand-check`, {});
-    if (r?.ok) {
-      setActive(prev => prev ? { ...prev, brand_score: r.brand_score ?? null } : null);
-      showToast(r.brand_found ? `✅ Brand score: ${r.brand_score}/10` : "⚠️ No Brand Foundation found — add one in Brand Foundation.");
-    } else { showToast("Brand check failed."); }
+    setBrandRunning(true);
+    try {
+      const r = await apiPost<{
+        ok: boolean;
+        error?: string;
+        brand_score?: number | null;
+        brand_found?: boolean;
+      }>(`/api/launch-compliance/checklists/${active.id}/brand-check`, {});
+      if (r?.ok) {
+        setActive((prev) => (prev ? { ...prev, brand_score: r.brand_score ?? null } : null));
+        setBrandCheckInfo({
+          score: r.brand_score ?? null,
+          found: !!r.brand_found,
+          message: r.brand_found
+            ? `Brand Foundation matched. Alignment score: ${r.brand_score}/10. Review the Brand Alignment checklist items below and mark each pass/fail.`
+            : "No Brand Foundation found for this workspace. Add brand colours, voice, and logo in Brand Foundation, then re-run Brand Check.",
+        });
+        showToast(
+          r.brand_found
+            ? `✅ Brand score: ${r.brand_score}/10`
+            : "⚠️ No Brand Foundation found — add one in Brand Foundation.",
+        );
+      } else {
+        setBrandCheckInfo({
+          score: null,
+          found: false,
+          message: r?.error || "Brand check failed. Try again or open Brand Foundation to configure brand assets.",
+        });
+        showToast("Brand check failed.");
+      }
+    } catch {
+      setBrandCheckInfo({
+        score: null,
+        found: false,
+        message: "Brand check request failed — check your connection and try again.",
+      });
+      showToast("Brand check request failed.");
+    }
+    setBrandRunning(false);
     setSaving(false);
   }
 
@@ -154,7 +211,7 @@ export default function LaunchCompliance() {
 
   return (
     <div style={{ fontFamily: "'Inter',sans-serif", background: "var(--ig-page)", minHeight: "100vh", padding: "24px 28px" }}>
-      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "#0A1628", color: "#fff", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: '#eef4ff', color: "#0f172a", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
 
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>Grow › Launch Compliance</div>
@@ -250,12 +307,247 @@ export default function LaunchCompliance() {
               <div style={{ color: "#64748B", fontSize: "0.78rem" }}>{active.platform} · {active.landing_page_url || "No landing page URL set"}</div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {(() => { const b = overallBadge(active.overall_result); return <span style={{ background: b.bg, color: b.color, padding: "6px 14px", borderRadius: 99, fontSize: "0.82rem", fontWeight: 700 }}>{b.label}</span>; })()}
-              {active.brand_score != null && <span style={{ background: "#EDE9FE", color: "#7C3AED", padding: "6px 14px", borderRadius: 99, fontSize: "0.82rem", fontWeight: 700 }}>🎨 Brand {active.brand_score}/10</span>}
-              <button onClick={handleBrandCheck} disabled={saving} style={{ padding: "6px 14px", background: "#EDE9FE", border: "none", borderRadius: 9, color: "#7C3AED", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}>🎨 Brand Check</button>
-              <button onClick={handleProofread} disabled={saving} style={{ padding: "6px 14px", background: "#EFF6FF", border: "none", borderRadius: 9, color: "#1D4ED8", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}>🤖 AI Proofread</button>
+              {(() => {
+                const b = overallBadge(active.overall_result);
+                return (
+                  <button
+                    type="button"
+                    title="What this status means"
+                    onClick={() => setInfoPanel("status")}
+                    style={{ background: b.bg, color: b.color, padding: "6px 14px", borderRadius: 99, fontSize: "0.82rem", fontWeight: 700, cursor: "pointer", border: infoPanel === "status" ? "2px solid #334155" : "2px solid transparent" }}
+                  >
+                    {b.label}
+                  </button>
+                );
+              })()}
+              <button
+                type="button"
+                title="Brand score details"
+                onClick={() => {
+                  setInfoPanel("brand-score");
+                  setCatTab("brand");
+                }}
+                style={{
+                  background: "#EDE9FE",
+                  color: "#7C3AED",
+                  padding: "6px 14px",
+                  borderRadius: 99,
+                  fontSize: "0.82rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border: infoPanel === "brand-score" ? "2px solid #7C3AED" : "2px solid transparent",
+                }}
+              >
+                🎨 Brand {active.brand_score != null ? `${active.brand_score}/10` : "—"}
+              </button>
+              <button
+                type="button"
+                onClick={handleBrandCheck}
+                disabled={saving}
+                title="Run brand alignment check"
+                style={{
+                  padding: "6px 14px",
+                  background: "#EDE9FE",
+                  border: infoPanel === "brand-check" ? "2px solid #7C3AED" : "2px solid transparent",
+                  borderRadius: 9,
+                  color: "#7C3AED",
+                  fontWeight: 700,
+                  fontSize: "0.78rem",
+                  cursor: saving ? "wait" : "pointer",
+                  opacity: brandRunning ? 0.75 : 1,
+                }}
+              >
+                {brandRunning ? "⏳ Checking…" : "🎨 Brand Check"}
+              </button>
+              <button
+                type="button"
+                onClick={handleProofread}
+                disabled={saving}
+                title="Run AI proofread on ad copy"
+                style={{
+                  padding: "6px 14px",
+                  background: "#EFF6FF",
+                  border: infoPanel === "proofread" ? "2px solid #1D4ED8" : "2px solid transparent",
+                  borderRadius: 9,
+                  color: "#1D4ED8",
+                  fontWeight: 700,
+                  fontSize: "0.78rem",
+                  cursor: saving ? "wait" : "pointer",
+                  opacity: proofreadRunning ? 0.75 : 1,
+                }}
+              >
+                {proofreadRunning ? "⏳ Proofreading…" : "🤖 AI Proofread"}
+              </button>
             </div>
           </div>
+
+          {/* Topic info / results panel for the header chips */}
+          {infoPanel && (
+            <div
+              style={{
+                ...card,
+                border:
+                  infoPanel === "status"
+                    ? "1.5px solid #CBD5E1"
+                    : infoPanel === "proofread"
+                      ? "1.5px solid #BFDBFE"
+                      : "1.5px solid #DDD6FE",
+                background:
+                  infoPanel === "proofread"
+                    ? "linear-gradient(135deg,#EFF6FF,#F8FBFF)"
+                    : infoPanel === "status"
+                      ? "linear-gradient(135deg,#F8FAFC,#F1F5F9)"
+                      : "linear-gradient(135deg,#F5F3FF,#FAF5FF)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 10 }}>
+                <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#0A1628", fontSize: "0.95rem" }}>
+                  {infoPanel === "status" && "🕐 Compliance status"}
+                  {infoPanel === "brand-score" && "🎨 Brand score"}
+                  {infoPanel === "brand-check" && "🎨 Brand Check"}
+                  {infoPanel === "proofread" && "🤖 AI Proofread"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInfoPanel(null)}
+                  style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 8, padding: "4px 10px", fontSize: "0.75rem", fontWeight: 700, color: "#475569", cursor: "pointer" }}
+                >
+                  Close
+                </button>
+              </div>
+
+              {infoPanel === "status" && (
+                <div style={{ fontSize: "0.85rem", color: "#334155", lineHeight: 1.55 }}>
+                  <p style={{ margin: "0 0 10px" }}>
+                    This badge shows the overall launch readiness for <strong>{active.campaign_name}</strong>.
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    <li style={{ marginBottom: 6 }}><strong>Not Started</strong> — no checklist items reviewed yet.</li>
+                    <li style={{ marginBottom: 6 }}><strong>In Progress</strong> — some items marked pass/fail; keep reviewing all four categories.</li>
+                    <li style={{ marginBottom: 6 }}><strong>Passed</strong> — every required item is pass or N/A; safe to launch.</li>
+                    <li><strong>Failed</strong> — at least one required item failed; fix those before going live.</li>
+                  </ul>
+                  <p style={{ margin: "12px 0 0", color: "#64748B", fontSize: "0.8rem" }}>
+                    Current result: <strong>{overallBadge(active.overall_result).label}</strong>
+                    {" · "}
+                    {active.items?.filter((i) => i.status === "pass").length || 0} passed ·{" "}
+                    {active.items?.filter((i) => i.status === "fail").length || 0} failed ·{" "}
+                    {active.items?.filter((i) => i.status === "pending").length || 0} pending
+                  </p>
+                </div>
+              )}
+
+              {infoPanel === "brand-score" && (
+                <div style={{ fontSize: "0.85rem", color: "#334155", lineHeight: 1.55 }}>
+                  <p style={{ margin: "0 0 10px" }}>
+                    Brand score measures how well this campaign aligns with your Brand Foundation (logo, colours, voice, messaging).
+                  </p>
+                  {active.brand_score != null ? (
+                    <p style={{ margin: "0 0 10px" }}>
+                      Current score: <strong style={{ color: "#7C3AED", fontSize: "1.1rem" }}>{active.brand_score}/10</strong>
+                      {active.brand_score >= 8
+                        ? " — strong brand fit."
+                        : active.brand_score >= 5
+                          ? " — acceptable, but tighten voice/visuals before launch."
+                          : " — weak alignment; update creative or brand guidelines."}
+                    </p>
+                  ) : (
+                    <p style={{ margin: "0 0 10px" }}>
+                      No score yet. Click <strong>Brand Check</strong> to score this campaign against Brand Foundation.
+                    </p>
+                  )}
+                  <button type="button" onClick={handleBrandCheck} disabled={saving} style={{ ...btnPri, background: "linear-gradient(135deg,#7C3AED,#4F46E5)" }}>
+                    {brandRunning ? "Checking…" : "Run Brand Check now"}
+                  </button>
+                </div>
+              )}
+
+              {infoPanel === "brand-check" && (
+                <div style={{ fontSize: "0.85rem", color: "#334155", lineHeight: 1.55 }}>
+                  <p style={{ margin: "0 0 10px" }}>
+                    Brand Check compares this campaign’s copy and assets to your Brand Foundation, then suggests a score and points you to the Brand Alignment checklist.
+                  </p>
+                  {brandRunning ? (
+                    <p style={{ margin: 0, color: "#7C3AED", fontWeight: 700 }}>Running brand alignment…</p>
+                  ) : brandCheckInfo ? (
+                    <>
+                      <div style={{ background: "#fff", border: "1px solid #DDD6FE", borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
+                        {brandCheckInfo.score != null && (
+                          <div style={{ fontWeight: 800, color: "#7C3AED", fontSize: "1.05rem", marginBottom: 6 }}>
+                            Score: {brandCheckInfo.score}/10
+                          </div>
+                        )}
+                        <div>{brandCheckInfo.message}</div>
+                      </div>
+                      <p style={{ margin: "0 0 10px", fontSize: "0.8rem", color: "#64748B" }}>
+                        Next: mark each Brand Alignment item ✅ / ❌ below so the overall checklist status updates.
+                      </p>
+                    </>
+                  ) : (
+                    <p style={{ margin: "0 0 10px" }}>Click again if the check did not finish, or configure Brand Foundation first.</p>
+                  )}
+                </div>
+              )}
+
+              {infoPanel === "proofread" && (
+                <div style={{ fontSize: "0.85rem", color: "#334155", lineHeight: 1.55 }}>
+                  <p style={{ margin: "0 0 10px" }}>
+                    AI Proofread reviews your ad copy for grammar, clarity, compliance tone, and suggests an improved version.
+                  </p>
+                  {!String(active.ad_copy || "").trim() ? (
+                    <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "12px 14px", color: "#991B1B" }}>
+                      No ad copy is saved on this checklist. Go back to the list, create/edit a checklist with ad copy, then run AI Proofread again.
+                    </div>
+                  ) : proofreadRunning ? (
+                    <p style={{ margin: 0, color: "#1D4ED8", fontWeight: 700 }}>Proofreading ad copy…</p>
+                  ) : active.ai_feedback ? (
+                    <>
+                      <div style={{ fontWeight: 800, color: "#1D4ED8", marginBottom: 8 }}>
+                        Result
+                        {active.ai_feedback._estimated
+                          ? " (template — connect an AI provider for live review)"
+                          : active.ai_feedback.overall_score != null
+                            ? ` · Score ${active.ai_feedback.overall_score}/10`
+                            : ""}
+                      </div>
+                      {active.ai_feedback.summary && (
+                        <p style={{ margin: "0 0 10px", fontStyle: "italic", color: "#475569" }}>{active.ai_feedback.summary}</p>
+                      )}
+                      {active.ai_feedback.issues?.map((issue, i) => (
+                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 6 }}>
+                          <span style={{ fontSize: "0.72rem", fontWeight: 700, color: issue.severity === "error" ? "#DC2626" : issue.severity === "warning" ? "#D97706" : "#059669", whiteSpace: "nowrap" }}>
+                            {issue.severity === "error" ? "🔴 ERROR" : issue.severity === "warning" ? "🟡 WARN" : "🟢 TIP"}
+                          </span>
+                          <span style={{ fontSize: "0.8rem", color: "#374151" }}>{issue.text}</span>
+                        </div>
+                      ))}
+                      {active.ai_feedback.improved_copy && (
+                        <div style={{ marginTop: 12 }}>
+                          <button
+                            type="button"
+                            onClick={() => setCopyPreview((v) => !v)}
+                            style={{ fontSize: "0.75rem", color: "#1D4ED8", background: "transparent", border: "none", fontWeight: 700, cursor: "pointer", padding: 0 }}
+                          >
+                            {copyPreview ? "▲ Hide" : "▼ Show"} Improved Copy
+                          </button>
+                          {copyPreview && (
+                            <div style={{ background: "#fff", border: "1px solid #BFDBFE", borderRadius: 8, padding: "10px 14px", fontSize: "0.8rem", color: "#374151", lineHeight: 1.6, marginTop: 8, whiteSpace: "pre-wrap" }}>
+                              {active.ai_feedback.improved_copy}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <p style={{ margin: "12px 0 0", fontSize: "0.78rem", color: "#64748B" }}>
+                        Also available under the <strong>Copy &amp; Proofreading</strong> category tab.
+                      </p>
+                    </>
+                  ) : (
+                    <p style={{ margin: 0 }}>No proofread result yet. The check should start automatically when you click AI Proofread.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Category tabs + items */}
           <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 20 }}>
@@ -281,7 +573,7 @@ export default function LaunchCompliance() {
               {active.landing_page_url && (
                 <div style={card}>
                   <div style={{ fontWeight: 700, color: "#0A1628", fontSize: "0.82rem", marginBottom: 10 }}>📱 Mobile Preview</div>
-                  <div style={{ background: "#0F172A", borderRadius: 20, padding: "10px 6px", display: "inline-block", width: "100%", boxSizing: "border-box" }}>
+                  <div style={{ background: '#eef4ff', borderRadius: 20, padding: "10px 6px", display: "inline-block", width: "100%", boxSizing: "border-box" }}>
                     <div style={{ background: "#1E293B", borderRadius: 4, height: 8, margin: "0 auto 8px", width: 40 }} />
                     <iframe src={active.landing_page_url} style={{ width: "100%", height: 280, border: "none", borderRadius: 10, display: "block" }} sandbox="allow-scripts allow-same-origin" title="Mobile preview" />
                     <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 8 }}>

@@ -234,7 +234,7 @@ export default function PixelManager() {
 
   return (
     <div style={{ fontFamily: "'Inter',sans-serif", background: "var(--ig-page)", minHeight: "100vh", padding: "24px 28px" }}>
-      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "#0A1628", color: "#fff", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: '#eef4ff', color: "#0f172a", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
 
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>Manage › Pixel Manager</div>
@@ -316,7 +316,7 @@ export default function PixelManager() {
               {f.pixelId && (
                 <div>
                   <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>Browser Pixel Snippet — paste into {"<head>"}</div>
-                  <div style={{ background: "#0F172A", borderRadius: 10, padding: "14px 16px", position: "relative" }}>
+                  <div style={{ background: '#eef4ff', borderRadius: 10, padding: "14px 16px", position: "relative" }}>
                     <pre style={{ margin: 0, fontSize: "0.72rem", color: "#94A3B8", lineHeight: 1.6, overflowX: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{snippet}</pre>
                     <button onClick={() => copySnippet(snippet, plat.id)} style={{ position: "absolute", top: 10, right: 10, padding: "5px 12px", background: "#1E293B", border: "1px solid #334155", borderRadius: 6, color: "#94A3B8", fontSize: "0.7rem", fontWeight: 700, cursor: "pointer" }}>
                       {copied === plat.id ? "✅ Copied" : "📋 Copy"}

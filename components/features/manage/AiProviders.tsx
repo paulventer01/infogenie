@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { markNavPending, settleNavPending } from "@/lib/navPending";
 
 interface Provider {
   id: string;
@@ -18,10 +19,29 @@ interface Provider {
   api_key_preview?: string;
   is_default?: boolean;
   enabled?: boolean;
+  compatible_categories?: string[];
+  categories?: string[];
+  assignments?: { category: string; enabled?: boolean; is_default?: boolean }[];
+}
+interface PresetItem {
+  id: string;
+  name: string;
+  base_url: string;
+  model: string;
+  tiles: string[];
+  configured?: boolean;
+  provider_id?: number | string | null;
+  key_ready?: boolean;
+  requires_custom_url?: boolean;
+  allow_empty_key?: boolean;
 }
 interface ActiveEntry {
   name: string;
   model: string;
+  id?: number | string;
+  pool_size?: number;
+  mode?: string;
+  pool?: { id: number | string; name: string; model: string; is_default?: boolean }[];
 }
 interface TestState {
   loading?: boolean;
@@ -40,29 +60,85 @@ const CATS = [
   { key: "audio", label: "🎙️ Audio", hint: "Voice-over / TTS for storyboards" },
 ];
 
-const PRESETS = [
+/** Fallback catalog when /list has not returned presets yet — same tiles everywhere. */
+const FALLBACK_PRESETS: PresetItem[] = [
   {
+    id: "kimi-k3",
+    name: "Kimi K3 (Moonshot)",
+    base_url: "https://api.moonshot.ai/v1",
+    model: "kimi-k3",
+    tiles: ["writing", "analysis", "vision", "audio"],
+  },
+  {
+    id: "groq-llama-70b",
     name: "Groq Llama 3.1 70B",
     base_url: "https://api.groq.com/openai/v1",
     model: "llama-3.1-70b-versatile",
+    tiles: ["writing", "analysis", "vision", "audio"],
   },
-  { name: "DeepSeek Chat", base_url: "https://api.deepseek.com", model: "deepseek-chat" },
-  { name: "Mistral Large", base_url: "https://api.mistral.ai/v1", model: "mistral-large-latest" },
   {
+    id: "zai-glm-coding",
+    name: "Z.ai GLM 5.2 (AutoClaw Coding)",
+    base_url: "https://api.z.ai/api/coding/paas/v4",
+    model: "glm-5.2",
+    tiles: ["writing", "analysis", "vision", "audio"],
+  },
+  {
+    id: "zai-glm",
+    name: "Z.ai GLM 5.2",
+    base_url: "https://api.z.ai/api/paas/v4",
+    model: "glm-5.2",
+    tiles: ["writing", "analysis", "vision", "audio"],
+  },
+  {
+    id: "deepseek-chat",
+    name: "DeepSeek Chat",
+    base_url: "https://api.deepseek.com",
+    model: "deepseek-chat",
+    tiles: ["writing", "analysis", "vision", "audio"],
+  },
+  {
+    id: "mistral-large",
+    name: "Mistral Large",
+    base_url: "https://api.mistral.ai/v1",
+    model: "mistral-large-latest",
+    tiles: ["writing", "analysis", "vision", "audio"],
+  },
+  {
+    id: "openrouter",
     name: "OpenRouter",
     base_url: "https://openrouter.ai/api/v1",
     model: "meta-llama/llama-3.1-70b-instruct",
+    tiles: ["writing", "analysis", "vision", "audio"],
   },
   {
+    id: "together",
     name: "Together AI",
     base_url: "https://api.together.xyz/v1",
     model: "meta-llama/Llama-3-70b-chat-hf",
+    tiles: ["writing", "analysis", "vision", "audio"],
   },
-  { name: "Ollama (local)", base_url: "http://localhost:11434/v1", model: "llama3.1" },
   {
+    id: "ollama-local",
+    name: "Ollama (local)",
+    base_url: "http://localhost:11434/v1",
+    model: "llama3.1",
+    tiles: ["writing", "analysis", "vision", "audio"],
+  },
+  {
+    id: "ollama-cloud",
+    name: "Ollama Cloud",
+    base_url: "https://ollama.com/v1",
+    model: "gpt-oss:120b",
+    tiles: ["writing", "analysis", "vision", "audio"],
+  },
+  {
+    id: "azure-openai",
     name: "Azure OpenAI",
     base_url: "https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT",
     model: "gpt-4o",
+    tiles: ["writing", "analysis", "vision", "audio"],
+    requires_custom_url: true,
   },
 ];
 
@@ -83,6 +159,7 @@ const field: React.CSSProperties = {
 
 export default function AiProviders() {
   const [items, setItems] = useState<Provider[] | null>(null);
+  const [presets, setPresets] = useState<PresetItem[]>(FALLBACK_PRESETS);
   const [active, setActive] = useState<Record<string, ActiveEntry>>({});
   const [error, setError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, TestState>>({});
@@ -93,14 +170,22 @@ export default function AiProviders() {
   const [model, setModel] = useState("");
   const [key, setKey] = useState("");
   const [isDefault, setIsDefault] = useState(true);
+  const [pickerCat, setPickerCat] = useState<string | null>(null);
+  const [pickerSelected, setPickerSelected] = useState<string[]>([]);
+  const [pickerPrimary, setPickerPrimary] = useState<string>("");
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [pickerMsg, setPickerMsg] = useState("");
+  const [activateBusy, setActivateBusy] = useState(false);
+  const [activateMsg, setActivateMsg] = useState("");
 
   async function load() {
     try {
       const [list, act] = await Promise.all([
-        apiGet<{ items?: Provider[] }>("/api/ai-providers/list"),
+        apiGet<{ items?: Provider[]; presets?: PresetItem[] }>("/api/ai-providers/list"),
         apiGet<{ active?: Record<string, ActiveEntry> }>("/api/ai-providers/active"),
       ]);
       setItems(list.items || []);
+      if (list.presets?.length) setPresets(list.presets);
       setActive(act.active || {});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -109,17 +194,52 @@ export default function AiProviders() {
 
   useEffect(() => {
     let cancelled = false;
+    // Keep IGDiag nav guard up while the panel fetches — avoids false
+    // MAIN-THREAD STALL reports during first paint + network settle.
+    markNavPending("panel:ai-providers");
     (async () => {
       try {
         const [list, act] = await Promise.all([
-          apiGet<{ items?: Provider[] }>("/api/ai-providers/list"),
+          apiGet<{ items?: Provider[]; presets?: PresetItem[] }>("/api/ai-providers/list"),
           apiGet<{ active?: Record<string, ActiveEntry> }>("/api/ai-providers/active"),
         ]);
         if (cancelled) return;
         setItems(list.items || []);
+        if (list.presets?.length) setPresets(list.presets);
         setActive(act.active || {});
+
+        // If providers exist but tiles are still single-model (Kimi-only),
+        // heal into a full ecosystem cascade once — non-blocking.
+        const configured = list.items || [];
+        const pools = Object.values(act.active || {});
+        const underCascaded =
+          configured.length > 1 &&
+          pools.some((a) => a && (a.pool_size || 0) < configured.length);
+        const singleOnly =
+          configured.length >= 1 &&
+          pools.every((a) => !a || (a.pool_size || 0) <= 1) &&
+          (list.presets || []).some((p) => p.key_ready && !p.configured);
+        if (underCascaded || singleOnly) {
+          try {
+            await apiPost("/api/ai-providers/enable-ecosystem", { onlyKeyReady: true });
+            if (cancelled) return;
+            const [list2, act2] = await Promise.all([
+              apiGet<{ items?: Provider[]; presets?: PresetItem[] }>("/api/ai-providers/list"),
+              apiGet<{ active?: Record<string, ActiveEntry> }>("/api/ai-providers/active"),
+            ]);
+            if (cancelled) return;
+            setItems(list2.items || []);
+            if (list2.presets?.length) setPresets(list2.presets);
+            setActive(act2.active || {});
+            setActivateMsg("AI ecosystem cascade synced — all usable providers work together.");
+          } catch {
+            /* non-fatal */
+          }
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) settleNavPending("ai-providers");
       }
     })();
     return () => {
@@ -127,10 +247,57 @@ export default function AiProviders() {
     };
   }, []);
 
-  function applyPreset(p: (typeof PRESETS)[number]) {
+  function applyPreset(p: Pick<PresetItem, "name" | "base_url" | "model">) {
     setName(p.name);
     setUrl(p.base_url);
     setModel(p.model);
+  }
+
+  function configurePreset(p: PresetItem) {
+    applyPreset(p);
+    if (pickerCat) setCat(pickerCat);
+    setActivateMsg("");
+    // Scroll add form into view so the user can paste a key
+    requestAnimationFrame(() => {
+      document.getElementById("ai-provider-add-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  async function placeAllPresets() {
+    setActivateBusy(true);
+    setActivateMsg("");
+    try {
+      const r = await apiPost<{
+        ok: boolean;
+        error?: string;
+        created?: number;
+        reused?: number;
+        skipped?: { id: string; reason: string }[];
+        ecosystem?: Record<string, { pool_size?: number; mode?: string; providers?: { name: string }[] }>;
+        message?: string;
+      }>("/api/ai-providers/enable-ecosystem", { onlyKeyReady: true });
+      if (!r.ok) {
+        setActivateMsg(r.error || "Could not enable AI ecosystem");
+        return;
+      }
+      const pools = r.ecosystem
+        ? Object.entries(r.ecosystem)
+            .map(([cat, info]) => `${cat}: ${(info.providers || []).map((p) => p.name).join(" → ") || "built-in"}`)
+            .join(" · ")
+        : "";
+      const skipN = r.skipped?.length || 0;
+      setActivateMsg(
+        (r.message || "Ecosystem cascade enabled") +
+          ` — ${r.created || 0} created, ${r.reused || 0} joined` +
+          (skipN ? ` · ${skipN} need an API key` : "") +
+          (pools ? ` · ${pools}` : ""),
+      );
+      await load();
+    } catch (e) {
+      setActivateMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setActivateBusy(false);
+    }
   }
 
   async function addProvider() {
@@ -194,9 +361,128 @@ export default function AiProviders() {
     load();
   }
 
+  function providersForTile(catKey: string) {
+    return (items || []).filter((p) => {
+      const compat = p.compatible_categories || [p.category];
+      return compat.includes(catKey) || p.category === catKey;
+    });
+  }
+
+  /** Catalog presets that belong on this tile (all four by default). */
+  function presetsForTile(catKey: string) {
+    return presets.filter((p) => (p.tiles || FALLBACK_PRESETS[0].tiles).includes(catKey));
+  }
+
+  /** Rows shown in the tile picker: configured providers + unconfigured catalog presets. */
+  function pickerRowsForTile(catKey: string) {
+    const configured = providersForTile(catKey);
+    const configuredIds = new Set(configured.map((p) => String(p.id)));
+    const unmatchedPresets = presetsForTile(catKey).filter((p) => {
+      if (p.configured && p.provider_id != null && configuredIds.has(String(p.provider_id))) {
+        return false;
+      }
+      // Also hide if a configured provider already matches name/model/url
+      return !configured.some(
+        (c) =>
+          c.name.toLowerCase() === p.name.toLowerCase() ||
+          (c.model.toLowerCase() === p.model.toLowerCase() &&
+            c.base_url.replace(/\/+$/, "") === p.base_url.replace(/\/+$/, "")),
+      );
+    });
+    return { configured, unmatchedPresets };
+  }
+
+  function openPicker(catKey: string) {
+    const inCat = providersForTile(catKey);
+    const enabled = inCat
+      .filter((p) => p.assignments?.some((a) => a.category === catKey && a.enabled))
+      .map((p) => String(p.id));
+    // Fallback: if assignments missing, treat home-category enabled providers as selected
+    const selected =
+      enabled.length > 0
+        ? enabled
+        : inCat
+            .filter((p) => p.category === catKey && p.enabled !== false)
+            .map((p) => String(p.id));
+    const primary =
+      String(
+        inCat.find((p) => p.assignments?.some((a) => a.category === catKey && a.is_default))?.id
+          || inCat.find((p) => p.category === catKey && p.is_default)?.id
+          || selected[0]
+          || "",
+      );
+    setPickerCat(catKey);
+    setPickerSelected(selected);
+    setPickerPrimary(primary);
+    setPickerMsg("");
+    setCat(catKey);
+  }
+
+  function closePicker() {
+    setPickerCat(null);
+    setPickerMsg("");
+  }
+
+  function togglePickerId(id: string) {
+    setPickerSelected((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      if (!next.includes(pickerPrimary)) {
+        setPickerPrimary(next[0] || "");
+      }
+      return next;
+    });
+  }
+
+  function selectAllInPicker() {
+    if (!pickerCat) return;
+    // Select all configured providers on this tile so they cascade together
+    const ids = providersForTile(pickerCat).map((p) => String(p.id));
+    setPickerSelected(ids);
+    if (!ids.includes(pickerPrimary)) setPickerPrimary(ids[0] || "");
+  }
+
+  function clearPickerSelection() {
+    setPickerSelected([]);
+    setPickerPrimary("");
+  }
+
+  async function applyPicker() {
+    if (!pickerCat) return;
+    setPickerBusy(true);
+    setPickerMsg("");
+    const r = await apiPost<{
+      ok: boolean;
+      error?: string;
+      mode?: string;
+      enabled?: { name: string }[];
+    }>("/api/ai-providers/category/" + pickerCat + "/selection", {
+      ids: pickerSelected.map(Number),
+      primaryId: pickerPrimary ? Number(pickerPrimary) : null,
+    });
+    setPickerBusy(false);
+    if (!r.ok) {
+      setPickerMsg(r.error || "Could not save selection");
+      return;
+    }
+    const n = r.enabled?.length || 0;
+    setPickerMsg(
+      n === 0
+        ? "Using built-in providers for this category."
+        : n === 1
+          ? `Primary set to ${r.enabled?.[0]?.name}.`
+          : `Cascade pool of ${n} providers — tries primary first, then the rest.`,
+    );
+    await load();
+  }
+
+  const pickerMeta = CATS.find((c) => c.key === pickerCat);
+  const pickerBundle = pickerCat ? pickerRowsForTile(pickerCat) : { configured: [], unmatchedPresets: [] };
+  const pickerProviders = pickerBundle.configured;
+  const tilePresetCount = (catKey: string) => presetsForTile(catKey).length;
+
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -233,10 +519,109 @@ export default function AiProviders() {
                 color: "#075985",
               }}
             >
-              <strong>How this works:</strong> InfoGenie ships with OpenAI, Claude, Perplexity,
-              Gemini and Cloudflare AI built in. Add your own OpenAI-compatible endpoint here, mark
-              it as <em>default</em> for a category, and the matching features will route through it
-              first. Empty = fall back to built-ins.
+              <strong>AI ecosystem:</strong> Kimi, Groq, Z.ai, DeepSeek, Mistral, OpenRouter,
+              Together, Ollama (local + Cloud), and Azure are peers — not a single-model setup.
+              Enable the ecosystem once and every usable provider cascades together under Writing ·
+              Analysis · Vision · Audio (primary first, then the rest on failure).
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+                alignItems: "center",
+                marginBottom: 14,
+              }}
+            >
+              <button
+                type="button"
+                disabled={activateBusy}
+                onClick={placeAllPresets}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "linear-gradient(135deg,#0050CC,#0066FF)",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: "0.85rem",
+                  cursor: activateBusy ? "wait" : "pointer",
+                  boxShadow: "0 8px 20px rgba(0,102,255,0.25)",
+                }}
+              >
+                {activateBusy ? "Enabling…" : "Enable full AI ecosystem"}
+              </button>
+              <span style={{ fontSize: "0.78rem", color: "#64748B", maxWidth: 460 }}>
+                Seeds every key-ready preset and puts all configured providers into one cascade pool
+                on every tile so they work together — not Kimi alone.
+              </span>
+              {activateMsg && (
+                <span style={{ fontSize: "0.8rem", color: "#0F766E", fontWeight: 600, width: "100%" }}>
+                  {activateMsg}
+                </span>
+              )}
+            </div>
+
+            {/* Ecosystem status across tiles */}
+            <div
+              style={{
+                background: "#fff",
+                border: "1px solid #E2E8F0",
+                borderRadius: 12,
+                padding: 14,
+                marginBottom: 18,
+              }}
+            >
+              <div style={{ fontWeight: 800, color: "#0A1628", marginBottom: 8, fontSize: "0.9rem" }}>
+                Ecosystem cascade status
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))",
+                  gap: 10,
+                }}
+              >
+                {CATS.map((c) => {
+                  const a = active[c.key];
+                  const pool = a?.pool || [];
+                  return (
+                    <div
+                      key={c.key}
+                      style={{
+                        background: "#F8FAFF",
+                        border: "1px solid #E2E8F0",
+                        borderRadius: 10,
+                        padding: 10,
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, fontSize: "0.78rem", color: "#0F172A" }}>
+                        {c.label.replace(/^[^\s]+\s/, "")}
+                        <span style={{ marginLeft: 6, color: "#64748B", fontWeight: 600 }}>
+                          {a?.mode === "cascade"
+                            ? `cascade ×${a.pool_size}`
+                            : a
+                              ? "single"
+                              : "built-in"}
+                        </span>
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: "0.72rem", color: "#475569", lineHeight: 1.45 }}>
+                        {pool.length
+                          ? pool.map((p) => p.name).join(" → ")
+                          : "No BYO providers — using built-ins"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {(items || []).length > 0 &&
+                Object.values(active).some((a) => a && (a.pool_size || 0) < (items || []).length) && (
+                  <div style={{ marginTop: 10, fontSize: "0.78rem", color: "#92400E" }}>
+                    Some configured providers are not yet in every cascade. Click{" "}
+                    <strong>Enable full AI ecosystem</strong> so they all work together.
+                  </div>
+                )}
             </div>
 
             <div
@@ -249,17 +634,30 @@ export default function AiProviders() {
             >
               {CATS.map((c) => {
                 const a = active[c.key];
+                const configuredN = providersForTile(c.key).length;
+                const catalogN = tilePresetCount(c.key);
+                const open = pickerCat === c.key;
                 return (
-                  <div
+                  <button
                     key={c.key}
+                    type="button"
+                    onClick={() => (open ? closePicker() : openPicker(c.key))}
                     style={{
-                      background: "#fff",
-                      border: "1px solid #E5E7EB",
+                      textAlign: "left",
+                      background: open ? "#ECFDF5" : "#fff",
+                      border: open ? "2px solid #0F766E" : "1px solid #E5E7EB",
                       borderRadius: 10,
                       padding: 12,
+                      cursor: "pointer",
+                      boxShadow: open ? "0 4px 14px rgba(15,118,110,0.12)" : "none",
                     }}
                   >
-                    <div style={{ fontWeight: 800, color: "#0A1628" }}>{c.label}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ fontWeight: 800, color: "#0A1628" }}>{c.label}</div>
+                      <span style={{ fontSize: "0.68rem", color: "#64748B", fontWeight: 700 }}>
+                        {open ? "Close" : "Choose →"}
+                      </span>
+                    </div>
                     <div style={{ fontSize: "0.72rem", color: "#6B7280", margin: "4px 0 8px" }}>
                       {c.hint}
                     </div>
@@ -270,14 +668,249 @@ export default function AiProviders() {
                         fontWeight: 700,
                       }}
                     >
-                      {a ? a.name + " · " + a.model : "— (using built-in)"}
+                      {a
+                        ? a.pool_size && a.pool_size > 1
+                          ? `${a.name} · cascade ×${a.pool_size}`
+                          : `${a.name} · ${a.model}`
+                        : "— (using built-in)"}
                     </div>
-                  </div>
+                    <div style={{ fontSize: "0.68rem", color: "#94A3B8", marginTop: 6 }}>
+                      {catalogN} catalog · {configuredN} configured
+                    </div>
+                  </button>
                 );
               })}
             </div>
 
+            {pickerCat && pickerMeta && (
+              <div
+                style={{
+                  background: "#fff",
+                  border: "1px solid #A7F3D0",
+                  borderRadius: 12,
+                  padding: 16,
+                  marginBottom: 18,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: "1rem", color: "#0F172A" }}>
+                      Providers for {pickerMeta.label.replace(/^[^\s]+\s/, "")}
+                    </div>
+                    <div style={{ fontSize: "0.78rem", color: "#64748B", marginTop: 4, maxWidth: 560 }}>
+                      All catalog presets appear on this tile. Select configured ones to cascade
+                      together (primary first). Configure missing presets below, or use{" "}
+                      <em>Place all presets on every tile</em>.
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={selectAllInPicker}
+                      disabled={!pickerProviders.length}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #A7F3D0",
+                        background: "#ECFDF5",
+                        color: "#0F766E",
+                        fontWeight: 700,
+                        fontSize: "0.78rem",
+                        cursor: pickerProviders.length ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearPickerSelection}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #E5E7EB",
+                        background: "#F8FAFC",
+                        color: "#475569",
+                        fontWeight: 700,
+                        fontSize: "0.78rem",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Use built-in
+                    </button>
+                  </div>
+                </div>
+
+                {pickerProviders.length === 0 && pickerBundle.unmatchedPresets.length === 0 ? (
+                  <div style={{ marginTop: 14, fontSize: "0.85rem", color: "#94A3B8" }}>
+                    No providers for this tile yet.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 14 }}>
+                    {pickerProviders.map((p) => {
+                      const id = String(p.id);
+                      const checked = pickerSelected.includes(id);
+                      const isPrimary = pickerPrimary === id;
+                      return (
+                        <div
+                          key={id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: checked ? "1px solid #6EE7B7" : "1px solid #E5E7EB",
+                            background: checked ? "#F0FDF4" : "#F8FAFC",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => togglePickerId(id)}
+                            style={{ width: 16, height: 16 }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 800, color: "#0F172A", fontSize: "0.9rem" }}>
+                              {p.name}
+                              {isPrimary && checked && (
+                                <span
+                                  style={{
+                                    marginLeft: 8,
+                                    fontSize: "0.65rem",
+                                    background: "#D1FAE5",
+                                    color: "#065F46",
+                                    padding: "2px 6px",
+                                    borderRadius: 8,
+                                  }}
+                                >
+                                  PRIMARY
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: "0.75rem", color: "#64748B" }}>
+                              {p.model} · {p.base_url}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!checked}
+                            onClick={() => setPickerPrimary(id)}
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 6,
+                              border: "1px solid #E5E7EB",
+                              background: isPrimary ? "#FEF3C7" : "#fff",
+                              color: "#92400E",
+                              fontSize: "0.72rem",
+                              fontWeight: 700,
+                              cursor: checked ? "pointer" : "not-allowed",
+                              opacity: checked ? 1 : 0.45,
+                            }}
+                          >
+                            Set primary
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {pickerBundle.unmatchedPresets.map((p) => (
+                      <div
+                        key={"preset-" + p.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px dashed #CBD5E1",
+                          background: "#F8FAFC",
+                        }}
+                      >
+                        <input type="checkbox" disabled checked={false} style={{ width: 16, height: 16 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, color: "#0F172A", fontSize: "0.9rem" }}>
+                            {p.name}
+                            <span
+                              style={{
+                                marginLeft: 8,
+                                fontSize: "0.65rem",
+                                background: "#FEF3C7",
+                                color: "#92400E",
+                                padding: "2px 6px",
+                                borderRadius: 8,
+                              }}
+                            >
+                              NOT CONFIGURED
+                            </span>
+                          </div>
+                          <div style={{ fontSize: "0.75rem", color: "#64748B" }}>
+                            {p.model} · {p.base_url}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => configurePreset(p)}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: 6,
+                            border: "1px solid #BAE6FD",
+                            background: "#F0F9FF",
+                            color: "#075985",
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Configure
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    disabled={pickerBusy}
+                    onClick={applyPicker}
+                    style={{
+                      padding: "9px 16px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "#0F766E",
+                      color: "#fff",
+                      fontWeight: 800,
+                      fontSize: "0.82rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {pickerBusy ? "Saving…" : "Apply to this tile"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closePicker}
+                    style={{
+                      padding: "9px 14px",
+                      borderRadius: 8,
+                      border: "1px solid #E5E7EB",
+                      background: "#fff",
+                      fontWeight: 600,
+                      fontSize: "0.82rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  {pickerMsg && (
+                    <span style={{ fontSize: "0.8rem", color: "#0F766E", fontWeight: 600 }}>
+                      {pickerMsg}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div
+              id="ai-provider-add-form"
               style={{
                 background: "#fff",
                 border: "1px solid #E5E7EB",
@@ -363,27 +996,37 @@ export default function AiProviders() {
               </div>
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>
-                  PRESETS (click to pre-fill)
+                  PRESETS (same on every tile — click to pre-fill)
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {PRESETS.map((p) => (
+                  {presets.map((p) => (
                     <button
-                      key={p.name}
+                      key={p.id || p.name}
+                      type="button"
                       onClick={() => applyPreset(p)}
                       style={{
-                        background: "#F3F4F6",
-                        border: "1px solid #E5E7EB",
-                        color: "#374151",
+                        background: p.configured ? "#ECFDF5" : "#F3F4F6",
+                        border: p.configured ? "1px solid #A7F3D0" : "1px solid #E5E7EB",
+                        color: p.configured ? "#0F766E" : "#374151",
                         padding: "5px 10px",
                         borderRadius: 14,
                         fontSize: "0.74rem",
                         cursor: "pointer",
+                        fontWeight: p.configured ? 700 : 400,
                       }}
                     >
                       {p.name}
+                      {p.configured ? " ✓" : p.key_ready ? "" : " · needs key"}
                     </button>
                   ))}
                 </div>
+                {(model === "kimi-k3" || /moonshot\.ai|kimi\.ai/i.test(url)) && (
+                  <p style={{ margin: "8px 0 0", fontSize: "0.72rem", color: "#64748B", lineHeight: 1.4 }}>
+                    Moonshot tip: Kimi K3 sends <code>reasoning_effort=high</code> by default. It is one
+                    peer in the cascade — enable the full ecosystem so Groq, Z.ai, DeepSeek and others
+                    run with it.
+                  </p>
+                )}
               </div>
               <button
                 onClick={addProvider}
@@ -455,12 +1098,36 @@ export default function AiProviders() {
                           )}
                         </div>
                         <div style={{ fontSize: "0.78rem", color: "#6B7280", marginTop: 3 }}>
-                          {it.category} ·{" "}
+                          home: {it.category} ·{" "}
                           <code style={{ background: "#F3F4F6", padding: "1px 5px", borderRadius: 3 }}>
                             {it.model}
                           </code>{" "}
                           · {it.base_url} · key {it.api_key_preview || "(not set)"}
                         </div>
+                        {(it.compatible_categories || it.categories || []).length > 0 && (
+                          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+                            {(it.compatible_categories || it.categories || []).map((c) => {
+                              const on = it.assignments?.some((a) => a.category === c && a.enabled);
+                              return (
+                                <span
+                                  key={c}
+                                  style={{
+                                    fontSize: "0.65rem",
+                                    fontWeight: 700,
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.04em",
+                                    padding: "2px 6px",
+                                    borderRadius: 4,
+                                    background: on ? "#D1FAE5" : "#F1F5F9",
+                                    color: on ? "#065F46" : "#64748B",
+                                  }}
+                                >
+                                  {c}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
                         {t && t.text && (
                           <div
                             style={{

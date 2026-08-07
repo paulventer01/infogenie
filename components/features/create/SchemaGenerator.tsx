@@ -419,7 +419,7 @@ export default function SchemaGenerator() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -584,7 +584,7 @@ export default function SchemaGenerator() {
                 </div>
                 <pre
                   style={{
-                    background: "#0F172A",
+                    background: '#eef4ff',
                     color: outputError ? "#FCA5A5" : "#A7F3D0",
                     padding: 14,
                     borderRadius: 8,

@@ -497,10 +497,10 @@ export default function Contentscorer() {
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{
           background:
-            "linear-gradient(135deg,#0F172A 0%,#7C3AED 50%,#22D3EE 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">
@@ -515,7 +515,7 @@ export default function Contentscorer() {
                 </span>{" "}
                 <span
                   className="bc-sep"
-                  style={{ color: "rgba(255,255,255,.3)" }}
+                  style={{ color: '#94a3b8' }}
                 >
                   ›
                 </span>{" "}

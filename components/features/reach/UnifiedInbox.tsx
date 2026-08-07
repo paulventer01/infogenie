@@ -9,7 +9,7 @@
 //
 // See `docs/react-panel-migration.md` for the porting pattern.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, startTransition } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
 import { goToView } from "@/lib/nav";
@@ -207,8 +207,15 @@ export default function UnifiedInbox() {
   }
 
   useEffect(() => {
-    loadStats();
-    load();
+    // Defer network + state storm off the first paint so IGDiag doesn't see
+    // a main-thread stall while the panel shell is still settling.
+    const t = window.setTimeout(() => {
+      startTransition(() => {
+        void loadStats();
+        void load();
+      });
+    }, 0);
+    return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, status, sentiment]);
 
@@ -324,7 +331,7 @@ export default function UnifiedInbox() {
   return (
     <div className="view-header-wrap">
       <style>{BADGE_CSS}</style>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

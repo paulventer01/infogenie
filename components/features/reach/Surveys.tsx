@@ -237,7 +237,7 @@ export default function Surveys() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>📋 In-App Survey Builder</h2>
         <p className="view-sub">
           Create NPS, CSAT, and multi-question surveys — embed anywhere or trigger from journeys.
@@ -445,7 +445,7 @@ export default function Surveys() {
             </p>
             <pre
               style={{
-                background: "#0f172a",
+                background: '#eef4ff',
                 color: "#e2e8f0",
                 borderRadius: 8,
                 padding: 14,

@@ -20,6 +20,9 @@
 // See `docs/react-panel-migration.md` for the porting pattern.
 
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { goToView } from "@/lib/nav";
+import { INTEL_ARCHIVE_TOOLS } from "@/lib/viewRoutes";
 
 interface AnalysisCompetitor {
   name?: string;
@@ -122,11 +125,19 @@ const KW_LOCATIONS = [
 ];
 
 export default function Intelligence() {
+  const router = useRouter();
   const data = useMemo(getAnalysisData, []);
   const competitors = useMemo(
     () => (data && Array.isArray(data.competitors) ? data.competitors : []),
     [data],
   );
+  const archiveGroups = useMemo(() => {
+    const groups: Record<string, typeof INTEL_ARCHIVE_TOOLS[number][]> = {};
+    for (const t of INTEL_ARCHIVE_TOOLS) {
+      (groups[t.group] ||= []).push(t);
+    }
+    return groups;
+  }, []);
 
   // ── Share of Voice from REAL analysed competitor traffic estimates ──
   const sov = useMemo<SovRow[]>(() => {
@@ -160,7 +171,7 @@ export default function Intelligence() {
 
   return (
     <div>
-      <div className="view-header intel-header">
+      <div className="view-header intel-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -174,7 +185,7 @@ export default function Intelligence() {
                 gaps, and live competitor intelligence for your category.
               </p>
             </div>
-            <div className="intel-header-actions">
+            <div className="intel-header-actions ig-panel-hero">
               <div className="intel-live-badge">● Live Monitoring</div>
               <button
                 className="btn-primary"
@@ -485,6 +496,62 @@ export default function Intelligence() {
               discussions from your industry.
             </div>
           </div>
+        </div>
+
+        {/* ── Scorelet / spy archive (sidebar-hidden tools) ── */}
+        <div className="intel-section" style={{ marginTop: 28 }}>
+          <div className="intel-section-head">
+            <div className="intel-section-title">🗄️ Tool Archive</div>
+            <div className="intel-section-badge">Sidebar-hidden</div>
+          </div>
+          <p style={{ margin: "0 0 14px", fontSize: "0.88rem", color: "#64748B", lineHeight: 1.5 }}>
+            Thin scorelets and Analyse spies live here instead of crowding the sidebar.
+            Deep links and search still work.
+          </p>
+          {Object.entries(archiveGroups).map(([group, tools]) => (
+            <div key={group} style={{ marginBottom: 18 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: "#94A3B8",
+                  marginBottom: 8,
+                }}
+              >
+                {group}
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))",
+                  gap: 8,
+                }}
+              >
+                {tools.map((t) => (
+                  <button
+                    key={t.view}
+                    type="button"
+                    onClick={() => goToView(router, t.view)}
+                    style={{
+                      textAlign: "left",
+                      background: "#fff",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: 10,
+                      padding: "10px 12px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontSize: 16, lineHeight: 1 }}>{t.icon}</div>
+                    <div style={{ marginTop: 6, fontWeight: 700, fontSize: 12, color: "#0F172A" }}>
+                      {t.label}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

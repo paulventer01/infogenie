@@ -204,7 +204,7 @@ export default function Benchmarks() {
       {/* ── Hero Header ─────────────────────────────────────────────────────── */}
       <div
         style={{
-          background: "linear-gradient(135deg, #0A1F4E 0%, #0A3A80 55%, #0066CC 100%)",
+          background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           padding: "32px 28px 28px",
           position: "relative",
           overflow: "hidden",
@@ -222,11 +222,11 @@ export default function Benchmarks() {
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "rgba(255,255,255,.15)", color: "#E0E7FF", padding: "3px 10px", borderRadius: 20, letterSpacing: ".07em", textTransform: "uppercase" }}>
+                <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "rgba(255,255,255,.15)", color: '#334155', padding: "3px 10px", borderRadius: 20, letterSpacing: ".07em", textTransform: "uppercase" }}>
                   ANALYSE
                 </span>
-                <span style={{ color: "rgba(255,255,255,.3)", fontSize: "0.65rem" }}>›</span>
-                <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "rgba(255,255,255,.55)", textTransform: "uppercase", letterSpacing: ".07em" }}>
+                <span style={{ color: '#94a3b8', fontSize: "0.65rem" }}>›</span>
+                <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em" }}>
                   Benchmark Intelligence
                 </span>
               </div>
@@ -597,23 +597,23 @@ function BenchmarkResult({ result }: { result: CompareResponse }) {
   return (
     <div style={{ marginTop: 20 }}>
       {/* Summary Banner */}
-      <div style={{ background: "linear-gradient(135deg, #0A1F4E, #0A3A80)", borderRadius: 16, padding: "20px 24px", marginBottom: 16, display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
+      <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", borderRadius: 16, padding: "20px 24px", marginBottom: 16, display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: "Sora, sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "#FFFFFF", marginBottom: 6 }}>
+          <div style={{ fontFamily: "Sora, sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>
             📊 Network Summary — {result.vertical}
           </div>
-          <p style={{ margin: 0, color: "rgba(255,255,255,.75)", fontSize: "0.82rem", lineHeight: 1.6 }}>
+          <p style={{ margin: 0, color: '#475569', fontSize: "0.82rem", lineHeight: 1.6 }}>
             {ai.summary || ""}
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
           <div style={{ background: "rgba(16,185,129,.2)", border: "1px solid rgba(16,185,129,.4)", borderRadius: 10, padding: "8px 14px", textAlign: "center" }}>
             <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#34D399", fontFamily: "Sora, sans-serif" }}>{above}</div>
-            <div style={{ fontSize: "0.62rem", color: "rgba(255,255,255,.6)", textTransform: "uppercase" }}>Above median</div>
+            <div style={{ fontSize: "0.62rem", color: "#475569", textTransform: "uppercase" }}>Above median</div>
           </div>
           <div style={{ background: "rgba(239,68,68,.15)", border: "1px solid rgba(239,68,68,.3)", borderRadius: 10, padding: "8px 14px", textAlign: "center" }}>
             <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#F87171", fontFamily: "Sora, sans-serif" }}>{below}</div>
-            <div style={{ fontSize: "0.62rem", color: "rgba(255,255,255,.6)", textTransform: "uppercase" }}>Below median</div>
+            <div style={{ fontSize: "0.62rem", color: "#475569", textTransform: "uppercase" }}>Below median</div>
           </div>
         </div>
       </div>

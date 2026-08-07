@@ -173,7 +173,10 @@ export default function AnalyticsHub() {
   const [inFlight, setInFlight] = useState(false);
 
   useEffect(() => {
-    setHasDomain(!!lsDomain());
+    const domain = lsDomain();
+    setHasDomain(!!domain);
+    // Domain present unlocks the hub shell — but does NOT claim real GSC/GA4 OAuth.
+    // Preview stays disconnected until the user explicitly unlocks seeded estimates.
   }, []);
 
   const connect = useCallback((svc: string) => {
@@ -190,7 +193,7 @@ export default function AnalyticsHub() {
         return next;
       });
       setInFlight(false);
-      toast(`✓ Connected ${svc.toUpperCase()}`);
+      toast(`✓ Preview unlocked for ${svc.toUpperCase()} (seeded estimates — not live OAuth)`);
     }, 1100);
   }, [router]);
 
@@ -208,7 +211,7 @@ export default function AnalyticsHub() {
       return;
     }
     if (inFlight) {
-      toast("⏳ Already authorising — hang tight…");
+      toast("⏳ Already loading preview — hang tight…");
       return;
     }
     setInFlight(true);
@@ -216,7 +219,7 @@ export default function AnalyticsHub() {
       setConnections((prev) => ({ ...prev, gsc: true, ga4: true }));
       setData(ahSeed());
       setInFlight(false);
-      toast("✓ Connected GSC + GA4");
+      toast("✓ Preview unlocked for GSC + GA4 (seeded from your last analysis — not live OAuth)");
     }, 1200);
   }, [router, inFlight]);
 
@@ -228,7 +231,7 @@ export default function AnalyticsHub() {
     }
     if (!connections.gsc || !connections.ga4) {
       if (inFlight) {
-        toast("⏳ Already authorising — hang tight…");
+        toast("⏳ Already loading preview — hang tight…");
         return;
       }
       const missing: string[] = [];
@@ -239,12 +242,12 @@ export default function AnalyticsHub() {
         setConnections((prev) => ({ ...prev, gsc: true, ga4: true }));
         setData(ahSeed());
         setInFlight(false);
-        toast(`✓ Connected ${missing.length === 2 ? "GSC + GA4" : missing[0]} — pulled the latest 28 days`);
+        toast(`✓ Preview unlocked for ${missing.length === 2 ? "GSC + GA4" : missing[0]} — seeded 28-day estimates`);
       }, 1400);
       return;
     }
     setData(ahSeed());
-    toast("📡 Refreshed — pulled the latest 28 days");
+    toast("📡 Refreshed preview estimates from your last analysis domain");
   }, [router, connections, inFlight]);
 
   const manage = () => {
@@ -283,11 +286,11 @@ export default function AnalyticsHub() {
         </ul>
         {isConn ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ color: "#15803D", fontWeight: 700, fontSize: "0.78rem" }}>✓ Connected</span>
+            <span style={{ color: "#B45309", fontWeight: 700, fontSize: "0.78rem" }}>✓ Preview unlocked</span>
             <button onClick={() => disconnect(s.key)} style={{ padding: "5px 10px", background: "white", color: "#64748B", border: "1px solid #CBD5E1", borderRadius: 6, fontSize: "0.7rem", cursor: "pointer" }}>Disconnect</button>
           </div>
         ) : (
-          <button onClick={() => connect(s.key)} style={{ width: "100%", padding: 9, background: s.color, color: btnTextCol, border: "none", borderRadius: 8, fontWeight: 700, fontSize: "0.76rem", cursor: "pointer" }}>🔗 Connect {btnLabel}</button>
+          <button onClick={() => connect(s.key)} style={{ width: "100%", padding: 9, background: s.color, color: btnTextCol, border: "none", borderRadius: 8, fontWeight: 700, fontSize: "0.76rem", cursor: "pointer" }}>🔗 Unlock {btnLabel} preview</button>
         )}
       </div>
     );
@@ -311,10 +314,13 @@ export default function AnalyticsHub() {
     body = (
       <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 16, padding: "24px 26px", marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 6 }}>
-          <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#0A1628", fontSize: "1.15rem" }}>📡 Connect your data sources</div>
-          <button onClick={connectAll} style={{ padding: "8px 14px", background: "linear-gradient(135deg,#0EA5E9,#0066FF)", color: "white", border: "none", borderRadius: 8, fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}>⚡ Connect Recommended (GSC + GA4)</button>
+          <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#0A1628", fontSize: "1.15rem" }}>📡 Unlock analytics preview</div>
+          <button onClick={connectAll} style={{ padding: "8px 14px", background: "linear-gradient(135deg,#0EA5E9,#0066FF)", color: "white", border: "none", borderRadius: 8, fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}>⚡ Unlock GSC + GA4 preview</button>
         </div>
-        <div style={{ fontSize: "0.84rem", color: "#64748B", marginBottom: 20 }}>InfoGenie pulls live impressions, clicks, ranks, sessions and revenue. <strong>GSC + GA4</strong> are required to unlock the dashboard — the rest are optional enrichment sources.</div>
+        <div style={{ fontSize: "0.84rem", color: "#64748B", marginBottom: 20 }}>
+          Preview uses <strong>seeded estimates from your last analysis domain</strong> so you can explore the hub with least setup.
+          Real GSC / GA4 OAuth (account-truth) connects in Settings when credentials are available — InfoGenie never pretends preview data is live OAuth.
+        </div>
 
         <div style={{ fontSize: "0.72rem", fontWeight: 800, letterSpacing: ".6px", color: "#0F766E", marginBottom: 10 }}>★ CORE — REQUIRED</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 22 }}>{core.map((s) => <ConnCard key={s.key} s={s} />)}</div>
@@ -325,8 +331,8 @@ export default function AnalyticsHub() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>{extras.map((s) => <ConnCard key={s.key} s={s} />)}</div>
 
-        <div style={{ marginTop: 18, padding: "14px 16px", background: "#F1F5F9", borderRadius: 10, fontSize: "0.74rem", color: "#475569", lineHeight: 1.6 }}>
-          <strong>🔒 Privacy:</strong> InfoGenie uses read-only OAuth scopes. We never modify any of your settings. You can disconnect any source at any time.
+        <div style={{ marginTop: 18, padding: "14px 16px", background: "#FEF3C7", borderRadius: 10, fontSize: "0.74rem", color: "#92400E", lineHeight: 1.6 }}>
+          <strong>Provenance:</strong> This hub starts in <strong>preview mode</strong> (seeded estimates). Account-truth requires real GSC/GA4 OAuth — credibility for everything downstream depends on that upgrade path.
         </div>
       </div>
     );
@@ -348,8 +354,8 @@ export default function AnalyticsHub() {
     ];
     body = (
       <>
-        <div style={{ background: "linear-gradient(135deg,#ECFDF5,#F0FDFA)", border: "1px solid #A7F3D0", borderRadius: 12, padding: "14px 18px", marginBottom: 18, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: "0.82rem", color: "#065F46" }}><strong>✓ Connected:</strong> Google Search Console + GA4 · <strong>Property:</strong> {data.domain} · <strong>Period:</strong> {data.period}</div>
+        <div style={{ background: "linear-gradient(135deg,#FEF3C7,#FFFBEB)", border: "1px solid #FCD34D", borderRadius: 12, padding: "14px 18px", marginBottom: 18, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontSize: "0.82rem", color: "#92400E" }}><strong>Preview (not live OAuth):</strong> GSC + GA4 estimates · <strong>Property:</strong> {data.domain} · <strong>Period:</strong> {data.period}</div>
           <button onClick={manage} style={{ padding: "6px 12px", background: "white", color: "#475569", border: "1px solid #CBD5E1", borderRadius: 7, fontSize: "0.72rem", cursor: "pointer" }}>⚙ Manage</button>
         </div>
 
@@ -443,20 +449,20 @@ export default function AnalyticsHub() {
   }
 
   return (
-    <div className="view">
-      <div className="view-header" style={{ background: "linear-gradient(135deg,#0F766E 0%,#14B8A6 50%,#06B6D4 100%)" }}>
+    <div className="view active">
+      <div className="view-header ig-panel-hero" style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}>
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#A7F3D0" }}>
-                <span className="bc-group" style={{ color: "rgba(167,243,208,.8)" }}>Grow</span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>›</span> GSC / GA4 Hub
+              <div className="breadcrumb" style={{ color: "#64748b" }}>
+                <span className="bc-group" style={{ color: "#0f766e" }}>Grow</span>{" "}
+                <span className="bc-sep" style={{ color: "#94a3b8" }}>›</span> GSC / GA4 Hub
               </div>
               <h2 className="view-title">📡 GSC / GA4 Analytics Hub</h2>
-              <p className="view-sub">Connect Google Search Console &amp; GA4 — InfoGenie pulls real impressions, clicks, ranks and revenue per page, then highlights top performers and weak performers ready to fix.</p>
+              <p className="view-sub" style={{ color: "#0f172a", opacity: 1, textShadow: "none" }}>Connect Google Search Console &amp; GA4 — InfoGenie pulls real impressions, clicks, ranks and revenue per page, then highlights top performers and weak performers ready to fix.</p>
             </div>
             <div className="vh-actions">
-              <button className="btn-primary" style={{ background: "white", color: "#0F766E" }} onClick={refresh}>📡 Refresh Data</button>
+              <button className="btn-primary" style={{ background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#0f172a" }} onClick={refresh}>📡 Refresh Data</button>
             </div>
           </div>
         </div>

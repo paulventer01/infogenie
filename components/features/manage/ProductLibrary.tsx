@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import PanelHero from "@/components/layout/PanelHero";
 
 interface FAQ { q: string; a: string; }
 interface Objection { objection: string; response: string; }
@@ -137,23 +138,17 @@ export default function ProductLibrary() {
   const TABS = ["basics","features","pricing","faq","cross-sell","objections"];
 
   return (
-    <div style={{ fontFamily: "Inter, sans-serif", background: "#F8FAFF", minHeight: "100vh" }}>
-      <div style={{ background: "linear-gradient(135deg, #0A1F4E 0%, #065F46 60%, #059669 100%)", padding: "28px 28px 24px" }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "rgba(255,255,255,.15)", color: "#D1FAE5", padding: "3px 10px", borderRadius: 20, textTransform: "uppercase", letterSpacing: ".07em" }}>MANAGE</span>
-          </div>
-          <h2 style={{ margin: 0, fontFamily: "Sora, sans-serif", fontSize: "1.55rem", fontWeight: 900, color: "#fff" }}>📦 Product Library</h2>
-          <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,.7)", fontSize: "0.85rem", maxWidth: 520 }}>
-            Build a structured catalog of your products and services — features, benefits, USP, pricing, FAQs, objections, and cross-sell/upsell opportunities.
-          </p>
-        </div>
-      </div>
+    <div style={{ fontFamily: "inherit", background: "transparent", minHeight: "100%" }}>
+      <PanelHero
+        group="Manage"
+        title="📦 Product Library"
+        subtitle="Build a structured catalog of your products and services — features, benefits, USP, pricing, FAQs, objections, and cross-sell/upsell opportunities."
+      />
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px", display: "grid", gridTemplateColumns: "280px 1fr", gap: 20 }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "4px 4px 40px", display: "grid", gridTemplateColumns: "280px 1fr", gap: 20 }}>
         {/* Sidebar */}
         <div>
-          <button onClick={startNew} style={{ width: "100%", padding: "10px 0", background: "linear-gradient(135deg, #059669, #047857)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", marginBottom: 12 }}>
+          <button onClick={startNew} style={{ width: "100%", padding: "10px 0", minHeight: 42, background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer", marginBottom: 12 }}>
             + Add Product / Service
           </button>
           {loading ? (
@@ -182,7 +177,7 @@ export default function ProductLibrary() {
               <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "0.88rem" }}>{selectedId ? "Edit Product" : "New Product"}</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => { setEditing(null); setSelectedId(null); }} style={{ padding: "5px 14px", background: "#F3F4F6", border: "1px solid #E5E7EB", borderRadius: 8, fontSize: "0.75rem", cursor: "pointer" }}>Cancel</button>
-                <button onClick={save} disabled={saving} style={{ padding: "5px 14px", background: saving ? "#F3F4F6" : "linear-gradient(135deg, #059669, #047857)", border: "none", borderRadius: 8, color: saving ? "#9CA3AF" : "#fff", fontWeight: 700, fontSize: "0.75rem", cursor: saving ? "not-allowed" : "pointer" }}>
+                <button onClick={save} disabled={saving} style={{ padding: "5px 14px", background: saving ? "#E5E7EB" : "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 8, color: saving ? "#6B7280" : "#fff", fontWeight: 700, fontSize: "0.75rem", cursor: saving ? "not-allowed" : "pointer", boxShadow: saving ? "none" : "0 4px 12px rgba(15,118,110,0.22)" }}>
                   {saving ? "Saving…" : "Save Product"}
                 </button>
               </div>

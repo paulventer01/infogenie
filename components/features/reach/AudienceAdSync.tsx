@@ -64,7 +64,7 @@ export default function AudienceAdSync() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>📡 Audience → Ad Platform Sync</h2>
         <p className="view-sub">
           Push your InfoGenie segments directly to Meta Custom Audiences or

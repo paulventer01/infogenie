@@ -384,7 +384,7 @@ export default function MapsIntel() {
   };
   const suggestBtn: React.CSSProperties = {
     padding: "3px 10px",
-    background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+    background: "linear-gradient(135deg,#0f766e,#0284c7)",
     border: "none",
     borderRadius: 5,
     color: "#fff",
@@ -433,7 +433,7 @@ export default function MapsIntel() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

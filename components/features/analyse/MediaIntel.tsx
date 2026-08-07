@@ -197,7 +197,7 @@ export default function MediaIntel() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -230,10 +230,10 @@ export default function MediaIntel() {
             <div
               style={{
                 background:
-                  "linear-gradient(135deg,#1E1B4B 0%,#312E81 100%)",
+                  "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
                 borderRadius: 14,
                 padding: 22,
-                color: "#fff",
+                color: '#0f172a',
                 marginBottom: 16,
               }}
             >

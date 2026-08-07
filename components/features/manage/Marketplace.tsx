@@ -139,7 +139,7 @@ export default function Marketplace() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>🛍️ AI Marketing Marketplace</h2>
         <p className="view-sub">
           Browse, download, and publish marketing templates, campaigns, audiences, prompt packs,

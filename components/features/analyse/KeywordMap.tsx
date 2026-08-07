@@ -234,22 +234,22 @@ export default function KeywordMap() {
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{
-          background: "linear-gradient(135deg,#0F172A 0%,#1E3A8A 100%)",
+          background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "rgba(255,255,255,.6)" }}>
+              <div className="breadcrumb" style={{ color: "#475569" }}>
                 <span className="bc-group">Analyse</span>{" "}
                 <span className="bc-sep">›</span> Keyword Map
               </div>
-              <h2 className="view-title" style={{ color: "#fff" }}>
+              <h2 className="view-title" style={{ color: "#0f172a" }}>
                 🗺️ Keyword Map
               </h2>
-              <p className="view-sub" style={{ color: "rgba(255,255,255,.8)" }}>
+              <p className="view-sub" style={{ color: "#475569" }}>
                 Map your target keywords to the right pages, catch keyword
                 cannibalisation before it tanks your rankings, and spot the
                 content gaps your competitors are exploiting.
@@ -333,8 +333,8 @@ export default function KeywordMap() {
             onClick={run}
             disabled={status === "loading"}
             style={{
-              background: "linear-gradient(135deg,#0066FF,#1E3A8A)",
-              color: "#fff",
+              background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+              color: "#0f172a",
               border: "none",
               padding: "10px 22px",
               borderRadius: 8,
@@ -668,9 +668,9 @@ export default function KeywordMap() {
                   onClick={() => goToView(router, "battleplan")}
                   style={{
                     padding: "9px 16px",
-                    background: "linear-gradient(135deg,#0066FF,#1E3A8A)",
+                    background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
                     border: "none",
-                    color: "#fff",
+                    color: "#0f172a",
                     borderRadius: 7,
                     fontSize: "0.82rem",
                     fontWeight: 800,

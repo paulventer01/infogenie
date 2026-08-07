@@ -31,8 +31,20 @@ const GOAL_METRICS = {
   'amp.sessions':      { label:'Amplitude Sessions (30d)',  direction:'gte', unit:''  },
   'ads.totalSpend':    { label:'Total Ad Spend (30d)',      direction:'lte', unit:'$' },
   'ads.cac':           { label:'Blended CAC',               direction:'lte', unit:'$' },
+  'ads.blendedRoas':   { label:'Blended ROAS (canonical)',  direction:'gte', unit:'x' },
+  'ads.trueRoas':      { label:'True ROAS (canonical)',     direction:'gte', unit:'x' },
+  'ads.revenue':       { label:'Total Revenue (30d)',       direction:'gte', unit:'$' },
 };
 async function _measureGoal(metric, tid) {
+  // Prefer canonical metrics SSOT for ad economics
+  if (metric.startsWith('ads.') && tid != null) {
+    try {
+      const { computeCanonicalMetrics, readMetric } = require('../canonical_metrics/compute');
+      const snap = await computeCanonicalMetrics(tid, { days: 30 });
+      const v = readMetric(snap, metric);
+      if (v != null) return v;
+    } catch (_) { /* fall through to legacy fetchers */ }
+  }
   if (metric.startsWith('drip.')) {
     // Reuse drip-store logic inline (cheaper than HTTP self-call)
     const list = tid == null ? [] : await _dripLoad(tid);

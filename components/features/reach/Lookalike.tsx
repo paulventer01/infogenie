@@ -213,15 +213,15 @@ export default function Lookalike() {
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
-        style={{ background: "linear-gradient(135deg,#0F172A 0%,#1E40AF 50%,#0EA5E9 100%)" }}
+        className="view-header ig-panel-hero"
+        style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}
       >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#BAE6FD" }}>
-                <span className="bc-group" style={{ color: "rgba(186,230,253,.75)" }}>Reach</span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>›</span> Lookalike Audiences
+              <div className="breadcrumb" style={{ color: '#64748b' }}>
+                <span className="bc-group" style={{ color: '#0f766e' }}>Reach</span>{" "}
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>›</span> Lookalike Audiences
               </div>
               <h2 className="view-title">Lookalike Audience Builder</h2>
               <p className="view-sub">
@@ -324,7 +324,7 @@ export default function Lookalike() {
               style={{
                 width: "100%",
                 padding: 14,
-                background: "linear-gradient(135deg,#1E40AF 0%,#0EA5E9 100%)",
+                background: "linear-gradient(135deg,#0f766e,#0284c7)",
                 color: "white",
                 border: "none",
                 borderRadius: 12,
@@ -353,7 +353,7 @@ export default function Lookalike() {
             )}
             {spec && status === "idle" && (
               <>
-                <div style={{ background: "linear-gradient(135deg,#0F172A 0%,#1E40AF 100%)", borderRadius: 16, padding: 24, color: "white", marginBottom: 18 }}>
+                <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", borderRadius: 16, padding: 24, color: "#0f172a", marginBottom: 18 }}>
                   <div style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: ".6px", opacity: 0.78, fontWeight: 700, marginBottom: 6 }}>
                     Lookalike audience persona
                   </div>
@@ -443,7 +443,7 @@ export default function Lookalike() {
                       <div style={{ background: "white", border: "1.5px solid #0F172A33", borderRadius: 14, padding: 20 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                           <div style={{ fontWeight: 800, color: "#0A1628", fontSize: "1rem" }}>⬛ TikTok Lookalike Audience</div>
-                          <button onClick={() => exportCsv("tiktok")} style={{ padding: "7px 12px", background: "#0F172A", color: "white", border: "none", borderRadius: 8, fontSize: "0.78rem", fontWeight: 700, cursor: "pointer" }}>⬇ Download CSV template</button>
+                          <button onClick={() => exportCsv("tiktok")} style={{ padding: "7px 12px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "white", border: "none", borderRadius: 8, fontSize: "0.78rem", fontWeight: 700, cursor: "pointer" }}>⬇ Download CSV template</button>
                         </div>
                         <div style={{ fontSize: "0.85rem", color: "#0A1628", marginBottom: 8 }}>
                           <b>{tiktok.audienceName || "TikTok LLA"}</b> · Mode: <b>{tiktok.lookalikeMode || "Balanced"}</b>

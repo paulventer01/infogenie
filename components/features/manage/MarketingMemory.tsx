@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { apiGet, apiPost } from "@/lib/api";
 
 interface MemoryNode {
   id: number;
@@ -28,6 +29,10 @@ const NODE_TYPE_META: Record<string, { label: string; icon: string; color: strin
   lead_event:           { label: "Lead Event",           icon: "🎯", color: "#10B981" },
   manual_observation:   { label: "Manual Observation",   icon: "📌", color: "#6B7280" },
   ai_synthesis:         { label: "AI Synthesis",         icon: "🧠", color: "#06B6D4" },
+  business_fact:        { label: "Business Fact",        icon: "📚", color: "#0F766E" },
+  strategic_decision:   { label: "Strategic Decision",   icon: "⚖️", color: "#1D4ED8" },
+  outcome_review:       { label: "Outcome Review",       icon: "✅", color: "#059669" },
+  benchmark_insight:    { label: "Benchmark Insight",    icon: "📶", color: "#B45309" },
 };
 
 const ALL_TYPES = Object.keys(NODE_TYPE_META);
@@ -99,17 +104,17 @@ export default function MarketingMemory() {
     try {
       const params = new URLSearchParams({ page: String(p), per: "15" });
       if (tf) params.set("node_type", tf);
-      const r = await fetch(`/api/knowledge-graph/nodes?${params}`);
-      const j = await r.json();
-      if (j.ok) { setNodes(j.nodes); setTotal(j.total); }
+      const j = await apiGet<{ ok?: boolean; nodes?: MemoryNode[]; total?: number }>(
+        `/api/knowledge-graph/nodes?${params}`,
+      );
+      if (j.ok) { setNodes(j.nodes || []); setTotal(j.total || 0); }
     } catch { /* silent */ }
     setLoading(false);
   }, []);
 
   const fetchHealth = useCallback(async () => {
     try {
-      const r = await fetch("/api/knowledge-graph/health");
-      const j = await r.json();
+      const j = await apiGet<HealthData & { ok?: boolean }>("/api/knowledge-graph/health");
       if (j.ok) setHealth(j);
     } catch { /* silent */ }
   }, []);
@@ -128,12 +133,11 @@ export default function MarketingMemory() {
     if (!query.trim()) return;
     setQuerying(true); setQueryResult(null);
     try {
-      const r = await fetch("/api/knowledge-graph/query", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: query, limit: 6 }),
-      });
-      const j = await r.json();
-      if (j.ok) setQueryResult({ answer: j.answer, nodes: j.nodes });
+      const j = await apiPost<{ ok?: boolean; answer?: string; nodes?: MemoryNode[] }>(
+        "/api/knowledge-graph/query",
+        { question: query, limit: 6 },
+      );
+      if (j.ok) setQueryResult({ answer: j.answer || "", nodes: j.nodes || [] });
     } catch { /* silent */ }
     setQuerying(false);
   };
@@ -142,16 +146,12 @@ export default function MarketingMemory() {
     if (!ingestForm.summary.trim()) return;
     setIngesting(true); setIngestMsg("");
     try {
-      const r = await fetch("/api/knowledge-graph/ingest", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          node_type: ingestForm.node_type,
-          summary: ingestForm.summary,
-          source_ref: ingestForm.source_ref || null,
-          importance: parseFloat(ingestForm.importance) || 0.5,
-        }),
+      const j = await apiPost<{ ok?: boolean; error?: string }>("/api/knowledge-graph/ingest", {
+        node_type: ingestForm.node_type,
+        summary: ingestForm.summary,
+        source_ref: ingestForm.source_ref || null,
+        importance: parseFloat(ingestForm.importance) || 0.5,
       });
-      const j = await r.json();
       if (j.ok) {
         setIngestMsg("✅ Memory node saved!");
         setIngestForm({ node_type: "manual_observation", summary: "", source_ref: "", importance: "0.5" });

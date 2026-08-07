@@ -36,6 +36,17 @@ async function _pullAutoMetric(tid, metric_type, linked_channel, quarter) {
   if (!hasDb()) return null;
   const bounds = _quarterBounds(quarter);
   if (!bounds) return null;
+  // Canonical SSOT for ROAS family (channel filter still uses legacy path below)
+  if (!linked_channel && ['roas', 'true_roas', 'blended_roas'].includes(metric_type)) {
+    try {
+      const { computeCanonicalMetrics, readMetric } = require('../canonical_metrics/compute');
+      const days = Math.max(1, Math.ceil((new Date(bounds.end) - new Date(bounds.start)) / 864e5));
+      const snap = await computeCanonicalMetrics(tid, { days: Math.min(90, days) });
+      const key = metric_type === 'true_roas' ? 'true_roas' : metric_type === 'blended_roas' ? 'blended_roas' : 'roas';
+      const v = readMetric(snap, key);
+      if (v != null) return v;
+    } catch (_) { /* fall through */ }
+  }
   try {
     if (metric_type === 'spend') {
       const channelClause = linked_channel ? `AND channel ILIKE $4` : '';

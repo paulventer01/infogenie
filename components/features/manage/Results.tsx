@@ -628,7 +628,7 @@ export default function Results() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   const header = (
-    <div className="view-header">
+    <div className="view-header ig-panel-hero">
       <div className="container">
         <div className="vh-inner">
           <div>
@@ -973,7 +973,7 @@ export default function Results() {
             <div className="data-table-card" style={{ marginBottom: 24, background: "linear-gradient(135deg,#F0FDF4,#DCFCE7)", border: "1.5px solid #86EFAC" }}>
               <div className="dtc-header">
                 <h3 style={{ color: "#065F46" }}>📈 InfoGenie Improvement Analysis</h3>
-                <span className="atag" style={{ background: "#10B981" }}>Live Tracking</span>
+                <span className="atag atag-solid atag-solid--green">Live Tracking</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14 }}>
                 {[
@@ -1037,7 +1037,7 @@ export default function Results() {
                           <td>{cpa}</td>
                           <td><span style={{ background: statusColor[stat] || "#10B981", color: "white", fontSize: "0.65rem", fontWeight: 700, padding: "3px 8px", borderRadius: 10, textTransform: "uppercase" }}>{stat}</span></td>
                           <td style={{ fontSize: "0.75rem", color: "#6B7280" }}>{c.launchedAt || "—"}</td>
-                          <td><button onClick={() => goToView(router, "campaigns")} style={{ padding: "5px 12px", background: "var(--ig-panel)", border: "none", borderRadius: 7, fontSize: "0.7rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap" }}>👁 View</button></td>
+                          <td><button onClick={() => goToView(router, "campaigns")} className="btn-primary" style={{ padding: "5px 12px", fontSize: "0.7rem", whiteSpace: "nowrap" }}>👁 View</button></td>
                         </tr>
                       );
                     })}
@@ -1054,7 +1054,7 @@ export default function Results() {
             <div className="data-table-card" style={{ marginBottom: 24 }}>
               <div className="dtc-header">
                 <h3>🧪 A/B Test Results</h3>
-                <span className="atag" style={{ background: "#7C3AED" }}>{abTests.length} Tests</span>
+                <span className="atag atag-solid atag-solid--purple">{abTests.length} Tests</span>
               </div>
               <div className="table-scroll">
                 <table className="ig-table">

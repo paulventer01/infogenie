@@ -76,10 +76,13 @@ function callWin(name: string, ...args: number[]): void {
   if (typeof fn === "function") {
     try {
       fn(...args);
+      return;
     } catch {
-      /* legacy handler not available */
+      /* legacy handler error */
     }
   }
+  const w = window as unknown as { showToast?: (m: string) => void };
+  w.showToast?.(`⚠️ Action not ready — refresh the page and try again (${name})`);
 }
 
 function fmtT(n: number): string {
@@ -406,17 +409,22 @@ export default function Battleplan() {
       {/* Page Header */}
       <div
         data-bp-hero
+        data-ig-light-hero="1"
+        className="ig-panel-hero"
         style={{
-          background: "linear-gradient(110deg,#1E40AF 0%,#2563EB 50%,#3B82F6 100%)",
+          background:
+            "radial-gradient(ellipse 75% 65% at 10% 15%, rgba(15,118,110,0.16), transparent 55%), radial-gradient(ellipse 55% 50% at 92% 85%, rgba(2,132,199,0.14), transparent 50%), linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 55%, #eef4ff 100%)",
           borderRadius: 18,
           margin: "18px 24px 6px",
           padding: "22px 28px",
-          boxShadow: "0 8px 28px rgba(37,99,235,.18)",
+          border: "1px solid rgba(15, 118, 110, 0.16)",
+          boxShadow: "0 10px 28px rgba(15, 23, 42, 0.06)",
           position: "relative",
           overflow: "hidden",
           minHeight: 130,
           display: "flex",
           alignItems: "center",
+          color: "#0f172a",
         }}
       >
         <div
@@ -426,7 +434,7 @@ export default function Battleplan() {
             right: -40,
             width: 260,
             height: 260,
-            background: "radial-gradient(circle,rgba(255,255,255,.25),transparent 70%)",
+            background: "radial-gradient(circle,rgba(15,118,110,.08),transparent 70%)",
             borderRadius: "50%",
             pointerEvents: "none",
           }}
@@ -446,24 +454,32 @@ export default function Battleplan() {
           }}
         >
           <div>
-            <div style={{ fontSize: "0.65rem", fontWeight: 800, color: "#BFDBFE", opacity: 0.9, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 6 }}>
-              Analyse › Battle Plan
+            <div
+              className="breadcrumb"
+              style={{ fontSize: "0.65rem", fontWeight: 800, color: "#0f766e", letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 6 }}
+            >
+              <span className="bc-group">Analyse</span>
+              <span className="bc-sep"> › </span>
+              Battle Plan
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-              <span style={{ fontSize: "1.4rem" }}>⚔️</span>
-              <h1 style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "#FFFFFF", margin: 0, textShadow: "0 1px 2px rgba(15,30,61,.20)" }}>
+              <span style={{ fontSize: "1.4rem" }} aria-hidden>⚔️</span>
+              <h1
+                className="view-title"
+                style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "#0f172a", margin: 0 }}
+              >
                 Battle Plan
               </h1>
               <span
                 className="hero-pill"
-                style={{ background: "#FFFFFF", border: "1px solid rgba(255,255,255,.6)", padding: "3px 12px", borderRadius: 20, fontSize: "0.67rem", fontWeight: 800, color: "#1E3A8A", boxShadow: "0 1px 3px rgba(15,30,61,.10)" }}
+                style={{ background: "#FFFFFF", border: "1px solid rgba(15,118,110,.22)", padding: "3px 12px", borderRadius: 20, fontSize: "0.67rem", fontWeight: 800, color: "#1E3A8A", boxShadow: "0 1px 3px rgba(15,30,61,.10)" }}
               >
                 AI-GENERATED
               </span>
             </div>
-            <div style={{ color: "#E0E7FF", opacity: 0.95, fontSize: "0.88rem", fontWeight: 500, textShadow: "0 1px 2px rgba(15,30,61,.18)" }}>
+            <p className="view-sub" style={{ color: "#334155", fontSize: "0.88rem", fontWeight: 500, margin: 0 }}>
               {domain} · {industry} · {comps.length} competitors · Click any action card to execute directly
-            </div>
+            </p>
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
@@ -483,7 +499,7 @@ export default function Battleplan() {
       </div>
 
       {/* Competitor Tabs */}
-      <div style={{ background: "rgba(255,255,255,.02)", borderBottom: "1px solid rgba(255,255,255,.07)", overflowX: "auto" }}>
+      <div style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0", overflowX: "auto" }}>
         <div style={{ display: "flex", padding: "0 20px", maxWidth: 1200, margin: "0 auto" }}>
           {comps.map((comp, i) => {
             const t = comp.threatLevel || "medium";
@@ -500,12 +516,12 @@ export default function Battleplan() {
                   gap: 8,
                   padding: "10px 18px",
                   border: "none",
-                  borderBottom: `3px solid ${active ? "#00C9C8" : "transparent"}`,
-                  background: active ? "rgba(0,201,200,.08)" : "transparent",
+                  borderBottom: `3px solid ${active ? "#00A8A7" : "transparent"}`,
+                  background: active ? "rgba(0,201,200,.10)" : "transparent",
                   cursor: "pointer",
-                  color: active ? "#00C9C8" : "rgba(255,255,255,.5)",
+                  color: active ? "#0F766E" : "#334155",
                   fontSize: "0.8rem",
-                  fontWeight: active ? 700 : 500,
+                  fontWeight: active ? 700 : 600,
                   whiteSpace: "nowrap",
                   fontFamily: "'Inter',sans-serif",
                   transition: "all .15s",
@@ -523,38 +539,38 @@ export default function Battleplan() {
       </div>
 
       {/* Selected Competitor Summary */}
-      <div style={{ background: "rgba(0,201,200,.06)", borderBottom: "1px solid rgba(0,201,200,.12)", padding: "14px 28px" }}>
+      <div style={{ background: "#F0FDFA", borderBottom: "1px solid #CCFBF1", padding: "14px 28px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 36, height: 36, borderRadius: 8, background: "linear-gradient(135deg,#0066FF,#00C9C8)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "white", fontSize: "0.9rem" }}>
               {initial}
             </div>
             <div>
-              <div style={{ fontWeight: 800, color: "white", fontSize: "0.95rem" }}>{c.name}</div>
-              <div style={{ fontSize: "0.68rem", color: "rgba(255,255,255,.4)" }}>{c.url || ""}</div>
+              <div style={{ fontWeight: 800, color: "#0F172A", fontSize: "0.95rem" }}>{c.name}</div>
+              <div style={{ fontSize: "0.68rem", color: "#64748B" }}>{c.url || ""}</div>
             </div>
           </div>
           <div style={{ flex: 1, display: "flex", gap: 24, flexWrap: "wrap" }}>
             {[
-              { v: traffic, l: "Traffic/mo", color: "#00E5FF" },
-              { v: c.ctr || "—", l: "CTR", color: "#00E5FF" },
-              { v: `${c.roas || "—"}×`, l: "ROAS", color: "#00E5FF" },
-              { v: c.adSpend || "—", l: "Ad Spend", color: "#00E5FF" },
-              { v: c.topChannel || "—", l: "Top Channel", color: "#00E5FF" },
+              { v: traffic, l: "Traffic/mo", color: "#0E7490" },
+              { v: c.ctr || "—", l: "CTR", color: "#0E7490" },
+              { v: `${c.roas || "—"}×`, l: "ROAS", color: "#0E7490" },
+              { v: c.adSpend || "—", l: "Ad Spend", color: "#0E7490" },
+              { v: c.topChannel || "—", l: "Top Channel", color: "#0E7490" },
               { v: threat.toUpperCase(), l: "Threat", color: threatColor },
             ].map((m, i) => (
               <div key={i} style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "0.92rem", fontWeight: 800, color: m.color }}>{m.v}</div>
-                <div style={{ fontSize: "0.62rem", color: "rgba(255,255,255,.4)", textTransform: "uppercase", letterSpacing: ".06em" }}>{m.l}</div>
+                <div style={{ fontSize: "0.62rem", color: "#64748B", textTransform: "uppercase", letterSpacing: ".06em" }}>{m.l}</div>
               </div>
             ))}
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <div style={{ fontSize: "0.67rem", color: "rgba(255,255,255,.4)", marginBottom: 2, textTransform: "uppercase", letterSpacing: ".05em" }}>Opportunity Score</div>
-            <div style={{ fontSize: "2rem", fontWeight: 900, fontFamily: "Sora,sans-serif", color: oppScore >= 70 ? "#10B981" : oppScore >= 50 ? "#F59E0B" : "#60A5FA", lineHeight: 1 }}>
+            <div style={{ fontSize: "0.67rem", color: "#64748B", marginBottom: 2, textTransform: "uppercase", letterSpacing: ".05em" }}>Opportunity Score</div>
+            <div style={{ fontSize: "2rem", fontWeight: 900, fontFamily: "Sora,sans-serif", color: oppScore >= 70 ? "#059669" : oppScore >= 50 ? "#D97706" : "#2563EB", lineHeight: 1 }}>
               {oppScore}
             </div>
-            <div style={{ fontSize: "0.62rem", color: "rgba(255,255,255,.3)" }}>out of 100</div>
+            <div style={{ fontSize: "0.62rem", color: "#94A3B8" }}>out of 100</div>
           </div>
         </div>
       </div>
@@ -617,7 +633,7 @@ export default function Battleplan() {
         </div>
 
         {/* Bottom CTA */}
-        <div style={{ marginTop: 24, background: "linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06))", border: "1px solid rgba(0,201,200,.2)", borderRadius: 14, padding: "20px 24px" }}>
+        <div className="bp-attack-cta" style={{ marginTop: 24, background: "linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06))", border: "1px solid rgba(0,201,200,.2)", borderRadius: 14, padding: "20px 24px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
             <div>
               <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.95rem", fontWeight: 800, color: "#0F172A", marginBottom: 4 }}>🚀 Launch Full Attack Plan</div>
@@ -632,10 +648,10 @@ export default function Battleplan() {
               <select
                 id="attackPlanCompSelect"
                 defaultValue={String(idx)}
-                style={{ padding: "10px 14px", background: "#1A2E4A", border: "1px solid rgba(0,201,200,.3)", borderRadius: 9, fontSize: "0.82rem", fontWeight: 600, color: "white", cursor: "pointer", width: "100%", appearance: "auto" }}
+                style={{ padding: "10px 14px", borderRadius: 9, fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", width: "100%", appearance: "auto" }}
               >
                 {comps.map((cc, i) => (
-                  <option key={i} value={i} style={{ background: "#1A2E4A", color: "white" }}>
+                  <option key={i} value={i}>
                     {cc.name || "Competitor " + (i + 1)}
                   </option>
                 ))}
@@ -652,8 +668,9 @@ export default function Battleplan() {
                 🚀 Generate Attack Plan
               </button>
               <button
+                type="button"
+                className="bp-cta-secondary"
                 onClick={() => goToView(router, "intelligence")}
-                style={{ padding: "11px 20px", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.18)", borderRadius: 10, fontSize: "0.82rem", fontWeight: 600, color: "white", cursor: "pointer", whiteSpace: "nowrap" }}
               >
                 📊 Deep Intelligence
               </button>

@@ -44,11 +44,18 @@ interface WorkspacesPayload {
 
 const ROLE_COLORS: Record<string, string> = {
   Owner: "#7E22CE",
+  "Tenant Owner": "#7E22CE",
   Admin: "#1E40AF",
   Editor: "#10B981",
   Viewer: "#64748B",
+  Member: "#64748B",
 };
-const roleColor = (r: string) => ROLE_COLORS[r] || "#64748B";
+const roleColor = (r: string) => {
+  if (ROLE_COLORS[r]) return ROLE_COLORS[r];
+  if (/owner/i.test(r)) return "#7E22CE";
+  if (/admin/i.test(r)) return "#1E40AF";
+  return "#64748B";
+};
 
 export default function Workspaces() {
   const toast = useToast();
@@ -114,7 +121,7 @@ export default function Workspaces() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

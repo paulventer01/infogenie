@@ -88,7 +88,7 @@ const PLATFORM_MAP: Record<string, string> = {
   youtube: "youtube",
 };
 
-export default function ContentCalendar() {
+export default function ContentCalendar({ embedded = false }: { embedded?: boolean } = {}) {
   const [brand, setBrand] = useState("Nike");
   const [goal, setGoal] = useState("");
   const [days, setDays] = useState(7);
@@ -305,7 +305,8 @@ export default function ContentCalendar() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      {!embedded ? (
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -322,8 +323,14 @@ export default function ContentCalendar() {
           </div>
         </div>
       </div>
+      ) : null}
 
-      <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
+      <div className="container" style={{ paddingTop: embedded ? 8 : 24, paddingBottom: 56 }}>
+        {embedded ? (
+          <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 700, color: "#0F766E" }}>
+            Content Calendar editor
+          </div>
+        ) : null}
         <div
           style={{
             background: "#fff",

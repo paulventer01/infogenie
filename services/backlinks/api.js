@@ -1,6 +1,8 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
+const { recordJourneyEvent } = require('../company_overview/journey');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -98,6 +100,13 @@ async function _fallbackBacklinkData(target, limit) {
   };
 }
 
+async function _markBacklinksJourney(req, target, source) {
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'backlinks:journey' });
+    await recordJourneyEvent(tid, target, 'backlinks', { source });
+  } catch (_) { /* non-fatal */ }
+}
+
 router.post('/summary', async (req, res) => {
   const target = _normTarget(req.body?.target);
   if (!target) return _err(res, 400, 'target required');
@@ -110,9 +119,11 @@ router.post('/summary', async (req, res) => {
     const item = task.result?.[0] || {};
     if (_backlinksGated(task) || (!item.backlinks && !item.referring_domains)) {
       const fb = await _fallbackBacklinkData(target, 50);
+      await _markBacklinksJourney(req, target, 'serp-fallback');
       return res.json({ ok:true, source:'serp-fallback', target, summary: fb.summary, raw_status: task.status_message || 'ok',
         note: `DataForSEO Backlinks subscription is not active on this account — showing real link mentions discovered via Google SERP instead (${fb.summary.referring_domains} referring domains from ${fb.summary.backlinks} mentions). For full historical backlink data, activate the Backlinks add-on at app.dataforseo.com/backlinks-subscription.` });
     }
+    await _markBacklinksJourney(req, target, 'dataforseo');
     res.json({ ok:true, source:'dataforseo', target, summary: {
       backlinks: item.backlinks || 0,
       referring_domains: item.referring_domains || 0,

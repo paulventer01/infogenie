@@ -285,8 +285,8 @@ async function _refreshOneAd({ camp, ad, reason, dryRun, runId, auth }) {
   // Register new ad in our DB
   try {
     await _db.getPool().query(`
-      INSERT INTO ad_creatives (tenant_id, campaign_id, platform_ad_id, adset_id, headlines, descriptions, final_url, status, generation, parent_ad_id)
-      VALUES ($8,$1,$2,$3,$4,$5,$6,'paused_pending_review',COALESCE((SELECT MAX(generation)+1 FROM ad_creatives WHERE campaign_id=$1),2),$7)
+      INSERT INTO optimizer_ad_creatives (tenant_id, campaign_id, platform_ad_id, adset_id, headlines, descriptions, final_url, status, generation, parent_ad_id)
+      VALUES ($8,$1,$2,$3,$4,$5,$6,'paused_pending_review',COALESCE((SELECT MAX(generation)+1 FROM optimizer_ad_creatives WHERE campaign_id=$1),2),$7)
       ON CONFLICT (campaign_id, platform_ad_id) DO NOTHING
     `, [camp.id, created.ad_id, ad.adgroup_id, JSON.stringify(copy.headlines), JSON.stringify(copy.descriptions), finalUrl, ad.id, camp.tenant_id]);
   } catch (e) { console.error('[google-creative-refresh] register err:', e.message); }

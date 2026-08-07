@@ -158,7 +158,7 @@ export default function SocialListening() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -181,11 +181,11 @@ export default function SocialListening() {
       <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
         <div
           style={{
-            background: "linear-gradient(135deg,#0F172A 0%,#1E293B 100%)",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
             borderRadius: 14,
             padding: "22px 24px",
             marginBottom: 24,
-            color: "#fff",
+            color: '#0f172a',
           }}
         >
           <h3 style={{ margin: "0 0 4px", fontSize: "1.05rem", fontWeight: 800 }}>

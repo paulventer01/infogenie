@@ -263,10 +263,10 @@ function ChannelsView({ j }: { j: OverviewData }) {
       <div
         style={{
           background:
-            "linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderRadius: 18,
           padding: 30,
-          color: "white",
+          color: "#0f172a",
           marginBottom: 22,
           boxShadow: "0 8px 28px rgba(67,56,202,.28)",
         }}
@@ -784,10 +784,10 @@ function CohortsView({ j }: { j: CohortData }) {
       <div
         style={{
           background:
-            "linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderRadius: 18,
           padding: 24,
-          color: "white",
+          color: "#0f172a",
           marginBottom: 18,
         }}
       >
@@ -1168,10 +1168,10 @@ function ForecastView({ j }: { j: ForecastData }) {
       <div
         style={{
           background:
-            "linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderRadius: 18,
           padding: 24,
-          color: "white",
+          color: "#0f172a",
           marginBottom: 18,
         }}
       >
@@ -1362,16 +1362,16 @@ export default function Attribution() {
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{
           background:
-            "linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#C7D2FE" }}>
+              <div className="breadcrumb" style={{ color: '#475569' }}>
                 <span
                   className="bc-group"
                   style={{ color: "rgba(199,210,254,.75)" }}
@@ -1380,7 +1380,7 @@ export default function Attribution() {
                 </span>{" "}
                 <span
                   className="bc-sep"
-                  style={{ color: "rgba(255,255,255,.3)" }}
+                  style={{ color: '#94a3b8' }}
                 >
                   ›
                 </span>{" "}

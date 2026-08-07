@@ -19,6 +19,10 @@ function _safe(h) {
     if (!res.headersSent) _err(res, 500, 'Internal server error');
   });
 }
+/** InfoGenie uses session `req.user` (not Passport `isAuthenticated`). */
+function _authed(req) {
+  return !!(req.user || req.apiKeyUser || req.viaApiKey);
+}
 
 function _openAIKey() {
   return process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
@@ -56,30 +60,58 @@ function _parseEmb(raw) {
   return null;
 }
 
+function _vecLiteral(arr) {
+  if (!Array.isArray(arr) || !arr.length) return null;
+  return `[${arr.map((n) => Number(n) || 0).join(',')}]`;
+}
+
 // ── Core ingest function (exported for fire-and-forget hooks) ─────────────────
 async function ingestMemoryNode({ tenant_id, node_type, summary, detail = {}, source_ref = null, importance = 0.5 }) {
   if (!_db.hasDb()) return null;
   if (!tenant_id || !node_type || !summary) return null;
 
-  const validTypes = ['campaign_result','competitor_signal','content_performance','audience_shift','lead_event','manual_observation','ai_synthesis'];
+  const validTypes = [
+    'campaign_result','competitor_signal','content_performance','audience_shift',
+    'lead_event','manual_observation','ai_synthesis',
+    'business_fact','strategic_decision','outcome_review','benchmark_insight',
+  ];
   if (!validTypes.includes(node_type)) return null;
 
   try {
     const pool = _db.getPool();
     const embedding = await _embed(summary);
+    const { isVectorReady } = require('./schema');
+    const useVec = embedding && embedding.length === 1536 && await isVectorReady();
+    const vecLit = useVec ? _vecLiteral(embedding) : null;
+
     const r = await pool.query(
-      `INSERT INTO marketing_memory_nodes
-         (tenant_id, node_type, source_ref, summary, detail_json, embedding, importance_score)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [
-        tenant_id,
-        node_type,
-        source_ref || null,
-        summary.slice(0, 2000),
-        JSON.stringify(detail),
-        embedding ? JSON.stringify(embedding) : null,
-        Math.max(0, Math.min(1, Number(importance) || 0.5)),
-      ]
+      useVec
+        ? `INSERT INTO marketing_memory_nodes
+             (tenant_id, node_type, source_ref, summary, detail_json, embedding, embedding_vec, importance_score)
+           VALUES ($1,$2,$3,$4,$5,$6,$7::vector,$8) RETURNING id`
+        : `INSERT INTO marketing_memory_nodes
+             (tenant_id, node_type, source_ref, summary, detail_json, embedding, importance_score)
+           VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      useVec
+        ? [
+          tenant_id,
+          node_type,
+          source_ref || null,
+          summary.slice(0, 2000),
+          JSON.stringify(detail),
+          embedding ? JSON.stringify(embedding) : null,
+          vecLit,
+          Math.max(0, Math.min(1, Number(importance) || 0.5)),
+        ]
+        : [
+          tenant_id,
+          node_type,
+          source_ref || null,
+          summary.slice(0, 2000),
+          JSON.stringify(detail),
+          embedding ? JSON.stringify(embedding) : null,
+          Math.max(0, Math.min(1, Number(importance) || 0.5)),
+        ],
     );
     return r.rows[0]?.id || null;
   } catch (e) {
@@ -88,11 +120,35 @@ async function ingestMemoryNode({ tenant_id, node_type, summary, detail = {}, so
   }
 }
 
-// ── Retrieve top-k nodes by cosine similarity ─────────────────────────────────
+// ── Retrieve top-k nodes (pgvector when ready, else JSONB cosine over recent) ─
 async function _retrieveNodes(tenant_id, queryVec, limit = 8) {
   if (!_db.hasDb()) return [];
   try {
     const pool = _db.getPool();
+    const { isVectorReady } = require('./schema');
+    const useVec = queryVec && queryVec.length === 1536 && await isVectorReady();
+
+    if (useVec) {
+      const vecLit = _vecLiteral(queryVec);
+      const r = await pool.query(
+        `SELECT id, node_type, source_ref, summary, detail_json, importance_score, created_at,
+                (1 - (embedding_vec <=> $2::vector)) AS cosine_sim
+         FROM marketing_memory_nodes
+         WHERE tenant_id=$1 AND embedding_vec IS NOT NULL AND rolled_up_at IS NULL
+         ORDER BY embedding_vec <=> $2::vector
+         LIMIT $3`,
+        [tenant_id, vecLit, Math.min(50, Math.max(limit, 8))],
+      );
+      return r.rows
+        .map((row) => ({
+          ...row,
+          score: (Number(row.cosine_sim) || 0) * 0.7 + (row.importance_score || 0) * 0.3,
+          retrieval: 'pgvector',
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit);
+    }
+
     const r = await pool.query(
       `SELECT id, node_type, source_ref, summary, detail_json, importance_score, embedding, created_at
        FROM marketing_memory_nodes
@@ -102,14 +158,14 @@ async function _retrieveNodes(tenant_id, queryVec, limit = 8) {
     );
 
     if (!queryVec) {
-      return r.rows.slice(0, limit).map(row => ({ ...row, score: row.importance_score }));
+      return r.rows.slice(0, limit).map(row => ({ ...row, score: row.importance_score, retrieval: 'recency' }));
     }
 
     return r.rows
       .map(row => {
         const rawEmb = _parseEmb(row.embedding);
         const sim = _cosine(queryVec, rawEmb);
-        return { ...row, score: sim * 0.7 + row.importance_score * 0.3 };
+        return { ...row, score: sim * 0.7 + row.importance_score * 0.3, retrieval: 'jsonb_cosine' };
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
@@ -188,7 +244,7 @@ async function runMonthlyRollup() {
 
 // POST /api/knowledge-graph/ingest
 router.post('/ingest', _safe(async (req, res) => {
-  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  if (!_authed(req)) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:ingest' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -202,7 +258,7 @@ router.post('/ingest', _safe(async (req, res) => {
 
 // POST /api/knowledge-graph/query
 router.post('/query', _safe(async (req, res) => {
-  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  if (!_authed(req)) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:query' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -258,7 +314,7 @@ router.post('/query', _safe(async (req, res) => {
 
 // GET /api/knowledge-graph/nodes
 router.get('/nodes', _safe(async (req, res) => {
-  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  if (!_authed(req)) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:nodes' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -291,7 +347,7 @@ router.get('/nodes', _safe(async (req, res) => {
 
 // GET /api/knowledge-graph/health
 router.get('/health', _safe(async (req, res) => {
-  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  if (!_authed(req)) return _err(res, 401, 'auth required');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'kg:health' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -308,6 +364,7 @@ router.get('/health', _safe(async (req, res) => {
   const total = parseInt(cnt.rows[0]?.n || 0);
   const embCount = parseInt(embedded.rows[0]?.n || 0);
 
+  const vs = await vectorStatus();
   res.json({
     ok: true,
     node_count: total,
@@ -315,16 +372,41 @@ router.get('/health', _safe(async (req, res) => {
     last_ingested: last.rows[0]?.created_at || null,
     embedding_coverage: total ? Math.round((embCount / total) * 100) : 0,
     has_openai: _hasOpenAI(),
+    vector: vs,
   });
 }));
 
 // POST /api/knowledge-graph/rollup (admin/cron — owner only)
 router.post('/rollup', _safe(async (req, res) => {
-  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  if (!_authed(req)) return _err(res, 401, 'auth required');
   const user = req.user || req.apiKeyUser;
-  if (!user?.is_owner && !user?.is_admin) return _err(res, 403, 'owner or admin required');
+  if (!user?.isOwner && !user?.is_owner && !user?.is_admin) return _err(res, 403, 'owner or admin required');
   const result = await runMonthlyRollup();
   res.json({ ok: true, ...result });
 }));
 
-module.exports = { router, ingestMemoryNode, queryMemoryNodes, runMonthlyRollup };
+async function vectorStatus() {
+  try {
+    const { isVectorReady } = require('./schema');
+    const ready = await isVectorReady();
+    return {
+      ready,
+      mode: ready ? 'pgvector' : 'jsonb_cosine',
+      note: ready
+        ? 'pgvector HNSW/cosine — scalable memory retrieval'
+        : 'JSONB + in-app cosine over recent 200 nodes (pgvector optional upgrade)',
+    };
+  } catch {
+    return { ready: false, mode: 'jsonb_cosine', note: 'vector status unavailable' };
+  }
+}
+
+module.exports = {
+  router,
+  ingestMemoryNode,
+  queryMemoryNodes,
+  runMonthlyRollup,
+  embedText: _embed,
+  cosine: _cosine,
+  vectorStatus,
+};

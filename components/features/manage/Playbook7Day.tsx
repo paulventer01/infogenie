@@ -117,8 +117,8 @@ function SuggestionModal({
         <div
           style={{
             padding: "18px 22px",
-            background: "linear-gradient(135deg,#0EA5E9,#312E81)",
-            color: "#fff",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+            color: "#0f172a",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -424,7 +424,7 @@ export default function Playbook7Day() {
                 onClick={() => runAutonomous(null)}
                 style={{
                   padding: "11px 18px",
-                  background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+                  background: "linear-gradient(135deg,#0f766e,#0284c7)",
                   color: "#fff",
                   border: "none",
                   borderRadius: 9,
@@ -482,8 +482,8 @@ export default function Playbook7Day() {
                 <div
                   style={{
                     padding: "16px 18px",
-                    background: `linear-gradient(135deg,${c},#0F172A)`,
-                    color: "#fff",
+                    background: `linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)`,
+                    color: "#0f172a",
                   }}
                 >
                   <div
@@ -518,14 +518,15 @@ export default function Playbook7Day() {
                       onClick={() => runAutonomous(d.day)}
                       style={{
                         padding: "7px 11px",
-                        background: "rgba(255,255,255,0.18)",
-                        border: "1px solid rgba(255,255,255,0.3)",
+                        background: "linear-gradient(135deg,#0f766e,#0284c7)",
+                        border: "none",
                         color: "#fff",
                         borderRadius: 7,
                         fontWeight: 700,
                         cursor: "pointer",
                         fontSize: ".72rem",
                         whiteSpace: "nowrap",
+                        boxShadow: "0 4px 12px rgba(15,118,110,0.25)",
                       }}
                     >
                       ▶ Run Day {d.day}
@@ -736,7 +737,7 @@ export default function Playbook7Day() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

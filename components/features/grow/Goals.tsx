@@ -297,7 +297,7 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
   );
 }
 
-export default function Goals() {
+export default function Goals({ embedded = false }: { embedded?: boolean } = {}) {
   const [loading, setLoading] = useState(true);
   const [check, setCheck] = useState<GoalsCheck | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -414,60 +414,84 @@ export default function Goals() {
 
   return (
     <div className="view-header-wrap">
-      <div
-        className="view-header"
-        style={{
-          background:
-            "linear-gradient(135deg,#0F172A 0%,#7C3AED 50%,#A855F7 100%)",
-        }}
-      >
-        <div className="container">
-          <div className="vh-inner">
-            <div>
-              <div className="breadcrumb" style={{ color: "#E9D5FF" }}>
-                <span
-                  className="bc-group"
-                  style={{ color: "rgba(233,213,255,.8)" }}
-                >
-                  Grow
-                </span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>
-                  ›
-                </span>{" "}
-                Goals &amp; Targets
+      {!embedded ? (
+        <div
+          className="view-header ig-panel-hero"
+          style={{
+            background:
+              "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+          }}
+        >
+          <div className="container">
+            <div className="vh-inner">
+              <div>
+                <div className="breadcrumb" style={{ color: "#E9D5FF" }}>
+                  <span
+                    className="bc-group"
+                    style={{ color: "rgba(233,213,255,.8)" }}
+                  >
+                    Grow
+                  </span>{" "}
+                  <span className="bc-sep" style={{ color: '#94a3b8' }}>
+                    ›
+                  </span>{" "}
+                  Goals &amp; Targets
+                </div>
+                <h2 className="view-title">Goals &amp; Targets</h2>
+                <p className="view-sub">
+                  Set targets on the metrics that matter, then let InfoGenie
+                  autonomously check progress and surface a GPT-4o root-cause
+                  hypothesis the moment a goal goes off-track.
+                </p>
               </div>
-              <h2 className="view-title">Goals &amp; Targets</h2>
-              <p className="view-sub">
-                Set targets on the metrics that matter, then let InfoGenie
-                autonomously check progress and surface a GPT-4o root-cause
-                hypothesis the moment a goal goes off-track.
-              </p>
-            </div>
-            <div className="vh-actions">
-              <button
-                onClick={openModal}
-                style={{
-                  padding: "10px 16px",
-                  background: "white",
-                  color: "#7C3AED",
-                  border: "none",
-                  borderRadius: 9,
-                  fontWeight: 700,
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                }}
-              >
-                + Add Goal
-              </button>
-              <button className="btn-refresh-light" onClick={load}>
-                ↻ Refresh
-              </button>
+              <div className="vh-actions">
+                <button
+                  onClick={openModal}
+                  style={{
+                    padding: "10px 16px",
+                    background: "white",
+                    color: "#7C3AED",
+                    border: "none",
+                    borderRadius: 9,
+                    fontWeight: 700,
+                    fontSize: "0.85rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  + Add Goal
+                </button>
+                <button className="btn-refresh-light" onClick={load}>
+                  ↻ Refresh
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="container" style={{ paddingTop: 4, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button
+            type="button"
+            onClick={openModal}
+            style={{
+              padding: "8px 14px",
+              background: "#4F46E5",
+              color: "#fff",
+              border: "none",
+              borderRadius: 9,
+              fontWeight: 700,
+              fontSize: "0.85rem",
+              cursor: "pointer",
+            }}
+          >
+            + Add Goal
+          </button>
+          <button type="button" className="btn-refresh-light" onClick={load}>
+            ↻ Refresh
+          </button>
+        </div>
+      )}
 
-      <div className="container" style={{ paddingTop: 24, paddingBottom: 40 }}>
+      <div className="container" style={{ paddingTop: embedded ? 12 : 24, paddingBottom: 40 }}>
         <div>
           {loading && (
             <div style={{ textAlign: "center", padding: 48, color: "#64748B" }}>

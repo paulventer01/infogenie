@@ -1,7 +1,6 @@
 import styles from "../../styles/auth.module.css";
 
-// Minimal shell for the auth pages — no navbar. Provides the centred card
-// background (radial gradient over deep navy) baked into each legacy HTML file.
+// Minimal shell for auth pages — atmospheric page background, no navbar.
 export default function AuthLayout({
   children,
 }: {

@@ -110,7 +110,7 @@ export default function VerticalPlaybooks() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>📋 Vertical Playbooks</h2>
         <p className="view-sub">
           Pre-built, benchmarked 90-day growth playbooks for your industry — channels,

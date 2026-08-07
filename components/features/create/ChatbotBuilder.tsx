@@ -139,7 +139,7 @@ export default function ChatbotBuilder() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -466,7 +466,7 @@ export default function ChatbotBuilder() {
                 </div>
                 <div
                   style={{
-                    background: "#0A1628",
+                    background: '#eef4ff',
                     borderRadius: 12,
                     padding: 14,
                     color: "#E5E7EB",
@@ -481,7 +481,7 @@ export default function ChatbotBuilder() {
                     }}
                   >
                     <h3
-                      style={{ margin: 0, fontSize: "0.92rem", color: "#fff" }}
+                      style={{ margin: 0, fontSize: "0.92rem", color: "#0f172a" }}
                     >
                       📋 Embed snippet
                     </h3>
@@ -489,7 +489,7 @@ export default function ChatbotBuilder() {
                       onClick={copySnippet}
                       style={{
                         background: safeAccent,
-                        color: "#fff",
+                        color: "#0f172a",
                         border: "none",
                         padding: "5px 12px",
                         borderRadius: 5,
@@ -507,7 +507,7 @@ export default function ChatbotBuilder() {
                       padding: 10,
                       borderRadius: 6,
                       fontSize: "0.7rem",
-                      color: "#A7F3D0",
+                      color: '#0f766e',
                       overflow: "auto",
                       maxHeight: 280,
                       margin: 0,

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { apiGet } from "@/lib/api";
+import PanelHero from "@/components/layout/PanelHero";
 
 interface Broadcast {
   id: number;
@@ -123,25 +124,16 @@ export default function EmailCampaignAnalytics() {
     });
 
   return (
-    <div style={{ fontFamily: "Inter, sans-serif", background: "#F8FAFF", minHeight: "100vh" }}>
-      {/* Hero */}
-      <div style={{ background: "linear-gradient(135deg, #0A1F4E 0%, #1E3A8A 55%, #0066CC 100%)", padding: "28px 28px 24px" }}>
-        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "rgba(255,255,255,.15)", color: "#E0E7FF", padding: "3px 10px", borderRadius: 20, textTransform: "uppercase", letterSpacing: ".07em" }}>REACH</span>
-            <span style={{ color: "rgba(255,255,255,.3)", fontSize: "0.65rem" }}>›</span>
-            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "rgba(255,255,255,.55)", textTransform: "uppercase", letterSpacing: ".07em" }}>Email Analytics</span>
-          </div>
-          <h2 style={{ margin: 0, fontFamily: "Sora, sans-serif", fontSize: "1.55rem", fontWeight: 900, color: "#fff" }}>📊 Email Campaign Analytics</h2>
-          <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,.7)", fontSize: "0.85rem", maxWidth: 560 }}>
-            Open rates, click rates, bounce rates, and unsubscribe tracking across every email broadcast — with industry benchmarks to show exactly where you stand.
-          </p>
-        </div>
-      </div>
+    <div style={{ fontFamily: "inherit", background: "transparent", minHeight: "100%" }}>
+      <PanelHero
+        group="Reach"
+        title="📊 Email Campaign Analytics"
+        subtitle="Open rates, click rates, bounce rates, and unsubscribe tracking across every email broadcast — with industry benchmarks to show exactly where you stand."
+      />
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 16px" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "4px 4px 40px" }}>
         {loading ? (
-          <div style={{ textAlign: "center", padding: 60, color: "#9CA3AF" }}>Loading analytics…</div>
+          <div style={{ textAlign: "center", padding: 60, color: "#64748b" }}>Loading analytics…</div>
         ) : (
           <>
             {/* Overall stats */}

@@ -2,6 +2,27 @@ const express = require('express');
 const path = require('path');
 const https = require('https');
 const fs    = require('fs');
+// Load workspace .env when present so plain `node server.js` picks up
+// DATABASE_URL / SESSION_SECRET (Next.js loads .env automatically; Express does not).
+(function _loadDotEnv() {
+  try {
+    const envPath = path.join(__dirname, '.env');
+    if (!fs.existsSync(envPath)) return;
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+      if (!m) continue;
+      const key = m[1];
+      if (process.env[key] != null && process.env[key] !== '') continue;
+      let val = m[2].trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      process.env[key] = val;
+    }
+  } catch {
+    /* ignore malformed .env */
+  }
+})();
 const multer = require('multer');
 const dns   = require('dns').promises;
 const net   = require('net');
@@ -28,6 +49,18 @@ const _tenantRouter     = require('./services/tenants/api');
 const _permEnforce      = require('./services/tenants/permission_enforce');
 const _authGate         = require('./services/auth_gate');
 const _runtimeFlags     = require('./services/runtime_flags');
+const _security         = require('./services/security');
+const { initSentry, captureException } = require('./services/infra/sentry');
+const { logger, requestLogger } = require('./services/infra/logger');
+const { withRetry, isTransientError } = require('./services/infra/retry');
+const { getBreaker } = require('./services/infra/circuit_breaker');
+const { closeRedis } = require('./services/infra/redis');
+const {
+  onShutdown, installSignalHandlers,
+} = require('./services/infra/shutdown');
+
+// Optional Sentry — no-op without SENTRY_DSN.
+try { initSentry(); } catch (_) { /* ignore */ }
 
 // Background work — port binding, the drip cron tick below, the register-time
 // crons in services/officer + services/assistant_ops routes, and the BOOT_TASKS
@@ -38,6 +71,10 @@ const _runtimeFlags     = require('./services/runtime_flags');
 // process-level handlers and any route module so every guard downstream reads
 // the right value.
 _runtimeFlags.setBackground(require.main === module);
+// Prefer shared job scheduler for drip / crisis / digest / optimizer crons.
+if (_runtimeFlags.backgroundEnabled() && process.env.INFOGENIE_JOBS !== '0') {
+  process.env.INFOGENIE_JOBS = '1';
+}
 
 // ── Global async safety net ──────────────────────────────────────────────────
 // Node 15+ crashes the whole process on any unhandled promise rejection. In a
@@ -114,56 +151,77 @@ function _rebuildAiClients() {
 async function openaiChatWithRetry(params, opts = {}) {
   const { fallbackModel = 'gpt-5-mini', retries = 2 } = opts;
   const primary = params.model;
-  let primaryErr = null;        // preserve original cause for diagnostics
+  const breaker = getBreaker('openai', { failureThreshold: 5, openMs: 30_000 });
+  let primaryErr = null;
   let lastTransient = false;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await openai.chat.completions.create(params);
-    } catch (e) {
-      primaryErr = e;
-      const msg = (e && e.message) || '';
-      const status = (e && (e.status || e.statusCode)) || 0;
-      lastTransient = /500|502|503|504|timeout|ECONN|ETIMEDOUT|fetch failed|no body/i.test(msg)
-        || [500, 502, 503, 504, 408, 429].includes(status);
-      if (!lastTransient) break;       // don't retry 400/401/403/404 etc
-      if (attempt < retries) {
-        await new Promise(r => setTimeout(r, 350 * (attempt + 1)));
+
+  const attemptPrimary = async () => {
+    return withRetry(
+      () => breaker.exec(() => openai.chat.completions.create(params)),
+      {
+        retries,
+        minDelayMs: 350,
+        shouldRetry: (e) => {
+          const msg = (e && e.message) || '';
+          const status = (e && (e.status || e.statusCode)) || 0;
+          return /500|502|503|504|timeout|ECONN|ETIMEDOUT|fetch failed|no body|CIRCUIT_OPEN|429/i.test(msg)
+            || [500, 502, 503, 504, 408, 429].includes(status)
+            || e.code === 'CIRCUIT_OPEN';
+        },
+        onRetry: (e, n) => logger.warn('openai_retry', { attempt: n, error: e.message, model: primary }),
       }
-    }
+    );
+  };
+
+  try {
+    return await attemptPrimary();
+  } catch (e) {
+    primaryErr = e;
+    const msg = (e && e.message) || '';
+    const status = (e && (e.status || e.statusCode)) || 0;
+    lastTransient = /500|502|503|504|timeout|ECONN|ETIMEDOUT|fetch failed|no body|CIRCUIT_OPEN|429/i.test(msg)
+      || [500, 502, 503, 504, 408, 429].includes(status)
+      || e.code === 'CIRCUIT_OPEN';
   }
-  // Fallback model attempt — ONLY if last error was transient AND model differs.
-  // Non-transient errors (auth, bad request, etc.) won't be fixed by switching
-  // model and would obscure the real root cause.
+
   if (lastTransient && fallbackModel && fallbackModel !== primary) {
     try {
-      console.warn(`[openai-retry] ${primary} failed (${primaryErr?.message}) — falling back to ${fallbackModel}`);
-      return await openai.chat.completions.create({ ...params, model: fallbackModel });
+      logger.warn('openai_fallback', { primary, fallbackModel, error: primaryErr?.message });
+      return await breaker.exec(() => openai.chat.completions.create({ ...params, model: fallbackModel }));
     } catch (e) {
+      captureException(e, { primary, fallbackModel });
       const merged = new Error(`primary(${primary}): ${primaryErr?.message || primaryErr} | fallback(${fallbackModel}): ${e.message || e}`);
       merged.primaryError = primaryErr;
       merged.fallbackError = e;
       throw merged;
     }
   }
+  if (primaryErr) captureException(primaryErr, { model: primary });
   throw primaryErr || new Error('openai retry failed');
 }
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Headers required for Replit proxy/preview to work correctly
+// Baseline security headers (CSP report-only, nosniff, Referrer-Policy, …).
+// See docs/security-guardrails.md and services/security/headers.js.
+app.use(_security.securityHeaders);
+
+// CORS + cache headers. CORS stays permissive for the Replit/Cursor preview
+// iframe in non-prod; production can tighten via CORS_ORIGIN.
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  const corsOrigin = process.env.CORS_ORIGIN || '*';
+  res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-InfoGenie-Key, X-Requested-With, X-Request-Id');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  // Allow embedding in iframes (needed for Replit preview pane)
-  res.removeHeader('X-Frame-Options');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
+app.use(requestLogger());
 
 // Capture the raw request body alongside the parsed JSON so HMAC-signed
 // webhooks (Resend / Svix) can verify against the exact bytes that were
@@ -173,14 +231,19 @@ app.use(express.json({ limit: '5mb', verify: (req, _res, buf) => { req.rawBody =
 // Trust the Replit proxy so req.ip returns the real client IP for budget caps.
 app.set('trust proxy', true);
 
+// Liveness / readiness — public, no auth (for LB + k8s probes).
+app.use('/api', require('./services/health/api'));
+
 // ── Session store (Postgres-backed, falls back to in-memory if no DB) ────────
 // Required for the real per-user auth flow (signup / login / social OAuth).
 // Cookie: HttpOnly, SameSite=Lax, Secure in production, 30-day rolling expiry.
-const _sessionSecret = process.env.SESSION_SECRET
-  || process.env.INFOGENIE_API_KEY
-  || crypto.randomBytes(32).toString('hex');
-if (!process.env.SESSION_SECRET) {
-  console.warn('[auth] SESSION_SECRET not set — using ephemeral secret (sessions will not survive restart unless DATABASE_URL is configured to back the session store)');
+// Production requires a dedicated SESSION_SECRET (see services/security/secrets.js).
+let _sessionSecret;
+try {
+  _sessionSecret = _security.resolveSessionSecret();
+} catch (e) {
+  console.error('[security] FATAL —', e.message);
+  process.exit(1);
 }
 const _sessionStore = (process.env.DATABASE_URL)
   ? new PgSession({
@@ -199,17 +262,26 @@ app.use(expressSession({
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    // true behind HTTPS proxies/tunnels (cloudflared); boolean true only in prod.
+    // 'auto' uses req.secure which works with trust proxy + X-Forwarded-Proto.
+    secure: process.env.NODE_ENV === 'production' ? true : 'auto',
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days inactivity
   },
 }));
 // Populate req.user from req.session (if any). Runs before the static-file
 // + API-key gate so every downstream route can read req.user.
 app.use(_authService.loadUserFromSession);
+// CSRF Origin/Referer guard for cookie-authenticated mutations (shadow by default in dev).
+app.use(_security.csrfGuard);
 // Attach tenant context (active tenant, role, permission set) to req. Phase 1
 // is non-enforcing — this just makes req.tenant / req.can(perm) available to
 // any route that wants to read it. No existing route is gated yet.
 app.use(_tenantMiddleware.loadTenantContext);
+// Auth abuse rate limit (login / signup / reset) — Redis-backed when REDIS_URL set.
+const _authAbuse = _security.authAbuseLimiter();
+app.use('/api/auth/login', _authAbuse);
+app.use('/api/auth/signup', _authAbuse);
+app.use('/api/auth/request-reset', _authAbuse);
 // Mount /api/auth/* routes BEFORE the static-file handler + API-key gate so
 // they remain reachable to unauthenticated visitors.
 app.use('/api/auth', _authService.router);
@@ -217,6 +289,10 @@ app.use('/api/auth', _authService.router);
 // Logged-in users need to query/switch their own tenant memberships regardless
 // of platform-owner status. Each route inside enforces its own auth check.
 app.use('/api/tenants', _tenantRouter);
+// /api/workspaces — Workspaces & Team panel (tenant-scoped memberships +
+// members + recent audit). Same auth exemption as /api/tenants; route
+// enforces login itself.
+app.use('/api/workspaces', require('./services/workspaces/api'));
 // Data-mode enforcement: wrap res.json on every /api response so fabricated
 // data is either badged (demo) or replaced with an honest "data unavailable"
 // message (strict). Wraps res.json at request start; reads the resolved
@@ -371,6 +447,8 @@ app.use((req, res, next) => {
 // webhooks, status pings) are allowlisted and stay open even when auth is on.
 const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/auth\//,                  // session/token auth + OAuth callbacks
+  /^\/api\/health$/,                 // liveness probe
+  /^\/api\/ready$/,                  // readiness probe
   /^\/api\/diag-beacon$/,            // client breadcrumb mirror — fire-and-forget
   /^\/api\/diag-capture/,            // dashboard-diag capture/replay (temp tool)
   /^\/api\/drips\/webhook\/resend$/, // Svix-signed inbound webhook
@@ -441,11 +519,17 @@ function _isApiPublic(p) { return _AUTH_PUBLIC_API_PATHS.some(rx => rx.test(p));
 async function _injectApiKeyAuth(req) {
   if (req.user) return;
   const expected = process.env.INFOGENIE_API_KEY;
+  // Prefer header auth. Query-string ?key= is rejected in production (leaks via
+  // logs/Referer); still accepted in development for quick curl smoke tests.
+  const queryKey =
+    req.method === 'GET' && process.env.NODE_ENV !== 'production'
+      ? String(req.query.key || '').trim()
+      : '';
   const supplied =
        (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
     || (req.headers['x-infogenie-key'] || '').trim()
-    || (req.method === 'GET' ? String(req.query.key || '').trim() : '');
-  if (!expected || !supplied || supplied !== expected) return;
+    || queryKey;
+  if (!expected || !supplied || !_security.safeEqualString(supplied, expected)) return;
   try {
     if (!global.__apiKeyPrincipal) {
       const _db = require('./db');
@@ -1104,8 +1188,9 @@ function getDataForSEOAuth() {
 async function callDataForSEO(endpoint, body, timeoutMs = 18000) {
   const auth = getDataForSEOAuth();
   if (!auth) throw new Error('DataForSEO credentials not configured');
+  const breaker = getBreaker('dataforseo', { failureThreshold: 5, openMs: 45_000 });
 
-  return new Promise((resolve, reject) => {
+  const once = () => new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const options = {
       hostname: 'api.dataforseo.com',
@@ -1122,6 +1207,11 @@ async function callDataForSEO(endpoint, body, timeoutMs = 18000) {
       let raw = '';
       apiRes.on('data', chunk => { raw += chunk; });
       apiRes.on('end', () => {
+        if (apiRes.statusCode >= 500 || apiRes.statusCode === 429) {
+          const err = new Error(`DataForSEO HTTP ${apiRes.statusCode}`);
+          err.status = apiRes.statusCode;
+          return reject(err);
+        }
         try {
           resolve(JSON.parse(raw));
         } catch(e) {
@@ -1135,6 +1225,16 @@ async function callDataForSEO(endpoint, body, timeoutMs = 18000) {
     req.write(data);
     req.end();
   });
+
+  return withRetry(
+    () => breaker.exec(once),
+    {
+      retries: 2,
+      minDelayMs: 400,
+      shouldRetry: isTransientError,
+      onRetry: (e, n) => logger.warn('dataforseo_retry', { attempt: n, error: e.message, endpoint }),
+    }
+  );
 }
 
 // ── Competitor domain map (used when user doesn't specify) ───────────────────
@@ -1162,8 +1262,9 @@ function getRapidApiKey(envName = 'RAPIDAPI_KEY') {
 async function callRapidAPI(host, path, method = 'GET', body = null) {
   const key = getRapidApiKey();
   if (!key) throw new Error('RAPIDAPI_KEY not configured');
+  const breaker = getBreaker('rapidapi', { failureThreshold: 5, openMs: 45_000 });
 
-  return new Promise((resolve, reject) => {
+  const once = () => new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
     const options = {
       hostname: host,
@@ -1181,6 +1282,11 @@ async function callRapidAPI(host, path, method = 'GET', body = null) {
       let raw = '';
       res.on('data', chunk => { raw += chunk; });
       res.on('end', () => {
+        if (res.statusCode >= 500 || res.statusCode === 429) {
+          const err = new Error(`RapidAPI HTTP ${res.statusCode}`);
+          err.status = res.statusCode;
+          return reject(err);
+        }
         try { resolve(JSON.parse(raw)); }
         catch(e) { resolve({ _raw: raw }); }
       });
@@ -1190,6 +1296,16 @@ async function callRapidAPI(host, path, method = 'GET', body = null) {
     if (data) req.write(data);
     req.end();
   });
+
+  return withRetry(
+    () => breaker.exec(once),
+    {
+      retries: 2,
+      minDelayMs: 300,
+      shouldRetry: isTransientError,
+      onRetry: (e, n) => logger.warn('rapidapi_retry', { attempt: n, error: e.message, host }),
+    }
+  );
 }
 
 // ── POST /api/competitor-news ─────────────────────────────────────────────────
@@ -1613,6 +1729,18 @@ async function _dripTickInner(tid) {
     }
     enr.history = enr.history || [];
     enr.history.push(entry);
+    // Transient failures (rate limits / timeouts) — retry same step later; do not advance.
+    const _transientFail = !entry.ok && (
+      entry.failureType === 'rate' ||
+      /timeout|429|503|ECONN|ETIMEDOUT|rate.?limit/i.test(String(entry.error || ''))
+    );
+    if (_transientFail) {
+      enr.retryCount = (enr.retryCount || 0) + 1;
+      enr.nextSendAt = now + Math.min(60, 5 * enr.retryCount) * 60_000;
+      mutated = true;
+      continue;
+    }
+    enr.retryCount = 0;
     enr.currentStep += 1;
     if (enr.currentStep >= enr.sequence.length) {
       enr.status = 'completed';
@@ -1628,11 +1756,10 @@ async function _dripTickInner(tid) {
   if (mutated) await _dripSave(tid, list);
 }
 
-// Tick every 60 seconds. Errors in the engine should never crash the server.
-// Guarded so importing the app for tests (buildApp) starts no timers.
-if (_runtimeFlags.backgroundEnabled()) {
+// Drip tick is owned by the shared job scheduler when INFOGENIE_JOBS=1.
+// Fallback inline timer only when jobs are explicitly disabled.
+if (_runtimeFlags.backgroundEnabled() && process.env.INFOGENIE_JOBS === '0') {
   setInterval(() => { _dripTick().catch(e => console.error('[drip] tick error:', e.message)); }, 60_000);
-  // Also fire once 5 seconds after boot so freshly-enrolled day-0 sends go out.
   setTimeout(() => { _dripTick().catch(()=>{}); }, 5_000);
 }
 
@@ -2545,6 +2672,11 @@ BOOT_TASKS.push(async () => {
         console.error('[tenants] schema init failed:', e.message);
         if (process.env.NODE_ENV === 'production') process.exit(1);
       }
+      try {
+        await require('./services/auth/preview_seed').ensurePreviewUser();
+      } catch (e) {
+        console.warn('[auth/preview] seed skipped:', e.message);
+      }
       // Admin Portal (Task 10): clients + issues tables, tenant data-mode
       // default column, platform data-mode default seed. Runs after tenants
       // schema so the FK to tenants(id) exists.
@@ -2642,17 +2774,68 @@ const _webAnalRouter   = require('./services/web_analytics/api');
 app.use('/api/projects',        _projectsRouter);
 app.use('/api/okr',             _okrRouter);
 app.use('/api/brand-calendar',  _bcalRouter);
+const _calAsstSchema = require('./services/calendar_assistant/schema');
+const _calAsstRouter = require('./services/calendar_assistant/api');
+app.use('/api/calendar-assistant', _calAsstRouter);
+// Budget family: mount nested /caps + /arbitrage BEFORE /api/budget so the board
+// router does not swallow those paths (Express prefix matching).
+const _budgetCapsRouterEarly = require('./services/budget_caps/api');
+const _budgetArbRouterEarly  = require('./services/budget_arbitrage/api');
+app.use('/api/budget/caps',       _budgetCapsRouterEarly);
+app.use('/api/budget/arbitrage',  _budgetArbRouterEarly);
 app.use('/api/budget',          _budgetRouter);
 app.use('/api/web-analytics',   _webAnalRouter);
+const _canonicalMetricsRouter = require('./services/canonical_metrics/api');
+app.use('/api/metrics',         _canonicalMetricsRouter);
+const _capacitySchema = require('./services/capacity/schema');
+const _capacityRouter = require('./services/capacity/api');
+app.use('/api/capacity',        _capacityRouter);
+const _technicalManagerRouter = require('./services/technical_manager/api');
+app.use('/api/technical-manager', _technicalManagerRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _capacitySchema.ensureCapacitySchema();
+      console.log('[capacity] schema ready');
+    }
+  } catch (e) { console.error('[capacity] init failed:', e.message); }
+});
+const _companyOverviewSchema = require('./services/company_overview/schema');
+const _companyOverviewRouter = require('./services/company_overview/api');
+app.use('/api/company-overview', _companyOverviewRouter);
+const _leadIntelSchema = require('./services/lead_intelligence/schema');
+const _leadIntelRouter = require('./services/lead_intelligence/api');
+app.use('/api/lead-intelligence', _leadIntelRouter);
+const _autoclawSchema = require('./services/autoclaw/schema');
+const _autoclawRouter = require('./services/autoclaw/api');
+app.use('/api/autoclaw', _autoclawRouter);
 app.use('/api/playbook',        require('./services/playbook_7day/api'));
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _autoclawSchema.ensureAutoclawSchema();
+      console.log('[autoclaw] schema ready');
+    }
+  } catch (e) { console.error('[autoclaw] init failed:', e.message); }
+});
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _leadIntelSchema.ensureLeadIntelligenceSchema();
+      console.log('[lead-intelligence] schema ready');
+    }
+  } catch (e) { console.error('[lead-intelligence] init failed:', e.message); }
+});
 BOOT_TASKS.push(async () => {
   try {
     if (_db.hasDb()) {
       await _projectsSchema.ensureProjectsSchema();
       await _okrSchema.ensureOkrSchema();
       await _bcalSchema.ensureBrandCalendarSchema();
+      await _calAsstSchema.ensureCalendarAssistantSchema();
       await _budgetSchema.ensureBudgetSchema();
-      console.log('[projects + brand-calendar + budget-board + web-analytics] ready');
+      await _companyOverviewSchema.ensureCompanyOverviewSchema();
+      console.log('[projects + brand-calendar + calendar-assistant + budget-board + web-analytics] ready');
     }
   } catch (e) { console.error('[projects-pack] init failed:', e.message); }
 });
@@ -2927,11 +3110,11 @@ app.post('/api/ecom-video/generate', async (req, res) => {
   try {
     const _tenantCtx = require('./services/tenants/context');
     const tid = await _tenantCtx.resolveTenantId(req, { label: 'ecom-video:generate' });
-    if (!tid) return res.status(400).json({ error: 'no_tenant' });
+    if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
     const OpenAI = require('openai');
     const oa = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
     const { product_name, product_description, target_audience, video_style, platform, persona_name } = req.body;
-    if (!product_name) return res.status(400).json({ error: 'product_name required' });
+    if (!product_name) return res.status(400).json({ ok: false, error: 'product_name required' });
 
     const completion = await oa.chat.completions.create({
       model: 'gpt-5',
@@ -2972,8 +3155,8 @@ Return JSON: {"title":"...","duration_seconds":30,"hook":"...","scenes":[{"scene
         source: 'template'
       };
     }
-    res.json({ storyboard: result, source: result.source || 'gpt-5' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json({ ok: true, storyboard: result, source: result.source || 'gpt-5' });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // ── Veo 3 Video Generation ─────────────────────────────────────────────────
@@ -3355,6 +3538,9 @@ app.use('/api/rcs',                _rcsRouter);
 app.use('/api/llm-kb',             _llmKbRouter);
 app.use('/api/knowledge-graph',    _kgApi.router);
 app.use('/api/predictions',        _predictionsApi.router);
+const _strategicSchema = require('./services/strategic_intelligence/schema');
+const _strategicApi    = require('./services/strategic_intelligence/api');
+app.use('/api/strategic',          _strategicApi.router);
 // Knowledge Graph monthly rollup — fires daily at 03:00-ish (off-peak).
 if (_runtimeFlags.backgroundEnabled()) {
   const _kgRollupDelay = (() => {
@@ -3399,6 +3585,7 @@ BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _llmKbSchema.ensureLlmKbSchema();
   await _kgSchema.ensureKnowledgeGraphSchema();
   await _predictionsSchema.ensurePredictionsSchema();
+  await _strategicSchema.ensureStrategicIntelligenceSchema();
   await _privacySchema.ensurePrivacyComplianceSchema();
   await _brandDnaSchema.ensureBrandDnaSchema();
   await _workflowBuilderSchema.ensureWorkflowBuilderSchema();
@@ -3485,6 +3672,33 @@ const _commentsRouter = require('./services/comments/api');
 app.use('/api/surveys',        _surveysRouter);
 app.use('/api/email-designer', _emailDesignerRouter);
 app.use('/api/mcp',            _mcpRouter);
+const _mcpClientRouter = require('./services/mcp_client/api');
+app.use('/api/mcp-client',     _mcpClientRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (process.env.DATABASE_URL) {
+      await require('./services/mcp_client/store').ensureSchema();
+      console.log('[mcp-client] schema ready');
+    }
+  } catch (e) {
+    console.warn('[mcp-client] schema:', e.message);
+  }
+});
+// ── SEO Growth Autopilot (daily publish loop · multi-dest · Growth Plan · Reddit AEO) ──
+const _seoAutopilotRouter = require('./services/seo_autopilot/api');
+const _seoAutopilotCron = require('./services/seo_autopilot/runner').startCron;
+app.use('/api/seo-autopilot', _seoAutopilotRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await require('./services/seo_autopilot/schema').ensureSeoAutopilotSchema();
+      console.log('[seo-autopilot] schema ready');
+    }
+    _seoAutopilotCron();
+  } catch (e) {
+    console.warn('[seo-autopilot] init:', e.message);
+  }
+});
 app.use('/api/drips',          _smartSendRouter);   // adds /api/drips/smart-send-time + /api/drips/translate
 app.use('/api/comments',       _commentsRouter);    // F13 team collaboration asset comments
 // ── Today's Marketing Brief ──
@@ -3658,6 +3872,42 @@ require('./services/public_pages/routes')(app, {});
 // ── Tier 15 ────────────────────────────────────────────────────────────────
 const _socialPublisherRouter = require('./services/social_publisher/api');
 app.use('/api/social-publisher', _socialPublisherRouter);
+const _socialDraftsSchema = require('./services/social_drafts/schema');
+const _socialDraftsRouter = require('./services/social_drafts/api');
+app.use('/api/social-drafts', _socialDraftsRouter);
+const _socialWorkflowsRouter = require('./services/social_workflows/api');
+app.use('/api/social-workflows', _socialWorkflowsRouter);
+const _socialEvergreenRouter = require('./services/social_evergreen/api');
+app.use('/api/social-evergreen', _socialEvergreenRouter);
+const _socialInboxRouter = require('./services/social_inbox/api');
+app.use('/api/social-inbox', _socialInboxRouter);
+const _gscSocialSearchRouter = require('./services/gsc_social_search/api');
+app.use('/api/gsc-social-search', _gscSocialSearchRouter);
+const _aiTracesRouter = require('./services/ai_traces/api');
+app.use('/api/ai-traces', _aiTracesRouter);
+const _aiFeedbackRouter = require('./services/ai_feedback/api');
+app.use('/api/ai-feedback', _aiFeedbackRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (process.env.DATABASE_URL) {
+      await require('./services/ai_traces/schema').ensureAiTracesSchema();
+      await require('./services/ai_feedback/schema').ensureAiFeedbackSchema();
+      console.log('[ai-infra] traces + feedback schema ready');
+    }
+  } catch (e) {
+    console.warn('[ai-infra] schema init:', e.message);
+  }
+});
+BOOT_TASKS.push(async () => { try {
+  if (process.env.DATABASE_URL) {
+    await _socialDraftsSchema.ensureSocialDraftsSchema();
+    console.log('[tier15] social-drafts schema ready');
+  }
+  // Evergreen hourly tick
+  setInterval(() => {
+    try { _socialEvergreenRouter._runDue().catch(() => {}); } catch (_) {}
+  }, 60 * 60 * 1000);
+} catch (e) { console.warn('[tier15] social-drafts schema init failed:', e.message); }});
 
 // ── Tier 16 ────────────────────────────────────────────────────────────────
 const _emailPersonalizerRouter = require('./services/email_personalizer/api');
@@ -3779,9 +4029,47 @@ const _stRouter  = require('./services/social_tags/api');
 app.use('/api/white-label', _wlRouter);
 app.use('/api/seo-crawler', _scrRouter);
 app.use('/api/geo-audit', _geoRouter);
+const _aeoSchema = require('./services/aeo/schema');
+const _aeoRouter = require('./services/aeo/api');
+app.use('/api/aeo', _aeoRouter);
 app.use('/api/ai-visibility', _aiVisRouter);
 app.use('/api/local-seo', _lsRouter);
 app.use('/api/social-tags', _stRouter);
+
+// ── Gap-priority build (zero-click, voice SEO, remarketing, referrals, affiliates) ──
+const _zeroClickSchema = require('./services/zero_click/schema');
+const _zeroClickRouter = require('./services/zero_click/api');
+const _voiceSeoSchema = require('./services/voice_seo/schema');
+const _voiceSeoRouter = require('./services/voice_seo/api');
+const _remarketingRouter = require('./services/remarketing/api');
+const _referralSchema = require('./services/referrals/schema');
+const _referralRouter = require('./services/referrals/api');
+const _affiliateSchema = require('./services/affiliates/schema');
+const _affiliateRouter = require('./services/affiliates/api');
+app.use('/api/zero-click', _zeroClickRouter);
+app.use('/api/voice-seo', _voiceSeoRouter);
+app.use('/api/remarketing', _remarketingRouter);
+app.use('/api/referrals', _referralRouter);
+app.use('/api/affiliates', _affiliateRouter);
+
+// ── Centralized Marketing Ecosystem spine ───────────────────────────────────
+const _marketingSpineSchema = require('./services/marketing_spine/schema');
+const _marketingSpineRouter = require('./services/marketing_spine/api');
+const _agentOrchSchema = require('./services/agent_orchestrator/schema');
+const _agentOrchRouter = require('./services/agent_orchestrator/api');
+const _channelStudiosRouter = require('./services/channel_studios/api');
+const _executionHubRouter = require('./services/execution_hub/api');
+const _segmentSchema = require('./services/segment_connector/schema');
+const _segmentRouter = require('./services/segment_connector/api');
+const _aiGovSchema = require('./services/ai_governance/schema');
+const _aiGovRouter = require('./services/ai_governance/api');
+app.use('/api/marketing-spine', _marketingSpineRouter);
+app.use('/api/agent-orchestrator', _agentOrchRouter);
+app.use('/api/channel-studios', _channelStudiosRouter);
+app.use('/api/execution-hub', _executionHubRouter);
+app.use('/api/segment', _segmentRouter);
+app.use('/api/ai-governance', _aiGovRouter);
+
 BOOT_TASKS.push(async () => { try {
   if (process.env.DATABASE_URL) {
     const { ensureSeoCrawlerSchema } = require('./services/seo_crawler/schema');
@@ -3792,9 +4080,18 @@ BOOT_TASKS.push(async () => { try {
     const { ensureSocialTagsSchema } = require('./services/social_tags/schema');
     await ensureSeoCrawlerSchema();
     await ensureGeoAuditSchema();
+    await _aeoSchema.ensureAeoSchema();
     await ensureLocalSeoSchema();
     await ensureSocialTagsSchema();
-    console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags ready');
+    await _zeroClickSchema.ensureZeroClickSchema();
+    await _voiceSeoSchema.ensureVoiceSeoSchema();
+    await _referralSchema.ensureReferralSchema();
+    await _affiliateSchema.ensureAffiliateSchema();
+    await _marketingSpineSchema.ensureMarketingSpineSchema();
+    await _agentOrchSchema.ensureAgentOrchestratorSchema();
+    await _segmentSchema.ensureSegmentSchema();
+    await _aiGovSchema.ensureAiGovernanceSchema();
+    console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags + gap-priority + ecosystem-spine + ai-governance ready');
   }
 } catch (e) { console.warn('[tier28-32] schema init failed:', e.message); }});
 BOOT_TASKS.push(async () => { try {
@@ -4579,6 +4876,45 @@ app.use('/api/contentking', _contentkingRouter);
 // ─── Profound (LLM brand-mention tracker) ───────────────────────────────────
 // Profound · Shopify · AppsFlyer routes → services/external_connectors/routes.js
 require('./services/external_connectors/routes')(app, { _missingCreds });
+
+// ── System design hardening: job scheduler + graceful shutdown ───────────────
+BOOT_TASKS.push(async () => {
+  if (!_runtimeFlags.backgroundEnabled()) return;
+  if (process.env.INFOGENIE_JOBS !== '1') return;
+  try {
+    const { registerCoreJobs } = require('./services/jobs/handlers');
+    const { startJobs, stopJobs } = require('./services/jobs/scheduler');
+    const { ensureJobsSchema } = require('./services/jobs/schema');
+    if (_db.hasDb()) await ensureJobsSchema();
+
+    await registerCoreJobs({
+      dripTick: _dripTick,
+      crisisDetector: _crisisDetector,
+      digestRouter: _digestRouter,
+      optimizerIngest: _optimizerIngest,
+      optimizerRules: _optimizerRules,
+    });
+    await startJobs();
+    onShutdown('jobs', () => stopJobs());
+    onShutdown('redis', () => closeRedis());
+    onShutdown('postgres', async () => {
+      try {
+        const pool = _db.getPool && _db.getPool();
+        if (pool && typeof pool.end === 'function') await pool.end();
+      } catch (_) { /* ignore */ }
+    });
+    installSignalHandlers();
+    logger.info('hardening_boot_complete', {
+      jobs: true,
+      permissionMode: require('./services/security/prod_defaults').permissionMode(),
+      multitenantMode: require('./services/security/prod_defaults').multitenantMode(),
+      csrfMode: require('./services/security/prod_defaults').csrfMode(),
+    });
+  } catch (e) {
+    console.error('[jobs] boot failed:', e.message);
+    captureException(e, { phase: 'jobs_boot' });
+  }
+});
 
 // ── App builder export (for the test harness) ────────────────────────────────
 // server.js builds and wires the Express `app` above at require time. Because

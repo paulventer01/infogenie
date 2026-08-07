@@ -517,18 +517,18 @@ export default function ActionCenter() {
   const oppCount = opps.length;
 
   const stats: [string, number, string][] = [
-    ["🟢 Live", liveCount, "#10B981"],
-    ["🔜 Going Live", goingLive.length, "#0066FF"],
-    ["⚠️ Risks", risks.length, critCount > 0 ? "#DC2626" : "#F59E0B"],
-    ["💡 Opportunities", opps.length, "#7C3AED"],
+    ["🟢 Live", liveCount, "#059669"],
+    ["🔜 Going Live", goingLive.length, "#0284c7"],
+    ["⚠️ Risks", risks.length, critCount > 0 ? "#dc2626" : "#d97706"],
+    ["💡 Opportunities", opps.length, "#7c3aed"],
   ];
 
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{
-          background: "linear-gradient(135deg,#0A1628 0%,#001830 100%)",
+          background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
           borderBottom: "1px solid rgba(0,229,255,.2)",
         }}
       >
@@ -558,48 +558,29 @@ export default function ActionCenter() {
         className="container"
         style={{ paddingTop: 28, paddingBottom: 60 }}
       >
-        {/* Summary Banner */}
+        {/* Summary Banner — light card so stat colours stay readable (dark --ig-grad +
+            light-theme text overrides made blue-on-blue numbers invisible). */}
         <div
+          className="ac-command-banner"
           style={{
-            background: "var(--ig-grad)",
+            background:
+              "linear-gradient(135deg, #e7f5f2 0%, #eaf3fb 55%, #eef6ff 100%)",
             borderRadius: 18,
             padding: "22px 28px",
             marginBottom: 28,
-            border: "1px solid rgba(0,229,255,.2)",
+            border: "1px solid rgba(15, 118, 110, 0.22)",
+            boxShadow: "0 4px 18px rgba(11, 18, 32, 0.06)",
           }}
         >
-          <div
-            style={{
-              fontSize: "0.68rem",
-              fontWeight: 700,
-              color: "#00C9C8",
-              textTransform: "uppercase",
-              letterSpacing: ".08em",
-              marginBottom: 8,
-            }}
-          >
+          <div className="ac-cmd-eyebrow" style={{ fontSize: "0.68rem", fontWeight: 700, color: "#0f766e", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 8 }}>
             🎯 Command Overview — {ts}
           </div>
-          <div
-            style={{
-              fontFamily: "Sora,sans-serif",
-              fontSize: "1.35rem",
-              fontWeight: 800,
-              color: "white",
-              marginBottom: 4,
-            }}
-          >
+          <div className="ac-cmd-headline" style={{ fontFamily: "Sora,sans-serif", fontSize: "1.35rem", fontWeight: 800, color: "#0f172a", marginBottom: 4 }}>
             {liveCount} item{liveCount !== 1 ? "s" : ""} live · {critCount}{" "}
             critical risk{critCount !== 1 ? "s" : ""} · {oppCount} opportunit
             {oppCount === 1 ? "y" : "ies"} ready
           </div>
-          <div
-            style={{
-              fontSize: "0.8rem",
-              color: "rgba(255,255,255,.5)",
-              marginBottom: 18,
-            }}
-          >
+          <div className="ac-cmd-sub" style={{ fontSize: "0.8rem", color: "#334155", marginBottom: 18 }}>
             {indLabel} · InfoGenie AI monitoring {compsLen} competitor
             {compsLen !== 1 ? "s" : ""} · {campsLen} campaign
             {campsLen !== 1 ? "s" : ""} active
@@ -607,38 +588,46 @@ export default function ActionCenter() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(4,1fr)",
-              gap: 16,
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              gap: 12,
             }}
           >
             {stats.map(([l, v, c], i) => (
-              <div key={i} style={{ display: "contents" }}>
-                <div style={{ textAlign: "center" }}>
-                  <div
-                    style={{
-                      fontFamily: "Sora,sans-serif",
-                      fontSize: "1.6rem",
-                      fontWeight: 800,
-                      color: c,
-                    }}
-                  >
-                    {v}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.65rem",
-                      color: "rgba(255,255,255,.45)",
-                      marginTop: 3,
-                      textTransform: "uppercase",
-                      letterSpacing: ".05em",
-                    }}
-                  >
-                    {l}
-                  </div>
+              <div
+                key={i}
+                className="ac-cmd-stat"
+                style={{
+                  textAlign: "center",
+                  background: "rgba(255,255,255,0.72)",
+                  border: "1px solid rgba(15, 118, 110, 0.14)",
+                  borderRadius: 12,
+                  padding: "12px 8px",
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: "Sora,sans-serif",
+                    fontSize: "1.6rem",
+                    fontWeight: 800,
+                    color: c,
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {v}
                 </div>
-                {i < stats.length - 1 && (
-                  <div style={{ width: 1, background: "rgba(255,255,255,.1)" }} />
-                )}
+                <div
+                  className="ac-cmd-stat-label"
+                  style={{
+                    fontSize: "0.65rem",
+                    color: "#475569",
+                    marginTop: 6,
+                    textTransform: "uppercase",
+                    letterSpacing: ".05em",
+                    fontWeight: 700,
+                  }}
+                >
+                  {l}
+                </div>
               </div>
             ))}
           </div>

@@ -25,7 +25,7 @@ interface CalItem {
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export default function BrandCalendar() {
+export default function BrandCalendar({ embedded = false }: { embedded?: boolean } = {}) {
   const toast = useToast();
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCat, setActiveCat] = useState("");
@@ -181,14 +181,20 @@ export default function BrandCalendar() {
   for (let d = 1; d <= daysIn; d++) cells.push(d);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F0F9FF", padding: "28px 32px" }}>
+    <div style={{ minHeight: embedded ? "auto" : "100vh", background: embedded ? "transparent" : "#F0F9FF", padding: embedded ? "8px 28px 28px" : "28px 32px" }}>
       <div style={{ maxWidth: 1300, margin: "0 auto" }}>
+        {!embedded ? (
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ margin: 0, fontSize: "1.6rem", color: "#0F172A" }}>📅 Brand Calendar</h1>
           <p style={{ margin: "6px 0 0", color: "#64748B", fontSize: "0.92rem" }}>
             Plan everything across 10 categories. Filter the sidebar, click a day to add an item.
           </p>
         </div>
+        ) : (
+          <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 700, color: "#0F766E" }}>
+            Brand Calendar editor
+          </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 20 }}>
           <div
             style={{

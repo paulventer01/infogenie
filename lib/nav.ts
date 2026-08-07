@@ -8,15 +8,21 @@
 // migrated targets, so <MigratedPanel/> mounts the right React component.
 
 import type { useRouter } from "next/navigation";
+import { startTransition } from "react";
 import { viewToPath } from "@/lib/viewRoutes";
+import { markNavPending } from "@/lib/navPending";
 
 type AppRouter = ReturnType<typeof useRouter>;
 
 export function goToView(router: AppRouter, view: string): void {
+  const path = viewToPath(view);
+  markNavPending("nav→" + view);
+  startTransition(() => {
+    router.push(path);
+  });
   try {
     window.navigateTo?.(view);
   } catch {
     /* legacy not loaded yet — router.push still updates the URL */
   }
-  router.push(viewToPath(view));
 }

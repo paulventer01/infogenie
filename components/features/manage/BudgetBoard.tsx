@@ -16,12 +16,27 @@ interface ChannelBreakdown {
   spent_cents?: number;
   utilization?: number | null;
 }
+interface PaceAction {
+  priority?: string;
+  action: string;
+  detail: string;
+}
 interface Summary {
   target_cents?: number;
   spent_cents?: number;
   remaining_cents?: number;
   utilization_pct?: number | null;
   by_channel: ChannelBreakdown[];
+  projected_month_end_cents?: number;
+  expected_spend_cents?: number;
+  recommended_daily_cents?: number;
+  actual_daily_cents?: number;
+  days_remaining?: number;
+  pace_pct?: number | null;
+  pace_status?: string;
+  waste_channels?: { channel: string; over_cents: number; utilization?: number | null }[];
+  actions?: PaceAction[];
+  pacing?: { actions?: PaceAction[] };
 }
 interface SpendEvent {
   occurred_at?: string;
@@ -64,7 +79,7 @@ const greenInput: React.CSSProperties = {
   borderRadius: 8,
 };
 
-export default function BudgetBoard() {
+export default function BudgetBoard({ embedded = false }: { embedded?: boolean } = {}) {
   const toast = useToast();
   const [month, setMonth] = useState(ymToday());
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -146,6 +161,16 @@ export default function BudgetBoard() {
 
   const remaining = summary?.remaining_cents ?? 0;
   const util = summary?.utilization_pct;
+  const pace = summary?.pace_pct;
+  const paceStatus = summary?.pace_status || "unknown";
+  const paceColor =
+    paceStatus === "overspending" || paceStatus === "ahead"
+      ? "#DC2626"
+      : paceStatus === "on_pace"
+        ? "#16A34A"
+        : paceStatus === "underspending" || paceStatus === "far_behind"
+          ? "#F59E0B"
+          : "#64748B";
   const kpis = summary
     ? [
         { label: "Target", val: money(summary.target_cents || 0), color: "#0F172A" },
@@ -160,11 +185,27 @@ export default function BudgetBoard() {
           val: util == null ? "—" : util + "%",
           color: (util ?? 0) > 100 ? "#DC2626" : (util ?? 0) > 80 ? "#F59E0B" : "#16A34A",
         },
+        {
+          label: "Pace",
+          val: pace == null ? "—" : `${pace}% · ${paceStatus.replace(/_/g, " ")}`,
+          color: paceColor,
+        },
+        {
+          label: "Projected month-end",
+          val: money(summary.projected_month_end_cents || 0),
+          color: (summary.projected_month_end_cents || 0) > (summary.target_cents || 0) ? "#DC2626" : "#0F172A",
+        },
       ]
     : [];
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F0FDF4", padding: "28px 32px" }}>
+    <div
+      style={{
+        minHeight: embedded ? "auto" : "100vh",
+        background: embedded ? "transparent" : "#F0FDF4",
+        padding: embedded ? "8px 24px 32px" : "28px 32px",
+      }}
+    >
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
         <div
           style={{
@@ -172,14 +213,20 @@ export default function BudgetBoard() {
             justifyContent: "space-between",
             alignItems: "center",
             marginBottom: 20,
+            gap: 12,
+            flexWrap: "wrap",
           }}
         >
-          <div>
-            <h1 style={{ margin: 0, fontSize: "1.6rem", color: "#0F172A" }}>💰 Budget Board</h1>
-            <p style={{ margin: "6px 0 0", color: "#64748B", fontSize: "0.92rem" }}>
-              Set a monthly target, log every dollar spent, see where it&apos;s going.
-            </p>
-          </div>
+          {!embedded ? (
+            <div>
+              <h1 style={{ margin: 0, fontSize: "1.6rem", color: "#0F172A" }}>💰 Budget Board</h1>
+              <p style={{ margin: "6px 0 0", color: "#64748B", fontSize: "0.92rem" }}>
+                Set a monthly target, log every dollar spent, see where it&apos;s going.
+              </p>
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0F766E" }}>Monthly pacing & spend log</div>
+          )}
           <input
             type="month"
             value={month}
@@ -196,9 +243,9 @@ export default function BudgetBoard() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4,1fr)",
+            gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
             gap: 12,
-            marginBottom: 20,
+            marginBottom: 12,
           }}
         >
           {kpis.map((k) => (
@@ -222,10 +269,57 @@ export default function BudgetBoard() {
               >
                 {k.label}
               </div>
-              <div style={{ fontSize: "1.4rem", fontWeight: 800, color: k.color }}>{k.val}</div>
+              <div style={{ fontSize: "1.15rem", fontWeight: 800, color: k.color }}>{k.val}</div>
             </div>
           ))}
         </div>
+
+        {(summary?.waste_channels || []).length > 0 && (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "12px 14px",
+              background: "#FEF3C7",
+              border: "1px solid #FCD34D",
+              borderRadius: 10,
+              color: "#92400E",
+              fontSize: "0.88rem",
+            }}
+          >
+            <strong>Channel overspend:</strong>{" "}
+            {(summary?.waste_channels || [])
+              .map((w) => `${w.channel} (+${money(w.over_cents)})`)
+              .join(" · ")}
+          </div>
+        )}
+
+        {((summary?.actions || summary?.pacing?.actions || []).length > 0) && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "14px 16px",
+              background: "#fff",
+              border: "1px solid #BBF7D0",
+              borderRadius: 10,
+            }}
+          >
+            <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "#15803D", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+              Pacing actions
+            </div>
+            <div style={{ fontSize: "0.88rem", color: "#475569", marginBottom: 8 }}>
+              Actual burn {money(summary?.actual_daily_cents || 0)}/day ·
+              recommended {money(summary?.recommended_daily_cents || 0)}/day ·
+              {summary?.days_remaining ?? 0} days left
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, color: "#0F172A", fontSize: "0.9rem" }}>
+              {(summary?.actions || summary?.pacing?.actions || []).slice(0, 5).map((a, i) => (
+                <li key={i} style={{ marginBottom: 4 }}>
+                  <strong>{a.action}</strong> — {a.detail}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div
           style={{

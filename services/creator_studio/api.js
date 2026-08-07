@@ -32,6 +32,67 @@ const anthropic = HAS_ANTHROPIC ? new (Anthropic.default || Anthropic)({ apiKey:
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 
+function _asText(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v).trim();
+  if (typeof v === 'object') {
+    return String(v.name || v.label || v.title || v.domain || v.brand || v.value || v.text || '').trim();
+  }
+  return String(v).trim();
+}
+
+/** Analysis-grounded suggestion when no LLM key is configured / all providers fail. */
+function _suggestFromContext({ field, fieldLabel, brand, industry, competitors, currentValue }) {
+  const label = String(fieldLabel || field || '').toLowerCase();
+  const b = _asText(brand) || 'your brand';
+  const ind = _asText(industry) || 'your market';
+  const comps = (Array.isArray(competitors) ? competitors : [])
+    .map(_asText).filter(Boolean);
+  const rival = comps[0] || 'category leaders';
+  const rivals = comps.slice(0, 2).join(' and ') || rival;
+  const long = /sentence|sentences|paragraph|challenge|solution|result|story|describe|textarea|concise sentences/i.test(String(field || ''));
+
+  if (/customer|client name|company name|account name/.test(label)) {
+    return comps[0] || `A mid-market ${ind} company`;
+  }
+  if (/industry|vertical|sector|niche|category/.test(label)) {
+    return ind;
+  }
+  if (/^brand$|your brand|brand name|company \(optional\)|our brand/.test(label)) {
+    return b;
+  }
+  if (/challenge|problem|pain|obstacle|faced/.test(label)) {
+    return long
+      ? `${rival} was winning brand search in ${ind} while conversion lagged and CAC climbed — pipeline stalled against better-funded rivals.`
+      : `Losing share to ${rival} in ${ind}`;
+  }
+  if (/solution|delivered|approach|what you did|how you/.test(label)) {
+    return long
+      ? `Used competitor analysis to rebuild messaging, close content gaps, and shift budget into underserved ${ind} channels versus ${rivals}.`
+      : `Competitor-aware campaigns vs ${rival}`;
+  }
+  if (/result|outcome|impact|metric|roi/.test(label)) {
+    return long
+      ? `Improved qualified pipeline and share of voice versus ${rivals} within one quarter using battle-plan priorities from the live analysis.`
+      : `Share of voice and pipeline lift vs ${rival}`;
+  }
+  if (/headline|title|subject/.test(label)) {
+    return `How ${b} outpaced ${rival} in ${ind}`;
+  }
+  if (/quote|testimonial|pull quote/.test(label)) {
+    return `"We finally had a clear plan against ${rival} — and the numbers followed."`;
+  }
+  if (/audience|persona|icp|buyer/.test(label)) {
+    return `${ind} decision-makers evaluating alternatives to ${rival}`;
+  }
+  if (currentValue && String(currentValue).trim() && String(currentValue).indexOf('Thinking') === -1) {
+    return String(currentValue).trim();
+  }
+  return long
+    ? `${b} play for ${ind} grounded in analysis of ${comps.length} competitors including ${rivals}.`
+    : `${b} — ${ind}`;
+}
+
 // Strip code fences / prose around a JSON payload and parse.
 function _extractJSON(text){
   if (!text) throw new Error('empty AI response');
@@ -212,9 +273,19 @@ Mix styles. Keep most under 8 words. NEVER use clichés like "your trusted partn
 // NEVER returns a hardcoded/placeholder string — every value comes from a real
 // LLM grounded in the analysed industry + competitor list.
 router.post('/ai-suggest', async (req, res) => {
-  const { field = '', fieldLabel = '', brand = '', industry = '', competitors = [], currentValue = '', context = '', format = '' } = req.body || {};
+  const body = req.body || {};
+  const field = _asText(body.field || body.fieldLabel);
+  const fieldLabel = _asText(body.fieldLabel || body.field);
+  const brand = _asText(body.brand);
+  const industry = _asText(body.industry);
+  const currentValue = _asText(body.currentValue);
+  const context = _asText(body.context);
+  const format = _asText(body.format);
+  const competitors = Array.isArray(body.competitors) ? body.competitors : [];
   const resolvedField = field || fieldLabel;
   if (!resolvedField) return _err(res, 400, 'field required');
+
+  const ctxArgs = { field: resolvedField, fieldLabel, brand, industry, competitors, currentValue };
 
   // Resolve tenant + Brand Foundation for grounded suggestions.
   let bfBlock = '';
@@ -223,9 +294,9 @@ router.post('/ai-suggest', async (req, res) => {
     if (tid) bfBlock = await getBrandContextBlock(tid);
   } catch (_) { /* non-fatal */ }
 
-  const compList = (Array.isArray(competitors) ? competitors : [])
+  const compList = competitors
     .slice(0, 8)
-    .map(c => typeof c === 'string' ? c : (c.name || c.domain || ''))
+    .map(_asText)
     .filter(Boolean).join(', ');
   const clientCtx = [
     brand       ? `Brand: ${brand}`       : '',
@@ -239,8 +310,15 @@ router.post('/ai-suggest', async (req, res) => {
     clientCtx  ? `ADDITIONAL CONTEXT:\n${clientCtx}` : '',
   ].filter(Boolean).join('\n\n');
 
+  const anyAi = HAS_OPENAI || HAS_ANTHROPIC || HAS_GEMINI || HAS_PERPLEX || HAS_CF;
+
   // format=json_array → return 5-6 diverse options as an array (used by pill pickers).
   if (format === 'json_array') {
+    if (!anyAi) {
+      const seed = _suggestFromContext(ctxArgs);
+      const values = [seed, industry, brand, ...competitors.map(_asText)].filter(Boolean).slice(0, 6);
+      return res.json({ ok: true, values, source: 'analysis' });
+    }
     const prompt = `You are a marketing assistant. Suggest 5-6 diverse, realistic options for the "${resolvedField}" field.
 ${ctxSection ? ctxSection + '\n' : ''}
 Each option must be concise (≤ 10 words), specific, and relevant to the brand/industry above. No placeholders, no generic filler.
@@ -250,25 +328,39 @@ Return strict JSON: { "values": ["option 1", "option 2", "option 3", "option 4",
       let values = Array.isArray(data?.values) ? data.values : null;
       if (!values && Array.isArray(data)) values = data;
       if (!values) throw new Error('AI returned no array');
-      values = values.slice(0, 6).map(v => String(v).replace(/^["']+|["']+$/g, '').trim()).filter(Boolean);
+      values = values.slice(0, 6).map(v => _asText(v).replace(/^["']+|["']+$/g, '')).filter(Boolean);
       return res.json({ ok: true, values });
-    } catch (e) { return _err(res, 502, e.message); }
+    } catch (e) {
+      const seed = _suggestFromContext(ctxArgs);
+      return res.json({ ok: true, values: [seed].filter(Boolean), source: 'analysis', note: e.message });
+    }
   }
 
-  // Single-value path (original behaviour — kept for backward compat).
-  const effectiveIndustry = industry || '';
+  // Single-value path — try live LLM, fall back to analysis-grounded text.
+  if (!anyAi) {
+    const value = _suggestFromContext(ctxArgs);
+    return res.json({ ok: true, value, source: 'analysis' });
+  }
+
+  const effectiveIndustry = industry || 'marketing';
   const prompt = `You are filling out the "${resolvedField}" field for a marketing tool.
 ${ctxSection ? ctxSection + '\n' : ''}
-Write ONE concise, real, industry-specific answer. Do NOT use placeholders, generic clichés, or made-up names like "Acme", "Apex". The value must be something a real ${effectiveIndustry || 'marketing'} practitioner would write.
+Write ONE concise, real, industry-specific answer. Do NOT use placeholders, generic clichés, or made-up names like "Acme", "Apex". The value must be something a real ${effectiveIndustry} practitioner would write. Prefer the analysed competitors and brand above.
 
 Return strict JSON: { "value": "<the suggestion as plain text — no quotes, no markdown>" }`;
   try {
     const data = await _ai(prompt, { temperature: 0.85, max_tokens: 400 });
-    let value = String(data?.value || '').trim();
-    if (!value) throw new Error('AI returned empty value');
+    let value = data?.value;
+    if (value && typeof value === 'object') value = _asText(value);
+    value = _asText(value);
+    if (!value || value === '[object Object]') throw new Error('AI returned empty value');
     value = value.replace(/^["'""'']+|["'""'']+$/g, '').trim();
-    res.json({ ok: true, value });
-  } catch (e) { _err(res, 502, e.message); }
+    res.json({ ok: true, value, source: 'ai' });
+  } catch (e) {
+    const value = _suggestFromContext(ctxArgs);
+    if (value) return res.json({ ok: true, value, source: 'analysis', note: e.message });
+    _err(res, 502, e.message);
+  }
 });
 
 router.get('/brand/kit', async (req, res) => {

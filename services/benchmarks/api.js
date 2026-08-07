@@ -16,6 +16,7 @@ const METRICS = [
   { key:'email_ctr', label:'Email Click Rate', unit:'percent' },
   { key:'ltv', label:'Customer Lifetime Value', unit:'currency' },
   { key:'ltv_cac_ratio', label:'LTV:CAC Ratio', unit:'multiplier' },
+  { key:'cac_payback_months', label:'CAC Payback (months)', unit:'number' },
   { key:'monthly_ad_spend', label:'Monthly Ad Spend', unit:'currency' },
   { key:'organic_traffic', label:'Monthly Organic Traffic', unit:'number' },
 ];

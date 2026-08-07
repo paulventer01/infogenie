@@ -9,8 +9,10 @@ async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label
 
 const PLATFORMS = ['google', 'meta', 'tiktok', 'microsoft', 'linkedin'];
 
-// GET /api/budget-caps/caps
-router.get('/caps', async (req, res) => {
+// List platform caps.
+// Mounted at /api/budget/caps → GET /api/budget/caps
+// Legacy mount at /api/budget-caps → GET /api/budget-caps/caps
+async function listCaps(req, res) {
   const tid = await _tid(req, 'budget-caps:list');
   if (!tid) return _err(res, 400, 'no_tenant');
   try {
@@ -37,10 +39,13 @@ router.get('/caps', async (req, res) => {
     }
     res.json({ ok: true, caps, spend_by_platform: spendByPlatform });
   } catch (e) { _err(res, 500, e.message); }
-});
+}
+router.get('/', listCaps);
+router.get('/caps', listCaps);
 
-// PUT /api/budget-caps/caps/:platform
-router.put('/caps/:platform', async (req, res) => {
+// Upsert a platform cap.
+// Family: PUT /api/budget/caps/:platform  · Legacy: PUT /api/budget-caps/caps/:platform
+async function setCap(req, res) {
   const tid = await _tid(req, 'budget-caps:set');
   if (!tid) return _err(res, 400, 'no_tenant');
   const platform = req.params.platform.toLowerCase();
@@ -61,7 +66,10 @@ router.put('/caps/:platform', async (req, res) => {
     );
     res.json({ ok: true, cap: rows[0] });
   } catch (e) { _err(res, 500, e.message); }
-});
+}
+// Register /caps/:platform before /:platform so legacy paths stay unambiguous.
+router.put('/caps/:platform', setCap);
+router.put('/:platform', setCap);
 
 // GET /api/budget-caps/campaigns
 router.get('/campaigns', async (req, res) => {

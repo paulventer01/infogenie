@@ -1,23 +1,21 @@
 /* ================================
-   InfoGenie — Next.js global reset
-   Custom-property reset extracted from style.css. Only the design tokens and
-   the base box-sizing/typography reset live here; feature styling stays in
-   the legacy style.css served by Express for the existing SPA.
+   InfoGenie — global tokens
+   MVP-inspired: clean light shell, Outfit/Manrope.
+   Keeps Signal sky blue + lime as secondary accents.
    ================================ */
 
 :root {
-  --navy: #0a1628;
-  --navy-2: #0e1f3b;
-  --navy-3: #142545;
-  --teal: #00c9c8;
-  --teal-dark: #00a8a7;
-  --cyan: #00e5ff;
-  --blue: #0066ff;
-  --blue-light: #3389ff;
-  --purple: #7c3aed;
-  --gold: #f59e0b;
-  --green: #10b981;
-  --red: #ef4444;
+  --navy: #0b1220;
+  --navy-2: #121a2e;
+  --navy-3: #1a2438;
+  --teal: #0f766e;
+  --teal-dark: #0b5f59;
+  --cyan: #38bdf8;
+  --blue: #0284c7;
+  --blue-light: #0ea5e9;
+  --gold: #f97316;
+  --green: #16a34a;
+  --red: #dc2626;
   --white: #ffffff;
   --gray-50: #f8fafc;
   --gray-100: #f1f5f9;
@@ -28,17 +26,36 @@
   --gray-600: #475569;
   --gray-700: #334155;
   --gray-800: #1e293b;
-  --gray-900: #0f172a;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --border: #e2e8f0;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.15);
+  --gray-900: #0b1220;
+  --text-primary: #0b1220;
+  --text-secondary: #5b6577;
+  --text-muted: #5b6577;
+  --border: rgba(11, 18, 32, 0.1);
+  --shadow-sm: 0 1px 0 rgba(11, 18, 32, 0.04);
+  --shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 12px 32px rgba(11, 18, 32, 0.06);
+  --shadow-lg: 0 24px 60px rgba(11, 18, 32, 0.1);
   --radius: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  /* Brand: MVP teal primary + complete-app sky as accent */
+  --ig-primary: #0f766e;
+  --ig-accent: #0284c7;
+  --ig-accent-2: #16a34a;
+  --ig-warm: #f97316;
+  --ig-card-bg: #ffffff;
+  --ig-card-border: rgba(11, 18, 32, 0.1);
+  --ig-page-bg: #f3f6fb;
+  --ig-text: #0b1220;
+  --ig-text-muted: #5b6577;
+
+  --font-display: var(--font-outfit), "Outfit", "Avenir Next", sans-serif;
+  --font-brand: var(--font-outfit), "Outfit", "Avenir Next", sans-serif;
+  --font-ui: var(--font-manrope), "Manrope", "Avenir Next", sans-serif;
+  /* Aliases for existing Signal CSS */
+  --font-sora: var(--font-outfit);
+  --font-space: var(--font-outfit);
+  --font-jakarta: var(--font-manrope);
 }
 
 * {
@@ -54,110 +71,82 @@ html {
 }
 
 body {
-  font-family: var(--font-inter, "Inter"), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #EFF4FF;
-  color: #0A1628;
+  font-family: var(--font-ui);
+  background: var(--ig-page-bg);
+  color: var(--ig-text);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   INFOGENIE BLUE THEME — React page overrides
-   All React component pages render on #EFF4FF light-blue bg.
-   These rules override the dark-mode defaults from style.css
-   that are replayed into the Next.js shell.
-   ══════════════════════════════════════════════════════════════ */
-
-:root {
-  --ig-primary:      #0066FF;
-  --ig-accent:       #00C9C8;
-  --ig-card-bg:      #FFFFFF;
-  --ig-card-border:  #D1DCF5;
-  --ig-page-bg:      #EFF4FF;
-  --ig-text:         #0A1628;
-  --ig-text-muted:   #6B88B0;
+h1, h2, h3, .ig-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
 }
 
-/* ── White cards with blue border ─── */
+.ig-brand {
+  font-family: var(--font-brand);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
 .ig-card {
-  background: #FFFFFF !important;
-  border: 1px solid #D1DCF5 !important;
-  border-radius: 14px !important;
-  box-shadow: 0 1px 4px rgba(10,31,78,.06), 0 4px 16px rgba(10,31,78,.06) !important;
-  color: #0A1628 !important;
+  background: #ffffff !important;
+  border: 1px solid var(--ig-card-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow) !important;
+  color: var(--ig-text) !important;
 }
 .ig-card h1, .ig-card h2, .ig-card h3, .ig-card h4,
 .ig-card p, .ig-card span, .ig-card label,
 .ig-card td, .ig-card th, .ig-card li {
-  color: #0A1628;
+  color: var(--ig-text);
 }
 
-/* ── Inputs ─── */
 .ig-input {
-  background: #FFFFFF !important;
-  border: 1.5px solid #D1DCF5 !important;
-  color: #0A1628 !important;
+  background: #ffffff !important;
+  border: 1.5px solid var(--ig-card-border) !important;
+  color: var(--ig-text) !important;
   border-radius: 10px !important;
+  font-family: var(--font-ui) !important;
+  min-height: 42px !important;
+  padding: 10px 13px !important;
+  line-height: 1.4 !important;
 }
-.ig-input::placeholder { color: #6B88B0 !important; }
+.ig-input::placeholder { color: var(--ig-text-muted) !important; }
 .ig-input:focus {
-  border-color: #0066FF !important;
-  box-shadow: 0 0 0 3px rgba(0,102,255,.12) !important;
+  border-color: var(--ig-primary) !important;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.16) !important;
   outline: none !important;
 }
 
-/* ── Selects ─── */
 .ig-select {
-  background: #FFFFFF !important;
-  border: 1.5px solid #D1DCF5 !important;
-  color: #0A1628 !important;
+  background: #ffffff !important;
+  border: 1.5px solid var(--ig-card-border) !important;
+  color: var(--ig-text) !important;
   border-radius: 10px !important;
-}
-.ig-select:focus {
-  border-color: #0066FF !important;
-  box-shadow: 0 0 0 3px rgba(0,102,255,.12) !important;
-  outline: none !important;
-}
-.ig-select option { background: #FFFFFF; color: #0A1628; }
-
-/* ── Labels ─── */
-.ig-label {
-  color: #0A1628 !important;
-  font-weight: 600 !important;
+  font-family: var(--font-ui) !important;
+  min-height: 42px !important;
+  padding: 10px 13px !important;
 }
 
-/* ── Secondary button — readable on light bg ─── */
-.btn-secondary {
-  background: #FFFFFF !important;
-  color: #0A1628 !important;
-  border: 1.5px solid #D1DCF5 !important;
-}
-.btn-secondary:hover {
-  background: #F0F5FF !important;
-  border-color: #0066FF !important;
-  color: #0066FF !important;
+::selection {
+  background: rgba(15, 118, 110, 0.22);
 }
 
-/* ── Filter selects ─── */
-.filter-sel {
-  background: #FFFFFF !important;
-  border: 1.5px solid #D1DCF5 !important;
-  color: #0A1628 !important;
+/* ── Hide Next.js black "N" / route badge on every page ─────────────────────
+   `devIndicators: false` hides it when idle, but Next re-injects the badge when
+   any runtime issue is recorded. The badge host is often a dark pill that
+   reads as a stray UI mark on panel heroes. Prefer HideNextDevBadge for
+   shadow-DOM portals; these rules cover light-DOM fallbacks. */
+[data-next-badge-root],
+[data-next-badge],
+[data-nextjs-toast] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
 }
-.filter-sel option { background: #FFFFFF !important; color: #0A1628 !important; }
-
-/* ── Tables ─── */
-.ig-table th {
-  background: #F6FAFF !important;
-  color: #6B88B0 !important;
-  border-bottom: 1px solid #D1DCF5 !important;
-  font-weight: 700 !important;
-}
-.ig-table td {
-  color: #0A1628 !important;
-  border-bottom: 1px solid #EEF3FF !important;
-}
-.ig-table tr:hover td { background: #F6FAFF !important; }
-
-/* ── Scrollbar blue ─── */
-::-webkit-scrollbar-thumb { background: rgba(0,102,255,.2); }
-::-webkit-scrollbar-thumb:hover { background: rgba(0,102,255,.45); }

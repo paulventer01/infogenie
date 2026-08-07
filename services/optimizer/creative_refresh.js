@@ -303,8 +303,8 @@ async function _refreshOneAd({ camp, ad, reason, dryRun, runId }) {
     const camprow = await _db.getPool().query(`SELECT id FROM ad_campaigns WHERE id=$1`, [camp.id]);
     if (camprow.rows.length) {
       await _db.getPool().query(`
-        INSERT INTO ad_creatives (tenant_id, campaign_id, platform_ad_id, adset_id, headline, body, image_hash, image_url, cta, link_url, status, generation, parent_ad_id)
-        VALUES ($11,$1,$2,$3,$4,$5,$6,$7,$8,$9,'paused_pending_review',COALESCE((SELECT MAX(generation)+1 FROM ad_creatives WHERE campaign_id=$1),2),$10)
+        INSERT INTO optimizer_ad_creatives (tenant_id, campaign_id, platform_ad_id, adset_id, headline, body, image_hash, image_url, cta, link_url, status, generation, parent_ad_id)
+        VALUES ($11,$1,$2,$3,$4,$5,$6,$7,$8,$9,'paused_pending_review',COALESCE((SELECT MAX(generation)+1 FROM optimizer_ad_creatives WHERE campaign_id=$1),2),$10)
         ON CONFLICT (campaign_id, platform_ad_id) DO NOTHING
       `, [camp.id, newAd.ad_id, ad.adset_id, copy.headline, copy.body, imgUp.image_hash, imgUp.image_url, copy.cta, linkUrl, ad.id, camp.tenant_id]);
     }

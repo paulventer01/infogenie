@@ -1,0 +1,143 @@
+.bar {
+  position: relative;
+  z-index: 1;
+  background: linear-gradient(90deg, #e7f5f2 0%, #eaf3fb 52%, #eef6ff 100%);
+  border-bottom: 1px solid rgba(15, 118, 110, 0.22);
+  color: #0f172a;
+}
+
+.inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.domainBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 118, 110, 0.1);
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  border-radius: 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: #0f172a;
+  font: inherit;
+  text-decoration: none;
+}
+
+.domainBtn:hover {
+  background: rgba(15, 118, 110, 0.16);
+}
+
+.globe {
+  font-size: 0.9rem;
+}
+
+.domain {
+  font-weight: 800;
+  font-size: 0.88rem;
+  color: #0f172a !important;
+}
+
+.industry {
+  font-size: 0.72rem;
+  color: #334155 !important;
+  padding-left: 8px;
+  border-left: 1px solid rgba(15, 23, 42, 0.18);
+}
+
+.meta {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #334155 !important;
+}
+
+.actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.linkBtn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #0f172a !important;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-family: inherit;
+  line-height: 1.2;
+}
+
+.linkBtn:hover {
+  color: #0f766e !important;
+  background: rgba(15, 118, 110, 0.12);
+  border-color: rgba(15, 118, 110, 0.22);
+}
+
+.linkBtnActive {
+  color: #0f766e !important;
+  background: rgba(15, 118, 110, 0.16);
+  border-color: rgba(15, 118, 110, 0.28);
+}
+
+.primaryBtn {
+  background: linear-gradient(135deg, #0f766e, #0284c7);
+  border: none;
+  color: #ffffff !important;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+  line-height: 1.2;
+}
+
+.primaryBtn:hover {
+  filter: brightness(1.05);
+}
+
+/* Dark theme — keep bar readable */
+:global(html[data-theme="dark"]) .bar {
+  background: linear-gradient(90deg, #0f1f2a 0%, #0f172a 52%, #111827 100%);
+  border-bottom-color: rgba(45, 212, 191, 0.22);
+  color: #f8fafc;
+}
+
+:global(html[data-theme="dark"]) .domainBtn {
+  background: rgba(45, 212, 191, 0.12);
+  border-color: rgba(45, 212, 191, 0.28);
+  color: #f8fafc;
+}
+
+:global(html[data-theme="dark"]) .domain {
+  color: #f8fafc !important;
+}
+
+:global(html[data-theme="dark"]) .industry,
+:global(html[data-theme="dark"]) .meta {
+  color: #cbd5e1 !important;
+}
+
+:global(html[data-theme="dark"]) .linkBtn {
+  color: #e2e8f0 !important;
+}
+
+:global(html[data-theme="dark"]) .linkBtn:hover,
+:global(html[data-theme="dark"]) .linkBtnActive {
+  color: #5eead4 !important;
+  background: rgba(45, 212, 191, 0.14);
+  border-color: rgba(45, 212, 191, 0.3);
+}

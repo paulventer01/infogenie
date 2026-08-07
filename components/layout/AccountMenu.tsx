@@ -109,16 +109,17 @@ export default function AccountMenu() {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: "6px",
-          padding: "6px 10px",
-          background: "linear-gradient(135deg,#0066FF,#00C9C8)",
+          gap: "8px",
+          padding: "7px 12px",
+          background: "linear-gradient(135deg,#1d4ed8,#0f766e)",
           border: "none",
-          borderRadius: "20px",
+          borderRadius: "12px",
           color: "white",
-          fontSize: ".74rem",
-          fontWeight: 700,
+          fontSize: ".76rem",
+          fontWeight: 800,
           cursor: "pointer",
-          boxShadow: "0 2px 8px rgba(0,102,255,.25)",
+          fontFamily: "var(--font-jakarta), Plus Jakarta Sans, sans-serif",
+          boxShadow: "0 8px 18px rgba(29,78,216,.22)",
         }}
       >
         <span

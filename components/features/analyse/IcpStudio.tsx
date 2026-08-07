@@ -761,7 +761,7 @@ Rules:
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{ background: "linear-gradient(135deg,#7C3AED 0%,#EC4899 100%)" }}
       >
         <div className="container">
@@ -776,7 +776,7 @@ Rules:
                 </span>{" "}
                 <span
                   className="bc-sep"
-                  style={{ color: "rgba(255,255,255,.3)" }}
+                  style={{ color: '#94a3b8' }}
                 >
                   ›
                 </span>{" "}
@@ -1028,7 +1028,7 @@ Rules:
                 style={{
                   width: "100%",
                   padding: 11,
-                  background: "#0A1628",
+                  background: 'linear-gradient(135deg,#0f766e,#0284c7)',
                   border: "none",
                   borderRadius: 10,
                   fontSize: "0.82rem",

@@ -35,6 +35,15 @@ interface ScanResp {
   ai_explanation?: string;
   recommended_action?: string;
   affected_channels?: string[];
+  anomaly_count?: number;
+  anomalies?: {
+    anomaly_type: string;
+    severity: string;
+    ai_explanation?: string;
+    recommended_action?: string;
+    channel?: string;
+  }[];
+  metrics?: { spend?: number; blended_roas?: number | null; true_roas?: number | null; waste_cents?: number };
 }
 
 function sevColor(s: string) {
@@ -84,6 +93,36 @@ export default function AnomalyDetector() {
     loadHistory();
   }
 
+  async function runSpendScan() {
+    setRunning(true);
+    setResult(null);
+    setResultError(null);
+    const d = await apiPost<ScanResp>("/api/anomaly-detector/spend-scan", {
+      brand: brand.trim() || "spend",
+      days: 30,
+    });
+    setRunning(false);
+    if (!d.ok) {
+      setResultError(d.error || "");
+      return;
+    }
+    // Surface the top anomaly in the same card shape as brand scan
+    const top = (d.anomalies || [])[0];
+    setResult({
+      ...d,
+      severity: d.severity || top?.severity || "none",
+      anomaly_type: d.anomaly_type || top?.anomaly_type || "no_anomaly",
+      ai_explanation:
+        top?.ai_explanation ||
+        (d.anomaly_count
+          ? `${d.anomaly_count} spend/pacing anomal${d.anomaly_count === 1 ? "y" : "ies"} detected.`
+          : "No spend or pacing anomalies detected."),
+      recommended_action: top?.recommended_action,
+      affected_channels: (d.anomalies || []).map((a) => a.channel || a.anomaly_type).filter(Boolean) as string[],
+    });
+    loadHistory();
+  }
+
   const histRows = rows.filter((r) => r.severity !== "none");
   const openRows = rows.filter((r) => r.severity !== "none" && !r.resolved);
 
@@ -96,7 +135,7 @@ export default function AnomalyDetector() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -137,8 +176,18 @@ export default function AnomalyDetector() {
                   onClick={run}
                   disabled={running}
                 >
-                  🔍 Scan Now
+                  🔍 Scan Brand Mentions
                 </button>
+                <button
+                  className="btn btn-outline-primary w-100 mt-2"
+                  onClick={runSpendScan}
+                  disabled={running}
+                >
+                  💸 Scan Spend · Pace · Waste
+                </button>
+                <p className="small text-muted mt-2 mb-0">
+                  Spend scan uses the canonical metrics engine + Budget Board pacing.
+                </p>
               </div>
             </div>
             <div>

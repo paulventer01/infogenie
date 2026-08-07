@@ -259,7 +259,7 @@ export default function EmailDesigner() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>🎨 Visual Email Designer</h2>
         <p className="view-sub">
           Drag-and-drop block editor — build beautiful emails, preview HTML, export to drip

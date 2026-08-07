@@ -27,8 +27,8 @@ export default function ResetPasswordPage() {
   async function submit() {
     setErr("");
     setOk("");
-    if (pw.length < 8) {
-      setErr("Password must be at least 8 characters.");
+    if (pw.length < 10 || !/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) {
+      setErr("Password must be at least 10 characters with a letter and a number.");
       return;
     }
     if (pw !== pw2) {

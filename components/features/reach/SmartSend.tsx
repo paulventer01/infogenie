@@ -86,7 +86,7 @@ export default function SmartSend() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>⏰ Smart Send Time Optimizer</h2>
         <p className="view-sub">
           Analyse your contacts&apos; engagement history and recommend the optimal UTC send hour per

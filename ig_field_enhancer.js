@@ -41,22 +41,81 @@
   // analyse-now flow finishes, the next click already sees the new values.
   // ──────────────────────────────────────────────────────────────────────────
   function ad(){ return window.analysisData || {}; }
+  function asText(v){
+    if (v == null || v === '') return '';
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v).trim();
+    if (typeof v === 'object') {
+      return String(v.name || v.label || v.title || v.domain || v.brand || v.value || '').trim();
+    }
+    return String(v).trim();
+  }
   function getBrand(){
     const a = ad();
-    if (a.brandName) return a.brandName;
-    if (a.brand) return a.brand;
-    if (a.companyName) return a.companyName;
+    if (a.brandName) return asText(a.brandName);
+    if (a.brand) return asText(a.brand);
+    if (a.companyName) return asText(a.companyName);
     // Derive from domain/url as a last resort (same logic as _alPopulateBrandPicker)
     const dom = String(a.url || a.domain || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].split('.')[0].trim();
     if (dom) return dom.charAt(0).toUpperCase() + dom.slice(1);
     return '';
   }
-  function getIndustry(){ const a = ad(); return (a.industry && (a.industry.name || a.industry)) || ''; }
+  function getIndustry(){
+    const a = ad();
+    return asText(a.industry && (a.industry.name || a.industry)) || asText(a.subNiche) || '';
+  }
   function getCompetitors(){
     const a = ad();
     return (a.competitors || [])
-      .map(c => (typeof c === 'string' ? c : (c && (c.name || c.brand)) || ''))
+      .map(c => (typeof c === 'string' ? c : asText(c && (c.name || c.brand || c.domain))))
       .filter(Boolean);
+  }
+
+  // Offline / no-key fallback grounded in Analyse Now payload so AI Suggest
+  // still fills useful values from the analysed brand + competitors.
+  function suggestFromAnalysis(labelText, isArea){
+    const label = String(labelText || '').toLowerCase();
+    const brand = getBrand() || 'your brand';
+    const industry = getIndustry() || 'your market';
+    const comps = getCompetitors();
+    const rival = comps[0] || 'category leaders';
+    const rivals = comps.slice(0, 2).join(' and ') || rival;
+
+    if (/customer|client name|company name|account name/.test(label)) {
+      return comps[0] || ('A mid-market ' + industry + ' company');
+    }
+    if (/industry|vertical|sector|niche|category/.test(label)) {
+      return industry;
+    }
+    if (/^brand$|your brand|brand name|company \(optional\)|our brand/.test(label)) {
+      return brand;
+    }
+    if (/challenge|problem|pain|obstacle|faced/.test(label)) {
+      return isArea
+        ? (rival + ' was winning brand search in ' + industry + ' while conversion lagged and CAC climbed — pipeline stalled against better-funded rivals.')
+        : ('Losing share to ' + rival + ' in ' + industry);
+    }
+    if (/solution|delivered|approach|what you did|how you/.test(label)) {
+      return isArea
+        ? ('Used InfoGenie competitor analysis to rebuild messaging, close content gaps, and shift budget into underserved ' + industry + ' channels versus ' + rivals + '.')
+        : ('Competitor-aware campaigns vs ' + rival);
+    }
+    if (/result|outcome|impact|metric|roi/.test(label)) {
+      return isArea
+        ? ('Improved qualified pipeline and share of voice versus ' + rivals + ' within one quarter, using battle-plan priorities from the live analysis.')
+        : ('Share of voice and pipeline lift vs ' + rival);
+    }
+    if (/headline|title|subject line/.test(label)) {
+      return 'How ' + brand + ' outpaced ' + rival + ' in ' + industry;
+    }
+    if (/quote|testimonial|pull quote/.test(label)) {
+      return '"We finally had a clear plan against ' + rival + ' — and the numbers followed."';
+    }
+    if (/audience|persona|icp|buyer/.test(label)) {
+      return industry + ' decision-makers evaluating alternatives to ' + rival;
+    }
+    return isArea
+      ? (brand + ' play for ' + industry + ' grounded in analysis of ' + (comps.length || 0) + ' competitors including ' + rivals + '.')
+      : (brand + ' — ' + industry);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -175,6 +234,9 @@
     if (el.tagName === 'SELECT') return false; // selects get skipped globally
     // Skip fields explicitly opted out via data-ig-skip attribute
     if (el.dataset.igSkip !== undefined) return false;
+    // Opt-out for React panels that own their own field chrome (brand chips,
+    // AI suggest, layout). Prevents stacked purple pills breaking forms.
+    if (el.closest('[data-ig-no-enhance]')) return false;
     // Skip the auth wall (login / signup / forgot-password): those fields are
     // personal credentials with no brand context yet — AI Suggest would be
     // both useless and confusing. Covers password reset page too.
@@ -211,9 +273,15 @@
     // If a new value was supplied, push it through the native setter first so
     // React recognises the change (otherwise it sees el.value===state and skips).
     if (newValue !== undefined) {
+      let s = newValue;
+      if (s && typeof s === 'object') {
+        s = s.name || s.label || s.title || s.domain || s.value || s.text || '';
+      }
+      s = String(s == null ? '' : s);
+      if (s === '[object Object]') s = '';
       var setter = el.tagName === 'TEXTAREA' ? _nativeTextareaSetter : _nativeInputSetter;
-      if (setter) setter.call(el, newValue);
-      else el.value = newValue;
+      if (setter) setter.call(el, s);
+      else el.value = s;
     }
     el.dispatchEvent(new Event('input',  { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -237,6 +305,7 @@
     try {
       const label = (labelText || '').replace(/\(optional\)/ig, '').trim() || 'this form field';
       const sectionHeading = (document.querySelector('.view.active h1, .view.active h2, .view.active h3') ||
+                              document.querySelector('#ig-react-panel h1, #ig-react-panel h2, #ig-react-panel h3') ||
                               document.querySelector('h1, h2, h3'));
       const sectionTitle = sectionHeading ? (sectionHeading.textContent || '').trim().slice(0, 120) : '';
       const prompt = 'Generate a realistic value for the form field labelled "' + label + '"' +
@@ -249,21 +318,39 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           field: prompt,
+          fieldLabel: label,
           brand: getBrand(),
           industry: getIndustry(),
           competitors: getCompetitors(),
-          currentValue: prev,
-          context: 'Section: ' + (sectionTitle || 'unknown') + '. Placeholder: ' + (el.placeholder || '(none)')
+          currentValue: prev && prev.indexOf('Thinking') === -1 ? prev : '',
+          context: 'Section: ' + (sectionTitle || 'unknown') + '. Placeholder: ' + (el.placeholder || '(none)') +
+            '. Ground the answer in the analysed brand, industry and competitors.'
         })
       });
-      const j = await r.json();
-      if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
-      const v = String(j.value || '').trim();
-      if (!v) throw new Error('AI returned empty');
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false) throw new Error(j.error || ('Request failed (' + r.status + ')'));
+      let v = j.value;
+      if (v && typeof v === 'object') v = v.text || v.value || v.name || '';
+      v = String(v || '').trim();
+      if (!v || v === '[object Object]') throw new Error('AI returned empty');
       fireInput(el, v);
+      if (j.source === 'analysis' && window.showToast) {
+        window.showToast('✨ Filled from your analysis (add an AI key in Settings for live LLM suggestions)');
+      }
     } catch (e) {
-      fireInput(el, prev);
-      (window.showToast || function(m){ console.warn(m); })('⚠ AI Suggest failed: ' + e.message);
+      // Always try analysis-grounded fill so Suggest is useful after Analyse Now
+      // even when LLM keys are missing or the gateway returns 502.
+      const fallback = suggestFromAnalysis(labelText, isArea);
+      if (fallback) {
+        fireInput(el, fallback);
+        (window.showToast || function(m){ console.warn(m); })(
+          '✨ Used your analysis data — ' + (e.message || 'AI unavailable') +
+          '. Add OpenAI/Anthropic in Settings → Platform Keys for live AI.'
+        );
+      } else {
+        fireInput(el, prev);
+        (window.showToast || function(m){ console.warn(m); })('⚠ AI Suggest failed: ' + e.message);
+      }
     } finally {
       clearInterval(iv);
       el.disabled = false;

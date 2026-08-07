@@ -561,15 +561,15 @@ export default function CrossChannel() {
 
   return (
     <div className="view" id="view-cross-channel">
-      <div className="view-header" style={{ background: "linear-gradient(135deg,#0F172A 0%,#0891B2 50%,#10B981 100%)" }}>
+      <div className="view-header ig-panel-hero" style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}>
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#A7F3D0" }}>
+              <div className="breadcrumb" style={{ color: '#0f766e' }}>
                 <span className="bc-group" style={{ color: "rgba(167,243,208,.75)" }}>
                   Manage
                 </span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>
                   ›
                 </span>{" "}
                 Cross-Channel Report
@@ -708,7 +708,7 @@ export default function CrossChannel() {
                     key={v}
                     style={{
                       display: "inline-block",
-                      background: "#0F172A",
+                      background: '#eef4ff',
                       color: "#67E8F9",
                       padding: "3px 9px",
                       borderRadius: 6,

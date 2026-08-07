@@ -6,7 +6,7 @@
 // fan it out across selected channels to a list of recipients — all against the
 // existing Express API (`/api/omnichannel/*`) via lib/api.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
 
@@ -14,11 +14,13 @@ interface Channel {
   id: string;
   label: string;
   configured?: boolean;
+  stub?: boolean;
   via?: string;
 }
 
 interface SendResult {
   ok?: boolean;
+  stub?: boolean;
   [key: string]: unknown;
 }
 
@@ -37,24 +39,33 @@ export default function Omnichannel() {
   const [status, setStatus] = useState("");
   const [results, setResults] = useState<SendResult[] | null>(null);
   const [showResults, setShowResults] = useState(false);
+  const [showStubs, setShowStubs] = useState(false);
 
   useEffect(() => {
     (async () => {
       const r = await apiGet<{ channels?: Channel[] }>("/api/omnichannel/channels");
-      const list = r.channels || [];
+      const list = (r.channels || []).map((c) => ({
+        ...c,
+        stub: c.stub ?? !c.configured,
+      }));
       setChannels(list);
       const init: Record<string, boolean> = {};
       list.forEach((c) => {
-        init[c.id] = !!c.configured;
+        // Never pre-select stub / unconfigured channels
+        init[c.id] = !!c.configured && !c.stub;
       });
       setSelected(init);
     })().catch((e) => toast("⚠️ " + (e instanceof Error ? e.message : "error")));
   }, [toast]);
 
+  const liveChannels = useMemo(() => channels.filter((c) => c.configured && !c.stub), [channels]);
+  const stubChannels = useMemo(() => channels.filter((c) => !c.configured || c.stub), [channels]);
+  const visibleChannels = showStubs ? channels : liveChannels;
+
   async function send() {
-    const chosen = channels.filter((c) => selected[c.id]).map((c) => c.id);
+    const chosen = channels.filter((c) => selected[c.id] && c.configured && !c.stub).map((c) => c.id);
     if (!chosen.length) {
-      toast("⚠️ Pick at least one channel");
+      toast("⚠️ Pick at least one connected channel");
       return;
     }
     const trimmedBody = body.trim();
@@ -91,7 +102,8 @@ export default function Omnichannel() {
       const arr = r.results || [];
       const ok = arr.filter((x) => x.ok).length;
       const fail = arr.length - ok;
-      setStatus(`Done · ${ok} ok · ${fail} failed`);
+      const stubs = arr.filter((x) => x.stub).length;
+      setStatus(`Done · ${ok} ok · ${fail} failed${stubs ? ` · ${stubs} stub` : ""}`);
       setResults(arr);
       setShowResults(false);
     } catch (e) {
@@ -108,45 +120,93 @@ export default function Omnichannel() {
             📡 Omnichannel Composer
           </h1>
           <p style={{ margin: "6px 0 0", color: "#64748B", fontSize: "0.92rem" }}>
-            Write your message once. Pick which channels to send through. We fan it
-            out — Email · SMS · WhatsApp · AI Voice Call · Web Push.
+            Write your message once. Only channels with a connected provider can send —
+            stub channels stay hidden until you connect credentials.
           </p>
         </div>
+
+        {!liveChannels.length ? (
+          <div
+            style={{
+              background: "#FFF7ED",
+              border: "1px solid #FDBA74",
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 16,
+              color: "#9A3412",
+              fontSize: 13,
+              lineHeight: 1.5,
+            }}
+          >
+            <strong>No connected channels.</strong> Add Resend, Twilio, WhatsApp, Vapi, or VAPID
+            keys in Settings / Integrations. Stub-only sends are disabled so journeys don’t look live when they aren’t.
+          </div>
+        ) : null}
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(5,1fr)",
+            gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))",
             gap: 10,
-            marginBottom: 20,
+            marginBottom: 12,
           }}
         >
-          {channels.map((c) => (
-            <label
-              key={c.id}
+          {visibleChannels.map((c) => {
+            const isStub = !c.configured || !!c.stub;
+            return (
+              <label
+                key={c.id}
+                style={{
+                  background: isStub ? "#F8FAFC" : "#fff",
+                  border: `2px solid ${isStub ? "#E2E8F0" : selected[c.id] ? "#86EFAC" : "#BBF7D0"}`,
+                  borderRadius: 12,
+                  padding: 14,
+                  cursor: isStub ? "not-allowed" : "pointer",
+                  display: "block",
+                  opacity: isStub ? 0.72 : 1,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <input
+                    type="checkbox"
+                    disabled={isStub}
+                    checked={!!selected[c.id] && !isStub}
+                    onChange={(e) => setSelected((p) => ({ ...p, [c.id]: e.target.checked }))}
+                  />
+                  <strong style={{ color: "#0F172A" }}>{c.label}</strong>
+                </div>
+                <div style={{ fontSize: "0.74rem", color: isStub ? "#94A3B8" : "#15803D" }}>
+                  {isStub
+                    ? "Stub · provider not connected"
+                    : "✓ Connected · " + (c.via || "")}
+                </div>
+              </label>
+            );
+          })}
+        </div>
+
+        {stubChannels.length ? (
+          <div style={{ marginBottom: 18 }}>
+            <button
+              type="button"
+              onClick={() => setShowStubs((s) => !s)}
               style={{
-                background: "#fff",
-                border: `2px solid ${c.configured ? "#86EFAC" : "#E2E8F0"}`,
-                borderRadius: 12,
-                padding: 14,
+                border: "none",
+                background: "transparent",
+                color: "#64748B",
+                fontSize: 12,
+                fontWeight: 600,
                 cursor: "pointer",
-                display: "block",
+                textDecoration: "underline",
+                padding: 0,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={!!selected[c.id]}
-                  onChange={(e) => setSelected((p) => ({ ...p, [c.id]: e.target.checked }))}
-                />
-                <strong style={{ color: "#0F172A" }}>{c.label}</strong>
-              </div>
-              <div style={{ fontSize: "0.74rem", color: c.configured ? "#15803D" : "#94A3B8" }}>
-                {c.configured ? "✓ Configured · " + (c.via || "") : "Not configured · " + (c.via || "")}
-              </div>
-            </label>
-          ))}
-        </div>
+              {showStubs
+                ? `Hide ${stubChannels.length} stub channel${stubChannels.length === 1 ? "" : "s"}`
+                : `Show ${stubChannels.length} stub channel${stubChannels.length === 1 ? "" : "s"} (disabled)`}
+            </button>
+          </div>
+        ) : null}
 
         <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 14, padding: 22 }}>
           <label style={{ display: "block", fontWeight: 700, color: "#0F172A", marginBottom: 6 }}>
@@ -181,14 +241,17 @@ export default function Omnichannel() {
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <button
               onClick={send}
+              disabled={!liveChannels.length}
               style={{
                 padding: "12px 22px",
-                background: "linear-gradient(135deg,#6366F1,#8B5CF6)",
+                background: liveChannels.length
+                  ? "linear-gradient(135deg,#6366F1,#8B5CF6)"
+                  : "#CBD5E1",
                 color: "#fff",
                 border: "none",
                 borderRadius: 10,
                 fontWeight: 700,
-                cursor: "pointer",
+                cursor: liveChannels.length ? "pointer" : "not-allowed",
               }}
             >
               🚀 Send to selected channels
