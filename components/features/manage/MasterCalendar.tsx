@@ -5,7 +5,18 @@
 // merged as a fallback for in-memory SPA data that has not been persisted yet.
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiGet } from "@/lib/api";
+import { goToView } from "@/lib/nav";
+
+const CALENDAR_LAYERS: Array<{ view: string; icon: string; label: string; desc: string }> = [
+  { view: "brand-calendar", icon: "🏷️", label: "Brand Calendar", desc: "10 brand categories" },
+  { view: "content-calendar", icon: "🗓️", label: "Content Calendar", desc: "Editorial plan" },
+  { view: "social", icon: "📱", label: "Social Calendar", desc: "Scheduled social posts" },
+  { view: "launches", icon: "🚀", label: "Launches", desc: "Product launch dates" },
+  { view: "calendar-assistant", icon: "✨", label: "AI Assistant", desc: "Conflicts · suggest · apply" },
+  { view: "social-publisher", icon: "📤", label: "Social Publisher", desc: "Drafts · approvals · post" },
+];
 
 interface LegacyArticle {
   title?: string;
@@ -143,6 +154,7 @@ function styleFor(type: EventType, status: string, risk: boolean) {
 }
 
 export default function MasterCalendar() {
+  const router = useRouter();
   const today = useMemo(() => new Date(), []);
   const todayIso = useMemo(() => isoOf(today), [today]);
 
@@ -327,12 +339,47 @@ export default function MasterCalendar() {
         </div>
         <h1 className="ih-title">🗓️ Master Calendar</h1>
         <p className="ih-sub">
-          Unified view of all articles, campaigns &amp; social posts — dates,
-          status &amp; risk at a glance
+          Unified agenda for brand, content, campaigns, social, and launches —
+          open a layer below when you need to edit that calendar
         </p>
       </div>
 
-      <div style={{ padding: "24px 28px" }}>
+      <div style={{ padding: "16px 28px 0", maxWidth: 1200, margin: "0 auto" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))",
+            gap: 10,
+            marginBottom: 8,
+          }}
+        >
+          {CALENDAR_LAYERS.map((layer) => (
+            <button
+              key={layer.view}
+              type="button"
+              onClick={() => goToView(router, layer.view)}
+              style={{
+                textAlign: "left",
+                background: "#fff",
+                border: "1px solid #E2E8F0",
+                borderRadius: 12,
+                padding: "12px 14px",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ fontSize: 18, lineHeight: 1 }}>{layer.icon}</div>
+              <div style={{ marginTop: 6, fontWeight: 800, fontSize: 13, color: "#0F172A" }}>
+                {layer.label}
+              </div>
+              <div style={{ marginTop: 2, fontSize: 11, color: "#64748B", lineHeight: 1.35 }}>
+                {layer.desc}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: "16px 28px 24px" }}>
         {/* Summary cards */}
         <div
           style={{

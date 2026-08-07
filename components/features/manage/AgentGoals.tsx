@@ -336,7 +336,7 @@ function Metric({
   );
 }
 
-export default function AgentGoals() {
+export default function AgentGoals({ embedded = false }: { embedded?: boolean } = {}) {
   const [goals, setGoals] = useState<Goal[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -847,25 +847,27 @@ export default function AgentGoals() {
 
   return (
     <div data-ig-no-enhance data-ig-skip>
-      <div className="view-header ig-panel-hero">
-        <div className="container">
-          <div className="vh-inner">
-            <div>
-              <div className="breadcrumb">
-                <span className="bc-group">Grow</span>{" "}
-                <span className="bc-sep">›</span> Marketing Goals
+      {!embedded ? (
+        <div className="view-header ig-panel-hero">
+          <div className="container">
+            <div className="vh-inner">
+              <div>
+                <div className="breadcrumb">
+                  <span className="bc-group">Grow</span>{" "}
+                  <span className="bc-sep">›</span> Marketing Goals
+                </div>
+                <h2 className="view-title">Marketing Goals</h2>
+                <p className="view-sub">
+                  Set the outcome you want. InfoGenie builds an execution plan,
+                  tracks the work, and grades how close you are — with a clear next move.
+                </p>
               </div>
-              <h2 className="view-title">Marketing Goals</h2>
-              <p className="view-sub">
-                Set the outcome you want. InfoGenie builds an execution plan,
-                tracks the work, and grades how close you are — with a clear next move.
-              </p>
             </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
-      <div className="container" style={{ paddingTop: 24, paddingBottom: 64 }}>
+      <div className="container" style={{ paddingTop: embedded ? 8 : 24, paddingBottom: 64 }}>
         {loadError ? (
           <div
             style={{

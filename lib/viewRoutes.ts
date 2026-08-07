@@ -357,11 +357,10 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "1 · Set the targets",
         items: [
-          { view: "agent-goals", icon: "🏁", label: "Marketing Goals (set · plan · track)" },
+          { view: "agent-goals", icon: "🏁", label: "Goals Hub (marketing · targets · metrics)" },
           { view: "growth-hub", icon: "🚀", label: "Growth Marketing — start here" },
           { view: "ecosystem-spine", icon: "🕸️", label: "Ecosystem Spine (audiences · attribution · close-loop)" },
-          { view: "goals", icon: "📎", label: "Goals & Targets" },
-          { view: "kpi-tracker", icon: "💹", label: "KPI Tracker (live)" },
+          // goals + canonical-metrics are Goals Hub tabs (deep links preserved)
           { view: "action-center", icon: "🎥", label: "Action Center (do this next)" },
         ],
       },
@@ -443,13 +442,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "1 · Calendars & projects",
         items: [
           { view: "new-project", icon: "👋", label: "+ New Marketing Project" },
-          { view: "master-calendar", icon: "📆", label: "Master Calendar (everything)" },
-          { view: "brand-calendar", icon: "🕰️", label: "Brand Calendar (10 categories)" },
-          { view: "calendar-assistant", icon: "📅", label: "Calendar Assistant (AI schedule · conflicts)" },
+          { view: "master-calendar", icon: "📆", label: "Master Calendar (unified agenda · layers)" },
+          // brand / content / social / launches / assistant open from Master Calendar tiles
           { view: "agent-orchestrator", icon: "🤖", label: "Agent Orchestrator (cross-module suggest → apply)" },
-          { view: "social", icon: "🙌", label: "Social Calendar (schedule view)" },
-          // Social Publisher lives under Reach → Social command center (single destination)
-          { view: "launches", icon: "👏", label: "Product Launch Calendar" },
         ],
       },
       {
@@ -460,9 +455,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "ai-traffic", icon: "✒️", label: "AI Traffic Monitor" },
           { view: "heatmaps", icon: "🖋️", label: "Heatmaps + Session Replay" },
           { view: "action-queue", icon: "📹", label: "Daily Action Queue (what to do today)" },
-          { view: "marketing-okr", icon: "📷", label: "Marketing OKRs (live campaign data)" },
-          { view: "canonical-metrics", icon: "📐", label: "Canonical Metrics (SSOT · pacing · goals)" },
-          // Marketing Goals live under Grow → Set the targets (single destination)
+          // marketing-okr + canonical-metrics live under Goals Hub (related / tabs)
           { view: "budget", icon: "💰", label: "Budget Hub (overview · board · caps)" },
           // budget-board + budget-caps stay deep-linkable (VIEW_TO_PATH below); not listed again in nav
           { view: "utm-builder", icon: "📸", label: "UTM Architecture (link builder + presets)" },
@@ -607,6 +600,19 @@ ALL_VIEW_IDS.add("budget-board");
 ALL_VIEW_IDS.add("budget-caps");
 VIEW_TO_PATH["budget-board"] = "/manage/budget-board";
 VIEW_TO_PATH["budget-caps"] = "/manage/budget-caps";
+// Goals Hub deep links (tabs / related) — keep bookmarks after nav consolidation
+ALL_VIEW_IDS.add("goals");
+ALL_VIEW_IDS.add("canonical-metrics");
+ALL_VIEW_IDS.add("marketing-okr");
+ALL_VIEW_IDS.add("kpi-tracker");
+VIEW_TO_PATH.goals = "/grow/goals";
+VIEW_TO_PATH["kpi-tracker"] = "/grow/kpi-tracker";
+VIEW_TO_PATH["marketing-okr"] = "/manage/marketing-okr";
+// Master Calendar layers — deep-linkable after sidebar demotion
+for (const calView of ["brand-calendar", "calendar-assistant", "social", "launches"] as const) {
+  ALL_VIEW_IDS.add(calView);
+  if (!VIEW_TO_PATH[calView]) VIEW_TO_PATH[calView] = `/manage/${calView}`;
+}
 
 /**
  * Views trimmed from the default Analyse sidebar (to reduce duplicates) but still
@@ -699,6 +705,13 @@ export const VIEW_ID_ALIASES: Record<string, string> = {
   "ai-visibility":     "seo-ai-visibility",
   "geo-visibility":    "seo-ai-visibility",
   "answer-engine":     "seo-ai-visibility",
+  // Goals Hub discoverability
+  "goals-hub":         "agent-goals",
+  "marketing-goals":   "agent-goals",
+  "targets":           "goals",
+  // Calendar shell discoverability
+  "calendar-hub":      "master-calendar",
+  "unified-calendar":  "master-calendar",
 };
 
 /**

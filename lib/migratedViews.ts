@@ -84,6 +84,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "budget", legacyModule: null },
   { view: "budget-board", legacyModule: null },
   { view: "seo-ai-visibility", legacyModule: null },
+  // Goals Hub is registered via agent-goals / goals / canonical-metrics keys
   { view: "ask-infogenie", legacyModule: null },
   { view: "strategic-intelligence", legacyModule: null },
   { view: "marketing-memory", legacyModule: null },

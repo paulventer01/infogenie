@@ -55,6 +55,8 @@ Brief → Analyse (understand) → Create (assets) → Reach (distribute)
 4. **Migration gap** — Added `aeo-optimizer`, `autoclaw`, `lead-intelligence` to `MIGRATED_VIEWS` (were registry-only → SpaRouter race risk)
 5. **Budget Hub consolidation** — Manage nav lists one **Budget Hub**; Overview / Board / Caps are tabs with deep links `/manage/budget`, `/manage/budget-board`, `/manage/budget-caps` (`BudgetHub.tsx`)
 6. **Search & AI Visibility hub** — Analyse → **Search & AI Visibility — start here** (`seo-ai-visibility`) tile launcher for GEO / AEO / zero-click / voice / auditor / crawler
+7. **Goals Hub** — Grow → **Goals Hub** tabs: Marketing Goals · Targets · Metrics SSOT (`GoalsHub.tsx`); OKR / KPI / Action Center as Related chips; deep links preserved
+8. **Master Calendar shell** — Manage → Master Calendar gains layer tiles (Brand · Content · Social · Launches · AI Assistant · Publisher); sibling calendar items demoted from sidebar
 
 ---
 

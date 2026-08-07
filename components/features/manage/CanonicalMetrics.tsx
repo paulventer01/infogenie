@@ -74,7 +74,7 @@ function deltaColor(pct: number | null | undefined, key: string) {
   return good ? "#16A34A" : "#DC2626";
 }
 
-export default function CanonicalMetrics() {
+export default function CanonicalMetrics({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const [days, setDays] = useState(30);
   const [snap, setSnap] = useState<Snap | null>(null);
@@ -102,18 +102,28 @@ export default function CanonicalMetrics() {
   const pace = snap?.pacing;
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(180deg,#ECFDF5 0%,#F8FAFC 45%)", padding: "28px 32px" }}>
+    <div
+      style={{
+        minHeight: embedded ? "auto" : "100vh",
+        background: embedded ? "transparent" : "linear-gradient(180deg,#ECFDF5 0%,#F8FAFC 45%)",
+        padding: embedded ? "8px 24px 32px" : "28px 32px",
+      }}
+    >
       <div style={{ maxWidth: 1120, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", marginBottom: 20 }}>
-          <div>
-            <div style={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "#0F766E" }}>
-              Single source of truth
+          {!embedded ? (
+            <div>
+              <div style={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "#0F766E" }}>
+                Single source of truth
+              </div>
+              <h1 style={{ margin: "6px 0 6px", fontSize: "1.6rem", color: "#0F172A" }}>Canonical Metrics</h1>
+              <p style={{ margin: 0, color: "#64748B", maxWidth: 560 }}>
+                Spend, blended &amp; true ROAS, CAC, waste, goals vs actuals, and live budget pacing — one engine every report and goal check should use.
+              </p>
             </div>
-            <h1 style={{ margin: "6px 0 6px", fontSize: "1.6rem", color: "#0F172A" }}>Canonical Metrics</h1>
-            <p style={{ margin: 0, color: "#64748B", maxWidth: 560 }}>
-              Spend, blended &amp; true ROAS, CAC, waste, goals vs actuals, and live budget pacing — one engine every report and goal check should use.
-            </p>
-          </div>
+          ) : (
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0F766E" }}>Goals vs actuals · pacing · ROAS</div>
+          )}
           <select
             value={days}
             onChange={(e) => setDays(+e.target.value)}
