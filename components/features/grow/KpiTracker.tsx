@@ -455,7 +455,7 @@ async function computeModel(): Promise<Model> {
   };
 }
 
-export default function KpiTracker() {
+export default function KpiTracker({ embedded = false }: { embedded?: boolean } = {}) {
   const [model, setModel] = useState<Model | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
@@ -519,36 +519,53 @@ export default function KpiTracker() {
 
   return (
     <div>
-      <div className="view-header intel-header ig-panel-hero">
-        <div className="container">
-          <div className="vh-inner">
-            <div>
-              <div className="breadcrumb">
-                <span className="bc-group">Grow</span> <span className="bc-sep">›</span> KPI Tracker
+      {!embedded ? (
+        <div className="view-header intel-header ig-panel-hero">
+          <div className="container">
+            <div className="vh-inner">
+              <div>
+                <div className="breadcrumb">
+                  <span className="bc-group">Grow</span> <span className="bc-sep">›</span> KPI Tracker
+                </div>
+                <h2 className="view-title">KPI Performance Tracker</h2>
+                <p className="view-sub">
+                  Live status of every marketing KPI — achieved, at risk, and gap analysis with AI explanations
+                </p>
               </div>
-              <h2 className="view-title">KPI Performance Tracker</h2>
-              <p className="view-sub">
-                Live status of every marketing KPI — achieved, at risk, and gap analysis with AI explanations
-              </p>
-            </div>
-            <div className="vh-actions">
-              <button className="btn-secondary" onClick={rebuild}>
-                ↻ Refresh
-              </button>
-              <button
-                className="btn-primary"
-                onClick={runKpiAnalysis}
-                disabled={analyzing}
-                style={{ whiteSpace: "nowrap" }}
-              >
-                {analyzing ? "⏳ Analysing…" : "🔍 Run KPI Analysis"}
-              </button>
+              <div className="vh-actions">
+                <button className="btn-secondary" onClick={rebuild}>
+                  ↻ Refresh
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={runKpiAnalysis}
+                  disabled={analyzing}
+                  style={{ whiteSpace: "nowrap" }}
+                >
+                  {analyzing ? "⏳ Analysing…" : "🔍 Run KPI Analysis"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="container" style={{ paddingTop: 4, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" className="btn-secondary" onClick={rebuild}>
+            ↻ Refresh
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={runKpiAnalysis}
+            disabled={analyzing}
+            style={{ whiteSpace: "nowrap" }}
+          >
+            {analyzing ? "⏳ Analysing…" : "🔍 Run KPI Analysis"}
+          </button>
+        </div>
+      )}
 
-      <div className="container" style={{ paddingTop: 28, paddingBottom: 60 }}>
+      <div className="container" style={{ paddingTop: embedded ? 12 : 28, paddingBottom: 60 }}>
         {loading || !model ? (
           <div style={{ padding: 48, textAlign: "center", color: "#64748B" }}>Loading KPIs…</div>
         ) : (

@@ -103,7 +103,7 @@ function KrRow({
 
 // ── main component ────────────────────────────────────────────────────────────
 
-export default function MarketingOKR() {
+export default function MarketingOKR({ embedded = false }: { embedded?: boolean } = {}) {
   const [objectives, setObjectives] = useState<Objective[]>([]);
   const [quarters, setQuarters]     = useState<string[]>([]);
   const [currentQ, setCurrentQ]     = useState("");
@@ -211,26 +211,28 @@ export default function MarketingOKR() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header ig-panel-hero">
-        <div className="container">
-          <div className="vh-inner">
-            <div>
-              <div className="breadcrumb">
-                <span className="bc-group">Manage</span>{" "}
-                <span className="bc-sep">›</span> Marketing OKRs
+      {!embedded ? (
+        <div className="view-header ig-panel-hero">
+          <div className="container">
+            <div className="vh-inner">
+              <div>
+                <div className="breadcrumb">
+                  <span className="bc-group">Manage</span>{" "}
+                  <span className="bc-sep">›</span> Marketing OKRs
+                </div>
+                <h2 className="view-title">🎯 Marketing OKR Tracker</h2>
+                <p className="view-sub">
+                  Set quarterly marketing objectives, attach key results with
+                  targets, and track real progress from live campaign data — spend,
+                  clicks, conversions, and ROAS update automatically.
+                </p>
               </div>
-              <h2 className="view-title">🎯 Marketing OKR Tracker</h2>
-              <p className="view-sub">
-                Set quarterly marketing objectives, attach key results with
-                targets, and track real progress from live campaign data — spend,
-                clicks, conversions, and ROAS update automatically.
-              </p>
             </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
-      <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
+      <div className="container" style={{ paddingTop: embedded ? 8 : 24, paddingBottom: 56 }}>
 
         {/* Controls */}
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 20 }}>

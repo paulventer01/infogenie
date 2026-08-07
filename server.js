@@ -2777,6 +2777,12 @@ app.use('/api/brand-calendar',  _bcalRouter);
 const _calAsstSchema = require('./services/calendar_assistant/schema');
 const _calAsstRouter = require('./services/calendar_assistant/api');
 app.use('/api/calendar-assistant', _calAsstRouter);
+// Budget family: mount nested /caps + /arbitrage BEFORE /api/budget so the board
+// router does not swallow those paths (Express prefix matching).
+const _budgetCapsRouterEarly = require('./services/budget_caps/api');
+const _budgetArbRouterEarly  = require('./services/budget_arbitrage/api');
+app.use('/api/budget/caps',       _budgetCapsRouterEarly);
+app.use('/api/budget/arbitrage',  _budgetArbRouterEarly);
 app.use('/api/budget',          _budgetRouter);
 app.use('/api/web-analytics',   _webAnalRouter);
 const _canonicalMetricsRouter = require('./services/canonical_metrics/api');

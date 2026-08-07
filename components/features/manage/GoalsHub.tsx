@@ -1,11 +1,8 @@
 "use client";
 
 /**
- * Goals Hub — consolidates Marketing Goals, Targets, and Canonical Metrics.
- * Deep links:
- *   /grow/agent-goals           → Marketing Goals
- *   /grow/goals                 → Targets
- *   /manage/canonical-metrics   → Metrics SSOT
+ * Goals Hub — Marketing Goals, Targets, Metrics SSOT, OKRs, KPI Tracker.
+ * Deep links preserved for each tab view id.
  */
 
 import { useMemo } from "react";
@@ -15,8 +12,10 @@ import { goToView } from "@/lib/nav";
 import AgentGoals from "@/components/features/manage/AgentGoals";
 import Goals from "@/components/features/grow/Goals";
 import CanonicalMetrics from "@/components/features/manage/CanonicalMetrics";
+import MarketingOKR from "@/components/features/manage/MarketingOKR";
+import KpiTracker from "@/components/features/grow/KpiTracker";
 
-type TabId = "marketing" | "targets" | "metrics";
+type TabId = "marketing" | "targets" | "metrics" | "okr" | "kpi";
 
 const TABS: Array<{ id: TabId; view: string; label: string; blurb: string }> = [
   {
@@ -37,18 +36,31 @@ const TABS: Array<{ id: TabId; view: string; label: string; blurb: string }> = [
     label: "Metrics SSOT",
     blurb: "Spend, ROAS, CAC, waste, and goals vs actuals — one engine",
   },
+  {
+    id: "okr",
+    view: "marketing-okr",
+    label: "OKRs",
+    blurb: "Marketing OKRs tied to live campaign data",
+  },
+  {
+    id: "kpi",
+    view: "kpi-tracker",
+    label: "KPI Tracker",
+    blurb: "Live KPI performance across channels",
+  },
 ];
 
 const RELATED: Array<{ view: string; label: string }> = [
-  { view: "marketing-okr", label: "Marketing OKRs" },
-  { view: "kpi-tracker", label: "KPI Tracker" },
   { view: "action-center", label: "Action Center" },
   { view: "budget", label: "Budget Hub" },
+  { view: "flywheel", label: "Growth Flywheel" },
 ];
 
 function viewToTab(view: string | null): TabId {
   if (view === "goals") return "targets";
   if (view === "canonical-metrics") return "metrics";
+  if (view === "marketing-okr") return "okr";
+  if (view === "kpi-tracker") return "kpi";
   return "marketing";
 }
 
@@ -87,7 +99,7 @@ export default function GoalsHub() {
             Goals Hub
           </h1>
           <p style={{ margin: "6px 0 0", fontSize: 14, color: "#64748B", maxWidth: 720, lineHeight: 1.5 }}>
-            One workflow for outcomes, numeric targets, and the metrics every report should trust.
+            Outcomes, numeric targets, OKRs, KPIs, and the metrics every report should trust — one workflow.
           </p>
         </div>
 
@@ -112,7 +124,7 @@ export default function GoalsHub() {
                 aria-selected={on}
                 onClick={() => goToView(router, t.view)}
                 style={{
-                  padding: "10px 16px",
+                  padding: "10px 14px",
                   marginBottom: -2,
                   border: "none",
                   borderBottom: on ? "3px solid #4F46E5" : "3px solid transparent",
@@ -160,6 +172,8 @@ export default function GoalsHub() {
         {tab === "marketing" ? <AgentGoals embedded /> : null}
         {tab === "targets" ? <Goals embedded /> : null}
         {tab === "metrics" ? <CanonicalMetrics embedded /> : null}
+        {tab === "okr" ? <MarketingOKR embedded /> : null}
+        {tab === "kpi" ? <KpiTracker embedded /> : null}
       </div>
     </div>
   );

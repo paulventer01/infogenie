@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPut } from "@/lib/api";
 
 interface Cap {
   id: number;
@@ -65,8 +65,8 @@ export default function BudgetCaps({ embedded = false }: { embedded?: boolean } 
   const load = useCallback(async () => {
     setLoading(true);
     const [capsR, campsR] = await Promise.all([
-      apiGet<{ ok: boolean; error?: string; caps?: Cap[]; spend_by_platform?: Record<string, SpendInfo> }>("/api/budget-caps/caps"),
-      apiGet<{ ok: boolean; error?: string; campaigns?: Campaign[] }>("/api/budget-caps/campaigns"),
+      apiGet<{ ok: boolean; error?: string; caps?: Cap[]; spend_by_platform?: Record<string, SpendInfo> }>("/api/budget/caps"),
+      apiGet<{ ok: boolean; error?: string; campaigns?: Campaign[] }>("/api/budget/caps/campaigns"),
     ]);
     if (capsR?.caps) setCaps(capsR.caps);
     if (capsR?.spend_by_platform) setSpend(capsR.spend_by_platform);
@@ -85,7 +85,7 @@ export default function BudgetCaps({ embedded = false }: { embedded?: boolean } 
   async function saveCap(platform: string) {
     setSaving(platform);
     const e = editing[platform] || {};
-    const r = await apiPost<{ ok: boolean; error?: string; cap?: Cap }>(`/api/budget-caps/caps/${platform}`, {
+    const r = await apiPut<{ ok: boolean; error?: string; cap?: Cap }>(`/api/budget/caps/${platform}`, {
       daily_cap: e.daily ? parseFloat(e.daily) : null,
       lifetime_cap: e.lifetime ? parseFloat(e.lifetime) : null,
       alert_threshold_pct: parseInt(e.threshold) || 80,

@@ -111,12 +111,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "5 · AI search & mentions",
         items: [
           { view: "seo-ai-visibility", icon: "🔍", label: "Search & AI Visibility — start here" },
-          { view: "geo-audit", icon: "🛸", label: "AI Results / GEO Audit" },
-          { view: "aeo-optimizer", icon: "💬", label: "Answer Engine Optimization (AEO)" },
-          { view: "zero-click-hub", icon: "👁️", label: "Zero-Click Hub (snippets · PAA · AI Overview)" },
-          { view: "voice-seo", icon: "🎙️", label: "Voice Search SEO" },
+          // GEO/AEO/zero-click/voice/auditor open from the hub (deep links preserved)
           { view: "mentions", icon: "🌐", label: "Mentions Hub" },
-          { view: "social-listening", icon: "👂", label: "Social Listening" },
+          { view: "organic-performance", icon: "📱", label: "Organic Social Performance — start here" },
           { view: "media-intel", icon: "📰", label: "Media Intelligence" },
           { view: "realtime-news", icon: "🗞️", label: "Real-Time News" },
           { view: "crisis-radar", icon: "🚨", label: "Crisis Radar" },
@@ -127,7 +124,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         items: [
           { view: "backlinks", icon: "🔗", label: "Backlink Explorer" },
           { view: "backlink-monitor", icon: "🛰️", label: "Backlink Health Monitor" },
-          { view: "seo-auditor", icon: "🧭", label: "Website Audit" },
+          // Website Audit lives under Search & AI Visibility hub
           { view: "change-monitor", icon: "🔔", label: "Page Changes Monitor" },
           { view: "semrush", icon: "📟", label: "Semrush Intel" },
           { view: "ahrefs", icon: "🕵️‍♂️", label: "Ahrefs Intel" },
@@ -141,7 +138,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "review-aggregator", icon: "⭐", label: "Review Aggregator" },
           { view: "reputation-score", icon: "🌟", label: "Reputation Score" },
           { view: "presence-score", icon: "📡", label: "Presence Score" },
-          { view: "organic-social", icon: "📱", label: "Organic Social Monitor" },
+          // organic-social demoted into Organic Social Performance hub
           { view: "tech-stack", icon: "🧱", label: "Tech Stack Detector" },
           { view: "pricing-watch", icon: "💰", label: "Pricing Watcher" },
         ],
@@ -195,8 +192,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "4 · Design the visuals",
         items: [
-          { view: "creative", icon: "🖌️", label: "AI Creative (single ad)" },
-          { view: "smart-creative", icon: "✨", label: "Smart Creative Builder (multi)" },
+          { view: "creative-hub", icon: "🖌️", label: "Creative Studio — start here" },
+          // creative / smart-creative / ad-creative open from Creative Studio hub
           { view: "carousel", icon: "🎠", label: "Carousel Generator" },
           { view: "canva", icon: "🎨", label: "Canva Template Launcher" },
           { view: "ugc-avatars", icon: "🧑‍🎤", label: "UGC Avatar Videos" },
@@ -213,9 +210,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "5 · Build pages & bots",
         items: [
           { view: "conversational-ai", icon: "🤖", label: "Conversational AI — start here" },
-          { view: "landing-pages", icon: "🚀", label: "AI Landing Pages (A/B · leads · ad package)" },
-          { view: "landing-builder", icon: "🌎", label: "Landing Page Builder" },
-          { view: "site-builder", icon: "🏗️", label: "Site Builder (multi-page)" },
+          { view: "pages-hub", icon: "🚀", label: "Pages & Sites — start here" },
+          // landing-pages / landing-builder / site-builder open from Pages hub
           { view: "linksell", icon: "🛒", label: "Link-in-Bio + Stripe" },
           { view: "schema-generator", icon: "🏷️", label: "SEO Schema Generator" },
           { view: "chatbot-builder", icon: "🤖", label: "Chatbot Builder" },
@@ -225,9 +221,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "6 · Plan the campaign",
         items: [
           { view: "campaigns", icon: "🛫", label: "Campaign Strategy" },
-          { view: "content-calendar", icon: "🗓️", label: "Content Calendar" },
+          // Content Calendar opens from Master Calendar layers
           { view: "content-modes", icon: "✍️", label: "Content Modes" },
-          { view: "ad-creative", icon: "🖍️", label: "Ad Creative Gen" },
           { view: "idea-feed", icon: "🕯️", label: "Idea Swipe Feed" },
           { view: "pitch-deck", icon: "🧮", label: "Pitch Deck Builder" },
           { view: "wireframe", icon: "📏", label: "Wireframe Generator" },
@@ -276,7 +271,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "hubspot-sync", icon: "🔁", label: "HubSpot CRM Sync" },
           { view: "crm-sync", icon: "♻️", label: "CRM Sync (ActiveCampaign · ConvertKit)" },
           { view: "hunter", icon: "🗄️", label: "Hunter.io Email Finder" },
-          { view: "referral-manager", icon: "🌟", label: "Referral Program Manager" },
+          { view: "referral-manager", icon: "🌟", label: "Customer Referral Program" },
         ],
       },
       {
@@ -304,14 +299,11 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "5 · Get found in search & AI",
         items: [
+          // Search & AI Visibility hub lives under Analyse (single destination)
           { view: "gsc-data", icon: "🧾", label: "Search Console Data" },
-          { view: "search-intel", icon: "🔮", label: "AI Visibility & Search Pulse" },
           { view: "local-seo", icon: "📑", label: "Local SEO (Google Maps)" },
           { view: "local-listings", icon: "🏬", label: "Local Listings / NAP Sync" },
           { view: "content-brief", icon: "📃", label: "SEO Content Brief Studio" },
-          { view: "content-score", icon: "📜", label: "Content Score Auto-Optimize" },
-          { view: "seo-crawler", icon: "🕸️", label: "Full-Site SEO Crawler" },
-          { view: "seo-roadmap", icon: "🗾", label: "SEO Roadmap" },
           { view: "web-vitals", icon: "⏱️", label: "Web Vitals" },
           { view: "seo-tasks", icon: "🗒️", label: "SEO Task Manager" },
         ],
@@ -357,7 +349,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "1 · Set the targets",
         items: [
-          { view: "agent-goals", icon: "🏁", label: "Goals Hub (marketing · targets · metrics)" },
+          { view: "agent-goals", icon: "🏁", label: "Goals Hub (goals · OKRs · KPIs · metrics)" },
           { view: "growth-hub", icon: "🚀", label: "Growth Marketing — start here" },
           { view: "ecosystem-spine", icon: "🕸️", label: "Ecosystem Spine (audiences · attribution · close-loop)" },
           // goals + canonical-metrics are Goals Hub tabs (deep links preserved)
@@ -370,8 +362,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "meta-insights", icon: "📘", label: "Meta Ads Insights" },
           { view: "google-ads-insights", icon: "🅖", label: "Google Ads Insights" },
           { view: "tiktok-ads-insights", icon: "🎵", label: "TikTok Ads Insights" },
-          { view: "social-analytics", icon: "🖇️", label: "Organic Social Analytics" },
-          { view: "post-performance", icon: "⚗️", label: "Post Performance" },
+          // organic social analytics / post performance → Organic Social Performance hub
           { view: "optimizer", icon: "🦿", label: "AI Campaign Optimizer (auto)" },
           { view: "lead-intelligence", icon: "🎯", label: "Lead Intelligence (GLM)" },
           { view: "remarketing-suite", icon: "🔄", label: "Remarketing Suite" },
@@ -402,12 +393,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "4 · Improve SEO & conversion",
         items: [
           { view: "conversion-lab", icon: "🧪", label: "Conversion Lab — start here" },
-          { view: "seo-growth-autopilot", icon: "🚀", label: "SEO Growth Autopilot (Growth Plan)" },
-          { view: "autoseo", icon: "✈️", label: "AutoSEO Pro (autonomous)" },
-          { view: "contentscorer", icon: "📝", label: "Content Scorer" },
+          // Autopilot / AutoSEO / content scorer → Analyse Search & AI Visibility hub
           { view: "link-suggester", icon: "⛓️", label: "Internal Link Suggester" },
           { view: "cro-lab",        icon: "💢", label: "CRO Lab (page tests)" },
-          // Bulk rewriter lives under Create → Content Studio (single destination)
           { view: "ai-audit-suite", icon: "💯", label: "AI Audit Suite (deep)" },
           { view: "vis-leaderboard", icon: "🧑‍🤝‍🧑", label: "Visibility Rank Table (Δ)" },
           { action: "wpConnect", icon: "🟦", label: "Connect to WordPress" },
@@ -460,7 +448,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           // budget-board + budget-caps stay deep-linkable (VIEW_TO_PATH below); not listed again in nav
           { view: "utm-builder", icon: "📸", label: "UTM Architecture (link builder + presets)" },
           { view: "pixel-manager", icon: "🎞️", label: "Pixel Manager (Meta CAPI · LinkedIn · TikTok)" },
-          { view: "affiliate-hub", icon: "🤝", label: "Affiliate Program Hub" },
+          { view: "affiliate-hub", icon: "🤝", label: "Partner Affiliate Program" },
           { view: "execution-hub", icon: "🔌", label: "Execution Hub (Canva · Mailchimp · PMax · Segment)" },
           { view: "launch-compliance", icon: "☑️", label: "Launch Compliance Checklist (brand · copy · legal · mobile)" },
           { view: "post-launch-audit", icon: "📽️", label: "Post-Launch Audit (live data + lead flow 24-48h)" },
@@ -483,8 +471,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "4 · Team & frameworks",
         items: [
-          { view: "meeting-notes", icon: "✏️", label: "Meeting Notes (transcript summarize)" },
-          // Team Capacity + AI Team minutes live under AI Team → Team ops
+          { view: "meeting-notes", icon: "✏️", label: "Sales Meeting Notes (BANT transcript)" },
+          // AI Team minutes live under AI Team → Team ops
           { view: "playbook-7day", icon: "📖", label: "7-Day Marketing Playbook" },
           { view: "growth-methodology", icon: "💶", label: "Growth Methodology (5-stage)" },
           { view: "flywheel", icon: "🔁", label: "Performance Growth Flywheel" },
@@ -523,7 +511,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "marketplace", icon: "🏪", label: "AI Marketing Marketplace" },
           { view: "workspaces", icon: "👪", label: "Workspaces & Team" },
           { view: "admin", icon: "🔐", label: "Admin Portal", id: "navAdminLink", hidden: true },
-          { view: "technical-suite", icon: "🔧", label: "Technical Suite" },
+          { view: "technical-suite", icon: "🔧", label: "Technical Suite (admin toolkit · diagnostics)" },
           { view: "brand-safety", icon: "🗝️", label: "Brand Safety & Compliance" },
           { view: "data-provenance", icon: "🖨️", label: "Data Provenance (audit trail)" },
           { view: "settings", icon: "🔩", label: "Settings & Integrations" },
@@ -551,7 +539,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         items: [
           { view: "finance-officer", icon: "🖱️", label: "Finance Officer" },
           { view: "ops-officer", icon: "⚒️", label: "Operations Officer" },
-          { view: "technical-manager", icon: "🛡️", label: "Technical Manager (platform · security · live status)" },
+          { view: "technical-manager", icon: "🛡️", label: "Technical Manager (officer · live platform status)" },
         ],
       },
       {
@@ -560,7 +548,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "Team ops",
         items: [
           { view: "capacity", icon: "👥", label: "Team Capacity & Workload" },
-          { view: "team-meetings", icon: "💴", label: "Minutes of Meeting" },
+          { view: "team-meetings", icon: "💴", label: "AI Team Minutes (officer meetings)" },
           { view: "ai-providers", icon: "🔈", label: "AI Providers (BYO LLM)" },
           { view: "ai-governance", icon: "🛡️", label: "AI Governance Hub" },
         ],
@@ -612,6 +600,38 @@ VIEW_TO_PATH["marketing-okr"] = "/manage/marketing-okr";
 for (const calView of ["brand-calendar", "calendar-assistant", "social", "launches"] as const) {
   ALL_VIEW_IDS.add(calView);
   if (!VIEW_TO_PATH[calView]) VIEW_TO_PATH[calView] = `/manage/${calView}`;
+}
+ALL_VIEW_IDS.add("content-calendar");
+VIEW_TO_PATH["content-calendar"] = "/create/content-calendar";
+
+// SEO / creative / pages / organic tools demoted into hubs — keep deep links
+const HUB_DEEP_LINKS: Array<[string, string]> = [
+  ["geo-audit", "/analyse/geo-audit"],
+  ["aeo-optimizer", "/analyse/aeo-optimizer"],
+  ["zero-click-hub", "/analyse/zero-click-hub"],
+  ["voice-seo", "/analyse/voice-seo"],
+  ["seo-auditor", "/analyse/seo-auditor"],
+  ["social-listening", "/analyse/social-listening"],
+  ["organic-social", "/analyse/organic-social"],
+  ["search-intel", "/reach/search-intel"],
+  ["content-score", "/reach/content-score"],
+  ["seo-crawler", "/reach/seo-crawler"],
+  ["seo-roadmap", "/reach/seo-roadmap"],
+  ["seo-growth-autopilot", "/grow/seo-growth-autopilot"],
+  ["autoseo", "/grow/autoseo"],
+  // contentscorer → content-score via VIEW_ID_ALIASES (not a separate destination)
+  ["social-analytics", "/grow/social-analytics"],
+  ["post-performance", "/grow/post-performance"],
+  ["creative", "/create/creative"],
+  ["smart-creative", "/create/smart-creative"],
+  ["ad-creative", "/create/ad-creative"],
+  ["landing-pages", "/create/landing-pages"],
+  ["landing-builder", "/create/landing-builder"],
+  ["site-builder", "/create/site-builder"],
+];
+for (const [view, path] of HUB_DEEP_LINKS) {
+  ALL_VIEW_IDS.add(view);
+  VIEW_TO_PATH[view] = path;
 }
 
 /**
@@ -671,7 +691,8 @@ for (const view of SIDEBAR_HIDDEN_VIEWS) {
 /** Canonical dashboard URL for a `data-view` id, or `/` if unknown. */
 export function viewToPath(view: string): string {
   if (view === "home") return "/analyse";
-  return VIEW_TO_PATH[view] || "/";
+  const resolved = VIEW_ID_ALIASES[view] || view;
+  return VIEW_TO_PATH[resolved] || VIEW_TO_PATH[view] || "/";
 }
 
 /**
@@ -705,6 +726,8 @@ export const VIEW_ID_ALIASES: Record<string, string> = {
   "ai-visibility":     "seo-ai-visibility",
   "geo-visibility":    "seo-ai-visibility",
   "answer-engine":     "seo-ai-visibility",
+  // Content Score: single destination (Reach content-score)
+  "contentscorer":     "content-score",
   // Goals Hub discoverability
   "goals-hub":         "agent-goals",
   "marketing-goals":   "agent-goals",
@@ -712,6 +735,13 @@ export const VIEW_ID_ALIASES: Record<string, string> = {
   // Calendar shell discoverability
   "calendar-hub":      "master-calendar",
   "unified-calendar":  "master-calendar",
+  // Create hubs
+  "creative-studio":   "creative-hub",
+  "ad-creative-hub":   "creative-hub",
+  "pages-sites":       "pages-hub",
+  "landing-hub":       "pages-hub",
+  // Organic social performance hub
+  "organic-social-perf": "organic-performance",
 };
 
 /**
