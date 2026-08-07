@@ -4007,7 +4007,9 @@ input:focus, textarea:focus, select:focus {
   white-space: normal;
   transition: opacity .12s;
 }
-#igTip[hidden] { display: none !important; }
+#igTip[hidden],
+#igTip:empty,
+#igTip[aria-hidden="true"] { display: none !important; }
 #igTip::before {
   content: '';
   position: absolute;

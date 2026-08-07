@@ -572,6 +572,7 @@ window._infoGenieActions = [];
       _active = el;
       _tipEl.textContent = el.getAttribute('data-ig-tip');
       _tipEl.removeAttribute('hidden');
+      _tipEl.setAttribute('aria-hidden', 'false');
       _pos(e.clientX, e.clientY);
     }, true);
 
@@ -587,10 +588,16 @@ window._infoGenieActions = [];
 
     document.addEventListener('click', _hideTip, true);
     document.addEventListener('keydown', _hideTip, true);
+    // Never paint the empty dark tip host as a corner smudge on panel heroes.
+    _hideTip();
   }
 
   function _hideTip() {
-    if (_tipEl) _tipEl.setAttribute('hidden', '');
+    if (_tipEl) {
+      _tipEl.setAttribute('hidden', '');
+      _tipEl.setAttribute('aria-hidden', 'true');
+      _tipEl.textContent = '';
+    }
     _active = null;
   }
 
