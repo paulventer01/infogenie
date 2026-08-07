@@ -145,9 +145,9 @@ app.post('/api/officer/brief', async (req, res) => {
       : role === 'technical'
       ? {
           title: 'AI Technical Manager',
-          focus: 'end-to-end InfoGenie platform health: APIs, LLMs/AI providers, auth/sessions, tokens/credentials, security threats, update safety, tooling gaps, and real-time system status for daily management meetings.',
-          highlightHint: 'healthy services, secured tokens, providers online, clean readiness probes',
-          riskHint:      'down APIs, dummy/missing tokens, vault disabled, LLM outages, permission gaps, unsafe updates',
+          focus: 'end-to-end InfoGenie platform integrity per CTM mandate: every page/subpage/feature working in real time, APIs/readiness, LLMs/AI gateway + guardrails, auth/sessions, credential vault, tenant isolation, connector freshness, security threats, update safety, and live status for daily management meetings.',
+          highlightHint: 'healthy pages/features, secured tokens, providers online, clean readiness probes, surfaces green',
+          riskHint:      'blank/broken pages, down APIs, dummy/missing tokens, vault disabled, LLM outages, isolation gaps, unsafe updates',
           actionHint:    'immediate remediation steps with approval gates before installs or risky changes',
         }
       : {
@@ -270,7 +270,26 @@ app.post('/api/officer/tasks', async (req, res) => {
       cro:       ['Run weekly A/B tests on top pages','Analyse heatmaps + session recordings','Document every winning experiment','Build conversion playbook','Implement urgency + social proof boosters','Test pricing page variants','Optimise checkout flow','Reduce form-field friction','Run mobile-first usability audits','Personalise CTAs by traffic source','Test exit-intent overlays','Maintain experiment backlog'],
       finance:   ['Track marketing P&L weekly','Compute CAC by channel monthly','Calculate LTV/CAC ratio','Flag overspending campaigns','Forecast 90-day cash flow','Approve budget reallocations','Audit invoices vs platform spend','Tax-prep marketing line items','Negotiate annual platform contracts','Report MER monthly','Set channel budget caps','Variance analysis vs plan'],
       ops:       ['Run weekly campaign QA scan','Audit brand asset library completeness','Check lead routing health daily','Maintain SOPs for every workflow','Onboard new tools + integrations','Quarterly access review','Vendor relationship management','Backup critical data weekly','Track team capacity vs workload','Run incident postmortems','Maintain compliance + privacy register','Schedule team standups'],
-      technical: ['Monitor every API + readiness probe','Watch LLM and AI provider health','Audit auth sessions and tokens','Scan for security threats continuously','Validate update safety before install','Draft incident plans for approval','Research missing monitoring tools','Send real-time system status updates','Attend daily management meetings','Review nav/pages/code integrity','Track credential vault encryption','Report tooling gaps urgently']
+      // Aligned to Chief Technical Manager JD: availability, observability of every
+      // client-visible surface, multi-tenant isolation, AI safety, security/vault,
+      // incident command. Deprioritised: hiring/1:1s, product roadmap ownership,
+      // generic "research tooling" busywork (folded into approval-gated gap reports).
+      technical: [
+        'Monitor every page subpage and feature live',
+        'Probe every API and readiness endpoint',
+        'Watch LLM gateway cost and guardrails',
+        'Enforce credential vault and token hygiene',
+        'Scan security posture and permission gaps',
+        'Guard autonomous AI with emergency stop',
+        'Track tenant isolation and leakage risk',
+        'Monitor connector freshness and silent failures',
+        'Validate update safety before any install',
+        'Draft incident plans for management approval',
+        'Report live status in daily management meetings',
+        'Close monitoring gaps with approval-gated asks',
+        'Keep alerts actionable and runbook-linked',
+        'Publish availability and error-budget posture',
+      ]
     };
     const key = role.toLowerCase();
     let tasks = null;
@@ -284,7 +303,9 @@ app.post('/api/officer/tasks', async (req, res) => {
             temperature: 0.4,
             messages: [
               { role:'system', content:'You output strict JSON only — no markdown.' },
-              { role:'user', content:`Suggest 12-15 concrete, day-to-day job responsibilities for an AI ${title} working inside a SaaS marketing platform. Keep each task to 4-10 words, action-verb led, specific (not generic). Mix daily, weekly, monthly cadences. Return ONLY: {"tasks":["...","..."]}` }
+              { role:'user', content: key === 'technical'
+                ? `Suggest 12-15 concrete day-to-day responsibilities for an AI Technical Manager (Chief Technical Manager scope) on a multi-tenant AI marketing platform. MUST prioritise: real-time monitoring that every page/subpage/feature works, API/readiness probes, LLM/AI gateway health, credential vault, security, tenant isolation, connector freshness, autonomous-AI guardrails, incident plans with approval gates, and live status for daily management meetings. Do NOT include hiring, 1:1s, product roadmap ownership, or vague "research tools" tasks. Keep each task to 4-12 words, action-verb led. Return ONLY: {"tasks":["...","..."]}`
+                : `Suggest 12-15 concrete, day-to-day job responsibilities for an AI ${title} working inside a SaaS marketing platform. Keep each task to 4-10 words, action-verb led, specific (not generic). Mix daily, weekly, monthly cadences. Return ONLY: {"tasks":["...","..."]}` }
             ]
           }),
           new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_12s')),12000))

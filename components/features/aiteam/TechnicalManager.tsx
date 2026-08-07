@@ -52,6 +52,8 @@ type TechScan = {
     integrations: number;
     toolingGaps: number;
     awaitingApproval: number;
+    surfacesMonitored: number;
+    surfacesOk: boolean;
   };
   systems: {
     postgres: { ok: boolean; detail: string };
@@ -59,7 +61,9 @@ type TechScan = {
     llm: { ok: boolean; detail: string; providers: string[] };
     vault: { ok: boolean; detail: string };
     tokens: { ok: boolean; detail: string; recentFailures: number };
+    surfaces: { ok: boolean; detail: string };
   };
+  surfaces: Snapshot["surfaces"] | null;
   events: TechEvent[];
   plan: TechPlan | null;
   meetingNote: string;
@@ -111,6 +115,26 @@ type Snapshot = {
     integrations_configured?: number;
     tooling_gaps?: number;
     actions_pending_approval?: number;
+    surfaces_monitored?: number;
+    surfaces_ok?: boolean;
+    pages_missing_registry?: number;
+    api_probes_failed?: number;
+  };
+  surfaces?: {
+    ok?: boolean;
+    note?: string;
+    counts?: {
+      nav_views?: number;
+      migrated_views?: number;
+      registry_loaders?: number;
+      surfaces_monitored?: number;
+      missing_registry?: number;
+      missing_components?: number;
+      api_probes_failed?: number;
+    };
+    missing_registry?: string[];
+    missing_components?: string[];
+    probes?: Array<{ path: string; ok: boolean; status: number; ms?: number; error?: string }>;
   };
 };
 
@@ -245,6 +269,8 @@ function snapshotToScan(snap: Snapshot): TechScan {
       integrations: counts.integrations_configured ?? snap.integrations?.configured?.length ?? 0,
       toolingGaps: counts.tooling_gaps ?? snap.tooling_gaps?.length ?? 0,
       awaitingApproval: counts.actions_pending_approval ?? planSteps.filter((p) => p.approval_required).length,
+      surfacesMonitored: counts.surfaces_monitored ?? snap.surfaces?.counts?.surfaces_monitored ?? 0,
+      surfacesOk: counts.surfaces_ok ?? !!snap.surfaces?.ok,
     },
     systems: {
       postgres: {
@@ -277,7 +303,14 @@ function snapshotToScan(snap: Snapshot): TechScan {
             : ""),
         recentFailures: 0,
       },
+      surfaces: {
+        ok: !!snap.surfaces?.ok,
+        detail: snap.surfaces?.ok
+          ? `${snap.surfaces?.counts?.surfaces_monitored || 0} page/feature surfaces green · ${snap.surfaces?.counts?.nav_views || 0} nav views · ${snap.surfaces?.counts?.registry_loaders || 0} feature panels`
+          : `${snap.surfaces?.counts?.missing_registry || 0} missing registry · ${snap.surfaces?.counts?.missing_components || 0} missing components · ${snap.surfaces?.counts?.api_probes_failed || 0} API probe failures`,
+      },
     },
+    surfaces: snap.surfaces || null,
     events,
     plan,
     meetingNote: snap.meeting_note || "",
@@ -372,9 +405,9 @@ export default function TechnicalManager() {
           <div className="tm-tech-hero__eyebrow">Technical Manager · Senior role</div>
           <h1 className="tm-tech-hero__title">Entire-system monitor</h1>
           <p className="tm-tech-hero__body">
-            Watches every API, LLM, AI connection, auth session, token, security surface, menu and code path.
-            Reports every event — however small — and prepares approval-gated plans when anything breaks.
-            Attends daily management meetings with live status.
+            Watches every page, subpage and feature in real time — plus every API, LLM, auth session, token,
+            security surface and code path. Reports every event and prepares approval-gated plans when
+            anything breaks. Attends daily management meetings with live status.
           </p>
         </div>
 
@@ -426,6 +459,7 @@ export default function TechnicalManager() {
           { label: "Critical", value: s?.critical ?? 0, color: SEV_COLOR.critical, onClick: () => openStatusIssues("critical") },
           { label: "High", value: s?.high ?? 0, color: SEV_COLOR.high, onClick: () => openStatusIssues("high") },
           { label: "Events", value: s?.events ?? 0, color: "var(--fg)", onClick: () => openStatusIssues("all") },
+          { label: "Surfaces", value: s?.surfacesMonitored ?? 0, color: s?.surfacesOk ? "var(--fg)" : SEV_COLOR.critical, onClick: () => openStatusIssues(s?.surfacesOk ? "all" : "critical") },
           { label: "Integrations", value: s?.integrations ?? 0, color: "var(--fg)", onClick: undefined },
           { label: "Tooling gaps", value: s?.toolingGaps ?? 0, color: SEV_COLOR.high, onClick: () => openStatusIssues("high") },
         ].map((card) => (
@@ -462,6 +496,7 @@ export default function TechnicalManager() {
       >
         {[
           { label: "Awaiting approval", value: s?.awaitingApproval ?? 0, ok: (s?.awaitingApproval || 0) === 0 },
+          { label: "Pages & features", value: scan?.systems.surfaces.ok ? "OK" : "GAPS", ok: !!scan?.systems.surfaces.ok },
           { label: "Postgres", value: scan?.systems.postgres.ok ? "OK" : "DOWN", ok: !!scan?.systems.postgres.ok },
           { label: "LLM", value: scan?.systems.llm.ok ? "OK" : "RISK", ok: !!scan?.systems.llm.ok },
           { label: "Vault", value: scan?.systems.vault.ok ? "OK" : "OFF", ok: !!scan?.systems.vault.ok },
@@ -490,7 +525,7 @@ export default function TechnicalManager() {
             setBusy(true);
             setActionInfo({
               label: "Refresh scan now",
-              blurb: "Re-running the full platform scan (database, auth, LLM, vault, integrations, tooling gaps) and updating live status.",
+              blurb: "Re-running the full platform scan (every page/subpage/feature surface, APIs, database, auth, LLM, vault, integrations, tooling gaps) and updating live status.",
             });
             load(true);
           }}
@@ -524,6 +559,65 @@ export default function TechnicalManager() {
           }}
         >
           <strong>{actionInfo.label}:</strong> {actionInfo.blurb}
+        </div>
+      ) : null}
+
+      {scan?.surfaces ? (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "14px 16px",
+            borderRadius: 14,
+            border: `1px solid ${scan.systems.surfaces.ok ? "#A7F3D0" : "#FECACA"}`,
+            background: scan.systems.surfaces.ok ? "#ECFDF5" : "#FEF2F2",
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: scan.systems.surfaces.ok ? "#065F46" : "#991B1B" }}>
+            Real-time page & feature monitor
+          </div>
+          <div style={{ marginTop: 4, fontSize: 15, fontWeight: 800, color: "var(--fg)" }}>
+            {scan.systems.surfaces.detail}
+          </div>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--fg-muted)", lineHeight: 1.45 }}>
+            {scan.surfaces.note ||
+              "Every nav page/subpage, React feature panel, permission mapping, and core API journey is checked on each scan."}
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+            {[
+              ["Nav views", scan.surfaces.counts?.nav_views ?? 0],
+              ["Migrated panels", scan.surfaces.counts?.migrated_views ?? 0],
+              ["Feature loaders", scan.surfaces.counts?.registry_loaders ?? 0],
+              ["Missing registry", scan.surfaces.counts?.missing_registry ?? 0],
+              ["Missing files", scan.surfaces.counts?.missing_components ?? 0],
+              ["API probe fails", scan.surfaces.counts?.api_probes_failed ?? 0],
+            ].map(([label, value]) => (
+              <span
+                key={String(label)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  background: "#fff",
+                  border: "1px solid var(--border)",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "var(--fg)",
+                }}
+              >
+                {label}: {value}
+              </span>
+            ))}
+          </div>
+          {scan.surfaces.probes?.length ? (
+            <div style={{ marginTop: 10, display: "grid", gap: 4 }}>
+              {scan.surfaces.probes.map((p) => (
+                <div key={p.path} style={{ fontSize: 12, color: p.ok ? "#065F46" : "#991B1B", fontWeight: 600 }}>
+                  {p.ok ? "●" : "○"} {p.path} · HTTP {p.status || "—"}
+                  {typeof p.ms === "number" ? ` · ${p.ms}ms` : ""}
+                  {p.error ? ` · ${p.error}` : ""}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

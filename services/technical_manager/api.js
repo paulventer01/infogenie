@@ -33,8 +33,8 @@ async function _ensureCapacityMember(tid) {
      VALUES ($1,$2,$3,$4,40,8,$5,$6,true,NOW())`,
     [
       id, tid, 'Technical Manager', 'Technical Manager',
-      JSON.stringify(['platform ops', 'security', 'API monitoring', 'LLM ops', 'change control']),
-      'Senior AI Team officer — monitors InfoGenie end-to-end: APIs, LLMs, auth, tokens, security, updates, and daily management status.',
+      JSON.stringify(['platform ops', 'page/feature monitoring', 'security', 'API monitoring', 'LLM ops', 'tenant isolation', 'change control']),
+      'Senior AI Team officer — monitors every InfoGenie page, subpage and feature in real time plus APIs, LLMs, auth, tokens, security, updates, and daily management status.',
     ],
   ).catch(() => {});
   return id;
