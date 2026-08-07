@@ -6,6 +6,7 @@
  */
 
 const _db = require('../../db');
+const { scanSurfaces } = require('./surfaces');
 
 function _envPresent(key) {
   const v = process.env[key];
@@ -158,6 +159,19 @@ async function runTechnicalScan(tid = null) {
     };
   } catch (_) { /* ignore */ }
 
+  // ── Real-time page / subpage / feature surface monitor (CTM JD §4.2) ───────
+  let surfaces = null;
+  try {
+    surfaces = await scanSurfaces();
+    for (const issue of surfaces.issues || []) {
+      if (issue.severity === 'info') continue;
+      events.push(_event(issue.severity, issue.area || 'surfaces', issue.message, issue.action || null));
+    }
+  } catch (e) {
+    events.push(_event('high', 'surfaces', `Surface inventory failed: ${e.message}`, 'Inspect Technical Manager surfaces monitor'));
+    surfaces = { ok: false, error: e.message, counts: {} };
+  }
+
   // ── Update / tooling research stubs (deterministic recommendations) ───────
   const tooling_gaps = [];
   if (!integrations.configured.includes('hubspot') && !integrations.configured.includes('amplitude')) {
@@ -186,11 +200,14 @@ async function runTechnicalScan(tid = null) {
     suggestion: 'Evaluate Snyk / Dependabot / npm audit CI gates before applying package updates',
     urgency: 'medium',
   });
-  tooling_gaps.push({
-    need: 'Synthetic uptime monitoring',
-    suggestion: 'Add external uptime checks (e.g. Better Stack / Checkly) against /api/health and /api/ready',
-    urgency: 'medium',
-  });
+  // External synthetic uptime remains a gap only when local journey probes already pass.
+  if (surfaces?.ok) {
+    tooling_gaps.push({
+      need: 'External multi-region synthetic uptime',
+      suggestion: 'Add external uptime checks (e.g. Better Stack / Checkly) against /api/health and /api/ready from outside the host',
+      urgency: 'medium',
+    });
+  }
 
   for (const g of tooling_gaps.filter((x) => x.urgency === 'critical' || x.urgency === 'high')) {
     events.push(_event(g.urgency === 'critical' ? 'critical' : 'high', 'tooling', g.need + ' — ' + g.suggestion, 'Send tooling report to management for approval'));
@@ -238,12 +255,13 @@ async function runTechnicalScan(tid = null) {
     security,
     officer_stack: officerStack,
     tooling_gaps,
+    surfaces,
     events: events.sort((a, b) => {
       const rank = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
       return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9);
     }),
     plan_of_action,
-    meeting_note: 'Technical Manager attends daily management meetings and reports live system status to all officers.',
+    meeting_note: 'Technical Manager attends daily management meetings and reports live system status — including every page, subpage and feature surface — to all officers.',
     counts: {
       events: events.length,
       critical,
@@ -251,6 +269,10 @@ async function runTechnicalScan(tid = null) {
       integrations_configured: integrations.configured.length,
       tooling_gaps: tooling_gaps.length,
       actions_pending_approval: plan_of_action.filter((p) => p.approval_required).length,
+      surfaces_monitored: surfaces?.counts?.surfaces_monitored || 0,
+      surfaces_ok: !!surfaces?.ok,
+      pages_missing_registry: surfaces?.counts?.missing_registry || 0,
+      api_probes_failed: surfaces?.counts?.api_probes_failed || 0,
     },
   };
 }
