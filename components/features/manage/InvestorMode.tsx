@@ -225,7 +225,7 @@ export default function InvestorMode() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>📈 Investor Mode</h2>
         <p className="view-sub">
           Auto-generate investor reports with revenue forecasts, CAC/LTV analysis, and a shareable

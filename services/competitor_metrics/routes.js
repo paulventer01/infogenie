@@ -17,13 +17,42 @@ module.exports = function register(app, ctx) {
 
 const COMPETITOR_DOMAINS = {
   ecommerce:  ['amazon.com', 'ebay.com', 'shopify.com', 'etsy.com', 'walmart.com', 'target.com', 'asos.com', 'zalando.com'],
-  fintech:    ['revolut.com', 'wise.com', 'stripe.com', 'paypal.com', 'robinhood.com', 'coinbase.com', 'robinhood.com', 'interactivebrokers.com'],
+  // Online brokers / trading platforms — not adjacent payments/neobanks.
+  fintech:    ['etoro.com', 'ig.com', 'plus500.com', 'xm.com', 'oanda.com', 'avatrade.com', 'pepperstone.com', 'fxpro.com'],
   saas:       ['salesforce.com', 'hubspot.com', 'zendesk.com', 'notion.so', 'asana.com', 'intercom.com'],
   crypto:     ['coinbase.com', 'binance.com', 'kraken.com', 'kucoin.com', 'okx.com', 'gemini.com'],
   travel:     ['booking.com', 'airbnb.com', 'expedia.com', 'tripadvisor.com', 'agoda.com', 'vrbo.com', 'klook.com'],
   education:  ['coursera.org', 'udemy.com', 'edx.org', 'khanacademy.org', 'skillshare.com', 'linkedin.com', 'pluralsight.com'],
   marketing:  ['hubspot.com', 'semrush.com', 'ahrefs.com', 'moz.com', 'sproutsocial.com', 'buffer.com']
 };
+
+/** Map free-form industry labels to COMPETITOR_DOMAINS keys. Never invent a wrong vertical. */
+function resolveCompetitorIndustryKey(industry) {
+  if (!industry) return null;
+  const s = String(industry).toLowerCase().trim();
+  if (!s) return null;
+  if (COMPETITOR_DOMAINS[s]) return s;
+  const aliases = [
+    ['fintech', ['fintech', 'finance', 'forex', 'cfd', 'broker', 'trading', 'banking', 'payments', 'insurance']],
+    ['crypto', ['crypto', 'bitcoin', 'blockchain', 'web3', 'defi']],
+    ['saas', ['saas', 'software', 'b2b software', 'productivity']],
+    ['ecommerce', ['ecommerce', 'e-commerce', 'retail', 'shopify', 'dtc', 'direct-to-consumer']],
+    ['travel', ['travel', 'hotel', 'airline', 'booking']],
+    ['education', ['education', 'edtech', 'learning', 'course']],
+    ['marketing', ['marketing', 'seo', 'advertising', 'agency']],
+  ];
+  for (const [key, words] of aliases) {
+    if (words.some(w => s.includes(w))) return key;
+  }
+  return null;
+}
+
+/** Same-industry competitor domains only — never cross-vertical defaults. */
+function sameIndustryDomains(industry, limit = 6) {
+  const key = resolveCompetitorIndustryKey(industry);
+  if (!key || !COMPETITOR_DOMAINS[key]) return [];
+  return COMPETITOR_DOMAINS[key].slice(0, limit);
+}
 
 const DIFFICULTY_LABEL = (d) => {
   if (d <= 30) return 'Low';
@@ -534,6 +563,8 @@ app.post('/api/live-kpis', async (req, res) => {
       cpa:        liveCPA,
       roas:       liveROAS,
       convRate:   liveConvRate,
+      provenance: 'market_derived',
+      provenance_label: 'Market-derived from SERP position + industry benchmarks — not your ad-account truth',
       meta: {
         avgCPC:       avgCPC > 0 ? avgCPC.toFixed(2) : null,
         avgPosition:  avgPosition.toFixed(1),
@@ -541,7 +572,8 @@ app.post('/api/live-kpis', async (req, res) => {
         organicTraffic,
         paidTraffic,
         keywordsWithCPC,
-        source: 'DataForSEO'
+        source: 'DataForSEO',
+        measurement: 'derived',
       }
     });
 
@@ -581,10 +613,16 @@ app.post('/api/real-competitors', async (req, res) => {
     }
     console.log('Real competitors found:', realDomains);
 
-    // If domain has no competition data, fall back to industry defaults
+    // If domain has sparse competition data, fall back ONLY to the same
+    // industry key — never a random vertical (e.g. ecommerce for unknown).
     if (realDomains.length < 2) {
-      realDomains = (COMPETITOR_DOMAINS[industry] || COMPETITOR_DOMAINS.ecommerce).slice(0, 6);
-      console.log('Using industry fallback competitors:', realDomains);
+      const sameIndustry = sameIndustryDomains(industry, 6);
+      if (sameIndustry.length) {
+        realDomains = sameIndustry;
+        console.log('Using same-industry fallback competitors:', realDomains);
+      } else {
+        console.log('No same-industry fallback available — keeping SERP domains only:', realDomains);
+      }
     }
 
     // ── Step 2: get domain_rank_overview for each competitor ─────────────────
@@ -840,7 +878,14 @@ app.post('/api/sov', async (req, res) => {
     const { yourDomain, industry, location = 'United States', language = 'English' } = req.body;
     if (!yourDomain) return res.status(400).json({ error: 'yourDomain is required' });
 
-    const compDomains = (COMPETITOR_DOMAINS[industry] || COMPETITOR_DOMAINS.ecommerce).slice(0, 6);
+    // Share-of-voice peers must be the same industry — never a default vertical.
+    const compDomains = sameIndustryDomains(industry, 6);
+    if (!compDomains.length) {
+      return res.status(400).json({
+        error: 'Could not resolve same-industry competitors for SOV. Pass a recognised industry or run an analysis first.',
+        industry: industry || null,
+      });
+    }
     const allDomains = [yourDomain, ...compDomains];
 
     // DataForSEO only allows one task per call — fetch each domain sequentially

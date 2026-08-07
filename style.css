@@ -1,21 +1,21 @@
 /* ================================
    InfoGenie — Global Styles
-   Brand: Deep Navy + Teal + Cyan
+   Brand: Signal — sky + lime on ink
    ================================ */
 
 :root {
-  --navy: #0A1628;
-  --navy-2: #0E1F3B;
-  --navy-3: #142545;
-  --teal: #00C9C8;
-  --teal-dark: #00A8A7;
-  --cyan: #00E5FF;
-  --blue: #0066FF;
-  --blue-light: #3389FF;
-  --purple: #7C3AED;
-  --gold: #F59E0B;
-  --green: #10B981;
-  --red: #EF4444;
+  --navy: #0C1222;
+  --navy-2: #121A2E;
+  --navy-3: #1A2438;
+  --teal: #22C55E;
+  --teal-dark: #16A34A;
+  --cyan: #38BDF8;
+  --blue: #0284C7;
+  --blue-light: #0EA5E9;
+  --purple: #0284C7;
+  --gold: #EAB308;
+  --green: #22C55E;
+  --red: #E11D48;
   --white: #FFFFFF;
   --gray-50: #F8FAFC;
   --gray-100: #F1F5F9;
@@ -39,34 +39,34 @@
   --radius-xl: 24px;
 
   /* ── InfoGenie theming tokens (used in app.js inline styles) ── */
-  --ig-page:       #EFF4FF;
+  --ig-page:       #E8EDF5;
   --ig-panel:      #FFFFFF;
-  --ig-panel2:     #F6FAFF;
-  --ig-grad:       linear-gradient(135deg,#0A1F4E,#0A3A80);
-  --ig-grad2:      linear-gradient(135deg,#0A1F4E,#0D2D6B);
-  --ig-text:       #0A1628;
-  --ig-text-muted: #6B88B0;
+  --ig-panel2:     #F4F7FB;
+  --ig-grad:       linear-gradient(135deg,#0C1222,#0EA5E9);
+  --ig-grad2:      linear-gradient(135deg,#0284C7,#16A34A);
+  --ig-text:       #0F172A;
+  --ig-text-muted: #64748B;
   --ig-text-dim:   #94A3B8;
-  --ig-border:     #D1DCF5;
-  --ig-border2:    #C4D4F0;
-  --ig-rgba70:     rgba(239,244,255,0.85);
-  --ig-rgba65:     rgba(239,244,255,0.75);
+  --ig-border:     #D5DDE9;
+  --ig-border2:    #C5D0E0;
+  --ig-rgba70:     rgba(232,237,245,0.85);
+  --ig-rgba65:     rgba(232,237,245,0.75);
 }
 
 /* ── Light-mode token overrides ── */
 [data-theme="light"] {
-  --ig-page:       #EFF3F9;
+  --ig-page:       #E8EDF5;
   --ig-panel:      #FFFFFF;
-  --ig-panel2:     #F8FAFC;
-  --ig-grad:       linear-gradient(135deg,#F0F4F8,#E8EDF8);
-  --ig-grad2:      linear-gradient(135deg,#F0F4F8,#E8EDF8);
-  --ig-text:       #0A1628;
+  --ig-panel2:     #F4F7FB;
+  --ig-grad:       linear-gradient(135deg,#EEF2F8,#E4ECF5);
+  --ig-grad2:      linear-gradient(135deg,#E8EDF5,#E6F4EC);
+  --ig-text:       #0F172A;
   --ig-text-muted: #64748B;
   --ig-text-dim:   #94A3B8;
-  --ig-border:     rgba(0,0,0,.08);
-  --ig-border2:    rgba(0,0,0,.12);
-  --ig-rgba70:     rgba(0,0,0,0.04);
-  --ig-rgba65:     rgba(0,0,0,0.04);
+  --ig-border:     rgba(15,23,42,.08);
+  --ig-border2:    rgba(15,23,42,.12);
+  --ig-rgba70:     rgba(15,23,42,0.04);
+  --ig-rgba65:     rgba(15,23,42,0.04);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -74,9 +74,9 @@
 html { min-height: 100%; width: 100%; scroll-behavior: smooth; }
 
 body {
-  font-family: var(--font-inter, 'Inter'), -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #EFF4FF;
-  color: #0A1628;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), var(--font-sora, 'Sora'), sans-serif;
+  background: #E8EDF5;
+  color: #0F172A;
   min-height: 100vh;
   font-size: 15px;
   line-height: 1.6;
@@ -84,18 +84,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-::selection { background: rgba(0,201,200,.25); color: white; }
+::selection { background: rgba(14,165,233,.28); color: #0F172A; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0,201,200,.35); border-radius: 6px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0,201,200,.6); }
+::-webkit-scrollbar-thumb { background: rgba(2,132,199,.35); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(2,132,199,.6); }
 
 /* ===== UTILITIES ===== */
 .container { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
 .hidden { display: none !important; }
 .gradient-text {
-  background: linear-gradient(135deg, var(--teal) 0%, var(--cyan) 50%, var(--blue-light) 100%);
+  background: linear-gradient(135deg, var(--blue) 0%, var(--teal) 50%, var(--cyan) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -598,20 +598,27 @@ body {
 .loading-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(10,22,40,.95);
-  z-index: 9999;
+  background: rgba(8, 15, 34, 0.72);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  z-index: 20000;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
 }
 .loading-card {
-  background: var(--navy-2);
-  border: 1px solid rgba(255,255,255,.1);
-  border-radius: var(--radius-xl);
-  padding: 48px;
-  max-width: 520px;
-  width: 90%;
+  background: linear-gradient(165deg, #0d1f3c 0%, #0a1628 55%, #071018 100%);
+  border: 1px solid rgba(0, 201, 200, 0.22);
+  border-radius: 20px;
+  padding: 36px 32px 28px;
+  max-width: 560px;
+  width: min(560px, 100%);
   text-align: center;
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  max-height: min(92vh, 900px);
+  overflow: auto;
 }
 .loading-logo-wrap {
   display: flex;
@@ -621,23 +628,61 @@ body {
   margin-bottom: 8px;
 }
 .loading-brand {
-  font-family: 'Sora', sans-serif;
+  font-family: 'Sora', 'Space Grotesk', sans-serif;
   font-size: 1.5rem;
   font-weight: 800;
   color: white;
   letter-spacing: -0.02em;
 }
 .loading-title {
-  color: rgba(255,255,255,.5);
-  font-size: 0.875rem;
-  margin-bottom: 36px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 16px;
 }
-.loading-steps-list { text-align: left; margin-bottom: 32px; display: flex; flex-direction: column; gap: 16px; }
+.loading-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 auto 22px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(0, 201, 200, 0.12);
+  border: 1px solid rgba(0, 201, 200, 0.35);
+  color: #e2e8f0;
+  font-size: 0.84rem;
+  max-width: 100%;
+}
+.loading-target-pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55);
+  animation: igLoadPulse 1.4s ease-out infinite;
+  flex-shrink: 0;
+}
+.loading-target-label {
+  color: rgba(148, 163, 184, 0.95);
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.loading-target strong {
+  color: #fff;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
+}
+.loading-steps-list { text-align: left; margin-bottom: 18px; display: flex; flex-direction: column; gap: 12px; }
 .lstep {
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  opacity: 0.7;
+  opacity: 0.55;
   transition: opacity 0.3s;
 }
 .lstep.active { opacity: 1; }
@@ -655,8 +700,60 @@ body {
 .lstep.active .lstep-dot { background: var(--teal); box-shadow: 0 0 10px var(--teal); animation: pulse 1s infinite; }
 .lstep.done .lstep-dot { background: var(--green); }
 .lstep-text strong { color: white; font-size: 0.875rem; display: block; margin-bottom: 2px; }
-.lstep-text small { color: rgba(255,255,255,.4); font-size: 0.75rem; }
+.lstep-text small { color: rgba(255,255,255,.45); font-size: 0.75rem; }
 .lstep-check { color: var(--green); font-size: 0.875rem; font-weight: 700; margin-left: auto; margin-top: 2px; flex-shrink: 0; }
+.loading-activity {
+  text-align: left;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  min-height: 96px;
+}
+.loading-activity-head {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+.loading-activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 140px;
+  overflow: auto;
+}
+.loading-activity-list li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 0.78rem;
+  color: #e2e8f0;
+  line-height: 1.35;
+  animation: igActIn 0.28s ease both;
+}
+.loading-activity-list li::before {
+  content: "›";
+  color: #2dd4bf;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.loading-activity-list li.is-done { color: #94a3b8; }
+.loading-activity-list li.is-done::before { content: "✓"; color: #34d399; }
+.loading-activity-list li.is-active { color: #fff; font-weight: 600; }
+.loading-activity-list li .loading-act-time {
+  margin-left: auto;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
 .loading-progress-wrap {
   display: flex;
   align-items: center;
@@ -678,7 +775,30 @@ body {
   transition: width 0.4s ease;
 }
 .loading-pct { color: var(--teal); font-size: 0.8125rem; font-weight: 700; min-width: 36px; }
-.loading-status-text { color: rgba(255,255,255,.4); font-size: 0.8125rem; }
+.loading-elapsed-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #0066FF, #00D8D7);
+  color: #FFFFFF;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 12px rgba(0, 102, 255, 0.35);
+  white-space: nowrap;
+}
+.loading-elapsed-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.85);
+  animation: pulseDot 1.2s infinite ease-out;
+}
+.loading-status-text { color: rgba(255,255,255,.7); font-size: 0.84rem; font-weight: 600; min-height: 1.3em; }
 
 /* ===== VIEW HEADER (unified deep-navy hero) ===== */
 .view-header {
@@ -723,7 +843,7 @@ body {
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.1em;
-  color: #DBEAFE;
+  color: #0f766e;
   text-transform: uppercase;
   margin-bottom: 8px;
   opacity: 1;
@@ -732,13 +852,13 @@ body {
   font-family: 'Sora', sans-serif;
   font-size: 1.625rem;
   font-weight: 800;
-  color: #FFFFFF !important;
+  color: #0f172a !important;
   letter-spacing: -0.03em;
   margin-bottom: 5px;
   line-height: 1.2;
-  text-shadow: 0 1px 2px rgba(15,30,61,.25);
+  text-shadow: none;
 }
-.view-sub { font-size: 0.8375rem; color: #FFFFFF !important; letter-spacing: 0.01em; opacity: .95; text-shadow: 0 1px 2px rgba(15,30,61,.18); font-weight: 500; }
+.view-sub { font-size: 0.8375rem; color: #334155 !important; letter-spacing: 0.01em; opacity: 1; text-shadow: none; font-weight: 500; }
 .vh-actions {
   display: flex;
   align-items: center;
@@ -759,6 +879,18 @@ body {
   text-shadow: 0 1px 2px rgba(15,30,61,.25);
 }
 .atag.live-tag { border-color: rgba(167,243,208,.7); color: #FFFFFF; background: rgba(16,185,129,.35); text-shadow: 0 1px 2px rgba(15,30,61,.25); }
+/* Solid-colour count/status pills — white label on blue/purple/teal fills */
+.atag-solid,
+[data-theme="light"] .atag-solid {
+  color: #FFFFFF !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+.atag-solid--blue   { background: #1D4ED8 !important; }
+.atag-solid--purple { background: #7C3AED !important; }
+.atag-solid--teal   { background: linear-gradient(135deg, #00C9C8, #0066FF) !important; }
+.atag-solid--green  { background: #10B981 !important; }
+.atag-solid--red    { background: #EF4444 !important; }
 .live-dot-inline {
   display: inline-block;
   width: 6px; height: 6px;
@@ -1163,6 +1295,20 @@ body {
 .camp-kpis { display: flex; gap: 28px; flex-wrap: wrap; }
 .camp-kpi-val { font-family: 'Sora', sans-serif; font-size: 1.5rem; font-weight: 800; color: #FFFFFF; }
 .camp-kpi-lbl { font-size: 0.75rem; color: rgba(255,255,255,.85); font-weight: 600; }
+/* KPI colours on the blue gradient hero — must stay high-contrast in light + dark themes */
+.camp-hero .camp-kpi-val--roas  { color: #A5F3FC !important; text-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.camp-hero .camp-kpi-val--cpa   { color: #6EE7B7 !important; text-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.camp-hero .camp-kpi-val--lift  { color: #FDE68A !important; text-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.camp-hero .camp-kpi-val--count { color: #FFFFFF !important; text-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.camp-hero .camp-kpi-lbl,
+[data-theme="light"] .camp-hero .camp-kpi-lbl {
+  color: rgba(255, 255, 255, 0.92) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+[data-theme="light"] .camp-hero .camp-kpi-val--roas  { color: #A5F3FC !important; }
+[data-theme="light"] .camp-hero .camp-kpi-val--cpa   { color: #6EE7B7 !important; }
+[data-theme="light"] .camp-hero .camp-kpi-val--lift  { color: #FDE68A !important; }
+[data-theme="light"] .camp-hero .camp-kpi-val--count { color: #FFFFFF !important; }
 .camp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }
 .camp-card {
   background: white;
@@ -1792,6 +1938,63 @@ body {
   padding: 20px;
   backdrop-filter: blur(4px);
 }
+
+/* Campaign Launch Brief — portaled to body; keep header readable in all themes */
+#campLaunchRichModal {
+  z-index: 20000;
+}
+#campLaunchRichModal > .modal-box {
+  max-height: min(90vh, 920px);
+  margin: auto;
+  width: min(760px, 100%);
+  overflow-y: auto;
+}
+#campLaunchRichModal .camp-launch-modal-header {
+  background: linear-gradient(135deg, #0C1222 0%, #0EA5E9 100%);
+  padding: 24px 28px;
+  border-radius: 20px 20px 0 0;
+  color: #FFFFFF;
+}
+#campLaunchRichModal .camp-launch-title {
+  font-size: 1rem;
+  font-weight: 800;
+  font-family: Sora, sans-serif;
+  color: #FFFFFF !important;
+}
+#campLaunchRichModal .camp-launch-subtitle {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.88) !important;
+  margin-bottom: 16px;
+}
+#campLaunchRichModal .camp-launch-ai-badge {
+  background: rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #C7D2FE !important;
+}
+#campLaunchRichModal .camp-launch-kpi {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+#campLaunchRichModal .camp-launch-kpi-val {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #FFFFFF !important;
+}
+#campLaunchRichModal .camp-launch-kpi-label {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.78) !important;
+  margin-top: 2px;
+}
+[data-theme="light"] #campLaunchRichModal .camp-launch-modal-header,
+[data-theme="light"] #campLaunchRichModal .camp-launch-modal-header *:not(button) {
+  color: inherit;
+}
 .modal-box {
   background: white;
   border-radius: var(--radius-xl);
@@ -2265,23 +2468,23 @@ body {
   background: white;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 6px;
+  padding: 8px;
   display: flex;
-  gap: 4px;
+  gap: 6px;
   margin-bottom: 24px;
   flex-wrap: wrap;
+  align-items: stretch;
   position: sticky;
   top: 72px;
   z-index: 100;
   box-shadow: var(--shadow-sm);
 }
 .stab {
-  flex: 1;
-  min-width: 130px;
-  display: flex;
+  flex: 0 0 auto;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: 6px;
+  padding: 10px 12px;
   border-radius: 8px;
   border: none;
   background: transparent;
@@ -2292,10 +2495,18 @@ body {
   transition: all 0.2s;
   font-family: var(--font-inter, 'Inter'), sans-serif;
   white-space: nowrap;
+  line-height: 1.25;
+  max-width: none;
+  overflow: visible;
 }
 .stab:hover { background: var(--gray-100); color: var(--navy); }
 .stab.active { background: var(--navy); color: white; }
-.stab-icon { font-size: 1rem; }
+.stab-icon { font-size: 1rem; flex-shrink: 0; line-height: 1; }
+.stab-label {
+  white-space: nowrap;
+  overflow: visible;
+  flex: 0 0 auto;
+}
 .stab-count {
   background: rgba(0,201,200,.15);
   color: var(--teal-dark);
@@ -2303,7 +2514,8 @@ body {
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 8px;
-  margin-left: auto;
+  flex-shrink: 0;
+  margin-left: 2px;
 }
 .stab.active .stab-count { background: rgba(255,255,255,.15); color: rgba(255,255,255,.8); }
 
@@ -2618,10 +2830,10 @@ body {
 }
 
 /* Intel header */
-.intel-header { background: linear-gradient(110deg, #1E40AF 0%, #2563EB 50%, #3B82F6 100%) !important; }
-.intel-header .view-title { color: #FFFFFF !important; text-shadow: 0 1px 2px rgba(15,30,61,.25); }
-.intel-header .view-sub { color: #FFFFFF !important; opacity: .95; text-shadow: 0 1px 2px rgba(15,30,61,.18); }
-.intel-header .breadcrumb { color: #DBEAFE !important; opacity: 1; }
+.intel-header { background: linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 55%, #eef4ff 100%) !important; }
+.intel-header .view-title { color: #0f172a !important; text-shadow: none; }
+.intel-header .view-sub { color: #334155 !important; opacity: 1; text-shadow: none; }
+.intel-header .breadcrumb { color: #0f766e !important; opacity: 1; }
 .intel-header-actions { display: flex; align-items: center; gap: 12px; }
 .intel-live-badge {
   display: flex;
@@ -2728,8 +2940,9 @@ body {
   padding: 3px 10px;
   border-radius: 20px;
   background: linear-gradient(135deg, var(--teal), var(--blue));
-  color: white;
+  color: #FFFFFF;
 }
+[data-theme="light"] .intel-exclusive-badge { color: #FFFFFF !important; }
 
 /* Keyword gap table */
 .kwgap-table { width: 100%; border-collapse: collapse; background: white; border-radius: var(--radius-lg); overflow: hidden; border: 1.5px solid var(--border); }
@@ -3794,7 +4007,9 @@ input:focus, textarea:focus, select:focus {
   white-space: normal;
   transition: opacity .12s;
 }
-#igTip[hidden] { display: none !important; }
+#igTip[hidden],
+#igTip:empty,
+#igTip[aria-hidden="true"] { display: none !important; }
 #igTip::before {
   content: '';
   position: absolute;
@@ -3989,7 +4204,7 @@ h1, h2, h3 {
 }
 
 .logo-text {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font-space), 'Space Grotesk', sans-serif;
   font-size: 1.32rem;
   font-weight: 800;
   letter-spacing: -0.04em;
@@ -5587,6 +5802,31 @@ p, span, label, td, li {
 .cs-role-btn.active { background:linear-gradient(135deg,#7C3AED,#4F46E5); color:#FFFFFF; box-shadow:0 2px 8px rgba(124,58,237,.45); text-shadow:none; }
 .cs-role-btn:hover:not(.active) { color:#FFFFFF; background:rgba(255,255,255,.12); }
 
+/* Light heroes (C-Suite etc.) — inactive tabs need dark ink, not white-on-white */
+.ig-panel-hero .cs-role-tabs,
+.view-header.ig-panel-hero .cs-role-tabs {
+  background: rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(15, 23, 42, 0.14);
+}
+.ig-panel-hero .cs-role-btn,
+.view-header.ig-panel-hero .cs-role-btn {
+  color: #1e293b !important;
+  text-shadow: none !important;
+  background: transparent;
+}
+.ig-panel-hero .cs-role-btn:hover:not(.active),
+.view-header.ig-panel-hero .cs-role-btn:hover:not(.active) {
+  color: #0f172a !important;
+  background: rgba(15, 23, 42, 0.08);
+}
+.ig-panel-hero .cs-role-btn.active,
+.view-header.ig-panel-hero .cs-role-btn.active {
+  background: linear-gradient(135deg, #7C3AED, #4F46E5) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.45);
+  text-shadow: none !important;
+}
+
 /* Executive scorecard grid */
 .cs-kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:14px; margin-bottom:28px; }
 .cs-kpi { background:white; border:1px solid #E2E8F0; border-radius:14px; padding:18px 20px; position:relative; overflow:hidden; }
@@ -5926,9 +6166,10 @@ p, span, label, td, li {
 
 /* Navbar */
 [data-theme="light"] .navbar {
-  background: rgba(255,255,255,.98);
+  background: rgba(255,255,255,.92);
   border-bottom: 1px solid #E2E8F0;
-  box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
+  box-shadow: 0 1px 0 rgba(0,102,255,.06), 0 8px 24px rgba(10,22,40,.05);
+  backdrop-filter: blur(20px) saturate(160%);
 }
 [data-theme="light"] .navbar::after {
   background: linear-gradient(90deg, transparent 0%, rgba(0,102,255,.25) 30%, rgba(0,201,200,.4) 50%, rgba(0,102,255,.25) 70%, transparent 100%);
@@ -6009,10 +6250,10 @@ p, span, label, td, li {
 [data-theme="light"] .view-header::after {
   background: radial-gradient(circle, rgba(0,201,200,.35), transparent 70%);
 }
-[data-theme="light"] .view-title { color: #FFFFFF; }
-[data-theme="light"] .view-sub   { color: #FFFFFF; opacity: .92; }
-[data-theme="light"] .breadcrumb { color: #BFDBFE; opacity: 1; }
-[data-theme="light"] .atag {
+[data-theme="light"] .view-title { color: #0f172a !important; }
+[data-theme="light"] .view-sub   { color: #334155 !important; opacity: 1; }
+[data-theme="light"] .breadcrumb { color: #0f766e !important; opacity: 1; }
+[data-theme="light"] .atag:not([style*="background"]):not(.atag-solid) {
   background: rgba(0,0,0,.05);
   border-color: rgba(0,0,0,.1);
   color: #374151;
@@ -6120,13 +6361,15 @@ body,
 [data-theme="light"] .stat-lbl { color: #64748B !important; } /* lint-ok-important: dark .stat-lbl uses !important on color */
 [data-theme="light"] .stat-sep  { background: rgba(0,0,0,.1); }
 
-/* ── View-header: white text on the medium-blue hero ── */
-[data-theme="light"] .view-title { color: #FFFFFF; }
-[data-theme="light"] .intel-header .view-title { color: #FFFFFF; }
-[data-theme="light"] .view-sub { color: #FFFFFF; opacity: .95; }
-[data-theme="light"] .intel-header .view-sub   { color: #FFFFFF; opacity: .95; }
-[data-theme="light"] .vh-actions .atag,
-[data-theme="light"] .atag { color: #1E3A5F; background: rgba(255,255,255,.95); border-color: rgba(255,255,255,.6); }
+/* ── View-header: dark ink on light heroes ── */
+[data-theme="light"] .view-title { color: #0f172a !important; }
+[data-theme="light"] .intel-header .view-title { color: #0f172a !important; }
+[data-theme="light"] .view-sub { color: #334155 !important; opacity: 1; }
+[data-theme="light"] .intel-header .view-sub   { color: #334155 !important; opacity: 1; }
+[data-theme="light"] .vh-actions .atag:not([style*="background"]):not(.atag-solid),
+[data-theme="light"] .atag:not([style*="background"]):not(.atag-solid) { color: #1E3A5F; background: rgba(255,255,255,.95); border-color: rgba(15,118,110,.22); }
+[data-theme="light"] .atag[style*="background"]:not([style*="color:"]):not([style*="color "]),
+[data-theme="light"] .atag.atag-solid { color: #FFFFFF !important; border-color: rgba(255,255,255,.35) !important; text-shadow: 0 1px 2px rgba(0,0,0,.22); }
 [data-theme="light"] .atag.live-tag { color: #047857; background: rgba(255,255,255,.95); border-color: rgba(5,150,105,.45); }
 
 /* ── Nav links in scrollable row ── */
@@ -6149,72 +6392,145 @@ body,
 [data-theme="light"] .pf-btn { color: #374151; border-color: #D1D9E6; background: white; }
 [data-theme="light"] .pf-btn:hover { border-color: var(--teal); color: var(--teal-dark); }
 
-/* ── Hero breadcrumb (ANALYSE › ...) — light blue on royal blue ── */
-[data-theme="light"] .breadcrumb { color: #BFDBFE; opacity: .9; }
-[data-theme="light"] .intel-header .breadcrumb { color: #BFDBFE; opacity: .9; }
+/* ── Hero breadcrumb (ANALYSE › ...) — teal on light heroes ── */
+[data-theme="light"] .breadcrumb { color: #0f766e; opacity: 1; }
+[data-theme="light"] .intel-header .breadcrumb { color: #0f766e; opacity: 1; }
 .view-header .breadcrumb,
-.intel-header .breadcrumb {
-  color: #BFDBFE !important;
-  opacity: .9 !important;
+.intel-header .breadcrumb,
+.comp-hero .breadcrumb,
+[data-bp-hero] .breadcrumb {
+  color: #0f766e !important;
+  opacity: 1 !important;
   font-size: .65rem !important;
   font-weight: 800 !important;
   letter-spacing: .14em !important;
   text-transform: uppercase !important;
 }
 .view-header .breadcrumb .bc-group,
-.intel-header .breadcrumb .bc-group { color: #BFDBFE !important; opacity: .85 !important; }
+.intel-header .breadcrumb .bc-group,
+.comp-hero .breadcrumb .bc-group,
+[data-bp-hero] .breadcrumb .bc-group { color: #0f766e !important; opacity: 1 !important; }
 .view-header .breadcrumb .bc-sep,
-.intel-header .breadcrumb .bc-sep { color: #BFDBFE !important; opacity: .55 !important; margin: 0 .35em; }
+.intel-header .breadcrumb .bc-sep,
+.comp-hero .breadcrumb .bc-sep,
+[data-bp-hero] .breadcrumb .bc-sep { color: #94a3b8 !important; opacity: 1 !important; margin: 0 .35em; }
 
-/* Hero text on royal-blue gradient — WHITE for legibility */
+/* Hero text on LIGHT gradients — dark ink for legibility */
 .view-header h1,
 .view-header .view-title,
 .view-header h2,
 .view-header h3,
 .intel-header h1,
-.intel-header .ih-title {
-  color: #FFFFFF !important;
-  text-shadow: 0 1px 2px rgba(15,30,61,.20) !important;
+.intel-header .ih-title,
+.comp-hero h1,
+.comp-hero .view-title,
+[data-bp-hero] h1 {
+  color: #0f172a !important;
+  text-shadow: none !important;
 }
 .view-header p,
 .view-header .view-sub,
 .view-header .subtitle,
 .intel-header p,
-.intel-header .ih-sub {
-  color: #E0E7FF !important;
-  opacity: .95 !important;
-  text-shadow: 0 1px 2px rgba(15,30,61,.18) !important;
+.intel-header .ih-sub,
+.comp-hero p,
+.comp-hero small,
+[data-bp-hero] p,
+[data-bp-hero] small {
+  color: #334155 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
 }
 /* Pills / atags on hero — white pill with dark blue text */
 .view-header .atag,
 .view-header .badge,
 .intel-header .atag,
-.intel-header .badge {
+.intel-header .badge,
+.comp-hero .atag,
+.comp-hero .badge,
+[data-bp-hero] .atag,
+[data-bp-hero] .badge,
+.view-header .hero-pill,
+.intel-header .hero-pill,
+.comp-hero .hero-pill,
+[data-bp-hero] .hero-pill {
   background: #FFFFFF !important;
   color: #1E3A8A !important;
-  border: 1px solid rgba(255,255,255,.6) !important;
+  border: 1px solid rgba(15, 118, 110, 0.22) !important;
   box-shadow: 0 1px 3px rgba(15,30,61,.10) !important;
 }
 
-/* ── BLANKET HERO TEXT RULE — every text node inside any hero is light ──
-   Catches inline-styled divs/spans/labels/small that any sub-page may add. */
+/* ── BLANKET HERO TEXT RULE — dark ink on ALL page heroes (app is light-first).
+   Exclude controls that need their own colours (buttons, badges, pills, inputs). */
 .view-header,
-.view-header *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
+.view-header *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not(.hero-pill *):not(button *):not(.btn *),
 .intel-header,
-.intel-header *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
+.intel-header *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not(.hero-pill *):not(button *):not(.btn *),
 .comp-hero,
-.comp-hero *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
+.comp-hero *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *):not(.btn *),
 [data-bp-hero],
-[data-bp-hero] *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *) {
-  color: #FFFFFF !important;
+[data-bp-hero] *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not(.hero-pill *):not(button *):not(.btn *),
+.ig-panel-hero,
+.ig-panel-hero *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not(.hero-pill *):not(button *):not(.btn *),
+.ig-comp-hero,
+.ig-comp-hero *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *):not(.btn *),
+[data-ig-light-hero],
+[data-ig-light-hero] *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not(.hero-pill *):not(button *):not(.btn *) {
+  color: #0f172a !important;
+  text-shadow: none !important;
+}
+
+/* Subcopy / muted lines inside heroes */
+.view-header .view-sub,
+.view-header .subtitle,
+.intel-header .ih-sub,
+.comp-hero .view-sub,
+[data-bp-hero] .view-sub,
+.ig-panel-hero .view-sub,
+.ig-comp-hero .view-sub,
+[data-ig-light-hero] .view-sub,
+.view-header p,
+.intel-header p,
+.comp-hero p,
+[data-bp-hero] p,
+.ig-panel-hero p,
+.ig-comp-hero p {
+  color: #334155 !important;
+  opacity: 1 !important;
+}
+/* Breadcrumb accent */
+.view-header .breadcrumb,
+.intel-header .breadcrumb,
+.comp-hero .breadcrumb,
+[data-bp-hero] .breadcrumb,
+.ig-panel-hero .breadcrumb,
+.ig-comp-hero .breadcrumb,
+[data-ig-light-hero] .breadcrumb,
+.view-header .bc-group,
+.intel-header .bc-group,
+.comp-hero .bc-group,
+[data-bp-hero] .bc-group,
+.ig-panel-hero .bc-group,
+.ig-comp-hero .bc-group {
+  color: #0f766e !important;
+}
+.view-header .bc-sep,
+.intel-header .bc-sep,
+.comp-hero .bc-sep,
+[data-bp-hero] .bc-sep,
+.ig-panel-hero .bc-sep,
+.ig-comp-hero .bc-sep {
+  color: #94a3b8 !important;
 }
 /* Force the AI-GENERATED hero pill (and similar white pills inside heroes)
    to keep their dark navy text — defeats the blanket rule above. */
 .view-header .hero-pill,
 .intel-header .hero-pill,
 .comp-hero .hero-pill,
-[data-bp-hero] .hero-pill { color: #1E3A8A !important; }
-/* Lighter shade for secondary/sub-text inside hero */
+[data-bp-hero] .hero-pill,
+.ig-panel-hero .hero-pill,
+.ig-comp-hero .hero-pill { color: #1E3A8A !important; }
+/* Secondary/sub-text inside light heroes — slate, not pale blue */
 .view-header p,
 .view-header .subtitle,
 .view-header .view-sub,
@@ -6226,17 +6542,20 @@ body,
 .comp-hero small,
 [data-bp-hero] p,
 [data-bp-hero] small {
-  color: #E0E7FF !important;
-  opacity: .95 !important;
+  color: #334155 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
 }
-/* Breadcrumb stays a soft blue */
+/* Breadcrumb on light heroes — teal */
 .view-header .breadcrumb,
 .view-header .breadcrumb *,
 .intel-header .breadcrumb,
 .intel-header .breadcrumb *,
 .comp-hero .breadcrumb,
-.comp-hero .breadcrumb * {
-  color: #BFDBFE !important;
+.comp-hero .breadcrumb *,
+[data-bp-hero] .breadcrumb,
+[data-bp-hero] .breadcrumb * {
+  color: #0f766e !important;
 }
 
 /* ── Generic white-text headings that appear outside dark containers ── */
@@ -6437,6 +6756,47 @@ h3:hover {
   color: #64748B !important;
 }
 
+/* C-Suite ROI panel: lock light-on-dark (defeat light-theme white→slate washout) */
+.cs-roi-panel {
+  color: #ffffff !important;
+}
+.cs-roi-panel [style*="color:#F0FDFA"],
+.cs-roi-panel [style*="color: #F0FDFA"] {
+  color: #f0fdfa !important;
+}
+.cs-roi-panel [style*="color:rgba(240,253,250"],
+.cs-roi-panel [style*="color: rgba(240,253,250"] {
+  color: rgba(240, 253, 250, 0.92) !important;
+}
+.cs-roi-panel [style*="color:#FFFFFF"],
+.cs-roi-panel [style*="color: #FFFFFF"],
+.cs-roi-panel [style*="color:#fff"],
+.cs-roi-panel [style*="color:#FFF"],
+.cs-roi-panel [style*="color:white"],
+.cs-roi-panel [style*="color: white"] {
+  color: #ffffff !important;
+}
+.cs-roi-panel [style*="color:#FECACA"],
+.cs-roi-panel [style*="color: #FECACA"] {
+  color: #fecaca !important;
+}
+.cs-roi-panel [style*="color:#A7F3D0"],
+.cs-roi-panel [style*="color: #A7F3D0"] {
+  color: #a7f3d0 !important;
+}
+.cs-roi-panel [style*="color:#C7D2FE"],
+.cs-roi-panel [style*="color: #C7D2FE"] {
+  color: #c7d2fe !important;
+}
+.cs-roi-panel [style*="color:#ECFDF5"],
+.cs-roi-panel [style*="color: #ECFDF5"] {
+  color: #ecfdf5 !important;
+}
+.cs-roi-panel [style*="color:#FDE68A"],
+.cs-roi-panel [style*="color: #FDE68A"] {
+  color: #fde68a !important;
+}
+
 /* Borders inside converted panels */
 [data-theme="light"] [style*="background:var(--ig-panel)"] [style*="border:1px solid rgba(255,255,255"],
 [data-theme="light"] [style*="background:var(--ig-panel2)"] [style*="border:1px solid rgba(255,255,255"],
@@ -6484,12 +6844,13 @@ h3:hover {
 [data-theme="light"] .roi-label       { color: #00C9C8; }
 /* .ich-sub kept WHITE in light theme — header background is dark navy in both themes */
 [data-theme="light"] .ich-sub         { color: rgba(255,255,255,.75); }
-[data-theme="light"] .loading-brand   { color: #0A1628; }
-[data-theme="light"] .loading-title   { color: #64748B; }
+[data-theme="light"] .loading-brand   { color: #FFFFFF; }
+[data-theme="light"] .loading-title   { color: rgba(255,255,255,.78); }
 [data-theme="light"] .lstep-text strong { color: #FFFFFF; }
 [data-theme="light"] .lstep-text small  { color: rgba(255,255,255,.6); }
-[data-theme="light"] .loading-brand     { color: #FFFFFF; }
-[data-theme="light"] .loading-title     { color: rgba(255,255,255,.75); }
+[data-theme="light"] .loading-status-text { color: rgba(255,255,255,.75); }
+[data-theme="light"] .loading-activity-list li { color: #e2e8f0; }
+[data-theme="light"] .loading-target strong { color: #FFFFFF; }
 [data-theme="light"] .integ-doc-tagline { color: #64748B; }
 
 /* ============================================================
@@ -6524,9 +6885,9 @@ h3:hover {
 [data-theme="light"] .cat-dom-card * {
   color: #0A1628;
 }
-[data-theme="light"] .intel-header .view-title { color: #FFFFFF; }
-[data-theme="light"] .intel-header .view-sub { color: #FFFFFF; opacity: .92; }
-[data-theme="light"] .intel-header .breadcrumb { color: #BFDBFE; }
+[data-theme="light"] .intel-header .view-title { color: #0f172a !important; }
+[data-theme="light"] .intel-header .view-sub { color: #334155 !important; opacity: 1; }
+[data-theme="light"] .intel-header .breadcrumb { color: #0f766e !important; }
 [data-theme="light"] .docs-header p,
 [data-theme="light"] .integ-doc-hero p,
 [data-theme="light"] .integ-doc-tagline {
@@ -6692,7 +7053,7 @@ h3:hover {
 [data-theme="light"] .module-card *,
 [data-theme="light"] .data-table-card *:not(.atag):not(.badge):not(button):not(.tag),
 [data-theme="light"] .chart-box *:not(.atag):not(.badge):not(button):not(.chart-tag),
-[data-theme="light"] .kpi-card *:not(.atag):not(.badge):not(button):not(.kpi-up):not(.kpi-down),
+[data-theme="light"] .kpi-card *:not(.atag):not(.badge):not(button):not(.kpi-up):not(.kpi-down):not(.kpi-owner):not(.kpi-source):not(.kpi-source *),
 [data-theme="light"] .roi-card *:not(.atag):not(.badge):not(button) {
   color: inherit;
 }
@@ -6888,7 +7249,7 @@ h3:hover {
 }
 [data-theme="light"] .ich-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .cs-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
-[data-theme="light"] .kpi-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .kpi-card *:not(button):not(.btn):not(.badge):not(.atag):not(.kpi-owner):not(.kpi-source):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .cal-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .battle-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .reddit-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]) {
@@ -7040,17 +7401,52 @@ h3:hover {
 [data-theme="light"] [style*="rgba(0,201,200,.1),rgba(0,102,255,.06)"] label {
   color: #5A6B85 !important;
 }
-/* Secondary "Deep Intelligence" button — visible on any light bg regardless of
-   whether data-theme="light" is set. !important needed to beat the inline color:white
-   on the button element (inline styles win over stylesheet without !important). */
-/* In this app dark mode = no data-theme attribute; light mode = data-theme="light".
-   These rules use [data-theme="light"] only — no :not([data-theme="dark"]) which
-   would incorrectly fire in dark mode too (the attribute is absent, never "dark"). */
-[data-theme="light"] .bp-cta-secondary { /* lint-ok-important: must override any inherited color so white text on the blue button stays readable */
+/* Secondary "Deep Intelligence" button on Battle Plan CTA — readable on light banner */
+.bp-cta-secondary {
+  padding: 11px 20px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  background: #FFFFFF;
+  border: 1.5px solid #93C5FD;
+  color: #1D4ED8 !important;
+  -webkit-text-fill-color: #1D4ED8 !important;
+  box-shadow: 0 1px 3px rgba(29, 78, 216, 0.12);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.bp-cta-secondary:hover {
+  background: #EFF6FF;
+  border-color: #60A5FA;
+}
+[data-theme="light"] .bp-cta-secondary {
   background: #1D4ED8 !important;
   border: 1.5px solid #1D4ED8 !important;
   color: #FFFFFF !important;
   -webkit-text-fill-color: #FFFFFF !important;
+  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.28);
+}
+[data-theme="light"] .bp-cta-secondary:hover {
+  background: #1E40AF !important;
+  border-color: #1E40AF !important;
+}
+.bp-attack-cta label {
+  color: #64748B;
+}
+.bp-attack-cta #attackPlanCompSelect {
+  background: #FFFFFF;
+  border: 1.5px solid #CBD5E1;
+  color: #0F172A;
+}
+.bp-attack-cta #attackPlanCompSelect option {
+  background: #FFFFFF;
+  color: #0F172A;
+}
+[data-theme="light"] .bp-attack-cta #attackPlanCompSelect,
+[data-theme="light"] .bp-attack-cta #attackPlanCompSelect option {
+  background: #FFFFFF;
+  color: #0F172A;
 }
 
 /* Battle Plan competitor summary bar — now uses white background with dark text in
@@ -7460,7 +7856,7 @@ h3:hover {
 
 /* ── KPI tile "whose data" RIBBONS — bold, unmissable ───────────────────── */
 .kpi-card { position: relative; }
-.kpi-ribbon { position: absolute; top: 0; left: 0; right: 0; padding: 6px 12px; font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #FFFFFF !important; border-radius: 14px 14px 0 0; text-align: center; line-height: 1.2; box-shadow: 0 2px 6px rgba(0,0,0,.08); text-shadow: 0 1px 2px rgba(15,30,61,.25); }
+.kpi-ribbon { position: absolute; top: 0; left: 0; right: 0; padding: 6px 12px; font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #FFFFFF !important; border-radius: 14px 14px 0 0; text-align: center; line-height: 1.2; box-shadow: 0 2px 6px rgba(0,0,0,.08); text-shadow: 0 1px 2px rgba(15,30,61,.25); z-index: 1; }
 [data-theme="light"] .kpi-ribbon, [data-theme="dark"] .kpi-ribbon { color: #FFFFFF; }
 .kpi-ribbon * { color: #FFFFFF !important; }
 .kpi-ribbon-you  { background: linear-gradient(135deg, #0066FF, #2563EB); }
@@ -7468,8 +7864,23 @@ h3:hover {
 .kpi-ribbon-live { background: linear-gradient(135deg, #10B981, #059669); animation: kpi-ribbon-pulse 2s ease-in-out infinite; }
 .kpi-ribbon-ai   { background: linear-gradient(135deg, #06B6D4, #0891B2); }
 @keyframes kpi-ribbon-pulse { 0%,100% { box-shadow: 0 2px 6px rgba(16,185,129,.3) } 50% { box-shadow: 0 2px 14px rgba(16,185,129,.7) } }
-/* Add top padding to tiles so the ribbon doesn't overlap the badge/icon */
-.kpi-card { padding-top: 38px !important; }
+/* Add top padding to tiles so the ribbon doesn't overlap the owner name / badge */
+.kpi-card { padding-top: 44px !important; }
+.kpi-owner {
+  display: block;
+  position: relative;
+  z-index: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #0066FF !important; /* beat light-theme .kpi-card * { color: inherit } */
+  letter-spacing: 0.01em;
+  margin: 0 0 8px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kpi-owner-ind { color: #7C3AED !important; }
 
 /* (Reverted — root cause was a broken selector group above that was applying a
    navy gradient background to all .kpi-card children in light mode. Fixed there.) */
@@ -7497,14 +7908,17 @@ h3:hover {
 .counter-banner-threat-high { background: #EF4444; }
 .counter-banner-threat-critical { background: #7F1D1D; }
 .counter-banner-main { display: flex; align-items: flex-start; gap: 14px; }
-.counter-banner-avatar { width: 52px; height: 52px; border-radius: 12px; background: linear-gradient(135deg, #FF7A1A, #EF4444); color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; box-shadow: 0 4px 12px rgba(239,68,68,.35); }
+.counter-banner-avatar { width: 52px; height: 52px; border-radius: 12px; background: linear-gradient(135deg, #FF7A1A, #EF4444); color: #FFFFFF !important; font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; box-shadow: 0 4px 12px rgba(239,68,68,.35); text-shadow: 0 1px 2px rgba(0,0,0,.2); letter-spacing: .02em; }
 .counter-banner-body { flex: 1; min-width: 0; }
 .counter-banner-title { font-size: 1.05rem; color: #0F172A; line-height: 1.4; margin-bottom: 6px; }
 .counter-banner-title strong { color: #C2410C; font-weight: 800; }
 .counter-banner-url { color: #64748B; font-size: .85rem; font-weight: 500; }
 .counter-banner-pos { font-size: .85rem; color: #475569; margin: 6px 0 8px 0; line-height: 1.45; }
-.counter-banner-stats { display: flex; flex-wrap: wrap; gap: 14px; font-size: .8rem; color: #64748B; margin-top: 6px; }
+.counter-banner-stats { display: flex; flex-wrap: wrap; gap: 14px; font-size: .8rem; color: #475569; margin-top: 6px; }
 .counter-banner-stats strong { color: #0F172A; font-weight: 700; margin-left: 4px; }
+[data-theme="light"] .counter-banner-stats { color: #475569 !important; }
+[data-theme="light"] .counter-banner-stats strong { color: #0F172A !important; }
+[data-theme="light"] .counter-banner-avatar { color: #FFFFFF !important; }
 .counter-banner-clear { background: rgba(255,255,255,.7); border: 1px solid #FED7AA; color: #9A3412; padding: 6px 12px; border-radius: 8px; font-size: .75rem; font-weight: 700; cursor: pointer; flex-shrink: 0; transition: all .15s; align-self: flex-start; }
 .counter-banner-clear:hover { background: #FFFFFF; border-color: #FB923C; }
 .counter-banner-plays { margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(194,65,12,.3); }
@@ -7533,11 +7947,11 @@ h3:hover {
 [data-theme="dark"] .cm-timer-warn { background: rgba(245,158,11,.22); color: #FCD34D; }
 [data-theme="dark"] .cm-timer-slow { background: rgba(239,68,68,.25); color: #FCA5A5; }
 
-/* Master Calendar / Intel headers — white text on royal-blue hero */
-.intel-header .ih-title { color: #FFFFFF !important; text-shadow: 0 1px 2px rgba(15,30,61,.20) !important; }
-.intel-header .ih-sub   { color: #E0E7FF !important; opacity: .95; text-shadow: 0 1px 2px rgba(15,30,61,.18) !important; }
-.intel-header .bc-group { color: #BFDBFE !important; opacity: .85; }
-.intel-header .bc-sep   { color: #BFDBFE !important; opacity: .55; }
+/* Master Calendar / Intel headers — dark ink on light heroes */
+.intel-header .ih-title { color: #0f172a !important; text-shadow: none !important; }
+.intel-header .ih-sub   { color: #334155 !important; opacity: 1; text-shadow: none !important; }
+.intel-header .bc-group { color: #0f766e !important; opacity: 1; }
+.intel-header .bc-sep   { color: #94a3b8 !important; opacity: 1; }
 
 /* ── Dropdown options: always white bg + dark text so they're visible ── */
 select option { background: #FFFFFF !important; color: #0F4C4A !important; }
@@ -7558,14 +7972,32 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
   color: #FFFFFF !important;
 }
 
-/* ── Unified hero size: every page hero card has the same dimensions ── */
+/* ── Unified hero size: stack hero copy vertically (breadcrumb → title → subtitle) ── */
 .view-header,
 .intel-header,
 .comp-hero,
 [data-bp-hero] {
   min-height: 130px !important;
   display: flex !important;
-  align-items: center !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+}
+.intel-header .breadcrumb {
+  margin-bottom: 8px !important;
+}
+.intel-header .ih-title {
+  margin: 0 0 8px !important;
+  font-size: 1.35rem !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.02em !important;
+}
+.intel-header .ih-sub {
+  margin: 0 !important;
+  font-size: 0.9rem !important;
+  line-height: 1.55 !important;
+  max-width: 720px !important;
 }
 .view-header > .container,
 .intel-header > .container { width: 100%; }
@@ -7626,8 +8058,14 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
 .attr-tab:hover { color: #312E81; }
 .attr-tab-active { color: #4338CA; border-bottom-color: #4338CA; }
 
-/* ── Marketing Journey stages panel on Dashboard ─────────────────────── */
-.journey-wrap { background: linear-gradient(135deg,#0F172A 0%,#1E1B4B 50%,#312E81 100%); border-radius: 18px; padding: 28px; color: white; margin-top: 22px; box-shadow: 0 8px 28px rgba(67,56,202,.18); }
+/* ── Marketing Journey stages panel — removed from product UI ─────────── */
+#journeyStagesPanel,
+.journey-wrap {
+  display: none !important;
+}
+
+/* Legacy journey styles retained below (unused) for reference only */
+.journey-wrap-legacy { background: linear-gradient(135deg,#0F172A 0%,#1E1B4B 50%,#312E81 100%); border-radius: 18px; padding: 28px; color: white; margin-top: 22px; box-shadow: 0 8px 28px rgba(67,56,202,.18); }
 .journey-head { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; }
 .journey-head h3 { font-size: 1.4rem; font-weight: 800; margin: 0; }
 .journey-head p  { font-size: .82rem; opacity: .82; margin: 6px 0 0; max-width: 540px; }
@@ -8073,3 +8511,238 @@ body:has(#counterTargetBanner) #launchCampaignBtn{display:none !important}
 [data-theme="dark"] .ig-admin-tab.active { color: #fff; border-bottom-color: #e2e8f0; background: #0f172a; }
 .ig-demo-badge { vertical-align: middle; }
 .ig-data-unavailable { font-size: 14px; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT-HERO INK — definitive overrides (must stay at EOF).
+   Heroes across InfoGenie are light gradients; force readable dark text and
+   kill any leftover white/pale-blue rules from older dark-hero themes.
+   ═══════════════════════════════════════════════════════════════════════════ */
+body:has(#ig-app-shell) .view-header,
+body:has(#ig-app-shell) .intel-header,
+body:has(#ig-app-shell) .comp-hero,
+body:has(#ig-app-shell) [data-bp-hero],
+body:has(#ig-app-shell) .ig-panel-hero,
+body:has(#ig-app-shell) .ig-comp-hero,
+body:has(#ig-app-shell) [data-ig-light-hero],
+#ig-react-panel .view-header,
+#ig-react-panel .intel-header,
+#ig-react-panel .comp-hero,
+#ig-react-panel [data-bp-hero],
+#ig-react-panel .ig-panel-hero {
+  color: #0f172a !important;
+}
+
+body:has(#ig-app-shell) .view-header *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+body:has(#ig-app-shell) .intel-header *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+body:has(#ig-app-shell) .comp-hero *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]),
+body:has(#ig-app-shell) [data-bp-hero] *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+body:has(#ig-app-shell) .ig-panel-hero *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+#ig-react-panel .view-header *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+#ig-react-panel .intel-header *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]),
+#ig-react-panel [data-bp-hero] *:not(button):not(.btn):not(.btn-primary):not(.btn-secondary):not(input):not(select):not(option):not(.atag):not(.badge):not(.hero-pill):not([class*="pill"]):not([class*="chip"]) {
+  color: #0f172a !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+body:has(#ig-app-shell) .view-header h1,
+body:has(#ig-app-shell) .view-header h2,
+body:has(#ig-app-shell) .view-header h3,
+body:has(#ig-app-shell) .view-header .view-title,
+body:has(#ig-app-shell) .intel-header h1,
+body:has(#ig-app-shell) .intel-header .ih-title,
+body:has(#ig-app-shell) .intel-header .view-title,
+body:has(#ig-app-shell) [data-bp-hero] h1,
+body:has(#ig-app-shell) [data-bp-hero] .view-title,
+#ig-react-panel .view-title,
+#ig-react-panel .ih-title {
+  color: #0f172a !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+body:has(#ig-app-shell) .view-header .view-sub,
+body:has(#ig-app-shell) .view-header .subtitle,
+body:has(#ig-app-shell) .view-header p,
+body:has(#ig-app-shell) .view-header small,
+body:has(#ig-app-shell) .intel-header .view-sub,
+body:has(#ig-app-shell) .intel-header .ih-sub,
+body:has(#ig-app-shell) .intel-header p,
+body:has(#ig-app-shell) [data-bp-hero] p,
+body:has(#ig-app-shell) [data-bp-hero] .view-sub,
+#ig-react-panel .view-sub,
+#ig-react-panel .ih-sub {
+  color: #334155 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: #334155 !important;
+}
+
+body:has(#ig-app-shell) .view-header .breadcrumb,
+body:has(#ig-app-shell) .view-header .breadcrumb *,
+body:has(#ig-app-shell) .intel-header .breadcrumb,
+body:has(#ig-app-shell) .intel-header .breadcrumb *,
+body:has(#ig-app-shell) [data-bp-hero] .breadcrumb,
+body:has(#ig-app-shell) [data-bp-hero] .breadcrumb *,
+body:has(#ig-app-shell) .breadcrumb .bc-group,
+body:has(#ig-app-shell) .bc-group,
+#ig-react-panel .breadcrumb,
+#ig-react-panel .breadcrumb * {
+  color: #0f766e !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #0f766e !important;
+}
+
+body:has(#ig-app-shell) .bc-sep,
+#ig-react-panel .bc-sep {
+  color: #94a3b8 !important;
+  -webkit-text-fill-color: #94a3b8 !important;
+}
+
+body:has(#ig-app-shell) .hero-pill,
+body:has(#ig-app-shell) .view-header .hero-pill,
+body:has(#ig-app-shell) .intel-header .hero-pill,
+body:has(#ig-app-shell) [data-bp-hero] .hero-pill,
+#ig-react-panel .hero-pill {
+  color: #1E3A8A !important;
+  -webkit-text-fill-color: #1E3A8A !important;
+  background: #FFFFFF !important;
+  border-color: rgba(15, 118, 110, 0.22) !important;
+}
+
+body:has(#ig-app-shell) .view-header .btn-primary,
+body:has(#ig-app-shell) .intel-header .btn-primary,
+body:has(#ig-app-shell) [data-bp-hero] .btn-primary,
+body:has(#ig-app-shell) .view-header button.btn-primary,
+body:has(#ig-app-shell) [data-bp-hero] button.btn-primary {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+}
+
+/* ============================================================
+   GLOBAL TEXT CONTRAST — badges, buttons, heroes, tiles
+   Ensures labels stay readable on coloured fills in light mode.
+   ============================================================ */
+
+/* Primary / gradient CTAs — always white label */
+.btn-primary,
+.btn-nav-analyse,
+.btn-camp-launch,
+.btn-qcc-launch,
+.counter-banner-launch,
+[data-theme="light"] .btn-primary,
+[data-theme="light"] .btn-nav-analyse {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+}
+
+/* Filled status pills inside cards / section headers */
+.dtc-header .atag-solid,
+.data-table-card .atag-solid,
+[data-theme="light"] .dtc-header .atag-solid,
+[data-theme="light"] .data-table-card .atag-solid {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+}
+
+/* Badges with inline solid/gradient backgrounds (not light pastels) */
+.badge[style*="background:linear-gradient"],
+.badge[style*="background:#0"],
+.badge[style*="background:#1"],
+.badge[style*="background:#2"],
+.badge[style*="background:#3"],
+.badge[style*="background:#4"],
+.badge[style*="background:#5"],
+.badge[style*="background:#6"],
+.badge[style*="background:#7"],
+.badge[style*="background:#8"],
+.badge[style*="background:#9"],
+[data-theme="light"] .badge[style*="background:linear-gradient"],
+[data-theme="light"] .badge[style*="background:#0"],
+[data-theme="light"] .badge[style*="background:#1"],
+[data-theme="light"] .badge[style*="background:#2"],
+[data-theme="light"] .badge[style*="background:#3"],
+[data-theme="light"] .badge[style*="background:#4"],
+[data-theme="light"] .badge[style*="background:#5"],
+[data-theme="light"] .badge[style*="background:#6"],
+[data-theme="light"] .badge[style*="background:#7"],
+[data-theme="light"] .badge[style*="background:#8"],
+[data-theme="light"] .badge[style*="background:#9"] {
+  color: #FFFFFF !important;
+}
+
+/* Hero / gradient panels — keep white headings & KPI labels */
+.camp-hero,
+.camp-hero .camp-hero-title,
+.camp-hero .camp-hero-sub,
+.camp-hero .camp-kpi-lbl,
+.camp-hero .camp-kpi-val,
+.camp-hero .camp-kpi-val--roas,
+.camp-hero .camp-kpi-val--cpa,
+.camp-hero .camp-kpi-val--lift,
+.camp-hero .camp-kpi-val--count,
+[data-theme="light"] .camp-hero,
+[data-theme="light"] .camp-hero .camp-hero-title,
+[data-theme="light"] .camp-hero .camp-hero-sub,
+[data-theme="light"] .camp-hero .camp-kpi-lbl,
+[data-theme="light"] .camp-hero .camp-kpi-val,
+[data-theme="light"] .camp-hero .camp-kpi-val--roas,
+[data-theme="light"] .camp-hero .camp-kpi-val--cpa,
+[data-theme="light"] .camp-hero .camp-kpi-val--lift,
+[data-theme="light"] .camp-hero .camp-kpi-val--count {
+  color: #FFFFFF;
+}
+
+/* Counter-campaign banner avatar initials */
+.counter-banner-avatar,
+[data-theme="light"] .counter-banner-avatar {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+}
+
+/* Never use panel token as a dark CTA fill in light mode */
+[data-theme="light"] button[style*="background:var(--ig-panel)"][style*="color:white"],
+[data-theme="light"] button[style*="background:var(--ig-panel)"][style*="color: white"],
+[data-theme="light"] button[style*="background: var(--ig-panel)"][style*="color:white"] {
+  background: linear-gradient(135deg, #0066FF, #00C9C8) !important;
+  color: #FFFFFF !important;
+}
+
+/* ── Connect WordPress modal — keep header text white on dark gradient ─────
+   Light-mode universal sweeps flip color:white / rgba(255,…) to dark ink when
+   the element itself has no background. The WP modal puts the gradient on the
+   parent header, so title/subtitle were rendered dark-on-navy (invisible). */
+#wpCredentialsModal .wp-cred-header,
+#wpCredentialsModal .wp-cred-header *,
+[data-theme="light"] #wpCredentialsModal .wp-cred-header,
+[data-theme="light"] #wpCredentialsModal .wp-cred-header *,
+body:has(#ig-app-shell) #wpCredentialsModal .wp-cred-header,
+body:has(#ig-app-shell) #wpCredentialsModal .wp-cred-header * {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+#wpCredentialsModal .wp-cred-sub,
+[data-theme="light"] #wpCredentialsModal .wp-cred-sub,
+body:has(#ig-app-shell) #wpCredentialsModal .wp-cred-sub {
+  color: rgba(255, 255, 255, 0.88) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.88) !important;
+}
+/* Sit the dialog in the upper viewport (not vertically centered / low). */
+#wpCredentialsModal:not(.hidden) {
+  align-items: flex-start !important;
+  padding-top: 72px !important;
+  padding-bottom: 24px !important;
+  overflow-y: auto !important;
+}
+
+/* ── Global CTA contrast safety (white text on pastel fills) ──────────────── */
+button[style*="#e8f6f3"],
+button[style*="#eaf2fb"],
+button[style*="#eef4ff"] {
+  background: linear-gradient(135deg, #0f766e, #0284c7) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}

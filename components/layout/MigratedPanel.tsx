@@ -1,15 +1,37 @@
 "use client";
 
-import { Component, type ErrorInfo, type ReactNode, useEffect, useState } from "react";
+import {
+  Component,
+  Suspense,
+  type ErrorInfo,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { usePathname } from "next/navigation";
 import { pathToViewId } from "@/lib/viewRoutes";
+import { markNavPending, settleNavPending } from "@/lib/navPending";
+import { installDomSafetyPatch, isDomReconcileError } from "@/lib/domSafety";
 import { MIGRATED_COMPONENTS } from "@/components/features/registry";
 
 class PanelErrorBoundary extends Component<
-  { children: ReactNode; view: string },
+  {
+    children: ReactNode;
+    view: string;
+    /** Bumps when we need a clean remount after a DOM reconcile glitch. */
+    remountKey: number;
+    onDomGlitch: () => void;
+  },
   { error: Error | null }
 > {
-  constructor(props: { children: ReactNode; view: string }) {
+  constructor(props: {
+    children: ReactNode;
+    view: string;
+    remountKey: number;
+    onDomGlitch: () => void;
+  }) {
     super(props);
     this.state = { error: null };
   }
@@ -19,11 +41,29 @@ class PanelErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    if (isDomReconcileError(error)) {
+      console.warn(
+        "[MigratedPanel] DOM reconcile glitch in view=" + this.props.view + " — remounting panel",
+        error.message,
+      );
+      // Recover on next tick so we don't setState during the error path twice.
+      queueMicrotask(() => this.props.onDomGlitch());
+      return;
+    }
     console.error("[MigratedPanel] component crash in view=" + this.props.view, error, info);
   }
 
+  componentDidUpdate(prevProps: { view: string; remountKey: number }) {
+    if (
+      (prevProps.view !== this.props.view || prevProps.remountKey !== this.props.remountKey) &&
+      this.state.error
+    ) {
+      this.setState({ error: null });
+    }
+  }
+
   render() {
-    if (this.state.error) {
+    if (this.state.error && !isDomReconcileError(this.state.error)) {
       return (
         <div
           style={{
@@ -42,40 +82,83 @@ class PanelErrorBoundary extends Component<
         </div>
       );
     }
+    // Dom glitch: render null for one frame while remountKey bumps.
+    if (this.state.error && isDomReconcileError(this.state.error)) {
+      return <PanelFallback />;
+    }
     return this.props.children;
   }
 }
 
-// Renders the native React panel for the currently-routed view, if it has been
-// migrated. Mounted once in the dashboard layout, it resolves the active view
-// from the URL (the same source of truth <SpaRouter/> uses) and renders the
-// matching component from the registry — otherwise it renders nothing and the
-// replayed legacy `#view-*` panel handles the view as before.
-//
-// The wrapper deliberately does NOT carry the `.view` class: the legacy
-// `navigateTo` hides every `.view` div on each navigation, so a `.view` wrapper
-// would get hidden out from under React. Because this only mounts for migrated
-// views (whose legacy div is stripped from the dev shell), it is always the sole
-// visible panel for that route.
+function PanelFallback() {
+  return (
+    <div
+      style={{
+        padding: "48px 24px",
+        textAlign: "center",
+        color: "#6b7280",
+        fontSize: "0.9rem",
+      }}
+      aria-busy="true"
+    >
+      Loading panel…
+    </div>
+  );
+}
+
+/** Mounts only after the lazy panel chunk resolves — settles nav-pending after paint. */
+function PanelReady({ view, children }: { view: string; children: ReactNode }) {
+  useEffect(() => {
+    settleNavPending(view);
+  }, [view]);
+  return children;
+}
+
+/**
+ * Stable host for lazy panels. Keep Suspense + ErrorBoundary mounted across
+ * view changes — only the inner panel is keyed. Remounting the boundary (via
+ * key={view}) while Suspense is resolving races React's DOM reconciler and
+ * throws NotFoundError: removeChild.
+ *
+ * Arm markNavPending in useLayoutEffect (not during render) when the view
+ * changes. AppShell also calls markNavPending on click; this covers direct URL
+ * loads / back-forward.
+ */
 export default function MigratedPanel() {
   const pathname = usePathname();
-  // Feature panels render client-only: the server (and the initial client
-  // render) emit nothing, then we swap in the real component after mount. This
-  // is intentional — these panels are behind auth and load all their data
-  // client-side, so SSR adds no value, and rendering them only after hydration
-  // eliminates an entire class of hydration mismatches (locale-formatted dates,
-  // Date.now()/Math.random(), window/localStorage reads) without having to
-  // audit every one of the 200+ ported components individually.
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const [remountKey, setRemountKey] = useState(0);
+  const armedView = useRef<string | null>(null);
+
+  useEffect(() => {
+    installDomSafetyPatch();
+    setMounted(true);
+  }, []);
 
   const view = pathToViewId(pathname);
   const Cmp = view ? MIGRATED_COMPONENTS[view] : undefined;
+
+  useLayoutEffect(() => {
+    if (!mounted || !view || !Cmp) return;
+    if (armedView.current === view) return;
+    armedView.current = view;
+    markNavPending("nav→" + view);
+  }, [mounted, view, Cmp]);
+
+  const onDomGlitch = () => {
+    setRemountKey((k) => k + 1);
+  };
+
   if (!mounted || !view || !Cmp) return null;
+
   return (
     <div id="ig-react-panel" data-react-view={view}>
-      <PanelErrorBoundary view={view}>
-        <Cmp />
+      <PanelErrorBoundary view={view} remountKey={remountKey} onDomGlitch={onDomGlitch}>
+        <Suspense fallback={<PanelFallback />}>
+          <PanelReady key={`${view}:${remountKey}`} view={view}>
+            <Cmp />
+          </PanelReady>
+        </Suspense>
       </PanelErrorBoundary>
     </div>
   );

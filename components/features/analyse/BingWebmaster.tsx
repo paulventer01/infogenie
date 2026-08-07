@@ -107,7 +107,7 @@ export default function BingWebmaster() {
   if (configured === false) {
     return (
       <div className="view-header-wrap">
-        <div className="view-header"><div className="container"><div className="vh-inner"><div>
+        <div className="view-header ig-panel-hero"><div className="container"><div className="vh-inner"><div>
           <h2 className="view-title">🔷 Bing Webmaster Tools</h2>
         </div></div></div></div>
         <div className="container" style={{ paddingTop: 32 }}>
@@ -134,7 +134,7 @@ export default function BingWebmaster() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

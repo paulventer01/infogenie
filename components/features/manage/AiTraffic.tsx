@@ -146,7 +146,7 @@ export default function AiTraffic() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -171,11 +171,11 @@ export default function AiTraffic() {
       >
         <div
           style={{
-            background: "linear-gradient(135deg,#0A1628,#1E1B4B)",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
             borderRadius: 12,
             padding: 18,
             marginBottom: 16,
-            color: "#fff",
+            color: '#0f172a',
           }}
         >
           <h3
@@ -191,7 +191,7 @@ export default function AiTraffic() {
             style={{
               margin: 0,
               fontSize: "0.8rem",
-              color: "rgba(255,255,255,.65)",
+              color: "#475569",
               lineHeight: 1.45,
             }}
           >
@@ -358,10 +358,10 @@ export default function AiTraffic() {
               disabled={registering}
               style={{
                 padding: "8px 16px",
-                background: "#0A1628",
+                background: '#eef4ff',
                 border: "none",
                 borderRadius: 6,
-                color: "#fff",
+                color: "#0f172a",
                 fontSize: "0.82rem",
                 fontWeight: 800,
                 cursor: "pointer",

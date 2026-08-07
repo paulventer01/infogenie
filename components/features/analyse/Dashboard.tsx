@@ -16,8 +16,22 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiPost } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
+import dm from "@/styles/dashboard-marketing.module.css";
+import {
+  buildSwot,
+  buildChannelMix,
+  buildPriorityActions,
+  formatAdSpend,
+  blendedMarketingMetrics,
+} from "@/lib/analysisDashboard";
+import MarketingIntelPanels from "./MarketingIntelPanels";
+import DomainOverview from "./DomainOverview";
+import OverviewWidgets from "./OverviewWidgets";
+import MessagingChannelStrip from "./MessagingChannelStrip";
+import { buildCompanyOverview } from "@/lib/companyOverview";
+import { restoreCanvasForReact } from "@/lib/domSafety";
 
 interface WebsiteKPIs {
   ctr: number;
@@ -56,6 +70,14 @@ interface AnalysisData {
   competitors?: Competitor[];
   sectorOnly?: boolean;
   _yourRealData?: { organicTraffic?: number };
+  companyProfile?: {
+    domain?: string;
+    businessSummary?: string;
+    subNiche?: string;
+    siteTitle?: string;
+    metaDesc?: string;
+    analyzedAt?: string;
+  };
 }
 
 interface ChartInstance {
@@ -159,11 +181,43 @@ export default function Dashboard() {
   // mounted, app.js fires `ig:analysis-ready`; we re-read so the report (charts,
   // tables, live panels) refreshes instead of showing the previous run.
   const [ad, setAd] = useState<AnalysisData | null>(getAnalysisData);
+  const [journeyStatus, setJourneyStatus] = useState<Record<string, boolean> | null>(null);
   useEffect(() => {
     const onReady = () => setAd(getAnalysisData());
     document.addEventListener("ig:analysis-ready", onReady);
     return () => document.removeEventListener("ig:analysis-ready", onReady);
   }, []);
+
+  const analysedDomain = useMemo(() => {
+    if (!ad?.url) return "";
+    return ad.url.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+  }, [ad?.url]);
+
+  useEffect(() => {
+    if (!analysedDomain) {
+      setJourneyStatus(null);
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      void apiGet<{ ok: boolean; status?: Record<string, boolean> }>(
+        `/api/company-overview/journey-status?domain=${encodeURIComponent(analysedDomain)}`,
+      )
+        .then((r) => {
+          if (!cancelled && r?.ok && r.status) setJourneyStatus(r.status);
+        })
+        .catch(() => {
+          if (!cancelled) setJourneyStatus(null);
+        });
+    };
+    load();
+    const onJourney = () => load();
+    document.addEventListener("ig:journey-updated", onJourney);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("ig:journey-updated", onJourney);
+    };
+  }, [analysedDomain]);
   const competitors = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
   const hasData = !!(ad && ad.websiteKPIs && competitors.length > 0);
 
@@ -173,6 +227,7 @@ export default function Dashboard() {
   const [efficiencyStatus, setEfficiencyStatus] = useState("⏳ Scoring channels…");
   const [efficiencyRec, setEfficiencyRec] = useState("");
   const [spendStatus, setSpendStatus] = useState<{ text: string; color: string }>({ text: "Monthly paid traffic value estimate", color: "#9CA3AF" });
+  const [threatIdx, setThreatIdx] = useState<number | null>(null);
 
   // ── Derived data (computed once) ──────────────────────────────────────────
   const derived = useMemo(() => {
@@ -212,16 +267,84 @@ export default function Dashboard() {
     return { websiteKPIs, industryName, url, avgCTR, avgROAS, yourCTR, yourROAS, realTraffic: !!realTraffic, trafficVal, sovData, yourSovShare };
   }, [ad, competitors, hasData]);
 
+  const companyOverview = useMemo(() => {
+    if (!ad || !hasData) return null;
+    const dom = analysedDomain || "your-site.com";
+    return buildCompanyOverview(
+      dom,
+      ad.industry?.name || "your industry",
+      ad as Record<string, unknown>,
+      journeyStatus,
+    );
+  }, [ad, hasData, analysedDomain, journeyStatus]);
+
+  const marketing = useMemo(() => {
+    if (!ad || !hasData) return null;
+    const yourDomain = (ad.url || "").replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+    let profile = ad.companyProfile;
+    if (!profile && typeof window !== "undefined") {
+      try {
+        const cached = JSON.parse(localStorage.getItem("ig-ai-detected") || "null");
+        if (cached) {
+          profile = {
+            domain: yourDomain,
+            businessSummary: cached.businessSummary,
+            subNiche: cached.subNiche,
+            analyzedAt: cached.at ? new Date(cached.at).toISOString() : undefined,
+          };
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    const enriched = profile ? { ...ad, companyProfile: profile } : ad;
+    return {
+      swot: buildSwot(enriched, yourDomain),
+      channels: buildChannelMix(competitors),
+      actions: buildPriorityActions(enriched),
+      blended: blendedMarketingMetrics(enriched),
+      profile,
+    };
+  }, [ad, competitors, hasData]);
+
   // ── Charts + async live panels ────────────────────────────────────────────
   useEffect(() => {
     if (!derived || !ad) return;
+    let alive = true;
     const Chart = getChart();
     const instances: ChartInstance[] = [];
     chartsRef.current = instances;
+    const canvasIds = [
+      "ctrChart",
+      "roasChart",
+      "trendChart",
+      "sovChart",
+      "forecastChart",
+      "efficiencyChart",
+      "spendChart",
+    ];
+    const destroyOnCanvas = (el: HTMLCanvasElement | null) => {
+      if (!el || !Chart) return;
+      try {
+        const existing =
+          typeof (Chart as unknown as { getChart?: (c: HTMLCanvasElement) => ChartInstance | undefined }).getChart ===
+          "function"
+            ? (Chart as unknown as { getChart: (c: HTMLCanvasElement) => ChartInstance | undefined }).getChart(el)
+            : undefined;
+        if (existing) {
+          existing.destroy();
+          const idx = instances.indexOf(existing);
+          if (idx >= 0) instances.splice(idx, 1);
+        }
+      } catch {
+        /* already gone */
+      }
+    };
     const make = (id: string, cfg: unknown) => {
-      if (!Chart) return;
+      if (!alive || !Chart) return;
       const el = document.getElementById(id) as HTMLCanvasElement | null;
       if (!el) return;
+      destroyOnCanvas(el);
       const ctx = el.getContext("2d");
       if (!ctx) return;
       try {
@@ -329,8 +452,10 @@ export default function Dashboard() {
       return Math.min(Math.round(t * 0.03 * 3), 1_500_000);
     };
     const renderSpend = (labels: (string | undefined)[], vals: number[], source: string) => {
+      if (!alive) return;
       const el = document.getElementById("spendChart") as HTMLCanvasElement | null;
       if (!el || !Chart) return;
+      destroyOnCanvas(el);
       const ctx = el.getContext("2d");
       if (!ctx) return;
       const colors = labels.map((l, i) => (l === "You" ? "rgba(0,229,255,0.9)" : (SOV_PALETTE[i - 1] || "#6B7280") + "BB"));
@@ -350,7 +475,9 @@ export default function Dashboard() {
       } catch {
         /* chart failed */
       }
-      setSpendStatus(source === "DataForSEO" ? { text: "🔴 Live via DataForSEO", color: "#10B981" } : { text: "Estimated from competitor data", color: "#9CA3AF" });
+      if (alive) {
+        setSpendStatus(source === "DataForSEO" ? { text: "🔴 Live via DataForSEO", color: "#10B981" } : { text: "Estimated from competitor data", color: "#9CA3AF" });
+      }
     };
     const staticLabels = ["You", ...competitors.slice(0, 6).map((c) => c.name)];
     const staticVals = [
@@ -374,6 +501,7 @@ export default function Dashboard() {
     apiPost<{ success?: boolean; yourSpend?: number; competitors?: { domain?: string; adSpend?: number }[] }>("/api/competitor-spend", {
       domains: compDomains, names: compBrandNames, yourDomain: url, yourBudget,
     }).then((data) => {
+      if (!alive) return;
       if (!data || !data.success || !Array.isArray(data.competitors)) return;
       const trafficSpendFloor = staticTrafficFloor;
       const liveLabels = ["You", ...data.competitors.map((c, ci) => competitors[ci]?.name || c.domain)];
@@ -401,6 +529,7 @@ export default function Dashboard() {
     }>("/api/ai-forecast", {
       domain: url, industry: industryName, competitors: compNames, currentROAS: yourROAS, monthlyBudget: campaignBudget, trafficMo: trafficVal,
     }).then((data) => {
+      if (!alive) return;
       if (!data) {
         setForecastStatus("Forecast temporarily unavailable");
         return;
@@ -411,6 +540,7 @@ export default function Dashboard() {
       const labels = data.weeks || data.months || ["Wk 1", "Wk 2", "Wk 3", "Wk 4", "Wk 5", "Wk 6", "Wk 7", "Wk 8", "Wk 9", "Wk 10", "Wk 11", "Wk 12", "Wk 13"];
       const el = document.getElementById("forecastChart") as HTMLCanvasElement | null;
       if (el && Chart) {
+        destroyOnCanvas(el);
         const ctx = el.getContext("2d");
         if (ctx) {
           try {
@@ -451,6 +581,7 @@ export default function Dashboard() {
     apiPost<{ topChannel?: string; channels?: { name: string; score: number; roi?: string }[]; insight?: string }>("/api/budget-efficiency", {
       industry: industryName, competitors: compNames, monthlyBudget: campaignBudget,
     }).then((data) => {
+      if (!alive) return;
       if (!data) {
         setEfficiencyStatus("Scoring temporarily unavailable");
         return;
@@ -458,6 +589,7 @@ export default function Dashboard() {
       setEfficiencyStatus(`Top channel: ${data.topChannel || "—"}`);
       const el = document.getElementById("efficiencyChart") as HTMLCanvasElement | null;
       if (el && Chart && data.channels) {
+        destroyOnCanvas(el);
         const ctx = el.getContext("2d");
         if (ctx) {
           const effColors = data.channels.map((c) => (c.score >= 80 ? "rgba(16,185,129,0.82)" : c.score >= 65 ? "rgba(0,102,255,0.75)" : "rgba(245,158,11,0.75)"));
@@ -491,9 +623,14 @@ export default function Dashboard() {
       competitorsCount: competitors.length, sectorOnly: !!ad.sectorOnly,
     });
     callWin("_populateAdSpendColumn", competitors);
+    // Journey panel removed — keep call as a no-op cleanup for any leftover DOM.
     callWin("_renderJourneyStages");
 
     return () => {
+      alive = false;
+      // Destroy charts while their canvases are still in React's tree. Late
+      // fetch callbacks are gated on `alive` so they cannot re-wrap canvases
+      // after unmount (that races React removeChild → NotFoundError).
       instances.forEach((c) => {
         try {
           c.destroy();
@@ -502,6 +639,11 @@ export default function Dashboard() {
         }
       });
       chartsRef.current = [];
+      // Chart.js responsive mode may leave a sizing wrapper — unwrap so React
+      // finds each <canvas> where its fiber expects it.
+      canvasIds.forEach((id) => {
+        restoreCanvasForReact(document.getElementById(id) as HTMLCanvasElement | null);
+      });
     };
   }, [derived, ad, competitors]);
 
@@ -533,7 +675,7 @@ export default function Dashboard() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -543,7 +685,7 @@ export default function Dashboard() {
               <h2 className="view-title">
                 {ad.sectorOnly ? `Sector Overview: ${industryName}` : `Intelligence Report: ${url}`}
               </h2>
-              <p className="view-sub">
+              <p className="view-sub" style={{ color: "#0f172a", opacity: 1, textShadow: "none" }}>
                 {ad.sectorOnly
                   ? `Industry-wide intelligence · ${competitors.length} top competitors mapped · No website yet — add one anytime to personalise this report`
                   : `${industryName} · ${competitors.length} competitors analysed · AI recommendations generated`}
@@ -567,6 +709,214 @@ export default function Dashboard() {
       </div>
 
       <div className="container">
+        {companyOverview && (
+          <>
+            <DomainOverview overview={companyOverview} currentView="dashboard" />
+            <MessagingChannelStrip />
+            {companyOverview.widgets?.length > 0 && (
+              <OverviewWidgets
+                widgets={companyOverview.widgets}
+                domain={companyOverview.domain || yourDomain}
+              />
+            )}
+          </>
+        )}
+
+        {marketing && (
+          <div className={dm.wrap}>
+            <section className={dm.hero}>
+              <div className={dm.heroInner}>
+                <div>
+                  <div className={dm.heroEyebrow}>Marketing Command Center</div>
+                  <h3 className={dm.heroTitle}>
+                    {ad.sectorOnly ? industryName : yourDomain}
+                  </h3>
+                  <p className={dm.heroSub}>
+                    {marketing.profile?.businessSummary ||
+                      (ad.sectorOnly
+                        ? `Sector-wide marketing intelligence for ${industryName} — competitor landscape, channel mix, and growth priorities.`
+                        : `All current marketing intelligence for ${yourDomain} — performance benchmarks, competitive landscape, channel mix, and your next actions.`)}
+                  </p>
+                  <div className={dm.heroTags}>
+                    <span className={dm.heroTag}>{industryName}</span>
+                    <span className={dm.heroTag}>{countryLabel}</span>
+                    <span className={dm.heroTag}>{competitors.length} competitors tracked</span>
+                    {marketing.profile?.subNiche && <span className={dm.heroTag}>{marketing.profile.subNiche}</span>}
+                  </div>
+                </div>
+                <div className={dm.heroAside}>
+                  {marketing.profile?.analyzedAt && (
+                    <span className={dm.analyzedAt}>
+                      Analysed {new Date(marketing.profile.analyzedAt).toLocaleString()}
+                    </span>
+                  )}
+                  <button className="btn-secondary" onClick={() => goToView(router, "battleplan")}>
+                    Open 90-day plan →
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <div className={dm.blendedGrid}>
+              {[
+                {
+                  label: "Est. monthly traffic",
+                  value: fmt(marketing.blended.monthlyTraffic),
+                  color: "#00E5FF",
+                  delta: realTraffic ? "Live DataForSEO" : "Industry benchmark",
+                  deltaCls: realTraffic ? dm.deltaUp : dm.deltaNeutral,
+                },
+                {
+                  label: "Your ROAS",
+                  value: `${marketing.blended.roas}×`,
+                  color: "#A78BFA",
+                  delta: `${marketing.blended.roasVsMarket >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(marketing.blended.roasVsMarket))}% vs rivals`,
+                  deltaCls: marketing.blended.roasVsMarket >= 0 ? dm.deltaUp : dm.deltaDown,
+                },
+                {
+                  label: "Projected ROAS",
+                  value: `${marketing.blended.projectedRoas || improvedROAS}×`,
+                  color: "#34D399",
+                  delta: "With InfoGenie optimisations",
+                  deltaCls: dm.deltaUp,
+                },
+                {
+                  label: "Market visibility",
+                  value: marketing.blended.marketShare != null ? `${marketing.blended.marketShare}%` : `${yourSovShare}%`,
+                  color: "#FBBF24",
+                  delta: "Share of tracked competitor traffic",
+                  deltaCls: dm.deltaNeutral,
+                },
+              ].map((m) => (
+                <div key={m.label} className={dm.metricDark}>
+                  <div className={dm.metricOwner}>{yourDomain}</div>
+                  <div className={dm.metricLabel}>{m.label}</div>
+                  <div className={dm.metricValue} style={{ color: m.color }}>
+                    {m.value}
+                  </div>
+                  <div className={`${dm.metricDelta} ${m.deltaCls}`}>{m.delta}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className={dm.twoCol}>
+              <div className={dm.panel}>
+                <h4 className={dm.panelTitle}>🏢 Company profile</h4>
+                {marketing.profile?.siteTitle && (
+                  <p className={dm.profileText}>
+                    <strong>{marketing.profile.siteTitle}</strong>
+                  </p>
+                )}
+                <p className={dm.profileText}>
+                  {marketing.profile?.metaDesc || marketing.profile?.businessSummary || "Run Analyse Now with a website URL to pull live site metadata and a business summary."}
+                </p>
+                <div className={dm.metaRow}>
+                  <div className={dm.metaItem}>
+                    <strong>Domain:</strong> {yourDomain}
+                  </div>
+                  <div className={dm.metaItem}>
+                    <strong>Industry:</strong> {industryName}
+                  </div>
+                  <div className={dm.metaItem}>
+                    <strong>Primary market:</strong> {countryLabel}
+                  </div>
+                  <div className={dm.metaItem}>
+                    <strong>CPA benchmark:</strong> ${websiteKPIs.cpa} · <strong>Conv. rate:</strong> {websiteKPIs.convRate}%
+                  </div>
+                </div>
+              </div>
+              <div className={dm.panel}>
+                <h4 className={dm.panelTitle}>📡 Competitor channel mix</h4>
+                <p className={dm.profileText}>Where rivals invest — use this to spot underserved channels for {yourDomain}.</p>
+                {marketing.channels.length > 0 ? (
+                  <>
+                    <div className={dm.channelBar}>
+                      {marketing.channels.map((ch) => (
+                        <div key={ch.name} style={{ width: `${ch.share}%`, background: ch.color }} title={`${ch.name}: ${ch.share}%`} />
+                      ))}
+                    </div>
+                    <div className={dm.channelLegend}>
+                      {marketing.channels.map((ch) => (
+                        <div key={ch.name} className={dm.channelRow}>
+                          <span className={dm.channelDot} style={{ background: ch.color }} />
+                          <span className={dm.channelName}>{ch.name}</span>
+                          <span className={dm.channelPct}>{ch.share}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className={dm.profileText}>Channel data populates after competitor metrics are validated.</p>
+                )}
+              </div>
+            </div>
+
+            <div className={dm.swotGrid}>
+              {([
+                ["Strengths", marketing.swot.strengths, dm.swotS],
+                ["Weaknesses", marketing.swot.weaknesses, dm.swotW],
+                ["Opportunities", marketing.swot.opportunities, dm.swotO],
+                ["Threats", marketing.swot.threats, dm.swotT],
+              ] as const).map(([label, items, cls]) => (
+                <div key={label} className={`${dm.swotCard} ${cls}`}>
+                  <div className={dm.swotHead}>{label}</div>
+                  <ul className={dm.swotList}>
+                    {items.slice(0, 4).map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+
+            <h4 className={dm.panelTitle} style={{ marginBottom: 12 }}>⚡ Priority marketing actions</h4>
+            <div className={dm.actionGrid}>
+              {marketing.actions.map((action, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={dm.actionCard}
+                  onClick={() => action.view && goToView(router, action.view)}
+                >
+                  <div className={dm.actionTop}>
+                    <span className={dm.actionArea}>{action.area}</span>
+                    <span className={action.impact === "high" ? dm.impactHigh : dm.impactMed}>{action.impact} impact</span>
+                  </div>
+                  <div className={dm.actionTitle}>{action.title}</div>
+                  <div className={dm.actionDetail}>{action.detail}</div>
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => goToView(router, "marketing-brief")}
+              style={{
+                marginTop: 14,
+                width: "100%",
+                textAlign: "left",
+                padding: "14px 16px",
+                borderRadius: 12,
+                border: "1.5px solid rgba(15,118,110,0.25)",
+                background: "linear-gradient(135deg,#ecfdf5,#eff6ff)",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ fontSize: "0.68rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#0f766e", marginBottom: 4 }}>
+                ⚔️ What to do today
+              </div>
+              <div style={{ fontWeight: 800, color: "#0f172a", fontSize: "0.92rem", marginBottom: 4 }}>
+                Open Brief for answer · recommendation · follow-through on each action
+              </div>
+              <div style={{ fontSize: "0.78rem", color: "#475569" }}>
+                Ranked competitive moves with one-click execution paths →
+              </div>
+            </button>
+          </div>
+        )}
+
+        {hasData && <MarketingIntelPanels domain={yourDomain} industryName={industryName} />}
+
         {/* Competitor chips */}
         {competitors.length > 0 && (
           <div className="competitor-chips">
@@ -575,7 +925,7 @@ export default function Dashboard() {
             </div>
             <div className="cchips-row">
               {competitors.map((c, i) => (
-                <button key={i} className="cchip" title={c.why || `Click to analyse ${c.name}`} onClick={() => callWin("openCompetitorAnalysis", c)}>
+                <button key={i} className="cchip" title={c.why || `Click to analyse ${c.name}`} onClick={() => setThreatIdx(i)}>
                   <span className="cchip-dot" style={{ background: CHIP_DOTS[i % 8] }} />
                   <span className="cchip-name">{c.name}</span>
                   {c.aiDetected && <span className="cchip-ai">AI</span>}
@@ -585,10 +935,11 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* KPI grid */}
+        {/* KPI grid — ownership is printed on each tile (no floating title tooltips) */}
         <div className="kpi-grid">
-          <div className="kpi-card kpi-blue" title={`Click-Through Rate: the % of people who click your ad after seeing it. Industry avg for ${industryName} competitors is ${avgCTR.toFixed(2)}%.`}>
-            <div className="kpi-ribbon kpi-ribbon-you" title={`This number is your site's data: ${yourDomain}`}>📍 YOUR SITE</div>
+          <div className="kpi-card kpi-blue">
+            <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
+            <div className="kpi-owner" title={yourDomain}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">📊</div>
             <div className="kpi-label">Your CTR Benchmark</div>
@@ -599,8 +950,9 @@ export default function Dashboard() {
             <div className="kpi-source kpi-source-you">📍 Your site · <strong>{yourDomain}</strong></div>
           </div>
 
-          <div className="kpi-card kpi-teal" title={`Return on Ad Spend: revenue earned per £/$1 spent on ads. Your competitors average ${avgROAS.toFixed(1)}× ROAS.`}>
-            <div className="kpi-ribbon kpi-ribbon-you" title={`This number is your site's data: ${yourDomain}`}>📍 YOUR SITE</div>
+          <div className="kpi-card kpi-teal">
+            <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
+            <div className="kpi-owner" title={yourDomain}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">🎯</div>
             <div className="kpi-label">Your ROAS Benchmark</div>
@@ -611,8 +963,9 @@ export default function Dashboard() {
             <div className="kpi-source kpi-source-you">📍 Your site · <strong>{yourDomain}</strong></div>
           </div>
 
-          <div className="kpi-card kpi-green" title="Cost Per Acquisition: estimated ad spend to win one new customer in your industry.">
-            <div className="kpi-ribbon kpi-ribbon-ind" title={`Broad industry benchmark for ${industryName} — not your data`}>🏷️ INDUSTRY BENCHMARK</div>
+          <div className="kpi-card kpi-green">
+            <div className="kpi-ribbon kpi-ribbon-ind">🏷️ INDUSTRY BENCHMARK</div>
+            <div className="kpi-owner kpi-owner-ind" title={industryName}>{industryName}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">💰</div>
             <div className="kpi-label">CPA Benchmark</div>
@@ -621,12 +974,13 @@ export default function Dashboard() {
             <div className="kpi-source kpi-source-ind">🏷️ Industry benchmark · <strong>{industryName}</strong></div>
           </div>
 
-          <div className="kpi-card kpi-gold" title={`Estimated organic visits per month${realTraffic ? " — sourced from DataForSEO live data" : " — AI-estimated industry benchmark for your domain"}.`}>
+          <div className="kpi-card kpi-gold">
             {realTraffic ? (
-              <div className="kpi-ribbon kpi-ribbon-live" title={`Live data pulled from DataForSEO for ${yourDomain}`}>📡 LIVE — YOUR SITE</div>
+              <div className="kpi-ribbon kpi-ribbon-live">📡 LIVE — YOUR SITE</div>
             ) : (
-              <div className="kpi-ribbon kpi-ribbon-you" title={`This number is your site's data: ${yourDomain}`}>📍 YOUR SITE</div>
+              <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
             )}
+            <div className="kpi-owner" title={yourDomain}>{yourDomain}</div>
             {realTraffic ? (
               <span style={{ fontSize: ".65rem", background: "#10B98120", color: "#10B981", padding: "2px 6px", borderRadius: 10, fontWeight: 700 }}>LIVE</span>
             ) : (
@@ -643,8 +997,9 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="kpi-card kpi-purple" title={`Conversion Rate: % of visitors who take a desired action (sign up, purchase). ${industryName} market average is 3.1%.`}>
-            <div className="kpi-ribbon kpi-ribbon-you" title={`This number is your site's data: ${yourDomain}`}>📍 YOUR SITE</div>
+          <div className="kpi-card kpi-purple">
+            <div className="kpi-ribbon kpi-ribbon-you">📍 YOUR SITE</div>
+            <div className="kpi-owner" title={yourDomain}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#EEF2FF", color: "#4338CA", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>Industry Avg</span>
             <div className="kpi-icon">📈</div>
             <div className="kpi-label">Your Conv. Rate</div>
@@ -653,8 +1008,9 @@ export default function Dashboard() {
             <div className="kpi-source kpi-source-you">📍 Your site · <strong>{yourDomain}</strong></div>
           </div>
 
-          <div className="kpi-card kpi-blue" title="AI-calculated score combining your CTR, ROAS and conversion benchmarks vs. competitor averages. Higher = more growth opportunity.">
-            <div className="kpi-ribbon kpi-ribbon-ai" title={`AI composite score for ${yourDomain} vs the ${competitors.length} tracked competitors`}>🤖 YOUR SITE vs RIVALS</div>
+          <div className="kpi-card kpi-blue">
+            <div className="kpi-ribbon kpi-ribbon-ai">🤖 YOUR SITE vs RIVALS</div>
+            <div className="kpi-owner" title={yourDomain}>{yourDomain}</div>
             <span style={{ fontSize: ".65rem", background: "#0066FF20", color: "#0066FF", padding: "2px 6px", borderRadius: 10, fontWeight: 700, display: "inline-block", marginBottom: 4 }}>AI SCORE</span>
             <div className="kpi-icon">🚀</div>
             <div className="kpi-label">AI Opportunity Score</div>
@@ -672,7 +1028,7 @@ export default function Dashboard() {
             ) : (
               "Connect Google Analytics or Google Ads to replace estimates with your real figures."
             )}{" "}
-            Hover any card for a full explanation.
+            Each tile shows the company or industry the figure belongs to.
           </span>
         </div>
 
@@ -774,12 +1130,10 @@ export default function Dashboard() {
                       <td>{c.traffic && c.traffic !== "—" ? c.traffic : <span style={{ color: "#94a3b8" }} title="No public data available">—</span>}</td>
                       <td><strong>{c.ctr && c.ctr !== "—" ? c.ctr : <span style={{ color: "#94a3b8" }} title="No public data available">—</span>}</strong></td>
                       <td><strong>{roasCell === "—" ? <span style={{ color: "#94a3b8" }} title="No public data available">—</span> : roasCell}</strong></td>
-                      <td id={`adSpendCell-${i}`}>
-                        <span style={{ color: "#94a3b8", fontSize: "0.78rem" }} title="Checking Meta Ad Library…">⏳ checking…</span>
-                      </td>
+                      <td id={`adSpendCell-${i}`}>{formatAdSpend(c)}</td>
                       <td>{channel}</td>
                       <td>
-                        <span className={`threat-badge threat-${lvl} threat-badge-clickable`} onClick={() => callWin("openThreatModal", i)} title="Click for threat details">
+                        <span className={`threat-badge threat-${lvl} threat-badge-clickable`} onClick={() => setThreatIdx(i)} title="Click for threat details">
                           {cap} Threat ↗
                         </span>
                       </td>
@@ -869,7 +1223,7 @@ export default function Dashboard() {
           <div className="data-table-card" style={{ marginBottom: 32 }}>
             <div className="dtc-header">
               <h3 title="Real-time AI-generated alerts about competitor activity — ad spend changes, new creatives, pricing shifts and market opportunities detected in the last 72 hours.">🔔 Live AI Alert Feed</h3>
-              <span className="atag" style={{ background: "#EF4444", color: "white" }} title="Competitor signals are monitored continuously. New alerts appear as soon as the AI detects a significant change.">● Live Monitoring</span>
+              <span className="atag atag-solid atag-solid--red" title="Competitor signals are monitored continuously. New alerts appear as soon as the AI detects a significant change.">● Live Monitoring</span>
             </div>
             <div className="dtc-flush" style={{ display: "flex", flexDirection: "column", gap: 0 }}>
               {alertRows.map((c, i) => {
@@ -892,6 +1246,50 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {threatIdx != null && competitors[threatIdx] && (
+        <div className={dm.modalBackdrop} onClick={() => setThreatIdx(null)}>
+          <div className={dm.modal} onClick={(e) => e.stopPropagation()}>
+            <h4 className={dm.modalTitle}>
+              {competitors[threatIdx].name} — {(competitors[threatIdx].threatLevel || "medium").toUpperCase()} threat
+            </h4>
+            <div className={dm.modalBody}>
+              <p>{competitors[threatIdx].why || "Direct competitor in your market."}</p>
+              <p style={{ marginTop: 10 }}>
+                <strong>Traffic:</strong> {competitors[threatIdx].traffic || "—"} · <strong>Top channel:</strong>{" "}
+                {competitors[threatIdx].topChannel || "—"} · <strong>ROAS:</strong>{" "}
+                {typeof competitors[threatIdx].roas === "number" ? competitors[threatIdx].roas + "×" : competitors[threatIdx].roas || "—"}
+              </p>
+              {(competitors[threatIdx].suggestions || []).length > 0 && (
+                <>
+                  <p style={{ marginTop: 12, fontWeight: 700 }}>Recommended counter-moves:</p>
+                  <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                    {(competitors[threatIdx].suggestions || []).map((s, si) => (
+                      <li key={si} style={{ marginBottom: 6 }}>
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+            <button type="button" className={dm.modalClose} onClick={() => setThreatIdx(null)}>
+              Close
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ marginLeft: 10 }}
+              onClick={() => {
+                setThreatIdx(null);
+                goToView(router, "competitors");
+              }}
+            >
+              Full competitor analysis →
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

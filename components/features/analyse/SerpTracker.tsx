@@ -60,9 +60,22 @@ interface OpenAiResult {
   ok?: boolean;
   choices?: { message?: { content?: string } }[];
 }
+interface AnalysisCompetitor {
+  name?: string;
+  domain?: string;
+  url?: string;
+  topKeywords?: string[];
+}
 interface AnalysisData {
   url?: string;
+  brandName?: string;
+  industryKey?: string;
+  industryName?: string;
+  subNiche?: string;
   keywords?: (string | { keyword?: string; term?: string })[];
+  competitors?: AnalysisCompetitor[];
+  industry?: { name?: string; keywords?: string[] };
+  companyProfile?: { subNiche?: string; businessSummary?: string };
 }
 
 const COUNTRIES: [string, string][] = [
@@ -84,9 +97,57 @@ const COUNTRIES: [string, string][] = [
   ["global", "🌐 Global"],
 ];
 
+const COUNTRY_LABEL: Record<string, string> = Object.fromEntries(COUNTRIES);
+
+/** Display label for a stored country code (heals legacy "globa" truncation). */
+function countryLabel(code: string | null | undefined): string {
+  const raw = String(code || "us").toLowerCase().trim();
+  const key = raw === "globa" ? "global" : raw;
+  return COUNTRY_LABEL[key] || raw.toUpperCase();
+}
+
 function getAnalysisData(): AnalysisData {
   if (typeof window === "undefined") return {};
   return (window as unknown as { analysisData?: AnalysisData }).analysisData || {};
+}
+
+/** Keywords already discovered during the initial website analysis. */
+function analysisKeywordPool(): string[] {
+  const ad = getAnalysisData();
+  const seen = new Set<string>();
+  const pool: string[] = [];
+  const push = (raw: unknown) => {
+    let s = "";
+    if (typeof raw === "string") s = raw;
+    else if (raw && typeof raw === "object") {
+      const o = raw as { keyword?: string; term?: string };
+      s = o.keyword || o.term || "";
+    }
+    const t = String(s || "").trim();
+    if (!t || t.length > 80) return;
+    const key = t.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    pool.push(t);
+  };
+  (ad.keywords || []).forEach(push);
+  (ad.competitors || []).forEach((c) => (c.topKeywords || []).forEach(push));
+  (ad.industry?.keywords || []).forEach(push);
+  if (ad.subNiche) push(ad.subNiche);
+  if (ad.companyProfile?.subNiche) push(ad.companyProfile.subNiche);
+  return pool;
+}
+
+function analysisNicheLabel(): string {
+  const ad = getAnalysisData();
+  return (
+    ad.subNiche ||
+    ad.companyProfile?.subNiche ||
+    ad.industryName ||
+    ad.industry?.name ||
+    ad.industryKey ||
+    ""
+  );
 }
 
 function toast(msg: string) {
@@ -105,6 +166,11 @@ export default function SerpTracker() {
     .replace(/^https?:\/\//, "")
     .replace(/^www\./, "")
     .split("/")[0];
+  const seedPool = analysisKeywordPool();
+  const kwPlaceholder =
+    seedPool[0] ||
+    analysisNicheLabel() ||
+    "keyword from your analysis";
 
   const [keyword, setKeyword] = useState("");
   const [domainV, setDomainV] = useState(autoDomain);
@@ -155,23 +221,24 @@ export default function SerpTracker() {
   }
 
   async function suggest() {
-    const fromAnalysis = (getAnalysisData().keywords || [])
-      .map((k) => (typeof k === "string" ? k : k.keyword || k.term || ""))
-      .filter(Boolean)
-      .slice(0, 10);
+    const fromAnalysis = analysisKeywordPool().slice(0, 24);
     if (fromAnalysis.length) {
       const idx = kwIdx.current % fromAnalysis.length;
       setKeyword(fromAnalysis[idx]);
       kwIdx.current = idx + 1;
+      toast(`✨ Keyword from your analysis (${idx + 1}/${fromAnalysis.length})`);
       return;
     }
-    const domain = domainV || getAnalysisData().url || "";
+    const ad = getAnalysisData();
+    const domain = domainV || ad.url || "";
     if (!domain) {
       toast(
         "⚠️ Run an analysis first or enter your domain — then AI Suggest will fill keywords from it.",
       );
       return;
     }
+    const niche = analysisNicheLabel();
+    const summary = ad.companyProfile?.businessSummary || "";
     setSuggesting(true);
     try {
       const r = await apiPost<OpenAiResult>("/api/openai", {
@@ -179,7 +246,15 @@ export default function SerpTracker() {
         messages: [
           {
             role: "user",
-            content: `Suggest one high-value SEO keyword to track in Google SERP rankings for the website "${domain}". Reply with ONLY the keyword phrase — no explanation, no quotes.`,
+            content: [
+              `Suggest one high-value SEO keyword to track in Google SERP rankings for the website "${domain}".`,
+              niche ? `Industry / sub-niche: ${niche}.` : "",
+              summary ? `Business: ${summary}` : "",
+              "The keyword MUST be directly relevant to this exact business and industry — not a random or adjacent vertical.",
+              "Reply with ONLY the keyword phrase — no explanation, no quotes.",
+            ]
+              .filter(Boolean)
+              .join(" "),
           },
         ],
       });
@@ -187,6 +262,7 @@ export default function SerpTracker() {
         .trim()
         .replace(/^["'.]+|["'.]+$/g, "");
       if (suggested) setKeyword(suggested);
+      else toast("No suggestion returned — enter a keyword manually.");
     } catch {
       toast("AI Suggest failed — enter keyword manually.");
     } finally {
@@ -209,6 +285,11 @@ export default function SerpTracker() {
       r.target?.position ? `✅ Ranked #${r.target.position}` : "⚠️ Not in top 10",
     );
     refresh();
+    try {
+      document.dispatchEvent(new CustomEvent("ig:journey-updated"));
+    } catch {
+      /* noop */
+    }
   }
 
   async function scanAll() {
@@ -220,6 +301,11 @@ export default function SerpTracker() {
     }
     toast(`✅ Scanned ${r.scanned}/${r.total}`);
     refresh();
+    try {
+      document.dispatchEvent(new CustomEvent("ig:journey-updated"));
+    } catch {
+      /* noop */
+    }
   }
 
   async function del(id: number) {
@@ -235,7 +321,7 @@ export default function SerpTracker() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -313,7 +399,7 @@ export default function SerpTracker() {
               <input
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                placeholder="best running shoes"
+                placeholder={kwPlaceholder}
                 style={trInput}
               />
             </div>
@@ -335,7 +421,7 @@ export default function SerpTracker() {
               <input
                 value={domainV}
                 onChange={(e) => setDomainV(e.target.value)}
-                placeholder="nike.com"
+                placeholder={autoDomain || "yourdomain.com"}
                 style={{
                   ...trInput,
                   background: autoDomain ? "#F0FDF4" : "#fff",
@@ -474,13 +560,13 @@ export default function SerpTracker() {
                       <td
                         style={{
                           padding: "9px 12px",
-                          color: "#6B7280",
-                          textTransform: "uppercase",
-                          fontSize: "0.74rem",
-                          fontWeight: 700,
+                          color: "#374151",
+                          fontSize: "0.82rem",
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
                         }}
                       >
-                        {k.country}
+                        {countryLabel(k.country)}
                       </td>
                       <td style={{ padding: "9px 12px" }}>
                         <span

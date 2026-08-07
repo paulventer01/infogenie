@@ -432,7 +432,7 @@ export default function AdLibrary() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -669,8 +669,8 @@ export default function AdLibrary() {
                       onClick={() => setCountryMenuOpen(false)}
                       style={{
                         padding: "5px 10px",
-                        background: "#0F172A",
-                        color: "#fff",
+                        background: '#eef4ff',
+                        color: "#0f172a",
                         border: 0,
                         borderRadius: 4,
                         fontSize: "0.7rem",

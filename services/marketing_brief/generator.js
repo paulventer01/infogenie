@@ -167,6 +167,194 @@ async function _gatherSignals(pool, tid) {
     }
   } catch { /* table may not exist */ }
 
+  // 10 · Unresolved anomalies → forward risk
+  try {
+    const r = await pool.query(
+      `SELECT anomaly_type, severity, spike_factor, recommended_action, brand
+       FROM anomaly_detections
+       WHERE tenant_id=$1 AND (resolved IS NULL OR resolved=FALSE)
+         AND created_at > NOW() - INTERVAL '14 days'
+       ORDER BY created_at DESC LIMIT 5`, [tid]);
+    if (r.rows.length) {
+      activePillars.push('anomaly-detector');
+      r.rows.slice(0, 3).forEach(a => {
+        signals.push({
+          kind: 'risk',
+          pillar: 'anomaly-detector',
+          horizon: '14d',
+          headline: `Unresolved ${String(a.anomaly_type || 'anomaly').replace(/_/g, ' ')} risk`,
+          detail: a.recommended_action || `Severity ${a.severity || 'n/a'} · spike ${a.spike_factor || '—'}× on ${a.brand || 'brand'}`,
+          action_view: 'anomaly-detector',
+          action_label: 'Investigate Anomaly',
+        });
+      });
+    }
+  } catch { /* table may not exist */ }
+
+  // 11 · Prediction runs → future risks & opportunities
+  try {
+    const r = await pool.query(
+      `SELECT prediction_type, output_json, created_at
+       FROM prediction_runs
+       WHERE tenant_id=$1 AND (expires_at IS NULL OR expires_at > NOW())
+       ORDER BY created_at DESC LIMIT 6`, [tid]);
+    if (r.rows.length) {
+      activePillars.push('predictions');
+      r.rows.forEach(row => {
+        const out = typeof row.output_json === 'string'
+          ? (() => { try { return JSON.parse(row.output_json); } catch { return {}; } })()
+          : (row.output_json || {});
+        const preds = Array.isArray(out.predictions) ? out.predictions.slice(0, 2) : [];
+        preds.forEach(pr => {
+          const impact = String(pr.impact || pr.severity || '').toLowerCase();
+          const isRisk = impact === 'high' || impact === 'critical'
+            || /churn|decline|threat|risk|loss/i.test(JSON.stringify(pr));
+          signals.push({
+            kind: isRisk ? 'risk' : 'foresight',
+            pillar: 'predictions',
+            horizon: pr.timeframe || '30–90d',
+            headline: pr.title || pr.move || pr.label || `${row.prediction_type} signal`,
+            detail: [pr.competitor, pr.recommended_action || out.recommended_action, out.summary]
+              .filter(Boolean).slice(0, 2).join(' · ').slice(0, 220)
+              || `Confidence ${out.confidence || '—'}%`,
+            action_view: 'predictions',
+            action_label: 'Open Predictions',
+          });
+        });
+        if (!preds.length && out.summary) {
+          signals.push({
+            kind: 'foresight',
+            pillar: 'predictions',
+            horizon: '90d',
+            headline: `${String(row.prediction_type || 'forecast').replace(/_/g, ' ')} outlook`,
+            detail: String(out.summary).slice(0, 220),
+            action_view: 'predictions',
+            action_label: 'Open Predictions',
+          });
+        }
+      });
+    }
+  } catch { /* table may not exist */ }
+
+  // 12 · Budget / ROAS trajectory risk (declining campaigns)
+  try {
+    const r = await pool.query(
+      `SELECT name, channel, roas, daily_budget, status
+       FROM optimizer_campaigns
+       WHERE tenant_id=$1 AND roas IS NOT NULL AND roas < 2 AND daily_budget > 0
+       ORDER BY daily_budget DESC NULLS LAST LIMIT 5`, [tid]);
+    if (r.rows.length) {
+      activePillars.push('budget-risk');
+      const burn = r.rows.reduce((s, c) => s + (Number(c.daily_budget) || 0), 0);
+      signals.push({
+        kind: 'risk',
+        pillar: 'budget-risk',
+        horizon: '30d',
+        headline: `${r.rows.length} paid campaign${r.rows.length > 1 ? 's' : ''} below 2× ROAS still spending`,
+        detail: `~$${Math.round(burn)}/day at risk if trajectory continues — candidates: ${r.rows.slice(0, 3).map(c => c.name).join(', ')}`,
+        action_view: 'budget',
+        action_label: 'Open Budget Board',
+      });
+    }
+  } catch { /* table may not exist */ }
+
+  // 13 · Competitive opportunity foresight (fresh battle intel)
+  try {
+    const r = await pool.query(
+      `SELECT competitor, summary FROM battle_cards
+       WHERE tenant_id=$1 AND created_at > ${since7d}
+       ORDER BY created_at DESC LIMIT 3`, [tid]);
+    if (r.rows.length) {
+      // already counted in battle-cards; add explicit foresight framing
+      signals.push({
+        kind: 'foresight',
+        pillar: 'battle-cards',
+        horizon: '14–45d',
+        headline: 'Window to counter competitor positioning before spend hardens',
+        detail: r.rows.slice(0, 2).map(x => `${x.competitor}: ${String(x.summary || '').slice(0, 80)}`).join(' · '),
+        action_view: 'battleplan',
+        action_label: 'Open Battle Plan',
+      });
+    }
+  } catch { /* table may not exist */ }
+
+  // 14 · Institutional memory — due decision reviews + business facts
+  try {
+    const { gatherStrategicSignals } = require('../strategic_intelligence/api');
+    const strat = await gatherStrategicSignals(pool, tid);
+    if (strat.length) {
+      activePillars.push('institutional-memory');
+      signals.push(...strat);
+    }
+  } catch { /* optional */ }
+
+  // 15 · SEO Growth Autopilot — recent publish runs → Marketing Brief
+  try {
+    const store = require('../seo_autopilot/store');
+    const runs = await store.recentRunSignals(tid, 48);
+    if (runs.length) {
+      activePillars.push('seo-autopilot');
+      const ok = runs.filter((r) => r.status === 'ok');
+      const failed = runs.filter((r) => r.status !== 'ok');
+      if (ok.length) {
+        signals.push({
+          kind: 'win',
+          pillar: 'seo-autopilot',
+          headline: `SEO Autopilot published ${ok.length} article${ok.length > 1 ? 's' : ''} in the last 48h`,
+          detail: ok.slice(0, 3).map((r) => `"${r.title || r.keyword}"`).join(', '),
+          action_view: 'seo-growth-autopilot',
+          action_label: 'Open Growth Autopilot',
+        });
+      }
+      // Outcome-driven replan foresight from plan meta (if present)
+      try {
+        const plan = await store.getPlan(tid);
+        const rp = plan?.meta?.replan;
+        if (rp?.summary) {
+          signals.push({
+            kind: 'foresight',
+            pillar: 'seo-autopilot',
+            horizon: '30d',
+            headline: 'Growth Plan replan from environment feedback',
+            detail: rp.summary,
+            action_view: 'seo-growth-autopilot',
+            action_label: 'Review Replan',
+          });
+        }
+      } catch { /* optional */ }
+      if (failed.length) {
+        signals.push({
+          kind: 'warning',
+          pillar: 'seo-autopilot',
+          headline: `${failed.length} autopilot run${failed.length > 1 ? 's' : ''} need attention`,
+          detail: failed.slice(0, 2).map((r) => r.error || r.status).join(' · '),
+          action_view: 'seo-growth-autopilot',
+          action_label: 'Review Autopilot',
+        });
+      }
+    } else {
+      // Fallback: DB query when store mem empty but table exists
+      const r = await pool.query(
+        `SELECT status, keyword, title, error, created_at FROM seo_autopilot_runs
+         WHERE tenant_id=$1 AND created_at > ${since24h}
+         ORDER BY created_at DESC LIMIT 8`, [tid]);
+      if (r.rows.length) {
+        activePillars.push('seo-autopilot');
+        const ok = r.rows.filter((x) => x.status === 'ok');
+        signals.push({
+          kind: ok.length ? 'win' : 'warning',
+          pillar: 'seo-autopilot',
+          headline: ok.length
+            ? `SEO Autopilot shipped ${ok.length} post${ok.length > 1 ? 's' : ''} today`
+            : 'SEO Autopilot runs need review',
+          detail: r.rows.slice(0, 3).map((x) => x.title || x.keyword || x.status).join(', '),
+          action_view: 'seo-growth-autopilot',
+          action_label: 'Open Growth Autopilot',
+        });
+      }
+    }
+  } catch { /* optional */ }
+
   return { signals, activePillars };
 }
 
@@ -178,19 +366,21 @@ async function _aiGenerate(brand, signals, activePillars) {
 
   const today = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
   const sys = `You are an AI Marketing Director giving the daily morning brief. You are sharp, direct, and data-driven.
+You identify problems, propose the best actionable route, and explain WHY that route beats alternatives.
+You also scan ALL signals for future risks and opportunities (30–90 day horizon), not just today's fires.
 Output strict JSON:
 {
   "headline": "one punchy sentence — the single most important thing today (max 100 chars)",
   "greeting": "personal AI marketing director morning greeting, 1 sentence, references the date or day of week",
   "sections": [
-    { "title": "Section title", "kind": "warning|win|opportunity|info", "items": ["bullet 1", "bullet 2"] }
+    { "title": "Section title", "kind": "warning|win|opportunity|info|risk|foresight", "items": ["bullet 1", "bullet 2"] }
   ],
   "actions": [
-    { "label": "Short action label", "rationale": "one sentence why", "expected_impact": "e.g. +12% ROAS", "view": "optimizer", "priority": 1 }
+    { "label": "Short action label", "rationale": "one sentence problem diagnosis", "expected_impact": "e.g. +12% ROAS", "why_best": "1 sentence: why this is the best route vs the obvious alternative", "view": "optimizer", "priority": 1 }
   ]
 }
-- sections: 2–5 sections, only from active pillars, grouped by theme. Skip pillars with no data.
-- actions: 3–7 ranked actions, each with a direct link to the relevant feature (view field = the feature's URL fragment, e.g. "optimizer", "serp-tracker", "decision-engine", "battle", "crisis", "review-automation", "web-vitals", "sov", "search-intel").
+- sections: 3–6 sections from active pillars. MUST include a "Future Risks" section (kind:risk) and a "Future Opportunities" section (kind:foresight) when any risk/foresight signals exist.
+- actions: 3–7 ranked actions with why_best. view = feature URL fragment (optimizer, serp-tracker, action-queue, battleplan, crisis-radar, anomaly-detector, predictions, budget, review-automation, web-vitals, sov, search-intel).
 - Be specific and grounded in the signals. No filler.`;
 
   const body = JSON.stringify({
@@ -231,32 +421,56 @@ function _templateBrief(signals, activePillars, brand) {
   const _estimated = true;
   const today = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
 
-  const warnings     = signals.filter(s => s.kind === 'warning');
-  const wins         = signals.filter(s => s.kind === 'win');
+  const warnings      = signals.filter(s => s.kind === 'warning');
+  const wins          = signals.filter(s => s.kind === 'win');
   const opportunities = signals.filter(s => s.kind === 'opportunity');
+  const risks         = signals.filter(s => s.kind === 'risk');
+  const foresight     = signals.filter(s => s.kind === 'foresight');
 
-  const headline = warnings.length
-    ? `⚠️ ${warnings.length} signal${warnings.length>1?'s':''} need your attention today`
+  const headline = warnings.length || risks.length
+    ? `⚠️ ${(warnings.length + risks.length)} signal${(warnings.length + risks.length)>1?'s':''} need attention — including forward risks`
     : wins.length
       ? `✅ Strong day — ${wins.length} win${wins.length>1?'s':''} recorded`
       : signals.length
         ? `📊 ${signals.length} marketing signal${signals.length>1?'s':''} ready for review`
         : '📋 Your marketing brief is ready — no urgent signals today';
 
-  const greeting = `Good morning! Here is your marketing brief for ${today}.`;
+  const greeting = `Good morning! Here is your marketing brief for ${today} — problems, best-route actions, and forward risks/opportunities.`;
 
   const sections = [];
   if (warnings.length) sections.push({ title:'Needs Attention', kind:'warning', items: warnings.slice(0,4).map(s=>`${s.headline}${s.detail?' — '+s.detail:''}`) });
   if (wins.length)     sections.push({ title:'Wins Today',      kind:'win',     items: wins.slice(0,4).map(s=>`${s.headline}${s.detail?' — '+s.detail:''}`) });
   if (opportunities.length) sections.push({ title:'Opportunities', kind:'opportunity', items: opportunities.slice(0,4).map(s=>`${s.headline}${s.detail?' — '+s.detail:''}`) });
+  if (risks.length) sections.push({ title:'Future Risks', kind:'risk', items: risks.slice(0,4).map(s=>`${s.headline}${s.horizon?' ['+s.horizon+']':''}${s.detail?' — '+s.detail:''}`) });
+  if (foresight.length) sections.push({ title:'Future Opportunities', kind:'foresight', items: foresight.slice(0,4).map(s=>`${s.headline}${s.horizon?' ['+s.horizon+']':''}${s.detail?' — '+s.detail:''}`) });
   if (!sections.length) sections.push({ title:'All Clear', kind:'info', items:[`No urgent signals in the last 24 hours across ${activePillars.length || 0} active pillar${activePillars.length!==1?'s':''}.`,'Consider refreshing competitor intelligence or running a fresh keyword check.'] });
 
+  const mkAction = (s, i, impactDefault) => ({
+    label: s.action_label || 'View Details',
+    rationale: s.headline,
+    expected_impact: impactDefault,
+    why_best: s.detail
+      ? `Acting on this signal first compounds credibility downstream — ${String(s.detail).slice(0, 120)}`
+      : 'Highest-leverage fix for the least setup given current live signals.',
+    view: s.action_view || 'dashboard',
+    priority: i + 1,
+  });
+
   const actions = [
-    ...warnings.slice(0,3).map((s,i) => ({ label:s.action_label||'View Details', rationale:s.headline, expected_impact:'Address risk', view:s.action_view||'dashboard', priority:i+1 })),
-    ...opportunities.slice(0,3).map((s,i) => ({ label:s.action_label||'View Details', rationale:s.headline, expected_impact:s.detail||'Capture opportunity', view:s.action_view||'dashboard', priority:warnings.length+i+1 })),
+    ...warnings.slice(0,2).map((s,i) => mkAction(s, i, 'Address risk')),
+    ...risks.slice(0,2).map((s,i) => mkAction(s, warnings.length + i, 'Contain forward risk')),
+    ...opportunities.slice(0,2).map((s,i) => mkAction(s, warnings.length + risks.length + i, s.detail || 'Capture opportunity')),
+    ...foresight.slice(0,2).map((s,i) => mkAction(s, warnings.length + risks.length + opportunities.length + i, 'Capture foresight window')),
   ].slice(0,7);
 
-  if (!actions.length) actions.push({ label:'Run Decision Engine', rationale:'Generate fresh AI recommendations across all marketing channels', expected_impact:'Uncover optimisation opportunities', view:'decision-engine', priority:1 });
+  if (!actions.length) actions.push({
+    label:'Run Decision Engine',
+    rationale:'Generate fresh AI recommendations across all marketing channels',
+    expected_impact:'Uncover optimisation opportunities',
+    why_best:'A full cross-pillar analyse produces ranked actions with why-best rationale from your actual data footprint.',
+    view:'action-queue',
+    priority:1,
+  });
 
   return { headline, greeting, sections, actions, _estimated };
 }

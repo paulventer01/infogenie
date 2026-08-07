@@ -334,17 +334,17 @@ export default function AmplitudeAgents() {
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
-        style={{ background: "linear-gradient(135deg,#0F172A 0%,#1E40AF 50%,#0EA5E9 100%)" }}
+        className="view-header ig-panel-hero"
+        style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}
       >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#BAE6FD" }}>
+              <div className="breadcrumb" style={{ color: '#64748b' }}>
                 <span className="bc-group" style={{ color: "rgba(186,230,253,.8)" }}>
                   Grow
                 </span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>
                   ›
                 </span>{" "}
                 Amplitude AI Agents

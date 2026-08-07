@@ -146,7 +146,20 @@ Paul`);
       setErrorMsg(r.error || "failed");
       return;
     }
-    setResult(r);
+    const rows = Array.isArray(r.results) ? r.results : [];
+    setResult({
+      ...r,
+      results: rows,
+      total: typeof r.total === "number" ? r.total : rows.length,
+      succeeded:
+        typeof r.succeeded === "number"
+          ? r.succeeded
+          : rows.filter((x) => x && x.ok).length,
+      ai_personalized:
+        typeof r.ai_personalized === "number"
+          ? r.ai_personalized
+          : rows.filter((x) => x && x.source === "ai").length,
+    });
     setStatus("idle");
   }
 
@@ -206,7 +219,7 @@ Paul`);
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -467,7 +480,7 @@ Paul`);
                 </button>
               </div>
               <div style={{ display: "grid", gap: 12 }}>
-                {result.results.map((x, i) => {
+                {(result.results || []).map((x, i) => {
                   if (!x.ok) {
                     return (
                       <div

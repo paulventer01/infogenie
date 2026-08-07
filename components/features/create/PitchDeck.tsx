@@ -191,7 +191,7 @@ export default function PitchDeck() {
   return (
     <div className="view-header-wrap">
       <style>{"@keyframes spin{to{transform:rotate(360deg)}}"}</style>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

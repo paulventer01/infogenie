@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
+import { markNavPending, settleNavPending } from "@/lib/navPending";
 
 const PALETTE = ["#7C3AED", "#0891B2", "#F59E0B", "#15803D", "#B91C1C", "#1E40AF"];
 
@@ -146,76 +147,110 @@ export default function SovTracker() {
     const initial = preferred || list[0]?.target_brand || "";
     setTarget(initial);
     setLoading(false);
-    if (initial) loadSeries(initial, "30");
+    if (initial) await loadSeries(initial, "30");
   }, [loadSeries]);
 
+  // Keep IGDiag nav guard up through first fetch + Chart.js paint so expected
+  // mount work is not reported as last=idle · view=sov-tracker stalls.
   useEffect(() => {
-    load();
+    let cancelled = false;
+    markNavPending("panel:sov-tracker");
+    // Heartbeat invalidates PanelReady's settle timer while targets/series load.
+    const heartbeat = window.setInterval(() => {
+      if (!cancelled) markNavPending("panel:sov-tracker");
+    }, 1200);
+    (async () => {
+      try {
+        await load();
+      } finally {
+        window.clearInterval(heartbeat);
+        if (cancelled) return;
+        // Chart construction is rAF-deferred — settle after that frame.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!cancelled) settleNavPending("sov-tracker");
+          });
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+      window.clearInterval(heartbeat);
+    };
   }, [load]);
 
   // Render / destroy the Chart.js instance whenever series data changes.
+  // Defer construction to the next frame so the panel chrome paints first
+  // and IGDiag does not flag a nav→sov-tracker main-thread stall.
   useEffect(() => {
     if (chartStatus !== "idle" || !series || !series.series || !canvasRef.current)
       return;
     const Chart = getChart();
     if (!Chart) return;
 
-    const tsSet = new Set<string>();
-    series.series.forEach((s) => s.points.forEach((p) => tsSet.add(p.t)));
-    const labels = Array.from(tsSet).sort();
-    const datasets = series.series.map((s, i) => {
-      const map: Record<string, number> = {};
-      s.points.forEach((p) => {
-        map[p.t] = p.mentions;
+    let cancelled = false;
+    const raf = requestAnimationFrame(() => {
+      if (cancelled || !canvasRef.current) return;
+      const tsSet = new Set<string>();
+      series.series!.forEach((s) => s.points.forEach((p) => tsSet.add(p.t)));
+      const labels = Array.from(tsSet).sort();
+      const datasets = series.series!.map((s, i) => {
+        const map: Record<string, number> = {};
+        s.points.forEach((p) => {
+          map[p.t] = p.mentions;
+        });
+        return {
+          label: s.brand,
+          data: labels.map((l) => map[l] || 0),
+          borderColor: PALETTE[i % PALETTE.length],
+          backgroundColor: PALETTE[i % PALETTE.length] + "33",
+          fill: true,
+          tension: 0.3,
+          borderWidth: 2,
+        };
       });
-      return {
-        label: s.brand,
-        data: labels.map((l) => map[l] || 0),
-        borderColor: PALETTE[i % PALETTE.length],
-        backgroundColor: PALETTE[i % PALETTE.length] + "33",
-        fill: true,
-        tension: 0.3,
-        borderWidth: 2,
-      };
-    });
 
-    if (chartRef.current) {
-      try {
-        chartRef.current.destroy();
-      } catch {
-        /* noop */
+      if (chartRef.current) {
+        try {
+          chartRef.current.destroy();
+        } catch {
+          /* noop */
+        }
       }
-    }
-    const ctx = canvasRef.current.getContext("2d");
-    if (!ctx) return;
-    chartRef.current = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: labels.map((l) =>
-          new Date(l).toLocaleDateString(undefined, {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-          }),
-        ),
-        datasets,
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: "bottom" } },
-        scales: {
-          y: {
-            stacked: true,
-            beginAtZero: true,
-            title: { display: true, text: "Mentions per snapshot" },
-          },
+      const ctx = canvasRef.current.getContext("2d");
+      if (!ctx) return;
+      chartRef.current = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels.map((l) =>
+            new Date(l).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+            }),
+          ),
+          datasets,
         },
-        elements: { point: { radius: 2 } },
-      },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            y: {
+              stacked: true,
+              beginAtZero: true,
+              title: { display: true, text: "Mentions per snapshot" },
+            },
+          },
+          elements: { point: { radius: 2 } },
+        },
+      });
     });
 
     return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
       if (chartRef.current) {
         try {
           chartRef.current.destroy();
@@ -280,7 +315,7 @@ export default function SovTracker() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

@@ -20,7 +20,7 @@ const router = express.Router();
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
-function _auth(req) { return !!(req.isAuthenticated?.() || req.apiKeyUser); }
+function _auth(req) { return !!(req.user || req.apiKeyUser || req.viaApiKey); }
 
 function _safeAsync(fn) {
   return (req, res) => Promise.resolve(fn(req, res)).catch(e => {

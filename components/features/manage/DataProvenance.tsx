@@ -107,7 +107,7 @@ export default function DataProvenance() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>🔍 Data Provenance</h2>
         <p className="view-sub">
           Every insight carries a source, freshness timestamp, and a real-vs-AI indicator. The

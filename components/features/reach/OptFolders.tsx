@@ -890,20 +890,20 @@ export default function OptFolders() {
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{
           background:
-            "linear-gradient(135deg,#1E40AF 0%,#3B82F6 50%,#06B6D4 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#BFDBFE" }}>
+              <div className="breadcrumb" style={{ color: '#475569' }}>
                 <span className="bc-group" style={{ color: "rgba(191,219,254,.8)" }}>
                   Reach
                 </span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>
                   ›
                 </span>{" "}
                 Optimization Folders
@@ -1007,7 +1007,7 @@ export default function OptFolders() {
               onClick={runOptFolders}
               disabled={loading}
               style={{
-                background: "linear-gradient(135deg,#1E40AF,#3B82F6)",
+                background: "linear-gradient(135deg,#0f766e,#0284c7)",
                 color: "white",
                 border: "none",
                 padding: "11px 24px",

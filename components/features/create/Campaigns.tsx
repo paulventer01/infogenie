@@ -22,6 +22,7 @@
 // produced by `buildCampaigns()` itself when `window.analysisData` is absent.
 
 import { useEffect } from "react";
+import { markNavPending, settleNavPending } from "@/lib/navPending";
 
 interface CampaignsWindow {
   buildCampaigns?: () => void;
@@ -36,12 +37,14 @@ export default function Campaigns() {
     let tries = 0;
     const run = (): boolean => {
       if (typeof w.buildCampaigns === "function") {
+        markNavPending("nav→campaigns");
         try {
           w.buildCampaigns();
         } catch {
-          /* container not mounted yet / transient legacy error — retry */
+          settleNavPending("campaigns");
           return false;
         }
+        settleNavPending("campaigns");
         return true;
       }
       return false;
@@ -80,7 +83,7 @@ export default function Campaigns() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

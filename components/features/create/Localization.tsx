@@ -174,7 +174,7 @@ export default function Localization() {
   }
 
   const header = (
-    <div className="view-header">
+    <div className="view-header ig-panel-hero">
       <div className="container">
         <div className="vh-inner">
           <div>
@@ -316,7 +316,7 @@ export default function Localization() {
                 disabled={busy}
                 style={{
                   padding: "7px 14px",
-                  background: "#0F172A",
+                  background: '#eef4ff',
                   color: "white",
                   border: "none",
                   borderRadius: 6,

@@ -446,7 +446,7 @@ router.post('/briefing', async (req, res) => {
   const tid = await _tid(req, 'swarm:briefing');
   if (!tid) return _err(res, 400, 'no_tenant');
 
-  if (!req.isAuthenticated?.() && !req.apiKeyUser) return _err(res, 401, 'auth required');
+  if (!(req.user || req.apiKeyUser || req.viaApiKey)) return _err(res, 401, 'auth required');
 
   const { challenge, agents = Object.keys(DEFAULT_PERSONAS), quick_briefing_id } = req.body || {};
   if (!challenge || typeof challenge !== 'string' || challenge.trim().length < 10) {

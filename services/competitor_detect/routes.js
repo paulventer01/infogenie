@@ -57,10 +57,15 @@ const __EXPRESS_PORT = Number(process.env.EXPRESS_PORT) || 5000;
 // Only bind a port when this is the live server process. Required as a module
 // for tests (buildApp) this is off, so requiring the app never grabs a port.
 if (_runtimeFlags.backgroundEnabled()) {
-  app.listen(__EXPRESS_PORT, '0.0.0.0', () => {
+  const _httpServer = app.listen(__EXPRESS_PORT, '0.0.0.0', () => {
     console.log(`InfoGenie listening on port ${__EXPRESS_PORT} (preview pane)`);
     startMsg();
   });
+  try {
+    require('../infra/shutdown').registerServer(_httpServer);
+  } catch (e) {
+    console.warn('[shutdown] registerServer failed:', e.message);
+  }
 }
 
 // ── POST /api/smart-detect ────────────────────────────────────────────────────
@@ -190,7 +195,8 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
 - Do NOT include the analysed domain (${cleanInput}) itself.
 - EXCLUDE: news outlets, comparison/review aggregators (NerdWallet, Investopedia, BrokerChooser, BestBrokers, ForexBrokers, etc.), Wikipedia, marketplaces (Amazon, eBay), generic SaaS the brand merely uses (HubSpot, Zendesk), and any domain whose primary purpose is content/info rather than selling the same product.
 - Prioritise competitors active in the same geographic market when possible.
-- If the site looks like a CFD/forex broker, list other CFD/forex brokers (eToro, IG, Plus500, XM, CMC Markets, AvaTrade, Pepperstone, OANDA, Saxo, FXCM, FxPro, ThinkMarkets, etc.) — NOT generic fintechs or stock-trading apps.
+- NEVER include companies from adjacent or "similar" industries (e.g. payments apps for a CFD broker, generic SaaS for a vertical product). Same business + same sub-niche only.
+- If the site looks like a CFD/forex broker, list other CFD/forex brokers (eToro, IG, Plus500, XM, CMC Markets, AvaTrade, Pepperstone, OANDA, Saxo, FXCM, FxPro, ThinkMarkets, etc.) — NOT generic fintechs, neobanks, payment processors, or stock-trading apps.
 - If it's a pet insurance site, list pet insurance brands. Apply the same sub-niche specificity to every industry.
 - Order results by market relevance / overlap (most direct competitor first).
 - In the "why" field, name the SPECIFIC overlapping product or service — not generic phrases like "operates in the same industry".`;
@@ -352,7 +358,8 @@ CRITICAL RULES — accuracy beats completeness:
 - Sub-niche test: ask "would a typical customer of "${industryClean}" actively compare it to this candidate before buying?" If the answer is "no" or "maybe", REJECT the candidate.
 - EXCLUDE: news outlets (Bloomberg, Reuters, Forbes, CNBC), comparison/review aggregators (NerdWallet, Investopedia, BrokerChooser, BestBrokers, ForexBrokers.com, G2, Capterra), Wikipedia, marketplaces (Amazon, eBay) unless they ARE the niche, generic SaaS the brand merely uses, and any domain whose primary purpose is content/info rather than selling the same product. When in doubt, EXCLUDE.
 - Use real, currently-operating, well-known company domains. No invented names. No defunct businesses. No dead/parked domains.
-- Prioritise competitors that are active and visible in the target market (${countryClean || 'global'}). Mix in 1-2 global leaders for benchmark context if the niche is mostly local.
+- Prioritise competitors that are active and visible in the target market (${countryClean || 'global'}).
+- Do NOT mix in adjacent/"similar" industries, conglomerates, or broad-industry giants used only for "benchmark context". Every row must be a direct same-business competitor.
 - Domains must be the company's actual primary domain (e.g. "etoro.com", not "etoro.com/uk" or "etoro").
 - Do NOT include the user's own domain (${urlClean || 'n/a'}) in the results.
 - Order results by market relevance (most relevant first).

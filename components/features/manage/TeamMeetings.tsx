@@ -189,7 +189,7 @@ export default function TeamMeetings() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -413,8 +413,8 @@ export default function TeamMeetings() {
                     onClick={() => setDetail(m)}
                     style={{
                       padding: "6px 12px",
-                      background: "#0F172A",
-                      color: "#fff",
+                      background: '#eef4ff',
+                      color: "#0f172a",
                       border: "none",
                       borderRadius: 7,
                       fontSize: ".74rem",
@@ -431,7 +431,7 @@ export default function TeamMeetings() {
                     style={{
                       padding: "6px 12px",
                       background: "#0EA5E9",
-                      color: "#fff",
+                      color: "#0f172a",
                       border: "none",
                       borderRadius: 7,
                       fontSize: ".74rem",
@@ -574,8 +574,8 @@ function MeetingDetail({
         <div
           style={{
             padding: "20px 24px",
-            background: "linear-gradient(135deg,#0F172A,#312E81)",
-            color: "#fff",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+            color: '#0f172a',
           }}
         >
           <div

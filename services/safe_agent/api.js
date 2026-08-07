@@ -117,6 +117,24 @@ router.post('/approve/:id', async (req, res) => {
     `INSERT INTO safe_agent_audit_log(tenant_id,proposal_id,event,actor_id,detail) VALUES($1,$2,'executed',$3,$4)`,
     [tid, prop.id, req.user?.id||null, JSON.stringify(outcome)]
   );
+  // Merge into AI Governance audit stream (no new approval step — already human-approved).
+  try {
+    const { governSafe } = require('../ai_governance/hooks');
+    await governSafe({
+      tenantId: tid,
+      userId: req.user?.id || null,
+      surface: 'safe_agent',
+      action: 'launch_campaign',
+      payload: {
+        title: prop.title,
+        preview: `Safe Agent executed proposal ${prop.id}`,
+        proposalId: prop.id,
+        hasContext: true,
+      },
+    });
+  } catch (e) {
+    console.warn('[safe-agent] governance audit merge failed open:', e.message);
+  }
   res.json({ ok:true, status:'executed', outcome });
 });
 

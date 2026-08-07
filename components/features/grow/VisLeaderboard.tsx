@@ -268,7 +268,7 @@ export default function VisLeaderboard() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -288,17 +288,17 @@ export default function VisLeaderboard() {
       <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
         <div
           style={{
-            background: "linear-gradient(135deg,#1E1B4B,#0A1628)",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
             borderRadius: 12,
             padding: 18,
             marginBottom: 16,
-            color: "#fff",
+            color: '#0f172a',
           }}
         >
           <h3 style={{ margin: "0 0 6px", fontFamily: "Sora,sans-serif", fontSize: "1rem" }}>
             🏆 Visibility Rank Table
           </h3>
-          <p style={{ margin: 0, fontSize: "0.8rem", color: "rgba(255,255,255,.65)" }}>
+          <p style={{ margin: 0, fontSize: "0.8rem", color: "#475569" }}>
             See how you and your competitors rank across AI engines — with Δ vs your last run.
           </p>
         </div>
@@ -347,7 +347,7 @@ export default function VisLeaderboard() {
             onClick={() => load(brand.trim())}
             style={{
               padding: "9px 20px",
-              background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               border: "none",
               borderRadius: 6,
               color: "#fff",

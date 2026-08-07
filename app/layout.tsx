@@ -1,44 +1,36 @@
 import type { Metadata } from "next";
-import { Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Outfit, Manrope } from "next/font/google";
 import Script from "next/script";
 import "../styles/globals.css";
+import "../styles/theme-v2.css";
+import HideNextDevBadge from "@/components/layout/HideNextDevBadge";
 
 export const metadata: Metadata = {
   title: "InfoGenie",
   description: "AI Marketing Intelligence — for your team",
   robots: { index: false, follow: false },
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+  },
 };
 
-// Fonts are loaded via next/font (self-hosted by Next, no external <link> in
-// <head>). This is the canonical App Router approach and — critically — it keeps
-// the root <head> free of hand-authored, reconciled children. The Replit dev
-// proxy injects its devtools <script> into <head> after Next renders; when the
-// layout hand-authored font <link>/<preconnect> tags, that injection shifted the
-// head child ordering and React reported a hydration mismatch (surfacing as the
-// "artifact encountered an error" banner). next/font + next/script keep those
-// nodes Next-managed, so the injection can no longer cause a mismatch.
-//
-// Both families are variable fonts on Google Fonts, so we omit `weight` to pull
-// the full range (matching the legacy 300–900 / 400–900 request). Only Inter and
-// Plus Jakarta Sans are loaded — the only families referenced in the CSS that the
-// previous <head> link actually fetched.
-const inter = Inter({
+// Outfit = display/brand (MVP), Manrope = UI body. Loaded via next/font only
+// (no hand-authored <link> in <head> — see test/layout-fonts-guard.test.js).
+const outfit = Outfit({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-outfit",
+  weight: ["500", "600", "700", "800"],
   display: "swap",
 });
 
-const jakarta = Plus_Jakarta_Sans({
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-jakarta",
+  variable: "--font-manrope",
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
-// Apply the saved light/dark preference before first paint to prevent a flash.
-// Mirrors the inline theme-init script in the legacy index.html. Rendered via
-// next/script `beforeInteractive` so Next manages its placement in <head>
-// instead of it being a plain reconciled child (keeping hydration stable).
-const themeInit = `(function(){try{var t=localStorage.getItem('ig-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}}());`;
+const themeInit = `(function(){try{var t=localStorage.getItem('ig-theme');if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}else{document.documentElement.setAttribute('data-theme','light');if(!t)localStorage.setItem('ig-theme','light');}}catch(e){document.documentElement.setAttribute('data-theme','light');}}());`;
 
 const clarityInit = `(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i+"?ref=bwt";y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","xg1cxshout");`;
 
@@ -50,7 +42,8 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${jakarta.variable}`}
+      className={`${outfit.variable} ${manrope.variable}`}
+      data-theme="light"
       suppressHydrationWarning
     >
       <body>
@@ -64,6 +57,7 @@ export default function RootLayout({
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{ __html: clarityInit }}
         />
+        <HideNextDevBadge />
         {children}
       </body>
     </html>

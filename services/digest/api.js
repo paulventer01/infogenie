@@ -9,20 +9,33 @@ const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 
 let _cronTimer = null;
+
+async function runDigestTick() {
+  if (!_db.hasDb()) return;
+  const r = await _db.getPool().query('SELECT DISTINCT brand FROM crisis_watchlist LIMIT 5');
+  for (const row of r.rows) {
+    try { await generateDigest(row.brand); console.log('[digest] auto-generated for', row.brand); }
+    catch (e) { console.warn('[digest] auto-gen failed for', row.brand, e.message); }
+  }
+}
+
 function startCron(intervalHours = 24) {
+  if (process.env.INFOGENIE_JOBS === '1') {
+    console.log('[digest] cron deferred to job scheduler');
+    return;
+  }
   if (_cronTimer) return;
   const tick = async () => {
-    if (!_db.hasDb()) return;
-    try {
-      const r = await _db.getPool().query('SELECT DISTINCT brand FROM crisis_watchlist LIMIT 5');
-      for (const row of r.rows) {
-        try { await generateDigest(row.brand); console.log('[digest] auto-generated for', row.brand); }
-        catch (e) { console.warn('[digest] auto-gen failed for', row.brand, e.message); }
-      }
-    } catch (e) { console.warn('[digest] cron tick failed:', e.message); }
+    try { await runDigestTick(); }
+    catch (e) { console.warn('[digest] cron tick failed:', e.message); }
   };
   _cronTimer = setInterval(tick, intervalHours * 3600 * 1000);
   console.log(`[digest] cron started — every ${intervalHours}h`);
+}
+
+function stopCron() {
+  if (_cronTimer) clearInterval(_cronTimer);
+  _cronTimer = null;
 }
 
 router.get('/history', async (req, res) => {
@@ -113,3 +126,5 @@ function _slackPost(text) {
 
 module.exports = router;
 module.exports.startCron = startCron;
+module.exports.stopCron = stopCron;
+module.exports.runDigestTick = runDigestTick;

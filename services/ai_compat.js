@@ -1,5 +1,6 @@
 'use strict';
-// Compatibility shim for GPT-5 family models on the OpenAI Chat Completions API.
+// Compatibility shim for GPT-5 family models on the OpenAI Chat Completions API
+// and Moonshot Kimi K3 (OpenAI-compatible with fixed sampling + reasoning_effort).
 //
 // GPT-5 reasoning models differ from GPT-4o in three ways that break call sites
 // originally written for gpt-4o-mini:
@@ -10,32 +11,74 @@
 //      content. Defaulting `reasoning_effort` to 'minimal' yields ~0 reasoning
 //      tokens, making them behave like a fast non-reasoning model (gpt-4o-mini-like).
 //
+// Kimi K3 (platform.kimi.ai / api.moonshot.ai) always thinks and fixes:
+//   temperature=1.0, top_p=0.95, n=1, presence_penalty=0, frequency_penalty=0
+//   — those fields must be omitted. Prefer max_completion_tokens; support
+//   reasoning_effort low|high|max (API default max; we default high for speed/cost).
+//
 // normalizeChatParams() returns a shallow-copied, rewritten params object so the
-// many existing call sites keep working unchanged after the model swap. It only
-// touches gpt-5* models; every other model is passed through untouched.
+// many existing call sites keep working unchanged after the model swap.
 
 function isGpt5(model) {
   return typeof model === 'string' && /^gpt-5/i.test(model.trim());
 }
 
-function normalizeChatParams(params) {
+function isKimi(model) {
+  if (typeof model !== 'string') return false;
+  const m = model.trim().toLowerCase();
+  return m === 'kimi-k3' || m.startsWith('kimi-') || m.includes('moonshot');
+}
+
+function isMoonshotBaseUrl(url) {
+  if (typeof url !== 'string') return false;
+  const u = url.toLowerCase();
+  return u.includes('moonshot.ai') || u.includes('platform.kimi.ai') || u.includes('api.kimi.ai');
+}
+
+function normalizeChatParams(params, opts = {}) {
   if (!params || typeof params !== 'object' || Array.isArray(params)) return params;
-  if (!isGpt5(params.model)) return params;
+  const forceKimi = !!opts.forceKimi || isMoonshotBaseUrl(opts.baseUrl);
+  const kimi = forceKimi || isKimi(params.model);
+  const gpt5 = isGpt5(params.model);
+  if (!kimi && !gpt5) return params;
+
   const p = { ...params };
-  // max_tokens -> max_completion_tokens (preserve the requested budget).
+
+  if (gpt5) {
+    // max_tokens -> max_completion_tokens (preserve the requested budget).
+    if (p.max_tokens != null) {
+      if (p.max_completion_tokens == null) p.max_completion_tokens = p.max_tokens;
+      delete p.max_tokens;
+    }
+    // Only the default temperature/top_p (1) are supported — drop anything else.
+    if (p.temperature != null && p.temperature !== 1) delete p.temperature;
+    if (p.top_p != null && p.top_p !== 1) delete p.top_p;
+    // Penalties are unsupported on reasoning models — drop non-zero values.
+    if (p.frequency_penalty) delete p.frequency_penalty;
+    if (p.presence_penalty) delete p.presence_penalty;
+    // Behave like a fast, non-reasoning model unless the caller explicitly opts in,
+    // so existing small token budgets aren't consumed entirely by reasoning tokens.
+    if (p.reasoning_effort == null) p.reasoning_effort = 'minimal';
+    return p;
+  }
+
+  // ── Kimi K3 ──────────────────────────────────────────────────────────────
   if (p.max_tokens != null) {
     if (p.max_completion_tokens == null) p.max_completion_tokens = p.max_tokens;
     delete p.max_tokens;
   }
-  // Only the default temperature/top_p (1) are supported — drop anything else.
-  if (p.temperature != null && p.temperature !== 1) delete p.temperature;
-  if (p.top_p != null && p.top_p !== 1) delete p.top_p;
-  // Penalties are unsupported on reasoning models — drop non-zero values.
-  if (p.frequency_penalty) delete p.frequency_penalty;
-  if (p.presence_penalty) delete p.presence_penalty;
-  // Behave like a fast, non-reasoning model unless the caller explicitly opts in,
-  // so existing small token budgets aren't consumed entirely by reasoning tokens.
-  if (p.reasoning_effort == null) p.reasoning_effort = 'minimal';
+  // Fixed by API — omit rather than send non-defaults
+  delete p.temperature;
+  delete p.top_p;
+  delete p.n;
+  delete p.presence_penalty;
+  delete p.frequency_penalty;
+  const effort = p.reasoning_effort;
+  if (effort == null) {
+    p.reasoning_effort = process.env.KIMI_REASONING_EFFORT || 'high';
+  } else if (!['low', 'high', 'max'].includes(String(effort))) {
+    p.reasoning_effort = 'high';
+  }
   return p;
 }
 
@@ -78,13 +121,16 @@ function _isChatCompletionsTarget(s) {
 }
 
 // Normalize a raw JSON request body string. Returns the (possibly rewritten)
-// string, or the original if it isn't a gpt-5 chat-completions payload.
-function _normalizeRawBody(bodyStr) {
+// string, or the original if it isn't a gpt-5 / kimi chat-completions payload.
+function _normalizeRawBody(bodyStr, targetUrl) {
   if (typeof bodyStr !== 'string' || !bodyStr) return bodyStr;
   let parsed;
   try { parsed = JSON.parse(bodyStr); } catch { return bodyStr; }
-  if (!parsed || typeof parsed !== 'object' || !isGpt5(parsed.model)) return bodyStr;
-  return JSON.stringify(normalizeChatParams(parsed));
+  if (!parsed || typeof parsed !== 'object') return bodyStr;
+  if (!isGpt5(parsed.model) && !isKimi(parsed.model) && !isMoonshotBaseUrl(targetUrl)) {
+    return bodyStr;
+  }
+  return JSON.stringify(normalizeChatParams(parsed, { baseUrl: targetUrl }));
 }
 
 function patchHttp() {
@@ -97,7 +143,7 @@ function patchHttp() {
       try {
         const url = typeof input === 'string' ? input : (input && input.url) || '';
         if (init && typeof init.body === 'string' && _isChatCompletionsTarget(url)) {
-          const next = _normalizeRawBody(init.body);
+          const next = _normalizeRawBody(init.body, url);
           if (next !== init.body) init = { ...init, body: next };
         }
       } catch { /* fall through to original */ }
@@ -118,7 +164,7 @@ function patchHttp() {
       const wrappedRequest = function patchedRequest(...args) {
         const target = _targetString(args);
         const req = origRequest.apply(this, args);
-        if (_isChatCompletionsTarget(target)) _wrapClientRequestBody(req);
+        if (_isChatCompletionsTarget(target)) _wrapClientRequestBody(req, target);
         return req;
       };
       wrappedRequest.__gpt5Patched = true;
@@ -158,7 +204,7 @@ function _targetString(args) {
 
 // Override write/end on a ClientRequest to buffer the body, normalize it, and
 // correct Content-Length before the bytes are flushed.
-function _wrapClientRequestBody(req) {
+function _wrapClientRequestBody(req, targetUrl) {
   if (!req || req.__gpt5BodyWrapped) return;
   req.__gpt5BodyWrapped = true;
   const chunks = [];
@@ -180,7 +226,7 @@ function _wrapClientRequestBody(req) {
     collect(chunk, encoding);
     let body = Buffer.concat(chunks).toString('utf8');
     try {
-      const next = _normalizeRawBody(body);
+      const next = _normalizeRawBody(body, targetUrl);
       if (next !== body) {
         body = next;
         if (!req.headersSent) {
@@ -246,4 +292,15 @@ function callLlama(messages, opts = {}) {
   });
 }
 
-module.exports = { normalizeChatParams, patchOpenAI, patchHttp, isGpt5, callLlama, hasLlama, LLAMA_MODEL: _LLAMA_MODEL, LLAMA_HOST: _LLAMA_HOST };
+module.exports = {
+  normalizeChatParams,
+  patchOpenAI,
+  patchHttp,
+  isGpt5,
+  isKimi,
+  isMoonshotBaseUrl,
+  callLlama,
+  hasLlama,
+  LLAMA_MODEL: _LLAMA_MODEL,
+  LLAMA_HOST: _LLAMA_HOST,
+};

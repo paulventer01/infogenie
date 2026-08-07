@@ -29,6 +29,7 @@ interface Infographic {
   layout?: string;
   palette?: Palette;
   items?: InfoItem[];
+  source?: string;
 }
 
 const LAYOUTS = ["funnel", "list", "comparison", "journey", "quadrant", "pyramid", "cycle"];
@@ -345,18 +346,33 @@ export default function Infographics() {
     }
     setStatus("⏳ Designing…");
     setGenerating(true);
-    const j = await apiPost<{ ok: boolean; infographic?: Infographic; id?: string; error?: string }>(
-      "/api/infographics/generate",
-      { topic: t, layout, itemCount: parseInt(count, 10) || 5 },
-    );
+    const j = await apiPost<{
+      ok: boolean;
+      infographic?: Infographic;
+      id?: string;
+      error?: string;
+      message?: string;
+      data_unavailable?: boolean;
+    }>("/api/infographics/generate", {
+      topic: t,
+      layout,
+      itemCount: parseInt(count, 10) || 5,
+    });
     setGenerating(false);
-    if (!j.ok || !j.infographic) {
-      setStatus(null);
+    if (j.data_unavailable || !j.ok || !j.infographic) {
       setCurrent(null);
-      setStatus(j.error || "failed");
+      setStatus(
+        j.message ||
+          j.error ||
+          "Generation unavailable — add an OpenAI key in Settings, or try again.",
+      );
       return;
     }
-    setStatus(null);
+    setStatus(
+      j.infographic.source === "layout-scaffold"
+        ? "Layout scaffold ready — add an AI key in Settings for a full topic-specific design."
+        : null,
+    );
     setCurrent({ d: j.infographic, id: j.id || "infographic" });
     loadHistory();
   }
@@ -407,7 +423,7 @@ export default function Infographics() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -540,7 +556,18 @@ export default function Infographics() {
 
         <div>
           {status && (
-            <div style={{ color: status === "⏳ Designing…" ? "#9CA3AF" : "#DC2626" }}>{status}</div>
+            <div
+              style={{
+                color:
+                  status === "⏳ Designing…" || status.startsWith("Layout scaffold")
+                    ? "#6B7280"
+                    : "#DC2626",
+                marginBottom: 12,
+                fontSize: "0.875rem",
+              }}
+            >
+              {status}
+            </div>
           )}
           {d && (
             <div

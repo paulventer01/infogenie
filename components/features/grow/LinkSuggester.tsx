@@ -346,14 +346,16 @@ export default function LinkSuggester() {
             disabled={generating}
             style={{
               padding: "13px 32px",
-              background: "linear-gradient(135deg,#1E40AF,#7C3AED)",
-              color: "white",
+              background: generating
+                ? "#94A3B8"
+                : "linear-gradient(135deg,#0F766E 0%,#0284C7 100%)",
+              color: "#FFFFFF",
               border: "none",
               borderRadius: 10,
               fontWeight: 700,
               fontSize: "0.92rem",
-              cursor: "pointer",
-              boxShadow: "0 6px 20px rgba(124,58,237,.3)",
+              cursor: generating ? "wait" : "pointer",
+              boxShadow: "0 6px 20px rgba(15,118,110,.28)",
             }}
           >
             {generating ? "⏳ Scanning…" : "🔗 Generate Suggestions"}
@@ -621,17 +623,17 @@ export default function LinkSuggester() {
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
-        style={{ background: "linear-gradient(135deg,#1E3A8A 0%,#3B82F6 50%,#8B5CF6 100%)" }}
+        className="view-header ig-panel-hero"
+        style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}
       >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#BFDBFE" }}>
-                <span className="bc-group" style={{ color: "rgba(191,219,254,.8)" }}>
+              <div className="breadcrumb" style={{ color: "#64748b" }}>
+                <span className="bc-group" style={{ color: "#0f766e" }}>
                   Grow
                 </span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>
+                <span className="bc-sep" style={{ color: "#94a3b8" }}>
                   ›
                 </span>{" "}
                 Internal Link Suggester
@@ -645,10 +647,16 @@ export default function LinkSuggester() {
             <div className="vh-actions">
               <button
                 className="btn-primary"
-                style={{ background: "white", color: "#1E40AF" }}
+                style={{
+                  background: "linear-gradient(135deg,#0F766E 0%,#0284C7 100%)",
+                  color: "#FFFFFF",
+                  border: "none",
+                  fontWeight: 700,
+                }}
                 onClick={run}
+                disabled={generating}
               >
-                🔗 Generate Suggestions
+                {generating ? "⏳ Scanning…" : "🔗 Generate Suggestions"}
               </button>
             </div>
           </div>

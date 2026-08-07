@@ -1,29 +1,83 @@
 import type { NextConfig } from "next";
 
-// In dev, Next.js is the front door on the Replit webview port (5000) and the
-// existing Express server runs on an internal port. Every request that Next
-// does not own itself (the legacy SPA at `/`, all static assets, and the whole
-// `/api/*` surface) is transparently proxied to Express so the browser only
-// ever talks to a single origin — keeping the `infogenie.sid` session cookie
-// same-origin and the existing app fully functional without any change.
-//
-// `EXPRESS_PROXY_TARGET` is set by `scripts/dev.js`; it defaults to the
-// historical Express port so a bare `next dev` still works if Express is on
-// 5000.
 const EXPRESS = process.env.EXPRESS_PROXY_TARGET || "http://localhost:8000";
+const isProd = process.env.NODE_ENV === "production";
 
 const nextConfig: NextConfig = {
+  // Hide the black Next.js "N" / route indicator in preview tunnels and local
+  // demos — it reads as a stray UI mark on the workspace canvas.
+  // Note: Next may still re-inject the badge when runtime issues fire; see
+  // HideNextDevBadge + globals.css for a hard hide across all pages.
+  // Compile/runtime error dialog overlays still surface when something is broken.
+  devIndicators: false,
+  // Root-cause / scenario AI often exceeds the default 30s rewrite proxy budget;
+  // without this the browser gets a blank 500 and the UI stays on "Decomposing…".
+  experimental: {
+    proxyTimeout: 120_000,
+  },
+  // Preview tunnels (cloudflared) hit Next as a cross-origin host; without this,
+  // Next 15 blocks /_next/* and the app appears blank after login.
+  allowedDevOrigins: [
+    "*.trycloudflare.com",
+    "referrals-explaining-explicitly-conferencing.trycloudflare.com",
+    "musician-dust-dealtime-ignored.trycloudflare.com",
+    "thompson-attorney-themes-settled.trycloudflare.com",
+    "change-ranking-reprints-previous.trycloudflare.com",
+    "beast-vermont-graphical-nation.trycloudflare.com",
+    "noon-everyone-spell-attention.trycloudflare.com",
+    "protected-type-bare-bailey.trycloudflare.com",
+    "localhost",
+    "127.0.0.1",
+  ],
+  async headers() {
+    const csp = [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'self'",
+      "form-action 'self'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:",
+      "style-src 'self' 'unsafe-inline'",
+      // Clarity loads https://scripts.clarity.ms; Amplitude CDN is used by legacy shell.
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://www.clarity.ms https://scripts.clarity.ms https://cdn.amplitude.com",
+      "connect-src 'self' https: wss:",
+      "worker-src 'self' blob:",
+    ].join("; ");
+
+    const security = [
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      {
+        key: "Permissions-Policy",
+        value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      },
+      {
+        key: isProd ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only",
+        value: csp,
+      },
+    ];
+    if (isProd) {
+      security.push({
+        key: "Strict-Transport-Security",
+        value: "max-age=63072000; includeSubDomains; preload",
+      });
+      security.push({ key: "X-Frame-Options", value: "SAMEORIGIN" });
+    }
+
+    return [
+      {
+        source: "/:path*",
+        headers: security,
+      },
+    ];
+  },
   async rewrites() {
     return {
-      // Run BEFORE Next's filesystem routing so the API surface can never be
-      // shadowed by an accidental page route.
       beforeFiles: [
         { source: "/api/:path*", destination: `${EXPRESS}/api/:path*` },
       ],
       afterFiles: [],
-      // Run only when nothing else matched (no Next page, no /_next asset, no
-      // public file). This is what hands `/`, `/index.html`, `/style.css`,
-      // `/app.js`, `/public/js/*`, `/manual/download`, etc. back to Express.
       fallback: [
         { source: "/:path*", destination: `${EXPRESS}/:path*` },
       ],

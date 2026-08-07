@@ -171,7 +171,7 @@ function seed(str: string): number {
   return Math.abs(h);
 }
 
-export default function Social() {
+export default function Social({ embedded = false }: { embedded?: boolean } = {}) {
   const [tab, setTab] = useState<SocialTab>("calendar");
   const [posts, setPosts] = useState<Post[]>([]);
   const now = new Date();
@@ -295,16 +295,26 @@ export default function Social() {
 
   return (
     <div className="view" id="view-social-react">
-      <div className="view-header" style={{ background: "linear-gradient(135deg,#7C3AED 0%,#4F46E5 100%)" }}>
+      {!embedded ? (
+      <div
+        className="view-header ig-panel-hero"
+        data-ig-light-hero="1"
+        style={{
+          background:
+            "radial-gradient(ellipse 75% 65% at 10% 15%, rgba(124,58,237,0.12), transparent 55%), radial-gradient(ellipse 55% 50% at 92% 85%, rgba(79,70,229,0.10), transparent 50%), linear-gradient(135deg, #f5f3ff 0%, #eef2ff 55%, #eef4ff 100%)",
+          border: "1px solid rgba(124, 58, 237, 0.18)",
+          color: "#0f172a",
+        }}
+      >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#C4B5FD" }}>
-                <span className="bc-group" style={{ color: "rgba(196,181,253,.8)" }}>Create</span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>›</span> Social
+              <div className="breadcrumb" style={{ color: "#0f766e" }}>
+                <span className="bc-group" style={{ color: "#7c3aed" }}>Create</span>{" "}
+                <span className="bc-sep" style={{ color: "#94a3b8" }}>›</span> Social
               </div>
-              <h2 className="view-title">Social Content Generator, Calendar &amp; Scheduling</h2>
-              <p className="view-sub">Create, schedule, and publish AI-generated content across all social platforms from one place</p>
+              <h2 className="view-title" style={{ color: "#0f172a" }}>Social Content Generator, Calendar &amp; Scheduling</h2>
+              <p className="view-sub" style={{ color: "#334155" }}>Create, schedule, and publish AI-generated content across all social platforms from one place</p>
             </div>
             <div className="vh-actions">
               <button className="btn-primary" style={{ background: "white", color: "#7C3AED" }} onClick={() => openCreate()}>
@@ -314,9 +324,37 @@ export default function Social() {
           </div>
         </div>
       </div>
+      ) : null}
 
       <div className="container">
-        <div style={{ padding: "28px 0" }}>
+        <div style={{ padding: embedded ? "12px 0 28px" : "28px 0" }}>
+          {embedded ? (
+            <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#0F766E" }}>Social Calendar editor</div>
+              <button className="btn-primary" style={{ background: "#7C3AED", color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" }} onClick={() => openCreate()}>
+                + Create Post
+              </button>
+            </div>
+          ) : null}
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "12px 14px",
+              borderRadius: 10,
+              border: "1px solid #FDBA74",
+              background: "#FFF7ED",
+              color: "#9A3412",
+              fontSize: "0.82rem",
+              lineHeight: 1.5,
+            }}
+          >
+            <strong>Moved:</strong> Planning + publishing now live in{" "}
+            <a href="/reach/social-publisher" style={{ color: "#C2410C", fontWeight: 800 }}>
+              Social Publisher
+            </a>{" "}
+            (Calendar · Compose · Queue · Ideas). This page keeps the legacy local planner for reference;
+            new posts should be created on Social Publisher so they publish via Zernio.
+          </div>
           {tabBar}
           {tab === "calendar" && (
             <CalendarTab
@@ -870,7 +908,7 @@ function PublishingTab({
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: "0.75rem", fontWeight: 600, color: autoPublish ? "#059669" : "#9CA3AF" }}>{autoPublish ? "● Active" : "○ Inactive"}</span>
-              <button onClick={onToggleAutoPublish} style={{ padding: "10px 20px", background: autoPublish ? "linear-gradient(135deg,#059669,#047857)" : "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{autoPublish ? "⏸ Pause Auto-Publish" : "▶ Enable Auto-Publish"}</button>
+              <button onClick={onToggleAutoPublish} style={{ padding: "10px 20px", background: autoPublish ? "linear-gradient(135deg,#0f766e,#0284c7)" : "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{autoPublish ? "⏸ Pause Auto-Publish" : "▶ Enable Auto-Publish"}</button>
             </div>
           </div>
           {autoPublish && <div style={{ marginTop: 12, background: "rgba(5,150,105,.08)", border: "1px solid rgba(5,150,105,.2)", borderRadius: 8, padding: "10px 14px", fontSize: "0.75rem", color: "#065F46" }}>✅ Auto-publish is ON — InfoGenie checks every 60 seconds and publishes posts at their scheduled time</div>}

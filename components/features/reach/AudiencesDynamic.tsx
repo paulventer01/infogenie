@@ -152,12 +152,12 @@ const closeBtnStyle: React.CSSProperties = {
 
 const primaryBtn: React.CSSProperties = {
   padding: "9px 18px",
-  background: "#1E1B4B",
+  background: '#eef4ff',
   border: "2px solid #1E1B4B",
   borderRadius: 8,
   fontSize: "0.78rem",
   fontWeight: 800,
-  color: "#fff",
+  color: "#0f172a",
   WebkitTextFillColor: "#fff",
   cursor: "pointer",
   textShadow: "0 1px 2px rgba(0,0,0,.5)",
@@ -289,7 +289,7 @@ export default function AudiencesDynamic() {
 
   return (
     <>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -427,12 +427,12 @@ export default function AudiencesDynamic() {
                   onClick={() => openBuilder(null)}
                   style={{
                     padding: "11px 22px",
-                    background: "#1E1B4B",
+                    background: '#eef4ff',
                     border: "2px solid #1E1B4B",
                     borderRadius: 9,
                     fontSize: "0.85rem",
                     fontWeight: 800,
-                    color: "#fff",
+                    color: "#0f172a",
                     WebkitTextFillColor: "#fff",
                     cursor: "pointer",
                     textShadow: "0 1px 2px rgba(0,0,0,.5)",
@@ -1178,12 +1178,12 @@ function SegmentBuilderModal({
             onClick={addCondition}
             style={{
               padding: "7px 14px",
-              background: "#1E1B4B",
+              background: '#eef4ff',
               border: "2px solid #1E1B4B",
               borderRadius: 7,
               fontSize: "0.72rem",
               fontWeight: 800,
-              color: "#fff",
+              color: "#0f172a",
               WebkitTextFillColor: "#fff",
               cursor: "pointer",
               textShadow: "0 1px 2px rgba(0,0,0,.5)",
@@ -1361,12 +1361,12 @@ function SegmentBuilderModal({
               onClick={runPreview}
               style={{
                 padding: "9px 16px",
-                background: "#1E1B4B",
+                background: '#eef4ff',
                 border: "2px solid #1E1B4B",
                 borderRadius: 8,
                 fontSize: "0.75rem",
                 fontWeight: 800,
-                color: "#fff",
+                color: "#0f172a",
                 WebkitTextFillColor: "#fff",
                 cursor: "pointer",
                 textShadow: "0 1px 2px rgba(0,0,0,.5)",
@@ -1399,12 +1399,12 @@ function SegmentBuilderModal({
             onClick={save}
             style={{
               padding: "10px 22px",
-              background: "#1E1B4B",
+              background: '#eef4ff',
               border: "2px solid #1E1B4B",
               borderRadius: 8,
               fontSize: "0.82rem",
               fontWeight: 800,
-              color: "#fff",
+              color: "#0f172a",
               WebkitTextFillColor: "#fff",
               cursor: "pointer",
               textShadow: "0 1px 2px rgba(0,0,0,.5)",
@@ -2193,8 +2193,8 @@ function DripBindingModal({
                   >
                     <span
                       style={{
-                        background: "#1E1B4B",
-                        color: "#fff",
+                        background: '#eef4ff',
+                        color: "#0f172a",
                         WebkitTextFillColor: "#fff",
                         width: 22,
                         height: 22,

@@ -1,0 +1,98 @@
+/**
+ * Write-back capability catalog — the moat beyond read-only analytics.
+ * Each entry describes a system-of-record mutation InfoGenie can execute
+ * (or queue) when credentials are connected.
+ */
+
+const WRITEBACK_CATALOG = [
+  {
+    system_key: 'meta_ads',
+    system_label: 'Meta Ads',
+    action_key: 'create_campaign',
+    action_label: 'Create / pause campaign',
+    description: 'Push a campaign structure (paused by default) into Meta Ads from a Battle Plan or Action Queue.',
+    endpoint: 'POST /api/ads/meta/campaign',
+    requires: ['meta_ads oauth'],
+    risk: 'medium',
+    moat: 'Competitors stop at dashboards — InfoGenie executes the reallocation.',
+  },
+  {
+    system_key: 'google_ads',
+    system_label: 'Google Ads',
+    action_key: 'create_campaign',
+    action_label: 'Create / pause campaign',
+    description: 'Push Search / Performance Max drafts into Google Ads with daily budget and tracking.',
+    endpoint: 'POST /api/ads/google/campaign',
+    requires: ['google_ads oauth'],
+    risk: 'medium',
+    moat: 'Closes the analyse→act loop without leaving InfoGenie.',
+  },
+  {
+    system_key: 'google_ads',
+    system_label: 'Google Ads',
+    action_key: 'optimizer_apply',
+    action_label: 'Apply bandit budget shift',
+    description: 'Apply AI Optimizer budget shifts to live campaigns within guardrails.',
+    endpoint: 'POST /api/optimizer/apply',
+    requires: ['google_ads oauth', 'optimizer enabled'],
+    risk: 'high',
+    moat: 'Continuous write-back that compounds learning from your account.',
+  },
+  {
+    system_key: 'meta_ads',
+    system_label: 'Meta Ads',
+    action_key: 'optimizer_apply',
+    action_label: 'Apply bandit budget shift',
+    description: 'Apply Meta ad-set budget shifts from the Optimizer bandit.',
+    endpoint: 'POST /api/optimizer/apply',
+    requires: ['meta_ads oauth', 'optimizer enabled'],
+    risk: 'high',
+    moat: 'Durable advantage: write-access + accumulated account context.',
+  },
+  {
+    system_key: 'hubspot',
+    system_label: 'HubSpot',
+    action_key: 'upsert_contact',
+    action_label: 'Create / update contact',
+    description: 'Write lead enrichment and post-launch audit contacts back into HubSpot CRM.',
+    endpoint: 'POST /api/crm/hubspot/contacts',
+    requires: ['hubspot oauth'],
+    risk: 'low',
+    moat: 'Systems of record stay authoritative — InfoGenie is not a silo.',
+  },
+  {
+    system_key: 'hubspot',
+    system_label: 'HubSpot',
+    action_key: 'log_decision',
+    action_label: 'Log strategic decision note',
+    description: 'Attach a dated decision + hypothesis to the company record for institutional memory.',
+    endpoint: 'POST /api/strategic/writeback',
+    requires: ['hubspot oauth'],
+    risk: 'low',
+    moat: 'Preserves why a change was made so June can judge March.',
+  },
+  {
+    system_key: 'slack',
+    system_label: 'Slack',
+    action_key: 'post_brief',
+    action_label: 'Deliver morning brief',
+    description: 'Push Marketing Brief / Action Queue items into Slack channels.',
+    endpoint: 'POST /api/marketing-brief/:id/deliver',
+    requires: ['slack webhook or oauth'],
+    risk: 'low',
+    moat: 'Puts recommendations where operators already work.',
+  },
+  {
+    system_key: 'ga4',
+    system_label: 'GA4 / GSC',
+    action_key: 'annotation',
+    action_label: 'Write decision annotation (queued)',
+    description: 'Queue a date-stamped annotation (e.g. “cut Meta spend 20%”) for later outcome review.',
+    endpoint: 'POST /api/strategic/writeback',
+    requires: ['preview or oauth'],
+    risk: 'low',
+    moat: 'Links future performance deltas to the exact decision that caused them.',
+  },
+];
+
+module.exports = { WRITEBACK_CATALOG };

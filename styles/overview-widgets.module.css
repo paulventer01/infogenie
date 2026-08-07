@@ -1,0 +1,169 @@
+.section {
+  margin: 0 0 28px;
+}
+
+.head {
+  margin-bottom: 14px;
+}
+
+.title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ig-text-muted, #64748b);
+}
+
+.sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ig-text-muted, #64748b);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  background: var(--ig-surface, #fff);
+  border: 1px solid var(--ig-border, #e2e8f0);
+  border-top: 3px solid #0066ff;
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 180px;
+}
+
+.cardOwner {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--ig-primary, #0066ff);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: -2px 0 -4px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ig-text, #0f172a);
+}
+
+.viewBtn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--ig-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ig-primary, #4f46e5);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.viewBtn:hover {
+  background: var(--ig-primary-soft, #eef2ff);
+  border-color: var(--ig-primary-border, #c7d2fe);
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--ig-border, #f1f5f9);
+}
+
+.heroLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ig-text-muted, #94a3b8);
+}
+
+.heroValue {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.heroSuffix {
+  font-size: 12px;
+  color: var(--ig-text-muted, #64748b);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 8px 12px;
+  flex: 1;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metricLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ig-text-muted, #94a3b8);
+}
+
+.metricValue {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ig-text, #0f172a);
+  word-break: break-word;
+}
+
+.toneDanger {
+  color: #dc2626;
+}
+
+.toneWarn {
+  color: #d97706;
+}
+
+.toneInfo {
+  color: #2563eb;
+}
+
+.toneOk {
+  color: #059669;
+}
+
+.note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ig-text-muted, #94a3b8);
+  line-height: 1.35;
+}
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

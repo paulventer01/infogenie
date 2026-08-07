@@ -146,11 +146,17 @@
   // above keeps working without code changes elsewhere; the source of truth
   // is the HttpOnly session cookie owned by the server.
   async function _authFetch(path, opts){
-    const r = await fetch(path, Object.assign({ credentials:'same-origin', headers:{'Content-Type':'application/json'} }, opts || {}));
-    const ct = r.headers.get('content-type') || '';
-    const body = ct.includes('application/json') ? await r.json().catch(()=>({})) : {};
-    if (!r.ok) return { error: body.error || (`Request failed (${r.status})`), status:r.status };
-    return body;
+    try {
+      const r = await fetch(path, Object.assign({ credentials:'same-origin', headers:{'Content-Type':'application/json'} }, opts || {}));
+      const ct = r.headers.get('content-type') || '';
+      const body = ct.includes('application/json') ? await r.json().catch(()=>({})) : {};
+      if (!r.ok) return { error: body.error || (`Request failed (${r.status})`), status:r.status };
+      return body;
+    } catch (e) {
+      // Network/tunnel failures throw TypeError: Failed to fetch — return a
+      // soft error so callers don't surface an uncaught Next overlay.
+      return { error: (e && e.message) || 'Failed to fetch', status: 0, network: true };
+    }
   }
   window._auth = {
     current(){ return curUser(); },
@@ -566,6 +572,7 @@ window._infoGenieActions = [];
       _active = el;
       _tipEl.textContent = el.getAttribute('data-ig-tip');
       _tipEl.removeAttribute('hidden');
+      _tipEl.setAttribute('aria-hidden', 'false');
       _pos(e.clientX, e.clientY);
     }, true);
 
@@ -581,10 +588,16 @@ window._infoGenieActions = [];
 
     document.addEventListener('click', _hideTip, true);
     document.addEventListener('keydown', _hideTip, true);
+    // Never paint the empty dark tip host as a corner smudge on panel heroes.
+    _hideTip();
   }
 
   function _hideTip() {
-    if (_tipEl) _tipEl.setAttribute('hidden', '');
+    if (_tipEl) {
+      _tipEl.setAttribute('hidden', '');
+      _tipEl.setAttribute('aria-hidden', 'true');
+      _tipEl.textContent = '';
+    }
     _active = null;
   }
 
@@ -623,7 +636,7 @@ window._igLaunch = function(idx) {
         <div style="font-size:2rem;margin-bottom:12px">⚠️</div>
         <div style="font-weight:800;font-size:1rem;color:#0A1628;margin-bottom:8px">Couldn't open Launch modal</div>
         <div style="font-size:0.82rem;color:#6B7280;margin-bottom:20px">${err.message}</div>
-        <button onclick="document.getElementById('campLaunchRichModal').classList.add('hidden');document.getElementById('campLaunchRichModal').removeAttribute('style')" style="padding:10px 24px;background:#0066FF;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700">Close</button>
+        <button onclick="closeCampLaunchRichModal()" style="padding:10px 24px;background:#0066FF;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700">Close</button>
       </div>`;
     } else {
       alert('Error opening launch: ' + err.message);
@@ -1063,6 +1076,9 @@ window.openWpCredentialsModal = function(afterSave) {
   }
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
+  modal.style.alignItems = 'flex-start';
+  modal.style.paddingTop = '72px';
+  modal.style.justifyContent = 'center';
 };
 
 window.closeWpCredentialsModal = function() {
@@ -1212,9 +1228,12 @@ function buildLaunchModal(camp, idx) {
     alert('Launch modal not found. Please refresh the page and try again.');
     return;
   }
+  _igPortalToBody(modal);
   modal.classList.remove('hidden');
   modal.removeAttribute('style');
-  modal.style.cssText = 'display:flex !important; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; background:rgba(0,0,0,.65); backdrop-filter:blur(4px); padding:20px;';
+  modal.style.cssText = 'display:flex !important;position:fixed;inset:0;z-index:20000;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:20px;overflow-y:auto;';
+  try { window.scrollTo(0, 0); } catch (_) {}
+  document.documentElement.style.overflow = 'hidden';
 
   // Data
   const name       = camp.name || 'Campaign';
@@ -1260,28 +1279,28 @@ function buildLaunchModal(camp, idx) {
 
   inner.innerHTML = `
     <style>@keyframes spin{to{transform:rotate(360deg)}} @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}</style>
-    <div style="background:var(--ig-grad);padding:24px 28px;border-radius:20px 20px 0 0">
+    <div class="camp-launch-modal-header">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <div style="font-size:1rem;font-weight:800;font-family:Sora,sans-serif;color:white">🚀 Campaign Launch Brief</div>
-        <span id="lm-ai-badge" style="background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);border-radius:6px;padding:3px 10px;font-size:0.68rem;font-weight:700;color:#A5B4FC">${spin}GPT-4 Building Brief...</span>
+        <div class="camp-launch-title">🚀 Campaign Launch Brief</div>
+        <span id="lm-ai-badge" class="camp-launch-ai-badge">${spin}GPT-4 Building Brief...</span>
       </div>
-      <div style="font-size:0.8rem;color:rgba(255,255,255,.6);margin-bottom:16px">${name} · ${platform}</div>
+      <div class="camp-launch-subtitle">${name} · ${platform}</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Projected Return on Ad Spend — estimated revenue earned per $1 of budget, based on your industry benchmarks and campaign settings.">
-          <div id="lm-roas-val" style="font-size:1.1rem;font-weight:800;color:#00E5FF">${projROAS}×</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Proj. ROAS</div>
+        <div class="camp-launch-kpi" title="Projected Return on Ad Spend — estimated revenue earned per $1 of budget, based on your industry benchmarks and campaign settings.">
+          <div id="lm-roas-val" class="camp-launch-kpi-val" style="color:#00E5FF">${projROAS}×</div>
+          <div class="camp-launch-kpi-label">Proj. ROAS</div>
         </div>
-        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Estimated number of completed goals (purchases, sign-ups, calls) this campaign is projected to generate each month.">
-          <div id="lm-conv-val" style="font-size:1.1rem;font-weight:800;color:#10B981">${projConv}</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Est. Conversions</div>
+        <div class="camp-launch-kpi" title="Estimated number of completed goals (purchases, sign-ups, calls) this campaign is projected to generate each month.">
+          <div id="lm-conv-val" class="camp-launch-kpi-val" style="color:#10B981">${projConv}</div>
+          <div class="camp-launch-kpi-label">Est. Conversions</div>
         </div>
-        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Estimated monthly revenue attributable to this campaign, calculated from projected ROAS × monthly budget.">
-          <div id="lm-rev-val" style="font-size:1.1rem;font-weight:800;color:#F59E0B">${projRev}</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Est. Revenue</div>
+        <div class="camp-launch-kpi" title="Estimated monthly revenue attributable to this campaign, calculated from projected ROAS × monthly budget.">
+          <div id="lm-rev-val" class="camp-launch-kpi-val" style="color:#F59E0B">${projRev}</div>
+          <div class="camp-launch-kpi-label">Est. Revenue</div>
         </div>
-        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Maximum amount spent per day. InfoGenie divides your monthly budget by 30 to set this cap automatically.">
-          <div id="lm-daily-val" style="font-size:1.1rem;font-weight:800;color:white">$${dailyBudg}/day</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Daily Budget</div>
+        <div class="camp-launch-kpi" title="Maximum amount spent per day. InfoGenie divides your monthly budget by 30 to set this cap automatically.">
+          <div id="lm-daily-val" class="camp-launch-kpi-val">$${dailyBudg}/day</div>
+          <div class="camp-launch-kpi-label">Daily Budget</div>
         </div>
       </div>
     </div>
@@ -1593,7 +1612,7 @@ function buildLaunchModal(camp, idx) {
         </div>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
           <button id="lm-close-success" style="padding:10px 20px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
-          <button id="lm-view-campaign" style="padding:10px 20px;background:var(--ig-panel);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">👁 View Campaign</button>
+          <button id="lm-view-campaign" class="btn-primary" style="padding:10px 20px;font-size:0.85rem">👁 View Campaign</button>
           <button id="lm-view-results" style="padding:10px 20px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📊 View Results →</button>
         </div>
       </div>`;
@@ -1900,7 +1919,7 @@ function buildLaunchModal(camp, idx) {
                   this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
                   this.closest('.cl-item').style.background='#D1FAE5';}
                 " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#1D4ED8;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;cursor:pointer">💾 Save Keywords</button>
-                <button onclick="var _m=document.getElementById('campLaunchRichModal');if(_m){_m.classList.add('hidden');_m.style.display='none';}var _m2=document.getElementById('launchModal');if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}navigateTo('competitors');"
+                <button onclick="var _m=document.getElementById('campLaunchRichModal');if(_m){closeCampLaunchRichModal();}var _m2=document.getElementById('launchModal');if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}navigateTo('competitors');"
                   style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#6B7280;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer">→ Keyword Gap Analysis</button>
               </div>
             </div>`;
@@ -1919,7 +1938,7 @@ function buildLaunchModal(camp, idx) {
                   this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
                   this.closest('.cl-item').style.background='#D1FAE5';}
                 " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#7C3AED;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:6px;cursor:pointer">💾 Save Copy</button>
-                <button onclick="var _m=document.getElementById('campLaunchRichModal');if(_m){_m.classList.add('hidden');_m.style.display='none';}var _m2=document.getElementById('launchModal');if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}navigateTo('creative');"
+                <button onclick="var _m=document.getElementById('campLaunchRichModal');if(_m){closeCampLaunchRichModal();}var _m2=document.getElementById('launchModal');if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}navigateTo('creative');"
                   style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#6B7280;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer">→ AI Creative Studio</button>
               </div>
             </div>`;
@@ -2614,6 +2633,28 @@ function buildCreativeModal(camp, idx) {
 }
 
 // ===== NAVIGATION =====
+// Guard IGDiag while legacy React-hosted panels synchronously dump large DOM
+// subtrees (e.g. buildCampaigns → #campaignsWrap). PanelReady settleNavPending
+// fires before these builders run in useEffect, so rebuilds need their own guard.
+function _igBeginLegacyPanelBuild(viewId) {
+  try {
+    if (window.__igReactRouting || document.documentElement.getAttribute('data-ig-nav') === '1') return null;
+    var cv = (typeof currentView !== 'undefined' ? currentView : (window.currentView || ''));
+    if (cv !== viewId) return null;
+    document.documentElement.setAttribute('data-ig-nav', '1');
+    window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('panel:' + viewId);
+    return function() {
+      setTimeout(function() {
+        try {
+          if (window.__igReactRouting) return;
+          document.documentElement.removeAttribute('data-ig-nav');
+          window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle');
+        } catch(_) {}
+      }, 2800);
+    };
+  } catch(_) { return null; }
+}
+
 function navigateTo(viewId, updateActive = true) {
   // ── Permission guard (defense-in-depth; the server still enforces) ──────────
   // Block switching to a view the signed-in role isn't granted and redirect to
@@ -2654,8 +2695,33 @@ function navigateTo(viewId, updateActive = true) {
     // panel for this view. <LegacyNavBridge/> (mounted in the dashboard layout)
     // listens for this event and pushes the canonical URL. Where no bridge is
     // mounted (e.g. legacy-only contexts) this is a harmless no-op event.
+    //
+    // Dispatch synchronously (do NOT rAF-defer): a deferred bridge races the
+    // AppShell/Next router.push and can remount Suspense mid-reconcile, which
+    // throws NotFoundError: removeChild.
+    // Bridge to the Next URL when React has not already started this same
+    // transition. AppShell/goToView set __igPendingView + router.push first —
+    // skip the duplicate event in that case. But if __igReactRouting is only a
+    // stale leftover (or was never paired with a push for THIS view), we must
+    // still dispatch — otherwise Analyse completion hides #view-home and leaves
+    // a blank /analyse stage with no React panel mounted.
     try {
-      document.dispatchEvent(new CustomEvent('ig:spa-navigate', { detail: { view: viewId } }));
+      const reactOwnsThis = !!(window.__igReactRouting && window.__igPendingView === viewId);
+      const path = (window.location && window.location.pathname) || '';
+      const alreadyOnView = viewId === 'home'
+        ? (path === '/analyse' || path === '/' || path === '')
+        : (path === '/manage/' + viewId || path.endsWith('/' + viewId));
+      if (!reactOwnsThis && !alreadyOnView) {
+        try {
+          document.documentElement.setAttribute('data-ig-nav', '1');
+          window.__igReactRouting = true;
+          window.__igPendingView = viewId;
+          window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('nav→' + viewId);
+        } catch(_) {}
+        document.dispatchEvent(new CustomEvent('ig:spa-navigate', { detail: { view: viewId } }));
+        // Do NOT set breadcrumb to idle here — MigratedPanel settleNavPending
+        // clears the guard after first paint.
+      }
     } catch(_) {}
   }
   currentView = viewId;
@@ -2695,10 +2761,18 @@ function navigateTo(viewId, updateActive = true) {
   // (battleplan now handled by _lazyBuild above)
   // ── Tier 1+2 Plai-parity modules ─────────────────────────────────────────
   // Show/hide navbar for home vs app
+  // Left-rail shell: #navGroups must stay a COLUMN flex. Legacy top-nav used a
+  // horizontal row; setting display:flex without flex-direction clips every
+  // sidebar group (overflow-x:hidden) so menus appear to "vanish".
   const navGroups = document.getElementById('navGroups');
   const navPlan   = document.getElementById('navPlanBadge');
   const navBtn    = document.getElementById('navAnalyseBtn');
-  if (navGroups) navGroups.style.display = 'flex';
+  if (navGroups) {
+    navGroups.style.display = 'flex';
+    navGroups.style.flexDirection = 'column';
+    navGroups.style.flexWrap = 'nowrap';
+    navGroups.style.alignItems = 'stretch';
+  }
   if (navPlan)   navPlan.style.display   = viewId === 'home' ? 'none'  : 'block';
   if (navBtn)    navBtn.style.display    = viewId === 'home' ? 'none'  : 'block';
   window.scrollTo(0, 0);
@@ -2707,14 +2781,35 @@ function navigateTo(viewId, updateActive = true) {
   // Resume field-enhancer after all synchronous build work is done.
   // requestAnimationFrame fires after the browser has painted the new view,
   // so the scan sees the final DOM and doesn't fight with layout.
+  // When React owns the transition (__igReactRouting), MigratedPanel's
+  // settleNavPending resumes IGFields after the panel's first paint — do not
+  // clear markers / resume here or mount work is misreported as idle stalls.
   (window.requestAnimationFrame || setTimeout)(function() {
     try {
+      if (window.__igReactRouting) return;
       if (window.IGFields) {
         IGFields.resume && IGFields.resume({ scan: false });
         const viewEl = document.getElementById('view-' + viewId);
         if (viewEl) IGFields.scanRoot && IGFields.scanRoot(viewEl);
       }
     } catch(_) {}
+    // scanRoot queues chunked decoration across many rAFs — clearing the
+    // breadcrumb to idle immediately made IGDiag flag home's ~800-node form as
+    // a MAIN-THREAD STALL (`last=idle · view=home`). Keep panel:<view> up on
+    // form-heavy legacy panels until decoration has had time to settle.
+    const heavyLegacy = viewId === 'home';
+    const clearIdle = () => {
+      try {
+        if (window.__igReactRouting) return;
+        window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('idle');
+      } catch(_) {}
+    };
+    if (heavyLegacy) {
+      try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('panel:' + viewId); } catch(_) {}
+      setTimeout(clearIdle, 2800);
+    } else {
+      clearIdle();
+    }
   }, 0);
 }
 
@@ -2766,6 +2861,76 @@ function _injectNextStep(viewId) {
       </div>
     </div>`;
   view.appendChild(banner);
+}
+
+// ===== LOADING OVERLAY (analyse progress) =====
+// AppShell's .content keeps a transform from its entrance animation, which
+// turns position:fixed into "fixed to the content box". The loading card was
+// then centered in a tall off-screen area — users only saw a dark veil.
+// Always portal the overlay onto document.body while it is visible.
+function _igShowLoadingOverlay(targetLabel) {
+  const overlay = document.getElementById('loadingOverlay');
+  if (!overlay) return null;
+  _igPortalToBody(overlay);
+  overlay.classList.remove('hidden');
+  overlay.style.display = 'flex';
+  const targetEl = document.getElementById('loadingTargetValue');
+  if (targetEl) targetEl.textContent = targetLabel || 'your market';
+  const list = document.getElementById('loadingActivityList');
+  if (list) list.innerHTML = '';
+  window._igLoadingActStart = performance.now();
+  return overlay;
+}
+
+function _igHideLoadingOverlay(overlay) {
+  const el = overlay || document.getElementById('loadingOverlay');
+  if (!el) return;
+  el.style.display = 'none';
+  el.classList.add('hidden');
+  _igRestoreFromBody(el);
+}
+
+// Portal fixed overlays/modals to document.body so they aren't trapped inside
+// AppShell's transformed .content box (same root cause as the loading overlay).
+function _igPortalToBody(el) {
+  if (!el) return;
+  if (!el.dataset.igHomeParent) {
+    el.dataset.igHomeParent = '1';
+    el._igHomeParent = el.parentNode;
+  }
+  try {
+    if (el.parentNode !== document.body) document.body.appendChild(el);
+  } catch (_) {}
+}
+
+function _igRestoreFromBody(el) {
+  if (!el) return;
+  try {
+    if (el._igHomeParent && el.parentNode === document.body) {
+      el._igHomeParent.appendChild(el);
+    }
+  } catch (_) {}
+}
+
+function _igLoadingActivity(message, state) {
+  const list = document.getElementById('loadingActivityList');
+  if (!list) return;
+  // Mark previous active rows as done
+  list.querySelectorAll('li.is-active').forEach((li) => {
+    li.classList.remove('is-active');
+    li.classList.add('is-done');
+  });
+  const li = document.createElement('li');
+  if (state === 'done') li.className = 'is-done';
+  else li.className = 'is-active';
+  const sec = window._igLoadingActStart
+    ? ((performance.now() - window._igLoadingActStart) / 1000).toFixed(1)
+    : '0.0';
+  li.innerHTML = `<span>${String(message || '').replace(/</g, '&lt;')}</span><span class="loading-act-time">${sec}s</span>`;
+  list.appendChild(li);
+  try { list.scrollTop = list.scrollHeight; } catch (_) {}
+  const statusText = document.getElementById('loadingStatusText');
+  if (statusText && state !== 'done') statusText.textContent = message;
 }
 
 // ===== ANALYSIS FLOW =====
@@ -2884,10 +3049,17 @@ async function runAnalysis(url, country, industryOverride) {
     hintEl.style.color = '#00C9C8';
   }
 
-  // Show loading
-  const overlay = document.getElementById('loadingOverlay');
-  overlay.classList.remove('hidden');
-  overlay.style.display = 'flex';
+  // Show loading — portal to body so the card is actually visible.
+  const targetLabel = sectorOnly
+    ? (industryOverride || industry.name || 'sector overview')
+    : cleanUrl;
+  const overlay = _igShowLoadingOverlay(targetLabel);
+  _igLoadingActivity(
+    sectorOnly
+      ? `Starting sector analysis for “${targetLabel}”`
+      : `Opening ${cleanUrl} — scraping site signals`,
+    'active',
+  );
 
   // ── Safety net ─────────────────────────────────────────────────────────────
   // The overlay is now hidden late in the flow (after competitor-metrics +
@@ -2898,8 +3070,7 @@ async function runAnalysis(url, country, industryOverride) {
   window._runAnalysisSafetyTimer = setTimeout(() => {
     try {
       if (overlay && overlay.style.display !== 'none') {
-        overlay.style.display = 'none';
-        overlay.classList.add('hidden');
+        _igHideLoadingOverlay(overlay);
         if (window._elapsedTimer) { clearInterval(window._elapsedTimer); window._elapsedTimer = null; }
         showToast('⚠ Analyse took longer than expected — opening dashboard with available data');
         window.IGDiag && IGDiag.err && IGDiag.err('runAnalysis: safety watchdog fired (90s)', 'overlay was still visible');
@@ -2925,11 +3096,11 @@ async function runAnalysis(url, country, industryOverride) {
     ? `Industry set to: ${industry.name} ✓`
     : `Auto-detected industry: ${industry.name}`;
   const steps = [
-    { id: 'lst1', label: detectionLabel, duration: 250 },
-    { id: 'lst2', label: `Found ${industry.competitors.length} targeted competitors in ${industry.name}`, duration: 300 },
-    { id: 'lst3', label: 'Analysing campaign performance, CTR, and ROAS...', duration: 350 },
-    { id: 'lst4', label: 'Generating AI campaign recommendations...', duration: 300 },
-    { id: 'lst5', label: 'Building full intelligence report...', duration: 200 }
+    { id: 'lst1', label: detectionLabel, activity: `Classifying niche → ${industry.name}`, duration: 250 },
+    { id: 'lst2', label: `Found ${industry.competitors.length} targeted competitors in ${industry.name}`, activity: `Shortlisting ${industry.competitors.length} rivals in ${industry.name}`, duration: 300 },
+    { id: 'lst3', label: 'Analysing campaign performance, CTR, and ROAS...', activity: 'Reading campaign performance signals (CTR / ROAS / spend)', duration: 350 },
+    { id: 'lst4', label: 'Generating AI campaign recommendations...', activity: 'Drafting AI campaign recommendations & creative angles', duration: 300 },
+    { id: 'lst5', label: 'Building full intelligence report...', activity: 'Assembling intelligence report structure', duration: 200 }
   ];
   
   const bar = document.getElementById('loadingBarFill');
@@ -2939,8 +3110,10 @@ async function runAnalysis(url, country, industryOverride) {
   // Reset steps
   steps.forEach(s => {
     const el = document.getElementById(s.id);
+    if (!el) return;
     el.classList.remove('active', 'done');
-    el.querySelector('.lstep-check').classList.add('hidden');
+    const check = el.querySelector('.lstep-check');
+    if (check) check.classList.add('hidden');
   });
   
   bar.style.width = '0%';
@@ -2952,8 +3125,9 @@ async function runAnalysis(url, country, industryOverride) {
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i];
     const el = document.getElementById(s.id);
-    el.classList.add('active');
-    statusText.textContent = s.label;
+    if (el) el.classList.add('active');
+    if (statusText) statusText.textContent = s.label;
+    _igLoadingActivity(s.activity || s.label, 'active');
     
     await wait(s.duration);
     
@@ -2962,15 +3136,24 @@ async function runAnalysis(url, country, industryOverride) {
     bar.style.width = progress + '%';
     pct.textContent = progress + '%';
     
-    el.classList.remove('active');
-    el.classList.add('done');
-    el.querySelector('.lstep-check').classList.remove('hidden');
-    el.querySelector('.lstep-dot').style.background = 'var(--green)';
+    if (el) {
+      el.classList.remove('active');
+      el.classList.add('done');
+      const check = el.querySelector('.lstep-check');
+      if (check) check.classList.remove('hidden');
+      el.querySelector('.lstep-dot').style.background = 'var(--green)';
+    }
   }
   
   bar.style.width = '95%';
   pct.textContent = '95%';
   statusText.textContent = 'Fetching live competitor intelligence...';
+  _igLoadingActivity(
+    sectorOnly
+      ? `Calling AI sector matcher for “${targetLabel}”`
+      : `Running AI smart-detect on ${cleanUrl}`,
+    'active',
+  );
 
   // ── Await live AI smart-detection result (already running in background) ───
   // If it returned real competitors + a sharper industry name, override the DB.
@@ -2989,11 +3172,27 @@ async function runAnalysis(url, country, industryOverride) {
   if (_elapsedEl) _elapsedEl.textContent = _runSec + 's';
   window._lastRunDuration = parseFloat(_runSec);
   window._analysisStartedAt = null;
+  if (aiDetected && aiDetected.ok) {
+    const n = Array.isArray(aiDetected.competitors) ? aiDetected.competitors.length : 0;
+    const niche = aiDetected.subNiche || aiDetected.industryName || industry.name;
+    _igLoadingActivity(
+      n
+        ? `AI matched ${n} competitors in ${niche}`
+        : `AI classified niche as ${niche}`,
+      'active',
+    );
+  } else if (sectorDetected && sectorDetected.ok) {
+    const n = Array.isArray(sectorDetected.competitors) ? sectorDetected.competitors.length : 0;
+    _igLoadingActivity(`Sector match returned ${n} competitors`, 'active');
+  } else {
+    _igLoadingActivity(`Using same-industry shortlist for ${industry.name} (live AI unavailable)`, 'active');
+  }
   statusText.textContent = `✅ Industry & competitors locked in — fetching live metrics…`;
+  _igLoadingActivity('Industry & competitors locked — fetching live metrics', 'active');
   // NOTE: overlay stays visible. The two slowest API calls
   // (competitor-metrics ~12s + ai-validate-metrics ~13s) still run below,
   // and we don't want the user staring at a blank home page for ~25s.
-  // The overlay is hidden right before navigateTo('dashboard') further down.
+  // The overlay is hidden right before navigateTo('marketing-brief') further down.
 
   // ── If URL was given but user didn't type an industry, take the sub-niche
   //    that smart-detect inferred from the website and use it to fetch a
@@ -3031,18 +3230,69 @@ async function runAnalysis(url, country, industryOverride) {
 
   // ── Sector AI result takes PRIORITY when available — it returns real
   //    same-niche competitors with much better coverage than the static DB.
-  if (sectorDetected && sectorDetected.ok && Array.isArray(sectorDetected.competitors) && sectorDetected.competitors.length >= 3) {
+  //    Accept any non-empty same-niche list (accuracy > arbitrary ">= 3").
+  if (sectorDetected && sectorDetected.ok && Array.isArray(sectorDetected.competitors) && sectorDetected.competitors.length >= 1) {
     // Reshape to look like the smart-detect payload so the existing handler picks it up.
     aiDetected = {
       ok: true,
       industryName: sectorDetected.industryName || (industryOverride && industryOverride.trim()) || (aiDetected && aiDetected.industryName) || 'Detected industry',
-      businessSummary: '',
+      industryKey: (aiDetected && aiDetected.industryKey) || industryKey,
+      businessSummary: (aiDetected && aiDetected.businessSummary) || '',
+      subNiche: sectorDetected.subNiche || (aiDetected && aiDetected.subNiche) || '',
       competitors: sectorDetected.competitors,
+      signals: (aiDetected && aiDetected.signals) || {},
       _source: 'sector',
     };
     if (hintEl) {
       hintEl.textContent = `✓ AI-matched ${sectorDetected.competitors.length} ${sectorDetected.industryName || 'industry'} competitors`;
       hintEl.style.color = '#00C9C8';
+    }
+  }
+
+  // Last resort before static INDUSTRY_DB: ask sector-competitors for the
+  // detected industry name so we never invent rivals from a different vertical.
+  // Skip when the user already typed an industry (sectorPromise covered that)
+  // or when smart-detect/sector already returned a same-niche list.
+  if (
+    !hasIndustry &&
+    !(aiDetected && aiDetected.ok && Array.isArray(aiDetected.competitors) && aiDetected.competitors.length >= 1) &&
+    industry && industry.name
+  ) {
+    const _lrCtl = new AbortController();
+    const _lrT0 = performance.now();
+    const _lrTo = setTimeout(() => _lrCtl.abort(), 25000);
+    _igLoadingActivity(`Matching same-industry competitors for ${industry.name}`, 'active');
+    try {
+      const r = await fetch('/api/sector-competitors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          industry: industry.name,
+          country: country || '',
+          urlHint: hasUrl ? cleanUrl : '',
+        }),
+        signal: _lrCtl.signal,
+      });
+      clearTimeout(_lrTo);
+      if (r.ok) {
+        const lr = await r.json();
+        if (lr && lr.ok && Array.isArray(lr.competitors) && lr.competitors.length >= 1) {
+          aiDetected = {
+            ok: true,
+            industryName: lr.industryName || industry.name,
+            industryKey,
+            businessSummary: '',
+            subNiche: lr.subNiche || '',
+            competitors: lr.competitors,
+            signals: {},
+            _source: 'sector-last-resort',
+          };
+          window.IGDiag && IGDiag.mark('sector-competitors-last-resort: ok', `${lr.competitors.length} in ${((performance.now()-_lrT0)/1000).toFixed(1)}s`);
+        }
+      }
+    } catch (e) {
+      clearTimeout(_lrTo);
+      window.IGDiag && IGDiag.err('sector-competitors-last-resort: failed', (e && e.name || 'err'));
     }
   }
 
@@ -3053,7 +3303,15 @@ async function runAnalysis(url, country, industryOverride) {
       displayIndustryName = aiDetected.industryName;
       industry.name = aiDetected.industryName; // patch in-memory for downstream use
     }
-    if (Array.isArray(aiDetected.competitors) && aiDetected.competitors.length >= 3) {
+    // Prefer the AI/sector industry bucket when it maps to a known key so
+    // seed keywords stay in the same vertical as the analysed site.
+    if (aiDetected.industryKey && typeof INDUSTRY_DB !== 'undefined' && INDUSTRY_DB[aiDetected.industryKey]) {
+      industryKey = aiDetected.industryKey;
+      if (Array.isArray(INDUSTRY_DB[industryKey].keywords)) {
+        industry.keywords = INDUSTRY_DB[industryKey].keywords;
+      }
+    }
+    if (Array.isArray(aiDetected.competitors) && aiDetected.competitors.length >= 1) {
       // Convert AI competitors into the same shape the rest of the UI expects.
       aiCompetitorPool = aiDetected.competitors.map((c, idx) => {
         const threats = ['critical','high','medium'];
@@ -3114,6 +3372,7 @@ async function runAnalysis(url, country, industryOverride) {
       // pulled from DataForSEO domain_rank_overview + keywords_for_site.
       try {
         statusText.textContent = 'Pulling live competitor traffic & ad-spend data...';
+        _igLoadingActivity('Pulling live competitor traffic & ad-spend data', 'active');
         const domainList = aiCompetitorPool.map(c => c.domain).filter(Boolean);
         if (domainList.length) {
           // 25s hard timeout — DataForSEO can be slow but should never hang the UI.
@@ -3169,6 +3428,7 @@ async function runAnalysis(url, country, industryOverride) {
       // DataForSEO returned nothing.
       try {
         statusText.textContent = 'AI is validating competitor data accuracy...';
+        _igLoadingActivity('AI validating competitor metrics for accuracy', 'active');
         window.IGDiag && IGDiag.mark('ai-validate-metrics: start', `n=${aiCompetitorPool.length}`);
         const aiPayload = aiCompetitorPool.map(c => ({
           name: c.name,
@@ -3408,8 +3668,49 @@ async function runAnalysis(url, country, industryOverride) {
   queuedCampaigns = [];
   creativeRound = 0;
 
+  // Company profile from smart-detect (powers the marketing command center dashboard)
+  const _cpSignals = (aiDetected && aiDetected.signals) || {};
+  const companyProfile = {
+    domain: cleanUrl,
+    businessSummary: (aiDetected && aiDetected.businessSummary) || '',
+    subNiche: (aiDetected && aiDetected.subNiche) || '',
+    siteTitle: _cpSignals.title || _cpSignals.ogSiteName || '',
+    metaDesc: _cpSignals.metaDesc || _cpSignals.ogDesc || '',
+    analyzedAt: new Date().toISOString(),
+  };
+
+  // Seed keyword suggestions immediately from the analysis (industry seeds +
+  // any competitor topKeywords already on the pool). Enrichment later overlays
+  // live DataForSEO terms — Rank Tracker "AI Suggest" must not wait for that.
+  const _seedKwSeen = new Set();
+  const _seedKeywords = [];
+  const _pushSeedKw = (raw) => {
+    const s = typeof raw === 'string' ? raw : (raw && (raw.keyword || raw.term)) || '';
+    const t = String(s || '').trim();
+    if (!t || t.length > 80) return;
+    const key = t.toLowerCase();
+    if (_seedKwSeen.has(key)) return;
+    _seedKwSeen.add(key);
+    _seedKeywords.push(t);
+  };
+  (selectedComps || []).forEach(c => (c.topKeywords || []).forEach(_pushSeedKw));
+  (industry && industry.keywords || []).forEach(_pushSeedKw);
+  if (companyProfile.subNiche) _pushSeedKw(companyProfile.subNiche);
+
   // Store analysis data
-  analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps, sectorOnly };
+  analysisData = {
+    url: cleanUrl,
+    country,
+    industryKey,
+    industryName: displayIndustryName,
+    subNiche: companyProfile.subNiche || '',
+    industry,
+    websiteKPIs,
+    competitors: selectedComps,
+    sectorOnly,
+    companyProfile,
+    keywords: _seedKeywords.slice(0, 30),
+  };
   window.analysisData = analysisData;  // Mirror to window so external modules (Link Suggester, CRO Lab, Analytics Hub, etc.) can read it
   // Notify the global field enhancer (ig_field_enhancer.js) so any Brand /
   // Competitor pickers already rendered refresh their option lists with the
@@ -3466,33 +3767,34 @@ async function runAnalysis(url, country, industryOverride) {
     const _totalSec = ((performance.now() - _runStart) / 1000).toFixed(1);
     if (_elapsedEl) _elapsedEl.textContent = _totalSec + 's';
     if (statusText) statusText.textContent = `✅ Intelligence report ready in ${_totalSec}s!`;
+    _igLoadingActivity(`Intelligence report ready in ${_totalSec}s`, 'done');
     await wait(250);
-    overlay.style.display = 'none';
-    overlay.classList.add('hidden');
+    _igHideLoadingOverlay(overlay);
     if (window._runAnalysisSafetyTimer) { clearTimeout(window._runAnalysisSafetyTimer); window._runAnalysisSafetyTimer = null; }
-    showToast(`✅ Dashboard ready in ${_totalSec}s`);
+    showToast(`✅ Brief ready in ${_totalSec}s`);
   } catch(_) {}
 
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
+  // Land on Today's Marketing Brief (not the blank /analyse home, and not the
+  // dashboard) so the post-analysis workspace always has a React panel mounted.
   window.IGDiag && IGDiag.mark('runAnalysis: navigating to marketing-brief', 'comps=' + selectedComps.length);
   // Start a heartbeat that ticks every 250ms — any gap >500ms in the server
   // log proves the main thread was blocked during that window and the prior
   // breadcrumb names the culprit.
   try { window.IGDiag && IGDiag.startHeartbeat && IGDiag.startHeartbeat('post-analyse', 250); } catch(_) {}
-  // Stop the heartbeat 15s later — by then the dashboard, all deferred
+  // Stop the heartbeat 15s later — by then the brief, all deferred
   // builders and enrichments are well past done in the happy case.
   setTimeout(() => { try { window.IGDiag && IGDiag.stopHeartbeat && IGDiag.stopHeartbeat(); } catch(_) {} }, 15000);
   navigateTo('marketing-brief');
   // Tell any already-mounted React panel (Next.js dev shell) that a fresh
-  // analysis payload is on `window.analysisData`. The Marketing Brief auto-
-  // refreshes when it sees this event so the brief stays in sync with the
-  // latest analysis without requiring a manual page reload.
+  // analysis payload is on `window.analysisData`. Dashboard + Marketing Brief
+  // refresh when they see this event so they stay in sync with the latest run.
   try {
     document.dispatchEvent(new CustomEvent('ig:analysis-ready', { detail: { url: cleanUrl } }));
   } catch(_) {}
   showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
 
-  // Build the landing view (dashboard) immediately and defer all other views
+  // Pre-build the dashboard in the background and defer all other views
   // to a background queue with generous gaps. This prevents the main thread
   // from being saturated while the global field enhancer's MutationObserver
   // decorates the freshly-rendered inputs. Each non-dashboard view is ALSO
@@ -3706,12 +4008,23 @@ async function enrichCompetitorKwAudiences(domain, industryKey, country) {
 
     if (enriched > 0) {
       console.log(`[kw-audience-enrich] ${enriched} competitor fields updated with keywords + AI audiences`);
-      // Store for downstream use (keyword suggestions, battle plans, etc.)
-      analysisData.keywords = (analysisData.competitors || [])
-        .flatMap(c => c.topKeywords || [])
-        .filter((k, i, a) => k && a.indexOf(k) === i)
-        .slice(0, 30);
+      // Merge live competitor keywords with seeds from the initial analysis so
+      // Rank Tracker / AI Suggest keep both sets available.
+      const merged = [];
+      const seenKw = new Set();
+      const pushKw = (k) => {
+        const t = String(k || '').trim();
+        if (!t) return;
+        const key = t.toLowerCase();
+        if (seenKw.has(key)) return;
+        seenKw.add(key);
+        merged.push(t);
+      };
+      (analysisData.competitors || []).forEach(c => (c.topKeywords || []).forEach(pushKw));
+      (analysisData.keywords || []).forEach(pushKw);
+      analysisData.keywords = merged.slice(0, 30);
       window.buildCompetitors && window.buildCompetitors();
+      try { window.dispatchEvent(new CustomEvent('ig:analysis-updated')); } catch (_) {}
     }
   } catch (err) {
     console.warn('Competitor keyword/audience enrichment failed (non-fatal):', err.message);
@@ -3727,7 +4040,7 @@ async function enrichKPIsWithLiveData(domain, industryKey, country) {
     : country === 'Canada'    ? 'Canada'
     : 'United States';
 
-  const liveBadge = (title) => `<span title="${title}" style="font-size:.65rem;background:#10B98120;color:#10B981;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px">LIVE</span>`;
+  const liveBadge = (title) => `<span title="${title}" style="font-size:.65rem;background:#F59E0B20;color:#B45309;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px">DERIVED</span>`;
 
   try {
     const res = await fetch('/api/live-kpis', {
@@ -3743,7 +4056,7 @@ async function enrichKPIsWithLiveData(domain, industryKey, country) {
     const competitors = analysisData?.competitors || [];
     const avgCTR  = avg(competitors.map(c => parseFloat(c.ctr)));
     const avgROAS = avg(competitors.map(c => c.roas));
-    const src = `DataForSEO · avg position ${d.meta?.avgPosition || '—'} · avg CPC $${d.meta?.avgCPC || '—'}`;
+    const src = `DataForSEO derived · avg position ${d.meta?.avgPosition || '—'} · avg CPC $${d.meta?.avgCPC || '—'} — not ad-account truth`;
 
     // Store live values back onto analysisData for downstream use
     if (!analysisData.websiteKPIs) analysisData.websiteKPIs = {};
@@ -3751,6 +4064,7 @@ async function enrichKPIsWithLiveData(domain, industryKey, country) {
     if (d.roas     !== null) analysisData.websiteKPIs._liveROAS     = d.roas;
     if (d.cpa      !== null) analysisData.websiteKPIs._liveCPA      = d.cpa;
     if (d.convRate !== null) analysisData.websiteKPIs._liveConvRate = d.convRate;
+    analysisData.websiteKPIs._kpiProvenance = d.provenance || 'market_derived';
 
     // Update each KPI card in-place
     const kpiGrid = document.getElementById('kpiGrid');
@@ -3760,9 +4074,9 @@ async function enrichKPIsWithLiveData(domain, industryKey, country) {
 
     // Shared ribbon helpers — keep parity with the initial buildDashboard render
     const _domain = (analysisData?.url || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0];
-    const ribbonLive = `<div class="kpi-ribbon kpi-ribbon-live" title="Live data from DataForSEO for ${_domain}">📡 LIVE — YOUR SITE</div>`;
+    const ribbonLive = `<div class="kpi-ribbon kpi-ribbon-live" title="Market-derived from DataForSEO SERP + industry benchmarks for ${_domain} — not your ad account">📡 MARKET-DERIVED — ${_domain}</div>`;
     const ribbonInd  = `<div class="kpi-ribbon kpi-ribbon-ind"  title="Broad industry benchmark — not your data">🏷️ INDUSTRY BENCHMARK</div>`;
-    const srcLive    = `<div class="kpi-source kpi-source-live" title="Live measurement from DataForSEO for your domain ${_domain}.">📡 DataForSEO live · <strong>${_domain}</strong></div>`;
+    const srcLive    = `<div class="kpi-source kpi-source-live" title="Derived from DataForSEO for ${_domain}. Connect Ads/GA4 for account-truth ROAS.">📡 DataForSEO derived · <strong>${_domain}</strong></div>`;
     const srcIndLine = `<div class="kpi-source kpi-source-ind"  title="Broad industry benchmark for ${industry?.name || 'your industry'} — not your data, not a specific competitor.">🏷️ Industry benchmark · <strong>${industry?.name || 'your industry'}</strong></div>`;
 
     // CTR card
@@ -3884,9 +4198,16 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 // (buildCompetitors/renderCompetitorCards/buildCompMonitor/buildCompCard + backlink helpers + generateBlogMonitor/generatePageResponse/pageTrackerCounterAd; attached to window there).
 
 // ===== BUILD CAMPAIGNS =====
+function _igCompInitials(name) {
+  if (!name) return '?';
+  return String(name).split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+}
+
 function buildCampaigns() {
   const wrap = document.getElementById('campaignsWrap');
   if (!wrap) return;
+  const _igEnd = _igBeginLegacyPanelBuild('campaigns');
+  try {
   if (!analysisData) {
     wrap.innerHTML = `
       <div style="text-align:center; padding:60px 24px">
@@ -4021,24 +4342,34 @@ function buildCampaigns() {
   // ── Counter-campaign target banner (set when user clicks "Launch counter-campaign" in competitor modal) ──
   const _ct = window._counterTarget;
   const _ctFresh = _ct && (Date.now() - (_ct.at || 0) < 30 * 60 * 1000); // valid for 30 min
+  const _ctComp = _ctFresh ? (competitors.find((c) => c.name === _ct.name) || {}) : null;
+  const _ctLogo = _ctFresh ? (_ct.logo || _ctComp?.logo || _igCompInitials(_ct.name)) : '';
+  const _ctUrl = _ctFresh ? (_ct.url || _ctComp?.url || _ctComp?.domain || '') : '';
+  const _ctRoas = _ctFresh ? (_ct.roas || _ctComp?.roas || '—') : '';
+  const _ctCtr = _ctFresh ? (_ct.ctr || _ctComp?.ctr || '—') : '';
+  const _ctTraffic = _ctFresh ? (_ct.traffic || _ctComp?.traffic || '—') : '';
+  const _ctAdSpend = _ctFresh ? (_ct.adSpend || _ctComp?.adSpend || '—') : '';
+  const _ctTopChannel = _ctFresh
+    ? (_ct.topChannel || (_ctComp?.campaigns && _ctComp.campaigns[0]?.channel) || '—')
+    : '';
   const counterBanner = _ctFresh ? `
     <div class="counter-banner" id="counterTargetBanner">
       <div class="counter-banner-strip">
         <span class="counter-banner-pulse"></span>
         <span class="counter-banner-eyebrow">⚔️ COUNTER-CAMPAIGN TARGET</span>
-        <span class="counter-banner-threat counter-banner-threat-${(_ct.threatLevel||'medium').toLowerCase()}">${(_ct.threatLevel||'medium').toUpperCase()} THREAT</span>
+        <span class="counter-banner-threat counter-banner-threat-${(_ct.threatLevel || _ctComp?.threatLevel || 'medium').toLowerCase()}">${(_ct.threatLevel || _ctComp?.threatLevel || 'medium').toUpperCase()} THREAT</span>
       </div>
       <div class="counter-banner-main">
-        <div class="counter-banner-avatar">${_ct.logo}</div>
+        <div class="counter-banner-avatar" aria-hidden="true">${_ctLogo}</div>
         <div class="counter-banner-body">
-          <div class="counter-banner-title">You are launching a campaign <em>against</em> <strong>${_ct.name}</strong> <span class="counter-banner-url">(${_ct.url || 'unknown domain'})</span></div>
-          ${_ct.positioning ? `<div class="counter-banner-pos">📍 Their positioning: <em>${_ct.positioning}</em></div>` : ''}
+          <div class="counter-banner-title">You are launching a campaign <em>against</em> <strong>${_ct.name}</strong> <span class="counter-banner-url">(${_ctUrl || 'unknown domain'})</span></div>
+          ${(_ct.positioning || _ctComp?.positioning) ? `<div class="counter-banner-pos">📍 Their positioning: <em>${_ct.positioning || _ctComp.positioning}</em></div>` : ''}
           <div class="counter-banner-stats">
-            <span title="Their estimated Return on Ad Spend">ROAS <strong>${_ct.roas || '—'}×</strong></span>
-            <span title="Their estimated Click-Through Rate">CTR <strong>${_ct.ctr || '—'}</strong></span>
-            <span title="Their estimated monthly traffic">Traffic <strong>${_ct.traffic || '—'}</strong></span>
-            <span title="Their estimated monthly ad spend">Spend <strong>${_ct.adSpend || '—'}</strong></span>
-            <span title="Their dominant channel — the one we will hit hardest">Top channel <strong>${_ct.topChannel}</strong></span>
+            <span title="Their estimated Return on Ad Spend">ROAS <strong>${_ctRoas}×</strong></span>
+            <span title="Their estimated Click-Through Rate">CTR <strong>${_ctCtr}</strong></span>
+            <span title="Their estimated monthly traffic">Traffic <strong>${_ctTraffic}</strong></span>
+            <span title="Their estimated monthly ad spend">Spend <strong>${_ctAdSpend}</strong></span>
+            <span title="Their dominant channel — the one we will hit hardest">Top channel <strong>${_ctTopChannel}</strong></span>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
@@ -4074,10 +4405,10 @@ function buildCampaigns() {
         </div>
       </div>
       <div class="camp-kpis">
-        <div><div class="camp-kpi-val" style="color:var(--teal)">${projROAS}×</div><div class="camp-kpi-lbl">Projected ROAS</div></div>
-        <div><div class="camp-kpi-val" style="color:#10B981">-35%</div><div class="camp-kpi-lbl">CPA Reduction</div></div>
-        <div><div class="camp-kpi-val" style="color:#F59E0B">+25%</div><div class="camp-kpi-lbl">Conversion Lift</div></div>
-        <div><div class="camp-kpi-val" style="color:white">${campaignRecs.length}</div><div class="camp-kpi-lbl">Campaigns Ready</div></div>
+        <div><div class="camp-kpi-val camp-kpi-val--roas">${projROAS}×</div><div class="camp-kpi-lbl">Projected ROAS</div></div>
+        <div><div class="camp-kpi-val camp-kpi-val--cpa">-35%</div><div class="camp-kpi-lbl">CPA Reduction</div></div>
+        <div><div class="camp-kpi-val camp-kpi-val--lift">+25%</div><div class="camp-kpi-lbl">Conversion Lift</div></div>
+        <div><div class="camp-kpi-val camp-kpi-val--count">${campaignRecs.length}</div><div class="camp-kpi-lbl">Campaigns Ready</div></div>
       </div>
     </div>
     ${audiencePanel}
@@ -4126,7 +4457,7 @@ function buildCampaigns() {
       <div class="data-table-card" style="margin-bottom:24px;background:linear-gradient(135deg,#F8FAFF,#EFF6FF);border:1.5px solid #BFDBFE">
         <div class="dtc-header">
           <h3 style="color:#1D4ED8">✍️ InfoGenie Improved Ads</h3>
-          <span class="atag" style="background:#1D4ED8">${allAds.length} Ready-to-Use</span>
+          <span class="atag atag-solid atag-solid--blue">${allAds.length} Ready-to-Use</span>
         </div>
         <p style="font-size:0.73rem;color:#3B82F6;margin:0 0 16px 0;line-height:1.5;max-width:640px">AI-refined versions of your competitors' top ads · Copy to clipboard or send straight to the Creative Studio for launch.</p>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
@@ -4139,7 +4470,7 @@ function buildCampaigns() {
     <div class="data-table-card" style="margin-bottom:24px;background:linear-gradient(135deg,#FEFBFF,#F3E8FF);border:1.5px solid #DDD6FE">
       <div class="dtc-header">
         <h3 style="color:#5B21B6">🧪 A/B Test Manager</h3>
-        <span class="atag" style="background:#7C3AED">${(window._abTests||[]).length} Tests Running</span>
+        <span class="atag atag-solid atag-solid--purple">${(window._abTests||[]).length} Tests Running</span>
       </div>
       <p style="font-size:0.8rem;color:#5B21B6;margin:0 0 16px 0">Set up split tests between two campaign variants to measure which delivers better ROAS in your live environment.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -4227,7 +4558,7 @@ function buildCampaigns() {
       return `<div class="data-table-card" id="launched-campaigns-section" style="margin-bottom:24px;border:1.5px solid #00C9C8">
         <div class="dtc-header">
           <h3 style="color:#0A1628">🚀 Launched Campaigns</h3>
-          <span class="atag" style="background:linear-gradient(135deg,#00C9C8,#0066FF)">${(window._launchedCampaigns||[]).length} Live</span>
+          <span class="atag atag-solid atag-solid--teal">${(window._launchedCampaigns||[]).length} Live</span>
         </div>
         <div class="dtc-flush" style="display:flex;flex-direction:column;gap:14px;padding:14px">
           ${(window._launchedCampaigns||[]).map((c, ci) => {
@@ -4401,6 +4732,9 @@ function buildCampaigns() {
       </div>
     </div>
   `;
+  } finally {
+    if (_igEnd) _igEnd();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -5020,7 +5354,329 @@ window.openViewCampaignModal = function(record) {
 // BUILD INTELLIGENCE HUB → moved to public/js/ig_compete.js
 // (buildIntelligence/exportIntelligenceReport/_loadJsPDF/openExclusiveModal/closeExclusiveModal; attached to window there).
 // ===================================================
-// ── Battle Plan + Full Attack Plan modal moved to public/js/ig_compete.js (switchBattlePlanComp/buildBattlePlan/bp*/openFullAttackPlanModal/renderAttackPlan; attached to window there).
+// ── Battle Plan action handlers (React panel calls window.bp* / openFullAttackPlanModal).
+//    ig_compete.js was never shipped — wire them here so Execute / Launch buttons work.
+
+function _bpGet(compIdx) {
+  const cached = window._bpCache && window._bpCache[compIdx];
+  if (cached) return cached;
+  const comp = analysisData && analysisData.competitors && analysisData.competitors[compIdx];
+  if (!comp) return null;
+  return {
+    name: comp.name || 'Competitor',
+    url: comp.url || comp.domain || '',
+    domain: comp.domain || comp.url || '',
+    roas: comp.roas,
+    ctr: comp.ctr,
+    traffic: comp.traffic,
+    adSpend: comp.adSpend,
+    threatLevel: comp.threatLevel,
+    positioning: comp.positioning,
+    logo: comp.logo,
+    channel: comp.topChannel || (comp.campaigns && comp.campaigns[0] && comp.campaigns[0].channel) || null,
+    keywords: (comp.topKeywords || ['competitor brand alternative', 'industry best tool', 'vs competitor']).slice(0, 8),
+    campaigns: (comp.campaigns || []).slice(0, 4),
+    audiences: (comp.audiences || [{ label: 'High-Intent Buyers', pct: 38 }]).slice(0, 3),
+    suggestions: (comp.suggestions || []).slice(0, 4),
+    adCopy: comp.adCopy || null,
+  };
+}
+
+function _bpSafe(s, max) {
+  return String(s == null ? '' : s).replace(/[<>]/g, '').slice(0, max || 200);
+}
+
+function _bpPlatform(ch) {
+  const c = String(ch || '').toLowerCase();
+  if (c.includes('google') || c.includes('search')) return 'Google Ads';
+  if (c.includes('tiktok')) return 'TikTok Ads';
+  if (c.includes('linkedin')) return 'LinkedIn Ads';
+  if (c.includes('youtube')) return 'YouTube';
+  return 'Meta Ads';
+}
+
+function _bpOpenCounter(compIdx, itemIdx, kind) {
+  const entry = _bpGet(compIdx);
+  if (!entry) {
+    showToast('⚠️ Run an analysis first — enter your website on the home page');
+    navigateTo('home');
+    return;
+  }
+  const compName = _bpSafe(entry.name, 80);
+  let platform = _bpPlatform(entry.channel);
+  let headline = '';
+  let body = '';
+  let angle = 'Direct Response';
+  let weakness = '';
+
+  if (kind === 'weakness' || kind === 'priority') {
+    const s = entry.suggestions[itemIdx] || entry.suggestions[0] || 'Exploit competitor weakness';
+    weakness = _bpSafe(s, 200);
+    angle = 'Weakness Exploit';
+    headline = 'Beat ' + compName + ': ' + _bpSafe(s, 55);
+    body = 'Counter-campaign vs ' + compName + '. Exploit: ' + weakness + '. Channel: ' + platform + '.';
+  } else if (kind === 'campaign') {
+    const camp = entry.campaigns[itemIdx] || entry.campaigns[0] || {};
+    platform = _bpPlatform(camp.channel) || platform;
+    angle = 'Campaign Counter';
+    const cname = _bpSafe(camp.name, 80) || 'their campaign';
+    headline = 'Counter: ' + cname;
+    body = 'Outbid ' + compName + ' on ' + (camp.channel || platform) + ' with superior creative.';
+    weakness = body;
+  } else {
+    angle = 'Quick Win';
+    weakness = entry.suggestions[0] || ('Fast counter-move vs ' + compName);
+    headline = 'Quick win vs ' + compName;
+    body = _bpSafe(weakness, 300);
+  }
+
+  const camp = {
+    name: 'Counter ' + compName + ' — ' + angle,
+    platform,
+    budget: '$2,000/mo',
+    description: body,
+    objective: 'Counter-Position vs. ' + compName,
+    tags: [platform, 'Counter-Campaign', compName],
+    estROAS: '3.2',
+    estCTR: '4.5%',
+    estCPA: '$32',
+    seedHeadline: headline,
+    seedBody: body,
+    seedCTA: 'Get Started',
+  };
+
+  window._counterTarget = {
+    name: compName,
+    weakness,
+    counterAngle: angle,
+    source: 'battleplan',
+    at: Date.now(),
+    url: entry.url || entry.domain || '',
+    roas: entry.roas,
+    ctr: entry.ctr,
+    traffic: entry.traffic,
+    adSpend: entry.adSpend,
+    topChannel: entry.channel || (entry.campaigns && entry.campaigns[0] && entry.campaigns[0].channel) || '',
+    threatLevel: entry.threatLevel || 'medium',
+  };
+
+  showToast('⚔️ Opening counter-campaign launcher vs ' + compName + '…');
+  try {
+    buildLaunchModal(camp, 0);
+  } catch (e) {
+    console.error('[bp] buildLaunchModal failed:', e);
+    showToast('⚠️ Could not open launcher: ' + (e && e.message || e));
+  }
+}
+
+window.bpLC = function(compIdx, itemIdx) { _bpOpenCounter(compIdx, itemIdx || 0, 'priority'); };
+window.bpCC = function(compIdx, itemIdx) { _bpOpenCounter(compIdx, itemIdx || 0, 'campaign'); };
+window.bpQW = function(compIdx, itemIdx) { _bpOpenCounter(compIdx, itemIdx || 0, 'quickwin'); };
+
+window.bpCS = function(compIdx, itemIdx) {
+  const entry = _bpGet(compIdx);
+  if (!entry) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+  const copy = entry.adCopy && entry.adCopy[itemIdx];
+  const headline = (copy && copy.headline) || ('Beat ' + entry.name + ': counter creative');
+  const body = (copy && copy.body) || (entry.suggestions[itemIdx] || entry.suggestions[0] || '');
+  const platform = entry.channel || 'Meta Ads';
+  if (typeof openAdInCreativeStudio === 'function') {
+    openAdInCreativeStudio(headline, body, platform);
+  } else {
+    showToast('📝 Opening Creative Studio…');
+    navigateTo('smart-creative');
+  }
+};
+
+window.bpGA = function(compIdx, itemIdx) {
+  const entry = _bpGet(compIdx);
+  if (!entry) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+  const kw = entry.keywords[itemIdx] || entry.keywords[0] || 'competitor alternative';
+  const compName = _bpSafe(entry.name, 80);
+  const camp = {
+    name: 'Keyword Attack: "' + _bpSafe(kw, 50) + '" vs ' + compName,
+    platform: 'Google Ads',
+    budget: '$1,500/mo',
+    description: 'Bid on "' + kw + '" to steal traffic from ' + compName + '.',
+    objective: 'Keyword conquest',
+    tags: ['Google Ads', 'Keyword Attack', compName],
+    estROAS: '3.5', estCTR: '5.2%', estCPA: '$28',
+    seedHeadline: kw + ' — better than ' + compName,
+    seedBody: 'Why switch from ' + compName + '? ' + (entry.suggestions[0] || ''),
+    seedCTA: 'Compare Now',
+  };
+  window._counterTarget = { name: compName, weakness: kw, source: 'battleplan-kw', at: Date.now() };
+  showToast('🔑 Building Google Ads brief for "' + kw + '"…');
+  buildLaunchModal(camp, 0);
+};
+
+window.bpBC = function(compIdx, itemIdx) {
+  const entry = _bpGet(compIdx);
+  if (!entry) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+  const kw = entry.keywords[itemIdx] || entry.keywords[0] || entry.suggestions[0] || 'competitor comparison';
+  try {
+    sessionStorage.setItem('ig-content-prefill', JSON.stringify({
+      topic: 'Content to outrank ' + entry.name + ': ' + kw,
+      competitor: entry.name,
+      keyword: kw,
+    }));
+  } catch (_) {}
+  showToast('📝 Opening Content tools — pre-filled for "' + kw + '"');
+  navigateTo('content-modes');
+};
+
+window.bpTA = function(compIdx, itemIdx) {
+  const entry = _bpGet(compIdx);
+  if (!entry) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+  const aud = entry.audiences[itemIdx] || entry.audiences[0] || { label: 'High-Intent Buyers' };
+  const label = aud.label || 'High-Intent Buyers';
+  const platform = _bpPlatform(entry.channel);
+  const compName = _bpSafe(entry.name, 80);
+  const camp = {
+    name: 'Target: ' + label + ' (vs ' + compName + ')',
+    platform,
+    budget: '$2,000/mo',
+    description: 'Capture the "' + label + '" segment ' + compName + ' underserves.',
+    tags: [platform, 'Audience Gap', compName],
+    estROAS: '3.4', estCTR: '4.0%', estCPA: '$30',
+    seedHeadline: label + ' — choose us over ' + compName,
+    seedBody: entry.suggestions[0] || '',
+    seedCTA: 'Start Free',
+  };
+  showToast('🎯 Targeting "' + label + '" vs ' + compName + '…');
+  buildLaunchModal(camp, 0);
+};
+
+function _apCloseModal() {
+  const m = document.getElementById('attackPlanModal');
+  if (m) { m.classList.add('hidden'); m.style.display = 'none'; }
+}
+
+function _apSwitchTab(tab) {
+  const body = document.getElementById('attackPlanModalBody');
+  if (!body || !window._apPlanData) return;
+  const plan = window._apPlanData;
+  document.querySelectorAll('#apTabBar button').forEach(btn => {
+    const on = btn.getAttribute('data-tab') === tab;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('data-active', on ? 'true' : 'false');
+  });
+  let html = '';
+  if (tab === 'overview') {
+    html = '<div style="padding:20px 24px;color:#0F172A;line-height:1.6">'
+      + '<p style="font-size:0.95rem;margin:0 0 16px">' + _bpSafe(plan.executiveSummary || 'Strategic attack plan generated.', 800) + '</p>'
+      + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">'
+      + '<div style="background:#F0FDF4;border-radius:10px;padding:14px;text-align:center"><div style="font-size:1.4rem;font-weight:800;color:#059669">' + (plan.opportunityScore || '—') + '</div><div style="font-size:0.7rem;color:#64748B">Opportunity</div></div>'
+      + '<div style="background:#EFF6FF;border-radius:10px;padding:14px;text-align:center"><div style="font-size:1.4rem;font-weight:800;color:#0066FF">' + _bpSafe(plan.estimatedROILift || '—', 12) + '</div><div style="font-size:0.7rem;color:#64748B">ROI lift</div></div>'
+      + '<div style="background:#FEF3C7;border-radius:10px;padding:14px;text-align:center"><div style="font-size:1.4rem;font-weight:800;color:#D97706">' + _bpSafe(plan.timeToResults || '—', 20) + '</div><div style="font-size:0.7rem;color:#64748B">Time to results</div></div>'
+      + '</div></div>';
+  } else if (tab === 'weekly') {
+    html = '<div style="padding:20px 24px">' + (plan.weeklyPlan || []).map(w =>
+      '<div style="border:1px solid #E2E8F0;border-radius:10px;padding:14px;margin-bottom:10px">'
+      + '<div style="font-weight:800;color:#0F172A;margin-bottom:4px">' + _bpSafe(w.week, 40) + ' — ' + _bpSafe(w.focus, 80) + '</div>'
+      + '<ul style="margin:8px 0 0 18px;color:#475569;font-size:0.85rem">' + (w.actions || []).map(a => '<li>' + _bpSafe(a, 120) + '</li>').join('') + '</ul>'
+      + '<div style="font-size:0.75rem;color:#64748B;margin-top:8px">KPI: ' + _bpSafe(w.kpi, 80) + '</div></div>'
+    ).join('') + '</div>';
+  } else if (tab === 'keywords') {
+    html = '<div style="padding:20px 24px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:0.82rem">'
+      + '<tr style="background:#F8FAFC"><th style="text-align:left;padding:8px">Keyword</th><th>Volume</th><th>CPC</th><th>Priority</th></tr>'
+      + (plan.keywordTargets || []).map(k =>
+        '<tr><td style="padding:8px;border-top:1px solid #E2E8F0">' + _bpSafe(k.keyword, 60) + '</td>'
+        + '<td style="text-align:center;border-top:1px solid #E2E8F0">' + _bpSafe(k.volume, 20) + '</td>'
+        + '<td style="text-align:center;border-top:1px solid #E2E8F0">' + _bpSafe(k.cpc, 12) + '</td>'
+        + '<td style="text-align:center;border-top:1px solid #E2E8F0;font-weight:700">' + _bpSafe(k.priority, 12) + '</td></tr>'
+      ).join('') + '</table></div>';
+  } else {
+    html = '<div style="padding:20px 24px">' + (plan.criticalWins || []).map(w =>
+      '<div style="border-left:4px solid #10B981;padding:10px 14px;margin-bottom:10px;background:#F0FDF4;border-radius:0 8px 8px 0">'
+      + '<div style="font-weight:700;color:#0F172A">' + _bpSafe(w.win, 120) + '</div>'
+      + '<div style="font-size:0.75rem;color:#64748B;margin-top:4px">Impact: ' + _bpSafe(w.impact, 20) + ' · ' + _bpSafe(w.timeframe, 30) + '</div></div>'
+    ).join('') + '</div>';
+  }
+  body.innerHTML = html;
+}
+
+function renderAttackPlan(plan, competitor) {
+  let modal = document.getElementById('attackPlanModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'attackPlanModal';
+    modal.className = 'modal-backdrop';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:20px';
+    modal.onclick = (e) => { if (e.target === modal) _apCloseModal(); };
+    document.body.appendChild(modal);
+  }
+  window._apPlanData = plan;
+  modal.innerHTML = '<div style="background:white;border-radius:16px;max-width:720px;width:100%;max-height:90vh;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4)">'
+    + '<div style="background:linear-gradient(135deg,#0066FF,#00C9C8);padding:20px 24px;color:white;display:flex;justify-content:space-between;align-items:flex-start">'
+    + '<div><div style="font-weight:800;font-size:1.1rem">⚔️ Full Attack Plan vs ' + _bpSafe(competitor, 60) + '</div>'
+    + '<div style="font-size:0.78rem;opacity:.85;margin-top:4px">8-week strategy · keywords · channels · quick wins</div></div>'
+    + '<button type="button" onclick="window._apCloseModal && window._apCloseModal()" style="background:rgba(255,255,255,.2);border:none;width:32px;height:32px;border-radius:8px;color:white;font-size:1rem;cursor:pointer">✕</button></div>'
+    + '<div id="apTabBar" style="display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid #E2E8F0">'
+    + ['overview','weekly','keywords','wins'].map((t, i) =>
+      '<button type="button" data-tab="' + t + '" class="' + (i === 0 ? 'active' : '') + '" data-active="' + (i === 0 ? 'true' : 'false') + '" onclick="window._apSwitchTab && window._apSwitchTab(\'' + t + '\')" style="padding:8px 14px;border-radius:8px;border:1px solid transparent;font-size:0.78rem;font-weight:700;cursor:pointer">'
+      + (t === 'overview' ? 'Overview' : t === 'weekly' ? '8-Week Plan' : t === 'keywords' ? 'Keywords' : 'Quick Wins') + '</button>'
+    ).join('')
+    + '</div><div id="attackPlanModalBody" style="max-height:60vh;overflow:auto"></div>'
+    + '<div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;gap:10px;justify-content:flex-end">'
+    + '<button type="button" onclick="window._apCloseModal && window._apCloseModal()" style="padding:10px 18px;background:#F1F5F9;border:none;border-radius:8px;font-weight:600;cursor:pointer">Close</button>'
+    + '<button type="button" onclick="window.bpLC && window.bpLC(window._apCompIdx||0,0);window._apCloseModal && window._apCloseModal()" style="padding:10px 18px;background:linear-gradient(135deg,#EF4444,#DC2626);border:none;border-radius:8px;color:white;font-weight:700;cursor:pointer">⚡ Execute Top Priority</button>'
+    + '</div></div>';
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  _apSwitchTab('overview');
+}
+
+window._apCloseModal = _apCloseModal;
+window._apSwitchTab = _apSwitchTab;
+window.renderAttackPlan = renderAttackPlan;
+
+window.openFullAttackPlanModal = function(compIdx) {
+  const comps = (analysisData && analysisData.competitors) || [];
+  const comp = comps[compIdx] || comps[0];
+  if (!comp) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+  window._apCompIdx = compIdx;
+  const myDomain = (analysisData && analysisData.url) || 'yourdomain.com';
+  const industry = (analysisData && analysisData.industry && analysisData.industry.name) || 'your industry';
+  showToast('⚔️ Generating Full Attack Plan vs ' + (comp.name || 'competitor') + '…');
+  let modal = document.getElementById('attackPlanModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'attackPlanModal';
+    modal.className = 'modal-backdrop';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);padding:20px';
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  modal.innerHTML = '<div style="background:white;border-radius:16px;padding:40px;text-align:center;max-width:400px"><div style="font-size:2rem;margin-bottom:12px">⏳</div><div style="font-weight:700;color:#0F172A">Building attack plan…</div><div style="font-size:0.85rem;color:#64748B;margin-top:8px">Usually 15–30 seconds</div></div>';
+  fetch('/api/ai-attack-plan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      myDomain,
+      competitor: comp.name,
+      industry,
+      competitorData: {
+        traffic: comp.traffic || comp.trafficMo,
+        adSpend: comp.adSpend,
+        channels: comp.topChannel ? [comp.topChannel] : [],
+        weaknesses: comp.suggestions || [],
+      },
+      prefillKeywords: (comp.topKeywords || []).slice(0, 5),
+    }),
+  })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('Attack plan request failed')))
+    .then(plan => {
+      renderAttackPlan(plan, comp.name);
+      showToast('✅ Attack plan ready vs ' + comp.name);
+    })
+    .catch(err => {
+      console.error('[openFullAttackPlanModal]', err);
+      _apCloseModal();
+      showToast('⚠️ Could not generate attack plan — try again or use Execute Top Priority');
+    });
+};
 
 function closePlanModal() {
   const modal = document.getElementById('planModal');
@@ -6332,6 +6988,8 @@ function closeCampLaunchRichModal() {
   if (!modal) return;
   modal.classList.add('hidden');
   modal.removeAttribute('style');
+  document.documentElement.style.overflow = '';
+  _igRestoreFromBody(modal);
 }
 
 function confirmCampLaunch(name, platform, budget) {
@@ -8370,95 +9028,11 @@ async function launchReengage(dryRun) {
 // ── Populate "Est. Ad Spend / Mo" column with real Meta Ad Library counts + transparent $ range estimate
 
 window._renderJourneyStages = function() {
-  const host = document.getElementById('dashLivePanels');
-  if (!host) return;
-  // Avoid duplicating if the panel is already there
-  if (document.getElementById('journeyStagesPanel')) return;
-  const stages = [
-    { num: 1, key: 'express', tag: 'Stage 1', title: 'Express',
-      desc: 'Define your unique brand position with deep audience insight.',
-      features: [
-        { icon: '⚡', name: 'Intelligence Hub',  view: 'intelligence' },
-        { icon: '⚔️', name: 'Battle Plan',       view: 'battleplan' },
-        { icon: '🎯', name: 'ICP Studio',        view: 'icp-studio' },
-        { icon: '🏆', name: 'Competitors',       view: 'competitors' },
-        { icon: '🖼️', name: 'Brand Assets',      view: 'brand-assets' },
-      ] },
-    { num: 2, key: 'tailor', tag: 'Stage 2', title: 'Tailor',
-      desc: 'Make every message personal with intent + behavioural signals.',
-      features: [
-        { icon: '🧭', name: 'Intent Map',        view: 'intent-map' },
-        { icon: '🗺️', name: 'Keyword Map',       view: 'keyword-map' },
-        { icon: '🎯', name: 'Audience',          view: 'audience' },
-        { icon: '🎨', name: 'AI Creative',       view: 'creative' },
-        { icon: '🌐', name: 'Landing Builder',   view: 'landing-builder' },
-      ] },
-    { num: 3, key: 'amplify', tag: 'Stage 3', title: 'Amplify',
-      desc: 'Distribute through diversified channels and trusted voices.',
-      features: [
-        { icon: '📣', name: 'Advertise Hub',     view: 'advertise' },
-        { icon: '👥', name: 'Lookalike Audiences', view: 'lookalike' },
-        { icon: '🤖', name: 'AI Visibility',     view: 'search-intel' },
-        { icon: '🚀', name: 'AutoSEO Pro',       view: 'autoseo' },
-        { icon: '🧑‍🎤', name: 'AI UGC Avatars',  view: 'ugc-avatars' },
-        { icon: '📅', name: 'Social Calendar',   view: 'social' },
-      ] },
-    { num: 4, key: 'evolve', tag: 'Stage 4', title: 'Evolve',
-      desc: 'Optimise in real time with feedback loops that compound growth.',
-      features: [
-        { icon: '🎯', name: 'Attribution & ROI', view: 'attribution' },
-        { icon: '💎', name: 'Blended Performance', view: 'blended-perf' },
-        { icon: '📈', name: 'KPI Tracker',       view: 'kpi-tracker' },
-        { icon: '🎯', name: 'Content Scorer',    view: 'contentscorer' },
-        { icon: '🎯', name: 'Action Center',     view: 'action-center' },
-        { icon: '🧪', name: 'CRO Lab',           view: 'cro-lab' },
-        { icon: '📡', name: 'GSC / GA4 Hub',     view: 'analytics-hub' },
-      ] },
-  ];
-  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s)=>String(s==null?'':s);
-  const stageCards = stages.map(s => `
-    <div class="journey-stage" data-stage="${s.key}">
-      <div class="journey-stage-head">
-        <div class="journey-stage-num">${s.num}</div>
-        <div>
-          <div class="journey-stage-tag">${esc(s.tag)}</div>
-          <div class="journey-stage-title">${esc(s.title)}</div>
-        </div>
-      </div>
-      <div class="journey-stage-desc">${esc(s.desc)}</div>
-      <div>
-        ${s.features.map(f => `
-          <a href="#" class="journey-feature" data-jump-view="${f.view}" title="Open ${esc(f.name)}">
-            <span class="jf-icon">${f.icon}</span>
-            <span class="jf-name">${esc(f.name)}</span>
-            <span class="jf-arrow">→</span>
-          </a>`).join('')}
-      </div>
-    </div>`).join('');
-  const panel = document.createElement('div');
-  panel.id = 'journeyStagesPanel';
-  panel.className = 'journey-wrap';
-  panel.innerHTML = `
-    <div class="journey-head">
-      <div>
-        <h3>Your Marketing Journey</h3>
-        <p>Every InfoGenie capability mapped to the four stages of modern marketing. Start at Express, evolve into Evolve — and let the loop compound.</p>
-      </div>
-      <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;opacity:.85;font-weight:700;background:rgba(255,255,255,.1);padding:6px 12px;border-radius:8px">Express → Tailor → Amplify → Evolve</div>
-    </div>
-    <div class="journey-grid">${stageCards}</div>`;
-  // Place ABOVE dashLivePanels so it shows just under the table but above
-  // the live ad-account widgets that load asynchronously
-  host.parentNode.insertBefore(panel, host);
-  // Wire jumps using the same nav-switch path the sidebar uses
-  panel.querySelectorAll('[data-jump-view]').forEach(el => {
-    el.addEventListener('click', (e) => {
-      e.preventDefault();
-      const view = el.getAttribute('data-jump-view');
-      const link = document.querySelector(`.nav-link[data-view="${view}"]`);
-      if (link) link.click();
-    });
-  });
+  // "Your Marketing Journey" panel removed from the dashboard.
+  try {
+    document.getElementById('journeyStagesPanel')?.remove();
+    document.querySelectorAll('.journey-wrap').forEach((el) => el.remove());
+  } catch (_) {}
 };
 
 // [moved] Content Optimisation Scorer (buildContentScorer + _cs* helpers) → public/js/ig_attribution_scorer.js
@@ -10082,7 +10656,7 @@ window._safeUrl = function(u) {
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
           <div>
             <div style="font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#A5B4FC;font-weight:700">YOUR AI TEAM</div>
-            <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">Eight AI executives, one team</h1>
+            <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">${(['Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve'][OFFICERS.length] || OFFICERS.length)} AI executives, one team</h1>
             <p style="margin:0;font-size:.92rem;color:#CBD5E1;max-width:720px">Each officer handles a function full-time. Click any role to open their office. Pick an avatar, assign tasks, run daily reports, and schedule cross-functional meetings — all minutes downloadable.</p>
           </div>
           <button id="aiTeamStatusPill" title="Click for full system status" style="display:inline-flex;align-items:center;gap:8px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.3);color:#fff;padding:8px 14px;border-radius:99px;font-size:.78rem;font-weight:700;cursor:pointer">
@@ -10458,7 +11032,7 @@ window._safeUrl = function(u) {
                     <div style="font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.85">Day ${d.day} · Lead: ${officerEmoji[d.officer]||''} ${_e(d.officer)}</div>
                     <div style="font-size:1.05rem;font-weight:800;margin-top:4px">${_e(d.title)}</div>
                   </div>
-                  <button data-pb-runday="${d.day}" title="Assign just this day's steps to officers" style="padding:7px 11px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:7px;font-weight:700;cursor:pointer;font-size:.72rem;white-space:nowrap">▶ Run Day ${d.day}</button>
+                  <button data-pb-runday="${d.day}" title="Assign just this day's steps to officers" style="padding:7px 11px;background:linear-gradient(135deg,#0f766e,#0284c7);border:none;color:#fff;border-radius:7px;font-weight:700;cursor:pointer;font-size:.72rem;white-space:nowrap;box-shadow:0 4px 12px rgba(15,118,110,.25)">▶ Run Day ${d.day}</button>
                 </div>
                 <div style="font-size:.78rem;opacity:.9;margin-top:6px;line-height:1.4">${_e(d.objective)}</div>
                 <div style="font-size:.7rem;opacity:.85;margin-top:6px">${dayDone}/${d.steps.length} steps done</div>
@@ -10952,11 +11526,19 @@ window._safeUrl = function(u) {
     const wrap = document.getElementById('view-ops-officer');
     if (!wrap) return;
     wrap.innerHTML = `
-      <div style="${_hdrCSS};background:linear-gradient(135deg,#7C2D12 0%,#9A3412 100%)">
-        <div style="font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#FED7AA;font-weight:700">🛠️ OPERATIONS OFFICER</div>
-        <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">Campaign QA, Assets &amp; Lead Hygiene</h1>
-        <p style="margin:0;font-size:.92rem;color:#FFEDD5;max-width:720px">Scans your live campaigns, brand assets, leads and goals for stale or broken items. Returns a weekly digest with a prioritised checklist.</p>
-      </div>
+      <section class="ops-officer-hero" aria-label="Operations Officer">
+        <div class="ops-officer-hero__aurora" aria-hidden="true"></div>
+        <div class="ops-officer-hero__grid" aria-hidden="true"></div>
+        <div class="ops-officer-hero__copy">
+          <div class="ops-officer-hero__eyebrow"><span class="ops-officer-hero__mark" aria-hidden="true"></span>Operations Officer</div>
+          <h1 class="ops-officer-hero__title">Campaign QA, Assets &amp; Lead Hygiene</h1>
+          <p class="ops-officer-hero__body">Scans your live campaigns, brand assets, leads and goals for stale or broken items. Returns a weekly digest with a prioritised checklist.</p>
+        </div>
+        <aside class="ops-officer-hero__aside ops-officer-hero__aside--scan">
+          <div class="ops-officer-hero__pulse"><span class="ops-officer-hero__pulse-dot" aria-hidden="true"></span>Live ops pulse</div>
+          <div class="ops-officer-hero__pulse-value">Scanning…</div>
+        </aside>
+      </section>
       <div style="max-width:1200px;margin:0 auto;padding:0 28px" id="opsOffBody">
         <div style="${_cardCSS};text-align:center;color:#64748B">⏳ Scanning your operations…</div>
       </div>`;
@@ -11089,10 +11671,30 @@ window._safeUrl = function(u) {
   }
   function getKeywords() {
     const d = window.analysisData || {};
-    // Primary: analysisData.keywords (populated by keyword explorer / SEO tools after a full analysis)
-    if (Array.isArray(d.keywords) && d.keywords.length) {
-      return d.keywords.map(k => typeof k === 'string' ? k : (k && (k.keyword || k.term))).filter(Boolean).slice(0, 12);
+    const seen = new Set();
+    const out = [];
+    const push = (raw) => {
+      const s = typeof raw === 'string' ? raw : (raw && (raw.keyword || raw.term)) || '';
+      const t = String(s || '').trim();
+      if (!t) return;
+      const key = t.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(t);
+    };
+    // Primary: analysisData.keywords (seeded at analyse time + enriched later)
+    if (Array.isArray(d.keywords)) d.keywords.forEach(push);
+    // Competitor topKeywords from the initial analysis / enrichment
+    if (Array.isArray(d.competitors)) {
+      d.competitors.forEach(c => {
+        if (Array.isArray(c && c.topKeywords)) c.topKeywords.forEach(push);
+      });
     }
+    // Industry seed terms for the analysed vertical (same industry only)
+    if (d.industry && Array.isArray(d.industry.keywords)) d.industry.keywords.forEach(push);
+    if (d.subNiche) push(d.subNiche);
+    if (d.companyProfile && d.companyProfile.subNiche) push(d.companyProfile.subNiche);
+    if (out.length) return out.slice(0, 12);
     // Fallback: Intent Map keywords (available after running the Keyword-Page Map tool)
     const im = window._intentMap;
     if (im && Array.isArray(im.keywords) && im.keywords.length) {
@@ -11120,7 +11722,10 @@ window._safeUrl = function(u) {
   }
 
   // Conservative — must be a recognisable label-like token, not embedded in unrelated phrasing.
-  const RE_BRAND   = /(^|[\s>_-])(brand|company|advertiser|target brand|business name|client name|competitor name)([\s<_:-]|$)/i;
+  // NOTE: do NOT match "client name" — Admin → Clients uses that label for a
+  // NEW client record. Treating it as a brand field auto-fills the DOM value
+  // without updating React state, so "+ Add Client" sees an empty name.
+  const RE_BRAND   = /(^|[\s>_-])(brand|company|advertiser|target brand|business name|competitor name)([\s<_:-]|$)/i;
   const RE_COUNTRY = /(^|[\s>_-])(country|countries|region|geo(graphy)?|market(s)?)([\s<_:-]|$)/i;
   const RE_KW      = /(^|[\s>_-])(keyword(s)?|search term(s)?|seed term(s)?|tracking term(s)?|monitoring term(s)?|topics? to|terms? to)([\s<_:-]|$)/i;
   // Hard skips — even if matched above, ignore these contexts.
@@ -11130,7 +11735,8 @@ window._safeUrl = function(u) {
     if (!input) return null;
     if (input.dataset && input.dataset.fae) return null;
     if (input.dataset && input.dataset.noAutofill) return null;
-    if (input.closest && input.closest('[data-no-autofill]')) return null;
+    if (input.dataset && input.dataset.igSkip !== undefined) return null;
+    if (input.closest && input.closest('[data-no-autofill], [data-ig-no-enhance]')) return null;
     const tag = (input.tagName || '').toLowerCase();
     const type = (input.type || '').toLowerCase();
     if (tag !== 'input' && tag !== 'select' && tag !== 'textarea') return null;
@@ -11149,11 +11755,27 @@ window._safeUrl = function(u) {
     return null;
   }
 
+  // React controlled inputs ignore bare `el.value = …`. Use the native
+  // prototype setter so React's onChange / state stay in sync (same pattern
+  // as ig_field_enhancer.js).
+  const _nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')
+    && Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+  const _nativeTextareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')
+    && Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+  function _faeSetValue(el, value) {
+    const s = String(value == null ? '' : value);
+    const setter = el.tagName === 'TEXTAREA' ? _nativeTextareaSetter : _nativeInputSetter;
+    if (setter) setter.call(el, s);
+    else el.value = s;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
   function makeBrandPicker(input) {
     const brand = getBrand();
     const comps = getCompetitors();
     if (!brand && comps.length === 0) return; // nothing to offer
-    if (!input.value && brand) input.value = brand;
+    if (!input.value && brand) _faeSetValue(input, brand);
     const sel = document.createElement('select');
     sel.dataset.fae = '1'; // tag generated picker so enhance() never re-processes it (prevents observer feedback loop)
     sel.style.cssText = 'width:100%;padding:6px 9px;border:1.5px solid #D1D5DB;border-radius:6px;font-size:0.76rem;background:#F0FDF4;margin-bottom:5px;box-sizing:border-box;color:#065F46;font-weight:600';
@@ -11161,7 +11783,7 @@ window._safeUrl = function(u) {
       '<option value="">— Pick from your analysis (or type manually below) —</option>' +
       (brand ? '<option value="' + _esc(brand) + '">' + _esc(brand) + ' (your brand)</option>' : '') +
       comps.map(n => '<option value="' + _esc(n) + '">' + _esc(n) + '</option>').join('');
-    sel.addEventListener('change', () => { if (sel.value) { input.value = sel.value; input.dispatchEvent(new Event('change', {bubbles:true})); input.dispatchEvent(new Event('input', {bubbles:true})); } });
+    sel.addEventListener('change', () => { if (sel.value) _faeSetValue(input, sel.value); });
     input.parentElement.insertBefore(sel, input);
   }
 

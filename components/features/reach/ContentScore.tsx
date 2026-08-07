@@ -183,7 +183,7 @@ export default function ContentScore() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -294,7 +294,7 @@ export default function ContentScore() {
               disabled={status === "loading"}
               style={{
                 padding: "9px 20px",
-                background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+                background: "linear-gradient(135deg,#0f766e,#0284c7)",
                 border: "none",
                 borderRadius: 6,
                 color: "#fff",

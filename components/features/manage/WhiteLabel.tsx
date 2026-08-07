@@ -6,7 +6,7 @@
 // (`GET`/`PUT`/`DELETE /api/white-label/profile`) via lib/api. Preserves the
 // live-preview export links and 256KB logo upload behaviour.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, startTransition } from "react";
 import { apiGet, apiPut, apiDelete } from "@/lib/api";
 
 interface Brand {
@@ -66,14 +66,21 @@ export default function WhiteLabel() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const j = await apiGet<ProfileResult>("/api/white-label/profile");
-      if (cancelled) return;
-      if (j.ok && j.brand) apply(j.brand);
-      else setLoadError(j.error || "unknown");
-    })();
+    // Defer fetch + multi-field hydrate off the first paint so IGDiag doesn't
+    // see panel mount + profile apply as a main-thread stall.
+    const t = window.setTimeout(() => {
+      startTransition(() => {
+        void (async () => {
+          const j = await apiGet<ProfileResult>("/api/white-label/profile");
+          if (cancelled) return;
+          if (j.ok && j.brand) apply(j.brand);
+          else setLoadError(j.error || "unknown");
+        })();
+      });
+    }, 0);
     return () => {
       cancelled = true;
+      window.clearTimeout(t);
     };
   }, []);
 
@@ -131,7 +138,7 @@ export default function WhiteLabel() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

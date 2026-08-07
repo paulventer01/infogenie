@@ -49,7 +49,6 @@ const MAX_ATTEMPTS = 30;
 
 export default function EcomVideo() {
   const [personas, setPersonas] = useState<Persona[]>([]);
-  const [loadError, setLoadError] = useState(false);
 
   const [product, setProduct] = useState("");
   const [desc, setDesc] = useState("");
@@ -70,13 +69,17 @@ export default function EcomVideo() {
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    apiGet<{ ok: boolean; personas?: Persona[] }>("/api/personas").then((r) => {
-      if (!r.ok) {
-        setLoadError(true);
-        return;
-      }
-      setPersonas((r.personas || []).filter((p) => p.is_active));
-    });
+    // Personas are optional for storyboard generation — never block the whole
+    // panel on this fetch (historically /api/personas omitted ok:true and the
+    // UI showed a hard "Failed to load." for an empty list).
+    apiGet<{ ok?: boolean; personas?: Persona[] }>("/api/personas")
+      .then((r) => {
+        const list = Array.isArray(r.personas) ? r.personas : [];
+        setPersonas(list.filter((p) => p.is_active !== false));
+      })
+      .catch(() => {
+        setPersonas([]);
+      });
     return () => {
       if (pollRef.current) clearTimeout(pollRef.current);
     };
@@ -105,7 +108,7 @@ export default function EcomVideo() {
       persona_name: persona,
     });
     setLoading(false);
-    if (!r.ok) {
+    if (r.ok === false || (r.ok !== true && !r.storyboard)) {
       setStatus({ type: "error", text: r.error || "Generation failed." });
       return;
     }
@@ -193,7 +196,7 @@ export default function EcomVideo() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -214,9 +217,6 @@ export default function EcomVideo() {
       </div>
 
       <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
-        {loadError ? (
-          <div className="ig-alert ig-alert-error">Failed to load.</div>
-        ) : (
           <div className="ig-two-col" style={{ gap: 24 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="ig-card">
@@ -709,7 +709,6 @@ export default function EcomVideo() {
               )}
             </div>
           </div>
-        )}
       </div>
     </div>
   );

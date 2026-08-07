@@ -58,7 +58,13 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   // the replay bundle. playbook-7day's builder lives inline in app.js (nothing
   // to drop), so its suppression relies solely on stripping the `#view-*` div.
   { view: "flywheel", legacyModule: "ig_growth_flywheel.js" },
+  { view: "capacity", legacyModule: null },
+  { view: "canonical-metrics", legacyModule: null },
   { view: "playbook-7day", legacyModule: null },
+  // Registry panels that were missing from this list (SpaRouter legacy race risk)
+  { view: "aeo-optimizer", legacyModule: null },
+  { view: "autoclaw", legacyModule: null },
+  { view: "lead-intelligence", legacyModule: null },
   // ── Remainder of the Manage group (Phase 3 batch 2) ──────────────────────
   // Every panel below either lives inline in app.js or in a SHARED public/js
   // module (ig_manage_pack.js, ig_reach_automation.js, ig_mentions_gaps.js,
@@ -71,11 +77,19 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "new-project", legacyModule: null },
   { view: "master-calendar", legacyModule: null },
   { view: "brand-calendar", legacyModule: null },
+  { view: "calendar-assistant", legacyModule: null },
   { view: "launches", legacyModule: null },
   { view: "ai-traffic", legacyModule: null },
   { view: "heatmaps", legacyModule: null },
+  { view: "budget", legacyModule: null },
   { view: "budget-board", legacyModule: null },
+  { view: "seo-ai-visibility", legacyModule: null },
+  { view: "creative-hub", legacyModule: null },
+  { view: "pages-hub", legacyModule: null },
+  { view: "organic-performance", legacyModule: null },
+  // Goals Hub is registered via agent-goals / goals / canonical-metrics / marketing-okr / kpi-tracker keys
   { view: "ask-infogenie", legacyModule: null },
+  { view: "strategic-intelligence", legacyModule: null },
   { view: "marketing-memory", legacyModule: null },
   { view: "predictive-intelligence", legacyModule: null },
   { view: "agent-goals", legacyModule: null },
@@ -276,6 +290,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "product-library", legacyModule: null },
   { view: "email-analytics", legacyModule: null },
   { view: "autoseo", legacyModule: null },
+  { view: "seo-growth-autopilot", legacyModule: null },
   { view: "contentscorer", legacyModule: null },
   { view: "link-suggester", legacyModule: null },
   { view: "cro-lab", legacyModule: null },
@@ -285,12 +300,14 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "ai-team", legacyModule: null },
   { view: "finance-officer", legacyModule: null },
   { view: "ops-officer", legacyModule: null },
+  { view: "technical-manager", legacyModule: null },
   // Customer 360 is a brand-new panel (not a legacy port) — lives entirely in
   // React with no legacy #view-customer-360 markup or public/js builder.
   { view: "customer-360", legacyModule: null },
   // New panels — no legacy markup or public/js builders.
   { view: "utm-builder",   legacyModule: null },
   { view: "budget-caps",   legacyModule: null },
+  { view: "budget-arbitrage", legacyModule: null },
   { view: "pixel-manager",      legacyModule: null },
   { view: "launch-compliance",  legacyModule: null },
   { view: "post-launch-audit",  legacyModule: null },
@@ -336,6 +353,32 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "marketing-okr",      legacyModule: null },
   { view: "action-queue",       legacyModule: null },
   { view: "ad-comment-monitor", legacyModule: null },
+  // Relabel-first marketing hubs (tile landing pages)
+  { view: "paid-search-social", legacyModule: null },
+  { view: "content-studio", legacyModule: null },
+  { view: "social-command-center", legacyModule: null },
+  { view: "lifecycle-email", legacyModule: null },
+  { view: "messaging-channels", legacyModule: null },
+  { view: "conversational-ai", legacyModule: null },
+  { view: "conversion-lab", legacyModule: null },
+  { view: "growth-hub", legacyModule: null },
+  // Gap-priority build (P0/P1 roadmap)
+  { view: "zero-click-hub", legacyModule: null },
+  { view: "voice-seo", legacyModule: null },
+  { view: "remarketing-suite", legacyModule: null },
+  { view: "referral-manager", legacyModule: null },
+  { view: "affiliate-hub", legacyModule: null },
+  { view: "short-form-video", legacyModule: null },
+  { view: "push-marketing", legacyModule: null },
+  { view: "social-commerce", legacyModule: null },
+  // Centralized Marketing Ecosystem
+  { view: "ecosystem-spine", legacyModule: null },
+  { view: "agent-orchestrator", legacyModule: null },
+  { view: "ai-governance", legacyModule: null },
+  { view: "newsletter-studio", legacyModule: null },
+  { view: "podcast-studio", legacyModule: null },
+  { view: "interactive-leads", legacyModule: null },
+  { view: "execution-hub", legacyModule: null },
 ];
 
 /** Set of view ids now rendered by React. */

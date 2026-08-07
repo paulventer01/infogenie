@@ -55,7 +55,8 @@ router.get('/merged', async (req, res) => {
       ).catch(() => ({ rows: [] })),
       pool.query(
         `SELECT id, category, title, recommendation, expected_impact,
-                confidence_pct, cost_estimate, time_to_result, priority_score, data_sources
+                confidence_pct, cost_estimate, time_to_result, priority_score, data_sources,
+                why_best, entities, problem_summary, change_summary, created_at
          FROM decision_recommendations
          WHERE tenant_id=$1 AND dismissed_at IS NULL
          ORDER BY priority_score DESC, created_at DESC LIMIT 5`, [tid]
@@ -63,10 +64,32 @@ router.get('/merged', async (req, res) => {
     ]);
 
     let brief = briefRow.rows[0] || null;
+    let recommendations = recsRow.rows || [];
 
     // Auto-generate brief if missing or stale (respects cadence)
     if (!brief || (forceNew || _shouldGenerate(brief, storedCadence))) {
       try { brief = await generateBrief('your brand', tid); } catch { /* keep stale */ }
+    }
+
+    // If priorities are generic (no named entities), regenerate grounded Decision Engine recs
+    const needsGrounding = forceNew || !recommendations.length || recommendations.every(r => {
+      const ent = r.entities && typeof r.entities === 'object' ? r.entities : null;
+      const hasEntities = !!(ent && ((ent.from && ent.from.length) || (ent.to && ent.to.length) || (ent.affected && ent.affected.length)));
+      const generic = /lowest ROAS|best-performing|underperforming spend|top content gaps|older than 30 days/i.test(`${r.title} ${r.recommendation}`);
+      return !hasEntities || generic;
+    });
+    if (needsGrounding) {
+      try {
+        const { ensureDecisionEngineSchema } = require('../decision_engine/schema');
+        await ensureDecisionEngineSchema().catch(() => {});
+        const de = require('../decision_engine/api');
+        const grounded = await de.runAnalyse(tid, { replace_open: true, analysis_snapshot: null });
+        if (grounded?.ok && grounded.recommendations?.length) {
+          recommendations = grounded.recommendations.slice(0, 5);
+        }
+      } catch (e) {
+        console.warn('[brief:merged] grounding refresh failed:', e.message);
+      }
     }
 
     res.json({
@@ -74,7 +97,7 @@ router.get('/merged', async (req, res) => {
       cadence: storedCadence,
       brief: brief || null,
       digest: digestRow.rows[0] || null,
-      recommendations: recsRow.rows,
+      recommendations,
     });
   } catch (e) { _err(res, 500, e.message); }
 });

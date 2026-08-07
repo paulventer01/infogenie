@@ -316,13 +316,16 @@ const emptyCard: React.CSSProperties = {
 };
 const moduleBtn: React.CSSProperties = {
   padding: "9px 18px",
-  background: "linear-gradient(135deg,#7C3AED,#4338CA)",
+  background: "linear-gradient(135deg,#0F766E 0%,#0284C7 100%)",
   border: "none",
   borderRadius: 9,
   fontSize: "0.76rem",
   fontWeight: 700,
-  color: "white",
+  color: "#FFFFFF",
   cursor: "pointer",
+  boxShadow: "0 4px 12px rgba(15,118,110,.25)",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
 };
 
 function EmptyModule({
@@ -578,10 +581,10 @@ export default function AiAuditSuite() {
   return (
     <div>
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{
           background:
-            "linear-gradient(135deg,#312E81 0%,#4338CA 50%,#7C3AED 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">
@@ -596,7 +599,7 @@ export default function AiAuditSuite() {
                 </span>{" "}
                 <span
                   className="bc-sep"
-                  style={{ color: "rgba(255,255,255,.3)" }}
+                  style={{ color: '#94a3b8' }}
                 >
                   ›
                 </span>{" "}
@@ -613,7 +616,12 @@ export default function AiAuditSuite() {
             <div className="vh-actions">
               <button
                 className="btn-primary"
-                style={{ background: "white", color: "#4338CA" }}
+                style={{
+                  background: "linear-gradient(135deg,#0F766E 0%,#0284C7 100%)",
+                  color: "#FFFFFF",
+                  border: "none",
+                  fontWeight: 700,
+                }}
                 onClick={runFull}
                 disabled={fullRunning}
               >
@@ -761,17 +769,11 @@ export default function AiAuditSuite() {
                 onClick={runFull}
                 disabled={fullRunning}
                 style={{
+                  ...moduleBtn,
                   padding: "11px 26px",
-                  background: "linear-gradient(135deg,#7C3AED,#4338CA)",
-                  border: "none",
-                  borderRadius: 10,
                   fontSize: "0.8rem",
-                  fontWeight: 700,
-                  color: "white",
-                  cursor: "pointer",
-                  boxShadow: "0 4px 14px rgba(99,102,241,0.35)",
-                  whiteSpace: "nowrap",
-                  flexShrink: 0,
+                  opacity: fullRunning ? 0.7 : 1,
+                  cursor: fullRunning ? "wait" : "pointer",
                 }}
               >
                 {fullRunning ? "⏳ Running…" : "✨ Run AI Visibility Audit"}

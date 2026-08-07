@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPut } from "@/lib/api";
 
 interface Cap {
   id: number;
@@ -50,7 +50,7 @@ function fmtMoney(v: number | null | undefined) {
   return "$" + Number(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-export default function BudgetCaps() {
+export default function BudgetCaps({ embedded = false }: { embedded?: boolean } = {}) {
   const [caps, setCaps] = useState<Cap[]>([]);
   const [spend, setSpend] = useState<Record<string, SpendInfo>>({});
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -65,8 +65,8 @@ export default function BudgetCaps() {
   const load = useCallback(async () => {
     setLoading(true);
     const [capsR, campsR] = await Promise.all([
-      apiGet<{ ok: boolean; error?: string; caps?: Cap[]; spend_by_platform?: Record<string, SpendInfo> }>("/api/budget-caps/caps"),
-      apiGet<{ ok: boolean; error?: string; campaigns?: Campaign[] }>("/api/budget-caps/campaigns"),
+      apiGet<{ ok: boolean; error?: string; caps?: Cap[]; spend_by_platform?: Record<string, SpendInfo> }>("/api/budget/caps"),
+      apiGet<{ ok: boolean; error?: string; campaigns?: Campaign[] }>("/api/budget/caps/campaigns"),
     ]);
     if (capsR?.caps) setCaps(capsR.caps);
     if (capsR?.spend_by_platform) setSpend(capsR.spend_by_platform);
@@ -85,7 +85,7 @@ export default function BudgetCaps() {
   async function saveCap(platform: string) {
     setSaving(platform);
     const e = editing[platform] || {};
-    const r = await apiPost<{ ok: boolean; error?: string; cap?: Cap }>(`/api/budget-caps/caps/${platform}`, {
+    const r = await apiPut<{ ok: boolean; error?: string; cap?: Cap }>(`/api/budget/caps/${platform}`, {
       daily_cap: e.daily ? parseFloat(e.daily) : null,
       lifetime_cap: e.lifetime ? parseFloat(e.lifetime) : null,
       alert_threshold_pct: parseInt(e.threshold) || 80,
@@ -106,14 +106,27 @@ export default function BudgetCaps() {
   const labelStyle: React.CSSProperties = { fontSize: "0.7rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: ".05em", display: "block", marginBottom: 4 };
 
   return (
-    <div style={{ fontFamily: "'Inter',sans-serif", background: "var(--ig-page)", minHeight: "100vh", padding: "24px 28px" }}>
-      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: "#0A1628", color: "#fff", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
+    <div
+      style={{
+        fontFamily: "'Inter',sans-serif",
+        background: embedded ? "transparent" : "var(--ig-page)",
+        minHeight: embedded ? "auto" : "100vh",
+        padding: embedded ? "8px 24px 32px" : "24px 28px",
+      }}
+    >
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, background: '#eef4ff', color: "#0f172a", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: "0.85rem", zIndex: 9999 }}>{toast}</div>}
 
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>Manage › Budget Caps</div>
-        <h1 style={{ fontFamily: "Sora,sans-serif", fontSize: "1.6rem", fontWeight: 900, color: "#0A1628", margin: "0 0 6px" }}>💰 Budget Caps</h1>
-        <p style={{ color: "#475569", fontSize: "0.88rem", margin: 0 }}>Set platform-level daily and lifetime spend limits to prevent overspending, with automatic alerts when you approach your caps.</p>
-      </div>
+      {!embedded ? (
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>Manage › Budget Caps</div>
+          <h1 style={{ fontFamily: "Sora,sans-serif", fontSize: "1.6rem", fontWeight: 900, color: "#0A1628", margin: "0 0 6px" }}>💰 Budget Caps</h1>
+          <p style={{ color: "#475569", fontSize: "0.88rem", margin: 0 }}>Set platform-level daily and lifetime spend limits to prevent overspending, with automatic alerts when you approach your caps.</p>
+        </div>
+      ) : (
+        <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 700, color: "#0F766E" }}>
+          Platform limits & campaign budgets
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #E8EEF8", marginBottom: 24 }}>

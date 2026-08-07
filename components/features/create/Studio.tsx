@@ -888,7 +888,7 @@ function ImageModal({ ctx, onClose }: { ctx: StudioCtx; onClose: () => void }) {
                 href={img}
                 download="image.png"
                 style={{
-                  background: "#0F172A",
+                  background: '#eef4ff',
                   color: "white",
                   padding: "8px 14px",
                   borderRadius: 6,
@@ -1519,7 +1519,7 @@ function PresentationModal({ ctx, onClose }: { ctx: StudioCtx; onClose: () => vo
               <button
                 onClick={downloadPptx}
                 style={{
-                  background: "#0F172A",
+                  background: 'linear-gradient(135deg,#0f766e,#0284c7)',
                   color: "white",
                   border: 0,
                   padding: "10px 16px",
@@ -1886,7 +1886,7 @@ function SignatureModal({ ctx, onClose }: { ctx: StudioCtx; onClose: () => void 
               }}
               style={{
                 marginTop: 8,
-                background: "#0F172A",
+                background: '#eef4ff',
                 color: "white",
                 border: 0,
                 padding: "8px 14px",
@@ -2215,7 +2215,7 @@ function CaseStudyModal({ ctx, onClose }: { ctx: StudioCtx; onClose: () => void 
                 target="_blank"
                 rel="noreferrer"
                 style={{
-                  background: "#0F172A",
+                  background: '#eef4ff',
                   color: "white",
                   padding: "10px 16px",
                   borderRadius: 8,
@@ -2872,7 +2872,7 @@ export default function Studio() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

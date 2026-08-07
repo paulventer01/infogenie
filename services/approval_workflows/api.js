@@ -4,7 +4,7 @@ const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const OpenAI = require('openai');
 
-const ACTION_TYPES = ['pause_campaign','scale_budget','launch_campaign','send_email','publish_content','audience_change','price_change','other'];
+const ACTION_TYPES = ['pause_campaign','scale_budget','launch_campaign','send_email','publish_content','social_post_publish','audience_change','price_change','other'];
 
 router.get('/config', async (req, res) => {
   res.json({ ok:true, action_types: ACTION_TYPES });
@@ -95,24 +95,66 @@ Return strict JSON: {"expected_outcome":"...","confidence_pct":0,"best_case":"..
 router.post('/approve/:id', async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'approvals:approve' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
+  if (!_db.hasDb()) return res.status(503).json({ ok:false, error:'no-db' });
   const p = await _db.getPool();
   const r = await p.query(
     `UPDATE approval_requests SET status='approved', reviewer_notes=$1, approved_at=NOW() WHERE id=$2 AND tenant_id=$3 AND status='pending' RETURNING *`,
     [req.body.notes||null, req.params.id, tid]
   );
   if (!r.rows.length) return res.status(404).json({ ok:false, error:'not found or not pending' });
-  res.json({ ok:true, request: r.rows[0] });
+  const request = r.rows[0];
+
+  // Social draft publish hook — description may carry { draft_id }
+  let social = null;
+  if (request.action_type === 'social_post_publish') {
+    try {
+      let draftId = null;
+      try {
+        const desc = typeof request.description === 'string' ? JSON.parse(request.description) : request.description;
+        draftId = desc?.draft_id || desc?.draftId || null;
+      } catch (_) {}
+      if (draftId) {
+        const drafts = require('../social_drafts/api');
+        if (typeof drafts._approveAndPublish === 'function') {
+          social = await drafts._approveAndPublish(tid, draftId, { notes: req.body.notes || null });
+        }
+      }
+    } catch (e) {
+      social = { ok: false, error: e.message };
+    }
+  }
+
+  res.json({ ok:true, request, social });
 });
 
 router.post('/reject/:id', async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'approvals:reject' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
+  if (!_db.hasDb()) return res.status(503).json({ ok:false, error:'no-db' });
   const p = await _db.getPool();
   const r = await p.query(
     `UPDATE approval_requests SET status='rejected', reviewer_notes=$1 WHERE id=$2 AND tenant_id=$3 AND status='pending' RETURNING *`,
     [req.body.notes||null, req.params.id, tid]
   );
   if (!r.rows.length) return res.status(404).json({ ok:false, error:'not found or not pending' });
+  const request = r.rows[0];
+
+  if (request.action_type === 'social_post_publish') {
+    try {
+      let draftId = null;
+      try {
+        const desc = typeof request.description === 'string' ? JSON.parse(request.description) : request.description;
+        draftId = desc?.draft_id || desc?.draftId || null;
+      } catch (_) {}
+      if (draftId) {
+        const drafts = require('../social_drafts/api');
+        if (typeof drafts._rejectDraft === 'function') {
+          await drafts._rejectDraft(tid, draftId, req.body.notes || null);
+        }
+      }
+    } catch (_) {}
+  }
+
   res.json({ ok:true, request: r.rows[0] });
 });
 

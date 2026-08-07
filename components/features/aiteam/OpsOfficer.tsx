@@ -134,33 +134,73 @@ export default function OpsOfficer() {
   const l = snap.leads || {};
   const g = snap.goals || {};
   const missing = a.missing || [];
+  const issueCount =
+    (c.stale || 0) + (c.missingCreative || 0) + missing.length + (g.offTrack || 0);
+  const pulseLabel = loading
+    ? "Scanning…"
+    : issueCount > 0
+      ? `${issueCount} item${issueCount === 1 ? "" : "s"} to clear`
+      : "Ops look clean";
+  const pulseTone = loading ? "scan" : issueCount > 0 ? "warn" : "ok";
 
   return (
     <div>
-      <div
-        style={styleObj(
-          "max-width:1200px;margin:0 auto 22px;padding:24px 28px;color:white;border-radius:18px;background:linear-gradient(135deg,#7C2D12 0%,#9A3412 100%)",
-        )}
-      >
-        <div
-          style={{
-            fontSize: ".72rem",
-            letterSpacing: ".18em",
-            textTransform: "uppercase",
-            color: "#FED7AA",
-            fontWeight: 700,
-          }}
-        >
-          🛠️ OPERATIONS OFFICER
+      <section className="ops-officer-hero" aria-label="Operations Officer">
+        <div className="ops-officer-hero__aurora" aria-hidden="true" />
+        <div className="ops-officer-hero__grid" aria-hidden="true" />
+        <div className="ops-officer-hero__copy">
+          <div className="ops-officer-hero__eyebrow">
+            <span className="ops-officer-hero__mark" aria-hidden="true" />
+            Operations Officer
+          </div>
+          <h1 className="ops-officer-hero__title">Campaign QA, Assets &amp; Lead Hygiene</h1>
+          <p className="ops-officer-hero__body">
+            Scans your live campaigns, brand assets, leads and goals for stale or broken items.
+            Returns a weekly digest with a prioritised checklist.
+          </p>
+          <div className="ops-officer-hero__actions">
+            <button
+              type="button"
+              className="ops-officer-hero__cta"
+              onClick={() => nav("brand-assets")}
+            >
+              Open Brand Assets
+            </button>
+            <button
+              type="button"
+              className="ops-officer-hero__cta ops-officer-hero__cta--ghost"
+              onClick={() => nav("action-center")}
+            >
+              Action Center
+            </button>
+          </div>
         </div>
-        <h1 style={{ margin: "8px 0 6px", fontSize: "1.85rem", fontWeight: 800 }}>
-          Campaign QA, Assets &amp; Lead Hygiene
-        </h1>
-        <p style={{ margin: 0, fontSize: ".92rem", color: "#FFEDD5", maxWidth: 720 }}>
-          Scans your live campaigns, brand assets, leads and goals for stale or broken items.
-          Returns a weekly digest with a prioritised checklist.
-        </p>
-      </div>
+        <aside className={`ops-officer-hero__aside ops-officer-hero__aside--${pulseTone}`}>
+          <div className="ops-officer-hero__pulse">
+            <span className="ops-officer-hero__pulse-dot" aria-hidden="true" />
+            Live ops pulse
+          </div>
+          <div className="ops-officer-hero__pulse-value">{pulseLabel}</div>
+          <ul className="ops-officer-hero__ticks">
+            <li>
+              <span>Campaigns</span>
+              <strong>{loading ? "—" : fmt(c.total)}</strong>
+            </li>
+            <li>
+              <span>Stale</span>
+              <strong>{loading ? "—" : fmt(c.stale)}</strong>
+            </li>
+            <li>
+              <span>Asset gaps</span>
+              <strong>{loading ? "—" : missing.length}</strong>
+            </li>
+            <li>
+              <span>Unqualified leads</span>
+              <strong>{loading ? "—" : fmt(l.unqualified)}</strong>
+            </li>
+          </ul>
+        </aside>
+      </section>
 
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 28px" }}>
         {loading ? (

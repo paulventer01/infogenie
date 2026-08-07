@@ -108,10 +108,18 @@
   // so it reflects whatever ig_navchrome.js has restructured.
   function orderedNavViews() {
     const out = [];
+    // Legacy top-nav only — React left-rail manages its own visibility.
     document.querySelectorAll('#navGroups .nav-link[data-view]').forEach(a => {
       const v = a.getAttribute('data-view');
       if (v && out.indexOf(v) === -1) out.push(v);
     });
+    // React rail fallback when legacy markup is absent.
+    if (!out.length) {
+      document.querySelectorAll('#ig-side-rail a[data-view]').forEach(a => {
+        const v = a.getAttribute('data-view');
+        if (v && out.indexOf(v) === -1) out.push(v);
+      });
+    }
     return out;
   }
   NP.orderedNavViews = orderedNavViews;
@@ -121,10 +129,13 @@
 
   // Apply the permission filter to the rendered menu. Idempotent — safe to call
   // repeatedly (e.g. after ig_navchrome re-slims, or on late-rendered nav).
+  // IMPORTANT: Only touch legacy top-nav markup (.nav-group-wrap / .nav-link).
+  // The React left-rail (#ig-side-rail) manages its own DOM — writing
+  // display:none inline there survives React re-renders and "vanishes" menus.
   function applyToMenu() {
     if (!NP.ready) return;
 
-    // 1) Hide each nav link the user's role doesn't permit.
+    // 1) Hide each legacy nav link the user's role doesn't permit.
     document.querySelectorAll('#navGroups .nav-link[data-view]').forEach(a => {
       const v = a.getAttribute('data-view');
       if (!v) return;
@@ -135,21 +146,15 @@
       }
     });
 
-    // 2) Collapse empty sub-sections. Two structures can exist depending on
-    //    whether ig_navchrome.js has slimmed the dropdown yet:
-    //      (a) slimmed: .nav-drop-section { .nav-drop-header-toggle, .nav-drop-section-body }
-    //      (b) raw:     a .nav-drop-header followed by sibling .nav-link rows
+    // 2) Collapse empty sub-sections (legacy slimmed dropdown structure only).
     document.querySelectorAll('#navGroups .nav-drop-section').forEach(sec => {
       const links = sec.querySelectorAll('.nav-link[data-view]');
       const anyVisible = Array.prototype.some.call(links, l => !l.getAttribute('data-perm-hidden'));
       if (links.length && !anyVisible) _hide(sec); else if (sec.getAttribute('data-perm-hidden') && anyVisible) { sec.style.display = ''; sec.removeAttribute('data-perm-hidden'); }
-      // Keep the section's count badge honest.
       const cnt = sec.querySelector('.ndh-count');
       if (cnt) cnt.textContent = String(Array.prototype.filter.call(links, l => !l.getAttribute('data-perm-hidden')).length);
     });
 
-    // Raw (un-slimmed) headers: hide a header whose run of following links are
-    // all hidden, until the next header / footer / section.
     document.querySelectorAll('#navGroups .nav-dropdown > .nav-drop-header').forEach(hdr => {
       let n = hdr.nextElementSibling;
       let any = false, sawLink = false;
@@ -160,8 +165,7 @@
       if (sawLink && !any) _hide(hdr); else if (hdr.getAttribute('data-perm-hidden') && any) { hdr.style.display = ''; hdr.removeAttribute('data-perm-hidden'); }
     });
 
-    // 3) Hide a whole nav group (and its leading separator) when it has no
-    //    visible items at all.
+    // 3) Hide a whole legacy nav group when it has no visible items.
     document.querySelectorAll('#navGroups .nav-group-wrap[data-group]').forEach(wrap => {
       const links = wrap.querySelectorAll('.nav-link[data-view]');
       const anyVisible = Array.prototype.some.call(links, l => !l.getAttribute('data-perm-hidden'));

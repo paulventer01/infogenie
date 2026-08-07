@@ -9,6 +9,7 @@ const express = require('express');
 const crypto  = require('crypto');
 const bcrypt  = require('bcryptjs');
 const _db     = require('../../db');
+const { validatePassword } = require('../security/password');
 
 const SALT_ROUNDS    = 12;
 const VERIFY_TTL_MIN = 60 * 24;     // 24h for email verification links
@@ -338,7 +339,8 @@ router.post('/signup', async (req, res) => {
     const { email, password, name } = req.body || {};
     const e = String(email || '').trim().toLowerCase();
     if (!EMAIL_RX.test(e))             return _err(res, 400, 'Please enter a valid email address.');
-    if (!password || password.length < 8) return _err(res, 400, 'Password must be at least 8 characters.');
+    const pw = validatePassword(password);
+    if (!pw.ok) return _err(res, 400, pw.error);
     const existing = await findUserByEmail(e);
     if (existing) return _err(res, 409, 'An account with this email already exists. Try logging in instead.');
     const user = await createUser({ email: e, password, name });
@@ -464,7 +466,8 @@ router.post('/request-reset', async (req, res) => {
 router.post('/reset-password/:token', async (req, res) => {
   try {
     const { password } = req.body || {};
-    if (!password || password.length < 8) return _err(res, 400, 'Password must be at least 8 characters.');
+    const pw = validatePassword(password);
+    if (!pw.ok) return _err(res, 400, pw.error);
     const row = await consumeToken(req.params.token, 'reset');
     if (!row) return _err(res, 400, 'Reset link is invalid or has expired. Request a new one.');
     const uid = row.user_id;
@@ -529,8 +532,9 @@ router.post('/accept-invite/:token', async (req, res) => {
         LIMIT 1`, [req.params.token]);
     if (!peek.rows[0]) return _err(res, 400, 'Invite link is invalid or has expired. Ask for a new one.');
     const needsPassword = !peek.rows[0].has_password;
-    if (needsPassword && (!password || password.length < 8)) {
-      return _err(res, 400, 'Password must be at least 8 characters.');
+    if (needsPassword) {
+      const pw = validatePassword(password);
+      if (!pw.ok) return _err(res, 400, pw.error);
     }
     const consumed = await consumeInviteToken(req.params.token);
     if (!consumed) return _err(res, 400, 'Invite link is invalid or has expired. Ask for a new one.');

@@ -139,7 +139,7 @@ export default function InboxMonitor() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>📬 Inbox Placement Monitor</h2>
         <p className="view-sub">
           Enter your campaign&apos;s send outcomes to score inbox placement and

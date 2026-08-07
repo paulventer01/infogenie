@@ -671,7 +671,7 @@ export default function Stakeholders() {
 
   return (
     <div className="view" id="view-stakeholders">
-      <div className="intel-header" style={{ background: "linear-gradient(110deg,#0F766E 0%,#14B8A6 50%,#5EEAD4 100%)" }}>
+      <div className="intel-header ig-panel-hero" style={{ background: "linear-gradient(110deg,#0F766E 0%,#14B8A6 50%,#5EEAD4 100%)" }}>
         <div className="breadcrumb" style={{ color: "#CCFBF1" }}>
           <span className="bc-group" style={{ color: "#CCFBF1", opacity: 0.85 }}>
             Manage

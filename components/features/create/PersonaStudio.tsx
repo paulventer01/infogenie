@@ -70,11 +70,12 @@ export default function PersonaStudio() {
   const [cgError, setCgError] = useState("");
 
   async function load() {
-    const r = await apiGet<{ ok: boolean; personas?: Persona[] }>(
+    const r = await apiGet<{ ok?: boolean; personas?: Persona[]; error?: string }>(
       "/api/personas",
     );
-    if (!r.ok) {
-      setLoadError("Failed to load personas.");
+    // Success is ok:true OR a personas array (API historically omitted ok).
+    if (r.ok === false || (r.ok !== true && !Array.isArray(r.personas))) {
+      setLoadError(r.error || "Failed to load personas.");
       return;
     }
     setLoadError("");
@@ -151,9 +152,15 @@ export default function PersonaStudio() {
   async function save() {
     setSaveStatus({ type: "info", text: "Saving…" });
     const r = editId
-      ? await apiPut(`/api/personas/${editId}`, form)
-      : await apiPost("/api/personas", form);
-    if (!r.ok) {
+      ? await apiPut<{ ok?: boolean; persona?: Persona; error?: string }>(
+          `/api/personas/${editId}`,
+          form,
+        )
+      : await apiPost<{ ok?: boolean; persona?: Persona; error?: string }>(
+          "/api/personas",
+          form,
+        );
+    if (r.ok === false || (r.ok !== true && !r.persona)) {
       setSaveStatus({ type: "error", text: r.error || "Save failed." });
       return;
     }
@@ -169,9 +176,12 @@ export default function PersonaStudio() {
 
   async function genAvatar(id: number) {
     setAvatarBusyId(id);
-    const r = await apiPost(`/api/personas/${id}/generate-avatar`, {});
+    const r = await apiPost<{ ok?: boolean; avatar_url?: string; error?: string }>(
+      `/api/personas/${id}/generate-avatar`,
+      {},
+    );
     setAvatarBusyId(null);
-    if (!r.ok) {
+    if (r.ok === false || (r.ok !== true && !r.avatar_url)) {
       alert("Avatar error: " + (r.error || "failed"));
       return;
     }
@@ -191,13 +201,13 @@ export default function PersonaStudio() {
     setCgLoading(true);
     setCgError("");
     setCgResult(null);
-    const r = await apiPost<{ ok: boolean; content?: GenContent }>(
+    const r = await apiPost<{ ok?: boolean; content?: GenContent; error?: string }>(
       `/api/personas/${contentId}/generate-content`,
       { content_type: cgType, product: cgProduct },
     );
     setCgLoading(false);
-    if (!r.ok) {
-      setCgError("Generation failed.");
+    if (r.ok === false || (r.ok !== true && !r.content)) {
+      setCgError(r.error || "Generation failed.");
       return;
     }
     setCgResult(r.content || {});
@@ -205,7 +215,7 @@ export default function PersonaStudio() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>

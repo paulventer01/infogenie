@@ -163,7 +163,7 @@ export default function SiteBuilder() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -321,7 +321,7 @@ export default function SiteBuilder() {
                       target="_blank"
                       rel="noreferrer"
                       style={{
-                        background: "#0F172A",
+                        background: '#eef4ff',
                         color: "white",
                         padding: "6px 12px",
                         borderRadius: 6,

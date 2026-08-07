@@ -72,127 +72,75 @@ export const NAV_GROUPS: NavGroupDef[] = [
     sepAfter: true,
     sections: [
       {
-        header: "1 · Start here",
+        header: "1 · Project overview",
         items: [
           { view: "dashboard", icon: "📊", label: "Dashboard" },
-          {
-            action: "dashboardDiag",
-            icon: "🧪",
-            label: "Dashboard Diag (replay)",
-            title:
-              "DIAGNOSTIC: launch the dashboard from the last captured Analyse payload — no API calls, no waiting. Run Analyse Now once on any domain to seed the cache.",
-          },
           { view: "roadmap", icon: "🗺️", label: "Get Started Roadmap" },
         ],
       },
       {
-        header: "2 · Know your competition",
+        header: "2 · Rankings & search",
+        items: [
+          { view: "serp-tracker", icon: "📍", label: "Rank Tracker" },
+          { view: "keyword-explorer", icon: "🔬", label: "Keyword Explorer" },
+          { view: "content-gaps", icon: "🧩", label: "Content Gaps vs Rivals" },
+          { view: "serp", icon: "🔎", label: "Live Google SERP" },
+        ],
+      },
+      {
+        header: "3 · Analytics & traffic",
+        items: [
+          { view: "analytics-hub", icon: "📈", label: "Analytics Hub" },
+          { view: "sov-tracker", icon: "📉", label: "Share of Voice" },
+          { view: "visitor-intel", icon: "🔍", label: "Visitor Intelligence" },
+        ],
+      },
+      {
+        header: "4 · Competitors",
         items: [
           { view: "competitors", icon: "🏆", label: "Competitor Profiles" },
+          { view: "battleplan", icon: "⚔️", label: "Marketing Plan / Battle Plan" },
           { view: "battle-cards", icon: "🛡️", label: "Battle Cards" },
-          { view: "battleplan", icon: "⚔️", label: "Battle Plan" },
           { view: "intelligence", icon: "🧠", label: "Intelligence Hub", className: "nav-link-intel" },
-          { view: "war-room", icon: "⚔️", label: "AI Competitor War Room" },
-          { view: "biz-scanner", icon: "🔭", label: "Business Acquisition Scanner" },
-          { view: "benchmarks", icon: "📊", label: "Benchmark Intelligence (vs network)" },
-        ],
-      },
-      {
-        header: "3 · Spy on what they're doing",
-        items: [
+          { view: "war-room", icon: "🗡️", label: "AI Competitor War Room" },
           { view: "ad-library", icon: "🕵️", label: "Ad Library Spy" },
-          { view: "organic-social", icon: "📱", label: "Organic Social Monitor" },
-          { view: "linkedin-ads", icon: "🔷", label: "LinkedIn Ad Spy" },
-          { view: "ad-swipe", icon: "💾", label: "Ad Swipe File" },
-          { view: "tech-stack", icon: "🧱", label: "Tech Stack Detector" },
-          { view: "pricing-watch", icon: "💰", label: "Pricing Watcher" },
-          { view: "job-board-spy", icon: "💼", label: "Hiring Spy (Job Boards)" },
-          { view: "maps-intel", icon: "🗺️", label: "Maps Intel (local competitors)" },
-          { view: "change-monitor", icon: "🔔", label: "Change Monitor (page alerts)" },
-          { view: "web-extractor", icon: "🧲", label: "AI Web Extractor" },
-          { view: "recipe-scraper", icon: "📋", label: "Scraping Recipe Library" },
-          { view: "dataset-market", icon: "📦", label: "Dataset Marketplace" },
-          { view: "resilient-tracker", icon: "🛡️", label: "Resilient Tracker" },
-          { view: "spyfu", icon: "🕵️", label: "SpyFu — Competitor PPC & SEO Spy" },
+          { view: "benchmarks", icon: "📶", label: "Benchmark Intelligence" },
         ],
       },
       {
-        header: "4 · Read the market",
+        header: "5 · AI search & mentions",
         items: [
-          { view: "sov-tracker", icon: "📈", label: "Share of Voice" },
-          { view: "trending-topics", icon: "🔥", label: "Trending Topics" },
+          { view: "seo-ai-visibility", icon: "🔍", label: "Search & AI Visibility — start here" },
+          // GEO/AEO/zero-click/voice/auditor open from the hub (deep links preserved)
+          { view: "mentions", icon: "🌐", label: "Mentions Hub" },
+          { view: "organic-performance", icon: "📱", label: "Organic Social Performance — start here" },
+          { view: "media-intel", icon: "📰", label: "Media Intelligence" },
+          { view: "realtime-news", icon: "🗞️", label: "Real-Time News" },
           { view: "crisis-radar", icon: "🚨", label: "Crisis Radar" },
         ],
       },
       {
-        header: "5 · Understand your customers",
-        items: [
-          { view: "visitor-intel", icon: "🔍", label: "Visitor Intelligence (who's on your site)" },
-          { view: "icp-studio", icon: "🎯", label: "ICP Studio (your buyer)" },
-          { view: "voc", icon: "🗣️", label: "Voice of Customer" },
-          { view: "review-aggregator", icon: "⭐", label: "Review Aggregator" },
-          { view: "glassdoor", icon: "🏢", label: "Glassdoor Sentiment" },
-
-        ],
-      },
-      {
-        header: "6 · Listen for mentions",
-        items: [
-          { view: "realtime-news", icon: "📰", label: "Real-Time News" },
-          { view: "mentions", icon: "🌐", label: "Web & News Mentions" },
-          { view: "reddit", icon: "🔴", label: "Reddit Research" },
-          { view: "reddit-pulse", icon: "👽", label: "Reddit Live Pulse" },
-          { view: "twitter-pulse", icon: "🐦", label: "X / Twitter Pulse" },
-          { view: "youtube-monitor", icon: "▶️", label: "YouTube Monitor" },
-          { view: "yt-comment-miner", icon: "💬", label: "Comment Miner (content ideas)" },
-          { view: "podcast-monitor", icon: "🎙️", label: "Podcast Monitor" },
-          { view: "quora-mining", icon: "❓", label: "Quora Q&A Mining" },
-          { view: "newsletter-tracker", icon: "📧", label: "Newsletter Tracker" },
-        ],
-      },
-      {
-        header: "7 · Brand intelligence",
-        items: [
-          { view: "reputation-score", icon: "⭐", label: "Reputation Score" },
-          { view: "presence-score",   icon: "📡", label: "Presence Score" },
-          { view: "ave",              icon: "💵", label: "Media Value (AVE)" },
-          { view: "anomaly-detector", icon: "🔍", label: "AI Anomaly Detector" },
-          { view: "intent-radar",     icon: "🎯", label: "Intent Radar" },
-          { view: "hashtag-tracker",  icon: "🏷️", label: "Hashtag Tracker" },
-          { view: "influence-score",  icon: "🏆", label: "Influence Score" },
-          { view: "project-compare",  icon: "⚖️", label: "Project Comparison" },
-          { view: "geo-insights",     icon: "🌍", label: "Geolocation Insights" },
-          { view: "ugc-discovery",    icon: "📸", label: "UGC Discovery" },
-          { view: "review-automation", icon: "💬", label: "AI Review Reply & Request Automation" },
-        ],
-      },
-      {
-        header: "8 · Find search opportunity",
-        items: [
-          { view: "keyword-explorer", icon: "🔬", label: "Keyword Explorer" },
-          { view: "question-miner", icon: "❔", label: "Question Mining (What people ask)" },
-          { view: "social-listening", icon: "👂", label: "Social Listening" },
-          { view: "media-intel", icon: "📰", label: "Media Intelligence" },
-          { view: "keyword-map", icon: "🗺️", label: "Keyword Map" },
-          { view: "intent-map", icon: "🧭", label: "Search Intent Map" },
-          { view: "content-gaps", icon: "🧩", label: "Content Gaps vs Rivals" },
-          { view: "serp", icon: "🔎", label: "Live Google SERP" },
-          { view: "serp-tracker", icon: "📍", label: "SERP Rank Tracker" },
-          { view: "google-trends", icon: "📈", label: "Google Trends" },
-          { view: "bing-webmaster", icon: "🔷", label: "Bing Webmaster Tools" },
-        ],
-      },
-      {
-        header: "8 · Backlinks",
+        header: "6 · Backlinks & site health",
         items: [
           { view: "backlinks", icon: "🔗", label: "Backlink Explorer" },
           { view: "backlink-monitor", icon: "🛰️", label: "Backlink Health Monitor" },
-          { view: "link-prospector", icon: "🎯", label: "Link Prospector" },
-          { view: "majestic", icon: "🔗", label: "Majestic — Trust Flow & Authority" },
-          { view: "semrush", icon: "📊", label: "Semrush — Domain & Keyword Intel" },
-          { view: "ahrefs", icon: "🔍", label: "Ahrefs — Backlinks & Authority" },
-          { view: "serpstat", icon: "📈", label: "Serpstat — Visibility & Competitors" },
-          { view: "contentking", icon: "👑", label: "ContentKing — Real-time SEO Monitor" },
+          // Website Audit lives under Search & AI Visibility hub
+          { view: "change-monitor", icon: "🔔", label: "Page Changes Monitor" },
+          { view: "semrush", icon: "📟", label: "Semrush Intel" },
+          { view: "ahrefs", icon: "🕵️‍♂️", label: "Ahrefs Intel" },
+        ],
+      },
+      {
+        header: "7 · Customers & brand",
+        items: [
+          { view: "icp-studio", icon: "🎯", label: "ICP Studio" },
+          { view: "voc", icon: "🗣️", label: "Voice of Customer" },
+          { view: "review-aggregator", icon: "⭐", label: "Review Aggregator" },
+          { view: "reputation-score", icon: "🌟", label: "Reputation Score" },
+          // presence-score + other scorelets → Intelligence Hub archive
+          // organic-social demoted into Organic Social Performance hub
+          { view: "tech-stack", icon: "🧱", label: "Tech Stack Detector" },
+          { view: "pricing-watch", icon: "💰", label: "Pricing Watcher" },
         ],
       },
     ],
@@ -216,15 +164,25 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "2 · Write the message",
+        header: "2 · Content Studio",
         items: [
-          { view: "content", icon: "🧠", label: "Content AI (blogs · long-form)" },
-          { view: "headline-tester", icon: "🎯", label: "Headline Tester" },
-          { view: "press-release", icon: "📰", label: "Press Release Writer" },
+          { view: "content-studio", icon: "🧬", label: "Content Studio — start here" },
+          { view: "content", icon: "✍️", label: "Content AI (blogs · long-form)" },
+          { view: "content-autopilot", icon: "🦾", label: "Content Autopilot" },
+          { view: "bulk-rewriter", icon: "🖊️", label: "Bulk Content Rewriter" },
+          { view: "headline-tester", icon: "🏹", label: "Headline Tester" },
+          { view: "press-release", icon: "📄", label: "Press Release Writer" },
           { view: "cold-email", icon: "✉️", label: "Cold Email Writer" },
           { view: "email-personalizer", icon: "📨", label: "Email Personalizer (1-to-1)" },
-          { view: "email-broadcast", icon: "📧", label: "Email Broadcast + Tracking" },
-          { view: "email-analytics", icon: "📊", label: "Email Campaign Analytics" },
+        ],
+      },
+      {
+        header: "3 · Lifecycle email",
+        items: [
+          { view: "lifecycle-email", icon: "📧", label: "Lifecycle Email — start here" },
+          { view: "newsletter-studio", icon: "📰", label: "Newsletter Studio" },
+          { view: "email-broadcast", icon: "📨", label: "Email Broadcast + Tracking" },
+          { view: "email-analytics", icon: "🖥️", label: "Email Campaign Analytics" },
           { view: "whatsapp", icon: "💬", label: "WhatsApp Channel" },
           { view: "voice-caller", icon: "📞", label: "AI Voice Caller" },
           { view: "reply-assistant", icon: "📩", label: "Reply Assistant (inbound)" },
@@ -232,45 +190,45 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "3 · Design the visuals",
+        header: "4 · Design the visuals",
         items: [
-          { view: "creative", icon: "🖌️", label: "AI Creative (single ad)" },
-          { view: "smart-creative", icon: "✨", label: "Smart Creative Builder (multi)" },
+          { view: "creative-hub", icon: "🖌️", label: "Creative Studio — start here" },
+          // creative / smart-creative / ad-creative open from Creative Studio hub
           { view: "carousel", icon: "🎠", label: "Carousel Generator" },
           { view: "canva", icon: "🎨", label: "Canva Template Launcher" },
           { view: "ugc-avatars", icon: "🧑‍🎤", label: "UGC Avatar Videos" },
           { view: "video-script", icon: "🎬", label: "Video Script Generator" },
+          { view: "short-form-video", icon: "📹", label: "Short-Form Video Workflow" },
+          { view: "podcast-studio", icon: "🎙️", label: "Podcast Marketing Studio" },
           { view: "voiceover", icon: "🔊", label: "AI Voiceovers" },
-          { view: "audio-summary", icon: "🎙️", label: "Audio Summary Generator (article → MP3)" },
+          { view: "audio-summary", icon: "🎧", label: "Audio Summary Generator (article → MP3)" },
           { view: "creative-intel", icon: "💡", label: "Creative Intel (what performs)" },
-          { view: "infographics", icon: "🖼️", label: "Infographic Generator" },
+          { view: "infographics", icon: "🏞️", label: "Infographic Generator" },
         ],
       },
       {
-        header: "4 · Build pages & bots",
+        header: "5 · Build pages & bots",
         items: [
-          { view: "landing-pages", icon: "🚀", label: "AI Landing Pages (A/B · leads · ad package)" },
-          { view: "landing-builder", icon: "🌐", label: "Landing Page Builder" },
-          { view: "site-builder", icon: "🧱", label: "Site Builder (multi-page)" },
+          { view: "conversational-ai", icon: "🤖", label: "Conversational AI — start here" },
+          { view: "pages-hub", icon: "🚀", label: "Pages & Sites — start here" },
+          // landing-pages / landing-builder / site-builder open from Pages hub
           { view: "linksell", icon: "🛒", label: "Link-in-Bio + Stripe" },
           { view: "schema-generator", icon: "🏷️", label: "SEO Schema Generator" },
           { view: "chatbot-builder", icon: "🤖", label: "Chatbot Builder" },
         ],
       },
       {
-        header: "5 · Plan the campaign",
+        header: "6 · Plan the campaign",
         items: [
-          { view: "campaigns", icon: "🚀", label: "Campaign Strategy" },
-          { view: "content-calendar", icon: "🗓️", label: "Content Calendar" },
+          { view: "campaigns", icon: "🛫", label: "Campaign Strategy" },
+          // Content Calendar opens from Master Calendar layers
           { view: "content-modes", icon: "✍️", label: "Content Modes" },
-          { view: "content-autopilot", icon: "🤖", label: "Content Autopilot" },
-          { view: "ad-creative", icon: "🎨", label: "Ad Creative Gen" },
-          { view: "idea-feed", icon: "💡", label: "Idea Swipe Feed" },
-          { view: "pitch-deck", icon: "📊", label: "Pitch Deck Builder" },
-          { view: "wireframe", icon: "📐", label: "Wireframe Generator" },
+          { view: "idea-feed", icon: "🕯️", label: "Idea Swipe Feed" },
+          { view: "pitch-deck", icon: "🧮", label: "Pitch Deck Builder" },
+          { view: "wireframe", icon: "📏", label: "Wireframe Generator" },
           { view: "ab-designer", icon: "🧪", label: "A/B Test Designer" },
-          { view: "persona-studio", icon: "🎭", label: "AI Persona Studio" },
-          { view: "ecom-video", icon: "🛒", label: "Product Video" },
+          { view: "persona-studio", icon: "🎪", label: "AI Persona Studio" },
+          { view: "ecom-video", icon: "🛍️", label: "Product Video" },
         ],
       },
     ],
@@ -288,19 +246,20 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "1 · Build the audience",
         items: [
-          { view: "audience", icon: "🎯", label: "Audience Builder (start)" },
+          { view: "audience", icon: "🔢", label: "Audience Builder (start)" },
           { view: "lookalike", icon: "👥", label: "Lookalike Audiences" },
           { view: "audiences-dynamic", icon: "🔄", label: "Dynamic Audiences (live)" },
           { view: "journey-builder", icon: "🛤️", label: "Customer Journey Builder" },
           { view: "surveys", icon: "📋", label: "In-App Survey Builder" },
-          { view: "email-designer", icon: "🎨", label: "Visual Email Designer" },
-          { view: "ai-segments", icon: "🧠", label: "AI Segment Suggestions" },
-          { view: "audience-ad-sync", icon: "📡", label: "Audience → Ad Platform Sync (Meta / Google)" },
-          { view: "omnichannel", icon: "📡", label: "Omnichannel Composer (Email · SMS · WhatsApp · Voice · Push)" },
+          { view: "interactive-leads", icon: "🧩", label: "Interactive Lead Builder (quizzes → CRM)" },
+          { view: "email-designer", icon: "🗂️", label: "Visual Email Designer" },
+          { view: "ai-segments", icon: "🧿", label: "AI Segment Suggestions" },
+          { view: "audience-ad-sync", icon: "📻", label: "Audience → Ad Platform Sync (Meta / Google)" },
+          { view: "omnichannel", icon: "🗃️", label: "Omnichannel Composer (Email · SMS · WhatsApp · Voice · Push)" },
           { view: "smart-send", icon: "⏰", label: "Smart Send Time Optimizer" },
-          { view: "translate", icon: "🌍", label: "AI Campaign Translator" },
+          { view: "translate", icon: "🌏", label: "AI Campaign Translator" },
           { view: "campaign-composer", icon: "🪄", label: "Prompt-to-Campaign Builder" },
-          { view: "geofencing", icon: "📍", label: "Geofencing (location triggers)" },
+          { view: "geofencing", icon: "📌", label: "Geofencing (location triggers)" },
         ],
       },
       {
@@ -310,13 +269,15 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "bookings", icon: "📅", label: "Bookings (public scheduler)" },
           { view: "lead-qualifier", icon: "✅", label: "Lead Qualifier (AI score)" },
           { view: "hubspot-sync", icon: "🔁", label: "HubSpot CRM Sync" },
-          { view: "crm-sync", icon: "🔄", label: "CRM Sync (ActiveCampaign · ConvertKit)" },
-          { view: "hunter", icon: "🎯", label: "Hunter.io Email Finder" },
+          { view: "crm-sync", icon: "♻️", label: "CRM Sync (ActiveCampaign · ConvertKit)" },
+          { view: "hunter", icon: "🗄️", label: "Hunter.io Email Finder" },
+          { view: "referral-manager", icon: "🌟", label: "Customer Referral Program" },
         ],
       },
       {
-        header: "3 · Launch paid ads",
+        header: "3 · Paid search & social",
         items: [
+          { view: "paid-search-social", icon: "💳", label: "Paid Search & Social — start here" },
           { view: "advertise", icon: "📣", label: "Advertise Hub (Meta · Google · TikTok)" },
           { view: "import-campaigns", icon: "📥", label: "Import Existing Campaigns" },
           { view: "opt-folders", icon: "📁", label: "Campaign Folders" },
@@ -324,55 +285,50 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "4 · Publish organically",
+        header: "4 · Social command center",
         items: [
-          { view: "social-publisher", icon: "📤", label: "Social Publisher (15 platforms)" },
+          { view: "social-command-center", icon: "📱", label: "Social Command Center — start here" },
+          { view: "social-publisher", icon: "📤", label: "Social Publisher (calendar · drafts · 15 platforms)" },
           { view: "discovery", icon: "🔭", label: "Influencer Discovery" },
-          { view: "influencers", icon: "🌟", label: "Influencer CRM" },
+          { view: "influencers", icon: "💫", label: "Influencer CRM" },
           { view: "tiktok-downloader", icon: "⬇️", label: "TikTok Asset Downloader" },
-          { view: "hashtag-intel", icon: "🏷️", label: "Hashtag Intelligence (Instagram & TikTok)" },
+          { view: "hashtag-intel", icon: "🔖", label: "Hashtag Intelligence (Instagram & TikTok)" },
+          { view: "social-commerce", icon: "🛍️", label: "Social Commerce Hub" },
         ],
       },
       {
         header: "5 · Get found in search & AI",
         items: [
-          { view: "gsc-data", icon: "🔍", label: "Search Console Data (organic clicks · impressions · CTR · position)" },
-          { view: "search-intel", icon: "🔮", label: "AI Visibility & Search Pulse" },
-          { view: "geo-audit", icon: "🛸", label: "GEO Audit (ChatGPT · Perplexity)" },
-          { view: "local-seo", icon: "📍", label: "Local SEO (Google Maps)" },
+          // Search & AI Visibility hub lives under Analyse (single destination)
+          { view: "gsc-data", icon: "🧾", label: "Search Console Data" },
+          { view: "local-seo", icon: "📑", label: "Local SEO (Google Maps)" },
           { view: "local-listings", icon: "🏬", label: "Local Listings / NAP Sync" },
-          { view: "seo-auditor", icon: "🧭", label: "On-Page SEO Audit" },
-          { view: "content-brief", icon: "📄", label: "SEO Content Brief Studio" },
-          { view: "content-score", icon: "📊", label: "Content Score Auto-Optimize" },
-          { view: "seo-crawler", icon: "🕸️", label: "Full-Site SEO Crawler" },
-          { view: "seo-roadmap", icon: "🗺️", label: "SEO Roadmap (9-step guide)" },
-          { view: "web-vitals", icon: "⏱️", label: "Web Vitals (page speed)" },
-          { view: "accessibility", icon: "♿", label: "Accessibility Audit" },
-          { view: "social-tags", icon: "🔖", label: "Social Tags Audit" },
-          { view: "deliverability", icon: "✉️", label: "Email Deliverability Audit" },
-          { view: "seo-tasks", icon: "📋", label: "SEO Task Manager" },
-          { view: "seo-widget", icon: "🧩", label: "Embeddable Lead-Gen Widget" },
+          { view: "content-brief", icon: "📃", label: "SEO Content Brief Studio" },
+          { view: "web-vitals", icon: "⏱️", label: "Web Vitals" },
+          { view: "seo-tasks", icon: "🗒️", label: "SEO Task Manager" },
         ],
       },
       {
         header: "6 · First-party data spine",
         items: [
           { view: "identity-spine", icon: "🪪", label: "Identity Spine (CDP · LTV · propensity)" },
-          { view: "mcp-server", icon: "🔌", label: "MCP Server (AI tool integrations)" },
+          { view: "mcp-server", icon: "🔌", label: "MCP Ecosystem (server + client)" },
         ],
       },
       {
         header: "7 · Handle replies & alerts",
         items: [
           { view: "unified-inbox", icon: "📬", label: "Unified Inbox" },
-          { view: "alert-routing", icon: "🔔", label: "Alert Routing" },
-          { view: "inbox-monitor", icon: "📬", label: "Inbox Placement Monitor" },
+          { view: "alert-routing", icon: "🔕", label: "Alert Routing" },
+          { view: "inbox-monitor", icon: "📭", label: "Inbox Placement Monitor" },
         ],
       },
       {
         header: "8 · Next-gen messaging",
         items: [
-          { view: "rcs-campaigns",     icon: "💬", label: "RCS & Apple Messages (rich interactive messaging)" },
+          { view: "messaging-channels", icon: "🗃️", label: "Messaging Channels (SMS · WhatsApp · Push)" },
+          { view: "push-marketing", icon: "🔔", label: "Push Notification Marketing" },
+          { view: "rcs-campaigns",     icon: "💭", label: "RCS & Apple Messages (rich interactive messaging)" },
           { view: "linkedin-outreach", icon: "💼", label: "LinkedIn Outreach Automation (sequences)" },
           { view: "email-warmup",      icon: "🔥", label: "Email Warm-Up (inbox trust builder)" },
         ],
@@ -393,9 +349,11 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "1 · Set the targets",
         items: [
-          { view: "goals", icon: "🎯", label: "Goals & Targets" },
-          { view: "kpi-tracker", icon: "📈", label: "KPI Tracker (live)" },
-          { view: "action-center", icon: "🎬", label: "Action Center (do this next)" },
+          { view: "agent-goals", icon: "🏁", label: "Goals Hub (goals · OKRs · KPIs · metrics)" },
+          { view: "growth-hub", icon: "🚀", label: "Growth Marketing — start here" },
+          { view: "ecosystem-spine", icon: "🕸️", label: "Ecosystem Spine (audiences · attribution · close-loop)" },
+          // goals + canonical-metrics are Goals Hub tabs (deep links preserved)
+          { view: "action-center", icon: "🎥", label: "Action Center (do this next)" },
         ],
       },
       {
@@ -404,49 +362,49 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "meta-insights", icon: "📘", label: "Meta Ads Insights" },
           { view: "google-ads-insights", icon: "🅖", label: "Google Ads Insights" },
           { view: "tiktok-ads-insights", icon: "🎵", label: "TikTok Ads Insights" },
-          { view: "social-analytics", icon: "📊", label: "Organic Social Analytics" },
-          { view: "post-performance", icon: "📈", label: "Post Performance" },
-          { view: "optimizer", icon: "🤖", label: "AI Campaign Optimizer (auto)" },
-          { view: "ad-comment-monitor", icon: "💬", label: "Ad Comment Monitor (Meta)" },
-          { view: "auto-operator", icon: "🦾", label: "Autonomous Marketing Operator" },
-          { view: "safe-agent", icon: "🛡️", label: "Safe Agent (propose → approve → execute)" },
+          // organic social analytics / post performance → Organic Social Performance hub
+          { view: "optimizer", icon: "🦿", label: "AI Campaign Optimizer (auto)" },
+          { view: "lead-intelligence", icon: "🎯", label: "Lead Intelligence (GLM)" },
+          { view: "remarketing-suite", icon: "🔄", label: "Remarketing Suite" },
+          { view: "ad-comment-monitor", icon: "🗨️", label: "Ad Comment Monitor (Meta)" },
+          { view: "auto-operator", icon: "🧫", label: "Autonomous Marketing Operator" },
+          { view: "safe-agent", icon: "🔒", label: "Safe Agent (propose → approve → execute)" },
           { view: "self-healing", icon: "🩹", label: "Self-Healing Ad Accounts (AI rejection repair)" },
         ],
       },
       {
         header: "3 · Track full-funnel ROI",
         items: [
-          { view: "analytics-hub", icon: "📡", label: "GSC & GA4 Hub" },
-          { view: "amplitude-agents", icon: "📶", label: "Amplitude AI Agents" },
+          // Analytics Hub lives under Analyse — link from dashboard/ROI tools, do not re-list here
+          { view: "amplitude-agents", icon: "🥈", label: "Amplitude AI Agents" },
           { view: "blended-perf", icon: "💎", label: "Blended Performance (CAC)" },
-          { view: "attribution", icon: "🧮", label: "Attribution Modeling" },
-          { view: "true-roas", icon: "💰", label: "True ROAS (margin-aware)" },
-          { view: "iroas", icon: "📊", label: "iROAS Incrementality" },
-          { view: "conversion-recovery", icon: "🔄", label: "Conversion Recovery (CAPI)" },
+          { view: "attribution", icon: "🥉", label: "Attribution Modeling" },
+          { view: "true-roas", icon: "💵", label: "True ROAS (margin-aware)" },
+          { view: "iroas", icon: "🎖️", label: "iROAS Incrementality" },
+          { view: "conversion-recovery", icon: "🔃", label: "Conversion Recovery (CAPI)" },
           { view: "churn-scorer", icon: "⚠️", label: "Churn-Risk Scorer" },
-          { view: "revenue-forecast", icon: "💹", label: "AI Revenue Forecast Engine" },
+          { view: "revenue-forecast", icon: "🏅", label: "AI Revenue Forecast Engine" },
           { view: "digital-twin",     icon: "🪞", label: "Digital Twin (what-if simulator)" },
           { view: "mmm",             icon: "🎛️", label: "Media Mix Modeler (optimal allocation)" },
-          { view: "funnel-analytics", icon: "📊", label: "Funnel Analytics (page views · opt-ins · sales · EPC)" },
+          { view: "funnel-analytics", icon: "💥", label: "Funnel Analytics (page views · opt-ins · sales · EPC)" },
+        ],
+      },
+      {
+        header: "4 · Improve SEO & conversion",
+        items: [
+          { view: "conversion-lab", icon: "🧪", label: "Conversion Lab — start here" },
+          // Autopilot / AutoSEO / content scorer → Analyse Search & AI Visibility hub
+          { view: "link-suggester", icon: "⛓️", label: "Internal Link Suggester" },
+          { view: "cro-lab",        icon: "💢", label: "CRO Lab (page tests)" },
+          { view: "ai-audit-suite", icon: "💯", label: "AI Audit Suite (deep)" },
+          { view: "vis-leaderboard", icon: "🧑‍🤝‍🧑", label: "Visibility Rank Table (Δ)" },
+          { action: "wpConnect", icon: "🟦", label: "Connect to WordPress" },
         ],
       },
       {
         header: "5 · Next-gen ad channels",
         items: [
           { view: "ctv-streaming", icon: "📺", label: "CTV & Streaming Audio (Roku · Hulu · Spotify)" },
-        ],
-      },
-      {
-        header: "4 · Improve SEO & content",
-        items: [
-          { view: "autoseo", icon: "🚀", label: "AutoSEO Pro (autonomous)" },
-          { view: "contentscorer", icon: "📝", label: "Content Scorer" },
-          { view: "link-suggester", icon: "🔗", label: "Internal Link Suggester" },
-          { view: "cro-lab",        icon: "🧪", label: "CRO Lab (page tests)" },
-          { view: "bulk-rewriter",  icon: "✍️", label: "Bulk Content Rewriter (AI rewrite up to 20 articles)" },
-          { view: "ai-audit-suite", icon: "🔬", label: "AI Audit Suite (deep)" },
-          { view: "vis-leaderboard", icon: "🏆", label: "Visibility Rank Table (Δ)" },
-          { action: "wpConnect", icon: "🟦", label: "Connect to WordPress" },
         ],
       },
     ],
@@ -465,66 +423,68 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "0 · Morning Brief",
         items: [
-          { view: "marketing-brief", icon: "📋", label: "Today's Marketing Brief — AI Director" },
+          { view: "marketing-brief", icon: "🗯️", label: "Today's Marketing Brief — AI Director" },
         ],
       },
       {
         header: "1 · Calendars & projects",
         items: [
-          { view: "new-project", icon: "✨", label: "+ New Marketing Project" },
-          { view: "master-calendar", icon: "🗓️", label: "Master Calendar (everything)" },
-          { view: "brand-calendar", icon: "📅", label: "Brand Calendar (10 categories)" },
-          { view: "social", icon: "📅", label: "Social Calendar" },
-          { view: "launches", icon: "🚀", label: "Product Launch Calendar" },
+          { view: "new-project", icon: "👋", label: "+ New Marketing Project" },
+          { view: "master-calendar", icon: "📆", label: "Master Calendar (unified agenda · layers)" },
+          // brand / content / social / launches / assistant open from Master Calendar tiles
+          { view: "agent-orchestrator", icon: "🤖", label: "Agent Orchestrator (cross-module suggest → apply)" },
         ],
       },
       {
         header: "2 · Monitor performance",
         items: [
-          { view: "period-comparison", icon: "📅", label: "Period Comparison (performance vs prior)" },
-          { view: "web-analytics", icon: "📈", label: "Web Analytics (acquisition + behaviour)" },
-          { view: "ai-traffic", icon: "📡", label: "AI Traffic Monitor" },
-          { view: "heatmaps", icon: "🔥", label: "Heatmaps + Session Replay" },
-          { view: "action-queue", icon: "🚀", label: "Daily Action Queue (what to do today)" },
-          { view: "marketing-okr", icon: "🎯", label: "Marketing OKRs (live campaign data)" },
-          { view: "budget-board", icon: "💰", label: "Budget Board (monitor + spend)" },
-          { view: "budget-caps", icon: "🚦", label: "Budget Caps (platform daily + lifetime limits)" },
-          { view: "utm-builder", icon: "🔗", label: "UTM Architecture (link builder + presets)" },
-          { view: "pixel-manager", icon: "📡", label: "Pixel Manager (Meta CAPI · LinkedIn · TikTok)" },
-          { view: "launch-compliance", icon: "✅", label: "Launch Compliance Checklist (brand · copy · legal · mobile)" },
-          { view: "post-launch-audit", icon: "🔬", label: "Post-Launch Audit (live data + lead flow 24-48h)" },
-          { view: "customer-360", icon: "🧭", label: "Customer 360 (unified account view)" },
+          { view: "period-comparison", icon: "👁️", label: "Period Comparison (performance vs prior)" },
+          { view: "web-analytics", icon: "🫀", label: "Web Analytics (acquisition + behaviour)" },
+          { view: "ai-traffic", icon: "✒️", label: "AI Traffic Monitor" },
+          { view: "heatmaps", icon: "🖋️", label: "Heatmaps + Session Replay" },
+          { view: "action-queue", icon: "📹", label: "Daily Action Queue (what to do today)" },
+          // marketing-okr + canonical-metrics live under Goals Hub (related / tabs)
+          { view: "budget", icon: "💰", label: "Budget Hub (overview · board · caps · arbitrage)" },
+          // budget-board / caps / arbitrage stay deep-linkable (VIEW_TO_PATH below); not listed again in nav
+          { view: "utm-builder", icon: "📸", label: "UTM Architecture (link builder + presets)" },
+          { view: "pixel-manager", icon: "🎞️", label: "Pixel Manager (Meta CAPI · LinkedIn · TikTok)" },
+          { view: "affiliate-hub", icon: "🤝", label: "Partner Affiliate Program" },
+          { view: "execution-hub", icon: "🔌", label: "Execution Hub (Canva · Mailchimp · PMax · Segment)" },
+          { view: "launch-compliance", icon: "☑️", label: "Launch Compliance Checklist (brand · copy · legal · mobile)" },
+          { view: "post-launch-audit", icon: "📽️", label: "Post-Launch Audit (live data + lead flow 24-48h)" },
+          { view: "customer-360", icon: "🎚️", label: "Customer 360 (unified account view)" },
         ],
       },
       {
         header: "3 · AI tools & config",
         items: [
-          { view: "ask-infogenie", icon: "💬", label: "Ask InfoGenie (your data)" },
-          { view: "marketing-memory", icon: "🧠", label: "Marketing Memory (knowledge graph)" },
-          { view: "predictive-intelligence", icon: "🔮", label: "Predictive Intelligence (90-day AI forecast)" },
-          { view: "agent-goals", icon: "🤖", label: "AI Marketing Agent" },
-          { view: "ai-providers", icon: "🧠", label: "AI Providers (bring your own LLM)" },
+          { view: "ask-infogenie", icon: "🎧", label: "Ask InfoGenie (your data)" },
+          { view: "strategic-intelligence", icon: "🧠", label: "Strategic Intelligence (root-cause · scenarios · write-back)" },
+          { view: "marketing-memory", icon: "🔉", label: "Marketing Memory (knowledge graph)" },
+          { view: "predictive-intelligence", icon: "🪬", label: "Predictive Intelligence (90-day AI forecast)" },
+          // AI Providers + Governance live under AI Team → Team ops (single destination)
+          { view: "autoclaw", icon: "🦞", label: "AutoClaw (Z.ai GLM agent)" },
           { view: "model-compare", icon: "⚖️", label: "Model Comparison (A/B prompts)" },
-          { view: "vertical-playbooks", icon: "📋", label: "Vertical Playbooks (industry packs)" },
+          { view: "vertical-playbooks", icon: "🔇", label: "Vertical Playbooks (industry packs)" },
         ],
       },
       {
         header: "4 · Team & frameworks",
         items: [
-          { view: "meeting-notes", icon: "📝", label: "Meeting Notes" },
-          { view: "team-meetings", icon: "📋", label: "Minutes of Meeting (AI Team)" },
+          { view: "meeting-notes", icon: "✏️", label: "Sales Meeting Notes (BANT transcript)" },
+          // AI Team minutes live under AI Team → Team ops
           { view: "playbook-7day", icon: "📖", label: "7-Day Marketing Playbook" },
-          { view: "growth-methodology", icon: "🎯", label: "Growth Methodology (5-stage)" },
-          { view: "flywheel", icon: "🌀", label: "Performance Growth Flywheel" },
+          { view: "growth-methodology", icon: "💶", label: "Growth Methodology (5-stage)" },
+          { view: "flywheel", icon: "🔁", label: "Performance Growth Flywheel" },
         ],
       },
       {
         header: "5 · Run the customer ops",
         items: [
-          { view: "reengage", icon: "🔁", label: "Re-Engage Customers (drip)" },
-          { view: "automations", icon: "⚙️", label: "Automations" },
-          { view: "employee-advocacy", icon: "📣", label: "Employee Advocacy" },
-          { view: "signal-triggers", icon: "⚡", label: "Real-time Signal Triggers" },
+          { view: "reengage", icon: "💷", label: "Re-Engage Customers (drip)" },
+          { view: "automations", icon: "🛠️", label: "Automations" },
+          { view: "employee-advocacy", icon: "📢", label: "Employee Advocacy" },
+          { view: "signal-triggers", icon: "💳", label: "Real-time Signal Triggers" },
           { view: "stakeholders", icon: "👤", label: "Stakeholders" },
           { view: "brand-deals", icon: "🤝", label: "Brand Deal Pipeline" },
           { view: "product-library", icon: "📦", label: "Product Library (catalog + USP)" },
@@ -533,14 +493,14 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "6 · Send reports",
         items: [
-          { view: "results", icon: "📊", label: "Results Snapshot" },
-          { view: "weekly-report", icon: "📑", label: "Weekly Report" },
-          { view: "cross-channel", icon: "🌐", label: "Cross-Channel Report" },
+          { view: "results", icon: "🏦", label: "Results Snapshot" },
+          { view: "weekly-report", icon: "🏧", label: "Weekly Report" },
+          { view: "cross-channel", icon: "🎁", label: "Cross-Channel Report" },
           { view: "csuite", icon: "👔", label: "C-Suite Reports (CEO · CMO · CFO)" },
-          { view: "investor-mode", icon: "📈", label: "Investor Mode (portal + forecasts)" },
-          { view: "white-label", icon: "🎨", label: "White-Label Reports" },
-          { view: "bulk-reports",   icon: "📦", label: "Bulk Reporting (multi-client)" },
-          { view: "insta-reports",  icon: "📋", label: "InstaReports (prospect audit reports)" },
+          { view: "investor-mode", icon: "📫", label: "Investor Mode (portal + forecasts)" },
+          { view: "white-label", icon: "📪", label: "White-Label Reports" },
+          { view: "bulk-reports",   icon: "📮", label: "Bulk Reporting (multi-client)" },
+          { view: "insta-reports",  icon: "💻", label: "InstaReports (prospect audit reports)" },
           { view: "digest", icon: "🌅", label: "Daily Digest Email" },
         ],
       },
@@ -548,13 +508,13 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "7 · Account & admin",
         items: [
           { view: "agency", icon: "🏢", label: "Agency Workspace" },
-          { view: "marketplace", icon: "🛍️", label: "AI Marketing Marketplace" },
-          { view: "workspaces", icon: "👥", label: "Workspaces & Team" },
-          { view: "admin", icon: "🛡️", label: "Admin Portal", id: "navAdminLink", hidden: true },
-          { view: "technical-suite", icon: "🛠️", label: "Technical Suite" },
-          { view: "brand-safety", icon: "🔒", label: "Brand Safety & Compliance" },
-          { view: "data-provenance", icon: "🔍", label: "Data Provenance (audit trail)" },
-          { view: "settings", icon: "⚙️", label: "Settings & Integrations" },
+          { view: "marketplace", icon: "🏪", label: "AI Marketing Marketplace" },
+          { view: "workspaces", icon: "👪", label: "Workspaces & Team" },
+          { view: "admin", icon: "🔐", label: "Admin Portal", id: "navAdminLink", hidden: true },
+          { view: "technical-suite", icon: "🔧", label: "Technical Suite (admin toolkit · diagnostics)" },
+          { view: "brand-safety", icon: "🗝️", label: "Brand Safety & Compliance" },
+          { view: "data-provenance", icon: "🖨️", label: "Data Provenance (audit trail)" },
+          { view: "settings", icon: "🔩", label: "Settings & Integrations" },
         ],
       },
     ],
@@ -572,13 +532,25 @@ export const NAV_GROUPS: NavGroupDef[] = [
     sections: [
       {
         header: "Your AI executive team",
-        items: [{ view: "ai-team", icon: "👥", label: "Team Roster" }],
+        items: [{ view: "ai-team", icon: "⌨️", label: "Team Roster" }],
       },
       {
         header: "Officers",
         items: [
-          { view: "finance-officer", icon: "💼", label: "Finance Officer" },
-          { view: "ops-officer", icon: "🛠️", label: "Operations Officer" },
+          { view: "finance-officer", icon: "🖱️", label: "Finance Officer" },
+          { view: "ops-officer", icon: "⚒️", label: "Operations Officer" },
+          { view: "technical-manager", icon: "🛡️", label: "Technical Manager (officer · live platform status)" },
+        ],
+      },
+      {
+        // Paths stay under /manage/* via VIEW_TO_PATH overrides below — listed here
+        // so officer workflow (roster → capacity → meetings) is discoverable.
+        header: "Team ops",
+        items: [
+          { view: "capacity", icon: "👥", label: "Team Capacity & Workload" },
+          { view: "team-meetings", icon: "💴", label: "AI Team Minutes (officer meetings)" },
+          { view: "ai-providers", icon: "🔈", label: "AI Providers (BYO LLM)" },
+          { view: "ai-governance", icon: "🛡️", label: "AI Governance Hub" },
         ],
       },
     ],
@@ -595,16 +567,190 @@ for (const group of NAV_GROUPS) {
     for (const item of section.items) {
       if (item.view) {
         ALL_VIEW_IDS.add(item.view);
-        VIEW_TO_PATH[item.view] = `/${group.key}/${item.view}`;
+        // Keep the first canonical path (e.g. Analyse Analytics Hub over Grow duplicate).
+        if (!VIEW_TO_PATH[item.view]) {
+          VIEW_TO_PATH[item.view] = `/${group.key}/${item.view}`;
+        }
       }
     }
   }
 }
 
+// Keep established bookmark paths when nav ownership moves (AI Team ops, etc.).
+VIEW_TO_PATH.flywheel = "/manage/flywheel";
+VIEW_TO_PATH["canonical-metrics"] = "/manage/canonical-metrics";
+VIEW_TO_PATH.capacity = "/manage/capacity";
+VIEW_TO_PATH["team-meetings"] = "/manage/team-meetings";
+VIEW_TO_PATH["ai-providers"] = "/manage/ai-providers";
+VIEW_TO_PATH["ai-governance"] = "/manage/ai-governance";
+// Budget Hub deep links (tabs) — not listed separately in the Manage nav
+ALL_VIEW_IDS.add("budget-board");
+ALL_VIEW_IDS.add("budget-caps");
+ALL_VIEW_IDS.add("budget-arbitrage");
+VIEW_TO_PATH["budget-board"] = "/manage/budget-board";
+VIEW_TO_PATH["budget-caps"] = "/manage/budget-caps";
+VIEW_TO_PATH["budget-arbitrage"] = "/manage/budget-arbitrage";
+// Master Calendar publisher layer keeps Reach bookmark path
+VIEW_TO_PATH["social-publisher"] = VIEW_TO_PATH["social-publisher"] || "/reach/social-publisher";
+// Goals Hub deep links (tabs / related) — keep bookmarks after nav consolidation
+ALL_VIEW_IDS.add("goals");
+ALL_VIEW_IDS.add("canonical-metrics");
+ALL_VIEW_IDS.add("marketing-okr");
+ALL_VIEW_IDS.add("kpi-tracker");
+VIEW_TO_PATH.goals = "/grow/goals";
+VIEW_TO_PATH["kpi-tracker"] = "/grow/kpi-tracker";
+VIEW_TO_PATH["marketing-okr"] = "/manage/marketing-okr";
+// Master Calendar layers — deep-linkable after sidebar demotion
+for (const calView of ["brand-calendar", "calendar-assistant", "social", "launches"] as const) {
+  ALL_VIEW_IDS.add(calView);
+  if (!VIEW_TO_PATH[calView]) VIEW_TO_PATH[calView] = `/manage/${calView}`;
+}
+ALL_VIEW_IDS.add("content-calendar");
+VIEW_TO_PATH["content-calendar"] = "/create/content-calendar";
+
+// SEO / creative / pages / organic tools demoted into hubs — keep deep links
+const HUB_DEEP_LINKS: Array<[string, string]> = [
+  ["geo-audit", "/analyse/geo-audit"],
+  ["aeo-optimizer", "/analyse/aeo-optimizer"],
+  ["zero-click-hub", "/analyse/zero-click-hub"],
+  ["voice-seo", "/analyse/voice-seo"],
+  ["seo-auditor", "/analyse/seo-auditor"],
+  ["social-listening", "/analyse/social-listening"],
+  ["organic-social", "/analyse/organic-social"],
+  ["search-intel", "/reach/search-intel"],
+  ["content-score", "/reach/content-score"],
+  ["seo-crawler", "/reach/seo-crawler"],
+  ["seo-roadmap", "/reach/seo-roadmap"],
+  ["seo-growth-autopilot", "/grow/seo-growth-autopilot"],
+  ["autoseo", "/grow/autoseo"],
+  // contentscorer → content-score via VIEW_ID_ALIASES (not a separate destination)
+  ["social-analytics", "/grow/social-analytics"],
+  ["post-performance", "/grow/post-performance"],
+  ["creative", "/create/creative"],
+  ["smart-creative", "/create/smart-creative"],
+  ["ad-creative", "/create/ad-creative"],
+  ["landing-pages", "/create/landing-pages"],
+  ["landing-builder", "/create/landing-builder"],
+  ["site-builder", "/create/site-builder"],
+];
+for (const [view, path] of HUB_DEEP_LINKS) {
+  ALL_VIEW_IDS.add(view);
+  VIEW_TO_PATH[view] = path;
+}
+
+/**
+ * Thin scorelets + Analyse spy tools — parked out of the sidebar.
+ * Reachable from Intelligence Hub archive, nav search, and deep links.
+ */
+export const SIDEBAR_HIDDEN_VIEWS: readonly string[] = [
+  "deliverability",
+  "biz-scanner",
+  "linkedin-ads",
+  "ad-swipe",
+  "job-board-spy",
+  "maps-intel",
+  "web-extractor",
+  "recipe-scraper",
+  "dataset-market",
+  "resilient-tracker",
+  "trending-topics",
+  "glassdoor",
+  "reddit",
+  "reddit-pulse",
+  "twitter-pulse",
+  "youtube-monitor",
+  "yt-comment-miner",
+  "podcast-monitor",
+  "quora-mining",
+  "newsletter-tracker",
+  "question-miner",
+  "keyword-map",
+  "intent-map",
+  "google-trends",
+  "bing-webmaster",
+  "spyfu",
+  "majestic",
+  "serpstat",
+  "contentking",
+  "link-prospector",
+  "accessibility",
+  "social-tags",
+  "seo-widget",
+  "review-automation",
+  "ave",
+  "presence-score",
+  "anomaly-detector",
+  "intent-radar",
+  "hashtag-tracker",
+  "influence-score",
+  "project-compare",
+  "geo-insights",
+  "ugc-discovery",
+];
+
+/** Intelligence Hub archive tiles for sidebar-hidden scorelets & spies. */
+export const INTEL_ARCHIVE_TOOLS: ReadonlyArray<{
+  view: string;
+  icon: string;
+  label: string;
+  group: "Scorelets" | "Spies & monitors" | "Keyword & SEO utilities";
+}> = [
+  { view: "ave", icon: "📢", label: "AVE Estimator", group: "Scorelets" },
+  { view: "presence-score", icon: "📡", label: "Presence Score", group: "Scorelets" },
+  { view: "influence-score", icon: "🧲", label: "Influence Score", group: "Scorelets" },
+  { view: "intent-radar", icon: "🎯", label: "Intent Radar", group: "Scorelets" },
+  { view: "anomaly-detector", icon: "📉", label: "Anomaly Detector", group: "Scorelets" },
+  { view: "hashtag-tracker", icon: "#️⃣", label: "Hashtag Tracker", group: "Scorelets" },
+  { view: "project-compare", icon: "⚖️", label: "Project Compare", group: "Scorelets" },
+  { view: "geo-insights", icon: "🌍", label: "Geo Insights", group: "Scorelets" },
+  { view: "ad-swipe", icon: "🗂️", label: "Ad Swipe File", group: "Spies & monitors" },
+  { view: "job-board-spy", icon: "🕵️", label: "Job Board Spy", group: "Spies & monitors" },
+  { view: "linkedin-ads", icon: "💼", label: "LinkedIn Ads Spy", group: "Spies & monitors" },
+  { view: "glassdoor", icon: "🏢", label: "Glassdoor Intel", group: "Spies & monitors" },
+  { view: "reddit", icon: "🟠", label: "Reddit Monitor", group: "Spies & monitors" },
+  { view: "reddit-pulse", icon: "🔴", label: "Reddit Pulse", group: "Spies & monitors" },
+  { view: "twitter-pulse", icon: "🐦", label: "X / Twitter Pulse", group: "Spies & monitors" },
+  { view: "youtube-monitor", icon: "▶️", label: "YouTube Monitor", group: "Spies & monitors" },
+  { view: "yt-comment-miner", icon: "💬", label: "YT Comment Miner", group: "Spies & monitors" },
+  { view: "podcast-monitor", icon: "🎙️", label: "Podcast Monitor", group: "Spies & monitors" },
+  { view: "newsletter-tracker", icon: "📬", label: "Newsletter Tracker", group: "Spies & monitors" },
+  { view: "quora-mining", icon: "❓", label: "Quora Mining", group: "Spies & monitors" },
+  { view: "ugc-discovery", icon: "📸", label: "UGC Discovery", group: "Spies & monitors" },
+  { view: "maps-intel", icon: "🗺️", label: "Maps Intel", group: "Spies & monitors" },
+  { view: "biz-scanner", icon: "🔎", label: "Business Scanner", group: "Spies & monitors" },
+  { view: "web-extractor", icon: "🕸️", label: "Web Extractor", group: "Spies & monitors" },
+  { view: "trending-topics", icon: "📈", label: "Trending Topics", group: "Spies & monitors" },
+  { view: "question-miner", icon: "⛏️", label: "Question Miner", group: "Keyword & SEO utilities" },
+  { view: "keyword-map", icon: "🧭", label: "Keyword Map", group: "Keyword & SEO utilities" },
+  { view: "intent-map", icon: "🧠", label: "Intent Map", group: "Keyword & SEO utilities" },
+  { view: "google-trends", icon: "📊", label: "Google Trends", group: "Keyword & SEO utilities" },
+  { view: "spyfu", icon: "🕵️‍♂️", label: "SpyFu", group: "Keyword & SEO utilities" },
+  { view: "majestic", icon: "🔗", label: "Majestic", group: "Keyword & SEO utilities" },
+  { view: "serpstat", icon: "📟", label: "Serpstat", group: "Keyword & SEO utilities" },
+  { view: "contentking", icon: "👑", label: "ContentKing", group: "Keyword & SEO utilities" },
+  { view: "bing-webmaster", icon: "🅱️", label: "Bing Webmaster", group: "Keyword & SEO utilities" },
+  { view: "link-prospector", icon: "🎣", label: "Link Prospector", group: "Keyword & SEO utilities" },
+  { view: "seo-widget", icon: "🧩", label: "SEO Widget", group: "Keyword & SEO utilities" },
+  { view: "social-tags", icon: "🏷️", label: "Social Tags", group: "Keyword & SEO utilities" },
+  { view: "accessibility", icon: "♿", label: "Accessibility", group: "Keyword & SEO utilities" },
+];
+
+// Ensure archive tools stay deep-linkable even if not in SIDEBAR_HIDDEN_VIEWS
+for (const t of INTEL_ARCHIVE_TOOLS) {
+  ALL_VIEW_IDS.add(t.view);
+  if (!VIEW_TO_PATH[t.view]) VIEW_TO_PATH[t.view] = `/analyse/${t.view}`;
+}
+
+for (const view of SIDEBAR_HIDDEN_VIEWS) {
+  ALL_VIEW_IDS.add(view);
+  if (!VIEW_TO_PATH[view]) VIEW_TO_PATH[view] = `/analyse/${view}`;
+}
+
 /** Canonical dashboard URL for a `data-view` id, or `/` if unknown. */
 export function viewToPath(view: string): string {
   if (view === "home") return "/analyse";
-  return VIEW_TO_PATH[view] || "/";
+  const resolved = VIEW_ID_ALIASES[view] || view;
+  return VIEW_TO_PATH[resolved] || VIEW_TO_PATH[view] || "/";
 }
 
 /**
@@ -618,6 +764,42 @@ export const VIEW_ID_ALIASES: Record<string, string> = {
   "lead-aggregator":   "lead-gen",
   "acquisition-engine":"lead-gen",
   "marketing-simulator":"digital-twin",
+  // Relabel-first hub shortcuts (marketing taxonomy discoverability)
+  "sem":               "paid-search-social",
+  "ppc":               "paid-search-social",
+  "paid-search":       "paid-search-social",
+  "paid-social":       "paid-search-social",
+  "content-marketing": "content-studio",
+  "ai-content":        "content-studio",
+  "social-media":      "social-command-center",
+  "organic-social-hub":"social-command-center",
+  "email-marketing":   "lifecycle-email",
+  "email-automation":  "lifecycle-email",
+  "sms-marketing":     "messaging-channels",
+  "push-notifications":"messaging-channels",
+  "chatbot":           "conversational-ai",
+  "cro":               "conversion-lab",
+  "growth-marketing":  "growth-hub",
+  // Search & AI Visibility hub discoverability
+  "ai-visibility":     "seo-ai-visibility",
+  "geo-visibility":    "seo-ai-visibility",
+  "answer-engine":     "seo-ai-visibility",
+  // Content Score: single destination (Reach content-score)
+  "contentscorer":     "content-score",
+  // Goals Hub discoverability
+  "goals-hub":         "agent-goals",
+  "marketing-goals":   "agent-goals",
+  "targets":           "goals",
+  // Calendar shell discoverability
+  "calendar-hub":      "master-calendar",
+  "unified-calendar":  "master-calendar",
+  // Create hubs
+  "creative-studio":   "creative-hub",
+  "ad-creative-hub":   "creative-hub",
+  "pages-sites":       "pages-hub",
+  "landing-hub":       "pages-hub",
+  // Organic social performance hub
+  "organic-social-perf": "organic-performance",
 };
 
 /**

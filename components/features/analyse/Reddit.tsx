@@ -345,7 +345,7 @@ export default function Reddit() {
   return (
     <div>
       <div className="view-header-wrap">
-        <div className="view-header">
+        <div className="view-header ig-panel-hero">
           <div className="container">
             <div className="vh-inner">
               <div>
@@ -433,7 +433,7 @@ export default function Reddit() {
                 onClick={kwSuggest}
                 style={{
                   padding: "3px 8px",
-                  background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+                  background: "linear-gradient(135deg,#0f766e,#0284c7)",
                   border: "none",
                   borderRadius: 5,
                   color: "#fff",
@@ -1087,7 +1087,7 @@ function Feed({
         style={{
           textAlign: "center",
           padding: "48px 24px",
-          color: "rgba(255,255,255,.3)",
+          color: '#94a3b8',
         }}
       >
         <div style={{ fontSize: "2.5rem", marginBottom: 10 }}>{emptyIcon}</div>
@@ -1215,7 +1215,7 @@ function RedditCard({ p, onReply }: { p: RedditPost; onReply: () => void }) {
                 🔍 SERP
               </span>
             )}
-            <span style={{ fontSize: "0.62rem", color: "rgba(255,255,255,.3)" }}>
+            <span style={{ fontSize: "0.62rem", color: '#94a3b8' }}>
               {(p.ageHours || 0) < 24
                 ? `${p.ageHours}h ago`
                 : `${Math.round((p.ageHours || 0) / 24)}d ago`}
@@ -1253,7 +1253,7 @@ function RedditCard({ p, onReply }: { p: RedditPost; onReply: () => void }) {
           <div
             style={{
               fontSize: "0.56rem",
-              color: "rgba(255,255,255,.3)",
+              color: '#94a3b8',
               fontWeight: 600,
             }}
           >

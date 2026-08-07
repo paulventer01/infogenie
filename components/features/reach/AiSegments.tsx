@@ -42,7 +42,7 @@ export default function AiSegments() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>🧠 AI Segment Suggestions</h2>
         <p className="view-sub">
           Let AI analyse your existing audiences and propose new high-value

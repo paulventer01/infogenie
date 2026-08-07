@@ -15,7 +15,18 @@ const { runFatigueForecastOnce } = require('./fatigue_forecast');
 
 const router = express.Router();
 
-router.get('/status', async (req, res) => {
+function _route(fn) {
+  return async (req, res) => {
+    try {
+      await fn(req, res);
+    } catch (e) {
+      console.error('[optimizer]', e.message || e);
+      res.json({ ok: false, error: e.message || 'optimizer_error' });
+    }
+  };
+}
+
+router.get('/status', _route(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, error: 'database not configured' });
   const pool = _db.getPool();
   const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:status' });
@@ -36,9 +47,9 @@ router.get('/status', async (req, res) => {
       tiktok: await platformConnected('tiktok'),
     },
   });
-});
+}));
 
-router.get('/campaigns', async (req, res) => {
+router.get('/campaigns', _route(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, error: 'database not configured', campaigns: [] });
   const pool = _db.getPool();
   const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:campaigns:list' });
@@ -57,9 +68,9 @@ router.get('/campaigns', async (req, res) => {
     ORDER BY c.created_at DESC LIMIT 200
   `, [tid]);
   res.json({ ok: true, campaigns: r.rows });
-});
+}));
 
-router.get('/actions', async (req, res) => {
+router.get('/actions', _route(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, actions: [] });
   const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:actions:list' });
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 500);
@@ -70,7 +81,7 @@ router.get('/actions', async (req, res) => {
     ORDER BY a.created_at DESC LIMIT $1
   `, [limit, tid]);
   res.json({ ok: true, actions: r.rows });
-});
+}));
 
 // Validation helpers: every numeric field gets coerced + range-checked so
 // junk values can't poison the rules engine math or DB types.
@@ -347,7 +358,7 @@ router.get('/fatigue-forecast', async (req, res) => {
         cr.headline, cr.body, cr.image_url
       FROM creative_fatigue_forecasts ff
       LEFT JOIN ad_campaigns  c  ON c.id  = ff.campaign_id
-      LEFT JOIN ad_creatives  cr ON cr.id = ff.creative_id
+      LEFT JOIN optimizer_ad_creatives  cr ON cr.id = ff.creative_id
       WHERE ff.tenant_id = $2
       ORDER BY ff.creative_id, ff.created_at DESC
     ) latest

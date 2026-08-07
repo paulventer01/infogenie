@@ -674,6 +674,7 @@ function ClientsTab() {
   const [newWs, setNewWs] = useState("");
   const [newName, setNewName] = useState("");
   const [newSite, setNewSite] = useState("");
+  const nameRef = useRef<HTMLInputElement>(null);
   // Read the active client preview context the legacy SPA may have set (guarded).
   const [previewId, setPreviewId] = useState<number | null>(() => {
     if (typeof window === "undefined") return null;
@@ -704,11 +705,15 @@ function ClientsTab() {
   }, [reloadKey]);
 
   async function addClient() {
-    const name = newName.trim();
+    // Prefer React state; fall back to the live DOM value in case a legacy
+    // field enhancer wrote to the input without syncing controlled state.
+    const domName = (nameRef.current && nameRef.current.value) || "";
+    const name = (newName || domName).trim();
     if (!name) {
       toast("⚠️ Enter a client name");
       return;
     }
+    if (name !== newName.trim()) setNewName(name);
     const r = await adminSend("/clients", "POST", {
       tenantId: Number(newWs),
       name,
@@ -719,7 +724,15 @@ function ClientsTab() {
       setNewName("");
       setNewSite("");
       setReloadKey((k) => k + 1);
-    } else toast("⚠️ " + errText(r));
+    } else {
+      const friendly: Record<string, string> = {
+        bad_name: "Enter a client name (2–120 characters)",
+        bad_tenant: "Choose a workspace",
+        tenant_not_found: "Workspace not found",
+        duplicate_name_in_workspace: "A client with that name already exists in this workspace",
+      };
+      toast("⚠️ " + (friendly[r.error || ""] || errText(r)));
+    }
   }
   async function setClientMode(id: number, mode: string) {
     const r = await adminSend("/clients/" + id, "PATCH", { data_mode: mode });
@@ -779,13 +792,28 @@ function ClientsTab() {
             ))}
           </select>
         </div>
-        <div style={{ flex: 1, minWidth: 160 }}>
+        <div style={{ flex: 1, minWidth: 160 }} data-no-autofill="1">
           <label style={lbl}>CLIENT NAME</label>
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Acme Corp" style={inp} />
+          <input
+            ref={nameRef}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Acme Corp"
+            style={inp}
+            data-no-autofill="1"
+            autoComplete="off"
+          />
         </div>
-        <div style={{ flex: 1, minWidth: 160 }}>
+        <div style={{ flex: 1, minWidth: 160 }} data-no-autofill="1">
           <label style={lbl}>WEBSITE (optional)</label>
-          <input value={newSite} onChange={(e) => setNewSite(e.target.value)} placeholder="acme.com" style={inp} />
+          <input
+            value={newSite}
+            onChange={(e) => setNewSite(e.target.value)}
+            placeholder="acme.com"
+            style={inp}
+            data-no-autofill="1"
+            autoComplete="off"
+          />
         </div>
         <button onClick={addClient} style={{ padding: "8px 16px", background: "#1E293B", color: "#fff", border: "none", borderRadius: 7, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
           + Add Client
@@ -893,12 +921,25 @@ function UsersTab() {
   }, [reloadKey]);
 
   const tenantRoles = roles.filter((r) => r.scope === "tenant");
+  const platformRoles = roles.filter((r) => r.scope === "platform");
 
   async function setPlatformRole(userId: number, roleKey: string) {
     const r = await adminSend("/users/" + userId + "/platform-role", "PATCH", { roleKey });
     if (r.ok) toast("✓ Platform role updated");
-    else toast("⚠️ " + errText(r));
+    else {
+      const friendly: Record<string, string> = {
+        cannot_change_owner: "Bootstrap Platform Owner can’t be changed here",
+        bad_platform_role: "Pick Platform Owner or Platform Admin",
+      };
+      toast("⚠️ " + (friendly[r.error || ""] || errText(r)));
+    }
     setReloadKey((k) => k + 1);
+  }
+
+  function platformRoleValue(u: User): string {
+    if (u.is_owner || u.platform_role === "platform_owner") return "platform_owner";
+    if (u.platform_role === "platform_admin") return "platform_admin";
+    return "none";
   }
   async function setMemberRole(tenantId: number, userId: number, roleKey: string) {
     const r = await adminSend("/workspaces/" + tenantId + "/members/" + userId, "PATCH", { roleKey });
@@ -1078,14 +1119,25 @@ function UsersTab() {
           <thead style={{ background: "#F8FAFC" }}>
             <tr>
               <th style={thStyle}>USER</th>
-              <th style={thStyle}>PLATFORM ROLE</th>
-              <th style={thStyle}>WORKSPACES &amp; ROLES</th>
+              <th style={thStyle}>
+                PLATFORM ROLE
+                <div style={{ fontWeight: 500, color: "#94A3B8", fontSize: 10, marginTop: 2, textTransform: "none", letterSpacing: 0 }}>
+                  Platform Owner / Admin
+                </div>
+              </th>
+              <th style={thStyle}>
+                WORKSPACES &amp; ROLES
+                <div style={{ fontWeight: 500, color: "#94A3B8", fontSize: 10, marginTop: 2, textTransform: "none", letterSpacing: 0 }}>
+                  Tenant roles only
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody>
             {users.map((u) => {
               const mems = u.memberships || [];
               const availWs = workspaces.filter((w) => !mems.some((m) => m.tenantId === w.id));
+              const platVal = platformRoleValue(u);
               return (
                 <tr key={u.id} style={{ borderTop: "1px solid #F1F5F9" }}>
                   <td style={{ padding: "11px 16px", verticalAlign: "top" }}>
@@ -1094,35 +1146,61 @@ function UsersTab() {
                   </td>
                   <td style={{ padding: "11px 16px", verticalAlign: "top" }}>
                     {u.is_owner ? (
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#7E22CE", background: "#F3E8FF", padding: "3px 9px", borderRadius: 99 }}>
-                        OWNER
-                      </span>
+                      <select
+                        value="platform_owner"
+                        disabled
+                        title="Bootstrap Platform Owner — locked"
+                        style={{ fontSize: 12, padding: "4px 8px", border: "1px solid #E9D5FF", borderRadius: 7, background: "#F3E8FF", color: "#7E22CE", fontWeight: 700 }}
+                      >
+                        <option value="platform_owner">Platform Owner</option>
+                      </select>
                     ) : (
                       <select
-                        value={u.platform_role === "platform_admin" ? "platform_admin" : "none"}
+                        value={platVal}
                         onChange={(e) => setPlatformRole(u.id, e.target.value)}
-                        style={{ fontSize: 12, padding: "4px 8px", border: "1px solid #E2E8F0", borderRadius: 7 }}
+                        style={{ fontSize: 12, padding: "4px 8px", border: "1px solid #E2E8F0", borderRadius: 7, minWidth: 160 }}
                       >
                         <option value="none">Regular user</option>
-                        <option value="platform_admin">Platform Admin</option>
+                        {(platformRoles.length
+                          ? platformRoles
+                          : [
+                              { key: "platform_owner", name: "Platform Owner" },
+                              { key: "platform_admin", name: "Platform Admin" },
+                            ]
+                        ).map((r) => (
+                          <option key={r.key} value={r.key}>
+                            {r.name}
+                          </option>
+                        ))}
                       </select>
                     )}
                   </td>
                   <td style={{ padding: "11px 16px", verticalAlign: "top" }}>
                     {mems.length ? (
                       mems.map((m) => (
-                        <div key={m.tenantId} style={{ display: "flex", alignItems: "center", gap: 6, margin: "3px 0" }}>
+                        <div key={m.tenantId} style={{ display: "flex", alignItems: "center", gap: 6, margin: "3px 0", flexWrap: "wrap" }}>
                           <span style={{ fontSize: 12, color: "#334155", minWidth: 120 }}>{m.tenant}</span>
                           <select
                             value={(tenantRoles.find((r) => r.name === m.role)?.key) || ""}
                             onChange={(e) => setMemberRole(m.tenantId, u.id, e.target.value)}
+                            title="Workspace (tenant) role — Platform Owner/Admin are set under Platform Role"
                             style={{ fontSize: 11, padding: "3px 6px", border: "1px solid #E2E8F0", borderRadius: 6 }}
                           >
-                            {tenantRoles.map((r) => (
-                              <option key={r.key} value={r.key}>
-                                {r.name}
+                            <optgroup label="Workspace roles">
+                              {tenantRoles.map((r) => (
+                                <option key={r.key} value={r.key}>
+                                  {r.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Platform roles → use Platform Role column">
+                              <option value="__platform_owner" disabled>
+                                Platform Owner
                               </option>
-                            ))}
+                              <option value="__platform_admin" disabled>
+                                Platform Admin
+                              </option>
+                            </optgroup>
                           </select>
                           <button onClick={() => removeMember(m.tenantId, u.id)} title="Remove from workspace" style={{ border: "1px solid #FECACA", background: "#FEF2F2", color: "#B91C1C", borderRadius: 6, fontSize: 11, padding: "3px 7px", cursor: "pointer" }}>
                             Remove
@@ -2035,7 +2113,7 @@ export default function Admin() {
 
   return (
     <div className="view" id="view-admin" style={{ display: "block" }}>
-      <div className="view-header" style={{ background: "linear-gradient(135deg,#0F172A 0%,#1E293B 50%,#334155 100%)" }}>
+      <div className="view-header ig-panel-hero" style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)" }}>
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -2043,7 +2121,7 @@ export default function Admin() {
                 <span className="bc-group" style={{ color: "rgba(203,213,225,.8)" }}>
                   Manage
                 </span>{" "}
-                <span className="bc-sep" style={{ color: "rgba(255,255,255,.3)" }}>
+                <span className="bc-sep" style={{ color: '#94a3b8' }}>
                   ›
                 </span>{" "}
                 Admin Portal

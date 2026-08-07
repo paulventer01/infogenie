@@ -294,6 +294,7 @@
         </button>
         <div class="nav-dropdown nav-dropdown-right">
           <div class="nav-drop-header">1 · Set the targets</div>
+          <a href="#" class="nav-link" data-view="agent-goals"><span class="ndl-icon">🏁</span><span class="ndl-text">Marketing Goals (set · plan · track)</span></a>
           <a href="#" class="nav-link" data-view="goals"><span class="ndl-icon">🎯</span><span class="ndl-text">Goals &amp; Targets</span></a>
           <a href="#" class="nav-link" data-view="kpi-tracker"><span class="ndl-icon">📈</span><span class="ndl-text">KPI Tracker (live)</span></a>
           <a href="#" class="nav-link" data-view="action-center"><span class="ndl-icon">🎬</span><span class="ndl-text">Action Center (do this next)</span></a>
@@ -359,7 +360,6 @@
           <div class="nav-drop-header">3 · AI tools &amp; config</div>
           <a href="#" class="nav-link" data-view="ask-infogenie"><span class="ndl-icon">💬</span><span class="ndl-text">Ask InfoGenie (your data)</span></a>
           <a href="#" class="nav-link" data-view="marketing-memory"><span class="ndl-icon">🧠</span><span class="ndl-text">Marketing Memory (knowledge graph)</span></a>
-          <a href="#" class="nav-link" data-view="agent-goals"><span class="ndl-icon">🤖</span><span class="ndl-text">AI Marketing Agent</span></a>
           <a href="#" class="nav-link" data-view="ai-providers"><span class="ndl-icon">🧠</span><span class="ndl-text">AI Providers (bring your own LLM)</span></a>
           <a href="#" class="nav-link" data-view="model-compare"><span class="ndl-icon">⚖️</span><span class="ndl-text">Model Comparison (A/B prompts)</span></a>
           <a href="#" class="nav-link" data-view="vertical-playbooks"><span class="ndl-icon">📋</span><span class="ndl-text">Vertical Playbooks (industry packs)</span></a>
@@ -368,7 +368,7 @@
           <a href="#" class="nav-link" data-view="team-meetings"><span class="ndl-icon">📋</span><span class="ndl-text">Minutes of Meeting (AI Team)</span></a>
           <a href="#" class="nav-link" data-view="playbook-7day"><span class="ndl-icon">📖</span><span class="ndl-text">7-Day Marketing Playbook</span></a>
           <a href="#" class="nav-link" data-view="growth-methodology"><span class="ndl-icon">🎯</span><span class="ndl-text">Growth Methodology (5-stage)</span></a>
-          <a href="#" class="nav-link" data-view="flywheel"><span class="ndl-icon">🌀</span><span class="ndl-text">Performance Growth Flywheel</span></a>
+          <a href="#" class="nav-link" data-view="flywheel"><span class="ndl-icon">🔁</span><span class="ndl-text">Performance Growth Flywheel</span></a>
           <a href="#" class="nav-link" data-view="infographics"><span class="ndl-icon">🖼️</span><span class="ndl-text">Infographic Generator</span></a>
           <div class="nav-drop-header">5 · Run the customer ops</div>
           <a href="#" class="nav-link" data-view="reengage"><span class="ndl-icon">🔁</span><span class="ndl-text">Re-Engage Customers (drip)</span></a>
@@ -512,8 +512,9 @@
                     el.textContent = String(whole);
                     labelNode.textContent = ' sec — last run';
                   } else {
-                    el.textContent = '0';
-                    labelNode.textContent = ' seconds';
+                    // Idle state — avoid "0 seconds" which looks like a stuck loader.
+                    el.textContent = '';
+                    labelNode.textContent = 'Ready';
                   }
                 }
               }
@@ -538,7 +539,7 @@
         <div class="url-card-label-row">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(0,216,215,.7)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <span>Enter a website <strong style="opacity:.85">or</strong> a sector — either one is enough to begin</span>
-          <span id="heroCountdown" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#0066FF,#00D8D7);color:#FFFFFF;padding:3px 11px;border-radius:999px;font-weight:800;font-size:0.78rem;letter-spacing:.02em;box-shadow:0 4px 14px rgba(0,102,255,.28);font-variant-numeric:tabular-nums" title="Live target — average analysis time"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#FFFFFF;box-shadow:0 0 0 0 rgba(255,255,255,.8);animation:heroPulse 1.2s infinite ease-out"></span><span id="heroCountdownNum">0</span> seconds</span>
+          <span id="heroCountdown" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#0066FF,#00D8D7);color:#FFFFFF;padding:3px 11px;border-radius:999px;font-weight:800;font-size:0.78rem;letter-spacing:.02em;box-shadow:0 4px 14px rgba(0,102,255,.28);font-variant-numeric:tabular-nums" title="Idle until you click Analyse Now — then this counts live seconds"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#FFFFFF;box-shadow:0 0 0 0 rgba(255,255,255,.8);animation:heroPulse 1.2s infinite ease-out"></span><span id="heroCountdownNum"></span> Ready</span>
         </div>
         <div class="url-input-row">
           <div class="url-field-wrap">
@@ -804,11 +805,12 @@
   </section>
 </div>
 
-<!-- LOADING OVERLAY -->
-<div class="loading-overlay hidden" id="loadingOverlay">
+<!-- LOADING OVERLAY — portaled to document.body while running so it isn't
+     trapped by AppShell .content transform (which made the card sit off-screen). -->
+<div class="loading-overlay hidden" id="loadingOverlay" role="dialog" aria-modal="true" aria-labelledby="loadingTitle" aria-live="polite">
   <div class="loading-card">
     <div class="loading-logo-wrap">
-      <svg width="48" height="48" viewBox="0 0 40 40" fill="none">
+      <svg width="48" height="48" viewBox="0 0 40 40" fill="none" aria-hidden="true">
         <circle cx="20" cy="20" r="20" fill="url(#lgGrad)"/>
         <path d="M13 20 Q20 10 27 20 Q20 30 13 20Z" fill="white" opacity="0.9"/>
         <circle cx="20" cy="20" r="4" fill="white"/>
@@ -821,26 +823,39 @@
       </svg>
       <span class="loading-brand">InfoGenie</span>
     </div>
-    <p class="loading-title">AI Intelligence Engine Running</p>
+    <p class="loading-title" id="loadingTitle">AI is analysing your market</p>
+    <div class="loading-target" id="loadingTarget">
+      <span class="loading-target-pulse" aria-hidden="true"></span>
+      <span class="loading-target-label">Target</span>
+      <strong id="loadingTargetValue">—</strong>
+    </div>
     <div class="loading-steps-list">
-      <div class="lstep" id="lst1"><div class="lstep-dot"></div><div class="lstep-text"><strong>Detecting industry & market segment</strong><br/><small>Analysing domain, content & structure</small></div><div class="lstep-check hidden">✓</div></div>
-      <div class="lstep" id="lst2"><div class="lstep-dot"></div><div class="lstep-text"><strong>Identifying top competitors</strong><br/><small>Scanning industry database & ad libraries</small></div><div class="lstep-check hidden">✓</div></div>
-      <div class="lstep" id="lst3"><div class="lstep-dot"></div><div class="lstep-text"><strong>Analysing competitor campaigns</strong><br/><small>CTR, ROAS, ad spend, audience data</small></div><div class="lstep-check hidden">✓</div></div>
-      <div class="lstep" id="lst4"><div class="lstep-dot"></div><div class="lstep-text"><strong>Generating AI recommendations</strong><br/><small>Campaign strategy & creative briefs</small></div><div class="lstep-check hidden">✓</div></div>
-      <div class="lstep" id="lst5"><div class="lstep-dot"></div><div class="lstep-text"><strong>Building intelligence report</strong><br/><small>ROI projections & audience targeting</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst1"><div class="lstep-dot"></div><div class="lstep-text"><strong>Detecting industry &amp; market segment</strong><br/><small>Reading site signals &amp; niche</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst2"><div class="lstep-dot"></div><div class="lstep-text"><strong>Identifying top competitors</strong><br/><small>Mapping real rivals in your niche</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst3"><div class="lstep-dot"></div><div class="lstep-text"><strong>Analysing competitor campaigns</strong><br/><small>Traffic, spend signals &amp; channels</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst4"><div class="lstep-dot"></div><div class="lstep-text"><strong>Generating AI recommendations</strong><br/><small>Strategy, creative &amp; targeting</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst5"><div class="lstep-dot"></div><div class="lstep-text"><strong>Building intelligence report</strong><br/><small>Dashboard, battle plan &amp; next steps</small></div><div class="lstep-check hidden">✓</div></div>
+    </div>
+    <div class="loading-activity" id="loadingActivity" aria-live="polite">
+      <div class="loading-activity-head">Live activity</div>
+      <ul class="loading-activity-list" id="loadingActivityList"></ul>
     </div>
     <div class="loading-progress-wrap">
       <div class="loading-bar-track"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
       <span class="loading-pct" id="loadingPct">0%</span>
-      <span id="loadingElapsedPill" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#0066FF,#00D8D7);color:#FFFFFF;padding:4px 12px;border-radius:999px;font-size:0.78rem;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:0 4px 12px rgba(0,102,255,.35);white-space:nowrap;margin-left:6px" title="Live elapsed time for this analysis run">
-        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#FFFFFF;box-shadow:0 0 0 0 rgba(255,255,255,.85);animation:pulseDot 1.2s infinite ease-out"></span>
+      <span id="loadingElapsedPill" class="loading-elapsed-pill" title="Live elapsed time for this analysis run">
+        <span class="loading-elapsed-dot" aria-hidden="true"></span>
         ⏱ <span id="loadingElapsedTime">0.0s</span>
       </span>
     </div>
-    <div class="loading-status-text" id="loadingStatusText">Initialising InfoGenie AI Engine...</div>
+    <div class="loading-status-text" id="loadingStatusText">Initialising InfoGenie AI Engine…</div>
   </div>
 </div>
-<style>@keyframes pulseDot{0%{box-shadow:0 0 0 0 rgba(0,201,200,.7)}70%{box-shadow:0 0 0 10px rgba(0,201,200,0)}100%{box-shadow:0 0 0 0 rgba(0,201,200,0)}}</style>
+<style>
+@keyframes pulseDot{0%{box-shadow:0 0 0 0 rgba(0,201,200,.7)}70%{box-shadow:0 0 0 10px rgba(0,201,200,0)}100%{box-shadow:0 0 0 0 rgba(0,201,200,0)}}
+@keyframes igLoadPulse{0%{transform:scale(1);opacity:1}50%{transform:scale(1.25);opacity:.55}100%{transform:scale(1);opacity:1}}
+@keyframes igActIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+</style>
 
 <!-- DASHBOARD VIEW -->
 
@@ -1500,7 +1515,7 @@
 <div class="toast hidden" id="toast"></div>
 
 <!-- GLOBAL STYLED TOOLTIP -->
-<div id="igTip" role="tooltip" aria-hidden="true"></div>
+<div id="igTip" role="tooltip" aria-hidden="true" hidden></div>
 
 <!-- ══ LANDING PAGE GENERATOR MODAL ══════════════════════════════════════════ -->
 <div id="landingPageModal" class="hidden" style="position:fixed;inset:0;z-index:10999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.72);backdrop-filter:blur(5px);padding:16px">
@@ -1547,14 +1562,14 @@
 </style>
 
 <!-- ══ WORDPRESS CREDENTIALS MODAL ══════════════════════════════════════════ -->
-<div id="wpCredentialsModal" class="hidden" style="position:fixed;inset:0;z-index:11000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:20px">
-  <div style="background:white;border-radius:18px;width:100%;max-width:480px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-    <div style="background:linear-gradient(135deg,#0066FF,#0A1628);padding:22px 26px;display:flex;align-items:center;justify-content:space-between">
+<div id="wpCredentialsModal" class="hidden" data-ig-no-enhance style="position:fixed;inset:0;z-index:11000;display:flex;align-items:flex-start;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:72px 20px 24px;overflow-y:auto">
+  <div class="wp-cred-dialog" style="background:white;border-radius:18px;width:100%;max-width:480px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3);margin-top:0">
+    <div class="wp-cred-header" style="background:linear-gradient(135deg,#0066FF,#0A1628);padding:22px 26px;display:flex;align-items:center;justify-content:space-between">
       <div>
-        <div style="font-size:1rem;font-weight:800;color:white;font-family:'Sora',sans-serif;margin-bottom:3px">🟦 Connect WordPress</div>
-        <div style="font-size:0.75rem;color:rgba(255,255,255,.55)">Publish AI landing pages directly to your WordPress site</div>
+        <div class="wp-cred-title" style="font-size:1rem;font-weight:800;color:#ffffff;font-family:'Sora',sans-serif;margin-bottom:3px">🟦 Connect WordPress</div>
+        <div class="wp-cred-sub" style="font-size:0.75rem;color:rgba(255,255,255,.88);line-height:1.4">Publish AI landing pages directly to your WordPress site</div>
       </div>
-      <button onclick="closeWpCredentialsModal()" style="width:30px;height:30px;background:rgba(255,255,255,.1);border:none;border-radius:8px;color:white;font-size:1rem;cursor:pointer">✕</button>
+      <button type="button" onclick="closeWpCredentialsModal()" aria-label="Close" style="width:30px;height:30px;background:rgba(255,255,255,.1);border:none;border-radius:8px;color:#ffffff;font-size:1rem;cursor:pointer;flex-shrink:0">✕</button>
     </div>
     <div style="padding:24px 26px;display:flex;flex-direction:column;gap:14px">
       <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;font-size:0.78rem;color:#1D4ED8;line-height:1.5">
@@ -1574,8 +1589,8 @@
         <input id="wp-app-password" type="password" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.84rem;outline:none;font-family:'Inter',sans-serif;letter-spacing:.05em" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
       </div>
       <div style="display:flex;gap:10px;margin-top:4px">
-        <button onclick="closeWpCredentialsModal()" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:9px;font-size:0.84rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
-        <button onclick="saveWpCredentials()" style="flex:2;padding:11px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:9px;font-size:0.84rem;font-weight:700;color:white;cursor:pointer">🟦 Connect &amp; Save</button>
+        <button type="button" onclick="closeWpCredentialsModal()" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:9px;font-size:0.84rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
+        <button type="button" onclick="saveWpCredentials()" style="flex:2;padding:11px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:9px;font-size:0.84rem;font-weight:700;color:white;cursor:pointer">🟦 Connect &amp; Save</button>
       </div>
     </div>
   </div>
@@ -1600,11 +1615,14 @@
 
 <div id="commandBarBackdrop" onclick="closeCommandBar(event)" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);backdrop-filter:blur(4px);z-index:9999;align-items:flex-start;justify-content:center;padding-top:10vh">
   <div onclick="event.stopPropagation()" style="width:min(640px,92vw);background:white;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">
-    <div style="padding:18px 20px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;gap:12px">
+    <div style="padding:18px 20px 12px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;gap:10px">
+      <button type="button" id="commandBarAttachBtn" onclick="openCommandBarAttach()" title="Attach a Word document (.docx)" aria-label="Attach Word document" style="width:36px;height:36px;border-radius:10px;border:1.5px solid #CBD5E1;background:#F8FAFC;color:#334155;font-size:1.35rem;font-weight:700;line-height:1;cursor:pointer;flex-shrink:0;display:grid;place-items:center;padding:0">+</button>
       <span style="font-size:1.3rem">✨</span>
-      <input id="commandBarInput" type="text" tabindex="0" placeholder="Ask InfoGenie to do something… (e.g. 'show me blended CAC for the last 30 days')" style="flex:1;border:none;outline:none;font-size:1rem;font-weight:500;color:#0F172A;pointer-events:auto;user-select:text;-webkit-user-select:text">
+      <input id="commandBarInput" type="text" tabindex="0" placeholder="Ask InfoGenie to do something… (attach a .docx with + for instructions)" style="flex:1;border:none;outline:none;font-size:1rem;font-weight:500;color:#0F172A;pointer-events:auto;user-select:text;-webkit-user-select:text">
       <kbd style="font-size:0.7rem;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:5px;padding:3px 7px;color:#64748B">esc</kbd>
     </div>
+    <div id="commandBarAttachment" style="display:none;padding:0 20px 12px;border-bottom:1px solid #F1F5F9;font-size:0.78rem;color:#475569"></div>
+    <input type="file" id="commandBarFileInput" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none">
     <div id="commandBarHints" style="padding:14px 20px;font-size:0.78rem;color:#64748B;border-bottom:1px solid #F1F5F9">
       <div style="font-weight:700;color:#0F172A;margin-bottom:8px">Try one of these:</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px">
@@ -1675,7 +1693,7 @@
 <script src="/public/js/ig_moat_features.js?v=20260612MF1"></script>
 <script src="/public/js/ig_strategic_features.js?v=20260714SF2"></script>
 <script src="/public/js/ig_agentic_suite.js?v=20260714AS2"></script>
-<script src="/ig_field_enhancer.js?v=20260629FE2"></script>
+<script src="/ig_field_enhancer.js?v=20260804BD1"></script>
 <script src="/ig_diag.js"></script>
 <script>
 (function(){

@@ -14,6 +14,7 @@ const __root_require__ = (p) =>
 // and one-time boot migration below on whether this is the live server process
 // (off when required for tests).
 const _runtimeFlags = require('../runtime_flags');
+const { extractWordText } = require('./parse_document');
 
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
@@ -217,8 +218,11 @@ function _assistantRateLimit(req, res) {
 }
 app.post('/api/assistant/command', async (req, res) => {
   if (!_assistantRateLimit(req, res)) return;
-  const { command, confirm } = req.body || {};
+  const { command, confirm, documentContext, documentName } = req.body || {};
   if (!command || typeof command !== 'string') return res.status(400).json({ ok:false, error:'missing-command' });
+  const docBlock = (typeof documentContext === 'string' && documentContext.trim())
+    ? `\n\n--- Attached document${documentName ? ` (${String(documentName).slice(0, 120)})` : ''} ---\n${documentContext.trim().slice(0, 50000)}\n--- End of document ---`
+    : '';
   const sysPrompt = `You are InfoGenie's Command Assistant. The user types a natural-language command and you execute it by calling exactly one of the registered tools. Rules:
 - Pick the single best tool. If genuinely ambiguous, reply with a brief clarifying question instead of calling a tool.
 - For DESTRUCTIVE tools (enroll_drip_campaign, create_goal): you may call the tool — the server will gate it with a confirmation step automatically.
@@ -229,7 +233,7 @@ Available capability areas: drip campaigns, Amplitude product-analytics agents, 
       model: 'gpt-5',
       messages: [
         { role:'system', content: sysPrompt },
-        { role:'user',   content: command + (confirm ? '\n\n[User has explicitly confirmed any destructive action.]' : '') },
+        { role:'user',   content: command + docBlock + (confirm ? '\n\n[User has explicitly confirmed any destructive action.]' : '') },
       ],
       tools: _ASSISTANT_TOOLS,
       tool_choice: 'auto',
@@ -268,6 +272,27 @@ Available capability areas: drip campaigns, Amplitude product-analytics agents, 
     res.json({ ok:true, type:'tool-executed', toolName, toolArgs, toolResult, summary });
   } catch (e) {
     res.status(500).json({ ok:false, error: e.message });
+  }
+});
+
+// Parse Word (.docx) uploads for the ⌘K command bar attachment button.
+const multer = require('multer');
+const _cmdDocUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+});
+app.post('/api/assistant/parse-document', _cmdDocUpload.single('file'), async (req, res) => {
+  if (!_assistantRateLimit(req, res)) return;
+  try {
+    const parsed = await extractWordText(req.file);
+    res.json({ ok: true, ...parsed });
+  } catch (e) {
+    const status = e.status || 500;
+    res.status(status).json({
+      ok: false,
+      error: e.message || 'parse-failed',
+      message: e.message || 'Could not read that document.',
+    });
   }
 });
 

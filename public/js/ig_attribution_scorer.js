@@ -246,16 +246,107 @@ function prefillCommand(text) {
   const inp = document.getElementById('commandBarInput');
   if (inp) { inp.value = text; try { inp.focus(); } catch(_){} }
 }
+
+/** Word document attached via the + button (text extracted server-side). */
+window._cmdBarAttachment = null;
+
+function renderCommandBarAttachment() {
+  const row = document.getElementById('commandBarAttachment');
+  if (!row) return;
+  const att = window._cmdBarAttachment;
+  if (!att || !att.text) {
+    row.style.display = 'none';
+    row.innerHTML = '';
+    return;
+  }
+  row.style.display = 'block';
+  const truncNote = att.truncated ? ' · truncated for length' : '';
+  row.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:8px 10px">
+      <div style="min-width:0">
+        <div style="font-weight:700;color:#0C4A6E">📄 ${_escapeHtml(att.name)}</div>
+        <div style="color:#0369A1;margin-top:2px">${_escapeHtml(String(att.chars || att.text.length))} characters loaded${truncNote}</div>
+      </div>
+      <button type="button" onclick="clearCommandBarAttachment()" style="flex-shrink:0;padding:6px 10px;border:1px solid #CBD5E1;border-radius:8px;background:white;color:#475569;font-size:0.72rem;font-weight:700;cursor:pointer">Remove</button>
+    </div>`;
+}
+
+function openCommandBarAttach() {
+  const inp = document.getElementById('commandBarFileInput');
+  if (inp) inp.click();
+}
+
+function clearCommandBarAttachment() {
+  window._cmdBarAttachment = null;
+  const inp = document.getElementById('commandBarFileInput');
+  if (inp) inp.value = '';
+  renderCommandBarAttachment();
+}
+
+async function attachCommandBarDocument(file) {
+  const out = document.getElementById('commandBarResult');
+  if (!file) return;
+  const ext = (file.name || '').toLowerCase();
+  if (!ext.endsWith('.docx')) {
+    const msg = ext.endsWith('.doc')
+      ? 'Legacy .doc files are not supported. Please save as .docx in Word and try again.'
+      : 'Please choose a .docx Word document.';
+    if (out) out.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:12px;color:#991B1B;font-size:0.85rem">⚠️ ${_escapeHtml(msg)}</div>`;
+    return;
+  }
+  if (out) out.innerHTML = '<div style="display:flex;align-items:center;gap:10px;color:#64748B;font-size:0.88rem"><div class="cmdSpinner"></div>Reading Word document…</div>';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const r = await fetch('/api/assistant/parse-document', { method: 'POST', body: fd, credentials: 'same-origin' });
+    const j = await r.json();
+    if (!r.ok || !j.ok) {
+      throw new Error(j.message || j.error || 'Upload failed');
+    }
+    window._cmdBarAttachment = {
+      name: j.name || file.name,
+      text: j.text || '',
+      chars: j.chars || (j.text || '').length,
+      truncated: !!j.truncated,
+    };
+    renderCommandBarAttachment();
+    if (out) out.innerHTML = `<div style="font-size:0.85rem;color:#0369A1;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:9px;padding:12px">✅ Attached <strong>${_escapeHtml(j.name || file.name)}</strong>. Type your command, then press Enter — InfoGenie will use the document as context.</div>`;
+    const cmdInp = document.getElementById('commandBarInput');
+    if (cmdInp) try { cmdInp.focus(); } catch(_){}
+  } catch (e) {
+    if (out) out.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:12px;color:#991B1B;font-size:0.85rem">⚠️ ${_escapeHtml(e.message || 'Could not read document')}</div>`;
+  }
+}
+
+(function wireCommandBarFileInput() {
+  const fileInp = document.getElementById('commandBarFileInput');
+  if (!fileInp || fileInp._wired) return;
+  fileInp._wired = true;
+  fileInp.addEventListener('change', () => {
+    const f = fileInp.files && fileInp.files[0];
+    if (f) attachCommandBarDocument(f);
+  });
+})();
+
 async function runCommandBar(commandOverride, confirm) {
   const inp = document.getElementById('commandBarInput');
   const out = document.getElementById('commandBarResult');
   const command = commandOverride != null ? commandOverride : (inp?.value || '').trim();
-  if (!command) { out.innerHTML = '<div style="color:#64748B;font-size:0.85rem">Type a command first.</div>'; return; }
+  const att = window._cmdBarAttachment;
+  if (!command && !(att && att.text)) {
+    out.innerHTML = '<div style="color:#64748B;font-size:0.85rem">Type a command or attach a Word document with +.</div>';
+    return;
+  }
   out.innerHTML = '<div style="display:flex;align-items:center;gap:10px;color:#64748B;font-size:0.88rem"><div class="cmdSpinner"></div>InfoGenie is figuring out which action to run…</div>';
   try {
+    const payload = { command: command || 'Follow the attached instructions document.', confirm: !!confirm };
+    if (att && att.text) {
+      payload.documentContext = att.text;
+      payload.documentName = att.name;
+    }
     const r = await fetch('/api/assistant/command', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ command, confirm: !!confirm }),
+      body: JSON.stringify(payload),
     });
     const j = await r.json();
     if (!j.ok) { out.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:12px;color:#991B1B;font-size:0.85rem">⚠️ ${_escapeHtml(j.error || 'Failed')}${j.message ? ': ' + _escapeHtml(j.message) : ''}</div>`; return; }
@@ -1742,6 +1833,9 @@ function _csCountryHtml(j, targetSummary, generatedAt, isMulti) {
     openCommandBar,
     closeCommandBar,
     prefillCommand,
+    openCommandBarAttach,
+    clearCommandBarAttachment,
+    attachCommandBarDocument,
     runCommandBar,
     refreshLeadQualifier,
     buildLeadQualifier,

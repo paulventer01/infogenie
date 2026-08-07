@@ -143,7 +143,7 @@ export default function SeoWidget() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -304,8 +304,8 @@ export default function SeoWidget() {
                   </div>
                   <pre
                     style={{
-                      background: "#0F172A",
-                      color: "#A7F3D0",
+                      background: '#eef4ff',
+                      color: '#0f766e',
                       padding: 12,
                       borderRadius: 8,
                       fontSize: "0.74rem",
@@ -320,7 +320,7 @@ export default function SeoWidget() {
                     onClick={() => copySnippet(s.id)}
                     style={{
                       background: "#0066FF",
-                      color: "#fff",
+                      color: "#0f172a",
                       border: "none",
                       padding: "6px 14px",
                       borderRadius: 5,

@@ -91,17 +91,18 @@ interface IndexStatus {
 }
 
 const SUGGESTIONS_STANDARD = [
+  "What if we raise prices 8% and lose 5% of volume?",
+  "What happens if our largest customer churns?",
+  "Why is ROAS down — root-cause decomposition?",
+  "Should I be worried about our CAC payback vs peers?",
   "Which landing page is converting best?",
-  "Are any campaigns over budget?",
-  "What is my ROAS by campaign?",
-  "Which leads should I call first?",
   "What changed in the last 7 days?",
 ];
 
 const SUGGESTIONS_BOARDROOM = [
   "Summarise our marketing performance for the board",
   "What is our biggest growth risk this quarter?",
-  "Where should we double-down on ad spend?",
+  "Should I be worried about CAC payback vs comparable firms?",
   "What decisions need leadership sign-off?",
 ];
 
@@ -245,7 +246,7 @@ function AnswerBubble({
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
             {isBoardroom && (
-              <span style={{ background: "linear-gradient(135deg,#0F172A,#4F46E5)", color: "#fff", padding: "3px 9px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 800, letterSpacing: ".04em" }}>
+              <span style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a', padding: "3px 9px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 800, letterSpacing: ".04em" }}>
                 🏛️ BOARDROOM
               </span>
             )}
@@ -335,7 +336,7 @@ function AnswerBubble({
 
       {/* Boardroom brief */}
       {isBoardroom && bb && (
-        <div style={{ marginTop: 18, background: "#0F172A", borderRadius: 10, padding: 16, color: "#E2E8F0" }}>
+        <div style={{ marginTop: 18, background: '#eef4ff', borderRadius: 10, padding: 16, color: "#E2E8F0" }}>
           <div style={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: ".06em", color: "#94A3B8", marginBottom: 14, textTransform: "uppercase" }}>🏛️ BOARDROOM BRIEF</div>
 
           {bb.executive_summary && (
@@ -362,10 +363,10 @@ function AnswerBubble({
 
           {(bb.key_insights || []).length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#A5B4FC", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>🔑 Key Insights</div>
+              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: '#0f766e', textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>🔑 Key Insights</div>
               {(bb.key_insights!).map((ins, i) => (
                 <div key={i} style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-                  <span style={{ color: "#A5B4FC", fontWeight: 800, fontSize: "0.72rem" }}>▸</span>
+                  <span style={{ color: '#0f766e', fontWeight: 800, fontSize: "0.72rem" }}>▸</span>
                   <span style={{ fontSize: "0.83rem", color: "#CBD5E1" }}>{ins}</span>
                 </div>
               ))}
@@ -402,7 +403,7 @@ function AnswerBubble({
 
           {bb.decision_needed && (
             <div style={{ marginBottom: 12, background: "rgba(99,102,241,.15)", borderRadius: 8, padding: "8px 12px" }}>
-              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: "#A5B4FC", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>🗳️ Decision Required</div>
+              <div style={{ fontSize: "0.66rem", fontWeight: 800, color: '#0f766e', textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>🗳️ Decision Required</div>
               <div style={{ fontSize: "0.85rem", color: "#E2E8F0" }}>{bb.decision_needed}</div>
             </div>
           )}
@@ -540,7 +541,7 @@ function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4, flexWrap: "wrap" }}>
                     {item.mode === "boardroom" && (
-                      <span style={{ background: "#0F172A", color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️ Boardroom</span>
+                      <span style={{ background: '#eef4ff', color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️ Boardroom</span>
                     )}
                     {item.topic && (
                       <span style={{ background: "#F3F4F6", color: "#6B7280", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 600 }}>{TOPIC_LABELS[item.topic] || item.topic}</span>
@@ -662,7 +663,7 @@ function CardGrid({ refreshTick }: { refreshTick: number }) {
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                 {card.pinned && <span>📌</span>}
                 {card.mode === "boardroom" && (
-                  <span style={{ background: "#0F172A", color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️</span>
+                  <span style={{ background: '#eef4ff', color: "#E2E8F0", padding: "2px 7px", borderRadius: 10, fontSize: "0.62rem", fontWeight: 800 }}>🏛️</span>
                 )}
                 {typeof aj.confidence === "number" && (
                   <span style={{ fontSize: "0.64rem", color: "#6B7280" }}>
@@ -810,7 +811,7 @@ export default function AskInfoGenie() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -866,8 +867,8 @@ export default function AskInfoGenie() {
               </div>
 
               {mode === "boardroom" && (
-                <div style={{ background: "#0F172A", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: "0.75rem", color: "#94A3B8" }}>
-                  🏛️ <strong style={{ color: "#E2E8F0" }}>Boardroom mode</strong> — two AI passes: analyst answer + executive brief with key metrics, strategic implications, risks &amp; mitigants, and board actions with owners and timelines. Includes predictive intelligence signals.
+                <div style={{ background: "rgba(15, 118, 110, 0.08)", border: "1px solid rgba(15, 118, 110, 0.2)", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: "0.75rem", color: "#334155" }}>
+                  <strong style={{ color: "#0f766e" }}>Boardroom mode</strong> — two AI passes: analyst answer + executive brief with key metrics, strategic implications, risks &amp; mitigants, and board actions with owners and timelines. Includes predictive intelligence signals.
                 </div>
               )}
 
@@ -886,10 +887,25 @@ export default function AskInfoGenie() {
                   onClick={() => ask()}
                   disabled={asking}
                   style={{
-                    background: mode === "boardroom" ? "#0F172A" : "linear-gradient(135deg,#0066FF,#7C3AED)",
-                    color: "#fff", border: 0, padding: "11px 22px", borderRadius: 8, fontWeight: 800, cursor: asking ? "default" : "pointer", fontSize: "0.92rem",
+                    background:
+                      mode === "boardroom"
+                        ? "linear-gradient(135deg, #0f766e 0%, #0284c7 100%)"
+                        : "linear-gradient(135deg, #0f766e 0%, #0284c7 100%)",
+                    color: "#ffffff",
+                    WebkitTextFillColor: "#ffffff",
+                    border: 0,
+                    padding: "11px 22px",
+                    borderRadius: 8,
+                    fontWeight: 800,
+                    cursor: asking ? "default" : "pointer",
+                    fontSize: "0.92rem",
+                    opacity: asking ? 0.7 : 1,
+                    whiteSpace: "nowrap",
+                    boxShadow: "0 8px 18px rgba(15, 118, 110, 0.22)",
                   }}
-                >{asking ? "⏳" : mode === "boardroom" ? "Brief →" : "Ask →"}</button>
+                >
+                  {asking ? "…" : mode === "boardroom" ? "Brief →" : "Ask →"}
+                </button>
               </div>
 
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>

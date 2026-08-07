@@ -81,6 +81,63 @@ const fmtMoney = (n: number | null | undefined) =>
   "$" + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 const fmtNum = (n: number | null | undefined) => Number(n || 0).toLocaleString();
 
+const EMPTY_CHANNEL: ChannelData = {
+  ok: false,
+  error: "not-configured",
+};
+
+/** Strict-mode / partial API payloads may omit channels — never crash on .ok/.meta. */
+function normalizeBlended(raw: Partial<BlendedData> & {
+  data_unavailable?: boolean;
+  message?: string;
+  source?: string;
+} | null): BlendedData | null {
+  if (!raw || typeof raw !== "object") return null;
+  if (raw.data_unavailable || raw.source === "data_unavailable") {
+    return null;
+  }
+  const ch = (raw.channels && typeof raw.channels === "object"
+    ? raw.channels
+    : {}) as Partial<BlendedData["channels"]>;
+  const amp = (raw.amplitude && typeof raw.amplitude === "object"
+    ? raw.amplitude
+    : { ok: false, error: "not-configured" }) as AmplitudeData;
+  return {
+    ok: raw.ok !== false,
+    error: raw.error,
+    days: raw.days,
+    totalSpend: raw.totalSpend,
+    mer: raw.mer ?? null,
+    ltvCac: raw.ltvCac ?? null,
+    cac: raw.cac ?? null,
+    ltvAssumed: raw.ltvAssumed ?? null,
+    netSales: raw.netSales ?? null,
+    customers: raw.customers,
+    customerSource: raw.customerSource,
+    totalRevenue: raw.totalRevenue,
+    roas: raw.roas ?? null,
+    roasNote: raw.roasNote,
+    channels: {
+      meta: ch.meta || { ...EMPTY_CHANNEL },
+      google: ch.google || { ...EMPTY_CHANNEL },
+      tiktok: ch.tiktok || { ...EMPTY_CHANNEL },
+    },
+    amplitude: {
+      ok: !!amp.ok,
+      error: amp.error,
+      conversions: amp.conversions,
+      conversionEvents: Array.isArray(amp.conversionEvents)
+        ? amp.conversionEvents
+        : [],
+      note: amp.note,
+    },
+  };
+}
+
+function channelOf(data: BlendedData, key: ChannelKey): ChannelData {
+  return data.channels?.[key] || { ...EMPTY_CHANNEL };
+}
+
 function diagnose(key: ChannelKey, error?: string): { headline: string; fixHint: string } {
   const errStr = String(error || "").toLowerCase();
   if (error === "not-configured")
@@ -134,13 +191,27 @@ export default function BlendedPerf() {
     setState("loading");
     setError("");
     setTrueRoas(null);
-    const res = await apiGet<BlendedData>("/api/blended-roas?days=" + d);
-    if (!res.ok) {
-      setError(res.error || "Failed");
+    const res = await apiGet<
+      BlendedData & { data_unavailable?: boolean; message?: string; source?: string }
+    >("/api/blended-roas?days=" + d);
+    if (res.ok === false || res.data_unavailable || res.source === "data_unavailable") {
+      setError(
+        res.message ||
+          res.error ||
+          "Blended performance data is unavailable. Connect ad platforms in Settings, or enable Demo Data Mode.",
+      );
+      setData(null);
       setState("error");
       return;
     }
-    setData(res);
+    const normalized = normalizeBlended(res);
+    if (!normalized) {
+      setError(res.message || res.error || "Failed");
+      setData(null);
+      setState("error");
+      return;
+    }
+    setData(normalized);
     setState("done");
     const t = await apiGet<TrueRoasSummary>(
       "/api/true-roas/summary?days=" + d,
@@ -166,7 +237,7 @@ export default function BlendedPerf() {
             e.preventDefault();
             goToView(router, "true-roas");
           }}
-          style={{ color: "#A7F3D0", textDecoration: "underline" }}
+          style={{ color: '#0f766e', textDecoration: "underline" }}
         >
           💡 Add offline revenue → unlock True ROAS
         </a>
@@ -238,17 +309,17 @@ export default function BlendedPerf() {
       );
 
     const j = data;
-    const okCount = CHANNELS.filter((c) => j.channels[c.key].ok).length;
+    const okCount = CHANNELS.filter((c) => channelOf(j, c.key).ok).length;
     return (
       <>
         {/* Blended Summary hero */}
         <div
           style={{
             background:
-              "linear-gradient(135deg,#0F172A 0%,#1E293B 50%,#312E81 100%)",
+              "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
             borderRadius: 18,
             padding: "28px 32px",
-            color: "white",
+            color: "#0f172a",
             marginBottom: 22,
             boxShadow: "0 8px 28px rgba(15,23,42,.35)",
           }}
@@ -272,7 +343,7 @@ export default function BlendedPerf() {
               {CHANNELS.map((c) => (
                 <span
                   key={c.key}
-                  title={`${c.name} · ${j.channels[c.key].ok ? "live" : "not connected"}`}
+                  title={`${c.name} · ${channelOf(j, c.key).ok ? "live" : "not connected"}`}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -281,8 +352,8 @@ export default function BlendedPerf() {
                     height: 26,
                     borderRadius: 8,
                     fontSize: "0.85rem",
-                    background: j.channels[c.key].ok ? c.color : "#475569",
-                    opacity: j.channels[c.key].ok ? 1 : 0.4,
+                    background: channelOf(j, c.key).ok ? c.color : "#475569",
+                    opacity: channelOf(j, c.key).ok ? 1 : 0.4,
                   }}
                 >
                   {c.icon}
@@ -359,7 +430,7 @@ export default function BlendedPerf() {
               <b>Reported ROAS:</b>{" "}
               {j.roas != null ? j.roas.toFixed(2) + "×" : "—"}
             </span>
-            <span style={{ color: "#A7F3D0" }}>{renderTrueRoasInline()}</span>
+            <span style={{ color: '#0f766e' }}>{renderTrueRoasInline()}</span>
           </div>
         </div>
 
@@ -373,7 +444,7 @@ export default function BlendedPerf() {
           }}
         >
           {CHANNELS.map((c) => {
-            const d = j.channels[c.key];
+            const d = channelOf(j, c.key);
             if (!d.ok) {
               const { headline, fixHint } = diagnose(c.key, d.error);
               const fixSecrets = SECRETS[c.key];
@@ -678,7 +749,7 @@ export default function BlendedPerf() {
               Amplitude conversion source
             </div>
           </div>
-          {j.amplitude.ok ? (
+          {j.amplitude?.ok ? (
             (j.amplitude.conversions || 0) > 0 ? (
               <>
                 <div
@@ -763,25 +834,25 @@ export default function BlendedPerf() {
   return (
     <div className="view-header-wrap">
       <div
-        className="view-header"
+        className="view-header ig-panel-hero"
         style={{
           background:
-            "linear-gradient(135deg,#064E3B 0%,#047857 50%,#10B981 100%)",
+            "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
         }}
       >
         <div className="container">
           <div className="vh-inner">
             <div>
-              <div className="breadcrumb" style={{ color: "#A7F3D0" }}>
+              <div className="breadcrumb" style={{ color: '#0f766e' }}>
                 <span
                   className="bc-group"
-                  style={{ color: "rgba(167,243,208,.8)" }}
+                  style={{ color: '#0f766e' }}
                 >
                   Grow
                 </span>{" "}
                 <span
                   className="bc-sep"
-                  style={{ color: "rgba(255,255,255,.3)" }}
+                  style={{ color: '#94a3b8' }}
                 >
                   ›
                 </span>{" "}

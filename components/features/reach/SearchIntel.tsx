@@ -208,7 +208,7 @@ export default function SearchIntel() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -636,12 +636,12 @@ function AiTab() {
             onClick={createQuery}
             style={{
               padding: "9px 18px",
-              background: "#1E1B4B",
+              background: '#eef4ff',
               border: "2px solid #1E1B4B",
               borderRadius: 7,
               fontSize: "0.78rem",
               fontWeight: 800,
-              color: "#fff",
+              color: "#0f172a",
               WebkitTextFillColor: "#fff",
               cursor: "pointer",
               textShadow: "0 1px 2px rgba(0,0,0,.5)",
@@ -860,12 +860,12 @@ function QueryCard({
           onClick={onHistory}
           style={{
             padding: 7,
-            background: "#1E1B4B",
+            background: '#eef4ff',
             border: "2px solid #1E1B4B",
             borderRadius: 6,
             fontSize: "0.7rem",
             fontWeight: 800,
-            color: "#fff",
+            color: "#0f172a",
             WebkitTextFillColor: "#fff",
             cursor: "pointer",
             textShadow: "0 1px 2px rgba(0,0,0,.5)",

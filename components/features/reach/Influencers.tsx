@@ -382,7 +382,7 @@ export default function Influencers() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -582,12 +582,12 @@ export default function Influencers() {
                 onClick={applyFilters}
                 style={{
                   padding: "8px 16px",
-                  background: "#1E1B4B",
+                  background: '#eef4ff',
                   border: "2px solid #1E1B4B",
                   borderRadius: 7,
                   fontSize: "0.76rem",
                   fontWeight: 800,
-                  color: "#fff",
+                  color: "#0f172a",
                   WebkitTextFillColor: "#fff",
                   cursor: "pointer",
                   textShadow: "0 1px 2px rgba(0,0,0,.5)",
@@ -1390,12 +1390,12 @@ function DetailModal({
                   onClick={() => onAddOutreach(i.id)}
                   style={{
                     padding: "7px 14px",
-                    background: "#1E1B4B",
+                    background: '#eef4ff',
                     border: "2px solid #1E1B4B",
                     borderRadius: 6,
                     fontSize: "0.74rem",
                     fontWeight: 800,
-                    color: "#fff",
+                    color: "#0f172a",
                     WebkitTextFillColor: "#fff",
                     cursor: "pointer",
                     textShadow: "0 1px 2px rgba(0,0,0,.5)",

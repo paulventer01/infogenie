@@ -80,6 +80,40 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/** API payloads sometimes omit list fields — normalize before render/copy. */
+function normalizeRun(raw: Partial<BriefRun> & { related_kws?: RelatedKw[] } | null | undefined): BriefRun | null {
+  if (!raw || typeof raw !== "object") return null;
+  const brief = (raw.brief && typeof raw.brief === "object" ? raw.brief : {}) as Brief;
+  const related = Array.isArray(raw.related_keywords)
+    ? raw.related_keywords
+    : Array.isArray(raw.related_kws)
+      ? raw.related_kws
+      : [];
+  const competitorPages = Array.isArray(raw.competitor_pages) ? raw.competitor_pages : [];
+  return {
+    id: Number(raw.id) || 0,
+    keyword: String(raw.keyword || ""),
+    brief: {
+      title: brief.title || "",
+      seo_title: brief.seo_title || "",
+      meta_description: brief.meta_description || "",
+      target_word_count: Number(brief.target_word_count) || 0,
+      headings: Array.isArray(brief.headings) ? brief.headings : [],
+      must_cover_topics: Array.isArray(brief.must_cover_topics) ? brief.must_cover_topics : [],
+      entities: Array.isArray(brief.entities) ? brief.entities : [],
+      questions_to_answer: Array.isArray(brief.questions_to_answer) ? brief.questions_to_answer : [],
+      unique_angle: brief.unique_angle || "",
+      recommendations: Array.isArray(brief.recommendations) ? brief.recommendations : [],
+      source: brief.source,
+    },
+    related_keywords: related,
+    competitor_pages: competitorPages,
+    serp_snapshot: Array.isArray(raw.serp_snapshot) ? raw.serp_snapshot : [],
+    avg_word_count: Number(raw.avg_word_count) || 0,
+    created_at: String(raw.created_at || ""),
+  };
+}
+
 // ── Copy to clipboard helper ───────────────────────────────────────────────
 function buildMarkdown(run: BriefRun): string {
   const b = run.brief;
@@ -142,8 +176,10 @@ export default function ContentBrief() {
       const r = await apiPost<BriefRun & { ok: boolean; error?: string }>("/api/content-brief/generate", {
         keyword: keyword.trim(),
       });
-      if (!r.ok) { setError(r.error || "Generation failed"); return; }
-      setRun(r as BriefRun);
+      if (r.ok === false) { setError(r.error || "Generation failed"); return; }
+      const normalized = normalizeRun(r);
+      if (!normalized?.keyword) { setError(r.error || "Generation failed"); return; }
+      setRun(normalized);
       setActiveTab("brief");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed");
@@ -154,9 +190,11 @@ export default function ContentBrief() {
 
   const loadRun = useCallback(async (id: number) => {
     try {
-      const r = await apiGet<BriefRun & { ok: boolean }>(`/api/content-brief/${id}`);
-      setRun(r as BriefRun);
-      setKeyword(r.keyword);
+      const r = await apiGet<BriefRun & { ok?: boolean }>(`/api/content-brief/${id}`);
+      const normalized = normalizeRun(r);
+      if (!normalized) return;
+      setRun(normalized);
+      setKeyword(normalized.keyword);
       setActiveTab("brief");
     } catch {}
   }, []);
@@ -168,14 +206,21 @@ export default function ContentBrief() {
   }, [run]);
 
   const copyBrief = useCallback(async () => {
-    if (!run) return;
-    const md = buildMarkdown(run);
+    const safe = normalizeRun(run);
+    if (!safe) return;
+    const md = buildMarkdown(safe);
     await navigator.clipboard.writeText(md);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [run]);
 
-  const b = run?.brief;
+  // Re-normalize on every render so Hot Reload / stale state can't leave
+  // undefined list fields (competitor_pages / related_keywords) in place.
+  const view = normalizeRun(run);
+  const b = view?.brief;
+  const competitorPages = view?.competitor_pages ?? [];
+  const relatedKeywords = view?.related_keywords ?? [];
+  const serpSnapshot = view?.serp_snapshot ?? [];
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif", padding: "20px 24px", maxWidth: 900, margin: "0 auto" }}>
@@ -272,19 +317,19 @@ export default function ContentBrief() {
       )}
 
       {/* Results */}
-      {run && !loading && (
+      {view && !loading && (
         <>
           {/* Result header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
             marginBottom: 14 }}>
             <div>
               <div style={{ fontWeight: 700, fontSize: "1rem", color: "#111827" }}>
-                &ldquo;{run.keyword}&rdquo;
+                &ldquo;{view.keyword}&rdquo;
               </div>
               <div style={{ fontSize: ".78rem", color: "#6B7280", marginTop: 2 }}>
-                {run.competitor_pages.length} pages scraped ·{" "}
-                {run.avg_word_count > 0 ? `competitors avg ${run.avg_word_count.toLocaleString()} words` : "no word count data"} ·{" "}
-                {run.related_keywords.length} related keywords
+                {competitorPages.length} pages scraped ·{" "}
+                {view.avg_word_count > 0 ? `competitors avg ${view.avg_word_count.toLocaleString()} words` : "no word count data"} ·{" "}
+                {relatedKeywords.length} related keywords
                 {b?.source === "template" && (
                   <span style={{ marginLeft: 8, padding: "1px 6px", background: "#FEF3C7",
                     color: "#92400E", borderRadius: 99, fontSize: ".72rem" }}>template fallback</span>
@@ -307,7 +352,7 @@ export default function ContentBrief() {
                   fontSize: ".82rem", cursor: "pointer",
                   background: activeTab === t ? "#2563EB" : "#F3F4F6",
                   color: activeTab === t ? "#fff" : "#374151" }}>
-                {t === "brief" ? "📄 Brief" : t === "keywords" ? `🔑 Keywords (${run.related_keywords.length})` : `🏁 Competitors (${run.competitor_pages.length})`}
+                {t === "brief" ? "📄 Brief" : t === "keywords" ? `🔑 Keywords (${relatedKeywords.length})` : `🏁 Competitors (${competitorPages.length})`}
               </button>
             ))}
           </div>
@@ -412,9 +457,9 @@ export default function ContentBrief() {
                 Semantically related keywords
               </div>
               <div style={{ fontSize: ".78rem", color: "#6B7280", marginBottom: 12 }}>
-                NLP-identified keywords, entities, and questions related to &ldquo;{run.keyword}&rdquo;
+                NLP-identified keywords, entities, and questions related to &ldquo;{view.keyword}&rdquo;
               </div>
-              {run.related_keywords.length === 0 ? (
+              {relatedKeywords.length === 0 ? (
                 <div style={{ color: "#9CA3AF", fontSize: ".85rem", padding: "20px 0" }}>
                   No related keywords found — DataForSEO may not have data for this keyword/region.
                 </div>
@@ -432,7 +477,7 @@ export default function ContentBrief() {
                       </tr>
                     </thead>
                     <tbody>
-                      {run.related_keywords.map((kw, i) => (
+                      {relatedKeywords.map((kw, i) => (
                         <tr key={i} style={{ borderBottom: "1px solid #F3F4F6",
                           background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
                           <td style={{ padding: "8px 12px", color: "#111827", fontWeight: 500 }}>
@@ -468,17 +513,17 @@ export default function ContentBrief() {
           {activeTab === "competitors" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {/* Metrics summary */}
-              {run.competitor_pages.length > 0 && (
+              {competitorPages.length > 0 && (
                 <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, padding: "16px 20px" }}>
                   <div style={{ fontWeight: 700, fontSize: ".88rem", color: "#111827", marginBottom: 12 }}>
-                    Content benchmarks (top {run.competitor_pages.length} pages)
+                    Content benchmarks (top {competitorPages.length} pages)
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
                     {[
-                      { label: "Avg word count", value: run.avg_word_count > 0 ? run.avg_word_count.toLocaleString() : "—" },
+                      { label: "Avg word count", value: view.avg_word_count > 0 ? view.avg_word_count.toLocaleString() : "—" },
                       { label: "Your target", value: b?.target_word_count ? `${b.target_word_count.toLocaleString()} ↑` : "—", highlight: true },
-                      { label: "Avg headings", value: run.competitor_pages.length > 0
-                          ? Math.round(run.competitor_pages.reduce((s, p) => s + (p.headings?.length || 0), 0) / run.competitor_pages.length)
+                      { label: "Avg headings", value: competitorPages.length > 0
+                          ? Math.round(competitorPages.reduce((s, p) => s + (p.headings?.length || 0), 0) / competitorPages.length)
                           : "—" },
                     ].map(stat => (
                       <div key={stat.label} style={{ padding: "12px 16px", background: stat.highlight ? "#EFF6FF" : "#F9FAFB",
@@ -494,14 +539,14 @@ export default function ContentBrief() {
               )}
 
               {/* Competitor pages */}
-              {run.competitor_pages.length === 0 ? (
+              {competitorPages.length === 0 ? (
                 <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10,
                   padding: "30px 24px", textAlign: "center", color: "#9CA3AF" }}>
                   <div style={{ fontSize: "2rem", marginBottom: 8 }}>🕸️</div>
                   Competitor pages could not be scraped — Firecrawl may not be configured.
                 </div>
               ) : (
-                run.competitor_pages.map((p, i) => (
+                competitorPages.map((p, i) => (
                   <div key={i} style={{ background: "#fff", border: "1px solid #E5E7EB",
                     borderRadius: 10, padding: "16px 20px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start",
@@ -547,13 +592,13 @@ export default function ContentBrief() {
               )}
 
               {/* SERP overview */}
-              {run.serp_snapshot.length > 0 && (
+              {serpSnapshot.length > 0 && (
                 <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 10, padding: "16px 20px" }}>
                   <div style={{ fontWeight: 700, fontSize: ".88rem", color: "#111827", marginBottom: 10 }}>
-                    🔍 Full SERP snapshot (top {run.serp_snapshot.length})
+                    🔍 Full SERP snapshot (top {serpSnapshot.length})
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {run.serp_snapshot.map(p => (
+                    {serpSnapshot.map(p => (
                       <div key={p.rank} style={{ display: "flex", gap: 10, padding: "8px 0",
                         borderBottom: "1px solid #F3F4F6" }}>
                         <span style={{ color: "#9CA3AF", fontSize: ".78rem", fontWeight: 700,

@@ -120,18 +120,18 @@ export default function AttributionDashboard() {
   return (
     <div style={{ fontFamily: "Inter, sans-serif", background: "#F8FAFF", minHeight: "100vh" }}>
       {/* Hero */}
-      <div style={{ background: "linear-gradient(135deg, #0A1F4E 0%, #1E3A8A 60%, #3B82F6 100%)", padding: "28px 28px 24px", position: "relative" }}>
+      <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", padding: "28px 28px 24px", position: "relative" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "rgba(255,255,255,.15)", color: "#E0E7FF", padding: "3px 10px", borderRadius: 20, textTransform: "uppercase", letterSpacing: ".07em" }}>GROW</span>
-            <span style={{ color: "rgba(255,255,255,.3)", fontSize: "0.65rem" }}>›</span>
-            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "rgba(255,255,255,.55)", textTransform: "uppercase", letterSpacing: ".07em" }}>Attribution Modeling</span>
+            <span style={{ fontSize: "0.65rem", fontWeight: 800, background: "rgba(255,255,255,.15)", color: '#334155', padding: "3px 10px", borderRadius: 20, textTransform: "uppercase", letterSpacing: ".07em" }}>GROW</span>
+            <span style={{ color: '#94a3b8', fontSize: "0.65rem" }}>›</span>
+            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em" }}>Attribution Modeling</span>
           </div>
-          <h2 style={{ margin: 0, fontFamily: "Sora, sans-serif", fontSize: "1.55rem", fontWeight: 900, color: "#fff" }}>🧮 Multi-Touch Attribution</h2>
-          <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,.7)", fontSize: "0.85rem", maxWidth: 520 }}>
+          <h2 style={{ margin: 0, fontFamily: "Sora, sans-serif", fontSize: "1.55rem", fontWeight: 900, color: "#0f172a" }}>🧮 Multi-Touch Attribution</h2>
+          <p style={{ margin: "6px 0 0", color: "#475569", fontSize: "0.85rem", maxWidth: 520 }}>
             Model revenue credit across every marketing channel — first-touch, last-touch, linear, position-based, and time-decay — to see which channels truly drive growth.
           </p>
-          <button onClick={() => setHistoryOpen(o => !o)} style={{ marginTop: 12, padding: "6px 16px", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 20, color: "#fff", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer" }}>
+          <button onClick={() => setHistoryOpen(o => !o)} style={{ marginTop: 12, padding: "6px 16px", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 20, color: "#0f172a", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer" }}>
             📋 Past runs ({history.length})
           </button>
         </div>
@@ -323,11 +323,11 @@ export default function AttributionDashboard() {
 
               {/* AI Insights */}
               {result.insights && result.insights.length > 0 && (
-                <div style={{ background: "linear-gradient(135deg, #1E3A8A, #1D4ED8)", border: "1px solid #3B82F6", borderRadius: 14, padding: 16 }}>
-                  <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "0.88rem", color: "#fff", marginBottom: 12 }}>💡 Attribution Insights</div>
+                <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", border: "1px solid #3B82F6", borderRadius: 14, padding: 16 }}>
+                  <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: "0.88rem", color: "#0f172a", marginBottom: 12 }}>💡 Attribution Insights</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
                     {result.insights.map((ins, i) => (
-                      <div key={i} style={{ background: "rgba(255,255,255,.1)", borderRadius: 10, padding: "10px 14px", fontSize: "0.8rem", color: "#E0E7FF", lineHeight: 1.5 }}>
+                      <div key={i} style={{ background: "rgba(255,255,255,.1)", borderRadius: 10, padding: "10px 14px", fontSize: "0.8rem", color: '#334155', lineHeight: 1.5 }}>
                         {ins.text}
                       </div>
                     ))}

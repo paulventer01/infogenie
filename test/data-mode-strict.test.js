@@ -8,8 +8,9 @@
 // known fabrication producer over HTTP:
 //   • backlinks placeholder        (POST /api/backlinks/summary, no DataForSEO creds)
 //   • ad-insights placeholder      (GET  /api/google-ads-insights/account-summary, no creds)
-//   • infographics template        (POST /api/infographics/generate, no AI key)
 //   • social-listening estimate    (POST /api/social-listening/sentiment-trend, LLM-invented)
+// Note: infographics no-AI path is a layout scaffold (source:'layout-scaffold'),
+// not a fabrication marker — covered by a pass-through test below, not withheld.
 //   • cold-email template          (POST /api/cold-email/generate, no AI key)
 //   • content-calendar template    (POST /api/content-calendar/generate, no AI key)
 //   • ab-designer template         (POST /api/ab-designer/generate, no AI key)
@@ -168,8 +169,6 @@ const CASES = [
     demoSource: 'placeholder', leaked: (b) => b.summary !== undefined },
   { name: 'ad-insights placeholder (no Google Ads creds)', method: 'GET', route: '/api/google-ads-insights/account-summary',
     demoSource: 'placeholder', leaked: (b) => b.note !== undefined && b.source === 'placeholder' },
-  { name: 'infographics template (no AI key)', method: 'POST', route: '/api/infographics/generate', body: { topic: 'Customer journey', layout: 'funnel' },
-    demoMarker: (b) => b.infographic && b.infographic.source === 'template', leaked: (b) => b.infographic !== undefined },
   { name: 'social-listening sentiment-trend (LLM estimate)', method: 'POST', route: '/api/social-listening/sentiment-trend', body: { brand: 'Acme', period: '7d' },
     demoMarker: (b) => b._estimated === true, leaked: (b) => b.trend !== undefined },
   // INDUSTRY_DB competitor case removed: metrics are now source:'industry-benchmark'
@@ -217,6 +216,20 @@ for (const c of CASES) {
     if (c.demoMarker) assert.ok(c.demoMarker(body), `original fabrication marker missing in demo mode: ${JSON.stringify(body)}`);
   });
 }
+
+// Creative layout scaffolds are not fabricated metrics — they must remain
+// available in strict mode when no AI key is configured.
+test('strict mode allows infographic layout-scaffold (no AI key)', async () => {
+  EFFECTIVE_MODE = 'strict';
+  const { status, body } = await request('POST', '/api/infographics/generate', {
+    topic: 'Customer journey', layout: 'funnel', itemCount: 5,
+  });
+  assert.equal(status, 200, `expected 200, got ${status} (body: ${JSON.stringify(body)})`);
+  assert.notEqual(body.data_unavailable, true, `layout scaffold withheld: ${JSON.stringify(body)}`);
+  assert.ok(body.infographic, 'expected infographic payload');
+  assert.equal(body.infographic.source, 'layout-scaffold');
+  assert.ok(Array.isArray(body.infographic.items) && body.infographic.items.length >= 3);
+});
 
 // Lint guard: a new _template*/_fallback* helper that forgets its honesty
 // marker would silently bypass strict mode — fail the suite if one appears.

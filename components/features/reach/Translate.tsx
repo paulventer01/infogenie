@@ -78,7 +78,7 @@ export default function Translate() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <h2>🌍 AI Campaign Translator</h2>
         <p className="view-sub">
           Translate an entire drip sequence to any language while preserving your

@@ -10,7 +10,7 @@
 // client, generate-report and report-preview modals are ported to React
 // overlays (replacing the legacy DOM-built modals + window.open preview).
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
 import { useToast } from "@/hooks/useToast";
@@ -78,6 +78,27 @@ function dateStr() {
   return new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
+const REPORTS_LS_KEY = "ig_agency_reports_v1";
+
+function loadStoredReports(): AgencyReport[] {
+  try {
+    const raw = localStorage.getItem(REPORTS_LS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistReports(reports: AgencyReport[]) {
+  try {
+    localStorage.setItem(REPORTS_LS_KEY, JSON.stringify(reports.slice(-40)));
+  } catch {
+    /* ignore quota */
+  }
+}
+
 interface ClientForm {
   name: string;
   domain: string;
@@ -97,10 +118,19 @@ export default function Agency() {
   const [reports, setReports] = useState<AgencyReport[]>([]);
   const [schedules, setSchedules] = useState<Record<string, boolean>>({});
   const [brand, setBrand] = useState<Brand>({ name: "My Agency", color: "#6366F1", footer: "Prepared exclusively for {client} by {agency}", reportFreq: "monthly" });
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
 
   const [clientModal, setClientModal] = useState<{ editId: string | null } | null>(null);
   const [genModal, setGenModal] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setReports(loadStoredReports());
+  }, []);
+
+  useEffect(() => {
+    persistReports(reports);
+  }, [reports]);
 
   const totalRevenue = clients.reduce((a, c) => a + c.revenue, 0);
   const totalBudget = clients.reduce((a, c) => a + c.budget, 0);
@@ -109,19 +139,54 @@ export default function Agency() {
   async function generateClientReport(clientId: string) {
     const c = clients.find((x) => x.id === clientId);
     if (!c) return;
-    toast(`⏳ Generating report for ${c.name}…`);
-    const data = await apiPost<{ ok: boolean } & ReportContent>("/api/agency-report", {
-      clientName: c.name, domain: c.domain, industry: c.industry, budget: c.budget, agencyName: brand.name,
-    });
-    if (!data || data.ok === false) {
-      toast("⚠️ Report generation failed — please retry");
+    if (generatingId) {
+      toast("⏳ A report is already generating — please wait");
       return;
     }
-    const rId = "rpt_" + Date.now();
-    setReports((prev) => [...prev, { id: rId, clientId, generatedAt: new Date().toLocaleString(), type: "Full Report", status: "draft", content: data }]);
-    setClients((prev) => prev.map((x) => (x.id === clientId ? { ...x, lastReport: dateStr() } : x)));
-    toast(`✅ Report for ${c.name} ready — view in Reports tab`);
-    setTab("reports");
+    setGeneratingId(clientId);
+    toast(`⏳ Generating report for ${c.name}…`);
+    try {
+      const data = await apiPost<{ ok?: boolean; error?: string } & ReportContent>("/api/agency-report", {
+        clientName: c.name,
+        domain: c.domain,
+        industry: c.industry,
+        budget: c.budget,
+        agencyName: brand.name,
+      });
+      const hasContent = !!(data?.executive_summary || data?.campaign_performance || data?.recommendations);
+      if (!hasContent || data?.ok === false) {
+        toast("⚠️ Report generation failed — " + (data?.error || "please retry"));
+        return;
+      }
+      const content: ReportContent = {
+        executive_summary: data.executive_summary,
+        kpis: data.kpis,
+        campaign_performance: data.campaign_performance,
+        competitor_intel: data.competitor_intel,
+        social_metrics: data.social_metrics,
+        recommendations: data.recommendations,
+      };
+      const rId = "rpt_" + Date.now();
+      setReports((prev) => [
+        ...prev,
+        {
+          id: rId,
+          clientId,
+          generatedAt: new Date().toLocaleString(),
+          type: "Full Report",
+          status: "draft",
+          content,
+        },
+      ]);
+      setClients((prev) => prev.map((x) => (x.id === clientId ? { ...x, lastReport: dateStr() } : x)));
+      toast(`✅ Report for ${c.name} ready — open in Reports`);
+      setTab("reports");
+      setPreviewId(rId);
+    } catch (e) {
+      toast("⚠️ Report generation failed — " + (e instanceof Error ? e.message : "please retry"));
+    } finally {
+      setGeneratingId(null);
+    }
   }
 
   function switchToClient(id: string) {
@@ -189,17 +254,15 @@ export default function Agency() {
   );
 
   const hero = (
-    <div style={{ background: "linear-gradient(135deg,#312E81,#4338CA,#6366F1)", borderRadius: 20, padding: "28px 32px", marginBottom: 24, position: "relative", overflow: "hidden" }}>
-      <div style={{ position: "absolute", top: -40, right: -40, width: 220, height: 220, background: "rgba(255,255,255,.05)", borderRadius: "50%" }} />
-      <div style={{ position: "absolute", bottom: -60, right: 100, width: 160, height: 160, background: "rgba(255,255,255,.04)", borderRadius: "50%" }} />
+    <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", borderRadius: 20, padding: "28px 32px", marginBottom: 24, position: "relative", overflow: "hidden", border: "1px solid rgba(15,118,110,0.16)", boxShadow: "0 10px 28px rgba(15,23,42,0.06)", color: "#0f172a" }}>
       <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: "0.6rem", fontWeight: 800, color: "#C7D2FE", letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 3 }}>Grow › Agency</div>
-          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#DDD6FE", textTransform: "uppercase", letterSpacing: ".12em", marginBottom: 6 }}>Agency Hub · {brand.name}</div>
-          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "1.65rem", fontWeight: 800, color: "#FFFFFF", lineHeight: 1.2, marginBottom: 8, textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}>
+          <div style={{ fontSize: "0.6rem", fontWeight: 800, color: "#0f766e", letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 3 }}>Manage › Agency</div>
+          <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".12em", marginBottom: 6 }}>Agency Hub · {brand.name}</div>
+          <div style={{ fontFamily: "var(--font-display),Outfit,sans-serif", fontSize: "1.65rem", fontWeight: 800, color: "#0f172a", lineHeight: 1.2, marginBottom: 8 }}>
             Manage Every Client.<br />Deliver Branded Results.
           </div>
-          <div style={{ fontSize: "0.84rem", color: "rgba(255,255,255,0.92)", maxWidth: 460, lineHeight: 1.55 }}>
+          <div style={{ fontSize: "0.84rem", color: "#475569", maxWidth: 460, lineHeight: 1.55 }}>
             Run InfoGenie for multiple clients from one dashboard. Generate white-label reports, schedule automatic sends, and switch context in one click.
           </div>
         </div>
@@ -210,10 +273,10 @@ export default function Agency() {
             ["📈", "Client Revenue", "$" + totalRevenue.toLocaleString()],
             ["📋", "Reports", reports.length],
           ] as const).map(([ic, l, v]) => (
-            <div key={l} style={{ background: "rgba(255,255,255,.15)", border: "1px solid rgba(255,255,255,.15)", backdropFilter: "blur(8px)", borderRadius: 14, padding: "14px 16px", textAlign: "center", minWidth: 90 }}>
+            <div key={l} style={{ background: "#ffffff", border: "1px solid rgba(15,118,110,0.16)", borderRadius: 14, padding: "14px 16px", textAlign: "center", minWidth: 90, boxShadow: "0 1px 0 rgba(11,18,32,0.04)" }}>
               <div style={{ fontSize: "1rem", marginBottom: 2 }}>{ic}</div>
-              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "white" }}>{v}</div>
-              <div style={{ fontSize: "0.63rem", fontWeight: 600, color: "rgba(255,255,255,.7)" }}>{l}</div>
+              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#0f172a" }}>{v}</div>
+              <div style={{ fontSize: "0.63rem", fontWeight: 700, color: "#64748b" }}>{l}</div>
             </div>
           ))}
         </div>
@@ -222,7 +285,7 @@ export default function Agency() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F5F3FF", padding: "28px 32px" }}>
+    <div style={{ minHeight: "100vh", background: "transparent", padding: "8px 4px 40px" }}>
       {hero}
       {tabBar}
 
@@ -230,7 +293,7 @@ export default function Agency() {
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
             <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "0.92rem", fontWeight: 800, color: "#0A1628" }}>{clients.length} Client{clients.length !== 1 ? "s" : ""} · {activeClients} Active</div>
-            <button onClick={() => setClientModal({ editId: null })} style={{ padding: "10px 20px", background: "linear-gradient(135deg,#4338CA,#6366F1)", border: "none", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>+ Add Client</button>
+            <button onClick={() => setClientModal({ editId: null })} style={{ padding: "10px 20px", background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>+ Add Client</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 16 }}>
             {clients.map((c) => (
@@ -261,8 +324,24 @@ export default function Agency() {
                 </div>
                 <div style={{ fontSize: "0.7rem", color: "#9CA3AF", marginBottom: 12 }}>Contact: <span style={{ color: "#374151", fontWeight: 600 }}>{c.contact}</span> · <span style={{ color: "#6366F1" }}>{c.email}</span></div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
-                  <button onClick={() => switchToClient(c.id)} style={{ padding: 8, background: "linear-gradient(135deg,#4338CA,#6366F1)", border: "none", borderRadius: 9, fontSize: "0.7rem", fontWeight: 700, color: "white", cursor: "pointer" }}>🔄 Switch</button>
-                  <button onClick={() => generateClientReport(c.id)} style={{ padding: 8, background: "#F5F3FF", border: "1px solid #C7D2FE", borderRadius: 9, fontSize: "0.7rem", fontWeight: 700, color: "#4F46E5", cursor: "pointer" }}>📊 Report</button>
+                  <button onClick={() => switchToClient(c.id)} style={{ padding: 8, background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 9, fontSize: "0.7rem", fontWeight: 700, color: "white", cursor: "pointer" }}>🔄 Switch</button>
+                  <button
+                    onClick={() => generateClientReport(c.id)}
+                    disabled={!!generatingId}
+                    style={{
+                      padding: 8,
+                      background: generatingId === c.id ? "#EEF2FF" : "#F5F3FF",
+                      border: "1px solid #C7D2FE",
+                      borderRadius: 9,
+                      fontSize: "0.7rem",
+                      fontWeight: 700,
+                      color: "#4F46E5",
+                      cursor: generatingId ? "wait" : "pointer",
+                      opacity: generatingId && generatingId !== c.id ? 0.55 : 1,
+                    }}
+                  >
+                    {generatingId === c.id ? "⏳…" : "📊 Report"}
+                  </button>
                   <button onClick={() => setClientModal({ editId: c.id })} style={{ padding: 8, background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 9, fontSize: "0.7rem", fontWeight: 600, color: "#6B7280", cursor: "pointer" }}>✏️ Edit</button>
                 </div>
               </div>
@@ -279,7 +358,7 @@ export default function Agency() {
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
             <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "0.92rem", fontWeight: 800, color: "#0A1628" }}>{reports.length} Report{reports.length !== 1 ? "s" : ""} Generated</div>
-            <button onClick={() => { if (!clients.length) { toast("⚠️ Add a client first"); return; } setGenModal(true); }} style={{ padding: "10px 20px", background: "linear-gradient(135deg,#4338CA,#6366F1)", border: "none", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>+ Generate Report</button>
+            <button onClick={() => { if (!clients.length) { toast("⚠️ Add a client first"); return; } setGenModal(true); }} style={{ padding: "10px 20px", background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>+ Generate Report</button>
           </div>
           <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,.04)" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.76rem" }}>
@@ -307,7 +386,7 @@ export default function Agency() {
                           <div style={{ display: "flex", gap: 5, justifyContent: "flex-end" }}>
                             <button onClick={() => setPreviewId(r.id)} style={{ padding: "5px 10px", background: "#EEF2FF", border: "none", borderRadius: 7, fontSize: "0.65rem", fontWeight: 700, color: "#4F46E5", cursor: "pointer" }}>👁 Preview</button>
                             <button onClick={() => { setPreviewId(r.id); toast("📄 Report opened — use Ctrl+P / Cmd+P to save as PDF"); }} style={{ padding: "5px 10px", background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 7, fontSize: "0.65rem", fontWeight: 600, color: "#374151", cursor: "pointer" }}>⬇ PDF</button>
-                            <button onClick={() => sendReportToClient(r.id)} style={{ padding: "5px 10px", background: "linear-gradient(135deg,#4338CA,#6366F1)", border: "none", borderRadius: 7, fontSize: "0.65rem", fontWeight: 700, color: "white", cursor: "pointer" }}>📤 Send</button>
+                            <button onClick={() => sendReportToClient(r.id)} style={{ padding: "5px 10px", background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 7, fontSize: "0.65rem", fontWeight: 700, color: "white", cursor: "pointer" }}>📤 Send</button>
                           </div>
                         </td>
                       </tr>
@@ -362,7 +441,7 @@ export default function Agency() {
                           <div style={{ position: "absolute", top: 3, left: enabled ? 23 : 3, width: 20, height: 20, background: "white", borderRadius: "50%", boxShadow: "0 1px 4px rgba(0,0,0,.2)", transition: "left .18s" }} />
                         </div>
                       </div>
-                      <button onClick={() => generateClientReport(c.id)} style={{ padding: "7px 14px", background: "linear-gradient(135deg,#4338CA,#6366F1)", border: "none", borderRadius: 9, fontSize: "0.72rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap" }}>📤 Send Now</button>
+                      <button onClick={() => generateClientReport(c.id)} style={{ padding: "7px 14px", background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 9, fontSize: "0.72rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap" }}>📤 Send Now</button>
                     </div>
                   </div>
                 </div>
@@ -405,15 +484,15 @@ export default function Agency() {
                   <option value="quarterly">Quarterly</option>
                 </select>
               </div>
-              <button onClick={() => toast("✅ White-label settings saved")} style={{ padding: 11, background: "linear-gradient(135deg,#4338CA,#6366F1)", border: "none", borderRadius: 10, fontSize: "0.85rem", fontWeight: 700, color: "white", cursor: "pointer", marginTop: 4 }}>💾 Save Settings</button>
+              <button onClick={() => toast("✅ White-label settings saved")} style={{ padding: 11, background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 10, fontSize: "0.85rem", fontWeight: 700, color: "white", cursor: "pointer", marginTop: 4 }}>💾 Save Settings</button>
             </div>
           </div>
 
           <div style={{ background: "white", border: "2px solid #C7D2FE", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 12px rgba(99,102,241,.12)" }}>
             <div style={{ background: `linear-gradient(135deg,${brand.color},${brand.color}CC)`, padding: "20px 22px" }}>
-              <div style={{ fontSize: "0.6rem", fontWeight: 700, color: "rgba(255,255,255,.6)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 }}>{brand.name}</div>
-              <div style={{ fontSize: "1rem", fontWeight: 800, color: "white", marginBottom: 2 }}>Monthly Performance Report</div>
-              <div suppressHydrationWarning style={{ fontSize: "0.7rem", color: "rgba(255,255,255,.7)" }}>Prepared for [Client Name] · {new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</div>
+              <div style={{ fontSize: "0.6rem", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 }}>{brand.name}</div>
+              <div style={{ fontSize: "1rem", fontWeight: 800, color: "#0f172a", marginBottom: 2 }}>Monthly Performance Report</div>
+              <div suppressHydrationWarning style={{ fontSize: "0.7rem", color: "#475569" }}>Prepared for [Client Name] · {new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</div>
             </div>
             <div style={{ padding: "16px 18px", fontSize: "0.72rem", color: "#374151", lineHeight: 1.7 }}>
               <div style={{ fontWeight: 700, color: "#0A1628", marginBottom: 6 }}>📋 Executive Summary</div>
@@ -474,9 +553,9 @@ function ClientModal({ client, onClose, onSave }: { client: Client | null; onClo
   return (
     <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 20, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,.3)" }}>
-        <div style={{ background: "linear-gradient(135deg,#312E81,#6366F1)", borderRadius: "20px 20px 0 0", padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "1rem", fontWeight: 800, color: "white" }}>{client ? "Edit Client" : "Add New Client"}</div>
-          <button onClick={onClose} style={{ background: "rgba(255,255,255,.15)", border: "none", borderRadius: "50%", width: 30, height: 30, fontSize: "1rem", color: "white", cursor: "pointer" }}>✕</button>
+        <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", borderRadius: "20px 20px 0 0", padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "1rem", fontWeight: 800, color: "#0f172a" }}>{client ? "Edit Client" : "Add New Client"}</div>
+          <button onClick={onClose} style={{ background: "rgba(15,23,42,0.08)", border: "1px solid rgba(15,23,42,0.12)", borderRadius: "50%", width: 30, height: 30, fontSize: "1rem", color: "#0f172a", cursor: "pointer" }}>✕</button>
         </div>
         <div style={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 13 }}>
           {fields.map((f) => (
@@ -509,7 +588,7 @@ function ClientModal({ client, onClose, onSave }: { client: Client | null; onClo
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
             <button onClick={onClose} style={{ flex: 1, padding: 11, background: "#F3F4F6", border: "none", borderRadius: 10, fontSize: "0.82rem", fontWeight: 600, color: "#6B7280", cursor: "pointer" }}>Cancel</button>
-            <button onClick={() => onSave(form)} style={{ flex: 2, padding: 11, background: "linear-gradient(135deg,#4338CA,#6366F1)", border: "none", borderRadius: 10, fontSize: "0.82rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{client ? "💾 Save Changes" : "➕ Add Client"}</button>
+            <button onClick={() => onSave(form)} style={{ flex: 2, padding: 11, background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 10, fontSize: "0.82rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{client ? "💾 Save Changes" : "➕ Add Client"}</button>
           </div>
         </div>
       </div>
@@ -522,9 +601,9 @@ function GenerateReportModal({ clients, onClose, onGenerate }: { clients: Client
   return (
     <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 18, width: "100%", maxWidth: 420, overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,.3)" }}>
-        <div style={{ background: "linear-gradient(135deg,#312E81,#6366F1)", padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "0.95rem", fontWeight: 800, color: "white" }}>Generate Client Report</div>
-          <button onClick={onClose} style={{ background: "rgba(255,255,255,.15)", border: "none", borderRadius: "50%", width: 28, height: 28, color: "white", cursor: "pointer", fontSize: "0.9rem" }}>✕</button>
+        <div style={{ background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "0.95rem", fontWeight: 800, color: "#0f172a" }}>Generate Client Report</div>
+          <button onClick={onClose} style={{ background: "rgba(15,23,42,0.08)", border: "1px solid rgba(15,23,42,0.12)", borderRadius: "50%", width: 28, height: 28, color: "#0f172a", cursor: "pointer", fontSize: "0.9rem" }}>✕</button>
         </div>
         <div style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div>
@@ -541,7 +620,7 @@ function GenerateReportModal({ clients, onClose, onGenerate }: { clients: Client
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
             <button onClick={onClose} style={{ flex: 1, padding: 10, background: "#F3F4F6", border: "none", borderRadius: 9, fontSize: "0.8rem", fontWeight: 600, color: "#6B7280", cursor: "pointer" }}>Cancel</button>
-            <button onClick={() => onGenerate(clientId)} style={{ flex: 2, padding: 10, background: "linear-gradient(135deg,#4338CA,#6366F1)", border: "none", borderRadius: 9, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>✨ Generate Report</button>
+            <button onClick={() => onGenerate(clientId)} style={{ flex: 2, padding: 10, background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none", borderRadius: 9, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>✨ Generate Report</button>
           </div>
         </div>
       </div>

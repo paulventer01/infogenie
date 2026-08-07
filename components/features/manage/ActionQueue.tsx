@@ -5,7 +5,9 @@
 // actionable "what to do today" dashboard inspired by Madgicx.
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiGet, apiPost } from "@/lib/api";
+import { goToView } from "@/lib/nav";
 
 interface Recommendation {
   id: number;
@@ -18,12 +20,30 @@ interface Recommendation {
   time_to_result: string;
   priority_score: number;
   data_sources: string;
+  why_best?: string;
+  problem_summary?: string;
+  change_summary?: string;
+  entities?: {
+    from?: { name?: string; channel?: string; roas?: number | null }[];
+    to?: { name?: string; channel?: string; roas?: number | null }[];
+    affected?: { name?: string; type?: string }[];
+  };
   acted_at?: string | null;
   created_at: string;
 }
 
 interface RecsResp   { ok: boolean; recommendations?: Recommendation[]; error?: string; }
-interface AnalyseR   { ok: boolean; recommendations?: Recommendation[]; summary?: string; top_opportunity?: string; generated_at?: string; error?: string; }
+interface AnalyseR   {
+  ok: boolean;
+  recommendations?: Recommendation[];
+  summary?: string;
+  top_opportunity?: string;
+  future_risks?: string[];
+  future_opportunities?: string[];
+  learning_applied?: { categories_tracked?: number; preferred_count?: number; avoided_count?: number; memory_lessons?: number };
+  generated_at?: string;
+  error?: string;
+}
 interface BudgetResp { ok: boolean; summary?: { target_cents: number; actual_cents: number; by_channel: Record<string, { target_cents: number; actual_cents: number }> }; error?: string; }
 interface OptimResp  { ok: boolean; campaigns?: { id: string; name: string; platform: string; roas_7d: number; target_roas: number; status: string }[]; error?: string; }
 
@@ -57,6 +77,7 @@ function ConfidencePill({ pct }: { pct: number }) {
 }
 
 export default function ActionQueue() {
+  const router = useRouter();
   const [recs, setRecs]           = useState<Recommendation[]>([]);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -67,6 +88,7 @@ export default function ActionQueue() {
   const [campaigns, setCampaigns] = useState<OptimResp["campaigns"]>([]);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [catFilter, setCatFilter] = useState("all");
+  const [foresight, setForesight] = useState<{ risks: string[]; opportunities: string[]; learning?: AnalyseR["learning_applied"] }>({ risks: [], opportunities: [] });
 
   async function loadRecs() {
     const r = await apiGet<RecsResp>("/api/decision-engine/recommendations");
@@ -95,13 +117,26 @@ export default function ActionQueue() {
 
   async function refresh() {
     setRefreshing(true);
-    const r = await apiPost<AnalyseR>("/api/decision-engine/analyse", {});
+    const analysis_snapshot =
+      typeof window !== "undefined"
+        ? (window as unknown as { analysisData?: Record<string, unknown> }).analysisData || null
+        : null;
+    const r = await apiPost<AnalyseR>("/api/decision-engine/analyse", {
+      replace_open: true,
+      analysis_snapshot,
+    });
     setRefreshing(false);
-    if (r.ok && r.recommendations) {
-      setRecs(r.recommendations);
-      setLastGen(r.generated_at || new Date().toISOString());
+    if (r.ok) {
+      setForesight({
+        risks: r.future_risks || [],
+        opportunities: r.future_opportunities || [],
+        learning: r.learning_applied,
+      });
+      // Reload from DB so ids/why_best are authoritative
+      await loadRecs();
       setDismissed(new Set());
       setActed(new Set());
+      if (r.generated_at) setLastGen(r.generated_at);
     }
   }
 
@@ -132,7 +167,7 @@ export default function ActionQueue() {
 
   return (
     <div className="view-header-wrap">
-      <div className="view-header">
+      <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
             <div>
@@ -178,6 +213,39 @@ export default function ActionQueue() {
                 {refreshing ? "⏳ Generating…" : "✨ Refresh with AI"}
               </button>
             </div>
+
+            {(foresight.risks.length > 0 || foresight.opportunities.length > 0 || foresight.learning) && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10, marginBottom: 14 }}>
+                {foresight.risks.length > 0 && (
+                  <div style={{ background: "#FEF2F2", border: "1.5px solid #FECACA", borderRadius: 10, padding: "12px 14px" }}>
+                    <div style={{ fontSize: "0.68rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#DC2626", marginBottom: 6 }}>🔮 Future risks</div>
+                    <ul style={{ margin: 0, padding: "0 0 0 16px" }}>
+                      {foresight.risks.slice(0, 4).map((r, i) => (
+                        <li key={i} style={{ fontSize: "0.8rem", color: "#7F1D1D", lineHeight: 1.45, marginBottom: 3 }}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {foresight.opportunities.length > 0 && (
+                  <div style={{ background: "#ECFDF5", border: "1.5px solid #A7F3D0", borderRadius: 10, padding: "12px 14px" }}>
+                    <div style={{ fontSize: "0.68rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#059669", marginBottom: 6 }}>🔭 Future opportunities</div>
+                    <ul style={{ margin: 0, padding: "0 0 0 16px" }}>
+                      {foresight.opportunities.slice(0, 4).map((o, i) => (
+                        <li key={i} style={{ fontSize: "0.8rem", color: "#064E3B", lineHeight: 1.45, marginBottom: 3 }}>{o}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {foresight.learning && (
+                  <div style={{ background: "#EFF6FF", border: "1.5px solid #BFDBFE", borderRadius: 10, padding: "12px 14px" }}>
+                    <div style={{ fontSize: "0.68rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2563EB", marginBottom: 6 }}>🧠 Learning applied</div>
+                    <div style={{ fontSize: "0.8rem", color: "#1E3A8A", lineHeight: 1.5 }}>
+                      {foresight.learning.preferred_count || 0} past acts · {foresight.learning.avoided_count || 0} dismissed · {foresight.learning.memory_lessons || 0} memory lessons shaping this run
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Category filter */}
             {cats.length > 2 && (
@@ -257,6 +325,20 @@ export default function ActionQueue() {
                           <div style={{ color: "#64748b", fontSize: "0.82rem", marginTop: 3 }}>
                             {rec.expected_impact} · {rec.time_to_result}
                           </div>
+                          {(rec.entities?.from?.length || rec.entities?.to?.length) ? (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                              {(rec.entities?.from || []).map((e, i) => (
+                                <span key={`f-${i}`} style={{ background: "#FEE2E2", color: "#991B1B", borderRadius: 5, padding: "2px 7px", fontSize: "0.68rem", fontWeight: 700 }}>
+                                  From: {e.name}{e.roas != null ? ` · ${e.roas}×` : ""}
+                                </span>
+                              ))}
+                              {(rec.entities?.to || []).map((e, i) => (
+                                <span key={`t-${i}`} style={{ background: "#DCFCE7", color: "#166534", borderRadius: 5, padding: "2px 7px", fontSize: "0.68rem", fontWeight: 700 }}>
+                                  To: {e.name}{e.roas != null ? ` · ${e.roas}×` : ""}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                         <span style={{ color: "#94a3b8", fontSize: "0.8rem", flexShrink: 0 }}>{isOpen ? "▲" : "▼"}</span>
                       </div>
@@ -264,9 +346,24 @@ export default function ActionQueue() {
                       {/* Expanded detail */}
                       {isOpen && (
                         <div style={{ padding: "0 16px 14px 16px", borderTop: "1px solid #f1f5f9" }}>
+                          {rec.problem_summary && (
+                            <p style={{ color: "#9A3412", fontSize: "0.82rem", margin: "10px 0 6px", background: "#FFF7ED", padding: "8px 10px", borderRadius: 8 }}>
+                              <strong>Not working:</strong> {rec.problem_summary}
+                            </p>
+                          )}
+                          {rec.change_summary && (
+                            <p style={{ color: "#1E3A8A", fontSize: "0.82rem", margin: "0 0 8px", background: "#EFF6FF", padding: "8px 10px", borderRadius: 8 }}>
+                              <strong>Change:</strong> {rec.change_summary}
+                            </p>
+                          )}
                           <p style={{ color: "#334155", fontSize: "0.87rem", margin: "10px 0" }}>
                             {rec.recommendation}
                           </p>
+                          {rec.why_best && (
+                            <p style={{ color: "#78716C", fontSize: "0.82rem", margin: "0 0 10px", fontStyle: "italic" }}>
+                              <strong style={{ fontStyle: "normal", color: "#B45309" }}>Why best:</strong> {rec.why_best}
+                            </p>
+                          )}
                           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: "0.79rem", color: "#64748b", marginBottom: 12 }}>
                             <span>💰 Cost: {rec.cost_estimate}</span>
                             <span>📊 Sources: {rec.data_sources}</span>
@@ -357,10 +454,28 @@ export default function ActionQueue() {
                   })}
                 </>
               ) : (
-                <div style={{ color: "#94a3b8", fontSize: "0.83rem" }}>
+                <div style={{ color: "#64748b", fontSize: "0.83rem", lineHeight: 1.45, marginBottom: 12 }}>
                   Set your monthly budget in the Budget Board to see goals here.
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() => goToView(router, "budget-board")}
+                style={{
+                  width: "100%",
+                  marginTop: budget ? 10 : 0,
+                  padding: "9px 12px",
+                  background: "linear-gradient(135deg,#0F766E,#0284C7)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 800,
+                  fontSize: "0.78rem",
+                  cursor: "pointer",
+                }}
+              >
+                Open Budget Board →
+              </button>
             </div>
 
             {/* Campaign health */}

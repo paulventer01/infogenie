@@ -1,7 +1,7 @@
 "use client";
 
 // Native React port of the legacy `ai-team` panel (was `window.buildAiTeam` +
-// `#view-ai-team`). Mirrors the eight AI-officer roster, the avatar picker
+// `#view-ai-team`). Mirrors the AI-officer roster (incl. Technical Manager), the avatar picker
 // (emoji gallery + image upload), per-officer Tasks and Daily Report modals, the
 // cross-functional Officer Meetings list + scheduler, the autonomous Daily
 // Report scheduler, the autonomous Team Meetings scheduler, and the live
@@ -225,7 +225,71 @@ const OFFICERS: Officer[] = [
     isNew: true,
     links: [["ops-officer", "Open Operations Office"]],
   },
+  {
+    id: "technical",
+    icon: "🛡️",
+    title: "Technical Manager",
+    role: "Every page & feature live — APIs, LLMs, auth, vault, security, updates",
+    isNew: true,
+    links: [["technical-manager", "Open Technical Manager desk"]],
+  },
 ];
+
+/** Soft illustrated portraits shipped with the app — used until a custom avatar is saved. */
+const DEFAULT_AVATARS: Record<string, string> = {
+  marketing: "/avatars/ai-team/marketing.webp",
+  sales: "/avatars/ai-team/sales.webp",
+  analyst: "/avatars/ai-team/analyst.webp",
+  content: "/avatars/ai-team/content.webp",
+  seo: "/avatars/ai-team/seo.webp",
+  cro: "/avatars/ai-team/cro.webp",
+  finance: "/avatars/ai-team/finance.webp",
+  ops: "/avatars/ai-team/ops.webp",
+  technical: "/avatars/ai-team/technical.webp",
+};
+
+const COUNT_WORDS = [
+  "Zero",
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+  "Eleven",
+  "Twelve",
+];
+
+function rosterCountLabel(n: number): string {
+  return COUNT_WORDS[n] || String(n);
+}
+
+function resolveAvatar(officerId: string, stored?: string, fallbackIcon = "👤"): string {
+  if (typeof stored === "string" && stored.trim()) {
+    const v = stored.trim();
+    // Accept image URLs / data URIs, or short emoji glyphs. Reject path fragments
+    // left behind by the old 8-char avatar save truncate bug (e.g. "/avatars").
+    if (isAvatarImage(v)) return v;
+    if (!v.startsWith("/") && !v.startsWith("http") && !v.startsWith("data:") && v.length <= 16) {
+      return v;
+    }
+  }
+  return DEFAULT_AVATARS[officerId] || fallbackIcon;
+}
+
+function isAvatarImage(value: string): boolean {
+  return (
+    value.startsWith("/avatars/") ||
+    value.startsWith("/uploads/") ||
+    value.startsWith("http://") ||
+    value.startsWith("https://") ||
+    value.startsWith("data:image/")
+  );
+}
 
 const AVATAR_GALLERY = [
   "📣", "🎯", "📊", "✍️", "🔎", "🧪", "💼", "🛠️", "🤖", "🦊",
@@ -635,9 +699,12 @@ export default function AiTeam() {
           maxWidth: 1200,
           margin: "0 auto 22px",
           padding: "24px 28px",
-          background: "linear-gradient(135deg,#0F172A 0%,#312E81 100%)",
-          color: "white",
+          background:
+            "radial-gradient(ellipse 80% 70% at 8% 20%, rgba(15,118,110,0.16), transparent 55%), radial-gradient(ellipse 60% 50% at 92% 80%, rgba(2,132,199,0.14), transparent 50%), linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 48%, #eef4ff 100%)",
+          color: "#0f172a",
           borderRadius: 18,
+          border: "1px solid rgba(15, 118, 110, 0.16)",
+          boxShadow: "0 10px 28px rgba(15, 23, 42, 0.06)",
         }}
       >
         <div
@@ -655,16 +722,16 @@ export default function AiTeam() {
                 fontSize: ".72rem",
                 letterSpacing: ".18em",
                 textTransform: "uppercase",
-                color: "#A5B4FC",
-                fontWeight: 700,
+                color: "#0f766e",
+                fontWeight: 800,
               }}
             >
               YOUR AI TEAM
             </div>
-            <h1 style={{ margin: "8px 0 6px", fontSize: "1.85rem", fontWeight: 800 }}>
-              Eight AI executives, one team
+            <h1 style={{ margin: "8px 0 6px", fontSize: "1.85rem", fontWeight: 800, color: "#0f172a" }}>
+              {rosterCountLabel(OFFICERS.length)} AI executives, one team
             </h1>
-            <p style={{ margin: 0, fontSize: ".92rem", color: "#CBD5E1", maxWidth: 720 }}>
+            <p style={{ margin: 0, fontSize: ".92rem", color: "#475569", maxWidth: 720 }}>
               Each officer handles a function full-time. Click any role to open their
               office. Pick an avatar, assign tasks, run daily reports, and schedule
               cross-functional meetings — all minutes downloadable.
@@ -677,9 +744,9 @@ export default function AiTeam() {
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              background: "rgba(15,23,42,0.5)",
-              border: "1px solid rgba(148,163,184,0.3)",
-              color: "#fff",
+              background: "rgba(255,255,255,0.72)",
+              border: "1px solid rgba(15, 118, 110, 0.22)",
+              color: "#0f172a",
               padding: "8px 14px",
               borderRadius: 99,
               fontSize: ".78rem",
@@ -717,7 +784,7 @@ export default function AiTeam() {
           <OfficerCard
             key={o.id}
             officer={o}
-            avatar={avatars[o.id]}
+            avatar={resolveAvatar(o.id, avatars[o.id], o.icon)}
             taskCount={taskCounts[o.id] || 0}
             onNav={(v) => goToView(router, v)}
             onAvatar={(e) => {
@@ -866,7 +933,7 @@ function OfficerCard({
   onReport: () => void;
 }) {
   const av = typeof avatar === "string" && avatar ? avatar : officer.icon;
-  const isImg = typeof av === "string" && av.startsWith("/uploads/");
+  const isImg = typeof av === "string" && isAvatarImage(av);
   return (
     <div style={card}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 10 }}>
@@ -878,20 +945,23 @@ function OfficerCard({
             onAvatar(e);
           }}
           style={{
-            width: 54,
-            height: 54,
-            borderRadius: 14,
-            background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+            width: 58,
+            height: 58,
+            borderRadius: "50%",
+            background: isImg
+              ? "#e2e8f0"
+              : "linear-gradient(135deg,#0f766e,#0284c7)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             fontSize: 26,
             flexShrink: 0,
-            border: "none",
+            border: "2px solid rgba(15, 118, 110, 0.18)",
             cursor: "pointer",
             padding: 0,
             position: "relative",
             overflow: "hidden",
+            boxShadow: "0 6px 16px rgba(15, 23, 42, 0.08)",
           }}
         >
           {isImg ? (
@@ -899,7 +969,7 @@ function OfficerCard({
             <img
               src={av}
               alt=""
-              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 14 }}
+              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
             />
           ) : (
             av
@@ -907,8 +977,8 @@ function OfficerCard({
           <span
             style={{
               position: "absolute",
-              bottom: -2,
-              right: -2,
+              bottom: -1,
+              right: -1,
               background: "#fff",
               border: "1px solid #E2E8F0",
               borderRadius: "50%",
@@ -988,7 +1058,7 @@ function OfficerCard({
             onClick={onTasks}
             style={{
               padding: "6px 11px",
-              background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               color: "#fff",
               border: "none",
               borderRadius: 8,
@@ -1003,8 +1073,8 @@ function OfficerCard({
             onClick={onReport}
             style={{
               padding: "6px 11px",
-              background: "#0F172A",
-              color: "#fff",
+              background: '#eef4ff',
+              color: "#0f172a",
               border: "none",
               borderRadius: 8,
               fontSize: ".72rem",
@@ -1035,10 +1105,18 @@ function AvatarPicker({
   onChanged: (officerId: string, avatar: string) => void;
 }) {
   const [status, setStatus] = useState("");
+  // Portrait grid + emoji grid + upload controls — keep on-screen for bottom cards
+  // (Technical Manager) by flipping above the anchor when needed.
+  const PICKER_H = 420;
   const left = useMemo(
     () => Math.max(8, Math.min((typeof window !== "undefined" ? window.innerWidth : 1024) - 280, x)),
     [x],
   );
+  const top = useMemo(() => {
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    if (y + PICKER_H > vh - 8) return Math.max(8, y - PICKER_H - 52);
+    return Math.max(8, Math.min(y, vh - PICKER_H - 8));
+  }, [y]);
 
   useEffect(() => {
     const onDocClick = () => onClose();
@@ -1085,7 +1163,7 @@ function AvatarPicker({
       onClick={(e) => e.stopPropagation()}
       style={{
         position: "fixed",
-        top: y,
+        top,
         left,
         background: "#fff",
         border: "1px solid #E2E8F0",
@@ -1094,6 +1172,8 @@ function AvatarPicker({
         boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
         zIndex: 99998,
         width: 268,
+        maxHeight: "min(420px, calc(100vh - 16px))",
+        overflowY: "auto",
       }}
     >
       <div
@@ -1106,7 +1186,48 @@ function AvatarPicker({
           marginBottom: 8,
         }}
       >
-        Pick an emoji
+        Team portraits
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4,1fr)",
+          gap: 6,
+          marginBottom: 12,
+        }}
+      >
+        {Object.entries(DEFAULT_AVATARS).map(([id, src]) => (
+          <button
+            key={id}
+            title={id}
+            onClick={() => pickEmoji(src)}
+            style={{
+              width: 52,
+              height: 52,
+              border: "1px solid #E2E8F0",
+              background: "#fff",
+              borderRadius: "50%",
+              cursor: "pointer",
+              padding: 0,
+              overflow: "hidden",
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </button>
+        ))}
+      </div>
+      <div
+        style={{
+          fontSize: ".7rem",
+          color: "#64748B",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: ".05em",
+          marginBottom: 8,
+        }}
+      >
+        Or pick an emoji
       </div>
       <div
         style={{
@@ -1152,7 +1273,7 @@ function AvatarPicker({
           display: "block",
           width: "100%",
           padding: "9px 12px",
-          background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+          background: "linear-gradient(135deg,#0f766e,#0284c7)",
           color: "#fff",
           border: "none",
           borderRadius: 8,
@@ -1264,7 +1385,7 @@ function TasksModal({
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff" }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.9 }}>
             📋 Job Responsibilities
           </div>
@@ -1397,7 +1518,7 @@ function TasksModal({
             onClick={save}
             style={{
               padding: "10px 22px",
-              background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               color: "#fff",
               border: "none",
               borderRadius: 8,
@@ -1492,7 +1613,7 @@ function DailyReportModal({
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0F172A,#1E293B)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a' }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.8 }}>
             📊 Daily Report
           </div>
@@ -1598,8 +1719,8 @@ function DailyReportModal({
             }}
             style={{
               padding: "10px 22px",
-              background: "#0F172A",
-              color: "#fff",
+              background: '#eef4ff',
+              color: "#0f172a",
               border: "none",
               borderRadius: 8,
               fontWeight: 800,
@@ -1668,7 +1789,7 @@ function MeetingsPanel({
           onClick={onSchedule}
           style={{
             padding: "9px 16px",
-            background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+            background: "linear-gradient(135deg,#0f766e,#0284c7)",
             color: "#fff",
             border: "none",
             borderRadius: 8,
@@ -1698,13 +1819,13 @@ function MeetingsPanel({
                 <div style={{ display: "flex", gap: 6 }}>
                   <button
                     onClick={() => onView(m)}
-                    style={{ padding: "6px 12px", background: "#0F172A", color: "#fff", border: "none", borderRadius: 7, fontSize: ".74rem", fontWeight: 700, cursor: "pointer" }}
+                    style={{ padding: "6px 12px", background: '#eef4ff', color: "#0f172a", border: "none", borderRadius: 7, fontSize: ".74rem", fontWeight: 700, cursor: "pointer" }}
                   >
                     View
                   </button>
                   <button
                     onClick={() => downloadFile(`meeting-${m.id}.md`, meetingToMarkdown(m))}
-                    style={{ padding: "6px 12px", background: "#0EA5E9", color: "#fff", border: "none", borderRadius: 7, fontSize: ".74rem", fontWeight: 700, cursor: "pointer" }}
+                    style={{ padding: "6px 12px", background: "#0EA5E9", color: "#0f172a", border: "none", borderRadius: 7, fontSize: ".74rem", fontWeight: 700, cursor: "pointer" }}
                   >
                     📥 Minutes
                   </button>
@@ -1788,7 +1909,7 @@ function ScheduleMeetingModal({
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff" }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.9 }}>
             🗓️ Schedule Meeting
           </div>
@@ -1808,7 +1929,10 @@ function ScheduleMeetingModal({
             Attendees (pick at least 2)
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-            {OFFICERS.map((o) => (
+            {OFFICERS.map((o) => {
+              const av = resolveAvatar(o.id, avatars[o.id], o.icon);
+              const img = isAvatarImage(av);
+              return (
               <label
                 key={o.id}
                 style={{
@@ -1828,9 +1952,16 @@ function ScheduleMeetingModal({
                   onChange={(e) => setPicked((p) => ({ ...p, [o.id]: e.target.checked }))}
                   style={{ margin: 0 }}
                 />
-                {(typeof avatars[o.id] === "string" && avatars[o.id]) || o.icon} {o.title}
+                {img ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={av} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover" }} />
+                ) : (
+                  <span>{av}</span>
+                )}{" "}
+                {o.title}
               </label>
-            ))}
+              );
+            })}
           </div>
         </div>
         <div style={{ padding: "14px 24px", borderTop: "1px solid #E2E8F0", display: "flex", justifyContent: "flex-end", gap: 8, background: "#F8FAFC" }}>
@@ -1845,7 +1976,7 @@ function ScheduleMeetingModal({
             disabled={busy}
             style={{
               padding: "10px 22px",
-              background: "linear-gradient(135deg,#7C3AED,#0EA5E9)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               color: "#fff",
               border: "none",
               borderRadius: 8,
@@ -1909,7 +2040,7 @@ function MeetingDetailModal({
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0F172A,#312E81)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a' }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.8 }}>
             📝 Meeting Minutes
           </div>
@@ -2106,8 +2237,8 @@ function SystemStatusPanel({
         <div
           style={{
             padding: "18px 22px",
-            background: "linear-gradient(135deg,#0F172A,#312E81)",
-            color: "#fff",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+            color: '#0f172a',
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -2123,7 +2254,7 @@ function SystemStatusPanel({
           </div>
           <button
             onClick={onClose}
-            style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", width: 34, height: 34, borderRadius: "50%", fontSize: "1.1rem", cursor: "pointer" }}
+            style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#0f172a", width: 34, height: 34, borderRadius: "50%", fontSize: "1.1rem", cursor: "pointer" }}
           >
             ×
           </button>
@@ -2336,14 +2467,14 @@ function AutoMeetingsPanel({
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             onClick={() => onSettings(s)}
-            style={{ padding: "9px 16px", background: "#0F172A", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: '#eef4ff', color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             ⚙️ Settings
           </button>
           <button
             onClick={runNow}
             disabled={busy}
-            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy ? "⏳ Drafting…" : "▶ Run Now"}
           </button>
@@ -2352,10 +2483,10 @@ function AutoMeetingsPanel({
       <div style={{ fontSize: ".82rem", color: "#475569", lineHeight: 1.5 }}>
         {s.enabled ? (
           <>
-            <strong style={{ color: "#0F172A" }}>ON:</strong> the entire AI executive team must attend every
-            auto-scheduled meeting. Each officer reports what works, what does not work, why, and the
-            remedial action. Once agreed, actions are tracked until implemented. Browse minutes via{" "}
-            <strong>Manage → Minutes of Meeting</strong>.
+            <strong style={{ color: "#0F172A" }}>ON:</strong> the entire AI executive team (including the
+            Technical Manager) must attend every auto-scheduled meeting. Each officer reports what works,
+            what does not work, why, and the remedial action. Once agreed, actions are tracked until
+            implemented. Browse minutes via <strong>Manage → Minutes of Meeting</strong>.
           </>
         ) : (
           <>
@@ -2433,7 +2564,7 @@ function AutoMeetingSettingsModal({
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0F172A,#312E81)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a' }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.85 }}>
             🗓️ Autonomous Meetings
           </div>
@@ -2552,7 +2683,7 @@ function AutoMeetingSettingsModal({
           </button>
           <button
             onClick={save}
-            style={{ padding: "10px 22px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, cursor: "pointer" }}
+            style={{ padding: "10px 22px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, cursor: "pointer" }}
           >
             Save
           </button>
@@ -2657,7 +2788,7 @@ function AutoReportPanel({
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             onClick={() => onSettings(s)}
-            style={{ padding: "9px 16px", background: "#0F172A", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: '#eef4ff', color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             ⚙️ Settings
           </button>
@@ -2665,7 +2796,7 @@ function AutoReportPanel({
             title="Generate now and view in browser — no email, no Slack"
             onClick={viewNow}
             disabled={busy !== null}
-            style={{ padding: "9px 16px", background: "#0EA5E9", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "#0EA5E9", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy === "view" ? "⏳ Drafting…" : "👁️ View Report"}
           </button>
@@ -2673,7 +2804,7 @@ function AutoReportPanel({
             title="Generate now and download as Markdown — no email, no Slack"
             onClick={downloadNow}
             disabled={busy !== null}
-            style={{ padding: "9px 16px", background: "#10B981", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "#10B981", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy === "dl" ? "⏳ Drafting…" : "📥 Download Report"}
           </button>
@@ -2681,7 +2812,7 @@ function AutoReportPanel({
             title="Generate now and send via email + Slack"
             onClick={runSend}
             disabled={busy !== null}
-            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy === "send" ? "⏳ Running…" : "▶ Run + Send"}
           </button>
@@ -2764,8 +2895,8 @@ function AutoReportViewer({ run, onClose }: { run: AutoReportRun; onClose: () =>
         <div
           style={{
             padding: "18px 22px",
-            background: "linear-gradient(135deg,#0F172A,#312E81)",
-            color: "#fff",
+            background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)",
+            color: '#0f172a',
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -2878,7 +3009,7 @@ function AutoReportSettingsModal({
           boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#0F172A,#312E81)", color: "#fff" }}>
+        <div style={{ padding: "20px 24px", background: "linear-gradient(135deg,#e8f6f3 0%,#eaf2fb 55%,#eef4ff 100%)", color: '#0f172a' }}>
           <div style={{ fontSize: ".7rem", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700, opacity: 0.85 }}>
             ⏰ Autonomous Reporting
           </div>
@@ -2962,7 +3093,7 @@ function AutoReportSettingsModal({
           </button>
           <button
             onClick={save}
-            style={{ padding: "10px 22px", background: "linear-gradient(135deg,#7C3AED,#0EA5E9)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, cursor: "pointer" }}
+            style={{ padding: "10px 22px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, cursor: "pointer" }}
           >
             Save
           </button>
