@@ -16,6 +16,8 @@ interface Kpi {
   value: number | null;
   unit: string;
   delta_pct?: number | null;
+  kind?: "measured" | "modelled" | "projected" | string;
+  confidence?: number | null;
 }
 interface GoalRow {
   source: string;
@@ -56,6 +58,7 @@ interface Snap {
   daily?: { day: string; spend: number; revenue: number }[];
   provenance?: { source: string; field: string; note?: string | null }[];
   deltas?: Record<string, number | null>;
+  definition_version?: string;
   error?: string;
 }
 
@@ -118,11 +121,14 @@ export default function CanonicalMetrics({ embedded = false }: { embedded?: bool
               </div>
               <h1 style={{ margin: "6px 0 6px", fontSize: "1.6rem", color: "#0F172A" }}>Canonical Metrics</h1>
               <p style={{ margin: 0, color: "#64748B", maxWidth: 560 }}>
-                Spend, blended &amp; true ROAS, CAC, waste, goals vs actuals, and live budget pacing — one engine every report and goal check should use.
+                Spend, CPA, CAC, LTV, blended &amp; true ROAS, waste, goals vs actuals, and pacing — one versioned dictionary every report and Ask answer must use. Figures are labelled measured / modelled / projected.
               </p>
             </div>
           ) : (
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#0F766E" }}>Goals vs actuals · pacing · ROAS</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0F766E" }}>
+              Goals vs actuals · pacing · ROAS
+              {snap?.definition_version ? ` · defs ${snap.definition_version}` : ""}
+            </div>
           )}
           <select
             value={days}
@@ -143,7 +149,17 @@ export default function CanonicalMetrics({ embedded = false }: { embedded?: bool
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 18 }}>
               {(snap.kpis || []).map((k) => (
                 <div key={k.key} style={{ background: "#fff", border: "1px solid #D1FAE5", borderRadius: 12, padding: "12px 14px" }}>
-                  <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>{k.label}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }}>
+                    <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>{k.label}</div>
+                    {k.kind ? (
+                      <span style={{
+                        fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em",
+                        color: k.kind === "measured" ? "#065F46" : k.kind === "projected" ? "#1D4ED8" : "#9A3412",
+                        background: k.kind === "measured" ? "#ECFDF5" : k.kind === "projected" ? "#EFF6FF" : "#FFF7ED",
+                        borderRadius: 999, padding: "1px 6px",
+                      }}>{k.kind}</span>
+                    ) : null}
+                  </div>
                   <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#0F172A", marginTop: 4 }}>{fmt(k.value, k.unit)}</div>
                   {k.delta_pct != null && (
                     <div style={{ fontSize: "0.75rem", fontWeight: 700, color: deltaColor(k.delta_pct, k.key), marginTop: 2 }}>
@@ -152,6 +168,19 @@ export default function CanonicalMetrics({ embedded = false }: { embedded?: bool
                   )}
                 </div>
               ))}
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <button
+                type="button"
+                onClick={() => goToView(router, "contribution-record")}
+                style={{
+                  padding: "10px 14px", borderRadius: 10, border: "1px solid #FDBA74",
+                  background: "#FFF7ED", color: "#9A3412", fontWeight: 800, fontSize: 13, cursor: "pointer",
+                }}
+              >
+                Open contribution system of record →
+              </button>
             </div>
 
             {pace && pace.pace_status && pace.pace_status !== "unknown" && (

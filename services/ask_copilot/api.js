@@ -127,64 +127,117 @@ function _wantsLiveMetrics(q) {
 }
 
 async function _fetchLiveMetrics(tid) {
-  if (!_db.hasDb()) return null;
+  const blocks = [];
+
+  // 1) Canonical metrics SSOT — same definitions as dashboards / reports
   try {
-    const pool = _db.getPool();
-    // Top campaigns by spend in the last 7 days
-    const r = await pool.query(
-      `SELECT
-         c.name,
-         c.platform,
-         c.daily_budget,
-         c.target_roas,
-         COALESCE(SUM(p.spend), 0)            AS total_spend,
-         COALESCE(SUM(p.clicks), 0)           AS total_clicks,
-         COALESCE(SUM(p.impressions), 0)      AS total_impressions,
-         CASE WHEN COALESCE(SUM(p.spend), 0) > 0
-              THEN ROUND((COALESCE(SUM(p.revenue), 0) / SUM(p.spend))::numeric, 2)
-              ELSE NULL
-         END                                   AS actual_roas,
-         CASE WHEN COALESCE(SUM(p.clicks), 0) > 0
-              THEN ROUND((SUM(p.spend) / SUM(p.clicks))::numeric, 4)
-              ELSE NULL
-         END                                   AS cpc,
-         CASE WHEN COALESCE(SUM(p.impressions), 0) > 0
-              THEN ROUND((SUM(p.clicks)::numeric / SUM(p.impressions) * 100), 2)
-              ELSE NULL
-         END                                   AS ctr_pct
-       FROM ad_campaigns c
-       LEFT JOIN ad_performance_hourly p
-              ON p.campaign_id = c.id
-             AND p.ts >= NOW() - INTERVAL '7 days'
-       WHERE c.tenant_id = $1
-       GROUP BY c.id, c.name, c.platform, c.daily_budget, c.target_roas
-       ORDER BY total_spend DESC
-       LIMIT 10`,
-      [tid],
-    );
-
-    if (!r.rows.length) return null;
-
-    const lines = ['[LIVE CAMPAIGN METRICS — last 7 days from your InfoGenie data]'];
-    r.rows.forEach((row, i) => {
-      const parts = [
-        `${i + 1}. "${row.name}" (${row.platform})`,
-        `Spend: $${Number(row.total_spend).toFixed(2)}`,
-        `Clicks: ${row.total_clicks}`,
-        `Impressions: ${row.total_impressions}`,
+    const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
+    const snap = await computeCanonicalMetrics(tid, { days: 30 });
+    if (snap) {
+      const lines = [
+        `[CANONICAL METRICS SSOT — last ${snap.days}d · defs ${snap.definition_version || 'n/a'}]`,
+        'Every figure is labelled measured|modelled|projected. Do not invent alternate definitions.',
       ];
-      if (row.cpc != null)        parts.push(`CPC: $${row.cpc}`);
-      if (row.ctr_pct != null)    parts.push(`CTR: ${row.ctr_pct}%`);
-      if (row.actual_roas != null) parts.push(`Actual ROAS: ${row.actual_roas}x`);
-      if (row.target_roas != null) parts.push(`Target ROAS: ${row.target_roas}x`);
-      if (row.daily_budget != null) parts.push(`Daily Budget: $${Number(row.daily_budget).toFixed(2)}`);
-      lines.push(parts.join(' | '));
-    });
-    return lines.join('\n');
+      for (const k of snap.kpis || []) {
+        if (k.value == null) continue;
+        const unit = k.unit === '$' ? `$${Number(k.value).toFixed(2)}`
+          : k.unit === 'x' ? `${k.value}x`
+            : k.unit === '%' ? `${k.value}%`
+              : String(k.value);
+        lines.push(
+          `- ${k.label}: ${unit} [${k.kind || 'unknown'}`
+          + `${k.confidence != null ? ` · conf ${Math.round(k.confidence * 100)}%` : ''}]`,
+        );
+      }
+      blocks.push(lines.join('\n'));
+    }
   } catch (e) {
-    console.warn('[ask-copilot] live metrics fetch:', e.message);
-    return null;
+    console.warn('[ask-copilot] canonical metrics:', e.message);
   }
+
+  // 2) Causal contribution record — platform vs incremental (budget defence)
+  try {
+    const { computeContribution } = require('../canonical_metrics/contribution');
+    const contrib = await computeContribution(tid, { days: 30 });
+    if (contrib?.summary) {
+      const s = contrib.summary;
+      const lines = [
+        '[CONTRIBUTION SYSTEM OF RECORD — platform claims beside causal estimates]',
+        `Platform ROAS: ${s.platform?.roas?.value ?? 'n/a'}x [measured] · Causal iROAS: ${s.causal?.iroas?.value ?? 'n/a'}x [modelled]`,
+        `Overstatement factor: ${s.overstatement_factor ?? 'n/a'}× · Holdout tests used: ${s.holdout_tests_used || 0}`,
+        'When answering budget questions, prefer causal iROAS over platform ROAS.',
+      ];
+      for (const rec of (contrib.budget_recommendations || []).slice(0, 3)) {
+        lines.push(
+          `- Rec: ${rec.action === 'reduce' ? 'reduce' : 'shift'} $${rec.amount}`
+          + `${rec.from ? ` from ${rec.from}` : ''}${rec.to ? ` → ${rec.to}` : ''} — ${rec.why}`,
+        );
+      }
+      blocks.push(lines.join('\n'));
+    }
+  } catch (e) {
+    console.warn('[ask-copilot] contribution:', e.message);
+  }
+
+  // 3) Top campaigns (bucket_hour — same column as canonical)
+  if (_db.hasDb()) {
+    try {
+      const pool = _db.getPool();
+      const r = await pool.query(
+        `SELECT
+           c.name,
+           c.platform,
+           c.daily_budget,
+           c.target_roas,
+           COALESCE(SUM(p.spend), 0)            AS total_spend,
+           COALESCE(SUM(p.clicks), 0)           AS total_clicks,
+           COALESCE(SUM(p.impressions), 0)      AS total_impressions,
+           CASE WHEN COALESCE(SUM(p.spend), 0) > 0
+                THEN ROUND((COALESCE(SUM(p.revenue), 0) / SUM(p.spend))::numeric, 2)
+                ELSE NULL
+           END                                   AS actual_roas,
+           CASE WHEN COALESCE(SUM(p.clicks), 0) > 0
+                THEN ROUND((SUM(p.spend) / SUM(p.clicks))::numeric, 4)
+                ELSE NULL
+           END                                   AS cpc,
+           CASE WHEN COALESCE(SUM(p.impressions), 0) > 0
+                THEN ROUND((SUM(p.clicks)::numeric / SUM(p.impressions) * 100), 2)
+                ELSE NULL
+           END                                   AS ctr_pct
+         FROM ad_campaigns c
+         LEFT JOIN ad_performance_hourly p
+                ON p.campaign_id = c.id
+               AND p.bucket_hour >= NOW() - INTERVAL '7 days'
+         WHERE c.tenant_id = $1
+         GROUP BY c.id, c.name, c.platform, c.daily_budget, c.target_roas
+         ORDER BY total_spend DESC
+         LIMIT 10`,
+        [tid],
+      );
+      if (r.rows.length) {
+        const lines = ['[LIVE CAMPAIGN METRICS — last 7 days · platform-reported ROAS is measured, not causal]'];
+        r.rows.forEach((row, i) => {
+          const parts = [
+            `${i + 1}. "${row.name}" (${row.platform})`,
+            `Spend: $${Number(row.total_spend).toFixed(2)}`,
+            `Clicks: ${row.total_clicks}`,
+            `Impressions: ${row.total_impressions}`,
+          ];
+          if (row.cpc != null) parts.push(`CPC: $${row.cpc}`);
+          if (row.ctr_pct != null) parts.push(`CTR: ${row.ctr_pct}%`);
+          if (row.actual_roas != null) parts.push(`Platform ROAS: ${row.actual_roas}x [measured]`);
+          if (row.target_roas != null) parts.push(`Target ROAS: ${row.target_roas}x`);
+          if (row.daily_budget != null) parts.push(`Daily Budget: $${Number(row.daily_budget).toFixed(2)}`);
+          lines.push(parts.join(' | '));
+        });
+        blocks.push(lines.join('\n'));
+      }
+    } catch (e) {
+      console.warn('[ask-copilot] campaign metrics fetch:', e.message);
+    }
+  }
+
+  return blocks.length ? blocks.join('\n\n') : null;
 }
 
 function _parseJSON(text) {

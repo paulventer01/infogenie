@@ -7,6 +7,7 @@
  */
 
 const _db = require('../../db');
+const { DEFINITION_VERSION, labelledValue, listDefinitions } = require('./definitions');
 
 function _round(n, d = 2) {
   if (n == null || !Number.isFinite(Number(n))) return null;
@@ -44,20 +45,44 @@ async function computeCanonicalMetrics(tid, opts = {}) {
     blended_roas: null,
     true_roas: null,
     reported_roas: null,
+    cpa: null,
     cac: null,
+    blended_cac: null,
+    ltv: null,
     mer: null,
     net_sales: null,
     customers: 0,
     customer_source: 'none',
+    offline_buyers: 0,
     waste_cents: 0,
     waste_channels: [],
     goals_vs_actuals: [],
+    definition_version: DEFINITION_VERSION,
     provenance,
     generated_at: new Date().toISOString(),
   };
 
   if (!_db.hasDb() || !Number.isFinite(tid)) {
     provenance.push(_provenance('none', '*', 'database unavailable or no tenant'));
+    out.kpis = [
+      labelledValue('spend', 0, { confidence: 0, evidence: 'unavailable' }),
+      labelledValue('reported_roas', null, { confidence: 0, evidence: 'unavailable' }),
+      labelledValue('true_roas', null, { confidence: 0, evidence: 'unavailable' }),
+      labelledValue('cpa', null, { confidence: 0, evidence: 'unavailable' }),
+      labelledValue('cac', null, { confidence: 0, evidence: 'unavailable' }),
+    ].map((k) => ({ ...k, delta_pct: null }));
+    out.labelled = {
+      spend: labelledValue('spend', 0, { confidence: 0, evidence: 'unavailable' }),
+      reported_roas: labelledValue('reported_roas', null),
+      true_roas: labelledValue('true_roas', null),
+      cpa: labelledValue('cpa', null),
+      cac: labelledValue('cac', null),
+      blended_cac: labelledValue('blended_cac', null),
+      ltv: labelledValue('ltv', null),
+      mer: labelledValue('mer', null),
+    };
+    out.definitions = listDefinitions();
+    out.deltas = {};
     return out;
   }
 
@@ -152,6 +177,7 @@ async function computeCanonicalMetrics(tid, opts = {}) {
       [tid, interval],
     );
     out.offline_revenue = Number(r.rows[0]?.cents || 0) / 100;
+    out.offline_buyers = Number(r.rows[0]?.n || 0);
     provenance.push(_provenance('offline_conversions', 'offline_revenue', `${r.rows[0]?.n || 0} deals`));
   } catch (e) {
     provenance.push(_provenance('offline_conversions', 'offline_revenue', `unavailable: ${e.message}`));
@@ -167,13 +193,23 @@ async function computeCanonicalMetrics(tid, opts = {}) {
   out.true_roas = out.spend > 0 && out.total_revenue > 0
     ? _round(out.total_revenue / out.spend) : null;
   out.blended_roas = out.reported_roas;
+  out.cpa = out.conversions > 0 ? _round(out.spend / out.conversions) : null;
   out.cac = out.customers > 0 ? _round(out.spend / out.customers) : null;
+  const denomBuyers = Math.max(out.conversions, out.offline_buyers || 0);
+  out.blended_cac = denomBuyers > 0 ? _round(out.spend / denomBuyers) : out.cac;
+  if (out.offline_buyers > 0 && out.offline_revenue > 0) {
+    out.ltv = _round(out.offline_revenue / out.offline_buyers);
+  } else if (out.conversions > 0 && out.online_revenue > 0) {
+    out.ltv = _round(out.online_revenue / out.conversions);
+  } else {
+    out.ltv = null;
+  }
   out.mer = out.spend > 0 && out.total_revenue > 0
     ? _round((out.total_revenue / out.spend) * 100, 1) : null;
   out.net_sales = out.total_revenue > 0
     ? _round(out.total_revenue - out.spend) : null;
 
-  provenance.push(_provenance('canonical_metrics', 'blended_roas,true_roas,cac,mer,net_sales'));
+  provenance.push(_provenance('canonical_metrics', 'blended_roas,true_roas,cpa,cac,blended_cac,ltv,mer,net_sales', `defs ${DEFINITION_VERSION}`));
 
   // 4) Goals vs actuals — OKR key results + agent_goals progress
   try {
@@ -374,17 +410,60 @@ async function computeCanonicalMetrics(tid, opts = {}) {
     provenance.push(_provenance('pacing', '*', `unavailable: ${e.message}`));
   }
 
-  // KPI dictionary for UI / report consumers
+  // KPI dictionary for UI / report consumers — every value labelled measured|modelled|projected
+  const _kpi = (key, value, delta_pct, extra = {}) => {
+    const base = labelledValue(key, value, extra);
+    return { ...base, delta_pct: delta_pct == null ? null : delta_pct };
+  };
   out.kpis = [
-    { key: 'spend', label: 'Spend', value: out.spend, unit: '$', delta_pct: out.deltas.spend_pct },
-    { key: 'total_revenue', label: 'Revenue', value: out.total_revenue, unit: '$', delta_pct: out.deltas.revenue_pct },
-    { key: 'blended_roas', label: 'Blended ROAS', value: out.blended_roas, unit: 'x', delta_pct: out.deltas.blended_roas_pct },
-    { key: 'true_roas', label: 'True ROAS', value: out.true_roas, unit: 'x', delta_pct: out.deltas.true_roas_pct },
-    { key: 'cac', label: 'CAC', value: out.cac, unit: '$', delta_pct: out.deltas.cac_pct },
-    { key: 'conversions', label: 'Conversions', value: out.conversions, unit: '', delta_pct: out.deltas.conversions_pct },
-    { key: 'mer', label: 'MER', value: out.mer, unit: '%', delta_pct: null },
-    { key: 'waste_cents', label: 'Waste', value: _round((out.waste_cents || 0) / 100), unit: '$', delta_pct: null },
+    _kpi('spend', out.spend, out.deltas.spend_pct, { confidence: 0.95, evidence: 'ad_performance_hourly' }),
+    _kpi('total_revenue', out.total_revenue, out.deltas.revenue_pct, {
+      confidence: out.offline_revenue > 0 ? 0.7 : 0.85,
+      evidence: 'online+offline',
+    }),
+    _kpi('reported_roas', out.reported_roas, out.deltas.blended_roas_pct, {
+      confidence: 0.9,
+      evidence: 'platform_attribution',
+    }),
+    _kpi('blended_roas', out.blended_roas, out.deltas.blended_roas_pct, {
+      confidence: 0.9,
+      evidence: 'platform_attribution',
+    }),
+    _kpi('true_roas', out.true_roas, out.deltas.true_roas_pct, {
+      confidence: out.offline_revenue > 0 ? 0.7 : 0.5,
+      evidence: 'online+offline',
+    }),
+    _kpi('cpa', out.cpa, null, { confidence: 0.85, evidence: 'ad_performance_hourly' }),
+    _kpi('cac', out.cac, out.deltas.cac_pct, { confidence: 0.6, evidence: 'conversions_proxy' }),
+    _kpi('blended_cac', out.blended_cac, null, {
+      confidence: out.offline_buyers > 0 ? 0.65 : 0.55,
+      evidence: out.offline_buyers > 0 ? 'offline_buyers' : 'conversions_proxy',
+    }),
+    _kpi('ltv', out.ltv, null, {
+      confidence: out.offline_buyers > 0 ? 0.55 : 0.35,
+      evidence: out.offline_buyers > 0 ? 'offline_aov' : 'online_aov_proxy',
+    }),
+    _kpi('conversions', out.conversions, out.deltas.conversions_pct, {
+      confidence: 0.9,
+      evidence: 'ad_performance_hourly',
+    }),
+    _kpi('mer', out.mer, null, { confidence: 0.65, evidence: 'total_revenue/spend' }),
+    _kpi('waste', _round((out.waste_cents || 0) / 100), null, {
+      confidence: 0.5,
+      evidence: 'roas_lt_1_heuristic',
+    }),
   ];
+  out.labelled = {
+    spend: labelledValue('spend', out.spend, { confidence: 0.95, evidence: 'canonical' }),
+    reported_roas: labelledValue('reported_roas', out.reported_roas, { confidence: 0.9 }),
+    true_roas: labelledValue('true_roas', out.true_roas, { confidence: out.offline_revenue > 0 ? 0.7 : 0.5 }),
+    cpa: labelledValue('cpa', out.cpa),
+    cac: labelledValue('cac', out.cac),
+    blended_cac: labelledValue('blended_cac', out.blended_cac),
+    ltv: labelledValue('ltv', out.ltv),
+    mer: labelledValue('mer', out.mer),
+  };
+  out.definitions = listDefinitions();
 
   // Round money fields
   out.spend = _round(out.spend) || 0;
@@ -410,6 +489,15 @@ function readMetric(snapshot, metricKey) {
     case 'ads.cac':
     case 'cac':
       return snapshot.cac;
+    case 'ads.blendedCac':
+    case 'blended_cac':
+      return snapshot.blended_cac;
+    case 'ads.cpa':
+    case 'cpa':
+      return snapshot.cpa;
+    case 'ads.ltv':
+    case 'ltv':
+      return snapshot.ltv;
     case 'ads.blendedRoas':
     case 'blended_roas':
     case 'roas':
@@ -417,6 +505,9 @@ function readMetric(snapshot, metricKey) {
     case 'ads.trueRoas':
     case 'true_roas':
       return snapshot.true_roas;
+    case 'reported_roas':
+    case 'platform_roas':
+      return snapshot.reported_roas;
     case 'ads.revenue':
     case 'revenue':
       return snapshot.total_revenue;
@@ -440,4 +531,5 @@ function readMetric(snapshot, metricKey) {
 module.exports = {
   computeCanonicalMetrics,
   readMetric,
+  DEFINITION_VERSION,
 };

@@ -380,6 +380,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "blended-perf", icon: "💎", label: "Blended Performance (CAC)" },
           { view: "attribution", icon: "🥉", label: "Attribution Modeling" },
           { view: "true-roas", icon: "💵", label: "True ROAS (margin-aware)" },
+          { view: "contribution-record", icon: "📐", label: "Contribution record (platform vs causal)" },
           { view: "iroas", icon: "🎖️", label: "iROAS Incrementality" },
           { view: "conversion-recovery", icon: "🔃", label: "Conversion Recovery (CAPI)" },
           { view: "churn-scorer", icon: "⚠️", label: "Churn-Risk Scorer" },
@@ -579,6 +580,7 @@ for (const group of NAV_GROUPS) {
 // Keep established bookmark paths when nav ownership moves (AI Team ops, etc.).
 VIEW_TO_PATH.flywheel = "/manage/flywheel";
 VIEW_TO_PATH["canonical-metrics"] = "/manage/canonical-metrics";
+VIEW_TO_PATH["contribution-record"] = "/grow/contribution-record";
 VIEW_TO_PATH.capacity = "/manage/capacity";
 VIEW_TO_PATH["team-meetings"] = "/manage/team-meetings";
 VIEW_TO_PATH["ai-providers"] = "/manage/ai-providers";
@@ -595,6 +597,7 @@ VIEW_TO_PATH["social-publisher"] = VIEW_TO_PATH["social-publisher"] || "/reach/s
 // Goals Hub deep links (tabs / related) — keep bookmarks after nav consolidation
 ALL_VIEW_IDS.add("goals");
 ALL_VIEW_IDS.add("canonical-metrics");
+ALL_VIEW_IDS.add("contribution-record");
 ALL_VIEW_IDS.add("marketing-okr");
 ALL_VIEW_IDS.add("kpi-tracker");
 VIEW_TO_PATH.goals = "/grow/goals";

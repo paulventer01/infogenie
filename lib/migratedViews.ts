@@ -60,6 +60,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "flywheel", legacyModule: "ig_growth_flywheel.js" },
   { view: "capacity", legacyModule: null },
   { view: "canonical-metrics", legacyModule: null },
+  { view: "contribution-record", legacyModule: null },
   { view: "playbook-7day", legacyModule: null },
   // Registry panels that were missing from this list (SpaRouter legacy race risk)
   { view: "aeo-optimizer", legacyModule: null },

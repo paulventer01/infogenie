@@ -378,6 +378,7 @@ const COMPONENT_MATRIX = {
   'flywheel':             'dashboard.view',
   'capacity':             'manage.projects.view',
   'canonical-metrics':    'analytics.view',
+  'contribution-record':  'analytics.view',
   'intelligence':         'dashboard.view',
   'csuite':               'dashboard.view',
   'finance-officer':      'dashboard.view',
