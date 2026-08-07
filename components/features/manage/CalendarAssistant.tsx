@@ -67,7 +67,7 @@ function fmt(iso?: string | null) {
   }
 }
 
-export default function CalendarAssistant() {
+export default function CalendarAssistant({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
@@ -161,6 +161,7 @@ export default function CalendarAssistant() {
 
   return (
     <div>
+      {!embedded ? (
       <div
         className="intel-header ig-panel-hero"
         style={{ background: "linear-gradient(135deg,#ecfdf5 0%,#e0f2fe 55%,#fef3c7 100%)" }}
@@ -174,12 +175,22 @@ export default function CalendarAssistant() {
           AI scheduling and conflict resolution across Master, Brand, and Content calendars — find free slots, clear overlaps, and write back to Brand Calendar.
         </p>
       </div>
+      ) : null}
 
-      <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ padding: embedded ? "8px 24px 24px" : 24, maxWidth: 1100, margin: "0 auto" }}>
+        {embedded ? (
+          <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 700, color: "#0F766E" }}>
+            Calendar Assistant
+          </div>
+        ) : null}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
+          {!embedded ? (
+            <>
           <button type="button" onClick={() => goToView(router, "master-calendar")} style={btnSec}>Master Calendar</button>
           <button type="button" onClick={() => goToView(router, "brand-calendar")} style={btnSec}>Brand Calendar</button>
           <button type="button" onClick={() => goToView(router, "content-calendar")} style={btnSec}>Content Calendar</button>
+            </>
+          ) : null}
           <button type="button" onClick={load} style={btnSec}>Refresh</button>
           {health != null && (
             <span style={{ marginLeft: "auto", fontWeight: 800, fontSize: "0.95rem", color: health >= 80 ? "#059669" : health >= 60 ? "#D97706" : "#DC2626" }}>

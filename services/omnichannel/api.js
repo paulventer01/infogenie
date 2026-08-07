@@ -6,15 +6,14 @@ const _tenantCtx = require('../tenants/context');
 
 // ── Get available channels + which are configured ──
 router.get('/channels', (_req, res) => {
-  res.json({
-    channels: [
-      { id: 'email',    label: 'Email',          configured: !!process.env.RESEND_API_KEY,           via: 'Resend' },
-      { id: 'sms',      label: 'SMS',            configured: !!process.env.TWILIO_ACCOUNT_SID,       via: 'Twilio' },
-      { id: 'whatsapp', label: 'WhatsApp',       configured: !!process.env.WHATSAPP_PHONE_NUMBER_ID, via: 'Meta Cloud API' },
-      { id: 'voice',    label: 'AI Voice Call',  configured: !!process.env.VAPI_API_KEY,             via: 'Vapi.ai' },
-      { id: 'webpush',  label: 'Web Push',       configured: !!process.env.VAPID_PUBLIC_KEY,         via: 'web-push (VAPID)' }
-    ]
-  });
+  const channels = [
+    { id: 'email',    label: 'Email',          configured: !!process.env.RESEND_API_KEY,           via: 'Resend' },
+    { id: 'sms',      label: 'SMS',            configured: !!process.env.TWILIO_ACCOUNT_SID,       via: 'Twilio' },
+    { id: 'whatsapp', label: 'WhatsApp',       configured: !!process.env.WHATSAPP_PHONE_NUMBER_ID, via: 'Meta Cloud API' },
+    { id: 'voice',    label: 'AI Voice Call',  configured: !!process.env.VAPI_API_KEY,             via: 'Vapi.ai' },
+    { id: 'webpush',  label: 'Web Push',       configured: !!process.env.VAPID_PUBLIC_KEY,         via: 'web-push (VAPID)' }
+  ].map((c) => ({ ...c, stub: !c.configured }));
+  res.json({ channels });
 });
 
 // ── Web Push subscription endpoint (called from the service worker on the frontend) ──

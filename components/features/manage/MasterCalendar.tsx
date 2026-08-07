@@ -5,18 +5,45 @@
 // merged as a fallback for in-memory SPA data that has not been persisted yet.
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { goToView } from "@/lib/nav";
+import { pathToViewId } from "@/lib/viewRoutes";
+import BrandCalendar from "@/components/features/manage/BrandCalendar";
+import ContentCalendar from "@/components/features/create/ContentCalendar";
+import Social from "@/components/features/create/Social";
+import Launches from "@/components/features/manage/Launches";
+import CalendarAssistant from "@/components/features/manage/CalendarAssistant";
+import SocialPublisher from "@/components/features/reach/SocialPublisher";
 
-const CALENDAR_LAYERS: Array<{ view: string; icon: string; label: string; desc: string }> = [
-  { view: "brand-calendar", icon: "🏷️", label: "Brand Calendar", desc: "10 brand categories" },
-  { view: "content-calendar", icon: "🗓️", label: "Content Calendar", desc: "Editorial plan" },
-  { view: "social", icon: "📱", label: "Social Calendar", desc: "Scheduled social posts" },
-  { view: "launches", icon: "🚀", label: "Launches", desc: "Product launch dates" },
-  { view: "calendar-assistant", icon: "✨", label: "AI Assistant", desc: "Conflicts · suggest · apply" },
-  { view: "social-publisher", icon: "📤", label: "Social Publisher", desc: "Drafts · approvals · post" },
+type LayerId =
+  | "agenda"
+  | "brand-calendar"
+  | "content-calendar"
+  | "social"
+  | "launches"
+  | "calendar-assistant"
+  | "social-publisher";
+
+const CALENDAR_LAYERS: Array<{ id: LayerId; view: string; icon: string; label: string; desc: string }> = [
+  { id: "agenda", view: "master-calendar", icon: "📆", label: "Unified Agenda", desc: "All sources" },
+  { id: "brand-calendar", view: "brand-calendar", icon: "🏷️", label: "Brand", desc: "10 categories" },
+  { id: "content-calendar", view: "content-calendar", icon: "🗓️", label: "Content", desc: "Editorial plan" },
+  { id: "social", view: "social", icon: "📱", label: "Social", desc: "Local planner" },
+  { id: "launches", view: "launches", icon: "🚀", label: "Launches", desc: "Go-live dates" },
+  { id: "calendar-assistant", view: "calendar-assistant", icon: "✨", label: "AI Assistant", desc: "Conflicts · suggest" },
+  { id: "social-publisher", view: "social-publisher", icon: "📤", label: "Publisher", desc: "Drafts · post" },
 ];
+
+function viewToLayer(view: string | null): LayerId {
+  if (view === "brand-calendar") return "brand-calendar";
+  if (view === "content-calendar") return "content-calendar";
+  if (view === "social") return "social";
+  if (view === "launches") return "launches";
+  if (view === "calendar-assistant") return "calendar-assistant";
+  if (view === "social-publisher") return "social-publisher";
+  return "agenda";
+}
 
 interface LegacyArticle {
   title?: string;
@@ -155,6 +182,8 @@ function styleFor(type: EventType, status: string, risk: boolean) {
 
 export default function MasterCalendar() {
   const router = useRouter();
+  const pathname = usePathname();
+  const layer = viewToLayer(pathToViewId(pathname || "") || "master-calendar");
   const today = useMemo(() => new Date(), []);
   const todayIso = useMemo(() => isoOf(today), [today]);
 
@@ -339,46 +368,66 @@ export default function MasterCalendar() {
         </div>
         <h1 className="ih-title">🗓️ Master Calendar</h1>
         <p className="ih-sub">
-          Unified agenda for brand, content, campaigns, social, and launches —
-          open a layer below when you need to edit that calendar
+          Unified agenda plus embedded layer editors — switch tabs to edit Brand, Content, Social, Launches, Assistant, or Publisher without leaving this shell.
         </p>
       </div>
 
       <div style={{ padding: "16px 28px 0", maxWidth: 1200, margin: "0 auto" }}>
         <div
+          role="tablist"
+          aria-label="Calendar layers"
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))",
-            gap: 10,
-            marginBottom: 8,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            borderBottom: "2px solid #E2E8F0",
+            marginBottom: 4,
           }}
         >
-          {CALENDAR_LAYERS.map((layer) => (
-            <button
-              key={layer.view}
-              type="button"
-              onClick={() => goToView(router, layer.view)}
-              style={{
-                textAlign: "left",
-                background: "#fff",
-                border: "1px solid #E2E8F0",
-                borderRadius: 12,
-                padding: "12px 14px",
-                cursor: "pointer",
-              }}
-            >
-              <div style={{ fontSize: 18, lineHeight: 1 }}>{layer.icon}</div>
-              <div style={{ marginTop: 6, fontWeight: 800, fontSize: 13, color: "#0F172A" }}>
-                {layer.label}
-              </div>
-              <div style={{ marginTop: 2, fontSize: 11, color: "#64748B", lineHeight: 1.35 }}>
-                {layer.desc}
-              </div>
-            </button>
-          ))}
+          {CALENDAR_LAYERS.map((l) => {
+            const on = l.id === layer;
+            return (
+              <button
+                key={l.id}
+                type="button"
+                role="tab"
+                aria-selected={on}
+                onClick={() => goToView(router, l.view)}
+                title={l.desc}
+                style={{
+                  padding: "10px 12px",
+                  marginBottom: -2,
+                  border: "none",
+                  borderBottom: on ? "3px solid #0F766E" : "3px solid transparent",
+                  background: "transparent",
+                  color: on ? "#0F766E" : "#64748B",
+                  fontWeight: on ? 800 : 600,
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                {l.icon} {l.label}
+              </button>
+            );
+          })}
         </div>
+        <p style={{ margin: "8px 0 4px", fontSize: 12, color: "#64748B" }}>
+          {CALENDAR_LAYERS.find((l) => l.id === layer)?.desc}
+        </p>
       </div>
 
+      {layer !== "agenda" ? (
+        <div data-master-calendar-layer={layer} style={{ paddingBottom: 24 }}>
+          {layer === "brand-calendar" ? <BrandCalendar embedded /> : null}
+          {layer === "content-calendar" ? <ContentCalendar embedded /> : null}
+          {layer === "social" ? <Social embedded /> : null}
+          {layer === "launches" ? <Launches embedded /> : null}
+          {layer === "calendar-assistant" ? <CalendarAssistant embedded /> : null}
+          {layer === "social-publisher" ? <SocialPublisher embedded /> : null}
+        </div>
+      ) : null}
+
+      {layer === "agenda" ? (
       <div style={{ padding: "16px 28px 24px" }}>
         {/* Summary cards */}
         <div
@@ -787,6 +836,7 @@ export default function MasterCalendar() {
           </div>
         </div>
       </div>
+      ) : null}
     </div>
   );
 }

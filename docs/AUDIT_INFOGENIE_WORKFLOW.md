@@ -82,10 +82,8 @@ Brief → Analyse (understand) → Create (assets) → Reach (distribute)
 
 ## Remaining / backlog (lower priority)
 
-- Omnichannel channels that return `stub: true` without providers — keep behind Messaging Channels hub; hide stubs when no provider.
-- Archive scorelet pack behind Intelligence Hub search only (already sidebar-hidden).
-- Optional: embed calendar layer editors inside Master Calendar (currently tile launchers).
-- Optional: Budget Hub Arbitrage tab UI (API already nested under `/api/budget/arbitrage`).
+- None of the prior P0/P1 consolidation items remain open.
+- Optional later: deeper calendar layer UX polish; provider-connect CTAs from Omnichannel stub list.
 
 ---
 

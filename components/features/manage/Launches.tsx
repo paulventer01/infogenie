@@ -52,7 +52,7 @@ function formatCountdown(ms: number): string {
 
 type Group = "today" | "week" | "later" | "past";
 
-export default function Launches() {
+export default function Launches({ embedded = false }: { embedded?: boolean } = {}) {
   const [data, setData] = useState<LaunchesResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -389,6 +389,7 @@ export default function Launches() {
 
   return (
     <div className="view" id="view-launches">
+      {!embedded ? (
       <div className="intel-header ig-panel-hero" style={{ background: "linear-gradient(110deg,#7C3AED 0%,#A855F7 50%,#EC4899 100%)" }}>
         <div className="breadcrumb" style={{ color: "#FBCFE8" }}>
           <span className="bc-group" style={{ color: "#FBCFE8", opacity: 0.85 }}>
@@ -404,7 +405,12 @@ export default function Launches() {
           Schedule campaign go-live dates — get 24h &amp; 1h reminders in your bell + stakeholder inboxes
         </p>
       </div>
-      <div id="launchesWrap" style={{ padding: "24px 28px" }}>
+      ) : (
+        <div style={{ padding: "8px 28px 0", fontSize: 13, fontWeight: 700, color: "#0F766E" }}>
+          Launch Calendar editor
+        </div>
+      )}
+      <div id="launchesWrap" style={{ padding: embedded ? "12px 28px 24px" : "24px 28px" }}>
         {renderBody()}
       </div>
     </div>

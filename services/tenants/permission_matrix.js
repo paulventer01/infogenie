@@ -644,6 +644,7 @@ const COMPONENT_MATRIX = {
   'stakeholders':         'manage.projects.view',
   'budget':               'manage.budget.view',
   'budget-board':         'manage.budget.view',
+  'budget-arbitrage':     'manage.budget.view',
   'customer-360':         'brand.view',
   'ask-infogenie':        'manage.ask.use',
   'conversational-ai':    'manage.ask.use',

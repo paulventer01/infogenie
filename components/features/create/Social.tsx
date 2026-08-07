@@ -171,7 +171,7 @@ function seed(str: string): number {
   return Math.abs(h);
 }
 
-export default function Social() {
+export default function Social({ embedded = false }: { embedded?: boolean } = {}) {
   const [tab, setTab] = useState<SocialTab>("calendar");
   const [posts, setPosts] = useState<Post[]>([]);
   const now = new Date();
@@ -295,6 +295,7 @@ export default function Social() {
 
   return (
     <div className="view" id="view-social-react">
+      {!embedded ? (
       <div
         className="view-header ig-panel-hero"
         data-ig-light-hero="1"
@@ -323,9 +324,18 @@ export default function Social() {
           </div>
         </div>
       </div>
+      ) : null}
 
       <div className="container">
-        <div style={{ padding: "28px 0" }}>
+        <div style={{ padding: embedded ? "12px 0 28px" : "28px 0" }}>
+          {embedded ? (
+            <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#0F766E" }}>Social Calendar editor</div>
+              <button className="btn-primary" style={{ background: "#7C3AED", color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" }} onClick={() => openCreate()}>
+                + Create Post
+              </button>
+            </div>
+          ) : null}
           <div
             style={{
               marginBottom: 16,

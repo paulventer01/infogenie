@@ -307,6 +307,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   // New panels — no legacy markup or public/js builders.
   { view: "utm-builder",   legacyModule: null },
   { view: "budget-caps",   legacyModule: null },
+  { view: "budget-arbitrage", legacyModule: null },
   { view: "pixel-manager",      legacyModule: null },
   { view: "launch-compliance",  legacyModule: null },
   { view: "post-launch-audit",  legacyModule: null },

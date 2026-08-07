@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * Budget Hub — consolidates Overview, Board (targets + spend log), and Caps
- * behind one tab strip. Deep links stay live:
- *   /manage/budget        → Overview
- *   /manage/budget-board  → Board
- *   /manage/budget-caps   → Caps
+ * Budget Hub — Overview, Board, Caps, and Arbitrage behind one tab strip.
+ * Deep links:
+ *   /manage/budget             → Overview
+ *   /manage/budget-board       → Board
+ *   /manage/budget-caps        → Caps
+ *   /manage/budget-arbitrage   → Arbitrage
  */
 
 import { useMemo } from "react";
@@ -15,8 +16,9 @@ import { goToView } from "@/lib/nav";
 import Budget from "@/components/features/manage/Budget";
 import BudgetBoard from "@/components/features/manage/BudgetBoard";
 import BudgetCaps from "@/components/features/manage/BudgetCaps";
+import BudgetArbitrage from "@/components/features/manage/BudgetArbitrage";
 
-type TabId = "overview" | "board" | "caps";
+type TabId = "overview" | "board" | "caps" | "arbitrage";
 
 const TABS: Array<{ id: TabId; view: string; label: string; blurb: string }> = [
   {
@@ -37,11 +39,18 @@ const TABS: Array<{ id: TabId; view: string; label: string; blurb: string }> = [
     label: "Caps",
     blurb: "Platform daily/lifetime limits and campaign budgets",
   },
+  {
+    id: "arbitrage",
+    view: "budget-arbitrage",
+    label: "Arbitrage",
+    blurb: "Cross-platform reallocations from live ROAS / CPA / CVR",
+  },
 ];
 
 function viewToTab(view: string | null): TabId {
   if (view === "budget-board") return "board";
   if (view === "budget-caps") return "caps";
+  if (view === "budget-arbitrage") return "arbitrage";
   return "overview";
 }
 
@@ -54,13 +63,7 @@ export default function BudgetHub() {
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(180deg,#F0FDF4 0%,#F8FAFC 42%)" }}>
-      <div
-        style={{
-          maxWidth: 1180,
-          margin: "0 auto",
-          padding: "22px 24px 8px",
-        }}
-      >
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "22px 24px 8px" }}>
         <div style={{ marginBottom: 14 }}>
           <div
             style={{
@@ -86,7 +89,7 @@ export default function BudgetHub() {
             Budget Hub
           </h1>
           <p style={{ margin: "6px 0 0", fontSize: 14, color: "#64748B", maxWidth: 720, lineHeight: 1.5 }}>
-            One place for spend overview, monthly pacing, and platform caps — switch tabs without leaving the workflow.
+            Spend overview, monthly pacing, platform caps, and cross-platform arbitrage — one workflow.
           </p>
         </div>
 
@@ -134,6 +137,7 @@ export default function BudgetHub() {
         {tab === "overview" ? <Budget embedded /> : null}
         {tab === "board" ? <BudgetBoard embedded /> : null}
         {tab === "caps" ? <BudgetCaps embedded /> : null}
+        {tab === "arbitrage" ? <BudgetArbitrage embedded /> : null}
       </div>
     </div>
   );

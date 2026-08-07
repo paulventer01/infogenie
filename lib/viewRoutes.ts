@@ -137,7 +137,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "voc", icon: "🗣️", label: "Voice of Customer" },
           { view: "review-aggregator", icon: "⭐", label: "Review Aggregator" },
           { view: "reputation-score", icon: "🌟", label: "Reputation Score" },
-          { view: "presence-score", icon: "📡", label: "Presence Score" },
+          // presence-score + other scorelets → Intelligence Hub archive
           // organic-social demoted into Organic Social Performance hub
           { view: "tech-stack", icon: "🧱", label: "Tech Stack Detector" },
           { view: "pricing-watch", icon: "💰", label: "Pricing Watcher" },
@@ -444,8 +444,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "heatmaps", icon: "🖋️", label: "Heatmaps + Session Replay" },
           { view: "action-queue", icon: "📹", label: "Daily Action Queue (what to do today)" },
           // marketing-okr + canonical-metrics live under Goals Hub (related / tabs)
-          { view: "budget", icon: "💰", label: "Budget Hub (overview · board · caps)" },
-          // budget-board + budget-caps stay deep-linkable (VIEW_TO_PATH below); not listed again in nav
+          { view: "budget", icon: "💰", label: "Budget Hub (overview · board · caps · arbitrage)" },
+          // budget-board / caps / arbitrage stay deep-linkable (VIEW_TO_PATH below); not listed again in nav
           { view: "utm-builder", icon: "📸", label: "UTM Architecture (link builder + presets)" },
           { view: "pixel-manager", icon: "🎞️", label: "Pixel Manager (Meta CAPI · LinkedIn · TikTok)" },
           { view: "affiliate-hub", icon: "🤝", label: "Partner Affiliate Program" },
@@ -586,8 +586,12 @@ VIEW_TO_PATH["ai-governance"] = "/manage/ai-governance";
 // Budget Hub deep links (tabs) — not listed separately in the Manage nav
 ALL_VIEW_IDS.add("budget-board");
 ALL_VIEW_IDS.add("budget-caps");
+ALL_VIEW_IDS.add("budget-arbitrage");
 VIEW_TO_PATH["budget-board"] = "/manage/budget-board";
 VIEW_TO_PATH["budget-caps"] = "/manage/budget-caps";
+VIEW_TO_PATH["budget-arbitrage"] = "/manage/budget-arbitrage";
+// Master Calendar publisher layer keeps Reach bookmark path
+VIEW_TO_PATH["social-publisher"] = VIEW_TO_PATH["social-publisher"] || "/reach/social-publisher";
 // Goals Hub deep links (tabs / related) — keep bookmarks after nav consolidation
 ALL_VIEW_IDS.add("goals");
 ALL_VIEW_IDS.add("canonical-metrics");
@@ -635,8 +639,8 @@ for (const [view, path] of HUB_DEEP_LINKS) {
 }
 
 /**
- * Views trimmed from the default Analyse sidebar (to reduce duplicates) but still
- * reachable via deep link, nav search, and dashboard module tiles.
+ * Thin scorelets + Analyse spy tools — parked out of the sidebar.
+ * Reachable from Intelligence Hub archive, nav search, and deep links.
  */
 export const SIDEBAR_HIDDEN_VIEWS: readonly string[] = [
   "deliverability",
@@ -674,6 +678,7 @@ export const SIDEBAR_HIDDEN_VIEWS: readonly string[] = [
   "seo-widget",
   "review-automation",
   "ave",
+  "presence-score",
   "anomaly-detector",
   "intent-radar",
   "hashtag-tracker",
@@ -682,6 +687,59 @@ export const SIDEBAR_HIDDEN_VIEWS: readonly string[] = [
   "geo-insights",
   "ugc-discovery",
 ];
+
+/** Intelligence Hub archive tiles for sidebar-hidden scorelets & spies. */
+export const INTEL_ARCHIVE_TOOLS: ReadonlyArray<{
+  view: string;
+  icon: string;
+  label: string;
+  group: "Scorelets" | "Spies & monitors" | "Keyword & SEO utilities";
+}> = [
+  { view: "ave", icon: "📢", label: "AVE Estimator", group: "Scorelets" },
+  { view: "presence-score", icon: "📡", label: "Presence Score", group: "Scorelets" },
+  { view: "influence-score", icon: "🧲", label: "Influence Score", group: "Scorelets" },
+  { view: "intent-radar", icon: "🎯", label: "Intent Radar", group: "Scorelets" },
+  { view: "anomaly-detector", icon: "📉", label: "Anomaly Detector", group: "Scorelets" },
+  { view: "hashtag-tracker", icon: "#️⃣", label: "Hashtag Tracker", group: "Scorelets" },
+  { view: "project-compare", icon: "⚖️", label: "Project Compare", group: "Scorelets" },
+  { view: "geo-insights", icon: "🌍", label: "Geo Insights", group: "Scorelets" },
+  { view: "ad-swipe", icon: "🗂️", label: "Ad Swipe File", group: "Spies & monitors" },
+  { view: "job-board-spy", icon: "🕵️", label: "Job Board Spy", group: "Spies & monitors" },
+  { view: "linkedin-ads", icon: "💼", label: "LinkedIn Ads Spy", group: "Spies & monitors" },
+  { view: "glassdoor", icon: "🏢", label: "Glassdoor Intel", group: "Spies & monitors" },
+  { view: "reddit", icon: "🟠", label: "Reddit Monitor", group: "Spies & monitors" },
+  { view: "reddit-pulse", icon: "🔴", label: "Reddit Pulse", group: "Spies & monitors" },
+  { view: "twitter-pulse", icon: "🐦", label: "X / Twitter Pulse", group: "Spies & monitors" },
+  { view: "youtube-monitor", icon: "▶️", label: "YouTube Monitor", group: "Spies & monitors" },
+  { view: "yt-comment-miner", icon: "💬", label: "YT Comment Miner", group: "Spies & monitors" },
+  { view: "podcast-monitor", icon: "🎙️", label: "Podcast Monitor", group: "Spies & monitors" },
+  { view: "newsletter-tracker", icon: "📬", label: "Newsletter Tracker", group: "Spies & monitors" },
+  { view: "quora-mining", icon: "❓", label: "Quora Mining", group: "Spies & monitors" },
+  { view: "ugc-discovery", icon: "📸", label: "UGC Discovery", group: "Spies & monitors" },
+  { view: "maps-intel", icon: "🗺️", label: "Maps Intel", group: "Spies & monitors" },
+  { view: "biz-scanner", icon: "🔎", label: "Business Scanner", group: "Spies & monitors" },
+  { view: "web-extractor", icon: "🕸️", label: "Web Extractor", group: "Spies & monitors" },
+  { view: "trending-topics", icon: "📈", label: "Trending Topics", group: "Spies & monitors" },
+  { view: "question-miner", icon: "⛏️", label: "Question Miner", group: "Keyword & SEO utilities" },
+  { view: "keyword-map", icon: "🧭", label: "Keyword Map", group: "Keyword & SEO utilities" },
+  { view: "intent-map", icon: "🧠", label: "Intent Map", group: "Keyword & SEO utilities" },
+  { view: "google-trends", icon: "📊", label: "Google Trends", group: "Keyword & SEO utilities" },
+  { view: "spyfu", icon: "🕵️‍♂️", label: "SpyFu", group: "Keyword & SEO utilities" },
+  { view: "majestic", icon: "🔗", label: "Majestic", group: "Keyword & SEO utilities" },
+  { view: "serpstat", icon: "📟", label: "Serpstat", group: "Keyword & SEO utilities" },
+  { view: "contentking", icon: "👑", label: "ContentKing", group: "Keyword & SEO utilities" },
+  { view: "bing-webmaster", icon: "🅱️", label: "Bing Webmaster", group: "Keyword & SEO utilities" },
+  { view: "link-prospector", icon: "🎣", label: "Link Prospector", group: "Keyword & SEO utilities" },
+  { view: "seo-widget", icon: "🧩", label: "SEO Widget", group: "Keyword & SEO utilities" },
+  { view: "social-tags", icon: "🏷️", label: "Social Tags", group: "Keyword & SEO utilities" },
+  { view: "accessibility", icon: "♿", label: "Accessibility", group: "Keyword & SEO utilities" },
+];
+
+// Ensure archive tools stay deep-linkable even if not in SIDEBAR_HIDDEN_VIEWS
+for (const t of INTEL_ARCHIVE_TOOLS) {
+  ALL_VIEW_IDS.add(t.view);
+  if (!VIEW_TO_PATH[t.view]) VIEW_TO_PATH[t.view] = `/analyse/${t.view}`;
+}
 
 for (const view of SIDEBAR_HIDDEN_VIEWS) {
   ALL_VIEW_IDS.add(view);

@@ -116,7 +116,7 @@ function toDatetimeLocal(isoOrLocal: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function SocialPublisher() {
+export default function SocialPublisher({ embedded = false }: { embedded?: boolean } = {}) {
   const [tab, setTab] = useState<TabId>("calendar");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profileId, setProfileId] = useState<string>("");
@@ -594,6 +594,7 @@ export default function SocialPublisher() {
 
   return (
     <div className="view-header-wrap">
+      {!embedded ? (
       <div className="view-header ig-panel-hero">
         <div className="container">
           <div className="vh-inner">
@@ -609,8 +610,14 @@ export default function SocialPublisher() {
           </div>
         </div>
       </div>
+      ) : null}
 
-      <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
+      <div className="container" style={{ paddingTop: embedded ? 8 : 24, paddingBottom: 56 }}>
+        {embedded ? (
+          <div style={{ marginBottom: 10, fontSize: 13, fontWeight: 700, color: "#0F766E" }}>
+            Social Publisher
+          </div>
+        ) : null}
         <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 0, overflow: "hidden", marginBottom: 18 }}>
           <div
             style={{
