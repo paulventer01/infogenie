@@ -232,11 +232,39 @@ const DEFAULT_AVATARS: Record<string, string> = {
   cro: "/avatars/ai-team/cro.webp",
   finance: "/avatars/ai-team/finance.webp",
   ops: "/avatars/ai-team/ops.webp",
-  technical: "/avatars/ai-team/ops.webp",
+  technical: "/avatars/ai-team/technical.webp",
 };
 
+const COUNT_WORDS = [
+  "Zero",
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+  "Eleven",
+  "Twelve",
+];
+
+function rosterCountLabel(n: number): string {
+  return COUNT_WORDS[n] || String(n);
+}
+
 function resolveAvatar(officerId: string, stored?: string, fallbackIcon = "👤"): string {
-  if (typeof stored === "string" && stored.trim()) return stored.trim();
+  if (typeof stored === "string" && stored.trim()) {
+    const v = stored.trim();
+    // Accept image URLs / data URIs, or short emoji glyphs. Reject path fragments
+    // left behind by the old 8-char avatar save truncate bug (e.g. "/avatars").
+    if (isAvatarImage(v)) return v;
+    if (!v.startsWith("/") && !v.startsWith("http") && !v.startsWith("data:") && v.length <= 16) {
+      return v;
+    }
+  }
   return DEFAULT_AVATARS[officerId] || fallbackIcon;
 }
 
@@ -675,7 +703,7 @@ export default function AiTeam() {
               YOUR AI TEAM
             </div>
             <h1 style={{ margin: "8px 0 6px", fontSize: "1.85rem", fontWeight: 800, color: "#0f172a" }}>
-              Eight AI executives, one team
+              {rosterCountLabel(OFFICERS.length)} AI executives, one team
             </h1>
             <p style={{ margin: 0, fontSize: ".92rem", color: "#475569", maxWidth: 720 }}>
               Each officer handles a function full-time. Click any role to open their
@@ -1044,10 +1072,18 @@ function AvatarPicker({
   onChanged: (officerId: string, avatar: string) => void;
 }) {
   const [status, setStatus] = useState("");
+  // Portrait grid + emoji grid + upload controls — keep on-screen for bottom cards
+  // (Technical Manager) by flipping above the anchor when needed.
+  const PICKER_H = 420;
   const left = useMemo(
     () => Math.max(8, Math.min((typeof window !== "undefined" ? window.innerWidth : 1024) - 280, x)),
     [x],
   );
+  const top = useMemo(() => {
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    if (y + PICKER_H > vh - 8) return Math.max(8, y - PICKER_H - 52);
+    return Math.max(8, Math.min(y, vh - PICKER_H - 8));
+  }, [y]);
 
   useEffect(() => {
     const onDocClick = () => onClose();
@@ -1094,7 +1130,7 @@ function AvatarPicker({
       onClick={(e) => e.stopPropagation()}
       style={{
         position: "fixed",
-        top: y,
+        top,
         left,
         background: "#fff",
         border: "1px solid #E2E8F0",
@@ -1103,6 +1139,8 @@ function AvatarPicker({
         boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
         zIndex: 99998,
         width: 268,
+        maxHeight: "min(420px, calc(100vh - 16px))",
+        overflowY: "auto",
       }}
     >
       <div

@@ -10649,7 +10649,7 @@ window._safeUrl = function(u) {
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
           <div>
             <div style="font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#A5B4FC;font-weight:700">YOUR AI TEAM</div>
-            <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">Eight AI executives, one team</h1>
+            <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">${(['Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve'][OFFICERS.length] || OFFICERS.length)} AI executives, one team</h1>
             <p style="margin:0;font-size:.92rem;color:#CBD5E1;max-width:720px">Each officer handles a function full-time. Click any role to open their office. Pick an avatar, assign tasks, run daily reports, and schedule cross-functional meetings — all minutes downloadable.</p>
           </div>
           <button id="aiTeamStatusPill" title="Click for full system status" style="display:inline-flex;align-items:center;gap:8px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.3);color:#fff;padding:8px 14px;border-radius:99px;font-size:.78rem;font-weight:700;cursor:pointer">

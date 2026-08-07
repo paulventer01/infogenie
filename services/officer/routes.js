@@ -430,8 +430,18 @@ app.post('/api/officer/avatars', async (req, res) => {
     const key = _officerKey(_AVATAR_KEY, tid);
     const cur = (await _db.kvGet(key, {})) || {};
     const safeCur = (cur && typeof cur==='object' && !Array.isArray(cur)) ? cur : {};
-    // Emoji is short (≤8 chars). For uploaded image URLs use /api/officer/avatar-upload.
-    safeCur[safeRole] = String(avatar).slice(0, 8);
+    // Accept short emoji glyphs OR portrait/upload URLs. The old slice(0,8) truncated
+    // paths like /avatars/ai-team/ops.webp to "/avatars" and broke portrait picks.
+    const raw = String(avatar).trim();
+    const isImg =
+      raw.startsWith('/avatars/') ||
+      raw.startsWith('/uploads/') ||
+      raw.startsWith('http://') ||
+      raw.startsWith('https://') ||
+      raw.startsWith('data:image/');
+    const isEmoji = !raw.startsWith('/') && !raw.startsWith('http') && !raw.startsWith('data:') && raw.length > 0 && raw.length <= 16;
+    if (!isImg && !isEmoji) return res.status(400).json({ error: 'invalid avatar' });
+    safeCur[safeRole] = isImg ? raw.slice(0, 500) : raw;
     await _db.kvSet(key, safeCur);
     res.json({ ok: true, avatars: safeCur });
   } catch (e) { res.status(500).json({ error: e.message }); }
