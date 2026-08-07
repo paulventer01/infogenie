@@ -131,11 +131,13 @@ async function scanSurfaces() {
   }
 
   // Core client journeys — always probed live (JD synthetic monitoring).
+  // Do NOT probe /api/technical-manager/* here: that re-enters runTechnicalScan
+  // and deadlocks the scan under its own HTTP probe.
   const probes = await Promise.all([
     probeLocal('/api/health'),
     probeLocal('/api/ready'),
     probeLocal('/api/auth/me'),
-    probeLocal('/api/technical-manager/status'),
+    probeLocal('/api/officer/avatars'),
   ]);
   const failedProbes = probes.filter((p) => !p.ok);
 

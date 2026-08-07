@@ -55,6 +55,7 @@ describe('Technical Manager surface monitor', () => {
     assert.ok(surfaces.counts.registry_loaders > 0);
     assert.ok(Array.isArray(surfaces.probes));
     assert.ok(surfaces.probes.length >= 4);
+    assert.ok(!surfaces.probes.some((p) => String(p.path || '').includes('technical-manager')));
     assert.ok(Array.isArray(surfaces.issues));
   });
 });
