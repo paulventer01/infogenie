@@ -736,6 +736,47 @@ body:has(#ig-app-shell) #ig-react-panel .tm-tech-hero__hint {
   color: #99f6e4 !important;
 }
 
+/* Technical Manager action bar — visible primary refresh + working link buttons */
+body:has(#ig-app-shell) #ig-react-panel .tm-action-bar .tm-refresh-btn,
+body:has(#ig-app-shell) #ig-react-panel .tm-refresh-btn {
+  background: linear-gradient(135deg, #0f766e, #0284c7) !important;
+  border: none !important;
+  border-radius: 10px !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-weight: 800 !important;
+  font-size: 13px !important;
+  padding: 10px 16px !important;
+  min-height: 40px !important;
+  cursor: pointer !important;
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.22) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-action-bar .tm-refresh-btn:disabled {
+  opacity: 0.75 !important;
+  cursor: wait !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-action-bar .tm-action-link {
+  padding: 10px 14px !important;
+  min-height: 40px !important;
+  border-radius: 10px !important;
+  border: 1.5px solid var(--v2-border) !important;
+  background: #ffffff !important;
+  color: #0b1220 !important;
+  -webkit-text-fill-color: #0b1220 !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  cursor: pointer !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .tm-action-bar .tm-action-link:hover {
+  border-color: rgba(15, 118, 110, 0.45) !important;
+  background: #f0fdfa !important;
+  color: #0f766e !important;
+  -webkit-text-fill-color: #0f766e !important;
+}
+
 body:has(#ig-app-shell) #ig-react-panel .breadcrumb,
 body:has(#ig-app-shell) #ig-react-panel .bc-group,
 body:has(#ig-app-shell) #ig-react-panel .bc-sep {

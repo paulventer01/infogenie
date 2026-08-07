@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { apiGet, apiPost } from "@/lib/api";
+import { goToView } from "@/lib/nav";
 
 type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -64,6 +66,61 @@ type TechScan = {
   roster: { id: string; name: string; role: string; status: string } | null;
 };
 
+type SnapshotEvent = {
+  id: string;
+  severity: Severity;
+  area: string;
+  message: string;
+  action?: string | null;
+  at: string;
+};
+
+type SnapshotPlan = {
+  step: number;
+  severity: Severity;
+  area: string;
+  problem: string;
+  action: string;
+  approval_required: boolean;
+  status: string;
+};
+
+type Snapshot = {
+  ok?: boolean;
+  overall: "healthy" | "watch" | "degraded" | "critical" | string;
+  generated_at: string;
+  postgres?: { ok?: boolean; configured?: boolean; error?: string; ts?: string };
+  auth?: { session_secret?: boolean; credential_encryption?: boolean; preview_auth?: boolean };
+  llm?: {
+    openai_configured?: boolean;
+    openai_dummy?: boolean;
+    provider_count?: number;
+    perplexity?: boolean;
+    anthropic?: boolean;
+  };
+  security?: { vault_enabled?: boolean; permission_enforcement?: boolean };
+  integrations?: { configured?: string[]; missing_recommended?: string[] };
+  tooling_gaps?: Array<{ need: string; suggestion: string; urgency: string }>;
+  events?: SnapshotEvent[];
+  plan_of_action?: SnapshotPlan[];
+  meeting_note?: string;
+  counts?: {
+    events?: number;
+    critical?: number;
+    high?: number;
+    integrations_configured?: number;
+    tooling_gaps?: number;
+    actions_pending_approval?: number;
+  };
+};
+
+type ScanResponse = {
+  ok: boolean;
+  error?: string;
+  snapshot?: Snapshot;
+  generatedAt?: string;
+};
+
 const SEV_COLOR: Record<Severity, string> = {
   critical: "#DC2626",
   high: "#EA580C",
@@ -80,6 +137,154 @@ const SEV_BG: Record<Severity, string> = {
   info: "#F8FAFC",
 };
 
+const ACTION_LINKS: Array<{
+  id: string;
+  label: string;
+  view: string;
+  blurb: string;
+}> = [
+  {
+    id: "capacity",
+    label: "Open Team Capacity roster ✓",
+    view: "capacity",
+    blurb: "Team Capacity & Workload — roster hours, skills, and Technical Manager assignment.",
+  },
+  {
+    id: "meetings",
+    label: "AI Team meetings",
+    view: "team-meetings",
+    blurb: "Minutes of Meeting — schedule officer meetings and download AI-drafted minutes.",
+  },
+  {
+    id: "providers",
+    label: "AI Providers",
+    view: "ai-providers",
+    blurb: "AI Providers — bring-your-own LLM keys, active models, and connection tests.",
+  },
+  {
+    id: "governance",
+    label: "AI Governance",
+    view: "ai-governance",
+    blurb: "AI Governance Hub — shadow-first audit trail, policy controls, and approval gates.",
+  },
+];
+
+function mapOverall(overall?: string): Severity {
+  switch (overall) {
+    case "critical":
+      return "critical";
+    case "degraded":
+      return "high";
+    case "watch":
+      return "medium";
+    case "healthy":
+      return "info";
+    default:
+      return "info";
+  }
+}
+
+function snapshotToScan(snap: Snapshot): TechScan {
+  const events: TechEvent[] = (snap.events || []).map((e) => {
+    const [title, ...rest] = String(e.message || "").split(" — ");
+    return {
+      id: e.id,
+      severity: e.severity,
+      category: e.area,
+      title: title || e.area,
+      detail: rest.join(" — ") || e.message,
+      surface: e.area,
+      recommendation: e.action || "",
+      at: e.at,
+    };
+  });
+
+  const medium = events.filter((e) => e.severity === "medium").length;
+  const low = events.filter((e) => e.severity === "low").length;
+  const info = events.filter((e) => e.severity === "info").length;
+  const counts = snap.counts || {};
+  const planSteps = snap.plan_of_action || [];
+  const topSev = (planSteps[0]?.severity || mapOverall(snap.overall)) as Severity;
+
+  const plan: TechPlan | null = planSteps.length
+    ? {
+        id: "tm-plan",
+        title: "Remediation plan awaiting approval",
+        severity: topSev === "critical" || topSev === "high" ? topSev : "high",
+        summary: `${planSteps.length} step(s) prepared from live scan events. No remediation runs until a human approves.`,
+        steps: planSteps.map((p) => ({
+          id: `step-${p.step}`,
+          order: p.step,
+          action: `${p.action}${p.problem ? ` — ${p.problem}` : ""}`,
+          owner: "Technical Manager + human approver",
+          risk: p.severity,
+          requiresApproval: !!p.approval_required,
+        })),
+        status: planSteps[0]?.status || "pending_approval",
+        createdAt: snap.generated_at,
+      }
+    : null;
+
+  const pgOk = !!snap.postgres?.ok;
+  const llmOk = !!(snap.llm?.openai_configured && !snap.llm?.openai_dummy);
+  const vaultOk = !!(snap.auth?.credential_encryption || snap.security?.vault_enabled);
+  const authOk = !!snap.auth?.session_secret;
+
+  return {
+    ok: true,
+    overallStatus: mapOverall(snap.overall),
+    scannedAt: snap.generated_at,
+    nextAutoRefreshSec: 30,
+    summary: {
+      critical: counts.critical ?? events.filter((e) => e.severity === "critical").length,
+      high: counts.high ?? events.filter((e) => e.severity === "high").length,
+      medium,
+      low,
+      info,
+      events: counts.events ?? events.length,
+      integrations: counts.integrations_configured ?? snap.integrations?.configured?.length ?? 0,
+      toolingGaps: counts.tooling_gaps ?? snap.tooling_gaps?.length ?? 0,
+      awaitingApproval: counts.actions_pending_approval ?? planSteps.filter((p) => p.approval_required).length,
+    },
+    systems: {
+      postgres: {
+        ok: pgOk,
+        detail: pgOk
+          ? "Postgres health probe succeeded."
+          : snap.postgres?.error || (snap.postgres?.configured ? "Postgres unreachable." : "DATABASE_URL is not configured."),
+      },
+      auth: {
+        ok: authOk,
+        detail: authOk ? "SESSION_SECRET is set." : "SESSION_SECRET missing — sessions are insecure.",
+        activeSessions: 0,
+      },
+      llm: {
+        ok: llmOk,
+        detail: llmOk
+          ? `Primary LLM ready · ${snap.llm?.provider_count || 0} BYO provider(s).`
+          : "Primary OpenAI key missing/dummy — AI features degrade.",
+        providers: [],
+      },
+      vault: {
+        ok: vaultOk,
+        detail: vaultOk ? "Credential vault encryption enabled." : "CREDENTIAL_ENCRYPTION_KEY not set — vault disabled.",
+      },
+      tokens: {
+        ok: (snap.integrations?.configured?.length || 0) > 0,
+        detail: `${snap.integrations?.configured?.length || 0} integration(s) configured` +
+          (snap.integrations?.missing_recommended?.length
+            ? ` · missing recommended: ${snap.integrations.missing_recommended.join(", ")}`
+            : ""),
+        recentFailures: 0,
+      },
+    },
+    events,
+    plan,
+    meetingNote: snap.meeting_note || "",
+    roster: null,
+  };
+}
+
 function formatTime(iso?: string) {
   if (!iso) return "—";
   try {
@@ -90,21 +295,28 @@ function formatTime(iso?: string) {
 }
 
 export default function TechnicalManager() {
+  const router = useRouter();
   const [scan, setScan] = useState<TechScan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [filterSeverity, setFilterSeverity] = useState<Severity | "all">("all");
   const [statusPanelOpen, setStatusPanelOpen] = useState(false);
+  const [actionInfo, setActionInfo] = useState<{ label: string; blurb: string } | null>(null);
 
   const load = useCallback(async (force = false) => {
     setError("");
     try {
-      const path = force ? "/api/technical-manager/scan?force=1" : "/api/technical-manager/scan";
-      const data = await api<TechScan>(path);
-      setScan(data);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load Technical Manager status");
+      const data = force
+        ? await apiPost<ScanResponse>("/api/technical-manager/scan", {})
+        : await apiGet<ScanResponse>("/api/technical-manager/scan");
+      if (!data?.ok || !data.snapshot) {
+        setError(data?.error || "Failed to load Technical Manager status");
+        return;
+      }
+      setScan(snapshotToScan(data.snapshot));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load Technical Manager status");
     } finally {
       setLoading(false);
       setBusy(false);
@@ -140,6 +352,11 @@ export default function TechnicalManager() {
     });
   }
 
+  function openLinkedView(view: string, label: string, blurb: string) {
+    setActionInfo({ label, blurb });
+    goToView(router, view);
+  }
+
   if (loading && !scan) {
     return <div style={{ padding: 24, color: "var(--fg-muted)" }}>Technical Manager is scanning the platform…</div>;
   }
@@ -150,7 +367,6 @@ export default function TechnicalManager() {
 
   return (
     <div style={{ padding: "20px 24px 48px", maxWidth: 1280, margin: "0 auto" }}>
-      {/* Hero uses .tm-tech-hero — theme-v2 forces dark ink on #ig-react-panel h1/p */}
       <div className="tm-tech-hero">
         <div className="tm-tech-hero__copy">
           <div className="tm-tech-hero__eyebrow">Technical Manager · Senior role</div>
@@ -197,7 +413,6 @@ export default function TechnicalManager() {
         </div>
       ) : null}
 
-      {/* Clickable severity summary */}
       <div
         style={{
           display: "grid",
@@ -266,32 +481,51 @@ export default function TechnicalManager() {
         ))}
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+      <div className="tm-action-bar" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
         <button
           type="button"
+          className="btn-primary tm-refresh-btn"
           disabled={busy}
           onClick={() => {
             setBusy(true);
+            setActionInfo({
+              label: "Refresh scan now",
+              blurb: "Re-running the full platform scan (database, auth, LLM, vault, integrations, tooling gaps) and updating live status.",
+            });
             load(true);
-          }}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 8,
-            border: "none",
-            background: "var(--accent)",
-            color: "#fff",
-            fontWeight: 700,
-            cursor: busy ? "wait" : "pointer",
-            fontSize: 13,
           }}
         >
           {busy ? "Scanning…" : "Refresh scan now"}
         </button>
-        <a href="#/manage/capacity" style={linkBtn}>Open Team Capacity roster ✓</a>
-        <a href="#/ai-team/meetings" style={linkBtn}>AI Team meetings</a>
-        <a href="#/ai-team/providers" style={linkBtn}>AI Providers</a>
-        <a href="#/ai-team/governance" style={linkBtn}>AI Governance</a>
+        {ACTION_LINKS.map((link) => (
+          <button
+            key={link.id}
+            type="button"
+            className="tm-action-link"
+            onClick={() => openLinkedView(link.view, link.label, link.blurb)}
+            title={link.blurb}
+          >
+            {link.label}
+          </button>
+        ))}
       </div>
+
+      {actionInfo ? (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: "1px solid #99F6E4",
+            background: "#F0FDFA",
+            color: "#115E59",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>{actionInfo.label}:</strong> {actionInfo.blurb}
+        </div>
+      ) : null}
 
       {scan?.meetingNote ? (
         <div
@@ -310,7 +544,6 @@ export default function TechnicalManager() {
         </div>
       ) : null}
 
-      {/* Status issues panel — opened by CRITICAL / severity clicks */}
       {statusPanelOpen ? (
         <div
           id="tm-status-issues"
@@ -467,7 +700,7 @@ export default function TechnicalManager() {
                 style={{
                   border: "none",
                   background: "transparent",
-                  color: "var(--accent)",
+                  color: "#0f766e",
                   fontWeight: 700,
                   fontSize: 12,
                   cursor: "pointer",
@@ -597,17 +830,4 @@ const muted: React.CSSProperties = {
   fontSize: 13,
   color: "var(--fg-muted)",
   lineHeight: 1.45,
-};
-
-const linkBtn: React.CSSProperties = {
-  padding: "8px 14px",
-  borderRadius: 8,
-  border: "1px solid var(--border)",
-  background: "var(--bg-elevated)",
-  color: "var(--fg)",
-  fontWeight: 600,
-  fontSize: 13,
-  textDecoration: "none",
-  display: "inline-flex",
-  alignItems: "center",
 };

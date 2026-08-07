@@ -40,14 +40,19 @@ async function _ensureCapacityMember(tid) {
   return id;
 }
 
-// POST /api/technical-manager/scan
-router.post('/scan', _safe(async (req, res) => {
+async function _scanResponse(req, res) {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'technical-manager:scan' });
   if (!tid) return _err(res, 400, 'no_tenant');
   await _ensureCapacityMember(tid);
   const snapshot = await runTechnicalScan(tid);
   res.json({ ok: true, snapshot, generatedAt: snapshot.generated_at });
-}));
+}
+
+// GET /api/technical-manager/scan — live poll used by the Technical Manager desk
+router.get('/scan', _safe(_scanResponse));
+
+// POST /api/technical-manager/scan — force refresh (same payload)
+router.post('/scan', _safe(_scanResponse));
 
 // GET /api/technical-manager/status — lighter live poll
 router.get('/status', _safe(async (req, res) => {
