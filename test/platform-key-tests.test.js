@@ -112,7 +112,7 @@ const CASES = {
   amplitude:     { set: { AMPLITUDE_API_KEY: 'k' }, valid: { status: 400, body: 'missing required field' }, bad: { status: 400, body: 'Invalid API key' } },
   // Additional registry vendors (must stay 1:1 with REGISTRY `test` ids).
   youtube_data:    { set: { YOUTUBE_DATA_API_KEY: 'k' }, valid: { status: 200, body: { items: [] } }, bad: { status: 400, body: 'API key not valid.' } },
-  bing_webmaster:  { set: { BING_WEBMASTER_API_KEY: 'k' }, valid: { status: 200, body: [] }, bad: { status: 403 } },
+  bing_webmaster:  { set: { BING_WEBMASTER_API_KEY: 'k' }, valid: { status: 200, body: { d: [] } }, bad: { status: 403 } },
   spyfu:           { set: { SPYFU_API_KEY: 'k' }, valid: { status: 200, body: {} }, bad: { status: 401 } },
   majestic:        { set: { MAJESTIC_API_KEY: 'k' }, valid: { status: 200, body: { Code: 'OK' } }, bad: { status: 200, body: { Code: 'ApiKeyUnauthorized', ErrorMessage: 'bad key' } } },
   mangools:        { set: { MANGOOLS_API_KEY: 'k' }, valid: { status: 200, body: { keywords: [] } }, bad: { status: 401, body: { error: { type: 'AuthError', message: 'Invalid API Key' } } } },

@@ -475,7 +475,12 @@ async function _runTest(keyName) {
       // Same probe pattern: missing cx/q fails after the key is validated.
       const r = await _fetchT('https://www.googleapis.com/customsearch/v1?key=' + encodeURIComponent(key));
       const txt = await _bodyText(r);
-      if (/api key not valid|api_key_invalid|keyinvalid/i.test(txt)) return _BAD('Google rejected the API key');
+      if (/api key not valid|api_key_invalid|keyinvalid/i.test(txt)) {
+        return _BAD('Google rejected the API key — create a Google Cloud API key with Custom Search API enabled (console.cloud.google.com → APIs → Custom Search API)');
+      }
+      if (/accessNotConfigured|has not been used|disabled/i.test(txt)) {
+        return _BAD('Custom Search API is not enabled on this Google Cloud project — enable it, then retry Test');
+      }
       if (r.ok || r.status === 400) return _OK('Google Search key accepted');
       if (r.status === 401 || r.status === 403) return _BAD('Google rejected the API key (HTTP ' + r.status + ')');
       return _HTTP('Google Search', r);
@@ -495,14 +500,15 @@ async function _runTest(keyName) {
     if (entry.test === 'bing_webmaster') {
       const key = resolvePlatformKey('BING_WEBMASTER_API_KEY');
       if (!key) return _UNCONF();
-      // Probe: GetSites with a valid key returns an array (possibly empty). A bad
-      // key returns HTTP 403 or a body with error code before any site data is read.
-      const r = await _fetchT('https://ssl.bing.com/webmaster/api.svc/json/GetSites?apikey=' + encodeURIComponent(key));
+      // Probe: GetUserSites (not GetSites — that method 404s). A valid key returns
+      // { d: [...] } (possibly empty). A bad key returns HTTP 401/403 or an error body.
+      const r = await _fetchT('https://ssl.bing.com/webmaster/api.svc/json/GetUserSites?apikey=' + encodeURIComponent(key));
       if (r.status === 401 || r.status === 403) return _BAD('Bing Webmaster rejected the key (HTTP ' + r.status + ')');
       if (!r.ok) return _HTTP('Bing Webmaster', r);
       let data = null; try { data = JSON.parse(await _bodyText(r)); } catch {}
       if (data && data.Message) return _BAD('Bing Webmaster: ' + data.Message);
-      return _OK('Bing Webmaster key accepted');
+      const sites = Array.isArray(data && data.d) ? data.d.length : null;
+      return _OK(sites != null ? ('Bing Webmaster key accepted (' + sites + ' site' + (sites === 1 ? '' : 's') + ')') : 'Bing Webmaster key accepted');
     }
     if (entry.test === 'spyfu') {
       const key = resolvePlatformKey('SPYFU_API_KEY');
