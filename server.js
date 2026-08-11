@@ -4818,6 +4818,10 @@ app.use('/api/spyfu', _spyfuRouter);
 const _majesticRouter = require('./services/majestic/api');
 app.use('/api/majestic', _majesticRouter);
 
+// ── Mangools SEO (KWFinder / SiteProfiler / LinkMiner) ────────────────────────
+const _mangoolsRouter = require('./services/mangools/api');
+app.use('/api/mangools', _mangoolsRouter);
+
 // ── T116 — Real-Time News ─────────────────────────────────────────────────────
 const _rtnRouter = require('./services/realtime_news/api');
 const _rtnSchema = require('./services/realtime_news/schema');
