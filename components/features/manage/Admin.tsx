@@ -189,7 +189,12 @@ const adminSend = <T extends object = ApiResult>(p: string, method: string, body
   });
 
 function errText(r: ApiResult): string {
-  return r.error || "unknown error";
+  const e = r.error || "unknown error";
+  if (e === "encryption_key_missing") {
+    return "Cannot save — CREDENTIAL_ENCRYPTION_KEY is not set on the server. Add that secret (openssl rand -base64 32), restart, then Save again.";
+  }
+  if (e === "db_unavailable") return "Cannot save — database is unavailable.";
+  return e;
 }
 
 // Relative-time formatter for the platform-key health dots (e.g. "5m ago").
