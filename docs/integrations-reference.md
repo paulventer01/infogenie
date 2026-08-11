@@ -76,7 +76,7 @@ All **✅ integrated** services whose keys are optional (not required to boot) s
 | **Google Trends** | *(npm: google-trends-api — no key needed)* | Unofficial Google Trends scrape | ✅ | Interest over time, related/rising queries, trending now, keyword comparison — free, no key |
 | **SpyFu** | `SPYFU_API_KEY` | `spyfu.com/apis` | ✅ | Competitor PPC budgets, historical keyword rankings, organic/paid keyword spy data |
 | **Majestic** | `MAJESTIC_API_KEY` | `api.majestic.com/api/json` | ✅ | Trust Flow, Citation Flow, Topical Trust Flow, backlinks, referring domains (free OpenApps tier) |
-| **Mangools** | `MANGOOLS_API_KEY` | `api.mangools.com/v3` | ✅ | KWFinder related/competitor keywords, SiteProfiler domain metrics, keyword gap analysis, LinkMiner backlink profiles (token from mangools.com/api-token) |
+| **Mangools** | `MANGOOLS_API_KEY` | `api.mangools.com/v3` + MCP `mcp.mangools.com/mcp` | ✅ | KWFinder related/competitor keywords, SiteProfiler domain metrics, keyword gap analysis, LinkMiner backlink profiles (token from mangools.com/api-token). Also connectable as Streamable HTTP MCP (`x-access-token`) via **Reach → MCP Ecosystem → Client** |
 | **Semrush** | `SEMRUSH_API_KEY` | `api.semrush.com` | ✅ | Domain traffic estimate, authority score, top organic keywords, organic competitors, keyword lookup with CPC/KD |
 | **Ahrefs** | `AHREFS_API_KEY` | `api.ahrefs.com/v3/` | ✅ | Domain Rating, URL Rating, backlinks with DR scores, organic keyword rankings, content gap analysis |
 | **Serpstat** | `SERPSTAT_API_KEY` | `api.serpstat.com/v4/` | ✅ | Domain visibility score, keyword momentum deltas (rising/falling), competitor overlap, 230+ regional Google databases |
