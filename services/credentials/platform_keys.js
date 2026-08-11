@@ -61,6 +61,7 @@ const REGISTRY = [
   { key: 'BING_WEBMASTER_API_KEY', group: 'Data & Intelligence', service: 'Bing Webmaster', label: 'Bing Webmaster API Key', desc: 'Bing keyword performance, page stats, and crawl data — free second SEO data source alongside Google', secret: true, test: 'bing_webmaster', settingsIds: ['bing_webmaster'] },
   { key: 'SPYFU_API_KEY', group: 'Data & Intelligence', service: 'SpyFu', label: 'SpyFu API Key', desc: 'Competitor PPC budgets, historical keyword rankings, organic/paid keyword spy data for any domain', secret: true, test: 'spyfu', settingsIds: ['spyfu'] },
   { key: 'MAJESTIC_API_KEY', group: 'Data & Intelligence', service: 'Majestic', label: 'Majestic API Key', desc: 'Trust Flow, Citation Flow, Topical Trust Flow, backlinks and referring domain data (free OpenApps tier)', secret: true, test: 'majestic', settingsIds: ['majestic'] },
+  { key: 'MANGOOLS_API_KEY', group: 'Data & Intelligence', service: 'Mangools', label: 'Mangools API Key', desc: 'KWFinder keywords, SiteProfiler domain metrics, LinkMiner backlinks, SERPChecker — free API token from mangools.com/api-token', secret: true, test: 'mangools', settingsIds: ['mangools'] },
 
   // ── Infrastructure ──────────────────────────────────────────────────────────
   { key: 'RESEND_API_KEY', group: 'Infrastructure', service: 'Resend', label: 'Resend API Key', desc: 'Transactional & broadcast email', secret: true, test: 'resend', settingsIds: ['resend'] },
@@ -523,6 +524,24 @@ async function _runTest(keyName) {
       if (data && (data.Code === 'ApiKeyUnauthorized' || data.Code === 'InvalidApiKey')) return _BAD('Majestic rejected the key: ' + data.ErrorMessage);
       if (data && data.Code === 'OK') return _OK('Majestic key accepted');
       return _OK('Majestic reachable');
+    }
+    if (entry.test === 'mangools') {
+      const key = resolvePlatformKey('MANGOOLS_API_KEY');
+      if (!key) return _UNCONF();
+      // Auth probe: related-keywords with a cheap seed term. /kwfinder/limits does
+      // NOT validate the token (returns 200 even without one). Bad keys → 401 AuthError.
+      const r = await _fetchT('https://api.mangools.com/v3/kwfinder/related-keywords?kw=seo&location_id=2840', {
+        headers: { 'x-access-token': key, Accept: 'application/json' },
+      });
+      if (r.status === 401 || r.status === 403) return _BAD('Mangools rejected the key (HTTP ' + r.status + ')');
+      if (r.ok) return _OK('Mangools key accepted');
+      // 402/429 = auth passed but plan/quota blocked — still proves the token works.
+      if (r.status === 402 || r.status === 429) return _OK('Mangools key accepted (quota/plan limited)');
+      let data = null; try { data = JSON.parse(await _bodyText(r)); } catch {}
+      if (data && data.error && /invalid api key|auth/i.test(String(data.error.message || data.error.type || ''))) {
+        return _BAD('Mangools rejected the key: ' + (data.error.message || data.error.type));
+      }
+      return _HTTP('Mangools', r);
     }
     if (entry.test === 'amplitude') {
       const key = resolvePlatformKey('AMPLITUDE_API_KEY');
