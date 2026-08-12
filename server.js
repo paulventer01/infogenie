@@ -3924,6 +3924,8 @@ app.use('/api/llm-gap', _llmGapRouter);
 app.use('/api/ad-intel', _adIntelRouter);
 app.use('/api/influencer-analytics', _infAnalyticsRouter);
 app.use('/api/brand-monitor', _brandMonitorRouter);
+app.use('/api/traffic-sources', require('./services/traffic_sources/api'));
+app.use('/api/market-overview', require('./services/market_overview/api'));
 BOOT_TASKS.push(async () => {
   try {
     if (_db.hasDb()) {

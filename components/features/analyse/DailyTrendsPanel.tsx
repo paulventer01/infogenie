@@ -23,6 +23,7 @@ type AnalyzeResult = {
   growth_pct: number;
   growth: Record<string, number>;
   channel_mix: Record<string, number>;
+  channel_mix_fine?: Record<string, number>;
   series: Record<string, Point[]>;
   insight?: string;
 };
@@ -154,10 +155,37 @@ export default function DailyTrendsPanel() {
             </div>
           </div>
 
+          <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 16, marginTop: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Paid vs owned channel split</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 8 }}>
+              {Object.entries(data.channel_mix_fine || data.channel_mix || {})
+                .filter(([ch]) =>
+                  [
+                    'organic_search',
+                    'paid_search',
+                    'organic_social',
+                    'paid_social',
+                    'direct',
+                    'referral',
+                    'email',
+                    'display',
+                  ].includes(ch)
+                )
+                .map(([ch, v]) => (
+                  <div key={ch} style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 11, color: '#6B7280', textTransform: 'capitalize' }}>
+                      {ch.replace(/_/g, ' ')}
+                    </div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{Number(v).toLocaleString()}</div>
+                  </div>
+                ))}
+            </div>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 8, marginTop: 12 }}>
             {Object.entries(data.channel_mix || {}).map(([ch, v]) => (
               <div key={ch} style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontSize: 11, color: '#6B7280', textTransform: 'capitalize' }}>{ch}</div>
+                <div style={{ fontSize: 11, color: '#6B7280', textTransform: 'capitalize' }}>{ch} (rollup)</div>
                 <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{Number(v).toLocaleString()}</div>
               </div>
             ))}

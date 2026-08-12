@@ -171,6 +171,8 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "serp", legacyModule: null },
   { view: "serp-tracker", legacyModule: null },
   { view: "daily-trends", legacyModule: null },
+  { view: "traffic-sources", legacyModule: null },
+  { view: "market-overview", legacyModule: null },
   { view: "serp-gap", legacyModule: null },
   { view: "llm-gap", legacyModule: null },
   { view: "ad-intel", legacyModule: null },

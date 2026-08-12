@@ -11,6 +11,8 @@ describe('semrush-apps routers', () => {
       '../services/ad_intel/api',
       '../services/influencer_analytics/api',
       '../services/brand_monitor/api',
+      '../services/traffic_sources/api',
+      '../services/market_overview/api',
     ]) {
       const r = require(mod);
       assert.equal(typeof r, 'function');

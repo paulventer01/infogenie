@@ -38,6 +38,35 @@ function _httpsJson(hostname, path, body, auth) {
   });
 }
 
+function _fineChannels(visits, coarse) {
+  // Split coarse search/social/paid into Semrush-style owned vs paid buckets.
+  const search = Number(coarse.search || 0);
+  const social = Number(coarse.social || 0);
+  const paid = Number(coarse.paid || 0);
+  const direct = Number(coarse.direct || 0);
+  const referral = Number(coarse.referral || 0);
+  const email = Number(coarse.email || 0);
+  const organic_search = Math.round(search * 0.78);
+  const paid_search = Math.round(search * 0.22 + paid * 0.55);
+  const organic_social = Math.round(social * 0.62);
+  const paid_social = Math.round(social * 0.38 + paid * 0.25);
+  const display = Math.round(paid * 0.2);
+  return {
+    organic_search,
+    paid_search,
+    organic_social,
+    paid_social,
+    direct: Math.round(direct),
+    referral: Math.round(referral),
+    email: Math.round(email),
+    display,
+    // Keep legacy aliases for existing UI
+    search: Math.round(search),
+    social: Math.round(social),
+    paid: Math.round(paid),
+  };
+}
+
 async function _fetchTrafficEstimate(domain) {
   const login = process.env.DATAFORSEO_LOGIN, pw = process.env.DATAFORSEO_PASSWORD;
   if (!login || !pw || /^_DUMMY/i.test(login)) return null;
@@ -52,15 +81,28 @@ async function _fetchTrafficEstimate(domain) {
     const pct = (k) => Number(sources[k] || sources[k + '_percent'] || 0);
     // Similarweb often returns shares 0–1 or 0–100
     const norm = (v) => (v > 1 ? v / 100 : v);
-    const search = visits * norm(pct('search') || pct('organic_search') || 0.42);
-    const social = visits * norm(pct('social') || 0.08);
+    const organicSearch = visits * norm(pct('organic_search') || pct('search') * 0.75 || 0.32);
+    const paidSearch = visits * norm(pct('paid_search') || pct('paid') * 0.5 || 0.08);
+    const organicSocial = visits * norm(pct('organic_social') || pct('social') * 0.6 || 0.05);
+    const paidSocial = visits * norm(pct('paid_social') || pct('social') * 0.4 || 0.04);
+    const display = visits * norm(pct('display') || pct('display_ads') || 0.03);
     const direct = visits * norm(pct('direct') || 0.28);
     const referral = visits * norm(pct('referral') || 0.1);
     const mail = visits * norm(pct('mail') || pct('email') || 0.04);
-    const paid = visits * norm(pct('paid') || pct('paid_search') || 0.08);
+    const search = organicSearch + paidSearch;
+    const social = organicSocial + paidSocial;
+    const paid = paidSearch + paidSocial + display;
     return {
       source: 'dataforseo_similarweb',
-      visits, search, social, direct, referral, email: mail, paid,
+      visits,
+      search, social, direct, referral, email: mail, paid,
+      fine: {
+        organic_search: organicSearch,
+        paid_search: paidSearch,
+        organic_social: organicSocial,
+        paid_social: paidSocial,
+        display, direct, referral, email: mail,
+      },
       raw: item,
     };
   }
@@ -74,15 +116,19 @@ async function _fetchTrafficEstimate(domain) {
     const organic = Number(item.metrics?.organic?.etv || item.organic?.etv || 0);
     const paidEt = Number(item.metrics?.paid?.etv || item.paid?.etv || 0);
     const visits = Math.max(organic + paidEt, organic * 1.6);
-    return {
-      source: 'dataforseo_labs',
-      visits,
+    const coarse = {
       search: organic * 0.85,
       social: visits * 0.08,
       direct: visits * 0.25,
       referral: visits * 0.1,
       email: visits * 0.04,
       paid: paidEt || visits * 0.08,
+    };
+    return {
+      source: 'dataforseo_labs',
+      visits,
+      ...coarse,
+      fine: _fineChannels(visits, coarse),
       raw: item,
     };
   }
@@ -144,6 +190,7 @@ router.post('/analyze', async (req, res) => {
     const targets = [domain, ...competitors];
     const seriesByDomain = {};
     const growth = {};
+    const liveFineByDomain = {};
 
     for (const d of targets) {
       let live = await _fetchTrafficEstimate(d);
@@ -152,18 +199,24 @@ router.post('/analyze', async (req, res) => {
         let h = 0;
         for (let i = 0; i < d.length; i++) h = (h * 31 + d.charCodeAt(i)) >>> 0;
         const visits = 8000 + (h % 120000);
-        live = {
-          source: 'estimate',
-          visits,
+        const coarse = {
           search: visits * 0.4,
           social: visits * 0.1,
           direct: visits * 0.28,
           referral: visits * 0.1,
           email: visits * 0.04,
           paid: visits * 0.08,
+        };
+        live = {
+          source: 'estimate',
+          visits,
+          ...coarse,
+          fine: _fineChannels(visits, coarse),
           raw: { note: 'estimated — configure DATAFORSEO for live Similarweb/Labs traffic' },
         };
       }
+      if (!live.fine) live.fine = _fineChannels(live.visits, live);
+      liveFineByDomain[d] = live.fine;
 
       let series = _syntheticSeries(live, days);
       // Prefer stored snapshots when we have history.
@@ -232,6 +285,7 @@ router.post('/analyze', async (req, res) => {
       email: last.email || 0,
       paid: last.paid || 0,
     };
+    const fineLive = liveFineByDomain[domain] || _fineChannels(last.visits || 0, channelMix);
 
     res.json({
       ok: true,
@@ -242,6 +296,7 @@ router.post('/analyze', async (req, res) => {
       growth_pct: growth[domain] || 0,
       growth,
       channel_mix: channelMix,
+      channel_mix_fine: fineLive,
       series: seriesByDomain,
       insight: growth[domain] >= 20
         ? `Traffic Growth +${growth[domain]}% over the selected window — investigate launches, ads, or PR.`

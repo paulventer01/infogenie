@@ -92,6 +92,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "3 · Analytics & traffic",
         items: [
           { view: "daily-trends", icon: "📊", label: "Daily Trends" },
+          { view: "traffic-sources", icon: "🔗", label: "Sources & Destinations" },
+          { view: "market-overview", icon: "🌐", label: "Market Overview" },
           { view: "analytics-hub", icon: "📈", label: "Analytics Hub" },
           { view: "sov-tracker", icon: "📉", label: "Share of Voice" },
           { view: "visitor-intel", icon: "🔍", label: "Visitor Intelligence" },
