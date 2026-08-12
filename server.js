@@ -3903,6 +3903,35 @@ const _hubspotSyncRouter = require('./services/hubspot_sync/api');
 app.use('/api/serp-tracker', _serpTrackerRouter);
 app.use('/api/hubspot-sync', _hubspotSyncRouter);
 
+// ── Semrush-style app hubs (Daily Trends + App Center worth-it pack) ─────────
+const _dailyTrendsSchema = require('./services/daily_trends/schema');
+const _dailyTrendsRouter = require('./services/daily_trends/api');
+const _serpGapSchema = require('./services/serp_gap/schema');
+const _serpGapRouter = require('./services/serp_gap/api');
+const _llmGapSchema = require('./services/llm_gap/schema');
+const _llmGapRouter = require('./services/llm_gap/api');
+const _adIntelRouter = require('./services/ad_intel/api');
+const _infAnalyticsSchema = require('./services/influencer_analytics/schema');
+const _infAnalyticsRouter = require('./services/influencer_analytics/api');
+const _brandMonitorRouter = require('./services/brand_monitor/api');
+app.use('/api/daily-trends', _dailyTrendsRouter);
+app.use('/api/serp-gap', _serpGapRouter);
+app.use('/api/llm-gap', _llmGapRouter);
+app.use('/api/ad-intel', _adIntelRouter);
+app.use('/api/influencer-analytics', _infAnalyticsRouter);
+app.use('/api/brand-monitor', _brandMonitorRouter);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _dailyTrendsSchema.ensureDailyTrendsSchema();
+      await _serpGapSchema.ensureSerpGapSchema();
+      await _llmGapSchema.ensureLlmGapSchema();
+      await _infAnalyticsSchema.ensureInfluencerAnalyticsSchema();
+      console.log('[semrush-apps] daily-trends + serp-gap + llm-gap + influencer-analytics schemas ready');
+    }
+  } catch (e) { console.error('[semrush-apps] init failed:', e.message); }
+});
+
 // ── Tier 13 ────────────────────────────────────────────────────────────────
 const _metaInsightsRouter = require('./services/meta_ads_insights/api');
 const _kwExplorerSchema   = require('./services/keyword_explorer/schema');
