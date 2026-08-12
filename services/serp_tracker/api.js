@@ -42,6 +42,32 @@ function _normCountry(raw) {
   return c;
 }
 
+const ALLOWED_DEVICES = new Set(['desktop', 'mobile']);
+const ALLOWED_LANGUAGES = new Set([
+  'en', 'fr', 'de', 'es', 'it', 'pt', 'nl', 'af', 'ar', 'hi', 'ja', 'zh', 'ru', 'tr', 'pl',
+]);
+
+function _normDevice(raw) {
+  const d = String(raw || 'desktop').toLowerCase().trim();
+  return ALLOWED_DEVICES.has(d) ? d : 'desktop';
+}
+
+function _normLanguage(raw) {
+  const l = String(raw || 'en').toLowerCase().trim().slice(0, 8);
+  return ALLOWED_LANGUAGES.has(l) ? l : 'en';
+}
+
+function _targetKey(row) {
+  return `${row.country || 'us'}|${row.language || 'en'}|${row.device || 'desktop'}`;
+}
+
+function _targetLabel(row) {
+  const country = String(row.country || 'us').toUpperCase();
+  const lang = String(row.language || 'en').toUpperCase();
+  const device = row.device === 'mobile' ? 'Mobile' : 'Desktop';
+  return `${country} · ${lang} · ${device}`;
+}
+
 function _normCompetitors(raw) {
   const list = Array.isArray(raw) ? raw : (typeof raw === 'string' ? raw.split(/[,;\s]+/) : []);
   const out = [];
@@ -63,17 +89,20 @@ function _domainMatch(a, b) {
   return x === y || x.endsWith('.' + y) || y.endsWith('.' + x);
 }
 
-async function _serpSearch(q, country) {
+async function _serpSearch(q, country, { device = 'desktop', language = 'en' } = {}) {
   const login = process.env.DATAFORSEO_LOGIN, pw = process.env.DATAFORSEO_PASSWORD;
   if (!login || !pw || /^_DUMMY/i.test(login) || /^_DUMMY/i.test(pw)) return null;
   const auth = 'Basic ' + Buffer.from(login + ':' + pw).toString('base64');
   // Prefer advanced endpoint so we can capture SERP features (snippets, PAA, local pack…).
-  const body = JSON.stringify([{
-    language_code: 'en',
+  const payload = {
+    language_code: _normLanguage(language),
     location_code: COUNTRY_TO_LOC[country] || 2840,
     keyword: q,
     depth: 20,
-  }]);
+    device: _normDevice(device),
+    os: _normDevice(device) === 'mobile' ? 'android' : 'windows',
+  };
+  const body = JSON.stringify([payload]);
   const tryPath = (path) => new Promise((resolve) => {
     const req = _https.request({
       hostname: 'api.dataforseo.com', path, method: 'POST',
@@ -214,22 +243,87 @@ router.post('/keywords', async (req, res) => {
   const keyword = String(req.body?.keyword || '').trim().slice(0, 200);
   const target_domain = _normDomain(req.body?.target_domain || '');
   const country = _normCountry(req.body?.country);
+  const device = _normDevice(req.body?.device);
+  const language = _normLanguage(req.body?.language);
   const competitors = _normCompetitors(req.body?.competitors);
   if (!keyword || !target_domain) return _err(res, 400, 'keyword + target_domain required');
   try {
     const tid = await _tid(req, 'serp:keywords-add');
     const r = await _db.getPool().query(
-      `INSERT INTO serp_tracker_keywords (tenant_id, keyword, target_domain, country, competitors)
-       VALUES ($1,$2,$3,$4,$5::jsonb)
-       ON CONFLICT (tenant_id, keyword, target_domain, country)
+      `INSERT INTO serp_tracker_keywords (tenant_id, keyword, target_domain, country, device, language, competitors)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+       ON CONFLICT (tenant_id, keyword, target_domain, country, device, language)
        DO UPDATE SET enabled=true,
          competitors = CASE
            WHEN jsonb_array_length(EXCLUDED.competitors) > 0 THEN EXCLUDED.competitors
            ELSE serp_tracker_keywords.competitors
          END
        RETURNING *`,
-      [tid, keyword, target_domain, country, JSON.stringify(competitors)]);
+      [tid, keyword, target_domain, country, device, language, JSON.stringify(competitors)]);
     res.json({ ok: true, keyword: r.rows[0] });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// Clone existing keywords into a new location/language/device target (multitargeting).
+router.post('/multitarget', async (req, res) => {
+  if (!_db.hasDb()) return _err(res, 503, 'no-db');
+  try {
+    const tid = await _tid(req, 'serp:multitarget');
+    const country = _normCountry(req.body?.country);
+    const device = _normDevice(req.body?.device);
+    const language = _normLanguage(req.body?.language);
+    const sourceDomain = _normDomain(req.body?.target_domain || '');
+    const keywordIds = Array.isArray(req.body?.keyword_ids)
+      ? req.body.keyword_ids.map(Number).filter((n) => n > 0).slice(0, 200)
+      : [];
+
+    let sourceRows;
+    if (keywordIds.length) {
+      sourceRows = (await _db.getPool().query(
+        `SELECT * FROM serp_tracker_keywords WHERE tenant_id=$1 AND id = ANY($2::int[])`,
+        [tid, keywordIds]
+      )).rows;
+    } else {
+      // Clone distinct phrases for this domain (or all) from existing rows.
+      sourceRows = (await _db.getPool().query(
+        `SELECT DISTINCT ON (keyword, target_domain) *
+         FROM serp_tracker_keywords
+         WHERE tenant_id=$1 AND enabled=true
+           AND ($2 = '' OR target_domain=$2)
+         ORDER BY keyword, target_domain, created_at ASC`,
+        [tid, sourceDomain]
+      )).rows;
+    }
+    if (!sourceRows.length) return _err(res, 400, 'no source keywords to clone — track keywords first');
+
+    const created = [];
+    const skipped = [];
+    for (const src of sourceRows) {
+      const competitors = Array.isArray(src.competitors) ? src.competitors : [];
+      try {
+        const r = await _db.getPool().query(
+          `INSERT INTO serp_tracker_keywords
+             (tenant_id, keyword, target_domain, country, device, language, competitors)
+           VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+           ON CONFLICT (tenant_id, keyword, target_domain, country, device, language)
+           DO UPDATE SET enabled=true
+           RETURNING *, (xmax = 0) AS inserted`,
+          [tid, src.keyword, src.target_domain, country, device, language, JSON.stringify(competitors)]
+        );
+        const row = r.rows[0];
+        if (row.inserted) created.push(row);
+        else skipped.push({ keyword: src.keyword, reason: 'already exists' });
+      } catch (e) {
+        skipped.push({ keyword: src.keyword, reason: e.message });
+      }
+    }
+    res.json({
+      ok: true,
+      target: { country, device, language, label: _targetLabel({ country, device, language }) },
+      created: created.length,
+      skipped: skipped.length,
+      keywords: created,
+    });
   } catch (e) { _err(res, 500, e.message); }
 });
 
@@ -276,7 +370,10 @@ async function _scanOne(id, tenantId) {
     [id, tenantId]
   )).rows[0];
   if (!k) return { ok: false, error: 'keyword not found' };
-  const raw = await _serpSearch(k.keyword, k.country);
+  const raw = await _serpSearch(k.keyword, k.country, {
+    device: k.device || 'desktop',
+    language: k.language || 'en',
+  });
   if (!raw) {
     return {
       ok: true,
@@ -369,15 +466,21 @@ router.get('/run-latest/:id', async (req, res) => {
 
 async function _latestRuns(tid) {
   const r = await _db.getPool().query(`
-    SELECT k.id AS keyword_id, k.keyword, k.target_domain, k.country, k.competitors,
+    SELECT k.id AS keyword_id, k.keyword, k.target_domain, k.country, k.device, k.language, k.competitors,
            lr.target_position, lr.target_url, lr.results, lr.serp_features,
-           lr.competitor_positions, lr.ran_at, lr.total_results
+           lr.competitor_positions, lr.ran_at, lr.total_results,
+           prev.target_position AS prev_position
     FROM serp_tracker_keywords k
     LEFT JOIN LATERAL (
       SELECT * FROM serp_tracker_runs
       WHERE keyword_id=k.id AND tenant_id=$1
       ORDER BY ran_at DESC LIMIT 1
     ) lr ON true
+    LEFT JOIN LATERAL (
+      SELECT target_position FROM serp_tracker_runs
+      WHERE keyword_id=k.id AND tenant_id=$1
+      ORDER BY ran_at DESC OFFSET 1 LIMIT 1
+    ) prev ON true
     WHERE k.tenant_id=$1 AND k.enabled=true
     ORDER BY k.keyword ASC`, [tid]);
   return r.rows;
@@ -390,10 +493,16 @@ router.get('/landscape', async (req, res) => {
     const tid = await _tid(req, 'serp:landscape');
     const rows = await _latestRuns(tid);
     const featureFilter = String(req.query.feature || '').trim().toLowerCase();
+    const countryFilter = req.query.country ? _normCountry(req.query.country) : '';
+    const deviceFilter = req.query.device ? _normDevice(req.query.device) : '';
+    const languageFilter = req.query.language ? _normLanguage(req.query.language) : '';
 
     let filtered = rows;
+    if (countryFilter) filtered = filtered.filter((r) => _normCountry(r.country) === countryFilter);
+    if (deviceFilter) filtered = filtered.filter((r) => _normDevice(r.device) === deviceFilter);
+    if (languageFilter) filtered = filtered.filter((r) => _normLanguage(r.language) === languageFilter);
     if (featureFilter) {
-      filtered = rows.filter((r) => {
+      filtered = filtered.filter((r) => {
         const f = r.serp_features || {};
         if (featureFilter === 'any') return Object.keys(f).some((k) => k !== 'types' && f[k] === true);
         return !!f[featureFilter];
@@ -402,10 +511,23 @@ router.get('/landscape', async (req, res) => {
 
     const buckets = { '1-3': 0, '4-10': 0, '11-20': 0, '21+': 0, unranked: 0 };
     let posSum = 0, posN = 0, visibilityPts = 0;
-    const sovMap = new Map(); // domain → visibility points
+    const sovMap = new Map(); // domain → { points, prevPoints, keywords, best_position, is_target }
     const pages = new Map(); // url → {url, keywords:[], bestPosition}
     const cannibal = [];
     const competitorsDiscovered = new Map();
+
+    const bumpSov = (dom, pos, prevPos, isTarget) => {
+      if (!dom) return;
+      const cur = sovMap.get(dom) || {
+        domain: dom, points: 0, prev_points: 0, keywords: 0, best_position: null, is_target: !!isTarget,
+      };
+      cur.points += _ctr(pos);
+      cur.prev_points += _ctr(prevPos);
+      cur.keywords += 1;
+      if (pos != null && (cur.best_position == null || pos < cur.best_position)) cur.best_position = pos;
+      if (isTarget) cur.is_target = true;
+      sovMap.set(dom, cur);
+    };
 
     for (const row of filtered) {
       const b = _bucket(row.target_position);
@@ -417,16 +539,11 @@ router.get('/landscape', async (req, res) => {
       }
 
       const targetDom = _normDomain(row.target_domain);
-      const addSov = (dom, pos) => {
-        if (!dom) return;
-        const cur = sovMap.get(dom) || 0;
-        sovMap.set(dom, cur + _ctr(pos));
-      };
-      addSov(targetDom, row.target_position);
+      bumpSov(targetDom, row.target_position, row.prev_position, true);
 
       const comps = row.competitor_positions || {};
       for (const [dom, info] of Object.entries(comps)) {
-        addSov(_normDomain(dom), info?.position);
+        bumpSov(_normDomain(dom), info?.position, null, false);
       }
 
       // Pages + cannibalization from organic results for target domain.
@@ -484,21 +601,75 @@ router.get('/landscape', async (req, res) => {
     const assumedVolume = 1000;
     const estimatedTraffic = Math.round(visibilityPts * assumedVolume);
 
-    const sovTotal = [...sovMap.values()].reduce((a, b) => a + b, 0) || 1;
-    const shareOfVoice = [...sovMap.entries()]
-      .map(([domain, pts]) => ({
-        domain,
-        points: Math.round(pts * 1000) / 1000,
-        share_pct: Math.round((pts / sovTotal) * 1000) / 10,
-        is_target: filtered.some((r) => _domainMatch(r.target_domain, domain)),
+    const sovTotal = [...sovMap.values()].reduce((a, b) => a + b.points, 0) || 1;
+    const shareOfVoice = [...sovMap.values()]
+      .map((row) => ({
+        domain: row.domain,
+        points: Math.round(row.points * 1000) / 1000,
+        share_pct: Math.round((row.points / sovTotal) * 1000) / 10,
+        visibility: Math.round(row.points * 1000) / 10, // scale for display similar to SEMrush-ish scores
+        visibility_delta: Math.round((row.points - row.prev_points) * 1000) / 10,
+        keywords: row.keywords,
+        best_position: row.best_position,
+        average_position: row.best_position, // approx; refined in competition_map
+        is_target: row.is_target,
       }))
       .sort((a, b) => b.share_pct - a.share_pct)
-      .slice(0, 15);
+      .slice(0, 20);
+
+    // Competition Map: bubble chart data — x=#keywords, y=avg position, size=visibility.
+    const competitionMap = [...sovMap.values()].map((row) => {
+      // Recompute avg position from filtered rows for this domain.
+      let sum = 0, n = 0;
+      for (const r of filtered) {
+        if (_domainMatch(r.target_domain, row.domain) && r.target_position != null) {
+          sum += r.target_position; n += 1;
+        }
+        const comps = r.competitor_positions || {};
+        for (const [dom, info] of Object.entries(comps)) {
+          if (_domainMatch(dom, row.domain) && info?.position != null) {
+            sum += info.position; n += 1;
+          }
+        }
+      }
+      const avg = n ? Math.round((sum / n) * 10) / 10 : null;
+      return {
+        domain: row.domain,
+        keywords: row.keywords,
+        average_position: avg,
+        visibility: Math.round(row.points * 1000) / 10,
+        visibility_delta: Math.round((row.points - row.prev_points) * 1000) / 10,
+        is_target: row.is_target,
+      };
+    }).filter((r) => r.keywords > 0)
+      .sort((a, b) => b.visibility - a.visibility)
+      .slice(0, 25);
+
+    const winnersLosers = [...competitionMap]
+      .filter((r) => !r.is_target)
+      .sort((a, b) => b.visibility_delta - a.visibility_delta);
 
     // Aggregate competitor list from keyword settings.
     const trackedCompetitors = new Set();
     for (const row of rows) {
       for (const c of (row.competitors || [])) trackedCompetitors.add(_normDomain(c));
+    }
+
+    // Distinct multitarget combos present.
+    const targets = [];
+    const seenTargets = new Set();
+    for (const row of rows) {
+      const key = _targetKey(row);
+      if (seenTargets.has(key)) continue;
+      seenTargets.add(key);
+      targets.push({
+        key,
+        country: row.country || 'us',
+        language: row.language || 'en',
+        device: row.device || 'desktop',
+        label: _targetLabel(row),
+        keywords: rows.filter((r) => _targetKey(r) === key).length,
+      });
     }
 
     res.json({
@@ -509,8 +680,15 @@ router.get('/landscape', async (req, res) => {
         estimated_traffic: estimatedTraffic,
         average_position: avgPosition,
         distribution: buckets,
+        targets: targets.length,
       },
+      targets,
       share_of_voice: shareOfVoice,
+      competition_map: competitionMap,
+      winners_losers: {
+        winners: winnersLosers.filter((r) => r.visibility_delta > 0).slice(0, 10),
+        losers: [...winnersLosers].filter((r) => r.visibility_delta < 0).sort((a, b) => a.visibility_delta - b.visibility_delta).slice(0, 10),
+      },
       pages: [...pages.values()]
         .map((p) => ({ ...p, keyword_count: p.keywords.length }))
         .sort((a, b) => (a.best_position || 999) - (b.best_position || 999)),
@@ -527,13 +705,89 @@ router.get('/landscape', async (req, res) => {
         keyword: r.keyword,
         target_domain: r.target_domain,
         country: r.country,
+        device: r.device || 'desktop',
+        language: r.language || 'en',
         position: r.target_position,
+        prev_position: r.prev_position,
         url: r.target_url,
         competitors: r.competitors || [],
         competitor_positions: r.competitor_positions || {},
         serp_features: r.serp_features || {},
         ran_at: r.ran_at,
       })),
+    });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// Devices & Locations — compare positions across multitargets for the same phrases.
+router.get('/devices-locations', async (req, res) => {
+  if (!_db.hasDb()) return _err(res, 503, 'no-db');
+  try {
+    const tid = await _tid(req, 'serp:devices-locations');
+    const rows = await _latestRuns(tid);
+
+    const targetsMap = new Map();
+    for (const row of rows) {
+      const key = _targetKey(row);
+      if (!targetsMap.has(key)) {
+        targetsMap.set(key, {
+          key,
+          country: row.country || 'us',
+          language: row.language || 'en',
+          device: row.device || 'desktop',
+          label: _targetLabel(row),
+          keywords: 0,
+          ranked: 0,
+          pos_sum: 0,
+          visibility_pts: 0,
+        });
+      }
+      const t = targetsMap.get(key);
+      t.keywords += 1;
+      if (row.target_position != null) {
+        t.ranked += 1;
+        t.pos_sum += row.target_position;
+        t.visibility_pts += _ctr(row.target_position);
+      }
+    }
+
+    const targets = [...targetsMap.values()].map((t) => ({
+      ...t,
+      average_position: t.ranked ? Math.round((t.pos_sum / t.ranked) * 10) / 10 : null,
+      visibility_pct: t.keywords
+        ? Math.round((t.visibility_pts / (t.keywords * _ctr(1))) * 1000) / 10
+        : 0,
+    })).sort((a, b) => b.visibility_pct - a.visibility_pct);
+
+    // Phrase × target matrix.
+    const phrases = new Map();
+    for (const row of rows) {
+      const pk = `${row.keyword}||${row.target_domain}`;
+      if (!phrases.has(pk)) {
+        phrases.set(pk, {
+          keyword: row.keyword,
+          target_domain: row.target_domain,
+          by_target: {},
+        });
+      }
+      phrases.get(pk).by_target[_targetKey(row)] = {
+        id: row.keyword_id,
+        position: row.target_position,
+        prev_position: row.prev_position,
+        delta: (row.target_position != null && row.prev_position != null)
+          ? row.prev_position - row.target_position // positive = improved
+          : null,
+        url: row.target_url,
+        country: row.country,
+        device: row.device || 'desktop',
+        language: row.language || 'en',
+      };
+    }
+
+    res.json({
+      ok: true,
+      targets,
+      matrix: [...phrases.values()].slice(0, 200),
     });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -562,6 +816,10 @@ function _aggregateFeatures(rows) {
 module.exports = router;
 module.exports._normCountry = _normCountry;
 module.exports._normCompetitors = _normCompetitors;
+module.exports._normDevice = _normDevice;
+module.exports._normLanguage = _normLanguage;
 module.exports._ctr = _ctr;
 module.exports._bucket = _bucket;
 module.exports.ALLOWED_COUNTRIES = ALLOWED_COUNTRIES;
+module.exports.ALLOWED_DEVICES = ALLOWED_DEVICES;
+module.exports.ALLOWED_LANGUAGES = ALLOWED_LANGUAGES;
