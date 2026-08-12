@@ -13,7 +13,13 @@ const __root_require__ = (p) =>
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
-  const { _tkvCtx, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path } = ctx;
+  const { _tkvCtx, aiClients, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, path } = ctx;
+  // Live client proxies — never capture the pre-hydrate OpenAI/Anthropic instance.
+  // _rebuildAiClients() mutates aiClients after platform_keys.hydrate().
+  const _openai = () => (aiClients && aiClients.openai) || ctx.openai;
+  const _anthropic = () => (aiClients && aiClients.anthropic) || ctx.anthropic;
+  const openai = new Proxy({}, { get: (_t, prop) => Reflect.get(_openai(), prop) });
+  const anthropic = new Proxy({}, { get: (_t, prop) => Reflect.get(_anthropic(), prop) });
 
 app.get('/api/ai-visibility-trend', async (req, res) => {
   try {
@@ -495,42 +501,134 @@ Competitor data context:
     const gptPrompt = `You are a world-class performance marketing strategist. Create a comprehensive, actionable "Full Attack Plan" for ${myDomain} to outperform their competitor ${competitor} in the ${industry} industry.
 ${sharedContext}
 ${jsonSchema}
-IMPORTANT: ${baseInstruction}${prefillSuffix}`;
+IMPORTANT: ${baseInstruction}${prefillSuffix}
+Keep the JSON compact: max 4 weeklyPlan items, max 5 keywordTargets, max 4 channelStrategy, max 3 contentAttacks, max 3 criticalWins. Do not truncate mid-string.`;
 
     const claudePrompt = `You are an elite marketing intelligence analyst specialising in competitive strategy. Develop a precise, data-driven "Full Attack Plan" for ${myDomain} to capture market share from ${competitor} in the ${industry} sector. Focus on finding non-obvious strategic angles and underutilised channels.
 ${sharedContext}
 ${jsonSchema}
-IMPORTANT: ${baseInstruction}${prefillSuffix}`;
+IMPORTANT: ${baseInstruction}${prefillSuffix}
+Keep the JSON compact: max 4 weeklyPlan items, max 5 keywordTargets, max 4 channelStrategy, max 3 contentAttacks, max 3 criticalWins. Do not truncate mid-string.`;
 
-    // ── Run GPT-4o and Claude Sonnet in parallel ─────────────────────────────
+    function _safeParseModelJson(text) {
+      if (!text) return null;
+      let raw = String(text).trim();
+      raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) raw = match[0];
+      try { return JSON.parse(raw); } catch { /* repair truncated JSON below */ }
+
+      // Truncation repair: close open strings/arrays/objects so a max_tokens cut
+      // still yields a usable partial plan.
+      let s = raw;
+      // If we ended mid-string, close it.
+      let inString = false, escape = false;
+      for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (escape) { escape = false; continue; }
+        if (ch === '\\' && inString) { escape = true; continue; }
+        if (ch === '"') inString = !inString;
+      }
+      if (inString) s += '"';
+      // Drop a trailing incomplete key/value after last safe comma/bracket.
+      s = s.replace(/,\s*("[^"]*"\s*:\s*)?("[^"]*)?$/, '');
+      s = s.replace(/,\s*$/, '');
+      const stack = [];
+      inString = false; escape = false;
+      for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (escape) { escape = false; continue; }
+        if (ch === '\\' && inString) { escape = true; continue; }
+        if (ch === '"') { inString = !inString; continue; }
+        if (inString) continue;
+        if (ch === '{' || ch === '[') stack.push(ch);
+        else if (ch === '}' || ch === ']') stack.pop();
+      }
+      while (stack.length) {
+        const open = stack.pop();
+        s += open === '{' ? '}' : ']';
+      }
+      try { return JSON.parse(s); } catch { return null; }
+    }
+
+    // ── Run GPT + Claude in parallel (live clients via proxy) ────────────────
+    const gptErrs = [];
+    const claudeErrs = [];
     const [gptResult, claudeResult] = await Promise.allSettled([
       openai.chat.completions.create({
         model: 'gpt-5',
         messages: [{ role: 'user', content: gptPrompt }],
-        max_tokens: 1600,
+        max_tokens: 3500,
         response_format: { type: 'json_object' }
+      }).catch(async (e) => {
+        // Billing/credits: fall back to a cheaper OpenAI model before giving up.
+        gptErrs.push(e.message || String(e));
+        if (/credit|billing|429|quota/i.test(String(e.message || e))) {
+          return openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: gptPrompt }],
+            max_tokens: 3500,
+            response_format: { type: 'json_object' }
+          });
+        }
+        throw e;
       }),
       anthropic.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1700,
+        max_tokens: 4500,
         messages: [{ role: 'user', content: claudePrompt + '\n\nReturn ONLY the raw JSON object — no markdown fences, no explanation.' }]
       })
     ]);
 
     let gptPlan = null, claudePlan = null;
     if (gptResult.status === 'fulfilled') {
-      try { gptPlan = JSON.parse(gptResult.value.choices[0]?.message?.content?.trim() || '{}'); } catch {}
+      gptPlan = _safeParseModelJson(gptResult.value.choices[0]?.message?.content || '');
+      if (!gptPlan) gptErrs.push('parse: invalid/truncated JSON');
+    } else {
+      gptErrs.push(gptResult.reason?.message || String(gptResult.reason || 'rejected'));
     }
     if (claudeResult.status === 'fulfilled') {
-      const claudeText = claudeResult.value.content?.[0]?.text?.trim() || '{}';
-      const jsonMatch = claudeText.match(/\{[\s\S]*\}/);
-      try { claudePlan = JSON.parse(jsonMatch ? jsonMatch[0] : claudeText); } catch {}
+      claudePlan = _safeParseModelJson(claudeResult.value.content?.[0]?.text || '');
+      if (!claudePlan) claudeErrs.push('parse: invalid/truncated JSON');
+    } else {
+      claudeErrs.push(claudeResult.reason?.message || String(claudeResult.reason || 'rejected'));
+    }
+
+    // One Claude repair pass if OpenAI failed and Claude JSON was truncated.
+    if (!gptPlan && !claudePlan && claudeResult.status === 'fulfilled') {
+      try {
+        const broken = claudeResult.value.content?.[0]?.text || '';
+        const fix = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4500,
+          messages: [{
+            role: 'user',
+            content: 'Fix this into ONE complete valid JSON object matching the attack-plan schema. Output JSON only, no markdown.\n\n' + broken.slice(0, 12000),
+          }],
+        });
+        claudePlan = _safeParseModelJson(fix.content?.[0]?.text || '');
+      } catch (e) {
+        claudeErrs.push('repair: ' + (e.message || String(e)));
+      }
     }
 
     // ── If only one succeeded, return it directly ────────────────────────────
-    if (!gptPlan && !claudePlan) throw new Error('Both AI models failed to generate a plan');
-    if (!gptPlan) return res.json({ plan: claudePlan, sources: ['Claude'] });
-    if (!claudePlan) return res.json({ plan: gptPlan, sources: ['GPT-4o'] });
+    if (!gptPlan && !claudePlan) {
+      const detail = [
+        gptErrs.length ? 'OpenAI: ' + gptErrs[gptErrs.length - 1] : null,
+        claudeErrs.length ? 'Claude: ' + claudeErrs[claudeErrs.length - 1] : null,
+      ].filter(Boolean).join(' | ');
+      console.warn('[ai-attack-plan] both models failed:', detail);
+      throw new Error(detail || 'Both AI models failed to generate a plan');
+    }
+    if (!gptPlan) {
+      console.warn('[ai-attack-plan] OpenAI failed, using Claude only:', gptErrs.join('; '));
+      return res.json({ plan: claudePlan, sources: ['Claude'] });
+    }
+    if (!claudePlan) {
+      console.warn('[ai-attack-plan] Claude failed, using OpenAI only:', claudeErrs.join('; '));
+      return res.json({ plan: gptPlan, sources: ['GPT'] });
+    }
 
     // ── Both succeeded — merge in code (no extra API call) ───────────────────
     const normKey = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -587,7 +685,15 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
 
     res.json({ plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
   } catch(err) {
-    res.json({ plan: null, error: err.message });
+    console.warn('[ai-attack-plan]', err.message);
+    const msg = String(err.message || 'Attack plan generation failed');
+    const billing = /credit|billing|quota|429/i.test(msg);
+    res.status(billing ? 402 : 503).json({
+      plan: null,
+      error: billing
+        ? 'AI billing/credits exhausted — add OpenAI credits or ensure Anthropic is configured, then retry'
+        : msg,
+    });
   }
 });
 
