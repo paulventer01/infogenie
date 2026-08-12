@@ -1,15 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from '@/lib/apiClient';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, Radio } from 'lucide-react';
+import { apiGet } from '@/lib/api';
 
 type Dash = {
   ok?: boolean;
+  error?: string;
   brand?: string;
   inbox_new: number;
   mentions: Array<{
@@ -18,13 +14,20 @@ type Dash = {
     content?: string;
     sentiment?: string;
     occurred_at?: string;
-    source_url?: string;
   }>;
-  crisis: Array<{ severity?: string; title?: string; summary?: string; created_at?: string }>;
-  media: Array<{ title?: string; source?: string; sentiment?: string; published_at?: string }>;
+  crisis: Array<{ severity?: string; title?: string; summary?: string }>;
+  media: Array<{ title?: string; source?: string; sentiment?: string }>;
   sov: Array<{ brand?: string; mentions?: number; pos_count?: number; neu_count?: number; neg_count?: number }>;
-  alerts: Array<{ type?: string; severity?: string; text?: string; at?: string }>;
+  alerts: Array<{ type?: string; severity?: string; text?: string }>;
   summary?: string;
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '8px 12px',
+  borderRadius: 8,
+  border: '1px solid #D1D5DB',
+  fontSize: '0.875rem',
 };
 
 export default function BrandMonitorPanel() {
@@ -36,15 +39,15 @@ export default function BrandMonitorPanel() {
   const load = useCallback(async (b?: string) => {
     setLoading(true);
     setError(null);
-    try {
-      const q = b?.trim() ? `?brand=${encodeURIComponent(b.trim())}` : '';
-      const res = await apiFetch<Dash>(`/api/brand-monitor/dashboard${q}`);
-      setData(res);
-    } catch (e: any) {
-      setError(e?.message || 'Load failed');
-    } finally {
+    const q = b?.trim() ? `?brand=${encodeURIComponent(b.trim())}` : '';
+    const res = await apiGet<Dash>(`/api/brand-monitor/dashboard${q}`);
+    if (!res.ok) {
+      setError(res.error || 'Load failed');
       setLoading(false);
+      return;
     }
+    setData(res);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -58,118 +61,129 @@ export default function BrandMonitorPanel() {
   const mentionTotal = (data?.mentions?.length || 0) + (data?.media?.length || 0);
 
   return (
-    <div className="space-y-4 p-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-          <Radio className="h-6 w-6 text-rose-600" />
-          Brand Monitoring
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Complements Crisis Radar and mention SoV — unified brand mention pulse across inbox, media, and social.
-        </p>
+    <div style={{ padding: 20, maxWidth: 1100 }}>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>📡 Brand Monitoring</h1>
+      <p style={{ color: '#6B7280', fontSize: '0.875rem', marginTop: 6 }}>
+        Complements Crisis Radar and mention SoV — unified brand mention pulse across inbox, media, and social.
+      </p>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 16, alignItems: 'flex-end' }}>
+        <div style={{ flex: '1 1 220px' }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280' }}>Brand filter (optional)</label>
+          <input style={inputStyle} value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Brand name" />
+        </div>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => load(brand)}
+          style={{
+            padding: '9px 16px',
+            borderRadius: 8,
+            border: 'none',
+            background: '#E11D48',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+            opacity: loading ? 0.6 : 1,
+          }}
+        >
+          {loading ? 'Loading…' : 'Refresh'}
+        </button>
       </div>
 
-      <Card>
-        <CardContent className="pt-4 flex flex-col gap-3 md:flex-row md:items-end">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Brand filter (optional)</label>
-            <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Brand name" />
-          </div>
-          <Button onClick={() => load(brand)} disabled={loading}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Refresh
-          </Button>
-        </CardContent>
-      </Card>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {data?.summary && <p className="text-sm text-muted-foreground">{data.summary}</p>}
+      {error && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginTop: 12 }}>{error}</p>}
+      {data?.summary && <p style={{ color: '#6B7280', fontSize: '0.875rem', marginTop: 12 }}>{data.summary}</p>}
 
       {data && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-xs text-muted-foreground">Recent mentions</div>
-                <div className="text-2xl font-semibold tabular-nums">{mentionTotal}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-xs text-muted-foreground">Inbox new</div>
-                <div className="text-2xl font-semibold tabular-nums">{data.inbox_new}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-xs text-muted-foreground">Crisis alerts</div>
-                <div className="text-2xl font-semibold tabular-nums text-rose-600">{data.crisis?.length || 0}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-xs text-muted-foreground">SoV sentiment</div>
-                <div className="text-sm mt-1">
-                  <span className="text-emerald-600">+{pos}</span>
-                  {' · '}
-                  <span className="text-muted-foreground">={neu}</span>
-                  {' · '}
-                  <span className="text-rose-600">-{neg}</span>
-                </div>
-              </CardContent>
-            </Card>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 10, marginTop: 16 }}>
+            {[
+              { label: 'Recent mentions', value: String(mentionTotal) },
+              { label: 'Inbox new', value: String(data.inbox_new) },
+              { label: 'Crisis alerts', value: String(data.crisis?.length || 0), color: '#E11D48' },
+              { label: 'SoV sentiment', value: `+${pos} · =${neu} · -${neg}` },
+            ].map((k) => (
+              <div key={k.label} style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: 11, color: '#6B7280' }}>{k.label}</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: k.color || undefined }}>{k.value}</div>
+              </div>
+            ))}
           </div>
 
           {(data.alerts || []).length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Alerts</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {data.alerts.map((a, i) => (
-                  <div key={i} className="flex items-center justify-between gap-2 border-b py-2 last:border-0">
-                    <div className="text-sm min-w-0 truncate">{a.text}</div>
-                    <Badge className={a.severity === 'high' ? 'bg-rose-600' : 'bg-amber-600'}>
-                      {a.type}:{a.severity}
-                    </Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Recent mentions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {(data.mentions || []).map((m, i) => (
-                <div key={i} className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0">
-                  <div className="min-w-0">
-                    <div className="font-medium text-sm truncate">{m.title || m.content?.slice(0, 100) || 'Mention'}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {m.source}
-                      {m.occurred_at ? ` · ${m.occurred_at}` : ''}
-                    </div>
-                  </div>
-                  <Badge
-                    className={
-                      m.sentiment === 'positive'
-                        ? 'bg-emerald-600'
-                        : m.sentiment === 'negative'
-                          ? 'bg-rose-600'
-                          : 'bg-slate-500'
-                    }
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>Alerts</div>
+              {data.alerts.map((a, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    padding: '8px 0',
+                    borderBottom: '1px solid #F3F4F6',
+                  }}
+                >
+                  <span style={{ fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.text}</span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      background: a.severity === 'high' ? '#E11D48' : '#D97706',
+                      color: '#fff',
+                      whiteSpace: 'nowrap',
+                    }}
                   >
-                    {m.sentiment || 'neutral'}
-                  </Badge>
+                    {a.type}:{a.severity}
+                  </span>
                 </div>
               ))}
-              {(data.mentions || []).length === 0 && (
-                <p className="text-sm text-muted-foreground">No recent mentions in aggregated sources yet.</p>
-              )}
-            </CardContent>
-          </Card>
+            </div>
+          )}
+
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Recent mentions</div>
+            {(data.mentions || []).length === 0 && (
+              <p style={{ color: '#6B7280', fontSize: '0.875rem' }}>No recent mentions in aggregated sources yet.</p>
+            )}
+            {(data.mentions || []).map((m, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  padding: '8px 0',
+                  borderBottom: '1px solid #F3F4F6',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                    {m.title || m.content?.slice(0, 100) || 'Mention'}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6B7280' }}>
+                    {m.source}
+                    {m.occurred_at ? ` · ${m.occurred_at}` : ''}
+                  </div>
+                </div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background:
+                      m.sentiment === 'positive' ? '#059669' : m.sentiment === 'negative' ? '#E11D48' : '#6B7280',
+                    color: '#fff',
+                    height: 'fit-content',
+                  }}
+                >
+                  {m.sentiment || 'neutral'}
+                </span>
+              </div>
+            ))}
+          </div>
         </>
       )}
     </div>

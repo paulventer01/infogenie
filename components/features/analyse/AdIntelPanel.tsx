@@ -1,12 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { apiFetch } from '@/lib/apiClient';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, Megaphone } from 'lucide-react';
+import { apiPost } from '@/lib/api';
 
 type BrandRow = {
   brand: string;
@@ -22,8 +17,15 @@ type Creative = {
   platform?: string;
   headline?: string;
   primary_text?: string;
-  media_url?: string;
   cta?: string;
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '8px 12px',
+  borderRadius: 8,
+  border: '1px solid #D1D5DB',
+  fontSize: '0.875rem',
 };
 
 export default function AdIntelPanel() {
@@ -39,127 +41,134 @@ export default function AdIntelPanel() {
     if (!domain.trim() && !competitors.trim()) return;
     setLoading(true);
     setError(null);
-    try {
-      const res = await apiFetch<{
-        matrix: BrandRow[];
-        recent_creatives: Creative[];
-        insights: string[];
-      }>('/api/ad-intel/overview', {
-        method: 'POST',
-        body: JSON.stringify({
-          domain: domain.trim() || undefined,
-          competitors: competitors.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean),
-        }),
-      });
-      setMatrix(res.matrix || []);
-      setCreatives(res.recent_creatives || []);
-      setInsights(res.insights || []);
-    } catch (e: any) {
-      setError(e?.message || 'Analyze failed');
-    } finally {
+    const res = await apiPost<{
+      ok?: boolean;
+      error?: string;
+      matrix: BrandRow[];
+      recent_creatives: Creative[];
+      insights: string[];
+    }>('/api/ad-intel/overview', {
+      domain: domain.trim() || undefined,
+      competitors: competitors.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean),
+    });
+    if (!res.ok) {
+      setError(res.error || 'Analyze failed');
       setLoading(false);
+      return;
     }
+    setMatrix(res.matrix || []);
+    setCreatives(res.recent_creatives || []);
+    setInsights(res.insights || []);
+    setLoading(false);
   }, [domain, competitors]);
 
   const totalSpend = matrix.reduce((s, r) => s + (r.estimated_monthly_spend_usd || 0), 0) || 1;
 
   return (
-    <div className="space-y-4 p-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-          <Megaphone className="h-6 w-6 text-sky-600" />
-          Ad Intelligence
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          AdClarity-style view of competitor display, social, and video spend & creatives.
-        </p>
+    <div style={{ padding: 20, maxWidth: 1100 }}>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>📣 Ad Intelligence</h1>
+      <p style={{ color: '#6B7280', fontSize: '0.875rem', marginTop: 6 }}>
+        AdClarity-style view of competitor display, social, and video spend & creatives.
+      </p>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 16, alignItems: 'flex-end' }}>
+        <div style={{ flex: '1 1 200px' }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280' }}>Your domain</label>
+          <input style={inputStyle} value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="yoursite.com" />
+        </div>
+        <div style={{ flex: '1 1 200px' }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280' }}>Competitors</label>
+          <input
+            style={inputStyle}
+            value={competitors}
+            onChange={(e) => setCompetitors(e.target.value)}
+            placeholder="rival1.com, rival2.com"
+          />
+        </div>
+        <button
+          type="button"
+          disabled={loading || (!domain.trim() && !competitors.trim())}
+          onClick={run}
+          style={{
+            padding: '9px 16px',
+            borderRadius: 8,
+            border: 'none',
+            background: '#0284C7',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+            opacity: loading || (!domain.trim() && !competitors.trim()) ? 0.6 : 1,
+          }}
+        >
+          {loading ? 'Analyzing…' : 'Analyze ads'}
+        </button>
       </div>
 
-      <Card>
-        <CardContent className="pt-4 flex flex-col gap-3 md:flex-row md:items-end">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Your domain</label>
-            <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="yoursite.com" />
-          </div>
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Competitors</label>
-            <Input
-              value={competitors}
-              onChange={(e) => setCompetitors(e.target.value)}
-              placeholder="rival1.com, rival2.com"
-            />
-          </div>
-          <Button onClick={run} disabled={loading || (!domain.trim() && !competitors.trim())}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Analyze ads
-          </Button>
-        </CardContent>
-      </Card>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginTop: 12 }}>{error}</p>}
       {insights.map((t, i) => (
-        <p key={i} className="text-sm text-muted-foreground">
+        <p key={i} style={{ color: '#6B7280', fontSize: '0.875rem', marginTop: 8 }}>
           {t}
         </p>
       ))}
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Spend & channel matrix</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {matrix.map((row) => (
-            <div key={row.brand} className="rounded-md border p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                <span className="font-medium">
-                  {row.brand}
-                  {row.is_primary ? ' (you)' : ''}
+      <div style={{ marginTop: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>Spend & channel matrix</div>
+        {matrix.map((row) => (
+          <div key={row.brand} style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontWeight: 600 }}>
+                {row.brand}
+                {row.is_primary ? ' (you)' : ''}
+              </span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, border: '1px solid #D1D5DB' }}>
+                  ~${Math.round(row.estimated_monthly_spend_usd).toLocaleString()}/mo
                 </span>
-                <div className="flex gap-2">
-                  <Badge variant="outline">
-                    ~${Math.round(row.estimated_monthly_spend_usd).toLocaleString()}/mo
-                  </Badge>
-                  <Badge className="bg-sky-600">
-                    SoV {Math.round((row.estimated_monthly_spend_usd / totalSpend) * 100)}%
-                  </Badge>
-                  {row.top_angle && <Badge variant="secondary">{row.top_angle}</Badge>}
-                </div>
+                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#0284C7', color: '#fff' }}>
+                  SoV {Math.round((row.estimated_monthly_spend_usd / totalSpend) * 100)}%
+                </span>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                {Object.entries(row.channels || {}).map(([ch, v]) => (
-                  <div key={ch} className={`rounded border px-2 py-1.5 text-xs ${v.active ? '' : 'opacity-40'}`}>
-                    <div className="capitalize text-muted-foreground">{ch}</div>
-                    <div className="font-semibold tabular-nums">{v.share_pct}%</div>
-                    <div className="text-muted-foreground">{(v.formats || []).join(', ') || '—'}</div>
-                  </div>
-                ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(110px,1fr))', gap: 6 }}>
+              {Object.entries(row.channels || {}).map(([ch, v]) => (
+                <div
+                  key={ch}
+                  style={{
+                    border: '1px solid #E5E7EB',
+                    borderRadius: 6,
+                    padding: '6px 8px',
+                    fontSize: 12,
+                    opacity: v.active ? 1 : 0.4,
+                  }}
+                >
+                  <div style={{ color: '#6B7280', textTransform: 'capitalize' }}>{ch}</div>
+                  <div style={{ fontWeight: 700 }}>{v.share_pct}%</div>
+                  <div style={{ color: '#9CA3AF' }}>{(v.formats || []).join(', ') || '—'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {matrix.length === 0 && !loading && (
+          <p style={{ color: '#6B7280', fontSize: '0.875rem' }}>Enter domains to estimate channel spend.</p>
+        )}
+      </div>
+
+      {creatives.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>Recent creatives</div>
+          {creatives.map((c, i) => (
+            <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #F3F4F6' }}>
+              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                {c.headline || c.primary_text?.slice(0, 80) || 'Creative'}
+              </div>
+              <div style={{ fontSize: 12, color: '#6B7280' }}>
+                {c.brand} · {c.platform} · {c.cta || '—'}
               </div>
             </div>
           ))}
-          {matrix.length === 0 && !loading && (
-            <p className="text-sm text-muted-foreground">Enter domains to estimate channel spend.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {creatives.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Recent creatives (Ad Swipe)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {creatives.map((c, i) => (
-              <div key={i} className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0">
-                <div>
-                  <div className="font-medium text-sm">{c.headline || c.primary_text?.slice(0, 80) || 'Creative'}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {c.brand} · {c.platform} · {c.cta || '—'}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        </div>
       )}
     </div>
   );

@@ -1,12 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { apiFetch } from '@/lib/apiClient';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, Users } from 'lucide-react';
+import { apiPost } from '@/lib/api';
 
 type Signal = {
   competitor: string;
@@ -14,9 +9,16 @@ type Signal = {
   influencer_handle: string;
   follower_count: number;
   engagement_rate: number;
-  content_url?: string;
   theme: string;
   estimated_cost_usd: number;
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '8px 12px',
+  borderRadius: 8,
+  border: '1px solid #D1D5DB',
+  fontSize: '0.875rem',
 };
 
 export default function InfluencerAnalyticsPanel() {
@@ -33,99 +35,115 @@ export default function InfluencerAnalyticsPanel() {
     if (!comps.length) return;
     setLoading(true);
     setError(null);
-    try {
-      const res = await apiFetch<{
-        signals: Signal[];
-        summary?: string;
-        next_steps?: string[];
-      }>('/api/influencer-analytics/competitor-campaigns', {
-        method: 'POST',
-        body: JSON.stringify({ competitors: comps, niche: niche.trim() || 'marketing' }),
-      });
-      setSignals(res.signals || []);
-      setSummary(res.summary || '');
-      setNextSteps(res.next_steps || []);
-    } catch (e: any) {
-      setError(e?.message || 'Analyze failed');
-    } finally {
+    const res = await apiPost<{
+      ok?: boolean;
+      error?: string;
+      signals: Signal[];
+      summary?: string;
+      next_steps?: string[];
+    }>('/api/influencer-analytics/competitor-campaigns', {
+      competitors: comps,
+      niche: niche.trim() || 'marketing',
+    });
+    if (!res.ok) {
+      setError(res.error || 'Analyze failed');
       setLoading(false);
+      return;
     }
+    setSignals(res.signals || []);
+    setSummary(res.summary || '');
+    setNextSteps(res.next_steps || []);
+    setLoading(false);
   }, [competitors, niche]);
 
   return (
-    <div className="space-y-4 p-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-          <Users className="h-6 w-6 text-fuchsia-600" />
-          Influencer Analytics
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Extend Reach beyond owned channels — competitor creator campaigns, affinity, and estimated cost.
-        </p>
+    <div style={{ padding: 20, maxWidth: 1100 }}>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>📡 Influencer Analytics</h1>
+      <p style={{ color: '#6B7280', fontSize: '0.875rem', marginTop: 6 }}>
+        Extend Reach beyond owned channels — competitor creator campaigns, affinity, and estimated cost.
+      </p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginTop: 16 }}>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280' }}>Competitors</label>
+          <input
+            style={inputStyle}
+            value={competitors}
+            onChange={(e) => setCompetitors(e.target.value)}
+            placeholder="rival1.com, rival2.com"
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280' }}>Niche</label>
+          <input style={inputStyle} value={niche} onChange={(e) => setNiche(e.target.value)} placeholder="saas, beauty…" />
+        </div>
+      </div>
+      <button
+        type="button"
+        disabled={loading || !competitors.trim()}
+        onClick={run}
+        style={{
+          marginTop: 12,
+          padding: '9px 16px',
+          borderRadius: 8,
+          border: 'none',
+          background: '#C026D3',
+          color: '#fff',
+          fontWeight: 700,
+          fontSize: '0.8rem',
+          cursor: 'pointer',
+          opacity: loading || !competitors.trim() ? 0.6 : 1,
+        }}
+      >
+        {loading ? 'Analyzing…' : 'Analyze influencers'}
+      </button>
+
+      {error && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginTop: 12 }}>{error}</p>}
+      {summary && <p style={{ color: '#6B7280', fontSize: '0.875rem', marginTop: 12 }}>{summary}</p>}
+
+      <div style={{ marginTop: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>Competitor creator signals ({signals.length})</div>
+        {signals.map((s, i) => (
+          <div
+            key={i}
+            style={{
+              border: '1px solid #E5E7EB',
+              borderRadius: 8,
+              padding: 12,
+              marginBottom: 8,
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 8,
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600 }}>{s.influencer_handle}</div>
+              <div style={{ fontSize: 12, color: '#6B7280' }}>
+                {s.competitor} · {s.platform} · {s.theme} · {Math.round(s.follower_count).toLocaleString()} followers · ER{' '}
+                {s.engagement_rate}%
+              </div>
+            </div>
+            <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#C026D3', color: '#fff' }}>
+              ~${Math.round(s.estimated_cost_usd).toLocaleString()}
+            </span>
+          </div>
+        ))}
+        {signals.length === 0 && !loading && (
+          <p style={{ color: '#6B7280', fontSize: '0.875rem' }}>Run analysis to see competitor creator activity.</p>
+        )}
       </div>
 
-      <Card>
-        <CardContent className="pt-4 grid gap-3 md:grid-cols-3">
-          <div className="md:col-span-2 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Competitors</label>
-            <Input
-              value={competitors}
-              onChange={(e) => setCompetitors(e.target.value)}
-              placeholder="rival1.com, rival2.com"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Niche</label>
-            <Input value={niche} onChange={(e) => setNiche(e.target.value)} placeholder="saas, beauty…" />
-          </div>
-          <div className="md:col-span-3">
-            <Button onClick={run} disabled={loading || !competitors.trim()}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Analyze influencers
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {summary && <p className="text-sm text-muted-foreground">{summary}</p>}
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Competitor creator signals ({signals.length})</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {signals.map((s, i) => (
-            <div key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3">
-              <div>
-                <div className="font-medium">{s.influencer_handle}</div>
-                <div className="text-xs text-muted-foreground">
-                  {s.competitor} · {s.platform} · {s.theme} · {Math.round(s.follower_count).toLocaleString()} followers · ER{' '}
-                  {s.engagement_rate}%
-                </div>
-              </div>
-              <Badge className="bg-fuchsia-600">~${Math.round(s.estimated_cost_usd).toLocaleString()}</Badge>
-            </div>
-          ))}
-          {signals.length === 0 && !loading && (
-            <p className="text-sm text-muted-foreground">Run analysis to see competitor creator activity.</p>
-          )}
-        </CardContent>
-      </Card>
-
       {nextSteps.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Next steps</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            {nextSteps.map((t, i) => (
-              <p key={i} className="text-sm text-muted-foreground">
-                · {t}
-              </p>
-            ))}
-          </CardContent>
-        </Card>
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>Next steps</div>
+          {nextSteps.map((t, i) => (
+            <p key={i} style={{ color: '#6B7280', fontSize: '0.875rem', margin: '4px 0' }}>
+              · {t}
+            </p>
+          ))}
+        </div>
       )}
     </div>
   );

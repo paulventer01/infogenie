@@ -1,12 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { apiFetch } from '@/lib/apiClient';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, Target } from 'lucide-react';
+import { apiPost } from '@/lib/api';
 
 type Opportunity = {
   keyword: string;
@@ -16,9 +11,16 @@ type Opportunity = {
   position: number | null;
   my_position: number | null;
   opportunity_score: number;
-  weakness_score?: number;
   reasons?: string[];
   suggested_action?: string;
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '8px 12px',
+  borderRadius: 8,
+  border: '1px solid #D1D5DB',
+  fontSize: '0.875rem',
 };
 
 export default function SerpGapPanel() {
@@ -33,86 +35,106 @@ export default function SerpGapPanel() {
     if (!domain.trim() || !keywords.trim()) return;
     setLoading(true);
     setError(null);
-    try {
-      const kws = keywords.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean).slice(0, 8);
-      const res = await apiFetch<{ opportunities: Opportunity[]; summary?: string }>('/api/serp-gap/analyze', {
-        method: 'POST',
-        body: JSON.stringify({ domain: domain.trim(), my_domain: domain.trim(), keywords: kws }),
-      });
-      setOps(res.opportunities || []);
-      setSummary(res.summary || '');
-    } catch (e: any) {
-      setError(e?.message || 'Analyze failed');
-    } finally {
+    const kws = keywords.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean).slice(0, 8);
+    const res = await apiPost<{ ok?: boolean; error?: string; opportunities: Opportunity[]; summary?: string }>(
+      '/api/serp-gap/analyze',
+      { domain: domain.trim(), my_domain: domain.trim(), keywords: kws }
+    );
+    if (!res.ok) {
+      setError(res.error || 'Analyze failed');
       setLoading(false);
+      return;
     }
+    setOps(res.opportunities || []);
+    setSummary(res.summary || '');
+    setLoading(false);
   }, [domain, keywords]);
 
   return (
-    <div className="space-y-4 p-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-          <Target className="h-6 w-6 text-amber-600" />
-          SERP Gap Analyzer
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Find easy-rank / weak-page opportunities where rivals hold fragile positions — feeds Attack Plan.
-        </p>
+    <div style={{ padding: 20, maxWidth: 1100 }}>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>🎯 SERP Gap Analyzer</h1>
+      <p style={{ color: '#6B7280', fontSize: '0.875rem', marginTop: 6 }}>
+        Find easy-rank / weak-page opportunities where rivals hold fragile positions — feeds Attack Plan.
+      </p>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 16, alignItems: 'flex-end' }}>
+        <div style={{ flex: '1 1 180px' }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280' }}>Your domain</label>
+          <input style={inputStyle} value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="yoursite.com" />
+        </div>
+        <div style={{ flex: '2 1 280px' }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280' }}>Seed keywords</label>
+          <input
+            style={inputStyle}
+            value={keywords}
+            onChange={(e) => setKeywords(e.target.value)}
+            placeholder="best crm software, email marketing tool"
+          />
+        </div>
+        <button
+          type="button"
+          disabled={loading || !domain.trim() || !keywords.trim()}
+          onClick={run}
+          style={{
+            padding: '9px 16px',
+            borderRadius: 8,
+            border: 'none',
+            background: '#D97706',
+            color: '#fff',
+            fontWeight: 700,
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+            opacity: loading || !domain.trim() || !keywords.trim() ? 0.6 : 1,
+          }}
+        >
+          {loading ? 'Finding…' : 'Find gaps'}
+        </button>
       </div>
 
-      <Card>
-        <CardContent className="pt-4 flex flex-col gap-3 md:flex-row md:items-end">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Your domain</label>
-            <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="yoursite.com" />
-          </div>
-          <div className="flex-[2] space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Seed keywords</label>
-            <Input
-              value={keywords}
-              onChange={(e) => setKeywords(e.target.value)}
-              placeholder="best crm software, email marketing tool, …"
-            />
-          </div>
-          <Button onClick={run} disabled={loading || !domain.trim() || !keywords.trim()}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Find gaps
-          </Button>
-        </CardContent>
-      </Card>
+      {error && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginTop: 12 }}>{error}</p>}
+      {summary && <p style={{ color: '#6B7280', fontSize: '0.875rem', marginTop: 12 }}>{summary}</p>}
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {summary && <p className="text-sm text-muted-foreground">{summary}</p>}
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Opportunities ({ops.length})</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {ops.length === 0 && !loading && (
-            <p className="text-sm text-muted-foreground">Run an analysis to surface weak competitor pages.</p>
-          )}
-          {ops.map((o, i) => (
-            <div
-              key={`${o.keyword}-${o.competitor_domain}-${i}`}
-              className="rounded-md border p-3 flex flex-col md:flex-row md:items-center gap-2 justify-between"
-            >
-              <div className="min-w-0">
-                <div className="font-medium truncate">{o.keyword}</div>
-                <div className="text-xs text-muted-foreground truncate">{o.competitor_url}</div>
-                <div className="text-xs mt-1">
-                  {(o.reasons || []).join(' · ') || o.suggested_action || ''}
-                </div>
+      <div style={{ marginTop: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>Opportunities ({ops.length})</div>
+        {ops.length === 0 && !loading && (
+          <p style={{ color: '#6B7280', fontSize: '0.875rem' }}>Run an analysis to surface weak competitor pages.</p>
+        )}
+        {ops.map((o, i) => (
+          <div
+            key={`${o.keyword}-${o.competitor_domain}-${i}`}
+            style={{
+              border: '1px solid #E5E7EB',
+              borderRadius: 8,
+              padding: 12,
+              marginBottom: 8,
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 8,
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontWeight: 600 }}>{o.keyword}</div>
+              <div style={{ fontSize: 12, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {o.competitor_url}
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Badge variant="outline">#{o.position ?? '—'}</Badge>
-                <Badge variant="secondary">{o.competitor_domain}</Badge>
-                <Badge className="bg-amber-600">Score {o.opportunity_score}</Badge>
-              </div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>{(o.reasons || []).join(' · ') || o.suggested_action || ''}</div>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, border: '1px solid #D1D5DB' }}>
+                #{o.position ?? '—'}
+              </span>
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#F3F4F6' }}>
+                {o.competitor_domain}
+              </span>
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: '#D97706', color: '#fff' }}>
+                Score {o.opportunity_score}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

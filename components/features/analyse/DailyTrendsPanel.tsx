@@ -1,12 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { apiFetch } from '@/lib/apiClient';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, TrendingUp } from 'lucide-react';
+import { apiPost } from '@/lib/api';
 
 type Point = {
   date: string;
@@ -21,6 +16,7 @@ type Point = {
 
 type AnalyzeResult = {
   ok?: boolean;
+  error?: string;
   domain: string;
   competitors: string[];
   granularity: string;
@@ -29,6 +25,26 @@ type AnalyzeResult = {
   channel_mix: Record<string, number>;
   series: Record<string, Point[]>;
   insight?: string;
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '8px 12px',
+  borderRadius: 8,
+  border: '1px solid #D1D5DB',
+  fontSize: '0.875rem',
+};
+
+const btnStyle = {
+  padding: '9px 16px',
+  borderRadius: 8,
+  border: 'none',
+  background: '#059669',
+  color: '#fff',
+  fontWeight: 700,
+  fontSize: '0.8rem',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
 };
 
 export default function DailyTrendsPanel() {
@@ -42,140 +58,136 @@ export default function DailyTrendsPanel() {
     if (!domain.trim()) return;
     setLoading(true);
     setError(null);
-    try {
-      const comps = competitors.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
-      const res = await apiFetch<AnalyzeResult>('/api/daily-trends/analyze', {
-        method: 'POST',
-        body: JSON.stringify({ domain: domain.trim(), competitors: comps, days: 30 }),
-      });
-      setData(res);
-    } catch (e: any) {
-      setError(e?.message || 'Analyze failed');
-    } finally {
+    const comps = competitors.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
+    const res = await apiPost<AnalyzeResult>('/api/daily-trends/analyze', {
+      domain: domain.trim(),
+      competitors: comps,
+      days: 30,
+    });
+    if (!res.ok) {
+      setError(res.error || 'Analyze failed');
       setLoading(false);
+      return;
     }
+    setData(res);
+    setLoading(false);
   }, [domain, competitors]);
 
   const primarySeries = data?.series?.[data.domain] || [];
   const maxVisits = Math.max(1, ...primarySeries.map((p) => p.visits || 0));
 
   return (
-    <div className="space-y-4 p-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-          <TrendingUp className="h-6 w-6 text-emerald-600" />
-          Daily Trends
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Track competitor traffic shifts day-by-day across search, social, direct, referral, email, and paid.
-        </p>
+    <div style={{ padding: 20, maxWidth: 1100 }}>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>📊 Daily Trends</h1>
+      <p style={{ color: '#6B7280', fontSize: '0.875rem', marginTop: 6 }}>
+        Track competitor traffic shifts day-by-day across search, social, direct, referral, email, and paid.
+      </p>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 16, alignItems: 'flex-end' }}>
+        <div style={{ flex: '1 1 200px' }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280' }}>Domain</label>
+          <input
+            style={inputStyle}
+            placeholder="Enter domain"
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && analyze()}
+          />
+        </div>
+        <div style={{ flex: '1 1 200px' }}>
+          <label style={{ fontSize: 11, fontWeight: 600, color: '#6B7280' }}>Competitors</label>
+          <input
+            style={inputStyle}
+            placeholder="comp1.com, comp2.com"
+            value={competitors}
+            onChange={(e) => setCompetitors(e.target.value)}
+          />
+        </div>
+        <button type="button" style={{ ...btnStyle, opacity: loading || !domain.trim() ? 0.6 : 1 }} disabled={loading || !domain.trim()} onClick={analyze}>
+          {loading ? 'Analyzing…' : 'Analyze'}
+        </button>
       </div>
 
-      <Card>
-        <CardContent className="pt-4 flex flex-col gap-3 md:flex-row md:items-end">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Domain</label>
-            <Input
-              placeholder="Enter domain, subdomain or subfolder"
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && analyze()}
-            />
-          </div>
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-muted-foreground">Competitors (optional)</label>
-            <Input
-              placeholder="Add competitors, comma-separated"
-              value={competitors}
-              onChange={(e) => setCompetitors(e.target.value)}
-            />
-          </div>
-          <Button onClick={analyze} disabled={loading || !domain.trim()}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Analyze
-          </Button>
-        </CardContent>
-      </Card>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p style={{ color: '#DC2626', fontSize: '0.875rem', marginTop: 12 }}>{error}</p>}
 
       {data && (
-        <>
-          <div className="flex flex-wrap gap-2 items-center">
-            <Badge variant="outline">Granularity: {data.granularity}</Badge>
-            <Badge className={data.growth_pct >= 0 ? 'bg-emerald-600' : 'bg-rose-600'}>
-              Traffic growth {data.growth_pct >= 0 ? '+' : ''}
+        <div style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: '#F3F4F6' }}>
+              {data.granularity}
+            </span>
+            <span
+              style={{
+                fontSize: 12,
+                padding: '2px 8px',
+                borderRadius: 999,
+                background: data.growth_pct >= 0 ? '#059669' : '#E11D48',
+                color: '#fff',
+              }}
+            >
+              Growth {data.growth_pct >= 0 ? '+' : ''}
               {data.growth_pct}%
-            </Badge>
+            </span>
           </div>
-          {data.insight && <p className="text-sm text-muted-foreground">{data.insight}</p>}
+          {data.insight && <p style={{ color: '#6B7280', fontSize: '0.875rem' }}>{data.insight}</p>}
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Daily visits — {data.domain}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-end gap-0.5 h-40">
-                {primarySeries.map((p) => (
-                  <div key={p.date} className="flex-1 flex flex-col justify-end min-w-0">
-                    <div
-                      className="bg-emerald-500/80 hover:bg-emerald-600 rounded-t transition-all"
-                      style={{ height: `${Math.max(4, (p.visits / maxVisits) * 100)}%` }}
-                      title={`${p.date}: ${p.visits.toLocaleString()}`}
-                    />
-                  </div>
-                ))}
-              </div>
-              <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                <span>{primarySeries[0]?.date}</span>
-                <span>{primarySeries[primarySeries.length - 1]?.date}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Channel mix (latest)</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {Object.entries(data.channel_mix || {}).map(([ch, v]) => (
-                <div key={ch} className="rounded-md border px-3 py-2">
-                  <div className="text-xs text-muted-foreground capitalize">{ch}</div>
-                  <div className="text-lg font-semibold tabular-nums">{Number(v).toLocaleString()}</div>
-                </div>
+          <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 16, marginTop: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Daily visits — {data.domain}</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 140 }}>
+              {primarySeries.map((p) => (
+                <div
+                  key={p.date}
+                  title={`${p.date}: ${p.visits.toLocaleString()}`}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: `${Math.max(4, (p.visits / maxVisits) * 100)}%`,
+                    background: 'rgba(5,150,105,0.8)',
+                    borderRadius: '3px 3px 0 0',
+                  }}
+                />
               ))}
-            </CardContent>
-          </Card>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#9CA3AF', marginTop: 4 }}>
+              <span>{primarySeries[0]?.date}</span>
+              <span>{primarySeries[primarySeries.length - 1]?.date}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 8, marginTop: 12 }}>
+            {Object.entries(data.channel_mix || {}).map(([ch, v]) => (
+              <div key={ch} style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontSize: 11, color: '#6B7280', textTransform: 'capitalize' }}>{ch}</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{Number(v).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
 
           {(data.competitors || []).length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Competitor overlay</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {data.competitors.map((c) => {
-                  const series = data.series?.[c] || [];
-                  const last = series[series.length - 1]?.visits || 0;
-                  const g = data.growth?.[c];
-                  return (
-                    <div key={c} className="flex items-center justify-between border-b py-2 last:border-0">
-                      <span className="font-medium">{c}</span>
-                      <span className="text-sm tabular-nums">
-                        {last.toLocaleString()}
-                        {g != null && (
-                          <span className={g >= 0 ? ' text-emerald-600 ml-2' : ' text-rose-600 ml-2'}>
-                            {g >= 0 ? '+' : ''}
-                            {g}%
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
+            <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 16, marginTop: 12 }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>Competitor overlay</div>
+              {data.competitors.map((c) => {
+                const series = data.series?.[c] || [];
+                const last = series[series.length - 1]?.visits || 0;
+                const g = data.growth?.[c];
+                return (
+                  <div key={c} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #F3F4F6' }}>
+                    <span style={{ fontWeight: 600 }}>{c}</span>
+                    <span>
+                      {last.toLocaleString()}
+                      {g != null && (
+                        <span style={{ marginLeft: 8, color: g >= 0 ? '#059669' : '#E11D48' }}>
+                          {g >= 0 ? '+' : ''}
+                          {g}%
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
