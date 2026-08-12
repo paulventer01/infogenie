@@ -472,6 +472,7 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/linksell\/checkout\/[^\/]+$/,             // public Stripe checkout init (rate-limited)
   /^\/api\/linksell\/optin\/[^\/]+$/,                // public email opt-in  (rate-limited)
   /^\/api\/email-broadcast\/webhook$/,               // Resend Svix-signed broadcast events
+  /^\/api\/email-replies\/webhook$/,                 // Resend Receiving inbound replies
   /^\/api\/studio\/case-study\/[^\/]+\/page$/,       // public share page for case studies (HTML render)
   /^\/api\/scroll-tracker\/event$/,                  // public scroll-depth ingest from rendered pages (rate-limited)
   /^\/api\/site-search\/event$/,                     // public site-search ingest from rendered pages (rate-limited)
@@ -1703,7 +1704,15 @@ async function _dripTickInner(tid) {
       } else if (isEmail) {
         const subject = (step.subject || step.label || `Message from ${enr.brand || 'InfoGenie'}`).slice(0, 140);
         const unsubUrl = `${enr.appOrigin || ''}/api/drips/unsubscribe?email=${encodeURIComponent(enr.email)}&t=${encodeURIComponent(tid)}`;
-        const html = _dripEmailHtml({ subject, body: step.msg || '', brand: enr.brand, unsubUrl });
+        let html = _dripEmailHtml({ subject, body: step.msg || '', brand: enr.brand, unsubUrl });
+        try {
+          const { appendAutoUtm, buildEmailUtm } = require('./services/email_ops/auto_utm');
+          html = appendAutoUtm(html, buildEmailUtm({
+            channel: 'drip',
+            campaignName: enr.brand || enr.sequenceName || 'drip',
+            stepLabel: step.label || `step-${enr.currentStep}`,
+          }));
+        } catch (_) { /* auto-utm optional */ }
         const text = (step.msg || '') + `\n\n— Unsubscribe: ${unsubUrl}`;
         const sendRes = await _sendEmailViaResend({ to: enr.email, subject, html, text });
         entry.ok = true;
@@ -1818,6 +1827,48 @@ async function _enrollDripCore(tid, { contacts, sequence, brand, dryRun, appOrig
   _dripTick().catch(()=>{});
   return result;
 }
+
+// Expose drip helpers for MCP / email-replies (pause on inbound reply).
+global._dripLoad = _dripLoad;
+global._enrollDripCore = _enrollDripCore;
+global._pauseDripOnReply = async function _pauseDripOnReply(fromEmail, providerNeedle) {
+  const email = String(fromEmail || '').trim().toLowerCase();
+  if (!email) return null;
+  let tids = [];
+  try { tids = await _tkvCtx.listActiveTenantIds(); } catch { tids = []; }
+  for (const tid of tids) {
+    const hit = await _dripLock(async () => {
+      const list = await _dripLoad(tid);
+      let found = null;
+      for (const enr of list) {
+        if (String(enr.email || '').toLowerCase() !== email) continue;
+        if (!['active', 'paused'].includes(enr.status)) continue;
+        if (providerNeedle) {
+          const matchHist = (enr.history || []).some((h) =>
+            h.providerId && String(providerNeedle).includes(String(h.providerId))
+          );
+          // Prefer provider match when available; otherwise any active enrollment for email.
+          if (!matchHist && (enr.history || []).some((h) => h.providerId)) {
+            // keep searching for a stronger match, but remember this enrollment
+          }
+        }
+        enr.status = 'paused';
+        enr.pausedAt = Date.now();
+        enr.pauseReason = 'email_reply';
+        found = {
+          enrollmentId: enr.id,
+          tenantId: tid,
+          providerId: (enr.history || []).map((h) => h.providerId).filter(Boolean).slice(-1)[0] || null,
+        };
+        break;
+      }
+      if (found) await _dripSave(tid, list);
+      return found;
+    });
+    if (hit) return hit;
+  }
+  return null;
+};
 
 // Drip enrollment · stats · webhooks routes → services/drips/routes.js
 require('./services/drips/routes')(app, { _dripLoad, _dripLock, _dripSave, _dripUnsubscribe, _enrollDripCore, _tkvCtx, anthropic, openaiChatWithRetry, path });
@@ -2949,6 +3000,17 @@ BOOT_TASKS.push(async () => { try {
     console.log('[t40] email-broadcast schema ready');
   }
 } catch (e) { console.warn('[t40] init failed:', e.message); }});
+
+// ── Email reply inbox (Resend Receiving → Unified Inbox + drip pause) ───────
+const _emailRepliesSchema = require('./services/email_replies/schema');
+const _emailRepliesRouter = require('./services/email_replies/api');
+app.use('/api/email-replies', _emailRepliesRouter);
+BOOT_TASKS.push(async () => { try {
+  if (_db.hasDb()) {
+    await _emailRepliesSchema.ensureEmailRepliesSchema();
+    console.log('[email-replies] schema ready');
+  }
+} catch (e) { console.warn('[email-replies] init failed:', e.message); }});
 
 // ── T41 — Hunter · LinkedIn Ads · Canva Bridge · CRM Sync ───────────────────
 const _hunterRouter   = require('./services/hunter/api');
