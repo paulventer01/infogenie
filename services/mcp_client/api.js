@@ -8,6 +8,7 @@ const _tenantCtx = require('../tenants/context');
 const store = require('./store');
 const { listTools, callTool } = require('./transport');
 const { PRESET_CATALOG } = require('./presets');
+// PRESET_CATALOG also used by _withFreshAuth for rotating platform keys.
 
 const _safe = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const _err = (res, code, msg) => res.status(code).json({ ok: false, error: msg });
@@ -54,8 +55,13 @@ router.get('/servers', _safe(async (req, res) => {
 router.post('/servers', _safe(async (req, res) => {
   const tid = await _tid(req, 'mcp-client:add');
   if (!tid) return _err(res, 400, 'no_tenant');
-  const server = await store.addServer(tid, req.body || {});
-  res.json({ ok: true, server });
+  try {
+    const server = await store.addServer(tid, req.body || {});
+    res.json({ ok: true, server });
+  } catch (e) {
+    if (e && e.code === 'auth_missing') return _err(res, 400, e.message);
+    throw e;
+  }
 }));
 
 router.post('/servers/seed', _safe(async (req, res) => {
@@ -86,7 +92,10 @@ router.get('/servers/:id/tools', _safe(async (req, res) => {
   if (!tid) return _err(res, 400, 'no_tenant');
   const server = await store.getServer(tid, req.params.id);
   if (!server) return _err(res, 404, 'not found');
-  const raw = await store.getServerRaw(tid, req.params.id);
+  let raw = await store.getServerRaw(tid, req.params.id);
+  // Refresh header auth from platform env when the row was stored without a token
+  // or the platform key was rotated after connect.
+  raw = _withFreshAuth(raw);
   const result = await listTools(raw, { origin: _origin(req), tenantId: tid });
   res.json({ ok: result.ok !== false, ...result, server_id: server.id, server_name: server.name });
 }));
@@ -94,9 +103,10 @@ router.get('/servers/:id/tools', _safe(async (req, res) => {
 router.post('/servers/:id/call', _safe(async (req, res) => {
   const tid = await _tid(req, 'mcp-client:call');
   if (!tid) return _err(res, 400, 'no_tenant');
-  const raw = await store.getServerRaw(tid, req.params.id);
+  let raw = await store.getServerRaw(tid, req.params.id);
   if (!raw) return _err(res, 404, 'not found');
   if (raw.enabled === false) return _err(res, 400, 'server disabled');
+  raw = _withFreshAuth(raw);
   const name = req.body?.name || req.body?.tool;
   if (!name) return _err(res, 400, 'name required');
   const args = req.body?.arguments || req.body?.args || {};
@@ -107,6 +117,26 @@ router.post('/servers/:id/call', _safe(async (req, res) => {
     res.status(400).json({ ok: false, error: e.message, isError: true });
   }
 }));
+
+function _withFreshAuth(raw) {
+  if (!raw) return raw;
+  const presetId = raw.meta?.preset_id;
+  const preset = presetId ? PRESET_CATALOG.find((p) => p.id === presetId) : null;
+  if (!preset?.authEnv) return raw;
+  let token = '';
+  try {
+    const pk = require('../credentials/platform_keys');
+    token = pk.resolvePlatformKey(preset.authEnv) || process.env[preset.authEnv] || '';
+  } catch {
+    token = process.env[preset.authEnv] || '';
+  }
+  if (!token) return raw;
+  const headerName = preset.authHeaderName || 'Authorization';
+  const auth_header = headerName.toLowerCase() === 'authorization'
+    ? `Bearer ${token}`
+    : `${headerName}:${token}`;
+  return { ...raw, auth_header };
+}
 
 router._resetMem = store._resetMem;
 module.exports = router;
