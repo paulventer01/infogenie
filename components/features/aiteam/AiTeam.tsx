@@ -604,6 +604,7 @@ export default function AiTeam() {
   // Modal / overlay state
   const [tasksModal, setTasksModal] = useState<{ id: string; title: string } | null>(null);
   const [reportModal, setReportModal] = useState<{ id: string; title: string } | null>(null);
+  const [adviseModal, setAdviseModal] = useState<{ id: string; title: string } | null>(null);
   const [avatarPicker, setAvatarPicker] = useState<{ id: string; x: number; y: number } | null>(null);
   const [showStatusPanel, setShowStatusPanel] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -729,13 +730,41 @@ export default function AiTeam() {
               YOUR AI TEAM
             </div>
             <h1 style={{ margin: "8px 0 6px", fontSize: "1.85rem", fontWeight: 800, color: "#0f172a" }}>
-              {rosterCountLabel(OFFICERS.length)} AI executives, one team
+              {rosterCountLabel(OFFICERS.length)} AI executives, one agent team
             </h1>
             <p style={{ margin: 0, fontSize: ".92rem", color: "#475569", maxWidth: 720 }}>
-              Each officer handles a function full-time. Click any role to open their
-              office. Pick an avatar, assign tasks, run daily reports, and schedule
-              cross-functional meetings — all minutes downloadable.
+              Every roster member is an autonomous AI agent — prompt engineering, tool &amp; function
+              calling, RAG memory, multi-agent consults, and independent recommendations for their
+              domain. Assign tasks, ask for advice, run daily reports, and hold full-team meetings.
             </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+              {[
+                "Prompt Engineering",
+                "Tool Calling",
+                "Function Calling",
+                "RAG",
+                "Memory",
+                "Multi-Agent",
+                "LLMs",
+                "PostgreSQL + Vector",
+                "REST · GraphQL · MCP",
+              ].map((s) => (
+                <span
+                  key={s}
+                  style={{
+                    fontSize: ".68rem",
+                    fontWeight: 700,
+                    color: "#0f766e",
+                    background: "rgba(255,255,255,0.75)",
+                    border: "1px solid rgba(15,118,110,0.22)",
+                    borderRadius: 999,
+                    padding: "4px 10px",
+                  }}
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
           </div>
           <button
             title="Click for full system status"
@@ -793,6 +822,7 @@ export default function AiTeam() {
             }}
             onTasks={() => setTasksModal({ id: o.id, title: o.title })}
             onReport={() => setReportModal({ id: o.id, title: o.title })}
+            onAdvise={() => setAdviseModal({ id: o.id, title: o.title })}
           />
         ))}
       </div>
@@ -854,6 +884,13 @@ export default function AiTeam() {
           officerId={reportModal.id}
           officerTitle={reportModal.title}
           onClose={() => setReportModal(null)}
+        />
+      )}
+      {adviseModal && (
+        <AdviseModal
+          officerId={adviseModal.id}
+          officerTitle={adviseModal.title}
+          onClose={() => setAdviseModal(null)}
         />
       )}
       {showStatusPanel && (
@@ -923,6 +960,7 @@ function OfficerCard({
   onAvatar,
   onTasks,
   onReport,
+  onAdvise,
 }: {
   officer: Officer;
   avatar?: string;
@@ -931,6 +969,7 @@ function OfficerCard({
   onAvatar: (e: React.MouseEvent) => void;
   onTasks: () => void;
   onReport: () => void;
+  onAdvise: () => void;
 }) {
   const av = typeof avatar === "string" && avatar ? avatar : officer.icon;
   const isImg = typeof av === "string" && isAvatarImage(av);
@@ -1006,6 +1045,9 @@ function OfficerCard({
           <div style={{ fontSize: ".78rem", color: "#64748B", marginTop: 2 }}>
             {officer.role}
           </div>
+          <div style={{ fontSize: ".66rem", color: "#0f766e", fontWeight: 700, marginTop: 4 }}>
+            Autonomous agent · tools · RAG · peer consult
+          </div>
         </div>
         <span style={{ ...pill, background: "#DCFCE7", color: "#166534" }}>● ON DUTY</span>
       </div>
@@ -1070,10 +1112,27 @@ function OfficerCard({
             📋 Tasks
           </button>
           <button
+            type="button"
+            onClick={onAdvise}
+            style={{
+              padding: "6px 11px",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              fontSize: ".72rem",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            🧠 Ask Agent
+          </button>
+          <button
+            type="button"
             onClick={onReport}
             style={{
               padding: "6px 11px",
-              background: '#eef4ff',
+              background: "#eef4ff",
               color: "#0f172a",
               border: "none",
               borderRadius: 8,
@@ -1527,6 +1586,194 @@ function TasksModal({
             }}
           >
             Save Responsibilities
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Ask Agent modal (independent executive reasoning) ────────────────────────
+interface AdviseResponse {
+  ok?: boolean;
+  error?: string;
+  offline?: boolean;
+  advice?: {
+    assessment?: string;
+    suggestions?: Array<string | { title?: string; detail?: string; priority?: string }>;
+    risks?: string[];
+    nextChecks?: string[];
+    reasoning?: string[];
+  };
+  toolTrace?: Array<{ tool?: string; ok?: boolean }>;
+}
+
+function AdviseModal({
+  officerId,
+  officerTitle,
+  onClose,
+}: {
+  officerId: string;
+  officerTitle: string;
+  onClose: () => void;
+}) {
+  const [goal, setGoal] = useState(
+    `What should I prioritize this week in your area, and what risks need attention?`,
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [data, setData] = useState<AdviseResponse | null>(null);
+
+  async function run() {
+    setLoading(true);
+    setError("");
+    setData(null);
+    const tasks = typeof readTasks === "function" ? readTasks(officerId, 40) : [];
+    const j = await apiPost<AdviseResponse>("/api/officer/advise", {
+      role: officerId,
+      title: officerTitle,
+      goal,
+      tasks,
+    });
+    setLoading(false);
+    if (j.error && !j.advice) {
+      setError(j.error);
+      return;
+    }
+    setData(j);
+  }
+
+  const advice = data?.advice;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.45)",
+        zIndex: 80,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "min(720px,100%)",
+          maxHeight: "90vh",
+          overflow: "auto",
+          background: "#fff",
+          borderRadius: 16,
+          border: "1px solid #E2E8F0",
+          boxShadow: "0 24px 60px rgba(15,23,42,0.18)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid #E2E8F0" }}>
+          <div style={{ fontSize: ".72rem", fontWeight: 800, color: "#0f766e", letterSpacing: ".08em" }}>
+            AUTONOMOUS AI AGENT
+          </div>
+          <h3 style={{ margin: "6px 0 0", color: "#0f172a" }}>🧠 {officerTitle} — Ask Agent</h3>
+          <p style={{ margin: "6px 0 0", color: "#64748B", fontSize: ".82rem" }}>
+            Uses the full executive skill pack: tool calling, RAG memory, peer consult, and
+            independent recommendations for this role.
+          </p>
+        </div>
+        <div style={{ padding: 22 }}>
+          <label style={{ display: "block", fontSize: ".72rem", fontWeight: 700, color: "#64748B", marginBottom: 6 }}>
+            What should this executive reason about?
+          </label>
+          <textarea
+            value={goal}
+            onChange={(e) => setGoal(e.target.value)}
+            rows={3}
+            style={{
+              width: "100%",
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid #CBD5E1",
+              fontFamily: "inherit",
+              fontSize: ".9rem",
+              boxSizing: "border-box",
+            }}
+          />
+          <button
+            type="button"
+            disabled={loading || !goal.trim()}
+            onClick={() => void run()}
+            style={{
+              marginTop: 12,
+              padding: "10px 18px",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 10,
+              fontWeight: 800,
+              cursor: loading ? "wait" : "pointer",
+            }}
+          >
+            {loading ? "Agent reasoning…" : "Run agent"}
+          </button>
+          {error && <p style={{ color: "#B91C1C", marginTop: 12 }}>{error}</p>}
+          {advice && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>Assessment</div>
+              <p style={{ margin: 0, color: "#334155", lineHeight: 1.5 }}>{advice.assessment}</p>
+              {!!advice.suggestions?.length && (
+                <>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Suggestions</div>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {advice.suggestions.map((s, i) => {
+                      const title = typeof s === "string" ? s : s.title || "Suggestion";
+                      const detail = typeof s === "string" ? "" : s.detail || "";
+                      const pri = typeof s === "string" ? "" : s.priority || "";
+                      return (
+                        <li key={i} style={{ marginBottom: 6, color: "#334155" }}>
+                          <strong>{title}</strong>
+                          {pri ? ` · ${pri}` : ""}
+                          {detail ? ` — ${detail}` : ""}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )}
+              {!!advice.risks?.length && (
+                <>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Risks</div>
+                  <ul style={{ margin: 0, paddingLeft: 18, color: "#9A3412" }}>
+                    {advice.risks.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {!!advice.reasoning?.length && (
+                <>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>How the agent reasoned</div>
+                  <ol style={{ margin: 0, paddingLeft: 18, color: "#64748B", fontSize: ".84rem" }}>
+                    {advice.reasoning.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ol>
+                </>
+              )}
+              {!!data?.toolTrace?.length && (
+                <div style={{ marginTop: 12, fontSize: ".72rem", color: "#0f766e", fontWeight: 700 }}>
+                  Tools used: {data.toolTrace.map((t) => t.tool).filter(Boolean).join(" · ")}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div style={{ padding: "12px 22px", borderTop: "1px solid #E2E8F0", textAlign: "right" }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #CBD5E1", background: "#F8FAFC", fontWeight: 700, cursor: "pointer" }}
+          >
+            Close
           </button>
         </div>
       </div>
