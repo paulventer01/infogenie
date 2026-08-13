@@ -59,12 +59,21 @@ interface IntegrationsStatus {
 
 interface VaultSaveResult {
   ok: boolean;
+  configured?: boolean;
+  hint?: string | null;
   error?: string;
 }
 
 interface VaultStatusResult {
   ok: boolean;
   configured?: boolean;
+  hint?: string | null;
+  error?: string;
+}
+
+interface VaultBatchResult {
+  ok: boolean;
+  keys?: Record<string, { configured?: boolean; hint?: string | null; blocked?: boolean }>;
   error?: string;
 }
 
@@ -1550,14 +1559,21 @@ function findIntegById(id: string): { item: IntegItem; catKey: string; catLabel:
   return null;
 }
 
-function listVaultSaveIds(): string[] {
+/** Every API-key card persists to the server vault (not just vaultSave:true). */
+function listApiKeyIds(): string[] {
   const ids: string[] = [];
   for (const cat of Object.values(INTEGRATIONS)) {
     for (const item of cat.items) {
-      if (item.vaultSave) ids.push(item.id);
+      if (item.authType === "apikey") ids.push(item.id);
     }
   }
   return ids;
+}
+
+function readDomKey(id: string): string {
+  if (typeof document === "undefined") return "";
+  const el = document.getElementById(`inp-${id}`) as HTMLInputElement | null;
+  return (el?.value || "").trim();
 }
 
 type ConnState = Record<string, "1" | "oauth">;
@@ -1595,6 +1611,8 @@ export default function Settings() {
   const [docId, setDocId] = useState<string | null>(null);
   /** Platforms with a key stored in the server vault (raw key is never returned). */
   const [vaultConfigured, setVaultConfigured] = useState<Record<string, boolean>>({});
+  /** Masked hint shown in the input (••••••••abcd) so reload still looks “saved”. */
+  const [vaultHints, setVaultHints] = useState<Record<string, string>>({});
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -1639,25 +1657,32 @@ export default function Settings() {
       }
     })();
 
-    // Vault is the source of truth for vaultSave platforms (survives new tunnel
-    // origins / cleared localStorage). GET never returns the raw key — only
-    // configured:true|false — so mark Connected and show a saved placeholder.
+    // Vault is the source of truth for all API-key cards (survives new tunnel
+    // origins / cleared localStorage). Batch GET returns configured + masked hint.
     (async () => {
-      const ids = listVaultSaveIds();
-      const results = await Promise.all(
-        ids.map(async (id) => {
-          const r = await apiGet<VaultStatusResult>(`/api/settings/api-key/${encodeURIComponent(id)}`);
-          return { id, configured: !!(r.ok && r.configured) };
-        }),
+      const ids = listApiKeyIds();
+      const r = await apiGet<VaultBatchResult>(
+        `/api/settings/api-keys?platforms=${encodeURIComponent(ids.join(","))}`,
       );
       if (cancelled) return;
+      if (!r.ok) {
+        if (r.error === "auth_required" || /login|unauthorized/i.test(r.error || "")) {
+          toast("⚠️ Sign in to restore saved API keys");
+        }
+        return;
+      }
+      const map = r.keys || {};
       const vaultNext: Record<string, boolean> = {};
+      const hintsNext: Record<string, string> = {};
       setConnected((prev) => {
         const next = { ...prev };
-        for (const { id, configured } of results) {
+        for (const id of ids) {
+          const row = map[id];
+          const configured = !!(row && row.configured);
           vaultNext[id] = configured;
           if (configured) {
             next[id] = "1";
+            if (row?.hint) hintsNext[id] = row.hint;
             try {
               localStorage.setItem("ig_integ_" + id, "1");
             } catch {
@@ -1668,6 +1693,15 @@ export default function Settings() {
         return next;
       });
       setVaultConfigured(vaultNext);
+      setVaultHints(hintsNext);
+      // Show masked hint in the field so reopen clearly looks saved.
+      setInputs((prev) => {
+        const next = { ...prev };
+        for (const [id, hint] of Object.entries(hintsNext)) {
+          if (!next[id]) next[id] = hint;
+        }
+        return next;
+      });
     })();
 
     (async () => {
@@ -1706,8 +1740,19 @@ export default function Settings() {
 
   const connectedCount = Object.keys(connected).length;
 
+  function resolveKeyInput(id: string): string {
+    const typed = (inputs[id] || "").trim();
+    // Ignore masked vault hints — they are display-only.
+    if (typed && vaultHints[id] && typed === vaultHints[id]) return "";
+    if (typed && !/^•/.test(typed)) return typed;
+    const dom = readDomKey(id);
+    if (dom && vaultHints[id] && dom === vaultHints[id]) return "";
+    if (dom && !/^•/.test(dom)) return dom;
+    return "";
+  }
+
   async function testConnection(id: string) {
-    const key = (inputs[id] || "").trim();
+    const key = resolveKeyInput(id);
     if (!key) {
       toast("⚠️ Please enter your API key first");
       return;
@@ -1728,7 +1773,7 @@ export default function Settings() {
   }
 
   async function connectVault(id: string, name: string) {
-    const key = (inputs[id] || "").trim();
+    const key = resolveKeyInput(id);
     if (!key) {
       toast("⚠️ Please enter your API key before connecting");
       return;
@@ -1738,43 +1783,32 @@ export default function Settings() {
     if (!r.ok) {
       setSaving((p) => ({ ...p, [id]: false }));
       const err = r.error || "unknown error";
-      if (err === "Login required" || /login|unauthorized|401/i.test(err)) {
-        toast("❌ Sign in to save API keys — they are stored in your workspace vault");
+      if (err === "auth_required" || err === "Login required" || /login|unauthorized|401/i.test(err)) {
+        toast("❌ Sign in required — log in, then click Connect again to save the key");
       } else if (err === "no_tenant") {
         toast("❌ No workspace selected — pick a tenant, then Connect again");
-      } else if (/DATABASE_URL|no DATABASE/i.test(err)) {
+      } else if (err === "platform_key_admin_only") {
+        toast("❌ This key is managed under Admin → Platform APIs (owner only)");
+      } else if (/DATABASE_URL|no DATABASE|setApiKey/i.test(err)) {
         toast("❌ Database not configured — cannot persist API keys");
       } else {
         toast("❌ Could not save key: " + err);
       }
       return;
     }
+    const hint = r.hint || `••••••••${key.slice(-4)}`;
     markConnected(id, "1");
     setVaultConfigured((p) => ({ ...p, [id]: true }));
-    // Never keep the raw key in React state after a successful vault write.
-    setInputs((p) => ({ ...p, [id]: "" }));
+    setVaultHints((p) => ({ ...p, [id]: hint }));
+    // Keep a masked value visible so reopen / refresh still looks saved.
+    setInputs((p) => ({ ...p, [id]: hint }));
     setSaving((p) => ({ ...p, [id]: false }));
-    toast(
-      `✅ ${name} key saved to your workspace — ${id === "apify" ? "TikTok Organic Monitor and Local Lead Finder are now active" : name + " stays connected after reload"}`,
-    );
+    toast(`✅ ${name} API key saved to your workspace — it will stay connected after you reopen the app`);
   }
 
+  /** Legacy name — all API-key cards now persist via the server vault. */
   function connectCard(id: string, name: string) {
-    const key = (inputs[id] || "").trim();
-    if (!key) {
-      toast("⚠️ Please enter your API key before connecting");
-      return;
-    }
-    markConnected(id, "1");
-    const liveMsg =
-      id === "semrush"
-        ? "✅ Semrush connected — Keyword Gap table now shows live data"
-        : id === "brandwatch"
-          ? "✅ Brandwatch connected — Signal Feed and SOV chart now show live monitoring"
-          : id === "meta-ad-library"
-            ? "✅ Meta Ad Library connected — competitor ads now pulled live from Facebook"
-            : `✅ ${name} connected — InfoGenie is now using this integration`;
-    toast(liveMsg);
+    void connectVault(id, name);
   }
 
   function connectOAuth(id: string, name: string) {
@@ -1960,16 +1994,24 @@ export default function Settings() {
                                 type="password"
                                 className="api-key-inp"
                                 placeholder={
-                                  item.vaultSave && vaultConfigured[item.id]
-                                    ? "Key saved on server — paste a new key to replace"
+                                  vaultConfigured[item.id]
+                                    ? "Key saved — paste a new key to replace"
                                     : item.placeholder || "Paste your API Key here..."
                                 }
                                 id={`inp-${item.id}`}
                                 value={inputs[item.id] || ""}
+                                onFocus={() => {
+                                  // Clear masked hint so the user can paste a replacement.
+                                  if (vaultHints[item.id] && inputs[item.id] === vaultHints[item.id]) {
+                                    setInputs((p) => ({ ...p, [item.id]: "" }));
+                                  }
+                                }}
                                 onChange={(e) => setInputs((p) => ({ ...p, [item.id]: e.target.value }))}
                                 autoComplete="off"
+                                name={`ig-api-${item.id}`}
                               />
                               <button
+                                type="button"
                                 className="btn-test"
                                 disabled={!!testing[item.id]}
                                 onClick={() => testConnection(item.id)}
@@ -1977,16 +2019,20 @@ export default function Settings() {
                                 {testing[item.id] ? "Testing…" : "Test"}
                               </button>
                             </div>
+                            {vaultConfigured[item.id] ? (
+                              <div style={{ fontSize: "0.72rem", color: "#0f766e", fontWeight: 700, margin: "6px 0 2px" }}>
+                                ✓ Saved in workspace vault{vaultHints[item.id] ? ` (${vaultHints[item.id]})` : ""}
+                              </div>
+                            ) : null}
                             <div className="integ-card-actions">
                               <button
-                                className={`btn-connect-card${isConn ? " btn-connected-card" : ""}`}
+                                type="button"
+                                className={`btn-connect-card ig-btn-primary${isConn ? " btn-connected-card" : ""}`}
                                 id={`btn-${item.id}`}
                                 disabled={!!saving[item.id]}
-                                onClick={() =>
-                                  item.vaultSave ? connectVault(item.id, item.name) : connectCard(item.id, item.name)
-                                }
+                                onClick={() => connectVault(item.id, item.name)}
                               >
-                                {saving[item.id] ? "Saving…" : isConn ? "✓ Connected" : "Connect"}
+                                {saving[item.id] ? "Saving…" : isConn ? "✓ Connected — update" : "Connect"}
                               </button>
                               <button className="btn-docs-card" onClick={() => openIntegrationDoc(item.id)}>
                                 📖 View Docs
