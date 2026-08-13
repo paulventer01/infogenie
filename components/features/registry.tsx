@@ -157,6 +157,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "google-trends": L("google-trends", () => import("@/components/features/analyse/GoogleTrends")),
   spyfu: L("spyfu", () => import("@/components/features/analyse/SpyFu")),
   majestic: L("majestic", () => import("@/components/features/analyse/MajesticSEO")),
+  mangools: L("mangools", () => import("@/components/features/analyse/MangoolsSEO")),
   semrush: L("semrush", () => import("@/components/features/analyse/SemrushIntel")),
   ahrefs: L("ahrefs", () => import("@/components/features/analyse/AhrefsIntel")),
   serpstat: L("serpstat", () => import("@/components/features/analyse/SerpstatIntel")),

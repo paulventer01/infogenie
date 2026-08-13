@@ -208,7 +208,7 @@ export default function McpServer() {
       <div className="view-header ig-panel-hero">
         <h2>🔌 MCP Ecosystem</h2>
         <p className="view-sub">
-          Export InfoGenie as an MCP tool server, and connect as a client to Fetch, Memory, and custom HTTP MCP servers.
+          Export InfoGenie as an MCP tool server, and connect as a client to Fetch, Memory, Mangools Streamable HTTP MCP, and custom REST / JSON-RPC servers.
         </p>
       </div>
 
@@ -313,7 +313,7 @@ export default function McpServer() {
             <div className="ig-card">
               <h3 style={{ margin: "0 0 8px", fontSize: "1rem" }}>Connected servers</h3>
               <p style={{ margin: "0 0 12px", fontSize: "0.78rem", color: "#6B7280" }}>
-                Builtin Fetch + Memory seed automatically. Add custom REST / JSON-RPC MCP endpoints below.
+                Builtin Fetch + Memory seed automatically. Mangools SEO MCP auto-connects when <code>MANGOOLS_API_KEY</code> is saved in Platform APIs.
               </p>
               {!servers.length ? (
                 <div style={{ color: "#9CA3AF", fontSize: "0.78rem" }}>No servers — seeding…</div>
