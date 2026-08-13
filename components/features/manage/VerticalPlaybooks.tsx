@@ -38,7 +38,7 @@ interface ActivePlaybook {
   content?: PlaybookContent;
 }
 
-const PHASE_COLORS = ["#3b82f6", "#8b5cf6", "#10b981"];
+const PHASE_COLORS = ["#3b82f6", "#0284c7", "#10b981"];
 
 export default function VerticalPlaybooks() {
   const [list, setList] = useState<Playbook[] | null>(null);

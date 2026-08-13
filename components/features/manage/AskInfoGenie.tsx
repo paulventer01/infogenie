@@ -251,7 +251,7 @@ function AnswerBubble({
               </span>
             )}
             {result.liveDataUsed && (
-              <span style={{ background: "#FFF7ED", color: "#C2410C", border: "1px solid #FED7AA", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 700 }}>
+              <span style={{ background: "#FFF7ED", color: "#0b5f59", border: "1px solid #FED7AA", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 700 }}>
                 📡 Live Data
               </span>
             )}
@@ -261,7 +261,7 @@ function AnswerBubble({
               </span>
             )}
             {(result.predictionsUsed || 0) > 0 && (
-              <span style={{ background: "#F5F3FF", color: "#7C3AED", border: "1px solid #DDD6FE", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 700 }}>
+              <span style={{ background: "#F5F3FF", color: "#0f766e", border: "1px solid #DDD6FE", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 700 }}>
                 🔮 {result.predictionsUsed} predictions
               </span>
             )}
@@ -515,7 +515,7 @@ function HistoryTab({ onReask }: { onReask: (q: string, mode: Mode) => void }) {
         )}
         <button
           onClick={doSearch}
-          style={{ padding: "8px 14px", borderRadius: 8, border: 0, background: "linear-gradient(135deg,#0066FF,#7C3AED)", color: "#fff", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}
+          style={{ padding: "8px 14px", borderRadius: 8, border: 0, background: "linear-gradient(135deg,#0066FF,#0f766e)", color: "#fff", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}
         >Search</button>
         {hasFilters && (
           <button
@@ -805,7 +805,7 @@ export default function AskInfoGenie() {
   const tabStyle = (t: Tab): React.CSSProperties => ({
     padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700,
     fontSize: "0.8rem", transition: "all .15s",
-    background: tab === t ? (t === "boardroom" ? "#0F172A" : "linear-gradient(135deg,#0066FF,#7C3AED)") : "#F3F4F6",
+    background: tab === t ? (t === "boardroom" ? "#0F172A" : "linear-gradient(135deg,#0066FF,#0f766e)") : "#F3F4F6",
     color: tab === t ? "#fff" : "#6B7280",
   });
 
@@ -841,7 +841,7 @@ export default function AskInfoGenie() {
             <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 18, marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ background: "linear-gradient(135deg,#0066FF,#7C3AED)", borderRadius: 8, padding: "4px 10px", fontSize: "0.66rem", fontWeight: 800, color: "#fff", letterSpacing: ".04em" }}>⚡ AI COPILOT</div>
+                  <div style={{ background: "linear-gradient(135deg,#0066FF,#0f766e)", borderRadius: 8, padding: "4px 10px", fontSize: "0.66rem", fontWeight: 800, color: "#fff", letterSpacing: ".04em" }}>⚡ AI COPILOT</div>
                   <span style={{ fontSize: "0.73rem", color: "#9CA3AF" }}>{indexedStr}</span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

@@ -221,8 +221,8 @@ export default function HubspotSync() {
               onClick={bulkFromLeads}
               style={{
                 padding: "10px 16px",
-                background: "#F97316",
-                border: "2px solid #F97316",
+                background: "#0f766e",
+                border: "2px solid #0f766e",
                 borderRadius: 8,
                 color: "#fff",
                 WebkitTextFillColor: "#fff",
@@ -280,8 +280,8 @@ export default function HubspotSync() {
               onClick={pushOne}
               style={{
                 padding: "9px 14px",
-                background: "#F97316",
-                border: "2px solid #F97316",
+                background: "#0f766e",
+                border: "2px solid #0f766e",
                 borderRadius: 6,
                 color: "#fff",
                 WebkitTextFillColor: "#fff",
@@ -311,8 +311,8 @@ export default function HubspotSync() {
             style={{
               padding: "7px 14px",
               background: "#fff",
-              border: "1.5px solid #F97316",
-              color: "#F97316",
+              border: "1.5px solid #0f766e",
+              color: "#0f766e",
               borderRadius: 6,
               fontSize: "0.78rem",
               fontWeight: 700,

@@ -677,11 +677,11 @@ export default function AiTeam() {
             onClick={() => setMainTab(t)}
             style={{
               padding: "12px 22px", border: "none",
-              borderBottom: mainTab === t ? "2px solid #7C3AED" : "2px solid transparent",
+              borderBottom: mainTab === t ? "2px solid #0f766e" : "2px solid transparent",
               marginBottom: -2,
               background: "none", cursor: "pointer", fontSize: ".88rem",
               fontWeight: mainTab === t ? 800 : 600,
-              color: mainTab === t ? "#7C3AED" : "var(--text-muted,#6B7280)",
+              color: mainTab === t ? "#0f766e" : "var(--text-muted,#6B7280)",
               transition: "color .15s, border-color .15s",
             }}
           >
@@ -1444,7 +1444,7 @@ function TasksModal({
                     alignItems: "flex-start",
                     gap: 10,
                     padding: "10px 12px",
-                    border: `1px solid ${checked ? "#7C3AED" : "#E2E8F0"}`,
+                    border: `1px solid ${checked ? "#0f766e" : "#E2E8F0"}`,
                     borderRadius: 9,
                     marginBottom: 6,
                     cursor: "pointer",
@@ -1460,7 +1460,7 @@ function TasksModal({
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: ".88rem", color: "#0F172A", fontWeight: 600 }}>{t}</div>
                     {isCustom && (
-                      <div style={{ fontSize: ".66rem", color: "#7C3AED", marginTop: 2, fontWeight: 700 }}>
+                      <div style={{ fontSize: ".66rem", color: "#0f766e", marginTop: 2, fontWeight: 700 }}>
                         CUSTOM
                       </div>
                     )}
@@ -1636,7 +1636,7 @@ function DailyReportModal({
               <div
                 style={{
                   background: "#F8FAFC",
-                  borderLeft: "3px solid #7C3AED",
+                  borderLeft: "3px solid #0f766e",
                   padding: "12px 14px",
                   borderRadius: 6,
                   marginBottom: 18,
@@ -2474,7 +2474,7 @@ function AutoMeetingsPanel({
           <button
             onClick={runNow}
             disabled={busy}
-            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#ffffff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy ? "⏳ Drafting…" : "▶ Run Now"}
           </button>
@@ -2608,7 +2608,7 @@ function AutoMeetingSettingsModal({
                   style={{
                     flex: 1,
                     padding: 10,
-                    border: `2px solid ${frequency === f ? "#7C3AED" : "#E2E8F0"}`,
+                    border: `2px solid ${frequency === f ? "#0f766e" : "#E2E8F0"}`,
                     borderRadius: 8,
                     cursor: "pointer",
                     textAlign: "center",
@@ -2812,7 +2812,7 @@ function AutoReportPanel({
             title="Generate now and send via email + Slack"
             onClick={runSend}
             disabled={busy !== null}
-            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#ffffff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy === "send" ? "⏳ Running…" : "▶ Run + Send"}
           </button>

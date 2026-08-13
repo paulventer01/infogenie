@@ -34,7 +34,7 @@ const CHANNEL_COLOR: Record<string, string> = {
   facebook: "#1877F2",
   youtube: "#FF0000",
   blog: "#6B7280",
-  email: "#7C3AED",
+  email: "#0f766e",
 };
 
 interface CalendarPost {

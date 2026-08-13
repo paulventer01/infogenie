@@ -45,7 +45,7 @@ interface HistoryRun {
 type MainTab = "team" | "briefing" | "history";
 
 const PERSONA_DEFAULTS: Persona[] = [
-  { id: "cmo", name: "CMO", title: "Chief Marketing Officer", icon: "👑", color: "#7C3AED", description: "Strategy, brand, budget, and cross-channel alignment.", expertise: ["Strategy", "Brand", "Budget", "Leadership"] },
+  { id: "cmo", name: "CMO", title: "Chief Marketing Officer", icon: "👑", color: "#0f766e", description: "Strategy, brand, budget, and cross-channel alignment.", expertise: ["Strategy", "Brand", "Budget", "Leadership"] },
   { id: "seo_director", name: "SEO Director", title: "SEO & Content Director", icon: "🔍", color: "#059669", description: "Organic search, content strategy, and technical SEO.", expertise: ["SEO", "Content", "Keywords", "Technical"] },
   { id: "media_buyer", name: "Media Buyer", title: "Paid Media Director", icon: "📣", color: "#DC2626", description: "Paid ads, ROAS optimisation, and creative testing.", expertise: ["Paid Ads", "ROAS", "Creative", "Attribution"] },
   { id: "cro_specialist", name: "CRO Specialist", title: "Conversion Rate Optimisation Specialist", icon: "🧪", color: "#D97706", description: "Landing pages, A/B testing, and funnel analysis.", expertise: ["CRO", "A/B Testing", "UX", "Funnels"] },
@@ -246,7 +246,7 @@ function ContributionAccordion({ agent, index }: { agent: AgentContribution; ind
 
 function SynthesisPanel({ synthesis }: { synthesis: Synthesis }) {
   return (
-    <div style={{ border: "2px solid #7C3AED40", borderRadius: 14, overflow: "hidden", background: "linear-gradient(135deg,#7C3AED06,#0EA5E908)" }}>
+    <div style={{ border: "2px solid #0f766e40", borderRadius: 14, overflow: "hidden", background: "linear-gradient(135deg,#0f766e06,#0EA5E908)" }}>
       <div style={{ padding: "16px 20px", background: "linear-gradient(135deg,#0f766e,#0284c7)", display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: "1.5rem" }}>👑</span>
         <div>
@@ -257,16 +257,16 @@ function SynthesisPanel({ synthesis }: { synthesis: Synthesis }) {
       </div>
       <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 16 }}>
         <div>
-          <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#7C3AED", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Executive Summary</div>
+          <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#0f766e", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Executive Summary</div>
           <p style={{ margin: 0, fontSize: ".88rem", color: "var(--text,#374151)", lineHeight: 1.7 }}>{synthesis.executive_summary}</p>
         </div>
         {(synthesis.priority_actions || []).length > 0 && (
           <div>
-            <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#7C3AED", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Priority Action Plan</div>
+            <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#0f766e", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Priority Action Plan</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {synthesis.priority_actions.map((a, i) => (
-                <div key={i} style={{ display: "flex", gap: 12, padding: "12px 14px", background: "var(--card-bg,#fff)", border: "1px solid var(--border,#E5E7EB)", borderRadius: 9, borderLeft: "4px solid #7C3AED" }}>
-                  <span style={{ width: 24, height: 24, borderRadius: 12, background: "#7C3AED", color: "#fff", fontSize: ".7rem", fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
+                <div key={i} style={{ display: "flex", gap: 12, padding: "12px 14px", background: "var(--card-bg,#fff)", border: "1px solid var(--border,#E5E7EB)", borderRadius: 9, borderLeft: "4px solid #0f766e" }}>
+                  <span style={{ width: 24, height: 24, borderRadius: 12, background: "#0f766e", color: "#fff", fontSize: ".7rem", fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: ".85rem", fontWeight: 700, color: "var(--text,#111827)", marginBottom: 3 }}>{a.action}</div>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: ".72rem", color: "var(--text-muted,#6B7280)" }}>
@@ -295,8 +295,8 @@ function SynthesisPanel({ synthesis }: { synthesis: Synthesis }) {
           )}
         </div>
         {synthesis.rationale && (
-          <div style={{ padding: "12px 14px", background: "#7C3AED08", border: "1px solid #7C3AED20", borderRadius: 8 }}>
-            <span style={{ fontSize: ".72rem", fontWeight: 700, color: "#7C3AED" }}>▶ Rationale: </span>
+          <div style={{ padding: "12px 14px", background: "#0f766e08", border: "1px solid #0f766e20", borderRadius: 8 }}>
+            <span style={{ fontSize: ".72rem", fontWeight: 700, color: "#0f766e" }}>▶ Rationale: </span>
             <span style={{ fontSize: ".8rem", color: "var(--text,#374151)" }}>{synthesis.rationale}</span>
           </div>
         )}
@@ -313,8 +313,8 @@ function SessionView({ session, onBack }: { session: BriefingSession; onBack?: (
           ← Back to History
         </button>
       )}
-      <div style={{ padding: "14px 16px", background: "#7C3AED08", border: "1px solid #7C3AED20", borderRadius: 10 }}>
-        <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#7C3AED", marginBottom: 4, textTransform: "uppercase", letterSpacing: ".06em" }}>Strategic Challenge</div>
+      <div style={{ padding: "14px 16px", background: "#0f766e08", border: "1px solid #0f766e20", borderRadius: 10 }}>
+        <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#0f766e", marginBottom: 4, textTransform: "uppercase", letterSpacing: ".06em" }}>Strategic Challenge</div>
         <div style={{ fontSize: ".88rem", color: "var(--text,#374151)", lineHeight: 1.6 }}>{session.challenge}</div>
       </div>
       <div>
@@ -440,9 +440,9 @@ export default function BriefingRoom() {
   const editingDefaults = editingPersona ? (defaultConfigs[editingPersona.id] || null) : null;
 
   const TAB_STYLE = (active: boolean) => ({
-    padding: "10px 20px", border: "none", borderBottom: active ? "2px solid #7C3AED" : "2px solid transparent",
+    padding: "10px 20px", border: "none", borderBottom: active ? "2px solid #0f766e" : "2px solid transparent",
     background: "none", cursor: "pointer", fontSize: ".85rem", fontWeight: active ? 800 : 600,
-    color: active ? "#7C3AED" : "var(--text-muted,#6B7280)", transition: "color .15s, border-color .15s",
+    color: active ? "#0f766e" : "var(--text-muted,#6B7280)", transition: "color .15s, border-color .15s",
   });
 
   return (
@@ -510,7 +510,7 @@ export default function BriefingRoom() {
                     key={qb.id}
                     onClick={() => applyQuickBriefing(qb)}
                     style={{ padding: "12px 14px", border: "1px solid var(--border,#E5E7EB)", borderRadius: 10, background: "var(--card-bg,#fff)", cursor: "pointer", textAlign: "left", transition: "border-color .15s" }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#7C3AED"; }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#0f766e"; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border,#E5E7EB)"; }}
                   >
                     <div style={{ fontSize: "1.3rem", marginBottom: 6 }}>{qb.icon}</div>
@@ -561,7 +561,7 @@ export default function BriefingRoom() {
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           {running && (
             <div style={{ textAlign: "center", padding: "60px 24px" }}>
-              <div style={{ width: 48, height: 48, border: "4px solid #7C3AED30", borderTopColor: "#7C3AED", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px" }} />
+              <div style={{ width: 48, height: 48, border: "4px solid #0f766e30", borderTopColor: "#0f766e", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px" }} />
               <div style={{ fontSize: ".95rem", fontWeight: 700, color: "var(--text,#111827)", marginBottom: 6 }}>Running your team briefing…</div>
               <div style={{ fontSize: ".82rem", color: "var(--text-muted,#6B7280)" }}>Each agent analyses the challenge sequentially, then the CMO synthesises. This typically takes 20–40 seconds.</div>
             </div>
@@ -642,7 +642,7 @@ export default function BriefingRoom() {
                           )}
                         </div>
                       </div>
-                      {run.session_output && <span style={{ fontSize: ".75rem", color: "#7C3AED", fontWeight: 700, whiteSpace: "nowrap" }}>View →</span>}
+                      {run.session_output && <span style={{ fontSize: ".75rem", color: "#0f766e", fontWeight: 700, whiteSpace: "nowrap" }}>View →</span>}
                     </div>
                   </div>
                 );

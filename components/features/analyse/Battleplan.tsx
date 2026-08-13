@@ -99,7 +99,7 @@ function fmtT(n: number): string {
 
 const KW_VOLUMES = [14800, 8200, 22000, 6600, 18400, 4400, 9800, 12000];
 const KW_DIFFICULTIES = ["Low", "Medium", "Medium", "High"];
-const KW_COLORS = ["#0066FF", "#7C3AED", "#059669", "#D97706"];
+const KW_COLORS = ["#0066FF", "#0f766e", "#059669", "#D97706"];
 const ANGLES = ["Pain-Point Contrast", "Benefit Superiority", "Social Proof Attack", "Value Proposition"];
 const AUD_CHANNELS = ["Meta Ads", "Google Ads", "LinkedIn Ads", "TikTok Ads"];
 const AUD_GAPS = [
@@ -132,7 +132,7 @@ const btnBase: CSSProperties = {
 };
 const primaryStyle: CSSProperties = { ...btnBase, background: "linear-gradient(135deg,#0066FF,#00C9C8)", color: "#fff" };
 const dangerStyle: CSSProperties = { ...btnBase, background: "linear-gradient(135deg,#EF4444,#DC2626)", color: "#fff" };
-const purpleStyle: CSSProperties = { ...btnBase, background: "linear-gradient(135deg,#7C3AED,#4F46E5)", color: "#fff" };
+const purpleStyle: CSSProperties = { ...btnBase, background: "linear-gradient(135deg,#0f766e,#4F46E5)", color: "#fff" };
 const greenStyle: CSSProperties = { ...btnBase, background: "linear-gradient(135deg,#10B981,#059669)", color: "#fff" };
 const ghostStyle: CSSProperties = { ...btnBase, background: "#F3F4F6", border: "1px solid #E5E7EB", color: "#374151" };
 const tealStyle: CSSProperties = { ...btnBase, background: "linear-gradient(135deg,#00C9C8,#00E5FF)", color: "#0A1628" };
@@ -622,7 +622,7 @@ export default function Battleplan() {
   const adItems = c.adCopy && c.adCopy.length > 0 ? c.adCopy.slice(0, 3) : null;
   const creativeCards: CardData[] = adItems
     ? adItems.map((acItem, i) => ({
-        border: "#7C3AED",
+        border: "#0f766e",
         badgeStyle: { background: "#F5F3FF", color: "#6D28D9" },
         badge: ANGLES[i] || "Creative Angle",
         title: `"${acItem.headline || "Counter Creative"}"`,
@@ -630,7 +630,7 @@ export default function Battleplan() {
         buttons: [{ label: "✨ Open Creative Studio", onClick: () => callWin("bpCS", idx, i), style: purpleStyle }],
       }))
     : (c.suggestions || ["Exploit their weak personalisation with hyper-targeted messaging"]).slice(0, 3).map((s, i) => ({
-        border: "#7C3AED",
+        border: "#0f766e",
         badgeStyle: { background: "#F5F3FF", color: "#6D28D9" },
         badge: ANGLES[i] || "Creative Angle",
         title: `Beat ${cName}: ${s.slice(0, 35)}${s.length > 35 ? "…" : ""}`,

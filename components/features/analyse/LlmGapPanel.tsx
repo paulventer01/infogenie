@@ -82,7 +82,7 @@ export default function LlmGapPanel() {
           padding: '9px 16px',
           borderRadius: 8,
           border: 'none',
-          background: '#7C3AED',
+          background: '#0f766e',
           color: '#fff',
           fontWeight: 700,
           fontSize: '0.8rem',

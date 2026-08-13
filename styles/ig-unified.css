@@ -302,3 +302,136 @@ body:has(#ig-app-shell) #ig-react-panel .ig-table th {
 body:has(#ig-app-shell) #ig-react-panel .ig-table td {
   color: #0b1220 !important;
 }
+
+/* ============================================================
+   PLATFORM CTA LOCK — teal→sky only (no orange / purple chrome)
+   DESIGN: warm #f97316 is never main chrome or primary CTAs.
+   Inline-styled legacy buttons are remapped here so every page
+   inherits the brand without waiting on per-file migrations.
+   ============================================================ */
+
+body:has(#ig-app-shell) {
+  --gold: #0f766e;
+  --ig-warm: #0284c7;
+  --v2-warm: #0284c7;
+}
+
+/* Filled orange / amber / dark-orange CTAs → brand gradient */
+body:has(#ig-app-shell) button[style*="#F97316"],
+body:has(#ig-app-shell) button[style*="#f97316"],
+body:has(#ig-app-shell) button[style*="#EA580C"],
+body:has(#ig-app-shell) button[style*="#ea580c"],
+body:has(#ig-app-shell) button[style*="#C2410C"],
+body:has(#ig-app-shell) button[style*="#c2410c"],
+body:has(#ig-app-shell) button[style*="#FF6B35"],
+body:has(#ig-app-shell) button[style*="#ff6b35"],
+body:has(#ig-app-shell) button[style*="#FB923C"],
+body:has(#ig-app-shell) button[style*="#fb923c"],
+body:has(#ig-app-shell) button[style*="#F59E0B"][style*="background"],
+body:has(#ig-app-shell) a[style*="#F97316"][style*="background"],
+body:has(#ig-app-shell) a[style*="#EA580C"][style*="background"],
+body:has(#ig-app-shell) [role="button"][style*="#F97316"],
+body:has(#ig-app-shell) [role="button"][style*="#EA580C"] {
+  background: var(--ig-grad) !important;
+  background-image: var(--ig-grad) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.25) !important;
+  text-shadow: none !important;
+}
+
+/* Outline orange CTAs → brand outline */
+body:has(#ig-app-shell) button[style*="border"][style*="#F97316"],
+body:has(#ig-app-shell) button[style*="border"][style*="#f97316"],
+body:has(#ig-app-shell) button[style*="border"][style*="#EA580C"],
+body:has(#ig-app-shell) button[style*="borderColor"][style*="#F97316"] {
+  border-color: var(--ig-primary) !important;
+  color: var(--ig-primary) !important;
+  -webkit-text-fill-color: var(--ig-primary) !important;
+}
+
+/* When outline also had orange fill forced above, restore outline look if bg was white */
+body:has(#ig-app-shell) button[style*="background: #fff"][style*="#F97316"],
+body:has(#ig-app-shell) button[style*="background:#fff"][style*="#F97316"],
+body:has(#ig-app-shell) button[style*='background: "#fff"'][style*="#F97316"],
+body:has(#ig-app-shell) button[style*="background: #ffffff"][style*="#F97316"],
+body:has(#ig-app-shell) button[style*="background:#ffffff"][style*="#F97316"] {
+  background: #ffffff !important;
+  background-image: none !important;
+  border: 1.5px solid var(--ig-primary) !important;
+  color: var(--ig-primary) !important;
+  -webkit-text-fill-color: var(--ig-primary) !important;
+  box-shadow: none !important;
+}
+
+/* Purple “AI” micro-buttons → brand gradient (no violet chrome) */
+body:has(#ig-app-shell) button[style*="#7C3AED"],
+body:has(#ig-app-shell) button[style*="#7c3aed"],
+body:has(#ig-app-shell) button[style*="#A855F7"],
+body:has(#ig-app-shell) button[style*="#a855f7"],
+body:has(#ig-app-shell) button[style*="#8B5CF6"],
+body:has(#ig-app-shell) button[style*="#8b5cf6"] {
+  background: var(--ig-grad) !important;
+  background-image: var(--ig-grad) !important;
+  border: none !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* Links that used orange as brand accent → teal */
+body:has(#ig-app-shell) a[style*="color: #F97316"],
+body:has(#ig-app-shell) a[style*="color:#F97316"],
+body:has(#ig-app-shell) a[style*="color: #f97316"],
+body:has(#ig-app-shell) a[style*="color:#f97316"],
+body:has(#ig-app-shell) a[style*="color: #EA580C"],
+body:has(#ig-app-shell) a[style*="color:#EA580C"] {
+  color: var(--ig-primary) !important;
+}
+
+/* Toggle / switch on-state often hard-coded orange */
+body:has(#ig-app-shell) button[aria-pressed="true"][style*="#F97316"],
+body:has(#ig-app-shell) button[aria-pressed="true"][style*="#f97316"],
+body:has(#ig-app-shell) button[aria-pressed="true"][style*="#EA580C"],
+body:has(#ig-app-shell) .ig-toggle[aria-pressed="true"],
+body:has(#ig-app-shell) .ig-toggle.is-on {
+  background: var(--ig-primary) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* Active pill tabs: prefer brand over pure black when black was used as “selected” */
+body:has(#ig-app-shell) #ig-react-panel button[style*="background: #0A1628"],
+body:has(#ig-app-shell) #ig-react-panel button[style*="background:#0A1628"],
+body:has(#ig-app-shell) #ig-react-panel button[style*='#0A1628'] {
+  background: var(--ig-primary) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* Shared toggle primitive */
+body:has(#ig-app-shell) .ig-toggle {
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  background: #d1d5db;
+  padding: 0;
+}
+body:has(#ig-app-shell) .ig-toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s ease;
+}
+body:has(#ig-app-shell) .ig-toggle[aria-pressed="true"]::after,
+body:has(#ig-app-shell) .ig-toggle.is-on::after {
+  left: 21px;
+}

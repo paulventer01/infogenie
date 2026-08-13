@@ -1193,7 +1193,7 @@ function SettingsTab({
           <button
             onClick={onRunRecs}
             style={{
-              background: "#7C3AED",
+              background: "#0f766e",
               color: "white",
               border: "none",
               padding: "10px 18px",

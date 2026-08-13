@@ -243,7 +243,7 @@ export default function SpyFu() {
               {[0,1,2].map(i => (
                 <div key={i} style={{
                   width:8, height:8, borderRadius:"50%",
-                  background: i===0?"#2563eb":i===1?"#0ea5e9":"#7c3aed",
+                  background: i===0?"#2563eb":i===1?"#0ea5e9":"#0f766e",
                   animation:`pulse ${0.6+i*0.2}s ease-in-out infinite alternate`,
                 }} />
               ))}
@@ -258,7 +258,7 @@ export default function SpyFu() {
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:12, marginBottom:24 }}>
               {[
                 { label:"Organic Keywords", value:fmtNum(stats.organicKeywords),      grad:"linear-gradient(135deg,#0ea5e9,#2563eb)", icon:"🔍" },
-                { label:"Paid Keywords",    value:fmtNum(stats.paidKeywords),          grad:"linear-gradient(135deg,#7c3aed,#a855f7)", icon:"💳" },
+                { label:"Paid Keywords",    value:fmtNum(stats.paidKeywords),          grad:"linear-gradient(135deg,#0f766e,#0284c7)", icon:"💳" },
                 { label:"SEO Clicks/mo",    value:fmtNum(stats.monthlyOrganicClicks),  grad:"linear-gradient(135deg,#059669,#10b981)", icon:"📈" },
                 { label:"PPC Clicks/mo",    value:fmtNum(stats.monthlyPaidClicks),     grad:"linear-gradient(135deg,#d97706,#f59e0b)", icon:"🖱️" },
                 { label:"SEO Value/mo",     value:fmtMoney(stats.totalMonthlyValue),   grad:"linear-gradient(135deg,#0d9488,#14b8a6)", icon:"💎" },
@@ -332,7 +332,7 @@ function OverviewTab({ stats, domain }: { stats: DomainStats; domain: string }) 
           </div>
           <div style={{ display:"flex", height:10, borderRadius:10, overflow:"hidden", background:"#f1f5f9" }}>
             <div style={{ width:`${orgPct}%`, background:"linear-gradient(90deg,#0ea5e9,#2563eb)", transition:"width .5s" }} />
-            <div style={{ flex:1,            background:"linear-gradient(90deg,#7c3aed,#a855f7)" }} />
+            <div style={{ flex:1,            background:"linear-gradient(90deg,#0f766e,#0284c7)" }} />
           </div>
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
@@ -404,7 +404,7 @@ function KwTable({ rows, type }: { rows: KwRow[]; type:"organic"|"paid" }) {
                       background: (r.rank??99)<=3 ? "#dcfce7" : (r.rank??99)<=10 ? "#fef3c7" : "transparent",
                       padding:"2px 7px", borderRadius:6,
                     }}>#{r.rank ?? "—"}</span>
-                  : <span style={{ color:"#7c3aed", fontWeight:700 }}>${r.costPerClick?.toFixed(2) ?? "—"}</span>
+                  : <span style={{ color:"#0f766e", fontWeight:700 }}>${r.costPerClick?.toFixed(2) ?? "—"}</span>
                 }
               </td>
               <td style={{ padding:"10px 16px", textAlign:"right", color:"#64748b" }}>{fmtNum(r.clicks)}</td>

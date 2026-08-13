@@ -53,7 +53,7 @@ const CAT_META: Record<string, { icon: string; color: string; bg: string }> = {
   creative:    { icon: "🎨", color: "#5b21b6", bg: "#ede9fe" },
   audience:    { icon: "👥", color: "#065f46", bg: "#d1fae5" },
   seo:         { icon: "🔍", color: "#0c4a6e", bg: "#e0f2fe" },
-  lifecycle:   { icon: "🔄", color: "#7c3aed", bg: "#f3e8ff" },
+  lifecycle:   { icon: "🔄", color: "#0f766e", bg: "#f3e8ff" },
   competitive: { icon: "⚔️", color: "#991b1b", bg: "#fee2e2" },
 };
 

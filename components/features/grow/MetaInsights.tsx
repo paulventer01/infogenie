@@ -329,7 +329,7 @@ export default function MetaInsights() {
                 gap: 12,
               }}
             >
-              <Tile label="Spend" val={fmt(m.spend, "money")} color="#8B5CF6" />
+              <Tile label="Spend" val={fmt(m.spend, "money")} color="#0284c7" />
               <Tile
                 label="Revenue"
                 val={fmt(m.revenue, "money")}

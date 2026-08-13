@@ -226,7 +226,7 @@ export default function CroLab() {
             onClick={() => goToView(router, "home")}
             style={{
               padding: "10px 22px",
-              background: "#C2410C",
+              background: "#0b5f59",
               color: "white",
               border: "none",
               borderRadius: 9,
@@ -274,7 +274,7 @@ export default function CroLab() {
             disabled={generating}
             style={{
               padding: "13px 32px",
-              background: "linear-gradient(135deg,#C2410C,#F59E0B)",
+              background: "linear-gradient(135deg,#0b5f59,#F59E0B)",
               color: "white",
               border: "none",
               borderRadius: 10,
@@ -441,10 +441,10 @@ export default function CroLab() {
                   padding: "10px 18px",
                   background: active ? "white" : "transparent",
                   border: "none",
-                  borderBottom: `3px solid ${active ? "#EA580C" : "transparent"}`,
+                  borderBottom: `3px solid ${active ? "#0f766e" : "transparent"}`,
                   fontSize: "0.82rem",
                   fontWeight: 700,
-                  color: active ? "#C2410C" : "#64748B",
+                  color: active ? "#0b5f59" : "#64748B",
                   cursor: "pointer",
                 }}
               >
@@ -637,7 +637,7 @@ export default function CroLab() {
                       <div
                         style={{
                           fontSize: "0.7rem",
-                          color: "#7C3AED",
+                          color: "#0f766e",
                           fontWeight: 700,
                           textTransform: "uppercase",
                           letterSpacing: ".05em",
@@ -664,7 +664,7 @@ export default function CroLab() {
                         <strong style={{ color: "#1E40AF" }}>A:</strong> {t.variantA}
                       </div>
                       <div style={{ marginTop: 3 }}>
-                        <strong style={{ color: "#7C3AED" }}>B:</strong> {t.variantB}
+                        <strong style={{ color: "#0f766e" }}>B:</strong> {t.variantB}
                       </div>
                     </div>
                     <div
@@ -699,7 +699,7 @@ export default function CroLab() {
                           onClick={() => launchAbTest(t.id)}
                           style={{
                             padding: "7px 14px",
-                            background: "#C2410C",
+                            background: "#0b5f59",
                             color: "white",
                             border: "none",
                             borderRadius: 8,
@@ -726,7 +726,7 @@ export default function CroLab() {
     <div className="view-header-wrap">
       <div
         className="view-header ig-panel-hero"
-        style={{ background: "linear-gradient(135deg,#7C2D12 0%,#EA580C 50%,#F59E0B 100%)" }}
+        style={{ background: "linear-gradient(135deg,#7C2D12 0%,#0f766e 50%,#F59E0B 100%)" }}
       >
         <div className="container">
           <div className="vh-inner">
@@ -749,7 +749,7 @@ export default function CroLab() {
             <div className="vh-actions">
               <button
                 className="btn-primary"
-                style={{ background: "white", color: "#C2410C" }}
+                style={{ background: "white", color: "#0b5f59" }}
                 onClick={run}
               >
                 🧪 Run Full Audit

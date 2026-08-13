@@ -147,7 +147,7 @@ function buildModel(): AcModel {
       ? [
           {
             icon: "⚡",
-            color: "#7C3AED",
+            color: "#0f766e",
             tag: "AUTOMATIONS RUNNING",
             title: `${actions.length} AI automation${actions.length !== 1 ? "s" : ""} executed`,
             detail: `~${(actions.length * 2.5).toFixed(0)} hours of manual work saved by InfoGenie`,
@@ -355,7 +355,7 @@ function buildModel(): AcModel {
         : "1.5";
       opps.push({
         icon: "⚔️",
-        color: "#7C3AED",
+        color: "#0f766e",
         title: `Exploit ${weakComp.name}'s ROAS gap`,
         detail: `${weakComp.name} is running at ${weakComp.roas || "—"}× ROAS — ${gap}× below the ${indLabel} average. Their wasted ad spend is a direct capture opportunity for your brand.`,
         upside: `+${gap}× ROAS potential on competitor-targeted campaigns`,
@@ -520,7 +520,7 @@ export default function ActionCenter() {
     ["🟢 Live", liveCount, "#059669"],
     ["🔜 Going Live", goingLive.length, "#0284c7"],
     ["⚠️ Risks", risks.length, critCount > 0 ? "#dc2626" : "#d97706"],
-    ["💡 Opportunities", opps.length, "#7c3aed"],
+    ["💡 Opportunities", opps.length, "#0f766e"],
   ];
 
   return (

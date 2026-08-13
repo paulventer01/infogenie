@@ -124,7 +124,7 @@ export default function IntegrationsWavePanel() {
                 setMsg(r.ok ? r.next || 'Ingested.' : r.error || 'Failed');
                 setBusy('');
               }}
-              style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, border: 'none', background: '#7C3AED', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+              style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, border: 'none', background: '#0f766e', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
             >
               {busy === 'ff' ? 'Ingesting…' : 'Ingest transcript'}
             </button>

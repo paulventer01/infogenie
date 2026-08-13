@@ -298,7 +298,7 @@ export default function NewProject() {
             onClick={save}
             style={{
               padding: "11px 22px",
-              background: "linear-gradient(135deg,#F97316,#EA580C)",
+              background: "linear-gradient(135deg,#0f766e,#0f766e)",
               color: "#fff",
               border: "none",
               borderRadius: 10,
@@ -332,7 +332,7 @@ export default function NewProject() {
                 key={p.id}
                 style={{
                   background: "#fff",
-                  border: `1px solid ${p.id === activeId ? "#F97316" : "#E2E8F0"}`,
+                  border: `1px solid ${p.id === activeId ? "#0f766e" : "#E2E8F0"}`,
                   borderRadius: 12,
                   padding: 16,
                   display: "grid",
@@ -347,7 +347,7 @@ export default function NewProject() {
                     {p.id === activeId && (
                       <span
                         style={{
-                          background: "#F97316",
+                          background: "#0f766e",
                           color: "#fff",
                           padding: "2px 8px",
                           borderRadius: 99,
@@ -370,7 +370,7 @@ export default function NewProject() {
                     style={{
                       padding: "6px 12px",
                       background: "#FED7AA",
-                      border: "1px solid #F97316",
+                      border: "1px solid #0f766e",
                       borderRadius: 7,
                       cursor: "pointer",
                       fontWeight: 600,

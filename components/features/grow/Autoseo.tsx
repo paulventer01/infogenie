@@ -742,7 +742,7 @@ ${ctx.domain || "yourdomain.com"}`;
   const stats = [
     { icon: "📄", label: "Articles / Month", val: String(schedule.count), color: "#059669", bg: "#F0FDF4" },
     { icon: "🔗", label: "Backlinks Tracked", val: String(blkCount), color: "#0066FF", bg: "#EFF6FF" },
-    { icon: "🔍", label: "Keywords Found", val: String(kwCount), color: "#7C3AED", bg: "#F5F3FF" },
+    { icon: "🔍", label: "Keywords Found", val: String(kwCount), color: "#0f766e", bg: "#F5F3FF" },
     {
       icon: "🟦",
       label: "WordPress",
@@ -991,7 +991,7 @@ ${ctx.domain || "yourdomain.com"}`;
                 onClick={addAllGeneratedToSocialCalendar}
                 style={{
                   padding: "9px 14px",
-                  background: "linear-gradient(135deg,#7C3AED,#5B21B6)",
+                  background: "linear-gradient(135deg,#0f766e,#5B21B6)",
                   border: "none",
                   borderRadius: 9,
                   fontSize: "0.78rem",
@@ -1310,7 +1310,7 @@ ${ctx.domain || "yourdomain.com"}`;
                             padding: "2px 7px",
                             background: "#FFF7ED",
                             borderRadius: 4,
-                            color: "#C2410C",
+                            color: "#0b5f59",
                             fontWeight: 600,
                           }}
                         >
@@ -1390,7 +1390,7 @@ ${ctx.domain || "yourdomain.com"}`;
                           onClick={() => addArticleToSocialCalendar(idx)}
                           style={{
                             padding: "5px 10px",
-                            background: alreadyInSocial ? "#F0FDF4" : "linear-gradient(135deg,#7C3AED,#5B21B6)",
+                            background: alreadyInSocial ? "#F0FDF4" : "linear-gradient(135deg,#0f766e,#5B21B6)",
                             border: alreadyInSocial ? "1px solid #BBF7D0" : "none",
                             borderRadius: 7,
                             fontSize: "0.67rem",
@@ -1683,7 +1683,7 @@ ${ctx.domain || "yourdomain.com"}`;
     const statusColors: Record<string, string> = {
       not_started: "#6B7280",
       email1_sent: "#0066FF",
-      followup_sent: "#7C3AED",
+      followup_sent: "#0f766e",
       final_sent: "#D97706",
       responded: "#059669",
       secured: "#059669",
@@ -2001,7 +2001,7 @@ ${ctx.domain || "yourdomain.com"}`;
               disabled={kwLoading}
               style={{
                 padding: "9px 18px",
-                background: "linear-gradient(135deg,#7C3AED,#5B21B6)",
+                background: "linear-gradient(135deg,#0f766e,#5B21B6)",
                 border: "none",
                 borderRadius: 9,
                 fontSize: "0.78rem",
@@ -2031,7 +2031,7 @@ ${ctx.domain || "yourdomain.com"}`;
                 onClick={loadKeywordResearch}
                 style={{
                   padding: "12px 28px",
-                  background: "linear-gradient(135deg,#7C3AED,#5B21B6)",
+                  background: "linear-gradient(135deg,#0f766e,#5B21B6)",
                   border: "none",
                   borderRadius: 10,
                   fontSize: "0.88rem",
@@ -2052,7 +2052,7 @@ ${ctx.domain || "yourdomain.com"}`;
   function renderKeywordTable(kws: Keyword[]) {
     const intentColor: Record<string, string> = {
       Informational: "#0066FF",
-      Commercial: "#7C3AED",
+      Commercial: "#0f766e",
       Transactional: "#059669",
       Navigational: "#D97706",
     };
@@ -2315,7 +2315,7 @@ ${ctx.domain || "yourdomain.com"}`;
       { icon: "👥", label: "Baseline Traffic", val: fmt(td.baseline_monthly), sub: "/month", color: "#374151", bg: "#F3F4F6" },
       { icon: "📈", label: "Projected (90d)", val: fmt(td.projected_monthly_90d), sub: "/month", color: "#0066FF", bg: "#EFF6FF" },
       { icon: "🚀", label: "Growth Forecast", val: "+" + pct + "%", sub: "in 90 days", color: "#059669", bg: "#F0FDF4" },
-      { icon: "🔗", label: "DA Improvement", val: "+" + (td.da_improvement || "3-5"), sub: "points est.", color: "#7C3AED", bg: "#F5F3FF" },
+      { icon: "🔗", label: "DA Improvement", val: "+" + (td.da_improvement || "3-5"), sub: "points est.", color: "#0f766e", bg: "#F5F3FF" },
     ];
 
     return (
@@ -2475,7 +2475,7 @@ ${ctx.domain || "yourdomain.com"}`;
                     padding: "10px 12px",
                     background: "#F9FAFB",
                     borderRadius: 10,
-                    borderLeft: "3px solid " + (["#0066FF", "#7C3AED", "#059669"][i] || "#0066FF"),
+                    borderLeft: "3px solid " + (["#0066FF", "#0f766e", "#059669"][i] || "#0066FF"),
                   }}
                 >
                   <span style={{ fontSize: "1rem", flexShrink: 0 }}>{["🚀", "🔗", "📝"][i] || "✅"}</span>

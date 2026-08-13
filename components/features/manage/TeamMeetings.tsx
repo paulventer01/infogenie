@@ -137,7 +137,7 @@ export default function TeamMeetings() {
         style={{
           aspectRatio: "1",
           padding: 6,
-          border: `1px solid ${isToday ? "#7C3AED" : "#E2E8F0"}`,
+          border: `1px solid ${isToday ? "#0f766e" : "#E2E8F0"}`,
           borderRadius: 8,
           background: hasMeetings ? "#F5F3FF" : "#fff",
           cursor: hasMeetings ? "pointer" : "default",
@@ -152,7 +152,7 @@ export default function TeamMeetings() {
           style={{
             fontSize: ".78rem",
             fontWeight: isToday ? 800 : 600,
-            color: hasMeetings ? "#7C3AED" : "#64748B",
+            color: hasMeetings ? "#0f766e" : "#64748B",
           }}
         >
           {d}
@@ -161,7 +161,7 @@ export default function TeamMeetings() {
           <div
             style={{
               fontSize: ".6rem",
-              background: "#7C3AED",
+              background: "#0f766e",
               color: "#fff",
               padding: "2px 6px",
               borderRadius: 99,

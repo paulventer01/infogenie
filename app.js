@@ -726,7 +726,7 @@ window._campaignBrandCreatives = window._campaignBrandCreatives || {};
 
 function _brandPrimaryColour() {
   // Try to derive a colour from the analysis; fall back to InfoGenie teal
-  const palette = ['#0066FF','#00C9C8','#7C3AED','#F59E0B','#EF4444','#10B981','#EC4899','#0EA5E9'];
+  const palette = ['#0066FF','#00C9C8','#0f766e','#F59E0B','#EF4444','#10B981','#EC4899','#0EA5E9'];
   const seed = (analysisData && analysisData.url || 'infogenie').toString();
   let h = 0; for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   return palette[h % palette.length];
@@ -735,11 +735,11 @@ function _brandSecondary(c) {
   // Lighten/darken complement
   return c === '#0066FF' ? '#00C9C8'
        : c === '#00C9C8' ? '#0066FF'
-       : c === '#7C3AED' ? '#F59E0B'
-       : c === '#F59E0B' ? '#7C3AED'
+       : c === '#0f766e' ? '#F59E0B'
+       : c === '#F59E0B' ? '#0f766e'
        : c === '#EF4444' ? '#0EA5E9'
        : c === '#10B981' ? '#0066FF'
-       : c === '#EC4899' ? '#7C3AED'
+       : c === '#EC4899' ? '#0f766e'
        : '#00C9C8';
 }
 function _brandName() {
@@ -1330,7 +1330,7 @@ function buildLaunchModal(camp, idx) {
           </div>
           <div style="background:white;border-radius:8px;padding:9px 12px;border:1px solid #E0F2FE">
             <div style="font-size:0.63rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">📊 Est. CPA</div>
-            <div id="lm-ov-cpa" style="font-size:0.78rem;font-weight:700;color:#7C3AED">${camp.estCPA || pm.cpa || '$38'}</div>
+            <div id="lm-ov-cpa" style="font-size:0.78rem;font-weight:700;color:#0f766e">${camp.estCPA || pm.cpa || '$38'}</div>
           </div>
         </div>
       </div>
@@ -1403,7 +1403,7 @@ function buildLaunchModal(camp, idx) {
 
       <!-- PLATFORM STRATEGY -->
       <div>
-        <div id="lm-strat-title" style="font-size:0.68rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${pm.icon} ${platform} Strategy</div>
+        <div id="lm-strat-title" style="font-size:0.68rem;font-weight:700;color:#0f766e;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${pm.icon} ${platform} Strategy</div>
         <div id="lm-strat-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           ${[['Bid Strategy',pm.bid],['Target Audience',pm.aud],['Primary KPI',pm.kpi],['Creative Format',pm.creative]].map(([k,v])=>`
             <div style="background:#F9FAFB;border-radius:8px;padding:10px 12px">
@@ -1418,7 +1418,7 @@ function buildLaunchModal(camp, idx) {
         <div style="font-size:0.68rem;font-weight:700;color:#DC2626;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">🧠 GPT-4 Campaign Intelligence</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:12px 14px">
-            <div style="font-size:0.65rem;font-weight:700;color:#C2410C;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">⚡ Competitor Gap</div>
+            <div style="font-size:0.65rem;font-weight:700;color:#0b5f59;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">⚡ Competitor Gap</div>
             <div id="lm-comp-gap" style="font-size:0.82rem;color:#7C2D12;line-height:1.5;font-style:italic"></div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -1497,7 +1497,7 @@ function buildLaunchModal(camp, idx) {
     const el = document.getElementById('lm-objective-hint');
     if (!el) return;
     if (String(val).includes('awareness') || String(val).includes('brand')) {
-      el.innerHTML = '<strong style="color:#7C3AED">Brand Awareness mode.</strong> The platform bids for the lowest <em>cost per 1,000 impressions</em>, prioritising reach, frequency and video-completion rate. KPIs tracked: CPM, reach, view-through rate. Use for top-funnel awareness, product launches and category education.';
+      el.innerHTML = '<strong style="color:#0f766e">Brand Awareness mode.</strong> The platform bids for the lowest <em>cost per 1,000 impressions</em>, prioritising reach, frequency and video-completion rate. KPIs tracked: CPM, reach, view-through rate. Use for top-funnel awareness, product launches and category education.';
       el.style.color = '#5B21B6';
     } else {
       el.innerHTML = 'Default. The platform bids for the lowest cost per conversion. KPIs tracked: CPA, ROAS, conversion rate.';
@@ -1844,7 +1844,7 @@ function buildLaunchModal(camp, idx) {
                   window._uploadedCreative=f;
                 }
               ">`;
-            actionBtn = `<label for="${inputId}" style="flex-shrink:0;cursor:pointer;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#7C3AED;background:#EDE9FE;border:1px solid #C4B5FD;border-radius:6px;white-space:nowrap">📎 Upload Creative</label>
+            actionBtn = `<label for="${inputId}" style="flex-shrink:0;cursor:pointer;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#0f766e;background:#EDE9FE;border:1px solid #C4B5FD;border-radius:6px;white-space:nowrap">📎 Upload Creative</label>
               <span id="${labelId}" style="font-size:0.7rem;color:#9CA3AF;margin-left:4px"></span>`;
 
           // ── Lookalike / audience setup ─────────────────────────────────────
@@ -1937,13 +1937,13 @@ function buildLaunchModal(camp, idx) {
                   if(v){window._clAdCopy_${ii}=v;this.textContent='✅ Saved';this.style.background='#D1FAE5';this.style.color='#059669';
                   this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
                   this.closest('.cl-item').style.background='#D1FAE5';}
-                " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#7C3AED;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:6px;cursor:pointer">💾 Save Copy</button>
+                " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#0f766e;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:6px;cursor:pointer">💾 Save Copy</button>
                 <button onclick="var _m=document.getElementById('campLaunchRichModal');if(_m){closeCampLaunchRichModal();}var _m2=document.getElementById('launchModal');if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}navigateTo('creative');"
                   style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#6B7280;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer">→ AI Creative Studio</button>
               </div>
             </div>`;
             actionBtn = `<button onclick="const p=document.getElementById('cl-copy-panel-${ii}');p.style.display=p.style.display==='none'?'block':'none';"
-              style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#7C3AED;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:6px;cursor:pointer;white-space:nowrap">✍️ Draft Copy</button>`;
+              style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#0f766e;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:6px;cursor:pointer;white-space:nowrap">✍️ Draft Copy</button>`;
 
           // ── Landing page / mobile / optimise ──────────────────────────────
           } else if (low.includes('landing') || low.includes('mobile') || low.includes('optimis') || low.includes('optimize') || low.includes('page speed') || low.includes('url')) {
@@ -2117,7 +2117,7 @@ function buildCreativeModal(camp, idx) {
           <div style="font-size:0.76rem;color:#4d5156;line-height:1.4" id="cs-preview-d">${dSeed[0].substring(0,120)}</div>
         </div>
         <div id="cs-competitor-angle" style="display:none;background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:12px;margin-top:8px">
-          <div style="font-size:0.68rem;font-weight:700;color:#C2410C;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">⚡ Competitor Attack Hook — GPT-4</div>
+          <div style="font-size:0.68rem;font-weight:700;color:#0b5f59;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">⚡ Competitor Attack Hook — GPT-4</div>
           <div id="cs-competitor-text" style="font-size:0.82rem;color:#7C2D12;font-style:italic;line-height:1.5"></div>
         </div>
         <div id="cs-claude-angle" style="display:none;background:linear-gradient(135deg,#F0FFF4,#ECFDF5);border:1px solid #86EFAC;border-radius:10px;padding:12px;margin-top:8px">
@@ -2129,7 +2129,7 @@ function buildCreativeModal(camp, idx) {
           <div id="cs-claude-strategy" style="font-size:0.72rem;color:#4ADE80;margin-top:6px;padding-top:6px;border-top:1px solid rgba(134,239,172,.4);display:none"></div>
         </div>
         <div id="cs-claude-headlines-wrap" style="display:none;margin-top:12px">
-          <div style="font-size:0.68rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+          <div style="font-size:0.68rem;font-weight:700;color:#0f766e;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
             🟣 Claude Alternative Headlines
             <span style="font-size:0.6rem;background:#EDE9FE;color:#5B21B6;border-radius:4px;padding:1px 6px">Use These Instead</span>
           </div>
@@ -2137,7 +2137,7 @@ function buildCreativeModal(camp, idx) {
         </div>
         <div style="margin-top:10px;display:flex;gap:8px">
           <button id="cs-copy-ad" style="flex:1;padding:9px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;font-size:0.78rem;font-weight:700;color:#1D4ED8;cursor:pointer">📋 Copy Ad Copy</button>
-          <button id="cs-regen-btn" style="flex:1;padding:9px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✨ Regenerate (GPT-4 + Claude)</button>
+          <button id="cs-regen-btn" style="flex:1;padding:9px;background:linear-gradient(135deg,#0f766e,#4F46E5);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✨ Regenerate (GPT-4 + Claude)</button>
         </div>
       </div>
 
@@ -2217,7 +2217,7 @@ function buildCreativeModal(camp, idx) {
 
       <!-- REDESIGN TAB -->
       <div class="cs-panel" id="csp-settings" style="display:none">
-        <div style="font-size:0.7rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">✨ Custom GPT-4 Redesign</div>
+        <div style="font-size:0.7rem;font-weight:700;color:#0f766e;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">✨ Custom GPT-4 Redesign</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <div>
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Tone of Voice</label>
@@ -2248,7 +2248,7 @@ function buildCreativeModal(camp, idx) {
               <option>Claim Your Offer</option>
             </select>
           </div>
-          <button id="cs-regen-full" style="width:100%;padding:12px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer">✨ Generate New Variants with GPT-4</button>
+          <button id="cs-regen-full" style="width:100%;padding:12px;background:linear-gradient(135deg,#0f766e,#4F46E5);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer">✨ Generate New Variants with GPT-4</button>
         </div>
         <div id="cs-regen-output" style="margin-top:12px;display:none"></div>
       </div>
@@ -2319,7 +2319,7 @@ function buildCreativeModal(camp, idx) {
           <div style="display:flex;align-items:center;gap:8px;background:#EDE9FE;border-radius:8px;padding:8px 10px;margin-bottom:6px">
             <span style="font-size:0.7rem;font-weight:700;color:#5B21B6;background:#DDD6FE;border-radius:4px;padding:2px 6px;flex-shrink:0">CH${i+1}</span>
             <span style="flex:1;font-size:0.82rem;color:#1E1B4B;font-weight:600;font-family:'Inter',sans-serif">${h}</span>
-            <button onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim()).then(()=>window.showToast && showToast('✅ Claude headline copied!'))" style="background:none;border:none;font-size:0.75rem;cursor:pointer;color:#7C3AED;padding:2px 6px" title="Copy this Claude headline">📋</button>
+            <button onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim()).then(()=>window.showToast && showToast('✅ Claude headline copied!'))" style="background:none;border:none;font-size:0.75rem;cursor:pointer;color:#0f766e;padding:2px 6px" title="Copy this Claude headline">📋</button>
           </div>`).join('');
       }
     }
@@ -2612,7 +2612,7 @@ function buildCreativeModal(camp, idx) {
     const output  = document.getElementById('cs-regen-output');
     const btn     = document.getElementById('cs-regen-full');
     output.style.display = 'block';
-    output.innerHTML = `<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:18px;font-size:0.82rem;color:#4C1D95;text-align:center"><span style="display:inline-block;width:18px;height:18px;border:3px solid rgba(124,58,237,.2);border-top-color:#7C3AED;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>GPT-4 writing custom creative pack...</div>`;
+    output.innerHTML = `<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:18px;font-size:0.82rem;color:#4C1D95;text-align:center"><span style="display:inline-block;width:18px;height:18px;border:3px solid rgba(124,58,237,.2);border-top-color:#0f766e;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>GPT-4 writing custom creative pack...</div>`;
     btn.disabled = true; btn.textContent = '⏳ GPT-4 Working...';
     try {
       const res = await fetch('/api/ai-creative', {
@@ -4243,7 +4243,7 @@ function buildCampaigns() {
         <button class="btn-camp-launch" onclick="window._igLaunch(${idx})" title="Deploy this campaign — sets up targeting, budget and creative, then queues it for review before spending begins.">🚀 Launch this Campaign</button>
         <button class="btn-camp-preview" onclick="window._igCreative(${idx})" title="Open GPT-4o Creative Studio to generate and refine ad copy, headlines and visuals for this campaign.">🎨 Creative Studio</button>
         <button class="btn-camp-preview" onclick="window._igLandingPage(${idx})" title="Generate a complete AI conversion-optimised landing page for this campaign using GPT-4o." style="background:#EFF6FF;color:#0066FF;border-color:#BFDBFE">🌐 Landing Page</button>
-        <button class="btn-camp-preview" onclick="window._igBrandCreative(${idx})" title="Generate brand-styled ad creatives using your logo, colours and tone — then attach them to this campaign." style="background:#FFF7ED;color:#C2410C;border-color:#FED7AA">✨ Brand Creative</button>
+        <button class="btn-camp-preview" onclick="window._igBrandCreative(${idx})" title="Generate brand-styled ad creatives using your logo, colours and tone — then attach them to this campaign." style="background:#FFF7ED;color:#0b5f59;border-color:#FED7AA">✨ Brand Creative</button>
       </div>
       <div id="brandAttached${idx}" style="margin-top:10px;display:none;background:linear-gradient(135deg,#FFF7ED,#FFEDD5);border:1px solid #FED7AA;border-radius:10px;padding:10px 12px;font-size:0.78rem;color:#9A3412;font-weight:700"></div>
     </div>
@@ -4307,7 +4307,7 @@ function buildCampaigns() {
       <p style="font-size:0.8rem;color:#0369A1;margin:14px 0;padding-left:24px;padding-right:24px">InfoGenie has automatically identified these high-value audience segments from competitor analysis. These will be auto-applied to your campaigns.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
         ${topAudiences.map((a, i) => {
-          const colors = ['#0369A1','#059669','#7C3AED','#D97706','#DC2626','#0066FF'];
+          const colors = ['#0369A1','#059669','#0f766e','#D97706','#DC2626','#0066FF'];
           const bgColors = ['#E0F2FE','#D1FAE5','#EDE9FE','#FEF3C7','#FEE2E2','#EFF6FF'];
           const c = colors[i % colors.length];
           const bg = bgColors[i % bgColors.length];
@@ -4448,7 +4448,7 @@ function buildCampaigns() {
             <div style="font-size:0.78rem;color:#4B5563;line-height:1.5">${ad.body}</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
               <button onclick="navigator.clipboard?.writeText('${safeH} — ${safeB}').then(()=>{this.textContent='✅ Copied';setTimeout(()=>this.textContent='📋 Copy Ad Copy',1200)})" style="padding:5px 12px;font-size:0.72rem;font-weight:600;color:#4F46E5;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:6px;cursor:pointer">📋 Copy Ad Copy</button>
-              <button onclick="openAdInCreativeStudio('${safeH}','${safeB}','${ad.platform}')" style="padding:5px 12px;font-size:0.72rem;font-weight:600;color:white;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:6px;cursor:pointer">✨ Use in Creative Studio →</button>
+              <button onclick="openAdInCreativeStudio('${safeH}','${safeB}','${ad.platform}')" style="padding:5px 12px;font-size:0.72rem;font-weight:600;color:white;background:linear-gradient(135deg,#0f766e,#4F46E5);border:none;border-radius:6px;cursor:pointer">✨ Use in Creative Studio →</button>
             </div>
           </div>`;
       }).join('');
@@ -4475,22 +4475,22 @@ function buildCampaigns() {
       <p style="font-size:0.8rem;color:#5B21B6;margin:0 0 16px 0">Set up split tests between two campaign variants to measure which delivers better ROAS in your live environment.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div style="background:white;border-radius:12px;padding:18px;border:1px solid #EDE9FE">
-          <div style="font-size:0.72rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">⚙️ Configure New A/B Test</div>
+          <div style="font-size:0.72rem;font-weight:700;color:#0f766e;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">⚙️ Configure New A/B Test</div>
           <div style="display:flex;flex-direction:column;gap:10px">
             <div>
               <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Test Name</label>
-              <input id="ab-test-name" placeholder="e.g. Google vs Meta ROAS Test" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#7C3AED'" onblur="this.style.borderColor='#E2E8F0'">
+              <input id="ab-test-name" placeholder="e.g. Google vs Meta ROAS Test" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0f766e'" onblur="this.style.borderColor='#E2E8F0'">
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
               <div>
                 <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Variant A</label>
-                <select id="ab-var-a" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.78rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#7C3AED'" onblur="this.style.borderColor='#E2E8F0'">
+                <select id="ab-var-a" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.78rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0f766e'" onblur="this.style.borderColor='#E2E8F0'">
                   ${campaignRecs.map((c,i) => `<option value="${i}">${c.platform} — ${c.name.substring(0,30)}</option>`).join('')}
                 </select>
               </div>
               <div>
                 <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Variant B</label>
-                <select id="ab-var-b" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.78rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#7C3AED'" onblur="this.style.borderColor='#E2E8F0'">
+                <select id="ab-var-b" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.78rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0f766e'" onblur="this.style.borderColor='#E2E8F0'">
                   ${campaignRecs.map((c,i) => `<option value="${i}" ${i===1?'selected':''}>${c.platform} — ${c.name.substring(0,30)}</option>`).join('')}
                 </select>
               </div>
@@ -4514,11 +4514,11 @@ function buildCampaigns() {
                 </select>
               </div>
             </div>
-            <button onclick="launchABTest()" style="width:100%;padding:11px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer;margin-top:4px">🧪 Launch A/B Test →</button>
+            <button onclick="launchABTest()" style="width:100%;padding:11px;background:linear-gradient(135deg,#0f766e,#4F46E5);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer;margin-top:4px">🧪 Launch A/B Test →</button>
           </div>
         </div>
         <div style="background:white;border-radius:12px;padding:18px;border:1px solid #EDE9FE;overflow-y:auto;max-height:320px">
-          <div style="font-size:0.72rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">📊 Running Tests</div>
+          <div style="font-size:0.72rem;font-weight:700;color:#0f766e;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">📊 Running Tests</div>
           ${(window._abTests||[]).length === 0 ? `
             <div style="text-align:center;padding:24px 12px;color:#9CA3AF;font-size:0.82rem">
               <div style="font-size:1.5rem;margin-bottom:8px">🧪</div>
@@ -4530,7 +4530,7 @@ function buildCampaigns() {
             return `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px;margin-bottom:10px">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <div style="font-size:0.82rem;font-weight:700;color:#0A1628">${t.name}</div>
-                <span style="background:#7C3AED22;color:#7C3AED;font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:10px">RUNNING</span>
+                <span style="background:#0f766e22;color:#0f766e;font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:10px">RUNNING</span>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
                 <div style="background:${winnerLoser[0]}11;border:1px solid ${winnerLoser[0]}44;border-radius:8px;padding:8px">
@@ -4586,7 +4586,7 @@ function buildCampaigns() {
 
               <!-- Collapsed summary -->
               <div style="padding:12px 20px;display:flex;gap:20px;flex-wrap:wrap;border-bottom:1px solid #E5E7EB">
-                ${[['ROAS',(m.roas||'—')+'×','#10B981'],['CTR',m.ctr||'—','#0066FF'],['Conv.',(m.conversions||0).toLocaleString(),'#7C3AED'],['CPA',m.cpa||'—','#F59E0B']].map(([l,v,col])=>
+                ${[['ROAS',(m.roas||'—')+'×','#10B981'],['CTR',m.ctr||'—','#0066FF'],['Conv.',(m.conversions||0).toLocaleString(),'#0f766e'],['CPA',m.cpa||'—','#F59E0B']].map(([l,v,col])=>
                   `<div style="text-align:center"><div style="font-size:1rem;font-weight:800;color:${col}">${v}</div><div style="font-size:0.62rem;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">${l}</div></div>`
                 ).join('')}
                 <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -4603,7 +4603,7 @@ function buildCampaigns() {
                 <div style="margin-bottom:20px">
                   <div style="font-size:0.68rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">📊 Performance Metrics</div>
                   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-                    ${[['ROAS',(m.roas||'—')+'×','#10B981'],['CTR',m.ctr||'—','#0066FF'],['Conversions',(m.conversions||0).toLocaleString(),'#7C3AED'],['CPA',m.cpa||'—','#F59E0B'],['Impressions',m.impressions?Number(m.impressions).toLocaleString():'—','#00C9C8'],['Spend','$'+(m.spend||0).toLocaleString(),'#E1306C']].map(([l,v,col])=>
+                    ${[['ROAS',(m.roas||'—')+'×','#10B981'],['CTR',m.ctr||'—','#0066FF'],['Conversions',(m.conversions||0).toLocaleString(),'#0f766e'],['CPA',m.cpa||'—','#F59E0B'],['Impressions',m.impressions?Number(m.impressions).toLocaleString():'—','#00C9C8'],['Spend','$'+(m.spend||0).toLocaleString(),'#E1306C']].map(([l,v,col])=>
                       `<div style="background:white;border:1px solid #E5E7EB;border-radius:10px;padding:12px;text-align:center"><div style="font-size:1.1rem;font-weight:800;color:${col}">${v}</div><div style="font-size:0.62rem;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">${l}</div></div>`
                     ).join('')}
                   </div>
@@ -4798,7 +4798,7 @@ const FUNNEL_STAGES = [
   { id:'interest',   label:'Interest',   icon:'💡', color:'#3B82F6', bg:'#EFF6FF', fmt:'Carousels', tip:'Frameworks, before-after, step-by-step tutorials — convert attention to curiosity.' },
   { id:'nurture',    label:'Nurture',    icon:'❤️', color:'#EC4899', bg:'#FDF2F8', fmt:'Stories',   tip:'Process sharing, myth-breaking, polls, soft CTAs — build belief & trust.' },
   { id:'conversion', label:'Conversion', icon:'💰', color:'#F59E0B', bg:'#FFFBEB', fmt:'DMs',       tip:'Personalised DMs, testimonials, limited-spot urgency — turn trust into sales.' },
-  { id:'advocacy',   label:'Advocacy',   icon:'🌟', color:'#7C3AED', bg:'#F5F3FF', fmt:'Community', tip:'Client wins, UGC, referrals, private challenges — turn buyers into brand evangelists.' },
+  { id:'advocacy',   label:'Advocacy',   icon:'🌟', color:'#0f766e', bg:'#F5F3FF', fmt:'Community', tip:'Client wins, UGC, referrals, private challenges — turn buyers into brand evangelists.' },
 ];
 
 // ── 2026 Post Archetype Library — 4 proven formats per funnel stage ──────────
@@ -5994,7 +5994,7 @@ function openWLCounterModal(wlIdOrData) {
       <button class="btn-attack-activate" onclick="publishCounterToSocial('${wlId}', this)" style="background:linear-gradient(135deg,#FF5722,#FF7043);" title="Open the Publish to Social composer pre-filled with the selected variant — pick platforms + schedule and push live via Zernio.">
         📤 Publish to Social
       </button>
-      <button class="btn-attack-activate" onclick="addCounterToCalendar('${wlId}', this)" style="background:linear-gradient(135deg,#8B5CF6,#6366F1);" title="Schedule the selected variant on your Content Calendar for tomorrow.">
+      <button class="btn-attack-activate" onclick="addCounterToCalendar('${wlId}', this)" style="background:linear-gradient(135deg,#0284c7,#6366F1);" title="Schedule the selected variant on your Content Calendar for tomorrow.">
         📅 Add to Calendar
       </button>
       <button class="btn-attack-activate" onclick="queueCounterCampaign('${wlId}', this)">
@@ -6730,7 +6730,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="font-size:0.7rem; color:#6B7280; margin-top:2px">Platform</div>
           </div>
           <div style="background:#F5F3FF; border-radius:10px; padding:12px">
-            <div style="font-size:1.1rem; font-weight:800; color:#7C3AED">Live</div>
+            <div style="font-size:1.1rem; font-weight:800; color:#0f766e">Live</div>
             <div style="font-size:0.7rem; color:#6B7280; margin-top:2px">Status</div>
           </div>
         </div>
@@ -6902,17 +6902,17 @@ function openCampLaunchRich(name, platform, budget, idx) {
 
       <!-- EDITABLE HEADLINES -->
       <div>
-        <div style="font-size:0.67rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">
+        <div style="font-size:0.67rem;font-weight:700;color:#0f766e;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">
           🤖 AI-Generated Headlines
-          <span class="clb-edit-pill" style="background:#EDE9FE;color:#7C3AED">CLICK TO EDIT</span>
+          <span class="clb-edit-pill" style="background:#EDE9FE;color:#0f766e">CLICK TO EDIT</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${headlines.map((h,i) => `
-            <div style="display:flex;align-items:center;gap:8px;background:#F5F3FF;border:1.5px solid transparent;border-radius:8px;padding:6px 10px;transition:border-color .15s" onfocus-within="this.style.borderColor='#7C3AED'">
-              <span style="font-size:0.68rem;font-weight:700;color:#7C3AED;background:#EDE9FE;border-radius:4px;padding:2px 6px;flex-shrink:0;line-height:1.4">H${i+1}</span>
+            <div style="display:flex;align-items:center;gap:8px;background:#F5F3FF;border:1.5px solid transparent;border-radius:8px;padding:6px 10px;transition:border-color .15s" onfocus-within="this.style.borderColor='#0f766e'">
+              <span style="font-size:0.68rem;font-weight:700;color:#0f766e;background:#EDE9FE;border-radius:4px;padding:2px 6px;flex-shrink:0;line-height:1.4">H${i+1}</span>
               <input id="clb-h${i+1}" value="${h.replace(/"/g,'&quot;')}"
                 style="flex:1;border:none;background:transparent;outline:none;font-size:0.82rem;font-weight:600;color:#0A1628;font-family:'Plus Jakarta Sans','Inter',sans-serif"
-                onfocus="this.closest('div').style.borderColor='#7C3AED'"
+                onfocus="this.closest('div').style.borderColor='#0f766e'"
                 onblur="this.closest('div').style.borderColor='transparent'">
             </div>
           `).join('')}
@@ -7566,7 +7566,7 @@ function buildMasterCalendar() {
     const risk = roas > 0 && roas < 2;
     const isLive = c.status === 'active';
     events.push({ date: d, type: 'campaign', idx: i, title: (c.name||'Campaign') + ' · ' + (c.platform||''),
-      status: isLive ? 'live' : 'ended', risk, color: risk?'#D97706':isLive?'#7C3AED':'#6B7280',
+      status: isLive ? 'live' : 'ended', risk, color: risk?'#D97706':isLive?'#0f766e':'#6B7280',
       bg: risk?'#FEF3C7':isLive?'#F5F3FF':'#F3F4F6',
       label: risk?'⚠️ At Risk':isLive?'🔵 Live':'Ended', budget: c.budget, roas: c.metrics && c.metrics.roas });
   });
@@ -8526,7 +8526,7 @@ async function buildGoals() {
           <div style="font-size:2.5rem;margin-bottom:14px">🎯</div>
           <div style="font-size:1.15rem;font-weight:700;color:#0F172A;margin-bottom:8px">No goals yet</div>
           <div style="font-size:0.88rem;color:#64748B;margin-bottom:22px;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.55">Add a goal on any of InfoGenie's tracked metrics — drip bounce rate, ad spend cap, blended CAC, Amplitude sessions — and InfoGenie will autonomously check progress and ask GPT-4o for a root-cause hypothesis when you go off-track.</div>
-          <button onclick="openAddGoalModal()" style="padding:11px 22px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:white;border:none;border-radius:9px;font-weight:700;font-size:0.9rem;cursor:pointer">+ Create Your First Goal</button>
+          <button onclick="openAddGoalModal()" style="padding:11px 22px;background:linear-gradient(135deg,#0f766e,#0284c7);color:white;border:none;border-radius:9px;font-weight:700;font-size:0.9rem;cursor:pointer">+ Create Your First Goal</button>
         </div>`;
       return;
     }
@@ -8584,7 +8584,7 @@ function _goalCard(g, rc) {
       </div>
       ${rc && rc.hypothesis ? `
         <div style="margin-top:14px;padding:14px;background:#FAFAFA;border:1px solid #E5E7EB;border-radius:10px">
-          <div style="font-size:0.7rem;color:#7C3AED;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">🤖 GPT-4o root-cause hypothesis</div>
+          <div style="font-size:0.7rem;color:#0f766e;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">🤖 GPT-4o root-cause hypothesis</div>
           <div style="font-size:0.85rem;color:#0F172A;line-height:1.55;margin-bottom:8px">${esc(rc.hypothesis)}</div>
           <div style="font-size:0.7rem;color:#0EA5E9;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">💡 Suggested action</div>
           <div style="font-size:0.85rem;color:#0F172A;line-height:1.55">${esc(rc.action)}</div>
@@ -8622,22 +8622,22 @@ function openAddGoalModal() {
         <div style="margin-bottom:14px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
             <label style="font-size:0.78rem;font-weight:700;color:#0F172A">Target value</label>
-            <button type="button" id="aiSuggestTargetBtn" onclick="aiSuggestNewGoalField('target')" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;font-weight:700">✨ AI suggest</button>
+            <button type="button" id="aiSuggestTargetBtn" onclick="aiSuggestNewGoalField('target')" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:linear-gradient(135deg,#0f766e,#0284c7);color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;font-weight:700">✨ AI suggest</button>
           </div>
           <input id="newGoalTarget" type="number" step="0.01" min="0" placeholder="e.g. 50" style="width:100%;padding:10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.88rem">
-          <div id="aiSuggestTargetReason" style="margin-top:6px;font-size:0.72rem;color:#7C3AED;font-style:italic;min-height:1px"></div>
+          <div id="aiSuggestTargetReason" style="margin-top:6px;font-size:0.72rem;color:#0f766e;font-style:italic;min-height:1px"></div>
         </div>
         <div style="margin-bottom:18px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
             <label style="font-size:0.78rem;font-weight:700;color:#0F172A">Label (optional)</label>
-            <button type="button" id="aiSuggestLabelBtn" onclick="aiSuggestNewGoalField('label')" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;font-weight:700">✨ AI suggest</button>
+            <button type="button" id="aiSuggestLabelBtn" onclick="aiSuggestNewGoalField('label')" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:linear-gradient(135deg,#0f766e,#0284c7);color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;font-weight:700">✨ AI suggest</button>
           </div>
           <input id="newGoalLabel" type="text" placeholder="e.g. Q2 customer acquisition target" style="width:100%;padding:10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.88rem">
-          <div id="aiSuggestLabelReason" style="margin-top:6px;font-size:0.72rem;color:#7C3AED;font-style:italic;min-height:1px"></div>
+          <div id="aiSuggestLabelReason" style="margin-top:6px;font-size:0.72rem;color:#0f766e;font-style:italic;min-height:1px"></div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button onclick="document.getElementById('addGoalModal').remove()" style="padding:10px 16px;background:white;border:1px solid #CBD5E1;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:600">Cancel</button>
-          <button onclick="submitNewGoal()" style="padding:10px 18px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:700">Create Goal</button>
+          <button onclick="submitNewGoal()" style="padding:10px 18px;background:linear-gradient(135deg,#0f766e,#0284c7);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:700">Create Goal</button>
         </div>
       </div>`;
     document.body.appendChild(m);
@@ -8754,7 +8754,7 @@ function openReengageCsvUpload() {
       </div>
       <div style="padding:14px 22px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:8px">
         <button onclick="document.getElementById('reengageCsvBackdrop').remove()" style="padding:8px 14px;background:white;color:#64748B;border:1px solid #CBD5E1;border-radius:7px;font-size:0.82rem;font-weight:600;cursor:pointer">Cancel</button>
-        <button id="reengageCsvSubmit" onclick="submitReengageCsv()" style="padding:8px 18px;background:linear-gradient(135deg,#C2410C,#F97316);color:white;border:none;border-radius:7px;font-size:0.82rem;font-weight:700;cursor:pointer">📥 Import</button>
+        <button id="reengageCsvSubmit" onclick="submitReengageCsv()" style="padding:8px 18px;background:linear-gradient(135deg,#0b5f59,#0f766e);color:white;border:none;border-radius:7px;font-size:0.82rem;font-weight:700;cursor:pointer">📥 Import</button>
       </div>
     </div>`;
   document.body.appendChild(bd);
@@ -8810,7 +8810,7 @@ function openReengageManualAdd() {
       </div>
       <div style="padding:14px 22px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:8px">
         <button onclick="document.getElementById('reengageManualBackdrop').remove()" style="padding:8px 14px;background:white;color:#64748B;border:1px solid #CBD5E1;border-radius:7px;font-size:0.82rem;font-weight:600;cursor:pointer">Cancel</button>
-        <button id="reengageManualSubmit" onclick="submitReengageManual()" style="padding:8px 18px;background:linear-gradient(135deg,#C2410C,#F97316);color:white;border:none;border-radius:7px;font-size:0.82rem;font-weight:700;cursor:pointer">+ Add Subscriber</button>
+        <button id="reengageManualSubmit" onclick="submitReengageManual()" style="padding:8px 18px;background:linear-gradient(135deg,#0b5f59,#0f766e);color:white;border:none;border-radius:7px;font-size:0.82rem;font-weight:700;cursor:pointer">+ Add Subscriber</button>
       </div>
     </div>`;
   document.body.appendChild(bd);
@@ -8937,7 +8937,7 @@ function _reengageHtml(j) {
               <option value="soft-breakup">Soft breakup ("is this goodbye?")</option>
               <option value="social-proof">Social proof heavy</option>
             </select>
-            <button onclick="generateReengageVariants()" id="reengageGenBtn" ${list.length === 0 ? 'disabled' : ''} style="padding:9px 14px;background:linear-gradient(135deg,#C2410C,#F97316);color:white;border:none;border-radius:7px;font-weight:700;font-size:0.83rem;cursor:pointer;${list.length === 0 ? 'opacity:.5;cursor:not-allowed' : ''}">✨ Generate</button>
+            <button onclick="generateReengageVariants()" id="reengageGenBtn" ${list.length === 0 ? 'disabled' : ''} style="padding:9px 14px;background:linear-gradient(135deg,#0b5f59,#0f766e);color:white;border:none;border-radius:7px;font-weight:700;font-size:0.83rem;cursor:pointer;${list.length === 0 ? 'opacity:.5;cursor:not-allowed' : ''}">✨ Generate</button>
           </div>
         </div>
       </div>
@@ -8975,7 +8975,7 @@ function _reengageVariantsHtml() {
     <div style="font-size:1rem;font-weight:800;color:#0F172A;margin-bottom:4px">Adaptive copy variants</div>
     <div style="font-size:0.78rem;color:#64748B;margin-bottom:14px">Pick one and launch — or run a dry-run to preview without sending.</div>
     ${variants.map((v, i) => `
-      <label style="display:block;background:${i === _reengageState.chosenIdx ? '#FFF7ED' : '#F8FAFC'};border:2px solid ${i === _reengageState.chosenIdx ? '#F97316' : '#E5E7EB'};border-radius:10px;padding:14px;margin-bottom:10px;cursor:pointer;transition:all .15s">
+      <label style="display:block;background:${i === _reengageState.chosenIdx ? '#FFF7ED' : '#F8FAFC'};border:2px solid ${i === _reengageState.chosenIdx ? '#0f766e' : '#E5E7EB'};border-radius:10px;padding:14px;margin-bottom:10px;cursor:pointer;transition:all .15s">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <input type="radio" name="reengageVariant" value="${i}" ${i === _reengageState.chosenIdx ? 'checked' : ''} onchange="_reengageState.chosenIdx=${i};buildReengageVariantsRedraw()" style="margin:0">
           <span style="font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:3px 8px;background:#FFEDD5;color:#9A3412;border-radius:999px">${esc(v.angle || ('Variant ' + (i+1)))}</span>
@@ -8987,7 +8987,7 @@ function _reengageVariantsHtml() {
       </label>`).join('')}
     <div style="display:flex;gap:8px;margin-top:14px">
       <button onclick="launchReengage(true)"  style="flex:1;padding:10px 14px;background:#F1F5F9;color:#0F172A;border:none;border-radius:8px;font-weight:700;font-size:0.83rem;cursor:pointer">📋 Dry-run (no sends)</button>
-      <button onclick="launchReengage(false)" style="flex:1;padding:10px 14px;background:linear-gradient(135deg,#DC2626,#F97316);color:white;border:none;border-radius:8px;font-weight:700;font-size:0.83rem;cursor:pointer">🚀 Launch for real</button>
+      <button onclick="launchReengage(false)" style="flex:1;padding:10px 14px;background:linear-gradient(135deg,#DC2626,#0f766e);color:white;border:none;border-radius:8px;font-weight:700;font-size:0.83rem;cursor:pointer">🚀 Launch for real</button>
     </div>
     <div id="reengageLaunchResult" style="margin-top:12px"></div>`;
 }
@@ -9910,7 +9910,7 @@ window.dynSegOpenReengage = async function(id, name) {
       </div>
       <div style="display:flex;gap:6px;margin-bottom:10px">
         <input id="dynRengAngle" value="${_escapeHtml(v.angle||'churn-risk · 30 days inactive')}" placeholder="Angle / context (e.g. abandoned trial)" style="flex:1;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
-        <button id="dynRengGenerate" style="padding:8px 14px;background:#7C3AED;border:2px solid #7C3AED;border-radius:7px;font-size:0.75rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap">✨ Generate with AI</button>
+        <button id="dynRengGenerate" style="padding:8px 14px;background:#0f766e;border:2px solid #0f766e;border-radius:7px;font-size:0.75rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap">✨ Generate with AI</button>
       </div>
       <input id="dynRengSubject" value="${_escapeHtml(v.subject||'')}" placeholder="Email subject" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;margin-bottom:8px">
       <input id="dynRengPreheader" value="${_escapeHtml(v.preheader||'')}" placeholder="Preheader (optional)" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;margin-bottom:8px">
@@ -10047,8 +10047,8 @@ window.buildDynAudiences = async function() {
                 <button onclick="dynSegRefresh(${s.id},'${safeName}')"      style="padding:7px;background:#0EA5E9;border:2px solid #0EA5E9;border-radius:6px;font-size:0.68rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔄 Sync</button>
                 <button onclick="dynSegViewMembers(${s.id},'${safeName}')"  style="padding:7px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:6px;font-size:0.68rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">👥 Members</button>
                 <button onclick="dynSegOpenDripBinding(${s.id},'${safeName}')" style="padding:7px;background:${b.drip?'#15803D':'#fff'};border:2px solid #15803D;border-radius:6px;font-size:0.68rem;font-weight:800;color:${b.drip?'#fff':'#15803D'};-webkit-text-fill-color:${b.drip?'#fff':'#15803D'};cursor:pointer;${b.drip?'text-shadow:0 1px 2px rgba(0,0,0,.4)':''}">📨 Drip</button>
-                <button onclick="dynSegOpenHsList(${s.id},'${safeName}')"   style="padding:7px;background:${b.hsList?'#EA580C':'#fff'};border:2px solid #EA580C;border-radius:6px;font-size:0.68rem;font-weight:800;color:${b.hsList?'#fff':'#EA580C'};-webkit-text-fill-color:${b.hsList?'#fff':'#EA580C'};cursor:pointer;${b.hsList?'text-shadow:0 1px 2px rgba(0,0,0,.4)':''}">🔗 HS List</button>
-                <button onclick="dynSegOpenReengage(${s.id},'${safeName}')" style="padding:7px;background:${b.reng?'#7C3AED':'#fff'};border:2px solid #7C3AED;border-radius:6px;font-size:0.68rem;font-weight:800;color:${b.reng?'#fff':'#7C3AED'};-webkit-text-fill-color:${b.reng?'#fff':'#7C3AED'};cursor:pointer;${b.reng?'text-shadow:0 1px 2px rgba(0,0,0,.4)':''}">💔 Re-eng</button>
+                <button onclick="dynSegOpenHsList(${s.id},'${safeName}')"   style="padding:7px;background:${b.hsList?'#0f766e':'#fff'};border:2px solid #0f766e;border-radius:6px;font-size:0.68rem;font-weight:800;color:${b.hsList?'#fff':'#0f766e'};-webkit-text-fill-color:${b.hsList?'#fff':'#0f766e'};cursor:pointer;${b.hsList?'text-shadow:0 1px 2px rgba(0,0,0,.4)':''}">🔗 HS List</button>
+                <button onclick="dynSegOpenReengage(${s.id},'${safeName}')" style="padding:7px;background:${b.reng?'#0f766e':'#fff'};border:2px solid #0f766e;border-radius:6px;font-size:0.68rem;font-weight:800;color:${b.reng?'#fff':'#0f766e'};-webkit-text-fill-color:${b.reng?'#fff':'#0f766e'};cursor:pointer;${b.reng?'text-shadow:0 1px 2px rgba(0,0,0,.4)':''}">💔 Re-eng</button>
                 <div style="display:flex;gap:5px">
                   <button onclick="openDynSegmentBuilder(${s.id})"            style="flex:1;padding:7px;background:#fff;border:2px solid #C7D2FE;border-radius:6px;font-size:0.68rem;font-weight:800;color:#4338CA;-webkit-text-fill-color:#4338CA;cursor:pointer">✏️ Edit</button>
                   <button onclick="deleteDynSegment(${s.id},'${safeName}')"   style="padding:7px 10px;background:#fff;border:2px solid #FCA5A5;border-radius:6px;font-size:0.68rem;font-weight:800;color:#B91C1C;-webkit-text-fill-color:#B91C1C;cursor:pointer">🗑</button>
@@ -10254,7 +10254,7 @@ window._safeUrl = function(u) {
       : _e(avatar);
     return `<div style="${_cardCSS}">
       <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:10px">
-        <button data-officer-avatar="${_e(o.id)}" title="Change avatar" style="width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;border:none;cursor:pointer;padding:0;position:relative;overflow:hidden">${avatarInner}<span style="position:absolute;bottom:-2px;right:-2px;background:#fff;border:1px solid #E2E8F0;border-radius:50%;width:18px;height:18px;font-size:10px;display:flex;align-items:center;justify-content:center;color:#64748B">✏️</span></button>
+        <button data-officer-avatar="${_e(o.id)}" title="Change avatar" style="width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#0f766e,#0EA5E9);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;border:none;cursor:pointer;padding:0;position:relative;overflow:hidden">${avatarInner}<span style="position:absolute;bottom:-2px;right:-2px;background:#fff;border:1px solid #E2E8F0;border-radius:50%;width:18px;height:18px;font-size:10px;display:flex;align-items:center;justify-content:center;color:#64748B">✏️</span></button>
         <div style="flex:1">
           <div style="font-size:1.05rem;font-weight:800;color:#0F172A">${_e(o.title)}${newBadge}</div>
           <div style="font-size:.78rem;color:#64748B;margin-top:2px">${_e(o.role)}</div>
@@ -10265,7 +10265,7 @@ window._safeUrl = function(u) {
       <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #E2E8F0;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
         <div style="font-size:.72rem;color:#64748B"><strong style="color:#0F172A">${taskCount}</strong> ${taskCount===1?'task':'tasks'} assigned</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button data-officer-tasks="${_e(o.id)}" data-officer-title="${_e(o.title)}" style="padding:6px 11px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:700;cursor:pointer">📋 Tasks</button>
+          <button data-officer-tasks="${_e(o.id)}" data-officer-title="${_e(o.title)}" style="padding:6px 11px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:700;cursor:pointer">📋 Tasks</button>
           <button data-officer-report="${_e(o.id)}" data-officer-title="${_e(o.title)}" style="padding:6px 11px;background:#0F172A;color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:700;cursor:pointer">📊 Daily Report</button>
         </div>
       </div>
@@ -10295,7 +10295,7 @@ window._safeUrl = function(u) {
         ${AVATAR_GALLERY.map(em => `<button data-pick="${_e(em)}" style="width:36px;height:36px;border:1px solid #F1F5F9;background:#fff;border-radius:8px;font-size:18px;cursor:pointer;padding:0">${em}</button>`).join('')}
       </div>
       <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Or upload an image</div>
-      <button id="apUploadBtn" style="width:100%;padding:9px 12px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer">📷 Choose image…</button>
+      <button id="apUploadBtn" style="width:100%;padding:9px 12px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff;border:none;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer">📷 Choose image…</button>
       <div id="apStatus" style="font-size:.7rem;color:#64748B;margin-top:6px;text-align:center"></div>
       <input id="apFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">`;
     document.body.appendChild(pop);
@@ -10365,7 +10365,7 @@ window._safeUrl = function(u) {
       };
       const list = (arr, tone) => (arr||[]).length ? `<ul style="margin:6px 0 0 18px;padding:0;font-size:.86rem;color:${tone||'#0F172A'};line-height:1.6">${arr.map(x=>`<li>${_e(typeof x==='string'?x:(x.step||x.title||JSON.stringify(x)))}${typeof x==='object'&&x.priority?` <span style="font-size:.65rem;color:#64748B">(${_e(x.priority)})</span>`:''}</li>`).join('')}</ul>` : '<div style="font-size:.82rem;color:#94A3B8;font-style:italic">None</div>';
       overlay.querySelector('#drBody').innerHTML = `
-        <div style="background:#F8FAFC;border-left:3px solid #7C3AED;padding:12px 14px;border-radius:6px;margin-bottom:18px">
+        <div style="background:#F8FAFC;border-left:3px solid #0f766e;padding:12px 14px;border-radius:6px;margin-bottom:18px">
           <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Executive Summary</div>
           <div style="font-size:.92rem;color:#0F172A;line-height:1.5">${_e(rep.summary||'No summary')}</div>
         </div>
@@ -10430,7 +10430,7 @@ window._safeUrl = function(u) {
             <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Cross-functional</div>
             <div style="font-size:1.15rem;font-weight:800;color:#0F172A">🗓️ Officer Meetings</div>
           </div>
-          <button id="mtgNew" style="padding:9px 16px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">+ Schedule Meeting</button>
+          <button id="mtgNew" style="padding:9px 16px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">+ Schedule Meeting</button>
         </div>
         ${meetings.length === 0
           ? `<div style="color:#94A3B8;font-style:italic;padding:20px;text-align:center;background:#F8FAFC;border-radius:8px">No meetings yet. Schedule one to get cross-functional alignment + AI-drafted minutes.</div>`
@@ -10486,7 +10486,7 @@ window._safeUrl = function(u) {
     const overlay = document.createElement('div');
     overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
     overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:560px;max-width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
-      <div style="padding:20px 24px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff">
+      <div style="padding:20px 24px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff">
         <div style="font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.9">🗓️ Schedule Meeting</div>
         <h3 style="margin:6px 0 0;font-size:1.25rem;font-weight:800">Cross-functional alignment</h3>
       </div>
@@ -10500,7 +10500,7 @@ window._safeUrl = function(u) {
       </div>
       <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;gap:8px;background:#F8FAFC">
         <button id="mtgCancel" style="padding:10px 18px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">Cancel</button>
-        <button id="mtgGo" style="padding:10px 22px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Schedule + Draft Minutes</button>
+        <button id="mtgGo" style="padding:10px 22px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Schedule + Draft Minutes</button>
       </div>
     </div>`;
     document.body.appendChild(overlay);
@@ -10580,7 +10580,7 @@ window._safeUrl = function(u) {
     const overlay = document.createElement('div');
     overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
     overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:640px;max-width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
-      <div style="padding:20px 24px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff">
+      <div style="padding:20px 24px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff">
         <div style="font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.9">📋 Job Responsibilities</div>
         <h3 style="margin:6px 0 4px;font-size:1.3rem;font-weight:800">${_e(officerTitle)}</h3>
         <p style="margin:0;font-size:.85rem;opacity:.95">Pick the tasks you want this AI employee to own. You can add custom ones too.</p>
@@ -10596,7 +10596,7 @@ window._safeUrl = function(u) {
       </div>
       <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;gap:8px;background:#F8FAFC">
         <button id="otCancel" style="padding:10px 18px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">Cancel</button>
-        <button id="otSave" style="padding:10px 22px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Save Responsibilities</button>
+        <button id="otSave" style="padding:10px 22px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Save Responsibilities</button>
       </div>
     </div>`;
     document.body.appendChild(overlay);
@@ -10614,7 +10614,7 @@ window._safeUrl = function(u) {
         : all.map((t,i) => {
             const checked = saved.includes(t) ? 'checked' : '';
             const isCustom = !suggestions.includes(t);
-            return `<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid ${checked?'#7C3AED':'#E2E8F0'};border-radius:9px;margin-bottom:6px;cursor:pointer;background:${checked?'#FAF5FF':'#fff'}"><input type="checkbox" data-task-idx="${i}" ${checked} style="margin-top:3px"><div style="flex:1"><div style="font-size:.88rem;color:#0F172A;font-weight:600">${_e(t)}</div>${isCustom?'<div style="font-size:.66rem;color:#7C3AED;margin-top:2px;font-weight:700">CUSTOM</div>':''}</div></label>`;
+            return `<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid ${checked?'#0f766e':'#E2E8F0'};border-radius:9px;margin-bottom:6px;cursor:pointer;background:${checked?'#FAF5FF':'#fff'}"><input type="checkbox" data-task-idx="${i}" ${checked} style="margin-top:3px"><div style="flex:1"><div style="font-size:.88rem;color:#0F172A;font-weight:600">${_e(t)}</div>${isCustom?'<div style="font-size:.66rem;color:#0f766e;margin-top:2px;font-weight:700">CUSTOM</div>':''}</div></label>`;
           }).join('');
       overlay.querySelectorAll('input[data-task-idx]').forEach(cb => cb.onchange = e => {
         const all2 = [...new Set([...suggestions, ...saved])];
@@ -10622,7 +10622,7 @@ window._safeUrl = function(u) {
         if (e.target.checked) { if (!saved.includes(t)) saved.push(t); }
         else saved = saved.filter(x => x !== t);
         overlay.querySelector('#otCount').textContent = saved.length;
-        e.target.closest('label').style.borderColor = e.target.checked?'#7C3AED':'#E2E8F0';
+        e.target.closest('label').style.borderColor = e.target.checked?'#0f766e':'#E2E8F0';
         e.target.closest('label').style.background  = e.target.checked?'#FAF5FF':'#fff';
       });
     };
@@ -10813,7 +10813,7 @@ window._safeUrl = function(u) {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button id="amSettings" style="padding:9px 16px;background:#0F172A;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">⚙️ Settings</button>
-          <button id="amRunNow" style="padding:9px 16px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">▶ Run Now</button>
+          <button id="amRunNow" style="padding:9px 16px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">▶ Run Now</button>
         </div>
       </div>
       <div style="font-size:.82rem;color:#475569;line-height:1.5">When ON, the AI Team auto-schedules a recurring cross-functional meeting and the AI minute-taker drafts notes (with a clear to-do list of action items per officer). All 8 officers attend by default. Browse all minutes anytime via <strong>Manage → Minutes of Meeting</strong>.</div>
@@ -10854,8 +10854,8 @@ window._safeUrl = function(u) {
         <div style="margin-bottom:14px">
           <label style="display:block;font-size:.76rem;font-weight:700;color:#0F172A;margin-bottom:6px">Frequency</label>
           <div style="display:flex;gap:8px">
-            <label style="flex:1;padding:10px;border:2px solid ${cur.frequency==='daily'?'#7C3AED':'#E2E8F0'};border-radius:8px;cursor:pointer;text-align:center;font-weight:700;font-size:.84rem"><input type="radio" name="amFreq" value="daily" ${cur.frequency==='daily'?'checked':''} style="display:none">Daily</label>
-            <label style="flex:1;padding:10px;border:2px solid ${cur.frequency==='weekly'?'#7C3AED':'#E2E8F0'};border-radius:8px;cursor:pointer;text-align:center;font-weight:700;font-size:.84rem"><input type="radio" name="amFreq" value="weekly" ${cur.frequency==='weekly'?'checked':''} style="display:none">Weekly</label>
+            <label style="flex:1;padding:10px;border:2px solid ${cur.frequency==='daily'?'#0f766e':'#E2E8F0'};border-radius:8px;cursor:pointer;text-align:center;font-weight:700;font-size:.84rem"><input type="radio" name="amFreq" value="daily" ${cur.frequency==='daily'?'checked':''} style="display:none">Daily</label>
+            <label style="flex:1;padding:10px;border:2px solid ${cur.frequency==='weekly'?'#0f766e':'#E2E8F0'};border-radius:8px;cursor:pointer;text-align:center;font-weight:700;font-size:.84rem"><input type="radio" name="amFreq" value="weekly" ${cur.frequency==='weekly'?'checked':''} style="display:none">Weekly</label>
           </div>
         </div>
         <div id="amDowWrap" style="margin-bottom:14px;${cur.frequency==='daily'?'display:none':''}">
@@ -10874,7 +10874,7 @@ window._safeUrl = function(u) {
       </div>
       <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;gap:8px;background:#F8FAFC">
         <button id="amCancel" style="padding:10px 18px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">Cancel</button>
-        <button id="amSave" style="padding:10px 22px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Save</button>
+        <button id="amSave" style="padding:10px 22px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Save</button>
       </div>
     </div>`;
     document.body.appendChild(overlay);
@@ -10883,7 +10883,7 @@ window._safeUrl = function(u) {
     overlay.addEventListener('click', e => { if (e.target===overlay) close(); });
     overlay.querySelectorAll('input[name="amFreq"]').forEach(r => r.onchange = () => {
       overlay.querySelectorAll('label[for], label').forEach(()=>{});
-      overlay.querySelectorAll('input[name="amFreq"]').forEach(rr => rr.parentElement.style.borderColor = rr.checked?'#7C3AED':'#E2E8F0');
+      overlay.querySelectorAll('input[name="amFreq"]').forEach(rr => rr.parentElement.style.borderColor = rr.checked?'#0f766e':'#E2E8F0');
       overlay.querySelector('#amDowWrap').style.display = (overlay.querySelector('input[name="amFreq"]:checked').value==='weekly') ? '' : 'none';
     });
     overlay.querySelector('#amSave').onclick = async () => {
@@ -10935,9 +10935,9 @@ window._safeUrl = function(u) {
         const items = byDay[d] || [];
         const isToday = (() => { const t = new Date(); return t.getFullYear()===yr && t.getMonth()===mo && t.getDate()===d; })();
         const hasMeetings = items.length > 0;
-        cells.push(`<button data-day="${d}" ${hasMeetings?'':'disabled'} style="aspect-ratio:1;padding:6px;border:1px solid ${isToday?'#7C3AED':'#E2E8F0'};border-radius:8px;background:${hasMeetings?'#F5F3FF':'#fff'};cursor:${hasMeetings?'pointer':'default'};display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px">
-          <div style="font-size:.78rem;font-weight:${isToday?800:600};color:${hasMeetings?'#7C3AED':'#64748B'}">${d}</div>
-          ${hasMeetings ? `<div style="font-size:.6rem;background:#7C3AED;color:#fff;padding:2px 6px;border-radius:99px;font-weight:700">${items.length}</div>` : ''}
+        cells.push(`<button data-day="${d}" ${hasMeetings?'':'disabled'} style="aspect-ratio:1;padding:6px;border:1px solid ${isToday?'#0f766e':'#E2E8F0'};border-radius:8px;background:${hasMeetings?'#F5F3FF':'#fff'};cursor:${hasMeetings?'pointer':'default'};display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px">
+          <div style="font-size:.78rem;font-weight:${isToday?800:600};color:${hasMeetings?'#0f766e':'#64748B'}">${d}</div>
+          ${hasMeetings ? `<div style="font-size:.6rem;background:#0f766e;color:#fff;padding:2px 6px;border-radius:99px;font-weight:700">${items.length}</div>` : ''}
         </button>`);
       }
       const sorted = [...meetings].sort((a,b)=> new Date(b.scheduledAt) - new Date(a.scheduledAt));
@@ -11009,7 +11009,7 @@ window._safeUrl = function(u) {
     let data = { playbook: [], state: {}, suggestions: {}, runs: [] };
     try { const r = await fetch('/api/playbook'); data = await r.json(); } catch(e) { wrap.innerHTML = '<div style="color:#B91C1C;padding:20px">Failed to load: '+e.message+'</div>'; return; }
 
-    const dayColors = ['#0EA5E9','#8B5CF6','#10B981','#F59E0B','#EF4444','#EC4899','#6366F1'];
+    const dayColors = ['#0EA5E9','#0284c7','#10B981','#F59E0B','#EF4444','#EC4899','#6366F1'];
     const officerEmoji = { marketing:'📣', sales:'💼', analyst:'📊', content:'✍️', seo:'🔍', cro:'🎯', finance:'💰', ops:'⚙️' };
 
     function totalDone() {
@@ -11031,7 +11031,7 @@ window._safeUrl = function(u) {
               <div style="font-size:.82rem;color:#475569;margin-top:4px">${done} / ${total} steps marked done · ${pct}% complete${recentRun ? ` · last autonomous run ${new Date(recentRun.at).toLocaleString()} (${recentRun.totalAdded} tasks)` : ''}</div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button id="pbRunAll" title="Assign every step to an AI officer as a tracked task" style="padding:11px 18px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-size:.92rem">▶ Run Autonomously (all 7 days)</button>
+              <button id="pbRunAll" title="Assign every step to an AI officer as a tracked task" style="padding:11px 18px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-size:.92rem">▶ Run Autonomously (all 7 days)</button>
             </div>
           </div>
           <div style="height:8px;background:#F1F5F9;border-radius:99px;overflow:hidden"><div style="width:${pct}%;height:100%;background:linear-gradient(135deg,#10B981,#0EA5E9);transition:width .3s"></div></div>
@@ -11190,7 +11190,7 @@ window._safeUrl = function(u) {
           { label: 'Web Analytics',            view: 'web-analytics',     why: 'Channel + landing-page + PageSpeed in one view.' },
           { label: 'Budget Board',             view: 'budget-board',      why: 'Target vs actual + per-channel utilisation + spend log.' }
         ]},
-      { n: 5, title: 'Compound & Innovate',  color: '#8B5CF6', summary: 'Re-engage past customers, build look-alike scale, and let the AI Team learn from every cycle.',
+      { n: 5, title: 'Compound & Innovate',  color: '#0284c7', summary: 'Re-engage past customers, build look-alike scale, and let the AI Team learn from every cycle.',
         features: [
           { label: 'Re-Engage Customers',      view: 'reengage',          why: 'Win-back drips for cold + churn-risk segments.' },
           { label: 'Dynamic Audiences',        view: 'audiences-dynamic', why: 'Live rule-based contact segments → drip + HubSpot list.' },
@@ -11216,7 +11216,7 @@ window._safeUrl = function(u) {
       return `<svg viewBox="0 0 720 660" style="width:100%;max-width:720px;height:auto;display:block;margin:0 auto">
         <defs>
           <radialGradient id="ghub" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#FB923C"/><stop offset="100%" stop-color="#EA580C"/>
+            <stop offset="0%" stop-color="#FB923C"/><stop offset="100%" stop-color="#0f766e"/>
           </radialGradient>
           <filter id="gshadow" x="-50%" y="-50%" width="200%" height="200%">
             <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0F172A" flood-opacity="0.15"/>
@@ -11323,7 +11323,7 @@ window._safeUrl = function(u) {
           <button id="arSettings" style="padding:9px 16px;background:#0F172A;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">⚙️ Settings</button>
           <button id="arView" title="Generate now and view in browser — no email, no Slack" style="padding:9px 16px;background:#0EA5E9;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">👁️ View Report</button>
           <button id="arDownload" title="Generate now and download as Markdown — no email, no Slack" style="padding:9px 16px;background:#10B981;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">📥 Download Report</button>
-          <button id="arRunNow" title="Generate now and send via email + Slack" style="padding:9px 16px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">▶ Run + Send</button>
+          <button id="arRunNow" title="Generate now and send via email + Slack" style="padding:9px 16px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">▶ Run + Send</button>
         </div>
       </div>
       <div style="font-size:.82rem;color:#475569;line-height:1.5">When ON, the AI Team auto-generates a report for every officer at <strong>${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')}</strong> in <strong>${_e(s.timezone||'UTC')}</strong> and sends a digest to <strong>${_e(s.email||'(no email set)')}</strong> + Slack. ${_e(last)}.</div>
@@ -11441,7 +11441,7 @@ window._safeUrl = function(u) {
       </div>
       <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;gap:8px;background:#F8FAFC">
         <button id="arCancel" style="padding:10px 18px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">Cancel</button>
-        <button id="arSave" style="padding:10px 22px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Save</button>
+        <button id="arSave" style="padding:10px 22px;background:linear-gradient(135deg,#0f766e,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Save</button>
       </div>
     </div>`;
     document.body.appendChild(overlay);
@@ -11808,7 +11808,7 @@ window._safeUrl = function(u) {
     btn.type = 'button';
     btn.textContent = '🤖 AI Suggest';
     btn.title = 'Pull keywords from your last analysis (or generate with AI)';
-    btn.style.cssText = 'display:inline-block;margin:0 0 4px 6px;padding:3px 9px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);border:none;border-radius:5px;color:#fff;-webkit-text-fill-color:#fff;font-size:0.62rem;font-weight:700;cursor:pointer;vertical-align:middle';
+    btn.style.cssText = 'display:inline-block;margin:0 0 4px 6px;padding:3px 9px;background:linear-gradient(135deg,#0f766e,#0EA5E9);border:none;border-radius:5px;color:#fff;-webkit-text-fill-color:#fff;font-size:0.62rem;font-weight:700;cursor:pointer;vertical-align:middle';
     btn.addEventListener('click', async (ev) => {
       ev.preventDefault();
       const kws = getKeywords();

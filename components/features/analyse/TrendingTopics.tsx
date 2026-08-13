@@ -187,11 +187,11 @@ function SidebarSparkline({
                 width={barW}
                 height={barH}
                 rx={2}
-                fill={isActive ? "#7C3AED" : count === 0 ? "#E5E7EB" : "#C4B5FD"}
+                fill={isActive ? "#0f766e" : count === 0 ? "#E5E7EB" : "#C4B5FD"}
                 opacity={isActive ? 1 : 0.75}
               />
               {isActive && (
-                <rect x={x} y={H + 2} width={barW} height={2} rx={1} fill="#7C3AED" />
+                <rect x={x} y={H + 2} width={barW} height={2} rx={1} fill="#0f766e" />
               )}
             </g>
           );
@@ -202,7 +202,7 @@ function SidebarSparkline({
 }
 
 function sourceBadgeColor(source: string | undefined): string {
-  if (source === "perplexity") return "#7C3AED";
+  if (source === "perplexity") return "#0f766e";
   if (source === "youtube") return "#FF0000";
   if (source === "template") return "#9CA3AF";
   return "#6B7280";
@@ -554,7 +554,7 @@ export default function TrendingTopics() {
   ];
 
   const aiBtn: React.CSSProperties = {
-    background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+    background: "linear-gradient(135deg,#0f766e,#0284c7)",
     color: "#fff",
     border: 0,
     padding: "2px 8px",
@@ -943,7 +943,7 @@ export default function TrendingTopics() {
                           textAlign: "left",
                           background: isActive ? "#F5F3FF" : isPinned ? "#FFFBEB" : isHovered ? "#F9FAFB" : "transparent",
                           border: "none",
-                          borderLeft: isActive ? "3px solid #7C3AED" : isPinned ? "3px solid #F59E0B" : "3px solid transparent",
+                          borderLeft: isActive ? "3px solid #0f766e" : isPinned ? "3px solid #F59E0B" : "3px solid transparent",
                           borderBottom: "1px solid #F3F4F6",
                           padding: "9px 56px 9px 12px",
                           cursor: "pointer",
@@ -1224,7 +1224,7 @@ export default function TrendingTopics() {
                             right: 0,
                             zIndex: 20,
                             background: "#fff",
-                            border: `1.5px solid ${labelIsEdit ? "#F59E0B" : "#7C3AED"}`,
+                            border: `1.5px solid ${labelIsEdit ? "#F59E0B" : "#0f766e"}`,
                             borderRadius: 8,
                             boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
                             padding: "10px 10px 8px",
@@ -1314,7 +1314,7 @@ export default function TrendingTopics() {
                                 onClick={() => confirmPin(run)}
                                 style={{
                                   padding: "3px 10px",
-                                  background: "#7C3AED",
+                                  background: "#0f766e",
                                   border: "none",
                                   borderRadius: 5,
                                   fontSize: "0.65rem",
@@ -1582,7 +1582,7 @@ export default function TrendingTopics() {
                       style={{
                         background:
                           result.source === "perplexity"
-                            ? "#7C3AED"
+                            ? "#0f766e"
                             : result.source === "youtube"
                               ? "#FF0000"
                               : "#9CA3AF",
@@ -1966,7 +1966,7 @@ export default function TrendingTopics() {
                               target="_blank"
                               rel="noopener noreferrer"
                               style={{
-                                color: isHashtag ? "#E9065E" : "#7C3AED",
+                                color: isHashtag ? "#E9065E" : "#0f766e",
                                 display: "block",
                                 marginTop: 2,
                               }}

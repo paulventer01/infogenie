@@ -24,7 +24,7 @@ interface HealthData {
 const NODE_TYPE_META: Record<string, { label: string; icon: string; color: string }> = {
   campaign_result:      { label: "Campaign Result",      icon: "🚀", color: "#3B82F6" },
   competitor_signal:    { label: "Competitor Signal",    icon: "🏆", color: "#EF4444" },
-  content_performance:  { label: "Content Performance",  icon: "📝", color: "#8B5CF6" },
+  content_performance:  { label: "Content Performance",  icon: "📝", color: "#0284c7" },
   audience_shift:       { label: "Audience Shift",       icon: "👥", color: "#F59E0B" },
   lead_event:           { label: "Lead Event",           icon: "🎯", color: "#10B981" },
   manual_observation:   { label: "Manual Observation",   icon: "📌", color: "#6B7280" },

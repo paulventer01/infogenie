@@ -129,7 +129,7 @@ export default function ContributionRecord({ embedded = false }: { embedded?: bo
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", marginBottom: 18 }}>
           {!embedded ? (
             <div>
-              <div style={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "#C2410C" }}>
+              <div style={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "#0b5f59" }}>
                 System of record · pain #1
               </div>
               <h1 style={{ margin: "6px 0 6px", fontSize: "1.6rem", color: "#0F172A" }}>Contribution & incrementality</h1>
@@ -140,7 +140,7 @@ export default function ContributionRecord({ embedded = false }: { embedded?: bo
             </div>
           ) : (
             <div>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#C2410C", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#0b5f59", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                 Contribution record
               </div>
               <p style={{ margin: "4px 0 0", color: "#64748B", fontSize: 13 }}>
@@ -157,7 +157,7 @@ export default function ContributionRecord({ embedded = false }: { embedded?: bo
                 style={{
                   padding: "6px 12px",
                   borderRadius: 8,
-                  border: days === d ? "2px solid #C2410C" : "1px solid var(--border)",
+                  border: days === d ? "2px solid #0b5f59" : "1px solid var(--border)",
                   background: days === d ? "#fff" : "var(--bg-elevated)",
                   fontWeight: 700,
                   fontSize: 12,
@@ -188,7 +188,7 @@ export default function ContributionRecord({ embedded = false }: { embedded?: bo
           >
             {[
               { label: "Platform ROAS", v: s.platform?.roas, accent: "#0F766E" },
-              { label: "Causal iROAS", v: s.causal?.iroas, accent: "#C2410C" },
+              { label: "Causal iROAS", v: s.causal?.iroas, accent: "#0b5f59" },
               { label: "True ROAS", v: s.platform?.true_roas, accent: "#334155" },
               {
                 label: "Overstatement",
@@ -300,7 +300,7 @@ export default function ContributionRecord({ embedded = false }: { embedded?: bo
                       {fmt(row.platform.roas?.value, "x")}{" "}
                       <KindChip kind={row.platform.roas?.kind || "measured"} />
                     </td>
-                    <td style={{ padding: "10px 12px", fontWeight: 700, color: "#C2410C" }}>
+                    <td style={{ padding: "10px 12px", fontWeight: 700, color: "#0b5f59" }}>
                       {fmt(row.causal.iroas?.value, "x")}{" "}
                       <KindChip kind={row.causal.iroas?.kind || "modelled"} />
                     </td>

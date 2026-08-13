@@ -463,7 +463,7 @@ export default function ReviewAggregator() {
               onClick={runCompare}
               disabled={compareStatus === "loading"}
               style={{
-                background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+                background: "linear-gradient(135deg,#0f766e,#0284c7)",
                 color: "#fff",
                 border: "none",
                 padding: "10px 20px",
@@ -855,7 +855,7 @@ function DeletedOutput({
               }}
             >
               <div
-                style={{ fontSize: "1.1rem", fontWeight: 800, color: "#C2410C" }}
+                style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0b5f59" }}
               >
                 {s.deleted_count}
               </div>

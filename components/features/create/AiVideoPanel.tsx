@@ -117,7 +117,7 @@ export default function AiVideoPanel() {
                 padding: '11px 18px',
                 borderRadius: 10,
                 border: 'none',
-                background: 'linear-gradient(135deg,#E11D48,#7C3AED)',
+                background: 'linear-gradient(135deg,#E11D48,#0f766e)',
                 color: '#fff',
                 fontWeight: 700,
                 cursor: 'pointer',

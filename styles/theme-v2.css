@@ -12,7 +12,7 @@
   --v2-accent: #0f766e;
   --v2-accent-2: #0284c7;
   --v2-accent-3: #16a34a;
-  --v2-warm: #f97316;
+  --v2-warm: #0284c7;
   --v2-accent-soft: rgba(15, 118, 110, 0.12);
   --v2-shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 12px 32px rgba(11, 18, 32, 0.06);
   --v2-radius: 12px;
@@ -32,7 +32,7 @@ body:has(#ig-app-shell) {
   --blue: #0284c7;
   --blue-light: #0ea5e9;
   --purple: #0284c7;
-  --gold: #f97316;
+  --gold: #0f766e;
   --green: #16a34a;
   --text-primary: #0b1220;
   --text-secondary: #5b6577;
@@ -131,7 +131,7 @@ body:has(#ig-app-shell) .panel-header::after {
   right: 0;
   bottom: 0;
   height: 3px;
-  background: linear-gradient(90deg, #0f766e, #0284c7, #f97316) !important;
+  background: linear-gradient(90deg, #0f766e, #0284c7) !important;
 }
 
 body:has(#ig-app-shell) .view-header h1,

@@ -199,7 +199,7 @@ export default function Advertise() {
   const stats: Array<[string, string | number, string, string, string]> = [
     ["Connected Channels", connCount, "#10B981", "📡", "Ad platforms you have authorised InfoGenie to push campaigns to. Connect more channels to expand your reach."],
     ["Active Campaigns", campaigns.length, "#0066FF", "🚀", "Number of campaigns you have launched from InfoGenie that are currently running or tracked."],
-    ["Channels Available", ADV_PLATFORMS.length, "#7C3AED", "🌐", "Total ad platforms supported by InfoGenie — connect any to start pushing campaigns with one click."],
+    ["Channels Available", ADV_PLATFORMS.length, "#0f766e", "🌐", "Total ad platforms supported by InfoGenie — connect any to start pushing campaigns with one click."],
     ["AI Optimisation", "94%", "#F59E0B", "⚡", "InfoGenie's AI engine efficiency score — bids, budgets, and targeting are continuously adjusted to maximise ROAS."],
   ];
 

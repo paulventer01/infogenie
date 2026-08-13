@@ -245,7 +245,7 @@ export default function Omnichannel() {
               style={{
                 padding: "12px 22px",
                 background: liveChannels.length
-                  ? "linear-gradient(135deg,#6366F1,#8B5CF6)"
+                  ? "linear-gradient(135deg,#6366F1,#0284c7)"
                   : "#CBD5E1",
                 color: "#fff",
                 border: "none",
