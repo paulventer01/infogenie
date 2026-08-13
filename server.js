@@ -3663,6 +3663,18 @@ const _bfSchema    = require('./services/brand_foundation/schema');
 const _bfRouter    = require('./services/brand_foundation/api');
 app.use('/api/deliverability', _delivRouter);
 app.use('/api/landing-pages',  _lpRouter);
+const _marketingPlanRouter = require('./services/marketing_plan/api');
+app.use('/api/marketing-plan', _marketingPlanRouter.router);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await require('./services/marketing_plan/schema').ensureMarketingPlanSchema();
+      console.log('[marketing-plan] schema ready');
+    }
+  } catch (e) {
+    console.warn('[marketing-plan] schema init failed:', e.message);
+  }
+});
 
 // ── Customer.io-inspired features (Surveys · Email Designer · MCP · Smart Send · Ad Sync) ──
 const _surveysSchema = require('./services/surveys/schema');

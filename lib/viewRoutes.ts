@@ -99,7 +99,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "4 · Competitors",
         items: [
           { view: "competitors", icon: "🏆", label: "Competitor Profiles" },
-          { view: "battleplan", icon: "⚔️", label: "Marketing Plan / Battle Plan" },
+          { view: "battleplan", icon: "⚔️", label: "Battle Plan (competitive attack)" },
           { view: "battle-cards", icon: "🛡️", label: "Battle Cards" },
           { view: "intelligence", icon: "🧠", label: "Intelligence Hub", className: "nav-link-intel" },
           { view: "war-room", icon: "🗡️", label: "AI Competitor War Room" },
@@ -475,6 +475,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "meeting-notes", icon: "✏️", label: "Sales Meeting Notes (BANT transcript)" },
           // AI Team minutes live under AI Team → Team ops
           { view: "playbook-7day", icon: "📖", label: "7-Day Marketing Playbook" },
+          { view: "marketing-plan", icon: "🎯", label: "10-Step Marketing Plan" },
           { view: "growth-methodology", icon: "💶", label: "Growth Methodology (5-stage)" },
           { view: "flywheel", icon: "🔁", label: "Performance Growth Flywheel" },
         ],
@@ -579,6 +580,7 @@ for (const group of NAV_GROUPS) {
 
 // Keep established bookmark paths when nav ownership moves (AI Team ops, etc.).
 VIEW_TO_PATH.flywheel = "/manage/flywheel";
+VIEW_TO_PATH["marketing-plan"] = "/manage/marketing-plan";
 VIEW_TO_PATH["canonical-metrics"] = "/manage/canonical-metrics";
 VIEW_TO_PATH["contribution-record"] = "/grow/contribution-record";
 VIEW_TO_PATH.capacity = "/manage/capacity";
