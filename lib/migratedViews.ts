@@ -93,6 +93,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "ask-infogenie", legacyModule: null },
   { view: "strategic-intelligence", legacyModule: null },
   { view: "marketing-memory", legacyModule: null },
+  { view: "knowledge-hub", legacyModule: null },
   { view: "predictive-intelligence", legacyModule: null },
   { view: "agent-goals", legacyModule: null },
   { view: "ai-providers", legacyModule: null },

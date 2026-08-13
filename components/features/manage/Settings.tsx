@@ -743,6 +743,42 @@ const INTEGRATIONS: IntegrationsMap = {
           { text: "Enter your API token above and click <strong>Test Connection</strong>" },
         ],
       },
+      {
+        id: "n8n", logo: "🟣", name: "n8n",
+        tagline: "Self-hosted / cloud workflow automation & agent orchestration",
+        authType: "apikey",
+        placeholder: "n8n API Key (optional)",
+        unlocks: [
+          "Receive InfoGenie events on n8n Webhook nodes",
+          "Call back into Document RAG / Marketing Memory via inbound bridge",
+          "Orchestrate multi-step AI agents across your stack",
+          "Works with Automations → Zapier · n8n · Make bridge",
+        ],
+        steps: [
+          { text: "In n8n, create a workflow with a <strong>Webhook</strong> trigger and activate it" },
+          { text: "Copy the Production Webhook URL" },
+          { text: "In InfoGenie go to <strong>Manage → Automations</strong> → Zapier · n8n · Make bridge and paste the URL as an outbound target (provider: n8n)" },
+          { text: "Optionally paste an n8n API key above for vault storage" },
+          { text: "Use the inbound webhook URL from Automations to write data back into InfoGenie" },
+        ],
+      },
+      {
+        id: "notion", logo: "📓", name: "Notion",
+        tagline: "Index Notion pages into Knowledge Hub (enterprise search)",
+        authType: "apikey",
+        placeholder: "Notion Internal Integration Secret",
+        unlocks: [
+          "Sync Notion pages into Ask InfoGenie retrieval",
+          "Glean-class workplace knowledge over brand docs & wikis",
+          "Re-sync on demand from Knowledge Hub",
+        ],
+        steps: [
+          { text: 'Create an integration at <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a>' },
+          { text: "Copy the <strong>Internal Integration Secret</strong>" },
+          { text: "Share the Notion pages/databases you want indexed with that integration" },
+          { text: "Paste the secret above, then open <strong>Manage → Knowledge Hub</strong> and click Sync on Notion" },
+        ],
+      },
     ],
   },
 
@@ -949,6 +985,23 @@ const INTEGRATIONS: IntegrationsMap = {
         ],
       },
       {
+        id: "slack_bot", logo: "💬", name: "Slack Bot Token (Knowledge Hub)",
+        tagline: "Index public channel history into Ask InfoGenie (Glean-class search)",
+        authType: "apikey",
+        placeholder: "xoxb-… Bot User OAuth Token",
+        unlocks: [
+          "Sync recent Slack channel messages into Document RAG index",
+          "Ask InfoGenie can cite workplace conversations",
+          "On-demand re-sync from Knowledge Hub",
+        ],
+        steps: [
+          { text: "In your Slack app, open <strong>OAuth & Permissions</strong>" },
+          { text: "Add bot scopes: <code>channels:history</code>, <code>channels:read</code>, <code>groups:history</code> (optional)" },
+          { text: "Reinstall the app and copy the <strong>Bot User OAuth Token</strong> (starts with <code>xoxb-</code>)" },
+          { text: "Paste it above, then sync from <strong>Manage → Knowledge Hub</strong>" },
+        ],
+      },
+      {
         id: "whatsapp", logo: "📱", name: "WhatsApp Business API",
         tagline: "Lead qualification chatbot & conversational campaign follow-up",
         authType: "apikey",
@@ -1075,6 +1128,22 @@ const INTEGRATIONS: IntegrationsMap = {
           { text: "Add your InfoGenie URL + <code>/api/integrations/workspace/oauth/callback</code> to <strong>Authorised Redirect URIs</strong>" },
           { text: "Set <code>GOOGLE_WORKSPACE_CLIENT_ID</code> and <code>GOOGLE_WORKSPACE_CLIENT_SECRET</code> in your environment secrets" },
           { text: "Click <strong>Connect via OAuth</strong> below — InfoGenie requests read/send for Gmail, <code>drive.file</code> for Drive, and <code>calendar.events</code> for Calendar" },
+        ],
+      },
+      {
+        id: "google_drive", logo: "📁", name: "Google Drive (Knowledge Hub)",
+        tagline: "Index Docs / CSV / text files into Ask InfoGenie",
+        authType: "apikey",
+        placeholder: "Google OAuth access token (Drive scope)",
+        unlocks: [
+          "Pull recent Drive Docs and text files into the shared RAG index",
+          "Enterprise search over brand folders without leaving InfoGenie",
+          "Sync on demand from Knowledge Hub",
+        ],
+        steps: [
+          { text: "Obtain an OAuth access token with <code>https://www.googleapis.com/auth/drive.readonly</code> (or use your Workspace OAuth flow)" },
+          { text: "Paste the access token above and click Connect" },
+          { text: "Open <strong>Manage → Knowledge Hub</strong> and click Sync on Google Drive" },
         ],
       },
     ],
@@ -1341,6 +1410,22 @@ const API_VALIDATORS: Record<string, Validator> = {
   make: (key) => {
     if (key.length < 20) return rej("Token too short — Make API tokens are typically 30+ characters. Check you copied it in full.");
     return unv("Make does not allow browser-side API validation. Token length looks correct — actual validity will be confirmed on first scenario run.");
+  },
+  n8n: (key) => {
+    if (key.length < 16) return rej("Key too short — paste your n8n API key or use webhook-only setup via Automations.");
+    return unv("n8n API keys are not browser-validated — wire webhooks in Automations → bridge.");
+  },
+  notion: (key) => {
+    if (key.length < 30) return rej("Key too short — Notion integration secrets are typically 50+ characters.");
+    return unv("Notion secrets are confirmed on the first Knowledge Hub sync.");
+  },
+  slack_bot: (key) => {
+    if (!/^xoxb-/i.test(key)) return rej('Slack bot tokens usually start with "xoxb-"');
+    return unv("Slack bot tokens are confirmed on the first Knowledge Hub sync.");
+  },
+  google_drive: (key) => {
+    if (key.length < 20) return rej("Access token looks too short.");
+    return unv("Google Drive tokens are confirmed on the first Knowledge Hub sync.");
   },
   segment: (key) => {
     if (key.length < 20) return rej("Write Key too short — Segment write keys are typically 22 characters. Check you copied it in full.");

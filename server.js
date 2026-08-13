@@ -487,6 +487,7 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/digital-twin\/share\/[^\/]+\/view$/,      // public simulator share HTML (no auth)
   /^\/api\/digital-twin\/share\/[^\/]+\/pdf$/,       // public simulator share PDF (no auth)
   /^\/api\/visitor-intel\/ping$/,                    // public visitor tracking pixel endpoint
+  /^\/api\/automation-bridge\/hooks\/[^\/]+$/,       // Zapier / n8n / Make inbound (token-authenticated)
 ];
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.
@@ -503,7 +504,7 @@ function _rateLimitPublic(req, res, next) {
   next();
 }
 // Apply to public POST surfaces (cheap; never blocks dashboard usage)
-const _RL_PATHS = [/^\/api\/bookings\/book\//, /^\/api\/linksell\/checkout\//, /^\/api\/linksell\/optin\//, /^\/api\/scroll-tracker\/event$/, /^\/api\/site-search\/event$/, /^\/api\/visitor-intel\/ping$/];
+const _RL_PATHS = [/^\/api\/bookings\/book\//, /^\/api\/linksell\/checkout\//, /^\/api\/linksell\/optin\//, /^\/api\/scroll-tracker\/event$/, /^\/api\/site-search\/event$/, /^\/api\/visitor-intel\/ping$/, /^\/api\/automation-bridge\/hooks\//];
 app.use((req, res, next) => {
   if (req.method !== 'POST') return next();
   if (_RL_PATHS.some(rx => rx.test(req.path))) return _rateLimitPublic(req, res, next);
@@ -3636,10 +3637,20 @@ app.use('/api/workflow-builder',   _workflowBuilderRouter);
 const _askCopilotSchema = require('./services/ask_copilot/schema');
 const _askCopilotRouter = require('./services/ask_copilot/api');
 app.use('/api/ask',                _askCopilotRouter);
+const _documentRagRouter = require('./services/document_rag/api');
+const _enterpriseSearchRouter = require('./services/enterprise_search/api');
+const _automationBridge = require('./services/automation_bridge/api');
+app.use('/api/document-rag',       _documentRagRouter);
+app.use('/api/enterprise-search',  _enterpriseSearchRouter);
+app.use('/api/automation-bridge',  _automationBridge.router);
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _askCopilotSchema.ensureAskCopilotSchema();
   console.log('[ask-copilot] schema ready');
-} } catch(e) { console.warn('[ask-copilot] schema init failed:', e.message); } });
+  await require('./services/document_rag/schema').ensureDocumentRagSchema();
+  await require('./services/enterprise_search/schema').ensureEnterpriseSearchSchema();
+  await require('./services/automation_bridge/schema').ensureAutomationBridgeSchema();
+  console.log('[document-rag + enterprise-search + automation-bridge] schemas ready');
+} } catch(e) { console.warn('[rag-connectors] schema init failed:', e.message); } });
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _swarmSchema.ensureAgentSwarmSchema();
   await _selfHealingSchema.ensureSelfHealingSchema();

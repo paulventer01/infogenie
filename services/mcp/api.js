@@ -125,6 +125,18 @@ const TOOLS = [
     },
   },
   {
+    name: 'query_document_rag',
+    description: 'List indexed Document RAG / enterprise-connector knowledge (PDFs, Notion, Slack, Drive) for this workspace.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', description: 'Optional filter: upload | slack | notion | google_drive | paste | automation' },
+        limit: { type: 'number' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'list_email_replies',
     description: 'List inbound email replies to outreach (reply inbox)',
     inputSchema: {
@@ -523,6 +535,16 @@ router.post('/call', async (req, res) => {
           });
           result = { ok: true, ...out };
         } catch (e) { result = { ok: false, error: e.message }; }
+        break;
+      }
+      case 'query_document_rag': {
+        const { listDocuments } = require('../document_rag/index');
+        const source = args.source ? String(args.source) : null;
+        const listed = await listDocuments(tid, {
+          limit: Math.min(Number(args.limit) || 20, 50),
+          source,
+        });
+        result = listed;
         break;
       }
       case 'query_marketing_memory': {
