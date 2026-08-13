@@ -39,7 +39,7 @@ const CHANNELS = [
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: 9,
-  border: "1px solid #FED7AA",
+  border: "1px solid rgba(15,118,110,0.28)",
   borderRadius: 8,
 };
 const labelStyle: React.CSSProperties = {
@@ -185,7 +185,7 @@ export default function NewProject() {
         <div
           style={{
             background: "#fff",
-            border: "1px solid #FED7AA",
+            border: "1px solid rgba(15,118,110,0.28)",
             borderRadius: 14,
             padding: 24,
             marginBottom: 24,
@@ -273,7 +273,7 @@ export default function NewProject() {
                 key={c}
                 style={{
                   background: "#f3f6fb",
-                  border: "1px solid #FED7AA",
+                  border: "1px solid rgba(15,118,110,0.28)",
                   borderRadius: 99,
                   padding: "6px 12px",
                   cursor: "pointer",
@@ -317,7 +317,7 @@ export default function NewProject() {
             <div
               style={{
                 background: "#fff",
-                border: "1px dashed #FED7AA",
+                border: "1px dashed rgba(15,118,110,0.28)",
                 borderRadius: 10,
                 padding: 24,
                 textAlign: "center",
@@ -369,7 +369,7 @@ export default function NewProject() {
                     onClick={() => setActive(p)}
                     style={{
                       padding: "6px 12px",
-                      background: "#FED7AA",
+                      background: "rgba(15,118,110,0.28)",
                       border: "1px solid #0f766e",
                       borderRadius: 7,
                       cursor: "pointer",
