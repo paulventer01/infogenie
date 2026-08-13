@@ -40,7 +40,7 @@ module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
   const { INFO_SITE_PATTERN, _db, callDataForSEO, openai, openaiChatWithRetry, anthropic, startMsg } = ctx;
-  const { verifyCompetitors } = require('./verify');
+  const { verifyCompetitors } = require('./services/competitor_detect/verify');
 
   async function _gateSameBusiness(subject, candidates) {
     const tagged = (candidates || []).map((c) => ({
