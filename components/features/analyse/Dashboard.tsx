@@ -32,6 +32,8 @@ import OverviewWidgets from "./OverviewWidgets";
 import MessagingChannelStrip from "./MessagingChannelStrip";
 import { buildCompanyOverview } from "@/lib/companyOverview";
 import { restoreCanvasForReact } from "@/lib/domSafety";
+import PanelShell from "@/components/layout/PanelShell";
+import IgButton from "@/components/ui/IgButton";
 
 interface WebsiteKPIs {
   ctr: number;
@@ -674,41 +676,35 @@ export default function Dashboard() {
   const alertRows = competitors.slice(0, 4);
 
   return (
-    <div className="view-header-wrap">
-      <div className="view-header ig-panel-hero">
-        <div className="container">
-          <div className="vh-inner">
-            <div>
-              <div className="breadcrumb">
-                <span className="bc-group">Analyse</span> <span className="bc-sep">›</span> Dashboard
-              </div>
-              <h2 className="view-title">
-                {ad.sectorOnly ? `Sector Overview: ${industryName}` : `Intelligence Report: ${url}`}
-              </h2>
-              <p className="view-sub" style={{ color: "#0f172a", opacity: 1, textShadow: "none" }}>
-                {ad.sectorOnly
-                  ? `Industry-wide intelligence · ${competitors.length} top competitors mapped · No website yet — add one anytime to personalise this report`
-                  : `${industryName} · ${competitors.length} competitors analysed · AI recommendations generated`}
-              </p>
-            </div>
-            <div className="vh-actions">
-              <div className="analysis-tags">
-                <span className="atag" title="Your industry category — all benchmarks and AI recommendations are calibrated to this vertical.">{industryName}</span>
-                <span className="atag" title="Geographic scope of the analysis — traffic, ad spend and benchmarks are filtered to this market.">{countryLabel}</span>
-                <span className="atag" title={`${competitors.length} rival domains are being tracked and benchmarked in this report.`}>{competitors.length} Competitors</span>
-                <span className="atag live-tag" title="Data is refreshed in real time — competitor signals, traffic estimates and alerts are always current.">
-                  <span className="live-dot-inline" />Live Intel
-                </span>
-              </div>
-              <button className="btn-secondary" title="Refresh all competitor data and regenerate AI recommendations from scratch. Takes 30–60 seconds." onClick={() => goToView(router, "home")}>
-                ↺ Re-run Analysis
-              </button>
-            </div>
+    <PanelShell
+      group="Analyse"
+      title={ad.sectorOnly ? `Sector Overview: ${industryName}` : `Intelligence Report: ${url}`}
+      subtitle={
+        ad.sectorOnly
+          ? `Industry-wide intelligence · ${competitors.length} top competitors mapped · No website yet — add one anytime to personalise this report`
+          : `${industryName} · ${competitors.length} competitors analysed · AI recommendations generated`
+      }
+      maxWidth={1200}
+      actions={
+        <>
+          <div className="analysis-tags" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <span className="atag" title="Your industry category — all benchmarks and AI recommendations are calibrated to this vertical.">{industryName}</span>
+            <span className="atag" title="Geographic scope of the analysis — traffic, ad spend and benchmarks are filtered to this market.">{countryLabel}</span>
+            <span className="atag" title={`${competitors.length} rival domains are being tracked and benchmarked in this report.`}>{competitors.length} Competitors</span>
+            <span className="atag live-tag" title="Data is refreshed in real time — competitor signals, traffic estimates and alerts are always current.">
+              <span className="live-dot-inline" />Live Intel
+            </span>
           </div>
-        </div>
-      </div>
-
-      <div className="container">
+          <IgButton
+            variant="secondary"
+            title="Refresh all competitor data and regenerate AI recommendations from scratch. Takes 30–60 seconds."
+            onClick={() => goToView(router, "home")}
+          >
+            ↺ Re-run Analysis
+          </IgButton>
+        </>
+      }
+    >
         {companyOverview && (
           <>
             <DomainOverview overview={companyOverview} currentView="dashboard" />
@@ -1245,7 +1241,6 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-      </div>
 
       {threatIdx != null && competitors[threatIdx] && (
         <div className={dm.modalBackdrop} onClick={() => setThreatIdx(null)}>
@@ -1290,6 +1285,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </div>
+    </PanelShell>
   );
 }
