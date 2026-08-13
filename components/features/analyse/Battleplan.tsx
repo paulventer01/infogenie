@@ -438,13 +438,14 @@ export default function Battleplan() {
   }
 
   const generateAttackPlan = useCallback(async (compIdx: number) => {
-    const list = (ad && Array.isArray(ad.competitors) && ad.competitors.length) ? ad.competitors : (useDemo ? DEMO_COMPS : []);
-    const comp = list[compIdx] || list[0];
+    const list = (ad && Array.isArray(ad.competitors) && ad.competitors.length) ? ad.competitors : (useDemo ? DEMO_COMPS : comps);
+    const comp = list[compIdx] || list[0] || DEMO_COMPS[0];
     if (!comp) {
       setModalOpen(true);
       setModalError("Add competitors via analysis first, or preview with demo data.");
       return;
     }
+    if (!list.length) setUseDemo(true);
     setPlanCompName(comp.name || "Competitor");
     setModalOpen(true);
     setModalLoading(true);
@@ -489,7 +490,22 @@ export default function Battleplan() {
     setPlanWarning(data.warning || "");
     // Keep legacy global in sync for action buttons that expect it
     (window as unknown as { _apPlanData?: AttackPlan; renderAttackPlan?: (p: AttackPlan, n: string) => void })._apPlanData = data.plan;
-  }, [ad, useDemo]);
+  }, [ad, useDemo, comps]);
+
+  // Deep-link: /analyse/battleplan?generate=1 opens the Attack Plan window.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("generate") !== "1") return;
+    if (!liveComps.length) setUseDemo(true);
+    const t = window.setTimeout(() => {
+      void generateAttackPlan(0);
+      params.delete("generate");
+      const qs = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (qs ? "?" + qs : ""));
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [generateAttackPlan, liveComps.length]);
 
   if (!hasData || !c) {
     return (

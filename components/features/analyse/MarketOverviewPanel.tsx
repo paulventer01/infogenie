@@ -144,9 +144,10 @@ export default function MarketOverviewPanel() {
     {
       title: 'Turn gaps into an Attack Plan',
       desc: 'Convert share deficits into an 8-week keyword, channel, and content plan.',
-      cta: 'Open Battle Plan',
+      cta: 'Generate Attack Plan',
       view: 'battleplan',
       color: '#0066FF',
+      generate: true,
     },
   ];
 
@@ -342,7 +343,13 @@ export default function MarketOverviewPanel() {
                   <button
                     type="button"
                     style={{ ...outlineBtn, borderColor: a.color, color: a.color }}
-                    onClick={() => goToView(router, a.view)}
+                    onClick={() =>
+                      goToView(
+                        router,
+                        a.view,
+                        'generate' in a && a.generate ? { query: { generate: '1' } } : undefined
+                      )
+                    }
                   >
                     {a.cta} →
                   </button>
