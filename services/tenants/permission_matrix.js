@@ -47,6 +47,8 @@ const ROUTE_GROUPS = [
   { prefix: '/api/crm-sync',                  view: 'tenant.integrations.manage' },
   { prefix: '/api/hubspot-sync',              view: 'tenant.integrations.manage' },
   { prefix: '/api/canva',                     view: 'tenant.integrations.manage' },
+  { prefix: '/api/ai-video',                  view: 'creator.view', write: 'creator.edit' },
+  { prefix: '/api/integrations-wave',         view: 'tenant.integrations.manage' },
   { prefix: '/api/settings',                  view: 'tenant.credentials.manage' },
   // Generic "send to Slack" notify utility — invoked from multiple feature
   // surfaces (e.g. Mentions/Gaps), not integration config. Gate to the
@@ -630,6 +632,8 @@ const COMPONENT_MATRIX = {
   'daily-trends':         'seo.view',
   'traffic-sources':      'seo.view',
   'market-overview':      'compete.competitors.view',
+  'ai-video':             'creator.view',
+  'integrations-wave':    'tenant.integrations.manage',
   'serp-gap':             'seo.view',
   'llm-gap':              'seo.view',
   'ad-intel':             'compete.ad_spy.view',

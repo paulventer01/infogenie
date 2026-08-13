@@ -7,7 +7,15 @@ const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label }); }
 function _normDomain(d) {
-  return String(d || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').slice(0, 200);
+  let s = String(d || '').trim().toLowerCase();
+  s = s.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+  // Brand names without a TLD (e.g. "XM Group") — keep as a single label.
+  if (s && !s.includes('.')) {
+    s = s.replace(/\s+/g, '-').replace(/[^a-z0-9.-]/g, '').slice(0, 80);
+  } else {
+    s = s.replace(/\s+/g, '').slice(0, 200);
+  }
+  return s;
 }
 function _hash(s) {
   let h = 0;

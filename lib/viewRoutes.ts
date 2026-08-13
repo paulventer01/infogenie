@@ -203,8 +203,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
           // creative / smart-creative / ad-creative open from Creative Studio hub
           { view: "carousel", icon: "🎠", label: "Carousel Generator" },
           { view: "canva", icon: "🎨", label: "Canva Template Launcher" },
+          { view: "ai-video", icon: "🎬", label: "AI Video (Runway / HeyGen)" },
           { view: "ugc-avatars", icon: "🧑‍🎤", label: "UGC Avatar Videos" },
-          { view: "video-script", icon: "🎬", label: "Video Script Generator" },
+          { view: "video-script", icon: "🎞️", label: "Video Script Generator" },
           { view: "short-form-video", icon: "📹", label: "Short-Form Video Workflow" },
           { view: "podcast-studio", icon: "🎙️", label: "Podcast Marketing Studio" },
           { view: "voiceover", icon: "🔊", label: "AI Voiceovers" },
@@ -523,6 +524,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "technical-suite", icon: "🔧", label: "Technical Suite (admin toolkit · diagnostics)" },
           { view: "brand-safety", icon: "🗝️", label: "Brand Safety & Compliance" },
           { view: "data-provenance", icon: "🖨️", label: "Data Provenance (audit trail)" },
+          { view: "integrations-wave", icon: "🔌", label: "Grok · Fireflies · DeepL · Notion" },
           { view: "settings", icon: "🔩", label: "Settings & Integrations" },
         ],
       },

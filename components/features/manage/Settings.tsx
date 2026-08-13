@@ -525,6 +525,22 @@ const INTEGRATIONS: IntegrationsMap = {
         ],
       },
       {
+        id: "canva", logo: "🎨", name: "Canva",
+        tagline: "Connect Canva for Design Kit briefs + template deep-links",
+        authType: "apikey",
+        placeholder: "Canva Client ID (optional — or use Connect OAuth)",
+        unlocks: [
+          "Design Kit briefs that paste straight into Canva text layers",
+          "Curated template deep-links by content type",
+          "OAuth Connect when CANVA_CLIENT_ID + CANVA_CLIENT_SECRET are set",
+        ],
+        steps: [
+          { text: 'Create a Connect app at <a href="https://www.canva.com/developers/" target="_blank">canva.com/developers</a>' },
+          { text: "Set env <code>CANVA_CLIENT_ID</code> + <code>CANVA_CLIENT_SECRET</code> on the server" },
+          { text: "Open Create → Canva → Connect Canva (OAuth) or paste Client ID above for status" },
+        ],
+      },
+      {
         id: "runway", logo: "🎬", name: "Runway ML",
         tagline: "AI video ad generation — text-to-video & image-to-video at scale",
         authType: "apikey",
@@ -542,6 +558,79 @@ const INTEGRATIONS: IntegrationsMap = {
           { text: "Click <strong>Create new key</strong> — pricing is credit-based at $0.01 per credit" },
           { text: "Note: Video generation costs ~$0.05–0.40 per second depending on resolution" },
           { text: "Paste your Bearer token above — InfoGenie uses Gen-2 by default, Gen-3 Alpha for premium quality" },
+        ],
+      },
+      {
+        id: "heygen", logo: "🧑‍🎤", name: "HeyGen",
+        tagline: "Avatar / talking-head video ads from a script",
+        authType: "apikey",
+        placeholder: "HeyGen API Key",
+        unlocks: [
+          "Avatar spokespeople for product and offer videos",
+          "Multi-language lip-sync for localization",
+          "Fast short-form creatives for paid social",
+        ],
+        steps: [
+          { text: 'Sign up at <a href="https://www.heygen.com" target="_blank">heygen.com</a>' },
+          { text: "Open <strong>Settings → API</strong> and create a key" },
+          { text: "Paste it above — use Create → AI Video to render" },
+        ],
+      },
+      {
+        id: "xai", logo: "𝕏", name: "xAI Grok",
+        tagline: "Grok answers for AI visibility / citation probes",
+        authType: "apikey",
+        placeholder: "xAI API Key",
+        unlocks: [
+          "Probe how Grok answers category queries",
+          "Complement LLM Gap Analyzer with an X-native model",
+        ],
+        steps: [
+          { text: 'Get a key at <a href="https://console.x.ai" target="_blank">console.x.ai</a>' },
+          { text: "Paste it above — also set env <code>XAI_API_KEY</code> for server-side probes" },
+        ],
+      },
+      {
+        id: "fireflies", logo: "🎙", name: "Fireflies.ai",
+        tagline: "Auto-ingest meeting transcripts into Meeting Notes",
+        authType: "apikey",
+        placeholder: "Fireflies API Key",
+        unlocks: [
+          "Pull transcripts into InfoGenie Meeting Notes",
+          "Run BANT summaries without paste friction",
+        ],
+        steps: [
+          { text: 'Open <a href="https://app.fireflies.ai" target="_blank">Fireflies</a> → Integrations → API' },
+          { text: "Copy your API key and paste it above" },
+        ],
+      },
+      {
+        id: "deepl", logo: "🌍", name: "DeepL",
+        tagline: "Campaign-quality localization for multi-market launches",
+        authType: "apikey",
+        placeholder: "DeepL Auth Key",
+        unlocks: [
+          "Translate ad/email/landing copy with DeepL quality",
+          "Feed Localization workflows with accurate source text",
+        ],
+        steps: [
+          { text: 'Create a key at <a href="https://www.deepl.com/pro-api" target="_blank">deepl.com/pro-api</a>' },
+          { text: "Free keys end with <code>:fx</code> — paste the full key above" },
+        ],
+      },
+      {
+        id: "notion", logo: "📓", name: "Notion",
+        tagline: "Export Attack Plan briefs into your agency workspace",
+        authType: "apikey",
+        placeholder: "Notion Internal Integration Token",
+        unlocks: [
+          "Push briefs / Attack Plans into Notion pages",
+          "Agency handoff without leaving InfoGenie",
+        ],
+        steps: [
+          { text: 'Create an integration at <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a>' },
+          { text: "Share a parent page with the integration and set <code>NOTION_PARENT_PAGE_ID</code>" },
+          { text: "Paste the token above" },
         ],
       },
       {
@@ -1243,9 +1332,33 @@ const API_VALIDATORS: Record<string, Validator> = {
     if (key.length < 30) return rej("Key too short — Artlist Enterprise keys are 40+ characters");
     return unv("Artlist does not allow browser-side API validation. Key length looks plausible — actual validity will be confirmed on first asset request.");
   },
+  canva: (key) => {
+    if (key.length < 8) return rej("Value too short — paste your Canva Client ID, or leave blank and use OAuth Connect.");
+    return unv("Canva Connect uses Client ID + Secret on the server. Client ID format looks plausible — use Create → Canva → Connect for OAuth.");
+  },
   runway: (key) => {
     if (key.length < 30) return rej("Key too short — Runway ML API keys are typically 40+ characters. Check you copied it in full.");
     return unv("Runway ML does not allow browser-side API validation. Key length looks correct — actual validity will be confirmed on first video generation request.");
+  },
+  heygen: (key) => {
+    if (key.length < 20) return rej("Key too short — check you copied the full HeyGen API key.");
+    return unv("HeyGen keys are validated on first AI Video render.");
+  },
+  xai: (key) => {
+    if (key.length < 20) return rej("Key too short — xAI keys are typically longer. Copy the full key.");
+    return unv("xAI/Grok keys are validated on the first Grok probe.");
+  },
+  fireflies: (key) => {
+    if (key.length < 20) return rej("Key too short — paste the full Fireflies API key.");
+    return unv("Fireflies keys are validated on transcript ingest.");
+  },
+  deepl: (key) => {
+    if (key.length < 16) return rej("Key too short — DeepL auth keys are longer (free keys end with :fx).");
+    return unv("DeepL keys are validated on the first translate call.");
+  },
+  notion: (key) => {
+    if (!/^secret_/.test(key) && key.length < 40) return rej("Notion internal tokens usually start with secret_ — check you copied the integration token.");
+    return unv("Notion tokens are validated when exporting a page.");
   },
   semrush: (key) => {
     if (!/^[a-f0-9]{32}$/i.test(key)) return rej("Invalid format — Semrush API keys are exactly 32 hexadecimal characters (a-f, 0-9). Check you copied the full key.");

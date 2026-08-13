@@ -3027,6 +3027,8 @@ const _crmSchema      = require('./services/crm_sync/schema');
 app.use('/api/hunter',       _hunterRouter);
 app.use('/api/linkedin-ads',    _linkedinRouter);
 app.use('/api/canva',          _canvaRouter);
+app.use('/api/ai-video',       require('./services/ai_video/api'));
+app.use('/api/integrations-wave', require('./services/integrations_wave/api'));
 app.use('/api/crm-sync',       _crmRouter);
 app.use('/api/tools/remove-bg',  require('./services/remove_bg/api'));
 app.use('/api/advocacy',         require('./services/employee_advocacy/api'));

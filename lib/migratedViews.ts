@@ -209,6 +209,8 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "canva", legacyModule: null },
   { view: "ugc-avatars", legacyModule: null },
   { view: "video-script", legacyModule: null },
+  { view: "ai-video", legacyModule: null },
+  { view: "integrations-wave", legacyModule: null },
   { view: "voiceover", legacyModule: null },
   { view: "creative-intel", legacyModule: null },
   { view: "landing-builder", legacyModule: null },
