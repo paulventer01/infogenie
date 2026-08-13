@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api";
+import PanelHero from "@/components/layout/PanelHero";
 
 interface PersonaForm {
   name: string;
@@ -48,8 +49,113 @@ const EMPTY_FORM: PersonaForm = {
   posting_style: "",
 };
 
+const card: React.CSSProperties = {
+  background: "#ffffff",
+  border: "1px solid rgba(11, 18, 32, 0.1)",
+  borderRadius: 14,
+  padding: 20,
+  boxShadow: "0 1px 0 rgba(11, 18, 32, 0.04), 0 10px 24px rgba(11, 18, 32, 0.05)",
+};
+
+const btnPrimary: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  minHeight: 42,
+  padding: "0 18px",
+  border: "none",
+  borderRadius: 10,
+  background: "linear-gradient(135deg,#0f766e,#0284c7)",
+  color: "#fff",
+  fontWeight: 800,
+  fontSize: "0.84rem",
+  cursor: "pointer",
+  fontFamily: "inherit",
+  boxShadow: "0 4px 14px rgba(15,118,110,0.22)",
+};
+
+const btnSecondary: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  minHeight: 38,
+  padding: "0 14px",
+  border: "1.5px solid rgba(11, 18, 32, 0.12)",
+  borderRadius: 10,
+  background: "#ffffff",
+  color: "#0f172a",
+  fontWeight: 700,
+  fontSize: "0.8rem",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+
+const btnDanger: React.CSSProperties = {
+  ...btnSecondary,
+  color: "#b91c1c",
+  borderColor: "rgba(185,28,28,0.25)",
+  background: "#fef2f2",
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: "0.78rem",
+  fontWeight: 700,
+  color: "#334155",
+  marginBottom: 6,
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  border: "1px solid rgba(11, 18, 32, 0.12)",
+  borderRadius: 10,
+  fontSize: "0.84rem",
+  fontFamily: "inherit",
+  color: "#0f172a",
+  background: "#fff",
+  boxSizing: "border-box",
+};
+
+const sectionTitle: React.CSSProperties = {
+  margin: "0 0 4px",
+  fontSize: "0.92rem",
+  fontWeight: 800,
+  color: "#0f172a",
+};
+
+const sectionSub: React.CSSProperties = {
+  margin: "0 0 16px",
+  fontSize: "0.8rem",
+  color: "#64748b",
+  lineHeight: 1.5,
+};
+
+function alertStyle(type: Msg["type"]): React.CSSProperties {
+  const map: Record<Msg["type"], { bg: string; border: string; color: string }> = {
+    info: { bg: "#eff6ff", border: "#bfdbfe", color: "#1e40af" },
+    success: { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" },
+    warning: { bg: "#fffbeb", border: "#fde68a", color: "#b45309" },
+    error: { bg: "#fef2f2", border: "#fecaca", color: "#b91c1c" },
+  };
+  const c = map[type];
+  return {
+    padding: "10px 14px",
+    borderRadius: 10,
+    background: c.bg,
+    border: `1px solid ${c.border}`,
+    color: c.color,
+    fontSize: "0.8rem",
+    fontWeight: 600,
+    lineHeight: 1.45,
+  };
+}
+
 export default function PersonaStudio() {
   const [personas, setPersonas] = useState<Persona[]>([]);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -59,6 +165,7 @@ export default function PersonaStudio() {
   const [aiAudience, setAiAudience] = useState("");
   const [aiStatus, setAiStatus] = useState<Msg | null>(null);
   const [saveStatus, setSaveStatus] = useState<Msg | null>(null);
+  const [aiBuilding, setAiBuilding] = useState(false);
 
   const [avatarBusyId, setAvatarBusyId] = useState<number | null>(null);
 
@@ -70,10 +177,11 @@ export default function PersonaStudio() {
   const [cgError, setCgError] = useState("");
 
   async function load() {
+    setLoading(true);
     const r = await apiGet<{ ok?: boolean; personas?: Persona[]; error?: string }>(
       "/api/personas",
     );
-    // Success is ok:true OR a personas array (API historically omitted ok).
+    setLoading(false);
     if (r.ok === false || (r.ok !== true && !Array.isArray(r.personas))) {
       setLoadError(r.error || "Failed to load personas.");
       return;
@@ -123,11 +231,13 @@ export default function PersonaStudio() {
   }
 
   async function aiBuild() {
+    setAiBuilding(true);
     setAiStatus({ type: "info", text: "Building persona with AI…" });
     const r = await apiPost<{ ok: boolean; suggestion?: Partial<Persona> }>(
       "/api/personas/ai-build",
       { niche: aiNiche, target_audience: aiAudience },
     );
+    setAiBuilding(false);
     const s = r.suggestion || {};
     if (s.name) {
       setForm({
@@ -142,7 +252,7 @@ export default function PersonaStudio() {
       });
       setAiStatus({
         type: "success",
-        text: "✓ Persona built — review and save below.",
+        text: "Persona built — review the fields below and save when ready.",
       });
     } else {
       setAiStatus({ type: "warning", text: "AI build failed — fill in manually." });
@@ -213,295 +323,429 @@ export default function PersonaStudio() {
     setCgResult(r.content || {});
   }
 
+  const activeCount = personas.filter((p) => p.is_active).length;
+  const contentPersona = contentId != null ? personas.find((p) => p.id === contentId) : null;
+
   return (
-    <div className="view-header-wrap">
-      <div className="view-header ig-panel-hero">
-        <div className="container">
-          <div className="vh-inner">
-            <div>
-              <div className="breadcrumb">
-                <span className="bc-group">Create</span>{" "}
-                <span className="bc-sep">›</span> AI Persona Studio
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "8px 4px 48px" }}>
+      <PanelHero
+        group="Create"
+        title="🎭 AI Persona Studio"
+        subtitle="Design virtual influencer personas — define their niche, appearance, personality, and content voice. Generate consistent avatars and posts from a saved character profile."
+        actions={
+          personas.length > 0 ? (
+            <button type="button" style={btnPrimary} onClick={openCreate}>
+              + New Persona
+            </button>
+          ) : null
+        }
+      />
+
+      {loadError ? (
+        <div style={{ ...alertStyle("error"), marginBottom: 16 }}>{loadError}</div>
+      ) : loading ? (
+        <div style={{ ...card, textAlign: "center", padding: 48, color: "#64748b", fontSize: "0.88rem" }}>
+          Loading personas…
+        </div>
+      ) : personas.length === 0 ? (
+        <div
+          style={{
+            ...card,
+            textAlign: "center",
+            padding: "48px 32px",
+            background:
+              "radial-gradient(ellipse 70% 60% at 50% 0%, rgba(15,118,110,0.08), transparent 70%), #ffffff",
+          }}
+        >
+          <div
+            style={{
+              width: 72,
+              height: 72,
+              margin: "0 auto 20px",
+              borderRadius: "50%",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 32,
+              boxShadow: "0 8px 24px rgba(15,118,110,0.25)",
+            }}
+          >
+            🎭
+          </div>
+          <h3 style={{ margin: "0 0 8px", fontSize: "1.25rem", fontWeight: 800, color: "#0f172a" }}>
+            No AI Personas yet
+          </h3>
+          <p style={{ margin: "0 auto 24px", maxWidth: 420, fontSize: "0.9rem", color: "#64748b", lineHeight: 1.6 }}>
+            Create your first virtual influencer persona — define their niche, personality, appearance, and content voice in minutes.
+          </p>
+          <button type="button" style={btnPrimary} onClick={openCreate}>
+            Create your first persona
+          </button>
+        </div>
+      ) : (
+        <>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
+              gap: 12,
+              marginBottom: 20,
+            }}
+          >
+            <div style={card}>
+              <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#0f172a" }}>{personas.length}</div>
+              <div style={{ marginTop: 4, fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#64748b" }}>
+                Total Personas
               </div>
-              <h2 className="view-title">🎭 AI Persona Studio</h2>
-              <p className="view-sub">
-                Design and manage virtual AI influencer personas — define their
-                niche, appearance, personality, content voice, and posting style.
-                Generate consistent content and avatars from a saved character
-                profile.
-              </p>
+            </div>
+            <div style={card}>
+              <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#059669" }}>{activeCount}</div>
+              <div style={{ marginTop: 4, fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#64748b" }}>
+                Active
+              </div>
+            </div>
+            <div style={card}>
+              <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#0284c7" }}>
+                {personas.filter((p) => p.avatar_url).length}
+              </div>
+              <div style={{ marginTop: 4, fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#64748b" }}>
+                With Avatar
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
-        {loadError ? (
-          <div className="ig-alert ig-alert-error">{loadError}</div>
-        ) : (
-          <>
-            <div className="ig-toolbar" style={{ marginBottom: 16 }}>
-              <button className="btn btn-primary" onClick={openCreate}>
-                ✨ New Persona
-              </button>
-            </div>
-
-            {personas.length === 0 ? (
-              <div className="ig-empty-state">
-                <div className="ies-icon">🎭</div>
-                <h3>No AI Personas yet</h3>
-                <p>
-                  Create your first virtual influencer persona — define their
-                  niche, personality, appearance, and content voice.
-                </p>
-              </div>
-            ) : (
-              <div className="ig-card-grid">
-                {personas.map((p) => (
-                  <div className="ig-card" key={p.id} style={{ position: "relative" }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-                      {p.avatar_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={p.avatar_url}
-                          alt={p.name}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))",
+              gap: 16,
+            }}
+          >
+            {personas.map((p) => (
+              <div key={p.id} style={{ ...card, padding: 18, display: "flex", flexDirection: "column" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                  {p.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.avatar_url}
+                      alt={p.name}
+                      style={{
+                        width: 64,
+                        height: 64,
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                        flexShrink: 0,
+                        border: "2px solid rgba(15,118,110,0.2)",
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: 64,
+                        height: 64,
+                        borderRadius: "50%",
+                        background: "linear-gradient(135deg,#0f766e,#0284c7)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 24,
+                        flexShrink: 0,
+                        color: "#fff",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {p.name?.[0]?.toUpperCase() || "🎭"}
+                    </div>
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h3 style={{ margin: "0 0 6px", fontSize: "1.05rem", fontWeight: 800, color: "#0f172a" }}>
+                      {p.name}
+                    </h3>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          fontWeight: 700,
+                          background: "#ecfdf5",
+                          color: "#047857",
+                          padding: "3px 10px",
+                          borderRadius: 20,
+                        }}
+                      >
+                        {p.niche}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          fontWeight: 600,
+                          background: "#f1f5f9",
+                          color: "#475569",
+                          padding: "3px 10px",
+                          borderRadius: 20,
+                        }}
+                      >
+                        {p.age_range} · {p.gender}
+                      </span>
+                      {p.is_active ? (
+                        <span
                           style={{
-                            width: 72,
-                            height: 72,
-                            borderRadius: "50%",
-                            objectFit: "cover",
-                            flexShrink: 0,
+                            fontSize: "0.68rem",
+                            fontWeight: 700,
+                            background: "#dbeafe",
+                            color: "#1d4ed8",
+                            padding: "3px 10px",
+                            borderRadius: 20,
                           }}
-                        />
+                        >
+                          Active
+                        </span>
                       ) : (
-                        <div
+                        <span
                           style={{
-                            width: 72,
-                            height: 72,
-                            borderRadius: "50%",
-                            background: "linear-gradient(135deg,#667eea,#764ba2)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: 28,
-                            flexShrink: 0,
+                            fontSize: "0.68rem",
+                            fontWeight: 600,
+                            background: "#f8fafc",
+                            color: "#94a3b8",
+                            padding: "3px 10px",
+                            borderRadius: 20,
                           }}
                         >
-                          🎭
-                        </div>
+                          Inactive
+                        </span>
                       )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <h3 style={{ margin: "0 0 4px", fontSize: "1.1rem" }}>
-                          {p.name}
-                        </h3>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            flexWrap: "wrap",
-                            marginBottom: 8,
-                          }}
-                        >
-                          <span className="ig-badge">{p.niche}</span>
-                          <span className="ig-badge ig-badge-outline">
-                            {p.age_range} · {p.gender}
-                          </span>
-                          {p.is_active ? (
-                            <span className="ig-badge ig-badge-green">Active</span>
-                          ) : (
-                            <span className="ig-badge ig-badge-muted">Inactive</span>
-                          )}
-                        </div>
-                        {p.personality && (
-                          <p
-                            style={{
-                              margin: "0 0 4px",
-                              fontSize: "0.85rem",
-                              color: "var(--text-muted)",
-                            }}
-                          >
-                            🧠 {p.personality}
-                          </p>
-                        )}
-                        {p.content_voice && (
-                          <p
-                            style={{
-                              margin: 0,
-                              fontSize: "0.85rem",
-                              color: "var(--text-muted)",
-                            }}
-                          >
-                            🎙️ {p.content_voice}
-                          </p>
-                        )}
-                      </div>
+                    </div>
+                    {p.personality && (
+                      <p style={{ margin: "0 0 4px", fontSize: "0.8rem", color: "#64748b", lineHeight: 1.45 }}>
+                        {p.personality}
+                      </p>
+                    )}
+                    {p.content_voice && (
+                      <p style={{ margin: 0, fontSize: "0.78rem", color: "#94a3b8", lineHeight: 1.45, fontStyle: "italic" }}>
+                        &ldquo;{p.content_voice}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    style={btnSecondary}
+                    onClick={() => genAvatar(p.id)}
+                    disabled={avatarBusyId === p.id}
+                  >
+                    {avatarBusyId === p.id ? "Generating…" : "Generate avatar"}
+                  </button>
+                  <button type="button" style={btnSecondary} onClick={() => openContent(p.id)}>
+                    Generate content
+                  </button>
+                  <button type="button" style={btnSecondary} onClick={() => openEdit(p.id)}>
+                    Edit
+                  </button>
+                  <button type="button" style={btnDanger} onClick={() => del(p.id, p.name)}>
+                    Delete
+                  </button>
+                </div>
+
+                {(p.sample_content || []).length > 0 && (
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(11,18,32,0.08)" }}>
+                    <div
+                      style={{
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        color: "#94a3b8",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Latest content
                     </div>
                     <div
                       style={{
-                        display: "flex",
-                        gap: 8,
-                        marginTop: 16,
-                        flexWrap: "wrap",
+                        fontSize: "0.82rem",
+                        lineHeight: 1.55,
+                        background: "#f8fafc",
+                        padding: 12,
+                        borderRadius: 10,
+                        color: "#334155",
                       }}
                     >
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => genAvatar(p.id)}
-                        disabled={avatarBusyId === p.id}
-                      >
-                        {avatarBusyId === p.id ? "⏳ Generating…" : "📸 Generate Avatar"}
-                      </button>
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => openContent(p.id)}
-                      >
-                        ✍️ Generate Content
-                      </button>
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => openEdit(p.id)}
-                      >
-                        ✏️ Edit
-                      </button>
-                      <button
-                        className="btn btn-sm btn-danger-outline"
-                        onClick={() => del(p.id, p.name)}
-                      >
-                        🗑️
-                      </button>
+                      {p.sample_content![p.sample_content!.length - 1]?.caption || ""}
                     </div>
-                    {(p.sample_content || []).length > 0 && (
-                      <div
-                        style={{
-                          marginTop: 12,
-                          paddingTop: 12,
-                          borderTop: "1px solid var(--border)",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: "0.8rem",
-                            fontWeight: 600,
-                            color: "var(--text-muted)",
-                            marginBottom: 8,
-                          }}
-                        >
-                          LATEST CONTENT
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "0.85rem",
-                            background: "var(--bg-subtle,#f8f9fa)",
-                            padding: 10,
-                            borderRadius: 8,
-                          }}
-                        >
-                          {p.sample_content![p.sample_content!.length - 1]?.caption || ""}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                ))}
+                )}
               </div>
-            )}
-          </>
-        )}
-      </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {modalOpen && (
         <div
-          className="ig-modal-overlay"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(15,23,42,0.45)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
           onClick={(e) => {
             if (e.target === e.currentTarget) setModalOpen(false);
           }}
         >
-          <div className="ig-modal" style={{ maxWidth: 680 }}>
-            <div className="ig-modal-header">
-              <h3>{editId ? "✏️ Edit AI Persona" : "✨ Create AI Persona"}</h3>
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 16,
+              width: "100%",
+              maxWidth: 720,
+              maxHeight: "90vh",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 24px 48px rgba(15,23,42,0.18)",
+            }}
+          >
+            <div
+              style={{
+                padding: "18px 22px",
+                borderBottom: "1px solid rgba(11,18,32,0.08)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "linear-gradient(135deg,#f0fdfa,#eff6ff)",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, color: "#0f172a" }}>
+                  {editId ? "Edit AI Persona" : "Create AI Persona"}
+                </h3>
+                <p style={{ margin: "4px 0 0", fontSize: "0.78rem", color: "#64748b" }}>
+                  {editId ? "Update your persona profile" : "Start with AI or fill in manually"}
+                </p>
+              </div>
               <button
-                className="ig-modal-close"
+                type="button"
                 onClick={() => setModalOpen(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  border: "1px solid rgba(11,18,32,0.1)",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontSize: "1.2rem",
+                  color: "#64748b",
+                  lineHeight: 1,
+                }}
+                aria-label="Close"
               >
                 ×
               </button>
             </div>
-            <div className="ig-modal-body">
-              <div style={{ marginBottom: 16 }}>
-                <label
-                  style={{ fontWeight: 600, display: "block", marginBottom: 6 }}
-                >
-                  Let AI build it for you
-                </label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    className="ig-input"
-                    style={{ flex: 1 }}
-                    value={aiNiche}
-                    onChange={(e) => setAiNiche(e.target.value)}
-                    placeholder="Niche (e.g. fitness, beauty, travel)"
-                  />
-                  <input
-                    className="ig-input"
-                    style={{ flex: 1 }}
-                    value={aiAudience}
-                    onChange={(e) => setAiAudience(e.target.value)}
-                    placeholder="Target audience"
-                  />
-                  <button className="btn btn-secondary" onClick={aiBuild}>
-                    🤖 AI Build
-                  </button>
-                </div>
-                {aiStatus && (
-                  <div
-                    className={`ig-alert ig-alert-${aiStatus.type}`}
-                    style={{ margin: "8px 0" }}
-                  >
-                    {aiStatus.text}
-                  </div>
-                )}
-              </div>
+
+            <div style={{ padding: "20px 22px", overflowY: "auto", flex: 1 }}>
               <div
-                style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}
+                style={{
+                  background:
+                    "radial-gradient(ellipse 80% 70% at 0% 0%, rgba(15,118,110,0.1), transparent 60%), linear-gradient(135deg,#f0fdfa,#eff6ff)",
+                  border: "1px solid rgba(15,118,110,0.18)",
+                  borderRadius: 12,
+                  padding: 18,
+                  marginBottom: 22,
+                }}
               >
+                <h4 style={sectionTitle}>Let AI build it for you</h4>
+                <p style={sectionSub}>
+                  Enter a niche and target audience — AI will draft a complete persona you can refine.
+                </p>
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    marginBottom: 12,
+                    gridTemplateColumns: "1fr 1fr auto",
+                    gap: 10,
+                    alignItems: "end",
                   }}
                 >
                   <div>
-                    <label className="ig-label">Persona Name *</label>
+                    <label style={labelStyle}>Niche</label>
                     <input
-                      className="ig-input"
+                      style={inputStyle}
+                      value={aiNiche}
+                      onChange={(e) => setAiNiche(e.target.value)}
+                      placeholder="e.g. fitness, beauty, travel"
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Target audience</label>
+                    <input
+                      style={inputStyle}
+                      value={aiAudience}
+                      onChange={(e) => setAiAudience(e.target.value)}
+                      placeholder="e.g. Gen Z women, 18–24"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    style={{ ...btnPrimary, minHeight: 42, whiteSpace: "nowrap" }}
+                    onClick={aiBuild}
+                    disabled={aiBuilding}
+                  >
+                    {aiBuilding ? "Building…" : "AI Build"}
+                  </button>
+                </div>
+                {aiStatus && (
+                  <div style={{ ...alertStyle(aiStatus.type), marginTop: 12 }}>{aiStatus.text}</div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: 22 }}>
+                <h4 style={sectionTitle}>Identity</h4>
+                <p style={sectionSub}>Core details that define who this persona is.</p>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))",
+                    gap: 14,
+                  }}
+                >
+                  <div>
+                    <label style={labelStyle}>Persona name *</label>
+                    <input
+                      style={inputStyle}
                       value={form.name}
                       onChange={(e) => setField("name", e.target.value)}
                       placeholder="e.g. Aria Chen"
                     />
                   </div>
                   <div>
-                    <label className="ig-label">Niche *</label>
+                    <label style={labelStyle}>Niche *</label>
                     <input
-                      className="ig-input"
+                      style={inputStyle}
                       value={form.niche}
                       onChange={(e) => setField("niche", e.target.value)}
                       placeholder="e.g. sustainable fashion"
                     />
                   </div>
                   <div>
-                    <label className="ig-label">Age Range</label>
+                    <label style={labelStyle}>Age range</label>
                     <input
-                      className="ig-input"
+                      style={inputStyle}
                       value={form.age_range}
                       onChange={(e) => setField("age_range", e.target.value)}
                       placeholder="e.g. 24-28"
                     />
                   </div>
                   <div>
-                    <label className="ig-label">Gender</label>
+                    <label style={labelStyle}>Gender</label>
                     <select
-                      className="ig-select"
+                      style={{ ...inputStyle, cursor: "pointer" }}
                       value={form.gender}
                       onChange={(e) => setField("gender", e.target.value)}
                     >
@@ -511,74 +755,72 @@ export default function PersonaStudio() {
                     </select>
                   </div>
                 </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label className="ig-label">
-                    Appearance Prompt (for image generation)
-                  </label>
-                  <textarea
-                    className="ig-textarea"
-                    rows={2}
-                    value={form.appearance_prompt}
-                    onChange={(e) =>
-                      setField("appearance_prompt", e.target.value)
-                    }
-                    placeholder="e.g. Petite East Asian woman, long dark hair, minimalist aesthetic, warm smile..."
-                  />
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label className="ig-label">Personality</label>
-                  <input
-                    className="ig-input"
-                    value={form.personality}
-                    onChange={(e) => setField("personality", e.target.value)}
-                    placeholder="e.g. confident, witty, relatable, eco-conscious"
-                  />
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label className="ig-label">Content Voice</label>
-                  <input
-                    className="ig-input"
-                    value={form.content_voice}
-                    onChange={(e) => setField("content_voice", e.target.value)}
-                    placeholder="e.g. casual but inspiring, never preachy, uses humour"
-                  />
-                </div>
-                <div>
-                  <label className="ig-label">Posting Style</label>
-                  <input
-                    className="ig-input"
-                    value={form.posting_style}
-                    onChange={(e) => setField("posting_style", e.target.value)}
-                    placeholder="e.g. daily outfit + weekly brand deals + monthly deep dive"
-                  />
+              </div>
+
+              <div style={{ marginBottom: 22 }}>
+                <h4 style={sectionTitle}>Appearance</h4>
+                <p style={sectionSub}>Used when generating avatar images — be specific for best results.</p>
+                <label style={labelStyle}>Appearance prompt</label>
+                <textarea
+                  style={{ ...inputStyle, minHeight: 80, resize: "vertical" }}
+                  rows={3}
+                  value={form.appearance_prompt}
+                  onChange={(e) => setField("appearance_prompt", e.target.value)}
+                  placeholder="e.g. Petite East Asian woman, long dark hair, minimalist aesthetic, warm smile…"
+                />
+              </div>
+
+              <div>
+                <h4 style={sectionTitle}>Voice &amp; style</h4>
+                <p style={sectionSub}>How this persona speaks and posts across channels.</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div>
+                    <label style={labelStyle}>Personality</label>
+                    <input
+                      style={inputStyle}
+                      value={form.personality}
+                      onChange={(e) => setField("personality", e.target.value)}
+                      placeholder="e.g. confident, witty, relatable, eco-conscious"
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Content voice</label>
+                    <input
+                      style={inputStyle}
+                      value={form.content_voice}
+                      onChange={(e) => setField("content_voice", e.target.value)}
+                      placeholder="e.g. casual but inspiring, never preachy, uses humour"
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Posting style</label>
+                    <input
+                      style={inputStyle}
+                      value={form.posting_style}
+                      onChange={(e) => setField("posting_style", e.target.value)}
+                      placeholder="e.g. daily outfit + weekly brand deals + monthly deep dive"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="ig-modal-footer">
+
+            <div
+              style={{
+                padding: "16px 22px",
+                borderTop: "1px solid rgba(11,18,32,0.08)",
+                background: "#f8fafc",
+              }}
+            >
               {saveStatus && (
-                <div
-                  className={`ig-alert ig-alert-${saveStatus.type}`}
-                  style={{ margin: "8px 0" }}
-                >
-                  {saveStatus.text}
-                </div>
+                <div style={{ ...alertStyle(saveStatus.type), marginBottom: 12 }}>{saveStatus.text}</div>
               )}
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  justifyContent: "flex-end",
-                  marginTop: 8,
-                }}
-              >
-                <button
-                  className="btn btn-outline"
-                  onClick={() => setModalOpen(false)}
-                >
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button type="button" style={btnSecondary} onClick={() => setModalOpen(false)}>
                   Cancel
                 </button>
-                <button className="btn btn-primary" onClick={save}>
-                  {editId ? "Save Changes" : "Create Persona"}
+                <button type="button" style={btnPrimary} onClick={save}>
+                  {editId ? "Save changes" : "Create persona"}
                 </button>
               </div>
             </div>
@@ -588,100 +830,151 @@ export default function PersonaStudio() {
 
       {contentId != null && (
         <div
-          className="ig-modal-overlay"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(15,23,42,0.45)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
           onClick={(e) => {
             if (e.target === e.currentTarget) setContentId(null);
           }}
         >
-          <div className="ig-modal" style={{ maxWidth: 580 }}>
-            <div className="ig-modal-header">
-              <h3>✍️ Generate Content</h3>
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 16,
+              width: "100%",
+              maxWidth: 600,
+              maxHeight: "90vh",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 24px 48px rgba(15,23,42,0.18)",
+            }}
+          >
+            <div
+              style={{
+                padding: "18px 22px",
+                borderBottom: "1px solid rgba(11,18,32,0.08)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "linear-gradient(135deg,#f0fdfa,#eff6ff)",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 800, color: "#0f172a" }}>
+                  Generate content
+                </h3>
+                {contentPersona && (
+                  <p style={{ margin: "4px 0 0", fontSize: "0.78rem", color: "#64748b" }}>
+                    for {contentPersona.name} · {contentPersona.niche}
+                  </p>
+                )}
+              </div>
               <button
-                className="ig-modal-close"
+                type="button"
                 onClick={() => setContentId(null)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  border: "1px solid rgba(11,18,32,0.1)",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontSize: "1.2rem",
+                  color: "#64748b",
+                  lineHeight: 1,
+                }}
+                aria-label="Close"
               >
                 ×
               </button>
             </div>
-            <div className="ig-modal-body">
-              <div style={{ marginBottom: 12 }}>
-                <label className="ig-label">Content Type</label>
-                <select
-                  className="ig-select"
-                  value={cgType}
-                  onChange={(e) => setCgType(e.target.value)}
+
+            <div style={{ padding: "20px 22px", overflowY: "auto", flex: 1 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 18 }}>
+                <div>
+                  <label style={labelStyle}>Content type</label>
+                  <select
+                    style={{ ...inputStyle, cursor: "pointer" }}
+                    value={cgType}
+                    onChange={(e) => setCgType(e.target.value)}
+                  >
+                    <option value="instagram_caption">Instagram Caption</option>
+                    <option value="tiktok_caption">TikTok Caption</option>
+                    <option value="twitter_thread">Twitter/X Thread</option>
+                    <option value="youtube_description">YouTube Description</option>
+                    <option value="linkedin_post">LinkedIn Post</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Product to feature (optional)</label>
+                  <input
+                    style={inputStyle}
+                    value={cgProduct}
+                    onChange={(e) => setCgProduct(e.target.value)}
+                    placeholder="e.g. LUMI Vitamin C Serum"
+                  />
+                </div>
+              </div>
+
+              {cgLoading && (
+                <div style={{ textAlign: "center", padding: 32, color: "#64748b", fontSize: "0.88rem" }}>
+                  Generating content…
+                </div>
+              )}
+              {cgError && <div style={alertStyle("error")}>{cgError}</div>}
+              {cgResult && !cgLoading && (
+                <div
+                  style={{
+                    background: "#f8fafc",
+                    borderRadius: 12,
+                    padding: 18,
+                    border: "1px solid rgba(11,18,32,0.08)",
+                  }}
                 >
-                  <option value="instagram_caption">Instagram Caption</option>
-                  <option value="tiktok_caption">TikTok Caption</option>
-                  <option value="twitter_thread">Twitter/X Thread</option>
-                  <option value="youtube_description">YouTube Description</option>
-                  <option value="linkedin_post">LinkedIn Post</option>
-                </select>
-              </div>
-              <div>
-                <label className="ig-label">Product to feature (optional)</label>
-                <input
-                  className="ig-input"
-                  value={cgProduct}
-                  onChange={(e) => setCgProduct(e.target.value)}
-                  placeholder="e.g. LUMI Vitamin C Serum"
-                />
-              </div>
-              <div style={{ marginTop: 16 }}>
-                {cgLoading && (
-                  <div style={{ textAlign: "center", padding: 32 }}>
-                    <span className="ig-spinner" />
-                  </div>
-                )}
-                {cgError && (
-                  <div className="ig-alert ig-alert-error">{cgError}</div>
-                )}
-                {cgResult && !cgLoading && (
                   <div
                     style={{
-                      background: "var(--bg-subtle,#f8f9fa)",
-                      borderRadius: 10,
-                      padding: 16,
+                      fontSize: "0.88rem",
+                      lineHeight: 1.7,
+                      whiteSpace: "pre-wrap",
+                      color: "#334155",
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: "0.9rem",
-                        lineHeight: 1.7,
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {cgResult.caption || ""}
-                    </div>
-                    {(cgResult.hashtags || []).length > 0 && (
-                      <div
-                        style={{
-                          marginTop: 10,
-                          color: "var(--ig-primary,#667eea)",
-                          fontSize: "0.85rem",
-                        }}
-                      >
-                        {(cgResult.hashtags || []).join(" ")}
-                      </div>
-                    )}
-                    {cgResult.cta && (
-                      <div
-                        style={{
-                          marginTop: 8,
-                          fontWeight: 600,
-                          fontSize: "0.85rem",
-                        }}
-                      >
-                        CTA: {cgResult.cta}
-                      </div>
-                    )}
+                    {cgResult.caption || ""}
                   </div>
-                )}
-              </div>
+                  {(cgResult.hashtags || []).length > 0 && (
+                    <div style={{ marginTop: 12, color: "#0284c7", fontSize: "0.82rem", fontWeight: 600 }}>
+                      {(cgResult.hashtags || []).join(" ")}
+                    </div>
+                  )}
+                  {cgResult.cta && (
+                    <div style={{ marginTop: 10, fontWeight: 700, fontSize: "0.82rem", color: "#0f766e" }}>
+                      CTA: {cgResult.cta}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="ig-modal-footer">
-              <button className="btn btn-primary" onClick={doGenContent}>
-                ✨ Generate
+
+            <div
+              style={{
+                padding: "16px 22px",
+                borderTop: "1px solid rgba(11,18,32,0.08)",
+                background: "#f8fafc",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button type="button" style={btnPrimary} onClick={doGenContent} disabled={cgLoading}>
+                {cgLoading ? "Generating…" : "Generate content"}
               </button>
             </div>
           </div>
