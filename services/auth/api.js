@@ -359,6 +359,17 @@ router.post('/signup', async (req, res) => {
     // Auto-log in the new account so they can use the app right away.
     await _establishSession(req, user);
     await touchLastLogin(user.id);
+    // Lifecycle signal → journeys (onboarding sequences, welcome drips, etc.).
+    try {
+      const { fireSignal } = require('../signal_triggers/api');
+      await fireSignal('user_signup', {
+        email: user.email,
+        name: user.name || null,
+        user_id: user.id,
+      });
+    } catch (sigErr) {
+      console.warn('[auth/signup] fireSignal:', sigErr.message);
+    }
     res.json({ ok:true, user: _publicUser(user), verificationEmailSent: mailed, mailError });
   } catch (e) {
     console.error('[auth/signup] error:', e);
