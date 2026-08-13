@@ -190,6 +190,7 @@ Rules:
           role,
           title: roleSpec.title,
           mode: 'brief',
+          thinkingMode: 'deeper_question',
           goal: `Produce an executive brief focused on: ${roleSpec.focus}`,
           facts,
           tenantId: tid,
@@ -363,8 +364,15 @@ app.get('/api/officer/skill-pack', async (_req, res) => {
     ok: true,
     skillPack: _execAgent.AGENT_SKILL_PACK,
     specialties: _execAgent.OFFICER_SPECIALTIES,
+    thinkingModes: Object.values(_execAgent.STRATEGIC_THINKING_MODES || {}),
+    domainToolStack: _execAgent.DOMAIN_TOOL_STACK,
     tools: (_execAgent.EXECUTIVE_TOOLS || []).map((t) => t.function?.name).filter(Boolean),
     roles: _OFFICER_ROLES.map((id) => ({ id, title: _OFFICER_TITLES[id] })),
+    os: {
+      human: ['Creative', 'Vision', 'Quality Feedback'],
+      orchestrator: ['Map', 'Brainstorm', 'Refine next actions'],
+      loop: 'Human → Orchestrator → Agents (N) → MCP/APIs → Connected Stack',
+    },
   });
 });
 
@@ -374,6 +382,7 @@ app.post('/api/officer/advise', async (req, res) => {
     const role = String(req.body?.role || '').trim().toLowerCase();
     const title = String(req.body?.title || _OFFICER_TITLES[role] || 'Officer').trim();
     const goal = String(req.body?.goal || req.body?.question || '').trim();
+    const thinkingMode = String(req.body?.thinkingMode || req.body?.mode || 'deeper_question').trim();
     if (!_OFFICER_ROLES.includes(role)) return res.status(400).json({ ok: false, error: 'unknown role' });
     if (!goal) return res.status(400).json({ ok: false, error: 'goal or question required' });
     const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:advise' });
@@ -385,27 +394,9 @@ app.post('/api/officer/advise', async (req, res) => {
       } catch (_) { /* ignore */ }
     }
     const snap = await _execAgent.loadWorkspaceSnapshot(tid);
-    const specialty = _execAgent.OFFICER_SPECIALTIES[role] || title;
-    const offlineAdvice = () => ({
-      assessment: `${title} reviewed “${goal.slice(0, 160)}” for ${specialty}. Workspace signals: ${snap.activeProjects ?? 0} active projects, ${snap.adCampaigns_total ?? 0} campaigns, ${snap.leadsLinksell_last7d ?? 0} leads / 7d, ${snap.bookings_last7d ?? 0} bookings / 7d.`,
-      suggestions: [
-        { title: 'Ground next actions in live tools', detail: 'Open your desk links and confirm integrations are feeding data.', priority: 'high' },
-        ...(tasks.length
-          ? [{ title: 'Execute top assigned responsibility', detail: tasks[0], priority: 'high' }]
-          : [{ title: 'Assign responsibilities', detail: 'Open Tasks and hire this executive with concrete duties.', priority: 'high' }]),
-        { title: 'Consult peers in Briefing Room', detail: 'Multi-agent strategy when the ask spans SEO, media, and CRO.', priority: 'med' },
-      ],
-      risks: [
-        (snap.adCampaigns_total == null || snap.adCampaigns_total === 0)
-          ? 'Little/no campaign activity in the snapshot — recommendations may be under-informed until ads/CRM are connected.'
-          : 'Watch for stale dashboards before reallocating budget.',
-      ],
-      nextChecks: ['Re-run Ask Agent after OpenAI credits/key are available for full tool-loop reasoning', 'Review Daily Report for task evidence'],
-      reasoning: [
-        'Loaded workspace snapshot tool output',
-        'Applied role specialty heuristics from the executive skill pack',
-        'LLM pass unavailable — returned tool-grounded offline advice',
-      ],
+    const thinking = _execAgent.resolveThinkingMode(thinkingMode);
+    const offlineAdvice = () => _execAgent.buildStrategicOfflineAdvice({
+      role, title, goal, tasks, snap, thinkingMode: thinking.id,
     });
 
     if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
@@ -414,6 +405,7 @@ app.post('/api/officer/advise', async (req, res) => {
         role,
         title,
         offline: true,
+        thinkingMode: thinking,
         advice: offlineAdvice(),
         toolTrace: [{ tool: 'get_workspace_snapshot', ok: true }],
         skillPack: _execAgent.AGENT_SKILL_PACK,
@@ -427,6 +419,7 @@ app.post('/api/officer/advise', async (req, res) => {
         mode: 'advise',
         goal,
         tasks,
+        thinkingMode: thinking.id,
         tenantId: tid,
         openaiChatWithRetry,
       });
@@ -434,6 +427,7 @@ app.post('/api/officer/advise', async (req, res) => {
         ok: true,
         role,
         title,
+        thinkingMode: thinking,
         advice: out.result || {
           assessment: out.raw || 'Agent could not parse a structured answer.',
           suggestions: [],
@@ -452,6 +446,7 @@ app.post('/api/officer/advise', async (req, res) => {
         role,
         title,
         offline: true,
+        thinkingMode: thinking,
         advice: offlineAdvice(),
         toolTrace: [{ tool: 'get_workspace_snapshot', ok: true }],
         skillPack: _execAgent.AGENT_SKILL_PACK,
@@ -647,6 +642,7 @@ app.post('/api/officer/daily-report', async (req, res) => {
             role,
             title,
             mode: 'daily-report',
+            thinkingMode: 'execution_risks',
             goal: `Write an honest end-of-day report for the CEO covering each assigned responsibility. Ground every status in tools/snapshot; do not invent completions.`,
             tasks,
             facts: { snapshot: snap },

@@ -1593,17 +1593,32 @@ function TasksModal({
   );
 }
 
-// ── Ask Agent modal (independent executive reasoning) ────────────────────────
+// ── Ask Agent modal (strategic thinking + agentic OS loop) ───────────────────
+const THINKING_MODES: Array<{ id: string; label: string; hint: string }> = [
+  { id: "stress_test", label: "Stress-Test My Thinking", hint: "Pressure-test logic & assumptions" },
+  { id: "shift_perspective", label: "Shift the Perspective", hint: "New audience, emotion, or message" },
+  { id: "translate_gut", label: "Translate My Gut Feeling", hint: "Name what feels off" },
+  { id: "organize_thoughts", label: "Organize My Messy Thoughts", hint: "Clear outline, keep your tone" },
+  { id: "face_decision", label: "Help Me Face the Decision", hint: "Spot stalling & choose" },
+  { id: "deeper_question", label: "Surface the Deeper Question", hint: "Core issue behind the ask" },
+  { id: "execution_risks", label: "Spot Execution Risks", hint: "Where the plan can break" },
+  { id: "sense_instinct", label: "Make Sense of My Instinct", hint: "Signals behind the lean" },
+];
+
 interface AdviseResponse {
   ok?: boolean;
   error?: string;
   offline?: boolean;
+  thinkingMode?: { id?: string; label?: string; persona?: string };
   advice?: {
     assessment?: string;
     suggestions?: Array<string | { title?: string; detail?: string; priority?: string }>;
     risks?: string[];
     nextChecks?: string[];
     reasoning?: string[];
+    deeperQuestion?: string;
+    decision?: string;
+    thinkingModeLabel?: string;
   };
   toolTrace?: Array<{ tool?: string; ok?: boolean }>;
 }
@@ -1617,12 +1632,34 @@ function AdviseModal({
   officerTitle: string;
   onClose: () => void;
 }) {
+  const [thinkingMode, setThinkingMode] = useState("deeper_question");
   const [goal, setGoal] = useState(
-    `What should I prioritize this week in your area, and what risks need attention?`,
+    `Here’s the situation I’m working through: what should we prioritize this week, and what are we really optimizing for?`,
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState<AdviseResponse | null>(null);
+
+  function pickMode(id: string) {
+    setThinkingMode(id);
+    const m = THINKING_MODES.find((x) => x.id === id);
+    if (!m) return;
+    // Seed a mode-appropriate prompt if the field still looks like a default.
+    const seeds: Record<string, string> = {
+      stress_test: "This is the plan I’m working on: ",
+      shift_perspective: "Here’s the main idea I’m working with: ",
+      translate_gut: "Something about this doesn’t feel right, but I can’t explain it: ",
+      organize_thoughts: "Here’s a rough mix of my thoughts and notes: ",
+      face_decision: "Here’s the situation I’m dealing with: ",
+      deeper_question: "Here’s the situation I’m working through: ",
+      execution_risks: "Here’s the plan I’m about to put into action: ",
+      sense_instinct: "Here’s the idea I’m leaning toward, and it feels right: ",
+    };
+    const seed = seeds[id] || "";
+    if (!goal.trim() || THINKING_MODES.some((tm) => goal.startsWith(seeds[tm.id] || "___"))) {
+      setGoal(seed);
+    }
+  }
 
   async function run() {
     setLoading(true);
@@ -1634,6 +1671,7 @@ function AdviseModal({
       title: officerTitle,
       goal,
       tasks,
+      thinkingMode,
     });
     setLoading(false);
     if (j.error && !j.advice) {
@@ -1644,6 +1682,9 @@ function AdviseModal({
   }
 
   const advice = data?.advice;
+  const modeLabel =
+    advice?.thinkingModeLabel || data?.thinkingMode?.label || THINKING_MODES.find((m) => m.id === thinkingMode)?.label;
+
   return (
     <div
       style={{
@@ -1660,8 +1701,8 @@ function AdviseModal({
     >
       <div
         style={{
-          width: "min(720px,100%)",
-          maxHeight: "90vh",
+          width: "min(820px,100%)",
+          maxHeight: "92vh",
           overflow: "auto",
           background: "#fff",
           borderRadius: 16,
@@ -1672,17 +1713,43 @@ function AdviseModal({
       >
         <div style={{ padding: "18px 22px", borderBottom: "1px solid #E2E8F0" }}>
           <div style={{ fontSize: ".72rem", fontWeight: 800, color: "#0f766e", letterSpacing: ".08em" }}>
-            AUTONOMOUS AI AGENT
+            HUMAN → ORCHESTRATOR → AGENT → CONNECTED STACK
           </div>
           <h3 style={{ margin: "6px 0 0", color: "#0f172a" }}>🧠 {officerTitle} — Ask Agent</h3>
           <p style={{ margin: "6px 0 0", color: "#64748B", fontSize: ".82rem" }}>
-            Uses the full executive skill pack: tool calling, RAG memory, peer consult, and
-            independent recommendations for this role.
+            Pick a strategic thinking mode, then let this executive reason with tools, memory, and
+            peer consult — and return intelligent decisions &amp; feedback.
           </p>
         </div>
         <div style={{ padding: 22 }}>
+          <label style={{ display: "block", fontSize: ".72rem", fontWeight: 700, color: "#64748B", marginBottom: 8 }}>
+            Strategic thinking mode
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: 8, marginBottom: 14 }}>
+            {THINKING_MODES.map((m) => {
+              const on = thinkingMode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => pickMode(m.id)}
+                  style={{
+                    textAlign: "left",
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: on ? "2px solid #0f766e" : "1px solid #E2E8F0",
+                    background: on ? "rgba(15,118,110,0.08)" : "#F8FAFC",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontSize: ".78rem", fontWeight: 800, color: "#0f172a" }}>{m.label}</div>
+                  <div style={{ fontSize: ".66rem", color: "#64748B", marginTop: 2 }}>{m.hint}</div>
+                </button>
+              );
+            })}
+          </div>
           <label style={{ display: "block", fontSize: ".72rem", fontWeight: 700, color: "#64748B", marginBottom: 6 }}>
-            What should this executive reason about?
+            Your situation / plan / notes
           </label>
           <textarea
             value={goal}
@@ -1713,16 +1780,34 @@ function AdviseModal({
               cursor: loading ? "wait" : "pointer",
             }}
           >
-            {loading ? "Agent reasoning…" : "Run agent"}
+            {loading ? "Agent reasoning…" : "Run intelligent reasoning"}
           </button>
           {error && <p style={{ color: "#B91C1C", marginTop: 12 }}>{error}</p>}
           {advice && (
             <div style={{ marginTop: 18 }}>
+              {modeLabel && (
+                <div style={{ fontSize: ".72rem", fontWeight: 800, color: "#0f766e", marginBottom: 8 }}>
+                  Mode: {modeLabel}
+                  {data?.offline ? " · offline tool-grounded" : ""}
+                </div>
+              )}
               <div style={{ fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>Assessment</div>
               <p style={{ margin: 0, color: "#334155", lineHeight: 1.5 }}>{advice.assessment}</p>
+              {advice.deeperQuestion && (
+                <>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Deeper question</div>
+                  <p style={{ margin: 0, color: "#0f766e", fontWeight: 600 }}>{advice.deeperQuestion}</p>
+                </>
+              )}
+              {advice.decision && (
+                <>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Decision</div>
+                  <p style={{ margin: 0, color: "#334155" }}>{advice.decision}</p>
+                </>
+              )}
               {!!advice.suggestions?.length && (
                 <>
-                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Suggestions</div>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Intelligent suggestions</div>
                   <ul style={{ margin: 0, paddingLeft: 18 }}>
                     {advice.suggestions.map((s, i) => {
                       const title = typeof s === "string" ? s : s.title || "Suggestion";
@@ -1741,7 +1826,7 @@ function AdviseModal({
               )}
               {!!advice.risks?.length && (
                 <>
-                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Risks</div>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Risks / feedback</div>
                   <ul style={{ margin: 0, paddingLeft: 18, color: "#9A3412" }}>
                     {advice.risks.map((r, i) => (
                       <li key={i}>{r}</li>

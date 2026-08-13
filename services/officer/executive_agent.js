@@ -49,6 +49,225 @@ const OFFICER_SPECIALTIES = {
     'platform integrity, APIs, LLMs/gateway, auth/sessions, credential vault, security, readiness',
 };
 
+/**
+ * 8 strategic thinking & decision-making modes (applied by every executive).
+ * Each mode has a persona + instruction for intelligent reasoning/feedback.
+ */
+const STRATEGIC_THINKING_MODES = {
+  stress_test: {
+    id: 'stress_test',
+    label: 'Stress-Test My Thinking',
+    persona: 'reasoning analyst',
+    instruction:
+      'Evaluate logic, assumptions, and potential flaws. Pressure-test the thinking — do NOT invent a brand-new plan. Call out weak premises and missing evidence.',
+    template: 'This is the plan I’m working on: [idea / plan / strategy]',
+  },
+  shift_perspective: {
+    id: 'shift_perspective',
+    label: 'Shift the Perspective',
+    persona: 'perspective strategist',
+    instruction:
+      'Explore alternate framings: new audience, different emotional driver, shifted brand message, or channel angle — while staying useful for this officer’s domain.',
+    template: 'Here’s the main idea I’m working with: [idea]',
+  },
+  translate_gut: {
+    id: 'translate_gut',
+    label: 'Translate My Gut Feeling',
+    persona: 'clarity finder',
+    instruction:
+      'Articulate what feels off: confusion, mixed signals, misplaced tactics, or brand inconsistency. Name the discomfort precisely.',
+    template: 'Something about this doesn’t feel right: [situation / message / tactic]',
+  },
+  organize_thoughts: {
+    id: 'organize_thoughts',
+    label: 'Organize My Messy Thoughts',
+    persona: 'structure builder',
+    instruction:
+      'Turn rough notes into a clear outline. Keep the user’s tone. Prefer structure over adding net-new ideas unless a gap blocks clarity.',
+    template: 'Here’s a rough mix of thoughts and notes: [notes]',
+  },
+  face_decision: {
+    id: 'face_decision',
+    label: 'Help Me Face the Decision',
+    persona: 'decision coach',
+    instruction:
+      'Show where the user may be stalling, overthinking, or avoiding a clear choice. Reflect what is keeping them stuck and propose a decisive next move.',
+    template: 'Here’s the situation I’m dealing with: [project / context]',
+  },
+  deeper_question: {
+    id: 'deeper_question',
+    label: 'Surface the Deeper Question',
+    persona: 'strategic advisor',
+    instruction:
+      'Uncover the core question behind the ask. Identify the bigger issue or choice that should really be in focus.',
+    template: 'Here’s the situation I’m working through: [idea / challenge]',
+  },
+  execution_risks: {
+    id: 'execution_risks',
+    label: 'Spot Execution Risks',
+    persona: 'operations analyst',
+    instruction:
+      'Review the plan for where it could fall apart: timelines, resources, coordination, dependencies, data gaps, or delivery blockers.',
+    template: 'Here’s the plan I’m about to put into action: [strategy / outline]',
+  },
+  sense_instinct: {
+    id: 'sense_instinct',
+    label: 'Make Sense of My Instinct',
+    persona: 'reasoning guide',
+    instruction:
+      'Explore what is behind the instinct: signals, patterns, prior results, or logic that may be driving the lean — separate signal from bias.',
+    template: 'Here’s the idea I’m leaning toward, and it feels right: [idea / insight]',
+  },
+};
+
+/** Domain → connected tool stack (agentic OS “Business Tools” layer). */
+const DOMAIN_TOOL_STACK = {
+  marketing: [
+    'Google Ads', 'Meta Ads', 'TikTok Ads', 'LinkedIn Ads',
+    'Google Analytics', 'Search Console', 'Google Business Profile',
+  ],
+  sales: [
+    'HubSpot', 'Salesforce', 'Pipedrive', 'Apollo', 'Calendly', 'Google Calendar',
+  ],
+  ops: [
+    'Asana', 'ClickUp', 'Monday.com', 'Airtable', 'Jira', 'Slack', 'Microsoft Teams',
+  ],
+  follow_up: [
+    'Gmail', 'Outlook', 'Twilio', 'WhatsApp', 'Intercom', 'HubSpot', 'Mailchimp', 'DocuSign',
+  ],
+  finance: [
+    'Stripe', 'QuickBooks', 'Xero', 'Ramp', 'Expensify', 'Google Sheets', 'Power BI',
+  ],
+  content: ['Content Calendar', 'Social Publisher', 'Content Scorer', 'Brand Voice'],
+  seo: ['SEO Auditor', 'GEO Audit', 'Search Console', 'Keyword Map', 'Rank Tracker'],
+  cro: ['CRO Lab', 'A/B Designer', 'Conversion Boosters', 'Heatmaps'],
+  analyst: ['Cross-Channel Report', 'Attribution', 'Analytics Hub', 'Amplitude'],
+  technical: ['APIs', 'LLM Gateway', 'Credential Vault', 'Auth/Sessions', 'MCP / Integrations'],
+};
+
+function resolveThinkingMode(modeId) {
+  const key = String(modeId || '').trim().toLowerCase().replace(/-/g, '_');
+  if (STRATEGIC_THINKING_MODES[key]) return STRATEGIC_THINKING_MODES[key];
+  return STRATEGIC_THINKING_MODES.deeper_question;
+}
+
+function domainStackForRole(role) {
+  const r = String(role || '').toLowerCase();
+  if (DOMAIN_TOOL_STACK[r]) return DOMAIN_TOOL_STACK[r];
+  if (r === 'sales') return DOMAIN_TOOL_STACK.sales;
+  return DOMAIN_TOOL_STACK.marketing;
+}
+
+/**
+ * Tool-grounded structured advice when LLM is unavailable — still applies
+ * the selected strategic thinking mode for intelligent feedback.
+ */
+function buildStrategicOfflineAdvice({ role, title, goal, tasks, snap, thinkingMode }) {
+  const mode = resolveThinkingMode(thinkingMode);
+  const specialty = OFFICER_SPECIALTIES[role] || title;
+  const stack = domainStackForRole(role);
+  const g = String(goal || '').trim();
+  const taskLine = Array.isArray(tasks) && tasks.length ? tasks[0] : null;
+  const signals = `Workspace signals: ${snap?.activeProjects ?? 0} active projects, ${snap?.adCampaigns_total ?? 0} campaigns, ${snap?.leadsLinksell_last7d ?? 0} leads/7d, ${snap?.bookings_last7d ?? 0} bookings/7d.`;
+
+  const modeBlocks = {
+    stress_test: {
+      assessment: `As a ${mode.persona} (${title}), I stress-tested “${g.slice(0, 140)}” for ${specialty}. ${signals} Assumptions that need evidence: that current channel mix is still efficient, and that assigned responsibilities are actually moving.`,
+      suggestions: [
+        { title: 'Name the unproven assumption', detail: 'Pick one claim in the plan and attach a metric from Cross-Channel / Analytics before scaling spend.', priority: 'high' },
+        { title: 'Pressure-test with a kill criterion', detail: 'Define what result in 7 days would force a pause or rewrite.', priority: 'high' },
+        taskLine
+          ? { title: 'Tie a responsibility to the test', detail: taskLine, priority: 'med' }
+          : { title: 'Assign a falsifiable task', detail: 'Open Tasks and add one responsibility that produces measurable evidence.', priority: 'med' },
+      ],
+    },
+    shift_perspective: {
+      assessment: `As a ${mode.persona}, reframing “${g.slice(0, 140)}” for ${specialty}. ${signals} Consider a different audience slice, emotional driver, or proof point than the default brand message.`,
+      suggestions: [
+        { title: 'Reframe for a secondary ICP', detail: 'Rewrite the offer for one adjacent segment and A/B the hook.', priority: 'high' },
+        { title: 'Change the emotional driver', detail: 'Swap fear-of-missing-out vs proof-led trust and test creative.', priority: 'med' },
+        { title: 'Reuse connected stack creatively', detail: `Lean on ${stack.slice(0, 3).join(', ')} for a fresh distribution angle.`, priority: 'med' },
+      ],
+    },
+    translate_gut: {
+      assessment: `As a ${mode.persona}, the discomfort around “${g.slice(0, 140)}” likely comes from mixed signals or missing proof in ${specialty}. ${signals}`,
+      suggestions: [
+        { title: 'Isolate the confusing signal', detail: 'Separate message, offer, and CTA — which one feels off?', priority: 'high' },
+        { title: 'Check brand/voice consistency', detail: 'Compare against Brand Voice / recent creatives for tone drift.', priority: 'med' },
+        { title: 'Validate with one live metric', detail: 'If CTR/reply rate is weak, the gut is probably about clarity, not volume.', priority: 'med' },
+      ],
+    },
+    organize_thoughts: {
+      assessment: `As a ${mode.persona}, here is a clean outline for “${g.slice(0, 140)}” in ${specialty} without inventing a new strategy. ${signals}`,
+      suggestions: [
+        { title: 'Section 1 — Goal', detail: 'One sentence outcome for this week.', priority: 'high' },
+        { title: 'Section 2 — Evidence', detail: 'List only facts from workspace/tools (campaigns, leads, bookings).', priority: 'high' },
+        { title: 'Section 3 — Next 3 actions', detail: taskLine || 'Assign tasks so each action has an owner responsibility.', priority: 'med' },
+      ],
+    },
+    face_decision: {
+      assessment: `As a ${mode.persona}, stall risk on “${g.slice(0, 140)}” looks like overthinking vs choosing a single path in ${specialty}. ${signals}`,
+      suggestions: [
+        { title: 'Force a binary choice', detail: 'Option A vs Option B — pick one for 7 days with a review date.', priority: 'high' },
+        { title: 'Name the avoidance', detail: 'What bad outcome are you protecting against by not deciding?', priority: 'high' },
+        { title: 'Ship a reversible move', detail: 'Prefer a change you can undo (creative, bid, sequence) over a permanent cut.', priority: 'med' },
+      ],
+    },
+    deeper_question: {
+      assessment: `As a ${mode.persona}, the surface ask “${g.slice(0, 140)}” likely hides a deeper choice in ${specialty}: what should we optimize for (growth, efficiency, proof, or risk control)? ${signals}`,
+      suggestions: [
+        { title: 'State the real question', detail: 'Is this about more demand, better conversion, or cleaner attribution?', priority: 'high' },
+        { title: 'Align metrics to that question', detail: 'Pick one north-star KPI for the next sprint.', priority: 'high' },
+        { title: 'Consult a peer agent', detail: 'Use multi-agent consult (Analyst / Finance / Ops) before locking the frame.', priority: 'med' },
+      ],
+    },
+    execution_risks: {
+      assessment: `As a ${mode.persona}, execution risk on “${g.slice(0, 140)}” in ${specialty}: timelines, ownership, and connected-tool readiness. ${signals}`,
+      suggestions: [
+        { title: 'Call out the critical path', detail: 'What single dependency (creative, CRM, tracking) can stop launch?', priority: 'high' },
+        { title: 'Check connected stack gaps', detail: `Confirm access for: ${stack.slice(0, 4).join(', ')}.`, priority: 'high' },
+        { title: 'Add an ops checkpoint', detail: 'Schedule a mid-week QA on assets, UTMs, and lead routing.', priority: 'med' },
+      ],
+    },
+    sense_instinct: {
+      assessment: `As a ${mode.persona}, the lean toward “${g.slice(0, 140)}” may be driven by pattern recognition in ${specialty} — prior wins, recent signals, or bias. ${signals}`,
+      suggestions: [
+        { title: 'Separate signal from preference', detail: 'List 2 data signals that support the instinct and 1 that challenges it.', priority: 'high' },
+        { title: 'Recall prior memory', detail: 'Check Marketing Memory / past campaigns for similar bets.', priority: 'med' },
+        { title: 'Run a small confirming test', detail: 'Validate the instinct with a low-budget or limited-audience experiment.', priority: 'med' },
+      ],
+    },
+  };
+
+  const block = modeBlocks[mode.id] || modeBlocks.deeper_question;
+  return {
+    assessment: block.assessment,
+    suggestions: block.suggestions,
+    risks: [
+      (snap?.adCampaigns_total == null || snap?.adCampaigns_total === 0)
+        ? 'Sparse workspace data — keep recommendations provisional until ads/CRM integrations feed the connected stack.'
+        : 'Watch for stale dashboards before reallocating budget or pausing channels.',
+      `Mode focus (${mode.label}): incomplete application of the thinking lens if tool data is thin.`,
+    ],
+    nextChecks: [
+      `Re-run Ask Agent in “${mode.label}” after OpenAI is available for full tool-loop reasoning`,
+      'Open Daily Report for task-level evidence',
+      `Review connected tools for this domain: ${stack.slice(0, 5).join(', ')}`,
+    ],
+    reasoning: [
+      `Orchestrator assigned thinking mode: ${mode.label} (${mode.persona})`,
+      'Loaded workspace snapshot from the connected stack',
+      `Applied ${title} specialty: ${specialty}`,
+      'Human provides vision/quality; agent returns structured feedback for decision',
+    ],
+    deeperQuestion: mode.id === 'deeper_question'
+      ? 'What outcome are we actually optimizing for this week — growth, efficiency, proof, or risk control?'
+      : undefined,
+    thinkingMode: mode.id,
+    thinkingModeLabel: mode.label,
+  };
+}
+
 const EXECUTIVE_TOOLS = [
   {
     type: 'function',
@@ -130,25 +349,35 @@ function skillPackFlat() {
   );
 }
 
-function systemPrompt(role, title) {
+function systemPrompt(role, title, thinkingMode) {
   const specialty = OFFICER_SPECIALTIES[role] || 'your functional domain';
+  const mode = resolveThinkingMode(thinkingMode);
+  const stack = domainStackForRole(role);
   const packLines = Object.entries(AGENT_SKILL_PACK)
     .map(([g, items]) => `- ${g}: ${items.join(', ')}`)
     .join('\n');
-  return `You are the AI ${title} on InfoGenie's AI Executive team — an autonomous agent, not a chatbot.
+  return `You are the AI ${title} on InfoGenie's AI Executive team — an autonomous agent inside an agentic operating system.
 
-You reason independently about ${specialty}.
-You MUST use tools when facts are needed. Never invent platform numbers.
+Architecture you operate under:
+- HUMAN provides creative vision + quality feedback
+- ORCHESTRATOR maps the ask, selects thinking mode, and routes work
+- YOU (specialized agent) reason, call tools via MCP/APIs, and return intelligent decisions/feedback
+- CONNECTED STACK for your domain: ${stack.join(', ')}
+
+Domain specialty: ${specialty}.
+
+Active strategic thinking mode — "${mode.label}" (act as a ${mode.persona}):
+${mode.instruction}
 
 Full agent skill pack you employ on every assignment:
 ${packLines}
 
 Operating rules:
-1. Think step-by-step about the CEO's ask and your responsibilities.
-2. Call tools (function calling) to gather workspace evidence, memory (RAG), goals, or peer input.
-3. Give intelligent, specific feedback and suggestions the user can act on inside InfoGenie.
-4. Be honest when data is missing — recommend what to connect or assign next.
-5. Stay in your lane, but consult peers when cross-functional impact is real.
+1. Apply the thinking mode rigorously — decisions, reasoning, and feedback must reflect that lens.
+2. Call tools (function calling) for workspace evidence, memory (RAG), goals, or peer multi-agent input.
+3. Never invent platform numbers. If data is missing, say so and recommend what to connect.
+4. Produce intelligent, specific suggestions the human can act on inside InfoGenie.
+5. Stay in your lane; consult peers when cross-functional impact is real.
 6. Final answer must be strict JSON only (no markdown).`;
 }
 
@@ -368,6 +597,7 @@ function parseJsonContent(text) {
  * @param {string} [opts.goal]
  * @param {string[]} [opts.tasks]
  * @param {object} [opts.facts]
+ * @param {string} [opts.thinkingMode] — one of STRATEGIC_THINKING_MODES ids
  * @param {number|null} opts.tenantId
  * @param {Function} opts.openaiChatWithRetry
  */
@@ -379,6 +609,7 @@ async function runExecutiveAgent(opts) {
     goal = '',
     tasks = [],
     facts = null,
+    thinkingMode = 'deeper_question',
     tenantId = null,
     openaiChatWithRetry,
   } = opts || {};
@@ -386,6 +617,8 @@ async function runExecutiveAgent(opts) {
   if (typeof openaiChatWithRetry !== 'function') {
     throw new Error('openaiChatWithRetry required');
   }
+
+  const thinking = resolveThinkingMode(thinkingMode);
 
   const schema =
     mode === 'daily-report'
@@ -395,7 +628,8 @@ async function runExecutiveAgent(opts) {
   "successes": ["<concrete win>"],
   "issues": ["<concrete blocker>"],
   "actionPlan": [{"step":"<verb-led InfoGenie action>","priority":"high|med|low"}],
-  "reasoning": ["<short chain-of-thought step you took>", "..."]
+  "reasoning": ["<short chain-of-thought step you took>", "..."],
+  "thinkingMode": "${thinking.id}"
 }`
       : mode === 'brief'
         ? `{
@@ -403,14 +637,19 @@ async function runExecutiveAgent(opts) {
   "highlights": ["<win>"],
   "risks": ["<risk with numbers when available>"],
   "actions": [{"title":"<verb-led>","detail":"<why>","priority":"high|med|low"}],
-  "reasoning": ["<how you used tools / memory>"]
+  "reasoning": ["<how you used tools / memory>"],
+  "thinkingMode": "${thinking.id}"
 }`
         : `{
-  "assessment": "<independent assessment of the situation in your domain>",
+  "assessment": "<independent assessment applying the ${thinking.label} lens>",
   "suggestions": [{"title":"<verb-led suggestion>","detail":"<why / how>","priority":"high|med|low"}],
   "risks": ["<risk>"],
   "nextChecks": ["<what you will monitor next>"],
-  "reasoning": ["<tool/memory steps you took>"]
+  "deeperQuestion": "<optional — the core question behind the ask>",
+  "decision": "<optional — the clear choice you recommend when facing a decision>",
+  "reasoning": ["<orchestrator → tools → judgment steps>"],
+  "thinkingMode": "${thinking.id}",
+  "thinkingModeLabel": "${thinking.label}"
 }`;
 
   const userPayload = {
@@ -418,14 +657,17 @@ async function runExecutiveAgent(opts) {
     role,
     title,
     specialty: OFFICER_SPECIALTIES[role] || '',
+    domainToolStack: domainStackForRole(role),
+    thinkingMode: thinking,
     goal: String(goal || '').slice(0, 2000),
     responsibilities: Array.isArray(tasks) ? tasks.slice(0, 40) : [],
     facts: facts && typeof facts === 'object' ? facts : undefined,
     skillPack: AGENT_SKILL_PACK,
+    osNote: 'Human vision → Orchestrator planning → Agent execution via MCP/APIs → Connected stack',
   };
 
   const messages = [
-    { role: 'system', content: systemPrompt(role, title) },
+    { role: 'system', content: systemPrompt(role, title, thinking.id) },
     {
       role: 'user',
       content: `Assignment JSON:\n${JSON.stringify(userPayload, null, 2)}\n\nUse tools as needed, then return ONLY valid JSON matching:\n${schema}`,
@@ -495,11 +737,16 @@ async function runExecutiveAgent(opts) {
   }
 
   const parsed = parseJsonContent(finalText);
+  if (parsed && typeof parsed === 'object') {
+    parsed.thinkingMode = parsed.thinkingMode || thinking.id;
+    parsed.thinkingModeLabel = parsed.thinkingModeLabel || thinking.label;
+  }
   return {
     ok: !!parsed,
     role,
     title,
     mode,
+    thinkingMode: thinking,
     skillPack: AGENT_SKILL_PACK,
     toolTrace,
     result: parsed,
@@ -510,8 +757,13 @@ async function runExecutiveAgent(opts) {
 module.exports = {
   AGENT_SKILL_PACK,
   OFFICER_SPECIALTIES,
+  STRATEGIC_THINKING_MODES,
+  DOMAIN_TOOL_STACK,
   EXECUTIVE_TOOLS,
   skillPackFlat,
+  resolveThinkingMode,
+  domainStackForRole,
+  buildStrategicOfflineAdvice,
   loadWorkspaceSnapshot,
   runExecutiveAgent,
 };
