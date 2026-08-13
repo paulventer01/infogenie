@@ -462,6 +462,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "ask-infogenie", icon: "🎧", label: "Ask InfoGenie (your data)" },
           { view: "strategic-intelligence", icon: "🧠", label: "Strategic Intelligence (root-cause · scenarios · write-back)" },
           { view: "marketing-memory", icon: "🔉", label: "Marketing Memory (knowledge graph)" },
+          { view: "knowledge-hub", icon: "📚", label: "Knowledge Hub (docs · Slack · Notion · Drive)" },
           { view: "predictive-intelligence", icon: "🪬", label: "Predictive Intelligence (90-day AI forecast)" },
           // AI Providers + Governance live under AI Team → Team ops (single destination)
           { view: "autoclaw", icon: "🦞", label: "AutoClaw (Z.ai GLM agent)" },

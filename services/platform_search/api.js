@@ -257,8 +257,14 @@ async function _reindexTenant(tid) {
     allEmbeddings.push(...embs);
   }
 
-  // Replace all existing chunks for this tenant
-  await pool.query(`DELETE FROM platform_search_index WHERE tenant_id=$1`, [tid]);
+  // Replace platform-native chunks only — preserve Document RAG + enterprise connectors.
+  await pool.query(
+    `DELETE FROM platform_search_index
+     WHERE tenant_id=$1
+       AND data_type NOT LIKE 'document_%'
+       AND data_type NOT LIKE 'connector_%'`,
+    [tid],
+  );
   let embedded = 0;
   for (let i = 0; i < chunks.length; i++) {
     const emb = allEmbeddings[i];
