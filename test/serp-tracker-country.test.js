@@ -81,3 +81,16 @@ describe('email replies helpers', () => {
     assert.equal(replies._extractEmail('bob@example.com'), 'bob@example.com');
   });
 });
+
+describe('serp-tracker device/language normalisation', () => {
+  const { _normDevice, _normLanguage } = require('../services/serp_tracker/api');
+  it('normalises device', () => {
+    assert.equal(_normDevice('mobile'), 'mobile');
+    assert.equal(_normDevice('Desktop'), 'desktop');
+    assert.equal(_normDevice('tablet'), 'desktop');
+  });
+  it('normalises language', () => {
+    assert.equal(_normLanguage('FR'), 'fr');
+    assert.equal(_normLanguage('xx'), 'en');
+  });
+});

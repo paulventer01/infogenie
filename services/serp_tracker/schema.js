@@ -10,6 +10,8 @@ async function ensureSerpTrackerSchema() {
       keyword TEXT NOT NULL,
       target_domain TEXT NOT NULL,
       country TEXT NOT NULL DEFAULT 'us',
+      device TEXT NOT NULL DEFAULT 'desktop',
+      language TEXT NOT NULL DEFAULT 'en',
       enabled BOOLEAN NOT NULL DEFAULT true,
       competitors JSONB NOT NULL DEFAULT '[]'::jsonb,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -31,6 +33,8 @@ async function ensureSerpTrackerSchema() {
 
   // Additive columns for upgrades from older schemas.
   await pool.query(`ALTER TABLE serp_tracker_keywords ADD COLUMN IF NOT EXISTS competitors JSONB NOT NULL DEFAULT '[]'::jsonb`).catch(() => {});
+  await pool.query(`ALTER TABLE serp_tracker_keywords ADD COLUMN IF NOT EXISTS device TEXT NOT NULL DEFAULT 'desktop'`).catch(() => {});
+  await pool.query(`ALTER TABLE serp_tracker_keywords ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'en'`).catch(() => {});
   await pool.query(`ALTER TABLE serp_tracker_runs ADD COLUMN IF NOT EXISTS serp_features JSONB NOT NULL DEFAULT '{}'::jsonb`).catch(() => {});
   await pool.query(`ALTER TABLE serp_tracker_runs ADD COLUMN IF NOT EXISTS competitor_positions JSONB NOT NULL DEFAULT '{}'::jsonb`).catch(() => {});
 
@@ -40,7 +44,12 @@ async function ensureSerpTrackerSchema() {
   }
 
   try {
-    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_serp_tenant_keyword ON serp_tracker_keywords(tenant_id, keyword, target_domain, country)`);
+    // Multitarget unique: same keyword can be tracked per country + device + language.
+    await pool.query(`DROP INDEX IF EXISTS uniq_serp_tenant_keyword`);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_serp_tenant_keyword_target
+      ON serp_tracker_keywords(tenant_id, keyword, target_domain, country, device, language)
+    `);
     await pool.query(`ALTER TABLE serp_tracker_keywords DROP CONSTRAINT IF EXISTS serp_tracker_keywords_keyword_target_domain_country_key`);
   } catch (e) { console.error('[serp-tracker] uniq migrate:', e.message); }
 

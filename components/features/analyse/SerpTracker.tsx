@@ -12,6 +12,8 @@ interface Keyword {
   keyword: string;
   target_domain: string;
   country: string;
+  device?: string;
+  language?: string;
   competitors?: string[];
   last_position: number | null;
   last_url?: string | null;
@@ -45,8 +47,21 @@ interface LandscapeResult {
     estimated_traffic: number;
     average_position: number | null;
     distribution: Record<string, number>;
+    targets?: number;
   };
-  share_of_voice?: { domain: string; share_pct: number; points: number; is_target?: boolean }[];
+  targets?: { key: string; country: string; language: string; device: string; label: string; keywords: number }[];
+  share_of_voice?: {
+    domain: string; share_pct: number; points: number; visibility?: number;
+    visibility_delta?: number; keywords?: number; is_target?: boolean;
+  }[];
+  competition_map?: {
+    domain: string; keywords: number; average_position: number | null;
+    visibility: number; visibility_delta: number; is_target?: boolean;
+  }[];
+  winners_losers?: {
+    winners: { domain: string; visibility: number; visibility_delta: number }[];
+    losers: { domain: string; visibility: number; visibility_delta: number }[];
+  };
   pages?: { url: string; keyword_count: number; best_position: number | null; keywords: { keyword: string; position: number | null }[] }[];
   cannibalization?: { keyword: string; country: string; urls: { url: string; position: number }[] }[];
   competitors_tracked?: string[];
@@ -54,8 +69,20 @@ interface LandscapeResult {
   features_present?: Record<string, number>;
   keywords?: {
     id: number; keyword: string; position: number | null; url?: string;
+    country?: string; device?: string; language?: string;
     competitor_positions?: Record<string, { position?: number | null }>;
     serp_features?: Record<string, boolean | string[]>;
+  }[];
+}
+interface DevicesLocationsResult {
+  ok: boolean;
+  targets?: {
+    key: string; label: string; country: string; language: string; device: string;
+    keywords: number; ranked: number; average_position: number | null; visibility_pct: number;
+  }[];
+  matrix?: {
+    keyword: string; target_domain: string;
+    by_target: Record<string, { position: number | null; delta: number | null; id: number }>;
   }[];
 }
 interface AnalysisCompetitor {
@@ -77,6 +104,8 @@ type TabId =
   | "pages"
   | "cannibalization"
   | "competitors"
+  | "map"
+  | "devices"
   | "features"
   | "history";
 
@@ -84,9 +113,11 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "overview", label: "Landscape" },
   { id: "distribution", label: "Rankings Distribution" },
   { id: "sov", label: "Share of Voice" },
+  { id: "map", label: "Competition Map" },
   { id: "pages", label: "Pages" },
   { id: "cannibalization", label: "Cannibalization" },
   { id: "competitors", label: "Competitors" },
+  { id: "devices", label: "Devices & Locations" },
   { id: "features", label: "SERP Features" },
 ];
 
@@ -221,15 +252,23 @@ export default function SerpTracker() {
   const [keyword, setKeyword] = useState("");
   const [domainV, setDomainV] = useState(autoDomain);
   const [country, setCountry] = useState("us");
+  const [device, setDevice] = useState("desktop");
+  const [language, setLanguage] = useState("en");
+  const [mtCountry, setMtCountry] = useState("mu");
+  const [mtDevice, setMtDevice] = useState("mobile");
+  const [mtLanguage, setMtLanguage] = useState("en");
   const [competitorsCsv, setCompetitorsCsv] = useState(analysisCompetitorDomains().join(", "));
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [adding, setAdding] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
+  const [cloning, setCloning] = useState(false);
   const [tab, setTab] = useState<TabId>("overview");
   const [featureFilter, setFeatureFilter] = useState("");
   const [landscape, setLandscape] = useState<LandscapeResult | null>(null);
+  const [devicesLoc, setDevicesLoc] = useState<DevicesLocationsResult | null>(null);
   const [sovEnabled, setSovEnabled] = useState(true);
+  const [wlMode, setWlMode] = useState<"competitors" | "winners">("competitors");
   const kwIdx = useRef(0);
 
   const [detail, setDetail] = useState<{ keyword: string; runs: HistoryRun[] } | null>(null);
@@ -238,6 +277,8 @@ export default function SerpTracker() {
     const q = featureFilter ? `?feature=${encodeURIComponent(featureFilter)}` : "";
     const r = await apiGet<LandscapeResult>(`/api/serp-tracker/landscape${q}`);
     if (r.ok) setLandscape(r);
+    const dl = await apiGet<DevicesLocationsResult>("/api/serp-tracker/devices-locations");
+    if (dl.ok) setDevicesLoc(dl);
   }, [featureFilter]);
 
   async function refresh() {
@@ -271,6 +312,8 @@ export default function SerpTracker() {
         keyword,
         target_domain: domainV,
         country,
+        device,
+        language,
         competitors,
       });
       if (!r.ok) {
@@ -304,6 +347,30 @@ export default function SerpTracker() {
     }
     toast(`✅ Competitors saved (${competitors.length})`);
     refresh();
+  }
+
+  async function addMultitarget() {
+    setCloning(true);
+    try {
+      const r = await apiPost<{ ok: boolean; error?: string; created?: number; target?: { label: string } }>(
+        "/api/serp-tracker/multitarget",
+        {
+          country: mtCountry,
+          device: mtDevice,
+          language: mtLanguage,
+          target_domain: domainV || undefined,
+        },
+      );
+      if (!r.ok) {
+        toast("❌ " + (r.error || "failed"));
+        return;
+      }
+      toast(`✅ Added target ${r.target?.label || ""} (${r.created || 0} keywords)`);
+      setTab("devices");
+      refresh();
+    } finally {
+      setCloning(false);
+    }
   }
 
   async function suggest() {
@@ -419,7 +486,7 @@ export default function SerpTracker() {
       <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
         {/* Track form */}
         <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 18, marginBottom: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 160px auto", gap: 10, alignItems: "end" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 140px 120px 110px auto", gap: 10, alignItems: "end" }}>
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                 <label style={lbl}>Keyword</label>
@@ -441,11 +508,33 @@ export default function SerpTracker() {
               />
             </div>
             <div>
-              <label style={{ ...lbl, marginBottom: 4 }}>Country</label>
+              <label style={{ ...lbl, marginBottom: 4 }}>Location</label>
               <select value={country} onChange={(e) => setCountry(e.target.value)} style={{ ...trInput, fontSize: "0.82rem", background: "#fff" }}>
                 {COUNTRIES.map(([v, label]) => (
                   <option key={v} value={v}>{label}</option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ ...lbl, marginBottom: 4 }}>Language</label>
+              <select value={language} onChange={(e) => setLanguage(e.target.value)} style={{ ...trInput, fontSize: "0.82rem", background: "#fff" }}>
+                <option value="en">English</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="es">Spanish</option>
+                <option value="pt">Portuguese</option>
+                <option value="af">Afrikaans</option>
+                <option value="ar">Arabic</option>
+                <option value="hi">Hindi</option>
+                <option value="ja">Japanese</option>
+                <option value="zh">Chinese</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ ...lbl, marginBottom: 4 }}>Device</label>
+              <select value={device} onChange={(e) => setDevice(e.target.value)} style={{ ...trInput, fontSize: "0.82rem", background: "#fff" }}>
+                <option value="desktop">Desktop</option>
+                <option value="mobile">Mobile</option>
               </select>
             </div>
             <button onClick={add} disabled={adding} style={primaryBtn}>
@@ -728,6 +817,210 @@ export default function SerpTracker() {
           </div>
         )}
 
+        {tab === "map" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12 }}>
+            <div style={panel}>
+              <h3 style={h3}>Competition Map</h3>
+              <p style={{ color: "#6B7280", fontSize: "0.78rem", marginTop: 0 }}>
+                X = keywords ranking · Y = average position (better toward top) · bubble size = visibility
+              </p>
+              <CompetitionMapChart points={landscape?.competition_map || []} />
+            </div>
+            <div style={panel}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <button
+                  onClick={() => setWlMode("competitors")}
+                  style={{
+                    ...outlineBtn,
+                    background: wlMode === "competitors" ? "#0A1628" : "#fff",
+                    color: wlMode === "competitors" ? "#fff" : "#374151",
+                    WebkitTextFillColor: wlMode === "competitors" ? "#fff" : "#374151",
+                  }}
+                >
+                  Competitors
+                </button>
+                <button
+                  onClick={() => setWlMode("winners")}
+                  style={{
+                    ...outlineBtn,
+                    background: wlMode === "winners" ? "#0A1628" : "#fff",
+                    color: wlMode === "winners" ? "#fff" : "#374151",
+                    WebkitTextFillColor: wlMode === "winners" ? "#fff" : "#374151",
+                  }}
+                >
+                  Winners &amp; Losers
+                </button>
+              </div>
+              {wlMode === "competitors" ? (
+                <table style={table}>
+                  <thead>
+                    <tr style={{ background: "#F9FAFB", textAlign: "left" }}>
+                      <th style={trTh}>Competitor</th>
+                      <th style={trTh}>Visibility</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(landscape?.competition_map || []).slice(0, 12).map((c) => (
+                      <tr key={c.domain} style={{ borderTop: "1px solid #F3F4F6" }}>
+                        <td style={{ padding: "8px 12px", fontWeight: c.is_target ? 800 : 600 }}>
+                          {c.domain}{c.is_target ? " (you)" : ""}
+                        </td>
+                        <td style={{ padding: "8px 12px" }}>
+                          <span style={{ fontWeight: 800 }}>{c.visibility.toFixed(1)}</span>{" "}
+                          <span style={{
+                            fontSize: "0.74rem", fontWeight: 700,
+                            color: c.visibility_delta > 0 ? "#15803D" : c.visibility_delta < 0 ? "#DC2626" : "#9CA3AF",
+                          }}>
+                            {c.visibility_delta > 0 ? "+" : ""}{c.visibility_delta.toFixed(1)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div>
+                  <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "#15803D", marginBottom: 6 }}>WINNERS</div>
+                  {(landscape?.winners_losers?.winners || []).length ? (landscape?.winners_losers?.winners || []).map((c) => (
+                    <div key={"w-" + c.domain} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #F3F4F6", fontSize: "0.8rem" }}>
+                      <span>{c.domain}</span>
+                      <span style={{ color: "#15803D", fontWeight: 800 }}>+{c.visibility_delta.toFixed(1)}</span>
+                    </div>
+                  )) : <p style={{ color: "#6B7280", fontSize: "0.8rem" }}>Scan twice to see movement.</p>}
+                  <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "#DC2626", margin: "14px 0 6px" }}>LOSERS</div>
+                  {(landscape?.winners_losers?.losers || []).length ? (landscape?.winners_losers?.losers || []).map((c) => (
+                    <div key={"l-" + c.domain} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #F3F4F6", fontSize: "0.8rem" }}>
+                      <span>{c.domain}</span>
+                      <span style={{ color: "#DC2626", fontWeight: 800 }}>{c.visibility_delta.toFixed(1)}</span>
+                    </div>
+                  )) : <p style={{ color: "#6B7280", fontSize: "0.8rem" }}>No visibility losses yet.</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === "devices" && (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={panel}>
+              <h3 style={h3}>Add multitarget (location · language · device)</h3>
+              <p style={{ color: "#6B7280", fontSize: "0.8rem", marginTop: 0 }}>
+                Clone your tracked keywords into another Google target — compare desktop vs mobile or Mauritius vs US.
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
+                <div>
+                  <label style={{ ...lbl, marginBottom: 4 }}>Location</label>
+                  <select value={mtCountry} onChange={(e) => setMtCountry(e.target.value)} style={{ ...trInput, background: "#fff" }}>
+                    {COUNTRIES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ ...lbl, marginBottom: 4 }}>Language</label>
+                  <select value={mtLanguage} onChange={(e) => setMtLanguage(e.target.value)} style={{ ...trInput, background: "#fff" }}>
+                    <option value="en">English</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="es">Spanish</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="af">Afrikaans</option>
+                    <option value="ar">Arabic</option>
+                    <option value="hi">Hindi</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ ...lbl, marginBottom: 4 }}>Device</label>
+                  <select value={mtDevice} onChange={(e) => setMtDevice(e.target.value)} style={{ ...trInput, background: "#fff" }}>
+                    <option value="desktop">Desktop</option>
+                    <option value="mobile">Mobile</option>
+                  </select>
+                </div>
+                <button onClick={addMultitarget} disabled={cloning} style={primaryBtn}>
+                  {cloning ? "⏳…" : "+ Add target"}
+                </button>
+              </div>
+            </div>
+
+            <div style={panel}>
+              <h3 style={h3}>Targets overview</h3>
+              {!(devicesLoc?.targets || []).length ? (
+                <p style={{ color: "#6B7280", fontSize: "0.85rem" }}>No targets yet.</p>
+              ) : (
+                <table style={table}>
+                  <thead>
+                    <tr style={{ background: "#F9FAFB", textAlign: "left" }}>
+                      <th style={trTh}>Target</th>
+                      <th style={trTh}>Keywords</th>
+                      <th style={trTh}>Ranked</th>
+                      <th style={trTh}>Avg pos</th>
+                      <th style={trTh}>Visibility</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(devicesLoc?.targets || []).map((t) => (
+                      <tr key={t.key} style={{ borderTop: "1px solid #F3F4F6" }}>
+                        <td style={{ padding: "8px 12px", fontWeight: 700 }}>{t.label}</td>
+                        <td style={{ padding: "8px 12px" }}>{t.keywords}</td>
+                        <td style={{ padding: "8px 12px" }}>{t.ranked}</td>
+                        <td style={{ padding: "8px 12px" }}><PosBadge pos={t.average_position} /></td>
+                        <td style={{ padding: "8px 12px", fontWeight: 800 }}>{t.visibility_pct}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div style={panel}>
+              <h3 style={h3}>Compare positions across targets</h3>
+              {!(devicesLoc?.matrix || []).length || (devicesLoc?.targets || []).length < 2 ? (
+                <p style={{ color: "#6B7280", fontSize: "0.85rem" }}>
+                  Add a second location/device target, then Scan All to compare positions side-by-side.
+                </p>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={table}>
+                    <thead>
+                      <tr style={{ background: "#F9FAFB", textAlign: "left" }}>
+                        <th style={trTh}>Keyword</th>
+                        {(devicesLoc?.targets || []).map((t) => (
+                          <th key={t.key} style={trTh}>{t.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(devicesLoc?.matrix || []).slice(0, 40).map((row) => (
+                        <tr key={row.keyword + row.target_domain} style={{ borderTop: "1px solid #F3F4F6" }}>
+                          <td style={{ padding: "8px 12px", fontWeight: 600, fontSize: "0.8rem" }}>{row.keyword}</td>
+                          {(devicesLoc?.targets || []).map((t) => {
+                            const cell = row.by_target[t.key];
+                            return (
+                              <td key={t.key} style={{ padding: "8px 12px" }}>
+                                {cell ? (
+                                  <span>
+                                    <PosBadge pos={cell.position} />
+                                    {cell.delta != null && cell.delta !== 0 ? (
+                                      <span style={{
+                                        marginLeft: 6, fontSize: "0.7rem", fontWeight: 800,
+                                        color: cell.delta > 0 ? "#15803D" : "#DC2626",
+                                      }}>
+                                        {cell.delta > 0 ? "▲" : "▼"}{Math.abs(cell.delta)}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                ) : "—"}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {tab === "features" && (
           <div style={panel}>
             <h3 style={h3}>SERP features across tracked keywords</h3>
@@ -816,6 +1109,59 @@ export default function SerpTracker() {
   );
 }
 
+function CompetitionMapChart({
+  points,
+}: {
+  points: {
+    domain: string;
+    keywords: number;
+    average_position: number | null;
+    visibility: number;
+    is_target?: boolean;
+  }[];
+}) {
+  const W = 560, H = 320, PAD = 36;
+  const data = points.filter((p) => p.average_position != null && p.keywords > 0);
+  if (!data.length) {
+    return (
+      <div style={{ height: 280, displayContent: "center", textAlign: "center", color: "#6B7280", fontSize: "0.85rem" }}>
+        Scan keywords to plot the competition map.
+      </div>
+    );
+  }
+  const maxKw = Math.max(...data.map((d) => d.keywords), 1);
+  const maxVis = Math.max(...data.map((d) => d.visibility), 1);
+  const maxPos = Math.max(...data.map((d) => d.average_position || 1), 10);
+  const xScale = (kw: number) => PAD + (kw / maxKw) * (W - PAD * 2);
+  // Y inverted: position 1 at top
+  const yScale = (pos: number) => PAD + (pos / maxPos) * (H - PAD * 2);
+  const rScale = (vis: number) => 8 + (vis / maxVis) * 22;
+  const colors = ["#F97316", "#0EA5E9", "#8B5CF6", "#10B981", "#EF4444", "#64748B", "#F59E0B", "#EC4899"];
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", background: "#FAFAFA", borderRadius: 8 }}>
+      <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="#D1D5DB" />
+      <line x1={PAD} y1={PAD} x2={PAD} y2={H - PAD} stroke="#D1D5DB" />
+      <text x={W / 2} y={H - 8} textAnchor="middle" fontSize="11" fill="#6B7280">Number of Keywords</text>
+      <text x={14} y={H / 2} textAnchor="middle" fontSize="11" fill="#6B7280" transform={`rotate(-90 14 ${H / 2})`}>Average Position</text>
+      {data.map((p, i) => {
+        const cx = xScale(p.keywords);
+        const cy = yScale(p.average_position || maxPos);
+        const r = rScale(p.visibility);
+        const fill = p.is_target ? "#F97316" : colors[i % colors.length];
+        return (
+          <g key={p.domain}>
+            <circle cx={cx} cy={cy} r={r} fill={fill} fillOpacity={0.55} stroke={fill} strokeWidth={1.5} />
+            <text x={cx} y={cy - r - 4} textAnchor="middle" fontSize="9" fontWeight={700} fill="#0A1628">
+              {p.domain.replace(/^www\./, "").slice(0, 18)}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 function PosBadge({ pos }: { pos: number | null | undefined }) {
   return (
     <span style={{
@@ -852,7 +1198,7 @@ function KeywordTable({
           <tr style={{ background: "#F9FAFB", textAlign: "left" }}>
             <th style={trTh}>Keyword</th>
             <th style={trTh}>Domain</th>
-            <th style={trTh}>Country</th>
+            <th style={trTh}>Target</th>
             <th style={trTh}>Position</th>
             <th style={trTh}>Competitors</th>
             <th style={trTh}>Last scan</th>
@@ -864,8 +1210,8 @@ function KeywordTable({
             <tr key={k.id} style={{ borderTop: "1px solid #F3F4F6" }}>
               <td style={{ padding: "9px 12px", color: "#0A1628", fontWeight: 600 }}>{k.keyword}</td>
               <td style={{ padding: "9px 12px", color: "#374151" }}>{k.target_domain}</td>
-              <td style={{ padding: "9px 12px", color: "#374151", fontSize: "0.82rem", fontWeight: 600, whiteSpace: "nowrap" }}>
-                {countryLabel(k.country)}
+              <td style={{ padding: "9px 12px", color: "#374151", fontSize: "0.76rem", fontWeight: 600, whiteSpace: "nowrap" }}>
+                {countryLabel(k.country)} · {(k.language || "en").toUpperCase()} · {k.device === "mobile" ? "Mobile" : "Desktop"}
               </td>
               <td style={{ padding: "9px 12px" }}><PosBadge pos={k.last_position} /></td>
               <td style={{ padding: "9px 12px", fontSize: "0.74rem", color: "#6B7280" }}>
