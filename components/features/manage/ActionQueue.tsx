@@ -347,7 +347,7 @@ export default function ActionQueue() {
                       {isOpen && (
                         <div style={{ padding: "0 16px 14px 16px", borderTop: "1px solid #f1f5f9" }}>
                           {rec.problem_summary && (
-                            <p style={{ color: "#9A3412", fontSize: "0.82rem", margin: "10px 0 6px", background: "#FFF7ED", padding: "8px 10px", borderRadius: 8 }}>
+                            <p style={{ color: "#9A3412", fontSize: "0.82rem", margin: "10px 0 6px", background: "#f3f6fb", padding: "8px 10px", borderRadius: 8 }}>
                               <strong>Not working:</strong> {rec.problem_summary}
                             </p>
                           )}

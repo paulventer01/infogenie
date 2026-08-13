@@ -672,7 +672,7 @@ function ConversionsTab({
             onClick={onSync}
             disabled={!hubspotConfigured}
             style={{
-              background: "#FF7A59",
+              background: "#0f766e",
               color: "white",
               border: "none",
               padding: "10px 18px",

@@ -244,7 +244,7 @@ export default function CroLab() {
       return (
         <div
           style={{
-            background: "linear-gradient(135deg,#FFF7ED,#FEF3C7)",
+            background: "linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 48%, #eef4ff 100%)",
             border: "1.5px solid #FED7AA",
             borderRadius: 16,
             padding: 32,
@@ -310,7 +310,7 @@ export default function CroLab() {
         >
           <div
             style={{
-              background: "linear-gradient(135deg,#FFF7ED,#FFEDD5)",
+              background: "linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 48%, #eef4ff 100%)",
               border: "1px solid #FED7AA",
               borderRadius: 14,
               padding: "20px 22px",

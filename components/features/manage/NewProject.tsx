@@ -171,7 +171,7 @@ export default function NewProject() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#FFF7ED", padding: "28px 32px" }}>
+    <div style={{ minHeight: "100vh", background: "#f3f6fb", padding: "28px 32px" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ marginBottom: 24 }}>
           <h1 style={{ margin: 0, fontSize: "1.6rem", color: "#0F172A" }}>
@@ -272,7 +272,7 @@ export default function NewProject() {
               <label
                 key={c}
                 style={{
-                  background: "#FFF7ED",
+                  background: "#f3f6fb",
                   border: "1px solid #FED7AA",
                   borderRadius: 99,
                   padding: "6px 12px",
@@ -298,7 +298,7 @@ export default function NewProject() {
             onClick={save}
             style={{
               padding: "11px 22px",
-              background: "linear-gradient(135deg,#0f766e,#0f766e)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               color: "#fff",
               border: "none",
               borderRadius: 10,

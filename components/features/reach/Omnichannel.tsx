@@ -128,7 +128,7 @@ export default function Omnichannel() {
         {!liveChannels.length ? (
           <div
             style={{
-              background: "#FFF7ED",
+              background: "#f3f6fb",
               border: "1px solid #FDBA74",
               borderRadius: 12,
               padding: 16,

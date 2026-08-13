@@ -783,7 +783,7 @@ export default function TrendingTopics() {
               style={{
                 marginTop: 10,
                 padding: "8px 12px",
-                background: "#FFF7ED",
+                background: "#f3f6fb",
                 border: "1px solid #FED7AA",
                 borderRadius: 8,
                 fontSize: "0.74rem",

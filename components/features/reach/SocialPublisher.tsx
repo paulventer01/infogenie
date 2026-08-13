@@ -873,7 +873,7 @@ export default function SocialPublisher({ embedded = false }: { embedded?: boole
                 <button onClick={runSelfHeal} style={{ background: "#ECFDF5", color: "#065F46", border: "1px solid #A7F3D0", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
                   🩹 Self-heal
                 </button>
-                <button onClick={submitForApproval} style={{ background: "#FFF7ED", color: "#0b5f59", border: "1px solid #FDBA74", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
+                <button onClick={submitForApproval} style={{ background: "#f3f6fb", color: "#0b5f59", border: "1px solid #FDBA74", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>
                   ✅ Submit for approval
                 </button>
                 <button onClick={() => saveDraft(true)} style={{ background: "linear-gradient(135deg,#0D9488 0%,#14B8A6 100%)", color: "#fff", border: "none", padding: 11, borderRadius: 8, fontSize: "0.8rem", fontWeight: 800, cursor: "pointer" }}>

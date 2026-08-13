@@ -1308,7 +1308,7 @@ ${ctx.domain || "yourdomain.com"}`;
                           style={{
                             fontSize: "0.66rem",
                             padding: "2px 7px",
-                            background: "#FFF7ED",
+                            background: "#f3f6fb",
                             borderRadius: 4,
                             color: "#0b5f59",
                             fontWeight: 600,
@@ -2483,7 +2483,7 @@ ${ctx.domain || "yourdomain.com"}`;
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 14, padding: 12, background: "#FFF7ED", borderRadius: 10, border: "1px solid #FED7AA" }}>
+            <div style={{ marginTop: 14, padding: 12, background: "#f3f6fb", borderRadius: 10, border: "1px solid #FED7AA" }}>
               <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#92400E", marginBottom: 4 }}>
                 📅 Recommended Action Plan
               </div>
@@ -2633,7 +2633,7 @@ ${ctx.domain || "yourdomain.com"}`;
             </>
           ) : (
             <>
-              <div style={{ padding: 14, background: "#FFF7ED", border: "1.5px solid #FED7AA", borderRadius: 10, marginBottom: 14 }}>
+              <div style={{ padding: 14, background: "#f3f6fb", border: "1.5px solid #FED7AA", borderRadius: 10, marginBottom: 14 }}>
                 <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#92400E", marginBottom: 4 }}>
                   ⚠️ WordPress Not Connected
                 </div>

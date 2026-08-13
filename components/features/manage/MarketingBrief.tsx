@@ -520,7 +520,7 @@ function RecCard({ rec, onAct, onDismiss }: {
           </span>
         </div>
         {rec.problem_summary && (
-          <div style={{ fontSize: '0.76rem', color: '#9A3412', background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 6, padding: '6px 8px', marginBottom: 6, lineHeight: 1.4 }}>
+          <div style={{ fontSize: '0.76rem', color: '#9A3412', background: '#f3f6fb', border: '1px solid #FED7AA', borderRadius: 6, padding: '6px 8px', marginBottom: 6, lineHeight: 1.4 }}>
             <strong>Not working:</strong> {rec.problem_summary}
           </div>
         )}
@@ -568,7 +568,7 @@ function RecCard({ rec, onAct, onDismiss }: {
             </span>
           )}
           {rec.cost_estimate && (
-            <span style={{ background: '#FFF7ED', color: '#0b5f59', borderRadius: 4, padding: '1px 6px', fontSize: '0.68rem', fontWeight: 600 }}>
+            <span style={{ background: '#f3f6fb', color: '#0b5f59', borderRadius: 4, padding: '1px 6px', fontSize: '0.68rem', fontWeight: 600 }}>
               {rec.cost_estimate}
             </span>
           )}

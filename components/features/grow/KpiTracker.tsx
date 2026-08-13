@@ -1035,7 +1035,7 @@ function AiActionPlan({ model }: { model: Model }) {
     <div
       style={{
         marginTop: 24,
-        background: "linear-gradient(135deg,#FFF7ED,#FFF1F2)",
+        background: "linear-gradient(135deg,#e8f6f3,#eef4ff)",
         border: "1.5px solid #FCA5A5",
         borderRadius: 14,
         padding: "18px 22px",

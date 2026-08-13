@@ -158,33 +158,38 @@ export default function HubspotSync() {
 
       <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
         <div
+          className="ig-panel-hero"
           style={{
-            background: "linear-gradient(135deg,#FF7A59 0%,#FF5C35 100%)",
-            color: "#fff",
-            borderRadius: 12,
+            background: "linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 48%, #eef4ff 100%)",
+            color: "#0b1220",
+            borderRadius: 16,
+            border: "1px solid rgba(15,118,110,0.16)",
             padding: "18px 22px",
             marginBottom: 16,
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            gap: 16,
           }}
         >
           <div>
-            <div style={{ fontWeight: 800, fontSize: "1.05rem" }}>🔄 HubSpot CRM</div>
-            <div style={{ fontSize: "0.82rem", opacity: 0.92, marginTop: 2 }}>
+            <div style={{ fontWeight: 800, fontSize: "1.05rem", color: "#0b1220" }}>🔄 HubSpot CRM</div>
+            <div style={{ fontSize: "0.82rem", color: "#5b6577", marginTop: 2 }}>
               Push prospects + influencers as contacts. Auto-dedups by email, syncs lifecycle stage =
               lead.
             </div>
           </div>
           <button
+            type="button"
+            className="ig-btn-primary"
             onClick={test}
             style={{
               padding: "8px 16px",
-              background: "rgba(255,255,255,.18)",
-              border: "2px solid rgba(255,255,255,.35)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
+              border: "none",
               color: "#fff",
               WebkitTextFillColor: "#fff",
-              borderRadius: 8,
+              borderRadius: 10,
               fontWeight: 800,
               cursor: "pointer",
               fontSize: "0.82rem",

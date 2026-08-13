@@ -342,7 +342,7 @@ export default function Social({ embedded = false }: { embedded?: boolean } = {}
               padding: "12px 14px",
               borderRadius: 10,
               border: "1px solid #FDBA74",
-              background: "#FFF7ED",
+              background: "#f3f6fb",
               color: "#9A3412",
               fontSize: "0.82rem",
               lineHeight: 1.5,

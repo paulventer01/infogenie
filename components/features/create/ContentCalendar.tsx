@@ -298,7 +298,7 @@ export default function ContentCalendar({ embedded = false }: { embedded?: boole
   };
 
   const bannerColors: Record<Banner["kind"], React.CSSProperties> = {
-    info: { background: "#FFF7ED", borderColor: "#FED7AA", color: "#9A3412" },
+    info: { background: "#f3f6fb", borderColor: "#FED7AA", color: "#9A3412" },
     ok: { background: "#ECFDF5", borderColor: "#A7F3D0", color: "#065F46" },
     err: { background: "#FEF2F2", borderColor: "#FECACA", color: "#991B1B" },
   };

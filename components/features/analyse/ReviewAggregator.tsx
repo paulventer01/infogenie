@@ -846,7 +846,7 @@ function DeletedOutput({
             <div
               key={i}
               style={{
-                background: "#FFF7ED",
+                background: "#f3f6fb",
                 border: "1px solid #FDBA74",
                 borderRadius: 8,
                 padding: "8px 14px",

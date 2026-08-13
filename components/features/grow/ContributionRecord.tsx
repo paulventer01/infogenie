@@ -121,7 +121,7 @@ export default function ContributionRecord({ embedded = false }: { embedded?: bo
     <div
       style={{
         minHeight: embedded ? "auto" : "100vh",
-        background: embedded ? "transparent" : "linear-gradient(180deg,#FFF7ED 0%,#F8FAFC 42%)",
+        background: embedded ? "transparent" : "linear-gradient(180deg,#f3f6fb 0%,#F8FAFC 42%)",
         padding: embedded ? "8px 24px 32px" : "28px 32px",
       }}
     >

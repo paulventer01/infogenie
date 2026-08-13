@@ -350,7 +350,7 @@ export default function Benchmarks() {
               <div style={{
                 margin: "0 16px 0",
                 padding: "10px 14px",
-                background: "#FFF7ED",
+                background: "#f3f6fb",
                 border: "1px solid #FED7AA",
                 borderRadius: 10,
                 display: "flex",

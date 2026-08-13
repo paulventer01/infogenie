@@ -885,7 +885,7 @@ export default function Reengage() {
                       </div>
                     ))}
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(96px,1fr))", gap: 8, marginBottom: 14, padding: 10, background: "linear-gradient(135deg,#FEF2F2,#FFF7ED)", border: "1px solid #FECACA", borderRadius: 10 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(96px,1fr))", gap: 8, marginBottom: 14, padding: 10, background: "linear-gradient(135deg,#e8f6f3,#eef4ff)", border: "1px solid #FECACA", borderRadius: 10 }}>
                     <div style={{ gridColumn: "1/-1", fontSize: "0.62rem", fontWeight: 700, color: "#991B1B", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 2 }}>📬 Email Deliverability {stats.emailAttempts ? `· ${stats.emailAttempts} live attempt${stats.emailAttempts === 1 ? "" : "s"}` : "· no live email sends yet"}</div>
                     {([
                       ["Attempts", stats.emailAttempts || 0, "#0A1628"],
@@ -1090,7 +1090,7 @@ export default function Reengage() {
                   <div style={{ fontSize: "1.5rem", marginBottom: 10 }}>⏳</div>
                   <div style={{ fontSize: "0.82rem", color: "#6B7280", fontWeight: 600 }}>Generating personalised re-engagement copy…</div>
                   <div style={{ fontSize: "0.72rem", color: "#9CA3AF", marginTop: 4 }}>Analysing {copyTarget.name}&apos;s profile, last activity, and best channel</div>
-                  <div style={{ marginTop: 14, display: "inline-flex", alignItems: "center", gap: 8, background: "#FFF7ED", border: "1.5px solid #FED7AA", borderRadius: 999, padding: "6px 14px" }}>
+                  <div style={{ marginTop: 14, display: "inline-flex", alignItems: "center", gap: 8, background: "#f3f6fb", border: "1.5px solid #FED7AA", borderRadius: 999, padding: "6px 14px" }}>
                     <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#D97706" }} />
                     <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#92400E", letterSpacing: ".04em" }}>InfoGenie working</span>
                     <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "#B45309", fontVariantNumeric: "tabular-nums" }}>{copyTimer.toFixed(1)}s</span>

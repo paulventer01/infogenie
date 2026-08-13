@@ -1310,7 +1310,7 @@ function ScoreView({ r }: { r: ScoreResult }) {
             <div
               key={i}
               style={{
-                background: "#FFF7ED",
+                background: "#f3f6fb",
                 borderLeft: "3px solid #F59E0B",
                 borderRadius: "0 6px 6px 0",
                 padding: "8px 12px",

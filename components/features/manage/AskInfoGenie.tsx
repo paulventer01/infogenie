@@ -251,7 +251,7 @@ function AnswerBubble({
               </span>
             )}
             {result.liveDataUsed && (
-              <span style={{ background: "#FFF7ED", color: "#0b5f59", border: "1px solid #FED7AA", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 700 }}>
+              <span style={{ background: "#f3f6fb", color: "#0b5f59", border: "1px solid #FED7AA", padding: "3px 8px", borderRadius: 12, fontSize: "0.66rem", fontWeight: 700 }}>
                 📡 Live Data
               </span>
             )}
