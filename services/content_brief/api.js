@@ -2,9 +2,35 @@ const express    = require('express');
 const _https     = require('https');
 const _db        = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const _dataMode  = require('../admin/data_mode');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
+function _safeAsync(h) {
+  return (req, res) => Promise.resolve(h(req, res)).catch(e => {
+    console.warn('[content-brief]', e.stack || e.message);
+    if (!res.headersSent) _err(res, 500, 'Content brief generation failed unexpectedly.');
+  });
+}
+
+function _openAiKey() {
+  const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  return key && !/^_DUMMY/i.test(key) ? key : null;
+}
+
+function _integrationHint() {
+  const missing = [];
+  if (!_openAiKey()) missing.push('OpenAI (OPENAI_API_KEY or AI_INTEGRATIONS_OPENAI_API_KEY)');
+  if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) {
+    missing.push('DataForSEO (DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD)');
+  }
+  if (!process.env.FIRECRAWL_API_KEY || /^_DUMMY/i.test(process.env.FIRECRAWL_API_KEY || '')) {
+    missing.push('Firecrawl (FIRECRAWL_API_KEY) for competitor page scraping');
+  }
+  return missing.length
+    ? `Configure ${missing.join('; ')} in Settings → Integrations or your server environment.`
+    : 'Check your API keys and try again.';
+}
 
 // ── DataForSEO helper ──────────────────────────────────────────────────────
 function _dfsPost(path, body) {
@@ -147,7 +173,7 @@ function _templateBrief(keyword, competitorPages) {
 }
 
 // ── POST /generate ─────────────────────────────────────────────────────────
-router.post('/generate', async (req, res) => {
+router.post('/generate', _safeAsync(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'content-brief:generate' });
   if (!tid) return _err(res, 400, 'no_tenant');
 
@@ -155,6 +181,13 @@ router.post('/generate', async (req, res) => {
   if (!keyword || !keyword.trim()) return _err(res, 400, 'keyword is required');
 
   const kw = keyword.trim();
+
+  const clientId = _dataMode.clientIdFromReq(req);
+  const decided = await _dataMode.resolveDataMode({ clientId, tenantId: tid });
+  const strictMode = decided.mode === 'strict';
+  if (strictMode && !_openAiKey()) {
+    return _err(res, 422, `AI brief generation requires an OpenAI API key. ${_integrationHint()}`);
+  }
 
   // Run SERP + related keywords concurrently
   const [serpRes, relatedRes] = await Promise.all([
@@ -232,9 +265,14 @@ Rules: minimum 6 headings, minimum 5 must_cover_topics, minimum 4 questions, min
     { role: 'user', content: aiPrompt },
   ], 2000);
 
-  const brief = ai
-    ? { ...ai, source: 'ai' }
-    : _templateBrief(kw, competitorPages);
+  let brief;
+  if (ai) {
+    brief = { ...ai, source: 'ai' };
+  } else if (strictMode) {
+    return _err(res, 422, `AI brief generation failed. ${_integrationHint()}`);
+  } else {
+    brief = _templateBrief(kw, competitorPages);
+  }
 
   // Persist
   const row = await _db.getPool().query(
@@ -260,7 +298,7 @@ Rules: minimum 6 headings, minimum 5 must_cover_topics, minimum 4 questions, min
     avg_word_count: avgWords,
     created_at: row.rows[0].created_at,
   });
-});
+}));
 
 // ── GET / — list briefs ────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
