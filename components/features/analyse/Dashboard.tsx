@@ -89,7 +89,19 @@ type ChartCtor = new (ctx: CanvasRenderingContext2D, cfg: unknown) => ChartInsta
 
 function getAnalysisData(): AnalysisData | null {
   if (typeof window === "undefined") return null;
-  return (window as unknown as { analysisData?: AnalysisData }).analysisData || null;
+  const live = (window as unknown as { analysisData?: AnalysisData }).analysisData;
+  if (live) return live;
+  try {
+    const raw = sessionStorage.getItem("ig-analysis-data");
+    if (raw) {
+      const parsed = JSON.parse(raw) as AnalysisData;
+      (window as unknown as { analysisData?: AnalysisData }).analysisData = parsed;
+      return parsed;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 function getChart(): ChartCtor | undefined {
   return (window as unknown as { Chart?: ChartCtor }).Chart;
@@ -221,7 +233,9 @@ export default function Dashboard() {
     };
   }, [analysedDomain]);
   const competitors = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
-  const hasData = !!(ad && ad.websiteKPIs && competitors.length > 0);
+  // Analysis is valid once KPIs exist — do not require rivals. Same-industry
+  // verification can honestly return zero competitors; the report must still open.
+  const hasData = !!(ad && ad.websiteKPIs);
 
   const chartsRef = useRef<ChartInstance[]>([]);
   const [forecastStatus, setForecastStatus] = useState("⏳ Generating AI forecast…");
@@ -705,6 +719,25 @@ export default function Dashboard() {
         </>
       }
     >
+        {competitors.length === 0 && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "14px 16px",
+              borderRadius: 12,
+              border: "1.5px solid #FDE68A",
+              background: "#FFFBEB",
+              color: "#92400E",
+              fontSize: "0.88rem",
+              lineHeight: 1.45,
+            }}
+          >
+            <strong>No verified same-industry competitors yet.</strong> The
+            Intelligence Report is open for {yourDomain || "this analysis"}. Re-run
+            Analyse Now with a clearer industry, or add live SERP/DataForSEO keys so
+            rivals can be confirmed instead of invented.
+          </div>
+        )}
         {companyOverview && (
           <>
             <DomainOverview overview={companyOverview} currentView="dashboard" />

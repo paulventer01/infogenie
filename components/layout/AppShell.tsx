@@ -124,16 +124,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       } catch {
         /* noop */
       }
-      // Belt-and-suspenders: always land on Brief after analysis so the stage
-      // never stays on blank /analyse (legacy home hidden, no React panel).
+      // Land on the Intelligence Report dashboard after Analyse Now. Mark
+      // pending first so legacy navigateTo skips a duplicate spa-navigate.
       try {
-        markNavPending("nav→marketing-brief");
-        prefetchPanel("marketing-brief");
+        markNavPending("nav→dashboard");
+        prefetchPanel("dashboard");
       } catch {
         /* noop */
       }
       startTransition(() => {
-        router.push("/manage/marketing-brief");
+        router.push("/analyse/dashboard");
       });
     };
     document.addEventListener("ig:analysis-ready", onReady);

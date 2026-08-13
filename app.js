@@ -3197,7 +3197,7 @@ async function runAnalysis(url, country, industryOverride) {
   // NOTE: overlay stays visible. The two slowest API calls
   // (competitor-metrics ~12s + ai-validate-metrics ~13s) still run below,
   // and we don't want the user staring at a blank home page for ~25s.
-  // The overlay is hidden right before navigateTo('marketing-brief') further down.
+  // The overlay is hidden right before navigateTo('dashboard') further down.
 
   // ── If URL was given but user didn't type an industry, take the sub-niche
   //    that smart-detect inferred from the website and use it to fetch a
@@ -3626,6 +3626,7 @@ async function runAnalysis(url, country, industryOverride) {
     keywords: _seedKeywords.slice(0, 30),
   };
   window.analysisData = analysisData;  // Mirror to window so external modules (Link Suggester, CRO Lab, Analytics Hub, etc.) can read it
+  try { sessionStorage.setItem('ig-analysis-data', JSON.stringify(analysisData)); } catch (_) {}
   // Notify the global field enhancer (ig_field_enhancer.js) so any Brand /
   // Competitor pickers already rendered refresh their option lists with the
   // freshly-analysed brand + competitor names. New fields rendered after this
@@ -3688,24 +3689,17 @@ async function runAnalysis(url, country, industryOverride) {
     showToast(`✅ Brief ready in ${_totalSec}s`);
   } catch(_) {}
 
-  // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
-  // Land on Today's Marketing Brief (not the blank /analyse home, and not the
-  // dashboard) so the post-analysis workspace always has a React panel mounted.
-  window.IGDiag && IGDiag.mark('runAnalysis: navigating to marketing-brief', 'comps=' + selectedComps.length);
-  // Start a heartbeat that ticks every 250ms — any gap >500ms in the server
-  // log proves the main thread was blocked during that window and the prior
-  // breadcrumb names the culprit.
+  // ── Open the Intelligence Report dashboard after Analyse Now ──
+  // Fire `ig:analysis-ready` FIRST so AppShell can mark React as the owner of
+  // the dashboard transition. Then navigateTo('dashboard') skips a second
+  // ig:spa-navigate (which raced router.push and left a blank /analyse stage).
+  window.IGDiag && IGDiag.mark('runAnalysis: navigating to dashboard', 'comps=' + selectedComps.length);
   try { window.IGDiag && IGDiag.startHeartbeat && IGDiag.startHeartbeat('post-analyse', 250); } catch(_) {}
-  // Stop the heartbeat 15s later — by then the brief, all deferred
-  // builders and enrichments are well past done in the happy case.
   setTimeout(() => { try { window.IGDiag && IGDiag.stopHeartbeat && IGDiag.stopHeartbeat(); } catch(_) {} }, 15000);
-  navigateTo('marketing-brief');
-  // Tell any already-mounted React panel (Next.js dev shell) that a fresh
-  // analysis payload is on `window.analysisData`. Dashboard + Marketing Brief
-  // refresh when they see this event so they stay in sync with the latest run.
   try {
     document.dispatchEvent(new CustomEvent('ig:analysis-ready', { detail: { url: cleanUrl } }));
   } catch(_) {}
+  navigateTo('dashboard');
   if (!selectedComps.length) {
     showToast(`⚠ Analysis finished for ${cleanUrl} — no verified same-industry / same-business competitors (refusing generic or simulated rivals)`);
   } else {
@@ -3866,6 +3860,8 @@ async function enrichWithRealCompetitorData(domain, industryKey, country) {
       // deleted once the views moved to React, so guard via window.*)
       window.buildCompetitors && window.buildCompetitors();
       window.buildDashboard && window.buildDashboard();
+      try { sessionStorage.setItem('ig-analysis-data', JSON.stringify(analysisData)); } catch (_) {}
+      try { document.dispatchEvent(new CustomEvent('ig:analysis-ready', { detail: { url: domain } })); } catch (_) {}
     }
 
     // Update your own domain metrics in dashboard if available
