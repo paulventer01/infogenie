@@ -62,6 +62,12 @@ interface VaultSaveResult {
   error?: string;
 }
 
+interface VaultStatusResult {
+  ok: boolean;
+  configured?: boolean;
+  error?: string;
+}
+
 type ValidatorStatus = "verified" | "rejected" | "format-ok" | "unverifiable";
 
 interface ValidatorResult {
@@ -470,6 +476,7 @@ const INTEGRATIONS: IntegrationsMap = {
         id: "elevenlabs", logo: "🔊", name: "ElevenLabs",
         tagline: "AI voice generation for video ad voiceovers & audio content",
         authType: "apikey",
+        vaultSave: true,
         placeholder: "ElevenLabs API Key",
         unlocks: [
           "AI voiceover generation for video and audio ads",
@@ -528,6 +535,7 @@ const INTEGRATIONS: IntegrationsMap = {
         id: "canva", logo: "🎨", name: "Canva",
         tagline: "Connect Canva for Design Kit briefs + template deep-links",
         authType: "apikey",
+        vaultSave: true,
         placeholder: "Canva Client ID (optional — or use Connect OAuth)",
         unlocks: [
           "Design Kit briefs that paste straight into Canva text layers",
@@ -544,6 +552,7 @@ const INTEGRATIONS: IntegrationsMap = {
         id: "runway", logo: "🎬", name: "Runway ML",
         tagline: "AI video ad generation — text-to-video & image-to-video at scale",
         authType: "apikey",
+        vaultSave: true,
         placeholder: "Runway ML API Key (Bearer ...)",
         unlocks: [
           "Generate 15-second and 30-second video ads from text prompts",
@@ -564,6 +573,7 @@ const INTEGRATIONS: IntegrationsMap = {
         id: "heygen", logo: "🧑‍🎤", name: "HeyGen",
         tagline: "Avatar / talking-head video ads from a script",
         authType: "apikey",
+        vaultSave: true,
         placeholder: "HeyGen API Key",
         unlocks: [
           "Avatar spokespeople for product and offer videos",
@@ -580,6 +590,7 @@ const INTEGRATIONS: IntegrationsMap = {
         id: "xai", logo: "𝕏", name: "xAI Grok",
         tagline: "Grok answers for AI visibility / citation probes",
         authType: "apikey",
+        vaultSave: true,
         placeholder: "xAI API Key",
         unlocks: [
           "Probe how Grok answers category queries",
@@ -587,13 +598,14 @@ const INTEGRATIONS: IntegrationsMap = {
         ],
         steps: [
           { text: 'Get a key at <a href="https://console.x.ai" target="_blank">console.x.ai</a>' },
-          { text: "Paste it above — also set env <code>XAI_API_KEY</code> for server-side probes" },
+          { text: "Paste it above and click <strong>Connect</strong> — saved to your workspace vault (survives reload)" },
         ],
       },
       {
         id: "fireflies", logo: "🎙", name: "Fireflies.ai",
         tagline: "Auto-ingest meeting transcripts into Meeting Notes",
         authType: "apikey",
+        vaultSave: true,
         placeholder: "Fireflies API Key",
         unlocks: [
           "Pull transcripts into InfoGenie Meeting Notes",
@@ -601,13 +613,14 @@ const INTEGRATIONS: IntegrationsMap = {
         ],
         steps: [
           { text: 'Open <a href="https://app.fireflies.ai" target="_blank">Fireflies</a> → Integrations → API' },
-          { text: "Copy your API key and paste it above" },
+          { text: "Copy your API key, paste it above, and click <strong>Connect</strong>" },
         ],
       },
       {
         id: "deepl", logo: "🌍", name: "DeepL",
         tagline: "Campaign-quality localization for multi-market launches",
         authType: "apikey",
+        vaultSave: true,
         placeholder: "DeepL Auth Key",
         unlocks: [
           "Translate ad/email/landing copy with DeepL quality",
@@ -615,13 +628,14 @@ const INTEGRATIONS: IntegrationsMap = {
         ],
         steps: [
           { text: 'Create a key at <a href="https://www.deepl.com/pro-api" target="_blank">deepl.com/pro-api</a>' },
-          { text: "Free keys end with <code>:fx</code> — paste the full key above" },
+          { text: "Free keys end with <code>:fx</code> — paste the full key above and click <strong>Connect</strong>" },
         ],
       },
       {
         id: "notion", logo: "📓", name: "Notion",
         tagline: "Export Attack Plan briefs into your agency workspace",
         authType: "apikey",
+        vaultSave: true,
         placeholder: "Notion Internal Integration Token",
         unlocks: [
           "Push briefs / Attack Plans into Notion pages",
@@ -630,7 +644,7 @@ const INTEGRATIONS: IntegrationsMap = {
         steps: [
           { text: 'Create an integration at <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a>' },
           { text: "Share a parent page with the integration and set <code>NOTION_PARENT_PAGE_ID</code>" },
-          { text: "Paste the token above" },
+          { text: "Paste the token above and click <strong>Connect</strong>" },
         ],
       },
       {
@@ -1536,6 +1550,16 @@ function findIntegById(id: string): { item: IntegItem; catKey: string; catLabel:
   return null;
 }
 
+function listVaultSaveIds(): string[] {
+  const ids: string[] = [];
+  for (const cat of Object.values(INTEGRATIONS)) {
+    for (const item of cat.items) {
+      if (item.vaultSave) ids.push(item.id);
+    }
+  }
+  return ids;
+}
+
 type ConnState = Record<string, "1" | "oauth">;
 
 function readStoredState(): ConnState {
@@ -1569,6 +1593,8 @@ export default function Settings() {
   );
   const [docsOpen, setDocsOpen] = useState(false);
   const [docId, setDocId] = useState<string | null>(null);
+  /** Platforms with a key stored in the server vault (raw key is never returned). */
+  const [vaultConfigured, setVaultConfigured] = useState<Record<string, boolean>>({});
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -1611,6 +1637,37 @@ export default function Settings() {
           return next;
         });
       }
+    })();
+
+    // Vault is the source of truth for vaultSave platforms (survives new tunnel
+    // origins / cleared localStorage). GET never returns the raw key — only
+    // configured:true|false — so mark Connected and show a saved placeholder.
+    (async () => {
+      const ids = listVaultSaveIds();
+      const results = await Promise.all(
+        ids.map(async (id) => {
+          const r = await apiGet<VaultStatusResult>(`/api/settings/api-key/${encodeURIComponent(id)}`);
+          return { id, configured: !!(r.ok && r.configured) };
+        }),
+      );
+      if (cancelled) return;
+      const vaultNext: Record<string, boolean> = {};
+      setConnected((prev) => {
+        const next = { ...prev };
+        for (const { id, configured } of results) {
+          vaultNext[id] = configured;
+          if (configured) {
+            next[id] = "1";
+            try {
+              localStorage.setItem("ig_integ_" + id, "1");
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+        return next;
+      });
+      setVaultConfigured(vaultNext);
     })();
 
     (async () => {
@@ -1680,13 +1737,25 @@ export default function Settings() {
     const r = await apiPost<VaultSaveResult>("/api/settings/api-key", { platform: id, key });
     if (!r.ok) {
       setSaving((p) => ({ ...p, [id]: false }));
-      toast("❌ Could not save key: " + (r.error || "unknown error"));
+      const err = r.error || "unknown error";
+      if (err === "Login required" || /login|unauthorized|401/i.test(err)) {
+        toast("❌ Sign in to save API keys — they are stored in your workspace vault");
+      } else if (err === "no_tenant") {
+        toast("❌ No workspace selected — pick a tenant, then Connect again");
+      } else if (/DATABASE_URL|no DATABASE/i.test(err)) {
+        toast("❌ Database not configured — cannot persist API keys");
+      } else {
+        toast("❌ Could not save key: " + err);
+      }
       return;
     }
     markConnected(id, "1");
+    setVaultConfigured((p) => ({ ...p, [id]: true }));
+    // Never keep the raw key in React state after a successful vault write.
+    setInputs((p) => ({ ...p, [id]: "" }));
     setSaving((p) => ({ ...p, [id]: false }));
     toast(
-      `✅ ${name} key saved — ${id === "apify" ? "TikTok Organic Monitor and Local Lead Finder are now active" : name + " is now active"}`,
+      `✅ ${name} key saved to your workspace — ${id === "apify" ? "TikTok Organic Monitor and Local Lead Finder are now active" : name + " stays connected after reload"}`,
     );
   }
 
@@ -1890,10 +1959,15 @@ export default function Settings() {
                               <input
                                 type="password"
                                 className="api-key-inp"
-                                placeholder={item.placeholder || "Paste your API Key here..."}
+                                placeholder={
+                                  item.vaultSave && vaultConfigured[item.id]
+                                    ? "Key saved on server — paste a new key to replace"
+                                    : item.placeholder || "Paste your API Key here..."
+                                }
                                 id={`inp-${item.id}`}
                                 value={inputs[item.id] || ""}
                                 onChange={(e) => setInputs((p) => ({ ...p, [item.id]: e.target.value }))}
+                                autoComplete="off"
                               />
                               <button
                                 className="btn-test"
