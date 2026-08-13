@@ -1393,3 +1393,54 @@ body:has(#ig-app-shell) [style*="#eaf2fb"]:not(button):not([role="button"]),
 body:has(#ig-app-shell) [style*="#eef4ff"]:not(button):not([role="button"]) {
   color: var(--ig-hero-ink, #0f172a);
 }
+
+/* ── Standard React panel body — always readable on light shell ───────────── */
+body:has(#ig-app-shell) #ig-react-panel .ig-panel-shell,
+body:has(#ig-app-shell) #ig-react-panel .ig-panel-body {
+  color: #0f172a;
+}
+body:has(#ig-app-shell) #ig-react-panel .ig-panel-body h1,
+body:has(#ig-app-shell) #ig-react-panel .ig-panel-body h2,
+body:has(#ig-app-shell) #ig-react-panel .ig-panel-body h3,
+body:has(#ig-app-shell) #ig-react-panel .ig-panel-body h4 {
+  color: #0f172a;
+}
+body:has(#ig-app-shell) #ig-react-panel .ig-section-card {
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 16px !important;
+  color: #0f172a !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+body:has(#ig-app-shell) #ig-react-panel .ig-section-card .ig-section-title {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+body:has(#ig-app-shell) #ig-react-panel .ig-section-card .ig-section-sub {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+  opacity: 1 !important;
+}
+body:has(#ig-app-shell) #ig-react-panel .ig-tile,
+body:has(#ig-app-shell) #ig-react-panel .ig-hub-tile {
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  color: #0f172a !important;
+  border-radius: 14px !important;
+}
+body:has(#ig-app-shell) #ig-react-panel .ig-tile p,
+body:has(#ig-app-shell) #ig-react-panel .ig-hub-tile p {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+/* Attack Plan modal — ensure content never inherits white-on-white */
+#attackPlanModal,
+#attackPlanModalReact,
+.ig-attack-plan-modal {
+  color: #0f172a;
+}
+#attackPlanModal [id="attackPlanModalBody"],
+#attackPlanModalReact .ig-ap-body,
+.ig-attack-plan-modal .ig-ap-body {
+  color: #0f172a !important;
+}

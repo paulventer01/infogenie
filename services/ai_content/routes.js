@@ -771,13 +771,25 @@ Keep the JSON compact: max 4 weeklyPlan items, max 5 keywordTargets, max 4 chann
   } catch(err) {
     console.warn('[ai-attack-plan]', err.message);
     const msg = String(err.message || 'Attack plan generation failed');
-    const billing = /credit|billing|quota|429/i.test(msg);
-    res.status(billing ? 402 : 503).json({
-      plan: null,
-      error: billing
-        ? 'AI billing/credits exhausted — add OpenAI credits or ensure Anthropic is configured, then retry'
-        : msg,
-    });
+    // Always return a usable plan window — never leave the client with an empty modal.
+    try {
+      const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {}, prefillKeywords = [] } = req.body || {};
+      const offline = _offlineAttackPlan(myDomain, competitor, industry, competitorData, prefillKeywords);
+      return res.json({
+        ok: true,
+        plan: offline,
+        sources: ['Offline fallback'],
+        warning: msg,
+      });
+    } catch {
+      const billing = /credit|billing|quota|429/i.test(msg);
+      res.status(billing ? 402 : 503).json({
+        plan: null,
+        error: billing
+          ? 'AI billing/credits exhausted — add OpenAI credits or ensure Anthropic is configured, then retry'
+          : msg,
+      });
+    }
   }
 });
 

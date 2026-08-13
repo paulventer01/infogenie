@@ -12,10 +12,12 @@
 // launcher; cross-tool links go through `lib/nav#goToView`. See
 // `docs/react-panel-migration.md`.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
+import { apiPost } from "@/lib/api";
+import PanelHero from "@/components/layout/PanelHero";
 
 interface Campaign {
   name?: string;
@@ -173,12 +175,12 @@ function Card({ data }: { data: CardData }) {
 
 function Section({ icon, title, sub, children }: { icon: string; title: string; sub: string; children: React.ReactNode }) {
   return (
-    <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 20 }}>
+    <div className="ig-section-card" style={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 16, padding: 20, boxShadow: "0 1px 3px rgba(15,23,42,.04)" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 16 }}>
         <span style={{ fontSize: "1.2rem", lineHeight: 1 }}>{icon}</span>
         <div>
-          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.9rem", fontWeight: 800, color: "white" }} dangerouslySetInnerHTML={{ __html: title }} />
-          <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,.4)", marginTop: 2 }} dangerouslySetInnerHTML={{ __html: sub }} />
+          <div className="ig-section-title" style={{ fontFamily: "Sora,sans-serif", fontSize: "0.9rem", fontWeight: 800, color: "#0F172A" }} dangerouslySetInnerHTML={{ __html: title }} />
+          <div className="ig-section-sub" style={{ fontSize: "0.7rem", color: "#64748B", marginTop: 2 }} dangerouslySetInnerHTML={{ __html: sub }} />
         </div>
       </div>
       {children}
@@ -186,12 +188,220 @@ function Section({ icon, title, sub, children }: { icon: string; title: string; 
   );
 }
 
+type AttackPlan = {
+  executiveSummary?: string;
+  opportunityScore?: number;
+  estimatedROILift?: string;
+  timeToResults?: string;
+  weeklyPlan?: { week?: string; focus?: string; actions?: string[]; kpi?: string }[];
+  keywordTargets?: { keyword?: string; volume?: string; cpc?: string; priority?: string }[];
+  criticalWins?: { win?: string; impact?: string; timeframe?: string }[];
+  channelStrategy?: { channel?: string; budgetPct?: number; tactic?: string; expectedROAS?: string }[];
+};
+
+const DEMO_COMPS: Competitor[] = [
+  { name: "Competitor A", url: "competitor-a.com", threatLevel: "high", traffic: "1.2M", ctr: "2.4%", roas: 3.1, adSpend: "$48k", topChannel: "Google Ads", topKeywords: ["brand alternative", "best platform", "pricing comparison"], suggestions: ["Weak comparison content", "Thin FAQ / schema coverage", "Over-indexed on branded search"] },
+  { name: "Competitor B", url: "competitor-b.com", threatLevel: "medium", traffic: "640K", ctr: "1.8%", roas: 2.4, adSpend: "$22k", topChannel: "Meta Ads", topKeywords: ["vs competitor", "free trial", "reviews"], suggestions: ["Generic creative", "No TikTok/Reels", "Slow content cadence"] },
+];
+
+function AttackPlanModal({
+  open,
+  loading,
+  error,
+  competitor,
+  plan,
+  sources,
+  warning,
+  onClose,
+  onExecute,
+}: {
+  open: boolean;
+  loading: boolean;
+  error: string;
+  competitor: string;
+  plan: AttackPlan | null;
+  sources?: string[];
+  warning?: string;
+  onClose: () => void;
+  onExecute: () => void;
+}) {
+  const [tab, setTab] = useState<"overview" | "weekly" | "keywords" | "wins">("overview");
+  useEffect(() => {
+    if (open) setTab("overview");
+  }, [open, plan]);
+  if (!open) return null;
+
+  return (
+    <div
+      id="attackPlanModalReact"
+      className="ig-attack-plan-modal"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 10050, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,.55)", backdropFilter: "blur(4px)", padding: 20 }}
+    >
+      <div style={{ background: "#fff", borderRadius: 16, maxWidth: 720, width: "100%", maxHeight: "90vh", overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,.35)", color: "#0F172A" }}>
+        {loading ? (
+          <div style={{ padding: 48, textAlign: "center" }}>
+            <div style={{ fontSize: "2rem", marginBottom: 12 }}>⏳</div>
+            <div style={{ fontWeight: 800, fontSize: "1.05rem" }}>Building attack plan…</div>
+            <div style={{ fontSize: "0.85rem", color: "#64748B", marginTop: 8 }}>Usually 15–30 seconds</div>
+          </div>
+        ) : error && !plan ? (
+          <div style={{ padding: 32 }}>
+            <div style={{ fontWeight: 800, marginBottom: 8 }}>Could not generate plan</div>
+            <p style={{ color: "#B91C1C", fontSize: "0.9rem" }}>{error}</p>
+            <button type="button" onClick={onClose} style={{ marginTop: 16, padding: "10px 16px", borderRadius: 8, border: "none", background: "#F1F5F9", fontWeight: 700, cursor: "pointer" }}>Close</button>
+          </div>
+        ) : (
+          <>
+            <div style={{ background: "linear-gradient(135deg,#0066FF,#00C9C8)", padding: "20px 24px", color: "#fff", display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: "1.1rem", color: "#fff" }}>⚔️ Full Attack Plan vs {competitor}</div>
+                <div style={{ fontSize: "0.78rem", opacity: 0.9, marginTop: 4, color: "#fff" }}>
+                  8-week strategy · keywords · channels · quick wins
+                  {sources?.length ? ` · ${sources.join(" + ")}` : ""}
+                </div>
+                {warning ? <div style={{ fontSize: 12, marginTop: 6, opacity: 0.9 }}>{warning}</div> : null}
+              </div>
+              <button type="button" onClick={onClose} style={{ background: "rgba(255,255,255,.2)", border: "none", width: 32, height: 32, borderRadius: 8, color: "#fff", cursor: "pointer" }}>✕</button>
+            </div>
+            <div style={{ display: "flex", gap: 4, padding: "8px 12px", borderBottom: "1px solid #E2E8F0" }}>
+              {(["overview", "weekly", "keywords", "wins"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTab(t)}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: tab === t ? "1px solid #BFDBFE" : "1px solid transparent",
+                    background: tab === t ? "#EFF6FF" : "transparent",
+                    color: tab === t ? "#1D4ED8" : "#475569",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {t === "overview" ? "Overview" : t === "weekly" ? "8-Week Plan" : t === "keywords" ? "Keywords" : "Quick Wins"}
+                </button>
+              ))}
+            </div>
+            <div className="ig-ap-body" style={{ maxHeight: "55vh", overflow: "auto", padding: "20px 24px", color: "#0F172A" }}>
+              {tab === "overview" && (
+                <>
+                  <p style={{ fontSize: "0.95rem", lineHeight: 1.6, margin: "0 0 16px" }}>{plan?.executiveSummary || "Strategic attack plan ready."}</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
+                    <div style={{ background: "#F0FDF4", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#059669" }}>{plan?.opportunityScore ?? "—"}</div>
+                      <div style={{ fontSize: "0.7rem", color: "#64748B" }}>Opportunity</div>
+                    </div>
+                    <div style={{ background: "#EFF6FF", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#0066FF" }}>{plan?.estimatedROILift || "—"}</div>
+                      <div style={{ fontSize: "0.7rem", color: "#64748B" }}>ROI lift</div>
+                    </div>
+                    <div style={{ background: "#FEF3C7", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                      <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#D97706" }}>{plan?.timeToResults || "—"}</div>
+                      <div style={{ fontSize: "0.7rem", color: "#64748B" }}>Time to results</div>
+                    </div>
+                  </div>
+                  {(plan?.channelStrategy || []).length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 8 }}>Channel mix</div>
+                      {(plan?.channelStrategy || []).map((ch, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: "1px solid #F1F5F9", fontSize: "0.82rem" }}>
+                          <span><strong>{ch.channel}</strong> · {ch.tactic}</span>
+                          <span style={{ color: "#64748B", whiteSpace: "nowrap" }}>{ch.budgetPct}% · {ch.expectedROAS}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+              {tab === "weekly" && (
+                <div>
+                  {(plan?.weeklyPlan || []).map((w, i) => (
+                    <div key={i} style={{ border: "1px solid #E2E8F0", borderRadius: 10, padding: 14, marginBottom: 10 }}>
+                      <div style={{ fontWeight: 800, marginBottom: 4 }}>{w.week} — {w.focus}</div>
+                      <ul style={{ margin: "8px 0 0 18px", color: "#475569", fontSize: "0.85rem" }}>
+                        {(w.actions || []).map((a, j) => <li key={j}>{a}</li>)}
+                      </ul>
+                      <div style={{ fontSize: "0.75rem", color: "#64748B", marginTop: 8 }}>KPI: {w.kpi}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {tab === "keywords" && (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
+                  <thead>
+                    <tr style={{ background: "#F8FAFC" }}>
+                      <th style={{ textAlign: "left", padding: 8 }}>Keyword</th>
+                      <th>Volume</th>
+                      <th>CPC</th>
+                      <th>Priority</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(plan?.keywordTargets || []).map((k, i) => (
+                      <tr key={i}>
+                        <td style={{ padding: 8, borderTop: "1px solid #E2E8F0" }}>{k.keyword}</td>
+                        <td style={{ textAlign: "center", borderTop: "1px solid #E2E8F0" }}>{k.volume}</td>
+                        <td style={{ textAlign: "center", borderTop: "1px solid #E2E8F0" }}>{k.cpc}</td>
+                        <td style={{ textAlign: "center", borderTop: "1px solid #E2E8F0", fontWeight: 700 }}>{k.priority}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {tab === "wins" && (
+                <div>
+                  {(plan?.criticalWins || []).map((w, i) => (
+                    <div key={i} style={{ borderLeft: "4px solid #10B981", padding: "10px 14px", marginBottom: 10, background: "#F0FDF4", borderRadius: "0 8px 8px 0" }}>
+                      <div style={{ fontWeight: 700 }}>{w.win}</div>
+                      <div style={{ fontSize: "0.75rem", color: "#64748B", marginTop: 4 }}>Impact: {w.impact} · {w.timeframe}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ padding: "14px 24px", borderTop: "1px solid #E2E8F0", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button type="button" onClick={onClose} style={{ padding: "10px 18px", background: "#F1F5F9", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Close</button>
+              <button type="button" onClick={onExecute} style={{ padding: "10px 18px", background: "linear-gradient(135deg,#EF4444,#DC2626)", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, cursor: "pointer" }}>⚡ Execute Top Priority</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Battleplan() {
   const router = useRouter();
-  const ad = useMemo(getAnalysisData, []);
-  const comps = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
+  const [ad, setAd] = useState<AnalysisData | null>(null);
   const [idxState, setIdxState] = useState(0);
+  const [useDemo, setUseDemo] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState("");
+  const [attackPlan, setAttackPlan] = useState<AttackPlan | null>(null);
+  const [planSources, setPlanSources] = useState<string[]>([]);
+  const [planWarning, setPlanWarning] = useState("");
+  const [planCompName, setPlanCompName] = useState("");
 
+  useEffect(() => {
+    const sync = () => setAd(getAnalysisData());
+    sync();
+    if (typeof window === "undefined") return;
+    window.addEventListener("ig:analysis-ready", sync as EventListener);
+    window.addEventListener("storage", sync);
+    const t = window.setInterval(sync, 2500);
+    return () => {
+      window.removeEventListener("ig:analysis-ready", sync as EventListener);
+      window.removeEventListener("storage", sync);
+      window.clearInterval(t);
+    };
+  }, []);
+
+  const liveComps = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
+  const comps = liveComps.length > 0 ? liveComps : useDemo ? DEMO_COMPS : [];
   const hasData = comps.length > 0;
   const idx = Math.min(idxState, Math.max(0, comps.length - 1));
   const c = hasData ? comps[idx] : null;
@@ -227,40 +437,111 @@ export default function Battleplan() {
     }
   }
 
+  const generateAttackPlan = useCallback(async (compIdx: number) => {
+    const list = (ad && Array.isArray(ad.competitors) && ad.competitors.length) ? ad.competitors : (useDemo ? DEMO_COMPS : []);
+    const comp = list[compIdx] || list[0];
+    if (!comp) {
+      setModalOpen(true);
+      setModalError("Add competitors via analysis first, or preview with demo data.");
+      return;
+    }
+    setPlanCompName(comp.name || "Competitor");
+    setModalOpen(true);
+    setModalLoading(true);
+    setModalError("");
+    setAttackPlan(null);
+    setPlanWarning("");
+    const myDomain = ad?.url || "yourdomain.com";
+    const industry = ad?.industry?.name || "your industry";
+    // Prefer React API path — do not depend on legacy window.openFullAttackPlanModal.
+    const data = await apiPost<{
+      plan?: AttackPlan;
+      sources?: string[];
+      warning?: string;
+      error?: string;
+      ok?: boolean;
+    }>("/api/ai-attack-plan", {
+      myDomain,
+      competitor: comp.name,
+      industry,
+      competitorData: {
+        traffic: comp.traffic || comp.trafficMo,
+        adSpend: comp.adSpend,
+        channels: comp.topChannel ? [comp.topChannel] : [],
+        weaknesses: comp.suggestions || [],
+      },
+      prefillKeywords: (comp.topKeywords || []).slice(0, 5),
+    });
+    setModalLoading(false);
+    if (!data.plan) {
+      // Last resort: still try legacy modal if available
+      const legacy = (window as unknown as { openFullAttackPlanModal?: (i: number) => void }).openFullAttackPlanModal;
+      if (typeof legacy === "function") {
+        setModalOpen(false);
+        legacy(compIdx);
+        return;
+      }
+      setModalError(data.error || "Attack plan request failed");
+      return;
+    }
+    setAttackPlan(data.plan);
+    setPlanSources(Array.isArray(data.sources) ? data.sources : []);
+    setPlanWarning(data.warning || "");
+    // Keep legacy global in sync for action buttons that expect it
+    (window as unknown as { _apPlanData?: AttackPlan; renderAttackPlan?: (p: AttackPlan, n: string) => void })._apPlanData = data.plan;
+  }, [ad, useDemo]);
+
   if (!hasData || !c) {
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "70vh",
-          textAlign: "center",
-          gap: 20,
-          padding: 40,
-        }}
-      >
-        <div style={{ fontSize: "3.5rem" }}>⚔️</div>
-        <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "white" }}>No Analysis Yet</div>
-        <div style={{ color: "rgba(255,255,255,.5)", maxWidth: 420, fontSize: "0.9rem", lineHeight: 1.6 }}>
-          Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.
+      <div className="view-header-wrap ig-panel-shell" style={{ padding: "24px 20px 56px" }}>
+        <div className="container" style={{ maxWidth: 720, margin: "0 auto" }}>
+          <PanelHero
+            group="Analyse"
+            title="⚔️ Battle Plan"
+            subtitle="Generate an 8-week attack plan with keywords, channels, and weekly milestones — even before a full analysis."
+          />
+          <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 16, padding: 28, textAlign: "center" }}>
+            <div style={{ fontSize: "2.5rem", marginBottom: 10 }}>⚔️</div>
+            <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.25rem", fontWeight: 900, color: "#0F172A" }}>No analysis loaded yet</div>
+            <p style={{ color: "#64748B", maxWidth: 420, margin: "10px auto 18px", fontSize: "0.9rem", lineHeight: 1.6 }}>
+              Run a competitor analysis for a personalised Battle Plan, or preview with demo rivals and generate a Full Attack Plan window now.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => goToView(router, "home")}
+                style={{ padding: "12px 22px", background: "linear-gradient(135deg,#0066FF,#00C9C8)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, cursor: "pointer" }}
+              >
+                Run Analysis →
+              </button>
+              <button
+                type="button"
+                onClick={() => { setUseDemo(true); setIdxState(0); }}
+                style={{ padding: "12px 22px", background: "#fff", border: "1px solid #CBD5E1", borderRadius: 10, color: "#0F172A", fontWeight: 700, cursor: "pointer" }}
+              >
+                Preview with demo data
+              </button>
+              <button
+                type="button"
+                onClick={() => { setUseDemo(true); void generateAttackPlan(0); }}
+                style={{ padding: "12px 22px", background: "linear-gradient(135deg,#EF4444,#DC2626)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, cursor: "pointer" }}
+              >
+                🚀 Generate Attack Plan
+              </button>
+            </div>
+          </div>
         </div>
-        <button
-          onClick={() => goToView(router, "home")}
-          style={{
-            padding: "13px 30px",
-            background: "linear-gradient(135deg,#0066FF,#00C9C8)",
-            border: "none",
-            borderRadius: 12,
-            color: "white",
-            fontWeight: 700,
-            fontSize: "0.9rem",
-            cursor: "pointer",
-          }}
-        >
-          Run Analysis →
-        </button>
+        <AttackPlanModal
+          open={modalOpen}
+          loading={modalLoading}
+          error={modalError}
+          competitor={planCompName}
+          plan={attackPlan}
+          sources={planSources}
+          warning={planWarning}
+          onClose={() => setModalOpen(false)}
+          onExecute={() => { setModalOpen(false); callWin("bpLC", 0, 0); }}
+        />
       </div>
     );
   }
@@ -620,7 +901,7 @@ export default function Battleplan() {
             {campCards.length > 0 ? (
               campCards.map((d, i) => <Card key={i} data={d} />)
             ) : (
-              <div style={{ color: "rgba(255,255,255,.4)", fontSize: "0.82rem", padding: "12px 0" }}>
+              <div style={{ color: "#94A3B8", fontSize: "0.82rem", padding: "12px 0" }}>
                 No active campaigns detected — run full analysis for live campaign data.
               </div>
             )}
@@ -659,9 +940,10 @@ export default function Battleplan() {
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", paddingTop: 18 }}>
               <button
+                type="button"
                 onClick={() => {
                   const sel = document.getElementById("attackPlanCompSelect") as HTMLSelectElement | null;
-                  callWin("openFullAttackPlanModal", parseInt(sel?.value || String(idx), 10));
+                  void generateAttackPlan(parseInt(sel?.value || String(idx), 10));
                 }}
                 style={{ padding: "11px 24px", background: "linear-gradient(135deg,#0066FF,#00C9C8)", border: "none", borderRadius: 10, fontSize: "0.84rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 4px 16px rgba(0,102,255,.4)" }}
               >
@@ -678,6 +960,17 @@ export default function Battleplan() {
           </div>
         </div>
       </div>
+      <AttackPlanModal
+        open={modalOpen}
+        loading={modalLoading}
+        error={modalError}
+        competitor={planCompName}
+        plan={attackPlan}
+        sources={planSources}
+        warning={planWarning}
+        onClose={() => setModalOpen(false)}
+        onExecute={() => { setModalOpen(false); callWin("bpLC", idx, 0); }}
+      />
     </div>
   );
 }
