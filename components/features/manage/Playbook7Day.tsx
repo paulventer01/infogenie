@@ -17,7 +17,7 @@ import { showToast } from "@/hooks/useToast";
 
 const DAY_COLORS = [
   "#0EA5E9",
-  "#8B5CF6",
+  "#0284c7",
   "#10B981",
   "#F59E0B",
   "#EF4444",

@@ -68,10 +68,10 @@ const METRIC_META: Record<string, { icon: string; color: string; bg: string }> =
   cpa:     { icon: "🎯", color: "#D97706", bg: "#FFFBEB" },
   roas:    { icon: "📈", color: "#059669", bg: "#F0FDF4" },
   ctr:     { icon: "👆", color: "#0066FF", bg: "#EFF6FF" },
-  cvr:     { icon: "✅", color: "#7C3AED", bg: "#F5F3FF" },
+  cvr:     { icon: "✅", color: "#0f766e", bg: "#F5F3FF" },
   cpm:     { icon: "👁",  color: "#0891B2", bg: "#ECFEFF" },
   email_open:   { icon: "📧", color: "#0066FF", bg: "#EFF6FF" },
-  email_click:  { icon: "🖱",  color: "#7C3AED", bg: "#F5F3FF" },
+  email_click:  { icon: "🖱",  color: "#0f766e", bg: "#F5F3FF" },
   ltv:     { icon: "♾️", color: "#059669", bg: "#F0FDF4" },
   ltv_cac: { icon: "⚖️", color: "#D97706", bg: "#FFFBEB" },
   monthly_ad_spend:  { icon: "💳", color: "#DC2626", bg: "#FEF2F2" },
@@ -214,7 +214,7 @@ export default function Benchmarks() {
           style={{
             position: "absolute", inset: 0, opacity: 0.07,
             backgroundImage:
-              "radial-gradient(circle at 20% 50%, #00E5FF 0%, transparent 50%), radial-gradient(circle at 80% 20%, #7C3AED 0%, transparent 45%)",
+              "radial-gradient(circle at 20% 50%, #00E5FF 0%, transparent 50%), radial-gradient(circle at 80% 20%, #0f766e 0%, transparent 45%)",
             pointerEvents: "none",
           }}
         />
@@ -320,7 +320,7 @@ export default function Benchmarks() {
                   style={{
                     display: "flex", alignItems: "center", gap: 6,
                     padding: "7px 14px",
-                    background: suggesting ? "#F3F4F6" : "linear-gradient(135deg, #7C3AED, #6D28D9)",
+                    background: suggesting ? "#F3F4F6" : "linear-gradient(135deg, #0f766e, #6D28D9)",
                     border: "none",
                     borderRadius: 20,
                     fontSize: "0.72rem",
@@ -350,7 +350,7 @@ export default function Benchmarks() {
               <div style={{
                 margin: "0 16px 0",
                 padding: "10px 14px",
-                background: "#FFF7ED",
+                background: "#f3f6fb",
                 border: "1px solid #FED7AA",
                 borderRadius: 10,
                 display: "flex",
@@ -375,7 +375,7 @@ export default function Benchmarks() {
                         display: "inline-block",
                         marginLeft: 10,
                         padding: "2px 10px",
-                        background: "#7C3AED",
+                        background: "#0f766e",
                         color: "#fff",
                         border: "none",
                         borderRadius: 12,

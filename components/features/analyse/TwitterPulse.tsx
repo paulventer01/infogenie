@@ -303,7 +303,7 @@ export default function TwitterPulse() {
                   disabled={suggesting}
                   style={{
                     marginLeft: 6,
-                    background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+                    background: "linear-gradient(135deg,#0f766e,#0284c7)",
                     color: "#fff",
                     border: 0,
                     padding: "2px 8px",
@@ -379,7 +379,7 @@ export default function TwitterPulse() {
                 <Stat value={_n(result.counts && result.counts.pos)} label="POSITIVE" color="#10B981" />
                 <Stat value={_n(result.counts && result.counts.neu)} label="NEUTRAL" color="#6B7280" />
                 <Stat value={_n(result.counts && result.counts.neg)} label="NEGATIVE" color="#EF4444" />
-                <Stat value={`🔥 ${_n(result.viral_count)}`} label="VIRAL" color="#7C3AED" />
+                <Stat value={`🔥 ${_n(result.viral_count)}`} label="VIRAL" color="#0f766e" />
               </div>
               {result.tweets.length === 0 ? (
                 <div
@@ -406,7 +406,7 @@ export default function TwitterPulse() {
                         style={{
                           background: "#fff",
                           border: "1px solid #E5E7EB",
-                          borderLeft: `3px solid ${t.viral ? "#7C3AED" : "#1DA1F2"}`,
+                          borderLeft: `3px solid ${t.viral ? "#0f766e" : "#1DA1F2"}`,
                           borderRadius: 8,
                           padding: "12px 14px",
                         }}

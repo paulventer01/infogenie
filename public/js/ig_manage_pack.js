@@ -60,7 +60,7 @@
           <div id="np_channels" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">
             ${['Email','SMS','WhatsApp','Voice','Web Push','Meta Ads','Google Ads','TikTok Ads','Social Organic','SEO','Influencer','Events'].map(c=>`<label style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:99px;padding:6px 12px;cursor:pointer;font-size:0.82rem;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" value="${c}" style="margin:0">${c}</label>`).join('')}
           </div>
-          <button id="np_save" style="padding:11px 22px;background:linear-gradient(135deg,#F97316,#EA580C);color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer">Create Project</button>
+          <button id="np_save" style="padding:11px 22px;background:linear-gradient(135deg,#0f766e,#0f766e);color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer">Create Project</button>
         </div>
         <h3 style="margin:0 0 12px;color:#0F172A;font-size:1.05rem">Your projects</h3>
         <div id="np_list" style="display:grid;gap:10px"></div>
@@ -91,16 +91,16 @@
         if (!projects.length){ list.innerHTML='<div style="background:#fff;border:1px dashed #FED7AA;border-radius:10px;padding:24px;text-align:center;color:#64748B">No projects yet.</div>'; return; }
         const activeId = localStorage.getItem('ig_active_project_id') || '';
         list.innerHTML = projects.map(p=>`
-          <div style="background:#fff;border:1px solid ${p.id===activeId?'#F97316':'#E2E8F0'};border-radius:12px;padding:16px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center">
+          <div style="background:#fff;border:1px solid ${p.id===activeId?'#0f766e':'#E2E8F0'};border-radius:12px;padding:16px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center">
             <div>
               <div style="display:flex;align-items:center;gap:10px">
                 <strong style="color:#0F172A;font-size:1rem">${_esc(p.name)}</strong>
-                ${p.id===activeId?'<span style="background:#F97316;color:#fff;padding:2px 8px;border-radius:99px;font-size:0.65rem;font-weight:700">ACTIVE</span>':''}
+                ${p.id===activeId?'<span style="background:#0f766e;color:#fff;padding:2px 8px;border-radius:99px;font-size:0.65rem;font-weight:700">ACTIVE</span>':''}
               </div>
               <div style="color:#64748B;font-size:0.84rem;margin-top:4px">${_esc(p.goal||'No goal set')} · $${(p.monthly_budget||0).toLocaleString()}/mo · ${(p.channels||[]).length} channels</div>
             </div>
             <div style="display:flex;gap:6px">
-              <button data-act="${p.id}" data-name="${_esc(p.name)}" style="padding:6px 12px;background:#FED7AA;border:1px solid #F97316;border-radius:7px;cursor:pointer;font-weight:600;font-size:0.82rem">Set Active</button>
+              <button data-act="${p.id}" data-name="${_esc(p.name)}" style="padding:6px 12px;background:#FED7AA;border:1px solid #0f766e;border-radius:7px;cursor:pointer;font-weight:600;font-size:0.82rem">Set Active</button>
               <button data-del="${p.id}" style="padding:6px 11px;background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5;border-radius:7px;cursor:pointer;font-weight:600;font-size:0.82rem">✕</button>
             </div>
           </div>`).join('');
@@ -275,14 +275,14 @@
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
           <div style="display:flex;align-items:center;gap:8px">
-            <div style="background:linear-gradient(135deg,#0066FF,#7C3AED);border-radius:8px;padding:5px 10px;font-size:0.7rem;font-weight:800;color:#fff;letter-spacing:.04em">⚡ SMART SEARCH</div>
+            <div style="background:linear-gradient(135deg,#0066FF,#0f766e);border-radius:8px;padding:5px 10px;font-size:0.7rem;font-weight:800;color:#fff;letter-spacing:.04em">⚡ SMART SEARCH</div>
             <div style="font-size:0.75rem;color:#6B7280">${indexStatus.indexed > 0 ? `${indexStatus.indexed} indexed chunks${lastUpdStr ? ' · updated '+lastUpdStr : ''}` : 'Not yet indexed — will auto-index on first question'}</div>
           </div>
           <button id="aiReindex" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:5px 11px;border-radius:7px;font-size:0.72rem;font-weight:700;cursor:pointer">🔄 Re-index data</button>
         </div>
         <div style="display:flex;gap:8px">
           <input id="aiQ" placeholder="e.g. Which campaign has the worst CPC? · Which leads should I call first? · Any negative mentions?" style="flex:1;padding:11px 14px;border:1px solid #D1D5DB;border-radius:7px;font-size:0.92rem">
-          <button id="aiGo" style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:0;padding:11px 22px;border-radius:7px;font-weight:800;cursor:pointer">Ask →</button>
+          <button id="aiGo" style="background:linear-gradient(135deg,#0066FF,#0f766e);color:#fff;border:0;padding:11px 22px;border-radius:7px;font-weight:800;cursor:pointer">Ask →</button>
         </div>
         <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
           ${['What changed in the last 7 days?','Which landing page is converting best?','Are any campaigns over budget?','Which leads should I call first?','What\'s scheduled this week?'].map(q => `<button class="aiSugg" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:5px 10px;border-radius:14px;font-size:0.74rem;cursor:pointer">${esc(q)}</button>`).join('')}
@@ -367,14 +367,14 @@
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">TOPIC</label><input id="igTopic" placeholder="e.g. The 5 stages of a B2B sales funnel" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">LAYOUT</label><select id="igLayout" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box">${['funnel','list','comparison','journey','quadrant','pyramid','cycle'].map(l=>'<option value="'+l+'">'+l+'</option>').join('')}</select></div>
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">ITEMS</label><input id="igCount" type="number" min="3" max="7" value="5" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
-        <button id="igGo" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:10px 22px;border-radius:7px;font-weight:800;cursor:pointer">✨ Generate</button>
+        <button id="igGo" style="background:linear-gradient(135deg,#0f766e,#0284c7);color:#fff;border:0;padding:10px 22px;border-radius:7px;font-weight:800;cursor:pointer">✨ Generate</button>
       </div>
       <div id="igOut"></div>
       <h3 style="margin:24px 0 10px;color:#0A1628;font-family:Sora,sans-serif">📚 Recent</h3>
       <div id="igHistory"></div>`;
 
     function renderSVG(d){
-      const w=800,h=500,pal=d.palette||{primary:'#0066FF',accent:'#7C3AED',text:'#0A1628'};
+      const w=800,h=500,pal=d.palette||{primary:'#0066FF',accent:'#0f766e',text:'#0A1628'};
       const items=d.items||[];
       let body='';
       if (d.layout==='funnel') {
@@ -415,7 +415,7 @@
         ${svg}
         <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
           <button id="igDlSvg" style="background:#0066FF;color:#fff;border:0;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer">⬇ SVG</button>
-          <button id="igDlPng" style="background:#7C3AED;color:#fff;border:0;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer">⬇ PNG</button>
+          <button id="igDlPng" style="background:#0f766e;color:#fff;border:0;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer">⬇ PNG</button>
         </div>
       </div>`;
       window._igLastSvg = svg;
@@ -483,7 +483,7 @@
           </div>
         </div>
         ${c.snippet ? `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:14px;margin-bottom:18px"><div style="font-weight:800;color:#92400E;margin-bottom:6px">📋 Paste this snippet on your site (before &lt;/head&gt;) to start collecting data</div><pre style="background:#fff;padding:10px;border-radius:6px;font-size:0.74rem;overflow-x:auto;margin:0">${esc(c.snippet)}</pre></div>` : ''}
-        ${c.dashboard_url ? `<a href="${esc(c.dashboard_url)}" target="_blank" rel="noopener" style="display:inline-block;margin-bottom:18px;background:linear-gradient(135deg,#FF6B35,#F97316);color:#fff;padding:10px 22px;border-radius:7px;font-weight:800;text-decoration:none">🔗 Open Clarity Dashboard →</a>` : ''}
+        ${c.dashboard_url ? `<a href="${esc(c.dashboard_url)}" target="_blank" rel="noopener" style="display:inline-block;margin-bottom:18px;background:linear-gradient(135deg,#0f766e,#0f766e);color:#fff;padding:10px 22px;border-radius:7px;font-weight:800;text-decoration:none">🔗 Open Clarity Dashboard →</a>` : ''}
         <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
           <h3 style="margin:0 0 12px;font-family:Sora,sans-serif">📊 Insights (last ${ins.days||3} day${ins.days===1?'':'s'})</h3>
           ${ins.note ? `<div style="background:#F0F9FF;border:1px solid #BAE6FD;color:#075985;padding:10px;border-radius:6px;margin-bottom:14px;font-size:0.84rem">${esc(ins.note)}</div>` : ''}
@@ -520,7 +520,7 @@
           <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">SEED KEYWORD / TOPIC ${_autoSeed ? '<span style="color:#15803D;font-weight:600">(auto-filled from your analysis)</span>' : ''}</label>
           <input id="qmSeed" value="${esc(_autoSeed)}" placeholder="e.g. solar panel installation" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box;background:${_autoSeed?'#F0FDF4':'#fff'}">
         </div>
-        <button id="qmGo" style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:0;padding:10px 22px;border-radius:7px;font-weight:800;cursor:pointer">🔎 Mine Questions</button>
+        <button id="qmGo" style="background:linear-gradient(135deg,#0066FF,#0f766e);color:#fff;border:0;padding:10px 22px;border-radius:7px;font-weight:800;cursor:pointer">🔎 Mine Questions</button>
       </div>
       <div id="qmOut"></div>`;
     document.getElementById('qmGo').addEventListener('click', async () => {
@@ -602,7 +602,7 @@
             <div style="font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:4px">PRESETS (click to pre-fill)</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap">${PRESETS.map((p,i)=>`<button class="apPre" data-idx="${i}" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:5px 10px;border-radius:14px;font-size:0.74rem;cursor:pointer">${esc(p.name)}</button>`).join('')}</div>
           </div>
-          <button id="apAdd" style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:0;padding:10px 22px;border-radius:7px;font-weight:800;cursor:pointer">💾 Add Provider</button>
+          <button id="apAdd" style="background:linear-gradient(135deg,#0066FF,#0f766e);color:#fff;border:0;padding:10px 22px;border-radius:7px;font-weight:800;cursor:pointer">💾 Add Provider</button>
         </div>
 
         <h3 style="margin:0 0 10px;font-family:Sora,sans-serif">📚 Configured Providers (${items.length})</h3>
@@ -785,7 +785,7 @@
           <div style="flex:1;min-width:220px">
             <label style="display:flex;align-items:center;justify-content:space-between;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">
               <span>FILTER BY TAG</span>
-              <button type="button" onclick="window._asSuggestTags()" style="background:linear-gradient(135deg,#7C3AED,#0066FF);color:#fff;border:0;padding:3px 10px;border-radius:12px;font-size:0.68rem;font-weight:800;cursor:pointer">🤖 AI Suggest</button>
+              <button type="button" onclick="window._asSuggestTags()" style="background:linear-gradient(135deg,#0f766e,#0066FF);color:#fff;border:0;padding:3px 10px;border-radius:12px;font-size:0.68rem;font-weight:800;cursor:pointer">🤖 AI Suggest</button>
             </label>
             <input id="asTag" list="asTagList" placeholder="any (or type)" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.85rem;box-sizing:border-box">
             <datalist id="asTagList"></datalist>
@@ -849,7 +849,7 @@
     window._asSuggestTags = async function(){
       const box = document.getElementById('asTagSuggest'); if (!box) return;
       box.style.display = 'block';
-      box.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:#6B21A8;font-size:0.82rem;font-weight:700"><span style="display:inline-block;width:14px;height:14px;border:2px solid #DDD6FE;border-top-color:#7C3AED;border-radius:50%;animation:asSpin 0.8s linear infinite"></span> Reading your saved ads and proposing useful filter tags…<style>@keyframes asSpin{to{transform:rotate(360deg)}}</style></div>';
+      box.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:#6B21A8;font-size:0.82rem;font-weight:700"><span style="display:inline-block;width:14px;height:14px;border:2px solid #DDD6FE;border-top-color:#0f766e;border-radius:50%;animation:asSpin 0.8s linear infinite"></span> Reading your saved ads and proposing useful filter tags…<style>@keyframes asSpin{to{transform:rotate(360deg)}}</style></div>';
       // ── Pass brand + competitors so the endpoint can give tailored starter tags when the swipe file is still empty
       const brand = (window.analysisData && window.analysisData.brandName) || '';
       const competitors = (window.analysisData && Array.isArray(window.analysisData.competitors))
@@ -865,7 +865,7 @@
         if (!j.ok && (!j.suggestions || !j.suggestions.length)) { box.innerHTML = `<div style="color:#991B1B;font-size:0.82rem">${esc(j.error||'AI suggest failed')}</div>`; return; }
         const sugs = j.suggestions || [];
         if (!sugs.length) { box.innerHTML = '<div style="color:#6B21A8;font-size:0.82rem">No tag suggestions returned — try saving a few more ads first.</div>'; return; }
-        const noteLine = j.note ? `<div style="font-size:0.7rem;color:#7C3AED;margin-bottom:6px;font-style:italic">${esc(j.note)}</div>` : '';
+        const noteLine = j.note ? `<div style="font-size:0.7rem;color:#0f766e;margin-bottom:6px;font-style:italic">${esc(j.note)}</div>` : '';
         box.innerHTML = `<div style="font-size:0.74rem;font-weight:800;color:#6B21A8;margin-bottom:8px">🤖 Click a tag to filter${j.source==='saved_ads'?' — InfoGenie grouped your saved ads by these angles':' (starter tags — save ads for tailored ones)'}:</div>${noteLine}<div style="display:flex;flex-wrap:wrap;gap:6px">${sugs.map(s => `<button type="button" onclick="window._asApplyTag('${esc(s.tag).replace(/'/g,'&#39;')}')" title="${esc(s.why||'')}" style="background:#fff;border:1px solid #C4B5FD;color:#5B21B6;padding:5px 12px;border-radius:14px;font-size:0.78rem;font-weight:700;cursor:pointer">${esc(s.tag)}</button>`).join('')}</div>`;
       } catch(e) { box.innerHTML = `<div style="color:#991B1B;font-size:0.82rem">${esc(e.message)}</div>`; }
     };
@@ -1194,7 +1194,7 @@
       }
       document.getElementById('wa_kpis').innerHTML = [
         {label:'Sessions (30d)', val:(sum.sessions||0).toLocaleString(), color:'#0EA5E9'},
-        {label:'Impressions (30d)', val:(sum.impressions||0).toLocaleString(), color:'#8B5CF6'},
+        {label:'Impressions (30d)', val:(sum.impressions||0).toLocaleString(), color:'#0284c7'},
         {label:'Ad Spend (30d)', val:_money(sum.spend_cents||0), color:'#16A34A'}
       ].map(k=>`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px"><div style="font-size:0.74rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">${k.label}</div><div style="font-size:1.4rem;font-weight:800;color:${k.color}">${k.val}</div></div>`).join('');
       document.getElementById('wa_chans').innerHTML = acq.channels.length===0

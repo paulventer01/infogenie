@@ -210,7 +210,7 @@ export default function SeoWidget() {
                 onClick={createSite}
                 style={{
                   width: "100%",
-                  background: "linear-gradient(135deg,#7C3AED,#0066FF)",
+                  background: "linear-gradient(135deg,#0f766e,#0066FF)",
                   color: "#fff",
                   border: "none",
                   padding: "9px 14px",

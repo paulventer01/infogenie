@@ -239,7 +239,7 @@ export default function ChatbotBuilder() {
             onClick={generate}
             disabled={status === "loading"}
             style={{
-              background: "linear-gradient(135deg,#6366F1,#8B5CF6)",
+              background: "linear-gradient(135deg,#6366F1,#0284c7)",
               color: "#fff",
               border: "none",
               padding: "10px 20px",

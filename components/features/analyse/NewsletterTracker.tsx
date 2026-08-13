@@ -222,7 +222,7 @@ export default function NewsletterTracker() {
             <button
               onClick={add}
               style={{
-                background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+                background: "linear-gradient(135deg,#0f766e,#0284c7)",
                 color: "#fff",
                 border: "none",
                 padding: "8px 16px",
@@ -334,7 +334,7 @@ export default function NewsletterTracker() {
                     <button
                       onClick={() => scan(t.id)}
                       style={{
-                        background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+                        background: "linear-gradient(135deg,#0f766e,#0284c7)",
                         color: "#fff",
                         border: "none",
                         padding: "7px 14px",

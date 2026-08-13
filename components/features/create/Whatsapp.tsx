@@ -218,7 +218,7 @@ export default function Whatsapp() {
                 </button>
                 <button
                   onClick={() => setModal("bulk")}
-                  style={pillBtn("#7C3AED")}
+                  style={pillBtn("#0f766e")}
                 >
                   🚀 Bulk Send
                 </button>
@@ -803,7 +803,7 @@ function BulkModal({ onClose }: { onClose: () => void }) {
       <button
         onClick={launch}
         style={{
-          background: "#7C3AED",
+          background: "#0f766e",
           color: "white",
           border: 0,
           padding: "11px 22px",

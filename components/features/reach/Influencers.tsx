@@ -51,7 +51,7 @@ const INF_VET_COLORS: Record<string, string> = {
   Low: "#15803D",
   Medium: "#D97706",
   High: "#B91C1C",
-  Suspicious: "#7C3AED",
+  Suspicious: "#0f766e",
 };
 
 interface VetFlags {
@@ -443,7 +443,7 @@ export default function Influencers() {
                   style={{
                     fontSize: "0.62rem",
                     fontWeight: 700,
-                    color: "#7C3AED",
+                    color: "#0f766e",
                     textTransform: "uppercase",
                     letterSpacing: ".06em",
                   }}
@@ -466,7 +466,7 @@ export default function Influencers() {
                   style={{
                     fontSize: "0.62rem",
                     fontWeight: 700,
-                    color: "#7C3AED",
+                    color: "#0f766e",
                     textTransform: "uppercase",
                     letterSpacing: ".06em",
                   }}
@@ -732,7 +732,7 @@ export default function Influencers() {
                               textAlign: "right",
                               fontVariantNumeric: "tabular-nums",
                               fontWeight: 700,
-                              color: "#7C3AED",
+                              color: "#0f766e",
                             }}
                           >
                             {(i.followers || 0).toLocaleString()}
@@ -831,7 +831,7 @@ export default function Influencers() {
                                 borderRadius: 5,
                                 fontSize: "0.68rem",
                                 fontWeight: 700,
-                                color: "#7C3AED",
+                                color: "#0f766e",
                                 cursor: "pointer",
                               }}
                             >
@@ -1107,8 +1107,8 @@ function EditModal({
             onClick={onSave}
             style={{
               padding: "9px 18px",
-              background: "#7C3AED",
-              border: "2px solid #7C3AED",
+              background: "#0f766e",
+              border: "2px solid #0f766e",
               borderRadius: 7,
               fontSize: "0.78rem",
               fontWeight: 800,
@@ -1202,7 +1202,7 @@ function DetailModal({
                     href={i.profile_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ fontSize: "0.74rem", color: "#7C3AED" }}
+                    style={{ fontSize: "0.74rem", color: "#0f766e" }}
                   >
                     Open profile ↗
                   </a>
@@ -1232,7 +1232,7 @@ function DetailModal({
                     borderRadius: 6,
                     fontSize: "0.74rem",
                     fontWeight: 800,
-                    color: "#7C3AED",
+                    color: "#0f766e",
                     cursor: "pointer",
                   }}
                 >
@@ -1242,8 +1242,8 @@ function DetailModal({
                   onClick={() => onDraftEmail(i.id)}
                   style={{
                     padding: "7px 12px",
-                    background: "#7C3AED",
-                    border: "2px solid #7C3AED",
+                    background: "#0f766e",
+                    border: "2px solid #0f766e",
                     borderRadius: 6,
                     fontSize: "0.74rem",
                     fontWeight: 800,

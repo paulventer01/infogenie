@@ -86,7 +86,7 @@ const STEPS: Step[] = [
     title: "Create Quality Content",
     desc: "Publish helpful, original content that solves your audience's problems.",
     icon: "📝",
-    color: "#8b5cf6",
+    color: "#0284c7",
     tools: [
       { label: "📅 Content Calendar", view: "content-calendar" },
       { label: "🌍 GEO Audit", view: "geo-audit" },
@@ -122,7 +122,7 @@ const STEPS: Step[] = [
     title: "Local SEO",
     desc: "Optimise Google Business Profile, build local citations, and gather reviews.",
     icon: "📍",
-    color: "#f97316",
+    color: "#0f766e",
     tools: [
       { label: "📍 Local Lead Finder", view: "local-leads" },
       { label: "🗺️ Local SEO", view: "local-seo" },

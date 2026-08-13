@@ -45,7 +45,7 @@ type OutState =
 const stageColor: Record<string, string> = {
   discovery: "#6B7280",
   qualification: "#3B82F6",
-  proposal: "#8B5CF6",
+  proposal: "#0284c7",
   negotiation: "#F59E0B",
   closed_won: "#10B981",
   closed_lost: "#EF4444",

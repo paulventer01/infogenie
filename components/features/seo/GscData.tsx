@@ -152,7 +152,7 @@ function TrendChart({ history, metric, label }: {
 // ── Position distribution bar ─────────────────────────────────────────────
 function PosBars({ dist }: { dist: PosDist[] }) {
   const total = dist.reduce((s, d) => s + d.count, 0) || 1;
-  const colors = ["#2563EB", "#7C3AED", "#D97706", "#9CA3AF"];
+  const colors = ["#2563EB", "#0f766e", "#D97706", "#9CA3AF"];
   return (
     <div style={{ display: "flex", gap: 6, height: 8, borderRadius: 4, overflow: "hidden", marginBottom: 6 }}>
       {dist.map((d, i) => (
@@ -313,7 +313,7 @@ export default function GscData() {
             <PosBars dist={result.positionDist} />
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
               {result.positionDist.map((d, i) => {
-                const colors = ["#2563EB", "#7C3AED", "#D97706", "#9CA3AF"];
+                const colors = ["#2563EB", "#0f766e", "#D97706", "#9CA3AF"];
                 return (
                   <span key={d.label} style={{ fontSize: ".78rem", color: "#374151", display: "flex",
                     alignItems: "center", gap: 4 }}>

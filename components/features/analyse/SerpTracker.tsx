@@ -537,7 +537,7 @@ export default function SerpTracker() {
                 <option value="mobile">Mobile</option>
               </select>
             </div>
-            <button onClick={add} disabled={adding} style={primaryBtn}>
+            <button type="button" className="ig-btn-primary" onClick={add} disabled={adding} style={primaryBtn}>
               {adding ? "⏳…" : "+ Track"}
             </button>
           </div>
@@ -556,18 +556,12 @@ export default function SerpTracker() {
             <div style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: 8 }}>
               <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151" }}>Share of Voice</span>
               <button
+                type="button"
+                className={`ig-toggle${sovEnabled ? " is-on" : ""}`}
                 onClick={() => setSovEnabled((v) => !v)}
                 aria-pressed={sovEnabled}
-                style={{
-                  width: 42, height: 24, borderRadius: 999, border: "none", cursor: "pointer",
-                  background: sovEnabled ? "#F97316" : "#D1D5DB", position: "relative",
-                }}
-              >
-                <span style={{
-                  position: "absolute", top: 3, left: sovEnabled ? 22 : 3, width: 18, height: 18,
-                  borderRadius: "50%", background: "#fff", transition: "left .15s",
-                }} />
-              </button>
+                aria-label="Share of Voice"
+              />
             </div>
             <select
               value={featureFilter}
@@ -607,7 +601,7 @@ export default function SerpTracker() {
                 cursor: "pointer",
                 fontSize: "0.78rem",
                 fontWeight: 700,
-                background: tab === t.id ? "#0A1628" : "transparent",
+                background: tab === t.id ? "#0f766e" : "transparent",
                 color: tab === t.id ? "#fff" : "#374151",
                 WebkitTextFillColor: tab === t.id ? "#fff" : "#374151",
               }}
@@ -616,7 +610,7 @@ export default function SerpTracker() {
             </button>
           ))}
           <div style={{ flex: 1 }} />
-          <button onClick={scanAll} style={{ ...outlineBtn, borderColor: "#F97316", color: "#F97316" }}>
+          <button type="button" onClick={scanAll} className="ig-btn-secondary" style={outlineBtn}>
             ⚡ Scan All
           </button>
         </div>
@@ -637,7 +631,7 @@ export default function SerpTracker() {
                 <div key={key} style={{ display: "grid", gridTemplateColumns: "90px 1fr 40px", gap: 10, alignItems: "center", marginBottom: 8 }}>
                   <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151" }}>{key}</div>
                   <div style={{ background: "#F3F4F6", borderRadius: 6, height: 18, overflow: "hidden" }}>
-                    <div style={{ width: `${pct}%`, height: "100%", background: key === "1-3" ? "#15803D" : key === "4-10" ? "#F59E0B" : key === "unranked" ? "#9CA3AF" : "#F97316" }} />
+                    <div style={{ width: `${pct}%`, height: "100%", background: key === "1-3" ? "#15803D" : key === "4-10" ? "#0284c7" : key === "unranked" ? "#9CA3AF" : "#0f766e" }} />
                   </div>
                   <div style={{ fontSize: "0.8rem", fontWeight: 800, color: "#0A1628", textAlign: "right" }}>{n}</div>
                 </div>
@@ -671,7 +665,7 @@ export default function SerpTracker() {
                       <td style={{ padding: "9px 12px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <div style={{ flex: 1, background: "#F3F4F6", height: 10, borderRadius: 4, overflow: "hidden" }}>
-                            <div style={{ width: `${Math.min(100, row.share_pct)}%`, height: "100%", background: row.is_target ? "#F97316" : "#64748B" }} />
+                            <div style={{ width: `${Math.min(100, row.share_pct)}%`, height: "100%", background: row.is_target ? "#0f766e" : "#64748B" }} />
                           </div>
                           <span style={{ fontWeight: 800, fontSize: "0.8rem", minWidth: 48 }}>{row.share_pct}%</span>
                         </div>
@@ -703,7 +697,7 @@ export default function SerpTracker() {
                   {(landscape?.pages || []).map((p) => (
                     <tr key={p.url} style={{ borderTop: "1px solid #F3F4F6" }}>
                       <td style={{ padding: "9px 12px", fontSize: "0.78rem", maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        <a href={p.url} target="_blank" rel="noopener noreferrer" style={{ color: "#F97316" }}>{p.url}</a>
+                        <a href={p.url} target="_blank" rel="noopener noreferrer" style={{ color: "#0f766e" }}>{p.url}</a>
                       </td>
                       <td style={{ padding: "9px 12px", color: "#374151", fontSize: "0.78rem" }}>
                         {p.keyword_count}: {(p.keywords || []).slice(0, 4).map((k) => k.keyword).join(", ")}
@@ -735,7 +729,7 @@ export default function SerpTracker() {
                   {(c.urls || []).map((u) => (
                     <div key={u.url} style={{ fontSize: "0.78rem", color: "#374151", marginBottom: 4 }}>
                       <PosBadge pos={u.position} />{" "}
-                      <a href={u.url} target="_blank" rel="noopener noreferrer" style={{ color: "#F97316" }}>{u.url}</a>
+                      <a href={u.url} target="_blank" rel="noopener noreferrer" style={{ color: "#0f766e" }}>{u.url}</a>
                     </div>
                   ))}
                 </div>
@@ -1092,7 +1086,7 @@ export default function SerpTracker() {
                           <td style={{ padding: "7px 10px", color: "#374151" }}>{new Date(x.ran_at).toLocaleString()}</td>
                           <td style={{ padding: "7px 10px" }}><PosBadge pos={x.target_position} /></td>
                           <td style={{ padding: "7px 10px", fontSize: "0.76rem", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {x.target_url ? <a href={x.target_url} target="_blank" rel="noopener noreferrer" style={{ color: "#F97316" }}>{x.target_url}</a> : "—"}
+                            {x.target_url ? <a href={x.target_url} target="_blank" rel="noopener noreferrer" style={{ color: "#0f766e" }}>{x.target_url}</a> : "—"}
                           </td>
                           <td style={{ padding: "7px 10px", fontSize: "0.72rem", color: "#6B7280" }}>{flags.join(", ") || "—"}</td>
                         </tr>
@@ -1136,7 +1130,7 @@ function CompetitionMapChart({
   // Y inverted: position 1 at top
   const yScale = (pos: number) => PAD + (pos / maxPos) * (H - PAD * 2);
   const rScale = (vis: number) => 8 + (vis / maxVis) * 22;
-  const colors = ["#F97316", "#0EA5E9", "#8B5CF6", "#10B981", "#EF4444", "#64748B", "#F59E0B", "#EC4899"];
+  const colors = ["#0f766e", "#0284c7", "#16a34a", "#0EA5E9", "#64748B", "#334155", "#059669", "#38bdf8"];
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", background: "#FAFAFA", borderRadius: 8 }}>
@@ -1148,7 +1142,7 @@ function CompetitionMapChart({
         const cx = xScale(p.keywords);
         const cy = yScale(p.average_position || maxPos);
         const r = rScale(p.visibility);
-        const fill = p.is_target ? "#F97316" : colors[i % colors.length];
+        const fill = p.is_target ? "#0f766e" : colors[i % colors.length];
         return (
           <g key={p.domain}>
             <circle cx={cx} cy={cy} r={r} fill={fill} fillOpacity={0.55} stroke={fill} strokeWidth={1.5} />
@@ -1251,19 +1245,41 @@ const chip: React.CSSProperties = {
   fontSize: "0.72rem", fontWeight: 700, color: "#374151",
 };
 const primaryBtn: React.CSSProperties = {
-  padding: "10px 18px", background: "#F97316", border: "2px solid #F97316", borderRadius: 8,
-  fontSize: "0.82rem", fontWeight: 800, color: "#fff", WebkitTextFillColor: "#fff",
-  cursor: "pointer", textShadow: "0 1px 2px rgba(0,0,0,.4)", whiteSpace: "nowrap",
+  padding: "10px 18px",
+  background: "linear-gradient(135deg, #0f766e 0%, #0284c7 100%)",
+  border: "none",
+  borderRadius: 10,
+  fontSize: "0.82rem",
+  fontWeight: 800,
+  color: "#fff",
+  WebkitTextFillColor: "#fff",
+  cursor: "pointer",
+  boxShadow: "0 4px 14px rgba(15, 118, 110, 0.25)",
+  whiteSpace: "nowrap",
 };
 const outlineBtn: React.CSSProperties = {
-  padding: "8px 12px", background: "#fff", border: "1.5px solid #D1D5DB", color: "#374151",
-  borderRadius: 6, fontSize: "0.76rem", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+  padding: "8px 12px",
+  background: "#fff",
+  border: "1.5px solid rgba(11,18,32,0.14)",
+  color: "#0b1220",
+  borderRadius: 10,
+  fontSize: "0.76rem",
+  fontWeight: 700,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
 };
 const scanBtn: React.CSSProperties = {
-  padding: "5px 10px", background: "#F97316", border: "none", color: "#fff", borderRadius: 5,
-  fontSize: "0.74rem", fontWeight: 700, cursor: "pointer", WebkitTextFillColor: "#fff",
+  padding: "5px 10px",
+  background: "linear-gradient(135deg, #0f766e 0%, #0284c7 100%)",
+  border: "none",
+  color: "#fff",
+  borderRadius: 8,
+  fontSize: "0.74rem",
+  fontWeight: 700,
+  cursor: "pointer",
+  WebkitTextFillColor: "#fff",
 };
 const aiBtn: React.CSSProperties = {
-  padding: "2px 8px", background: "linear-gradient(135deg,#7C3AED,#A855F7)", border: "none",
+  padding: "2px 8px", background: "linear-gradient(135deg,#0f766e,#0284c7)", border: "none",
   borderRadius: 5, color: "#fff", WebkitTextFillColor: "#fff", fontSize: "0.62rem", fontWeight: 700, cursor: "pointer",
 };

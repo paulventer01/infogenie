@@ -76,7 +76,7 @@ const CAT_COLOR: Record<string, string> = {
   funding: "#10B981",
   controversy: "#EF4444",
   partnership: "#F59E0B",
-  hiring: "#8B5CF6",
+  hiring: "#0284c7",
   award: "#F59E0B",
   regulation: "#6B7280",
   market_trend: "#0EA5E9",
@@ -599,7 +599,7 @@ export default function MediaIntel() {
                             }}
                           >
                             {j.name}{" "}
-                            <span style={{ fontWeight: 400, color: "#7C3AED" }}>
+                            <span style={{ fontWeight: 400, color: "#0f766e" }}>
                               @ {j.publication}
                             </span>
                           </div>

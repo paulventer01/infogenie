@@ -48,7 +48,7 @@ export default function WhiteLabel() {
   const [agencyName, setAgencyName] = useState("");
   const [footerText, setFooterText] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#1E1B4B");
-  const [accentColor, setAccentColor] = useState("#7C3AED");
+  const [accentColor, setAccentColor] = useState("#0f766e");
   const [textColor, setTextColor] = useState("#0A1628");
   const [hideIg, setHideIg] = useState(false);
 
@@ -58,7 +58,7 @@ export default function WhiteLabel() {
     setAgencyName(b.agencyName || "");
     setFooterText(b.footerText || "");
     setPrimaryColor(b.primaryColor || "#1E1B4B");
-    setAccentColor(b.accentColor || "#7C3AED");
+    setAccentColor(b.accentColor || "#0f766e");
     setTextColor(b.textColor || "#0A1628");
     setHideIg(!!b.hideInfoGenieBranding);
     setLogoData(b.logoDataUrl || "");

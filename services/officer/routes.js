@@ -18,6 +18,7 @@ module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
   const { _db, _fetchAmplitudeConversions, _fetchGoogleAdsSpend, _fetchMetaSpend, _fetchTikTokSpend, _sendChatWebhook, _sendEmailViaResend, _tkvCtx, fs, multer, openai, openaiChatWithRetry, path } = ctx;
+  const _execAgent = require('./services/officer/executive_agent');
 
 async function _revenueByPlatform(days = 30, tenantId = null) {
   if (!_db.hasDb()) return {};
@@ -182,17 +183,34 @@ Rules:
 
     let aiResult = null;
     try {
-      const completion = await openaiChatWithRetry({
-        model: 'gpt-5-mini',
-        messages: [
-          { role:'system', content: `You are the ${roleSpec.title}. Output strict JSON only — no prose, no markdown. Be specific and quantitative.` },
-          { role:'user',   content: prompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 900,
-        response_format: { type: 'json_object' },
-      });
-      aiResult = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+      const tid = await _tkvCtx.resolveTenantId(req, { label: `officer:brief:${role}` }).catch(() => null);
+      // Prefer full executive agent stack (tools + memory + reasoning)
+      if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY) {
+        const out = await _execAgent.runExecutiveAgent({
+          role,
+          title: roleSpec.title,
+          mode: 'brief',
+          thinkingMode: 'deeper_question',
+          goal: `Produce an executive brief focused on: ${roleSpec.focus}`,
+          facts,
+          tenantId: tid,
+          openaiChatWithRetry,
+        });
+        if (out.result && out.result.summary) aiResult = out.result;
+      }
+      if (!aiResult) {
+        const completion = await openaiChatWithRetry({
+          model: 'gpt-5-mini',
+          messages: [
+            { role:'system', content: `You are the ${roleSpec.title}. Output strict JSON only — no prose, no markdown. Be specific and quantitative.` },
+            { role:'user',   content: prompt },
+          ],
+          temperature: 0.2,
+          max_tokens: 900,
+          response_format: { type: 'json_object' },
+        });
+        aiResult = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+      }
     } catch (aiErr) {
       console.warn(`[officer/brief:${role}] AI failed, using template:`, aiErr.message);
     }
@@ -373,6 +391,107 @@ async function _loadActivatedTaskStore(tid, { persistIfChanged = true } = {}) {
   return ensured;
 }
 
+// Shared AI Executive skill pack (every roster member inherits the full agent stack)
+app.get('/api/officer/skill-pack', async (_req, res) => {
+  res.json({
+    ok: true,
+    skillPack: _execAgent.AGENT_SKILL_PACK,
+    specialties: _execAgent.OFFICER_SPECIALTIES,
+    thinkingModes: Object.values(_execAgent.STRATEGIC_THINKING_MODES || {}),
+    domainToolStack: _execAgent.DOMAIN_TOOL_STACK,
+    tools: (_execAgent.EXECUTIVE_TOOLS || []).map((t) => t.function?.name).filter(Boolean),
+    roles: _OFFICER_ROLES.map((id) => ({ id, title: _OFFICER_TITLES[id] })),
+    os: {
+      human: ['Creative', 'Vision', 'Quality Feedback'],
+      orchestrator: ['Map', 'Brainstorm', 'Refine next actions'],
+      loop: 'Human → Orchestrator → Agents (N) → MCP/APIs → Connected Stack',
+    },
+  });
+});
+
+// Independent agent advice — each executive reasons with tools + memory
+app.post('/api/officer/advise', async (req, res) => {
+  try {
+    const role = String(req.body?.role || '').trim().toLowerCase();
+    const title = String(req.body?.title || _OFFICER_TITLES[role] || 'Officer').trim();
+    const goal = String(req.body?.goal || req.body?.question || '').trim();
+    const thinkingMode = String(req.body?.thinkingMode || req.body?.mode || 'deeper_question').trim();
+    if (!_OFFICER_ROLES.includes(role)) return res.status(400).json({ ok: false, error: 'unknown role' });
+    if (!goal) return res.status(400).json({ ok: false, error: 'goal or question required' });
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:advise' });
+    let tasks = Array.isArray(req.body?.tasks) ? req.body.tasks.filter((t) => typeof t === 'string').slice(0, 40) : [];
+    if (!tasks.length && _db.hasDb() && tid != null) {
+      try {
+        const store = (await _db.kvGet(_officerKey(_TASKS_KEY, tid), {})) || {};
+        tasks = Array.isArray(store[role]) ? store[role] : [];
+      } catch (_) { /* ignore */ }
+    }
+    const snap = await _execAgent.loadWorkspaceSnapshot(tid);
+    const thinking = _execAgent.resolveThinkingMode(thinkingMode);
+    const offlineAdvice = () => _execAgent.buildStrategicOfflineAdvice({
+      role, title, goal, tasks, snap, thinkingMode: thinking.id,
+    });
+
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
+      return res.json({
+        ok: true,
+        role,
+        title,
+        offline: true,
+        thinkingMode: thinking,
+        advice: offlineAdvice(),
+        toolTrace: [{ tool: 'get_workspace_snapshot', ok: true }],
+        skillPack: _execAgent.AGENT_SKILL_PACK,
+        generatedAt: new Date().toISOString(),
+      });
+    }
+    try {
+      const out = await _execAgent.runExecutiveAgent({
+        role,
+        title,
+        mode: 'advise',
+        goal,
+        tasks,
+        thinkingMode: thinking.id,
+        tenantId: tid,
+        openaiChatWithRetry,
+      });
+      res.json({
+        ok: true,
+        role,
+        title,
+        thinkingMode: thinking,
+        advice: out.result || {
+          assessment: out.raw || 'Agent could not parse a structured answer.',
+          suggestions: [],
+          risks: [],
+          nextChecks: [],
+          reasoning: (out.toolTrace || []).map((t) => `Used tool ${t.tool}`),
+        },
+        toolTrace: out.toolTrace || [],
+        skillPack: _execAgent.AGENT_SKILL_PACK,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (aiErr) {
+      console.warn('[officer/advise] agent failed, offline advice:', aiErr.message);
+      res.json({
+        ok: true,
+        role,
+        title,
+        offline: true,
+        thinkingMode: thinking,
+        advice: offlineAdvice(),
+        toolTrace: [{ tool: 'get_workspace_snapshot', ok: true }],
+        skillPack: _execAgent.AGENT_SKILL_PACK,
+        warning: aiErr.message,
+        generatedAt: new Date().toISOString(),
+      });
+    }
+  } catch (e) {
+    console.error('[officer/advise]', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 app.get('/api/officer/tasks-store', async (req, res) => {
   try {
     const _db = require('./db');
@@ -586,27 +705,43 @@ app.post('/api/officer/daily-report', async (req, res) => {
     };
 
     let report = null;
-    if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY && tasks.length) {
-      const prompt = _buildDailyReportPrompt(role, title, tasks, snap);
+    let toolTrace = [];
+    if ((process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY) && tasks.length) {
       try {
-        const completion = await Promise.race([
-          openai.chat.completions.create({
-            model: 'gpt-5-mini',
-            response_format: { type: 'json_object' },
-            max_tokens: 1800, temperature: 0.3,
-            messages: [
-              { role:'system', content:`You are the AI ${title}. Output strict JSON only. Be honest about what was and was not done.` },
-              { role:'user', content: prompt }
-            ]
+        const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:daily-report-agent' });
+        const out = await Promise.race([
+          _execAgent.runExecutiveAgent({
+            role,
+            title,
+            mode: 'daily-report',
+            thinkingMode: 'execution_risks',
+            goal: `Write an honest end-of-day report for the CEO covering each assigned responsibility. Ground every status in tools/snapshot; do not invent completions.`,
+            tasks,
+            facts: { snapshot: snap },
+            tenantId: tid,
+            openaiChatWithRetry,
           }),
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_18s')), 18000))
+          new Promise((_, rej) => setTimeout(() => rej(new Error('openai_timeout_45s')), 45000)),
         ]);
-        const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+        toolTrace = out.toolTrace || [];
+        const parsed = out.result;
         if (parsed && parsed.summary && Array.isArray(parsed.tasksReviewed)) report = parsed;
-      } catch(e) { console.warn('[daily-report] AI failed:', e.message); }
+      } catch (e) {
+        console.warn('[daily-report] agent failed:', e.message);
+      }
     }
     if (!report) report = FALLBACK;
-    res.json({ ok:true, role, title, generatedAt: new Date().toISOString(), snapshot: snap, report });
+    res.json({
+      ok: true,
+      role,
+      title,
+      generatedAt: new Date().toISOString(),
+      snapshot: snap,
+      report,
+      toolTrace,
+      agent: true,
+      skillPack: _execAgent.AGENT_SKILL_PACK,
+    });
   } catch (err) {
     console.error('[daily-report] error:', err);
     res.status(500).json({ ok:false, error: err.message });
@@ -782,26 +917,29 @@ async function _generateOfficerReportInternal(role, title, tasks, tid = null) {
     successes: [], issues: [], actionPlan: []
   };
   let report = null;
-  if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY && tasks.length) {
-    const prompt = _buildDailyReportPrompt(role, title, tasks, snap);
+  if ((process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY) && tasks.length) {
     try {
-      const completion = await Promise.race([
-        openai.chat.completions.create({
-          model: 'gpt-5-mini', response_format: { type: 'json_object' },
-          max_tokens: 1800, temperature: 0.3,
-          messages: [
-            { role:'system', content:`You are the AI ${title}. Output strict JSON only. Be honest about what was and was not done.` },
-            { role:'user', content: prompt }
-          ]
+      const out = await Promise.race([
+        _execAgent.runExecutiveAgent({
+          role,
+          title,
+          mode: 'daily-report',
+          goal: 'Write an honest end-of-day report for the CEO. Ground statuses in tools/snapshot.',
+          tasks,
+          facts: { snapshot: snap },
+          tenantId: tid,
+          openaiChatWithRetry,
         }),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_18s')), 18000))
+        new Promise((_, rej) => setTimeout(() => rej(new Error('openai_timeout_45s')), 45000)),
       ]);
-      const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+      const parsed = out.result;
       if (parsed && parsed.summary && Array.isArray(parsed.tasksReviewed)) report = parsed;
-    } catch(e) { console.warn('[autoreport] AI failed for', role, e.message); }
+    } catch (e) {
+      console.warn('[autoreport] agent failed for', role, e.message);
+    }
   }
   if (!report) report = FALLBACK;
-  return { role, title, generatedAt: new Date().toISOString(), snapshot: snap, report };
+  return { role, title, generatedAt: new Date().toISOString(), snapshot: snap, report, agent: true };
 }
 
 async function _runAutonomousDailyReports({ manualTrigger = false, skipDelivery = false, tenantId = null } = {}) {

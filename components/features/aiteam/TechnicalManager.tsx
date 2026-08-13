@@ -178,7 +178,7 @@ type ScanResponse = {
 
 const SEV_COLOR: Record<Severity, string> = {
   critical: "#DC2626",
-  high: "#EA580C",
+  high: "#0f766e",
   medium: "#CA8A04",
   low: "#2563EB",
   info: "#64748B",

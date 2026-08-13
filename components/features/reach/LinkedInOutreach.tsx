@@ -45,7 +45,7 @@ interface Contact {
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   pending:          { label: "⏳ Pending",       color: "#64748B", bg: "#F1F5F9" },
   connection_sent:  { label: "📤 Req Sent",      color: "#2563EB", bg: "#EFF6FF" },
-  connected:        { label: "🤝 Connected",     color: "#7C3AED", bg: "#F5F3FF" },
+  connected:        { label: "🤝 Connected",     color: "#0f766e", bg: "#F5F3FF" },
   followup_1_sent:  { label: "✉️ F/U 1 Sent",   color: "#D97706", bg: "#FFF7ED" },
   followup_2_sent:  { label: "✉️ F/U 2 Sent",   color: "#D97706", bg: "#FFF7ED" },
   followup_3_sent:  { label: "✉️ F/U 3 Sent",   color: "#D97706", bg: "#FFF7ED" },
@@ -311,7 +311,7 @@ export default function LinkedInOutreach() {
           <div>
             {/* AI Generator */}
             <div style={{ ...card, background: "#F5F3FF", border: "1px solid #DDD6FE" }}>
-              <div style={{ fontWeight: 800, color: "#7C3AED", marginBottom: 10 }}>🤖 AI Message Generator</div>
+              <div style={{ fontWeight: 800, color: "#0f766e", marginBottom: 10 }}>🤖 AI Message Generator</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
                 <div><label style={lbl}>Your Brand / Company</label><input style={input} placeholder="Acme Corp" value={aiForm.brand_name} onChange={e => setAiForm(f => ({ ...f, brand_name: e.target.value }))} /></div>
                 <div><label style={lbl}>Your Role</label><input style={input} placeholder="Head of Growth" value={aiForm.your_role} onChange={e => setAiForm(f => ({ ...f, your_role: e.target.value }))} /></div>
@@ -332,7 +332,7 @@ export default function LinkedInOutreach() {
                 </button>
               </div>
               {aiMessages?.subject_angles && (
-                <div style={{ marginTop: 10, fontSize: "0.75rem", color: "#7C3AED" }}>
+                <div style={{ marginTop: 10, fontSize: "0.75rem", color: "#0f766e" }}>
                   <strong>Angle suggestions:</strong> {aiMessages.subject_angles.join(" · ")}
                 </div>
               )}

@@ -380,7 +380,7 @@ export default function BattleCards() {
                     type="button"
                     onClick={suggestContext}
                     disabled={suggesting}
-                    style={{ padding: "4px 10px", background: "linear-gradient(135deg,#7C3AED,#0066FF)", border: "none", borderRadius: 6, fontSize: "0.7rem", fontWeight: 700, color: "#fff", cursor: "pointer" }}
+                    style={{ padding: "4px 10px", background: "linear-gradient(135deg,#0f766e,#0066FF)", border: "none", borderRadius: 6, fontSize: "0.7rem", fontWeight: 700, color: "#fff", cursor: "pointer" }}
                   >
                     {suggesting ? "⏳ Thinking…" : "✨ AI suggest"}
                   </button>

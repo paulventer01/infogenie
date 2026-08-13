@@ -777,7 +777,7 @@ export default function LandingPages() {
                   <button
                     onClick={genVariant}
                     disabled={abBusy}
-                    style={{ padding: "9px 18px", background: "#8B5CF6", border: "none", borderRadius: 8, fontSize: "0.82rem", fontWeight: 700, color: "#fff", cursor: "pointer" }}
+                    style={{ padding: "9px 18px", background: "#0284c7", border: "none", borderRadius: 8, fontSize: "0.82rem", fontWeight: 700, color: "#fff", cursor: "pointer" }}
                   >
                     {abBusy ? "⏳ Generating…" : "🧪 Generate Variant B"}
                   </button>
@@ -792,7 +792,7 @@ export default function LandingPages() {
                 </div>
                 <div>
                   {abBusy && (
-                    <div style={{ color: "#8B5CF6", fontSize: "0.8rem", padding: "8px 0" }}>Generating alternative variant…</div>
+                    <div style={{ color: "#0284c7", fontSize: "0.8rem", padding: "8px 0" }}>Generating alternative variant…</div>
                   )}
                   {abError && <div style={{ color: "#EF4444", fontSize: "0.8rem" }}>⚠️ {abError}</div>}
                   {variantHtml && !abBusy && (
@@ -846,7 +846,7 @@ export default function LandingPages() {
                             : null;
                         const cards: [string, AbStat, string][] = [
                           ["A (Original)", a, "#14B8A6"],
-                          ["B — " + abAngle, b, "#8B5CF6"],
+                          ["B — " + abAngle, b, "#0284c7"],
                         ];
                         return (
                           <>
@@ -931,7 +931,7 @@ export default function LandingPages() {
                               <div style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 600 }}>TODAY</div>
                             </div>
                             <div style={{ background: "#F5F3FF", borderRadius: 10, padding: 14, textAlign: "center" }}>
-                              <div style={{ fontSize: "1.6rem", fontWeight: 800, color: "#7C3AED" }}>
+                              <div style={{ fontSize: "1.6rem", fontWeight: 800, color: "#0f766e" }}>
                                 {(leadsData.leads || []).filter((l) => l.variant === "b").length}
                               </div>
                               <div style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 600 }}>VARIANT B</div>
@@ -1006,7 +1006,7 @@ export default function LandingPages() {
                   <button
                     onClick={genAdPackage}
                     disabled={adBusy}
-                    style={{ padding: "10px 20px", background: "linear-gradient(135deg,#6366F1,#8B5CF6)", border: "none", borderRadius: 8, fontSize: "0.84rem", fontWeight: 700, color: "#fff", cursor: "pointer", marginBottom: 16 }}
+                    style={{ padding: "10px 20px", background: "linear-gradient(135deg,#6366F1,#0284c7)", border: "none", borderRadius: 8, fontSize: "0.84rem", fontWeight: 700, color: "#fff", cursor: "pointer", marginBottom: 16 }}
                   >
                     {adBusy ? "⏳ Generating…" : "📣 Generate Ad Package"}
                   </button>

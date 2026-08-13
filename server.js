@@ -3028,6 +3028,8 @@ const _crmSchema      = require('./services/crm_sync/schema');
 app.use('/api/hunter',       _hunterRouter);
 app.use('/api/linkedin-ads',    _linkedinRouter);
 app.use('/api/canva',          _canvaRouter);
+app.use('/api/ai-video',       require('./services/ai_video/api'));
+app.use('/api/integrations-wave', require('./services/integrations_wave/api'));
 app.use('/api/crm-sync',       _crmRouter);
 app.use('/api/tools/remove-bg',  require('./services/remove_bg/api'));
 app.use('/api/advocacy',         require('./services/employee_advocacy/api'));
@@ -3326,7 +3328,8 @@ app.get('/api/ecom-video/veo-status', async (req, res) => {
 
 // ── Settings: simple API-key vault (tenant-scoped, Postgres kv_store) ─────
 // POST /api/settings/api-key  { platform, key }  → saves encrypted key
-// GET  /api/settings/api-key/:platform           → { ok, configured: bool }
+// GET  /api/settings/api-keys?platforms=a,b     → { ok, keys: { a: {configured,hint} } }
+// GET  /api/settings/api-key/:platform           → { ok, configured, hint }
 // Platform-owned API keys are managed only via the admin "Platform APIs" tab
 // (POST/GET /api/admin/platform-keys). Block non-admins from reading or writing
 // those key names through the tenant-scoped user settings vault (Task 136).
@@ -3336,9 +3339,15 @@ function _settingsCallerIsPlatformAdmin(req) {
   const k = req.platformRole && req.platformRole.key;
   return k === 'platform_owner' || k === 'platform_admin';
 }
+function _settingsKeyHint(keyStr) {
+  const k = String(keyStr || '').trim();
+  if (!k) return null;
+  const tail = k.length <= 4 ? k : k.slice(-4);
+  return `••••••••${tail}`;
+}
 app.post('/api/settings/api-key', async (req, res) => {
   try {
-    if (!req.user) return res.status(401).json({ ok: false, error: 'Login required' });
+    if (!req.user) return res.status(401).json({ ok: false, error: 'auth_required' });
     const tid = await _tkvCtx.resolveTenantId(req, { label: 'settings:save-api-key' });
     if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
     const { platform, key } = req.body || {};
@@ -3349,24 +3358,71 @@ app.post('/api/settings/api-key', async (req, res) => {
     if (!key || typeof key !== 'string' || !key.trim())
       return res.status(400).json({ ok: false, error: 'key required' });
     const _vault = require('./services/credentials/vault');
-    await _vault.setApiKey(tid, platform.toLowerCase().trim(), key.trim());
-    console.log(`[settings] api-key saved: platform=${platform.toLowerCase().trim()} tid=${tid}`);
-    res.json({ ok: true });
+    const plat = platform.toLowerCase().trim();
+    const trimmed = key.trim();
+    await _vault.setApiKey(tid, plat, trimmed);
+    console.log(`[settings] api-key saved: platform=${plat} tid=${tid}`);
+    res.json({ ok: true, configured: true, hint: _settingsKeyHint(trimmed) });
   } catch (e) {
     console.error('[settings] api-key save error:', e.message);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+// Batch status — must be registered before /:platform
+app.get('/api/settings/api-keys', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ ok: false, error: 'auth_required' });
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'settings:list-api-keys' });
+    if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
+    const requested = String(req.query.platforms || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const _vault = require('./services/credentials/vault');
+    const _db = require('./db');
+    let ids = requested;
+    if (!ids.length && _db.hasDb()) {
+      try {
+        const r = await _db.getPool().query(
+          `SELECT key FROM kv_store WHERE key LIKE $1`,
+          [`apikey:%:t${tid}`],
+        );
+        ids = r.rows
+          .map((row) => {
+            const m = String(row.key || '').match(/^apikey:(.+):t\d+$/);
+            return m ? m[1] : null;
+          })
+          .filter(Boolean);
+      } catch (_) {
+        ids = [];
+      }
+    }
+    const keys = {};
+    for (const id of ids) {
+      if (_platformKeys.isPlatformKeyName(id) && !_settingsCallerIsPlatformAdmin(req)) {
+        keys[id] = { configured: false, hint: null, blocked: true };
+        continue;
+      }
+      const k = await _vault.getApiKey(tid, id);
+      const configured = !!(k && String(k).trim());
+      keys[id] = { configured, hint: configured ? _settingsKeyHint(k) : null };
+    }
+    res.json({ ok: true, keys });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 app.get('/api/settings/api-key/:platform', async (req, res) => {
   try {
-    if (!req.user) return res.status(401).json({ ok: false, error: 'Login required' });
+    if (!req.user) return res.status(401).json({ ok: false, error: 'auth_required' });
     const tid = await _tkvCtx.resolveTenantId(req, { label: 'settings:get-api-key' });
     if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
     if (_platformKeys.isPlatformKeyName(req.params.platform) && !_settingsCallerIsPlatformAdmin(req))
       return res.status(403).json({ ok: false, error: 'platform_key_admin_only' });
     const _vault = require('./services/credentials/vault');
     const k = await _vault.getApiKey(tid, req.params.platform.toLowerCase().trim());
-    res.json({ ok: true, configured: !!(k && k.trim()) });
+    const configured = !!(k && String(k).trim());
+    res.json({ ok: true, configured, hint: configured ? _settingsKeyHint(k) : null });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -3929,6 +3985,37 @@ const _serpTrackerRouter = require('./services/serp_tracker/api');
 const _hubspotSyncRouter = require('./services/hubspot_sync/api');
 app.use('/api/serp-tracker', _serpTrackerRouter);
 app.use('/api/hubspot-sync', _hubspotSyncRouter);
+
+// ── Semrush-style app hubs (Daily Trends + App Center worth-it pack) ─────────
+const _dailyTrendsSchema = require('./services/daily_trends/schema');
+const _dailyTrendsRouter = require('./services/daily_trends/api');
+const _serpGapSchema = require('./services/serp_gap/schema');
+const _serpGapRouter = require('./services/serp_gap/api');
+const _llmGapSchema = require('./services/llm_gap/schema');
+const _llmGapRouter = require('./services/llm_gap/api');
+const _adIntelRouter = require('./services/ad_intel/api');
+const _infAnalyticsSchema = require('./services/influencer_analytics/schema');
+const _infAnalyticsRouter = require('./services/influencer_analytics/api');
+const _brandMonitorRouter = require('./services/brand_monitor/api');
+app.use('/api/daily-trends', _dailyTrendsRouter);
+app.use('/api/serp-gap', _serpGapRouter);
+app.use('/api/llm-gap', _llmGapRouter);
+app.use('/api/ad-intel', _adIntelRouter);
+app.use('/api/influencer-analytics', _infAnalyticsRouter);
+app.use('/api/brand-monitor', _brandMonitorRouter);
+app.use('/api/traffic-sources', require('./services/traffic_sources/api'));
+app.use('/api/market-overview', require('./services/market_overview/api'));
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _dailyTrendsSchema.ensureDailyTrendsSchema();
+      await _serpGapSchema.ensureSerpGapSchema();
+      await _llmGapSchema.ensureLlmGapSchema();
+      await _infAnalyticsSchema.ensureInfluencerAnalyticsSchema();
+      console.log('[semrush-apps] daily-trends + serp-gap + llm-gap + influencer-analytics schemas ready');
+    }
+  } catch (e) { console.error('[semrush-apps] init failed:', e.message); }
+});
 
 // ── Tier 13 ────────────────────────────────────────────────────────────────
 const _metaInsightsRouter = require('./services/meta_ads_insights/api');

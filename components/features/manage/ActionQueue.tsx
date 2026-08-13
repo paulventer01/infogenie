@@ -53,7 +53,7 @@ const CAT_META: Record<string, { icon: string; color: string; bg: string }> = {
   creative:    { icon: "🎨", color: "#5b21b6", bg: "#ede9fe" },
   audience:    { icon: "👥", color: "#065f46", bg: "#d1fae5" },
   seo:         { icon: "🔍", color: "#0c4a6e", bg: "#e0f2fe" },
-  lifecycle:   { icon: "🔄", color: "#7c3aed", bg: "#f3e8ff" },
+  lifecycle:   { icon: "🔄", color: "#0f766e", bg: "#f3e8ff" },
   competitive: { icon: "⚔️", color: "#991b1b", bg: "#fee2e2" },
 };
 
@@ -347,7 +347,7 @@ export default function ActionQueue() {
                       {isOpen && (
                         <div style={{ padding: "0 16px 14px 16px", borderTop: "1px solid #f1f5f9" }}>
                           {rec.problem_summary && (
-                            <p style={{ color: "#9A3412", fontSize: "0.82rem", margin: "10px 0 6px", background: "#FFF7ED", padding: "8px 10px", borderRadius: 8 }}>
+                            <p style={{ color: "#9A3412", fontSize: "0.82rem", margin: "10px 0 6px", background: "#f3f6fb", padding: "8px 10px", borderRadius: 8 }}>
                               <strong>Not working:</strong> {rec.problem_summary}
                             </p>
                           )}

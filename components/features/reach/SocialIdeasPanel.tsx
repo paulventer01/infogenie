@@ -23,7 +23,7 @@ const FUNNEL_STAGES: FunnelStage[] = [
   { id: "interest", label: "Interest", icon: "💡", color: "#3B82F6", bg: "#EFF6FF", tip: "Frameworks and tutorials that build curiosity." },
   { id: "nurture", label: "Nurture", icon: "❤️", color: "#EC4899", bg: "#FDF2F8", tip: "Process sharing and soft CTAs that build trust." },
   { id: "conversion", label: "Conversion", icon: "💰", color: "#F59E0B", bg: "#FFFBEB", tip: "Situation-based CTAs that turn trust into action." },
-  { id: "advocacy", label: "Advocacy", icon: "🌟", color: "#7C3AED", bg: "#F5F3FF", tip: "Client wins and referral loops." },
+  { id: "advocacy", label: "Advocacy", icon: "🌟", color: "#0f766e", bg: "#F5F3FF", tip: "Client wins and referral loops." },
 ];
 
 interface Archetype {

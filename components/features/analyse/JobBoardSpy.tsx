@@ -27,7 +27,7 @@ const DEPT_COLORS: Record<string, string> = {
   engineering: "#0066FF",
   sales: "#10B981",
   marketing: "#F59E0B",
-  product: "#7C3AED",
+  product: "#0f766e",
   design: "#EC4899",
   ops: "#6B7280",
   finance: "#059669",
