@@ -12,7 +12,7 @@
 // launcher; cross-tool links go through `lib/nav#goToView`. See
 // `docs/react-panel-migration.md`.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
@@ -492,11 +492,13 @@ export default function Battleplan() {
     (window as unknown as { _apPlanData?: AttackPlan; renderAttackPlan?: (p: AttackPlan, n: string) => void })._apPlanData = data.plan;
   }, [ad, useDemo, comps]);
 
-  // Deep-link: /analyse/battleplan?generate=1 opens the Attack Plan window.
+  // Deep-link: /analyse/battleplan?generate=1 opens the Attack Plan window once.
+  const autoGenerateRef = useRef(false);
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || autoGenerateRef.current) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("generate") !== "1") return;
+    autoGenerateRef.current = true;
     if (!liveComps.length) setUseDemo(true);
     const t = window.setTimeout(() => {
       void generateAttackPlan(0);
