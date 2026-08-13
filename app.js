@@ -5666,15 +5666,29 @@ window.openFullAttackPlanModal = function(compIdx) {
       prefillKeywords: (comp.topKeywords || []).slice(0, 5),
     }),
   })
-    .then(r => r.ok ? r.json() : Promise.reject(new Error('Attack plan request failed')))
-    .then(plan => {
-      renderAttackPlan(plan, comp.name);
-      showToast('✅ Attack plan ready vs ' + comp.name);
+    .then(async r => {
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || data.error || !data.plan) {
+        throw new Error(data.error || ('Attack plan request failed (HTTP ' + r.status + ')'));
+      }
+      return data;
+    })
+    .then(data => {
+      renderAttackPlan(data.plan || data, comp.name);
+      const src = Array.isArray(data.sources) && data.sources.length
+        ? ' (' + data.sources.join(' + ') + ')'
+        : '';
+      showToast('✅ Attack plan ready vs ' + comp.name + src);
     })
     .catch(err => {
       console.error('[openFullAttackPlanModal]', err);
       _apCloseModal();
-      showToast('⚠️ Could not generate attack plan — try again or use Execute Top Priority');
+      const msg = (err && err.message) ? String(err.message) : '';
+      if (/credit|billing|quota/i.test(msg)) {
+        showToast('⚠️ Attack plan blocked — AI credits exhausted. Add OpenAI credits or check Anthropic key in Platform APIs.');
+      } else {
+        showToast('⚠️ Could not generate attack plan' + (msg ? ': ' + msg.slice(0, 120) : ' — try again or use Execute Top Priority'));
+      }
     });
 };
 

@@ -122,7 +122,8 @@ if (!process.env.RAPIDAPI_KEY && process.env.RAPIDAPI_EMAIL_KEY) {
 // ── Shared AI clients (used by all routes) ───────────────────────────────────
 // `let` (not `const`) so they can be rebuilt after platform_keys.hydrate() pulls
 // an admin-managed OpenAI/Anthropic key out of the DB at boot. Route handlers
-// close over these bindings and call them lazily, so a rebuild is picked up.
+// must read through `aiClients` (or call after rebuild) — never capture the
+// client object by value at require()-time, or they keep the pre-hydrate dummy.
 let openai = new OpenAI({
   apiKey:   process.env.AI_INTEGRATIONS_OPENAI_API_KEY || 'dummy',
   baseURL:  process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
@@ -131,15 +132,18 @@ let anthropic = new Anthropic.default({
   apiKey:   process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
   baseURL:  process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
+const aiClients = { openai, anthropic };
 function _rebuildAiClients() {
   openai = new OpenAI({
-    apiKey:   process.env.AI_INTEGRATIONS_OPENAI_API_KEY || 'dummy',
+    apiKey:   process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || 'dummy',
     baseURL:  process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
   });
   anthropic = new Anthropic.default({
-    apiKey:   process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+    apiKey:   process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
     baseURL:  process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
   });
+  aiClients.openai = openai;
+  aiClients.anthropic = anthropic;
 }
 
 // ── Retry-with-fallback helper for OpenAI chat completions ─────────────────
@@ -1526,7 +1530,7 @@ async function recordAivisRun(tid, domain, run) {
 // AI Visibility view can render sparklines + week-over-week deltas per model
 // and per prompt.
 // AI visibility/brand/content generation suite routes → services/ai_content/routes.js
-require('./services/ai_content/routes')(app, { _tkvCtx, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path });
+require('./services/ai_content/routes')(app, { _tkvCtx, aiClients, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path });
 
 // Legacy 6-digit code signup verification was fully removed; real per-user
 // auth lives in services/auth/{schema,api}.js (token-link verification +
