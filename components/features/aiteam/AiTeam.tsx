@@ -2266,9 +2266,11 @@ function SystemStatusPanel({
   onClose: () => void;
   onRefresh: () => Promise<void>;
 }) {
+  const router = useRouter();
   const j = status || { checks: {}, activity: {} };
   const checks = j.checks || {};
   const act = j.activity || {};
+  const aiMissing = checks.aiProvider && !checks.aiProvider.ok;
   return (
     <div
       style={{ ...overlayStyle, background: "rgba(15,23,42,0.65)" }}
@@ -2337,6 +2339,45 @@ function SystemStatusPanel({
               <span style={{ fontSize: ".8rem", color: c.ok ? "#166534" : "#991B1B", flex: 1 }}>{c.label || ""}</span>
             </div>
           ))}
+          {aiMissing && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "14px 14px",
+                borderRadius: 10,
+                border: "1px solid #FCD34D",
+                background: "linear-gradient(135deg,#FFFBEB,#FEF3C7)",
+              }}
+            >
+              <div style={{ fontWeight: 800, color: "#92400E", fontSize: ".9rem", marginBottom: 4 }}>
+                Where to add your OpenAI API key
+              </div>
+              <div style={{ fontSize: ".82rem", color: "#78350F", lineHeight: 1.45, marginBottom: 10 }}>
+                Go to <strong>Manage → Admin Portal → Platform APIs</strong>, open the{" "}
+                <strong>AI Models</strong> group, paste your key into <strong>OpenAI API Key</strong>, then Save + Test.
+                (AI Team → AI Providers is for optional BYO models — not this platform key.)
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  router.push("/manage/admin?tab=platform-keys");
+                }}
+                style={{
+                  padding: "9px 14px",
+                  background: "#0f766e",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: ".82rem",
+                  cursor: "pointer",
+                }}
+              >
+                Open Platform APIs →
+              </button>
+            </div>
+          )}
           <div style={{ fontSize: ".7rem", color: "#64748B", fontWeight: 700, textTransform: "uppercase", margin: "14px 0 8px" }}>
             Recent Activity
           </div>

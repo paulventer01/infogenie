@@ -1043,7 +1043,8 @@ app.get('/api/officer/system-status', async (req, res) => {
   try {
     const _db = require('./db');
     const dbOk = !!_db.hasDb();
-    const aiOk = !!process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    const _aiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
+    const aiOk = !!_aiKey && !/^_?DUMMY/i.test(_aiKey) && _aiKey !== 'dummy';
     let autoreport = { enabled:false, frequency:'daily', hour:null, minute:null, timezone:'UTC', lastScheduledRunDate:'' };
     let automtg    = { enabled:false, frequency:'weekly', dayOfWeek:1, hour:null, minute:null, timezone:'UTC', lastScheduledRunDate:'' };
     let lastMeetingAt = null, totalMeetings = 0, lastReportAt = null, totalReports = 0;
