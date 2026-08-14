@@ -732,25 +732,6 @@ export default function Dashboard() {
         </>
       }
     >
-        {competitors.length === 0 && (
-          <div
-            style={{
-              marginBottom: 16,
-              padding: "14px 16px",
-              borderRadius: 12,
-              border: "1.5px solid #FDE68A",
-              background: "#FFFBEB",
-              color: "#92400E",
-              fontSize: "0.88rem",
-              lineHeight: 1.45,
-            }}
-          >
-            <strong>Analysis complete for {yourDomain}.</strong> No verified
-            same-industry / same-business competitors were confirmed, so none
-            were invented. The Intelligence Report below uses this company&apos;s
-            live analysis; re-run Analyse Now if you want to retry rival matching.
-          </div>
-        )}
         {companyOverview && (
           <>
             <DomainOverview overview={companyOverview} currentView="dashboard" />
