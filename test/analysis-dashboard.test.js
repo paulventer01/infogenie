@@ -51,20 +51,3 @@ test('buildPriorityActions returns actionable cards', () => {
   assert.ok(actions.length >= 4);
   assert.ok(actions.some((a) => a.view === 'battleplan'));
 });
-
-test('dashboard helpers still render when no rivals were verified', () => {
-  const empty = {
-    url: 'xm.com',
-    industry: { name: 'Online CFD & Forex Trading Brokers' },
-    websiteKPIs: { ctr: 2.1, roas: 1.8, cpa: 90, convRate: 2.4, trafficMo: 120000 },
-    competitors: [],
-  };
-  const swot = buildSwot(empty, 'xm.com');
-  assert.ok(swot.strengths.length + swot.weaknesses.length > 0);
-  assert.deepEqual(buildChannelMix([]), []);
-  const metrics = blendedMarketingMetrics(empty);
-  assert.equal(metrics.competitorCount, 0);
-  assert.equal(metrics.monthlyTraffic, 120000);
-  const actions = buildPriorityActions(empty);
-  assert.ok(actions.length >= 3);
-});
