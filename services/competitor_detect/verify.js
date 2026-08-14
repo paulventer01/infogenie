@@ -67,6 +67,94 @@ function parseVotes(raw) {
   })).filter((v) => v.url);
 }
 
+function isEvidenceSource(c) {
+  return c && (c.source === 'serp' || c.source === 'dataforseo' || c.source === 'llm');
+}
+
+function evidencePool(candidates, limit = 12) {
+  return (candidates || []).filter(isEvidenceSource).slice(0, limit);
+}
+
+function extractJson(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'object') return raw;
+  const cleaned = String(raw).replace(/```json|```/g, '').trim();
+  try { return JSON.parse(cleaned); } catch { /* fall through */ }
+  const objMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try { return JSON.parse(objMatch[0]); } catch { /* fall through */ }
+  }
+  const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+  if (arrMatch) {
+    try { return JSON.parse(arrMatch[0]); } catch { /* fall through */ }
+  }
+  return null;
+}
+
+function parseDiscoveryResult(raw) {
+  const obj = extractJson(raw);
+  if (!obj) return null;
+  const list = Array.isArray(obj) ? obj : (obj.competitors || obj.results || []);
+  if (!Array.isArray(list) && typeof obj !== 'object') return null;
+  const competitors = (Array.isArray(list) ? list : [])
+    .filter((c) => c && (c.name || c.company || c.url || c.website || c.domain))
+    .map((c) => ({
+      name: String(c.name || c.company || '').trim(),
+      url: String(c.url || c.website || c.domain || '').trim(),
+      why: String(c.why || c.reason || '').trim(),
+      marketShare: String(c.marketShare || c.market_share || '').trim(),
+      source: 'llm',
+    }))
+    .filter((c) => c.name || c.url);
+  if (!Array.isArray(obj) && !competitors.length && !obj.industryName && !obj.subNiche) {
+    return null;
+  }
+  return {
+    industryName: String(obj.industryName || obj.industry || '').trim(),
+    industryKey: String(obj.industryKey || obj.industry_key || '').trim(),
+    businessSummary: String(obj.businessSummary || obj.business_summary || obj.summary || '').trim(),
+    subNiche: String(obj.subNiche || obj.sub_niche || '').trim(),
+    country: obj.country || null,
+    competitors,
+  };
+}
+
+function mergeDiscoveries(results) {
+  const ok = (results || []).filter(Boolean);
+  if (!ok.length) return null;
+  const order = ['openai', 'claude', 'perplexity', 'gemini'];
+  ok.sort((a, b) => {
+    const ai = order.indexOf(a.model);
+    const bi = order.indexOf(b.model);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+  const primary = ok.find((r) => r.industryName || r.subNiche) || ok[0];
+  const seen = new Set();
+  const competitors = [];
+  for (const r of ok) {
+    for (const c of r.competitors || []) {
+      const url = normalizeDomain(c.url);
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      competitors.push({
+        ...c,
+        name: c.name || url,
+        url,
+        source: 'llm',
+      });
+    }
+  }
+  return {
+    industryName: primary.industryName || '',
+    industryKey: primary.industryKey || '',
+    businessSummary: primary.businessSummary || '',
+    subNiche: primary.subNiche || '',
+    country: primary.country || null,
+    competitors,
+    modelsUsed: ok.map((r) => r.model).filter(Boolean),
+  };
+}
+
 function tally(candidates, ballots) {
   return candidates.map((c) => {
     const votes = [];
@@ -181,6 +269,107 @@ async function votePerplexity(prompt) {
   return parseVotes(j?.choices?.[0]?.message?.content || '{}');
 }
 
+async function discoverOpenAI(openaiChatWithRetry, prompt, system) {
+  if (!openaiChatWithRetry) return null;
+  const completion = await openaiChatWithRetry({
+    model: 'gpt-4o',
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.1,
+    max_tokens: 1400,
+    response_format: { type: 'json_object' },
+  }, { fallbackModel: 'gpt-5-mini', retries: 1 });
+  const parsed = parseDiscoveryResult(completion.choices?.[0]?.message?.content || '{}');
+  return parsed ? { ...parsed, model: 'openai' } : null;
+}
+
+async function discoverClaude(anthropic, prompt, system) {
+  if (!anthropic) return null;
+  const key = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return null;
+  const msg = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1400,
+    system,
+    messages: [{ role: 'user', content: `${prompt}\n\nReturn JSON only.` }],
+  });
+  const text = (msg.content || []).map((p) => p.text || '').join('');
+  const parsed = parseDiscoveryResult(text);
+  return parsed ? { ...parsed, model: 'claude' } : null;
+}
+
+async function discoverGemini(prompt, system) {
+  const key = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return null;
+  const r = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `${system}\n\n${prompt}\n\nReturn JSON only.` }] }],
+      }),
+    },
+  );
+  const j = await r.json();
+  const text = j?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const parsed = parseDiscoveryResult(text);
+  return parsed ? { ...parsed, model: 'gemini' } : null;
+}
+
+async function discoverPerplexity(prompt, system) {
+  const key = process.env.PERPLEXITY_API_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return null;
+  const r = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [
+        { role: 'system', content: `${system} Use live web knowledge. Output JSON only.` },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.1,
+      max_tokens: 1400,
+    }),
+  });
+  const j = await r.json();
+  const parsed = parseDiscoveryResult(j?.choices?.[0]?.message?.content || '{}');
+  return parsed ? { ...parsed, model: 'perplexity' } : null;
+}
+
+/**
+ * Ask every configured LLM for same-industry competitors in parallel and
+ * merge by domain. OpenAI outages must not empty the pool when Claude or
+ * Perplexity can still name real rivals.
+ */
+async function discoverWithLlms({
+  prompt,
+  system,
+  openaiChatWithRetry,
+  anthropic,
+  timeoutMs = 16000,
+} = {}) {
+  const sys = system || 'You are a precise market-research analyst. Output strict JSON only. Same sub-niche competitors only — never invent brands.';
+  const jobs = [
+    { model: 'openai', run: () => discoverOpenAI(openaiChatWithRetry, prompt, sys) },
+    { model: 'claude', run: () => discoverClaude(anthropic, prompt, sys) },
+    { model: 'perplexity', run: () => discoverPerplexity(prompt, sys) },
+    { model: 'gemini', run: () => discoverGemini(prompt, sys) },
+  ];
+  const settled = await Promise.all(jobs.map(async (j) => {
+    try {
+      return await withTimeout(j.run(), timeoutMs);
+    } catch (e) {
+      console.warn(`[competitor-detect] discovery ${j.model} failed:`, e.message);
+      return null;
+    }
+  }));
+  return mergeDiscoveries(settled);
+}
+
 /**
  * @returns {{ accepted, rejected, modelsUsed, unverified }}
  */
@@ -218,8 +407,9 @@ async function verifyCompetitors({
   const scored = tally(filtered, ballots);
 
   if (!ballots.length) {
-    // No LLM available — keep live SERP/DFS rows only, never invented names.
-    const live = filtered.filter((c) => c.source === 'serp' || c.source === 'dataforseo');
+    // No verifier available — keep evidence-backed rows (live SERP/DFS and
+    // LLM-discovered names). Untagged / invented rows are dropped.
+    const live = evidencePool(filtered);
     return {
       accepted: live.map((c) => ({ ...c, verified: false })),
       rejected: filtered.filter((c) => !live.includes(c)),
@@ -241,7 +431,12 @@ module.exports = {
   isBlockedDomain,
   prefilter,
   parseVotes,
+  parseDiscoveryResult,
+  mergeDiscoveries,
+  evidencePool,
+  isEvidenceSource,
   tally,
   verifyCompetitors,
+  discoverWithLlms,
   SKIP,
 };

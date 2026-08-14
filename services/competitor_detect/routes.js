@@ -40,7 +40,17 @@ module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
   const { INFO_SITE_PATTERN, _db, callDataForSEO, openai, openaiChatWithRetry, anthropic, startMsg } = ctx;
-  const { verifyCompetitors } = require('./services/competitor_detect/verify');
+  const { verifyCompetitors, discoverWithLlms } = require('./services/competitor_detect/verify');
+  let resolvePlatformKey = (name) => process.env[name];
+  try {
+    ({ resolvePlatformKey } = require('./services/credentials/platform_keys'));
+  } catch (_) { /* env-only when vault module is unavailable */ }
+
+  function _dfsConfigured() {
+    const login = (resolvePlatformKey('DATAFORSEO_LOGIN') || process.env.DATAFORSEO_LOGIN || '').trim();
+    const password = (resolvePlatformKey('DATAFORSEO_PASSWORD') || process.env.DATAFORSEO_PASSWORD || '').trim();
+    return !!(login && password);
+  }
 
   async function _gateSameBusiness(subject, candidates) {
     const tagged = (candidates || []).map((c) => ({
@@ -144,7 +154,7 @@ app.post('/api/smart-detect', async (req, res) => {
 
     // ── 2b) Real organic competitors via DataForSEO (keyword-overlap based) ──
     let dfsCompetitors = [];
-    if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) {
+    if (_dfsConfigured()) {
       try {
         const compRaw = await callDataForSEO(
           '/v3/dataforseo_labs/google/competitors_domain/live',
@@ -221,20 +231,18 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
 
     let aiResult = null;
     try {
-      const completion = await openaiChatWithRetry({
-        model: 'gpt-5',
-        messages: [
-          { role: 'system', content: 'You are a precise market-research analyst. Output strict JSON only — no markdown fences, no prose. Always identify the specific sub-niche, not just the broad industry. When in doubt about a candidate competitor, EXCLUDE it — accuracy beats completeness.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 1200,
-        response_format: { type: 'json_object' },
+      aiResult = await discoverWithLlms({
+        prompt,
+        system: 'You are a precise market-research analyst. Output strict JSON only — no markdown fences, no prose. Always identify the specific sub-niche, not just the broad industry. When in doubt about a candidate competitor, EXCLUDE it — accuracy beats completeness.',
+        openaiChatWithRetry,
+        anthropic,
+        timeoutMs: 14000,
       });
-      const raw = completion.choices?.[0]?.message?.content || '{}';
-      aiResult = JSON.parse(raw);
     } catch (aiErr) {
-      console.error('smart-detect OpenAI error (after retry+fallback):', aiErr.message);
+      console.error('smart-detect LLM discovery error:', aiErr.message);
+      aiResult = null;
+    }
+    if (!aiResult) {
       // Deterministic fallback: if we have ANY DataForSEO competitor data,
       // return that with a generic industry label rather than a hard failure.
       // The client can still proceed with real same-niche domains.
@@ -265,7 +273,7 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
           _fallback: 'serp-only',
         });
       }
-      return res.status(502).json({ error: 'AI detection failed', detail: aiErr.message, signals });
+      return res.status(502).json({ error: 'AI detection failed', detail: 'All LLM providers failed', signals });
     }
 
     // ── 4) Sanitise + return ─────────────────────────────────────────────────
@@ -276,6 +284,7 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
         name: String(c.name).trim().slice(0, 60),
         url:  String(c.url).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].trim().toLowerCase(),
         why:  String(c.why || '').trim().slice(0, 200),
+        source: c.source || 'llm',
       }))
       .filter(c => c.url && c.url !== cleanInput)
       // Belt-and-braces: strip any aggregator/news/info/review domain the AI
@@ -343,7 +352,7 @@ app.post('/api/sector-competitors', async (req, res) => {
     // ── Pull real SERP results for the niche via DataForSEO so the AI can
     //    rank actual ranking domains rather than relying purely on memory.
     let serpDomains = [];
-    if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) {
+    if (_dfsConfigured()) {
       try {
         const queries = [
           `best ${industryClean} companies`,
@@ -431,20 +440,18 @@ CRITICAL RULES — accuracy beats completeness:
 
     let aiResult = null;
     try {
-      const completion = await openaiChatWithRetry({
-        model: 'gpt-5',
-        messages: [
-          { role: 'system', content: 'You are a precise market-research analyst with encyclopedic knowledge of real-world companies in every sub-niche. Output strict JSON only — no markdown, no prose. Always pick competitors operating in the user\'s EXACT sub-niche, never just the broad industry. When in doubt about a candidate, EXCLUDE it — accuracy beats completeness.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 1400,
-        response_format: { type: 'json_object' },
+      aiResult = await discoverWithLlms({
+        prompt,
+        system: 'You are a precise market-research analyst with encyclopedic knowledge of real-world companies in every sub-niche. Output strict JSON only — no markdown, no prose. Always pick competitors operating in the user\'s EXACT sub-niche, never just the broad industry. When in doubt about a candidate, EXCLUDE it — accuracy beats completeness.',
+        openaiChatWithRetry,
+        anthropic,
+        timeoutMs: 14000,
       });
-      const raw = completion.choices?.[0]?.message?.content || '{}';
-      aiResult = JSON.parse(raw);
     } catch (aiErr) {
-      console.error('sector-competitors OpenAI error (after retry+fallback):', aiErr.message);
+      console.error('sector-competitors LLM discovery error:', aiErr.message);
+      aiResult = null;
+    }
+    if (!aiResult) {
       // Deterministic SERP-only response — better than failing the whole flow.
       if (serpCompetitorFallback.length >= 3) {
         const gated = await _gateSameBusiness(
@@ -464,7 +471,7 @@ CRITICAL RULES — accuracy beats completeness:
           _fallback: 'serp-only',
         });
       }
-      return res.status(502).json({ error: 'AI lookup failed', detail: aiErr.message });
+      return res.status(502).json({ error: 'AI lookup failed', detail: 'All LLM providers failed' });
     }
 
     const competitors = Array.isArray(aiResult.competitors) ? aiResult.competitors
@@ -474,6 +481,7 @@ CRITICAL RULES — accuracy beats completeness:
         url:  String(c.url).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].trim().toLowerCase(),
         why:  String(c.why || '').trim().slice(0, 200),
         marketShare: String(c.marketShare || '').trim().slice(0, 30),
+        source: c.source || 'llm',
       }))
       .filter(c => c.url && c.url !== urlClean)
       // de-duplicate by domain

@@ -3021,7 +3021,7 @@ async function runAnalysis(url, country, industryOverride) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: cleanUrl })
-      }, 25000);
+      }, 55000);
 
   // ── If user typed an industry (sector-only OR refining a URL), call the
   //    AI sector-competitors endpoint to get REAL same-niche competitors.
@@ -3035,7 +3035,7 @@ async function runAnalysis(url, country, industryOverride) {
           country: country || '',
           urlHint: hasUrl ? cleanUrl : ''
         })
-      }, 25000)
+      }, 55000)
     : Promise.resolve(null);
 
   const _industrySeed = (INDUSTRY_DB && INDUSTRY_DB[industryKey]) || { name: 'Unknown', keywords: [], competitors: [] };
@@ -3210,7 +3210,7 @@ async function runAnalysis(url, country, industryOverride) {
       // could stall the entire analysis if the endpoint hung.
       const _sfCtl = new AbortController();
       const _sfT0  = performance.now();
-      const _sfTo  = setTimeout(() => _sfCtl.abort(), 25000);
+      const _sfTo  = setTimeout(() => _sfCtl.abort(), 55000);
       window.IGDiag && IGDiag.mark('sector-competitors-fallback: fetch start', `niche=${inferredNiche}`);
       try {
         const r = await fetch('/api/sector-competitors', {
@@ -3265,7 +3265,7 @@ async function runAnalysis(url, country, industryOverride) {
   ) {
     const _lrCtl = new AbortController();
     const _lrT0 = performance.now();
-    const _lrTo = setTimeout(() => _lrCtl.abort(), 25000);
+    const _lrTo = setTimeout(() => _lrCtl.abort(), 55000);
     _igLoadingActivity(`Matching same-industry competitors for ${industry.name}`, 'active');
     try {
       const r = await fetch('/api/sector-competitors', {
