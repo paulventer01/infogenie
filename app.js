@@ -3626,6 +3626,7 @@ async function runAnalysis(url, country, industryOverride) {
     keywords: _seedKeywords.slice(0, 30),
   };
   window.analysisData = analysisData;  // Mirror to window so external modules (Link Suggester, CRO Lab, Analytics Hub, etc.) can read it
+  try { sessionStorage.setItem('ig-analysis-data', JSON.stringify(analysisData)); } catch (_) {}
   // Notify the global field enhancer (ig_field_enhancer.js) so any Brand /
   // Competitor pickers already rendered refresh their option lists with the
   // freshly-analysed brand + competitor names. New fields rendered after this

@@ -89,7 +89,21 @@ type ChartCtor = new (ctx: CanvasRenderingContext2D, cfg: unknown) => ChartInsta
 
 function getAnalysisData(): AnalysisData | null {
   if (typeof window === "undefined") return null;
-  return (window as unknown as { analysisData?: AnalysisData }).analysisData || null;
+  const live = (window as unknown as { analysisData?: AnalysisData }).analysisData;
+  if (live && (live.url || live.websiteKPIs)) return live;
+  try {
+    const raw = sessionStorage.getItem("ig-analysis-data");
+    if (raw) {
+      const parsed = JSON.parse(raw) as AnalysisData;
+      if (parsed && (parsed.url || parsed.websiteKPIs)) {
+        (window as unknown as { analysisData?: AnalysisData }).analysisData = parsed;
+        return parsed;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return live || null;
 }
 function getChart(): ChartCtor | undefined {
   return (window as unknown as { Chart?: ChartCtor }).Chart;
@@ -187,7 +201,18 @@ export default function Dashboard() {
   useEffect(() => {
     const onReady = () => setAd(getAnalysisData());
     document.addEventListener("ig:analysis-ready", onReady);
-    return () => document.removeEventListener("ig:analysis-ready", onReady);
+    document.addEventListener("ig:analysis-updated", onReady);
+    window.addEventListener("ig:analysis-ready", onReady);
+    // Re-read after mount — analysisData may land a tick after this panel.
+    const t1 = window.setTimeout(onReady, 50);
+    const t2 = window.setTimeout(onReady, 400);
+    return () => {
+      document.removeEventListener("ig:analysis-ready", onReady);
+      document.removeEventListener("ig:analysis-updated", onReady);
+      window.removeEventListener("ig:analysis-ready", onReady);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
   }, []);
 
   const analysedDomain = useMemo(() => {
@@ -221,7 +246,9 @@ export default function Dashboard() {
     };
   }, [analysedDomain]);
   const competitors = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
-  const hasData = !!(ad && ad.websiteKPIs && competitors.length > 0);
+  // Analysis is complete once a URL/KPIs exist. Same-industry verification can
+  // honestly return zero rivals — that is still a finished Analyse Now run.
+  const hasData = !!(ad && ad.url && ad.websiteKPIs);
 
   const chartsRef = useRef<ChartInstance[]>([]);
   const [forecastStatus, setForecastStatus] = useState("⏳ Generating AI forecast…");
@@ -705,6 +732,25 @@ export default function Dashboard() {
         </>
       }
     >
+        {competitors.length === 0 && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "14px 16px",
+              borderRadius: 12,
+              border: "1.5px solid #FDE68A",
+              background: "#FFFBEB",
+              color: "#92400E",
+              fontSize: "0.88rem",
+              lineHeight: 1.45,
+            }}
+          >
+            <strong>Analysis complete for {yourDomain}.</strong> No verified
+            same-industry / same-business competitors were confirmed, so none
+            were invented. The Intelligence Report below uses this company&apos;s
+            live analysis; re-run Analyse Now if you want to retry rival matching.
+          </div>
+        )}
         {companyOverview && (
           <>
             <DomainOverview overview={companyOverview} currentView="dashboard" />
