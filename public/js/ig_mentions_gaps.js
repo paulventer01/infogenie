@@ -48,27 +48,68 @@ function _inferProviderKey(alert) {
   return m ? m[1] : null;
 }
 
-function _alertAction(alert) {
-  if (alert.actionUrl) {
-    return {
-      url: alert.actionUrl,
-      label: alert.actionLabel || 'Open provider →',
-      external: /^https?:\/\//i.test(alert.actionUrl),
-    };
+function _adminPlatformKeysPath(focusKey) {
+  const q = new URLSearchParams({ tab: 'platform-keys' });
+  if (focusKey) q.set('focus', focusKey);
+  return `/manage/admin?${q.toString()}`;
+}
+
+function _spaGo(path, viewId) {
+  toggleAlertsPanel();
+  if (typeof window.__igNavigate === 'function') {
+    window.__igNavigate(path);
+    try { window.navigateTo && window.navigateTo(viewId || 'admin'); } catch (_) {}
+    return;
   }
-  const key = _inferProviderKey(alert);
+  window.location.assign(path);
+}
+
+function _alertProviderKey(alert) {
+  return alert.providerKey || _inferProviderKey(alert);
+}
+
+function _alertExternalAction(alert) {
+  const key = _alertProviderKey(alert);
   const p = (window._alertsState.providers || {})[key];
   if (!p) return null;
   const creditTypes = ['credit_low', 'credit_error'];
   const missingTypes = ['service_missing', 'key_placeholder'];
   if (creditTypes.includes(alert.type)) {
-    return { url: p.billingUrl, label: `Top up ${p.name} balance →`, external: true };
+    return { url: p.billingUrl, label: `Top up ${p.name} balance →` };
   }
   if (missingTypes.includes(alert.type)) {
-    return { url: p.signupUrl || p.billingUrl, label: `Get ${p.name} API access →`, external: true };
+    return { url: p.signupUrl || p.billingUrl, label: `Open ${p.name} website →` };
   }
-  if (/dataforseo/i.test(String(alert.title || ''))) {
-    return { url: p.billingUrl || p.signupUrl, label: `Open ${p.name} →`, external: true };
+  return null;
+}
+
+function _alertAction(alert) {
+  const key = _alertProviderKey(alert);
+  const creditTypes = ['credit_low', 'credit_error'];
+  const missingTypes = ['service_missing', 'key_placeholder'];
+  if (key && (missingTypes.includes(alert.type) || creditTypes.includes(alert.type))) {
+    return {
+      url: alert.settingsUrl || _adminPlatformKeysPath(key),
+      label: missingTypes.includes(alert.type)
+        ? (alert.settingsLabel || 'Configure in Platform APIs →')
+        : 'Review in Platform APIs →',
+      external: false,
+      providerKey: key,
+    };
+  }
+  if (alert.actionUrl && !/^https?:\/\//i.test(alert.actionUrl)) {
+    return {
+      url: alert.actionUrl,
+      label: alert.actionLabel || 'Open in InfoGenie →',
+      external: false,
+    };
+  }
+  if (alert.actionUrl) {
+    return {
+      url: alert.actionUrl,
+      label: alert.actionLabel || 'Open provider →',
+      external: true,
+    };
   }
   return null;
 }
@@ -81,18 +122,20 @@ function _openAlertAction(alert, evt) {
     window.open(act.url, '_blank', 'noopener,noreferrer');
     return;
   }
-  toggleAlertsPanel();
-  try { window.navigateTo && window.navigateTo('admin'); } catch (_) {}
-  window.location.href = act.url;
+  _spaGo(act.url, 'admin');
+}
+
+function _openAlertExternal(alert, evt) {
+  if (evt) evt.stopPropagation();
+  const ext = _alertExternalAction(alert);
+  if (!ext || !ext.url) return;
+  window.open(ext.url, '_blank', 'noopener,noreferrer');
 }
 
 function _openAlertSettings(alert, evt) {
   if (evt) evt.stopPropagation();
-  const key = alert.providerKey || _inferProviderKey(alert);
-  toggleAlertsPanel();
-  try { window.navigateTo && window.navigateTo('admin'); } catch (_) {}
-  const focus = key ? `&focus=${encodeURIComponent(key)}` : '';
-  window.location.href = `/manage/admin?tab=platform-keys${focus}`;
+  const key = _alertProviderKey(alert);
+  _spaGo(_adminPlatformKeysPath(key), 'admin');
 }
 
 async function loadAlertsList() {
@@ -147,6 +190,7 @@ function renderAlertsPanel() {
   body.innerHTML = arr.map((a, idx) => {
     const sevColor = a.severity === 'high' ? '#EF4444' : a.severity === 'medium' ? '#F59E0B' : '#3B82F6';
     const act = _alertAction(a);
+    const ext = _alertExternalAction(a);
     const clickable = !!act;
     const settingsLink = (a.settingsUrl || (a.type === 'service_missing' || a.type === 'key_placeholder'));
     return `<div class="alert-item ${a.read ? 'alert-read' : 'alert-unread'}${clickable ? ' alert-clickable' : ''}" data-alert-idx="${idx}"${clickable ? ` role="link" tabindex="0" title="${_esc(act.label)}"` : ''}>
@@ -155,7 +199,7 @@ function renderAlertsPanel() {
         <div class="alert-title">${_esc(a.title)}</div>
         <div class="alert-body">${_esc(a.body)}</div>
         <div class="alert-meta">${_relativeTimeShort(a.timestamp)} · ${_esc(a.type.replace(/_/g,' '))}${clickable ? ` · <span class="alert-action-hint">${_esc(act.label)}</span>` : ''}</div>
-        ${settingsLink ? `<button type="button" class="alert-settings-link" data-settings-idx="${idx}">${_esc(a.settingsLabel || 'Add key in Platform APIs')}</button>` : ''}
+        <div class="alert-actions">${settingsLink ? `<button type="button" class="alert-settings-link" data-settings-idx="${idx}">${_esc(a.settingsLabel || 'Configure in Platform APIs')}</button>` : ''}${ext ? `<button type="button" class="alert-external-link" data-external-idx="${idx}">${_esc(ext.label)}</button>` : ''}</div>
       </div>
     </div>`;
   }).join('');
@@ -163,14 +207,21 @@ function renderAlertsPanel() {
     const act = _alertAction(a);
     const row = body.querySelector(`.alert-item[data-alert-idx="${idx}"]`);
     const settingsBtn = body.querySelector(`button.alert-settings-link[data-settings-idx="${idx}"]`);
+    const externalBtn = body.querySelector(`button.alert-external-link[data-external-idx="${idx}"]`);
     if (row && act) {
-      row.addEventListener('click', (e) => _openAlertAction(a, e));
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
+        _openAlertAction(a, e);
+      });
       row.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _openAlertAction(a, e); }
       });
     }
     if (settingsBtn) {
       settingsBtn.addEventListener('click', (e) => _openAlertSettings(a, e));
+    }
+    if (externalBtn) {
+      externalBtn.addEventListener('click', (e) => _openAlertExternal(a, e));
     }
   });
 }
@@ -206,7 +257,19 @@ async function checkAlertsNow() {
     if (j.newCount > 0) showToast(`🔔 ${j.newCount} new alert${j.newCount>1?'s':''}`);
     await loadAlertsList();
   } catch (e) {
-    if (body) body.innerHTML = `<div style="padding:32px;text-align:center;color:#EF4444;font-size:.85rem">⚠️ ${_esc(e.message)}</div>`;
+    const msg = String(e.message || e);
+    const needsDfs = /dataforseo-not-configured/i.test(msg);
+    if (body) {
+      body.innerHTML = `<div style="padding:32px;text-align:center;color:#64748b;font-size:.85rem">
+        ⚠️ ${_esc(msg)}
+        ${needsDfs ? `<div style="margin-top:14px"><button type="button" class="alert-settings-link" id="alertsCheckNowConfigure">Configure DataForSEO in Platform APIs →</button></div>` : ''}
+      </div>`;
+      if (needsDfs) {
+        document.getElementById('alertsCheckNowConfigure')?.addEventListener('click', () => {
+          _spaGo(_adminPlatformKeysPath('DATAFORSEO_LOGIN'), 'admin');
+        });
+      }
+    }
   }
 }
 

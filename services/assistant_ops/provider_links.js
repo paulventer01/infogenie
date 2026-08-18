@@ -120,13 +120,15 @@ function enrichAlert(alert, envKey) {
   if (!p) return alert;
   const out = { ...alert, providerKey: envKey, provider: p.name };
   if (alert.type === 'credit_low' || alert.type === 'credit_error') {
-    out.actionUrl = p.billingUrl;
-    out.actionLabel = `Top up ${p.name} balance →`;
+    out.actionUrl = adminSettingsPath(p.settingsKey);
+    out.actionLabel = `Review ${p.name} in Platform APIs →`;
+    out.externalBillingUrl = p.billingUrl;
   } else if (alert.type === 'service_missing' || alert.type === 'key_placeholder') {
-    out.actionUrl = p.signupUrl || p.billingUrl;
-    out.actionLabel = `Get ${p.name} API access →`;
-    out.settingsUrl = adminSettingsPath(p.settingsKey);
-    out.settingsLabel = 'Add key in Platform APIs';
+    out.actionUrl = adminSettingsPath(p.settingsKey);
+    out.actionLabel = `Configure ${p.name} in Platform APIs →`;
+    out.settingsUrl = out.actionUrl;
+    out.settingsLabel = 'Configure in Platform APIs';
+    out.externalSignupUrl = p.signupUrl || p.billingUrl;
   }
   return out;
 }

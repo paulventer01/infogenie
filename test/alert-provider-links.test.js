@@ -9,8 +9,8 @@ test('enrichAlert adds DataForSEO billing link for credit_low', () => {
     id: 'x', type: 'credit_low', severity: 'high',
     title: 'Low balance', body: 'Top up',
   }, 'DATAFORSEO_LOGIN');
-  assert.match(a.actionUrl, /dataforseo\.com\/billing/i);
-  assert.match(a.actionLabel, /Top up DataForSEO/i);
+  assert.match(a.actionUrl, /\/manage\/admin\?tab=platform-keys/);
+  assert.match(a.externalBillingUrl, /dataforseo\.com\/billing/i);
 });
 
 test('enrichAlert adds signup link for service_missing', () => {
@@ -18,7 +18,7 @@ test('enrichAlert adds signup link for service_missing', () => {
     id: 'x', type: 'service_missing', severity: 'high',
     title: 'Missing OpenAI', body: 'Add key',
   }, 'OPENAI_API_KEY');
-  assert.match(a.actionUrl, /platform\.openai\.com/i);
+  assert.match(a.actionUrl, /\/manage\/admin\?tab=platform-keys/);
   assert.match(a.settingsUrl, /platform-keys/);
 });
 
@@ -38,6 +38,6 @@ test('rehydrateAlert infers DataForSEO link for stored service_missing rows', ()
     title: '🔑 DataForSEO not connected — subscription / API key required',
     body: 'Powers SERP. Add DATAFORSEO_LOGIN in Manage → Admin → Platform APIs.',
   });
-  assert.match(a.actionUrl, /dataforseo\.com/i);
+  assert.match(a.actionUrl, /\/manage\/admin\?tab=platform-keys/);
   assert.equal(a.providerKey, 'DATAFORSEO_LOGIN');
 });
