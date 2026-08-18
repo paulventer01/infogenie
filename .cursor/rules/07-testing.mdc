@@ -1,0 +1,44 @@
+---
+description: node:test layout, core gate, integration harness, and floors you must not silently retune
+globs: test/**/*.js,scripts/run-core-tests.js,scripts/check-*.js
+alwaysApply: false
+---
+
+# Testing
+
+Runner is Node’s built-in test runner (`node:test` + `node:assert`).
+
+| Command | Use |
+|---|---|
+| `npm run test:core` | Default agent gate. Fast, supervised, kills hung jsdom children. |
+| `npm test` | Full `test/` tree. Passes-then-hangs without `--test-force-exit` (already in the npm script). |
+| `npm run test:integration` | Real Express + Postgres via `test/helpers`. |
+| `npm run lint` | Fabrication markers, script-tag wraps, duplicate globals, light-theme CSS. |
+
+## How to boot the app in tests
+
+```js
+const { bootApp, request, login, makeFixtures, hasDb } = require('../helpers');
+```
+
+- `require('./env')` (via helpers) must run **before** vault/session modules cache config.
+- Prefer `bootApp()` / `buildApp()` from `test/helpers` — that requires `server.js` and uses the real middleware chain. Do not hand-rebuild Express.
+- Skip DB tests when `!hasDb()` (`DATABASE_URL` absent).
+- Intercept `global.fetch` for Resend (`installMailCapture`) so tests never send mail.
+- `t.after()` close the server and `fx.cleanup()`. `user_integrations` has no FK to users — delete it before deleting the user.
+
+New listen/cron/boot-migration in product code **must** be behind `runtime_flags.backgroundEnabled()`.
+
+## What to add
+
+- If you change a service that already has `test/*.test.js` or `test/integration/`, extend those.
+- Tenant changes: keep `tenant-*-audit` tests green; do not weaken assertions.
+- Panel migration: lockstep test + do not lower `MIN_VIEW_PANEL_COUNT` / builder floors unless the change intentionally shrinks legacy surface.
+- AI routes: dummy keys (`_DUMMY…`) should hit template fallback with no network.
+
+## Do not
+
+- Hit live vendor APIs from unit tests.
+- Assert on wall-clock timeouts as the only signal.
+- Copy `require('../../server')` into a new file that then `listen()`s — use the harness.
+- Treat a hanging `npm test` as a product failure; first confirm `test:core` and that `--test-force-exit` is present.

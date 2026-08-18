@@ -1,0 +1,32 @@
+---
+description: Always-on InfoGenie identity, stack, and durable engineering rules
+alwaysApply: true
+---
+
+# InfoGenie core
+
+AI autonomous marketing-intelligence platform. Stack: Node 20+, Express, Next.js 15 App Router, React 18, PostgreSQL (`kv_store` + per-tier tables), session cookie `infogenie.sid`.
+
+## Runtime shape
+
+- Public origin is Next. Express owns `/api/*`, auth/session, credential vault, crons, and remaining legacy static files.
+- Dev: `npm run dev` → Next `:5000`, Express `:8000`. Prod: `npm start` after `npm run build:next`.
+- Do not start `node server.js` as the public process.
+- No dotenv — export env vars in the shell.
+
+## Where new work goes
+
+- New dashboard UI: `components/features/<group>/<Name>.tsx`. Register in both `components/features/registry.tsx` and `lib/migratedViews.ts`. Nav labels live in `lib/viewRoutes.ts`.
+- New API: `services/<name>/schema.js` + `api.js` (or `routes.js` for extracts from `server.js`). Mount from `server.js` without reordering existing middleware.
+- Shared browser fetches from React: `@/lib/api` (`apiGet` / `apiPost` / …). APIs return `{ ok: true, … }` or `{ ok: false, error }` — inspect `result.ok`.
+- Do not add new legacy `#view-*` builders in `index.html` / `app.js` / `public/js/`.
+
+## Product rules
+
+- Tenant isolation is on. Every feature read/write carries `tenant_id`.
+- Permission matrix is on. New `/api` prefixes get a `ROUTE_GROUPS` entry.
+- Honesty: synthetic/demo/template numbers must be tagged; strict data-mode withholds them.
+- Security: validate bodies, never log tokens/vault payloads, degrade when an optional integration key is missing (banner + empty/template), do not crash the boot path.
+- User preference: complete the obvious adjacent work (persist, tenant, permission, test) in the same change; do not emit a thin slice plus a trail of follow-ups.
+
+Read `AGENTS.md` for commands and the file map. Read `.agents/memory/` for gotchas; do not edit that tree unless asked.

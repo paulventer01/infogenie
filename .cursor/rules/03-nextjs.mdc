@@ -1,0 +1,40 @@
+---
+description: Next.js App Router, React dashboard panels, proxy, and hydration rules
+globs: app/**/*.{ts,tsx},components/**/*.{ts,tsx},lib/**/*.{ts,tsx},hooks/**/*.{ts,tsx},styles/**/*.css,middleware.ts,next.config.ts
+alwaysApply: false
+---
+
+# Next.js / React dashboard
+
+Next 15 App Router is the public front door. Express remains the API and session authority. `next.config.ts` rewrites `/api/:path*` (beforeFiles) and `/:path*` (fallback) to `EXPRESS_PROXY_TARGET` (default `http://localhost:8000`).
+
+## Routes
+
+- Auth: `app/(auth)/login`, `reset-password`, `accept-invite`.
+- Dashboard: `app/(dashboard)/page.tsx` plus `analyse|create|reach|grow|manage|ai-team/[[...slug]]`.
+- `middleware.ts` redirects missing `infogenie.sid` to `/login?next=…`. Matcher is dashboard-only — never add `/api` or `/_next` to it.
+- Keep `devIndicators: false`. Do not reintroduce the Next.js “N” badge (see `HideNextDevBadge`).
+
+## Panel porting (lockstep)
+
+A view is not migrated until all three exist:
+
+1. `components/features/<group>/<Name>.tsx`
+2. Lazy loader in `components/features/registry.tsx`
+3. Entry in `lib/migratedViews.ts`
+
+Nav URLs and labels come from `lib/viewRoutes.ts` (`NAV_GROUPS`). Update aliases there if a view is absorbed into a hub. `test/migrated-views-lockstep.test.js` enforces registry ↔ migratedViews.
+
+## Data fetching and types
+
+- Use `@/lib/api` (`apiGet` / `apiPost` / `apiPut` / `apiPatch` / `apiDelete` / `apiBlob`). Always pass generics — untyped calls break `setState` under `next build`.
+- Same-origin + cookies. Treat `{ ok: false, error }` as the app-level failure path.
+- Escape quotes in JSX text (`&apos;`, `&ldquo;`) — `react/no-unescaped-entities` fails `npm run build:next`.
+- SWC rejects `/regex/g` inside JSX text; use `.split().join()` or a variable.
+
+## Shell / hydration
+
+- Root `app/layout.tsx` `<head>` must stay free of hand-authored reconciled children (proxy injects a devtools script). Fonts: `next/font` + CSS variable with a literal fallback so the Express path still resolves.
+- Legacy ↔ React navigation uses `SpaRouter` + `LegacyNavBridge` (`ig:spa-navigate`). After `navigateTo()`, update the URL; do not assume a stripped `#view-*` div is still on the page.
+- Recurring “hydration crash” on a stale `next dev` tab is usually HMR/Fast Refresh — restart before editing the shell.
+- `next dev` and `next start` cannot share `.next`. `npm run build:next` is the real type+lint gate (full tsc, ESLint errors fail the build).

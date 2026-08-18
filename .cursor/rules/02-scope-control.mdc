@@ -1,0 +1,38 @@
+---
+description: Hard scope limits so agents do not wander, restore archives, or rewrite the stack
+alwaysApply: true
+---
+
+# Scope control
+
+Change only what the user asked for, plus the minimum wiring that makes that change correct (schema, tenant_id, permission matrix, test). Everything else is out of scope.
+
+## Do not
+
+- Rewrite architecture (Express ↔ Next split, auth, vault, tenant enforcement, permission matrix).
+- Delete, rename, or move existing project files unless the user asked.
+- Restore or re-wire anything from `legacy_archive/`, `backups/`, root `exports/`, or `.replit_integration_files/`.
+- Expand a bugfix into a cleanup of `app.js`, `server.js`, or adjacent panels.
+- Edit `.agents/` unless the user explicitly asked.
+- Commit `.env`, keys, vault payloads, or credential dumps.
+- Add dependencies without a concrete need in the requested change.
+- Touch `node_modules/` or rebuild `.next` as a “fix”.
+- Drive-by reformat, comment sweep, or README rewrite.
+
+## Legacy surface
+
+`index.html`, `app.js`, and remaining `public/js/*` are surviving chrome. Prefer React for new UI. If you must touch legacy files:
+
+- Guard missing builders (`window.buildX && buildX()`).
+- Grep `index.html`, `app.js`, `public/js`, and `window.*` in React before deleting a global.
+- Do not retune test floors (`MIN_VIEW_PANEL_COUNT`, script-tag counts, etc.) unless the change intentionally moves those numbers.
+
+## `server.js` extracts
+
+If extracting routes, use the proven `register(app, ctx)` pattern, preserve mount order, rebase `__dirname` / relative `require` to the app root, and wrap new listen/cron/boot work in `runtime_flags.backgroundEnabled()`.
+
+## Output discipline
+
+- Prefer one focused diff.
+- If something must be deferred, name it once in the summary — do not start it.
+- Configuration files in this package (`AGENTS.md`, `.cursorignore`, `.cursor/rules/*`) are not application code; leave them alone unless the task is to change agent config.

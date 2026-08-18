@@ -1,0 +1,40 @@
+---
+description: LLM calls, provider keys, template fallbacks, and fabrication/honesty tagging
+globs: services/**/*.js,services/ai_compat.js,data.js
+alwaysApply: false
+---
+
+# AI services
+
+Canonical pattern for generative routes:
+
+1. Strict-JSON prompt (schema in the prompt, parse with `JSON.parse` / `safeLLMJson`).
+2. `/^_DUMMY/i` key gate — dummy/missing keys must not hit the network.
+3. Template fallback when the provider is down, times out, or returns unparseable output.
+4. Persist to Postgres with `tenant_id`.
+5. Frontend renders with `_escapeHtml` / `_safeUrl` (legacy) or `lib/utils.ts` / `lib/domSafety.ts` (React).
+
+## Compatibility layer
+
+Do **not** hand-fix chat params at call sites. `services/ai_compat.js` already:
+
+- Rewrites `gpt-5*` to `max_completion_tokens`, drops non-default `temperature`/`top_p`/penalties, defaults `reasoning_effort: 'minimal'`.
+- Normalizes Kimi/Moonshot (omit fixed sampling fields).
+- Patches the OpenAI SDK and intercepts `fetch` / `http(s).request` for `chat/completions`.
+
+Keep vendor model strings literal when talking to a third-party engine (e.g. DataForSEO LLM maps). Llama RapidAPI lives in `ai_compat` (`callLlama` / `hasLlama`, `RAPIDAPI_KEY`) with Cloudflare-first fallback.
+
+## Honesty / data-mode
+
+Tag synthetic payloads that look like measurements: `source: 'placeholder' | 'fallback' | 'template' | 'serp-fallback' | 'demo' | 'mock' | 'sample'`, `_estimated: true`, or `_fabricated: true` (top-level or one object deep). `services/admin/enforcement.js` is marker-driven.
+
+Do **not** tag: product catalogs, real config/status, honest empty states, web-grounded Perplexity results, or user-requested creative output (scripts, carousels, headlines).
+
+Never invent emails, credentials, spend, traffic, or rankings and present them as live. Lead-finder and similar tools must refuse to fabricate contact data.
+
+## Keys
+
+- Platform-paid keys (OpenAI, Anthropic, Gemini, Perplexity, Cloudflare, DataForSEO, …) live in `platform_api_keys` and hydrate onto `process.env` at boot. Admin UI: Platform APIs.
+- User-owned integrations stay in the per-user vault.
+- Missing optional keys → yellow “not configured” + fallback, never a boot crash.
+- Do not put API keys in prompts, logs, client bundles, or git.
