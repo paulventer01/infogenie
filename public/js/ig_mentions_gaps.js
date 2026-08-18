@@ -21,10 +21,83 @@
 /* =============================================================================
    FEATURE 2: REAL-TIME ALERTS — bell, panel, polling
    ============================================================================= */
-window._alertsState = { open:false, alerts:[], unread:0, lastChecked:0, polling:false };
+window._alertsState = { open:false, alerts:[], unread:0, lastChecked:0, polling:false, providers:null };
+
+async function _loadAlertProviders() {
+  if (window._alertsState.providers) return window._alertsState.providers;
+  try {
+    const r = await fetch('/api/alerts/provider-links');
+    const j = await r.json();
+    if (j.ok) window._alertsState.providers = j.providers || {};
+  } catch (e) { window._alertsState.providers = {}; }
+  return window._alertsState.providers || {};
+}
+
+function _inferProviderKey(alert) {
+  if (alert.providerKey) return alert.providerKey;
+  const t = String(alert.title || '') + ' ' + String(alert.body || '');
+  if (/dataforseo/i.test(t)) return 'DATAFORSEO_LOGIN';
+  if (/openai/i.test(t)) return 'OPENAI_API_KEY';
+  if (/anthropic|claude/i.test(t)) return 'ANTHROPIC_API_KEY';
+  if (/perplexity/i.test(t)) return 'PERPLEXITY_API_KEY';
+  if (/gemini/i.test(t)) return 'GEMINI_API_KEY';
+  if (/firecrawl/i.test(t)) return 'FIRECRAWL_API_KEY';
+  if (/resend/i.test(t)) return 'RESEND_API_KEY';
+  if (/hubspot/i.test(t)) return 'HUBSPOT_PRIVATE_APP_TOKEN';
+  const m = String(alert.body || '').match(/\b([A-Z][A-Z0-9_]{4,})\b/);
+  return m ? m[1] : null;
+}
+
+function _alertAction(alert) {
+  if (alert.actionUrl) {
+    return {
+      url: alert.actionUrl,
+      label: alert.actionLabel || 'Open provider →',
+      external: /^https?:\/\//i.test(alert.actionUrl),
+    };
+  }
+  const key = _inferProviderKey(alert);
+  const p = (window._alertsState.providers || {})[key];
+  if (!p) return null;
+  const creditTypes = ['credit_low', 'credit_error'];
+  const missingTypes = ['service_missing', 'key_placeholder'];
+  if (creditTypes.includes(alert.type)) {
+    return { url: p.billingUrl, label: `Top up ${p.name} balance →`, external: true };
+  }
+  if (missingTypes.includes(alert.type)) {
+    return { url: p.signupUrl || p.billingUrl, label: `Get ${p.name} API access →`, external: true };
+  }
+  if (/dataforseo/i.test(String(alert.title || ''))) {
+    return { url: p.billingUrl || p.signupUrl, label: `Open ${p.name} →`, external: true };
+  }
+  return null;
+}
+
+function _openAlertAction(alert, evt) {
+  if (evt) evt.stopPropagation();
+  const act = _alertAction(alert);
+  if (!act || !act.url) return;
+  if (act.external) {
+    window.open(act.url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  toggleAlertsPanel();
+  try { window.navigateTo && window.navigateTo('admin'); } catch (_) {}
+  window.location.href = act.url;
+}
+
+function _openAlertSettings(alert, evt) {
+  if (evt) evt.stopPropagation();
+  const key = alert.providerKey || _inferProviderKey(alert);
+  toggleAlertsPanel();
+  try { window.navigateTo && window.navigateTo('admin'); } catch (_) {}
+  const focus = key ? `&focus=${encodeURIComponent(key)}` : '';
+  window.location.href = `/manage/admin?tab=platform-keys${focus}`;
+}
 
 async function loadAlertsList() {
   try {
+    await _loadAlertProviders();
     const r = await fetch('/api/alerts/list?limit=30');
     const j = await r.json();
     if (!j.ok) return;
@@ -50,8 +123,10 @@ function toggleAlertsPanel() {
   panel.classList.toggle('hidden');
   window._alertsState.open = opening;
   if (opening) {
-    renderAlertsPanel();
-    loadAlertsList();
+    _loadAlertProviders().then(() => {
+      renderAlertsPanel();
+      loadAlertsList();
+    });
   }
 }
 
@@ -69,17 +144,35 @@ function renderAlertsPanel() {
     body.innerHTML = `<div style="padding:32px;text-align:center;color:#64748b;font-size:.85rem">No alerts yet. Click <strong>Check now</strong> to scan for mention surges and rank drops.</div>`;
     return;
   }
-  body.innerHTML = arr.map(a => {
+  body.innerHTML = arr.map((a, idx) => {
     const sevColor = a.severity === 'high' ? '#EF4444' : a.severity === 'medium' ? '#F59E0B' : '#3B82F6';
-    return `<div class="alert-item ${a.read ? 'alert-read' : 'alert-unread'}">
+    const act = _alertAction(a);
+    const clickable = !!act;
+    const settingsLink = (a.settingsUrl || (a.type === 'service_missing' || a.type === 'key_placeholder'));
+    return `<div class="alert-item ${a.read ? 'alert-read' : 'alert-unread'}${clickable ? ' alert-clickable' : ''}" data-alert-idx="${idx}"${clickable ? ` role="link" tabindex="0" title="${_esc(act.label)}"` : ''}>
       <div class="alert-bar" style="background:${sevColor}"></div>
       <div class="alert-content">
         <div class="alert-title">${_esc(a.title)}</div>
         <div class="alert-body">${_esc(a.body)}</div>
-        <div class="alert-meta">${_relativeTimeShort(a.timestamp)} · ${_esc(a.type.replace(/_/g,' '))}</div>
+        <div class="alert-meta">${_relativeTimeShort(a.timestamp)} · ${_esc(a.type.replace(/_/g,' '))}${clickable ? ` · <span class="alert-action-hint">${_esc(act.label)}</span>` : ''}</div>
+        ${settingsLink ? `<button type="button" class="alert-settings-link" data-settings-idx="${idx}">${_esc(a.settingsLabel || 'Add key in Platform APIs')}</button>` : ''}
       </div>
     </div>`;
   }).join('');
+  arr.forEach((a, idx) => {
+    const act = _alertAction(a);
+    const row = body.querySelector(`.alert-item[data-alert-idx="${idx}"]`);
+    const settingsBtn = body.querySelector(`button.alert-settings-link[data-settings-idx="${idx}"]`);
+    if (row && act) {
+      row.addEventListener('click', (e) => _openAlertAction(a, e));
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _openAlertAction(a, e); }
+      });
+    }
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', (e) => _openAlertSettings(a, e));
+    }
+  });
 }
 
 function _relativeTimeShort(ts) {
@@ -140,7 +233,7 @@ async function checkCreditsNow() {
 window.checkCreditsNow = checkCreditsNow;
 
 // Auto-load alert count on app boot
-setTimeout(loadAlertsList, 1500);
+setTimeout(() => { _loadAlertProviders().then(loadAlertsList); }, 1500);
 // Run a credit-check sweep on boot (server also runs it, but this ensures the
 // badge reflects current balance state without waiting for the next 5-min poll).
 setTimeout(() => { fetch('/api/alerts/check-credits').then(() => loadAlertsList()).catch(()=>{}); }, 3000);

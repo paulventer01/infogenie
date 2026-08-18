@@ -218,6 +218,25 @@ const fmt = (n: number) => (n >= 1000000 ? (n / 1000000).toFixed(1) + "M" : n >=
 const dollars = (n: number) => "$" + (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n.toFixed(0));
 const deltaCol = (d: number) => (d >= 0 ? "#15803D" : "#DC2626");
 
+function readHubBootstrap(): {
+  connections: Record<string, boolean>;
+  data: AHData | null;
+  hasDomain: boolean;
+} {
+  const domain = lsDomain();
+  if (!domain) {
+    return { connections: { gsc: false, ga4: false }, data: null, hasDomain: false };
+  }
+  const saved = loadPersistedHub(domain);
+  if (!saved) {
+    return { connections: { gsc: false, ga4: false }, data: null, hasDomain: true };
+  }
+  const coreReady = saved.connections.gsc && saved.connections.ga4;
+  const seeded = coreReady ? saved.data ?? ahSeed() : null;
+  if (coreReady && !saved.data) savePersistedHub(saved.connections, seeded);
+  return { connections: saved.connections, data: seeded, hasDomain: true };
+}
+
 export default function AnalyticsHub() {
   const router = useRouter();
   const [connections, setConnections] = useState<Record<string, boolean>>({ gsc: false, ga4: false });
@@ -240,13 +259,9 @@ export default function AnalyticsHub() {
     const domain = lsDomain();
     setHasDomain(!!domain);
     if (!domain) return;
-    const saved = loadPersistedHub(domain);
-    if (!saved) return;
-    const coreReady = saved.connections.gsc && saved.connections.ga4;
-    const seeded = coreReady ? saved.data ?? ahSeed() : null;
-    setConnections(saved.connections);
-    setData(seeded);
-    if (coreReady && !saved.data) savePersistedHub(saved.connections, seeded);
+    const fresh = readHubBootstrap();
+    setConnections(fresh.connections);
+    setData(fresh.data);
   }, []);
 
   // Heal stale unlock state where both core sources are marked connected but data was never seeded.
@@ -267,13 +282,13 @@ export default function AnalyticsHub() {
       toast("⏳ Already loading preview — hang tight…");
       return;
     }
+    const next = { ...connectionsRef.current, [svc]: true };
+    commitConnections(next);
     setInFlight(true);
     window.setTimeout(() => {
-      const next = { ...connectionsRef.current, [svc]: true };
-      commitConnections(next);
       setInFlight(false);
       toast(`✓ Preview unlocked for ${svc.toUpperCase()} (seeded estimates — not live OAuth)`);
-    }, 1100);
+    }, 400);
   }, [router, inFlight, commitConnections]);
 
   const disconnect = useCallback((svc: string) => {
@@ -293,13 +308,13 @@ export default function AnalyticsHub() {
       toast("⏳ Already loading preview — hang tight…");
       return;
     }
+    const next = { ...connectionsRef.current, gsc: true, ga4: true };
+    commitConnections(next);
     setInFlight(true);
     window.setTimeout(() => {
-      const next = { ...connectionsRef.current, gsc: true, ga4: true };
-      commitConnections(next);
       setInFlight(false);
       toast("✓ Preview unlocked for GSC + GA4 (seeded from your last analysis — not live OAuth)");
-    }, 1200);
+    }, 400);
   }, [router, inFlight, commitConnections]);
 
   const refresh = useCallback(() => {
@@ -317,13 +332,13 @@ export default function AnalyticsHub() {
       const missing: string[] = [];
       if (!current.gsc) missing.push("Google Search Console");
       if (!current.ga4) missing.push("Google Analytics 4");
+      const next = { ...current, gsc: true, ga4: true };
+      commitConnections(next);
       setInFlight(true);
       window.setTimeout(() => {
-        const next = { ...connectionsRef.current, gsc: true, ga4: true };
-        commitConnections(next);
         setInFlight(false);
         toast(`✓ Preview unlocked for ${missing.length === 2 ? "GSC + GA4" : missing[0]} — seeded 28-day estimates`);
-      }, 1400);
+      }, 400);
       return;
     }
     const seeded = ahSeed();
