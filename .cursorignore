@@ -1,0 +1,71 @@
+# InfoGenie Cursor Optimisation Package v2
+# Cursor indexing ignore (gitignore syntax). Does not affect runtime or git.
+#
+# Dependency check (do not blanket-ignore a path that live production code
+# requires):
+#   legacy_archive/              — no runtime imports (comment only in app.js)
+#   backups/                     — no runtime imports (ESLint ignore only)
+#   exports/                     — unused root folder; live code uses services/exports/
+#   .replit_integration_files/   — no runtime imports
+#   attached_assets/             — KEEP. Production reads this folder:
+#       services/budget_ops/routes.js  (user manual PDF + backup archives)
+#       public/js/ig_onboarding.js     (/attached_assets/InfoGenie_User_Manual.pdf)
+#     Screenshot dumps inside it are not imported and are ignored below.
+
+# ── Required ─────────────────────────────────────────────────
+node_modules/
+.next/
+
+# ── Build / coverage / caches ────────────────────────────────
+dist/
+build/
+out/
+coverage/
+.nyc_output/
+.cache/
+.pnpm-store/
+.upm/
+tsconfig.tsbuildinfo
+
+# ── Runtime data & uploads ───────────────────────────────────
+data/*.json
+uploads/**
+
+# ── Logs / temp / OS ─────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.pid
+*.seed
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Replit local state ───────────────────────────────────────
+.local/
+.replit.local
+.replit_history
+.breakpoints
+
+# ── Verified unused / retired trees ──────────────────────────
+legacy_archive/
+backups/
+exports/
+.replit_integration_files/
+
+# ── attached_assets: ignore noise only; keep production files ─
+attached_assets/manual_screenshots/
+attached_assets/screenshots/
+attached_assets/ig25/
+attached_assets/*.png
+attached_assets/*.jpg
+attached_assets/*.jpeg
+attached_assets/*.webp
+attached_assets/*.docx
+attached_assets/*.txt
+attached_assets/*.zip
+attached_assets/Pasted*

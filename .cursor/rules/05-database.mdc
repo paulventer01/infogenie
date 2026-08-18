@@ -1,0 +1,34 @@
+---
+description: Postgres, kv_store, tenant_id, schema modules, and query safety
+globs: db.js,services/**/schema.js,services/tenants/**/*.js,services/**/api.js
+alwaysApply: false
+---
+
+# Database
+
+PostgreSQL is required for real use. `db.js` exports `hasDb`, `getPool`, `ensureSchema`, `kvGet`, `kvSet`. SSL is always on (`rejectUnauthorized: false`) — do not disable it.
+
+Two persistence styles:
+
+- **`kv_store`** (`key text PK`, `value jsonb`) — generic blobs, tenant-scoped via `services/tenants/kv_scope.js`.
+- **Per-tier tables** — `services/<name>/schema.js` `ensureXSchema()`, called from boot. Include `tenant_id INT NOT NULL REFERENCES tenants(id)`.
+
+## Tenant rules (enforcement is on)
+
+- Authenticated route: `_tenantCtx.resolveTenantId(req, { label: 'svc:op' })`. Use a local `_tid` alias if the module already has one.
+- Cron: `getCronTenantId()`. Parentless public webhook: `getDefaultTenantId()`. Child rows inherit the parent’s `tenant_id`.
+- Never `allowFallback: true` (removed). Never omit `tenant_id` on INSERT.
+- Reads: `WHERE tenant_id = $1` (or the resolved param index).
+- Upserts: put `tenant_id` on **both** the column list and the `ON CONFLICT` target when the unique key was rewritten to a composite. Constraint name pattern: `<table>_tenant_unique_<extras>`.
+- Use `addTenantIdColumn(table, { uniqueWithExtra, notNull: true })` from `services/tenants/migration.js`. Do not hand-roll a second NOT NULL flip.
+
+## Schema hygiene
+
+- `CREATE TABLE IF NOT EXISTS` plus idempotent `ALTER`s so boot is safe.
+- Parameterized SQL only. No string-concatenated identifiers from user input.
+- `platform_api_keys`, `tenants`, `platform_users`, `roles` are global by design — do not tenant-scope them.
+- JSON files in `data/` are **not** a fallback; they migrate into `kv_store` at boot.
+
+## Tests vs boot
+
+`server.js` exports `buildApp()`. Background listen/crons/boot-migrations run only when `runtime_flags.backgroundEnabled()` is true (`require.main === module`). New register-time side effects must use that guard or they fire under `require('../../server')` in tests.

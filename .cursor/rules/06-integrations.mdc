@@ -1,0 +1,41 @@
+---
+description: OAuth, credential vault, platform keys, and third-party API wiring
+globs: services/credentials/**/*.js,services/**/oauth/**/*.js,services/google_*/**/*.js,services/meta_*/**/*.js,services/**/api.js,docs/integrations-reference.md
+alwaysApply: false
+---
+
+# Integrations
+
+Inventory: `docs/integrations-reference.md`. Optional keys must degrade (UI banner + empty/template), not take down the process.
+
+## Two key planes
+
+| Plane | Store | Who | Examples |
+|---|---|---|---|
+| Platform | `platform_api_keys` (encrypted, non-tenant) | InfoGenie-paid, admin-only | OpenAI, Anthropic, Gemini, Perplexity, DataForSEO, Firecrawl, Resend |
+| User | `services/credentials/vault.js` AES-256-GCM per `(user_id, platform)` | Tenant’s own accounts | Semrush, Shopify, Google Ads OAuth tokens |
+
+`hydrate()` overlays platform DB values onto `process.env` (DB wins). Then rebuild shared SDK clients. Blocklist platform keys from per-user Settings (`403`).
+
+Production **refuses to boot** without `CREDENTIAL_ENCRYPTION_KEY`. Never log vault plaintext, refresh tokens, or webhook secrets.
+
+## OAuth (keep callbacks stable)
+
+| Flow | Callback |
+|---|---|
+| Google Ads | `/api/integrations/google-ads/oauth/callback` |
+| Meta Ads | `/api/integrations/meta-ads/oauth/callback` |
+| Google Workspace (Gmail+Drive+Calendar, vault key `google_workspace`) | `/api/integrations/workspace/oauth/callback` |
+| Social login | Google / Facebook / Microsoft — buttons hide when env is missing |
+
+Redirect URIs are `${PUBLIC_URL}<callback>`. Do not change paths casually; they are allow-listed at the provider.
+
+## Wiring a new vendor
+
+1. Server module under `services/<vendor>/` with a `test`/`status` probe.
+2. Permission-matrix prefix.
+3. Tenant-scoped persistence if you store results.
+4. Timeouts, friendly error hints (401/scope/quota), and SSRF guards on inbound webhooks (see crisis-radar Slack pattern).
+5. Admin live-test quirks live in `.agents/memory/platform-key-tests.md` (read-only): some vendors return 200 on a bad key.
+
+Do not proxy arbitrary user URLs. Do not send user data to a new vendor without an existing product surface that already does so.
