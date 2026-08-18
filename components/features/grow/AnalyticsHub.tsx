@@ -102,6 +102,59 @@ function toast(msg: string) {
   (window as unknown as { showToast?: (m: string) => void }).showToast?.(msg);
 }
 
+const AH_STORAGE_PREFIX = "ig-analytics-hub:v1:";
+
+function ahStorageKey(domain?: string): string | null {
+  const dom = domain || lsDomain();
+  if (!dom) return null;
+  return `${AH_STORAGE_PREFIX}${dom}`;
+}
+
+interface PersistedAnalyticsHub {
+  connections: Record<string, boolean>;
+  data: AHData | null;
+}
+
+function loadPersistedHub(domain?: string): PersistedAnalyticsHub | null {
+  if (typeof window === "undefined") return null;
+  const key = ahStorageKey(domain);
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedAnalyticsHub;
+    if (!parsed || typeof parsed !== "object" || !parsed.connections) return null;
+    return {
+      connections: { gsc: !!parsed.connections.gsc, ga4: !!parsed.connections.ga4, ...parsed.connections },
+      data: parsed.data && typeof parsed.data === "object" ? parsed.data : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedHub(connections: Record<string, boolean>, data: AHData | null, domain?: string) {
+  if (typeof window === "undefined") return;
+  const key = ahStorageKey(domain);
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify({ connections, data }));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function clearPersistedHub(domain?: string) {
+  if (typeof window === "undefined") return;
+  const key = ahStorageKey(domain);
+  if (!key) return;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
+
 function ahSeed(): AHData {
   const dom = lsDomain() || "your-site.com";
   const sector = lsSector();
@@ -172,11 +225,23 @@ export default function AnalyticsHub() {
   const [hasDomain, setHasDomain] = useState(false);
   const [inFlight, setInFlight] = useState(false);
 
+  const seedAndPersist = useCallback((nextConnections: Record<string, boolean>) => {
+    const nextData = ahSeed();
+    setData(nextData);
+    savePersistedHub(nextConnections, nextData);
+    return nextData;
+  }, []);
+
   useEffect(() => {
     const domain = lsDomain();
     setHasDomain(!!domain);
-    // Domain present unlocks the hub shell — but does NOT claim real GSC/GA4 OAuth.
-    // Preview stays disconnected until the user explicitly unlocks seeded estimates.
+    if (!domain) return;
+    const saved = loadPersistedHub(domain);
+    if (!saved) return;
+    setConnections(saved.connections);
+    if (saved.connections.gsc && saved.connections.ga4) {
+      setData(saved.data ?? ahSeed());
+    }
   }, []);
 
   const connect = useCallback((svc: string) => {
@@ -185,21 +250,36 @@ export default function AnalyticsHub() {
       goToView(router, "home");
       return;
     }
+    if (inFlight) {
+      toast("⏳ Already loading preview — hang tight…");
+      return;
+    }
     setInFlight(true);
     window.setTimeout(() => {
+      let nextConnections: Record<string, boolean> = {};
       setConnections((prev) => {
-        const next = { ...prev, [svc]: true };
-        if (next.gsc && next.ga4) setData(ahSeed());
-        return next;
+        nextConnections = { ...prev, [svc]: true };
+        return nextConnections;
       });
+      const coreReady = nextConnections.gsc && nextConnections.ga4;
+      const nextData = coreReady ? ahSeed() : null;
+      if (coreReady) setData(nextData);
+      savePersistedHub(nextConnections, nextData);
       setInFlight(false);
       toast(`✓ Preview unlocked for ${svc.toUpperCase()} (seeded estimates — not live OAuth)`);
     }, 1100);
-  }, [router]);
+  }, [router, inFlight]);
 
   const disconnect = useCallback((svc: string) => {
-    setConnections((prev) => ({ ...prev, [svc]: false }));
-    if (svc === "gsc" || svc === "ga4") setData(null);
+    let nextConnections: Record<string, boolean> = {};
+    setConnections((prev) => {
+      nextConnections = { ...prev, [svc]: false };
+      return nextConnections;
+    });
+    const coreReady = nextConnections.gsc && nextConnections.ga4;
+    const nextData = coreReady ? ahSeed() : null;
+    setData(nextData);
+    savePersistedHub(nextConnections, nextData);
     const src = ANALYTICS_SOURCES.find((s) => s.key === svc);
     toast(`Disconnected ${src ? src.name : svc.toUpperCase()}`);
   }, []);
@@ -216,12 +296,16 @@ export default function AnalyticsHub() {
     }
     setInFlight(true);
     window.setTimeout(() => {
-      setConnections((prev) => ({ ...prev, gsc: true, ga4: true }));
-      setData(ahSeed());
+      let nextConnections: Record<string, boolean> = {};
+      setConnections((prev) => {
+        nextConnections = { ...prev, gsc: true, ga4: true };
+        return nextConnections;
+      });
+      seedAndPersist(nextConnections);
       setInFlight(false);
       toast("✓ Preview unlocked for GSC + GA4 (seeded from your last analysis — not live OAuth)");
     }, 1200);
-  }, [router, inFlight]);
+  }, [router, inFlight, seedAndPersist]);
 
   const refresh = useCallback(() => {
     if (!lsDomain()) {
@@ -239,23 +323,32 @@ export default function AnalyticsHub() {
       if (!connections.ga4) missing.push("Google Analytics 4");
       setInFlight(true);
       window.setTimeout(() => {
-        setConnections((prev) => ({ ...prev, gsc: true, ga4: true }));
-        setData(ahSeed());
+        let nextConnections: Record<string, boolean> = {};
+        setConnections((prev) => {
+          nextConnections = { ...prev, gsc: true, ga4: true };
+          return nextConnections;
+        });
+        seedAndPersist(nextConnections);
         setInFlight(false);
         toast(`✓ Preview unlocked for ${missing.length === 2 ? "GSC + GA4" : missing[0]} — seeded 28-day estimates`);
       }, 1400);
       return;
     }
-    setData(ahSeed());
+    const seeded = ahSeed();
+    setData(seeded);
+    savePersistedHub(connections, seeded);
     toast("📡 Refreshed preview estimates from your last analysis domain");
-  }, [router, connections, inFlight]);
+  }, [router, connections, inFlight, seedAndPersist]);
 
   const manage = () => {
-    setConnections((prev) => ({ ...prev, gsc: false, ga4: false }));
+    const next = { ...connections, gsc: false, ga4: false };
+    setConnections(next);
     setData(null);
+    clearPersistedHub();
   };
 
   const coreConnected = connections.gsc && connections.ga4;
+  const partialCoreUnlock = (connections.gsc || connections.ga4) && !coreConnected;
 
   const tagStyle = (tag: string): React.CSSProperties =>
     tag === "CORE"
@@ -321,6 +414,14 @@ export default function AnalyticsHub() {
           Preview uses <strong>seeded estimates from your last analysis domain</strong> so you can explore the hub with least setup.
           Real GSC / GA4 OAuth (account-truth) connects in Settings when credentials are available — InfoGenie never pretends preview data is live OAuth.
         </div>
+
+        {partialCoreUnlock ? (
+          <div style={{ marginBottom: 16, padding: "12px 14px", background: "#ECFDF5", border: "1px solid #6EE7B7", borderRadius: 10, fontSize: "0.8rem", color: "#065F46" }}>
+            <strong>1 of 2 core sources unlocked.</strong>{" "}
+            Unlock {!connections.gsc ? "Google Search Console" : "Google Analytics 4"} to open the full dashboard, or use{" "}
+            <strong>Unlock GSC + GA4 preview</strong> above.
+          </div>
+        ) : null}
 
         <div style={{ fontSize: "0.72rem", fontWeight: 800, letterSpacing: ".6px", color: "#0F766E", marginBottom: 10 }}>★ CORE — REQUIRED</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 22 }}>{core.map((s) => <ConnCard key={s.key} s={s} />)}</div>
