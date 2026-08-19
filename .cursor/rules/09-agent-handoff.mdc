@@ -1,0 +1,73 @@
+---
+description: Required handoff block and bounce protocol between InfoGenie agents
+alwaysApply: true
+---
+
+# Agent handoff
+
+Specialists do not silently keep a task that is outside `.cursor/agents/<role>.md` ownership. Lead re-routes. This rule does not change product behavior in `01`–`07`.
+
+## When to hand off
+
+Emit a block and **stop implementing** when any of these is true:
+
+- Paths you would edit are in another agent’s Owns list
+- You would need to reorder `server.js` middleware, edit vault crypto, change existing `ROUTE_GROUPS`, or flip `PERMISSION_ENFORCEMENT` / `MULTITENANT_ENFORCEMENT` (Security + Lead; weakening is refused)
+- The work is cross-domain and you are not Lead
+- You are QA and product code must change
+- You are Reviewer and the bar fails or QA did not run independently
+- You are Lead and the request is a single-domain implementation (delegate)
+
+Do not “just this one file” across a boundary. Do not implement the other specialist’s slice so the PR looks finished.
+
+Canonical example: **Frontend receives a database task** (new table, `schema.js`, `db.js`, migration). Frontend does not edit those files. It emits:
+
+```
+STATUS: needs-handoff
+TASK: add/migrate database table
+FILES CHANGED: none
+TESTS: none
+HANDOFF REQUIRED: yes
+TARGET AGENT: infogenie-lead
+REASON: database task; correct specialist is database (Security reviews tenant isolation)
+RISKS: tenant
+```
+
+Lead then delegates to `database`, not back to Frontend.
+
+## Required block
+
+Every stop, bounce, or specialist completion uses **exactly** these fields (values may be `none` / `yes` / `no` as appropriate):
+
+```
+STATUS: blocked | done | needs-handoff | needs-review
+TASK: <one-line summary>
+FILES CHANGED: <paths or none>
+TESTS: <commands run and result, or none>
+HANDOFF REQUIRED: yes | no
+TARGET AGENT: infogenie-lead | frontend | backend | database | integrations | ai-llm | security | qa | reviewer
+REASON: <why this agent cannot continue, or what the target must do>
+RISKS: <tenant, permission, secrets, honesty, boot, none>
+```
+
+- Out-of-ownership bounce: `HANDOFF REQUIRED: yes`, `TARGET AGENT: infogenie-lead`, name the correct specialist in `REASON`.
+- Slice complete, more domains remain: `TARGET AGENT: infogenie-lead` with the next specialist named.
+- Implementer complete for this change: `TARGET AGENT: qa` (independent pass).
+- QA green: `TARGET AGENT: reviewer`.
+- Reviewer green: Lead opens/updates the **PR** for the user. `HANDOFF REQUIRED: no` only after Reviewer passed. Agents do not merge. **You approve → main**.
+
+## Lead on receipt
+
+- Re-route to the named specialist with a scoped task (owned paths, prohibited paths, tests).
+- Do not send the work back to the bouncing agent to implement anyway.
+- Preserve `RISKS` in the next task brief.
+- Keep one feature branch (rule 10); do not open a second product direction in the same PR.
+
+## STATUS meanings
+
+| STATUS | Meaning |
+|---|---|
+| `done` | This agent’s owned work finished |
+| `needs-handoff` | Wrong owner or next specialist required |
+| `needs-review` | Implementation claimed done; Reviewer not yet passed |
+| `blocked` | Cannot proceed (missing env, user decision, failed tests QA cannot fix) |
