@@ -105,29 +105,29 @@ router.get('/history', _safeAsync(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'meeting-notes:history' });
   if (!tid) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return res.json({ ok:true, notes: [] });
-  try {
-    const r = await _db.getPool().query(
-      `SELECT id, contact, summary, source, created_at FROM meeting_notes_runs
-       WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30`,
-      [tid]
-    );
-    res.json({ ok:true, notes: r.rows });
-  } catch (e) { _err(res, 500, e.message); }
+  const r = await _db.getPool().query(
+    `SELECT id, contact, summary, source, created_at FROM meeting_notes_runs
+     WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30`,
+    [tid]
+  );
+  res.json({ ok:true, notes: r.rows });
 }));
 
 router.get('/:id', _safeAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'meeting-notes:get' });
   if (!tid) return _err(res, 400, 'no_tenant');
-  if (!_db.hasDb() || !id) return _err(res, 404, 'not found');
-  try {
-    const r = await _db.getPool().query(
-      `SELECT * FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
-      [id, tid]
-    );
-    if (!r.rows[0]) return _err(res, 404, 'not found');
-    res.json({ ok:true, note: r.rows[0] });
-  } catch (e) { _err(res, 500, e.message); }
+  if (!_db.hasDb() || !Number.isInteger(id) || id <= 0) return _err(res, 404, 'not found');
+  // Same column list as /history: transcript_excerpt, transcript_sha256,
+  // generated_by and tenant_id stay server-side — the panel never needs them and
+  // the excerpt holds raw call content.
+  const r = await _db.getPool().query(
+    `SELECT id, contact, summary, source, created_at FROM meeting_notes_runs
+     WHERE id=$1 AND tenant_id=$2`,
+    [id, tid]
+  );
+  if (!r.rows[0]) return _err(res, 404, 'not found');
+  res.json({ ok:true, note: r.rows[0] });
 }));
 
 module.exports = router;
