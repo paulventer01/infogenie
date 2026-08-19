@@ -6,8 +6,8 @@
 // BANT, action items, deal stage, risks, next step) against the existing Express
 // API (`POST /api/meeting-notes/summarize`) via lib/api.
 
-import { useState } from "react";
-import { apiPost } from "@/lib/api";
+import { useState, useCallback, useEffect } from "react";
+import { apiPost, apiGet } from "@/lib/api";
 
 interface BantItem {
   score?: number;
@@ -34,6 +34,39 @@ interface SummarizeResult {
   ok: boolean;
   error?: string;
   summary?: Summary;
+  id?: number | null;
+}
+
+interface ContactInfo {
+  name?: string;
+  company?: string;
+  role?: string;
+}
+
+interface HistoryItem {
+  id: number;
+  contact: ContactInfo | string | null;
+  summary: Summary | string | null;
+  source: string;
+  created_at: string;
+}
+
+interface HistoryResponse {
+  ok: boolean;
+  error?: string;
+  notes?: HistoryItem[];
+}
+
+interface NoteDetailResponse {
+  ok: boolean;
+  error?: string;
+  note?: {
+    id: number;
+    contact: ContactInfo | string | null;
+    summary: Summary | string | null;
+    source: string;
+    created_at: string;
+  };
 }
 
 type OutState =
@@ -41,6 +74,59 @@ type OutState =
   | { kind: "loading" }
   | { kind: "error"; text: string }
   | { kind: "result"; summary: Summary };
+
+const SYNTHETIC_SOURCES = new Set([
+  "template",
+  "fallback",
+  "demo",
+  "placeholder",
+  "mock",
+  "sample",
+  "serp-fallback",
+]);
+
+function isSyntheticSource(source?: string | null): boolean {
+  if (!source) return false;
+  return SYNTHETIC_SOURCES.has(source.toLowerCase());
+}
+
+function parseJsonField<T>(raw: unknown): T | null {
+  if (raw == null) return null;
+  if (typeof raw === "object") return raw as T;
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function parseSummary(raw: unknown): Summary | null {
+  const s = parseJsonField<Summary>(raw);
+  if (!s || typeof s !== "object") return null;
+  return s;
+}
+
+function contactLabel(contact: unknown): string {
+  const c = parseJsonField<ContactInfo>(contact);
+  if (!c) return "Untitled";
+  const n = String(c.name || "").trim();
+  const co = String(c.company || "").trim();
+  if (n && co) return `${n} · ${co}`;
+  if (n) return n;
+  if (co) return co;
+  return "Untitled";
+}
+
+function historyMeta(summary: unknown): string {
+  const s = parseSummary(summary);
+  if (!s) return "";
+  if (s.deal_stage) return s.deal_stage.replace(/_/g, " ");
+  if (s.overall_score != null) return `Score ${s.overall_score}`;
+  return "";
+}
 
 const stageColor: Record<string, string> = {
   discovery: "#6B7280",
@@ -70,6 +156,59 @@ export default function MeetingNotes() {
   const [company, setCompany] = useState("");
   const [role, setRole] = useState("");
   const [out, setOut] = useState<OutState>({ kind: "idle" });
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [loadingNoteId, setLoadingNoteId] = useState<number | null>(null);
+  const [resultSource, setResultSource] = useState<string | null>(null);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      const r = await apiGet<HistoryResponse>("/api/meeting-notes/history");
+      if (!r.ok) {
+        setHistory([]);
+        setHistoryError(r.error || "Could not load history");
+        setHistoryLoaded(true);
+        return;
+      }
+      setHistory(Array.isArray(r.notes) ? r.notes : []);
+      setHistoryError(null);
+      setHistoryLoaded(true);
+    } catch {
+      setHistory([]);
+      setHistoryLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  const loadNote = useCallback(async (item: HistoryItem) => {
+    setLoadingNoteId(item.id);
+    setOut({ kind: "idle" });
+    try {
+      let summary = parseSummary(item.summary);
+      let source = item.source;
+      if (!summary || !Object.keys(summary).length) {
+        const r = await apiGet<NoteDetailResponse>(`/api/meeting-notes/${item.id}`);
+        if (!r.ok || !r.note) {
+          setOut({ kind: "error", text: r.error || "Note not found" });
+          return;
+        }
+        summary = parseSummary(r.note.summary);
+        source = r.note.source;
+      }
+      if (!summary) {
+        setOut({ kind: "error", text: "Could not load summary" });
+        return;
+      }
+      setResultSource(source);
+      setOut({ kind: "result", summary });
+    } finally {
+      setLoadingNoteId(null);
+    }
+  }, []);
 
   async function run() {
     const t = transcript.trim();
@@ -87,7 +226,9 @@ export default function MeetingNotes() {
       setOut({ kind: "error", text: r.error || "unknown" });
       return;
     }
+    setResultSource("ai");
     setOut({ kind: "result", summary: r.summary });
+    await loadHistory();
   }
 
   return (
@@ -193,6 +334,112 @@ export default function MeetingNotes() {
         </button>
       </div>
 
+      {historyLoaded && (
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #E5E7EB",
+            borderRadius: 12,
+            padding: 18,
+            marginBottom: 18,
+          }}
+        >
+          <h3
+            style={{
+              margin: "0 0 10px",
+              color: "#0A1628",
+              fontFamily: "Sora,sans-serif",
+              fontSize: "0.96rem",
+            }}
+          >
+            🕐 Recent notes
+          </h3>
+          {historyError ? (
+            <div style={{ color: "#9CA3AF", fontSize: "0.78rem" }}>{historyError}</div>
+          ) : history.length === 0 ? (
+            <div style={{ color: "#9CA3AF", fontSize: "0.82rem" }}>
+              No saved notes yet — summarize a transcript above.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {history.map((h) => {
+                const meta = historyMeta(h.summary);
+                const busy = loadingNoteId === h.id;
+                return (
+                  <div
+                    key={h.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "8px 12px",
+                      background: "#F9FAFB",
+                      borderRadius: 8,
+                      border: "1px solid #E5E7EB",
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => !busy && loadNote(h)}
+                        onKeyDown={(e) => {
+                          if (!busy && (e.key === "Enter" || e.key === " ")) {
+                            e.preventDefault();
+                            loadNote(h);
+                          }
+                        }}
+                        style={{
+                          fontWeight: 600,
+                          fontSize: "0.85rem",
+                          color: busy ? "#9CA3AF" : "#0A1628",
+                          cursor: busy ? "default" : "pointer",
+                          textDecoration: busy ? "none" : "underline",
+                        }}
+                      >
+                        {contactLabel(h.contact)}
+                      </span>
+                      {meta ? (
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            fontSize: "0.74rem",
+                            color: "#6B7280",
+                            textTransform: "capitalize",
+                          }}
+                        >
+                          {meta}
+                        </span>
+                      ) : null}
+                      <span style={{ marginLeft: 8, fontSize: "0.74rem", color: "#9CA3AF" }}>
+                        {h.created_at ? new Date(h.created_at).toLocaleDateString() : ""}
+                      </span>
+                      {isSyntheticSource(h.source) ? (
+                        <span
+                          style={{
+                            marginLeft: 8,
+                            padding: "1px 6px",
+                            background: "#FEF3C7",
+                            color: "#92400E",
+                            borderRadius: 99,
+                            fontSize: "0.68rem",
+                          }}
+                        >
+                          illustrative
+                        </span>
+                      ) : null}
+                    </div>
+                    {busy ? (
+                      <span style={{ fontSize: "0.72rem", color: "#9CA3AF" }}>Loading…</span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       <div>
         {out.kind === "loading" && (
           <div style={{ color: "#9CA3AF" }}>⏳ Analyzing transcript…</div>
@@ -209,17 +456,35 @@ export default function MeetingNotes() {
             {out.text}
           </div>
         )}
-        {out.kind === "result" && <Result summary={out.summary} />}
+        {out.kind === "result" && (
+          <Result summary={out.summary} source={resultSource} />
+        )}
       </div>
     </div>
     </div>
   );
 }
 
-function Result({ summary: s }: { summary: Summary }) {
+function Result({ summary: s, source }: { summary: Summary; source?: string | null }) {
   const bant = s.bant || {};
+  const synthetic = isSyntheticSource(source);
   return (
     <>
+      {synthetic ? (
+        <div
+          style={{
+            background: "#FEF3C7",
+            border: "1px solid #FCD34D",
+            color: "#92400E",
+            padding: "10px 14px",
+            borderRadius: 10,
+            fontSize: "0.8rem",
+            marginBottom: 14,
+          }}
+        >
+          Scores below are illustrative — not from live AI analysis.
+        </div>
+      ) : null}
       <div
         style={{
           display: "grid",
@@ -237,8 +502,8 @@ function Result({ summary: s }: { summary: Summary }) {
             textAlign: "center",
           }}
         >
-          <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#1E1B4B" }}>
-            {s.overall_score || 0}
+          <div style={{ fontSize: "1.8rem", fontWeight: 800, color: synthetic ? "#9CA3AF" : "#1E1B4B" }}>
+            {synthetic ? "—" : s.overall_score || 0}
           </div>
           <div style={{ fontSize: "0.7rem", color: "#6B7280", fontWeight: 700 }}>
             DEAL SCORE / 100
@@ -394,12 +659,14 @@ function Result({ summary: s }: { summary: Summary }) {
                   style={{
                     fontSize: "1.4rem",
                     fontWeight: 800,
-                    color: "#1E1B4B",
+                    color: synthetic ? "#9CA3AF" : "#1E1B4B",
                     margin: "4px 0",
                   }}
                 >
-                  {b.score || 0}
-                  <span style={{ fontSize: "0.7rem", color: "#9CA3AF" }}>/10</span>
+                  {synthetic ? "—" : b.score || 0}
+                  {!synthetic ? (
+                    <span style={{ fontSize: "0.7rem", color: "#9CA3AF" }}>/10</span>
+                  ) : null}
                 </div>
                 <div style={{ fontSize: "0.72rem", color: "#6B7280", lineHeight: 1.4 }}>
                   {b.evidence || ""}
