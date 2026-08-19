@@ -4189,6 +4189,12 @@ app.use('/api/meeting-notes', _meetingRouter);
 BOOT_TASKS.push(async () => { try {
   if (_db.hasDb()) {
     await _meetingSchema.ensureMeetingNotesSchema();
+    if (typeof _meetingSchema.backfillMeetingNotesEncryption === 'function') {
+      await _meetingSchema.backfillMeetingNotesEncryption();
+    }
+    if (typeof _meetingRouter.sweepExpiredExcerpts === 'function') {
+      await _meetingRouter.sweepExpiredExcerpts().catch(() => {});
+    }
     console.log('[meeting-notes] schema ready');
   }
 } catch { console.warn('[meeting-notes] schema init failed'); }});

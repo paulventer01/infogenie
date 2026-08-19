@@ -12,10 +12,14 @@
 //   • the INSERT carries the resolved tenant_id;
 //   • /history and /:id only ever return rows of the requesting tenant;
 //   • /:id returns id/contact/summary/source/created_at only — the transcript
-//     excerpt, its sha256, generated_by and tenant_id never reach a client;
-//   • only a ~500-char excerpt + sha256 are persisted, never the full transcript;
+//     excerpt, its sha256, generated_by, tenant_id and cipher columns never
+//     reach a client;
+//   • plaintext transcript_excerpt is never persisted; sha256 still is;
 //   • a dummy/missing OpenAI key returns 400 without touching the network;
 //   • a database failure surfaces as a generic 500, not raw Postgres text.
+
+// Vault key must be in place before api.js → vault.js caches CREDENTIAL_ENCRYPTION_KEY.
+require('./helpers/env');
 
 process.env.MULTITENANT_ENFORCEMENT = 'on';
 process.env.AI_INTEGRATIONS_OPENAI_API_KEY = 'sk-test-meeting-notes';
@@ -27,6 +31,15 @@ const crypto = require('node:crypto');
 const https = require('https');
 const { EventEmitter } = require('events');
 const express = require('express');
+
+const PUBLIC_NOTE_KEYS = ['contact', 'created_at', 'id', 'source', 'summary'];
+const FORBIDDEN_NOTE_KEYS = [
+  'excerpt', 'transcript_excerpt', 'transcript_sha256', 'tenant_id', 'generated_by',
+  'iv', 'tag', 'ciphertext',
+  'excerpt_ciphertext', 'excerpt_iv', 'excerpt_tag',
+  'summary_ciphertext', 'summary_iv', 'summary_tag',
+  'excerpt_expires_at', 'transcript_purged_at',
+];
 
 // ── Stub the outbound OpenAI call ────────────────────────────────────────────
 // api.js calls require('https').request(opts, cb) at request time, so replacing
@@ -63,22 +76,63 @@ let seq = 0;
 const sqlLog = [];
 let failNextQuery = null; // set to an Error to simulate a Postgres failure
 
+function parseJsonMaybe(v) {
+  if (typeof v !== 'string') return v;
+  try { return JSON.parse(v); } catch { return v; }
+}
+
 function fakeQuery(sql, params = []) {
   const s = sql.replace(/\s+/g, ' ').trim();
   sqlLog.push(s);
   if (failNextQuery) { const e = failNextQuery; failNextQuery = null; throw e; }
 
   if (/^INSERT INTO meeting_notes_runs/.test(s)) {
-    const [tenantId, contact, summary, excerpt, sha, source, generatedBy] = params;
+    const colMatch = s.match(/^INSERT INTO meeting_notes_runs \(([^)]+)\)/);
+    const cols = (colMatch ? colMatch[1] : '').split(',').map(c => c.trim()).filter(Boolean);
     const row = {
-      id: ++seq, tenant_id: tenantId,
-      contact: JSON.parse(contact), summary: JSON.parse(summary),
-      transcript_excerpt: excerpt, transcript_sha256: sha,
-      source, generated_by: generatedBy,
+      id: ++seq,
       created_at: new Date(Date.now() + seq),
+      transcript_excerpt: null,
+      excerpt_ciphertext: null,
+      excerpt_iv: null,
+      excerpt_tag: null,
+      summary_ciphertext: null,
+      summary_iv: null,
+      summary_tag: null,
+      excerpt_expires_at: null,
+      transcript_purged_at: null,
     };
+    cols.forEach((c, i) => {
+      let v = params[i];
+      if (c === 'contact' || c === 'summary') v = parseJsonMaybe(v);
+      row[c] = v;
+    });
     rows.push(row);
     return { rows: [{ id: row.id }] };
+  }
+
+  if (/^UPDATE meeting_notes_runs/.test(s)) {
+    const tenantId = params[0];
+    const now = new Date();
+    let n = 0;
+    for (const row of rows) {
+      if (row.tenant_id !== tenantId) continue;
+      if (row.excerpt_expires_at == null) continue;
+      if (!(new Date(row.excerpt_expires_at) < now)) continue;
+      if (row.transcript_excerpt == null && row.excerpt_ciphertext == null) continue;
+      row.transcript_excerpt = null;
+      row.excerpt_ciphertext = null;
+      row.excerpt_iv = null;
+      row.excerpt_tag = null;
+      row.transcript_purged_at = row.transcript_purged_at || now;
+      n++;
+    }
+    return { rows: [], rowCount: n };
+  }
+
+  if (/SELECT DISTINCT tenant_id FROM meeting_notes_runs/.test(s)) {
+    const ids = [...new Set(rows.map(r => r.tenant_id))].sort((a, b) => a - b);
+    return { rows: ids.map(tenant_id => ({ tenant_id })) };
   }
 
   // Honour the statement's column list, so widening it back to SELECT * shows up
@@ -119,15 +173,30 @@ const db = require('../db');
 db.hasDb = () => true;
 db.getPool = () => ({ query: async (sql, params) => fakeQuery(sql, params) });
 
-const router = require('../services/meeting_notes/api');
+const intervalCalls = [];
+const origSetInterval = global.setInterval;
+global.setInterval = function (...args) {
+  intervalCalls.push(args[1]);
+  return origSetInterval.apply(this, args);
+};
+let router;
+try {
+  router = require('../services/meeting_notes/api');
+} finally {
+  global.setInterval = origSetInterval;
+}
+
+const vault = require('../services/credentials/vault');
 
 // ── Bare app: the router plus a stand-in for loadTenantContext ───────────────
 let currentTenant = null; // null → no req.tenant, as for an unscoped principal
+let sessionEmail = undefined;
 const app = express();
 app.use(express.json());
 app.use((req, res, next) => {
   if (currentTenant) req.tenant = { id: currentTenant };
   req.session = { userId: 42 };
+  if (sessionEmail !== undefined) req.session.email = sessionEmail;
   next();
 });
 app.use('/api/meeting-notes', router);
@@ -145,6 +214,20 @@ async function call(method, path, body) {
   return { status: res.status, json: await res.json() };
 }
 
+function stringifyValue(v) {
+  if (v == null) return '';
+  if (Buffer.isBuffer(v)) return v.toString('utf8');
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+function assertPublicNote(note) {
+  assert.deepStrictEqual(Object.keys(note).sort(), PUBLIC_NOTE_KEYS);
+  for (const k of FORBIDDEN_NOTE_KEYS) {
+    assert.ok(!(k in note), `${k} must not appear on the client note`);
+  }
+}
+
 // Trimmed to match the handler, which hashes the trimmed body value.
 const TRANSCRIPT =
   'Sales: thanks for the time today. Jane: we have budget approved for Q3 and I sign off on tooling. '.repeat(12).trim();
@@ -154,6 +237,7 @@ beforeEach(() => {
   sqlLog.length = 0; httpsCalls.length = 0;
   failNextQuery = null;
   currentTenant = 1;
+  sessionEmail = undefined;
   process.env.AI_INTEGRATIONS_OPENAI_API_KEY = 'sk-test-meeting-notes';
 });
 
@@ -177,6 +261,8 @@ test('the INSERT carries the resolved tenant_id', async () => {
   currentTenant = 5;
   const r = await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
   assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.json.ok, true);
+  assert.deepStrictEqual(r.json.summary, AI_SUMMARY, 'POST /summarize returns the live AI object, not a DB round-trip');
   assert.strictEqual(rows.length, 1);
   assert.strictEqual(rows[0].tenant_id, 5);
   assert.match(sqlLog[0], /^INSERT INTO meeting_notes_runs \(tenant_id,/);
@@ -227,11 +313,8 @@ test('GET /:id withholds transcript excerpt, hash, generated_by and tenant_id', 
   const created = await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
   const r = await call('GET', `/api/meeting-notes/${created.json.id}`);
   assert.strictEqual(r.status, 200);
-  assert.deepStrictEqual(
-    Object.keys(r.json.note).sort(),
-    ['contact', 'created_at', 'id', 'source', 'summary'],
-    'GET /:id must return only the fields the panel renders'
-  );
+  assertPublicNote(r.json.note);
+  assert.deepStrictEqual(r.json.note.summary, AI_SUMMARY, 'decrypt-on-read must restore the AI summary');
   const getSql = sqlLog.find(s => /WHERE id=\$1 AND tenant_id=\$2/.test(s));
   assert.ok(getSql, 'the by-id read must be tenant-filtered');
   assert.ok(!/SELECT \*/i.test(getSql), 'the by-id read must not SELECT *');
@@ -243,30 +326,67 @@ test('GET /:id withholds transcript excerpt, hash, generated_by and tenant_id', 
 test('history withholds the same columns', async () => {
   await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
   const r = await call('GET', '/api/meeting-notes/history');
-  assert.deepStrictEqual(
-    Object.keys(r.json.notes[0]).sort(),
-    ['contact', 'created_at', 'id', 'source', 'summary']
-  );
+  assertPublicNote(r.json.notes[0]);
+  assert.deepStrictEqual(r.json.notes[0].summary, AI_SUMMARY, 'history decrypt-on-read must restore the AI summary');
 });
 
-// ── Transcript retention ─────────────────────────────────────────────────────
+// ── Transcript retention / encrypt-on-write ──────────────────────────────────
 
-test('only a 500-char excerpt plus sha256 is persisted, never the full transcript', async () => {
+test('without a vault key, JSONB summary is persisted and transcript_excerpt stays null', async () => {
+  const origHasKey = vault.hasKey;
+  vault.hasKey = () => false;
+  try {
+    await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
+  } finally {
+    vault.hasKey = origHasKey;
+  }
+  const row = rows[0];
+  assert.ok(row.transcript_excerpt == null || row.transcript_excerpt === '', 'dev path must never write plaintext transcript_excerpt');
+  assert.deepStrictEqual(row.summary, AI_SUMMARY);
+  assert.ok(!row.excerpt_ciphertext, 'dev path must not invent excerpt ciphertext');
+  const hist = await call('GET', '/api/meeting-notes/history');
+  assert.deepStrictEqual(hist.json.notes[0].summary, AI_SUMMARY);
+});
+
+test('plaintext transcript_excerpt is not persisted; sha256 and excerpt ciphertext are', async () => {
   assert.ok(TRANSCRIPT.length > 500, 'fixture must exceed the excerpt cap');
+  assert.ok(vault.hasKey(), 'test env must provide a vault key so encrypt-on-write runs');
   await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
   const row = rows[0];
-  assert.strictEqual(row.transcript_excerpt.length, 500);
-  assert.strictEqual(row.transcript_excerpt, TRANSCRIPT.slice(0, 500));
+  assert.ok(row.transcript_excerpt == null || row.transcript_excerpt === '', 'transcript_excerpt must be null/empty');
   assert.strictEqual(
     row.transcript_sha256,
     crypto.createHash('sha256').update(TRANSCRIPT).digest('hex')
   );
+  assert.ok(row.excerpt_ciphertext, 'excerpt_ciphertext must be present when a vault key exists');
+  assert.ok(Buffer.isBuffer(row.excerpt_ciphertext) || row.excerpt_ciphertext instanceof Uint8Array);
   for (const [k, v] of Object.entries(row)) {
-    if (typeof v === 'string') {
-      assert.ok(v !== TRANSCRIPT, `column ${k} must not hold the full transcript`);
-      assert.ok(v.length <= 500, `column ${k} must not grow with transcript length`);
-    }
+    const s = stringifyValue(v);
+    assert.ok(s !== TRANSCRIPT, `column ${k} must not hold the full transcript`);
+    assert.ok(!s.includes(TRANSCRIPT), `column ${k} (stringified) must not hold the full transcript`);
   }
+});
+
+test('generated_by is the session userId even when session.email is set', async () => {
+  sessionEmail = 'owner@example.com';
+  await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
+  assert.strictEqual(rows[0].generated_by, '42');
+  assert.notStrictEqual(rows[0].generated_by, sessionEmail);
+});
+
+test('contact extra keys are stripped on persist', async () => {
+  await call('POST', '/api/meeting-notes/summarize', {
+    transcript: TRANSCRIPT,
+    contact: {
+      name: 'Jane Doe',
+      company: 'Acme',
+      role: 'VP Sales',
+      email: 'jane@example.com',
+      phone: '+1-555-0100',
+      notes: 'do not store this',
+    },
+  });
+  assert.deepStrictEqual(rows[0].contact, { name: 'Jane Doe', company: 'Acme', role: 'VP Sales' });
 });
 
 // ── Key gate ─────────────────────────────────────────────────────────────────
@@ -322,13 +442,14 @@ test('a persist failure still returns the summary and does not leak detail', asy
   const r = await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
   assert.strictEqual(r.status, 200);
   assert.strictEqual(r.json.id, null, 'no id when the row could not be written');
+  assert.deepStrictEqual(r.json.summary, AI_SUMMARY, 'POST summary is the live AI object, not from DB');
   assert.ok(!JSON.stringify(r.json).includes('duplicate key'));
 });
 
 test('a persist failure does not write raw Postgres detail to process logs', async () => {
   // Sibling of the /history log-hygiene case above. The INSERT parameters carry
-  // the transcript excerpt, so a pg error raised on that statement is the most
-  // likely place for call content to reach the process log.
+  // ciphertext and hashes, so a pg error raised on that statement must still
+  // not reach the process log.
   const secret = 'detail: Key (transcript_excerpt)=(Jane: we have budget approved)';
   const warnings = [];
   const originalWarn = console.warn;
@@ -349,4 +470,54 @@ test('a persist failure does not write raw Postgres detail to process logs', asy
     !warnings.join('\n').includes('transcript_excerpt'),
     'no column or row detail from the failed INSERT may reach the log'
   );
+});
+
+// ── Sweeper + require-time interval ──────────────────────────────────────────
+
+test('requiring api.js starts no sweeper interval when background is disabled', () => {
+  assert.strictEqual(require('../services/runtime_flags').backgroundEnabled(), false);
+  assert.deepStrictEqual(intervalCalls, [], 'setInterval must not run at require time in tests');
+});
+
+test('sweepExpiredExcerpts UPDATEs per tenant and never DELETEs', async () => {
+  const expired = new Date(Date.now() - 60 * 1000);
+  const future = new Date(Date.now() + 86400000);
+  rows.push({
+    id: ++seq, tenant_id: 1, transcript_excerpt: 'old-plain',
+    excerpt_ciphertext: Buffer.from('ct-a'), excerpt_iv: Buffer.from('iv'), excerpt_tag: Buffer.from('tg'),
+    excerpt_expires_at: expired, transcript_purged_at: null, created_at: new Date(),
+  });
+  rows.push({
+    id: ++seq, tenant_id: 2, transcript_excerpt: null,
+    excerpt_ciphertext: Buffer.from('ct-b'), excerpt_iv: Buffer.from('iv'), excerpt_tag: Buffer.from('tg'),
+    excerpt_expires_at: expired, transcript_purged_at: null, created_at: new Date(),
+  });
+  rows.push({
+    id: ++seq, tenant_id: 1, transcript_excerpt: null,
+    excerpt_ciphertext: Buffer.from('ct-keep'), excerpt_iv: Buffer.from('iv'), excerpt_tag: Buffer.from('tg'),
+    excerpt_expires_at: future, transcript_purged_at: null, created_at: new Date(),
+  });
+
+  const logs = [];
+  const origLog = console.log;
+  console.log = (...args) => logs.push(args.map(String).join(' '));
+  try {
+    await router.sweepExpiredExcerpts();
+  } finally {
+    console.log = origLog;
+  }
+
+  assert.ok(!sqlLog.some(s => /DELETE\s+FROM\s+meeting_notes_runs/i.test(s)), 'sweeper must never DELETE rows');
+  const updates = sqlLog.filter(s => /^UPDATE meeting_notes_runs/.test(s));
+  assert.ok(updates.length >= 2, 'sweeper must UPDATE per tenant, not one unscoped statement');
+  for (const u of updates) {
+    assert.match(u, /WHERE tenant_id=\$1/);
+    assert.ok(!/RETURNING/i.test(u), 'sweeper must not RETURNING excerpt text');
+  }
+  assert.strictEqual(rows[0].transcript_excerpt, null);
+  assert.strictEqual(rows[0].excerpt_ciphertext, null);
+  assert.ok(rows[0].transcript_purged_at);
+  assert.strictEqual(rows[1].excerpt_ciphertext, null);
+  assert.ok(Buffer.compare(Buffer.from('ct-keep'), rows[2].excerpt_ciphertext) === 0, 'unexpired excerpt ciphertext must remain');
+  assert.ok(logs.some(l => /^\[meeting-notes\] swept \d+ expired excerpts$/.test(l)));
 });
