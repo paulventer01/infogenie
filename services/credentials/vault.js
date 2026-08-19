@@ -100,21 +100,36 @@ function assertBootRequirements() {
   }
 }
 
-function _encrypt(plaintext) {
+// Optional AES-GCM Additional Authenticated Data. A caller that passes an `aad`
+// binds the ciphertext to that context (e.g. `meeting_notes_runs:tenant:7`), so
+// a row lifted into another tenant — or read without the context — fails the
+// GCM auth tag instead of decrypting. Omitting `aad` is byte-for-byte the same
+// as before AAD existed, which is what keeps existing platform_api_keys and
+// user_integrations rows readable.
+function _normAad(aad) {
+  if (aad === null || aad === undefined) return null;
+  return Buffer.isBuffer(aad) ? aad : Buffer.from(String(aad), 'utf8');
+}
+
+function _encrypt(plaintext, aad) {
   const key = _loadKey();
   if (!key) throw new Error('vault encryption key not configured');
   const iv = crypto.randomBytes(IV_LEN);
   const cipher = crypto.createCipheriv(ALG, key, iv);
+  const ad = _normAad(aad);
+  if (ad) cipher.setAAD(ad);
   const ct = Buffer.concat([cipher.update(Buffer.from(plaintext, 'utf8')), cipher.final()]);
   const tag = cipher.getAuthTag();
   return { ciphertext: ct, iv, tag };
 }
 
-function _decrypt(ciphertext, iv, tag) {
+function _decrypt(ciphertext, iv, tag, aad) {
   const key = _loadKey();
   if (!key) throw new Error('vault encryption key not configured');
   const decipher = crypto.createDecipheriv(ALG, key, iv);
   decipher.setAuthTag(tag);
+  const ad = _normAad(aad);
+  if (ad) decipher.setAAD(ad);
   const pt = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
   return pt.toString('utf8');
 }
@@ -393,8 +408,10 @@ module.exports = {
   assertBootRequirements,
   hasKey,
   // Low-level AES-256-GCM helpers (used by platform_keys.js for its own table).
-  // _encrypt(plaintext) -> { ciphertext:Buffer, iv:Buffer, tag:Buffer }
-  // _decrypt(ciphertext, iv, tag) -> plaintext string
+  // _encrypt(plaintext, aad?) -> { ciphertext:Buffer, iv:Buffer, tag:Buffer }
+  // _decrypt(ciphertext, iv, tag, aad?) -> plaintext string
+  // `aad` is optional Additional Authenticated Data (string or Buffer). It must
+  // match on decrypt; omit it on both sides for legacy/unbound payloads.
   encryptString: _encrypt,
   decryptString: _decrypt,
   hasCredentials,
