@@ -551,6 +551,204 @@ test('a full batch the scrubber leaves unchanged does not stall the boot task', 
   }
 });
 
+test('a poisoned tenant does not abort a second tenant, and each UPDATE stays tenant-scoped', { skip }, async () => {
+  // Blast radius of the predicate hazard. `_loadBackfillTenantIds` runs
+  // NEEDS_BACKFILL_SQL with no tenant filter and the batch SELECT throw is not
+  // caught by the per-row handler, so one tenant holding a non-object `contact`
+  // aborts the whole boot task and every other tenant keeps its plaintext.
+  // Lower tenant id is walked first, so the poisoned tenant is reached first.
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-blast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const mk = async (label, slug) => (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [label, slug]
+  )).rows[0].id;
+  const poisoned = await mk(`MN blast P ${suffix}`, `mn-blast-p-${suffix}`);
+  const clean = await mk(`MN blast C ${suffix}`, `mn-blast-c-${suffix}`);
+  assert.ok(poisoned < clean, 'poisoned tenant must sort first so it is walked first');
+
+  const CLEAN_EXCERPT = 'mn-blast-excerpt';
+  const CLEAN_SUMMARY = { note: 'mn-blast-summary' };
+  try {
+    // Every non-object JSONB shape `contact` can hold.
+    for (const raw of ['1', '["mn-blast-arr-pii"]', '"mn-blast-str-pii"', 'true', 'null']) {
+      await p.query(
+        `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+         VALUES ($1,$2::jsonb,'{}'::jsonb,'ai')`,
+        [poisoned, raw]
+      );
+    }
+
+    const cleanId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, transcript_excerpt, source, generated_by)
+       VALUES ($1,$2::jsonb,$3::jsonb,$4,'ai',$5) RETURNING id`,
+      [
+        clean,
+        JSON.stringify({ name: 'Grace', company: 'Compilers', role: 'Lead', email: 'mn-blast-clean@example.test' }),
+        JSON.stringify(CLEAN_SUMMARY),
+        CLEAN_EXCERPT,
+        'ops-mn-blast@example.test',
+      ]
+    )).rows[0].id;
+
+    const result = await backfillMeetingNotesEncryption();
+    assert.strictEqual(result.ok, true);
+    assert.ok(!result.skipped, 'backfill should not skip when db and key are present');
+
+    // The second tenant's plaintext must actually have been processed.
+    const cleanRow = (await p.query(
+      `SELECT tenant_id, contact, summary, transcript_excerpt, generated_by,
+              excerpt_ciphertext, excerpt_iv, excerpt_tag,
+              summary_ciphertext, summary_iv, summary_tag
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [cleanId, clean]
+    )).rows[0];
+    assert.ok(cleanRow, 'the second tenant row must survive the run');
+    assert.strictEqual(cleanRow.tenant_id, clean, 'backfill must not move a row between tenants');
+    assert.strictEqual(cleanRow.transcript_excerpt, null, 'poisoned tenant must not leave later plaintext behind');
+    assert.strictEqual(cleanRow.generated_by, null, 'email generated_by must still be scrubbed');
+    assert.deepStrictEqual(cleanRow.summary, {});
+    assert.deepStrictEqual(cleanRow.contact, { name: 'Grace', company: 'Compilers', role: 'Lead' });
+    assert.strictEqual(
+      vault.decryptString(cleanRow.excerpt_ciphertext, cleanRow.excerpt_iv, cleanRow.excerpt_tag, aadFor(clean)),
+      CLEAN_EXCERPT
+    );
+    assert.deepStrictEqual(
+      JSON.parse(vault.decryptString(cleanRow.summary_ciphertext, cleanRow.summary_iv, cleanRow.summary_tag, aadFor(clean))),
+      CLEAN_SUMMARY
+    );
+    // AAD binds the ciphertext to its own tenant, so the poisoned tenant cannot read it.
+    assert.throws(() => vault.decryptString(
+      cleanRow.excerpt_ciphertext, cleanRow.excerpt_iv, cleanRow.excerpt_tag, aadFor(poisoned)
+    ));
+    assert.throws(() => vault.decryptString(
+      cleanRow.summary_ciphertext, cleanRow.summary_iv, cleanRow.summary_tag, aadFor(poisoned)
+    ));
+
+    const poisonedRows = (await p.query(
+      `SELECT id, tenant_id, contact, summary, transcript_excerpt, generated_by,
+              excerpt_ciphertext, summary_ciphertext
+         FROM meeting_notes_runs WHERE tenant_id=$1 ORDER BY id`,
+      [poisoned]
+    )).rows;
+    assert.strictEqual(poisonedRows.length, 5, 'the tenant-scoped UPDATE must not delete or reassign rows');
+    for (const row of poisonedRows) {
+      assert.strictEqual(row.tenant_id, poisoned);
+      assert.ok(
+        row.contact === null || Object.keys(row.contact).length === 0,
+        'every non-object contact must end as {} or JSONB null'
+      );
+    }
+    // Nothing from the other tenant may have been written into these rows.
+    const poisonedBlob = JSON.stringify(poisonedRows);
+    for (const leak of ['mn-blast-arr-pii', 'mn-blast-str-pii', 'mn-blast-clean@example.test', CLEAN_EXCERPT, 'mn-blast-summary', 'Grace']) {
+      assert.ok(!poisonedBlob.includes(leak), `poisoned tenant rows must not hold ${leak}`);
+    }
+
+    const again = await backfillMeetingNotesEncryption();
+    assert.strictEqual(again.ok, true, 'a repeat pass must still terminate');
+  } finally {
+    const ids = [poisoned, clean].filter(Boolean);
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id = ANY($1)`, [ids]);
+    await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]);
+  }
+});
+
+test('backfill logs row counts only — never contact PII, excerpt text, or key material', { skip }, async () => {
+  // The backfill runs on the boot path, so its output lands in production logs.
+  // It handles transcript excerpts, summaries, contact email/phone and operator
+  // emails; none of that may be echoed, and neither may the vault key.
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN log ${suffix}`, `mn-log-${suffix}`]
+  )).rows[0].id;
+
+  const SECRETS = [
+    'mn-log-excerpt-body',
+    'mn-log-summary-body',
+    'mn-log-contact@example.test',
+    'mn-log-phone-5551212',
+    'mn-log-operator@example.test',
+    'mn-log-free-text-note',
+  ];
+  const captured = [];
+  const original = { log: console.log, warn: console.warn, error: console.error, info: console.info };
+  try {
+    await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, transcript_excerpt, source, generated_by)
+       VALUES ($1,$2::jsonb,$3::jsonb,$4,'ai',$5)`,
+      [
+        tenantId,
+        JSON.stringify({
+          name: 'Ada',
+          email: 'mn-log-contact@example.test',
+          phone: 'mn-log-phone-5551212',
+          notes: 'mn-log-free-text-note',
+        }),
+        JSON.stringify({ body: 'mn-log-summary-body' }),
+        'mn-log-excerpt-body',
+        'mn-log-operator@example.test',
+      ]
+    );
+    // A scalar contact so the "skipped a row" / non-object paths log too.
+    await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,'"mn-log-contact@example.test"'::jsonb,'{}'::jsonb,'ai')`,
+      [tenantId]
+    );
+
+    const grab = (...args) => { captured.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')); };
+    console.log = grab; console.warn = grab; console.error = grab; console.info = grab;
+    let result;
+    try {
+      result = await backfillMeetingNotesEncryption();
+    } finally {
+      console.log = original.log; console.warn = original.warn;
+      console.error = original.error; console.info = original.info;
+    }
+    assert.strictEqual(result.ok, true);
+    assert.ok(captured.length, 'the backfill must still emit its summary line');
+
+    const logged = captured.join('\n');
+    for (const secret of SECRETS) {
+      assert.ok(!logged.includes(secret), `backfill logs must not contain ${secret}`);
+    }
+    assert.ok(
+      !logged.includes(process.env.CREDENTIAL_ENCRYPTION_KEY),
+      'backfill logs must not contain the vault key'
+    );
+    // Ciphertext/IV/tag bytes must not be echoed either.
+    const row = (await p.query(
+      `SELECT excerpt_ciphertext, summary_ciphertext FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND excerpt_ciphertext IS NOT NULL`,
+      [tenantId]
+    )).rows[0];
+    assert.ok(row, 'the PII fixture must have encrypted');
+    for (const buf of [row.excerpt_ciphertext, row.summary_ciphertext]) {
+      if (!buf) continue;
+      assert.ok(!logged.includes(buf.toString('base64')), 'backfill logs must not contain ciphertext');
+      assert.ok(!logged.includes(buf.toString('hex')), 'backfill logs must not contain ciphertext');
+    }
+  } finally {
+    console.log = original.log; console.warn = original.warn;
+    console.error = original.error; console.info = original.info;
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+
 test('backfill drops nested contact fields, extra keys, and slices long strings', { skip }, async () => {
   assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
 
