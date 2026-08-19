@@ -10,7 +10,7 @@ const assert = require('node:assert');
 
 const db = require('../db');
 const vault = require('../services/credentials/vault');
-const { ensureMeetingNotesSchema, backfillMeetingNotesEncryption } = require('../services/meeting_notes/schema');
+const { ensureMeetingNotesSchema, backfillMeetingNotesEncryption, NEEDS_BACKFILL_SQL } = require('../services/meeting_notes/schema');
 const { ensureTenantSchema } = require('../services/tenants/schema');
 
 const HAS_DB = db.hasDb();
@@ -396,6 +396,89 @@ test('backfill collapses a scalar or array contact to {} without aborting the ru
     const again = await backfillMeetingNotesEncryption();
     assert.strictEqual(again.ok, true);
     assert.strictEqual(again.contacts, 0, 'a second pass must update 0 contacts');
+  } finally {
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+
+test('CASE contact predicate selects scalar/array JSONB without cannot-delete-from-scalar', { skip }, async () => {
+  // Postgres does not short-circuit OR. Evaluating `contact - ARRAY[...]` on a
+  // scalar/array JSONB raises "cannot delete from scalar" during the batch
+  // SELECT, which is outside the per-row catch. The production predicate uses
+  // sequential CASE so `- ARRAY` runs only after jsonb_typeof = 'object'.
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+  assert.ok(NEEDS_BACKFILL_SQL.includes('CASE'), 'contact arm must be CASE, not OR of jsonb operators');
+  assert.ok(
+    /WHEN jsonb_typeof\(contact\) IS DISTINCT FROM 'object' THEN true[\s\S]*WHEN \(contact - ARRAY/.test(NEEDS_BACKFILL_SQL),
+    '`- ARRAY` must appear only in a WHEN after typeof=object'
+  );
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-case-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN case ${suffix}`, `mn-case-${suffix}`]
+  )).rows[0].id;
+
+  try {
+    const scalarId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,'1'::jsonb,'{}'::jsonb,'ai') RETURNING id`,
+      [tenantId]
+    )).rows[0].id;
+    const arrayId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,'[1]'::jsonb,'{}'::jsonb,'ai') RETURNING id`,
+      [tenantId]
+    )).rows[0].id;
+    const stringId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,'"x"'::jsonb,'{}'::jsonb,'ai') RETURNING id`,
+      [tenantId]
+    )).rows[0].id;
+    const objectId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,$2::jsonb,'{}'::jsonb,'ai') RETURNING id`,
+      [tenantId, JSON.stringify({ name: 'Ada', company: 'Co', role: 'Op', email: 'ada@example.test' })]
+    )).rows[0].id;
+
+    const caseIds = (await p.query(
+      `SELECT id FROM meeting_notes_runs
+        WHERE tenant_id=$1
+          AND (${NEEDS_BACKFILL_SQL})
+        ORDER BY id`,
+      [tenantId]
+    )).rows.map((r) => r.id);
+    assert.deepStrictEqual(
+      caseIds.sort((a, b) => a - b),
+      [scalarId, arrayId, stringId, objectId].sort((a, b) => a - b),
+      'CASE predicate must select all four fixtures without raising'
+    );
+
+    let result;
+    try {
+      result = await backfillMeetingNotesEncryption();
+    } catch (err) {
+      assert.fail(`backfillMeetingNotesEncryption must not throw on scalar/array contact: ${err && err.message}`);
+    }
+    assert.ok(result && result.ok === true);
+    assert.ok(!result.skipped, 'backfill should not skip when db and key are present');
+    assert.ok(result.contacts >= 4, 'scalar, array, string, and extra-key object contacts must scrub');
+
+    const rows = (await p.query(
+      `SELECT id, contact FROM meeting_notes_runs WHERE tenant_id=$1`,
+      [tenantId]
+    )).rows;
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    assert.deepStrictEqual(byId.get(scalarId).contact, {}, 'JSONB number contact must collapse to {}');
+    assert.deepStrictEqual(byId.get(arrayId).contact, {}, 'JSONB array contact must collapse to {}');
+    assert.deepStrictEqual(byId.get(stringId).contact, {}, 'JSONB string contact must collapse to {}');
+    assert.deepStrictEqual(byId.get(objectId).contact, { name: 'Ada', company: 'Co', role: 'Op' });
+    assert.ok(!Object.prototype.hasOwnProperty.call(byId.get(objectId).contact, 'email'));
   } finally {
     await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
     await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);

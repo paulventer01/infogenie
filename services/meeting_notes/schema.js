@@ -90,19 +90,28 @@ async function ensureMeetingNotesSchema() {
 const BACKFILL_BATCH = 100;
 const CONTACT_KEYS = ['name', 'company', 'role'];
 const CONTACT_MAX = 200;
+// Contact arm is CASE, not OR. Postgres does not guarantee OR short-circuit;
+// `contact - ARRAY[...]` on scalar/array JSONB raises "cannot delete from scalar"
+// during `_loadBackfillTenantIds` / batch SELECT (outside the per-row catch)
+// and aborts the whole boot backfill. CASE WHEN is sequential, so `- ARRAY`
+// runs only after jsonb_typeof = 'object' has been established.
 const NEEDS_BACKFILL_SQL = `
   (transcript_excerpt IS NOT NULL AND excerpt_ciphertext IS NULL)
   OR (summary IS NOT NULL AND summary <> '{}'::jsonb AND summary_ciphertext IS NULL)
   OR (generated_by IS NOT NULL AND generated_by LIKE '%@%')
   OR (
-    jsonb_typeof(contact) IS DISTINCT FROM 'object'
-    OR (contact - ARRAY['name','company','role']::text[]) <> '{}'::jsonb
-    OR (jsonb_typeof(contact->'name') IS NOT NULL AND jsonb_typeof(contact->'name') IS DISTINCT FROM 'string')
-    OR (jsonb_typeof(contact->'company') IS NOT NULL AND jsonb_typeof(contact->'company') IS DISTINCT FROM 'string')
-    OR (jsonb_typeof(contact->'role') IS NOT NULL AND jsonb_typeof(contact->'role') IS DISTINCT FROM 'string')
-    OR length(COALESCE(contact->>'name', '')) > 200
-    OR length(COALESCE(contact->>'company', '')) > 200
-    OR length(COALESCE(contact->>'role', '')) > 200
+    CASE
+      WHEN contact IS NULL THEN false
+      WHEN jsonb_typeof(contact) IS DISTINCT FROM 'object' THEN true
+      WHEN (contact - ARRAY['name','company','role']::text[]) <> '{}'::jsonb THEN true
+      WHEN contact ? 'name' AND jsonb_typeof(contact->'name') IS DISTINCT FROM 'string' THEN true
+      WHEN contact ? 'company' AND jsonb_typeof(contact->'company') IS DISTINCT FROM 'string' THEN true
+      WHEN contact ? 'role' AND jsonb_typeof(contact->'role') IS DISTINCT FROM 'string' THEN true
+      WHEN length(COALESCE(contact->>'name','')) > 200 THEN true
+      WHEN length(COALESCE(contact->>'company','')) > 200 THEN true
+      WHEN length(COALESCE(contact->>'role','')) > 200 THEN true
+      ELSE false
+    END
   )
 `;
 
@@ -297,4 +306,4 @@ async function backfillMeetingNotesEncryption() {
   return { ok: true, excerpts: excerptCount, summaries: summaryCount, generatedBy: scrubCount, contacts: contactCount };
 }
 
-module.exports = { ensureMeetingNotesSchema, backfillMeetingNotesEncryption };
+module.exports = { ensureMeetingNotesSchema, backfillMeetingNotesEncryption, NEEDS_BACKFILL_SQL };
