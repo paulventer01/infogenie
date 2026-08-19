@@ -74,6 +74,7 @@ const PLAIN_TABLES = [
   // Manage tier
   'marketing_projects',
   'crm_sync_logs',
+  'meeting_notes_runs',
   // Creator Studio / content
   'carousels', 'ab_designer_runs', 'voiceover_runs', 'tiktok_downloads',
   'content_calendar_runs', 'schema_blocks',
