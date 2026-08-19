@@ -89,6 +89,10 @@ function fakeQuery(sql, params = []) {
   if (/^INSERT INTO meeting_notes_runs/.test(s)) {
     const colMatch = s.match(/^INSERT INTO meeting_notes_runs \(([^)]+)\)/);
     const cols = (colMatch ? colMatch[1] : '').split(',').map(c => c.trim()).filter(Boolean);
+    const valuesMatch = s.match(/VALUES \((.+)\) RETURNING/i) || s.match(/VALUES \((.+)\)\s*$/i);
+    const placeholders = valuesMatch
+      ? valuesMatch[1].split(',').map(x => x.trim())
+      : cols.map((_, i) => `$${i + 1}`);
     const row = {
       id: ++seq,
       created_at: new Date(Date.now() + seq),
@@ -103,7 +107,10 @@ function fakeQuery(sql, params = []) {
       transcript_purged_at: null,
     };
     cols.forEach((c, i) => {
-      let v = params[i];
+      const ph = placeholders[i] || '';
+      const m = /^\$(\d+)$/.exec(ph);
+      if (!m) return;
+      let v = params[Number(m[1]) - 1];
       if (c === 'contact' || c === 'summary') v = parseJsonMaybe(v);
       row[c] = v;
     });
