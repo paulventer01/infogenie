@@ -57,6 +57,8 @@ const ROUTE_GROUPS = [
   // ── Dashboard / analytics / reports ───────────────────────────────────────
   { prefix: '/api/web-analytics',             view: 'analytics.view', write: 'analytics.view' },
   { prefix: '/api/company-overview',          view: 'dashboard.view' },
+  // Analysis snapshot restore — every logged-in role can restore their own workspace.
+  { prefix: '/api/diag-capture',              view: 'dashboard.view', write: 'dashboard.view' },
   { prefix: '/api/attribution',               view: 'analytics.view' },
   { prefix: '/api/web-vitals',                view: 'analytics.view' },
   { prefix: '/api/heatmaps',                  view: 'analytics.view' },

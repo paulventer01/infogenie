@@ -346,16 +346,12 @@ async function _tkvMutate(base, tid, fallback, mutator) {
   return run;
 }
 
-// ── Dashboard-diag capture/replay ────────────────────────────────────────────
-// Save the full analysisData blob to disk so we can launch the dashboard
-// directly from cached data (zero external API calls). Used by the temporary
-// "Dashboard Diag" nav link to debug the post-render freeze quickly.
+// ── Dashboard analysis snapshot restore ──────────────────────────────────────
 // Captures are stored per-workspace in kv: each capture at
 // `diag_capture:t<tid>:<slug>` and a latest pointer at `diag_capture_latest:t<tid>`.
+// Routes mount after the session auth gate + permission matrix (not public).
 const _DIAG_CAP_PREFIX = 'diag_capture:';
 const _DIAG_LATEST_KEY = 'diag_capture_latest';
-// Diagnostics capture routes → services/diag_capture/routes.js
-require('./services/diag_capture/routes')(app, { _DIAG_CAP_PREFIX, _DIAG_LATEST_KEY, _tkvCtx, _tkvRead, _tkvScope, _tkvWrite, express });
 
 // ── Standalone login page ────────────────────────────────────────────────────
 // Self-contained page (its own markup/styles/script — no app.js/data.js/public/js).
@@ -452,7 +448,6 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/health$/,                 // liveness probe
   /^\/api\/ready$/,                  // readiness probe
   /^\/api\/diag-beacon$/,            // client breadcrumb mirror — fire-and-forget
-  /^\/api\/diag-capture/,            // dashboard-diag capture/replay (temp tool)
   /^\/api\/drips\/webhook\/resend$/, // Svix-signed inbound webhook
   /^\/api\/notify\/send$/,           // already gated by INFOGENIE_NOTIFY_SECRET
   /^\/api\/status$/,                 // global status
@@ -614,6 +609,11 @@ app.use('/api/admin', require('./services/admin/api'));
 // estimates (e.g. data.js KPIs/trend). Changing the mode stays admin-only.
 // Data-mode effective routes → services/data_mode/routes.js
 require('./services/data_mode/routes')(app, {});
+
+// Analysis snapshot restore — session-authenticated, tenant-scoped, dashboard.view.
+// Mounted after the auth gate + permission matrix and BEFORE the owner gate so
+// every logged-in role can restore their own workspace (not owner-only).
+require('./services/diag_capture/routes')(app, { _DIAG_CAP_PREFIX, _DIAG_LATEST_KEY, _tkvCtx, _tkvRead, _tkvScope, _tkvWrite, express });
 
 // ── Owner-only gate for legacy global data ──────────────────────────────────
 // Until per-row user_id migration ships, all existing global tables/files are

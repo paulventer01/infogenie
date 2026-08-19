@@ -31,10 +31,12 @@ app.post('/api/diag-capture', express.json({ limit: '4mb' }), async (req, res) =
     const payload = { capturedAt: new Date().toISOString(), domain: slug, ...body };
     await _db.kvSet(`${_DIAG_CAP_PREFIX}t${tid}:${slug}`, payload);
     await _tkvWrite(_DIAG_LATEST_KEY, tid, { domain: slug, at: payload.capturedAt });
-    console.log(`[diag-capture] saved ${slug} (${(JSON.stringify(payload).length/1024).toFixed(1)}kb)`);
-    res.json({ ok: true, domain: slug, bytes: JSON.stringify(payload).length });
+    const bytes = JSON.stringify(payload).length;
+    const kb = (bytes / 1024).toFixed(1);
+    console.log(`[diag-capture] saved ${slug} (${kb}kb)`);
+    res.json({ ok: true, domain: slug, bytes });
   } catch (e) {
-    console.warn('[diag-capture] save failed:', e && e.message || e);
+    console.warn('[diag-capture] save failed:', e && e.message);
     res.status(500).json({ ok: false, error: String(e && e.message || e) });
   }
 });
@@ -59,7 +61,7 @@ app.get('/api/diag-capture/latest', async (req, res) => {
     const ptr = await _tkvRead(_DIAG_LATEST_KEY, tid, null);
     if (!ptr || !ptr.domain) return res.status(404).json({ ok: false, error: 'no captures yet — run Analyse Now once to seed' });
     const data = await _db.kvGet(`${_DIAG_CAP_PREFIX}t${tid}:${ptr.domain}`, undefined);
-    if (data === undefined) return res.status(404).json({ ok: false, error: 'not found' });
+    if (data == null) return res.status(404).json({ ok: false, error: 'not found' });
     res.json({ ok: true, ...data });
   } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
 });
@@ -70,7 +72,7 @@ app.get('/api/diag-capture/:domain', async (req, res) => {
     if (tid == null) return res.status(404).json({ ok: false, error: 'not found' });
     const slug = _safeDomainSlug(req.params.domain);
     const data = await _db.kvGet(`${_DIAG_CAP_PREFIX}t${tid}:${slug}`, undefined);
-    if (data === undefined) return res.status(404).json({ ok: false, error: 'not found' });
+    if (data == null) return res.status(404).json({ ok: false, error: 'not found' });
     res.json({ ok: true, ...data });
   } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
 });
