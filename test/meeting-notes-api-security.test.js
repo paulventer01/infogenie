@@ -299,6 +299,24 @@ test('a database failure does not leak Postgres detail to the client', async () 
   assert.ok(!JSON.stringify(r.json).includes(secret));
 });
 
+test('a database failure does not write raw Postgres detail to process logs', async () => {
+  const secret = 'qa-sensitive-row-detail-from-postgres';
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.map(String).join(' '));
+  try {
+    failNextQuery = new Error(secret);
+    const r = await call('GET', '/api/meeting-notes/history');
+    assert.strictEqual(r.status, 500);
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.ok(
+    !warnings.join('\n').includes(secret),
+    'raw Postgres errors may contain row details and must not be written to logs'
+  );
+});
+
 test('a persist failure still returns the summary and does not leak detail', async () => {
   failNextQuery = new Error('duplicate key value violates unique constraint');
   const r = await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
