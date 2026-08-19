@@ -84,9 +84,16 @@ in `services/meeting_notes/schema.js` runs as a boot task, walks each tenant in
 batches, and rewrites `contact` to the `{name, company, role}` whitelist — string
 values only, each capped at 200 characters — so `email`, `phone` and free-text keys
 written before the whitelist existed are removed from the row, not merely hidden.
+Values under an allowed key that are not strings (a nested object, say) or that run
+past the cap are rewritten too, and an array or scalar `contact` collapses to `{}`.
 The API narrows `contact` again on read (`_whitelistedContact` in `api.js`), so a row
 the backfill has not reached yet still cannot surface `email` / `phone` through
 `/api/meeting-notes/history` or the detail route.
+
+Because it runs on the boot path the sweep must not hang: malformed `summary` JSONB
+(an array or a scalar) is encrypted rather than passed over, and any selected row the scrubber
+would leave unchanged is excluded from the rest of that tenant's batch loop instead
+of being re-selected forever.
 
 Accepted residuals:
 
@@ -94,12 +101,9 @@ Accepted residuals:
   JSONB. Production refuses to boot without the key, so this is dev-only.
 - `transcript_sha256` is retained after the excerpt is purged (integrity /
   dedupe). It is a plain SHA-256, not a keyed HMAC.
-- The contact backfill is the control of record for legacy rows at rest, so it
-  must not stall: every row the backfill predicate selects has to be rewritten or
-  explicitly skipped, or the per-tenant batch loop re-selects it and boot never
-  finishes the sweep. Hardening the predicate against non-string and over-length
-  values under the allowed keys, and against malformed (non-object) `summary`
-  JSONB, is in-flight **Database** work — not claimed as landed here.
+- A JSONB `null` `contact` stays `null` at rest instead of being rewritten to `{}`.
+  It holds no PII and the API still presents `{}`, so the backfill skips the row
+  rather than spending a write on it.
 
 ## Related existing systems
 
