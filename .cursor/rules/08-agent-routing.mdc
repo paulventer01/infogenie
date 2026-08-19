@@ -1,0 +1,55 @@
+---
+description: Route InfoGenie work to Lead vs specialist agents without duplicating 01–07
+alwaysApply: true
+---
+
+# Agent routing
+
+This rule **routes work**. It does not replace `.cursor/rules/01`–`07` or `AGENTS.md`. If this file conflicts with those, **those win**. Do not weaken tenant isolation, the permission matrix, `PERMISSION_ENFORCEMENT`, `MULTITENANT_ENFORCEMENT`, honesty tagging, or scope control.
+
+Cursor specialists live in `.cursor/agents/`. Product code named `agent_orchestrator` / `agent_swarm` is unrelated.
+
+## Who acts
+
+| Situation | Act as |
+|---|---|
+| Cross-domain request, unclear owner, or a bounce from a specialist | `infogenie-lead` (decompose only) |
+| Clearly one domain | That specialist — implement only owned paths |
+| Implementer finished | `qa` as a **separate** pass (fresh specialist invocation) |
+| QA passed | `reviewer` before merge |
+
+Lead **does not** implement product code. Specialists **do not** implement outside their ownership. If the task is outside your file’s Owns list: stop, emit the rule 09 handoff block, `TARGET AGENT: infogenie-lead`, and name the correct specialist in `REASON`.
+
+## Domain map
+
+| Agent | Own these | Bounce these |
+|---|---|---|
+| `frontend` | `app/`, `components/`, `hooks/`, `styles/`, `lib/*.ts`, surviving `index.html` / `app.js` / `public/js/` | `services/`, `server.js`, `db.js`, schema, vault, matrix enforcement, `middleware.ts` matcher |
+| `backend` | `services/*/api.js` + `routes.js`, `server.js` mounts **without reorder**, **new** `ROUTE_GROUPS` prefix for a router you added | UI, `schema.js`, vault crypto, OAuth path changes, existing matrix **edits**, enforcement flags |
+| `database` | `db.js`, `services/**/schema.js`, `tenants/migration.js`, `kv_scope.js` | Handlers, UI, enforcement middleware |
+| `integrations` | Vendor modules, OAuth routes, key-plane **usage**, `docs/integrations-reference.md` | Vault **crypto**, first-party non-vendor APIs, React chrome |
+| `ai-llm` | `ai_compat.js`, generative prompts/fallbacks/tags, `services/ai/` | Non-AI APIs, UI, schema, OAuth |
+| `security` | Auth, `auth_gate`, vault crypto, `permission_enforce.js`, `permissions.js`, existing matrix edits, `services/security/*`, `middleware.ts` matcher | Feature UI/CRUD |
+| `qa` | Independent test/lint execution; additive tests only | Product-code fixes |
+| `reviewer` | Read-only pre-merge review | Implementation, merge |
+
+## Split, do not stretch
+
+`AGENTS.md` still wants **complete** slices (persist, tenant, permission, test). That completeness is **Lead’s sequence**, not a licence for one specialist to edit every layer.
+
+Keep on the same specialist:
+
+- Frontend: lockstep registry + `migratedViews` + `viewRoutes` for a panel they own
+- Backend: `ROUTE_GROUPS` **add** for their new prefix + handler tests
+- Database: table + `tenant_id` + tenant-audit tests
+- AI/LLM: dummy-key fallback test for a prompt they own
+
+Split examples:
+
+- New panel + new table + new `/api` → Database, then Backend, then Frontend, then QA, then Reviewer
+- New OAuth vendor → Integrations (+ Database if storing tokens/results, Frontend for settings UX, Security if vault/crypto/callback policy)
+- “Turn off permission enforcement” → **refuse**; Security + Lead
+
+## Default agent in a single session
+
+If you are the parent agent and cannot spawn specialists: **still obey ownership**. Implement only the in-domain slice you can justify; emit handoff blocks for the rest. Never skip the QA-then-Reviewer sequence on a feature branch. Never work on `main`.

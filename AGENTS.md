@@ -59,7 +59,15 @@ Default test gate for agent work: `npm run test:core`. Full `npm test` can hang 
 6. **Never log or commit secrets.** Keys live in the credential vault or `platform_api_keys`, not in source.
 7. **Do not modify `.agents/`** unless the user explicitly asks.
 
-Scoped Cursor rules live in `.cursor/rules/` (`01` core, `02` scope, `03` Next.js, `04` AI, `05` database, `06` integrations, `07` testing).
+Scoped Cursor rules live in `.cursor/rules/` (`01` core, `02` scope, `03` Next.js, `04` AI, `05` database, `06` integrations, `07` testing, `08` agent routing, `09` handoff, `10` PR workflow).
+
+## Multi-agent development
+
+Cursor specialists live in `.cursor/agents/` (Lead, Frontend, Backend, Database, Integrations, AI/LLM, Security, QA, Reviewer). This is **development routing**, not the product `services/agent_orchestrator` / `services/agent_swarm` features.
+
+Lead decomposes and delegates. Specialists implement only their owned files and bounce anything else to Lead with the correct specialist named (handoff block in `.cursor/rules/09-agent-handoff.mdc`). Cross-domain work is split. QA is independent of the implementer. Reviewer runs before merge. Agents do not commit to `main` (`.cursor/rules/10-agent-pr-workflow.mdc`).
+
+Do not weaken `.cursor/rules/01`–`07`, tenant isolation, the permission matrix, or `PERMISSION_ENFORCEMENT` in order to make routing easier.
 
 ## Cursor Cloud
 
@@ -85,4 +93,4 @@ Browse `http://localhost:5000`. First signup becomes owner and is auto-logged-in
 
 ## Task shape
 
-When scoping work, fold obvious derivatives into the same change: persistence, tenant scoping, permission-matrix entry, failure/empty states, and a verification test. Split only when parallel agents would collide or the change is too large to land safely. Name anything deliberately deferred.
+When scoping work, fold obvious **in-domain** derivatives into the same specialist slice: persistence (Database), tenant-scoped handlers + new `ROUTE_GROUPS` prefix (Backend), lockstep registry (Frontend), failure/empty states, and a verification test. Cross-domain work is split by the Lead agent rather than implemented by one specialist. Name anything deliberately deferred.
