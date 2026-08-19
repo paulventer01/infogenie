@@ -4124,6 +4124,7 @@ const _aiProvidersSchema    = require('./services/ai_providers/schema');
 const _nlSchema = require('./services/newsletter_tracker/schema');
 const _nlRouter = require('./services/newsletter_tracker/api');
 const _meetingRouter = require('./services/meeting_notes/api');
+const _meetingSchema = require('./services/meeting_notes/schema');
 const _headlineRouter = require('./services/headline_tester/api');
 // ── Brand Intelligence Suite (10 features) ──────────────────────────────────
 const _reputationScoreRouter  = require('./services/reputation_score/api');
@@ -4185,6 +4186,12 @@ app.use('/api/question-miner',  _questionMinerRouter);
 app.use('/api/ai-providers',    _aiProvidersRouter);
 app.use('/api/newsletter-tracker', _nlRouter);
 app.use('/api/meeting-notes', _meetingRouter);
+BOOT_TASKS.push(async () => { try {
+  if (_db.hasDb()) {
+    await _meetingSchema.ensureMeetingNotesSchema();
+    console.log('[meeting-notes] schema ready');
+  }
+} catch (e) { console.warn('[meeting-notes] schema init failed:', e.message); }});
 app.use('/api/headline-tester', _headlineRouter);
 // Cloudflare status routes → services/cloudflare_status/routes.js
 require('./services/cloudflare_status/routes')(app, { BOOT_TASKS, _abdSchema, _adSwipeSchema, _aiProvidersSchema, _alertRouteSchema, _battleSchema, _bfSchema, _calendarSchema, _coldEmailSchema, _crisisDetector, _crisisSchema, _db, _digestRouter, _digestSchema, _heatmapsSchema, _kwExplorerSchema, _leadFinderSchema, _lpSchema, _nlSchema, _optimizerBandit, _optimizerCreative, _optimizerIngest, _optimizerRules, _optimizerSchema, _podcastSchema, _pwSchema, _redditSchema, _searchIntelSchema, _serpTrackerSchema, _sovSchema, _vocSchema });

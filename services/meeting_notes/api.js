@@ -1,10 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const _https = require('https');
+const _crypto = require('node:crypto');
+const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[meeting-notes]', e.stack || e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
 function _hasOpenAI() { const k = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY; return k && !/^_DUMMY/i.test(k); }
+
+function _generatedBy(req) {
+  if (!req.session) return null;
+  if (req.session.userId) return String(req.session.userId);
+  if (req.session.email) return String(req.session.email);
+  return null;
+}
 
 async function _summarize(transcript, contactInfo) {
   if (!_hasOpenAI()) return null;
@@ -62,6 +72,9 @@ Reply strict JSON only:
 router.get('/test', (req, res) => res.json({ ok:true, openai: _hasOpenAI() }));
 
 router.post('/summarize', _safeAsync(async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'meeting-notes:summarize' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+
   const transcript = String(req.body?.transcript || '').trim();
   const contact = req.body?.contact || null;
   if (!transcript) return _err(res, 400, 'transcript required');
@@ -69,7 +82,52 @@ router.post('/summarize', _safeAsync(async (req, res) => {
   if (!_hasOpenAI()) return _err(res, 400, 'OPENAI_API_KEY required');
   const result = await _summarize(transcript, contact);
   if (!result) return _err(res, 502, 'AI summarization failed — try again');
-  res.json({ ok:true, summary: result });
+
+  let noteId = null;
+  if (_db.hasDb()) {
+    try {
+      const contactObj = contact && typeof contact === 'object' ? contact : {};
+      const excerpt = transcript.slice(0, 500);
+      const sha = _crypto.createHash('sha256').update(transcript).digest('hex');
+      const r = await _db.getPool().query(
+        `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, transcript_excerpt, transcript_sha256, source, generated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [tid, JSON.stringify(contactObj), JSON.stringify(result), excerpt, sha, 'ai', _generatedBy(req)]
+      );
+      noteId = r.rows[0].id;
+    } catch (e) { console.warn('[meeting-notes] persist failed:', e.message); }
+  }
+
+  res.json({ ok:true, summary: result, id: noteId });
+}));
+
+router.get('/history', _safeAsync(async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'meeting-notes:history' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  if (!_db.hasDb()) return res.json({ ok:true, notes: [] });
+  try {
+    const r = await _db.getPool().query(
+      `SELECT id, contact, summary, source, created_at FROM meeting_notes_runs
+       WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30`,
+      [tid]
+    );
+    res.json({ ok:true, notes: r.rows });
+  } catch (e) { _err(res, 500, e.message); }
+}));
+
+router.get('/:id', _safeAsync(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'meeting-notes:get' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  if (!_db.hasDb() || !id) return _err(res, 404, 'not found');
+  try {
+    const r = await _db.getPool().query(
+      `SELECT * FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [id, tid]
+    );
+    if (!r.rows[0]) return _err(res, 404, 'not found');
+    res.json({ ok:true, note: r.rows[0] });
+  } catch (e) { _err(res, 500, e.message); }
 }));
 
 module.exports = router;
