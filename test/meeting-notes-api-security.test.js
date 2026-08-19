@@ -356,18 +356,21 @@ test('without a vault key, JSONB summary is persisted and transcript_excerpt sta
   assert.deepStrictEqual(hist.json.notes[0].summary, AI_SUMMARY);
 });
 
-test('plaintext transcript_excerpt is not persisted; sha256 and excerpt ciphertext are', async () => {
+test('plaintext excerpt/summary are not persisted; sha256 and ciphertext are', async () => {
   assert.ok(TRANSCRIPT.length > 500, 'fixture must exceed the excerpt cap');
   assert.ok(vault.hasKey(), 'test env must provide a vault key so encrypt-on-write runs');
   await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
   const row = rows[0];
   assert.ok(row.transcript_excerpt == null || row.transcript_excerpt === '', 'transcript_excerpt must be null/empty');
+  assert.deepStrictEqual(row.summary, {}, 'summary JSONB must not retain plaintext when the vault key exists');
   assert.strictEqual(
     row.transcript_sha256,
     crypto.createHash('sha256').update(TRANSCRIPT).digest('hex')
   );
   assert.ok(row.excerpt_ciphertext, 'excerpt_ciphertext must be present when a vault key exists');
   assert.ok(Buffer.isBuffer(row.excerpt_ciphertext) || row.excerpt_ciphertext instanceof Uint8Array);
+  assert.ok(row.summary_ciphertext, 'summary_ciphertext must be present when a vault key exists');
+  assert.ok(Buffer.isBuffer(row.summary_ciphertext) || row.summary_ciphertext instanceof Uint8Array);
   for (const [k, v] of Object.entries(row)) {
     const s = stringifyValue(v);
     assert.ok(s !== TRANSCRIPT, `column ${k} must not hold the full transcript`);
