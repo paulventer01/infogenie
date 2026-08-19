@@ -59,7 +59,15 @@ process.on("SIGTERM", () => shutdown(0));
 // still serves /index.html, all assets and the /api/* surface, but stops
 // serving the legacy SPA at the root so Next's dashboard shell is authoritative
 // in dev. Prod (plain `node server.js`, no flag) keeps serving index.html at /.
-run("express", "node", ["server.js"], { EXPRESS_PORT, NEXT_FRONT_DOOR: "1" });
+// Preview/dev enforces the route permission matrix unless the operator
+// explicitly sets PERMISSION_ENFORCEMENT (off | shadow | on). Replit already
+// sets this via userenv; Cursor Cloud start scripts did not. Mode is read at
+// Express module load, so this must be on the child env — not a secret.
+run("express", "node", ["server.js"], {
+  EXPRESS_PORT,
+  NEXT_FRONT_DOOR: "1",
+  PERMISSION_ENFORCEMENT: process.env.PERMISSION_ENFORCEMENT || "on",
+});
 run("next", nextBin, ["dev", "-p", NEXT_PORT], {
   EXPRESS_PROXY_TARGET: `http://localhost:${EXPRESS_PORT}`,
 });
