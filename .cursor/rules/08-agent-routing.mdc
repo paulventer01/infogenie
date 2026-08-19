@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Agent routing
 
-This rule **routes work**. It does not replace `.cursor/rules/01`–`07` or `AGENTS.md`. If this file conflicts with those, **those win**. Do not weaken tenant isolation, the permission matrix, `PERMISSION_ENFORCEMENT`, `MULTITENANT_ENFORCEMENT`, honesty tagging, or scope control.
+This rule **routes work**. It does not replace `.cursor/rules/01`–`07` or `AGENTS.md`. If this file conflicts with those, **those win**. Do not weaken tenant isolation, the permission matrix, `PERMISSION_ENFORCEMENT`, `MULTITENANT_ENFORCEMENT`, honesty tagging, or scope control. Model/provider pins and Lead escalation are `.cursor/rules/11-model-routing.mdc`.
 
 Cursor specialists live in `.cursor/agents/`. Product code named `agent_orchestrator` / `agent_swarm` is unrelated.
 
@@ -22,7 +22,7 @@ Pipeline: **You → Lead → Specialist → QA → Reviewer → PR → You appro
 | QA passed | `reviewer` before the PR is ready for the user |
 | Auth, permissions, tenant isolation, credentials, OAuth security, or encryption | `security` — separate agent from day one; never fold into Backend |
 
-Lead **does not** implement product code. Specialists **do not** implement outside their ownership. If the task is outside your file’s Owns list: stop, emit the rule 09 handoff block, `TARGET AGENT: infogenie-lead`, and name the correct specialist in `REASON`.
+Lead **does not** implement product code. Lead **does** choose the specialist **and** the model for that task (rule 11). Specialists **do not** implement outside their ownership. If the task is outside your file’s Owns list: stop, emit the rule 09 handoff block, `TARGET AGENT: infogenie-lead`, and name the correct specialist in `REASON`.
 
 ## Domain map
 
@@ -57,4 +57,4 @@ Split examples:
 
 ## Default agent in a single session
 
-If you are the parent agent and cannot spawn specialists: **still obey ownership**. Implement only the in-domain slice you can justify; emit handoff blocks for the rest. Never skip QA → Reviewer → user approval. Never work on `main`. Never treat Security as optional.
+If you are the parent agent and cannot spawn specialists: **still obey ownership**. Implement only the in-domain slice you can justify; emit handoff blocks for the rest. Never skip QA → Reviewer → user approval. Never work on `main`. Never treat Security as optional. Record `MODEL` / `MODEL SOURCE` / `ESCALATION REASON` on every handoff (rule 09). Agents do not merge.

@@ -31,6 +31,9 @@ HANDOFF REQUIRED: yes
 TARGET AGENT: infogenie-lead
 REASON: database task; correct specialist is database (Security reviews tenant isolation)
 RISKS: tenant
+MODEL: composer-2.5
+MODEL SOURCE: frontmatter
+ESCALATION REASON: none
 ```
 
 Lead then delegates to `database`, not back to Frontend.
@@ -48,6 +51,9 @@ HANDOFF REQUIRED: yes | no
 TARGET AGENT: infogenie-lead | frontend | backend | database | integrations | ai-llm | security | qa | reviewer
 REASON: <why this agent cannot continue, or what the target must do>
 RISKS: <tenant, permission, secrets, honesty, boot, none>
+MODEL: <catalog slug or inherit>
+MODEL SOURCE: frontmatter | lead-override | inherit | cursor-fallback
+ESCALATION REASON: <none | trigger from rule 11>
 ```
 
 - Out-of-ownership bounce: `HANDOFF REQUIRED: yes`, `TARGET AGENT: infogenie-lead`, name the correct specialist in `REASON`.
@@ -55,12 +61,14 @@ RISKS: <tenant, permission, secrets, honesty, boot, none>
 - Implementer complete for this change: `TARGET AGENT: qa` (independent pass).
 - QA green: `TARGET AGENT: reviewer`.
 - Reviewer green: Lead opens/updates the **PR** for the user. `HANDOFF REQUIRED: no` only after Reviewer passed. Agents do not merge. **You approve → main**.
+- Record the provider/model used at every stage. If Lead escalated Composer, `MODEL SOURCE` is `lead-override` and `ESCALATION REASON` names the trigger. Never put API keys in this block.
 
 ## Lead on receipt
 
 - Re-route to the named specialist with a scoped task (owned paths, prohibited paths, tests).
 - Do not send the work back to the bouncing agent to implement anyway.
 - Preserve `RISKS` in the next task brief.
+- Preserve `MODEL` / `MODEL SOURCE` / `ESCALATION REASON` when re-routing; apply rule 11 if the next specialist needs a different pin (QA independence, Reviewer vs Security Opus).
 - Keep one feature branch (rule 10); do not open a second product direction in the same PR.
 
 ## STATUS meanings

@@ -13,7 +13,7 @@ Agents develop on **feature branches**. They do not commit to `main`, merge PRs,
 
 1. **You** give the request to Lead.
 2. **Lead** decomposes and delegates (Security is a separate specialist from day one).
-3. **Specialist** implements only owned files. Out-of-role work is a handoff, not a stretch (Frontend does not touch the database).
+3. **Specialist** implements only owned files. Out-of-role work is a handoff, not a stretch (Frontend does not touch the database). Lead may escalate Composer defaults per rule 11; ownership does not change.
 4. **QA** runs an independent pass. Implementer self-checks are not QA.
 5. **Reviewer** reviews the completed diff (read-only). If auth/permissions/tenant isolation/credentials/OAuth/encryption moved, Security must have been in the specialist chain.
 6. **PR** is opened or marked ready for **you**. Agents do not merge.
@@ -32,9 +32,10 @@ Skip neither QA nor Reviewer because the implementer “already ran `test:core`�
 ## Pull requests
 
 - After Reviewer `STATUS: done`, Lead opens or updates the PR for your approval.
-- PR body should list specialist slices (including Security when those domains applied), QA commands, Reviewer outcome, and residual `RISKS`.
+- PR body should list specialist slices (including Security when those domains applied), QA commands, Reviewer outcome, residual `RISKS`, and the **MODEL / MODEL SOURCE / ESCALATION REASON** recorded for each stage (rule 11).
 - Do not mark merge-ready by weakening tests, `PERMISSION_ENFORCEMENT`, tenant filters, or honesty markers.
 - Do not commit `.env`, keys, vault payloads, or credential dumps.
+- Do not merge the PR or enable auto-merge. **You approve → main**.
 
 ## Forbidden on `main`
 

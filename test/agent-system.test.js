@@ -28,6 +28,7 @@ const RULE_FILES = [
   '08-agent-routing.mdc',
   '09-agent-handoff.mdc',
   '10-agent-pr-workflow.mdc',
+  '11-model-routing.mdc',
 ];
 
 const HANDOFF_FIELDS = [
@@ -39,6 +40,9 @@ const HANDOFF_FIELDS = [
   'TARGET AGENT',
   'REASON',
   'RISKS',
+  'MODEL',
+  'MODEL SOURCE',
+  'ESCALATION REASON',
 ];
 
 function read(rel) {
@@ -81,19 +85,29 @@ test('routing, handoff, and PR workflow rules exist and do not override 01–07'
   assert.match(pr, /main/);
   assert.match(pr, /QA/i);
   assert.match(pr, /reviewer/i);
+  assert.match(pr, /do not merge|Agents do not merge|Do not merge the PR/i);
+  assert.match(pr, /auto-merge/);
 });
 
 test('standard handoff format fields are defined once and used by specialists', () => {
   const handoff = read('.cursor/rules/09-agent-handoff.mdc');
   for (const field of HANDOFF_FIELDS) {
-    assert.ok(handoff.includes(field), `09-agent-handoff.mdc missing ${field}`);
+    assert.match(
+      handoff,
+      new RegExp(`^${field}: `, 'm'),
+      `09-agent-handoff.mdc missing ${field}: line`,
+    );
   }
 
   const specialists = AGENT_FILES.filter((f) => f !== 'infogenie-lead.md');
   for (const file of specialists) {
     const src = read(path.join('.cursor', 'agents', file));
     for (const field of HANDOFF_FIELDS) {
-      assert.ok(src.includes(field), `${file} missing handoff field ${field}`);
+      assert.match(
+        src,
+        new RegExp(`^${field}: `, 'm'),
+        `${file} missing handoff field ${field}:`,
+      );
     }
   }
 });
