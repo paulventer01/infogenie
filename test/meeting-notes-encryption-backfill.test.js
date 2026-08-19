@@ -107,18 +107,101 @@ test('backfill encrypts plaintext excerpt/summary, scrubs generated_by, and bind
     const again = await backfillMeetingNotesEncryption();
     assert.strictEqual(again.ok, true);
     const still = (await p.query(
-      `SELECT transcript_excerpt, generated_by, summary
+      `SELECT transcript_excerpt, generated_by, summary, contact
          FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
       [noteId, tenantA]
     )).rows[0];
     assert.strictEqual(still.transcript_excerpt, null);
     assert.strictEqual(still.generated_by, null);
     assert.deepStrictEqual(still.summary, {});
+    assert.deepStrictEqual(still.contact, {});
   } finally {
     const ids = [tenantA, tenantB].filter(Boolean);
     if (ids.length) {
       await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id = ANY($1)`, [ids]);
       await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]);
     }
+  }
+});
+
+test('backfill whitelists contact JSONB to name/company/role and drops extra keys', { skip }, async () => {
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-ct-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN ct ${suffix}`, `mn-ct-${suffix}`]
+  )).rows[0].id;
+
+  let noteId;
+  try {
+    const dirtyContact = {
+      name: 'Ada',
+      company: 'Analytic Engines',
+      role: 'Operator',
+      email: 'ada-pii@example.test',
+      phone: '+10000000000',
+      notes: 'drop-this-free-text',
+    };
+    const ins = await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,$2,$3,$4) RETURNING id`,
+      [tenantId, JSON.stringify(dirtyContact), '{}', 'ai']
+    );
+    noteId = ins.rows[0].id;
+
+    await ensureMeetingNotesSchema();
+    const before = (await p.query(
+      `SELECT contact, excerpt_ciphertext, summary_ciphertext, generated_by
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [noteId, tenantId]
+    )).rows[0];
+    assert.ok(Object.prototype.hasOwnProperty.call(before.contact, 'email'), 'fixture must store extra contact keys');
+    assert.ok(Object.prototype.hasOwnProperty.call(before.contact, 'phone'), 'fixture must store extra contact keys');
+    assert.strictEqual(before.excerpt_ciphertext, null, 'ensureMeetingNotesSchema must not rewrite contact via encrypt');
+    assert.strictEqual(before.summary_ciphertext, null);
+    assert.strictEqual(before.generated_by, null);
+
+    const result = await backfillMeetingNotesEncryption();
+    assert.strictEqual(result.ok, true);
+    assert.ok(!result.skipped, 'backfill should not skip when db and key are present');
+    assert.ok(result.contacts >= 1, 'at least the seeded contact should scrub');
+
+    const row = (await p.query(
+      `SELECT tenant_id, contact
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [noteId, tenantId]
+    )).rows[0];
+    assert.ok(row, 'scrubbed row must still exist');
+    assert.strictEqual(row.tenant_id, tenantId);
+    assert.deepStrictEqual(row.contact, {
+      name: 'Ada',
+      company: 'Analytic Engines',
+      role: 'Operator',
+    });
+    assert.deepStrictEqual(Object.keys(row.contact).sort(), ['company', 'name', 'role']);
+    assert.ok(!Object.prototype.hasOwnProperty.call(row.contact, 'email'));
+    assert.ok(!Object.prototype.hasOwnProperty.call(row.contact, 'phone'));
+    assert.ok(!Object.prototype.hasOwnProperty.call(row.contact, 'notes'));
+
+    const again = await backfillMeetingNotesEncryption();
+    assert.strictEqual(again.ok, true);
+    assert.strictEqual(again.contacts, 0, 'second pass must update 0 contacts');
+    const still = (await p.query(
+      `SELECT contact FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [noteId, tenantId]
+    )).rows[0];
+    assert.deepStrictEqual(still.contact, {
+      name: 'Ada',
+      company: 'Analytic Engines',
+      role: 'Operator',
+    });
+  } finally {
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
   }
 });

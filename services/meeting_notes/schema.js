@@ -88,11 +88,37 @@ async function ensureMeetingNotesSchema() {
 }
 
 const BACKFILL_BATCH = 100;
+const CONTACT_KEYS = ['name', 'company', 'role'];
+const CONTACT_MAX = 200;
 const NEEDS_BACKFILL_SQL = `
   (transcript_excerpt IS NOT NULL AND excerpt_ciphertext IS NULL)
   OR (summary IS NOT NULL AND summary <> '{}'::jsonb AND summary_ciphertext IS NULL)
   OR (generated_by IS NOT NULL AND generated_by LIKE '%@%')
+  OR (
+    CASE
+      WHEN jsonb_typeof(contact) IS DISTINCT FROM 'object' THEN true
+      ELSE (contact - ARRAY['name','company','role']::text[]) <> '{}'::jsonb
+    END
+  )
 `;
+
+function _whitelistedContact(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const key of CONTACT_KEYS) {
+    if (typeof raw[key] !== 'string') continue;
+    const s = raw[key].slice(0, CONTACT_MAX);
+    if (s) out[key] = s;
+  }
+  return out;
+}
+
+function _contactNeedsScrub(raw) {
+  if (raw == null) return false;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return true;
+  const allowed = new Set(CONTACT_KEYS);
+  return Object.keys(raw).some((key) => !allowed.has(key));
+}
 
 function _meetingNotesAad(tenantId) {
   return `meeting_notes_runs:tenant:${tenantId}`;
@@ -141,6 +167,7 @@ async function _backfillOneRow(p, vault, row) {
   const needsExcerpt = row.transcript_excerpt != null && row.excerpt_ciphertext == null;
   const needsSummary = _isNonEmptySummary(row.summary) && row.summary_ciphertext == null;
   const needsScrub = typeof row.generated_by === 'string' && row.generated_by.includes('@');
+  const needsContact = _contactNeedsScrub(row.contact);
 
   if (needsExcerpt) {
     const { ciphertext, iv, tag } = vault.encryptString(row.transcript_excerpt, aad);
@@ -170,7 +197,12 @@ async function _backfillOneRow(p, vault, row) {
     sets.push('generated_by=NULL');
   }
 
-  if (!sets.length) return { excerpts: 0, summaries: 0, generatedBy: 0 };
+  if (needsContact) {
+    params.push(JSON.stringify(_whitelistedContact(row.contact)));
+    sets.push(`contact=$${params.length}::jsonb`);
+  }
+
+  if (!sets.length) return { excerpts: 0, summaries: 0, generatedBy: 0, contacts: 0 };
 
   params.push(id);
   const idIdx = params.length;
@@ -184,6 +216,7 @@ async function _backfillOneRow(p, vault, row) {
     excerpts: needsExcerpt ? 1 : 0,
     summaries: needsSummary ? 1 : 0,
     generatedBy: needsScrub ? 1 : 0,
+    contacts: needsContact ? 1 : 0,
   };
 }
 
@@ -199,6 +232,7 @@ async function backfillMeetingNotesEncryption() {
   let excerptCount = 0;
   let summaryCount = 0;
   let scrubCount = 0;
+  let contactCount = 0;
 
   for (const tenantId of tenantIds) {
     const skippedIds = [];
@@ -211,7 +245,7 @@ async function backfillMeetingNotesEncryption() {
       }
       params.push(BACKFILL_BATCH);
       const batch = await p.query(
-        `SELECT id, tenant_id, transcript_excerpt, summary, excerpt_ciphertext, summary_ciphertext, created_at, generated_by
+        `SELECT id, tenant_id, transcript_excerpt, summary, excerpt_ciphertext, summary_ciphertext, created_at, generated_by, contact
            FROM meeting_notes_runs
           WHERE tenant_id=$1
             AND (${NEEDS_BACKFILL_SQL})
@@ -228,6 +262,7 @@ async function backfillMeetingNotesEncryption() {
           excerptCount += n.excerpts;
           summaryCount += n.summaries;
           scrubCount += n.generatedBy;
+          contactCount += n.contacts;
         } catch (_e) {
           console.warn('[meeting-notes] backfill skipped a row');
           const sid = Number(row.id);
@@ -239,8 +274,8 @@ async function backfillMeetingNotesEncryption() {
     }
   }
 
-  console.log(`[meeting-notes] backfill encrypted ${excerptCount} excerpts, ${summaryCount} summaries, scrubbed ${scrubCount} generated_by`);
-  return { ok: true, excerpts: excerptCount, summaries: summaryCount, generatedBy: scrubCount };
+  console.log(`[meeting-notes] backfill encrypted ${excerptCount} excerpts, ${summaryCount} summaries, scrubbed ${scrubCount} generated_by, ${contactCount} contacts`);
+  return { ok: true, excerpts: excerptCount, summaries: summaryCount, generatedBy: scrubCount, contacts: contactCount };
 }
 
 module.exports = { ensureMeetingNotesSchema, backfillMeetingNotesEncryption };
