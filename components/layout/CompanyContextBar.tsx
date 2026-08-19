@@ -61,7 +61,11 @@ export default function CompanyContextBar() {
     const refresh = () => setCtx(readDomain());
     refresh();
     document.addEventListener("ig:analysis-ready", refresh);
-    return () => document.removeEventListener("ig:analysis-ready", refresh);
+    document.addEventListener("ig:analysis-updated", refresh);
+    return () => {
+      document.removeEventListener("ig:analysis-ready", refresh);
+      document.removeEventListener("ig:analysis-updated", refresh);
+    };
   }, []);
 
   if (!ctx?.domain) return null;

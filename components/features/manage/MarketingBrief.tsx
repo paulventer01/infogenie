@@ -55,6 +55,7 @@ interface TodoAction {
   view: string;
   impact: string;
   source: "brief" | "competitive" | "decision";
+  provenance?: "industry-benchmark";
   priority: number;
 }
 
@@ -174,8 +175,9 @@ function buildCompetitiveTodos(): TodoAction[] {
         suggestions?: string[];
         topKeywords?: string[];
         threatLevel?: string;
+        source?: string;
       }[];
-      websiteKPIs?: { roas?: number | string };
+      websiteKPIs?: { roas?: number | string; source?: string };
     };
   }).analysisData;
   if (!ad?.competitors?.length) return [];
@@ -185,17 +187,24 @@ function buildCompetitiveTodos(): TodoAction[] {
   const industry = typeof ad.industry === 'string' ? ad.industry : ad.industry?.name || 'your market';
   const yourRoas = parseFloat(String(ad.websiteKPIs?.roas || 2.8)) || 2.8;
   const topRoas = parseFloat(String(top?.roas || 3.5)) || 3.5;
+  const isIndustryBenchmark =
+    comps.some((c) => c.source === 'industry-benchmark') ||
+    ad.websiteKPIs?.source === 'industry-benchmark';
+  const provenance = isIndustryBenchmark ? 'industry-benchmark' as const : undefined;
   const todos: TodoAction[] = [];
 
   todos.push({
     key: 'comp-counter-top',
-    answer: `${top?.name || 'Your top competitor'} is the primary threat in ${industry}${top?.topChannel ? ` (strongest on ${top.topChannel})` : ''}, running ~${topRoas.toFixed(1)}× ROAS vs your ~${yourRoas.toFixed(1)}× benchmark.`,
+    answer: isIndustryBenchmark
+      ? `${top?.name || 'Your top competitor'} is the primary threat in ${industry}${top?.topChannel ? ` (strongest on ${top.topChannel})` : ''}. Published industry-benchmark ROAS averages ~${topRoas.toFixed(1)}× vs your ~${yourRoas.toFixed(1)}× published industry average — not live ad-account figures.`
+      : `${top?.name || 'Your top competitor'} is the primary threat in ${industry}${top?.topChannel ? ` (strongest on ${top.topChannel})` : ''}, running ~${topRoas.toFixed(1)}× ROAS vs your ~${yourRoas.toFixed(1)}× benchmark.`,
     recommendation: `Build and launch a counter-campaign against ${top?.name || 'them'} this week — hit their weakest messaging and steal share on their primary channel.`,
     whyBest: 'Direct counter-positioning against the #1 threat protects share faster than broad brand campaigns that ignore who is winning today.',
     followThrough: 'Open Battle Plan →',
     view: 'battleplan',
     impact: 'Direct competitive advantage',
     source: 'competitive',
+    provenance,
     priority: 1,
   });
 
@@ -203,13 +212,16 @@ function buildCompetitiveTodos(): TodoAction[] {
   if (weak && weak.name !== top?.name) {
     todos.push({
       key: 'comp-steal-share',
-      answer: `${weak.name} shows a softer ROAS (~${parseFloat(String(weak.roas || 2)).toFixed(1)}×) — an opening to take share with better creative and tighter targeting.`,
+      answer: isIndustryBenchmark
+        ? `${weak.name} shows a softer published industry-benchmark ROAS (~${parseFloat(String(weak.roas || 2)).toFixed(1)}×) — an opening to take share with better creative and tighter targeting.`
+        : `${weak.name} shows a softer ROAS (~${parseFloat(String(weak.roas || 2)).toFixed(1)}×) — an opening to take share with better creative and tighter targeting.`,
       recommendation: `Prioritise a lookalike / conquest campaign aimed at ${weak.name}'s audience before they recover.`,
       whyBest: 'Attacking a soft ROAS competitor converts existing market demand faster than cold prospecting into a new audience.',
       followThrough: 'Open Campaigns →',
       view: 'campaigns',
       impact: 'Capture competitor share',
       source: 'competitive',
+      provenance,
       priority: 2,
     });
   }
@@ -226,6 +238,7 @@ function buildCompetitiveTodos(): TodoAction[] {
       view: 'seo-roadmap',
       impact: 'Win high-intent demand',
       source: 'competitive',
+      provenance,
       priority: 3,
     });
   }
@@ -241,6 +254,7 @@ function buildCompetitiveTodos(): TodoAction[] {
       view: 'competitors',
       impact: 'Close a known weakness',
       source: 'competitive',
+      provenance,
       priority: 4,
     });
   }
@@ -363,7 +377,7 @@ function WhatToDoToday({ actions }: { actions: TodoAction[] }) {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#0F766E', marginBottom: 3 }}>
-                  Answer · {a.source === 'competitive' ? 'Competitive intel' : a.source === 'decision' ? 'Decision Engine' : 'Morning Brief'}
+                  Answer · {a.provenance === 'industry-benchmark' ? 'Industry benchmark' : a.source === 'competitive' ? 'Competitive intel' : a.source === 'decision' ? 'Decision Engine' : 'Morning Brief'}
                 </div>
                 <div style={{ fontSize: '0.84rem', color: '#334155', lineHeight: 1.45, marginBottom: 8 }}>{a.answer}</div>
                 <div style={{ fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#1D4ED8', marginBottom: 3 }}>

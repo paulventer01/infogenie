@@ -6,11 +6,31 @@ import { NAV_GROUPS, pathToViewId, viewToPath, type NavItem } from "@/lib/viewRo
 import { prefetchPanel } from "@/components/features/registry";
 import { markNavPending, settleNavPending } from "@/lib/navPending";
 import { installDomSafetyPatch } from "@/lib/domSafety";
+import { apiGet } from "@/lib/api";
 import NavGroup from "./NavGroup";
 import AccountMenu from "./AccountMenu";
 import CompanyContextBar from "./CompanyContextBar";
 import BackNav from "./BackNav";
 import styles from "../../styles/shell.module.css";
+
+interface DiagLatest {
+  ok: boolean;
+  error?: string;
+  analysisData?: Record<string, unknown> & {
+    url?: string;
+    brandName?: string;
+    competitors?: unknown[];
+  };
+  brandKit?: unknown;
+  lastCompetitorNames?: unknown;
+  url?: string;
+}
+
+interface AnalysisGlobals {
+  analysisData?: Record<string, unknown> & { url?: string };
+  _brandKit?: unknown;
+  _lastCompetitorNames?: unknown;
+}
 
 const LOGO_SVG =
   '<svg width="20" height="20" viewBox="0 0 40 40" fill="none"><path d="M13 20 Q20 10 27 20 Q20 30 13 20Z" fill="white" opacity="0.95"/><circle cx="20" cy="20" r="4" fill="white"/></svg>';
@@ -117,12 +137,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const onReady = () => {
+    const onReady = (event: Event) => {
       setNavReady(true);
       try {
         localStorage.setItem(LS_ANALYSED, "1");
       } catch {
         /* noop */
+      }
+      // Boot restore fires the same ready event as live Analyse Now so panels
+      // refresh, but must not bounce every reload onto Brief.
+      if (
+        (event as CustomEvent<{ restored?: boolean }>).detail?.restored === true
+      ) {
+        return;
       }
       // Belt-and-suspenders: always land on Brief after analysis so the stage
       // never stays on blank /analyse (legacy home hidden, no React panel).
@@ -139,6 +166,58 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     document.addEventListener("ig:analysis-ready", onReady);
     return () => document.removeEventListener("ig:analysis-ready", onReady);
   }, [router]);
+
+  // Restore last analysis into window.analysisData on boot, then fire the same
+  // analysis-updated / analysis-ready events live Analyse Now fires.
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await apiGet<DiagLatest>("/api/diag-capture/latest");
+        if (!r.ok || !r.analysisData) return;
+        const w = window as unknown as AnalysisGlobals;
+        w.analysisData = r.analysisData;
+        if (r.brandKit) w._brandKit = r.brandKit;
+        if (r.lastCompetitorNames) w._lastCompetitorNames = r.lastCompetitorNames;
+        const url =
+          (typeof r.url === "string" && r.url) ||
+          (typeof r.analysisData.url === "string" && r.analysisData.url) ||
+          "";
+        if (url) {
+          try {
+            localStorage.setItem("ig-last-analysed-url", url);
+            localStorage.setItem(LS_ANALYSED, "1");
+          } catch {
+            /* private browsing */
+          }
+        }
+        setNavReady(true);
+        const brand =
+          typeof r.analysisData.brandName === "string"
+            ? r.analysisData.brandName
+            : undefined;
+        const competitors = Array.isArray(r.analysisData.competitors)
+          ? r.analysisData.competitors.length
+          : 0;
+        window.dispatchEvent(
+          new CustomEvent("ig:analysis-updated", {
+            detail: { brand, competitors },
+          }),
+        );
+        document.dispatchEvent(
+          new CustomEvent("ig:analysis-updated", {
+            detail: { brand, competitors },
+          }),
+        );
+        document.dispatchEvent(
+          new CustomEvent("ig:analysis-ready", {
+            detail: { url, restored: true },
+          }),
+        );
+      } catch {
+        /* restore must not block AppShell */
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     try {
