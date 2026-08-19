@@ -1,0 +1,77 @@
+---
+description: InfoGenie specialist model/provider routing, Lead escalation, and stage recording — v1
+alwaysApply: true
+---
+
+# Agent model routing (v1)
+
+This rule **assigns models**. It does not replace `.cursor/rules/01`–`07` or `AGENTS.md`. Domain ownership stays in `08`. Handoff format stays in `09`. Branch/PR/no-merge stays in `10`. Do not weaken tenant isolation, the permission matrix, `PERMISSION_ENFORCEMENT`, `MULTITENANT_ENFORCEMENT`, honesty tagging, or scope control. Never log or commit API keys, vault payloads, or credential dumps.
+
+Lead chooses **the specialist** (rule 08) **and** the **best available model** for that specialist’s task.
+
+Cursor catalog IDs below are the v1 pins. They are Cursor-hosted models, not independently configured OpenAI/Anthropic/Google keys. Do not assume Codex or Cursor Auto/Router unless the current spawn catalog lists them.
+
+## v1 default pins
+
+| specialist | model | absolute |
+|---|---|---|
+| infogenie-lead | inherit | inherit-only |
+| frontend | composer-2.5 | no |
+| backend | composer-2.5 | no |
+| database | composer-2.5 | no |
+| integrations | composer-2.5 | no |
+| ai-llm | cursor-grok-4.6-high-fast | yes |
+| security | claude-opus-5-thinking-high | yes |
+| qa | gpt-5.6-sol-high | yes |
+| reviewer | claude-opus-5-thinking-high | yes |
+
+`composer-2.5` is the **normal implementation model** for Frontend, Backend, Database, and Integrations. It **must not be an absolute assignment**.
+
+## Lead-controlled complexity/risk escalation
+
+Lead **may** escalate an implementation (Frontend, Backend, Database, Integrations) to a stronger available model when the task involves any of:
+
+- complex architecture or refactoring
+- difficult debugging
+- high-risk financial/business logic
+- complex database migrations or data integrity
+- concurrency or performance-sensitive backend work
+- complex third-party API/OAuth behavior
+- unusually large cross-domain implementation
+
+Escalation does **not** change ownership. Complex OAuth still requires a separate **Security** review. Unusually large cross-domain work is still split across specialists.
+
+### Stronger-model ladder (implementers)
+
+Use the first slug available in the current spawn catalog:
+
+1. `cursor-grok-4.6-high-fast`
+2. `claude-sonnet-5-thinking-high`
+3. `gpt-5.6-sol-high`
+4. `inherit`
+
+Record the trigger in `ESCALATION REASON`. Do not default `composer-2.5-fast` or Opus Fast.
+
+## Independence
+
+- **QA** uses a different provider family from the implementer. Default QA is OpenAI `gpt-5.6-sol-high`. If the implementer already used GPT-5.6, QA falls back to `gemini-3.7-flash-high` then `gpt-5.6-luna-high`.
+- **Reviewer** uses another strong independent model. Default Reviewer is Anthropic `claude-opus-5-thinking-high`.
+- **Reviewer switches to `gpt-5.6-sol-xhigh`** when Security already used Opus on the same change (or when the implementer already used Anthropic).
+- Built-in Explore/Bash/Browser keep Cursor’s automatic faster-model selection. Do not pin `auto` / `auto-smart` in `.cursor/agents/*.md`.
+
+## Stage recording
+
+Every specialist completion, bounce, or stop includes `MODEL`, `MODEL SOURCE`, and `ESCALATION REASON` (rule 09). Lead copies those lines into the PR body. `MODEL SOURCE` is one of: `frontmatter`, `lead-override`, `inherit`, `cursor-fallback`.
+
+Never write secrets into `MODEL`, `REASON`, or logs.
+
+## Fallbacks when a preferred model is unavailable
+
+Plan, admin, or catalog gaps: use the specialist’s same-family sibling, then `inherit`, then `composer-2.5` as the Cursor-pool floor. If Cursor ignores a pin, record `MODEL SOURCE: cursor-fallback`.
+
+## Forbidden
+
+- Merging PRs or enabling auto-merge
+- Pinning Codex or Cursor Auto/Router in agent frontmatter unless those IDs are verified in the current catalog
+- Defaulting Claude Fable 5 (privacy/retention and cost)
+- Treating Composer 2.5 as un-escalatable for Frontend, Backend, Database, or Integrations

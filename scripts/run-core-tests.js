@@ -31,6 +31,8 @@ const FILES = [
   'test/youtube-trending-fallback.test.js',
   'test/trends-template-fallback.test.js',
   'test/legacy-dispatch-guard.test.js',
+  'test/agent-system.test.js',
+  'test/agent-model-routing.test.js',
 ];
 
 const QUIESCE_MS = 6000; // once tests have printed, this much silence => done
