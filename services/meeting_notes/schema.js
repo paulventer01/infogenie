@@ -95,10 +95,14 @@ const NEEDS_BACKFILL_SQL = `
   OR (summary IS NOT NULL AND summary <> '{}'::jsonb AND summary_ciphertext IS NULL)
   OR (generated_by IS NOT NULL AND generated_by LIKE '%@%')
   OR (
-    CASE
-      WHEN jsonb_typeof(contact) IS DISTINCT FROM 'object' THEN true
-      ELSE (contact - ARRAY['name','company','role']::text[]) <> '{}'::jsonb
-    END
+    jsonb_typeof(contact) IS DISTINCT FROM 'object'
+    OR (contact - ARRAY['name','company','role']::text[]) <> '{}'::jsonb
+    OR (jsonb_typeof(contact->'name') IS NOT NULL AND jsonb_typeof(contact->'name') IS DISTINCT FROM 'string')
+    OR (jsonb_typeof(contact->'company') IS NOT NULL AND jsonb_typeof(contact->'company') IS DISTINCT FROM 'string')
+    OR (jsonb_typeof(contact->'role') IS NOT NULL AND jsonb_typeof(contact->'role') IS DISTINCT FROM 'string')
+    OR length(COALESCE(contact->>'name', '')) > 200
+    OR length(COALESCE(contact->>'company', '')) > 200
+    OR length(COALESCE(contact->>'role', '')) > 200
   )
 `;
 
@@ -117,15 +121,24 @@ function _contactNeedsScrub(raw) {
   if (raw == null) return false;
   if (typeof raw !== 'object' || Array.isArray(raw)) return true;
   const allowed = new Set(CONTACT_KEYS);
-  return Object.keys(raw).some((key) => !allowed.has(key));
+  for (const key of Object.keys(raw)) {
+    if (!allowed.has(key)) return true;
+  }
+  for (const key of CONTACT_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(raw, key)) continue;
+    if (typeof raw[key] !== 'string') return true;
+    if (raw[key].length > CONTACT_MAX) return true;
+  }
+  return false;
 }
 
 function _meetingNotesAad(tenantId) {
   return `meeting_notes_runs:tenant:${tenantId}`;
 }
 
-function _isNonEmptySummary(value) {
-  return !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0;
+// JSONB '{}' only. Arrays, primitives, JSON null, and keyed objects all need encrypt.
+function _isEmptyJsonObject(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length === 0;
 }
 
 async function _loadBackfillTenantIds(p) {
@@ -165,7 +178,7 @@ async function _backfillOneRow(p, vault, row) {
   };
 
   const needsExcerpt = row.transcript_excerpt != null && row.excerpt_ciphertext == null;
-  const needsSummary = _isNonEmptySummary(row.summary) && row.summary_ciphertext == null;
+  const needsSummary = row.summary_ciphertext == null && !_isEmptyJsonObject(row.summary);
   const needsScrub = typeof row.generated_by === 'string' && row.generated_by.includes('@');
   const needsContact = _contactNeedsScrub(row.contact);
 
@@ -263,6 +276,12 @@ async function backfillMeetingNotesEncryption() {
           summaryCount += n.summaries;
           scrubCount += n.generatedBy;
           contactCount += n.contacts;
+          // Selected rows must leave the SELECT predicate or be skipped.
+          // A no-op on a full batch of ≥100 would otherwise loop forever.
+          if (!n.excerpts && !n.summaries && !n.generatedBy && !n.contacts) {
+            const sid = Number(row.id);
+            if (Number.isFinite(sid)) skippedIds.push(sid);
+          }
         } catch (_e) {
           console.warn('[meeting-notes] backfill skipped a row');
           const sid = Number(row.id);

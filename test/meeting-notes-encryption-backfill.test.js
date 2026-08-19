@@ -205,3 +205,131 @@ test('backfill whitelists contact JSONB to name/company/role and drops extra key
     await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
   }
 });
+
+test('backfill encrypts a full batch of JSON-array summaries and does not hang', { skip, timeout: 30000 }, async () => {
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-arr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN arr ${suffix}`, `mn-arr-${suffix}`]
+  )).rows[0].id;
+
+  const ARRAY_SUMMARY = ['x'];
+  const ROW_COUNT = 101;
+  try {
+    const values = [];
+    const params = [tenantId];
+    for (let i = 0; i < ROW_COUNT; i++) {
+      values.push(`($1,$2::jsonb,'ai')`);
+    }
+    params.push(JSON.stringify(ARRAY_SUMMARY));
+    await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, summary, source) VALUES ${values.join(',')}`,
+      params
+    );
+
+    const before = await p.query(
+      `SELECT COUNT(*)::int AS n FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND summary_ciphertext IS NULL AND summary <> '{}'::jsonb`,
+      [tenantId]
+    );
+    assert.strictEqual(before.rows[0].n, ROW_COUNT);
+
+    const result = await backfillMeetingNotesEncryption();
+    assert.strictEqual(result.ok, true);
+    assert.ok(!result.skipped, 'backfill should not skip when db and key are present');
+    assert.ok(result.summaries >= ROW_COUNT, 'all 101 array summaries should encrypt');
+
+    const after = await p.query(
+      `SELECT summary, summary_ciphertext, summary_iv, summary_tag
+         FROM meeting_notes_runs WHERE tenant_id=$1 ORDER BY id`,
+      [tenantId]
+    );
+    assert.strictEqual(after.rows.length, ROW_COUNT);
+    for (const row of after.rows) {
+      assert.deepStrictEqual(row.summary, {});
+      assert.ok(Buffer.isBuffer(row.summary_ciphertext) && row.summary_ciphertext.length > 0);
+      assert.ok(Buffer.isBuffer(row.summary_iv) && row.summary_iv.length > 0);
+      assert.ok(Buffer.isBuffer(row.summary_tag) && row.summary_tag.length > 0);
+      const plain = JSON.parse(
+        vault.decryptString(row.summary_ciphertext, row.summary_iv, row.summary_tag, aadFor(tenantId))
+      );
+      assert.deepStrictEqual(plain, ARRAY_SUMMARY);
+    }
+
+    const leftover = await p.query(
+      `SELECT COUNT(*)::int AS n FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND summary_ciphertext IS NULL AND summary <> '{}'::jsonb`,
+      [tenantId]
+    );
+    assert.strictEqual(leftover.rows[0].n, 0, 'array summaries must leave the backfill predicate');
+
+    const again = await backfillMeetingNotesEncryption();
+    assert.strictEqual(again.ok, true);
+  } finally {
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+
+test('backfill drops nested contact fields, extra keys, and slices long strings', { skip }, async () => {
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-nest-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN nest ${suffix}`, `mn-nest-${suffix}`]
+  )).rows[0].id;
+
+  const longCompany = 'x'.repeat(250);
+  let noteId;
+  try {
+    const dirtyContact = {
+      name: { nested: true },
+      company: longCompany,
+      email: 'a@b.c',
+    };
+    const ins = await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,$2,$3,$4) RETURNING id`,
+      [tenantId, JSON.stringify(dirtyContact), '{}', 'ai']
+    );
+    noteId = ins.rows[0].id;
+
+    const result = await backfillMeetingNotesEncryption();
+    assert.strictEqual(result.ok, true);
+    assert.ok(!result.skipped, 'backfill should not skip when db and key are present');
+    assert.ok(result.contacts >= 1, 'nested/long contact must be scrubbed');
+
+    const row = (await p.query(
+      `SELECT contact FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [noteId, tenantId]
+    )).rows[0];
+    assert.deepStrictEqual(row.contact, { company: longCompany.slice(0, 200) });
+    assert.deepStrictEqual(Object.keys(row.contact), ['company']);
+    assert.strictEqual(row.contact.company.length, 200);
+    assert.ok(!Object.prototype.hasOwnProperty.call(row.contact, 'name'));
+    assert.ok(!Object.prototype.hasOwnProperty.call(row.contact, 'email'));
+
+    const again = await backfillMeetingNotesEncryption();
+    assert.strictEqual(again.ok, true);
+    assert.strictEqual(again.contacts, 0, 'second pass must update 0 contacts');
+    const still = (await p.query(
+      `SELECT contact FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [noteId, tenantId]
+    )).rows[0];
+    assert.deepStrictEqual(still.contact, { company: longCompany.slice(0, 200) });
+  } finally {
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
