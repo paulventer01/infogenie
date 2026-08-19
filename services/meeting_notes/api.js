@@ -6,7 +6,7 @@ const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
-function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[meeting-notes]', e.stack || e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
+function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch(() => { console.warn('[meeting-notes] query failed'); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
 function _hasOpenAI() { const k = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY; return k && !/^_DUMMY/i.test(k); }
 
 function _generatedBy(req) {
@@ -95,7 +95,7 @@ router.post('/summarize', _safeAsync(async (req, res) => {
         [tid, JSON.stringify(contactObj), JSON.stringify(result), excerpt, sha, 'ai', _generatedBy(req)]
       );
       noteId = r.rows[0].id;
-    } catch (e) { console.warn('[meeting-notes] persist failed:', e.message); }
+    } catch { console.warn('[meeting-notes] persist failed'); }
   }
 
   res.json({ ok:true, summary: result, id: noteId });
