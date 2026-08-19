@@ -28,7 +28,15 @@ function restoreEffectSource() {
   const start = APP_SHELL.lastIndexOf('useEffect', callIdx);
   assert.ok(start >= 0 && start < callIdx, 'restore lives in useEffect, not the render path');
   const after = APP_SHELL.indexOf('\n  useEffect(', callIdx);
-  const end = after > start ? after : start + 2500;
+  const end = after > start ? after : start + 3500;
+  return APP_SHELL.slice(start, end);
+}
+
+function onReadySource() {
+  const start = APP_SHELL.indexOf('const onReady');
+  assert.ok(start >= 0, 'AppShell has an onReady listener for ig:analysis-ready');
+  const addIdx = APP_SHELL.indexOf('document.addEventListener', start);
+  const end = addIdx > start ? addIdx : start + 1800;
   return APP_SHELL.slice(start, end);
 }
 
@@ -75,16 +83,24 @@ test('Failed restore does not block AppShell rendering', () => {
   assert.ok(tryIdx >= 0, 'restore wraps work in try');
   assert.ok(catchIdx > tryIdx, 'restore has catch so a throw cannot escape the effect');
 
-  // Must not dispatch the ready event (that listener router.push('/manage/marketing-brief')).
-  assert.doesNotMatch(
+  // Restore fires the same events live Analyse Now fires so mounted panels refresh.
+  assert.match(
     restoreSrc,
-    /CustomEvent\(\s*['"]ig:analysis-ready['"]/,
-    'restore does not dispatch ig:analysis-ready',
+    /document\.dispatchEvent\([\s\S]*CustomEvent\(\s*['"]ig:analysis-ready['"]/,
+    'restore dispatches ig:analysis-ready on document',
   );
-  assert.doesNotMatch(
+  assert.match(
     restoreSrc,
-    /dispatchEvent\([^)]*ig:analysis-ready/,
-    'restore does not dispatchEvent ig:analysis-ready',
+    /restored:\s*true/,
+    'restore-fired ready event includes restored: true so onReady can skip router.push',
+  );
+  const readyEventIdx = restoreSrc.search(/CustomEvent\(\s*['"]ig:analysis-ready['"]/);
+  assert.ok(readyEventIdx >= 0, 'restore constructs ig:analysis-ready CustomEvent');
+  const readySlice = restoreSrc.slice(readyEventIdx, readyEventIdx + 280);
+  assert.match(
+    readySlice,
+    /restored:\s*true/,
+    'restored: true is on the ig:analysis-ready detail (not a different event)',
   );
 
   // Must dispatch ig:analysis-updated (Brief listens on document; field enhancer on window).
@@ -102,6 +118,37 @@ test('Failed restore does not block AppShell rendering', () => {
     restoreSrc,
     /document\.dispatchEvent\([\s\S]*ig:analysis-updated/,
     'restore dispatches ig:analysis-updated on document',
+  );
+  assert.match(
+    restoreSrc,
+    /detail:\s*\{\s*brand,\s*competitors\s*\}/,
+    'restore ig:analysis-updated carries brand + competitors like live Analyse Now',
+  );
+});
+
+test('AppShell onReady skips Brief navigation for restored analysis-ready', () => {
+  const readySrc = onReadySource();
+
+  const restoredIdx = readySrc.search(/detail\?\.restored\s*===\s*true/);
+  assert.ok(restoredIdx >= 0, 'onReady inspects event.detail?.restored === true');
+
+  const returnIdx = readySrc.indexOf('return', restoredIdx);
+  const pushIdx = readySrc.indexOf('router.push("/manage/marketing-brief")');
+  assert.ok(pushIdx >= 0, 'live (non-restore) ig:analysis-ready still navigates to Brief');
+  assert.ok(
+    returnIdx >= 0 && returnIdx < pushIdx,
+    'onReady returns before router.push when the event is a restore',
+  );
+
+  assert.match(
+    readySrc,
+    /setNavReady\(\s*true\s*\)/,
+    'onReady still sets navReady for restore and live analysis',
+  );
+  assert.match(
+    readySrc,
+    /LS_ANALYSED/,
+    'onReady still persists ig:analysed for restore and live analysis',
   );
 });
 
@@ -130,5 +177,10 @@ test('CompanyContextBar listens to ig:analysis-updated', () => {
     CONTEXT_BAR,
     /addEventListener\(\s*['"]ig:analysis-updated['"]/,
     'CompanyContextBar listens for ig:analysis-updated so restore refreshes the domain bar',
+  );
+  assert.match(
+    CONTEXT_BAR,
+    /addEventListener\(\s*['"]ig:analysis-ready['"]/,
+    'CompanyContextBar still listens for ig:analysis-ready',
   );
 });

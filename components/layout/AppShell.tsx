@@ -16,7 +16,11 @@ import styles from "../../styles/shell.module.css";
 interface DiagLatest {
   ok: boolean;
   error?: string;
-  analysisData?: Record<string, unknown> & { url?: string };
+  analysisData?: Record<string, unknown> & {
+    url?: string;
+    brandName?: string;
+    competitors?: unknown[];
+  };
   brandKit?: unknown;
   lastCompetitorNames?: unknown;
   url?: string;
@@ -133,12 +137,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const onReady = () => {
+    const onReady = (event: Event) => {
       setNavReady(true);
       try {
         localStorage.setItem(LS_ANALYSED, "1");
       } catch {
         /* noop */
+      }
+      // Boot restore fires the same ready event as live Analyse Now so panels
+      // refresh, but must not bounce every reload onto Brief.
+      if (
+        (event as CustomEvent<{ restored?: boolean }>).detail?.restored === true
+      ) {
+        return;
       }
       // Belt-and-suspenders: always land on Brief after analysis so the stage
       // never stays on blank /analyse (legacy home hidden, no React panel).
@@ -156,7 +167,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener("ig:analysis-ready", onReady);
   }, [router]);
 
-  // Restore last analysis into window.analysisData on boot (never fire the ready event — that redirects to Brief).
+  // Restore last analysis into window.analysisData on boot, then fire the same
+  // analysis-updated / analysis-ready events live Analyse Now fires.
   useEffect(() => {
     (async () => {
       try {
@@ -179,8 +191,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           }
         }
         setNavReady(true);
-        window.dispatchEvent(new CustomEvent("ig:analysis-updated"));
-        document.dispatchEvent(new CustomEvent("ig:analysis-updated"));
+        const brand =
+          typeof r.analysisData.brandName === "string"
+            ? r.analysisData.brandName
+            : undefined;
+        const competitors = Array.isArray(r.analysisData.competitors)
+          ? r.analysisData.competitors.length
+          : 0;
+        window.dispatchEvent(
+          new CustomEvent("ig:analysis-updated", {
+            detail: { brand, competitors },
+          }),
+        );
+        document.dispatchEvent(
+          new CustomEvent("ig:analysis-updated", {
+            detail: { brand, competitors },
+          }),
+        );
+        document.dispatchEvent(
+          new CustomEvent("ig:analysis-ready", {
+            detail: { url, restored: true },
+          }),
+        );
       } catch {
         /* restore must not block AppShell */
       }
