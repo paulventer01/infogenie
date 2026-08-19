@@ -277,6 +277,197 @@ test('backfill encrypts a full batch of JSON-array summaries and does not hang',
   }
 });
 
+test('backfill encrypts scalar and JSON-null summaries, leaving no plaintext', { skip }, async () => {
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-scal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN scal ${suffix}`, `mn-scal-${suffix}`]
+  )).rows[0].id;
+
+  // Every JSONB shape a legacy summary can hold that is not an object.
+  const SHAPES = ['"mn-scal-secret"', '42', 'true', 'null'];
+  try {
+    for (const raw of SHAPES) {
+      await p.query(
+        `INSERT INTO meeting_notes_runs (tenant_id, summary, source) VALUES ($1,$2::jsonb,'ai')`,
+        [tenantId, raw]
+      );
+    }
+
+    const result = await backfillMeetingNotesEncryption();
+    assert.strictEqual(result.ok, true);
+    assert.ok(!result.skipped, 'backfill should not skip when db and key are present');
+    assert.ok(result.summaries >= SHAPES.length, 'every non-object summary shape must encrypt');
+
+    const after = (await p.query(
+      `SELECT summary, summary_ciphertext, summary_iv, summary_tag
+         FROM meeting_notes_runs WHERE tenant_id=$1 ORDER BY id`,
+      [tenantId]
+    )).rows;
+    assert.strictEqual(after.length, SHAPES.length);
+    after.forEach((row, i) => {
+      assert.deepStrictEqual(row.summary, {}, `${SHAPES[i]} must not stay in the summary column`);
+      assert.ok(Buffer.isBuffer(row.summary_ciphertext) && row.summary_ciphertext.length > 0);
+      const plain = vault.decryptString(
+        row.summary_ciphertext, row.summary_iv, row.summary_tag, aadFor(tenantId)
+      );
+      assert.strictEqual(plain, SHAPES[i], 'ciphertext must round-trip to the original JSON text');
+    });
+
+    const leftover = (await p.query(
+      `SELECT COUNT(*)::int AS n FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND summary_ciphertext IS NULL AND summary <> '{}'::jsonb`,
+      [tenantId]
+    )).rows[0].n;
+    assert.strictEqual(leftover, 0, 'no non-object summary may survive as plaintext');
+
+    const again = await backfillMeetingNotesEncryption();
+    assert.strictEqual(again.ok, true);
+    assert.strictEqual(again.summaries, 0, 'a second pass must not re-encrypt');
+  } finally {
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+
+test('backfill collapses a scalar or array contact to {} without aborting the run', { skip }, async () => {
+  // A non-object `contact` also guards the backfill SELECT predicate itself:
+  // `contact - ARRAY[...]` raises "cannot delete from scalar" if it is ever
+  // evaluated ahead of the jsonb_typeof arm, which would abort the run for
+  // EVERY tenant and leave plaintext behind.
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-nonobj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN nonobj ${suffix}`, `mn-nonobj-${suffix}`]
+  )).rows[0].id;
+
+  try {
+    const scalarId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,'"mn-nonobj-pii@example.test"'::jsonb,'{}'::jsonb,'ai') RETURNING id`,
+      [tenantId]
+    )).rows[0].id;
+    const arrayId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,'["mn-nonobj-phone", {"email":"a@b.c"}]'::jsonb,'{}'::jsonb,'ai') RETURNING id`,
+      [tenantId]
+    )).rows[0].id;
+    // Same tenant, real pending work: proves the run reached it rather than
+    // aborting on the non-object rows above.
+    const excerptId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, transcript_excerpt, source)
+       VALUES ($1,'{}'::jsonb,'{}'::jsonb,$2,'ai') RETURNING id`,
+      [tenantId, EXCERPT]
+    )).rows[0].id;
+
+    const result = await backfillMeetingNotesEncryption();
+    assert.strictEqual(result.ok, true);
+    assert.ok(!result.skipped, 'backfill should not skip when db and key are present');
+    assert.ok(result.contacts >= 2, 'both non-object contacts must be rewritten');
+
+    const rows = (await p.query(
+      `SELECT id, contact, transcript_excerpt, excerpt_ciphertext
+         FROM meeting_notes_runs WHERE tenant_id=$1 ORDER BY id`,
+      [tenantId]
+    )).rows;
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    assert.deepStrictEqual(byId.get(scalarId).contact, {}, 'a scalar contact must collapse to {}');
+    assert.deepStrictEqual(byId.get(arrayId).contact, {}, 'an array contact must collapse to {}');
+    const serialized = JSON.stringify(rows);
+    assert.ok(!serialized.includes('mn-nonobj-pii@example.test'), 'scalar contact PII must be gone from the row');
+    assert.ok(!serialized.includes('mn-nonobj-phone'), 'array contact PII must be gone from the row');
+    assert.ok(!serialized.includes('a@b.c'), 'nested array contact PII must be gone from the row');
+
+    assert.strictEqual(byId.get(excerptId).transcript_excerpt, null, 'the run must still reach later pending rows');
+    assert.ok(Buffer.isBuffer(byId.get(excerptId).excerpt_ciphertext));
+
+    const again = await backfillMeetingNotesEncryption();
+    assert.strictEqual(again.ok, true);
+    assert.strictEqual(again.contacts, 0, 'a second pass must update 0 contacts');
+  } finally {
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+
+test('a full batch the scrubber leaves unchanged does not stall the boot task', { skip, timeout: 30000 }, async () => {
+  // A JSONB `null` contact is selected by the backfill predicate but is a no-op
+  // for the scrubber (it holds no PII). Without the skipped-id guard, a batch of
+  // BACKFILL_BATCH such rows is re-selected forever and the boot task never
+  // returns, so every later BOOT_TASKS schema-ensure stops running too.
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-noop-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN noop ${suffix}`, `mn-noop-${suffix}`]
+  )).rows[0].id;
+
+  const NOOP_ROWS = 101; // > BACKFILL_BATCH, so the loop must run more than once
+  try {
+    const values = [];
+    for (let i = 0; i < NOOP_ROWS; i++) values.push(`($1,'null'::jsonb,'{}'::jsonb,'ai')`);
+    await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source) VALUES ${values.join(',')}`,
+      [tenantId]
+    );
+    // Inserted last, so it sorts past the first full batch of no-ops.
+    const excerptId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, transcript_excerpt, source)
+       VALUES ($1,'{}'::jsonb,'{}'::jsonb,$2,'ai') RETURNING id`,
+      [tenantId, EXCERPT]
+    )).rows[0].id;
+
+    const result = await backfillMeetingNotesEncryption();
+    assert.strictEqual(result.ok, true, 'the backfill must return rather than loop');
+    assert.ok(!result.skipped, 'backfill should not skip when db and key are present');
+
+    const row = (await p.query(
+      `SELECT transcript_excerpt, excerpt_ciphertext, excerpt_iv, excerpt_tag
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [excerptId, tenantId]
+    )).rows[0];
+    assert.strictEqual(row.transcript_excerpt, null, 'pending work behind the no-op batch must still be done');
+    assert.ok(Buffer.isBuffer(row.excerpt_ciphertext) && row.excerpt_ciphertext.length > 0);
+    assert.strictEqual(
+      vault.decryptString(row.excerpt_ciphertext, row.excerpt_iv, row.excerpt_tag, aadFor(tenantId)),
+      EXCERPT
+    );
+
+    // Documented residual: a JSONB null contact is left as-is rather than
+    // spending a write. If that ever changes, this assertion and
+    // docs/security-guardrails.md move together.
+    const stillNull = (await p.query(
+      `SELECT COUNT(*)::int AS n FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND jsonb_typeof(contact)='null'`,
+      [tenantId]
+    )).rows[0].n;
+    assert.strictEqual(stillNull, NOOP_ROWS);
+
+    const again = await backfillMeetingNotesEncryption();
+    assert.strictEqual(again.ok, true, 'a repeat pass over the same no-op rows must also terminate');
+  } finally {
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+
 test('backfill drops nested contact fields, extra keys, and slices long strings', { skip }, async () => {
   assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
 
