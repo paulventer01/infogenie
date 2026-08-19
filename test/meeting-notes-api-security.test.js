@@ -324,3 +324,29 @@ test('a persist failure still returns the summary and does not leak detail', asy
   assert.strictEqual(r.json.id, null, 'no id when the row could not be written');
   assert.ok(!JSON.stringify(r.json).includes('duplicate key'));
 });
+
+test('a persist failure does not write raw Postgres detail to process logs', async () => {
+  // Sibling of the /history log-hygiene case above. The INSERT parameters carry
+  // the transcript excerpt, so a pg error raised on that statement is the most
+  // likely place for call content to reach the process log.
+  const secret = 'detail: Key (transcript_excerpt)=(Jane: we have budget approved)';
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.map(String).join(' '));
+  try {
+    failNextQuery = new Error(secret);
+    const r = await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.id, null);
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.ok(
+    !warnings.join('\n').includes(secret),
+    'the persist catch must not interpolate the pg error, which can echo row values'
+  );
+  assert.ok(
+    !warnings.join('\n').includes('transcript_excerpt'),
+    'no column or row detail from the failed INSERT may reach the log'
+  );
+});
