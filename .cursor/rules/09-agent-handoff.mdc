@@ -20,6 +20,21 @@ Emit a block and **stop implementing** when any of these is true:
 
 Do not “just this one file” across a boundary. Do not implement the other specialist’s slice so the PR looks finished.
 
+Canonical example: **Frontend receives a database task** (new table, `schema.js`, `db.js`, migration). Frontend does not edit those files. It emits:
+
+```
+STATUS: needs-handoff
+TASK: add/migrate database table
+FILES CHANGED: none
+TESTS: none
+HANDOFF REQUIRED: yes
+TARGET AGENT: infogenie-lead
+REASON: database task; correct specialist is database (Security reviews tenant isolation)
+RISKS: tenant
+```
+
+Lead then delegates to `database`, not back to Frontend.
+
 ## Required block
 
 Every stop, bounce, or specialist completion uses **exactly** these fields (values may be `none` / `yes` / `no` as appropriate):
@@ -39,7 +54,7 @@ RISKS: <tenant, permission, secrets, honesty, boot, none>
 - Slice complete, more domains remain: `TARGET AGENT: infogenie-lead` with the next specialist named.
 - Implementer complete for this change: `TARGET AGENT: qa` (independent pass).
 - QA green: `TARGET AGENT: reviewer`.
-- Reviewer green: `HANDOFF REQUIRED: no` (or Lead for PR bookkeeping). Agents do not merge unless the user explicitly ordered a merge.
+- Reviewer green: Lead opens/updates the **PR** for the user. `HANDOFF REQUIRED: no` only after Reviewer passed. Agents do not merge. **You approve → main**.
 
 ## Lead on receipt
 

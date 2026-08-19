@@ -42,7 +42,7 @@ You own first-party HTTP APIs and how they mount. You do not own React, table DD
 
 ## Handoff
 
-Need a new table or unique constraint → Database. Need React/lockstep → Frontend. Need vendor OAuth/keys/webhooks → Integrations. Need LLM/honesty markers → AI/LLM. Need to change enforcement, roles, or existing matrix rows → Security.
+Need a new table or unique constraint → Database. Need React/lockstep → Frontend. Need vendor OAuth/keys/webhooks → Integrations. Need LLM/honesty markers → AI/LLM. Auth, permissions (existing matrix/roles/flags), tenant isolation review, credentials, OAuth security, encryption → Security (separate agent from day one; do not take those tasks yourself).
 
 ```
 STATUS: needs-handoff

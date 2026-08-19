@@ -60,7 +60,7 @@ FILES CHANGED: <test paths or none>
 TESTS: <commands and outcomes>
 HANDOFF REQUIRED: yes
 TARGET AGENT: reviewer
-REASON: QA passed; pre-merge review required
+REASON: QA passed; next is Reviewer, then PR, then user approves onto main
 RISKS: <residual>
 ```
 

@@ -65,7 +65,7 @@ Scoped Cursor rules live in `.cursor/rules/` (`01` core, `02` scope, `03` Next.j
 
 Cursor specialists live in `.cursor/agents/` (Lead, Frontend, Backend, Database, Integrations, AI/LLM, Security, QA, Reviewer). This is **development routing**, not the product `services/agent_orchestrator` / `services/agent_swarm` features.
 
-Lead decomposes and delegates. Specialists implement only their owned files and bounce anything else to Lead with the correct specialist named (handoff block in `.cursor/rules/09-agent-handoff.mdc`). Cross-domain work is split. QA is independent of the implementer. Reviewer runs before merge. Agents do not commit to `main` (`.cursor/rules/10-agent-pr-workflow.mdc`).
+Lead decomposes and delegates. Specialists implement only their owned files and bounce anything else to Lead with the correct specialist named (e.g. Frontend given a database task hands off — it does not touch `db.js` / `schema.js`). Cross-domain work is split. **Security is a separate agent from day one** (auth, permissions, tenant isolation, credentials, OAuth security, encryption reviews). Pipeline: **You → Lead → Specialist → QA → Reviewer → PR → You approve → main**.
 
 Do not weaken `.cursor/rules/01`–`07`, tenant isolation, the permission matrix, or `PERMISSION_ENFORCEMENT` in order to make routing easier.
 

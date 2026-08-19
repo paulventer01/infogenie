@@ -9,14 +9,18 @@ This rule **routes work**. It does not replace `.cursor/rules/01`–`07` or `AGE
 
 Cursor specialists live in `.cursor/agents/`. Product code named `agent_orchestrator` / `agent_swarm` is unrelated.
 
+Pipeline: **You → Lead → Specialist → QA → Reviewer → PR → You approve → main**.
+
 ## Who acts
 
 | Situation | Act as |
 |---|---|
 | Cross-domain request, unclear owner, or a bounce from a specialist | `infogenie-lead` (decompose only) |
 | Clearly one domain | That specialist — implement only owned paths |
+| Task is outside your Owns list (e.g. Frontend given a database task) | Stop. Handoff to `infogenie-lead` with the correct specialist named. Do not implement. |
 | Implementer finished | `qa` as a **separate** pass (fresh specialist invocation) |
-| QA passed | `reviewer` before merge |
+| QA passed | `reviewer` before the PR is ready for the user |
+| Auth, permissions, tenant isolation, credentials, OAuth security, or encryption | `security` — separate agent from day one; never fold into Backend |
 
 Lead **does not** implement product code. Specialists **do not** implement outside their ownership. If the task is outside your file’s Owns list: stop, emit the rule 09 handoff block, `TARGET AGENT: infogenie-lead`, and name the correct specialist in `REASON`.
 
@@ -24,14 +28,14 @@ Lead **does not** implement product code. Specialists **do not** implement outsi
 
 | Agent | Own these | Bounce these |
 |---|---|---|
-| `frontend` | `app/`, `components/`, `hooks/`, `styles/`, `lib/*.ts`, surviving `index.html` / `app.js` / `public/js/` | `services/`, `server.js`, `db.js`, schema, vault, matrix enforcement, `middleware.ts` matcher |
-| `backend` | `services/*/api.js` + `routes.js`, `server.js` mounts **without reorder**, **new** `ROUTE_GROUPS` prefix for a router you added | UI, `schema.js`, vault crypto, OAuth path changes, existing matrix **edits**, enforcement flags |
-| `database` | `db.js`, `services/**/schema.js`, `tenants/migration.js`, `kv_scope.js` | Handlers, UI, enforcement middleware |
-| `integrations` | Vendor modules, OAuth routes, key-plane **usage**, `docs/integrations-reference.md` | Vault **crypto**, first-party non-vendor APIs, React chrome |
+| `frontend` | `app/`, `components/`, `hooks/`, `styles/`, `lib/*.ts`, surviving `index.html` / `app.js` / `public/js/` | `db.js`, `schema.js`, `services/`, `server.js`, vault, matrix enforcement, `middleware.ts` matcher |
+| `backend` | `services/*/api.js` + `routes.js`, `server.js` mounts **without reorder**, **new** `ROUTE_GROUPS` prefix for a router you added | UI, `schema.js`, vault crypto, OAuth security, existing matrix **edits**, enforcement flags, tenant-isolation policy |
+| `database` | `db.js`, `services/**/schema.js`, `tenants/migration.js`, `kv_scope.js` (shape) | Handlers, UI, isolation **policy** (Security) |
+| `integrations` | Vendor modules, OAuth **wiring**, key-plane **usage**, `docs/integrations-reference.md` | Vault **crypto**, OAuth **security review**, first-party non-vendor APIs, React chrome |
 | `ai-llm` | `ai_compat.js`, generative prompts/fallbacks/tags, `services/ai/` | Non-AI APIs, UI, schema, OAuth |
-| `security` | Auth, `auth_gate`, vault crypto, `permission_enforce.js`, `permissions.js`, existing matrix edits, `services/security/*`, `middleware.ts` matcher | Feature UI/CRUD |
+| `security` | Auth, permissions, tenant isolation, credentials, OAuth security reviews, encryption reviews, `services/security/*`, `middleware.ts` matcher | Feature UI/CRUD |
 | `qa` | Independent test/lint execution; additive tests only | Product-code fixes |
-| `reviewer` | Read-only pre-merge review | Implementation, merge |
+| `reviewer` | Read-only review after QA, before user-facing PR approval | Implementation, merge |
 
 ## Split, do not stretch
 
@@ -41,15 +45,16 @@ Keep on the same specialist:
 
 - Frontend: lockstep registry + `migratedViews` + `viewRoutes` for a panel they own
 - Backend: `ROUTE_GROUPS` **add** for their new prefix + handler tests
-- Database: table + `tenant_id` + tenant-audit tests
+- Database: table + `tenant_id` columns (then Security reviews isolation)
 - AI/LLM: dummy-key fallback test for a prompt they own
 
 Split examples:
 
-- New panel + new table + new `/api` → Database, then Backend, then Frontend, then QA, then Reviewer
-- New OAuth vendor → Integrations (+ Database if storing tokens/results, Frontend for settings UX, Security if vault/crypto/callback policy)
+- Frontend asked to add a table → **handoff** (not Frontend). Lead → Database, then Security (tenant isolation), then whoever needs the API/UI
+- New panel + new table + new `/api` → Database, Backend, Frontend, **Security** (isolation + permissions), QA, Reviewer, PR, you approve
+- New OAuth vendor → Integrations (wiring) + **Security** (OAuth security + encryption review) + Database if storing tokens + Frontend for settings UX
 - “Turn off permission enforcement” → **refuse**; Security + Lead
 
 ## Default agent in a single session
 
-If you are the parent agent and cannot spawn specialists: **still obey ownership**. Implement only the in-domain slice you can justify; emit handoff blocks for the rest. Never skip the QA-then-Reviewer sequence on a feature branch. Never work on `main`.
+If you are the parent agent and cannot spawn specialists: **still obey ownership**. Implement only the in-domain slice you can justify; emit handoff blocks for the rest. Never skip QA → Reviewer → user approval. Never work on `main`. Never treat Security as optional.

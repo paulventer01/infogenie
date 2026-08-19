@@ -102,6 +102,11 @@ test('Lead decomposes; QA is independent; Reviewer is pre-merge; Security does n
   const lead = read('.cursor/agents/infogenie-lead.md');
   assert.match(lead, /decompos/i);
   assert.match(lead, /does not implement|Do not implement/i);
+  assert.match(lead, /You → Lead → Specialist → QA → Reviewer → PR → You approve → main/);
+  assert.match(lead, /separate agent from day one/);
+  assert.match(lead, /tenant isolation/);
+  assert.match(lead, /OAuth security/);
+  assert.match(lead, /encryption reviews/);
 
   const qa = read('.cursor/agents/qa.md');
   assert.match(qa, /independent/i);
@@ -109,12 +114,49 @@ test('Lead decomposes; QA is independent; Reviewer is pre-merge; Security does n
 
   const reviewer = read('.cursor/agents/reviewer.md');
   assert.match(reviewer, /readonly:\s*true/);
-  assert.match(reviewer, /before merge/i);
+  assert.match(reviewer, /You approve → `main`|You approve → main/);
 
   const security = read('.cursor/agents/security.md');
   assert.match(security, /must not weaken|Do not weaken|Never weaken/i);
   assert.match(security, /PERMISSION_ENFORCEMENT/);
+  assert.match(security, /first-class specialist from day one|separate agent from day one|from day one/);
+  for (const domain of [
+    'Auth',
+    'Permissions',
+    'Tenant isolation',
+    'Credentials',
+    'OAuth security',
+    'Encryption reviews',
+  ]) {
+    assert.match(security, new RegExp(domain, 'i'), `security.md must own ${domain}`);
+  }
   assert.doesNotMatch(security, /set PERMISSION_ENFORCEMENT to off/i);
+});
+
+test('Frontend hands database work back to Lead instead of touching schema', () => {
+  const frontend = read('.cursor/agents/frontend.md');
+  assert.match(frontend, /Do not touch `db\.js` or `schema\.js`/);
+  assert.match(frontend, /correct specialist is database/);
+  assert.match(frontend, /db\.js/);
+  assert.match(frontend, /Prohibited/);
+
+  const handoff = read('.cursor/rules/09-agent-handoff.mdc');
+  assert.match(handoff, /Frontend receives a database task/);
+  assert.match(handoff, /TARGET AGENT: infogenie-lead/);
+  assert.match(handoff, /correct specialist is database/);
+
+  const routing = read('.cursor/rules/08-agent-routing.mdc');
+  assert.match(routing, /Frontend given a database task/);
+  assert.match(routing, /never fold into Backend/);
+});
+
+test('PR workflow is You → Lead → Specialist → QA → Reviewer → PR → You approve → main', () => {
+  const pr = read('.cursor/rules/10-agent-pr-workflow.mdc');
+  assert.match(
+    pr,
+    /You → Lead Agent → Specialist → QA → Reviewer → PR → You approve → main/,
+  );
+  assert.match(pr, /from day one/);
 });
 
 test('AGENTS.md points at the agent system without dropping 01–07', () => {

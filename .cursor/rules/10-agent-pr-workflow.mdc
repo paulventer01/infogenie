@@ -5,7 +5,22 @@ alwaysApply: true
 
 # Agent PR workflow
 
-Agents develop on **feature branches and PRs**. They do not commit to `main`, merge PRs, or enable auto-merge unless the user explicitly orders that merge. This rule does not replace `01`–`07`.
+Agents develop on **feature branches**. They do not commit to `main`, merge PRs, or enable auto-merge. This rule does not replace `01`–`07`.
+
+## Pipeline
+
+**You → Lead Agent → Specialist → QA → Reviewer → PR → You approve → main**
+
+1. **You** give the request to Lead.
+2. **Lead** decomposes and delegates (Security is a separate specialist from day one).
+3. **Specialist** implements only owned files. Out-of-role work is a handoff, not a stretch (Frontend does not touch the database).
+4. **QA** runs an independent pass. Implementer self-checks are not QA.
+5. **Reviewer** reviews the completed diff (read-only). If auth/permissions/tenant isolation/credentials/OAuth/encryption moved, Security must have been in the specialist chain.
+6. **PR** is opened or marked ready for **you**. Agents do not merge.
+7. **You approve** the PR.
+8. Land on **main** only after that approval.
+
+Skip neither QA nor Reviewer because the implementer “already ran `test:core`”. Do not open a “ready” PR before Reviewer passes (a draft PR for bookkeeping is Lead’s option; it is not user approval).
 
 ## Branch
 
@@ -14,19 +29,10 @@ Agents develop on **feature branches and PRs**. They do not commit to `main`, me
 - Do not force-push or amend unless the user asked.
 - Do not switch off the assigned branch to “quickly fix main”.
 
-## Sequence before merge
-
-1. Specialists implement owned slices on the branch (Lead sequences).
-2. **QA** runs an independent pass (`qa` agent / fresh invocation). Implementer self-checks are not QA.
-3. **Reviewer** reviews the completed diff (`reviewer`, read-only). No merge without this.
-4. Human (or an explicit user merge instruction) merges. Default agent behavior: leave the PR open.
-
-Skip neither QA nor Reviewer because the implementer “already ran `test:core`”.
-
 ## Pull requests
 
-- Open or update a draft PR from the feature branch when the repo workflow requires it.
-- PR body should list specialist slices, QA commands, Reviewer outcome, and residual `RISKS`.
+- After Reviewer `STATUS: done`, Lead opens or updates the PR for your approval.
+- PR body should list specialist slices (including Security when those domains applied), QA commands, Reviewer outcome, and residual `RISKS`.
 - Do not mark merge-ready by weakening tests, `PERMISSION_ENFORCEMENT`, tenant filters, or honesty markers.
 - Do not commit `.env`, keys, vault payloads, or credential dumps.
 
@@ -34,6 +40,6 @@ Skip neither QA nor Reviewer because the implementer “already ran `test:core`�
 
 - Feature commits, “hotfix” edits, or experimental schema
 - Force-push to `main`
-- Merging from an agent session without an explicit user instruction to merge
+- Merging from an agent session (you approve)
 
 If you find yourself on `main` with pending work: stop, create a feature branch, move the work, emit a handoff `RISKS: boot` (or `none`) to Lead if the branch state is unclear.
