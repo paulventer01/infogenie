@@ -53,10 +53,11 @@ const AI_SUMMARY = {
 };
 const httpsCalls = [];
 https.request = function (opts, cb) {
-  httpsCalls.push({ hostname: opts.hostname, path: opts.path });
+  const call = { hostname: opts.hostname, path: opts.path, body: '' };
+  httpsCalls.push(call);
   const req = new EventEmitter();
   req.setTimeout = () => {};
-  req.write = () => {};
+  req.write = (chunk) => { call.body += chunk == null ? '' : String(chunk); };
   req.destroy = () => {};
   req.end = () => {
     const res = new EventEmitter();
@@ -381,19 +382,114 @@ test('generated_by is the session userId even when session.email is set', async 
   assert.notStrictEqual(rows[0].generated_by, sessionEmail);
 });
 
+const PII_CONTACT = {
+  name: 'Jane Doe',
+  company: 'Acme',
+  role: 'VP Sales',
+  email: 'jane@example.com',
+  phone: '+1-555-0100',
+  notes: 'do not store this',
+};
+const CONTACT_PII_VALUES = ['jane@example.com', '+1-555-0100', 'do not store this'];
+
 test('contact extra keys are stripped on persist', async () => {
+  await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT, contact: PII_CONTACT });
+  assert.deepStrictEqual(rows[0].contact, { name: 'Jane Doe', company: 'Acme', role: 'VP Sales' });
+});
+
+// ── PII minimisation before the provider call ────────────────────────────────
+
+test('the OpenAI prompt carries only whitelisted contact keys', async () => {
+  // The transcript body is deliberately NOT asserted here: sending up to 12k
+  // characters unredacted is the documented current behaviour, and redaction is
+  // a follow-up AI/LLM PR (docs/security-guardrails.md). What must hold now is
+  // that contact PII the caller supplied never reaches the provider.
+  await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT, contact: PII_CONTACT });
+  assert.strictEqual(httpsCalls.length, 1);
+  assert.strictEqual(httpsCalls[0].hostname, 'api.openai.com');
+  const sent = httpsCalls[0].body;
+  assert.ok(sent, 'the stub must have captured the request body');
+  for (const value of CONTACT_PII_VALUES) {
+    assert.ok(!sent.includes(value), `${value} must not be sent to the provider`);
+  }
+  assert.ok(sent.includes('Jane Doe'), 'the whitelisted contact context is still sent');
+  assert.ok(sent.includes('Acme'));
+  assert.ok(sent.includes('VP Sales'));
+});
+
+test('an all-PII contact sends no contact context block at all', async () => {
   await call('POST', '/api/meeting-notes/summarize', {
     transcript: TRANSCRIPT,
-    contact: {
-      name: 'Jane Doe',
-      company: 'Acme',
-      role: 'VP Sales',
-      email: 'jane@example.com',
-      phone: '+1-555-0100',
-      notes: 'do not store this',
-    },
+    contact: { email: 'jane@example.com', phone: '+1-555-0100' },
   });
-  assert.deepStrictEqual(rows[0].contact, { name: 'Jane Doe', company: 'Acme', role: 'VP Sales' });
+  const sent = httpsCalls[0].body;
+  assert.ok(!sent.includes('Contact context'), 'an empty whitelist must omit the contact line');
+  for (const value of CONTACT_PII_VALUES.slice(0, 2)) {
+    assert.ok(!sent.includes(value));
+  }
+});
+
+test('the session identity is never sent to the provider', async () => {
+  sessionEmail = 'owner@example.com';
+  await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
+  assert.ok(!httpsCalls[0].body.includes(sessionEmail));
+  assert.ok(!httpsCalls[0].body.includes('"42"'));
+});
+
+test('legacy contact PII stored before the whitelist is narrowed on read', async () => {
+  // Rows written by the pre-whitelist persist path hold the raw request contact.
+  rows.push({
+    id: ++seq, tenant_id: 1, contact: { ...PII_CONTACT }, summary: { legacy: true },
+    source: 'ai', created_at: new Date(),
+    transcript_excerpt: null, transcript_sha256: 'sha-legacy', generated_by: null,
+    excerpt_ciphertext: null, excerpt_iv: null, excerpt_tag: null,
+    summary_ciphertext: null, summary_iv: null, summary_tag: null,
+    excerpt_expires_at: null, transcript_purged_at: null,
+  });
+
+  for (const path of ['/api/meeting-notes/history', `/api/meeting-notes/${seq}`]) {
+    const r = await call('GET', path);
+    assert.strictEqual(r.status, 200, path);
+    const note = r.json.note || r.json.notes[0];
+    assertPublicNote(note);
+    assert.deepStrictEqual(note.contact, { name: 'Jane Doe', company: 'Acme', role: 'VP Sales' }, path);
+    const body = JSON.stringify(r.json);
+    for (const value of CONTACT_PII_VALUES) {
+      assert.ok(!body.includes(value), `${value} must not be served from ${path}`);
+    }
+  }
+});
+
+// ── AAD binding: a row lifted into another tenant fails closed ───────────────
+
+test('summary ciphertext does not decrypt under another tenant\'s AAD', async () => {
+  currentTenant = 1;
+  const created = await call('POST', '/api/meeting-notes/summarize', { transcript: TRANSCRIPT });
+  const id = created.json.id;
+  assert.ok(rows[0].summary_ciphertext, 'encrypt-on-write must have run');
+
+  // Simulate the row being moved (or a tenant_id being rewritten) without
+  // re-encryption: the GCM AAD no longer matches.
+  rows[0].tenant_id = 2;
+  currentTenant = 2;
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.map(String).join(' '));
+  let r;
+  try {
+    r = await call('GET', `/api/meeting-notes/${id}`);
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.strictEqual(r.status, 200);
+  assertPublicNote(r.json.note);
+  assert.deepStrictEqual(r.json.note.summary, {}, 'wrong-tenant AAD must fail closed, not decrypt');
+  const body = JSON.stringify(r.json);
+  assert.ok(!body.includes(AI_SUMMARY.summary), 'no plaintext summary may cross the AAD boundary');
+  assert.ok(!body.includes('budget approved'));
+  assert.deepStrictEqual(warnings, ['[meeting-notes] decrypt failed'], 'the decrypt failure log carries no detail');
 });
 
 // ── Key gate ─────────────────────────────────────────────────────────────────

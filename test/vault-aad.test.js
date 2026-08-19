@@ -51,6 +51,24 @@ test('supplying an AAD for a payload encrypted without one fails authentication'
   assert.throws(() => vault.decryptString(ciphertext, iv, tag, AAD_T1));
 });
 
+test('a numeric tenant id and its string form produce the same AAD', () => {
+  // api.js interpolates the value resolveTenantId returned; schema.js coerces
+  // with Number() before interpolating. Both must land on the same AAD bytes or
+  // backfilled rows stop decrypting on the read path.
+  const { ciphertext, iv, tag } = vault.encryptString(SECRET, 'meeting_notes_runs:tenant:' + 1);
+  assert.strictEqual(vault.decryptString(ciphertext, iv, tag, `meeting_notes_runs:tenant:${'1'}`), SECRET);
+});
+
+test('a tampered auth tag or ciphertext fails authentication', () => {
+  const { ciphertext, iv, tag } = vault.encryptString(SECRET, AAD_T1);
+  const badTag = Buffer.from(tag); badTag[0] ^= 0x01;
+  assert.throws(() => vault.decryptString(ciphertext, iv, badTag, AAD_T1));
+  const badCt = Buffer.from(ciphertext); badCt[0] ^= 0x01;
+  assert.throws(() => vault.decryptString(badCt, iv, tag, AAD_T1));
+  const badIv = Buffer.from(iv); badIv[0] ^= 0x01;
+  assert.throws(() => vault.decryptString(ciphertext, badIv, tag, AAD_T1));
+});
+
 test('AAD does not leak into the ciphertext length and each iv is unique', () => {
   const a = vault.encryptString(SECRET, AAD_T1);
   const b = vault.encryptString(SECRET, AAD_T1);

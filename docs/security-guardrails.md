@@ -58,6 +58,37 @@ Structured JSON logs via `services/infra/logger.js` (`LOG_LEVEL=info|debug|warn|
 5. Rate-limit any new **public** POST surface via `createRateLimiter`.
 6. Never log secrets, tokens, or raw credential vault payloads.
 
+## Meeting notes — outbound data flow (redaction deferred)
+
+`POST /api/meeting-notes/summarize` still sends **up to 12,000 transcript characters
+unredacted** to `api.openai.com`, together with the whitelisted contact fields
+(`name`, `company`, `role` only — `email`, `phone` and free-text keys are dropped
+before the prompt and before the row). No PII detection or masking runs on the
+transcript body today, so a caller who pastes a call transcript containing names,
+emails, phone numbers or account identifiers transmits them to the provider.
+
+Pre-transmission transcript redaction is a **separate follow-up PR owned by
+AI/LLM**; per-tenant AI rate/cost limiting is the PR after that. Neither is
+implemented here.
+
+At rest the same route is bound: the 500-character excerpt and the summary are
+AES-256-GCM encrypted through `services/credentials/vault.js` with AAD
+`meeting_notes_runs:tenant:<id>`, so a row lifted into another tenant fails the
+GCM auth tag instead of decrypting. Excerpt material is NULLed 30 days after
+write by the sweeper (`sweepExpiredExcerpts`, `UPDATE` only — history rows are
+never deleted), and `generated_by` holds the numeric session user id, never an
+email.
+
+Accepted residuals:
+
+- A dev boot with no `CREDENTIAL_ENCRYPTION_KEY` writes the summary as plaintext
+  JSONB. Production refuses to boot without the key, so this is dev-only.
+- `transcript_sha256` is retained after the excerpt is purged (integrity /
+  dedupe). It is a plain SHA-256, not a keyed HMAC.
+- `contact` JSONB written before the whitelist existed may still hold `email` /
+  `phone` **at rest**; the API narrows it on read, and a backfill scrub of those
+  legacy rows is Database-owned follow-up work.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`

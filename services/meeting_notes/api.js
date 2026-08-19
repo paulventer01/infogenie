@@ -49,7 +49,9 @@ function _presentNote(row, tid) {
   }
   return {
     id: row.id,
-    contact: row.contact,
+    // Whitelisted again on read: rows written before the write-side whitelist
+    // can hold email/phone/free-text keys straight from the request body.
+    contact: _whitelistedContact(row.contact),
     summary,
     source: row.source,
     created_at: row.created_at,
@@ -141,13 +143,17 @@ router.post('/summarize', _safeAsync(async (req, res) => {
   if (!transcript) return _err(res, 400, 'transcript required');
   if (transcript.length < 50) return _err(res, 400, 'transcript too short — minimum 50 chars');
   if (!_hasOpenAI()) return _err(res, 400, 'OPENAI_API_KEY required');
-  const result = await _summarize(transcript, contact);
+  // Only the whitelisted contact keys leave this process — to OpenAI as well as
+  // to the row. The request body may carry email/phone/free-text notes, and the
+  // prompt is the wider exposure of the two. The transcript body itself is still
+  // sent unredacted; see docs/security-guardrails.md.
+  const contactObj = _whitelistedContact(contact);
+  const result = await _summarize(transcript, Object.keys(contactObj).length ? contactObj : null);
   if (!result) return _err(res, 502, 'AI summarization failed — try again');
 
   let noteId = null;
   if (_db.hasDb()) {
     try {
-      const contactObj = _whitelistedContact(contact);
       const excerpt = transcript.slice(0, EXCERPT_MAX);
       const sha = _crypto.createHash('sha256').update(transcript).digest('hex');
       const generatedBy = _generatedBy(req);
