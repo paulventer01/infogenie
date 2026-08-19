@@ -79,15 +79,27 @@ write by the sweeper (`sweepExpiredExcerpts`, `UPDATE` only — history rows are
 never deleted), and `generated_by` holds the numeric session user id, never an
 email.
 
+`contact` is narrowed at rest as well as on read. `backfillMeetingNotesEncryption()`
+in `services/meeting_notes/schema.js` runs as a boot task, walks each tenant in
+batches, and rewrites `contact` to the `{name, company, role}` whitelist — string
+values only, each capped at 200 characters — so `email`, `phone` and free-text keys
+written before the whitelist existed are removed from the row, not merely hidden.
+The API narrows `contact` again on read (`_whitelistedContact` in `api.js`), so a row
+the backfill has not reached yet still cannot surface `email` / `phone` through
+`/api/meeting-notes/history` or the detail route.
+
 Accepted residuals:
 
 - A dev boot with no `CREDENTIAL_ENCRYPTION_KEY` writes the summary as plaintext
   JSONB. Production refuses to boot without the key, so this is dev-only.
 - `transcript_sha256` is retained after the excerpt is purged (integrity /
   dedupe). It is a plain SHA-256, not a keyed HMAC.
-- `contact` JSONB written before the whitelist existed may still hold `email` /
-  `phone` **at rest**; the API narrows it on read, and a backfill scrub of those
-  legacy rows is Database-owned follow-up work.
+- The contact backfill is the control of record for legacy rows at rest, so it
+  must not stall: every row the backfill predicate selects has to be rewritten or
+  explicitly skipped, or the per-tenant batch loop re-selects it and boot never
+  finishes the sweep. Hardening the predicate against non-string and over-length
+  values under the allowed keys, and against malformed (non-object) `summary`
+  JSONB, is in-flight **Database** work — not claimed as landed here.
 
 ## Related existing systems
 
