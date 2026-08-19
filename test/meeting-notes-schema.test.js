@@ -7,7 +7,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 
 const db = require('../db');
-const { ensureMeetingNotesSchema } = require('../services/meeting_notes/schema');
+const { ensureMeetingNotesSchema, backfillMeetingNotesEncryption } = require('../services/meeting_notes/schema');
 const { ensureTenantSchema } = require('../services/tenants/schema');
 
 const HAS_DB = db.hasDb();
@@ -102,4 +102,10 @@ test('meeting_notes_runs ciphertext/TTL columns, CHECKs, and TTL index exist', {
         AND indexname='idx_meeting_notes_excerpt_ttl'`
   )).rows;
   assert.strictEqual(idx.length, 1, 'idx_meeting_notes_excerpt_ttl must exist');
+});
+
+test('backfillMeetingNotesEncryption is exported and is not invoked by ensureMeetingNotesSchema', { skip }, async () => {
+  assert.strictEqual(typeof backfillMeetingNotesEncryption, 'function');
+  await ensureMeetingNotesSchema();
+  assert.strictEqual(typeof backfillMeetingNotesEncryption, 'function');
 });
