@@ -4191,7 +4191,7 @@ BOOT_TASKS.push(async () => { try {
     await _meetingSchema.ensureMeetingNotesSchema();
     console.log('[meeting-notes] schema ready');
   }
-} catch (e) { console.warn('[meeting-notes] schema init failed:', e.message); }});
+} catch { console.warn('[meeting-notes] schema init failed'); }});
 app.use('/api/headline-tester', _headlineRouter);
 // Cloudflare status routes → services/cloudflare_status/routes.js
 require('./services/cloudflare_status/routes')(app, { BOOT_TASKS, _abdSchema, _adSwipeSchema, _aiProvidersSchema, _alertRouteSchema, _battleSchema, _bfSchema, _calendarSchema, _coldEmailSchema, _crisisDetector, _crisisSchema, _db, _digestRouter, _digestSchema, _heatmapsSchema, _kwExplorerSchema, _leadFinderSchema, _lpSchema, _nlSchema, _optimizerBandit, _optimizerCreative, _optimizerIngest, _optimizerRules, _optimizerSchema, _podcastSchema, _pwSchema, _redditSchema, _searchIntelSchema, _serpTrackerSchema, _sovSchema, _vocSchema });
