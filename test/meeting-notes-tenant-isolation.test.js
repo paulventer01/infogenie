@@ -66,7 +66,8 @@ test('tenant B history query does not return tenant A notes', { skip }, async ()
 test('GET-style id+tenant query for tenant B with tenant A id returns 0 rows', { skip }, async () => {
   const p = db.getPool();
   const rows = (await p.query(
-    `SELECT * FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+    `SELECT id, contact, summary, source, created_at FROM meeting_notes_runs
+     WHERE id=$1 AND tenant_id=$2`,
     [noteIdA, tenantB]
   )).rows;
   assert.strictEqual(rows.length, 0, 'tenant B must not fetch tenant A note by id');
@@ -75,9 +76,13 @@ test('GET-style id+tenant query for tenant B with tenant A id returns 0 rows', {
 test('tenant A can read its own seeded note', { skip }, async () => {
   const p = db.getPool();
   const rows = (await p.query(
-    `SELECT * FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+    `SELECT id, contact, summary, source, created_at FROM meeting_notes_runs
+     WHERE id=$1 AND tenant_id=$2`,
     [noteIdA, tenantA]
   )).rows;
   assert.strictEqual(rows.length, 1);
   assert.strictEqual(rows[0].summary.summary, `exec summary ${SUFFIX}`);
+  // GET /:id serves this projection — the excerpt and hash stay server-side.
+  assert.ok(!('transcript_excerpt' in rows[0]));
+  assert.ok(!('transcript_sha256' in rows[0]));
 });
