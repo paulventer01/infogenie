@@ -89,6 +89,16 @@ test('the guardrails doc documents fail-closed backfill and observable retention
   assert.match(flat, /A JSONB `null` `contact` stays `null` at rest/);
 });
 
+// The shared BOOT_TASKS loop is an unawaited IIFE, so the port is bound before
+// meeting-notes verification runs. Claiming production "cannot serve traffic"
+// until it passes would overstate the control and mislead an incident responder.
+test('the guardrails doc does not overstate the boot gate', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.doesNotMatch(flat, /cannot serve traffic/);
+  assert.match(flat, /`listen` is not gated on boot-task completion/);
+});
+
 test('originAllowed accepts matching host and localhost in non-prod', () => {
   const prev = process.env.NODE_ENV;
   process.env.NODE_ENV = 'development';

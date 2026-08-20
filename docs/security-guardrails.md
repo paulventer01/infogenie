@@ -108,8 +108,8 @@ non-compliant when any of these hold:
 
 | Reason key | Residual it catches |
 |---|---|
-| `plaintext_excerpt` | `transcript_excerpt` still non-NULL |
-| `plaintext_summary` | non-empty `summary` JSONB with no `summary_ciphertext` |
+| `plaintext_excerpt` | `transcript_excerpt` still non-NULL, with or without ciphertext |
+| `plaintext_summary` | non-empty `summary` JSONB, with or without ciphertext |
 | `email_generated_by` | `generated_by` still looks like an address |
 | `contact_non_object` | array / scalar `contact` |
 | `contact_extra_keys` | any key outside `{name, company, role}` |
@@ -124,13 +124,38 @@ The two `partial_*_crypto` arms are defence in depth: the
 reject a half-written crypto triple at write time, but those `ALTER`s are wrapped
 in try/catch so an older database can boot without them.
 
+The first two arms deliberately ignore whether ciphertext exists. A row can hold
+plaintext *and* a complete ciphertext triple at once, and gating on
+`… IS NULL` would have let that leftover plaintext sit on disk forever while
+verification reported success. The backfill selects those rows too and heals them
+according to the state of the triple:
+
+| Triple | Backfill action |
+|---|---|
+| missing (all three NULL) | encrypt, then NULL the plaintext and set the 30-day TTL |
+| complete (all three set) | drop the plaintext only — no re-encryption, so ciphertext, IV and tag stay byte-identical |
+| partial (1–2 NULL) | leave the row alone; it stays non-compliant |
+
+The partial case is refused on purpose. A ciphertext with no IV or tag cannot be
+decrypted, so the plaintext beside it is the only readable copy — dropping it
+would destroy data, and keeping it silently would leave PII at rest. Failing the
+boot hands that decision to an operator. Rows in that state are selected by the
+backfill but changed by nothing, so the batch loop's stall guard excludes them
+from the rest of the tenant's walk rather than re-selecting them forever.
+
 Success requires **zero** row errors and **zero** non-compliant rows. Anything
 else is a failure:
 
 - **Production** — `backfillMeetingNotesEncryption()` throws a counts-only error
   and the `server.js` boot task calls `process.exit(1)`. The same is true of the
-  retention sweep. A production instance therefore cannot serve traffic while
-  known plaintext or extra PII remains.
+  retention sweep. The process therefore does not stay up with known leftovers,
+  and the deployment fails rather than rolling out. Note what this does *not*
+  say: `listen` is not gated on boot-task completion. `app.listen` runs
+  synchronously while the shared `BOOT_TASKS` loop in
+  `services/cloudflare_status/routes.js` is an unawaited async IIFE, so the port
+  is already bound when verification runs and there is a brief window in which
+  the process accepts connections before it exits. Treat the non-zero exit as the
+  control, not the absence of a listening socket.
 - **Development** — the call returns `{ ok: false, … }` with the counts so local
   work is not blocked.
 
@@ -180,12 +205,15 @@ Accepted residuals:
   material written without a TTL would never expire. Both `/summarize` insert
   branches and the backfill set the column, so no such row exists today — any new
   write path must keep setting it.
-- Verification flags a non-NULL `transcript_excerpt` even when ciphertext is also
-  present, but the backfill's select predicate only picks up plaintext with *no*
-  ciphertext. That state is unreachable from the application (the backfill and
-  sweep both write the excerpt columns in a single statement, and both insert
-  branches write `transcript_excerpt = NULL`); if it were ever produced by hand,
-  production would refuse to boot rather than self-heal.
+- Healing a row that already carries a complete triple trusts that triple: the
+  leftover plaintext is dropped without first decrypting the ciphertext to check
+  the two agree. Confidentiality is the reason — the plaintext is the exposure —
+  but if a triple were ever stale or bound to a different tenant's AAD, the
+  plaintext is discarded rather than reconciled, and the read path surfaces `{}`
+  for a summary it cannot decrypt.
+- A row holding plaintext beside a *partial* triple is never repaired
+  automatically, so production keeps failing its boot until an operator resolves
+  it. That is the intended outcome; see the triple table above.
 
 ## Related existing systems
 
