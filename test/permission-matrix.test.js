@@ -209,6 +209,82 @@ test("shadow: would-be denials are allowed (logged, not blocked)", async () => {
   }
 });
 
+// ── Advertising Orchestrator catalog & grant boundary ───────────────────────
+// The approve gates release spend/publish, so they must never be implied by
+// authoring rights. This locks the separation-of-duty boundary in the catalog.
+const ORCH_GATES = [
+  'research_execution', 'creative_generation', 'creative_selection',
+  'campaign_publishing', 'campaign_activation', 'optimization_application',
+];
+const ORCH_OPERATIONAL = [
+  'orchestrator.workflows.view', 'orchestrator.workflows.create',
+  'orchestrator.workflows.edit', 'orchestrator.workflows.request_approval',
+  'orchestrator.workflows.pause', 'orchestrator.workflows.resume',
+  'orchestrator.workflows.cancel',
+];
+const ORCH_APPROVE = ORCH_GATES.map(g => `orchestrator.workflows.approve.${g}`);
+const ORCH_ALL = [
+  ...ORCH_OPERATIONAL, ...ORCH_APPROVE,
+  'orchestrator.workflows.recover', 'orchestrator.workflows.audit.view',
+];
+
+function permsOf(roleKey) {
+  const r = SYSTEM_ROLES.find(x => x.key === roleKey);
+  if (!r) throw new Error(`unknown role ${roleKey}`);
+  return new Set(r.permissions);
+}
+
+test('orchestrator: every workflow key is a tenant-scope catalog key', () => {
+  const { PERMISSIONS } = require('../services/tenants/permissions');
+  const byKey = Object.fromEntries(PERMISSIONS.map(p => [p.key, p]));
+  for (const k of ORCH_ALL) {
+    assert.ok(isValidPermission(k), `${k} must be in the catalog`);
+    assert.equal(byKey[k].scope, 'tenant', `${k} must be tenant-scoped, never platform`);
+    assert.ok(byKey[k].label, `${k} needs a human label for access reviews`);
+  }
+  // One approve key per schema gate — a gate with no key would be ungated.
+  assert.equal(ORCH_APPROVE.filter(isValidPermission).length, 6);
+});
+
+test('orchestrator: owner/admin roles inherit every workflow key', () => {
+  for (const roleKey of ['tenant_owner', 'tenant_admin', 'platform_admin', 'platform_owner']) {
+    const held = permsOf(roleKey);
+    for (const k of ORCH_ALL) assert.ok(held.has(k), `${roleKey} missing ${k}`);
+  }
+});
+
+test('orchestrator: Marketer operates workflows but holds no approve gate and no recover', () => {
+  const held = permsOf('marketer');
+  for (const k of ORCH_OPERATIONAL) assert.ok(held.has(k), `marketer should hold ${k}`);
+  for (const k of ORCH_APPROVE) {
+    assert.equal(held.has(k), false, `marketer must NOT self-approve: ${k}`);
+  }
+  assert.equal(held.has('orchestrator.workflows.recover'), false,
+    'recover breaks an execution lease — owner/admin only');
+});
+
+test('orchestrator: read-only and restricted roles gain no write authority', () => {
+  const analyst = permsOf('analyst');
+  assert.ok(analyst.has('orchestrator.workflows.view'), 'analyst reads workflows');
+  assert.ok(analyst.has('orchestrator.workflows.audit.view'), 'analyst reads the audit trail');
+  for (const k of ORCH_ALL) {
+    if (/\.view$/.test(k)) continue;
+    assert.equal(analyst.has(k), false, `analyst is read-only: ${k}`);
+  }
+  for (const roleKey of ['content_creator', 'client_viewer']) {
+    const held = permsOf(roleKey);
+    for (const k of ORCH_ALL) assert.equal(held.has(k), false, `${roleKey} must not hold ${k}`);
+  }
+});
+
+test('orchestrator: the existing Agent Orchestrator hub gate is unchanged', () => {
+  const read = matrix.requiredPermissionForRequest('/api/agent-orchestrator/state', 'GET');
+  assert.equal(read.permission, 'brand.calendar.view');
+  const write = matrix.requiredPermissionForRequest('/api/agent-orchestrator/run', 'POST');
+  assert.equal(write.permission, 'brand.calendar.edit');
+  assert.equal(matrix.requiredPermissionForComponent('agent-orchestrator'), 'brand.calendar.view');
+});
+
 // ── Anonymous & non-API traffic is not gated here ───────────────────────────
 test("anonymous /api requests are not gated by the matrix (auth gate handles them)", async () => {
   const { server, baseUrl } = await makeServer({ mode: 'on', principal: null });

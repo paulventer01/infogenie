@@ -74,6 +74,30 @@ const PERMISSIONS = [
   { key:'grow.cro.view',             scope:'tenant',   area:'Grow',      label:'View CRO Lab tests' },
   { key:'grow.cro.edit',             scope:'tenant',   area:'Grow',      label:'Create / edit CRO tests' },
 
+  // ── Advertising Orchestrator ──────────────────────────────────────────────
+  // Per-action keys for the multi-phase advertising workflow engine. The six
+  // `approve.*` gates mirror the GATE ENUM in services/agent_orchestrator/schema.js
+  // one-for-one and are deliberately separate from `edit`: approving a gate
+  // advances a workflow toward publishing or spending money, so authoring a
+  // workflow must never imply the authority to release it.
+  { key:'orchestrator.workflows.view',             scope:'tenant', area:'Orchestrator', label:'View advertising workflows, phases & pending gates' },
+  { key:'orchestrator.workflows.create',           scope:'tenant', area:'Orchestrator', label:'Create advertising workflows' },
+  { key:'orchestrator.workflows.edit',             scope:'tenant', area:'Orchestrator', label:'Edit workflow brief, inputs & platform selection' },
+  { key:'orchestrator.workflows.request_approval', scope:'tenant', area:'Orchestrator', label:'Submit a workflow gate for approval' },
+  { key:'orchestrator.workflows.approve.research_execution',       scope:'tenant', area:'Orchestrator', label:'Approve gate: research execution' },
+  { key:'orchestrator.workflows.approve.creative_generation',      scope:'tenant', area:'Orchestrator', label:'Approve gate: creative generation' },
+  { key:'orchestrator.workflows.approve.creative_selection',       scope:'tenant', area:'Orchestrator', label:'Approve gate: creative selection' },
+  { key:'orchestrator.workflows.approve.campaign_publishing',      scope:'tenant', area:'Orchestrator', label:'Approve gate: publish campaigns to ad platforms' },
+  { key:'orchestrator.workflows.approve.campaign_activation',      scope:'tenant', area:'Orchestrator', label:'Approve gate: activate campaigns (starts spend)' },
+  { key:'orchestrator.workflows.approve.optimization_application', scope:'tenant', area:'Orchestrator', label:'Approve gate: apply optimizations to live campaigns' },
+  { key:'orchestrator.workflows.pause',            scope:'tenant', area:'Orchestrator', label:'Pause a running workflow' },
+  { key:'orchestrator.workflows.resume',           scope:'tenant', area:'Orchestrator', label:'Resume a paused workflow' },
+  { key:'orchestrator.workflows.cancel',           scope:'tenant', area:'Orchestrator', label:'Cancel a workflow' },
+  // Recovery breaks an execution lease and rewrites in-flight run state — an
+  // operator-of-last-resort action, so it stays with owner/admin.
+  { key:'orchestrator.workflows.recover',          scope:'tenant', area:'Orchestrator', label:'Recover a stuck workflow (break execution lease)' },
+  { key:'orchestrator.workflows.audit.view',       scope:'tenant', area:'Orchestrator', label:'View the orchestrator audit trail' },
+
   // ── Reach section ─────────────────────────────────────────────────────────
   { key:'reach.audiences.view',      scope:'tenant',   area:'Reach',     label:'View dynamic audiences & segments' },
   { key:'reach.audiences.edit',      scope:'tenant',   area:'Reach',     label:'Build / edit audiences' },
@@ -180,6 +204,14 @@ const SYSTEM_ROLES = [
       'grow.optimizer.view',
       'grow.landing_pages.view', 'grow.landing_pages.edit',
       'grow.cro.view', 'grow.cro.edit',
+      // Advertising Orchestrator — operational control only. Every
+      // `orchestrator.workflows.approve.*` gate and `.recover` is withheld: a
+      // Marketer builds and drives a workflow but cannot self-approve the step
+      // that publishes campaigns or starts spend.
+      'orchestrator.workflows.view', 'orchestrator.workflows.create',
+      'orchestrator.workflows.edit', 'orchestrator.workflows.request_approval',
+      'orchestrator.workflows.pause', 'orchestrator.workflows.resume',
+      'orchestrator.workflows.cancel',
       'reach.audiences.view', 'reach.audiences.edit',
       'reach.journeys.view', 'reach.journeys.edit',
       'reach.email.view', 'reach.email.send',

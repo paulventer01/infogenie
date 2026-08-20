@@ -139,6 +139,10 @@ const ROUTE_GROUPS = [
   { prefix: '/api/lead-intelligence',          view: 'grow.optimizer.view',     write: 'grow.optimizer.control' },
   { prefix: '/api/remarketing',               view: 'grow.campaigns.view',     write: 'grow.campaigns.edit' },
   { prefix: '/api/marketing-spine',           view: 'grow.campaigns.view',     write: 'grow.campaigns.edit' },
+  // Existing Agent Orchestrator hub — unchanged. The newer `orchestrator.workflows.*`
+  // catalog keys are NOT a group gate: gate granularity (per-gate approve, recover)
+  // is finer than one prefix, so the workflow handlers carry requirePermission()
+  // per action on top of whatever group covers their mount.
   { prefix: '/api/agent-orchestrator',        view: 'brand.calendar.view',     write: 'brand.calendar.edit' },
   { prefix: '/api/ai-governance',             view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
   { prefix: '/api/ai-traces',                 view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
