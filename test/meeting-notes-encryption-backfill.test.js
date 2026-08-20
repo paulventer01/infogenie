@@ -10,7 +10,13 @@ const assert = require('node:assert');
 
 const db = require('../db');
 const vault = require('../services/credentials/vault');
-const { ensureMeetingNotesSchema, backfillMeetingNotesEncryption, NEEDS_BACKFILL_SQL } = require('../services/meeting_notes/schema');
+const {
+  ensureMeetingNotesSchema,
+  backfillMeetingNotesEncryption,
+  verifyMeetingNotesEncryption,
+  NEEDS_BACKFILL_SQL,
+  NONCOMPLIANT_SQL,
+} = require('../services/meeting_notes/schema');
 const { ensureTenantSchema } = require('../services/tenants/schema');
 
 const HAS_DB = db.hasDb();
@@ -104,10 +110,19 @@ test('backfill encrypts plaintext excerpt/summary, scrubs generated_by, and bind
     assert.ok(tenantCol);
     assert.strictEqual(tenantCol.is_nullable, 'NO', 'tenant_id must remain NOT NULL after backfill');
 
+    const verified = await verifyMeetingNotesEncryption();
+    assert.strictEqual(verified.ok, true);
+    assert.strictEqual(verified.noncompliant, 0);
+
     const again = await backfillMeetingNotesEncryption();
     assert.strictEqual(again.ok, true);
+    assert.strictEqual(again.excerpts, 0, 'second pass must encrypt 0 excerpts');
+    assert.strictEqual(again.summaries, 0, 'second pass must encrypt 0 summaries');
+    assert.strictEqual(again.generatedBy, 0, 'second pass must scrub 0 generated_by');
+    assert.strictEqual(again.contacts, 0, 'second pass must update 0 contacts');
     const still = (await p.query(
-      `SELECT transcript_excerpt, generated_by, summary, contact
+      `SELECT transcript_excerpt, generated_by, summary, contact,
+              excerpt_ciphertext, summary_ciphertext
          FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
       [noteId, tenantA]
     )).rows[0];
@@ -115,6 +130,8 @@ test('backfill encrypts plaintext excerpt/summary, scrubs generated_by, and bind
     assert.strictEqual(still.generated_by, null);
     assert.deepStrictEqual(still.summary, {});
     assert.deepStrictEqual(still.contact, {});
+    assert.ok(Buffer.isBuffer(still.excerpt_ciphertext) && still.excerpt_ciphertext.equals(row.excerpt_ciphertext));
+    assert.ok(Buffer.isBuffer(still.summary_ciphertext) && still.summary_ciphertext.equals(row.summary_ciphertext));
   } finally {
     const ids = [tenantA, tenantB].filter(Boolean);
     if (ids.length) {
@@ -412,6 +429,11 @@ test('CASE contact predicate selects scalar/array JSONB without cannot-delete-fr
   assert.ok(
     /WHEN jsonb_typeof\(contact\) IS DISTINCT FROM 'object' THEN true[\s\S]*WHEN \(contact - ARRAY/.test(NEEDS_BACKFILL_SQL),
     '`- ARRAY` must appear only in a WHEN after typeof=object'
+  );
+  assert.ok(NONCOMPLIANT_SQL.includes('CASE'), 'verification contact arm must be CASE');
+  assert.ok(
+    /WHEN jsonb_typeof\(contact\) = 'null' THEN false[\s\S]*WHEN jsonb_typeof\(contact\) IS DISTINCT FROM 'object' THEN true[\s\S]*WHEN \(contact - ARRAY/.test(NONCOMPLIANT_SQL),
+    'verification must treat JSONB null as compliant and apply `- ARRAY` only after typeof=object'
   );
 
   await ensureTenantSchema();
@@ -720,8 +742,15 @@ test('backfill logs row counts only — never contact PII, excerpt text, or key 
     }
     assert.strictEqual(result.ok, true);
     assert.ok(captured.length, 'the backfill must still emit its summary line');
-
     const logged = captured.join('\n');
+    assert.ok(
+      logged.includes('meeting_notes_backfill_verify') || /verify noncompliant=/.test(logged),
+      'backfill must emit a verification log line'
+    );
+    assert.ok(
+      logged.includes('meeting_notes_backfill_complete') || /backfill encrypted /.test(logged),
+      'backfill must emit a completion summary'
+    );
     for (const secret of SECRETS) {
       assert.ok(!logged.includes(secret), `backfill logs must not contain ${secret}`);
     }
@@ -805,3 +834,321 @@ test('backfill drops nested contact fields, extra keys, and slices long strings'
     await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
   }
 });
+
+test('a failed encrypt row cannot yield false-success and does not abort a second tenant', { skip }, async () => {
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-fail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const mk = async (label, slug) => (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [label, slug]
+  )).rows[0].id;
+  const poisoned = await mk(`MN fail P ${suffix}`, `mn-fail-p-${suffix}`);
+  const clean = await mk(`MN fail C ${suffix}`, `mn-fail-c-${suffix}`);
+  assert.ok(poisoned < clean, 'poisoned tenant must sort first so it is walked first');
+
+  const POISON_EXCERPT = 'mn-fail-poison-excerpt';
+  const CLEAN_EXCERPT = 'mn-fail-clean-excerpt';
+  const origEncrypt = vault.encryptString;
+  const prevEnv = process.env.NODE_ENV;
+  const captured = [];
+  const original = { log: console.log, warn: console.warn, error: console.error, info: console.info };
+  const grab = (...args) => {
+    captured.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+  };
+
+  try {
+    const poisonId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, transcript_excerpt, source)
+       VALUES ($1,'{}'::jsonb,'{}'::jsonb,$2,'ai') RETURNING id`,
+      [poisoned, POISON_EXCERPT]
+    )).rows[0].id;
+    const cleanId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, transcript_excerpt, source)
+       VALUES ($1,'{}'::jsonb,'{}'::jsonb,$2,'ai') RETURNING id`,
+      [clean, CLEAN_EXCERPT]
+    )).rows[0].id;
+
+    if (prevEnv === 'production') process.env.NODE_ENV = 'test';
+    vault.encryptString = function (plaintext, aad) {
+      if (plaintext === POISON_EXCERPT) throw new Error('forced encrypt failure');
+      return origEncrypt.call(this, plaintext, aad);
+    };
+    console.log = grab; console.warn = grab; console.error = grab; console.info = grab;
+
+    let result;
+    try {
+      result = await backfillMeetingNotesEncryption();
+    } finally {
+      console.log = original.log; console.warn = original.warn;
+      console.error = original.error; console.info = original.info;
+      vault.encryptString = origEncrypt;
+    }
+
+    assert.strictEqual(result.ok, false, 'encrypt failure must not report success');
+    assert.ok(result.failed >= 1, 'failed encrypt row must be counted');
+    assert.ok(
+      (result.failedIds || []).some((ref) => ref.tenant_id === poisoned && ref.id === poisonId),
+      'failedIds must include the poisoned row as tenant_id/id only'
+    );
+    assert.ok(result.noncompliant >= 1, 'verification must still see leftover plaintext');
+    assert.ok((result.byReason && result.byReason.plaintext_excerpt) >= 1);
+
+    const poisonRow = (await p.query(
+      `SELECT transcript_excerpt, excerpt_ciphertext
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [poisonId, poisoned]
+    )).rows[0];
+    assert.strictEqual(poisonRow.transcript_excerpt, POISON_EXCERPT, 'failed row must keep plaintext');
+    assert.strictEqual(poisonRow.excerpt_ciphertext, null);
+
+    const cleanRow = (await p.query(
+      `SELECT transcript_excerpt, excerpt_ciphertext, excerpt_iv, excerpt_tag
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [cleanId, clean]
+    )).rows[0];
+    assert.strictEqual(cleanRow.transcript_excerpt, null, 'second tenant must still be encrypted');
+    assert.ok(Buffer.isBuffer(cleanRow.excerpt_ciphertext) && cleanRow.excerpt_ciphertext.length > 0);
+    assert.strictEqual(
+      vault.decryptString(cleanRow.excerpt_ciphertext, cleanRow.excerpt_iv, cleanRow.excerpt_tag, aadFor(clean)),
+      CLEAN_EXCERPT
+    );
+
+    const logged = captured.join('\n');
+    assert.ok(logged.includes(`id=${poisonId}`), 'failure logs must include the row id');
+    assert.ok(
+      logged.includes('meeting_notes_backfill_row_failed') || /backfill row failed/.test(logged),
+      'failure logs must name the row-failed event'
+    );
+    assert.ok(!logged.includes(POISON_EXCERPT), 'failure logs must not contain excerpt plaintext');
+    assert.ok(!logged.includes(CLEAN_EXCERPT), 'failure logs must not contain the other tenant excerpt');
+    assert.ok(
+      !logged.includes(process.env.CREDENTIAL_ENCRYPTION_KEY),
+      'failure logs must not contain the vault key'
+    );
+  } finally {
+    if (prevEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = prevEnv;
+    vault.encryptString = origEncrypt;
+    console.log = original.log; console.warn = original.warn;
+    console.error = original.error; console.info = original.info;
+    const ids = [poisoned, clean].filter(Boolean);
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id = ANY($1)`, [ids]);
+    await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]);
+  }
+});
+
+test('production backfill throws when leftover plaintext remains', { skip }, async () => {
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-prod-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN prod ${suffix}`, `mn-prod-${suffix}`]
+  )).rows[0].id;
+
+  const LEFTOVER = 'mn-prod-leftover-excerpt';
+  const origEncrypt = vault.encryptString;
+  const prevEnv = process.env.NODE_ENV;
+  try {
+    await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, transcript_excerpt, source)
+       VALUES ($1,'{}'::jsonb,'{}'::jsonb,$2,'ai')`,
+      [tenantId, LEFTOVER]
+    );
+
+    const before = await verifyMeetingNotesEncryption();
+    assert.strictEqual(before.ok, false);
+    assert.ok(before.noncompliant >= 1);
+    assert.ok((before.byReason && before.byReason.plaintext_excerpt) >= 1);
+
+    vault.encryptString = () => { throw new Error('encrypt stubbed off'); };
+    process.env.NODE_ENV = 'production';
+
+    let threw = false;
+    try {
+      await backfillMeetingNotesEncryption();
+    } catch (err) {
+      threw = true;
+      assert.ok(err instanceof Error);
+      assert.match(String(err.message), /failed closed/i);
+      assert.ok(!String(err.message).includes(LEFTOVER), 'throw message must not include excerpt text');
+      assert.ok(
+        !String(err.message).includes(process.env.CREDENTIAL_ENCRYPTION_KEY || ''),
+        'throw message must not include the vault key'
+      );
+    }
+    assert.ok(threw, 'production backfill must throw while leftover plaintext remains');
+
+    const leftover = (await p.query(
+      `SELECT COUNT(*)::int AS n FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND transcript_excerpt IS NOT NULL`,
+      [tenantId]
+    )).rows[0].n;
+    assert.ok(leftover >= 1, 'plaintext must still be present after the failed production run');
+  } finally {
+    if (prevEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = prevEnv;
+    vault.encryptString = origEncrypt;
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+
+test('verification detects leftover PII shapes and partial crypto without dumping values', { skip }, async () => {
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-ver-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN ver ${suffix}`, `mn-ver-${suffix}`]
+  )).rows[0].id;
+
+  const restoreExcerptCheck = async () => {
+    try {
+      await p.query(`
+        ALTER TABLE meeting_notes_runs
+          ADD CONSTRAINT meeting_notes_runs_excerpt_crypto_check
+          CHECK (
+            (excerpt_ciphertext IS NULL AND excerpt_iv IS NULL AND excerpt_tag IS NULL)
+            OR
+            (excerpt_ciphertext IS NOT NULL AND excerpt_iv IS NOT NULL AND excerpt_tag IS NOT NULL)
+          )
+      `);
+    } catch (_e) { /* already present */ }
+  };
+  const restoreSummaryCheck = async () => {
+    try {
+      await p.query(`
+        ALTER TABLE meeting_notes_runs
+          ADD CONSTRAINT meeting_notes_runs_summary_crypto_check
+          CHECK (
+            (summary_ciphertext IS NULL AND summary_iv IS NULL AND summary_tag IS NULL)
+            OR
+            (summary_ciphertext IS NOT NULL AND summary_iv IS NOT NULL AND summary_tag IS NOT NULL)
+          )
+      `);
+    } catch (_e) { /* already present */ }
+  };
+
+  try {
+    const excerptId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, transcript_excerpt, source)
+       VALUES ($1,'{}'::jsonb,'{}'::jsonb,$2,'ai') RETURNING id`,
+      [tenantId, 'mn-ver-excerpt']
+    )).rows[0].id;
+    const summaryId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,'{}'::jsonb,$2::jsonb,'ai') RETURNING id`,
+      [tenantId, JSON.stringify({ body: 'mn-ver-summary' })]
+    )).rows[0].id;
+    const emailId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source, generated_by)
+       VALUES ($1,'{}'::jsonb,'{}'::jsonb,'ai',$2) RETURNING id`,
+      [tenantId, 'ops-mn-ver@example.test']
+    )).rows[0].id;
+    const extraId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,$2::jsonb,'{}'::jsonb,'ai') RETURNING id`,
+      [tenantId, JSON.stringify({ name: 'Ada', email: 'mn-ver-extra@example.test' })]
+    )).rows[0].id;
+    const nonStringId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,$2::jsonb,'{}'::jsonb,'ai') RETURNING id`,
+      [tenantId, JSON.stringify({ name: { nested: true } })]
+    )).rows[0].id;
+    const longId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,$2::jsonb,'{}'::jsonb,'ai') RETURNING id`,
+      [tenantId, JSON.stringify({ company: 'y'.repeat(201) })]
+    )).rows[0].id;
+    const scalarId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,'"mn-ver-scalar"'::jsonb,'{}'::jsonb,'ai') RETURNING id`,
+      [tenantId]
+    )).rows[0].id;
+    const jsonNullId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source)
+       VALUES ($1,'null'::jsonb,'{}'::jsonb,'ai') RETURNING id`,
+      [tenantId]
+    )).rows[0].id;
+
+    await p.query(`ALTER TABLE meeting_notes_runs DROP CONSTRAINT IF EXISTS meeting_notes_runs_excerpt_crypto_check`);
+    await p.query(`ALTER TABLE meeting_notes_runs DROP CONSTRAINT IF EXISTS meeting_notes_runs_summary_crypto_check`);
+    const partialExcerptId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source, excerpt_ciphertext)
+       VALUES ($1,'{}'::jsonb,'{}'::jsonb,'ai', decode('00','hex')) RETURNING id`,
+      [tenantId]
+    )).rows[0].id;
+    const partialSummaryId = (await p.query(
+      `INSERT INTO meeting_notes_runs (tenant_id, contact, summary, source, summary_ciphertext)
+       VALUES ($1,'{}'::jsonb,'{}'::jsonb,'ai', decode('00','hex')) RETURNING id`,
+      [tenantId]
+    )).rows[0].id;
+
+    const verified = await verifyMeetingNotesEncryption();
+    assert.strictEqual(verified.ok, false);
+    assert.ok(verified.noncompliant >= 8, 'every leftover shape except JSONB null must count');
+    assert.ok(verified.byReason.plaintext_excerpt >= 1);
+    assert.ok(verified.byReason.plaintext_summary >= 1);
+    assert.ok(verified.byReason.email_generated_by >= 1);
+    assert.ok(verified.byReason.contact_extra_keys >= 1);
+    assert.ok(verified.byReason.contact_non_string >= 1);
+    assert.ok(verified.byReason.contact_too_long >= 1);
+    assert.ok(verified.byReason.contact_non_object >= 1);
+    assert.ok(verified.byReason.partial_excerpt_crypto >= 1);
+    assert.ok(verified.byReason.partial_summary_crypto >= 1);
+
+    const sampleSet = new Set((verified.sampleIds || []).map((s) => s.id));
+    for (const id of [excerptId, summaryId, emailId, extraId, nonStringId, longId, scalarId, partialExcerptId, partialSummaryId]) {
+      assert.ok(
+        sampleSet.has(id) || verified.noncompliant > (verified.sampleIds || []).length,
+        `sampleIds should include ${id} or be capped while still counting it`
+      );
+    }
+    for (const ref of verified.sampleIds || []) {
+      assert.ok(ref.tenant_id != null && ref.id != null, 'sampleIds must be tenant_id/id only');
+      assert.deepStrictEqual(Object.keys(ref).sort(), ['id', 'tenant_id']);
+    }
+    assert.ok(
+      !(verified.sampleIds || []).some((s) => s.id === jsonNullId),
+      'JSONB null contact must remain compliant'
+    );
+
+    const localIds = (await p.query(
+      `SELECT id FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND (${NONCOMPLIANT_SQL})
+        ORDER BY id`,
+      [tenantId]
+    )).rows.map((r) => r.id);
+    assert.ok(!localIds.includes(jsonNullId), 'JSONB null contact must not match NONCOMPLIANT_SQL');
+    for (const id of [excerptId, summaryId, emailId, extraId, nonStringId, longId, scalarId, partialExcerptId, partialSummaryId]) {
+      assert.ok(localIds.includes(id), `tenant-scoped NONCOMPLIANT_SQL must select id=${id}`);
+    }
+
+    const serialized = JSON.stringify(verified);
+    assert.ok(!serialized.includes('mn-ver-excerpt'));
+    assert.ok(!serialized.includes('mn-ver-summary'));
+    assert.ok(!serialized.includes('ops-mn-ver@example.test'));
+    assert.ok(!serialized.includes('mn-ver-extra@example.test'));
+    assert.ok(!serialized.includes('mn-ver-scalar'));
+  } finally {
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await restoreExcerptCheck();
+    await restoreSummaryCheck();
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+

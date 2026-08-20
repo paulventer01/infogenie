@@ -7,7 +7,13 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 
 const db = require('../db');
-const { ensureMeetingNotesSchema, backfillMeetingNotesEncryption } = require('../services/meeting_notes/schema');
+const {
+  ensureMeetingNotesSchema,
+  backfillMeetingNotesEncryption,
+  verifyMeetingNotesEncryption,
+  NEEDS_BACKFILL_SQL,
+  NONCOMPLIANT_SQL,
+} = require('../services/meeting_notes/schema');
 const { ensureTenantSchema } = require('../services/tenants/schema');
 
 const HAS_DB = db.hasDb();
@@ -106,6 +112,12 @@ test('meeting_notes_runs ciphertext/TTL columns, CHECKs, and TTL index exist', {
 
 test('backfillMeetingNotesEncryption is exported and is not invoked by ensureMeetingNotesSchema', { skip }, async () => {
   assert.strictEqual(typeof backfillMeetingNotesEncryption, 'function');
+  assert.strictEqual(typeof verifyMeetingNotesEncryption, 'function');
+  assert.strictEqual(typeof NEEDS_BACKFILL_SQL, 'string');
+  assert.strictEqual(typeof NONCOMPLIANT_SQL, 'string');
+  assert.ok(NONCOMPLIANT_SQL.includes('transcript_excerpt IS NOT NULL'));
+  assert.ok(NONCOMPLIANT_SQL.includes('summary_ciphertext IS NULL'));
   await ensureMeetingNotesSchema();
   assert.strictEqual(typeof backfillMeetingNotesEncryption, 'function');
+  assert.strictEqual(typeof verifyMeetingNotesEncryption, 'function');
 });
