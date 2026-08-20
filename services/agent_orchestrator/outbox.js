@@ -14,6 +14,12 @@ const CLAIM_TTL_MS = 30_000;
 // `=`, `/`, `+` and whitespace, so a JWT, a base64 secret, a PEM block, a signed
 // URL and a bearer token cannot be spelled as a ref.
 const CREDENTIAL_REF_RE = /^[A-Za-z0-9_:-]{1,128}$/;
+// Defence in depth, and knowingly incomplete: an opaque provider token is
+// shaped exactly like an opaque vault handle, so the class above cannot tell
+// them apart. These are the prefixes real leaked keys carry. A denylist is the
+// wrong primary control — the shape rule above is the primary control — but a
+// literal `sk-…` reaching an operator-readable row is worth catching.
+const KNOWN_SECRET_PREFIX_RE = /^(sk[-_]|xox[abps]-|xapp-|gh[posur]_|github_pat_|glpat-|shp(at|ss)_|npm_|dop_v1_|AKIA|ASIA|AIza)/i;
 // Error codes are written to the row and to a log line, so only a token-shaped
 // code survives. Provider error text collapses to the generic code rather than
 // being truncated into either — a message can quote the offending value.
@@ -26,7 +32,9 @@ function newOutboxId() {
 function normalizeCredentialRef(credentialRef) {
   if (credentialRef == null || credentialRef === '') return null;
   const s = String(credentialRef);
-  return CREDENTIAL_REF_RE.test(s) ? s : null;
+  if (!CREDENTIAL_REF_RE.test(s)) return null;
+  if (KNOWN_SECRET_PREFIX_RE.test(s)) return null;
+  return s;
 }
 
 function normalizeErrorCode(errorCode) {

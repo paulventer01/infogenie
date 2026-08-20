@@ -694,6 +694,164 @@ if (!HAS_DB) {
     }
   });
 
+  // ── Security re-review locks (PR 2) ───────────────────────────────────────
+
+  test('16. an approval cannot claim a ceiling above the workflow it binds', async () => {
+    let wf = await createWf(cookieA, { name: 'ceil-over', credit_ceiling_micros: 10_000 });
+    wf = await requestGate(cookieA, wf.id, 'research_execution');
+
+    // Spend is enforced against the workflow's credit_ceiling_micros, so an
+    // approval recording more than that would overstate what was authorised.
+    const over = await orch('POST', `/${wf.id}/approve`, {
+      cookie: cookieA,
+      key: ik('ap-over'),
+      body: approveBody(wf, 'research_execution', { credit_ceiling_micros: 50_000 }),
+    });
+    assert.strictEqual(over.status, 409, over.text);
+    assert.strictEqual(over.json.error, 'approval_scope_mismatch');
+
+    // Equal to the bound ceiling is the authorisation the gate exists to record.
+    const exact = await orch('POST', `/${wf.id}/approve`, {
+      cookie: cookieA,
+      key: ik('ap-exact'),
+      body: approveBody(wf, 'research_execution', { credit_ceiling_micros: 10_000 }),
+    });
+    assert.strictEqual(exact.status, 200, exact.text);
+    assert.strictEqual(exact.json.approval.approved_credit_ceiling_micros, 10_000);
+  });
+
+  test('17. the credits read withholds workflow names from a credits-only role', async () => {
+    const pool = db.getPool();
+    // A tenant role holding the two credit `.view` keys and nothing else. No
+    // system role is shaped this way, and the point of the test is that
+    // `orchestrator.credits.view` is authority over cost facts, not over the
+    // free text an operator typed into a workflow.
+    const role = (await pool.query(
+      `INSERT INTO roles (tenant_id, key, name, description, scope, is_system, permissions)
+       VALUES ($1, 'credits_only', 'Credits Only', 'test', 'tenant', FALSE, $2::jsonb)
+       ON CONFLICT (tenant_id, key) WHERE tenant_id IS NOT NULL
+         DO UPDATE SET permissions=EXCLUDED.permissions
+       RETURNING id`,
+      [tenantA.id, JSON.stringify([
+        'dashboard.view', 'orchestrator.credits.view', 'orchestrator.credits.limits.view',
+      ])]
+    )).rows[0];
+    const creditsOnly = await fx.seedUser({ tenantId: tenantA.id, owner: false });
+    await pool.query(
+      `UPDATE tenant_users SET role_id=$1 WHERE tenant_id=$2 AND user_id=$3`,
+      [role.id, tenantA.id, creditsOnly.id]
+    );
+    const cookieC = (await login(app.baseUrl, creditsOnly.email, creditsOnly.password)).cookie;
+    assert.ok(cookieC, 'credits-only user must be able to log in');
+
+    const named = 'Confidential Q4 acquisition push';
+    const wf = await createWf(cookieA, { name: named, credit_ceiling_micros: 10_000 });
+
+    const restricted = await cred('GET', '', { cookie: cookieC });
+    assert.strictEqual(restricted.status, 200, restricted.text);
+    assert.ok(!restricted.text.includes(named), 'a credits-only role must not read workflow names');
+    const seen = restricted.json.workflows.find((w) => w.id === wf.id);
+    assert.ok(seen, 'the cost facts for the workflow are still disclosed');
+    assert.strictEqual(seen.name, null);
+    assert.ok('block_reason' in seen && 'credit_ceiling_micros' in seen,
+      'block reason and ceiling are cost facts and stay visible');
+
+    // A role that could read the name from the workflows surface still sees it.
+    const wide = await cred('GET', '', { cookie: cookieM });
+    const wideSeen = wide.json.workflows.find((w) => w.id === wf.id);
+    assert.strictEqual(wideSeen.name, named);
+  });
+
+  test('18. a credits read does not lock the tenant credit account row', async () => {
+    const pool = db.getPool();
+    const reader = await pool.connect();
+    try {
+      await reader.query('BEGIN');
+      await credits.ensureAccount(reader, tenantA.id, { lock: false });
+      // NOWAIT turns "somebody holds this row" into an error instead of a wait,
+      // so this asserts the reserve path is not queued behind a viewer.
+      await pool.query(
+        `SELECT tenant_id FROM orchestrator_credit_accounts
+          WHERE tenant_id=$1 FOR UPDATE NOWAIT`,
+        [tenantA.id]
+      );
+    } finally {
+      await reader.query('ROLLBACK').catch(() => {});
+      reader.release();
+    }
+
+    // The mutating path must still serialise — that is what stops two
+    // reservations both passing the ceiling check.
+    const writer = await pool.connect();
+    try {
+      await writer.query('BEGIN');
+      await credits.ensureAccount(writer, tenantA.id);
+      await assert.rejects(
+        () => pool.query(
+          `SELECT tenant_id FROM orchestrator_credit_accounts
+            WHERE tenant_id=$1 FOR UPDATE NOWAIT`,
+          [tenantA.id]
+        ),
+        (err) => err && err.code === '55P03'
+      );
+    } finally {
+      await writer.query('ROLLBACK').catch(() => {});
+      writer.release();
+    }
+  });
+
+  test('19. the outbox refuses a credential_ref that is not an opaque handle', async () => {
+    const pool = db.getPool();
+    const wf = await createWf(cookieA, { name: 'obx-ref' });
+    for (const bad of [
+      'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln',      // JWT
+      'sk-live-AbCdEf0123456789',                        // provider key prefix
+      'Bearer abc123',                                   // header value (space)
+      'https://hooks.example.com/t/AAA/BBB/ccc',         // signed webhook URL
+      'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A=',               // base64/PEM material
+      `x${'y'.repeat(200)}`,                             // unbounded blob
+    ]) {
+      await assert.rejects(
+        () => credits.withTx({ pool }, (c) => outbox.enqueue(c, {
+          tenantId: tenantA.id,
+          workflowId: wf.id,
+          destination: 'internal',
+          operation: 'noop',
+          credentialRef: bad,
+          idempotencyKey: ik('obx-bad'),
+        })),
+        (err) => err && err.code === 'validation_failed',
+        `credential_ref must refuse ${bad.slice(0, 24)}`
+      );
+    }
+
+    // An opaque vault handle is accepted and is the only thing that reaches the
+    // row or the sanitized payload.
+    const ok = await credits.withTx({ pool }, (c) => outbox.enqueue(c, {
+      tenantId: tenantA.id,
+      workflowId: wf.id,
+      destination: 'internal',
+      operation: 'noop',
+      credentialRef: 'user_integrations:4821',
+      idempotencyKey: ik('obx-good'),
+    }));
+    assert.strictEqual(ok.credential_ref, 'user_integrations:4821');
+    assert.strictEqual(ok.payload.credential_ref, 'user_integrations:4821');
+
+    // Provider error text never reaches the operator-readable row or the log.
+    await pool.query(
+      `UPDATE orchestrator_outbox SET next_attempt_at=now() - interval '1 second'
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, ok.id]
+    );
+    const failed = await outbox.processOnce(pool, {
+      tenantId: tenantA.id,
+      workerId: 'test',
+      failCode: 'Invalid access token for ad account act_123 (user bob@example.com)',
+    });
+    assert.strictEqual(failed.last_error_code, 'outbox_failed');
+  });
+
   test('non-chargeable stub advance still works with credit_ceiling 0', async () => {
     let wf = await createWf(cookieA, { name: 'stub0', credit_ceiling_micros: 0 });
     wf = await requestGate(cookieA, wf.id, 'research_execution');

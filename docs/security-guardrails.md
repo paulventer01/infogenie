@@ -138,15 +138,13 @@ Accepted residuals:
   has already invoked its phase handler. PR 1 handlers are stubs with no
   external effect; a phase that calls an ad platform needs a per-step
   idempotency key against that platform before it ships.
-- `landing_page_url` is validated as `https:`, credential-free and ≤2048 chars,
-  but is **not** screened against private, loopback or link-local hosts by
-  `workflows_api.js`. Nothing dereferences it — the runner is a stub — so there
-  is no SSRF sink yet. A host denylist is required **before** any agent fetches
-  that URL. PR 2 supplies that denylist as a module,
-  `services/security/safe_url.js`, but does **not** wire it in:
-  `workflows_api.js` still does not import it, and this residual stays open
-  until Backend calls `assertSafeHttpsUrl` on create and PATCH and fails the
-  write on `{ ok: false }`.
+- `landing_page_url` was validated in PR 1 as `https:`, credential-free and
+  ≤2048 chars only, with no host screening. **PR 2 closed that**:
+  `workflows_api.js` now calls `assertSafeHttpsUrl` (see the outbound URL policy
+  below) on both write paths and fails the write when it answers
+  `{ ok: false }`. Still nothing dereferences the URL — the runner is a stub —
+  so there remains no SSRF sink; the screening is now in place ahead of one
+  rather than owed.
 - `POST /:id/advance` requires `orchestrator.workflows.edit`, not an approve key.
   Execution is mechanical: it refuses to run unless a fresh approval whose
   `content_hash` and `object_version` still match the workflow exists for the
@@ -166,9 +164,11 @@ Accepted residuals:
 
 ## Advertising orchestrator — credits, outbox & outbound URLs (PR 2)
 
-PR 2 lands the credit-accounting schema and the security controls around it.
-The credit engines, the HTTP surface and the React panel are **not** in this
-slice; what follows is the boundary Backend has to build inside.
+PR 2 lands the credit-accounting schema, the credit engines
+(`credits.js`, `limits.js`, `pricing.js`, `usage.js`, `outbox.js`, `money.js`)
+and the HTTP surface at `/api/agent-orchestrator/credits`. The React panel is
+**not** in this slice. What follows is the boundary as landed, re-reviewed after
+Backend implemented inside it.
 
 ### Credit permissions
 
@@ -198,32 +198,69 @@ Three controls stack, exactly as they do for workflows:
    workflows entry. Without it a non-owner would get a blanket `owner_only` and
    the split above would be unreachable. `suggest`, `resolve`, `apply` and
    `history` stay owner-gated, and `/credits-export` does not inherit it.
-2. **Route group — still owed by Backend.** `services/tenants/permission_matrix.js`
-   has no `/api/agent-orchestrator/credits` row yet, so the surface currently
-   resolves to the coarse hub row. Backend must add
-   `{ prefix: '/api/agent-orchestrator/credits', view: 'orchestrator.credits.view',
-   write: 'orchestrator.credits.view' }` when the router ships. `write` equals
-   `view` on purpose — the coarse group only decides "may this role touch
+2. **Route group** — `{ prefix: '/api/agent-orchestrator/credits', view/write:
+   'orchestrator.credits.view' }` in `services/tenants/permission_matrix.js`.
+   Longer prefix wins, so it takes precedence over the coarse hub row, which is
+   unchanged and still `brand.calendar.view` / `brand.calendar.edit`. `write`
+   equals `view` on purpose — the coarse group only decides "may this role touch
    credits at all".
 3. **Per-action `requirePermission`** — the real boundary. A grant requires
-   `.grant`, an adjustment `.adjust`, a limit change `.limits.edit`.
+   `.grant`, an adjustment `.adjust`, a limit change `.limits.edit`. Reads carry
+   `.view`, except `GET /limits` which carries `.limits.view`. The permission
+   check runs *before* the idempotency key is claimed, so a refused caller
+   cannot consume or poison a key.
 
-### Fail-closed rules Backend must implement
+`orchestrator.credits.view` is authority over cost facts, not over the workflow
+catalogue. `GET /api/agent-orchestrator/credits` returns each workflow's id,
+state, ceiling and `block_reason` under that key, but withholds the workflow
+**name** — free text an operator typed — unless the principal also holds
+`orchestrator.workflows.view`.
+
+### Fail-closed rules, as landed
 
 - **A ceiling of 0 blocks, it does not mean unlimited.** `credit_ceiling_micros`
-  and every `orchestrator_tenant_limits` column default to `0`. A reservation
-  that cannot prove headroom must refuse with a recorded `block_reason`, never
-  fall through. "No row / no ceiling configured" is the same answer as "no
-  credit".
+  and every `orchestrator_tenant_limits` column default to `0`, and
+  `limits.js:preflight` treats each one as a refusal rather than an absent cap:
+  a missing workflow, a zero workflow ceiling or a zero tenant ceiling is
+  `credit_ceiling_exceeded`; `requests_per_minute <= 0` is
+  `rate_limit_exceeded`; `max_concurrent_ai <= 0` is
+  `concurrency_limit_exceeded`; a zero daily, monthly or per-workflow cost cap
+  is `tenant_cost_limit_exceeded`. "No row / no ceiling configured" is the same
+  answer as "no credit". A missing pricing row estimates at the conservative
+  per-request floor rather than free.
+- **A failed cost check does not advance the workflow.** Every cost refusal is
+  in the runner's no-clobber set, so it pauses the workflow with
+  `block_reason = <code>`, writes a `workflow_blocked` audit event, hands the
+  lease back and re-raises. It never `markFailed`s over the live row and never
+  moves the state forward.
 - **`actor_user_id` is the numeric session user id**, never an email, on every
-  ledger entry, reservation and limits change. A principal with no attributable
-  positive user id must not be able to move credit at all — same rule as
-  approvals in PR 1.
-- **Approval binding.** `orchestrator_approvals.approved_credit_ceiling_micros`
-  exists but nothing yet folds the ceiling and the advertising budget into the
-  approval `content_hash`. Until Backend does, raising a ceiling after an
-  approval does not invalidate that approval. That is the open item of this PR
-  and it must land before a phase can spend.
+  ledger entry, reservation and limits change. `runner.js:actorId` rejects zero
+  and negative — that is the synthetic api-key principal used when no owner row
+  exists — and both `credits_api.js` and `workflows_api.js` refuse the mutation
+  outright when it yields no id. The ledger read route does not expose
+  `actor_user_id` at all.
+- **Approval binding.** `approvals.js:approvalSnapshot` folds both
+  `credit_ceiling_micros` and `advertising_budget` into the `content_hash`, and
+  both are in `MATERIAL_FIELDS`. Raising either after a gate was approved bumps
+  `version`, returns the workflow to `research_approval_required` and writes
+  `approval_invalidated`; the stored approval then fails `assertApprovalFresh`
+  on both `object_version` and `content_hash`. An approval also cannot claim a
+  ceiling **above** the workflow's own `credit_ceiling_micros`
+  (`approval_scope_mismatch`): spend is enforced against the workflow value, so
+  a higher number on the approval row would record authority that preflight
+  will never honour — the same rule the advertising budget already had.
+- **No client-supplied cost is the final charge.** There is no HTTP route that
+  commits a reservation. Amounts come from the versioned pricing catalog
+  (`pricing.js`, integer micros, `ceil`), `commit` refuses an actual above the
+  amount reserved, and the ledger and usage records are UPDATE-immutable by
+  trigger, so a correction is a new `adjustment` / `refund` entry rather than a
+  rewrite.
+- **The runner's charging path is inert outside tests.** `chargeable` in
+  `runner.js` is `isTestCharge(req)` — the `X-Orch-Test-Charge` header, honoured
+  only when `NODE_ENV` is exactly `test`. In production, development and with
+  `NODE_ENV` unset, `POST /:id/advance` reserves and commits nothing. Read the
+  fail-closed rules above as the boundary the first real spending phase will
+  land inside, not as spend control that is currently exercising itself.
 
 ### Outbox and log hygiene
 
@@ -234,6 +271,25 @@ vault at send time — never a token, never a webhook secret. Payloads and
 transcript material and no vault payload may be put in either, and provider
 error text must not be interpolated into a log line (same rule as the meeting
 notes telemetry below).
+
+Two guards enforce that rather than merely asserting it:
+
+- `credential_ref` must match `^[A-Za-z0-9_:-]{1,128}$` and must not carry a
+  known secret prefix (`sk-`, `xoxb-`, `ghp_`, `AKIA`, `AIza`, …).
+  `outbox.enqueue` refuses a non-conforming value rather than dropping it, so a
+  caller that meant to pass a vault handle and passed the credential sees the
+  write fail instead of sending with no credential. `sanitizePayload` applies
+  the same rule, so the payload copy cannot carry what the column refuses. The
+  character class excludes `.`, `=`, `/`, `+` and whitespace, which is what
+  rules out a JWT, base64 or PEM material, a bearer header and a signed URL.
+- `last_error_code` is only written when it already matches
+  `^[a-z0-9_]{1,40}$`. Anything else — provider error text, which can quote the
+  offending account or address — collapses to `outbox_failed` rather than being
+  truncated into the row and the log line.
+
+`orchestrator_outbox` has no product caller yet. The engine, its claim/backoff/
+dead-letter state machine and these guards are in place ahead of the first
+publishing phase.
 
 ### Outbound URL policy — `services/security/safe_url.js`
 
@@ -255,15 +311,27 @@ this one. Policy, failing closed on every ambiguity:
   before the URL parser silently canonicalises them.
 - DNS is resolved with `dns.promises.lookup(..., { all: true })` and **any**
   blocked answer disqualifies the host. A lookup failure is not safe.
+- The lookup is bounded at `DNS_TIMEOUT_MS` (3s) and a hostname that does not
+  resolve inside it is refused with `dns_lookup_timeout`. The hostname is
+  attacker-chosen, so the resolver wait is too; without the bound, a name
+  delegated to a blackholed nameserver holds the calling request open for the
+  whole `getaddrinfo` retry schedule.
 
-There is **no fetch sink** in the module and no caller wires it yet — a test
-asserts both. A caller that later fetches must: validate, keep the returned
-`addresses`, call `assertPinnedAddresses(hostname, addresses)` immediately
-before connecting (DNS rebinding — a record set that changed at all is refused,
-not reconciled), disable automatic redirect following, and re-run
-`assertSafeRedirect` on every `Location` it chooses to follow. Errors are
-returned as `{ ok: false, error: 'unsafe_url', reason }`, never thrown, so a
-caller that ignores the result fails open by its own choice — check `ok`.
+There is **no fetch sink** in the module — a test asserts it neither calls
+`fetch` nor loads an HTTP client. The module is now **wired**:
+`workflows_api.js` calls `assertSafeHttpsUrl` through `assertLandingUrl` on both
+`POST /workflows` and `PATCH /workflows/:id`, and fails the write with
+`validation_failed` when the answer is not `ok`. A test asserts the call site on
+both paths, because a landing page that is only shape-checked would pass a
+private, loopback or metadata host straight into the row.
+
+A caller that later fetches must: validate, keep the returned `addresses`, call
+`assertPinnedAddresses(hostname, addresses)` immediately before connecting (DNS
+rebinding — a record set that changed at all is refused, not reconciled),
+disable automatic redirect following, and re-run `assertSafeRedirect` on every
+`Location` it chooses to follow. Errors are returned as
+`{ ok: false, error: 'unsafe_url', reason }`, never thrown, so a caller that
+ignores the result fails open by its own choice — check `ok`.
 
 ### Tenant-isolation review of the PR 2 schema
 
@@ -289,25 +357,92 @@ required.**
   a tenant with no price row must fail closed rather than borrow another
   tenant's price.
 
-Three properties the database does **not** enforce, which Backend must:
+Three properties the database does **not** enforce were left to Backend.
+Re-reviewed after implementation; all three are met:
 
 - `workflow_id` on the ledger, reservations, usage records, outbox and
   `orchestrator_ai_inflight` is a bare `TEXT` with no foreign key. That is
   deliberate on the immutable tables — a cascade from `orchestrator_workflows`
   would collide with the delete-refusing trigger — but it means Postgres will
-  not reject a `workflow_id` that belongs to another tenant. Every write must
-  first resolve the workflow with `WHERE id = $1 AND tenant_id = $2`.
+  not reject a `workflow_id` that belongs to another tenant. Every write that
+  takes one resolves the workflow first with `WHERE id = $1 AND tenant_id = $2`
+  and fails `not_found`: `credits.reserve`,
+  `credits.releaseAllReservedForWorkflow`, `outbox.enqueue` and
+  `limits.loadWorkflowOr404` (which `preflight` calls before it reads a ceiling).
 - `orchestrator_credit_reservations.id` and `orchestrator_ai_inflight.id` are
   global `TEXT` primary keys, like `orchestrator_workflows.id` in PR 1.
   Uniqueness is global, so ids are not enumerable from another tenant's
   sequence, but a lookup by id alone would cross tenants. Every read and write
-  needs an explicit `tenant_id` filter, and a cross-tenant id must answer 404,
-  not 403.
+  carries the `tenant_id` predicate — `loadReservation`, `commit`, `release`,
+  `releaseInflight`, and the outbox claim/complete/fail paths — so a
+  cross-tenant id answers 404, never 403, and `commit` on another tenant's
+  reservation raises `not_found` rather than moving money.
 - Balance arithmetic is guarded only by `CHECK (… >= 0)` and
-  `committed_micros <= amount_micros`. Nothing in the schema serialises two
-  concurrent reservations against one account, so the reserve path needs
-  `SELECT … FOR UPDATE` on `orchestrator_credit_accounts` (or an equivalent
-  conditional `UPDATE`) or two callers can each pass the ceiling check.
+  `committed_micros <= amount_micros`; nothing in the schema serialises two
+  concurrent reservations against one account. `credits.ensureAccount` takes
+  `SELECT … FOR UPDATE` on `orchestrator_credit_accounts`, and every mutating
+  entry point (`grant`, `reserve`, `commit`, `release`, `adjust`) goes through
+  it inside one transaction, always locking the account before the reservation
+  row, so there is no lock-order inversion between commit and release.
+  `preflight` reuses the row the caller already locked rather than taking a
+  second lock. Reads pass `{ lock: false }`: a `GET` that took `FOR UPDATE`
+  would let any principal holding `orchestrator.credits.view` queue the reserve
+  path behind a viewer.
+
+### Accepted residuals (PR 2)
+
+- **The advance-time credit charge is at-least-once**, inheriting the PR 1
+  residual above. Idempotency keys are `(tenant_id, key)` and a request whose
+  process dies leaves the key `pending`; once its 30s lease expires a retry
+  reclaims it and re-runs the handler. The reservation key is derived from a
+  freshly generated `step_id`, so a retry that lands in the window between
+  `commit` and the guarded state write charges a second reservation for one
+  logical advance. Both charges appear as distinct rows in the immutable ledger
+  and are refundable via `adjust`, and both are still bounded by the ceiling and
+  the per-workflow cap. This window is **not reachable in production** while
+  `chargeable` is the test-only header. Binding the reservation key to the
+  request idempotency key instead closes it, but naively reusing a *released*
+  reservation would let the retry run free, so it needs the reservation state
+  checked at reuse — that is a design change for the first real spending phase,
+  not a patch. The money-moving HTTP routes are not affected: `grant` and
+  `adjust` key the ledger entry on the request's idempotency key, and the
+  ledger's partial unique index on `(tenant_id, idempotency_key)` makes a
+  reclaimed retry a replay.
+- `orchestrator_tenant_limits.provider_limits` is stored as supplied. There is
+  no size or depth cap on it, and the credits router carries no 64kb payload cap
+  (`workflows_api.js` does), so the 5mb global `express.json` limit applies. It
+  takes `orchestrator.credits.limits.edit`, the blast radius is the editing
+  tenant's own preflight, and every numeric field inside it is still read
+  fail-closed. Backend should add the same `capPayload` and bound the object.
+- Neither `grant` nor `adjust` has an upper bound beyond `BIGINT`. An absurd
+  amount overflows the column and surfaces as `500 internal_error` rather than
+  `400 validation_failed`. Admin authority, no state change, but the wrong
+  status code. `microsToJson` also clamps responses at 9e15 micros, so a balance
+  past that would be under-reported in JSON while the ledger stays exact.
+- `credits.commit` accepts a caller-supplied `usage.computedMicros` that is
+  written to the usage record as `actual_cost_micros` with
+  `usage_source = 'provider'`, and that record — not the ledger — is what the
+  daily/monthly caps sum. No HTTP route reaches it; the runner passes only
+  server-computed values. A provider-usage adapter must compute it server-side
+  from provider units, not accept it from a response body.
+- The `credential_ref` guard is a shape rule plus a known-prefix denylist. An
+  opaque provider token is shaped exactly like an opaque vault handle, so the
+  guard cannot recognise one in general. The substantive control is that the ref
+  is resolved against the vault at send time, so a value that is not a vault key
+  cannot authenticate anything.
+- `DNS_TIMEOUT_MS` bounds how long a caller waits, not the resolver. The
+  underlying `getaddrinfo` is not cancellable and keeps its libuv threadpool
+  slot (four by default) until the OS gives up, so a burst of blackholed
+  hostnames can still contend with other threadpool work.
+- `landing_page_url` is re-validated on every `PATCH`, including when the field
+  is unchanged. That is deliberate — it is what stops a workflow keeping a URL
+  the policy would now refuse — but it means an edit to an unrelated field fails
+  while the resolver is unavailable or if the stored host has since started
+  answering with a private address.
+- `actor_user_id` on the ledger, reservations and limits is
+  `REFERENCES users(id) ON DELETE SET NULL`. Deleting a user detaches
+  attribution from entries that are otherwise immutable; the amounts and reason
+  codes survive, the actor does not.
 
 ## Meeting notes — outbound data flow (redaction deferred)
 

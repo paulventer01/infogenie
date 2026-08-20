@@ -103,23 +103,47 @@ test('the guardrails doc documents fail-closed backfill and observable retention
 test('the guardrails doc discloses the orchestrator residuals', () => {
   const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
   const flat = doc.replace(/\s+/g, ' ');
-  assert.match(flat, /A host denylist is required \*\*before\*\* any agent fetches that URL\./);
+  // PR 1 owed a host denylist before anything dereferenced the landing page.
+  // PR 2 supplied and wired it, so the doc must say the screening is in place
+  // rather than still required — and must still say nothing fetches the URL.
+  assert.match(flat, /calls `assertSafeHttpsUrl` \(see the outbound URL policy below\) on both write paths/);
+  assert.match(flat, /there remains no SSRF sink/);
+  assert.doesNotMatch(flat, /A host denylist is required/);
   assert.match(flat, /`POST \/:id\/advance` requires `orchestrator\.workflows\.edit`, not an approve key/);
   assert.match(flat, /`GET \/:id\/timeline` requires `orchestrator\.workflows\.audit\.view`/);
   assert.match(flat, /`object_version` is \*\*required\*\* on approve/);
 });
 
-// PR 2 ships credit accounting DDL plus an SSRF policy module with no caller.
-// An operator reading this doc has to see what is enforced and what is still
-// owed, otherwise "the SSRF module exists" reads as "landing pages are safe".
+// PR 2 ships the credit accounting DDL, the credit engines, the HTTP surface and
+// an SSRF policy module. An operator reading this doc has to see what is
+// enforced and what is still owed — and the two claims that were true when the
+// module landed with no caller are now false, so they must not survive.
 test('the guardrails doc discloses the PR 2 credit and outbound-URL boundary', () => {
   const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
   const flat = doc.replace(/\s+/g, ' ');
   assert.match(flat, /A \*\*Marketer holds the two `\.view` keys only\*\*/);
   assert.match(flat, /\*\*A ceiling of 0 blocks, it does not mean unlimited\.\*\*/);
   assert.match(flat, /`orchestrator_outbox\.payload` is JSONB and carries \*\*no credentials\*\*/);
-  assert.match(flat, /There is \*\*no fetch sink\*\* in the module and no caller wires it yet/);
-  assert.match(flat, /nothing yet folds the ceiling and the advertising budget into the approval `content_hash`/);
+  assert.match(flat, /There is \*\*no fetch sink\*\* in the module/);
+  // The approval hash now binds both, and the module is wired into both write
+  // paths. Leaving the old "still owed" wording in place would tell an operator
+  // that raising a ceiling does not invalidate an approval.
+  assert.match(flat, /folds both `credit_ceiling_micros` and `advertising_budget` into the `content_hash`/);
+  assert.doesNotMatch(flat, /nothing yet folds the ceiling and the advertising budget/);
+  assert.match(flat, /The module is now \*\*wired\*\*/);
+  assert.doesNotMatch(flat, /no caller wires it yet/);
+  assert.doesNotMatch(flat, /Route group — still owed by Backend/);
+});
+
+// The credit path that a reader would assume is live is not: `chargeable` is a
+// test-only header. A doc that describes reservations and ceilings without
+// saying so would have an operator believe production spend is being metered.
+test('the guardrails doc says the orchestrator charging path is test-only', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.match(flat, /The runner's charging path is inert outside tests/);
+  assert.match(flat, /`X-Orch-Test-Charge` header, honoured only when `NODE_ENV` is exactly `test`/);
+  assert.match(flat, /The advance-time credit charge is at-least-once/);
 });
 
 // The shared BOOT_TASKS loop is an unawaited IIFE, so the port is bound before
