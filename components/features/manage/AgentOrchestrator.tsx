@@ -25,7 +25,7 @@ const BLOCK_REASON_LABELS: Record<string, string> = {
   tenant_cost_limit_exceeded: "Tenant daily or monthly AI cost limit exceeded.",
 };
 
-const RESERVATION_STATUSES = new Set(["failed", "released", "reserved"]);
+const RESERVATION_STATUSES = new Set(["reserved", "committed", "released", "expired"]);
 
 interface Mod {
   id: string;
@@ -1238,8 +1238,9 @@ export default function AgentOrchestrator() {
           <strong>Future features — not yet implemented.</strong>{" "}
           Competitor research, creative generation, campaign publishing, and performance optimization agents
           are stubbed in PR 1 and do not produce live results. Do not expect live ROAS, CTR, impressions,
-          or fabricated campaign metrics from this control plane. Shared credit accounting is active for
-          tenant-authorised AI spend, but live ad-platform spend is not connected yet.
+          or fabricated campaign metrics from this control plane. Tenant credit balances, ceilings and limits
+          are recorded here. Automatic AI spend charging is not enabled in production yet; live ad-platform
+          spend is not connected.
         </div>
 
         <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 14, padding: 18 }}>

@@ -93,3 +93,33 @@ test('AgentOrchestrator credits empty reservations copy', () => {
     'empty credit reservations copy exists',
   );
 });
+
+test('AgentOrchestrator honesty banner does not claim live AI spend charging', () => {
+  assert.doesNotMatch(
+    SRC,
+    /credit accounting is active for tenant-authorised AI spend/i,
+    'must not claim shared credit accounting is active for tenant AI spend',
+  );
+  assert.match(
+    SRC,
+    /Automatic AI spend charging is not enabled in production yet/i,
+    'banner states automatic AI spend charging is not live in production',
+  );
+});
+
+test('AgentOrchestrator reservation status filter matches schema', () => {
+  assert.match(
+    SRC,
+    /const RESERVATION_STATUSES = new Set\(\["reserved", "committed", "released", "expired"\]\);/,
+    'RESERVATION_STATUSES includes reserved, committed, released, expired',
+  );
+  const setBlock = SRC.match(
+    /const RESERVATION_STATUSES = new Set\(\[[^\]]+\]\);/,
+  );
+  assert.ok(setBlock, 'RESERVATION_STATUSES Set declaration exists');
+  assert.doesNotMatch(
+    setBlock[0],
+    /"failed"/,
+    'RESERVATION_STATUSES must not include failed',
+  );
+});
