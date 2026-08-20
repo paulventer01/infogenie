@@ -76,6 +76,7 @@ const rows = [];
 let seq = 0;
 const sqlLog = [];
 let failNextQuery = null; // set to an Error to simulate a Postgres failure
+let failQueryRe = null; // optional: only fail when SQL matches this regex
 
 function parseJsonMaybe(v) {
   if (typeof v !== 'string') return v;
@@ -85,7 +86,12 @@ function parseJsonMaybe(v) {
 function fakeQuery(sql, params = []) {
   const s = sql.replace(/\s+/g, ' ').trim();
   sqlLog.push(s);
-  if (failNextQuery) { const e = failNextQuery; failNextQuery = null; throw e; }
+  if (failNextQuery && (!failQueryRe || failQueryRe.test(s))) {
+    const e = failNextQuery;
+    failNextQuery = null;
+    failQueryRe = null;
+    throw e;
+  }
 
   if (/^INSERT INTO meeting_notes_runs/.test(s)) {
     const colMatch = s.match(/^INSERT INTO meeting_notes_runs \(([^)]+)\)/);
@@ -127,7 +133,12 @@ function fakeQuery(sql, params = []) {
       if (row.tenant_id !== tenantId) continue;
       if (row.excerpt_expires_at == null) continue;
       if (!(new Date(row.excerpt_expires_at) < now)) continue;
-      if (row.transcript_excerpt == null && row.excerpt_ciphertext == null) continue;
+      if (
+        row.transcript_excerpt == null &&
+        row.excerpt_ciphertext == null &&
+        row.excerpt_iv == null &&
+        row.excerpt_tag == null
+      ) continue;
       row.transcript_excerpt = null;
       row.excerpt_ciphertext = null;
       row.excerpt_iv = null;
@@ -136,6 +147,24 @@ function fakeQuery(sql, params = []) {
       n++;
     }
     return { rows: [], rowCount: n };
+  }
+
+  if (/SELECT COUNT\(\*\)::int AS overdue FROM meeting_notes_runs WHERE tenant_id=\$1/.test(s)) {
+    const tenantId = params[0];
+    const now = new Date();
+    let n = 0;
+    for (const row of rows) {
+      if (row.tenant_id !== tenantId) continue;
+      if (row.excerpt_expires_at == null) continue;
+      if (!(new Date(row.excerpt_expires_at) < now)) continue;
+      if (
+        row.transcript_excerpt != null ||
+        row.excerpt_ciphertext != null ||
+        row.excerpt_iv != null ||
+        row.excerpt_tag != null
+      ) n++;
+    }
+    return { rows: [{ overdue: n }] };
   }
 
   if (/SELECT DISTINCT tenant_id FROM meeting_notes_runs/.test(s)) {
@@ -195,6 +224,7 @@ try {
 }
 
 const vault = require('../services/credentials/vault');
+const sentry = require('../services/infra/sentry');
 
 // ── Bare app: the router plus a stand-in for loadTenantContext ───────────────
 let currentTenant = null; // null → no req.tenant, as for an unscoped principal
@@ -244,6 +274,7 @@ beforeEach(() => {
   rows.length = 0; seq = 0;
   sqlLog.length = 0; httpsCalls.length = 0;
   failNextQuery = null;
+  failQueryRe = null;
   currentTenant = 1;
   sessionEmail = undefined;
   process.env.AI_INTEGRATIONS_OPENAI_API_KEY = 'sk-test-meeting-notes';
@@ -608,7 +639,11 @@ test('sweepExpiredExcerpts UPDATEs per tenant and never DELETEs', async () => {
   const origLog = console.log;
   console.log = (...args) => logs.push(args.map(String).join(' '));
   try {
-    await router.sweepExpiredExcerpts();
+    const result = await router.sweepExpiredExcerpts();
+    assert.ok(result && result.ok === true);
+    assert.strictEqual(result.purged, 2);
+    assert.strictEqual(result.overdue, 0);
+    assert.strictEqual(result.failures, 0);
   } finally {
     console.log = origLog;
   }
@@ -620,10 +655,90 @@ test('sweepExpiredExcerpts UPDATEs per tenant and never DELETEs', async () => {
     assert.match(u, /WHERE tenant_id=\$1/);
     assert.ok(!/RETURNING/i.test(u), 'sweeper must not RETURNING excerpt text');
   }
+  const verifies = sqlLog.filter(s => /SELECT COUNT\(\*\)::int AS overdue FROM meeting_notes_runs WHERE tenant_id=\$1/.test(s));
+  assert.ok(verifies.length >= 2, 'overdue verification must COUNT per tenant');
+  for (const v of verifies) {
+    assert.match(v, /WHERE tenant_id=\$1/);
+    assert.ok(!/transcript_excerpt|excerpt_ciphertext|excerpt_iv|excerpt_tag/.test(v.split('FROM')[0]), 'verify SELECT must not project excerpt material');
+  }
   assert.strictEqual(rows[0].transcript_excerpt, null);
   assert.strictEqual(rows[0].excerpt_ciphertext, null);
+  assert.strictEqual(rows[0].excerpt_iv, null);
+  assert.strictEqual(rows[0].excerpt_tag, null);
   assert.ok(rows[0].transcript_purged_at);
   assert.strictEqual(rows[1].excerpt_ciphertext, null);
   assert.ok(Buffer.compare(Buffer.from('ct-keep'), rows[2].excerpt_ciphertext) === 0, 'unexpired excerpt ciphertext must remain');
-  assert.ok(logs.some(l => /^\[meeting-notes\] swept \d+ expired excerpts$/.test(l)));
+  const parsed = logs.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  assert.ok(parsed.some((l) => l.msg === 'meeting_notes_excerpt_sweep_start'));
+  assert.ok(parsed.some((l) => l.msg === 'meeting_notes_excerpt_sweep_complete' && l.purged === 2 && l.ok === true));
+  const metrics = router.getExcerptSweepMetrics();
+  assert.ok(metrics.lastSuccessAt, 'successful sweep must stamp lastSuccessAt');
+  assert.strictEqual(metrics.lastOverdue, 0);
+});
+
+test('sweepExpiredExcerpts does not swallow a failed query', async () => {
+  const expired = new Date(Date.now() - 60 * 1000);
+  rows.push({
+    id: ++seq, tenant_id: 1, transcript_excerpt: 'old-plain',
+    excerpt_ciphertext: Buffer.from('ct-a'), excerpt_iv: Buffer.from('iv'), excerpt_tag: Buffer.from('tg'),
+    excerpt_expires_at: expired, transcript_purged_at: null, created_at: new Date(),
+  });
+  const secret = 'detail: transcript excerpt leaked from pg';
+  failNextQuery = new Error(secret);
+  failQueryRe = /UPDATE meeting_notes_runs/;
+  const captured = [];
+  const origCap = sentry.captureException;
+  sentry.captureException = (err, ctx) => { captured.push({ err, ctx }); };
+  const errors = [];
+  const origErr = console.error;
+  console.error = (...args) => errors.push(args.map(String).join(' '));
+  let result;
+  try {
+    result = await router.sweepExpiredExcerpts();
+  } finally {
+    sentry.captureException = origCap;
+    console.error = origErr;
+    failNextQuery = null;
+    failQueryRe = null;
+  }
+  assert.ok(result, 'sweep must return a result rather than hanging');
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.failures > 0, 'query rejection must increment failures');
+  assert.ok(rows[0].transcript_excerpt === 'old-plain', 'failed UPDATE must leave the excerpt in place');
+  const joined = errors.join('\n');
+  assert.ok(joined.includes('meeting_notes_excerpt_sweep_failed') || joined.includes('meeting_notes_excerpt_retention_overdue'));
+  assert.ok(!joined.includes(secret), 'pg error text must not reach process logs');
+  assert.ok(!joined.includes('old-plain'));
+  assert.ok(captured.length >= 1, 'failed sweep must captureException');
+  for (const c of captured) {
+    assert.ok(c.err instanceof Error);
+    assert.ok(!String(c.err.message).includes(secret));
+    assert.ok(!String(c.err.message).includes('old-plain'));
+  }
+  const overdue = await router.verifyOverdueExcerpts();
+  assert.ok(overdue.overdue >= 1, 'unpurged expired excerpt must be overdue');
+});
+
+test('verifyOverdueExcerpts counts leftover IV/tag without ciphertext', async () => {
+  const expired = new Date(Date.now() - 60 * 1000);
+  rows.push({
+    id: ++seq, tenant_id: 3, transcript_excerpt: null,
+    excerpt_ciphertext: null, excerpt_iv: Buffer.from('iv-left'), excerpt_tag: Buffer.from('tg-left'),
+    excerpt_expires_at: expired, transcript_purged_at: null, created_at: new Date(),
+  });
+  const overdue = await router.verifyOverdueExcerpts();
+  assert.ok(overdue.overdue >= 1);
+  const result = await router.sweepExpiredExcerpts();
+  assert.ok(result.ok === true);
+  assert.strictEqual(rows[0].excerpt_iv, null);
+  assert.strictEqual(rows[0].excerpt_tag, null);
+});
+
+test('api.js recurring interval catch is not empty', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '../services/meeting_notes/api.js'), 'utf8');
+  assert.ok(!/\.catch\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)/.test(src), 'interval must not use empty catch');
+  assert.match(src, /sweepExpiredExcerpts\(\)\.catch\(/);
+  assert.match(src, /phase:\s*'interval'/);
 });

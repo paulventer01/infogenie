@@ -6,11 +6,46 @@ const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const _vault = require('../credentials/vault');
 const _runtimeFlags = require('../runtime_flags');
+const { logger } = require('../infra/logger');
+const _sentry = require('../infra/sentry');
 
 const CONTACT_KEYS = ['name', 'company', 'role'];
 const CONTACT_MAX = 200;
 const EXCERPT_MAX = 500;
 const SWEEP_MS = 6 * 3600 * 1000;
+
+// Expired excerpt material still on disk: plaintext, ciphertext, or leftover IV/tag.
+const EXCERPT_OVERDUE_SQL = `(
+  excerpt_expires_at IS NOT NULL
+  AND excerpt_expires_at < now()
+  AND (
+    transcript_excerpt IS NOT NULL
+    OR excerpt_ciphertext IS NOT NULL
+    OR excerpt_iv IS NOT NULL
+    OR excerpt_tag IS NOT NULL
+  )
+)`;
+
+const _sweepMetrics = {
+  running: false,
+  lastStartAt: null,
+  lastCompletedAt: null,
+  lastSuccessAt: null,
+  lastPurged: 0,
+  lastFailures: 0,
+  lastOverdue: 0,
+  totalPurged: 0,
+  totalFailures: 0,
+};
+
+function getExcerptSweepMetrics() {
+  return { ..._sweepMetrics };
+}
+
+function _captureSweepError(msg, extra) {
+  const err = new Error(msg);
+  _sentry.captureException(err, extra && typeof extra === 'object' ? extra : undefined);
+}
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch(() => { console.warn('[meeting-notes] query failed'); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
@@ -111,26 +146,119 @@ Reply strict JSON only:
   });
 }
 
-async function sweepExpiredExcerpts() {
-  if (!_db.hasDb()) return;
-  const p = _db.getPool();
+async function _listMeetingNotesTenantIds(p) {
   const tenants = await p.query(
     `SELECT DISTINCT tenant_id FROM meeting_notes_runs ORDER BY tenant_id`
   );
-  let total = 0;
-  for (const t of tenants.rows) {
-    const r = await p.query(
-      `UPDATE meeting_notes_runs SET transcript_excerpt=NULL, excerpt_ciphertext=NULL, excerpt_iv=NULL, excerpt_tag=NULL, transcript_purged_at=COALESCE(transcript_purged_at, now()) WHERE tenant_id=$1 AND excerpt_expires_at IS NOT NULL AND excerpt_expires_at < now() AND (transcript_excerpt IS NOT NULL OR excerpt_ciphertext IS NOT NULL)`,
-      [t.tenant_id]
-    );
-    total += r.rowCount || 0;
-  }
-  console.log(`[meeting-notes] swept ${total} expired excerpts`);
+  return (tenants.rows || []).map((row) => row.tenant_id);
 }
 
-if (_runtimeFlags.backgroundEnabled()) {
-  setInterval(() => { sweepExpiredExcerpts().catch(() => {}); }, SWEEP_MS);
+async function verifyOverdueExcerpts() {
+  if (!_db.hasDb()) {
+    return { ok: true, skipped: 'no_db', overdue: 0, failures: 0, tenants: 0 };
+  }
+  const p = _db.getPool();
+  let tenantIds;
+  try {
+    tenantIds = await _listMeetingNotesTenantIds(p);
+  } catch (_e) {
+    logger.error('meeting_notes_excerpt_sweep_failed', { phase: 'verify_list_tenants' });
+    _captureSweepError('meeting_notes_excerpt_sweep_failed', { phase: 'verify_list_tenants' });
+    return { ok: false, overdue: 0, failures: 1, tenants: 0 };
+  }
+
+  let overdue = 0;
+  let failures = 0;
+  for (const tenantId of tenantIds) {
+    try {
+      const r = await p.query(
+        `SELECT COUNT(*)::int AS overdue FROM meeting_notes_runs WHERE tenant_id=$1 AND ${EXCERPT_OVERDUE_SQL}`,
+        [tenantId]
+      );
+      overdue += Number(r.rows[0] && r.rows[0].overdue) || 0;
+    } catch (_e) {
+      failures += 1;
+      logger.error('meeting_notes_excerpt_sweep_failed', { tenant_id: tenantId, phase: 'verify' });
+      _captureSweepError('meeting_notes_excerpt_sweep_failed', { tenant_id: tenantId, phase: 'verify' });
+    }
+  }
+  return { ok: failures === 0, overdue, failures, tenants: tenantIds.length };
 }
+
+function _finishSweep({ startedAt, purged, failures, overdue }) {
+  const completedAt = new Date().toISOString();
+  const ok = failures === 0 && overdue === 0;
+  _sweepMetrics.running = false;
+  _sweepMetrics.lastCompletedAt = completedAt;
+  _sweepMetrics.lastPurged = purged;
+  _sweepMetrics.lastFailures = failures;
+  _sweepMetrics.lastOverdue = overdue;
+  _sweepMetrics.totalPurged += purged;
+  _sweepMetrics.totalFailures += failures;
+  if (ok) _sweepMetrics.lastSuccessAt = completedAt;
+  logger.info('meeting_notes_excerpt_sweep_complete', { purged, failures, overdue, ok });
+  if (overdue > 0) {
+    logger.error('meeting_notes_excerpt_retention_overdue', { overdue });
+    _captureSweepError('meeting_notes_excerpt_retention_overdue', { overdue });
+  }
+  return { ok, purged, failures, overdue, startedAt, completedAt };
+}
+
+async function sweepExpiredExcerpts() {
+  if (!_db.hasDb()) {
+    return { ok: true, skipped: 'no_db', purged: 0, failures: 0, overdue: 0 };
+  }
+
+  const startedAt = new Date().toISOString();
+  _sweepMetrics.running = true;
+  _sweepMetrics.lastStartAt = startedAt;
+  logger.info('meeting_notes_excerpt_sweep_start', { startedAt });
+
+  const p = _db.getPool();
+  let purged = 0;
+  let failures = 0;
+
+  let tenantIds;
+  try {
+    tenantIds = await _listMeetingNotesTenantIds(p);
+  } catch (_e) {
+    failures += 1;
+    logger.error('meeting_notes_excerpt_sweep_failed', { phase: 'list_tenants' });
+    _captureSweepError('meeting_notes_excerpt_sweep_failed', { phase: 'list_tenants' });
+    return _finishSweep({ startedAt, purged: 0, failures, overdue: 0 });
+  }
+
+  for (const tenantId of tenantIds) {
+    try {
+      const r = await p.query(
+        `UPDATE meeting_notes_runs SET transcript_excerpt=NULL, excerpt_ciphertext=NULL, excerpt_iv=NULL, excerpt_tag=NULL, transcript_purged_at=COALESCE(transcript_purged_at, now()) WHERE tenant_id=$1 AND ${EXCERPT_OVERDUE_SQL}`,
+        [tenantId]
+      );
+      purged += r.rowCount || 0;
+    } catch (_e) {
+      failures += 1;
+      logger.error('meeting_notes_excerpt_sweep_failed', { tenant_id: tenantId, phase: 'update' });
+      _captureSweepError('meeting_notes_excerpt_sweep_failed', { tenant_id: tenantId, phase: 'update' });
+    }
+  }
+
+  const verification = await verifyOverdueExcerpts();
+  failures += verification.failures || 0;
+  const overdue = verification.overdue || 0;
+  return _finishSweep({ startedAt, purged, failures, overdue });
+}
+
+function startExcerptSweepInterval() {
+  if (!_runtimeFlags.backgroundEnabled()) return null;
+  return setInterval(() => {
+    sweepExpiredExcerpts().catch((_err) => {
+      logger.error('meeting_notes_excerpt_sweep_failed', { phase: 'interval' });
+      _captureSweepError('meeting_notes_excerpt_sweep_failed', { phase: 'interval' });
+    });
+  }, SWEEP_MS);
+}
+
+startExcerptSweepInterval();
 
 router.get('/test', (req, res) => res.json({ ok:true, openai: _hasOpenAI() }));
 
@@ -215,3 +343,7 @@ router.get('/:id', _safeAsync(async (req, res) => {
 
 module.exports = router;
 module.exports.sweepExpiredExcerpts = sweepExpiredExcerpts;
+module.exports.verifyOverdueExcerpts = verifyOverdueExcerpts;
+module.exports.getExcerptSweepMetrics = getExcerptSweepMetrics;
+module.exports.startExcerptSweepInterval = startExcerptSweepInterval;
+module.exports.SWEEP_MS = SWEEP_MS;
