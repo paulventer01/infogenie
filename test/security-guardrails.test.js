@@ -97,6 +97,18 @@ test('the guardrails doc documents fail-closed backfill and observable retention
   assert.match(flat, /A JSONB `null` `contact` stays `null` at rest/);
 });
 
+// The orchestrator control plane is the first hub surface a non-owner role can
+// reach, and it ships with a stub runner. The two disclosures below are what an
+// operator (and the PR that finally fetches a landing page) needs to see.
+test('the guardrails doc discloses the orchestrator residuals', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.match(flat, /A host denylist is required \*\*before\*\* any agent fetches that URL\./);
+  assert.match(flat, /`POST \/:id\/advance` requires `orchestrator\.workflows\.edit`, not an approve key/);
+  assert.match(flat, /`GET \/:id\/timeline` requires `orchestrator\.workflows\.audit\.view`/);
+  assert.match(flat, /`object_version` is \*\*required\*\* on approve/);
+});
+
 // The shared BOOT_TASKS loop is an unawaited IIFE, so the port is bound before
 // meeting-notes verification runs. Claiming production "cannot serve traffic"
 // until it passes would overstate the control and mislead an incident responder.

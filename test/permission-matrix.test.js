@@ -261,6 +261,29 @@ test('orchestrator: Marketer operates workflows but holds no approve gate and no
   }
   assert.equal(held.has('orchestrator.workflows.recover'), false,
     'recover breaks an execution lease — owner/admin only');
+  assert.equal(held.has('orchestrator.workflows.audit.view'), false,
+    'the approval trail names who released spend — a separate read authority');
+});
+
+test('orchestrator: the workflows route group is prefix-anchored', () => {
+  for (const p of [
+    '/api/agent-orchestrator/workflows',
+    '/api/agent-orchestrator/workflows/ow_abc',
+    '/api/agent-orchestrator/workflows/ow_abc/timeline',
+  ]) {
+    assert.equal(matrix.requiredPermissionForRequest(p, 'GET').permission,
+      'orchestrator.workflows.view', `${p} must resolve to the workflow group`);
+    // write=view on purpose: per-action authority is enforced in the handler by
+    // requirePermission, so approve-only roles are not blocked by a create key.
+    assert.equal(matrix.requiredPermissionForRequest(p, 'POST').permission,
+      'orchestrator.workflows.view');
+  }
+  // A look-alike prefix must fall back to the owner-gated hub row, not inherit
+  // the workflow group.
+  assert.equal(
+    matrix.requiredPermissionForRequest('/api/agent-orchestrator/workflows-export', 'GET').permission,
+    'brand.calendar.view'
+  );
 });
 
 test('orchestrator: read-only and restricted roles gain no write authority', () => {
