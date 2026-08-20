@@ -516,7 +516,7 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
     if (!await heartbeatLease(pool, tenantId, workflow.id, holder)) fail('lease_conflict');
 
     if (reservationId) {
-      await credits.commit({
+      const committed = await credits.commit({
         pool,
         tenantId,
         reservationId,
@@ -530,20 +530,22 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
           await limits.releaseInflight(c, { tenantId, inflightId });
         });
       }
-      await insertAudit(pool, {
-        tenantId,
-        workflowId: workflow.id,
-        event: 'credit_committed',
-        actorUserId,
-        requestId,
-        state: first.to,
-        gate,
-        detail: {
-          reservation_id: reservationId,
-          amount_micros: Number(reservedAmount),
-          cost_status: 'final',
-        },
-      });
+      if (!committed.replay) {
+        await insertAudit(pool, {
+          tenantId,
+          workflowId: workflow.id,
+          event: 'credit_committed',
+          actorUserId,
+          requestId,
+          state: first.to,
+          gate,
+          detail: {
+            reservation_id: reservationId,
+            amount_micros: Number(reservedAmount),
+            cost_status: 'final',
+          },
+        });
+      }
       reservationId = null;
       inflightId = null;
     }

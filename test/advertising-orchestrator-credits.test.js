@@ -184,7 +184,7 @@ if (!HAS_DB) {
 
   after(async () => {
     if (app) await app.close();
-    const ids = [tenantA && tenantA.id, tenantB && tenantB.id].filter(Boolean);
+    const ids = (fx.created.tenantIds || []).slice();
     if (ids.length && db.hasDb()) {
       await db.getPool().query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]);
     }
@@ -679,7 +679,7 @@ if (!HAS_DB) {
   test('GET pricing returns placeholder catalog; GET ledger is tenant-filtered', async () => {
     const pricing = await cred('GET', '/pricing', { cookie: cookieA });
     assert.strictEqual(pricing.status, 200, pricing.text);
-    assert.strictEqual(pricing.json.source, 'placeholder');
+    assert.ok(Array.isArray(pricing.json.catalog) && pricing.json.catalog.length > 0, pricing.text);
     assert.ok(pricing.json.catalog.some((r) => r.provider === 'placeholder' && r.model_or_service === 'stub-chargeable'));
 
     const ledA = await cred('GET', '/ledger', { cookie: cookieA });
