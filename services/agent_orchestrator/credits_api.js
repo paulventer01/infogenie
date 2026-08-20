@@ -308,7 +308,6 @@ router.get('/pricing', (req, res) => readHandler(req, res, PERMS.view, async (_r
   const rows = await credits.withTx({ pool }, async (c) => listCatalog(c, tid));
   return res2.json({
     ok: true,
-    source: 'placeholder',
     catalog: rows.map((r) => ({
       provider: r.provider,
       model_or_service: r.model_or_service,

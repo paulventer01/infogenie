@@ -59,7 +59,7 @@ async function assertLandingUrl(raw) {
   const s = String(raw || '').trim();
   if (!s || s.length > 2048) fail('validation_failed');
   const check = await assertSafeHttpsUrl(s);
-  if (!check.ok) fail(check.error === 'unsafe_url' ? 'unsafe_url' : 'validation_failed');
+  if (!check.ok) fail('validation_failed');
   return check.url || s;
 }
 
