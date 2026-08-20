@@ -97,8 +97,8 @@ const CONTACT_MAX = 200;
 // and aborts the whole boot backfill. CASE WHEN is sequential, so `- ARRAY`
 // runs only after jsonb_typeof = 'object' has been established.
 const NEEDS_BACKFILL_SQL = `
-  (transcript_excerpt IS NOT NULL AND excerpt_ciphertext IS NULL)
-  OR (summary IS NOT NULL AND summary <> '{}'::jsonb AND summary_ciphertext IS NULL)
+  (transcript_excerpt IS NOT NULL)
+  OR (summary IS NOT NULL AND summary <> '{}'::jsonb)
   OR (generated_by IS NOT NULL AND generated_by LIKE '%@%')
   OR (
     CASE
@@ -146,6 +146,13 @@ function _meetingNotesAad(tenantId) {
   return `meeting_notes_runs:tenant:${tenantId}`;
 }
 
+function _cryptoTripleState(ciphertext, iv, tag) {
+  const present = [ciphertext != null, iv != null, tag != null].filter(Boolean).length;
+  if (present === 3) return 'complete';
+  if (present === 0) return 'missing';
+  return 'partial';
+}
+
 // JSONB '{}' only. Arrays, primitives, JSON null, and keyed objects all need encrypt.
 function _isEmptyJsonObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length === 0;
@@ -158,7 +165,7 @@ const SAMPLE_IDS_LIMIT = 50;
 // so the stall-guard can skip them, but they must not fail verification.
 const NONCOMPLIANT_SQL = `
   (transcript_excerpt IS NOT NULL)
-  OR (summary IS NOT NULL AND summary <> '{}'::jsonb AND summary_ciphertext IS NULL)
+  OR (summary IS NOT NULL AND summary <> '{}'::jsonb)
   OR (generated_by IS NOT NULL AND generated_by LIKE '%@%')
   OR (
     CASE
@@ -255,12 +262,17 @@ async function _backfillOneRow(p, vault, row) {
     sets.push(`${sql}=$${params.length}`);
   };
 
-  const needsExcerpt = row.transcript_excerpt != null && row.excerpt_ciphertext == null;
-  const needsSummary = row.summary_ciphertext == null && !_isEmptyJsonObject(row.summary);
+  const excerptPlain = row.transcript_excerpt != null;
+  const excerptState = _cryptoTripleState(row.excerpt_ciphertext, row.excerpt_iv, row.excerpt_tag);
+  const summaryPlain = !_isEmptyJsonObject(row.summary);
+  const summaryState = _cryptoTripleState(row.summary_ciphertext, row.summary_iv, row.summary_tag);
   const needsScrub = typeof row.generated_by === 'string' && row.generated_by.includes('@');
   const needsContact = _contactNeedsScrub(row.contact);
 
-  if (needsExcerpt) {
+  let excerpts = 0;
+  let summaries = 0;
+
+  if (excerptPlain && excerptState === 'missing') {
     const { ciphertext, iv, tag } = vault.encryptString(row.transcript_excerpt, aad);
     if (vault.decryptString(ciphertext, iv, tag, aad) !== row.transcript_excerpt) {
       throw new Error('excerpt verify mismatch');
@@ -270,9 +282,14 @@ async function _backfillOneRow(p, vault, row) {
     bump('excerpt_tag', tag);
     sets.push('transcript_excerpt=NULL');
     sets.push(`excerpt_expires_at = COALESCE(excerpt_expires_at, created_at + interval '30 days')`);
+    excerpts = 1;
+  } else if (excerptPlain && excerptState === 'complete') {
+    // Dual-state: complete triple already on disk. Drop leftover plaintext only.
+    sets.push('transcript_excerpt=NULL');
+    excerpts = 1;
   }
 
-  if (needsSummary) {
+  if (summaryPlain && summaryState === 'missing') {
     const serialized = JSON.stringify(row.summary);
     const { ciphertext, iv, tag } = vault.encryptString(serialized, aad);
     const roundTrip = vault.decryptString(ciphertext, iv, tag, aad);
@@ -282,6 +299,10 @@ async function _backfillOneRow(p, vault, row) {
     bump('summary_iv', iv);
     bump('summary_tag', tag);
     sets.push(`summary='{}'::jsonb`);
+    summaries = 1;
+  } else if (summaryPlain && summaryState === 'complete') {
+    sets.push(`summary='{}'::jsonb`);
+    summaries = 1;
   }
 
   if (needsScrub) {
@@ -304,8 +325,8 @@ async function _backfillOneRow(p, vault, row) {
     params
   );
   return {
-    excerpts: needsExcerpt ? 1 : 0,
-    summaries: needsSummary ? 1 : 0,
+    excerpts,
+    summaries,
     generatedBy: needsScrub ? 1 : 0,
     contacts: needsContact ? 1 : 0,
   };
@@ -373,7 +394,7 @@ async function verifyMeetingNotesEncryption() {
         FROM (
           SELECT
             (transcript_excerpt IS NOT NULL) AS plaintext_excerpt,
-            (summary IS NOT NULL AND summary <> '{}'::jsonb AND summary_ciphertext IS NULL) AS plaintext_summary,
+            (summary IS NOT NULL AND summary <> '{}'::jsonb) AS plaintext_summary,
             (generated_by IS NOT NULL AND generated_by LIKE '%@%') AS email_generated_by,
             CASE
               WHEN contact IS NULL THEN false
@@ -490,7 +511,9 @@ async function backfillMeetingNotesEncryption() {
         let batch;
         try {
           batch = await p.query(
-            `SELECT id, tenant_id, transcript_excerpt, summary, excerpt_ciphertext, summary_ciphertext, created_at, generated_by, contact
+            `SELECT id, tenant_id, transcript_excerpt, summary, created_at, generated_by, contact,
+                    excerpt_ciphertext, excerpt_iv, excerpt_tag,
+                    summary_ciphertext, summary_iv, summary_tag
                FROM meeting_notes_runs
               WHERE tenant_id=$1
                 AND (${NEEDS_BACKFILL_SQL})

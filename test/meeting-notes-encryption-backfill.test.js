@@ -1152,3 +1152,138 @@ test('verification detects leftover PII shapes and partial crypto without dumpin
   }
 });
 
+test('backfill clears leftover plaintext beside a complete ciphertext triple without re-encrypting', { skip }, async () => {
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-dual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN dual ${suffix}`, `mn-dual-${suffix}`]
+  )).rows[0].id;
+
+  const DUAL_EXCERPT = 'mn-dual-excerpt-body';
+  const DUAL_SUMMARY = { body: 'mn-dual-summary-body' };
+  const aad = aadFor(tenantId);
+  const excerptEnc = vault.encryptString(DUAL_EXCERPT, aad);
+  const summaryEnc = vault.encryptString(JSON.stringify(DUAL_SUMMARY), aad);
+
+  const captured = [];
+  const original = { log: console.log, warn: console.warn, error: console.error, info: console.info };
+  const grab = (...args) => {
+    captured.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+  };
+
+  try {
+    const excerptId = (await p.query(
+      `INSERT INTO meeting_notes_runs (
+         tenant_id, contact, summary, transcript_excerpt, source,
+         excerpt_ciphertext, excerpt_iv, excerpt_tag
+       ) VALUES ($1,'{}'::jsonb,'{}'::jsonb,$2,'ai',$3,$4,$5) RETURNING id`,
+      [tenantId, DUAL_EXCERPT, excerptEnc.ciphertext, excerptEnc.iv, excerptEnc.tag]
+    )).rows[0].id;
+    const summaryId = (await p.query(
+      `INSERT INTO meeting_notes_runs (
+         tenant_id, contact, summary, source,
+         summary_ciphertext, summary_iv, summary_tag
+       ) VALUES ($1,'{}'::jsonb,$2::jsonb,'ai',$3,$4,$5) RETURNING id`,
+      [tenantId, JSON.stringify(DUAL_SUMMARY), summaryEnc.ciphertext, summaryEnc.iv, summaryEnc.tag]
+    )).rows[0].id;
+
+    const before = await verifyMeetingNotesEncryption();
+    assert.strictEqual(before.ok, false, 'dual-state leftover plaintext must fail verification before heal');
+    assert.ok(before.noncompliant >= 2);
+    assert.ok((before.byReason && before.byReason.plaintext_excerpt) >= 1);
+    assert.ok((before.byReason && before.byReason.plaintext_summary) >= 1);
+
+    const selected = (await p.query(
+      `SELECT id FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND (${NEEDS_BACKFILL_SQL})
+        ORDER BY id`,
+      [tenantId]
+    )).rows.map((r) => r.id);
+    assert.ok(selected.includes(excerptId), 'NEEDS_BACKFILL_SQL must select dual-state excerpt');
+    assert.ok(selected.includes(summaryId), 'NEEDS_BACKFILL_SQL must select dual-state summary');
+
+    console.log = grab; console.warn = grab; console.error = grab; console.info = grab;
+    let result;
+    try {
+      result = await backfillMeetingNotesEncryption();
+    } finally {
+      console.log = original.log; console.warn = original.warn;
+      console.error = original.error; console.info = original.info;
+    }
+
+    assert.strictEqual(result.ok, true);
+    assert.ok(!result.skipped, 'backfill should not skip when db and key are present');
+    assert.ok(result.excerpts >= 1, 'dual-state excerpt plaintext must be cleared');
+    assert.ok(result.summaries >= 1, 'dual-state summary plaintext must be cleared');
+
+    const excerptRow = (await p.query(
+      `SELECT transcript_excerpt, excerpt_ciphertext, excerpt_iv, excerpt_tag
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [excerptId, tenantId]
+    )).rows[0];
+    assert.strictEqual(excerptRow.transcript_excerpt, null);
+    assert.ok(Buffer.isBuffer(excerptRow.excerpt_ciphertext) && excerptRow.excerpt_ciphertext.equals(excerptEnc.ciphertext));
+    assert.ok(Buffer.isBuffer(excerptRow.excerpt_iv) && excerptRow.excerpt_iv.equals(excerptEnc.iv));
+    assert.ok(Buffer.isBuffer(excerptRow.excerpt_tag) && excerptRow.excerpt_tag.equals(excerptEnc.tag));
+    assert.strictEqual(
+      vault.decryptString(excerptRow.excerpt_ciphertext, excerptRow.excerpt_iv, excerptRow.excerpt_tag, aad),
+      DUAL_EXCERPT
+    );
+
+    const summaryRow = (await p.query(
+      `SELECT summary, summary_ciphertext, summary_iv, summary_tag
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [summaryId, tenantId]
+    )).rows[0];
+    assert.deepStrictEqual(summaryRow.summary, {});
+    assert.ok(Buffer.isBuffer(summaryRow.summary_ciphertext) && summaryRow.summary_ciphertext.equals(summaryEnc.ciphertext));
+    assert.ok(Buffer.isBuffer(summaryRow.summary_iv) && summaryRow.summary_iv.equals(summaryEnc.iv));
+    assert.ok(Buffer.isBuffer(summaryRow.summary_tag) && summaryRow.summary_tag.equals(summaryEnc.tag));
+    assert.deepStrictEqual(
+      JSON.parse(vault.decryptString(summaryRow.summary_ciphertext, summaryRow.summary_iv, summaryRow.summary_tag, aad)),
+      DUAL_SUMMARY
+    );
+
+    const verified = await verifyMeetingNotesEncryption();
+    assert.strictEqual(verified.ok, true);
+    assert.strictEqual(verified.noncompliant, 0);
+
+    const again = await backfillMeetingNotesEncryption();
+    assert.strictEqual(again.ok, true);
+    assert.strictEqual(again.excerpts, 0, 'second pass must not re-clear excerpts');
+    assert.strictEqual(again.summaries, 0, 'second pass must not re-clear summaries');
+    assert.strictEqual(again.generatedBy, 0);
+    assert.strictEqual(again.contacts, 0);
+
+    const stillExcerpt = (await p.query(
+      `SELECT excerpt_ciphertext, excerpt_iv, excerpt_tag
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [excerptId, tenantId]
+    )).rows[0];
+    assert.ok(stillExcerpt.excerpt_ciphertext.equals(excerptEnc.ciphertext));
+    assert.ok(stillExcerpt.excerpt_iv.equals(excerptEnc.iv));
+    assert.ok(stillExcerpt.excerpt_tag.equals(excerptEnc.tag));
+
+    const logged = captured.join('\n');
+    assert.ok(!logged.includes(DUAL_EXCERPT), 'heal logs must not contain leftover excerpt plaintext');
+    assert.ok(!logged.includes('mn-dual-summary-body'), 'heal logs must not contain leftover summary plaintext');
+    assert.ok(
+      !logged.includes(process.env.CREDENTIAL_ENCRYPTION_KEY),
+      'heal logs must not contain the vault key'
+    );
+    assert.ok(!logged.includes(excerptEnc.ciphertext.toString('base64')));
+    assert.ok(!logged.includes(summaryEnc.ciphertext.toString('base64')));
+  } finally {
+    console.log = original.log; console.warn = original.warn;
+    console.error = original.error; console.info = original.info;
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+

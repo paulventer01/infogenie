@@ -116,7 +116,16 @@ test('backfillMeetingNotesEncryption is exported and is not invoked by ensureMee
   assert.strictEqual(typeof NEEDS_BACKFILL_SQL, 'string');
   assert.strictEqual(typeof NONCOMPLIANT_SQL, 'string');
   assert.ok(NONCOMPLIANT_SQL.includes('transcript_excerpt IS NOT NULL'));
-  assert.ok(NONCOMPLIANT_SQL.includes('summary_ciphertext IS NULL'));
+  assert.ok(/summary IS NOT NULL AND summary <> '\{\}'::jsonb/.test(NONCOMPLIANT_SQL));
+  assert.ok(
+    !/summary IS NOT NULL AND summary <> '\{\}'::jsonb AND summary_ciphertext IS NULL/.test(NONCOMPLIANT_SQL),
+    'leftover summary plaintext must be noncompliant even when ciphertext exists'
+  );
+  assert.ok(NEEDS_BACKFILL_SQL.includes('transcript_excerpt IS NOT NULL'));
+  assert.ok(
+    !/transcript_excerpt IS NOT NULL AND excerpt_ciphertext IS NULL/.test(NEEDS_BACKFILL_SQL),
+    'backfill must select leftover excerpt plaintext even when ciphertext exists'
+  );
   await ensureMeetingNotesSchema();
   assert.strictEqual(typeof backfillMeetingNotesEncryption, 'function');
   assert.strictEqual(typeof verifyMeetingNotesEncryption, 'function');
