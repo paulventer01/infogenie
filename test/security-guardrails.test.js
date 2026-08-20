@@ -3,6 +3,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   buildCsp,
   safeEqualString,
@@ -62,6 +64,29 @@ test('createRateLimiter returns 429 after max', () => {
   assert.equal(calls[0].code, 429);
   assert.equal(calls[0].body.error, 'rate_limited');
   lim.reset();
+});
+
+// The meeting-notes summarize route ships before transcript redaction exists.
+// The disclosure below is the only thing standing between an operator and the
+// assumption that transcripts are scrubbed, so it must survive edits to the rest
+// of the section until the AI/LLM redaction PR actually lands.
+test('the guardrails doc still discloses unredacted transcript egress', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.match(flat, /`POST \/api\/meeting-notes\/summarize` still sends \*\*up to 12,000 transcript characters unredacted\*\* to `api\.openai\.com`/);
+  assert.match(flat, /No PII detection or masking runs on the transcript body today/);
+  assert.match(flat, /Pre-transmission transcript redaction is a \*\*separate follow-up PR owned by AI\/LLM\*\*; per-tenant AI rate\/cost limiting is the PR after that\. Neither is implemented here\./);
+});
+
+test('the guardrails doc documents fail-closed backfill and observable retention', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.match(flat, /process\.exit\(1\)/);
+  assert.match(flat, /meeting_notes_excerpt_retention_overdue/);
+  assert.match(flat, /verifyMeetingNotesEncryption/);
+  // Residuals an operator has to keep in mind stay written down.
+  assert.match(flat, /`transcript_sha256` is retained after the excerpt is purged/);
+  assert.match(flat, /A JSONB `null` `contact` stays `null` at rest/);
 });
 
 test('originAllowed accepts matching host and localhost in non-prod', () => {
