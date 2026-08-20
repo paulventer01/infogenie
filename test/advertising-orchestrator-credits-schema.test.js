@@ -194,21 +194,30 @@ if (!HAS_DB) {
     assert.match(ledgerIdx.indexdef, /idempotency_key/);
     assert.match(ledgerIdx.indexdef, /WHERE/i);
 
+    function asCols(cols) {
+      if (Array.isArray(cols)) return cols.map(String);
+      return String(cols || '').replace(/^{|}$/g, '').split(',').map((s) => s.trim()).filter(Boolean);
+    }
+
     for (const table of TABLES) {
       const idxs = await uniqueIndexCols(table);
       for (const idx of idxs) {
-        if (idx.primary && idx.cols.length === 1 && idx.cols[0] === 'id') continue;
+        const cols = asCols(idx.cols);
+        if (idx.primary && cols.length === 1 && cols[0] === 'id') continue;
         assert.strictEqual(
-          idx.cols[0],
+          cols[0],
           'tenant_id',
-          `${table} unique index ${idx.name} must lead with tenant_id (got ${idx.cols.join(',')})`
+          `${table} unique index ${idx.name} must lead with tenant_id (got ${cols.join(',')})`
         );
       }
     }
 
     const idempIdx = await uniqueIndexCols('orchestrator_idempotency_keys');
     assert.ok(
-      !idempIdx.some((i) => i.cols.length === 1 && i.cols[0] === 'key'),
+      !idempIdx.some((i) => {
+        const cols = asCols(i.cols);
+        return cols.length === 1 && cols[0] === 'key';
+      }),
       'no unique index on idempotency key alone'
     );
   });
@@ -514,7 +523,7 @@ if (!HAS_DB) {
       () => p.query(
         `INSERT INTO orchestrator_outbox
            (id, tenant_id, destination, operation, idempotency_key)
-         VALUES ($1,$2,'google','publish',$3)`,
+         VALUES ($1,$2,'meta','publish',$3)`,
         [`obx-dup-${SUFFIX}`, tenantA, sharedKey]
       ),
       /unique|duplicate/i,

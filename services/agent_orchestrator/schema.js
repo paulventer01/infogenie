@@ -68,8 +68,18 @@ async function _ensureNamedUnique(p, table, name, cols) {
   }
 }
 
+// Serialize DDL so overlapping ensure() callers (parallel test files, boot)
+// cannot race CREATE TABLE IF NOT EXISTS on the same relation types.
+let _ensureMutex = Promise.resolve();
+
 async function ensureAgentOrchestratorSchema() {
   if (!_db.hasDb()) return false;
+  const queued = _ensureMutex.then(() => _runEnsureAgentOrchestratorSchema());
+  _ensureMutex = queued.catch(() => {});
+  return queued;
+}
+
+async function _runEnsureAgentOrchestratorSchema() {
   const p = _db.getPool();
   await p.query(`
     CREATE TABLE IF NOT EXISTS agent_orchestrator_runs (
