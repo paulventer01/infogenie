@@ -139,9 +139,14 @@ Accepted residuals:
   external effect; a phase that calls an ad platform needs a per-step
   idempotency key against that platform before it ships.
 - `landing_page_url` is validated as `https:`, credential-free and ≤2048 chars,
-  but is **not** screened against private, loopback or link-local hosts. Nothing
-  dereferences it in PR 1 — the runner is a stub — so there is no SSRF sink yet.
-  A host denylist is required **before** any agent fetches that URL.
+  but is **not** screened against private, loopback or link-local hosts by
+  `workflows_api.js`. Nothing dereferences it — the runner is a stub — so there
+  is no SSRF sink yet. A host denylist is required **before** any agent fetches
+  that URL. PR 2 supplies that denylist as a module,
+  `services/security/safe_url.js`, but does **not** wire it in:
+  `workflows_api.js` still does not import it, and this residual stays open
+  until Backend calls `assertSafeHttpsUrl` on create and PATCH and fails the
+  write on `{ ok: false }`.
 - `POST /:id/advance` requires `orchestrator.workflows.edit`, not an approve key.
   Execution is mechanical: it refuses to run unless a fresh approval whose
   `content_hash` and `object_version` still match the workflow exists for the
@@ -158,6 +163,151 @@ Accepted residuals:
 - `X-Orch-Test-Fail` / `X-Orch-Test-Hold` are honoured only when `NODE_ENV` is
   exactly `test`. They are inert in production, in development and when
   `NODE_ENV` is unset.
+
+## Advertising orchestrator — credits, outbox & outbound URLs (PR 2)
+
+PR 2 lands the credit-accounting schema and the security controls around it.
+The credit engines, the HTTP surface and the React panel are **not** in this
+slice; what follows is the boundary Backend has to build inside.
+
+### Credit permissions
+
+Five tenant-scope keys, all in `services/tenants/permissions.js`:
+
+| Key | Holds |
+|---|---|
+| `orchestrator.credits.view` | balance, reserved, consumed, daily/monthly usage, per-workflow cost, failed reservations, block reasons |
+| `orchestrator.credits.limits.view` | tenant AI rate/cost limits and the credit ceiling |
+| `orchestrator.credits.grant` | issue credit grants |
+| `orchestrator.credits.adjust` | manual adjustments and refunds |
+| `orchestrator.credits.limits.edit` | change limits and the credit ceiling |
+
+Reading spend is a wide grant; changing what may be spent is not. A **Marketer
+holds the two `.view` keys only**. `grant`, `adjust` and `limits.edit` stay with
+tenant administrators (owner / admin / platform), for the same
+separation-of-duty reason as the six `approve.*` gates: the ceiling is what a
+later approval is bound to, so a role that could raise its own ceiling could
+approve more spend than it was granted. Analyst inherits the two `.view` keys
+through `ALL_VIEW_PERMISSION_KEYS`; `content_creator` and `client_viewer` hold
+none of the five.
+
+Three controls stack, exactly as they do for workflows:
+
+1. **Owner gate exemption** — `_OWNER_GATE_ALLOW` in `server.js` gains
+   `/^\/api\/agent-orchestrator\/credits(?:\/|$)/`, anchored the same way as the
+   workflows entry. Without it a non-owner would get a blanket `owner_only` and
+   the split above would be unreachable. `suggest`, `resolve`, `apply` and
+   `history` stay owner-gated, and `/credits-export` does not inherit it.
+2. **Route group — still owed by Backend.** `services/tenants/permission_matrix.js`
+   has no `/api/agent-orchestrator/credits` row yet, so the surface currently
+   resolves to the coarse hub row. Backend must add
+   `{ prefix: '/api/agent-orchestrator/credits', view: 'orchestrator.credits.view',
+   write: 'orchestrator.credits.view' }` when the router ships. `write` equals
+   `view` on purpose — the coarse group only decides "may this role touch
+   credits at all".
+3. **Per-action `requirePermission`** — the real boundary. A grant requires
+   `.grant`, an adjustment `.adjust`, a limit change `.limits.edit`.
+
+### Fail-closed rules Backend must implement
+
+- **A ceiling of 0 blocks, it does not mean unlimited.** `credit_ceiling_micros`
+  and every `orchestrator_tenant_limits` column default to `0`. A reservation
+  that cannot prove headroom must refuse with a recorded `block_reason`, never
+  fall through. "No row / no ceiling configured" is the same answer as "no
+  credit".
+- **`actor_user_id` is the numeric session user id**, never an email, on every
+  ledger entry, reservation and limits change. A principal with no attributable
+  positive user id must not be able to move credit at all — same rule as
+  approvals in PR 1.
+- **Approval binding.** `orchestrator_approvals.approved_credit_ceiling_micros`
+  exists but nothing yet folds the ceiling and the advertising budget into the
+  approval `content_hash`. Until Backend does, raising a ceiling after an
+  approval does not invalidate that approval. That is the open item of this PR
+  and it must land before a phase can spend.
+
+### Outbox and log hygiene
+
+`orchestrator_outbox.payload` is JSONB and carries **no credentials**. Tokens
+are referenced by `credential_ref`, which is an identifier resolved against the
+vault at send time — never a token, never a webhook secret. Payloads and
+`last_error_code` are written to a table an operator reads, so no PII, no
+transcript material and no vault payload may be put in either, and provider
+error text must not be interpolated into a log line (same rule as the meeting
+notes telemetry below).
+
+### Outbound URL policy — `services/security/safe_url.js`
+
+Security-owned, and deliberately separate from `services/_shared/ssrf.js`, which
+still allows plain `http:` for older features. Do not merge the two or relax
+this one. Policy, failing closed on every ambiguity:
+
+- `https:` only; port 443 only (an explicit `:8443` is refused, not coerced).
+- No credentials in the URL, hostname required, ≤2048 characters.
+- Blocked literals: loopback, unspecified, RFC1918, link-local (including
+  `169.254.169.254`), CGNAT `100.64/10`, multicast/reserved, IPv6 ULA
+  (`fc00::/7`, so `fd00:ec2::254`), `fe80::/10`, everything with a leading `::`
+  (IPv4-mapped `::ffff:`, IPv4-compatible, `::1`, `::`), NAT64 and 6to4.
+- Blocked names: `localhost`, `metadata`, `metadata.google.internal`,
+  `metadata.goog`, and the `.local` / `.internal` / `.localhost` suffixes. A
+  trailing dot is stripped first so `localhost.` cannot slip past.
+- Decimal / hex / octal / short-form IPv4 encodings (`2130706433`,
+  `0x7f000001`, `0177.0.0.1`, `127.1`) are refused on the **raw** authority,
+  before the URL parser silently canonicalises them.
+- DNS is resolved with `dns.promises.lookup(..., { all: true })` and **any**
+  blocked answer disqualifies the host. A lookup failure is not safe.
+
+There is **no fetch sink** in the module and no caller wires it yet — a test
+asserts both. A caller that later fetches must: validate, keep the returned
+`addresses`, call `assertPinnedAddresses(hostname, addresses)` immediately
+before connecting (DNS rebinding — a record set that changed at all is refused,
+not reconciled), disable automatic redirect following, and re-run
+`assertSafeRedirect` on every `Location` it chooses to follow. Errors are
+returned as `{ ok: false, error: 'unsafe_url', reason }`, never thrown, so a
+caller that ignores the result fails open by its own choice — check `ok`.
+
+### Tenant-isolation review of the PR 2 schema
+
+Reviewed `services/agent_orchestrator/schema.js` as landed. **No DDL change was
+required.**
+
+- All nine new tables carry `tenant_id INTEGER NOT NULL REFERENCES tenants(id)
+  ON DELETE CASCADE`. `orchestrator_credit_accounts` and
+  `orchestrator_tenant_limits` use `tenant_id` as the primary key, so a tenant
+  cannot hold a second account or a second limits row.
+- Every unique key leads with `tenant_id`: reservations
+  `(tenant_id, idempotency_key)`, pricing `(tenant_id, provider,
+  model_or_service, unit_type, pricing_version)`, outbox PK `(tenant_id, id)`
+  plus `(tenant_id, destination, operation, idempotency_key)`, and the ledger's
+  partial unique index `(tenant_id, idempotency_key)`. There is no cross-tenant
+  idempotency-key collision and no cross-tenant replay of another workspace's
+  key.
+- `orchestrator_credit_ledger` and `orchestrator_usage_records` are
+  UPDATE-immutable by trigger and refuse a direct DELETE while the tenant row
+  exists, so a correction has to be a new `adjustment` / `refund` entry rather
+  than a rewrite of history. Only the tenant cascade removes them.
+- `orchestrator_pricing_catalog` is tenant-scoped with no platform-wide rows, so
+  a tenant with no price row must fail closed rather than borrow another
+  tenant's price.
+
+Three properties the database does **not** enforce, which Backend must:
+
+- `workflow_id` on the ledger, reservations, usage records, outbox and
+  `orchestrator_ai_inflight` is a bare `TEXT` with no foreign key. That is
+  deliberate on the immutable tables — a cascade from `orchestrator_workflows`
+  would collide with the delete-refusing trigger — but it means Postgres will
+  not reject a `workflow_id` that belongs to another tenant. Every write must
+  first resolve the workflow with `WHERE id = $1 AND tenant_id = $2`.
+- `orchestrator_credit_reservations.id` and `orchestrator_ai_inflight.id` are
+  global `TEXT` primary keys, like `orchestrator_workflows.id` in PR 1.
+  Uniqueness is global, so ids are not enumerable from another tenant's
+  sequence, but a lookup by id alone would cross tenants. Every read and write
+  needs an explicit `tenant_id` filter, and a cross-tenant id must answer 404,
+  not 403.
+- Balance arithmetic is guarded only by `CHECK (… >= 0)` and
+  `committed_micros <= amount_micros`. Nothing in the schema serialises two
+  concurrent reservations against one account, so the reserve path needs
+  `SELECT … FOR UPDATE` on `orchestrator_credit_accounts` (or an equivalent
+  conditional `UPDATE`) or two callers can each pass the ceiling check.
 
 ## Meeting notes — outbound data flow (redaction deferred)
 

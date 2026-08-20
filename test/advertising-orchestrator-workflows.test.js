@@ -738,6 +738,21 @@ if (!HAS_DB) {
     });
     assert.strictEqual(lookalike.status, 403, lookalike.text);
     assert.strictEqual(lookalike.json.error, 'owner_only');
+
+    // PR 2 added a second exemption for the credits surface, anchored the same
+    // way. The handlers do not exist yet, so the assertion is that a non-owner
+    // is no longer stopped by the owner gate — not that the route answers.
+    const credits = await request(app.baseUrl, 'GET', '/api/agent-orchestrator/credits', {
+      cookie: cookieM,
+    });
+    assert.notStrictEqual(credits.json && credits.json.error, 'owner_only',
+      `credits must be reachable by a non-owner role: ${credits.status} ${credits.text}`);
+
+    const creditsLookalike = await request(app.baseUrl, 'GET', '/api/agent-orchestrator/credits-export', {
+      cookie: cookieM,
+    });
+    assert.strictEqual(creditsLookalike.status, 403, creditsLookalike.text);
+    assert.strictEqual(creditsLookalike.json.error, 'owner_only');
   });
 
   test('28. approve must state the version it read, and only approve a workflow', async () => {

@@ -109,6 +109,19 @@ test('the guardrails doc discloses the orchestrator residuals', () => {
   assert.match(flat, /`object_version` is \*\*required\*\* on approve/);
 });
 
+// PR 2 ships credit accounting DDL plus an SSRF policy module with no caller.
+// An operator reading this doc has to see what is enforced and what is still
+// owed, otherwise "the SSRF module exists" reads as "landing pages are safe".
+test('the guardrails doc discloses the PR 2 credit and outbound-URL boundary', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.match(flat, /A \*\*Marketer holds the two `\.view` keys only\*\*/);
+  assert.match(flat, /\*\*A ceiling of 0 blocks, it does not mean unlimited\.\*\*/);
+  assert.match(flat, /`orchestrator_outbox\.payload` is JSONB and carries \*\*no credentials\*\*/);
+  assert.match(flat, /There is \*\*no fetch sink\*\* in the module and no caller wires it yet/);
+  assert.match(flat, /nothing yet folds the ceiling and the advertising budget into the approval `content_hash`/);
+});
+
 // The shared BOOT_TASKS loop is an unawaited IIFE, so the port is bound before
 // meeting-notes verification runs. Claiming production "cannot serve traffic"
 // until it passes would overstate the control and mislead an incident responder.
