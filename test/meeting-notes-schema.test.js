@@ -126,6 +126,18 @@ test('backfillMeetingNotesEncryption is exported and is not invoked by ensureMee
     !/transcript_excerpt IS NOT NULL AND excerpt_ciphertext IS NULL/.test(NEEDS_BACKFILL_SQL),
     'backfill must select leftover excerpt plaintext even when ciphertext exists'
   );
+  assert.ok(
+    /excerpt_expires_at IS NULL[\s\S]*excerpt_ciphertext IS NOT NULL[\s\S]*excerpt_iv IS NOT NULL[\s\S]*excerpt_tag IS NOT NULL/.test(NEEDS_BACKFILL_SQL),
+    'backfill must select complete excerpt triples with missing TTL even when plaintext is already NULL'
+  );
+  assert.ok(NONCOMPLIANT_SQL.includes('excerpt_expires_at IS NULL'));
+  assert.ok(NONCOMPLIANT_SQL.includes('excerpt_ciphertext'));
+  assert.ok(NONCOMPLIANT_SQL.includes('excerpt_iv'));
+  assert.ok(NONCOMPLIANT_SQL.includes('excerpt_tag'));
+  assert.ok(
+    NONCOMPLIANT_SQL.includes('transcript_excerpt IS NOT NULL'),
+    'retained plaintext without TTL must be noncompliant'
+  );
   await ensureMeetingNotesSchema();
   assert.strictEqual(typeof backfillMeetingNotesEncryption, 'function');
   assert.strictEqual(typeof verifyMeetingNotesEncryption, 'function');
