@@ -964,6 +964,93 @@ if (!HAS_DB) {
     }
   });
 
+  test('35. pause during an in-flight advance is not reverted or rewound', async () => {
+    let wf = await createWf(cookieA, { name: 'pause vs advance' });
+    wf = await requestGate(cookieA, wf.id, 'research_execution');
+    wf = await approveGate(cookieA, wf, 'research_execution');
+    const approvedVersion = Number(wf.version);
+
+    // pause deliberately does NOT take the lease, so the runner's heartbeat
+    // cannot see it: the advance write has to be guarded on the locked state.
+    const [adv, pause] = await Promise.all([
+      advanceWf(cookieA, wf.id, { 'X-Orch-Test-Hold': '400' }),
+      (async () => {
+        await new Promise((r) => setTimeout(r, 120));
+        return orch('POST', `/${wf.id}/pause`, { cookie: cookieA, body: {}, key: ik('pva-pz') });
+      })(),
+    ]);
+
+    assert.strictEqual(pause.status, 200, pause.text);
+    assert.strictEqual(pause.json.workflow.current_state, 'paused');
+
+    const settled = (await orch('GET', `/${wf.id}`, { cookie: cookieA })).json.workflow;
+    assert.strictEqual(settled.current_state, 'paused',
+      'a granted pause must never be overwritten by the in-flight runner');
+    assert.strictEqual(Number(settled.version), approvedVersion);
+
+    if (adv.status === 409) {
+      assert.strictEqual(adv.json.error, 'workflow_paused',
+        `advance refused mid-run must say why, got ${adv.text}`);
+      // The abandoned step names the stop order, and the lease is handed back.
+      const steps = await orch('GET', `/${wf.id}/steps`, { cookie: cookieA });
+      assert.strictEqual(steps.status, 200, steps.text);
+      const last = steps.json.steps[steps.json.steps.length - 1];
+      assert.strictEqual(last.state, 'abandoned');
+      assert.strictEqual(last.error_code, 'workflow_paused');
+      const leases = await db.getPool().query(
+        `SELECT 1 FROM orchestrator_execution_leases WHERE tenant_id=$1 AND workflow_id=$2`,
+        [tenantA.id, wf.id]
+      );
+      assert.strictEqual(leases.rowCount, 0, 'a refused runner must release its lease');
+    } else {
+      assert.strictEqual(adv.status, 200, adv.text);
+    }
+
+    // Resume must return the workflow to where it actually was, whichever order
+    // the two writes landed in. Rewinding to a completed phase's *_approved
+    // state would replay that phase on the same approval — recover authority.
+    const resumed = await orch('POST', `/${wf.id}/resume`, {
+      cookie: cookieA, body: {}, key: ik('pva-rs'),
+    });
+    assert.strictEqual(resumed.status, 200, resumed.text);
+    assert.strictEqual(
+      resumed.json.workflow.current_state,
+      adv.status === 200 ? 'generation_approval_required' : 'research_approved',
+      'resume must not rewind past a phase that already completed'
+    );
+  });
+
+  test('36. a completed cancel is never lifted by a concurrent resume or edit', async () => {
+    // Each handler reads the workflow, validates, then writes. Without a state
+    // predicate on the write, the loser of the race silently reverts the
+    // terminal stop order and the workflow keeps advancing with cancelled_at
+    // set. Repeat a few times: one pass is not enough to pin a race.
+    for (let i = 0; i < 5; i += 1) {
+      let wf = await createWf(cookieA, { name: `cancel vs resume ${i}` });
+      wf = await requestGate(cookieA, wf.id, 'research_execution');
+      await orch('POST', `/${wf.id}/pause`, { cookie: cookieA, body: {}, key: ik('cvr-pz') });
+      await Promise.all([
+        orch('POST', `/${wf.id}/cancel`, { cookie: cookieA, body: {}, key: ik('cvr-cx') }),
+        orch('POST', `/${wf.id}/resume`, { cookie: cookieA, body: {}, key: ik('cvr-rs') }),
+      ]);
+      const settled = (await orch('GET', `/${wf.id}`, { cookie: cookieA })).json.workflow;
+      assert.strictEqual(settled.current_state, 'cancelled',
+        `resume must not lift a cancel (iteration ${i})`);
+
+      let wf2 = await createWf(cookieA, { name: `cancel vs patch ${i}` });
+      wf2 = await requestGate(cookieA, wf2.id, 'research_execution');
+      await Promise.all([
+        orch('POST', `/${wf2.id}/cancel`, { cookie: cookieA, body: {}, key: ik('cvp-cx') }),
+        orch('PATCH', `/${wf2.id}`, {
+          cookie: cookieA, body: { currency: 'JPY' }, key: ik('cvp-pt'),
+        }),
+      ]);
+      const settled2 = (await orch('GET', `/${wf2.id}`, { cookie: cookieA })).json.workflow;
+      assert.strictEqual(settled2.current_state, 'cancelled',
+        `edit must not lift a cancel (iteration ${i})`);
+    }
+  });
+
   test('24. existing AgentOrchestrator panel still has error/empty copy', () => {
     const src = fs.readFileSync(
       path.join(__dirname, '..', 'components/features/manage/AgentOrchestrator.tsx'),

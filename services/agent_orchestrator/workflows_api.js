@@ -440,7 +440,13 @@ router.patch('/:id', mutation('edit', PERMS.edit, async (req, tid, userId, pool)
     fields.next_approval_gate = 'research_execution';
   }
 
-  const row = await persistWorkflow(pool, tid, wf.id, fields);
+  // Guarded on the row this handler validated. Without it a cancel or pause that
+  // lands between the read above and this write is silently reverted, and two
+  // concurrent edits both settle on the same `version`.
+  const row = await persistWorkflow(pool, tid, wf.id, fields, {
+    expectedVersion: Number(wf.version),
+    expectedState: wf.current_state,
+  });
   if (material && (hadApprovals || wf.current_state !== 'draft')) {
     await insertAudit(pool, {
       tenantId: tid,
@@ -473,7 +479,7 @@ router.post('/:id/request-approval', mutation('request_approval', PERMS.request,
     previous_state: wf.current_state,
     next_approval_gate: applied.nextGate || gate,
     current_phase: applied.phase || wf.current_phase,
-  });
+  }, { expectedState: wf.current_state });
   await insertAudit(pool, {
     tenantId: tid,
     workflowId: wf.id,
@@ -544,12 +550,17 @@ async function decide(req, tid, userId, pool, decision) {
         JSON.stringify(snapshot),
       ]
     )).rows[0];
+    // The approval row above records what this approver decided; the state only
+    // moves if the row is still the revision they approved. A cancel, pause or
+    // version-bumping edit that landed in between refuses here instead of being
+    // overwritten, and the stored approval cannot release the phase on its own
+    // (advance re-checks gate, version and content_hash).
     const row = await persistWorkflow(pool, tid, wf.id, {
       current_state: applied.to,
       previous_state: wf.current_state,
       next_approval_gate: applied.nextGate || gate,
       current_phase: applied.phase || wf.current_phase,
-    });
+    }, { expectedVersion: Number(wf.version), expectedState: wf.current_state });
     await insertAudit(pool, {
       tenantId: tid,
       workflowId: wf.id,
@@ -603,13 +614,28 @@ router.post('/:id/pause', mutation('pause', PERMS.pause, async (req, tid, userId
   const wf = await mustLoad(pool, tid, req.params.id);
   if (wf.current_state === 'cancelled') fail('workflow_cancelled');
   applyTransition(wf.current_state, 'pause');
-  const row = await persistWorkflow(pool, tid, wf.id, {
-    current_state: 'paused',
-    previous_state: wf.current_state,
-    paused_at: new Date().toISOString(),
-    paused_by_user_id: userId,
-    pause_reason: req.body && req.body.reason != null ? String(req.body.reason).slice(0, 200) : null,
-  });
+  // Pause is the stop order, so it does not take the lease — but it must not
+  // rewind the workflow either. previous_state is copied from the row inside the
+  // UPDATE: reading it above and writing it back would let a phase that
+  // completed in between be replayed by a later resume on the same approval,
+  // which is `recover` authority (owner/admin), not `resume`.
+  const reason = req.body && req.body.reason != null ? String(req.body.reason).slice(0, 200) : null;
+  const updated = await pool.query(
+    `UPDATE orchestrator_workflows
+        SET previous_state=current_state, current_state='paused',
+            paused_at=now(), paused_by_user_id=$1, pause_reason=$2, updated_at=now()
+      WHERE id=$3 AND tenant_id=$4
+        AND current_state NOT IN ('paused', 'cancelled', 'completed')
+      RETURNING *`,
+    [userId, reason, wf.id, tid]
+  );
+  if (!updated.rowCount) {
+    const live = await loadWorkflow(pool, tid, wf.id);
+    if (!live) fail('not_found');
+    if (live.current_state === 'cancelled') fail('workflow_cancelled');
+    fail('invalid_transition');
+  }
+  const row = updated.rows[0];
   await insertAudit(pool, {
     tenantId: tid,
     workflowId: wf.id,
@@ -617,7 +643,7 @@ router.post('/:id/pause', mutation('pause', PERMS.pause, async (req, tid, userId
     actorUserId: userId,
     requestId: req.requestId,
     state: 'paused',
-    detail: { from: wf.current_state, to: 'paused' },
+    detail: { from: row.previous_state, to: 'paused' },
   });
   return { status: 200, body: { ok: true, workflow: publicWorkflow(row) } };
 }));
@@ -627,13 +653,15 @@ router.post('/:id/resume', mutation('resume', PERMS.resume, async (req, tid, use
   if (wf.current_state === 'cancelled') fail('workflow_cancelled');
   await assertNoLiveExecution(pool, tid, wf.id);
   const applied = applyTransition(wf.current_state, 'resume', { previousState: wf.previous_state });
+  // 'paused' is resume's precondition, so requiring it here is what stops a
+  // resume from lifting a cancel that landed after the read above.
   const row = await persistWorkflow(pool, tid, wf.id, {
     current_state: applied.to,
     previous_state: 'paused',
     paused_at: null,
     paused_by_user_id: null,
     pause_reason: null,
-  });
+  }, { expectedState: 'paused' });
   await insertAudit(pool, {
     tenantId: tid,
     workflowId: wf.id,
@@ -706,7 +734,7 @@ router.post('/:id/recover', mutation('recover', PERMS.recover, async (req, tid, 
   const row = await persistWorkflow(pool, tid, wf.id, {
     current_state: applied.to,
     previous_state: wf.current_state,
-  });
+  }, { expectedState: wf.current_state });
   await insertAudit(pool, {
     tenantId: tid,
     workflowId: wf.id,

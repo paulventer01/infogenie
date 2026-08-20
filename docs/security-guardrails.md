@@ -105,8 +105,39 @@ Approval integrity:
 - Audit `detail` is an **allowlist** of control-plane keys, so brief material
   (offer, objective, comment) cannot reach the trail or the log line.
 
+Execution leases vs. concurrent mutations — `acquireLease` takes `SELECT … FOR
+UPDATE` but **commits** before the phase runs, so the row lock does not span the
+run. Three rules close that window, and a change to any one of them needs a
+re-review:
+
+- The runner re-validates `canTransition`, the advance chain and approval
+  freshness against the row it read *under* the lease, not the row it read
+  before it.
+- **Every state-moving write is guarded on the row the caller validated**, not
+  just the runner's. The advance write requires the `version` *and*
+  `current_state` it locked; `PATCH`, `request-approval`, `approve`, `resume` and
+  `recover` require the state (and, where the decision was version-bound, the
+  version) they read. A guarded write that matches no row is classified from the
+  live row — `workflow_cancelled`, `workflow_paused`, `approval_stale`,
+  `invalid_transition` — and never retried over it. For the runner that also
+  means the step is marked `abandoned` and the lease is handed back.
+  Read-validate-then-write-unconditionally is the bug class here: it let a
+  concurrent `resume` or `PATCH` lift a completed `cancel`, and let a finishing
+  runner revert a `pause`.
+- Mutations that would move bound fields or state under a live lease refuse with
+  409 `execution_in_progress`: material `PATCH`, `request-approval`, `approve`,
+  `resume`. `pause` and `cancel` are the stop orders and always land — `pause`
+  copies `previous_state` from the row inside its own `UPDATE`, so a resume
+  cannot rewind onto a phase that finished after the read and replay it on the
+  same approval (that is `recover` authority, owner/admin only).
+
 Accepted residuals:
 
+- Phase side effects are **at-least-once**, not exactly-once. A runner that is
+  refused at the guarded write (or whose lease is force-released by `recover`)
+  has already invoked its phase handler. PR 1 handlers are stubs with no
+  external effect; a phase that calls an ad platform needs a per-step
+  idempotency key against that platform before it ships.
 - `landing_page_url` is validated as `https:`, credential-free and ≤2048 chars,
   but is **not** screened against private, loopback or link-local hosts. Nothing
   dereferences it in PR 1 — the runner is a stub — so there is no SSRF sink yet.

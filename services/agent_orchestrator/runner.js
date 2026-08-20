@@ -111,11 +111,38 @@ const NO_CLOBBER_CODES = new Set([
   'workflow_paused',
   'workflow_cancelled',
   'execution_in_progress',
+  'not_found',
 ]);
+
+// A guarded UPDATE that matched no row means the workflow moved between the
+// lease read and this write: a pause or cancel kill-switch, a version-bumping
+// PATCH, or another holder. Classify from the row that is actually there so the
+// caller reports why, and never write over it.
+async function failGuardedWrite(pool, tenantId, id, { expectedVersion, expectedState }) {
+  let row;
+  try {
+    row = await loadWorkflow(pool, tenantId, id);
+  } catch (_) {
+    fail('approval_stale');
+  }
+  if (!row) fail('not_found');
+  if (row.current_state === 'cancelled') fail('workflow_cancelled');
+  if (row.current_state === 'paused') fail('workflow_paused');
+  if (Number.isInteger(expectedVersion) && Number(row.version) !== expectedVersion) {
+    fail('approval_stale');
+  }
+  if (expectedState && String(row.current_state) !== String(expectedState)) {
+    fail('invalid_transition');
+  }
+  fail('approval_stale');
+}
 
 async function persistWorkflow(pool, tenantId, id, fields, opts) {
   const expectedVersion = opts && opts.expectedVersion != null
     ? Number(opts.expectedVersion)
+    : null;
+  const expectedState = opts && opts.expectedState != null
+    ? String(opts.expectedState)
     : null;
   const sets = [];
   const vals = [];
@@ -143,13 +170,20 @@ async function persistWorkflow(pool, tenantId, id, fields, opts) {
     vals.push(expectedVersion);
     where += ` AND version=$${verIdx}`;
   }
+  if (expectedState) {
+    const stateIdx = i++;
+    vals.push(expectedState);
+    where += ` AND current_state=$${stateIdx}`;
+  }
   const r = await pool.query(
     `UPDATE orchestrator_workflows SET ${sets.join(', ')}
       ${where}
       RETURNING *`,
     vals
   );
-  if (Number.isInteger(expectedVersion) && !r.rowCount) fail('approval_stale');
+  if ((Number.isInteger(expectedVersion) || expectedState) && !r.rowCount) {
+    await failGuardedWrite(pool, tenantId, id, { expectedVersion, expectedState });
+  }
   return r.rows[0];
 }
 
@@ -172,8 +206,15 @@ async function markFailed(pool, {
     next = await persistWorkflow(pool, tenantId, workflow.id, {
       current_state: failedTo,
       previous_state: workflow.current_state,
-    }, { expectedVersion: Number(workflow.version) });
-  } catch (_) { /* keep — do not overwrite a newer version */ }
+    }, {
+      expectedVersion: Number(workflow.version),
+      expectedState: workflow.current_state,
+    });
+  } catch (_) {
+    // Refused: a newer version or a pause/cancel owns the row. Report the state
+    // that is really there rather than the one we locked.
+    try { next = (await loadWorkflow(pool, tenantId, workflow.id)) || workflow; } catch (_2) { /* keep */ }
+  }
   try {
     if (stepId) {
       await pool.query(
@@ -262,6 +303,7 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
     first = remaining[0];
     const phase = first.phase || workflow.current_phase;
     const approvedVersion = Number(workflow.version);
+    const lockedState = workflow.current_state;
 
     await pool.query(
       `INSERT INTO orchestrator_steps
@@ -333,7 +375,13 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
       previous_state: first.to,
       current_phase: stopAt.phase || phase,
       next_approval_gate: stopAt.nextGate || null,
-    }, { expectedVersion: approvedVersion });
+    }, {
+      expectedVersion: approvedVersion,
+      // pause does not touch the lease, so the heartbeat above cannot see it.
+      // Requiring the state we locked makes a pause (or a cancel landing after
+      // the last heartbeat) a refusal instead of a silently reverted stop order.
+      expectedState: lockedState,
+    });
 
     await pool.query(
       `UPDATE orchestrator_steps
@@ -363,8 +411,8 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
     return workflow;
   } catch (err) {
     const code = err && err.code;
-    // Losing the lease, or a concurrent PATCH bumping version, means this
-    // runner must not markFailed over the live row.
+    // Losing the lease, a concurrent PATCH bumping version, or a pause/cancel
+    // landing mid-run all mean this runner must not markFailed over the live row.
     if (NO_CLOBBER_CODES.has(code)) {
       if (stepId) {
         try {
