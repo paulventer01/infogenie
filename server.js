@@ -630,6 +630,9 @@ const _OWNER_GATE_ALLOW = [
   /^\/api\/credentials\//,           // per-user credential vault + smoke tests
   /^\/api\/integrations\/google-ads\//, // per-user Google Ads Connect OAuth flow
   /^\/api\/integrations\/meta-ads\//,   // per-user Meta Ads Connect OAuth flow
+  // Tenant-scoped advertising workflows: gated by orchestrator.workflows.* via
+  // the matrix + per-handler requirePermission, not the legacy owner gate.
+  /^\/api\/agent-orchestrator\/workflows/,
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();

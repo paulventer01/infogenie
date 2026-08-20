@@ -144,6 +144,9 @@ const ROUTE_GROUPS = [
   // is finer than one prefix, so the workflow handlers carry requirePermission()
   // per action on top of whatever group covers their mount.
   { prefix: '/api/agent-orchestrator',        view: 'brand.calendar.view',     write: 'brand.calendar.edit' },
+  // Longer prefix wins. write=view so approve-only roles are not blocked by a
+  // coarse create key; handlers still call requirePermission() per action.
+  { prefix: '/api/agent-orchestrator/workflows', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
   { prefix: '/api/ai-governance',             view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
   { prefix: '/api/ai-traces',                 view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
   { prefix: '/api/ai-feedback',               view: 'grow.campaigns.view',     write: 'grow.campaigns.view' },
