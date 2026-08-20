@@ -55,7 +55,11 @@ const ADVERTISING_ORCH_TABLES = [
 
 async function _ensureNamedCheck(p, table, name, checkBody) {
   await p.query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${name}`);
-  await p.query(`ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${checkBody})`);
+  try {
+    await p.query(`ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${checkBody})`);
+  } catch (e) {
+    if (!e || e.code !== '42710') throw e;
+  }
 }
 
 async function _ensureNamedUnique(p, table, name, cols) {
@@ -80,7 +84,21 @@ async function ensureAgentOrchestratorSchema() {
 }
 
 async function _runEnsureAgentOrchestratorSchema() {
-  const p = _db.getPool();
+  const pool = _db.getPool();
+  const p = await pool.connect();
+  try {
+    await p.query('SELECT pg_advisory_lock($1)', [87231402]);
+    try {
+      return await _runEnsureAgentOrchestratorSchemaLocked(p);
+    } finally {
+      await p.query('SELECT pg_advisory_unlock($1)', [87231402]);
+    }
+  } finally {
+    p.release();
+  }
+}
+
+async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await p.query(`
     CREATE TABLE IF NOT EXISTS agent_orchestrator_runs (
       id              TEXT PRIMARY KEY,
