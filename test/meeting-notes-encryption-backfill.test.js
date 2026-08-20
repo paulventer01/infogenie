@@ -1287,3 +1287,375 @@ test('backfill clears leftover plaintext beside a complete ciphertext triple wit
   }
 });
 
+function _ttlMatchesCreatedPlus30(row) {
+  if (row.ttl_matches === true) return true;
+  const expectedMs = new Date(row.expected_expires).getTime();
+  const actualMs = new Date(row.excerpt_expires_at).getTime();
+  return Number.isFinite(expectedMs) && Number.isFinite(actualMs) && actualMs === expectedMs;
+}
+
+test('backfill assigns excerpt TTL on dual-state and encrypted-only complete triples without re-encrypting', { skip }, async () => {
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-ttl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN ttl ${suffix}`, `mn-ttl-${suffix}`]
+  )).rows[0].id;
+
+  const DUAL_EXCERPT = 'mn-ttl-dual-excerpt-body';
+  const ENC_ONLY_EXCERPT = 'mn-ttl-enconly-excerpt-body';
+  const SUMMARY = { body: 'mn-ttl-summary-keep' };
+  const CONTACT = { name: 'Ada', company: 'Co', role: 'Op' };
+  const SOURCE = 'ai';
+  const aad = aadFor(tenantId);
+  const dualEnc = vault.encryptString(DUAL_EXCERPT, aad);
+  const encOnly = vault.encryptString(ENC_ONLY_EXCERPT, aad);
+  const summaryEnc = vault.encryptString(JSON.stringify(SUMMARY), aad);
+
+  const captured = [];
+  const original = { log: console.log, warn: console.warn, error: console.error, info: console.info };
+  const grab = (...args) => {
+    captured.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+  };
+
+  try {
+    const dualId = (await p.query(
+      `INSERT INTO meeting_notes_runs (
+         tenant_id, contact, summary, transcript_excerpt, source,
+         excerpt_ciphertext, excerpt_iv, excerpt_tag, excerpt_expires_at,
+         summary_ciphertext, summary_iv, summary_tag
+       ) VALUES ($1,$2::jsonb,'{}'::jsonb,$3,$4,$5,$6,$7,NULL,$8,$9,$10)
+       RETURNING id, tenant_id, source, created_at, contact`,
+      [
+        tenantId, JSON.stringify(CONTACT), DUAL_EXCERPT, SOURCE,
+        dualEnc.ciphertext, dualEnc.iv, dualEnc.tag,
+        summaryEnc.ciphertext, summaryEnc.iv, summaryEnc.tag,
+      ]
+    )).rows[0];
+    const encOnlyId = (await p.query(
+      `INSERT INTO meeting_notes_runs (
+         tenant_id, contact, summary, transcript_excerpt, source,
+         excerpt_ciphertext, excerpt_iv, excerpt_tag, excerpt_expires_at,
+         summary_ciphertext, summary_iv, summary_tag
+       ) VALUES ($1,$2::jsonb,'{}'::jsonb,NULL,$3,$4,$5,$6,NULL,$7,$8,$9)
+       RETURNING id, tenant_id, source, created_at, contact`,
+      [
+        tenantId, JSON.stringify(CONTACT), SOURCE,
+        encOnly.ciphertext, encOnly.iv, encOnly.tag,
+        summaryEnc.ciphertext, summaryEnc.iv, summaryEnc.tag,
+      ]
+    )).rows[0];
+    const plainOnlyId = (await p.query(
+      `INSERT INTO meeting_notes_runs (
+         tenant_id, contact, summary, transcript_excerpt, source
+       ) VALUES ($1,'{}'::jsonb,'{}'::jsonb,$2,'ai') RETURNING id`,
+      [tenantId, 'mn-ttl-plain-only-excerpt']
+    )).rows[0].id;
+
+    const before = await verifyMeetingNotesEncryption();
+    assert.strictEqual(before.ok, false, 'missing excerpt TTL must fail verification before heal');
+    assert.ok((before.byReason && before.byReason.missing_excerpt_ttl) >= 1);
+    assert.ok((before.byReason && before.byReason.plaintext_excerpt) >= 1);
+
+    const selected = (await p.query(
+      `SELECT id FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND (${NEEDS_BACKFILL_SQL})
+        ORDER BY id`,
+      [tenantId]
+    )).rows.map((r) => r.id);
+    assert.ok(selected.includes(dualId.id), 'NEEDS_BACKFILL_SQL must select dual-state complete triple');
+    assert.ok(selected.includes(encOnlyId.id), 'NEEDS_BACKFILL_SQL must select encrypted-only complete triple with NULL TTL');
+    assert.ok(selected.includes(plainOnlyId), 'plaintext-only NULL TTL is selected via transcript_excerpt');
+
+    const noncompliantIds = (await p.query(
+      `SELECT id FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND (${NONCOMPLIANT_SQL})
+        ORDER BY id`,
+      [tenantId]
+    )).rows.map((r) => r.id);
+    assert.ok(noncompliantIds.includes(dualId.id));
+    assert.ok(noncompliantIds.includes(encOnlyId.id));
+    assert.ok(noncompliantIds.includes(plainOnlyId));
+
+    console.log = grab; console.warn = grab; console.error = grab; console.info = grab;
+    let result;
+    try {
+      result = await backfillMeetingNotesEncryption();
+    } finally {
+      console.log = original.log; console.warn = original.warn;
+      console.error = original.error; console.info = original.info;
+    }
+
+    assert.strictEqual(result.ok, true);
+    assert.ok(!result.skipped, 'backfill should not skip when db and key are present');
+    assert.ok(result.excerpts >= 3, 'dual-state, encrypted-only TTL, and plaintext-only must count');
+    assert.ok((result.ttls || 0) >= 2, 'TTL repairs must be counted so they are not a no-op hang');
+
+    const afterSql = `
+      SELECT id, tenant_id, source, created_at, contact, transcript_excerpt,
+             excerpt_ciphertext, excerpt_iv, excerpt_tag, excerpt_expires_at,
+             summary, summary_ciphertext, summary_iv, summary_tag,
+             created_at + interval '30 days' AS expected_expires,
+             (excerpt_expires_at = created_at + interval '30 days') AS ttl_matches
+        FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`;
+
+    const dualRow = (await p.query(afterSql, [dualId.id, tenantId])).rows[0];
+    assert.ok(dualRow, 'dual-state row must not be deleted');
+    assert.strictEqual(dualRow.tenant_id, dualId.tenant_id);
+    assert.strictEqual(dualRow.source, SOURCE);
+    assert.strictEqual(new Date(dualRow.created_at).getTime(), new Date(dualId.created_at).getTime());
+    assert.deepStrictEqual(dualRow.contact, CONTACT);
+    assert.strictEqual(dualRow.transcript_excerpt, null);
+    assert.ok(Buffer.isBuffer(dualRow.excerpt_ciphertext) && dualRow.excerpt_ciphertext.equals(dualEnc.ciphertext));
+    assert.ok(Buffer.isBuffer(dualRow.excerpt_iv) && dualRow.excerpt_iv.equals(dualEnc.iv));
+    assert.ok(Buffer.isBuffer(dualRow.excerpt_tag) && dualRow.excerpt_tag.equals(dualEnc.tag));
+    assert.ok(_ttlMatchesCreatedPlus30(dualRow), 'dual-state TTL must be created_at + 30 days');
+    assert.deepStrictEqual(dualRow.summary, {});
+    assert.ok(Buffer.isBuffer(dualRow.summary_ciphertext) && dualRow.summary_ciphertext.equals(summaryEnc.ciphertext));
+    assert.ok(Buffer.isBuffer(dualRow.summary_iv) && dualRow.summary_iv.equals(summaryEnc.iv));
+    assert.ok(Buffer.isBuffer(dualRow.summary_tag) && dualRow.summary_tag.equals(summaryEnc.tag));
+
+    const encRow = (await p.query(afterSql, [encOnlyId.id, tenantId])).rows[0];
+    assert.ok(encRow, 'encrypted-only row must not be deleted');
+    assert.strictEqual(encRow.tenant_id, encOnlyId.tenant_id);
+    assert.strictEqual(encRow.source, SOURCE);
+    assert.strictEqual(new Date(encRow.created_at).getTime(), new Date(encOnlyId.created_at).getTime());
+    assert.deepStrictEqual(encRow.contact, CONTACT);
+    assert.strictEqual(encRow.transcript_excerpt, null);
+    assert.ok(Buffer.isBuffer(encRow.excerpt_ciphertext) && encRow.excerpt_ciphertext.equals(encOnly.ciphertext));
+    assert.ok(Buffer.isBuffer(encRow.excerpt_iv) && encRow.excerpt_iv.equals(encOnly.iv));
+    assert.ok(Buffer.isBuffer(encRow.excerpt_tag) && encRow.excerpt_tag.equals(encOnly.tag));
+    assert.ok(_ttlMatchesCreatedPlus30(encRow), 'encrypted-only TTL must be created_at + 30 days');
+    assert.deepStrictEqual(encRow.summary, {});
+    assert.ok(Buffer.isBuffer(encRow.summary_ciphertext) && encRow.summary_ciphertext.equals(summaryEnc.ciphertext));
+    assert.ok(Buffer.isBuffer(encRow.summary_iv) && encRow.summary_iv.equals(summaryEnc.iv));
+    assert.ok(Buffer.isBuffer(encRow.summary_tag) && encRow.summary_tag.equals(summaryEnc.tag));
+
+    const afterVerify = await verifyMeetingNotesEncryption();
+    const leftoverTtl = (await p.query(
+      `SELECT id FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND (${NONCOMPLIANT_SQL})`,
+      [tenantId]
+    )).rows.map((r) => r.id);
+    assert.ok(!leftoverTtl.includes(dualId.id), 'repaired dual-state row must leave NONCOMPLIANT_SQL');
+    assert.ok(!leftoverTtl.includes(encOnlyId.id), 'repaired encrypted-only row must leave NONCOMPLIANT_SQL');
+    assert.ok(!leftoverTtl.includes(plainOnlyId), 'plaintext-only encrypt path must leave NONCOMPLIANT_SQL');
+    assert.strictEqual(afterVerify.ok, true);
+    assert.strictEqual(afterVerify.noncompliant, 0);
+
+    const dualExpiry = dualRow.excerpt_expires_at;
+    const encExpiry = encRow.excerpt_expires_at;
+    const again = await backfillMeetingNotesEncryption();
+    assert.strictEqual(again.ok, true);
+    assert.strictEqual(again.excerpts, 0, 'second pass must not mutate excerpts');
+    assert.strictEqual(again.ttls || 0, 0, 'second pass must not re-assign TTLs');
+    assert.strictEqual(again.summaries, 0);
+    assert.strictEqual(again.generatedBy, 0);
+    assert.strictEqual(again.contacts, 0);
+
+    const stillDual = (await p.query(afterSql, [dualId.id, tenantId])).rows[0];
+    const stillEnc = (await p.query(afterSql, [encOnlyId.id, tenantId])).rows[0];
+    assert.strictEqual(new Date(stillDual.excerpt_expires_at).getTime(), new Date(dualExpiry).getTime());
+    assert.strictEqual(new Date(stillEnc.excerpt_expires_at).getTime(), new Date(encExpiry).getTime());
+    assert.ok(stillDual.excerpt_ciphertext.equals(dualEnc.ciphertext));
+    assert.ok(stillDual.excerpt_iv.equals(dualEnc.iv));
+    assert.ok(stillDual.excerpt_tag.equals(dualEnc.tag));
+    assert.ok(stillEnc.excerpt_ciphertext.equals(encOnly.ciphertext));
+    assert.ok(stillEnc.excerpt_iv.equals(encOnly.iv));
+    assert.ok(stillEnc.excerpt_tag.equals(encOnly.tag));
+
+    const logged = captured.join('\n');
+    for (const secret of [DUAL_EXCERPT, ENC_ONLY_EXCERPT, 'mn-ttl-plain-only-excerpt', 'mn-ttl-summary-keep']) {
+      assert.ok(!logged.includes(secret), `TTL heal logs must not contain ${secret}`);
+    }
+    assert.ok(!logged.includes(process.env.CREDENTIAL_ENCRYPTION_KEY), 'TTL heal logs must not contain the vault key');
+    for (const buf of [dualEnc.ciphertext, dualEnc.iv, dualEnc.tag, encOnly.ciphertext, encOnly.iv, encOnly.tag, summaryEnc.ciphertext]) {
+      assert.ok(!logged.includes(buf.toString('base64')), 'TTL heal logs must not contain ciphertext/iv/tag');
+      assert.ok(!logged.includes(buf.toString('hex')), 'TTL heal logs must not contain ciphertext/iv/tag hex');
+    }
+  } finally {
+    console.log = original.log; console.warn = original.warn;
+    console.error = original.error; console.info = original.info;
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+
+test('production backfill throws on missing-TTL leftover that cannot be healed', { skip }, async () => {
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+  assert.ok(NONCOMPLIANT_SQL.includes('excerpt_iv'), 'verification SQL must mention excerpt_iv');
+  assert.ok(NONCOMPLIANT_SQL.includes('excerpt_tag'), 'verification SQL must mention excerpt_tag');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-ttlprod-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN ttlprod ${suffix}`, `mn-ttlprod-${suffix}`]
+  )).rows[0].id;
+
+  const restoreExcerptCheck = async () => {
+    try {
+      await p.query(`
+        ALTER TABLE meeting_notes_runs
+          ADD CONSTRAINT meeting_notes_runs_excerpt_crypto_check
+          CHECK (
+            (excerpt_ciphertext IS NULL AND excerpt_iv IS NULL AND excerpt_tag IS NULL)
+            OR
+            (excerpt_ciphertext IS NOT NULL AND excerpt_iv IS NOT NULL AND excerpt_tag IS NOT NULL)
+          )
+      `);
+    } catch (_e) { /* already present */ }
+  };
+
+  const prevEnv = process.env.NODE_ENV;
+  try {
+    await p.query(`ALTER TABLE meeting_notes_runs DROP CONSTRAINT IF EXISTS meeting_notes_runs_excerpt_crypto_check`);
+    const partialId = (await p.query(
+      `INSERT INTO meeting_notes_runs (
+         tenant_id, contact, summary, transcript_excerpt, source,
+         excerpt_ciphertext, excerpt_iv, excerpt_tag, excerpt_expires_at
+       ) VALUES ($1,'{}'::jsonb,'{}'::jsonb,NULL,'ai', decode('ab','hex'), NULL, NULL, NULL)
+       RETURNING id`,
+      [tenantId]
+    )).rows[0].id;
+
+    const selected = (await p.query(
+      `SELECT id FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND (${NEEDS_BACKFILL_SQL})`,
+      [tenantId]
+    )).rows.map((r) => r.id);
+    assert.ok(
+      !selected.includes(partialId),
+      'NEEDS_BACKFILL_SQL must not select a partial triple for TTL repair'
+    );
+
+    const before = await verifyMeetingNotesEncryption();
+    assert.strictEqual(before.ok, false);
+    assert.ok((before.byReason && before.byReason.missing_excerpt_ttl) >= 1);
+    assert.ok((before.byReason && before.byReason.partial_excerpt_crypto) >= 1);
+
+    const localNoncompliant = (await p.query(
+      `SELECT id FROM meeting_notes_runs
+        WHERE tenant_id=$1 AND (${NONCOMPLIANT_SQL})`,
+      [tenantId]
+    )).rows.map((r) => r.id);
+    assert.ok(localNoncompliant.includes(partialId), 'partial+NULL TTL must match NONCOMPLIANT_SQL');
+
+    process.env.NODE_ENV = 'production';
+    let threw = false;
+    try {
+      await backfillMeetingNotesEncryption();
+    } catch (err) {
+      threw = true;
+      assert.ok(err instanceof Error);
+      assert.match(String(err.message), /failed closed/i);
+      assert.ok(!String(err.message).includes('ab'), 'throw message must not include ciphertext hex');
+      assert.ok(
+        !String(err.message).includes(process.env.CREDENTIAL_ENCRYPTION_KEY || ''),
+        'throw message must not include the vault key'
+      );
+    }
+    assert.ok(threw, 'production backfill must throw while a missing-TTL leftover remains');
+
+    const leftover = (await p.query(
+      `SELECT excerpt_ciphertext IS NOT NULL AS has_ct, excerpt_expires_at
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [partialId, tenantId]
+    )).rows[0];
+    assert.strictEqual(leftover.has_ct, true, 'unhealable partial leftover must remain');
+    assert.strictEqual(leftover.excerpt_expires_at, null);
+  } finally {
+    if (prevEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = prevEnv;
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await restoreExcerptCheck();
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+
+test('sweeper purges excerpt after backfill assigns past-due TTL from old created_at', { skip }, async () => {
+  assert.ok(vault.hasKey(), 'CREDENTIAL_ENCRYPTION_KEY must be set for backfill');
+
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const { sweepExpiredExcerpts } = require('../services/meeting_notes/api');
+  const p = db.getPool();
+  const suffix = `mn-ttlsweep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenantId = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN ttlsweep ${suffix}`, `mn-ttlsweep-${suffix}`]
+  )).rows[0].id;
+
+  const EXCERPT = 'mn-ttl-sweep-excerpt-body';
+  const SUMMARY = { body: 'mn-ttl-sweep-summary-keep' };
+  const aad = aadFor(tenantId);
+  const excerptEnc = vault.encryptString(EXCERPT, aad);
+  const summaryEnc = vault.encryptString(JSON.stringify(SUMMARY), aad);
+
+  try {
+    const noteId = (await p.query(
+      `INSERT INTO meeting_notes_runs (
+         tenant_id, contact, summary, transcript_excerpt, source, created_at,
+         excerpt_ciphertext, excerpt_iv, excerpt_tag, excerpt_expires_at,
+         summary_ciphertext, summary_iv, summary_tag
+       ) VALUES (
+         $1,'{}'::jsonb,'{}'::jsonb,NULL,'ai', now() - interval '31 days',
+         $2,$3,$4,NULL,$5,$6,$7
+       ) RETURNING id`,
+      [
+        tenantId,
+        excerptEnc.ciphertext, excerptEnc.iv, excerptEnc.tag,
+        summaryEnc.ciphertext, summaryEnc.iv, summaryEnc.tag,
+      ]
+    )).rows[0].id;
+
+    const healed = await backfillMeetingNotesEncryption();
+    assert.strictEqual(healed.ok, true);
+    assert.ok((healed.ttls || healed.excerpts) >= 1);
+
+    const afterHeal = (await p.query(
+      `SELECT excerpt_expires_at, created_at + interval '30 days' AS expected_expires,
+              (excerpt_expires_at = created_at + interval '30 days') AS ttl_matches,
+              excerpt_ciphertext, transcript_excerpt
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [noteId, tenantId]
+    )).rows[0];
+    assert.ok(_ttlMatchesCreatedPlus30(afterHeal));
+    assert.ok(afterHeal.excerpt_expires_at && new Date(afterHeal.excerpt_expires_at) < new Date(), 'assigned TTL must already be in the past');
+    assert.strictEqual(afterHeal.transcript_excerpt, null);
+
+    const swept = await sweepExpiredExcerpts();
+    assert.ok(swept && swept.ok === true);
+    assert.ok(swept.purged >= 1);
+
+    const row = (await p.query(
+      `SELECT id, tenant_id, transcript_excerpt, excerpt_ciphertext, excerpt_iv, excerpt_tag,
+              transcript_purged_at, summary_ciphertext, summary_iv, summary_tag
+         FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+      [noteId, tenantId]
+    )).rows[0];
+    assert.ok(row, 'sweeper must not delete the history row');
+    assert.strictEqual(row.tenant_id, tenantId);
+    assert.strictEqual(row.transcript_excerpt, null);
+    assert.strictEqual(row.excerpt_ciphertext, null);
+    assert.strictEqual(row.excerpt_iv, null);
+    assert.strictEqual(row.excerpt_tag, null);
+    assert.ok(row.transcript_purged_at, 'transcript_purged_at must be set after sweep');
+    assert.ok(Buffer.isBuffer(row.summary_ciphertext) && row.summary_ciphertext.equals(summaryEnc.ciphertext));
+    assert.ok(Buffer.isBuffer(row.summary_iv) && row.summary_iv.equals(summaryEnc.iv));
+    assert.ok(Buffer.isBuffer(row.summary_tag) && row.summary_tag.equals(summaryEnc.tag));
+  } finally {
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenantId]);
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantId]);
+  }
+});
+

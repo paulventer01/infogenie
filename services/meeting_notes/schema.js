@@ -114,6 +114,12 @@ const NEEDS_BACKFILL_SQL = `
       ELSE false
     END
   )
+  OR (
+    excerpt_expires_at IS NULL
+    AND excerpt_ciphertext IS NOT NULL
+    AND excerpt_iv IS NOT NULL
+    AND excerpt_tag IS NOT NULL
+  )
 `;
 
 function _whitelistedContact(raw) {
@@ -190,6 +196,15 @@ const NONCOMPLIANT_SQL = `
     ((summary_ciphertext IS NULL)::int + (summary_iv IS NULL)::int + (summary_tag IS NULL)::int)
     BETWEEN 1 AND 2
   )
+  OR (
+    excerpt_expires_at IS NULL
+    AND (
+      transcript_excerpt IS NOT NULL
+      OR excerpt_ciphertext IS NOT NULL
+      OR excerpt_iv IS NOT NULL
+      OR excerpt_tag IS NOT NULL
+    )
+  )
 `;
 
 const VERIFY_REASON_KEYS = [
@@ -202,6 +217,7 @@ const VERIFY_REASON_KEYS = [
   'contact_too_long',
   'partial_excerpt_crypto',
   'partial_summary_crypto',
+  'missing_excerpt_ttl',
 ];
 
 function _safeRowRef(row, fallbackTenantId) {
@@ -271,6 +287,7 @@ async function _backfillOneRow(p, vault, row) {
 
   let excerpts = 0;
   let summaries = 0;
+  let ttls = 0;
 
   if (excerptPlain && excerptState === 'missing') {
     const { ciphertext, iv, tag } = vault.encryptString(row.transcript_excerpt, aad);
@@ -283,10 +300,17 @@ async function _backfillOneRow(p, vault, row) {
     sets.push('transcript_excerpt=NULL');
     sets.push(`excerpt_expires_at = COALESCE(excerpt_expires_at, created_at + interval '30 days')`);
     excerpts = 1;
-  } else if (excerptPlain && excerptState === 'complete') {
-    // Dual-state: complete triple already on disk. Drop leftover plaintext only.
-    sets.push('transcript_excerpt=NULL');
+    ttls = 1;
+  } else if (excerptState === 'complete' && (excerptPlain || row.excerpt_expires_at == null)) {
+    // Complete triple already on disk. Drop leftover plaintext if present and
+    // assign a 30-day TTL when excerpt_expires_at is missing. Never re-encrypt
+    // or rewrite ciphertext/iv/tag. Partial triples fail closed elsewhere.
+    if (excerptPlain) {
+      sets.push('transcript_excerpt=NULL');
+    }
+    sets.push(`excerpt_expires_at = COALESCE(excerpt_expires_at, created_at + interval '30 days')`);
     excerpts = 1;
+    if (row.excerpt_expires_at == null) ttls = 1;
   }
 
   if (summaryPlain && summaryState === 'missing') {
@@ -314,7 +338,7 @@ async function _backfillOneRow(p, vault, row) {
     sets.push(`contact=$${params.length}::jsonb`);
   }
 
-  if (!sets.length) return { excerpts: 0, summaries: 0, generatedBy: 0, contacts: 0 };
+  if (!sets.length) return { excerpts: 0, summaries: 0, generatedBy: 0, contacts: 0, ttls: 0 };
 
   params.push(id);
   const idIdx = params.length;
@@ -329,6 +353,7 @@ async function _backfillOneRow(p, vault, row) {
     summaries,
     generatedBy: needsScrub ? 1 : 0,
     contacts: needsContact ? 1 : 0,
+    ttls,
   };
 }
 
@@ -390,7 +415,8 @@ async function verifyMeetingNotesEncryption() {
           COUNT(*) FILTER (WHERE contact_non_string)::int AS contact_non_string,
           COUNT(*) FILTER (WHERE contact_too_long)::int AS contact_too_long,
           COUNT(*) FILTER (WHERE partial_excerpt_crypto)::int AS partial_excerpt_crypto,
-          COUNT(*) FILTER (WHERE partial_summary_crypto)::int AS partial_summary_crypto
+          COUNT(*) FILTER (WHERE partial_summary_crypto)::int AS partial_summary_crypto,
+          COUNT(*) FILTER (WHERE missing_excerpt_ttl)::int AS missing_excerpt_ttl
         FROM (
           SELECT
             (transcript_excerpt IS NOT NULL) AS plaintext_excerpt,
@@ -428,7 +454,16 @@ async function verifyMeetingNotesEncryption() {
             (
               ((summary_ciphertext IS NULL)::int + (summary_iv IS NULL)::int + (summary_tag IS NULL)::int)
               BETWEEN 1 AND 2
-            ) AS partial_summary_crypto
+            ) AS partial_summary_crypto,
+            (
+              excerpt_expires_at IS NULL
+              AND (
+                transcript_excerpt IS NOT NULL
+                OR excerpt_ciphertext IS NOT NULL
+                OR excerpt_iv IS NOT NULL
+                OR excerpt_tag IS NOT NULL
+              )
+            ) AS missing_excerpt_ttl
           FROM meeting_notes_runs
          WHERE tenant_id=$1
            AND (${NONCOMPLIANT_SQL})
@@ -487,6 +522,7 @@ async function backfillMeetingNotesEncryption() {
   let summaryCount = 0;
   let scrubCount = 0;
   let contactCount = 0;
+  let ttlCount = 0;
   let skipped;
 
   if (!vault.hasKey()) {
@@ -512,7 +548,7 @@ async function backfillMeetingNotesEncryption() {
         try {
           batch = await p.query(
             `SELECT id, tenant_id, transcript_excerpt, summary, created_at, generated_by, contact,
-                    excerpt_ciphertext, excerpt_iv, excerpt_tag,
+                    excerpt_ciphertext, excerpt_iv, excerpt_tag, excerpt_expires_at,
                     summary_ciphertext, summary_iv, summary_tag
                FROM meeting_notes_runs
               WHERE tenant_id=$1
@@ -538,9 +574,10 @@ async function backfillMeetingNotesEncryption() {
             summaryCount += n.summaries;
             scrubCount += n.generatedBy;
             contactCount += n.contacts;
+            ttlCount += n.ttls || 0;
             // Selected rows must leave the SELECT predicate or be skipped.
             // A no-op on a full batch of ≥100 would otherwise loop forever.
-            if (!n.excerpts && !n.summaries && !n.generatedBy && !n.contacts) {
+            if (!n.excerpts && !n.summaries && !n.generatedBy && !n.contacts && !n.ttls) {
               const sid = Number(row.id);
               if (Number.isFinite(sid)) skippedIds.push(sid);
             }
@@ -569,6 +606,7 @@ async function backfillMeetingNotesEncryption() {
     summaries: summaryCount,
     generatedBy: scrubCount,
     contacts: contactCount,
+    ttls: ttlCount,
     failed: failedRows.length,
     skipped: skipped || undefined,
   });
@@ -581,6 +619,7 @@ async function backfillMeetingNotesEncryption() {
     summaries: summaryCount,
     generatedBy: scrubCount,
     contacts: contactCount,
+    ttls: ttlCount,
     failed: failedRows.length,
     failedIds: failedRows.slice(0, SAMPLE_IDS_LIMIT),
     noncompliant: verification.noncompliant,

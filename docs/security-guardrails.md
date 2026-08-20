@@ -117,6 +117,7 @@ non-compliant when any of these hold:
 | `contact_too_long` | an allowed value past 200 characters |
 | `partial_excerpt_crypto` | 1–2 of ciphertext/IV/tag NULL |
 | `partial_summary_crypto` | 1–2 of ciphertext/IV/tag NULL |
+| `missing_excerpt_ttl` | excerpt material on disk — `transcript_excerpt`, `excerpt_ciphertext`, `excerpt_iv` or `excerpt_tag` — with a NULL `excerpt_expires_at` |
 | `verify_query` | the tenant's verification query itself failed |
 
 The two `partial_*_crypto` arms are defence in depth: the
@@ -133,15 +134,29 @@ according to the state of the triple:
 | Triple | Backfill action |
 |---|---|
 | missing (all three NULL) | encrypt, then NULL the plaintext and set the 30-day TTL |
-| complete (all three set) | drop the plaintext only — no re-encryption, so ciphertext, IV and tag stay byte-identical |
-| partial (1–2 NULL) | leave the row alone; it stays non-compliant |
+| complete (all three set) | drop the plaintext if any is left, and assign the 30-day TTL when `excerpt_expires_at` is NULL — no re-encryption, so ciphertext, IV and tag stay byte-identical |
+| partial (1–2 NULL) | leave the row alone; it stays non-compliant, and it is not TTL-repaired either |
+
+The complete-triple arm is selected on either residual, not just leftover
+plaintext: `NEEDS_BACKFILL_SQL` picks up a complete triple whose
+`excerpt_expires_at` is NULL even when `transcript_excerpt` is already NULL.
+Without that arm a row could be encrypted, plaintext-free, and still retained
+forever, because the sweep predicate only matches a non-NULL expiry. The TTL is
+written as `COALESCE(excerpt_expires_at, created_at + interval '30 days')`, so an
+expiry that already exists is never moved, and a row older than 30 days is
+assigned a past-due expiry that the next sweep purges. Nothing else about the
+crypto columns is touched on that path — no decrypt, no re-encrypt, no rewrite of
+ciphertext, IV, tag or the encrypted summary — and no row is deleted.
 
 The partial case is refused on purpose. A ciphertext with no IV or tag cannot be
 decrypted, so the plaintext beside it is the only readable copy — dropping it
 would destroy data, and keeping it silently would leave PII at rest. Failing the
-boot hands that decision to an operator. Rows in that state are selected by the
-backfill but changed by nothing, so the batch loop's stall guard excludes them
-from the rest of the tenant's walk rather than re-selecting them forever.
+boot hands that decision to an operator. The same refusal covers its TTL: a
+partial triple with a NULL `excerpt_expires_at` is left as it is and reported
+under both `partial_excerpt_crypto` and `missing_excerpt_ttl`. Rows in that state
+are selected by the backfill but changed by nothing, so the batch loop's stall
+guard excludes them from the rest of the tenant's walk rather than re-selecting
+them forever.
 
 Success requires **zero** row errors and **zero** non-compliant rows. Anything
 else is a failure:
@@ -202,9 +217,17 @@ Accepted residuals:
   It holds no PII and the API still presents `{}`, so the backfill skips the row
   rather than spending a write on it.
 - The sweep predicate requires a non-NULL `excerpt_expires_at`, so excerpt
-  material written without a TTL would never expire. Both `/summarize` insert
-  branches and the backfill set the column, so no such row exists today — any new
-  write path must keep setting it.
+  material written without a TTL never expires. PR #78 shipped exactly that row:
+  its dual-state heal NULLed `transcript_excerpt` beside a complete triple
+  without assigning `excerpt_expires_at`, so the encrypted excerpt was retained
+  indefinitely and verification still reported the row compliant. The fix is the
+  `missing_excerpt_ttl` arm plus the complete-triple TTL repair described above;
+  the sweeper was deliberately not relaxed to compensate. It still requires a
+  non-NULL expiry and is still `UPDATE`-only, so a row that is missing its TTL is
+  skipped, never deleted to make the retention number look right. Until every
+  such row is repaired — and a partial triple never is — production fails its
+  boot. Any new write path must still set the column: repair on the backfill path
+  is a backstop, not the contract.
 - Healing a row that already carries a complete triple trusts that triple: the
   leftover plaintext is dropped without first decrypting the ciphertext to check
   the two agree. Confidentiality is the reason — the plaintext is the exposure —

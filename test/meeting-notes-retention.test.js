@@ -276,3 +276,148 @@ test('purge failures are surfaced rather than swallowed', { skip }, async (t) =>
   const overdue = await api.verifyOverdueExcerpts();
   assert.ok(overdue.overdue >= 1);
 });
+
+test('sweep leaves complete NULL-TTL triples; backfill past TTL then sweep purges excerpt only', { skip }, async (t) => {
+  const {
+    ensureMeetingNotesSchema,
+    NONCOMPLIANT_SQL,
+  } = require('../services/meeting_notes/schema');
+  const { ensureTenantSchema } = require('../services/tenants/schema');
+  await ensureTenantSchema();
+  await ensureMeetingNotesSchema();
+
+  const p = db.getPool();
+  const suffix = `mn-nullttl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const tenant = (await p.query(
+    `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+    [`MN nullttl ${suffix}`, `mn-nullttl-${suffix}`]
+  )).rows[0].id;
+  t.after(async () => {
+    await p.query(`DELETE FROM meeting_notes_runs WHERE tenant_id=$1`, [tenant]).catch(() => {});
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenant]).catch(() => {});
+  });
+
+  const ct = Buffer.from('null-ttl-excerpt-ct');
+  const iv = Buffer.from('iv-12bytes!!');
+  const tag = Buffer.from('tag-16-bytes!!!!');
+  const sumCt = Buffer.from('null-ttl-summary-ct');
+  const sumIv = Buffer.from('sum-iv-12byt');
+  const sumTag = Buffer.from('sum-tag-16bytes!');
+  const seeded = (await p.query(
+    `INSERT INTO meeting_notes_runs
+       (tenant_id, contact, summary, transcript_excerpt, transcript_sha256, source, generated_by, created_at,
+        excerpt_ciphertext, excerpt_iv, excerpt_tag, excerpt_expires_at,
+        summary_ciphertext, summary_iv, summary_tag)
+     VALUES ($1,$2::jsonb,$3::jsonb,$4,$5,'ai',NULL, now() - interval '31 days',
+             $6,$7,$8,NULL,$9,$10,$11)
+     RETURNING id, created_at`,
+    [
+      tenant,
+      JSON.stringify({ name: 'Ada' }),
+      JSON.stringify({}),
+      'leftover-plain-must-wait-for-backfill',
+      'sha-' + suffix,
+      ct, iv, tag, sumCt, sumIv, sumTag,
+    ]
+  )).rows[0];
+
+  const loadRow = async () => (await p.query(
+    `SELECT id, tenant_id, transcript_excerpt, excerpt_ciphertext, excerpt_iv, excerpt_tag,
+            excerpt_expires_at, transcript_purged_at,
+            summary_ciphertext, summary_iv, summary_tag, contact, source, transcript_sha256, created_at,
+            created_at + interval '30 days' AS expected_expires,
+            (excerpt_expires_at = created_at + interval '30 days') AS ttl_matches
+       FROM meeting_notes_runs WHERE id=$1 AND tenant_id=$2`,
+    [seeded.id, tenant]
+  )).rows[0];
+
+  await api.sweepExpiredExcerpts();
+
+  const untouched = await loadRow();
+  assert.ok(untouched, 'sweeper must not DELETE a NULL-TTL complete triple');
+  assert.strictEqual(untouched.tenant_id, tenant);
+  assert.ok(Buffer.compare(untouched.summary_ciphertext, sumCt) === 0);
+  assert.ok(Buffer.compare(untouched.summary_iv, sumIv) === 0);
+  assert.ok(Buffer.compare(untouched.summary_tag, sumTag) === 0);
+  if (untouched.excerpt_expires_at == null) {
+    assert.strictEqual(untouched.transcript_excerpt, 'leftover-plain-must-wait-for-backfill');
+    assert.ok(Buffer.compare(untouched.excerpt_ciphertext, ct) === 0, 'NULL-TTL ciphertext must remain until backfill');
+    assert.ok(Buffer.compare(untouched.excerpt_iv, iv) === 0, 'NULL-TTL IV must remain until backfill');
+    assert.ok(Buffer.compare(untouched.excerpt_tag, tag) === 0, 'NULL-TTL tag must remain until backfill');
+    assert.strictEqual(untouched.transcript_purged_at, null);
+    const overdueBeforeBackfill = (await p.query(
+      `SELECT COUNT(*)::int AS n FROM meeting_notes_runs
+        WHERE tenant_id=$1
+          AND excerpt_expires_at IS NOT NULL
+          AND excerpt_expires_at < now()
+          AND (
+            transcript_excerpt IS NOT NULL
+            OR excerpt_ciphertext IS NOT NULL
+            OR excerpt_iv IS NOT NULL
+            OR excerpt_tag IS NOT NULL
+          )`,
+      [tenant]
+    )).rows[0].n;
+    assert.strictEqual(overdueBeforeBackfill, 0, 'NULL TTL must not match the overdue sweeper predicate');
+  } else {
+    assert.ok(
+      untouched.excerpt_ciphertext == null || Buffer.compare(untouched.excerpt_ciphertext, ct) === 0,
+      'concurrent heal may assign TTL but must not rewrite ciphertext'
+    );
+  }
+
+  await p.query(
+    `UPDATE meeting_notes_runs
+        SET transcript_excerpt = NULL,
+            excerpt_expires_at = COALESCE(excerpt_expires_at, created_at + interval '30 days')
+      WHERE id=$1 AND tenant_id=$2`,
+    [seeded.id, tenant]
+  );
+  const afterHeal = await loadRow();
+
+  assert.ok(afterHeal, 'backfill must not DELETE the history row');
+  assert.strictEqual(afterHeal.tenant_id, tenant);
+  assert.ok(afterHeal.ttl_matches === true || (
+    afterHeal.excerpt_expires_at && afterHeal.expected_expires &&
+    new Date(afterHeal.excerpt_expires_at).getTime() === new Date(afterHeal.expected_expires).getTime()
+  ), 'TTL must be created_at + 30 days');
+  assert.ok(afterHeal.excerpt_expires_at && new Date(afterHeal.excerpt_expires_at) < new Date(), 'assigned TTL must already be in the past');
+  assert.strictEqual(afterHeal.transcript_excerpt, null, 'leftover excerpt plaintext must be NULLed on heal');
+  assert.ok(Buffer.compare(afterHeal.summary_ciphertext, sumCt) === 0, 'encrypted summary ciphertext must remain');
+  assert.ok(Buffer.compare(afterHeal.summary_iv, sumIv) === 0, 'summary IV must remain');
+  assert.ok(Buffer.compare(afterHeal.summary_tag, sumTag) === 0, 'summary auth tag must remain');
+  if (afterHeal.excerpt_ciphertext != null) {
+    assert.ok(Buffer.compare(afterHeal.excerpt_ciphertext, ct) === 0, 'backfill must not rewrite ciphertext');
+    assert.ok(Buffer.compare(afterHeal.excerpt_iv, iv) === 0);
+    assert.ok(Buffer.compare(afterHeal.excerpt_tag, tag) === 0);
+    assert.strictEqual(afterHeal.transcript_purged_at, null, 'backfill must not stamp transcript_purged_at');
+  } else {
+    assert.strictEqual(afterHeal.excerpt_iv, null);
+    assert.strictEqual(afterHeal.excerpt_tag, null);
+    assert.ok(afterHeal.transcript_purged_at, 'a concurrent sweeper may purge only after TTL exists');
+  }
+
+  const leftoverIds = (await p.query(
+    `SELECT id FROM meeting_notes_runs WHERE tenant_id=$1 AND (${NONCOMPLIANT_SQL})`,
+    [tenant]
+  )).rows.map((r) => r.id);
+  assert.ok(!leftoverIds.includes(seeded.id), 'this tenant row must leave NONCOMPLIANT_SQL after TTL assignment');
+
+  await api.sweepExpiredExcerpts();
+
+  const row = await loadRow();
+  assert.ok(row, 'sweeper must not DELETE the history row after TTL backfill');
+  assert.strictEqual(row.tenant_id, tenant);
+  assert.strictEqual(row.transcript_excerpt, null);
+  assert.strictEqual(row.excerpt_ciphertext, null);
+  assert.strictEqual(row.excerpt_iv, null);
+  assert.strictEqual(row.excerpt_tag, null);
+  assert.ok(row.transcript_purged_at, 'transcript_purged_at must be set after sweep');
+  assert.ok(Buffer.compare(row.summary_ciphertext, sumCt) === 0, 'encrypted summary ciphertext must remain');
+  assert.ok(Buffer.compare(row.summary_iv, sumIv) === 0, 'summary IV must remain');
+  assert.ok(Buffer.compare(row.summary_tag, sumTag) === 0, 'summary auth tag must remain');
+  assert.deepStrictEqual(row.contact, { name: 'Ada' });
+  assert.strictEqual(row.source, 'ai');
+  assert.strictEqual(row.transcript_sha256, 'sha-' + suffix);
+  assert.strictEqual(new Date(row.created_at).getTime(), new Date(seeded.created_at).getTime());
+});
