@@ -4,7 +4,7 @@ const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
-const { requirePermission } = require('../tenants/permission_enforce');
+const { requirePermission, hasPermission } = require('../tenants/permission_enforce');
 const { OrchError, fail, sendError, sendOrchError, HTTP_FOR_CODE } = require('./errors');
 const {
   extractIdempotencyKey, requestHashFrom, endpointOf, runIdempotent,
@@ -24,6 +24,11 @@ const PERMS = Object.freeze({
   limitsView: 'orchestrator.credits.limits.view',
   limitsEdit: 'orchestrator.credits.limits.edit',
 });
+
+// `orchestrator.credits.view` authorises cost facts, not the workflow
+// catalogue. A workflow name is free text an operator wrote, so it is disclosed
+// only to a principal that could read it from the workflows surface anyway.
+const WORKFLOWS_VIEW = 'orchestrator.workflows.view';
 
 function guardPerm(req, res, key) {
   if (!key) {
@@ -178,9 +183,9 @@ function mutation(action, permission, handler) {
   };
 }
 
-router.get('/', (req, res) => readHandler(req, res, PERMS.view, async (_req, res2, tid, pool) => {
+router.get('/', (req, res) => readHandler(req, res, PERMS.view, async (req2, res2, tid, pool) => {
   const snap = await credits.withTx({ pool }, async (c) => {
-    const account = await credits.ensureAccount(c, tid);
+    const account = await credits.ensureAccount(c, tid, { lock: false });
     const limits = await ensureLimits(c, tid);
     const reservations = (await c.query(
       `SELECT * FROM orchestrator_credit_reservations
@@ -201,6 +206,7 @@ router.get('/', (req, res) => readHandler(req, res, PERMS.view, async (_req, res
     )).rows;
     return { account, limits, reservations, daily, monthly, workflows };
   });
+  const showNames = hasPermission(req2, WORKFLOWS_VIEW);
   return res2.json({
     ok: true,
     account: publicAccount(snap.account),
@@ -212,7 +218,7 @@ router.get('/', (req, res) => readHandler(req, res, PERMS.view, async (_req, res
     reservations: snap.reservations.map(publicReservation),
     workflows: snap.workflows.map((w) => ({
       id: w.id,
-      name: w.name,
+      name: showNames ? w.name : null,
       current_state: w.current_state,
       credit_ceiling_micros: microsToJson(w.credit_ceiling_micros),
       block_reason: w.block_reason,

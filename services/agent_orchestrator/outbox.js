@@ -8,15 +8,37 @@ const DESTINATIONS = new Set(['meta', 'google', 'tiktok', 'internal']);
 const MAX_ATTEMPTS_DEFAULT = 8;
 const CLAIM_TTL_MS = 30_000;
 
+// credential_ref is an opaque handle resolved against the vault at send time,
+// and the row is operator-readable. An allowlisted shape is what stops a future
+// caller putting the credential itself here: the character class excludes `.`,
+// `=`, `/`, `+` and whitespace, so a JWT, a base64 secret, a PEM block, a signed
+// URL and a bearer token cannot be spelled as a ref.
+const CREDENTIAL_REF_RE = /^[A-Za-z0-9_:-]{1,128}$/;
+// Error codes are written to the row and to a log line, so only a token-shaped
+// code survives. Provider error text collapses to the generic code rather than
+// being truncated into either — a message can quote the offending value.
+const ERROR_CODE_RE = /^[a-z0-9_]{1,40}$/;
+
 function newOutboxId() {
   return `obx_${crypto.randomBytes(8).toString('hex')}`;
+}
+
+function normalizeCredentialRef(credentialRef) {
+  if (credentialRef == null || credentialRef === '') return null;
+  const s = String(credentialRef);
+  return CREDENTIAL_REF_RE.test(s) ? s : null;
+}
+
+function normalizeErrorCode(errorCode) {
+  const s = String(errorCode == null ? '' : errorCode);
+  return ERROR_CODE_RE.test(s) ? s : 'outbox_failed';
 }
 
 function sanitizePayload({ workflowId, operation, credentialRef }) {
   return {
     workflow_id: workflowId || null,
     operation: String(operation || ''),
-    credential_ref: credentialRef ? String(credentialRef) : null,
+    credential_ref: normalizeCredentialRef(credentialRef),
   };
 }
 
@@ -37,6 +59,12 @@ async function enqueue(client, {
 }) {
   if (!DESTINATIONS.has(String(destination || ''))) fail('validation_failed');
   if (!operation || !idempotencyKey) fail('validation_failed');
+  // Refuse rather than silently drop: a caller that meant to pass a vault
+  // handle and passed a secret must see the write fail, not send with no
+  // credential.
+  if (credentialRef != null && credentialRef !== '' && normalizeCredentialRef(credentialRef) == null) {
+    fail('validation_failed');
+  }
   if (workflowId) {
     const wf = await client.query(
       `SELECT id FROM orchestrator_workflows WHERE id=$1 AND tenant_id=$2`,
@@ -45,6 +73,7 @@ async function enqueue(client, {
     if (!wf.rowCount) fail('not_found');
   }
   const payload = sanitizePayload({ workflowId, operation, credentialRef });
+  const ref = payload.credential_ref;
   const id = newOutboxId();
   const inserted = await client.query(
     `INSERT INTO orchestrator_outbox
@@ -55,7 +84,7 @@ async function enqueue(client, {
      RETURNING *`,
     [
       id, tenantId, workflowId || null, destination, String(operation),
-      JSON.stringify(payload), credentialRef || null,
+      JSON.stringify(payload), ref,
       Math.max(1, Number(maxAttempts) || MAX_ATTEMPTS_DEFAULT),
       String(idempotencyKey),
     ]
@@ -115,7 +144,7 @@ async function complete(client, { tenantId, id }) {
 }
 
 async function failRow(client, { tenantId, id, errorCode }) {
-  const code = String(errorCode || 'outbox_failed').slice(0, 80);
+  const code = normalizeErrorCode(errorCode);
   const row = (await client.query(
     `SELECT * FROM orchestrator_outbox WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
     [tenantId, id]
@@ -178,6 +207,8 @@ module.exports = {
   fail: failRow,
   processOnce,
   sanitizePayload,
+  normalizeCredentialRef,
+  normalizeErrorCode,
   backoffSeconds,
   DESTINATIONS,
 };

@@ -287,11 +287,29 @@ test('the module exports a stable surface and opens no sockets', () => {
   assert.doesNotMatch(src, /require\(['"](node:)?https?['"]\)/, 'safe_url must not load an HTTP client');
 });
 
-test('the orchestrator landing_page_url policy is expressible with this module', async () => {
-  // workflows_api.js still validates landing_page_url on its own (https,
-  // credential-free, <=2048) and does NOT import this module yet — Backend
-  // wires it. This proves the module already answers that exact question, so
-  // the wiring is a call site, not a new policy.
+test('a resolver that does not answer is refused rather than waited on', async () => {
+  // An attacker-chosen hostname delegated to a blackholed nameserver would
+  // otherwise hold the calling request open for the whole getaddrinfo retry
+  // schedule.
+  const original = dnsPromises.lookup;
+  dnsPromises.lookup = () => new Promise(() => {});
+  try {
+    const started = Date.now();
+    const res = await safeUrl.assertSafeHttpsUrl('https://blackhole.example/');
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, 'dns_lookup_timeout');
+    assert.ok(Date.now() - started < safeUrl.DNS_TIMEOUT_MS * 3,
+      'the wait must be bounded by DNS_TIMEOUT_MS');
+  } finally {
+    dnsPromises.lookup = original;
+  }
+});
+
+test('the orchestrator landing_page_url policy is wired into workflows_api', async () => {
+  // Backend wired this module into create and PATCH. The assertion is that the
+  // call site still exists on both write paths — a landing page that is only
+  // shape-checked (https, credential-free, <=2048) would pass a private,
+  // loopback or metadata host straight into the row.
   await withDns({ ...PUBLIC, 'lp.internal.example': ['10.10.0.9'] }, async () => {
     const good = await safeUrl.assertSafeHttpsUrl('https://example.com/campaign-landing');
     assert.equal(good.ok, true, JSON.stringify(good));
@@ -314,5 +332,16 @@ test('the orchestrator landing_page_url policy is expressible with this module',
   const wf = fs.readFileSync(
     path.join(__dirname, '..', 'services/agent_orchestrator/workflows_api.js'), 'utf8'
   );
-  assert.doesNotMatch(wf, /safe_url/, 'PR 2 Security does not wire the module into handlers');
+  assert.match(wf, /require\(['"]\.\.\/security\/safe_url['"]\)/,
+    'workflows_api must use the Security-owned policy, not a local URL check');
+  assert.match(wf, /assertSafeHttpsUrl\(/, 'the policy must actually be called');
+  // Both write paths, not just create: a PATCH that only shape-checks the URL
+  // would let an approved workflow be retargeted at an internal host.
+  const calls = wf.match(/assertLandingUrl\(/g) || [];
+  assert.ok(calls.length >= 3,
+    `create and PATCH must both validate the landing page (found ${calls.length} references)`);
+  // A `{ ok: false }` result must fail the write. Returning it unchecked is the
+  // documented way a caller fails open by its own choice.
+  assert.match(wf, /if \(!check\.ok\) fail\('validation_failed'\)/,
+    'an unsafe URL must fail the write, not be ignored');
 });

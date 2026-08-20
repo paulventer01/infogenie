@@ -109,6 +109,11 @@ function validateApproveScope(workflow, { platforms, advertising_budget, credit_
   if (wfBudget != null && approvedBudget > wfBudget) fail('approval_scope_mismatch');
 
   const ceilingMicros = parseApprovedCeiling({ credit_ceiling, credit_ceiling_micros });
+  // Spend is enforced against the workflow's own credit_ceiling_micros, never
+  // against this number. Recording a higher one would put authority on the
+  // approval row that preflight will not honour, which is the same defect as an
+  // over-budget approval: the trail would overstate what was authorised.
+  if (ceilingMicros > ceilingMicrosOf(workflow)) fail('approval_scope_mismatch');
   return {
     approved,
     approvedBudget,

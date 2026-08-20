@@ -35,7 +35,12 @@ async function withTx({ pool, client }, fn) {
   }
 }
 
-async function ensureAccount(client, tenantId) {
+// `lock` is the balance-mutating path: FOR UPDATE is what serialises two
+// concurrent reservations against one account. A read must pass `lock: false` —
+// otherwise any principal holding `orchestrator.credits.view` can hold the row
+// lock on the tenant's account for the length of a GET and stall the reserve
+// path it is only supposed to be looking at.
+async function ensureAccount(client, tenantId, { lock = true } = {}) {
   await client.query(
     `INSERT INTO orchestrator_credit_accounts (tenant_id)
      VALUES ($1)
@@ -45,7 +50,7 @@ async function ensureAccount(client, tenantId) {
   await ensureLimits(client, tenantId);
   await seedCatalog(client, tenantId);
   const r = await client.query(
-    `SELECT * FROM orchestrator_credit_accounts WHERE tenant_id=$1 FOR UPDATE`,
+    `SELECT * FROM orchestrator_credit_accounts WHERE tenant_id=$1${lock ? ' FOR UPDATE' : ''}`,
     [tenantId]
   );
   return r.rows[0];

@@ -25,6 +25,12 @@ const dnsPromises = require('dns').promises;
 
 const MAX_URL_LENGTH = 2048;
 const ALLOWED_PORT = 443;
+// The hostname being resolved is attacker-chosen, so the resolver wait is too.
+// Without a bound, a name delegated to a blackholed nameserver holds the calling
+// request open for the whole getaddrinfo retry schedule. This caps the wait and
+// fails closed; it does not cancel the underlying getaddrinfo, which still
+// occupies its libuv threadpool slot until the OS gives up.
+const DNS_TIMEOUT_MS = 3000;
 
 // Exact hostnames that must never be resolved, regardless of what DNS says.
 const BLOCKED_HOSTNAMES = new Set([
@@ -185,13 +191,28 @@ function _staticChecks(rawUrl) {
   return { ok: true, url: u.toString(), hostname: host, port: ALLOWED_PORT, literalIp: null };
 }
 
+const TIMED_OUT = Symbol('dns_timeout');
+
+function _lookupWithTimeout(hostname) {
+  let timer = null;
+  // Deliberately not unref'd: the timer is cleared the moment the race settles,
+  // so it only ever outlives a lookup that is still in flight — and a pending
+  // getaddrinfo already holds the loop open by itself.
+  const expiry = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), DNS_TIMEOUT_MS);
+  });
+  return Promise.race([dnsPromises.lookup(hostname, { all: true }), expiry])
+    .finally(() => { if (timer) clearTimeout(timer); });
+}
+
 async function _resolveAll(hostname) {
   let records;
   try {
-    records = await dnsPromises.lookup(hostname, { all: true });
+    records = await _lookupWithTimeout(hostname);
   } catch (_) {
     return fail('dns_lookup_failed');
   }
+  if (records === TIMED_OUT) return fail('dns_lookup_timeout');
   const list = Array.isArray(records) ? records : (records ? [records] : []);
   const addresses = list.map((r) => (r && r.address ? String(r.address) : '')).filter(Boolean);
   if (!addresses.length) return fail('dns_no_addresses');
@@ -269,4 +290,5 @@ module.exports = {
   isBlockedIp,
   MAX_URL_LENGTH,
   ALLOWED_PORT,
+  DNS_TIMEOUT_MS,
 };
