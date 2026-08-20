@@ -24,6 +24,10 @@ function safeOutput(agentId) {
   };
 }
 
+function isChargeableRequest(ctx) {
+  return !!(ctx && ctx.chargeable);
+}
+
 async function researchPhase() {
   return {
     ok: true,
@@ -111,4 +115,5 @@ module.exports = {
   publishingPhase,
   activationPhase,
   optimizationPhase,
+  isChargeableRequest,
 };

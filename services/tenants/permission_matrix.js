@@ -147,6 +147,7 @@ const ROUTE_GROUPS = [
   // Longer prefix wins. write=view so approve-only roles are not blocked by a
   // coarse create key; handlers still call requirePermission() per action.
   { prefix: '/api/agent-orchestrator/workflows', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
+  { prefix: '/api/agent-orchestrator/credits', view: 'orchestrator.credits.view', write: 'orchestrator.credits.view' },
   { prefix: '/api/ai-governance',             view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
   { prefix: '/api/ai-traces',                 view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
   { prefix: '/api/ai-feedback',               view: 'grow.campaigns.view',     write: 'grow.campaigns.view' },

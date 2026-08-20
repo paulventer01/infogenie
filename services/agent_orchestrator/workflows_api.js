@@ -22,6 +22,9 @@ const {
   newId, actorId, loadWorkflow, persistWorkflow, insertAudit, latestApproval, advanceWorkflow,
 } = require('./runner');
 const { isPlatformAdmin } = require('../tenants/permission_enforce');
+const { assertSafeHttpsUrl } = require('../security/safe_url');
+const { toBigInt, microsToJson, dollarsToMicros, toSql } = require('./money');
+const credits = require('./credits');
 
 const MAX_BYTES = 64 * 1024;
 const BUDGET_CAP = 1e9;
@@ -52,15 +55,25 @@ function capPayload(req, res, next) {
   next();
 }
 
-function validateHttpsUrl(raw) {
+async function assertLandingUrl(raw) {
   const s = String(raw || '').trim();
-  if (!s || s.length > 2048) return false;
-  let u;
-  try { u = new URL(s); } catch (_) { return false; }
-  if (u.protocol !== 'https:') return false;
-  if (u.username || u.password) return false;
-  if (!u.hostname) return false;
-  return true;
+  if (!s || s.length > 2048) fail('validation_failed');
+  const check = await assertSafeHttpsUrl(s);
+  if (!check.ok) fail(check.error === 'unsafe_url' ? 'unsafe_url' : 'validation_failed');
+  return check.url || s;
+}
+
+function parseCeilingMicros(body, fallback = 0n) {
+  if (!body || typeof body !== 'object') return fallback;
+  if (body.credit_ceiling_micros != null && body.credit_ceiling_micros !== '') {
+    const n = toBigInt(body.credit_ceiling_micros);
+    if (n < 0n) fail('validation_failed');
+    return n;
+  }
+  if (body.credit_ceiling != null && body.credit_ceiling !== '') {
+    return dollarsToMicros(body.credit_ceiling);
+  }
+  return fallback;
 }
 
 function strArr(v, maxItems, maxLen) {
@@ -96,18 +109,18 @@ function optionalTime(v) {
   return d.toISOString();
 }
 
-function parseCreate(body) {
+async function parseCreate(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) fail('validation_failed');
   const name = String(body.name || '').trim();
   if (!name || name.length > 200) fail('validation_failed');
-  const landing = String(body.landing_page_url || '').trim();
-  if (!validateHttpsUrl(landing)) fail('validation_failed');
+  const landing = await assertLandingUrl(body.landing_page_url);
   const selected = uniquePlatforms(asPlatforms(body.selected_platforms));
   if (!platformsAllowlisted(selected)) fail('validation_failed');
   const budget = asNumber(body.advertising_budget);
   if (budget == null || budget < 0 || budget > BUDGET_CAP) fail('validation_failed');
   const currency = String(body.currency || 'USD').trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) fail('validation_failed');
+  const creditCeilingMicros = parseCeilingMicros(body, 0n);
   return {
     name,
     objective: text(body.objective),
@@ -121,6 +134,7 @@ function parseCreate(body) {
     currency,
     planned_start: optionalTime(body.planned_start),
     planned_end: optionalTime(body.planned_end),
+    credit_ceiling_micros: creditCeilingMicros,
   };
 }
 
@@ -148,6 +162,9 @@ function publicWorkflow(row) {
     created_by_user_id: row.created_by_user_id,
     paused_at: row.paused_at,
     cancelled_at: row.cancelled_at,
+    credit_ceiling_micros: microsToJson(row.credit_ceiling_micros || 0),
+    block_reason: row.block_reason || null,
+    blocked_at: row.blocked_at || null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -165,6 +182,9 @@ function publicApproval(row) {
     approved_platforms: row.approved_platforms,
     approved_advertising_budget: asNumber(row.approved_advertising_budget),
     approved_credit_ceiling: asNumber(row.approved_credit_ceiling),
+    approved_credit_ceiling_micros: row.approved_credit_ceiling_micros == null
+      ? null
+      : microsToJson(row.approved_credit_ceiling_micros),
     actor_user_id: row.actor_user_id,
     decision: row.decision,
     comment: row.comment,
@@ -291,22 +311,23 @@ router.use(capPayload);
 
 router.post('/', mutation('create', PERMS.create, async (req, tid, userId, pool) => {
   if (!userId) fail('validation_failed');
-  const data = parseCreate(req.body || {});
+  const data = await parseCreate(req.body || {});
   const id = newId('ow');
   const row = (await pool.query(
     `INSERT INTO orchestrator_workflows (
        id, tenant_id, name, objective, product_or_service, offer, landing_page_url,
        target_markets, target_audiences, selected_platforms, advertising_budget, currency,
        planned_start, planned_end, current_state, current_phase, next_approval_gate,
-       version, created_by_user_id
+       version, created_by_user_id, credit_ceiling_micros
      ) VALUES (
        $1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12,$13,$14,
-       'draft','research','research_execution',1,$15
+       'draft','research','research_execution',1,$15,$16
      ) RETURNING *`,
     [
       id, tid, data.name, data.objective, data.product_or_service, data.offer, data.landing_page_url,
       jsonb(data.target_markets), jsonb(data.target_audiences), jsonb(data.selected_platforms),
       data.advertising_budget, data.currency, data.planned_start, data.planned_end, userId,
+      toSql(data.credit_ceiling_micros),
     ]
   )).rows[0];
   await insertAudit(pool, {
@@ -394,12 +415,15 @@ router.patch('/:id', mutation('edit', PERMS.edit, async (req, tid, userId, pool)
       ? uniquePlatforms(asPlatforms(body.selected_platforms))
       : asPlatforms(wf.selected_platforms),
     advertising_budget: body.advertising_budget != null ? asNumber(body.advertising_budget) : asNumber(wf.advertising_budget),
+    credit_ceiling_micros: body.credit_ceiling_micros != null || body.credit_ceiling != null
+      ? parseCeilingMicros(body, toBigInt(wf.credit_ceiling_micros || 0))
+      : toBigInt(wf.credit_ceiling_micros || 0),
     currency: body.currency != null ? String(body.currency).trim().toUpperCase() : wf.currency,
     planned_start: body.planned_start !== undefined ? optionalTime(body.planned_start) : wf.planned_start,
     planned_end: body.planned_end !== undefined ? optionalTime(body.planned_end) : wf.planned_end,
   };
   if (!next.name || next.name.length > 200) fail('validation_failed');
-  if (!validateHttpsUrl(next.landing_page_url)) fail('validation_failed');
+  next.landing_page_url = await assertLandingUrl(next.landing_page_url);
   if (!platformsAllowlisted(next.selected_platforms)) fail('validation_failed');
   if (next.advertising_budget == null || next.advertising_budget < 0 || next.advertising_budget > BUDGET_CAP) {
     fail('validation_failed');
@@ -423,6 +447,7 @@ router.patch('/:id', mutation('edit', PERMS.edit, async (req, tid, userId, pool)
     target_audiences: next.target_audiences,
     selected_platforms: next.selected_platforms,
     advertising_budget: next.advertising_budget,
+    credit_ceiling_micros: toSql(next.credit_ceiling_micros),
     currency: next.currency,
     planned_start: next.planned_start,
     planned_end: next.planned_end,
@@ -522,6 +547,7 @@ async function decide(req, tid, userId, pool, decision) {
       platforms: body.platforms || body.approved_platforms,
       advertising_budget: body.advertising_budget,
       credit_ceiling: body.credit_ceiling,
+      credit_ceiling_micros: body.credit_ceiling_micros,
       gate,
     });
     const hash = contentHash(wf, gate);
@@ -531,9 +557,10 @@ async function decide(req, tid, userId, pool, decision) {
       `INSERT INTO orchestrator_approvals (
          tenant_id, workflow_id, gate, object_type, object_id, object_version,
          content_hash, approved_platforms, approved_advertising_budget, approved_credit_ceiling,
+         approved_credit_ceiling_micros,
          actor_user_id, decision, comment, permission_snapshot
        ) VALUES (
-         $1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14::jsonb
+         $1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15::jsonb
        ) RETURNING *`,
       [
         tid, wf.id, gate,
@@ -544,6 +571,7 @@ async function decide(req, tid, userId, pool, decision) {
         JSON.stringify(scope.approved),
         scope.approvedBudget,
         scope.ceiling,
+        toSql(scope.ceilingMicros),
         userId,
         'approved',
         comment,
@@ -636,6 +664,11 @@ router.post('/:id/pause', mutation('pause', PERMS.pause, async (req, tid, userId
     fail('invalid_transition');
   }
   const row = updated.rows[0];
+  try {
+    await credits.releaseAllReservedForWorkflow({
+      pool, tenantId: tid, workflowId: wf.id, reasonCode: 'paused',
+    });
+  } catch (_) { /* pause already landed; release is best-effort after the stop order */ }
   await insertAudit(pool, {
     tenantId: tid,
     workflowId: wf.id,
@@ -686,6 +719,11 @@ router.post('/:id/cancel', mutation('cancel', PERMS.cancel, async (req, tid, use
     cancelled_by_user_id: userId,
     cancel_reason: req.body && req.body.reason != null ? String(req.body.reason).slice(0, 200) : null,
   });
+  try {
+    await credits.releaseAllReservedForWorkflow({
+      pool, tenantId: tid, workflowId: wf.id, reasonCode: 'cancelled',
+    });
+  } catch (_) { /* cancel already landed */ }
   await insertAudit(pool, {
     tenantId: tid,
     workflowId: wf.id,
