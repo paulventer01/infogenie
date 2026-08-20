@@ -228,6 +228,18 @@ const ORCH_ALL = [
   'orchestrator.workflows.recover', 'orchestrator.workflows.audit.view',
 ];
 
+// PR 2 credit accounting. Reading spend is broad; changing what may be spent is
+// an administrator authority, because the ceiling is what a later approval is
+// bound to.
+const ORCH_CREDIT_VIEW = [
+  'orchestrator.credits.view', 'orchestrator.credits.limits.view',
+];
+const ORCH_CREDIT_ADMIN = [
+  'orchestrator.credits.grant', 'orchestrator.credits.adjust',
+  'orchestrator.credits.limits.edit',
+];
+const ORCH_CREDIT_ALL = [...ORCH_CREDIT_VIEW, ...ORCH_CREDIT_ADMIN];
+
 function permsOf(roleKey) {
   const r = SYSTEM_ROLES.find(x => x.key === roleKey);
   if (!r) throw new Error(`unknown role ${roleKey}`);
@@ -297,6 +309,44 @@ test('orchestrator: read-only and restricted roles gain no write authority', () 
   for (const roleKey of ['content_creator', 'client_viewer']) {
     const held = permsOf(roleKey);
     for (const k of ORCH_ALL) assert.equal(held.has(k), false, `${roleKey} must not hold ${k}`);
+  }
+});
+
+test('orchestrator credits: every credit key is a tenant-scope catalog key', () => {
+  const { PERMISSIONS } = require('../services/tenants/permissions');
+  const byKey = Object.fromEntries(PERMISSIONS.map(p => [p.key, p]));
+  for (const k of ORCH_CREDIT_ALL) {
+    assert.ok(isValidPermission(k), `${k} must be in the catalog`);
+    assert.equal(byKey[k].scope, 'tenant', `${k} must be tenant-scoped, never platform`);
+    assert.ok(byKey[k].label, `${k} needs a human label for access reviews`);
+  }
+});
+
+test('orchestrator credits: owner/admin roles inherit grant, adjust and limits.edit', () => {
+  for (const roleKey of ['tenant_owner', 'tenant_admin', 'platform_admin', 'platform_owner']) {
+    const held = permsOf(roleKey);
+    for (const k of ORCH_CREDIT_ALL) assert.ok(held.has(k), `${roleKey} missing ${k}`);
+  }
+});
+
+test('orchestrator credits: Marketer reads spend but cannot move the ceiling', () => {
+  const held = permsOf('marketer');
+  for (const k of ORCH_CREDIT_VIEW) assert.ok(held.has(k), `marketer should hold ${k}`);
+  for (const k of ORCH_CREDIT_ADMIN) {
+    assert.equal(held.has(k), false,
+      `only a tenant administrator may issue credit or raise a limit: ${k}`);
+  }
+});
+
+test('orchestrator credits: read-only and restricted roles gain no credit authority', () => {
+  const analyst = permsOf('analyst');
+  for (const k of ORCH_CREDIT_VIEW) assert.ok(analyst.has(k), `analyst reads ${k}`);
+  for (const k of ORCH_CREDIT_ADMIN) {
+    assert.equal(analyst.has(k), false, `analyst is read-only: ${k}`);
+  }
+  for (const roleKey of ['content_creator', 'client_viewer']) {
+    const held = permsOf(roleKey);
+    for (const k of ORCH_CREDIT_ALL) assert.equal(held.has(k), false, `${roleKey} must not hold ${k}`);
   }
 });
 
