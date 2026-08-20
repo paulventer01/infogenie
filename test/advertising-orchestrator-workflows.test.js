@@ -5,6 +5,10 @@
 // Concurrency (leases): two overlapping POST /advance calls (Promise.all) share
 // one workflow. acquireLease uses SELECT … FOR UPDATE then a live lease row so
 // one request wins and the other gets 409 lease_conflict / execution_in_progress.
+// Material PATCH during a live unexpired lease is 409 execution_in_progress
+// (lease_conflict is "this caller lost the lease"). Advance persist is
+// optimistic on the approved version so a PATCH that landed first yields
+// 409 approval_stale rather than a post-research state on a stale approval.
 // node --test default parallelism is fine; tests do not need a special worker count.
 //
 // Env must be set BEFORE requiring helpers/server — node --test isolates files.
@@ -879,6 +883,85 @@ if (!HAS_DB) {
     const tenantBUse = await orch('POST', `/${wfB.id}/pause`, { cookie: cookieB, body: {}, key });
     assert.strictEqual(tenantBUse.status, 200, tenantBUse.text);
     assert.strictEqual(tenantBUse.json.workflow.id, wfB.id);
+  });
+
+  test('34. PATCH vs in-flight advance cannot apply research to a stale approval', async () => {
+    let wf = await createWf(cookieA, { name: 'patch vs advance', currency: 'USD' });
+    wf = await requestGate(cookieA, wf.id, 'research_execution');
+    wf = await approveGate(cookieA, wf, 'research_execution');
+    const approvedVersion = Number(wf.version);
+
+    const [adv, patch] = await Promise.all([
+      orch('POST', `/${wf.id}/advance`, {
+        cookie: cookieA, body: {}, key: ik('pva-adv'),
+        headers: { 'X-Orch-Test-Hold': '400' },
+      }),
+      (async () => {
+        await new Promise((r) => setTimeout(r, 120));
+        return orch('PATCH', `/${wf.id}`, {
+          cookie: cookieA, body: { currency: 'JPY' }, key: ik('pva-patch'),
+        });
+      })(),
+    ]);
+
+    if (patch.status === 409) {
+      assert.ok(
+        patch.json.error === 'execution_in_progress' || patch.json.error === 'lease_conflict',
+        `PATCH 409 must be execution_in_progress/lease_conflict, got ${patch.json.error}`
+      );
+    }
+    if (adv.status === 409) {
+      assert.ok(
+        adv.json.error === 'approval_stale'
+          || adv.json.error === 'approval_required'
+          || adv.json.error === 'invalid_transition',
+        `advance 409 must be approval freshness, got ${adv.json.error}`
+      );
+    }
+
+    const got = await orch('GET', `/${wf.id}`, { cookie: cookieA });
+    assert.strictEqual(got.status, 200, got.text);
+    const settled = got.json.workflow;
+    const appr = (await db.getPool().query(
+      `SELECT object_version, content_hash FROM orchestrator_approvals
+        WHERE tenant_id=$1 AND workflow_id=$2 AND gate='research_execution' AND decision='approved'
+        ORDER BY created_at DESC LIMIT 1`,
+      [tenantA.id, wf.id]
+    )).rows[0];
+    assert.ok(appr, 'research_execution approval must still exist');
+
+    const postResearchApplied = [
+      'research_running', 'research_complete',
+      'generation_approval_required', 'generation_approved', 'generation_running',
+    ].includes(settled.current_state);
+    const boundChanged = settled.currency !== 'USD'
+      || Number(settled.version) !== Number(appr.object_version);
+
+    if (postResearchApplied) {
+      assert.strictEqual(Number(settled.version), Number(appr.object_version),
+        `post-research state ${settled.current_state} must match research_execution approval version`);
+      assert.strictEqual(Number(settled.version), approvedVersion);
+      assert.strictEqual(settled.currency, 'USD',
+        'must not apply research after currency changed');
+      assert.strictEqual(contentHash(settled, 'research_execution'), appr.content_hash);
+    }
+    if (boundChanged) {
+      assert.ok(!postResearchApplied,
+        `must not apply autonomous research after bound fields changed: state=${settled.current_state} version=${settled.version} currency=${settled.currency}`);
+      assert.ok(Number(settled.version) !== Number(appr.object_version)
+        || settled.currency !== 'USD');
+    }
+
+    if (patch.status === 409) {
+      assert.strictEqual(adv.status, 200, `lease-blocked PATCH, advance should complete: ${adv.text}`);
+      assert.strictEqual(settled.current_state, 'generation_approval_required');
+      assert.strictEqual(settled.currency, 'USD');
+      assert.strictEqual(Number(settled.version), approvedVersion);
+    } else if (patch.status === 200 && adv.status === 409) {
+      assert.notStrictEqual(settled.current_state, 'generation_approval_required');
+      assert.strictEqual(settled.currency, 'JPY');
+      assert.ok(Number(settled.version) > Number(appr.object_version));
+    }
   });
 
   test('24. existing AgentOrchestrator panel still has error/empty copy', () => {

@@ -31,6 +31,16 @@ const BUDGET_CAP = 1e9;
 const MAX_TEXT = 4000;
 const APPROVAL_OBJECT_TYPES = Object.freeze(['workflow']);
 
+// execution_in_progress: a live unexpired execution lease exists for this
+// tenant+workflow. Material PATCH and other mutations that change bound
+// fields or current_state (except pause/cancel/recover, which may
+// force-release) must refuse rather than race the in-flight runner.
+// Distinct from lease_conflict, which is "this caller lost the lease".
+async function assertNoLiveExecution(pool, tenantId, workflowId) {
+  const lease = await getLease(pool, tenantId, workflowId);
+  if (!isLeaseExpired(lease)) fail('execution_in_progress');
+}
+
 function capPayload(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
   const cl = Number(req.headers['content-length']);
@@ -397,6 +407,7 @@ router.patch('/:id', mutation('edit', PERMS.edit, async (req, tid, userId, pool)
   if (!/^[A-Z]{3}$/.test(String(next.currency || ''))) fail('validation_failed');
 
   const material = materialChanged(wf, next);
+  if (material) await assertNoLiveExecution(pool, tid, wf.id);
   const hadApprovals = (await pool.query(
     `SELECT 1 FROM orchestrator_approvals WHERE tenant_id=$1 AND workflow_id=$2 LIMIT 1`,
     [tid, wf.id]
@@ -448,6 +459,7 @@ router.patch('/:id', mutation('edit', PERMS.edit, async (req, tid, userId, pool)
 router.post('/:id/request-approval', mutation('request_approval', PERMS.request, async (req, tid, userId, pool) => {
   const wf = await mustLoad(pool, tid, req.params.id);
   assertMutable(wf);
+  await assertNoLiveExecution(pool, tid, wf.id);
   const gate = String((req.body && req.body.gate) || '').trim();
   if (!GATES.includes(gate)) fail('validation_failed');
   if (wf.current_state === 'draft') {
@@ -483,6 +495,7 @@ function gatePermFromBody(req) {
 async function decide(req, tid, userId, pool, decision) {
   const wf = await mustLoad(pool, tid, req.params.id);
   assertMutable(wf);
+  if (decision === 'approved') await assertNoLiveExecution(pool, tid, wf.id);
   const body = req.body || {};
   const gate = String(body.gate || '').trim();
   if (!GATES.includes(gate)) fail('validation_failed');
@@ -612,6 +625,7 @@ router.post('/:id/pause', mutation('pause', PERMS.pause, async (req, tid, userId
 router.post('/:id/resume', mutation('resume', PERMS.resume, async (req, tid, userId, pool) => {
   const wf = await mustLoad(pool, tid, req.params.id);
   if (wf.current_state === 'cancelled') fail('workflow_cancelled');
+  await assertNoLiveExecution(pool, tid, wf.id);
   const applied = applyTransition(wf.current_state, 'resume', { previousState: wf.previous_state });
   const row = await persistWorkflow(pool, tid, wf.id, {
     current_state: applied.to,

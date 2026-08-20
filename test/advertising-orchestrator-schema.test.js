@@ -5,6 +5,8 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const db = require('../db');
 const { ensureAgentOrchestratorSchema } = require('../services/agent_orchestrator/schema');
@@ -28,6 +30,34 @@ const STATE_SPOT_CHECK = [
 ];
 
 const SUFFIX = `ao-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+test('ensureAgentOrchestratorSchema is registered in BOOT_TASKS and run when backgroundEnabled', () => {
+  const serverSrc = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const routesSrc = fs.readFileSync(
+    path.join(__dirname, '..', 'services/cloudflare_status/routes.js'),
+    'utf8'
+  );
+
+  const orchIdx = serverSrc.indexOf('ensureAgentOrchestratorSchema');
+  assert.ok(orchIdx >= 0, 'server.js must call ensureAgentOrchestratorSchema');
+  const pushIdx = serverSrc.lastIndexOf('BOOT_TASKS.push', orchIdx);
+  assert.ok(pushIdx >= 0 && pushIdx < orchIdx,
+    'ensureAgentOrchestratorSchema must sit inside a BOOT_TASKS.push');
+  const window = serverSrc.slice(pushIdx, orchIdx + 'ensureAgentOrchestratorSchema'.length);
+  assert.match(window, /BOOT_TASKS\.push\s*\(/);
+  assert.match(window, /ensureAgentOrchestratorSchema/);
+
+  assert.match(routesSrc, /backgroundEnabled\s*\(\s*\)/);
+  assert.match(routesSrc, /for\s*\(\s*const\s+_bootTask\s+of\s+BOOT_TASKS\s*\)/);
+
+  const mountIdx = serverSrc.indexOf("require('./services/cloudflare_status/routes')");
+  assert.ok(mountIdx >= 0, 'cloudflare_status/routes must still be the BOOT_TASKS runner mount');
+  assert.doesNotMatch(
+    serverSrc.slice(mountIdx),
+    /for\s*\(\s*const\s+_bootTask\s+of\s+BOOT_TASKS\s*\)/,
+    'must not add a second BOOT_TASKS runner at the end of server.js'
+  );
+});
 
 let tenantA = null;
 let tenantB = null;

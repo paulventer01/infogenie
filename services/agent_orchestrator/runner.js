@@ -100,7 +100,23 @@ const WRITABLE = new Set([
 ]);
 const JSONB_COLS = new Set(['target_markets', 'target_audiences', 'selected_platforms']);
 
-async function persistWorkflow(pool, tenantId, id, fields) {
+// acquireLease COMMITs (row lock released) before the runner persists. These
+// codes mean the locked-then-committed row is no longer ours to fail-over:
+// do not markFailed on top of a newer version / other holder.
+const NO_CLOBBER_CODES = new Set([
+  'lease_conflict',
+  'approval_stale',
+  'approval_required',
+  'invalid_transition',
+  'workflow_paused',
+  'workflow_cancelled',
+  'execution_in_progress',
+]);
+
+async function persistWorkflow(pool, tenantId, id, fields, opts) {
+  const expectedVersion = opts && opts.expectedVersion != null
+    ? Number(opts.expectedVersion)
+    : null;
   const sets = [];
   const vals = [];
   let i = 1;
@@ -118,13 +134,22 @@ async function persistWorkflow(pool, tenantId, id, fields) {
     return loadWorkflow(pool, tenantId, id);
   }
   sets.push('updated_at=now()');
+  const idIdx = i++;
+  const tidIdx = i++;
   vals.push(id, tenantId);
+  let where = `WHERE id=$${idIdx} AND tenant_id=$${tidIdx}`;
+  if (Number.isInteger(expectedVersion)) {
+    const verIdx = i++;
+    vals.push(expectedVersion);
+    where += ` AND version=$${verIdx}`;
+  }
   const r = await pool.query(
     `UPDATE orchestrator_workflows SET ${sets.join(', ')}
-      WHERE id=$${i++} AND tenant_id=$${i}
+      ${where}
       RETURNING *`,
     vals
   );
+  if (Number.isInteger(expectedVersion) && !r.rowCount) fail('approval_stale');
   return r.rows[0];
 }
 
@@ -147,8 +172,8 @@ async function markFailed(pool, {
     next = await persistWorkflow(pool, tenantId, workflow.id, {
       current_state: failedTo,
       previous_state: workflow.current_state,
-    });
-  } catch (_) { /* keep */ }
+    }, { expectedVersion: Number(workflow.version) });
+  } catch (_) { /* keep — do not overwrite a newer version */ }
   try {
     if (stepId) {
       await pool.query(
@@ -194,9 +219,9 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
   const plan = resolveAdvanceChain(workflow);
   if (!plan || !plan.steps || !plan.steps.length) fail('invalid_transition');
 
-  const gate = plan.requiredGate;
-  const approval = await latestApproval(pool, tenantId, workflow.id, gate);
-  assertApprovalFresh(workflow, approval, gate);
+  const gatePre = plan.requiredGate;
+  const approvalPre = await latestApproval(pool, tenantId, workflow.id, gatePre);
+  assertApprovalFresh(workflow, approvalPre, gatePre);
 
   const acquired = await acquireLease(pool, tenantId, workflow.id, {
     actorUserId,
@@ -205,18 +230,39 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
   workflow = acquired.workflow;
   const holder = acquired.holder;
 
-  const startIdx = plan.fromIndex + 1;
-  const remaining = plan.steps.slice(startIdx);
-  if (!remaining.length) {
-    await releaseLease(pool, tenantId, workflow.id, holder);
-    fail('invalid_transition');
-  }
-
-  const stepId = newId('os');
-  const first = remaining[0];
-  const phase = first.phase || workflow.current_phase;
+  // FOR UPDATE ended at COMMIT. Re-validate the row seen under the lock so a
+  // concurrent material PATCH cannot be advanced on a stale approval.
+  let stepId = null;
+  let first = null;
+  let gate = gatePre;
+  let approval = approvalPre;
 
   try {
+    if (workflow.current_state === 'cancelled') fail('workflow_cancelled');
+    if (workflow.current_state === 'paused') fail('workflow_paused');
+
+    const lockedCheck = canTransition(workflow.current_state, 'advance', {
+      current_phase: workflow.current_phase,
+      phase: workflow.current_phase,
+    });
+    if (!lockedCheck.ok) fail(lockedCheck.code);
+
+    const lockedPlan = resolveAdvanceChain(workflow);
+    if (!lockedPlan || !lockedPlan.steps || !lockedPlan.steps.length) fail('invalid_transition');
+
+    gate = lockedPlan.requiredGate;
+    approval = await latestApproval(pool, tenantId, workflow.id, gate);
+    assertApprovalFresh(workflow, approval, gate);
+
+    const startIdx = lockedPlan.fromIndex + 1;
+    const remaining = lockedPlan.steps.slice(startIdx);
+    if (!remaining.length) fail('invalid_transition');
+
+    stepId = newId('os');
+    first = remaining[0];
+    const phase = first.phase || workflow.current_phase;
+    const approvedVersion = Number(workflow.version);
+
     await pool.query(
       `INSERT INTO orchestrator_steps
          (id, tenant_id, workflow_id, phase, agent_type, state, attempt_number,
@@ -227,10 +273,10 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
         tenantId,
         workflow.id,
         phase,
-        plan.name,
-        workflow.version,
+        lockedPlan.name,
+        approvedVersion,
         JSON.stringify({
-          version: workflow.version,
+          version: approvedVersion,
           gate,
           platforms: workflow.selected_platforms,
         }),
@@ -266,11 +312,11 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
       });
     }
 
-    const handler = HANDLERS[plan.name] || HANDLERS.research;
+    const handler = HANDLERS[lockedPlan.name] || HANDLERS.research;
     const out = await handler({ workflow, approval, gate });
     const outputRef = {
       stub: true,
-      agent_id: (out && (out.output_ref && out.output_ref.agent_id || out.agent_id)) || plan.name,
+      agent_id: (out && (out.output_ref && out.output_ref.agent_id || out.agent_id)) || lockedPlan.name,
       note: 'PR 1 stub — not live research/creatives/campaigns/performance',
     };
 
@@ -287,7 +333,7 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
       previous_state: first.to,
       current_phase: stopAt.phase || phase,
       next_approval_gate: stopAt.nextGate || null,
-    });
+    }, { expectedVersion: approvedVersion });
 
     await pool.query(
       `UPDATE orchestrator_steps
@@ -316,21 +362,27 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
     await releaseLease(pool, tenantId, workflow.id, holder);
     return workflow;
   } catch (err) {
-    // Losing the lease means someone else owns this workflow's state now.
-    // Marking it failed here would clobber the live holder's write.
-    if (err && err.code === 'lease_conflict') {
-      try {
-        await pool.query(
-          `UPDATE orchestrator_steps SET state='abandoned', error_code='lease_conflict', completed_at=now()
-            WHERE id=$1 AND tenant_id=$2`,
-          [stepId, tenantId]
-        );
-      } catch (_) { /* ignore */ }
+    const code = err && err.code;
+    // Losing the lease, or a concurrent PATCH bumping version, means this
+    // runner must not markFailed over the live row.
+    if (NO_CLOBBER_CODES.has(code)) {
+      if (stepId) {
+        try {
+          await pool.query(
+            `UPDATE orchestrator_steps SET state='abandoned', error_code=$1, completed_at=now()
+              WHERE id=$2 AND tenant_id=$3`,
+            [code, stepId, tenantId]
+          );
+        } catch (_) { /* ignore */ }
+      }
+      if (code !== 'lease_conflict') {
+        try { await releaseLease(pool, tenantId, workflow.id, holder); } catch (_) { /* ignore */ }
+      }
       throw err;
     }
     await markFailed(pool, {
       tenantId, workflow, stepId, holder, actorUserId, requestId, gate, err,
-      failedState: failTargetFor(first.to),
+      failedState: failTargetFor(first && first.to),
     });
     throw err;
   }
