@@ -27,8 +27,13 @@ const db = require('../db');
 const { ensureTenantSchema } = require('../services/tenants/schema');
 const { ensureAgentOrchestratorSchema } = require('../services/agent_orchestrator/schema');
 const { sha256Hex, canonicalJson } = require('../services/agent_orchestrator/hash');
-const { contentHash, approvalSnapshot } = require('../services/agent_orchestrator/approvals');
+const {
+  contentHash, approvalSnapshot, materialChanged,
+} = require('../services/agent_orchestrator/approvals');
 const { canTransition, applyTransition, GATES } = require('../services/agent_orchestrator/states');
+const {
+  actorId, isTestFail, testHoldMs, safeAuditDetail,
+} = require('../services/agent_orchestrator/runner');
 
 const HAS_DB = hasDb();
 
@@ -94,6 +99,101 @@ test('approval content_hash is stable for the same snapshot', () => {
   assert.strictEqual(snap.gate, 'research_execution');
   const h3 = contentHash({ ...wf, offer: 'changed' }, 'research_execution');
   assert.notStrictEqual(h1, h3);
+});
+
+// ── Security regressions (pure) ────────────────────────────────────────────
+test('approval scope covers currency and targeting, not just platforms/budget', () => {
+  const wf = {
+    id: 'ow_scope',
+    version: 1,
+    selected_platforms: ['meta'],
+    advertising_budget: 1000,
+    currency: 'USD',
+    target_markets: ['US', 'UK'],
+    target_audiences: ['SMB'],
+    landing_page_url: 'https://example.com/x',
+    offer: 'trial',
+    objective: 'signups',
+    product_or_service: 'saas',
+  };
+  const base = contentHash(wf, 'research_execution');
+  // Same authorisation, different array order → same hash.
+  assert.strictEqual(
+    contentHash({ ...wf, target_markets: ['UK', 'US'] }, 'research_execution'),
+    base
+  );
+  // Different authorisation → different hash AND a material change.
+  for (const over of [
+    { currency: 'JPY' },
+    { target_markets: ['DE'] },
+    { target_audiences: ['Enterprise buyers'] },
+  ]) {
+    assert.notStrictEqual(contentHash({ ...wf, ...over }, 'research_execution'), base,
+      `content_hash must cover ${Object.keys(over)[0]}`);
+    assert.strictEqual(materialChanged(wf, { ...wf, ...over }), true,
+      `${Object.keys(over)[0]} must invalidate an approval`);
+  }
+  assert.strictEqual(materialChanged(wf, { ...wf, target_markets: ['UK', 'US'] }), false);
+  const snap = approvalSnapshot(wf, 'research_execution');
+  assert.deepStrictEqual(snap.target_markets, ['UK', 'US']);
+  assert.deepStrictEqual(snap.target_audiences, ['SMB']);
+});
+
+test('actor id is a positive session user id, never the synthetic principal', () => {
+  assert.strictEqual(actorId({ user: { id: 7 } }), 7);
+  assert.strictEqual(actorId({ user: { id: 0 } }), null, 'api-key fallback principal is not attributable');
+  assert.strictEqual(actorId({ user: { id: -1 } }), null);
+  assert.strictEqual(actorId({ user: { id: 'owner@example.com' } }), null, 'never an email');
+  assert.strictEqual(actorId({}), null);
+});
+
+test('X-Orch-Test-* headers are inert unless NODE_ENV is exactly "test"', () => {
+  const req = { headers: { 'x-orch-test-fail': '1', 'x-orch-test-hold': '250' } };
+  const saved = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = 'test';
+    assert.strictEqual(isTestFail(req), true, 'available under the test runner');
+    assert.strictEqual(testHoldMs(req), 250);
+    for (const env of ['production', 'development', 'Test', '']) {
+      process.env.NODE_ENV = env;
+      assert.strictEqual(isTestFail(req), false, `must be inert when NODE_ENV=${env || '(empty)'}`);
+      assert.strictEqual(testHoldMs(req), 0, `must be inert when NODE_ENV=${env || '(empty)'}`);
+    }
+    delete process.env.NODE_ENV;
+    assert.strictEqual(isTestFail(req), false, 'must be inert when NODE_ENV is unset');
+    assert.strictEqual(testHoldMs(req), 0);
+  } finally {
+    if (saved === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = saved;
+  }
+});
+
+test('audit detail is an allowlist: brief material cannot reach the trail', () => {
+  const safe = safeAuditDetail({
+    from: 'draft',
+    to: 'research_approval_required',
+    gate: 'research_execution',
+    version: 2,
+    stub: true,
+    offer: 'SECRET_BRIEF_CANARY',
+    objective: 'SECRET_BRIEF_CANARY',
+    product_or_service: 'SECRET_BRIEF_CANARY',
+    landing_page_url: 'https://secret.example.com/x',
+    comment: 'SECRET_BRIEF_CANARY',
+    brief: 'SECRET_BRIEF_CANARY',
+    api_key: 'sk-live-abc',
+    nested: { offer: 'SECRET_BRIEF_CANARY' },
+  });
+  assert.deepStrictEqual(safe, {
+    from: 'draft',
+    to: 'research_approval_required',
+    gate: 'research_execution',
+    version: 2,
+    stub: true,
+  });
+  assert.ok(!JSON.stringify(safe).includes('SECRET_BRIEF_CANARY'));
+  assert.ok(!JSON.stringify(safe).includes('sk-live'));
+  assert.strictEqual(safeAuditDetail({ state: 'x'.repeat(500) }).state.length, 120);
 });
 
 test('transition table: approve/resume from draft is invalid_transition', () => {
@@ -561,6 +661,224 @@ if (!HAS_DB) {
     const ids = (res.json.modules || []).map((m) => m.id);
     assert.ok(ids.includes('calendar'));
     assert.ok(ids.includes('spine'));
+  });
+
+  test('25. timeline needs the distinct audit-history permission', async () => {
+    const wf = await createWf(cookieA, { name: 'audit gate' });
+
+    // Marketer holds orchestrator.workflows.view — enough for state and
+    // approvals, deliberately not enough for the who-approved-what trail.
+    const state = await orch('GET', `/${wf.id}`, { cookie: cookieM });
+    assert.strictEqual(state.status, 200, state.text);
+    const approvals = await orch('GET', `/${wf.id}/approvals`, { cookie: cookieM });
+    assert.strictEqual(approvals.status, 200, approvals.text);
+    const steps = await orch('GET', `/${wf.id}/steps`, { cookie: cookieM });
+    assert.strictEqual(steps.status, 200, steps.text);
+
+    const denied = await orch('GET', `/${wf.id}/timeline`, { cookie: cookieM });
+    assert.strictEqual(denied.status, 403, denied.text);
+    assert.strictEqual(denied.json.required, 'orchestrator.workflows.audit.view');
+    assert.ok(!denied.text.includes('workflow_created'), 'no audit rows in a denial');
+
+    const allowed = await orch('GET', `/${wf.id}/timeline`, { cookie: cookieA });
+    assert.strictEqual(allowed.status, 200, allowed.text);
+    assert.ok(Array.isArray(allowed.json.events));
+  });
+
+  test('26. every cross-tenant child read is 404, not an empty 200', async () => {
+    const wf = await createWf(cookieA, { name: 'x-tenant children' });
+    for (const sub of ['', '/timeline', '/approvals', '/steps']) {
+      const res = await orch('GET', `/${wf.id}${sub}`, { cookie: cookieB });
+      assert.strictEqual(res.status, 404, `GET /:id${sub} → ${res.status} ${res.text}`);
+      assert.strictEqual(res.json.error, 'not_found');
+    }
+    for (const [path, body] of [
+      ['/pause', {}],
+      ['/cancel', {}],
+      ['/recover', {}],
+      ['/request-approval', { gate: 'research_execution' }],
+    ]) {
+      const res = await orch('POST', `/${wf.id}${path}`, {
+        cookie: cookieB, body, key: ik('xt'),
+      });
+      assert.strictEqual(res.status, 404, `POST /:id${path} → ${res.status} ${res.text}`);
+    }
+    const patched = await orch('PATCH', `/${wf.id}`, {
+      cookie: cookieB, body: { name: 'stolen' }, key: ik('xtp'),
+    });
+    assert.strictEqual(patched.status, 404, patched.text);
+    const still = await orch('GET', `/${wf.id}`, { cookie: cookieA });
+    assert.strictEqual(still.json.workflow.name, 'x-tenant children', 'tenant B must not have written');
+  });
+
+  test('27. owner-gate exemption is workflows-only and path-anchored', async () => {
+    // The exemption exists so non-owner roles reach the workflow handlers.
+    const list = await orch('GET', '', { cookie: cookieM });
+    assert.strictEqual(list.status, 200, list.text);
+
+    // …and nothing else on the hub. suggest/resolve/apply stay owner-gated.
+    for (const p of ['/suggest', '/resolve', '/apply']) {
+      const res = await request(app.baseUrl, 'POST', `/api/agent-orchestrator${p}`, {
+        cookie: cookieM, body: {},
+      });
+      assert.strictEqual(res.status, 403, `POST ${p} → ${res.status} ${res.text}`);
+      assert.strictEqual(res.json.error, 'owner_only');
+    }
+    const history = await request(app.baseUrl, 'GET', '/api/agent-orchestrator/history', { cookie: cookieM });
+    assert.strictEqual(history.status, 403);
+    assert.strictEqual(history.json.error, 'owner_only');
+
+    // A look-alike prefix must not inherit the exemption.
+    const lookalike = await request(app.baseUrl, 'GET', '/api/agent-orchestrator/workflows-export', {
+      cookie: cookieM,
+    });
+    assert.strictEqual(lookalike.status, 403, lookalike.text);
+    assert.strictEqual(lookalike.json.error, 'owner_only');
+  });
+
+  test('28. approve must state the version it read, and only approve a workflow', async () => {
+    let wf = await createWf(cookieA, { name: 'version claim' });
+    wf = await requestGate(cookieA, wf.id, 'research_execution');
+
+    const blind = await orch('POST', `/${wf.id}/approve`, {
+      cookie: cookieA,
+      body: approveBody(wf, 'research_execution', { object_version: undefined }),
+      key: ik('blind'),
+    });
+    assert.strictEqual(blind.status, 400, blind.text);
+    assert.strictEqual(blind.json.error, 'validation_failed');
+
+    const stale = await orch('POST', `/${wf.id}/approve`, {
+      cookie: cookieA,
+      body: approveBody(wf, 'research_execution', { object_version: Number(wf.version) + 5 }),
+      key: ik('stale'),
+    });
+    assert.strictEqual(stale.status, 409, stale.text);
+    assert.strictEqual(stale.json.error, 'approval_stale');
+
+    const wrongType = await orch('POST', `/${wf.id}/approve`, {
+      cookie: cookieA,
+      body: approveBody(wf, 'research_execution', { object_type: 'tenant' }),
+      key: ik('otype'),
+    });
+    assert.strictEqual(wrongType.status, 400, wrongType.text);
+
+    const okRes = await orch('POST', `/${wf.id}/approve`, {
+      cookie: cookieA, body: approveBody(wf, 'research_execution'), key: ik('good'),
+    });
+    assert.strictEqual(okRes.status, 200, okRes.text);
+    const row = (await db.getPool().query(
+      `SELECT object_type, actor_user_id, permission_snapshot
+         FROM orchestrator_approvals WHERE tenant_id=$1 AND workflow_id=$2`,
+      [tenantA.id, wf.id]
+    )).rows[0];
+    assert.strictEqual(row.object_type, 'workflow');
+    assert.strictEqual(row.actor_user_id, ownerA.id, 'actor is the numeric user id');
+    assert.ok(Array.isArray(row.permission_snapshot) && row.permission_snapshot.length > 0,
+      'permission_snapshot must record the authority exercised');
+    assert.ok(
+      row.permission_snapshot.includes('orchestrator.workflows.approve.research_execution'),
+      `snapshot must name the gate authority: ${JSON.stringify(row.permission_snapshot)}`
+    );
+  });
+
+  test('29. editing currency or targeting after approval invalidates it', async () => {
+    for (const over of [{ currency: 'JPY' }, { target_markets: ['DE'] }, { target_audiences: ['CFOs'] }]) {
+      let wf = await createWf(cookieA, { name: `invalidate ${Object.keys(over)[0]}` });
+      wf = await requestGate(cookieA, wf.id, 'research_execution');
+      wf = await approveGate(cookieA, wf, 'research_execution');
+      const v1 = Number(wf.version);
+
+      const patch = await orch('PATCH', `/${wf.id}`, { cookie: cookieA, body: over, key: ik('inv') });
+      assert.strictEqual(patch.status, 200, patch.text);
+      assert.ok(Number(patch.json.workflow.version) > v1,
+        `${Object.keys(over)[0]} must bump the version`);
+      assert.strictEqual(patch.json.workflow.current_state, 'research_approval_required');
+
+      const adv = await advanceWf(cookieA, wf.id);
+      assert.strictEqual(adv.status, 409, adv.text);
+      assert.ok(adv.json.error === 'approval_stale' || adv.json.error === 'approval_required', adv.json.error);
+    }
+  });
+
+  test('30. body tenant_id / user_id are never trusted', async () => {
+    const res = await orch('POST', '', {
+      cookie: cookieA,
+      body: createBody({
+        name: 'body-tenant-spoof',
+        tenant_id: tenantB.id,
+        user_id: ownerB.id,
+        created_by_user_id: ownerB.id,
+        current_state: 'active',
+        version: 99,
+      }),
+      key: ik('spoof'),
+    });
+    assert.ok(res.status === 200 || res.status === 201, res.text);
+    const wf = res.json.workflow;
+    assert.strictEqual(wf.created_by_user_id, ownerA.id, 'creator comes from the session');
+    assert.strictEqual(wf.current_state, 'draft', 'state is not client-settable');
+    assert.strictEqual(Number(wf.version), 1);
+
+    const row = (await db.getPool().query(
+      `SELECT tenant_id FROM orchestrator_workflows WHERE id=$1`, [wf.id]
+    )).rows[0];
+    assert.strictEqual(row.tenant_id, tenantA.id, 'row lands in the session tenant');
+    const fromB = await orch('GET', `/${wf.id}`, { cookie: cookieB });
+    assert.strictEqual(fromB.status, 404);
+  });
+
+  test('31. break-glass recover during a run stops the old holder advancing', async () => {
+    let wf = await createWf(cookieA, { name: 'lease steal' });
+    wf = await requestGate(cookieA, wf.id, 'research_execution');
+    wf = await approveGate(cookieA, wf, 'research_execution');
+
+    const inFlight = orch('POST', `/${wf.id}/advance`, {
+      cookie: cookieA, body: {}, key: ik('inflight'), headers: { 'X-Orch-Test-Hold': '400' },
+    });
+    // Force-release the lease under the running advance.
+    await new Promise((r) => setTimeout(r, 120));
+    const rec = await orch('POST', `/${wf.id}/recover`, { cookie: cookieA, body: {}, key: ik('steal') });
+    assert.strictEqual(rec.status, 200, rec.text);
+
+    const res = await inFlight;
+    assert.strictEqual(res.status, 409, `lost holder must not advance: ${res.status} ${res.text}`);
+    assert.strictEqual(res.json.error, 'lease_conflict');
+
+    const after = await orch('GET', `/${wf.id}`, { cookie: cookieA });
+    assert.strictEqual(after.json.workflow.current_state, 'research_approved',
+      'state stays where the recover left it — no double advance');
+  });
+
+  test('32. marketer cannot recover, and recover is refused after cancel', async () => {
+    let wf = await createWf(cookieA, { name: 'recover deny' });
+    const denied = await orch('POST', `/${wf.id}/recover`, {
+      cookie: cookieM, body: {}, key: ik('mrec'),
+    });
+    assert.strictEqual(denied.status, 403, denied.text);
+    assert.strictEqual(denied.json.required, 'orchestrator.workflows.recover');
+
+    const cancelled = await orch('POST', `/${wf.id}/cancel`, { cookie: cookieA, body: {}, key: ik('rc') });
+    assert.strictEqual(cancelled.status, 200, cancelled.text);
+    const after = await orch('POST', `/${wf.id}/recover`, { cookie: cookieA, body: {}, key: ik('rac') });
+    assert.strictEqual(after.status, 409);
+    assert.strictEqual(after.json.error, 'recovery_not_allowed');
+  });
+
+  test('33. an idempotency key cannot be replayed onto another endpoint', async () => {
+    const wf = await createWf(cookieA, { name: 'key reuse' });
+    const key = ik('reuse');
+    const paused = await orch('POST', `/${wf.id}/pause`, { cookie: cookieA, body: {}, key });
+    assert.strictEqual(paused.status, 200, paused.text);
+    const reused = await orch('POST', `/${wf.id}/cancel`, { cookie: cookieA, body: {}, key });
+    assert.strictEqual(reused.status, 409, reused.text);
+    assert.strictEqual(reused.json.error, 'idempotency_conflict');
+
+    // Same key, other tenant → its own namespace, no collision and no replay.
+    const wfB = await createWf(cookieB, { name: 'key reuse B' });
+    const tenantBUse = await orch('POST', `/${wfB.id}/pause`, { cookie: cookieB, body: {}, key });
+    assert.strictEqual(tenantBUse.status, 200, tenantBUse.text);
+    assert.strictEqual(tenantBUse.json.workflow.id, wfB.id);
   });
 
   test('24. existing AgentOrchestrator panel still has error/empty copy', () => {

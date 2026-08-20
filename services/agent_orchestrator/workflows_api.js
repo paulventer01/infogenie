@@ -21,9 +21,15 @@ const { forceReleaseLease, getLease, isLeaseExpired } = require('./leases');
 const {
   newId, actorId, loadWorkflow, persistWorkflow, insertAudit, latestApproval, advanceWorkflow,
 } = require('./runner');
+const { isPlatformAdmin } = require('../tenants/permission_enforce');
 
 const MAX_BYTES = 64 * 1024;
 const BUDGET_CAP = 1e9;
+// Free-text brief fields are hashed into every approval and copied into the
+// idempotency response body, so they are capped per field rather than relying
+// on the 64kb whole-body cap alone.
+const MAX_TEXT = 4000;
+const APPROVAL_OBJECT_TYPES = Object.freeze(['workflow']);
 
 function capPayload(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
@@ -58,6 +64,12 @@ function strArr(v, maxItems, maxLen) {
   }).filter(Boolean);
 }
 
+function text(v, max = MAX_TEXT) {
+  const s = String(v == null ? '' : v);
+  if (s.length > max) fail('validation_failed');
+  return s;
+}
+
 function uniquePlatforms(list) {
   const seen = new Set();
   const out = [];
@@ -88,9 +100,9 @@ function parseCreate(body) {
   if (!/^[A-Z]{3}$/.test(currency)) fail('validation_failed');
   return {
     name,
-    objective: String(body.objective || ''),
-    product_or_service: String(body.product_or_service || ''),
-    offer: String(body.offer || ''),
+    objective: text(body.objective),
+    product_or_service: text(body.product_or_service),
+    offer: text(body.offer),
     landing_page_url: landing,
     target_markets: strArr(body.target_markets, 50, 200),
     target_audiences: strArr(body.target_audiences, 50, 200),
@@ -172,6 +184,18 @@ function guardPerm(req, res, key) {
   return allowed;
 }
 
+// Approvals are the spend-authorisation record, so the trail has to say which
+// authority was exercised. Platform owners/admins bypass req.can(), which would
+// otherwise store an empty snapshot for the most privileged approver there is.
+function permissionSnapshot(req, requiredKey) {
+  const keys = new Set(Array.from(req.permissions || []).map(String));
+  if (isPlatformAdmin(req)) {
+    keys.add('platform_admin_bypass');
+    if (requiredKey) keys.add(String(requiredKey));
+  }
+  return Array.from(keys).sort();
+}
+
 function mutation(action, permissionFn, handler) {
   return async (req, res) => {
     try {
@@ -184,7 +208,10 @@ function mutation(action, permissionFn, handler) {
       if (!key) return sendError(res, 400, 'validation_failed');
       if (!_db.hasDb()) return sendError(res, 503, 'validation_failed');
       const pool = _db.getPool();
+      // Every mutation writes actor_user_id into an immutable audit row. An
+      // unattributable principal (no session user id) must not move a workflow.
       const userId = actorId(req);
+      if (!userId) return sendError(res, 400, 'validation_failed');
       const result = await runIdempotent(pool, {
         tenantId: tid,
         key,
@@ -225,17 +252,21 @@ function sendCaught(res, err) {
   if (err instanceof OrchError || (err && err.code && HTTP_FOR_CODE[err.code])) {
     return sendOrchError(res, err);
   }
-  console.error('[orch-wf]', err && err.message);
+  // Postgres error text can quote the offending value (a brief, an offer), so
+  // only the driver's error class is logged — never err.message.
+  console.error('[orch-wf] unhandled', (err && err.name) || 'Error', (err && err.code) || '');
   return sendError(res, 500, 'internal_error');
 }
 
-async function readHandler(req, res, fn) {
+async function readHandler(req, res, { permission = PERMS.view, offline = null } = {}, fn) {
   try {
     if (!req.user) return res.status(401).json({ ok: false, error: 'auth_required' });
     const tid = await _tenantCtx.resolveTenantId(req, { label: 'orch-wf:read' });
     if (!tid) return sendError(res, 400, 'validation_failed');
-    if (!guardPerm(req, res, PERMS.view)) return;
-    if (!_db.hasDb()) return res.json({ ok: true, workflows: [] });
+    if (!guardPerm(req, res, permission)) return;
+    if (!_db.hasDb()) {
+      return offline ? res.json(offline) : sendError(res, 404, 'not_found');
+    }
     return await fn(req, res, tid, _db.getPool());
   } catch (err) {
     return sendCaught(res, err);
@@ -281,7 +312,9 @@ router.post('/', mutation('create', PERMS.create, async (req, tid, userId, pool)
   return { status: 201, body: { ok: true, workflow: publicWorkflow(row) } };
 }));
 
-router.get('/', (req, res) => readHandler(req, res, async (_req, res2, tid, pool) => {
+router.get('/', (req, res) => readHandler(req, res, {
+  offline: { ok: true, workflows: [] },
+}, async (_req, res2, tid, pool) => {
   const r = await pool.query(
     `SELECT * FROM orchestrator_workflows WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 100`,
     [tid]
@@ -289,7 +322,12 @@ router.get('/', (req, res) => readHandler(req, res, async (_req, res2, tid, pool
   return res2.json({ ok: true, workflows: r.rows.map(publicWorkflow) });
 }));
 
-router.get('/:id/timeline', (req, res) => readHandler(req, res, async (req2, res2, tid, pool) => {
+// The audit trail is a separate read authority from the workflow itself: it
+// names who approved which gate, so it is gated on orchestrator.workflows
+// .audit.view rather than the coarse .view that covers state and approvals.
+router.get('/:id/timeline', (req, res) => readHandler(req, res, {
+  permission: PERMS.auditView,
+}, async (req2, res2, tid, pool) => {
   await mustLoad(pool, tid, req2.params.id);
   const r = await pool.query(
     `SELECT id, event, actor_user_id, detail, created_at
@@ -301,7 +339,7 @@ router.get('/:id/timeline', (req, res) => readHandler(req, res, async (req2, res
   return res2.json({ ok: true, events: r.rows });
 }));
 
-router.get('/:id/approvals', (req, res) => readHandler(req, res, async (req2, res2, tid, pool) => {
+router.get('/:id/approvals', (req, res) => readHandler(req, res, {}, async (req2, res2, tid, pool) => {
   await mustLoad(pool, tid, req2.params.id);
   const r = await pool.query(
     `SELECT * FROM orchestrator_approvals
@@ -312,7 +350,7 @@ router.get('/:id/approvals', (req, res) => readHandler(req, res, async (req2, re
   return res2.json({ ok: true, approvals: r.rows.map(publicApproval) });
 }));
 
-router.get('/:id/steps', (req, res) => readHandler(req, res, async (req2, res2, tid, pool) => {
+router.get('/:id/steps', (req, res) => readHandler(req, res, {}, async (req2, res2, tid, pool) => {
   await mustLoad(pool, tid, req2.params.id);
   const r = await pool.query(
     `SELECT id, phase, agent_type, state, attempt_number, object_version,
@@ -325,7 +363,7 @@ router.get('/:id/steps', (req, res) => readHandler(req, res, async (req2, res2, 
   return res2.json({ ok: true, steps: r.rows });
 }));
 
-router.get('/:id', (req, res) => readHandler(req, res, async (req2, res2, tid, pool) => {
+router.get('/:id', (req, res) => readHandler(req, res, {}, async (req2, res2, tid, pool) => {
   const wf = await mustLoad(pool, tid, req2.params.id);
   return res2.json({ ok: true, workflow: publicWorkflow(wf) });
 }));
@@ -336,9 +374,9 @@ router.patch('/:id', mutation('edit', PERMS.edit, async (req, tid, userId, pool)
   const body = req.body || {};
   const next = {
     name: body.name != null ? String(body.name).trim() : wf.name,
-    objective: body.objective != null ? String(body.objective) : wf.objective,
-    product_or_service: body.product_or_service != null ? String(body.product_or_service) : wf.product_or_service,
-    offer: body.offer != null ? String(body.offer) : wf.offer,
+    objective: body.objective != null ? text(body.objective) : wf.objective,
+    product_or_service: body.product_or_service != null ? text(body.product_or_service) : wf.product_or_service,
+    offer: body.offer != null ? text(body.offer) : wf.offer,
     landing_page_url: body.landing_page_url != null ? String(body.landing_page_url).trim() : wf.landing_page_url,
     target_markets: body.target_markets != null ? strArr(body.target_markets, 50, 200) : wf.target_markets,
     target_audiences: body.target_audiences != null ? strArr(body.target_audiences, 50, 200) : wf.target_audiences,
@@ -451,10 +489,16 @@ async function decide(req, tid, userId, pool, decision) {
   const applied = applyTransition(wf.current_state, decision === 'approved' ? 'approve' : 'reject', { gate });
 
   if (decision === 'approved') {
-    if (body.object_version != null && Number(body.object_version) !== Number(wf.version)) {
-      fail('approval_stale');
-    }
+    // object_version is mandatory on approve: it is the approver's statement of
+    // WHICH revision they read. Treating it as optional would let a client
+    // approve blind and skip the stale check entirely.
+    const claimedVersion = Number(body.object_version);
+    if (!Number.isInteger(claimedVersion)) fail('validation_failed');
+    if (claimedVersion !== Number(wf.version)) fail('approval_stale');
     if (body.object_id && String(body.object_id) !== String(wf.id)) fail('approval_scope_mismatch');
+    if (body.object_type != null && !APPROVAL_OBJECT_TYPES.includes(String(body.object_type))) {
+      fail('validation_failed');
+    }
     const scope = validateApproveScope(wf, {
       platforms: body.platforms || body.approved_platforms,
       advertising_budget: body.advertising_budget,
@@ -463,7 +507,7 @@ async function decide(req, tid, userId, pool, decision) {
     });
     const hash = contentHash(wf, gate);
     const comment = body.comment != null ? String(body.comment).slice(0, 500) : null;
-    const snapshot = Array.from(req.permissions || []);
+    const snapshot = permissionSnapshot(req, GATE_PERMISSION[gate]);
     const approval = (await pool.query(
       `INSERT INTO orchestrator_approvals (
          tenant_id, workflow_id, gate, object_type, object_id, object_version,
@@ -474,7 +518,7 @@ async function decide(req, tid, userId, pool, decision) {
        ) RETURNING *`,
       [
         tid, wf.id, gate,
-        String(body.object_type || 'workflow'),
+        'workflow',
         String(body.object_id || wf.id),
         wf.version,
         hash,
@@ -516,7 +560,8 @@ async function decide(req, tid, userId, pool, decision) {
      ) VALUES (
        $1,$2,$3,'workflow',$4,$5,$6,'[]'::jsonb,NULL,$7,'rejected',$8,$9::jsonb
      ) RETURNING *`,
-    [tid, wf.id, gate, wf.id, wf.version, hash, userId, comment, JSON.stringify(Array.from(req.permissions || []))]
+    [tid, wf.id, gate, wf.id, wf.version, hash, userId, comment,
+      JSON.stringify(permissionSnapshot(req, GATE_PERMISSION[gate]))]
   )).rows[0];
   await insertAudit(pool, {
     tenantId: tid,

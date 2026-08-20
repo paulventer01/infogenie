@@ -631,8 +631,16 @@ const _OWNER_GATE_ALLOW = [
   /^\/api\/integrations\/google-ads\//, // per-user Google Ads Connect OAuth flow
   /^\/api\/integrations\/meta-ads\//,   // per-user Meta Ads Connect OAuth flow
   // Tenant-scoped advertising workflows: gated by orchestrator.workflows.* via
-  // the matrix + per-handler requirePermission, not the legacy owner gate.
-  /^\/api\/agent-orchestrator\/workflows/,
+  // the matrix + per-handler requirePermission, not the legacy owner gate. That
+  // is what lets a marketer create/drive a workflow while every
+  // `approve.<gate>` and `recover` stays with owner/admin — under the owner gate
+  // a non-owner would get a blanket owner_only and the split would be moot.
+  //
+  // Path-anchored on purpose: the rest of the /api/agent-orchestrator hub
+  // (suggest, resolve, apply, history) stays owner-gated as before, and the
+  // trailing (\/|$) stops a look-alike prefix such as
+  // /api/agent-orchestrator/workflows-export from inheriting the exemption.
+  /^\/api\/agent-orchestrator\/workflows(?:\/|$)/,
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();

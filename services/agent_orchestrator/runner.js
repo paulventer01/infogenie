@@ -12,9 +12,12 @@ function newId(prefix) {
   return `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
 }
 
+// Numeric session user id, never an email. Zero/negative is the synthetic
+// api-key principal used when no owner row exists — not attributable, so it is
+// rejected rather than written into an approval or audit row.
 function actorId(req) {
   const n = Number(req && req.user && req.user.id);
-  return Number.isInteger(n) ? n : null;
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 function isTestFail(req) {
@@ -44,20 +47,32 @@ async function latestApproval(pool, tenantId, workflowId, gate) {
   return r.rows[0] || null;
 }
 
+// Audit detail is an ALLOWLIST, not a denylist: the trail records control-plane
+// facts (states, gates, codes, ids) and must not become a copy of the brief.
+// A denylist would leak the first field a future caller forgets to strip.
+const AUDIT_DETAIL_KEYS = Object.freeze([
+  'from', 'to', 'state', 'gate', 'phase', 'version', 'action',
+  'error_code', 'retry_class', 'step_id', 'lease_cleared', 'expired', 'stub',
+]);
+const AUDIT_VALUE_MAX = 120;
+
+function safeAuditDetail(detail) {
+  const out = {};
+  if (!detail || typeof detail !== 'object') return out;
+  for (const k of AUDIT_DETAIL_KEYS) {
+    const v = detail[k];
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'boolean' || typeof v === 'number') { out[k] = v; continue; }
+    if (typeof v === 'string') { out[k] = v.slice(0, AUDIT_VALUE_MAX); continue; }
+    // Objects/arrays are never control-plane facts here — drop rather than nest.
+  }
+  return out;
+}
+
 async function insertAudit(pool, {
   tenantId, workflowId, event, actorUserId, detail, requestId, state, gate, errorCode,
 }) {
-  const safe = detail && typeof detail === 'object' ? { ...detail } : {};
-  delete safe.offer;
-  delete safe.objective;
-  delete safe.product_or_service;
-  delete safe.landing_page_url;
-  delete safe.comment;
-  delete safe.brief;
-  delete safe.source;
-  delete safe.placeholder;
-  delete safe._estimated;
-  delete safe._fabricated;
+  const safe = safeAuditDetail(detail);
   await pool.query(
     `INSERT INTO orchestrator_audit_events
        (tenant_id, workflow_id, event, actor_user_id, detail)
@@ -236,7 +251,10 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
 
     const hold = testHoldMs(req);
     if (hold) await sleep(hold);
-    await heartbeatLease(pool, tenantId, workflow.id, holder);
+    // A break-glass recover/cancel force-releases the lease mid-run. If we no
+    // longer hold it, another holder owns this workflow's state: stop instead of
+    // advancing it a second time.
+    if (!await heartbeatLease(pool, tenantId, workflow.id, holder)) fail('lease_conflict');
 
     if (isTestFail(req)) {
       const forced = new Error('test_forced_failure');
@@ -261,6 +279,8 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
       stopAt = step;
       if (step.stop) break;
     }
+
+    if (!await heartbeatLease(pool, tenantId, workflow.id, holder)) fail('lease_conflict');
 
     workflow = await persistWorkflow(pool, tenantId, workflow.id, {
       current_state: stopAt.to,
@@ -296,6 +316,18 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
     await releaseLease(pool, tenantId, workflow.id, holder);
     return workflow;
   } catch (err) {
+    // Losing the lease means someone else owns this workflow's state now.
+    // Marking it failed here would clobber the live holder's write.
+    if (err && err.code === 'lease_conflict') {
+      try {
+        await pool.query(
+          `UPDATE orchestrator_steps SET state='abandoned', error_code='lease_conflict', completed_at=now()
+            WHERE id=$1 AND tenant_id=$2`,
+          [stepId, tenantId]
+        );
+      } catch (_) { /* ignore */ }
+      throw err;
+    }
     await markFailed(pool, {
       tenantId, workflow, stepId, holder, actorUserId, requestId, gate, err,
       failedState: failTargetFor(first.to),
@@ -307,6 +339,9 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
 module.exports = {
   newId,
   actorId,
+  isTestFail,
+  testHoldMs,
+  safeAuditDetail,
   loadWorkflow,
   persistWorkflow,
   insertAudit,

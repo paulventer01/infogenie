@@ -5,14 +5,22 @@ const { sha256Hex } = require('./hash');
 const { GATES, GATE_FOR_WAIT } = require('./states');
 
 const ALLOWED_PLATFORMS = Object.freeze(['meta', 'google', 'tiktok']);
+// Anything an approver is deciding ON. Editing one of these after a gate was
+// approved invalidates that approval — `currency` and the targeting lists are in
+// here because "1000 USD to US SMBs" and "1000 JPY to a different market" are
+// not the same authorisation, and `edit` is a weaker grant than `approve.*`.
 const MATERIAL_FIELDS = Object.freeze([
   'selected_platforms',
   'advertising_budget',
+  'currency',
+  'target_markets',
+  'target_audiences',
   'landing_page_url',
   'offer',
   'objective',
   'product_or_service',
 ]);
+const SET_FIELDS = Object.freeze(['selected_platforms', 'target_markets', 'target_audiences']);
 
 function asNumber(v) {
   if (v == null || v === '') return null;
@@ -23,6 +31,13 @@ function asNumber(v) {
 function asPlatforms(v) {
   if (!Array.isArray(v)) return [];
   return v.map((x) => String(x || '').toLowerCase().trim()).filter(Boolean);
+}
+
+// Order-insensitive list of strings for hashing/comparison. Case is preserved —
+// 'US' and 'us' are not asserted to be the same market.
+function asStrList(v) {
+  if (!Array.isArray(v)) return [];
+  return v.map((x) => String(x == null ? '' : x).trim()).filter(Boolean).sort();
 }
 
 function isSubset(inner, outer) {
@@ -43,6 +58,8 @@ function approvalSnapshot(workflow, gate) {
     selected_platforms: asPlatforms(workflow.selected_platforms).slice().sort(),
     advertising_budget: asNumber(workflow.advertising_budget),
     currency: String(workflow.currency || 'USD').toUpperCase(),
+    target_markets: asStrList(workflow.target_markets),
+    target_audiences: asStrList(workflow.target_audiences),
     landing_page_url: String(workflow.landing_page_url || ''),
     offer: String(workflow.offer || ''),
     objective: String(workflow.objective || ''),
@@ -89,6 +106,10 @@ function materialChanged(before, after) {
       if (a !== b) return true;
       continue;
     }
+    if (SET_FIELDS.includes(f)) {
+      if (asStrList(before[f]).join('\u0000') !== asStrList(after[f]).join('\u0000')) return true;
+      continue;
+    }
     if (f === 'advertising_budget') {
       if (asNumber(before[f]) !== asNumber(after[f])) return true;
       continue;
@@ -114,6 +135,7 @@ module.exports = {
   MATERIAL_FIELDS,
   asNumber,
   asPlatforms,
+  asStrList,
   isSubset,
   platformsAllowlisted,
   approvalSnapshot,
