@@ -58,6 +58,163 @@ Structured JSON logs via `services/infra/logger.js` (`LOG_LEVEL=info|debug|warn|
 5. Rate-limit any new **public** POST surface via `createRateLimiter`.
 6. Never log secrets, tokens, or raw credential vault payloads.
 
+## Meeting notes — outbound data flow (redaction deferred)
+
+`POST /api/meeting-notes/summarize` still sends **up to 12,000 transcript characters
+unredacted** to `api.openai.com`, together with the whitelisted contact fields
+(`name`, `company`, `role` only — `email`, `phone` and free-text keys are dropped
+before the prompt and before the row). No PII detection or masking runs on the
+transcript body today, so a caller who pastes a call transcript containing names,
+emails, phone numbers or account identifiers transmits them to the provider.
+
+Pre-transmission transcript redaction is a **separate follow-up PR owned by
+AI/LLM**; per-tenant AI rate/cost limiting is the PR after that. Neither is
+implemented here.
+
+At rest the same route is bound: the 500-character excerpt and the summary are
+AES-256-GCM encrypted through `services/credentials/vault.js` with AAD
+`meeting_notes_runs:tenant:<id>`, so a row lifted into another tenant fails the
+GCM auth tag instead of decrypting. Passing no AAD is byte-for-byte the pre-AAD
+behaviour, which is what keeps existing `platform_api_keys` and
+`user_integrations` rows readable. Excerpt material is NULLed 30 days after
+write by the sweeper (`sweepExpiredExcerpts`, `UPDATE` only — history rows are
+never deleted), and `generated_by` holds the numeric session user id, never an
+email.
+
+`contact` is narrowed at rest as well as on read. `backfillMeetingNotesEncryption()`
+in `services/meeting_notes/schema.js` runs as a boot task, walks each tenant in
+batches, and rewrites `contact` to the `{name, company, role}` whitelist — string
+values only, each capped at 200 characters — so `email`, `phone` and free-text keys
+written before the whitelist existed are removed from the row, not merely hidden.
+Values under an allowed key that are not strings (a nested object, say) or that run
+past the cap are rewritten too, and an array or scalar `contact` collapses to `{}`.
+The API narrows `contact` again on read (`_whitelistedContact` in `api.js`), so a row
+the backfill has not reached yet still cannot surface `email` / `phone` through
+`/api/meeting-notes/history` or the detail route.
+
+Because it runs on the boot path the sweep must not hang: malformed `summary` JSONB
+(an array or a scalar) is encrypted rather than passed over, and any selected row the scrubber
+would leave unchanged is excluded from the rest of that tenant's batch loop instead
+of being re-selected forever.
+
+### The backfill fails closed
+
+A backfill that logged a warning and returned success would let historical
+plaintext sit on disk indefinitely behind a green boot. It does not.
+`verifyMeetingNotesEncryption()` re-reads the table after the scrub pass, walking
+every distinct `tenant_id` on `meeting_notes_runs` — including ids with no
+matching `tenants` row — with a tenant-scoped `COUNT` per tenant. A row is
+non-compliant when any of these hold:
+
+| Reason key | Residual it catches |
+|---|---|
+| `plaintext_excerpt` | `transcript_excerpt` still non-NULL, with or without ciphertext |
+| `plaintext_summary` | non-empty `summary` JSONB, with or without ciphertext |
+| `email_generated_by` | `generated_by` still looks like an address |
+| `contact_non_object` | array / scalar `contact` |
+| `contact_extra_keys` | any key outside `{name, company, role}` |
+| `contact_non_string` | an allowed key holding a non-string |
+| `contact_too_long` | an allowed value past 200 characters |
+| `partial_excerpt_crypto` | 1–2 of ciphertext/IV/tag NULL |
+| `partial_summary_crypto` | 1–2 of ciphertext/IV/tag NULL |
+| `verify_query` | the tenant's verification query itself failed |
+
+The two `partial_*_crypto` arms are defence in depth: the
+`meeting_notes_runs_{excerpt,summary}_crypto_check` CHECK constraints already
+reject a half-written crypto triple at write time, but those `ALTER`s are wrapped
+in try/catch so an older database can boot without them.
+
+The first two arms deliberately ignore whether ciphertext exists. A row can hold
+plaintext *and* a complete ciphertext triple at once, and gating on
+`… IS NULL` would have let that leftover plaintext sit on disk forever while
+verification reported success. The backfill selects those rows too and heals them
+according to the state of the triple:
+
+| Triple | Backfill action |
+|---|---|
+| missing (all three NULL) | encrypt, then NULL the plaintext and set the 30-day TTL |
+| complete (all three set) | drop the plaintext only — no re-encryption, so ciphertext, IV and tag stay byte-identical |
+| partial (1–2 NULL) | leave the row alone; it stays non-compliant |
+
+The partial case is refused on purpose. A ciphertext with no IV or tag cannot be
+decrypted, so the plaintext beside it is the only readable copy — dropping it
+would destroy data, and keeping it silently would leave PII at rest. Failing the
+boot hands that decision to an operator. Rows in that state are selected by the
+backfill but changed by nothing, so the batch loop's stall guard excludes them
+from the rest of the tenant's walk rather than re-selecting them forever.
+
+Success requires **zero** row errors and **zero** non-compliant rows. Anything
+else is a failure:
+
+- **Production** — `backfillMeetingNotesEncryption()` throws a counts-only error
+  and the `server.js` boot task calls `process.exit(1)`. The same is true of the
+  retention sweep. The process therefore does not stay up with known leftovers,
+  and the deployment fails rather than rolling out. Note what this does *not*
+  say: `listen` is not gated on boot-task completion. `app.listen` runs
+  synchronously while the shared `BOOT_TASKS` loop in
+  `services/cloudflare_status/routes.js` is an unawaited async IIFE, so the port
+  is already bound when verification runs and there is a brief window in which
+  the process accepts connections before it exits. Treat the non-zero exit as the
+  control, not the absence of a listening socket.
+- **Development** — the call returns `{ ok: false, … }` with the counts so local
+  work is not blocked.
+
+Failure telemetry is aggregate-only: per-reason counts plus at most 50 row
+references of the form `{tenant_id, id}`. Postgres error text is never
+interpolated into a log line or a Sentry event — a constraint or `detail:` string
+can quote the offending value, so the pg error object is discarded and a
+synthetic `new Error(<event name>)` is captured instead. The boot-task catch in
+`server.js` logs the caught message only when it carries a known
+`[meeting-notes]` / `meeting_notes_` prefix, and substitutes a generic string
+otherwise.
+
+### The 30-day excerpt promise is monitorable
+
+`sweepExpiredExcerpts()` NULLs `transcript_excerpt`, `excerpt_ciphertext`,
+`excerpt_iv` and `excerpt_tag` together (so the CHECK constraint stays satisfied)
+and stamps `transcript_purged_at`. It is `UPDATE`-only, tenant by tenant, with
+`WHERE tenant_id = $1`; the encrypted summary columns are untouched and no
+history row is ever deleted.
+
+The sweep is observable rather than best-effort:
+
+- It runs at boot and then on a 6-hour `setInterval`, registered at require time
+  behind `runtime_flags.backgroundEnabled()` — that is, only under
+  `node server.js` (`npm start`), never under `buildApp()` in tests.
+- `verifyOverdueExcerpts()` re-counts overdue rows after the purge. Leftovers log
+  `meeting_notes_excerpt_retention_overdue` at error level and raise a Sentry
+  event.
+- Per-tenant `UPDATE` failures are counted and reported, not swallowed. The
+  recurring interval's `.catch` logs and captures too.
+- `getExcerptSweepMetrics()` exposes `lastStartAt` / `lastCompletedAt` /
+  `lastSuccessAt` / `lastPurged` / `lastFailures` / `lastOverdue` plus running
+  totals, in process only — it is not mounted on any route. `lastSuccessAt` is
+  stamped only when the run had zero failures **and** zero overdue leftovers, so
+  a stale `lastSuccessAt` is the signal that retention has stopped working.
+
+Accepted residuals:
+
+- A dev boot with no `CREDENTIAL_ENCRYPTION_KEY` writes the summary as plaintext
+  JSONB. Production refuses to boot without the key, so this is dev-only.
+- `transcript_sha256` is retained after the excerpt is purged (integrity /
+  dedupe). It is a plain SHA-256, not a keyed HMAC.
+- A JSONB `null` `contact` stays `null` at rest instead of being rewritten to `{}`.
+  It holds no PII and the API still presents `{}`, so the backfill skips the row
+  rather than spending a write on it.
+- The sweep predicate requires a non-NULL `excerpt_expires_at`, so excerpt
+  material written without a TTL would never expire. Both `/summarize` insert
+  branches and the backfill set the column, so no such row exists today — any new
+  write path must keep setting it.
+- Healing a row that already carries a complete triple trusts that triple: the
+  leftover plaintext is dropped without first decrypting the ciphertext to check
+  the two agree. Confidentiality is the reason — the plaintext is the exposure —
+  but if a triple were ever stale or bound to a different tenant's AAD, the
+  plaintext is discarded rather than reconciled, and the read path surfaces `{}`
+  for a summary it cannot decrypt.
+- A row holding plaintext beside a *partial* triple is never repaired
+  automatically, so production keeps failing its boot until an operator resolves
+  it. That is the intended outcome; see the triple table above.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
