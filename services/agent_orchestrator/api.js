@@ -270,4 +270,7 @@ router.get('/history', _route(async (req, res) => {
   res.json({ ok: true, runs: r.rows });
 }));
 
+const workflowsApi = require('./workflows_api');
+router.use('/workflows', workflowsApi);
+
 module.exports = router;

@@ -38,31 +38,39 @@ test('validatePassword enforces length and complexity', () => {
   assert.ok(MIN_LENGTH >= 10);
 });
 
-test('createRateLimiter returns 429 after max', () => {
+// The limiter resolves its verdict through a promise (Redis first, process-local
+// window as the fallback), so each call has to be awaited. Asserting
+// synchronously reads the counters before any verdict has landed.
+test('createRateLimiter returns 429 after max', async () => {
   const lim = createRateLimiter({ name: 't', windowMs: 60_000, max: 2, keyFn: () => 'k' });
   const calls = [];
-  const makeRes = () => {
+  let nextCount = 0;
+  const hit = () => new Promise((resolve, reject) => {
     const headers = {};
-    return {
+    const res = {
       setHeader: (k, v) => { headers[k] = v; },
       status(code) {
         return {
           json(body) {
             calls.push({ code, body, headers: { ...headers } });
+            resolve();
           },
         };
       },
     };
-  };
-  let nextCount = 0;
-  const next = () => { nextCount += 1; };
-  lim({ path: '/x' }, makeRes(), next);
-  lim({ path: '/x' }, makeRes(), next);
-  lim({ path: '/x' }, makeRes(), next);
+    try {
+      lim({ path: '/x' }, res, () => { nextCount += 1; resolve(); });
+    } catch (err) { reject(err); }
+  });
+
+  await hit();
+  await hit();
+  await hit();
   assert.equal(nextCount, 2);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].code, 429);
   assert.equal(calls[0].body.error, 'rate_limited');
+  assert.equal(calls[0].headers['Retry-After'], '60');
   lim.reset();
 });
 
@@ -87,6 +95,18 @@ test('the guardrails doc documents fail-closed backfill and observable retention
   // Residuals an operator has to keep in mind stay written down.
   assert.match(flat, /`transcript_sha256` is retained after the excerpt is purged/);
   assert.match(flat, /A JSONB `null` `contact` stays `null` at rest/);
+});
+
+// The orchestrator control plane is the first hub surface a non-owner role can
+// reach, and it ships with a stub runner. The two disclosures below are what an
+// operator (and the PR that finally fetches a landing page) needs to see.
+test('the guardrails doc discloses the orchestrator residuals', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.match(flat, /A host denylist is required \*\*before\*\* any agent fetches that URL\./);
+  assert.match(flat, /`POST \/:id\/advance` requires `orchestrator\.workflows\.edit`, not an approve key/);
+  assert.match(flat, /`GET \/:id\/timeline` requires `orchestrator\.workflows\.audit\.view`/);
+  assert.match(flat, /`object_version` is \*\*required\*\* on approve/);
 });
 
 // The shared BOOT_TASKS loop is an unawaited IIFE, so the port is bound before

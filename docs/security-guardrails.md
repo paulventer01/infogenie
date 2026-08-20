@@ -58,6 +58,107 @@ Structured JSON logs via `services/infra/logger.js` (`LOG_LEVEL=info|debug|warn|
 5. Rate-limit any new **public** POST surface via `createRateLimiter`.
 6. Never log secrets, tokens, or raw credential vault payloads.
 
+## Advertising orchestrator — control-plane authorization (PR 1)
+
+`/api/agent-orchestrator/workflows` is the first surface in the hub that
+non-owner roles can reach. Three controls stack, and none of them is optional:
+
+1. **Owner gate exemption** — `_OWNER_GATE_ALLOW` in `server.js` exempts
+   `/^\/api\/agent-orchestrator\/workflows(?:\/|$)/` only. Without it every
+   non-owner would get a blanket `owner_only` and the per-gate permission split
+   below would be unreachable. It is path-anchored: the rest of the hub
+   (`suggest`, `resolve`, `apply`, `history`) stays owner-gated, and a look-alike
+   prefix such as `/workflows-export` does not inherit the exemption.
+2. **Route group** — `{ prefix: '/api/agent-orchestrator/workflows', view/write:
+   'orchestrator.workflows.view' }`. `write` equals `view` deliberately: the
+   coarse group only decides "may this role touch workflows at all".
+3. **Per-action `requirePermission`** — the real boundary. Create, edit,
+   request-approval, pause, resume, cancel and recover each require their own
+   key; approve/reject require `orchestrator.workflows.approve.<gate>` for the
+   gate named in the body. A Marketer can build and drive a workflow and cannot
+   approve any gate or recover one. The audit trail is a further separate
+   authority: `GET /:id/timeline` requires `orchestrator.workflows.audit.view`,
+   which a Marketer does not hold, while state, approvals and steps stay on
+   `.view`.
+
+Tenant isolation: every read and write resolves the tenant from the session via
+`resolveTenantId(req, { label })` and filters on it. Body `tenant_id` / `user_id`
+are stripped from the idempotency hash and ignored by every handler, so a
+cross-tenant id is a 404, not a 403 — the existence of another workspace's
+workflow is not disclosed.
+
+Approval integrity:
+
+- `content_hash` is server-computed over a canonical snapshot
+  (`services/agent_orchestrator/hash.js`); the client never supplies it.
+- `object_version` is **required** on approve. It is the approver's statement of
+  which revision they read; a mismatch is `approval_stale`.
+- The snapshot covers platforms, budget, **currency** and the **targeting
+  lists** as well as the brief, so re-denominating or retargeting an approved
+  workflow invalidates the approval. `edit` is a weaker grant than
+  `approve.<gate>`, and this is what stops an editor from changing what was
+  approved out from under it.
+- Approvals and audit events are UPDATE-immutable by trigger; DELETE is only
+  reachable through the parent workflow/tenant cascade.
+- `actor_user_id` is the numeric session user id, never an email. A principal
+  with no attributable positive user id cannot mutate a workflow at all.
+- Audit `detail` is an **allowlist** of control-plane keys, so brief material
+  (offer, objective, comment) cannot reach the trail or the log line.
+
+Execution leases vs. concurrent mutations — `acquireLease` takes `SELECT … FOR
+UPDATE` but **commits** before the phase runs, so the row lock does not span the
+run. Three rules close that window, and a change to any one of them needs a
+re-review:
+
+- The runner re-validates `canTransition`, the advance chain and approval
+  freshness against the row it read *under* the lease, not the row it read
+  before it.
+- **Every state-moving write is guarded on the row the caller validated**, not
+  just the runner's. The advance write requires the `version` *and*
+  `current_state` it locked; `PATCH`, `request-approval`, `approve`, `resume` and
+  `recover` require the state (and, where the decision was version-bound, the
+  version) they read. A guarded write that matches no row is classified from the
+  live row — `workflow_cancelled`, `workflow_paused`, `approval_stale`,
+  `invalid_transition` — and never retried over it. For the runner that also
+  means the step is marked `abandoned` and the lease is handed back.
+  Read-validate-then-write-unconditionally is the bug class here: it let a
+  concurrent `resume` or `PATCH` lift a completed `cancel`, and let a finishing
+  runner revert a `pause`.
+- Mutations that would move bound fields or state under a live lease refuse with
+  409 `execution_in_progress`: material `PATCH`, `request-approval`, `approve`,
+  `resume`. `pause` and `cancel` are the stop orders and always land — `pause`
+  copies `previous_state` from the row inside its own `UPDATE`, so a resume
+  cannot rewind onto a phase that finished after the read and replay it on the
+  same approval (that is `recover` authority, owner/admin only).
+
+Accepted residuals:
+
+- Phase side effects are **at-least-once**, not exactly-once. A runner that is
+  refused at the guarded write (or whose lease is force-released by `recover`)
+  has already invoked its phase handler. PR 1 handlers are stubs with no
+  external effect; a phase that calls an ad platform needs a per-step
+  idempotency key against that platform before it ships.
+- `landing_page_url` is validated as `https:`, credential-free and ≤2048 chars,
+  but is **not** screened against private, loopback or link-local hosts. Nothing
+  dereferences it in PR 1 — the runner is a stub — so there is no SSRF sink yet.
+  A host denylist is required **before** any agent fetches that URL.
+- `POST /:id/advance` requires `orchestrator.workflows.edit`, not an approve key.
+  Execution is mechanical: it refuses to run unless a fresh approval whose
+  `content_hash` and `object_version` still match the workflow exists for the
+  phase's gate. Running an approved phase is therefore not the same authority as
+  approving one.
+- Idempotency keys are caller-chosen and scoped `(tenant_id, key)`. There is no
+  cross-tenant collision, but inside one tenant a user can claim a key another
+  user then reuses (replay of the stored response, or `idempotency_conflict` on a
+  different body/endpoint). A request whose process died leaves its key at
+  `response_status=0`, which answers `execution_in_progress` for that key.
+- `permission_snapshot` on an approval by a platform owner/admin records
+  `platform_admin_bypass` plus the gate key rather than an enumerated grant list,
+  because those principals bypass `req.can()` entirely.
+- `X-Orch-Test-Fail` / `X-Orch-Test-Hold` are honoured only when `NODE_ENV` is
+  exactly `test`. They are inert in production, in development and when
+  `NODE_ENV` is unset.
+
 ## Meeting notes — outbound data flow (redaction deferred)
 
 `POST /api/meeting-notes/summarize` still sends **up to 12,000 transcript characters
