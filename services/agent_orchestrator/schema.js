@@ -312,18 +312,41 @@ async function ensureAgentOrchestratorSchema() {
   await _ensureNamedUnique(p, 'orchestrator_execution_leases',
     'orchestrator_execution_leases_tenant_unique_workflow_id', 'tenant_id, workflow_id');
 
+  // UPDATE is always rejected. Direct DELETE is rejected while the parent
+  // orchestrator_workflows row still exists. FK ON DELETE CASCADE (workflow
+  // teardown and tenant teardown) runs after the parent row is gone, so the
+  // EXISTS check returns false and the child delete is allowed. Verified on
+  // Postgres 16: parent-EXISTS is sufficient; pg_trigger_depth() not required.
   await p.query(`
     CREATE OR REPLACE FUNCTION orchestrator_approvals_immutable()
     RETURNS trigger AS $fn$
     BEGIN
-      RAISE EXCEPTION 'orchestrator_approvals_immutable';
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_approvals_immutable';
+      END IF;
+      IF EXISTS (
+        SELECT 1 FROM orchestrator_workflows w
+         WHERE w.id = OLD.workflow_id AND w.tenant_id = OLD.tenant_id
+      ) THEN
+        RAISE EXCEPTION 'orchestrator_approvals_immutable';
+      END IF;
+      RETURN OLD;
     END;
     $fn$ LANGUAGE plpgsql;
 
     CREATE OR REPLACE FUNCTION orchestrator_audit_events_immutable()
     RETURNS trigger AS $fn$
     BEGIN
-      RAISE EXCEPTION 'orchestrator_audit_events_immutable';
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_audit_events_immutable';
+      END IF;
+      IF EXISTS (
+        SELECT 1 FROM orchestrator_workflows w
+         WHERE w.id = OLD.workflow_id AND w.tenant_id = OLD.tenant_id
+      ) THEN
+        RAISE EXCEPTION 'orchestrator_audit_events_immutable';
+      END IF;
+      RETURN OLD;
     END;
     $fn$ LANGUAGE plpgsql;
 

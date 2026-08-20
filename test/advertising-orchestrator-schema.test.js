@@ -92,9 +92,6 @@ if (!HAS_DB) {
     const p = db.getPool();
     const ids = [tenantA, tenantB].filter(Boolean);
     if (!ids.length) return;
-    // Immutable tables block DELETE; TRUNCATE bypasses row triggers so tenant
-    // CASCADE cleanup can proceed for the remaining child tables.
-    await p.query(`TRUNCATE orchestrator_approvals, orchestrator_audit_events`);
     await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]);
   });
 
@@ -196,7 +193,7 @@ if (!HAS_DB) {
     );
   });
 
-  test('approvals and audit_events immutable triggers reject UPDATE and DELETE', async () => {
+  test('approvals and audit_events reject UPDATE and direct DELETE while the parent workflow exists', async () => {
     const p = db.getPool();
     const wfId = `owf-immut-${SUFFIX}`;
     await p.query(
@@ -235,6 +232,89 @@ if (!HAS_DB) {
       () => p.query(`DELETE FROM orchestrator_audit_events WHERE id=$1`, [audit.id]),
       /orchestrator_audit_events_immutable/
     );
+
+    const still = await p.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM orchestrator_approvals WHERE id=$1) AS approvals,
+         (SELECT COUNT(*)::int FROM orchestrator_audit_events WHERE id=$2) AS audit`,
+      [approval.id, audit.id]
+    );
+    assert.strictEqual(still.rows[0].approvals, 1, 'direct delete must not remove the approval');
+    assert.strictEqual(still.rows[0].audit, 1, 'direct delete must not remove the audit event');
+  });
+
+  test('DELETE FROM orchestrator_workflows cascades approvals and audit_events', async () => {
+    const p = db.getPool();
+    const wfId = `owf-wfcascade-${SUFFIX}`;
+    await p.query(
+      `INSERT INTO orchestrator_workflows (id, tenant_id, name) VALUES ($1,$2,$3)`,
+      [wfId, tenantA, 'workflow cascade host']
+    );
+    const approval = (await p.query(
+      `INSERT INTO orchestrator_approvals
+         (tenant_id, workflow_id, gate, content_hash, decision)
+       VALUES ($1,$2,'research_execution',$3,'approved')
+       RETURNING id`,
+      [tenantA, wfId, 'sha256-wf-cascade']
+    )).rows[0];
+    const audit = (await p.query(
+      `INSERT INTO orchestrator_audit_events (tenant_id, workflow_id, event)
+       VALUES ($1,$2,'workflow_created')
+       RETURNING id`,
+      [tenantA, wfId]
+    )).rows[0];
+
+    await p.query(`DELETE FROM orchestrator_workflows WHERE id=$1 AND tenant_id=$2`, [wfId, tenantA]);
+
+    const left = await p.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM orchestrator_workflows WHERE id=$1) AS workflows,
+         (SELECT COUNT(*)::int FROM orchestrator_approvals WHERE id=$2) AS approvals,
+         (SELECT COUNT(*)::int FROM orchestrator_audit_events WHERE id=$3) AS audit`,
+      [wfId, approval.id, audit.id]
+    );
+    assert.strictEqual(left.rows[0].workflows, 0);
+    assert.strictEqual(left.rows[0].approvals, 0, 'workflow DELETE must cascade approvals');
+    assert.strictEqual(left.rows[0].audit, 0, 'workflow DELETE must cascade audit events');
+  });
+
+  test('DELETE FROM tenants cascades workflows, approvals, and audit_events', async () => {
+    const p = db.getPool();
+    const tenantC = (await p.query(
+      `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+      [`AO C ${SUFFIX}`, `ao-c-${SUFFIX}`]
+    )).rows[0].id;
+    const wfId = `owf-tenantcascade-${SUFFIX}`;
+    await p.query(
+      `INSERT INTO orchestrator_workflows (id, tenant_id, name) VALUES ($1,$2,$3)`,
+      [wfId, tenantC, 'tenant cascade host']
+    );
+    await p.query(
+      `INSERT INTO orchestrator_approvals
+         (tenant_id, workflow_id, gate, content_hash, decision)
+       VALUES ($1,$2,'research_execution',$3,'approved')`,
+      [tenantC, wfId, 'sha256-tenant-cascade']
+    );
+    await p.query(
+      `INSERT INTO orchestrator_audit_events (tenant_id, workflow_id, event)
+       VALUES ($1,$2,'workflow_created')`,
+      [tenantC, wfId]
+    );
+
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantC]);
+
+    const left = await p.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM tenants WHERE id=$1) AS tenants,
+         (SELECT COUNT(*)::int FROM orchestrator_workflows WHERE tenant_id=$1) AS workflows,
+         (SELECT COUNT(*)::int FROM orchestrator_approvals WHERE tenant_id=$1) AS approvals,
+         (SELECT COUNT(*)::int FROM orchestrator_audit_events WHERE tenant_id=$1) AS audit`,
+      [tenantC]
+    );
+    assert.strictEqual(left.rows[0].tenants, 0);
+    assert.strictEqual(left.rows[0].workflows, 0, 'tenant DELETE must cascade workflows');
+    assert.strictEqual(left.rows[0].approvals, 0, 'tenant DELETE must cascade approvals');
+    assert.strictEqual(left.rows[0].audit, 0, 'tenant DELETE must cascade audit events');
   });
 
   test('second ensureAgentOrchestratorSchema is idempotent', async () => {
