@@ -38,31 +38,39 @@ test('validatePassword enforces length and complexity', () => {
   assert.ok(MIN_LENGTH >= 10);
 });
 
-test('createRateLimiter returns 429 after max', () => {
+// The limiter resolves its verdict through a promise (Redis first, process-local
+// window as the fallback), so each call has to be awaited. Asserting
+// synchronously reads the counters before any verdict has landed.
+test('createRateLimiter returns 429 after max', async () => {
   const lim = createRateLimiter({ name: 't', windowMs: 60_000, max: 2, keyFn: () => 'k' });
   const calls = [];
-  const makeRes = () => {
+  let nextCount = 0;
+  const hit = () => new Promise((resolve, reject) => {
     const headers = {};
-    return {
+    const res = {
       setHeader: (k, v) => { headers[k] = v; },
       status(code) {
         return {
           json(body) {
             calls.push({ code, body, headers: { ...headers } });
+            resolve();
           },
         };
       },
     };
-  };
-  let nextCount = 0;
-  const next = () => { nextCount += 1; };
-  lim({ path: '/x' }, makeRes(), next);
-  lim({ path: '/x' }, makeRes(), next);
-  lim({ path: '/x' }, makeRes(), next);
+    try {
+      lim({ path: '/x' }, res, () => { nextCount += 1; resolve(); });
+    } catch (err) { reject(err); }
+  });
+
+  await hit();
+  await hit();
+  await hit();
   assert.equal(nextCount, 2);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].code, 429);
   assert.equal(calls[0].body.error, 'rate_limited');
+  assert.equal(calls[0].headers['Retry-After'], '60');
   lim.reset();
 });
 
