@@ -5,6 +5,28 @@ import { useRouter } from "next/navigation";
 import { apiFetch, apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
 
+const MICROS_PER_USD = 1_000_000;
+
+function formatMicros(n: number | string | null | undefined): string {
+  return (Number(n || 0) / MICROS_PER_USD).toFixed(2);
+}
+
+function dollarsToMicros(dollars: string | number): number {
+  const n = Number(dollars);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n * MICROS_PER_USD);
+}
+
+const BLOCK_REASON_LABELS: Record<string, string> = {
+  insufficient_credits: "Insufficient credits — add a grant or reduce spend.",
+  credit_ceiling_exceeded: "Workflow credit ceiling exceeded — raise the workflow ceiling or reduce cost.",
+  rate_limit_exceeded: "AI request rate limit exceeded — wait or raise tenant limits.",
+  concurrency_limit_exceeded: "Too many concurrent AI operations — wait or raise tenant limits.",
+  tenant_cost_limit_exceeded: "Tenant daily or monthly AI cost limit exceeded.",
+};
+
+const RESERVATION_STATUSES = new Set(["failed", "released", "reserved"]);
+
 interface Mod {
   id: string;
   label: string;
@@ -39,8 +61,56 @@ interface Workflow {
   current_phase: string;
   next_approval_gate: string | null;
   version: number;
+  credit_ceiling_micros?: number;
+  block_reason?: string | null;
+  blocked_at?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+interface CreditAccount {
+  available_micros: number;
+  reserved_micros: number;
+  consumed_micros: number;
+  currency: string;
+}
+
+interface CreditLimits {
+  credit_ceiling_micros: number;
+  requests_per_minute: number;
+  max_concurrent_ai: number;
+  daily_ai_cost_micros: number;
+  monthly_ai_cost_micros: number;
+  per_workflow_cost_micros: number;
+  provider_limits: Record<string, unknown>;
+}
+
+interface CreditReservation {
+  id: string;
+  workflow_id: string;
+  amount_micros: number;
+  status: string;
+  estimated_cost_micros: number;
+  actual_cost_micros: number | null;
+  cost_status: string | null;
+  provider: string | null;
+  operation: string | null;
+  created_at: string;
+}
+
+interface CreditsSnapshot {
+  account: CreditAccount;
+  limits: CreditLimits;
+  usage: { daily_micros: number; monthly_micros: number };
+  reservations: CreditReservation[];
+  workflows: Array<{
+    id: string;
+    name: string | null;
+    current_state: string;
+    credit_ceiling_micros: number;
+    block_reason: string | null;
+    blocked_at: string | null;
+  }>;
 }
 
 interface Approval {
@@ -167,7 +237,7 @@ function validateHttpsUrl(raw: string): boolean {
 
 async function orchMutate<T extends { ok: boolean; error?: string }>(
   path: string,
-  method: "POST" | "PATCH",
+  method: "POST" | "PATCH" | "PUT",
   body?: unknown,
 ): Promise<T> {
   const key = crypto.randomUUID();
@@ -213,9 +283,30 @@ export default function AgentOrchestrator() {
     landing_page_url: "",
     selected_platforms: ["meta"] as string[],
     advertising_budget: "",
+    credit_ceiling_dollars: "0",
     currency: "USD",
   });
   const [createError, setCreateError] = useState("");
+  const [editCeilingDollars, setEditCeilingDollars] = useState("0");
+
+  const [creditsStatus, setCreditsStatus] = useState<LoadStatus>("loading");
+  const [creditsLoadError, setCreditsLoadError] = useState("");
+  const [creditsData, setCreditsData] = useState<CreditsSnapshot | null>(null);
+  const [creditsBusy, setCreditsBusy] = useState("");
+  const [creditsMsg, setCreditsMsg] = useState("");
+  const [creditsMsgIsError, setCreditsMsgIsError] = useState(false);
+  const [grantAmount, setGrantAmount] = useState("");
+  const [adjustAmount, setAdjustAmount] = useState("");
+  const [adjustDirection, setAdjustDirection] = useState<"credit" | "debit">("credit");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [limitsForm, setLimitsForm] = useState({
+    credit_ceiling_dollars: "0",
+    requests_per_minute: "0",
+    max_concurrent_ai: "0",
+    daily_ai_cost_dollars: "0",
+    monthly_ai_cost_dollars: "0",
+    per_workflow_cost_dollars: "0",
+  });
 
   const can = useCallback(
     (key: string) => isPlatformAdmin || permissions.includes(key),
@@ -268,6 +359,59 @@ export default function AgentOrchestrator() {
     setWfStatus("ready");
   }, []);
 
+  const loadCredits = useCallback(async () => {
+    if (!can("orchestrator.credits.view")) {
+      setCreditsData(null);
+      setCreditsLoadError("");
+      setCreditsStatus("ready");
+      return;
+    }
+    setCreditsStatus("loading");
+    setCreditsLoadError("");
+    const r = await apiGet<{ ok: boolean; error?: string } & Partial<CreditsSnapshot>>(
+      "/api/agent-orchestrator/credits",
+    );
+    if (r.ok === false) {
+      setCreditsData(null);
+      setCreditsLoadError(r.error || "Failed to load credit accounting.");
+      setCreditsStatus("error");
+      return;
+    }
+    const snap: CreditsSnapshot = {
+      account: r.account || {
+        available_micros: 0,
+        reserved_micros: 0,
+        consumed_micros: 0,
+        currency: "USD",
+      },
+      limits: r.limits || {
+        credit_ceiling_micros: 0,
+        requests_per_minute: 0,
+        max_concurrent_ai: 0,
+        daily_ai_cost_micros: 0,
+        monthly_ai_cost_micros: 0,
+        per_workflow_cost_micros: 0,
+        provider_limits: {},
+      },
+      usage: r.usage || { daily_micros: 0, monthly_micros: 0 },
+      reservations: r.reservations || [],
+      workflows: r.workflows || [],
+    };
+    setCreditsData(snap);
+    setCreditsLoadError("");
+    setCreditsStatus("ready");
+    if (can("orchestrator.credits.limits.edit")) {
+      setLimitsForm({
+        credit_ceiling_dollars: formatMicros(snap.limits.credit_ceiling_micros),
+        requests_per_minute: String(snap.limits.requests_per_minute ?? 0),
+        max_concurrent_ai: String(snap.limits.max_concurrent_ai ?? 0),
+        daily_ai_cost_dollars: formatMicros(snap.limits.daily_ai_cost_micros),
+        monthly_ai_cost_dollars: formatMicros(snap.limits.monthly_ai_cost_micros),
+        per_workflow_cost_dollars: formatMicros(snap.limits.per_workflow_cost_micros),
+      });
+    }
+  }, [can]);
+
   const loadSelected = useCallback(async (id: string) => {
     setDetailLoading(true);
     setTimeline(null);
@@ -287,6 +431,9 @@ export default function AgentOrchestrator() {
     }
     const wf = wfRes.workflow || null;
     setSelected(wf);
+    if (wf) {
+      setEditCeilingDollars(formatMicros(wf.credit_ceiling_micros ?? 0));
+    }
 
     const [apRes, stRes] = await Promise.all([
       apiGet<{ ok: boolean; approvals?: Approval[]; error?: string }>(
@@ -318,6 +465,9 @@ export default function AgentOrchestrator() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadPerms(); }, [loadPerms]);
   useEffect(() => { loadWorkflows(); }, [loadWorkflows]);
+  useEffect(() => {
+    if (permissions.length > 0 || isPlatformAdmin) loadCredits();
+  }, [loadCredits, permissions, isPlatformAdmin]);
 
   useEffect(() => {
     if (selectedId) loadSelected(selectedId);
@@ -371,6 +521,7 @@ export default function AgentOrchestrator() {
   async function refreshAfterMutation(id: string) {
     await loadWorkflows();
     await loadSelected(id);
+    await loadCredits();
   }
 
   async function createWorkflow() {
@@ -394,6 +545,8 @@ export default function AgentOrchestrator() {
     }
     if (!can("orchestrator.workflows.create")) return;
 
+    const ceilingMicros = dollarsToMicros(createForm.credit_ceiling_dollars);
+
     setWfBusy("create");
     setWfMsg("");
     const r = await orchMutate<{ ok: boolean; workflow?: Workflow; error?: string }>(
@@ -407,6 +560,7 @@ export default function AgentOrchestrator() {
         landing_page_url: createForm.landing_page_url.trim(),
         selected_platforms: createForm.selected_platforms,
         advertising_budget: budget,
+        credit_ceiling_micros: ceilingMicros,
         currency: createForm.currency.trim().toUpperCase() || "USD",
       },
     );
@@ -425,6 +579,7 @@ export default function AgentOrchestrator() {
       landing_page_url: "",
       selected_platforms: ["meta"],
       advertising_budget: "",
+      credit_ceiling_dollars: "0",
       currency: "USD",
     });
     if (r.workflow) {
@@ -471,9 +626,121 @@ export default function AgentOrchestrator() {
       object_version: wf.version,
       platforms: wf.selected_platforms,
       advertising_budget: wf.advertising_budget,
-      credit_ceiling: 0,
+      credit_ceiling_micros: Number(wf.credit_ceiling_micros ?? 0),
       ...(comment ? { comment } : {}),
     };
+  }
+
+  async function saveWorkflowCeiling() {
+    if (!selected || !can("orchestrator.workflows.edit")) return;
+    setWfBusy("edit-ceiling");
+    setWfMsg("");
+    setWfMsgIsError(false);
+    const r = await orchMutate<{ ok: boolean; workflow?: Workflow; error?: string }>(
+      `/api/agent-orchestrator/workflows/${selected.id}`,
+      "PATCH",
+      { credit_ceiling_micros: dollarsToMicros(editCeilingDollars) },
+    );
+    setWfBusy("");
+    if (r.ok === false) {
+      setWfMsgIsError(true);
+      setWfMsg(r.error || "Update credit ceiling failed");
+      return;
+    }
+    setWfMsgIsError(false);
+    setWfMsg("Workflow credit ceiling updated.");
+    await refreshAfterMutation(selected.id);
+  }
+
+  async function submitGrant() {
+    if (!can("orchestrator.credits.grant")) return;
+    const micros = dollarsToMicros(grantAmount);
+    if (micros <= 0) {
+      setCreditsMsgIsError(true);
+      setCreditsMsg("Grant amount must be greater than zero.");
+      return;
+    }
+    setCreditsBusy("grant");
+    setCreditsMsg("");
+    const r = await orchMutate<{ ok: boolean; account?: CreditAccount; error?: string }>(
+      "/api/agent-orchestrator/credits/grant",
+      "POST",
+      { amount_micros: micros },
+    );
+    setCreditsBusy("");
+    if (r.ok === false) {
+      setCreditsMsgIsError(true);
+      setCreditsMsg(r.error || "Grant failed");
+      return;
+    }
+    setCreditsMsgIsError(false);
+    setCreditsMsg("Credits granted.");
+    setGrantAmount("");
+    await loadCredits();
+  }
+
+  async function submitAdjust() {
+    if (!can("orchestrator.credits.adjust")) return;
+    const micros = dollarsToMicros(adjustAmount);
+    if (micros <= 0) {
+      setCreditsMsgIsError(true);
+      setCreditsMsg("Adjustment amount must be greater than zero.");
+      return;
+    }
+    if (!adjustReason.trim()) {
+      setCreditsMsgIsError(true);
+      setCreditsMsg("Reason code is required.");
+      return;
+    }
+    setCreditsBusy("adjust");
+    setCreditsMsg("");
+    const r = await orchMutate<{ ok: boolean; account?: CreditAccount; error?: string }>(
+      "/api/agent-orchestrator/credits/adjust",
+      "POST",
+      {
+        amount_micros: micros,
+        direction: adjustDirection,
+        reason_code: adjustReason.trim(),
+      },
+    );
+    setCreditsBusy("");
+    if (r.ok === false) {
+      setCreditsMsgIsError(true);
+      setCreditsMsg(r.error || "Adjustment failed");
+      return;
+    }
+    setCreditsMsgIsError(false);
+    setCreditsMsg("Credit adjustment applied.");
+    setAdjustAmount("");
+    setAdjustReason("");
+    await loadCredits();
+  }
+
+  async function submitLimits() {
+    if (!can("orchestrator.credits.limits.edit")) return;
+    setCreditsBusy("limits");
+    setCreditsMsg("");
+    const r = await orchMutate<{ ok: boolean; limits?: CreditLimits; error?: string }>(
+      "/api/agent-orchestrator/credits/limits",
+      "PUT",
+      {
+        credit_ceiling_micros: dollarsToMicros(limitsForm.credit_ceiling_dollars),
+        requests_per_minute: Number(limitsForm.requests_per_minute) || 0,
+        max_concurrent_ai: Number(limitsForm.max_concurrent_ai) || 0,
+        daily_ai_cost_micros: dollarsToMicros(limitsForm.daily_ai_cost_dollars),
+        monthly_ai_cost_micros: dollarsToMicros(limitsForm.monthly_ai_cost_dollars),
+        per_workflow_cost_micros: dollarsToMicros(limitsForm.per_workflow_cost_dollars),
+      },
+    );
+    setCreditsBusy("");
+    if (r.ok === false) {
+      setCreditsMsgIsError(true);
+      setCreditsMsg(r.error || "Limits update failed");
+      return;
+    }
+    setCreditsMsgIsError(false);
+    setCreditsMsg("Tenant limits updated.");
+    await loadCredits();
   }
 
   const selectedGate = selected ? gateForWorkflow(selected) : null;
@@ -513,6 +780,16 @@ export default function AgentOrchestrator() {
   const showRecover = selected
     && (selected.current_state === "failed" || selected.current_state === "research_failed")
     && can("orchestrator.workflows.recover");
+
+  const showCredits = can("orchestrator.credits.view");
+  const showLimits = can("orchestrator.credits.limits.view");
+  const creditsActionsLocked = creditsStatus === "loading" || !!creditsBusy;
+  const filteredReservations = (creditsData?.reservations || []).filter((r) =>
+    RESERVATION_STATUSES.has(r.status),
+  );
+  const selectedCeilingMicros = Number(selected?.credit_ceiling_micros ?? 0);
+  const approveCeilingZero = selectedCeilingMicros === 0;
+  const currency = creditsData?.account.currency || "USD";
 
   return (
     <div>
@@ -651,6 +928,301 @@ export default function AgentOrchestrator() {
           ))}
         </div>
 
+        {/* ── Shared credits & cost controls ── */}
+        {showCredits && (
+          <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 14, padding: 18, marginBottom: 20 }}>
+            <h3 style={{ margin: "0 0 12px" }}>Shared credits &amp; cost controls</h3>
+
+            {creditsStatus === "loading" && (
+              <p style={{ fontSize: "0.85rem", color: "#6B7280", marginBottom: 14 }}>Loading credit accounting…</p>
+            )}
+            {creditsStatus === "error" && (
+              <div
+                className="ig-alert ig-alert-error"
+                style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}
+              >
+                <span>{creditsLoadError || "Failed to load credit accounting."}</span>
+                <button
+                  type="button"
+                  onClick={() => loadCredits()}
+                  style={{ ...btnPrimary, padding: "8px 12px", borderRadius: 8, fontSize: "0.75rem" }}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {creditsMsg && (
+              <p style={{ fontSize: "0.85rem", color: creditsMsgIsError ? "#B91C1C" : "#3730A3", marginBottom: 14 }}>
+                {creditsMsg}
+              </p>
+            )}
+
+            {creditsStatus === "ready" && creditsData && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 16 }}>
+                  <div style={{ background: "#F9FAFB", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontSize: "0.72rem", color: "#6B7280", fontWeight: 600 }}>Available</div>
+                    <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
+                      {formatMicros(creditsData.account.available_micros)} {currency}
+                    </div>
+                  </div>
+                  <div style={{ background: "#F9FAFB", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontSize: "0.72rem", color: "#6B7280", fontWeight: 600 }}>Reserved</div>
+                    <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
+                      {formatMicros(creditsData.account.reserved_micros)} {currency}
+                    </div>
+                  </div>
+                  <div style={{ background: "#F9FAFB", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontSize: "0.72rem", color: "#6B7280", fontWeight: 600 }}>Consumed</div>
+                    <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
+                      {formatMicros(creditsData.account.consumed_micros)} {currency}
+                    </div>
+                  </div>
+                  <div style={{ background: "#F9FAFB", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontSize: "0.72rem", color: "#6B7280", fontWeight: 600 }}>Daily usage</div>
+                    <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
+                      {formatMicros(creditsData.usage.daily_micros)} {currency}
+                    </div>
+                  </div>
+                  <div style={{ background: "#F9FAFB", borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontSize: "0.72rem", color: "#6B7280", fontWeight: 600 }}>Monthly usage</div>
+                    <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
+                      {formatMicros(creditsData.usage.monthly_micros)} {currency}
+                    </div>
+                  </div>
+                </div>
+
+                {showLimits && (
+                  <div style={{ marginBottom: 16, fontSize: "0.82rem" }}>
+                    <h4 style={{ margin: "0 0 8px", fontSize: "0.85rem" }}>Tenant AI limits</h4>
+                    <p style={{ margin: "0 0 10px", color: "#6B7280", fontSize: "0.78rem" }}>
+                      A credit ceiling of 0 means no credit spending is authorised for this tenant.
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
+                      <div>
+                        <strong>Tenant credit ceiling:</strong>{" "}
+                        {formatMicros(creditsData.limits.credit_ceiling_micros)} {currency}
+                      </div>
+                      <div>
+                        <strong>Requests / minute:</strong> {creditsData.limits.requests_per_minute}
+                      </div>
+                      <div>
+                        <strong>Max concurrent AI:</strong> {creditsData.limits.max_concurrent_ai}
+                      </div>
+                      <div>
+                        <strong>Daily AI cost cap:</strong>{" "}
+                        {formatMicros(creditsData.limits.daily_ai_cost_micros)} {currency}
+                      </div>
+                      <div>
+                        <strong>Monthly AI cost cap:</strong>{" "}
+                        {formatMicros(creditsData.limits.monthly_ai_cost_micros)} {currency}
+                      </div>
+                      <div>
+                        <strong>Per-workflow cost cap:</strong>{" "}
+                        {formatMicros(creditsData.limits.per_workflow_cost_micros)} {currency}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {can("orchestrator.credits.limits.edit") && (
+                  <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 14, marginBottom: 16, background: "#F9FAFB" }}>
+                    <h4 style={{ margin: "0 0 10px", fontSize: "0.85rem" }}>Edit tenant limits (admin)</h4>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginBottom: 10 }}>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Credit ceiling ({currency})
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={limitsForm.credit_ceiling_dollars}
+                          onChange={(e) => setLimitsForm((f) => ({ ...f, credit_ceiling_dollars: e.target.value }))}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Requests / minute
+                        <input
+                          type="number"
+                          min="0"
+                          value={limitsForm.requests_per_minute}
+                          onChange={(e) => setLimitsForm((f) => ({ ...f, requests_per_minute: e.target.value }))}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Max concurrent AI
+                        <input
+                          type="number"
+                          min="0"
+                          value={limitsForm.max_concurrent_ai}
+                          onChange={(e) => setLimitsForm((f) => ({ ...f, max_concurrent_ai: e.target.value }))}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Daily AI cost cap ({currency})
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={limitsForm.daily_ai_cost_dollars}
+                          onChange={(e) => setLimitsForm((f) => ({ ...f, daily_ai_cost_dollars: e.target.value }))}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Monthly AI cost cap ({currency})
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={limitsForm.monthly_ai_cost_dollars}
+                          onChange={(e) => setLimitsForm((f) => ({ ...f, monthly_ai_cost_dollars: e.target.value }))}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Per-workflow cost cap ({currency})
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={limitsForm.per_workflow_cost_dollars}
+                          onChange={(e) => setLimitsForm((f) => ({ ...f, per_workflow_cost_dollars: e.target.value }))}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                    </div>
+                    <p style={{ fontSize: "0.72rem", color: "#6B7280", margin: "0 0 10px" }}>
+                      0 = no spend authorised for that limit.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={creditsActionsLocked}
+                      onClick={submitLimits}
+                      style={{ ...btnPrimary, fontSize: "0.75rem", opacity: creditsActionsLocked ? 0.6 : 1 }}
+                    >
+                      {creditsBusy === "limits" ? "Saving…" : "Save tenant limits"}
+                    </button>
+                  </div>
+                )}
+
+                {can("orchestrator.credits.grant") && (
+                  <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 14, marginBottom: 16, background: "#F9FAFB" }}>
+                    <h4 style={{ margin: "0 0 10px", fontSize: "0.85rem" }}>Grant credits (admin)</h4>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Amount ({currency})
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={grantAmount}
+                          onChange={(e) => setGrantAmount(e.target.value)}
+                          style={{ display: "block", width: 140, marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={creditsActionsLocked}
+                        onClick={submitGrant}
+                        style={{ ...btnPrimary, fontSize: "0.75rem", opacity: creditsActionsLocked ? 0.6 : 1 }}
+                      >
+                        {creditsBusy === "grant" ? "Granting…" : "Grant"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {can("orchestrator.credits.adjust") && (
+                  <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 14, marginBottom: 16, background: "#F9FAFB" }}>
+                    <h4 style={{ margin: "0 0 10px", fontSize: "0.85rem" }}>Adjust / refund credits (admin)</h4>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Amount ({currency})
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={adjustAmount}
+                          onChange={(e) => setAdjustAmount(e.target.value)}
+                          style={{ display: "block", width: 140, marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Direction
+                        <select
+                          value={adjustDirection}
+                          onChange={(e) => setAdjustDirection(e.target.value as "credit" | "debit")}
+                          style={{ display: "block", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        >
+                          <option value="credit">Credit</option>
+                          <option value="debit">Debit</option>
+                        </select>
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Reason code
+                        <input
+                          type="text"
+                          value={adjustReason}
+                          onChange={(e) => setAdjustReason(e.target.value)}
+                          placeholder="refund, correction, …"
+                          style={{ display: "block", width: 160, marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={creditsActionsLocked}
+                        onClick={submitAdjust}
+                        style={{ ...btnPrimary, fontSize: "0.75rem", opacity: creditsActionsLocked ? 0.6 : 1 }}
+                      >
+                        {creditsBusy === "adjust" ? "Applying…" : "Apply adjustment"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ marginBottom: 8 }}>
+                  <h4 style={{ margin: "0 0 8px", fontSize: "0.85rem" }}>Credit reservations</h4>
+                  {filteredReservations.length === 0 && (
+                    <p style={{ color: "#6B7280", fontSize: "0.85rem", margin: 0 }}>No credit activity yet.</p>
+                  )}
+                  {filteredReservations.length > 0 && (
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
+                      <thead>
+                        <tr style={{ textAlign: "left", borderBottom: "1px solid #E5E7EB" }}>
+                          <th style={{ padding: "6px 4px" }}>Status</th>
+                          <th style={{ padding: "6px 4px" }}>Amount</th>
+                          <th style={{ padding: "6px 4px" }}>Operation</th>
+                          <th style={{ padding: "6px 4px" }}>Cost status</th>
+                          <th style={{ padding: "6px 4px" }}>When</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredReservations.map((res) => (
+                          <tr key={res.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                            <td style={{ padding: "6px 4px" }}>{res.status}</td>
+                            <td style={{ padding: "6px 4px" }}>
+                              {formatMicros(res.amount_micros)} {currency}
+                            </td>
+                            <td style={{ padding: "6px 4px" }}>
+                              {[res.operation, res.provider].filter(Boolean).join(" · ") || "—"}
+                            </td>
+                            <td style={{ padding: "6px 4px" }}>{res.cost_status || "—"}</td>
+                            <td style={{ padding: "6px 4px", color: "#9CA3AF" }}>{res.created_at}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── Advertising workflows (PR 1 control plane) ── */}
         <div
           style={{
@@ -666,7 +1238,8 @@ export default function AgentOrchestrator() {
           <strong>Future features — not yet implemented.</strong>{" "}
           Competitor research, creative generation, campaign publishing, and performance optimization agents
           are stubbed in PR 1 and do not produce live results. Do not expect live ROAS, CTR, impressions,
-          or fabricated campaign metrics from this control plane.
+          or fabricated campaign metrics from this control plane. Shared credit accounting is active for
+          tenant-authorised AI spend, but live ad-platform spend is not connected yet.
         </div>
 
         <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 14, padding: 18 }}>
@@ -752,6 +1325,20 @@ export default function AgentOrchestrator() {
                     onChange={(e) => setCreateForm((f) => ({ ...f, currency: e.target.value }))}
                     style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
                   />
+                </label>
+                <label style={{ fontSize: "0.78rem" }}>
+                  Workflow credit ceiling ({createForm.currency || "USD"})
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={createForm.credit_ceiling_dollars}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, credit_ceiling_dollars: e.target.value }))}
+                    style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                  />
+                  <span style={{ display: "block", marginTop: 4, color: "#6B7280", fontSize: "0.72rem" }}>
+                    0 = no chargeable autonomous spend authorised for this workflow.
+                  </span>
                 </label>
               </div>
               <div style={{ marginBottom: 10 }}>
@@ -892,8 +1479,56 @@ export default function AgentOrchestrator() {
                       <p style={{ margin: "6px 0 0" }}>
                         Gate: {selectedGate} · Version: {selected.version} · Platforms:{" "}
                         {(selected.selected_platforms || []).join(", ")} · Budget:{" "}
-                        {selected.advertising_budget} {selected.currency}
+                        {selected.advertising_budget} {selected.currency} · Credit ceiling:{" "}
+                        {formatMicros(selectedCeilingMicros)} {selected.currency}
                       </p>
+                    </div>
+                  )}
+
+                  {selected.block_reason && (
+                    <div
+                      className="ig-alert ig-alert-error"
+                      style={{ marginBottom: 12, fontSize: "0.82rem" }}
+                    >
+                      <strong>Execution blocked</strong>
+                      <p style={{ margin: "6px 0 0" }}>
+                        {BLOCK_REASON_LABELS[selected.block_reason] || selected.block_reason}
+                        {selected.blocked_at ? ` · since ${selected.blocked_at}` : ""}
+                      </p>
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: 12, fontSize: "0.82rem" }}>
+                    <strong>Workflow credit ceiling:</strong>{" "}
+                    {formatMicros(selectedCeilingMicros)} {selected.currency}
+                    {selectedCeilingMicros === 0 && (
+                      <span style={{ color: "#B45309", marginLeft: 8 }}>
+                        (0 = no chargeable autonomous spend authorised)
+                      </span>
+                    )}
+                  </div>
+
+                  {can("orchestrator.workflows.edit") && (
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 16 }}>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Edit credit ceiling ({selected.currency})
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={editCeilingDollars}
+                          onChange={(e) => setEditCeilingDollars(e.target.value)}
+                          style={{ display: "block", width: 140, marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={wfActionsLocked}
+                        onClick={saveWorkflowCeiling}
+                        style={{ ...btnSecondary, opacity: wfActionsLocked ? 0.6 : 1 }}
+                      >
+                        {wfBusy === "edit-ceiling" ? "Saving…" : "Save ceiling"}
+                      </button>
                     </div>
                   )}
 
@@ -910,6 +1545,11 @@ export default function AgentOrchestrator() {
                     )}
                     {showApproveReject && (
                       <>
+                        {approveCeilingZero && (
+                          <p style={{ width: "100%", fontSize: "0.78rem", color: "#B45309", margin: "0 0 8px" }}>
+                            Credit ceiling is 0 — chargeable autonomous work is not authorised.
+                          </p>
+                        )}
                         <button
                           type="button"
                           disabled={wfActionsLocked}
