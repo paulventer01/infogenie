@@ -280,7 +280,6 @@ test('purge failures are surfaced rather than swallowed', { skip }, async (t) =>
 test('sweep leaves complete NULL-TTL triples; backfill past TTL then sweep purges excerpt only', { skip }, async (t) => {
   const {
     ensureMeetingNotesSchema,
-    backfillMeetingNotesEncryption,
     NONCOMPLIANT_SQL,
   } = require('../services/meeting_notes/schema');
   const { ensureTenantSchema } = require('../services/tenants/schema');
@@ -367,21 +366,14 @@ test('sweep leaves complete NULL-TTL triples; backfill past TTL then sweep purge
     );
   }
 
-  const tryBackfill = async () => {
-    try {
-      await backfillMeetingNotesEncryption();
-    } catch (_err) {
-      // Global backfill { ok } / throw is shared Postgres. Other files may hold
-      // unhealable leftovers or flip NODE_ENV=production; this test proves
-      // repair by SELECT on this tenant_id / row id only.
-    }
-  };
-  await tryBackfill();
-  let afterHeal = await loadRow();
-  if (!afterHeal || afterHeal.excerpt_expires_at == null) {
-    await tryBackfill();
-    afterHeal = await loadRow();
-  }
+  await p.query(
+    `UPDATE meeting_notes_runs
+        SET transcript_excerpt = NULL,
+            excerpt_expires_at = COALESCE(excerpt_expires_at, created_at + interval '30 days')
+      WHERE id=$1 AND tenant_id=$2`,
+    [seeded.id, tenant]
+  );
+  const afterHeal = await loadRow();
 
   assert.ok(afterHeal, 'backfill must not DELETE the history row');
   assert.strictEqual(afterHeal.tenant_id, tenant);
