@@ -378,8 +378,17 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   // pinned so a later change cannot quietly reopen them in the code and leave
   // the doc asserting a property the runtime no longer has.
   assert.match(flat, /`SKIP LOCKED` now holds until the `DELETE`/);
-  assert.match(flat, /Holding that transaction open makes the sweeper deadlock with boot DDL/);
-  assert.match(flat, /whichever side loses fails closed, so a rolling deploy can exit a booting instance or a live one/);
+  assert.match(flat, /The sweeper\/boot-DDL deadlock is broken at the source and retried at the edge/);
+  assert.match(flat, /`_installInTransaction` now installs one table's functions and triggers per `BEGIN`\/`COMMIT`/);
+  assert.match(flat, /retries `40P01`\/`40001` up to `DEADLOCK_RETRY_MAX = 5` times per batch/);
+  assert.match(flat, /Exhausted retries still increment `failures`/);
+  // The stated limit of that fix has to survive too, so the entry cannot drift
+  // into a claim that the schema suite is deadlock-free.
+  assert.match(flat, /That is not a proof the schema suite cannot deadlock/);
+  assert.match(
+    flat,
+    /Any other writer that holds an exclusive lock spanning these tables can still form a cycle/
+  );
   assert.match(flat, /The 64-zero `content_fingerprint` DEFAULT survives only the `ADD COLUMN` itself/);
   assert.match(flat, /fails `23502` naming `content_fingerprint`/);
   assert.match(flat, /A sweep client whose `ROLLBACK` failed is destroyed, not pooled/);

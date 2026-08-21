@@ -1904,23 +1904,49 @@ whatever resolves the ref.
   whose `ROLLBACK` could not be confirmed is destroyed rather than returned to
   the pool, because `release()` does not roll back and the next borrower would
   otherwise inherit the batch transaction and its `FOR UPDATE` row locks.
-- **Holding that transaction open makes the sweeper deadlock with boot DDL.**
-  The batch now holds locks on `orchestrator_research_evidence` from the
-  `SELECT` until `COMMIT`, and the `DELETE` then fires
+- **The sweeper/boot-DDL deadlock is broken at the source and retried at the
+  edge.** The batch holds locks on `orchestrator_research_evidence` from the
+  `SELECT` until `COMMIT`, and the `DELETE` fires
   `orchestrator_research_evidence_immutable()`, whose
-  `NOT EXISTS (SELECT 1 FROM orchestrator_research_runs …)` needs
-  `AccessShareLock` on the runs table. `ensureAgentOrchestratorSchema` sends its
+  `NOT EXISTS (SELECT 1 FROM orchestrator_research_runs …)` needs a lock on the
+  runs table. `ensureAgentOrchestratorSchema` used to send its
   `CREATE OR REPLACE FUNCTION` / `DROP TRIGGER` / `CREATE TRIGGER` block as one
-  multi-statement implicit transaction that takes `AccessExclusiveLock` on the
-  runs table *and* the evidence table, so a boot running beside a live sweep
-  closes the cycle and Postgres kills one side with `40P01`. Reproduced from the
-  server log in 2 of 6 runs of the two research test files; the same files show
-  no deadlock at all with the previous autocommit sweeper, so this arrived with
-  the batch transaction. Nothing is mis-deleted and no tenant boundary moves —
-  the victim's transaction is rolled back whole — but whichever side loses fails
-  closed, so a rolling deploy can exit a booting instance or a live one.
-  Deadlock-aware retry (or excluding the sweep from the boot DDL window) is owed
-  to Backend before this runs on more than one Express instance.
+  multi-statement implicit transaction holding `AccessExclusiveLock` on the runs
+  table *and* the evidence table, which closed the cycle: Postgres logged
+  `deadlock detected` with one side waiting for `AccessExclusiveLock` on
+  `orchestrator_research_evidence` / `orchestrator_research_competitors` and the
+  other waiting for `RowShareLock` on `orchestrator_research_runs`.
+  `_installInTransaction` now installs one table's functions and triggers per
+  `BEGIN`/`COMMIT`, so no `ensure()` transaction holds the runs table and the
+  evidence table at once. Grouping a table's functions with its own triggers
+  costs nothing, because `CREATE OR REPLACE FUNCTION` takes no lock on the
+  tables its body names — checked against `pg_locks`, which reported no lock on
+  either table for a function whose body selects from both. A failed install
+  rolls back, so a `DROP TRIGGER` is never committed without its
+  `CREATE TRIGGER`; that is the same fail-open shape `_ensureNamedCheck` had,
+  and it was confirmed by forcing a `CREATE TRIGGER` to fail mid-transaction and
+  finding the previous trigger definition still installed. The sweeper also
+  retries `40P01`/`40001` up to `DEADLOCK_RETRY_MAX = 5` times per batch, and
+  only when the `ROLLBACK` was confirmed; every other error, including the
+  `removed === 0` noop guard, is rethrown on the first occurrence rather than
+  retried. Exhausted retries still increment `failures`, so `ok` is false and
+  the boot pass still exits in production. Measured on this branch: 18 parallel
+  runs of the two research test files produced 0 test failures and 0
+  `deadlock detected` lines in the Postgres log, against 2 logged deadlocks from
+  the same harness on the previous commit.
+- **That is not a proof the schema suite cannot deadlock.** `ensure()` still
+  sends the `CREATE TABLE IF NOT EXISTS` block and the
+  `CREATE … INDEX IF NOT EXISTS` block as multi-table implicit transactions, and
+  the `_ensureNamedFk` swap of the evidence→runs foreign key takes
+  `AccessExclusiveLock` on both tables inside one transaction — measured, not
+  assumed. That FK atomicity is deliberate: splitting it back into two
+  autocommit statements would restore the fail-open window this review closed,
+  and the swap is skipped entirely once the stored column list already matches,
+  so it is a one-time migration path rather than a per-boot one. Any other
+  writer that holds an exclusive lock spanning these tables can still form a
+  cycle. The bounded retry is what covers that residual, and a lost race still
+  fails closed rather than mis-deleting or crossing a tenant boundary — the
+  victim's transaction is rolled back whole.
 - **The boot backfills need a DB role that may set `session_replication_role`.**
   `_backfillResearchRetentionExpiry` and `_backfillResearchJsonObjects` repair
   pre-existing non-conforming rows behind a session-local
