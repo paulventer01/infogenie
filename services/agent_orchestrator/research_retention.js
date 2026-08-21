@@ -166,16 +166,19 @@ async function _purgeExpiredTable(client, table, tenantId) {
 }
 
 async function _sweepTenant(p, tenantId) {
-  const invalidRow = await p.query(INVALID_EXPIRY_SQL, [tenantId]);
-  const invalid_expiry = Number(invalidRow.rows[0] && invalidRow.rows[0].invalid_expiry) || 0;
-  if (invalid_expiry > 0) {
-    logger.error('research_evidence_invalid_expiry', { tenant_id: tenantId, invalid_expiry });
-    _captureSweepError('research_evidence_invalid_expiry', { tenant_id: tenantId, invalid_expiry });
-  }
-
   const client = await p.connect();
   let unrolled = null;
   try {
+    // Session-scoped on this dedicated client so invalid_expiry (and not only
+    // the DELETE batch) becomes an error instead of waiting on DDL/table locks.
+    await client.query("SET lock_timeout = '2s'");
+    const invalidRow = await client.query(INVALID_EXPIRY_SQL, [tenantId]);
+    const invalid_expiry = Number(invalidRow.rows[0] && invalidRow.rows[0].invalid_expiry) || 0;
+    if (invalid_expiry > 0) {
+      logger.error('research_evidence_invalid_expiry', { tenant_id: tenantId, invalid_expiry });
+      _captureSweepError('research_evidence_invalid_expiry', { tenant_id: tenantId, invalid_expiry });
+    }
+
     const evidencePurged = await _purgeExpiredTable(client, EVIDENCE_TABLE, tenantId);
     const assetPurged = await _purgeExpiredTable(client, ASSET_TABLE, tenantId);
     return { purged: evidencePurged + assetPurged, invalid_expiry };
@@ -186,6 +189,7 @@ async function _sweepTenant(p, tenantId) {
     try { await client.query('ROLLBACK'); unrolled = null; } catch { /* stays unrolled */ }
     throw err;
   } finally {
+    try { await client.query('SET lock_timeout TO DEFAULT'); } catch { /* ignore */ }
     // release() does not roll back: a client returned mid-transaction hands the
     // next borrower an open transaction and its FOR UPDATE row locks. Destroy
     // it instead whenever the rollback could not be confirmed.
