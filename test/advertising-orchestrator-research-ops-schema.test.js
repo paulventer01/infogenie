@@ -31,7 +31,7 @@ function extractFunctionSource(src, name) {
 
 function extractTaggedTemplates(src, callee) {
   const out = [];
-  const startRe = new RegExp(`${callee.replace('.', '\\.')}\\(\\s*\``, 'g');
+  const startRe = new RegExp(callee.replace('.', '\\.') + '\\((?:[A-Za-z_][\\w]*\\s*,\\s*)?`', 'g');
   let m;
   while ((m = startRe.exec(src))) {
     const from = m.index + m[0].length;
