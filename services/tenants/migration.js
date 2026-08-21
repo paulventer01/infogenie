@@ -17,6 +17,10 @@
 // Idempotent on every boot. Safe to call repeatedly. The column stays
 // NULLABLE during Phase 2 — once every service is wired to set it,
 // `markTenantIdNotNull(tableName)` can flip it (Phase 2 closeout).
+//
+// Closeout (this change-set) uses `enforceTenantIdNotNull` / `{ failClosed:true }`.
+// That path NEVER backfills with `_getDefaultTenantId`. Unmappable rows stay
+// NULL, NOT NULL is skipped, and the helper returns `{ ok:false, reason:'orphans' }`.
 
 const _db = require('../../db');
 
@@ -64,6 +68,171 @@ async function _getDefaultTenantId(p) {
   return r.rows[0] ? r.rows[0].id : null;
 }
 
+async function _tenantFkExists(p, table) {
+  const r = await p.query(
+    `SELECT 1
+       FROM pg_constraint c
+       JOIN pg_class t ON t.oid = c.conrelid
+       JOIN pg_namespace n ON n.oid = t.relnamespace
+       JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY (c.conkey)
+      WHERE n.nspname = 'public'
+        AND t.relname = $1
+        AND c.contype = 'f'
+        AND a.attname = 'tenant_id'
+      LIMIT 1`,
+    [table]);
+  return r.rowCount > 0;
+}
+
+async function _isTenantIdNullable(p, table) {
+  const col = await p.query(
+    `SELECT is_nullable FROM information_schema.columns
+      WHERE table_schema='public' AND table_name=$1 AND column_name='tenant_id' LIMIT 1`,
+    [table]);
+  return !!(col.rows[0] && col.rows[0].is_nullable === 'YES');
+}
+
+/**
+ * Fail-closed tenant_id closeout for an existing production table.
+ *
+ * Never assigns rows to tenant 1 / the default tenant. Optional
+ * `backfillFrom` copies tenant_id from a parent row only when the parent
+ * itself has a non-null tenant_id. Remaining NULL rows are left in place:
+ * NOT NULL is skipped and the caller gets `{ ok:false, reason:'orphans' }`.
+ * Does not DELETE. Boot-safe (never throws). Transactional per table.
+ *
+ * @param {string} tableName
+ * @param {object} [options]
+ * @param {string[]} [options.indexExtra]
+ * @param {string} [options.dropCheck]
+ * @param {string[]} [options.uniqueWithExtra]
+ * @param {{parentTable:string,parentIdColumn:string,childFkColumn:string}} [options.backfillFrom]
+ */
+async function enforceTenantIdNotNull(tableName, options = {}) {
+  if (!_db.hasDb()) return { ok:false, reason:'no_db' };
+  const p = _db.getPool();
+  const t = _safeIdent(tableName);
+
+  if (!(await _tableExists(p, t))) {
+    return { ok:false, reason:'table_missing', table:t };
+  }
+
+  const result = {
+    table: t,
+    added: false,
+    backfilled: 0,
+    indexed: false,
+    droppedCheck: false,
+    uniqueAdded: false,
+    notNullSet: false,
+    fkAdded: false,
+  };
+
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+
+    if (!(await _columnExists(client, t, 'tenant_id'))) {
+      await client.query(
+        `ALTER TABLE ${t} ADD COLUMN tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE`
+      );
+      result.added = true;
+    }
+
+    if (options.backfillFrom) {
+      const parent = _safeIdent(options.backfillFrom.parentTable);
+      const parentId = _safeIdent(options.backfillFrom.parentIdColumn);
+      const childFk = _safeIdent(options.backfillFrom.childFkColumn);
+      const r = await client.query(
+        `UPDATE ${t} AS child
+            SET tenant_id = parent.tenant_id
+           FROM ${parent} AS parent
+          WHERE child.${childFk} = parent.${parentId}
+            AND child.tenant_id IS NULL
+            AND parent.tenant_id IS NOT NULL`
+      );
+      result.backfilled = r.rowCount || 0;
+    }
+
+    // Always (tenant_id); plus (tenant_id, extras) when requested.
+    const tenantIdx = `${t}_tenant_idx`.slice(0, 63);
+    if (!(await _indexExists(client, tenantIdx))) {
+      await client.query(`CREATE INDEX ${tenantIdx} ON ${t} (tenant_id)`);
+      result.indexed = true;
+    }
+    const extras = Array.isArray(options.indexExtra) ? options.indexExtra.map(_safeIdent) : [];
+    if (extras.length) {
+      const idxCols = ['tenant_id', ...extras].join(', ');
+      const idxName = `${t}_tenant_idx_${extras.join('_')}`.slice(0, 63);
+      if (!(await _indexExists(client, idxName))) {
+        await client.query(`CREATE INDEX ${idxName} ON ${t} (${idxCols})`);
+        result.indexed = true;
+      }
+    }
+
+    if (options.dropCheck) {
+      const c = _safeIdent(options.dropCheck);
+      if (await _constraintExists(client, t, c)) {
+        await client.query(`ALTER TABLE ${t} DROP CONSTRAINT ${c}`);
+        result.droppedCheck = true;
+      }
+    }
+
+    if (Array.isArray(options.uniqueWithExtra)) {
+      const uExtras = options.uniqueWithExtra.map(_safeIdent);
+      const uCols = ['tenant_id', ...uExtras].join(', ');
+      const uName = `${t}_tenant_unique${uExtras.length ? '_' + uExtras.join('_') : ''}`.slice(0, 63);
+      if (!(await _constraintExists(client, t, uName))) {
+        try {
+          await client.query(`ALTER TABLE ${t} ADD CONSTRAINT ${uName} UNIQUE (${uCols})`);
+          result.uniqueAdded = true;
+        } catch (e) {
+          console.error(`[tenants/migration] fail-closed UNIQUE on ${t}(${uCols}): ${e.message}`);
+          result.uniqueError = e.message;
+        }
+      }
+    }
+
+    const nulls = await client.query(`SELECT COUNT(*)::int AS n FROM ${t} WHERE tenant_id IS NULL`);
+    const orphanCount = nulls.rows[0].n;
+    if (orphanCount > 0) {
+      await client.query('COMMIT');
+      console.error(
+        `[tenants/migration] FAIL-CLOSED orphans on ${t}: ${orphanCount} row(s) still NULL — ` +
+        `NOT NULL not applied, rows left in place (no default-tenant assignment)`
+      );
+      return Object.assign({ ok:false, reason:'orphans', orphanCount }, result);
+    }
+
+    if (await _isTenantIdNullable(client, t)) {
+      await client.query(`ALTER TABLE ${t} ALTER COLUMN tenant_id SET NOT NULL`);
+      result.notNullSet = true;
+    }
+
+    if (!(await _tenantFkExists(client, t))) {
+      const fkName = `${t}_tenant_id_fkey`.slice(0, 63);
+      try {
+        await client.query(
+          `ALTER TABLE ${t} ADD CONSTRAINT ${fkName} FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE`
+        );
+        result.fkAdded = true;
+      } catch (e) {
+        console.warn(`[tenants/migration] fail-closed FK on ${t}.tenant_id: ${e.message}`);
+        result.fkError = e.message;
+      }
+    }
+
+    await client.query('COMMIT');
+    return Object.assign({ ok:true }, result);
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* ignore rollback errors */ }
+    console.error(`[tenants/migration] fail-closed closeout failed on ${t}: ${e.message}`);
+    return Object.assign({ ok:false, reason:'error', error:e.message }, result);
+  } finally {
+    client.release();
+  }
+}
+
 // Validate an identifier so we can safely interpolate it into DDL strings.
 // PostgreSQL identifiers: [a-z_][a-z0-9_]*  (lowercase, length-restricted to 63).
 function _safeIdent(name) {
@@ -89,8 +258,19 @@ function _safeIdent(name) {
  *                                             has a tenant). Graceful: if any row is
  *                                             still NULL it logs + skips instead of
  *                                             throwing, so boot never crashes.
+ * @param {boolean} [options.failClosed]       when true, skip the historical
+ *                                             default-tenant backfill and run
+ *                                             `enforceTenantIdNotNull` instead.
+ *                                             Never assigns orphaned rows to
+ *                                             tenant 1 / any default tenant.
+ * @param {{parentTable:string,parentIdColumn:string,childFkColumn:string}} [options.backfillFrom]
+ *                                             optional parent-join backfill used
+ *                                             only by the fail-closed path.
  */
 async function addTenantIdColumn(tableName, options = {}) {
+  if (options.failClosed) {
+    return enforceTenantIdNotNull(tableName, options);
+  }
   if (!_db.hasDb()) return { ok:false, reason:'no_db' };
   const p = _db.getPool();
   const t = _safeIdent(tableName);
@@ -216,4 +396,5 @@ module.exports = {
   addTenantIdColumn,
   batchAddTenantId,
   markTenantIdNotNull,
+  enforceTenantIdNotNull,
 };
