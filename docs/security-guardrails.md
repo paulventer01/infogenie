@@ -1824,6 +1824,22 @@ Hardened during this review, because each of these was accepted before it:
   `1.0.0 Bearer <jwt>` validated and would have been written to every evidence
   row it identified. It now goes through the same bounded-text path as the other
   stored strings (trim, 1–64, no NUL, credential-shape refusal).
+- **Named CHECK and FK constraints are redefined atomically.** So that a changed
+  CHECK body would actually take effect on an existing database,
+  `_ensureNamedCheck` had started dropping every named CHECK on the orchestrator
+  tables and re-adding it as two separate autocommit statements. That left the
+  table with no CHECK at all between them on *every* boot, and left it
+  unconstrained permanently whenever the re-add failed: a row the new definition
+  rejects makes `ADD CONSTRAINT` raise `23514`, the boot task then exits in
+  production, and the CHECK stays dropped on the live table. Verified by
+  redefining `orchestrator_research_evidence_headline_check` over a stored
+  600-character headline — before the fix the table went on to accept a
+  9000-character headline. `_ensureNamedFk` had the same shape for the
+  3-column competitor swap. Both now run the drop and the add in one
+  transaction, so the DDL lock spans the whole swap (concurrent readers and
+  writers block rather than slipping through an unconstrained window) and a
+  failed add rolls back to the previous definition. The error still propagates,
+  so boot is still fail-closed — the database just keeps its constraint.
 
 The scan deliberately fails closed and rejects the whole object rather than
 masking, so a message that genuinely needs the word `token:` in it has to be
@@ -1860,20 +1876,69 @@ whatever resolves the ref.
   `DELETE WHERE tenant_id=$1 AND id = ANY($ids)`), fail-closed on NULL
   `expires_at` for `standard`/`short` (counted as `invalid_expiry`, not deleted,
   no invented TTL), and wired from `server.js` `BOOT_TASKS` plus a 6h
-  `backgroundEnabled()` interval. `legal_hold` rows are never swept while the
-  parent exists. `orchestrator_research_runs` and
+  `backgroundEnabled()` interval. The boot pass fails closed: a sweep that
+  returns `ok !== true`, or throws, logs, captures to Sentry and calls
+  `process.exit(1)` when `NODE_ENV === 'production'`. `legal_hold` rows are
+  never swept while the parent exists. `orchestrator_research_runs` and
   `orchestrator_research_competitors` still have no `expires_at`, so a run's
   `research_brief` and `search_parameters` are retained until the workflow or
   tenant is deleted.
+- **`SKIP LOCKED` does not de-duplicate work between concurrent sweepers.** The
+  sweeper runs each statement through `pool.query`, so the selecting statement
+  is its own autocommit transaction and its row locks are released before the
+  `DELETE` runs — two processes sweeping the same tenant can select the same
+  batch. Nothing crosses a tenant boundary and nothing unexpired or
+  `legal_hold` is removed (the predicate is re-checked and the DELETE triggers
+  are the backstop), so the failure direction is safe; the cost is that the
+  loser's `DELETE` removes 0 rows, trips the `research_evidence_sweep_delete_noop`
+  guard, and returns `ok: false` — which at boot means `process.exit(1)` in
+  production. Single-instance deployments are unaffected. Running the sweep on
+  a dedicated client inside one transaction is owed to Backend before this
+  service is deployed to more than one Express instance.
+- **The boot backfills need a DB role that may set `session_replication_role`.**
+  `_backfillResearchRetentionExpiry` and `_backfillResearchJsonObjects` repair
+  pre-existing non-conforming rows behind a session-local
+  `SET LOCAL session_replication_role = replica` (chosen over
+  `ALTER TABLE … DISABLE TRIGGER`, which is cluster-wide) so the immutability
+  triggers do not refuse the repair. The GUC is superuser-gated: a plain
+  `LOGIN` role gets `42501 permission denied to set parameter`. This is not a
+  runtime escalation path — the statement is boot-only, reachable solely from
+  `ensureAgentOrchestratorSchema` (no route calls it), transaction-scoped, run
+  on a dedicated `pool.connect()` client under `pg_advisory_lock(87231402)`, and
+  only entered when a scan finds rows to repair. It is a *boot availability*
+  residual: on a correctly least-privileged production role, a database that
+  does carry legacy rows will fail the backfill and, being fail-closed, exit.
+  Either grant `SET ON PARAMETER session_replication_role` for the migration or
+  repair those rows out of band.
+- **The evidence quota counter is trigger-maintained, not reconciled.**
+  `orchestrator_research_quota` is incremented `BEFORE INSERT` under a
+  `FOR UPDATE` row lock (no `COUNT(*)`, so concurrent inserts serialize instead
+  of racing) and decremented `AFTER DELETE` with `GREATEST(0, …)`. Nothing
+  recomputes it from the table, so anything that bypasses row triggers —
+  `TRUNCATE`, or a direct `UPDATE` on the quota row — desynchronizes it.
+  `TRUNCATE` drifts the counter *high*, which fails closed; a direct write to
+  the quota row is a raw-SQL capability that already implies full table access.
+  Evidence *assets* have no volume cap of their own; they are bounded only by
+  the evidence rows they hang off and the 1024-character `storage_ref` limit.
+- **`content_fingerprint` keeps a 64-zero column DEFAULT.** The default exists so
+  the rename from `evidence_hash` can add the column `NOT NULL` on a populated
+  table. It is never used by `research_store.js`, which always supplies the
+  computed value, but a direct SQL writer that omits the column gets a
+  well-formed all-zero fingerprint instead of an error. Dropping the default
+  after the rename has landed everywhere is owed to Database.
 - **`content_fingerprint` is a content fingerprint, not a signature.** It is an
   unkeyed SHA-256 over the content subset and does not cover `tenant_id`,
   `metrics_kind`, `provenance_method`, `connector_id` or `captured_at`. It
   detects a rewrite of the canonical content (and the immutability triggers
   refuse one anyway); it does not attest that the evidence came from the claimed
   provenance method, and principal-level DB write access could still insert a
-  new row with the same content and a different `provenance_method`. Callers may
-  still supply the deprecated input alias `evidence_hash`; validators never emit
-  it.
+  new row with the same content and a different `provenance_method`. It is
+  unkeyed by design: there is no HMAC key, so no secret is stored in the row or
+  derivable from it, and the column must not be read as an authenticity or
+  provenance attestation. A caller-supplied value is accepted only when it
+  equals the recomputed one, so it cannot be used to assert a fingerprint the
+  content does not have. Callers may still supply the deprecated input alias
+  `evidence_hash`; validators never emit it.
 - **Evidence free text is public ad copy, and public ad copy can legitimately
   contain a business email or phone number.** The controls here reject *keyed*
   PII fields and private-user identity keys; they do not attempt to redact a
