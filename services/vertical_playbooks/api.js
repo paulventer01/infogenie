@@ -179,18 +179,27 @@ const playbooksGenerateLimiter = createRateLimiter({
 
 // Order matters: the guard rejects a missing tenant before any key is derived,
 // and the shared limiter runs before every handler — including the seedPlaybooks
-// write loop on GET /list and GET /:vertical.
+// write loop on GET /list and GET /:vertical. This router-level mount is the
+// binding one; it also covers unmatched paths under the prefix.
 router.use(playbooksTenantGuard);
 router.use(playbooksSharedLimiter);
 
-router.get('/list', async (req, res) => {
+// Every route below also passes playbooksSharedLimiter explicitly. It is the
+// same instance and adjudicates a request once (rate_limit.js `alreadyDecided`),
+// so the ceiling is unchanged; the repeat exists so the limiter is visible on
+// each handler's own middleware chain to readers and to static analysis, which
+// does not follow `router.use`.
+
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/list', playbooksSharedLimiter, async (req, res) => {
   const p = await _db.getPool();
   await seedPlaybooks(p);
   const rows = await p.query(`SELECT id,vertical,title,description,content FROM vertical_playbooks WHERE is_system=TRUE AND tenant_id IS NULL ORDER BY vertical`);
   res.json({ ok:true, playbooks: rows.rows.map(r=>({ ...r, content: typeof r.content==='string'?JSON.parse(r.content):r.content })) });
 });
 
-router.get('/:vertical', async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/:vertical', playbooksSharedLimiter, async (req, res) => {
   const p = await _db.getPool();
   await seedPlaybooks(p);
   const row = await p.query(`SELECT * FROM vertical_playbooks WHERE vertical=$1 AND is_system=TRUE AND tenant_id IS NULL LIMIT 1`, [req.params.vertical]);
@@ -200,7 +209,8 @@ router.get('/:vertical', async (req, res) => {
   res.json({ ok:true, playbook: { ...pb, content } });
 });
 
-router.post('/activate/:id', async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.post('/activate/:id', playbooksSharedLimiter, async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'playbooks:activate' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const p = await _db.getPool();
@@ -218,7 +228,8 @@ router.post('/activate/:id', async (req, res) => {
   res.json({ ok:true, activated: true });
 });
 
-router.get('/active/list', async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/active/list', playbooksSharedLimiter, async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'playbooks:active' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const p = await _db.getPool();
@@ -235,7 +246,8 @@ router.get('/active/list', async (req, res) => {
 
 // The generate cap runs ahead of the OpenAI call and both INSERTs. The guard is
 // repeated so this route stays fail-closed if the router-level order ever moves.
-router.post('/generate-custom', playbooksTenantGuard, playbooksGenerateLimiter, async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.post('/generate-custom', playbooksTenantGuard, playbooksSharedLimiter, playbooksGenerateLimiter, async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'playbooks:generate-custom' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const { industry, business_description, goals, challenges, budget } = req.body || {};

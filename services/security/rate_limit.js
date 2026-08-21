@@ -11,6 +11,9 @@ const { redisIncr, isRedisConfigured } = require('../infra/redis');
  * `serialize` and `failClosed` are opt-in and default to false so existing
  * callers (notably `authAbuseLimiter`) keep their current behaviour exactly.
  * See the notes on `_decide` and on the `failClosed` branch below.
+ *
+ * The returned middleware adjudicates a given request at most once, so the same
+ * instance can be mounted several times on one chain (see `alreadyDecided`).
  */
 function createRateLimiter(opts = {}) {
   const windowMs = opts.windowMs ?? 60_000;
@@ -30,6 +33,14 @@ function createRateLimiter(opts = {}) {
 
   const buckets = new Map();
   const ttlSec = Math.max(1, Math.ceil(windowMs / 1000));
+
+  // One limiter instance may appear more than once on a request's middleware
+  // chain — the playbooks router mounts the shared limiter with `use()` and
+  // again as an explicit argument on each route so static analysis can see it
+  // beside the handler it protects. Without this marker the second pass would
+  // spend a second token and halve the tenant's real ceiling. Unique per
+  // instance, so a different limiter on the same request still counts.
+  const alreadyDecided = Symbol(`rate-limit:${name}`);
 
   // Periodic prune so idle keys don't grow forever in long-lived processes.
   const pruneEvery = Math.max(windowMs, 60_000);
@@ -94,6 +105,9 @@ function createRateLimiter(opts = {}) {
   }
 
   function middleware(req, res, next) {
+    if (req[alreadyDecided]) return next();
+    req[alreadyDecided] = true;
+
     const rawKey = keyFn(req);
 
     const finish = (allowed) => {

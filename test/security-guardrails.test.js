@@ -206,6 +206,13 @@ test('the guardrails doc records the playbooks rate limit as remediated', () => 
   assert.match(flat, /There is no fallback to a default tenant, to the client IP, or to an `unknown` bucket/);
   assert.match(flat, /This is the intended fail-closed trade-off, not an auth bypass/);
 
+  // The CodeQL check can stay red after a real control ships. An operator
+  // deciding whether to dismiss the alert needs to read why.
+  assert.match(flat, /\*\*The control is shipped; the query still does not model `createRateLimiter`\.\*\*/);
+  assert.match(flat, /the alert is a \*\*visibility gap, not a missing control\*\*/);
+  assert.match(flat, /dismissing the alert in the code-scanning UI remains available and is an operator action/);
+  assert.doesNotMatch(flat, /whether it recognises a router-level `use\(\)` limiter is unverified/);
+
   // Residuals.
   assert.match(flat, /Per-tenant AI \*spend\* caps are still not implemented/);
   assert.match(flat, /Without Redis the limit is process-local/);

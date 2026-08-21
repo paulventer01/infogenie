@@ -176,6 +176,58 @@ test('the playbooks limiter derives its key from req.tenant and nothing else', (
   assert.equal((API_CODE.match(/failClosed:\s*true/g) || []).length, 2);
 });
 
+// CodeQL's js/missing-rate-limiting does not model createRateLimiter and does
+// not follow `router.use`, so the check on PR #83 stayed red after the limiter
+// shipped. The answer is the limiter passed explicitly on each route plus an
+// inline disposition. Both are load-bearing for the check and neither is
+// self-evident from reading the handler, so both are asserted here.
+test('every playbooks route carries the shared limiter and a CodeQL disposition', () => {
+  const lines = API_SRC.split('\n');
+  const registrations = [];
+  lines.forEach((line, i) => {
+    if (/^router\.(get|post|put|patch|delete)\(/.test(line)) registrations.push({ line, i });
+  });
+  assert.equal(registrations.length, 5, `expected 5 route registrations, found ${registrations.length}`);
+
+  const DISPOSITION = '// codeql[js/missing-rate-limiting]';
+  for (const { line, i } of registrations) {
+    assert.match(line, /playbooksSharedLimiter/,
+      `route must pass the shared limiter explicitly: ${line.trim()}`);
+    // The disposition has to sit on the line immediately above the handler for
+    // CodeQL to associate it with the alert.
+    assert.ok(lines[i - 1] && lines[i - 1].includes(DISPOSITION),
+      `missing ${DISPOSITION} directly above: ${line.trim()}`);
+    assert.match(lines[i - 1], /createRateLimiter keyed on req\.tenant\.id/,
+      `disposition must state the reason: ${lines[i - 1]}`);
+  }
+
+  // Suppressions must stay pinned to this one query — never a bare `codeql[...]`
+  // that would silence unrelated findings in the same file.
+  const suppressions = API_SRC.match(/\/\/\s*(codeql|lgtm)\[[^\]]*\]/g) || [];
+  assert.equal(suppressions.length, 5);
+  for (const s of suppressions) {
+    assert.match(s, /^\/\/ codeql\[js\/missing-rate-limiting\]$/);
+  }
+});
+
+test('a limiter mounted twice on one chain still spends a single token', async () => {
+  // router.use + the explicit per-route argument put the same instance on the
+  // chain twice. Double counting here would silently halve the tenant ceiling.
+  const lim = createRateLimiter({
+    name: 'dedupe', windowMs: 60_000, max: 2, keyFn: () => 'playbooks|9', serialize: true, failClosed: true,
+  });
+  // Each `req` models one request passing through both mounts.
+  const twice = async (req) => {
+    const first = await hit(lim, req);
+    if (first.verdict === 'denied') return first;
+    return hit(lim, req);
+  };
+  assert.equal((await twice({})).verdict, 'allowed');
+  assert.equal((await twice({})).verdict, 'allowed');
+  assert.equal((await twice({})).verdict, 'denied', 'third request must be the one denied, not the second');
+  lim.reset();
+});
+
 test('no production source reads the test-only x-test-tid header', () => {
   const roots = ['services', 'lib', 'app', 'components', 'hooks'];
   const files = ['server.js', 'db.js', 'middleware.ts'];
@@ -324,15 +376,17 @@ test('per-tenant keys isolate buckets', async () => {
     serialize: true,
     failClosed: true,
   });
-  const a = { tenant: { id: 1 } };
-  const b = { tenant: { id: 2 } };
-  assert.equal((await hit(lim, a)).verdict, 'allowed');
-  assert.equal((await hit(lim, a)).verdict, 'allowed');
-  assert.equal((await hit(lim, a)).verdict, 'denied');
+  // A fresh object per call: the limiter marks the request it has adjudicated,
+  // so reusing one object would model a single request, not a sequence.
+  const a = () => ({ tenant: { id: 1 } });
+  const b = () => ({ tenant: { id: 2 } });
+  assert.equal((await hit(lim, a())).verdict, 'allowed');
+  assert.equal((await hit(lim, a())).verdict, 'allowed');
+  assert.equal((await hit(lim, a())).verdict, 'denied');
   // Tenant A exhausting its bucket must not spend tenant B's allowance.
-  assert.equal((await hit(lim, b)).verdict, 'allowed');
-  assert.equal((await hit(lim, b)).verdict, 'allowed');
-  assert.equal((await hit(lim, b)).verdict, 'denied');
+  assert.equal((await hit(lim, b())).verdict, 'allowed');
+  assert.equal((await hit(lim, b())).verdict, 'allowed');
+  assert.equal((await hit(lim, b())).verdict, 'denied');
   lim.reset();
 });
 

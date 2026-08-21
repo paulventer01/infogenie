@@ -1541,6 +1541,51 @@ requires `manage.playbook.use`. The practical exposure is an `INFOGENIE_API_KEY`
 caller on a deployment with no default tenant — the case `server.js` already logs
 as `[apikey] no default tenant resolvable`.
 
+### The CodeQL check after the control shipped
+
+**The control is shipped; the query still does not model `createRateLimiter`.**
+On PR #83 the `Analyze (javascript-typescript)` job passes and the separate
+`CodeQL` results check stayed red with three new high-severity
+`js/missing-rate-limiting` alerts *after* the limiter landed.
+`js/missing-rate-limiting` recognises a small set of known limiter packages
+(`express-rate-limit` and friends); it does not recognise this repository's own
+`createRateLimiter`, and it does not follow a limiter installed with
+`router.use()` back to the individual handlers. So the alert is a **visibility
+gap, not a missing control** — the same conclusion PR #82 reached, except that
+this time the limiter genuinely exists.
+
+Two things close the gap without adding a second limiter, without pulling in
+`express-rate-limit`, and without touching `_RL_PATHS`:
+
+- **`playbooksSharedLimiter` is passed explicitly on all five route
+  registrations**, in addition to the binding `router.use()` mount, so the
+  limiter sits on each handler's own middleware chain where the query looks.
+  It is the same instance, and `rate_limit.js` marks a request it has already
+  adjudicated (`alreadyDecided`), so the second pass spends no token and the
+  60/60 s ceiling is unchanged. The `router.use()` mount stays because it is the
+  one that also covers unmatched paths under the prefix.
+- **An inline `// codeql[js/missing-rate-limiting]` disposition sits directly
+  above each of the five handlers**, naming `createRateLimiter` and the
+  `req.tenant.id` key. Inline dispositions are how this repository answers
+  default-setup scanning: there is no `.github/workflows` CodeQL configuration
+  to scope or filter the query with, so the disposition has to live in the
+  source. Each one is pinned to this single query id — no bare `codeql[...]`
+  that would silence unrelated findings in the same file.
+
+Whether GitHub's **default setup** honours inline suppression comments is not
+verifiable from this environment (the code-scanning API answers `403 Resource not
+accessible by integration` for this token, so the alert list cannot be read back
+after a run). If the check stays red, **dismissing the alert in the code-scanning
+UI remains available and is an operator action** — the disposition comments and
+this section are the justification an operator needs to do that safely. What must
+not happen is a second limiter, or `/api/playbooks` being added to `_RL_PATHS`,
+being introduced to satisfy a scanner: see below for why that would make the
+product worse.
+
+`test/playbooks-rate-limit-security.test.js` asserts that all five registrations
+still pass the limiter and still carry the disposition, so neither can be dropped
+in a later refactor without a test failing.
+
 ### Why the fix did not go into `_RL_PATHS`
 
 The routes were never the anonymous surface the query scores:
@@ -1617,12 +1662,13 @@ surfaces, and this branch adds none.
   loop. That amplification is now bounded at 60 attempts per tenant per minute
   instead of unbounded, but the underlying catalog-poisoning item recorded above
   still needs its housekeeping data decision.
-- **The alert may still need dismissal.** CodeQL's `js/missing-rate-limiting`
-  traces middleware it can see on the route; whether it recognises a router-level
-  `use()` limiter is unverified from this environment. If it reappears,
-  dismissing it is an operator action — there is no `.github/workflows` CodeQL
-  config to scope the query (scanning runs from GitHub default setup), and
-  nothing in the repository suppresses it.
+- **The alert may still need dismissal.** `js/missing-rate-limiting` does not
+  model `createRateLimiter`, so the explicit per-route mount and the inline
+  dispositions described above are a best effort at making the control visible
+  to the query, not a guarantee that the check turns green. If it stays red,
+  dismissing it in the code-scanning UI is an operator action — there is no
+  `.github/workflows` CodeQL config to scope the query (scanning runs from
+  GitHub default setup).
 
 Coverage: `test/playbooks-rate-limit.test.js` (HTTP: 429 contract, per-tenant
 isolation, spoofed body/query/header, concurrent burst, API-key caller,
