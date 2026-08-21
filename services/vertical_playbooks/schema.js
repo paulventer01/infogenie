@@ -5,6 +5,10 @@ async function ensureVerticalPlaybooksSchema() {
   await p.query(`
     CREATE TABLE IF NOT EXISTS vertical_playbooks (
       id SERIAL PRIMARY KEY,
+      -- MIXED (roles pattern): is_system=TRUE catalog rows keep tenant_id IS NULL
+      -- (shared library). Custom is_system=FALSE rows are tenant-owned and must
+      -- stamp tenant_id. Do not backfill system rows onto an arbitrary tenant.
+      tenant_id INT REFERENCES tenants(id) ON DELETE CASCADE,
       vertical VARCHAR(100) NOT NULL,
       title VARCHAR(300) NOT NULL,
       description TEXT,
@@ -20,6 +24,28 @@ async function ensureVerticalPlaybooksSchema() {
       activated_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(tenant_id, playbook_id)
     );
+  `);
+
+  await p.query(`
+    ALTER TABLE vertical_playbooks
+      ADD COLUMN IF NOT EXISTS tenant_id INT REFERENCES tenants(id) ON DELETE CASCADE
+  `);
+
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS vertical_playbooks_tenant_idx
+      ON vertical_playbooks (tenant_id)
+  `);
+
+  // Partial unique indexes — same shape as roles:
+  //   system catalog: unique by vertical where tenant_id IS NULL
+  //   custom: unique by (tenant_id, title) where tenant_id IS NOT NULL
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS vertical_playbooks_system_vertical_idx
+      ON vertical_playbooks (vertical) WHERE tenant_id IS NULL
+  `);
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS vertical_playbooks_tenant_title_idx
+      ON vertical_playbooks (tenant_id, title) WHERE tenant_id IS NOT NULL
   `);
 }
 

@@ -1,10 +1,11 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 async function ensurePresenceScoreSchema() {
   if (!_db.hasDb()) return;
   await _db.getPool().query(`
     CREATE TABLE IF NOT EXISTS presence_scores (
       id SERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       brand TEXT NOT NULL,
       overall_score INTEGER NOT NULL DEFAULT 0,
       search_presence INTEGER DEFAULT 0,
@@ -18,6 +19,6 @@ async function ensurePresenceScoreSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_presence_brand ON presence_scores(brand, created_at DESC);
   `);
-  try { await addTenantIdColumn('presence_scores'); } catch(e) { console.error('[presence-score] migration:', e.message); }
+  try { await enforceTenantIdNotNull('presence_scores'); } catch(e) { console.error('[presence-score] fail-closed tenant_id:', e.message); }
 }
 module.exports = { ensurePresenceScoreSchema };

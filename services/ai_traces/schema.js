@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 
 async function ensureAiTracesSchema() {
   if (!_db.hasDb()) return;
@@ -6,7 +7,7 @@ async function ensureAiTracesSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ai_call_traces (
       id                SERIAL PRIMARY KEY,
-      tenant_id         INTEGER,
+      tenant_id         INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       surface           TEXT,
       category          TEXT,
       provider          TEXT,
@@ -31,6 +32,8 @@ async function ensureAiTracesSchema() {
     CREATE INDEX IF NOT EXISTS idx_ai_traces_surface
     ON ai_call_traces(tenant_id, surface, created_at DESC)
   `);
+  try { await enforceTenantIdNotNull('ai_call_traces'); }
+  catch (e) { console.error('[ai-traces] fail-closed tenant_id:', e.message); }
 }
 
 module.exports = { ensureAiTracesSchema };

@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 
 async function ensurePostLaunchAuditSchema() {
   if (!_db.hasDb()) return;
@@ -24,6 +25,7 @@ async function ensurePostLaunchAuditSchema() {
   await p.query(`
     CREATE TABLE IF NOT EXISTS post_launch_checks (
       id          SERIAL PRIMARY KEY,
+      tenant_id   INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       audit_id    INT NOT NULL REFERENCES post_launch_audits(id) ON DELETE CASCADE,
       check_type  TEXT NOT NULL,
       status      TEXT NOT NULL DEFAULT 'pending',
@@ -31,6 +33,19 @@ async function ensurePostLaunchAuditSchema() {
       run_at      TIMESTAMPTZ
     );
   `);
+
+  try {
+    await enforceTenantIdNotNull('post_launch_checks', {
+      backfillFrom: {
+        parentTable: 'post_launch_audits',
+        parentIdColumn: 'id',
+        childFkColumn: 'audit_id',
+      },
+      indexExtra: ['audit_id'],
+    });
+  } catch (e) {
+    console.error('[post-launch-audit] checks fail-closed tenant_id:', e.message);
+  }
 }
 
 module.exports = { ensurePostLaunchAuditSchema };

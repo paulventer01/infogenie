@@ -1,5 +1,5 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 const hasDb = () => _db.hasDb();
 const pool = { query: (...a) => _db.getPool().query(...a) };
 
@@ -8,6 +8,7 @@ async function ensureBudgetSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS budgets (
       id             TEXT PRIMARY KEY,
+      tenant_id      INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       period_month   TEXT NOT NULL,
       target_cents   BIGINT NOT NULL DEFAULT 0,
       by_channel     JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -16,6 +17,7 @@ async function ensureBudgetSchema() {
     );
     CREATE TABLE IF NOT EXISTS spend_events (
       id             BIGSERIAL PRIMARY KEY,
+      tenant_id      INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       channel        TEXT NOT NULL,
       amount_cents   BIGINT NOT NULL,
       occurred_at    DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -27,9 +29,9 @@ async function ensureBudgetSchema() {
     CREATE INDEX IF NOT EXISTS idx_spend_when ON spend_events(occurred_at DESC);
     CREATE INDEX IF NOT EXISTS idx_spend_channel ON spend_events(channel);
   `);
-  // Phase 2B — add tenant_id and rewrite the per-month uniqueness to be per-tenant.
-  await addTenantIdColumn('budgets');
-  await addTenantIdColumn('spend_events');
+  // Phase 2 closeout — fail-closed NOT NULL (never default-tenant assignment).
+  await enforceTenantIdNotNull('budgets');
+  await enforceTenantIdNotNull('spend_events');
   try {
     await pool.query(`DROP INDEX IF EXISTS uniq_budget_period_proj`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_budget_tenant_period_proj

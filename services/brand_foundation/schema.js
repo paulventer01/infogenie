@@ -1,15 +1,14 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 
 // brand_foundation — was a hard singleton (id=1, CHECK id=1) for the entire
 // install. In Phase 2 it becomes one row per tenant:
-//   • Add tenant_id column (nullable for migration, backfilled to default tenant)
+//   • Add tenant_id column
 //   • Drop the `brand_foundation_singleton` CHECK constraint
 //   • Add UNIQUE (tenant_id) so each tenant still holds at most one row
 //
-// During the migration window the old `id=1` row is preserved and assigned
-// to the default tenant. New tenants get a fresh row created lazily on first
-// access by the API layer.
+// Closeout is fail-closed (`enforceTenantIdNotNull`): existing rows keep their
+// tenant_id; unmappable NULLs are NOT assigned to tenant 1 / a default tenant.
 
 async function ensureBrandFoundationSchema() {
   if (!_db.hasDb()) return;
@@ -55,7 +54,7 @@ async function ensureBrandFoundationSchema() {
   // The id PRIMARY KEY stays (with its DEFAULT 1) for backwards-compat; new
   // rows from /save use id=DEFAULT — collisions caught by the UNIQUE constraint.
   // Once Phase 2 closeout happens, we'll drop the id default and use SERIAL.
-  const mig = await addTenantIdColumn('brand_foundation', {
+  const mig = await enforceTenantIdNotNull('brand_foundation', {
     dropCheck: 'brand_foundation_singleton',
     uniqueWithExtra: [],
   });

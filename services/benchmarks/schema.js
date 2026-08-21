@@ -15,6 +15,10 @@ async function ensureBenchmarksSchema() {
       submitted_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE TABLE IF NOT EXISTS benchmark_aggregates (
+      -- GLOBAL by design: anonymised cross-customer network percentiles.
+      -- UNIQUE(vertical, region, company_size, metric_key) has no tenant.
+      -- Rebuilt from ALL benchmark_submissions (that table stays tenant-scoped).
+      -- Do not add tenant_id — it would destroy the data-moat.
       id SERIAL PRIMARY KEY,
       vertical VARCHAR(100) NOT NULL,
       region VARCHAR(100),

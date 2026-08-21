@@ -1,5 +1,5 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { addTenantIdColumn, enforceTenantIdNotNull } = require('../tenants/migration');
 const { compatibleCategories } = require('./capabilities');
 
 async function ensureAiProvidersSchema() {
@@ -8,6 +8,7 @@ async function ensureAiProvidersSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ai_providers (
       id           SERIAL PRIMARY KEY,
+      tenant_id    INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       name         TEXT NOT NULL,
       base_url     TEXT NOT NULL,
       api_key      TEXT NOT NULL,
@@ -35,8 +36,8 @@ async function ensureAiProvidersSchema() {
     CREATE INDEX IF NOT EXISTS ai_provider_assign_tenant_cat_idx
       ON ai_provider_assignments(tenant_id, category, enabled DESC, is_default DESC);
   `);
-  try { await addTenantIdColumn('ai_providers'); }
-  catch (e) { console.error('[ai-providers] addTenantIdColumn:', e.message); }
+  try { await enforceTenantIdNotNull('ai_providers'); }
+  catch (e) { console.error('[ai-providers] fail-closed tenant_id:', e.message); }
   try { await addTenantIdColumn('ai_provider_assignments'); }
   catch (e) { console.error('[ai-providers] assignments tenant col:', e.message); }
 

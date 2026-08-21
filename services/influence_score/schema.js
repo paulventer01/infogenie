@@ -1,10 +1,11 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 async function ensureInfluenceScoreSchema() {
   if (!_db.hasDb()) return;
   await _db.getPool().query(`
     CREATE TABLE IF NOT EXISTS influence_scores (
       id SERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       brand TEXT NOT NULL,
       sources JSONB NOT NULL DEFAULT '[]'::jsonb,
       top_source TEXT,
@@ -14,6 +15,6 @@ async function ensureInfluenceScoreSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_influence_brand ON influence_scores(brand, created_at DESC);
   `);
-  try { await addTenantIdColumn('influence_scores'); } catch(e) { console.error('[influence-score] migration:', e.message); }
+  try { await enforceTenantIdNotNull('influence_scores'); } catch(e) { console.error('[influence-score] fail-closed tenant_id:', e.message); }
 }
 module.exports = { ensureInfluenceScoreSchema };

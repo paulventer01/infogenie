@@ -8,6 +8,9 @@ async function ensureJobsSchema() {
   const p = _db.getPool();
   await p.query(`
     CREATE TABLE IF NOT EXISTS job_queue (
+      -- GLOBAL by design: platform worker queue. Workers claim globally.
+      -- Enqueue sites write process-level jobs (empty payload {}). Not tenant
+      -- business data — do not add tenant_id.
       id            BIGSERIAL PRIMARY KEY,
       name          TEXT NOT NULL,
       payload       JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -29,6 +32,8 @@ async function ensureJobsSchema() {
 
   await p.query(`
     CREATE TABLE IF NOT EXISTS job_schedules (
+      -- GLOBAL by design: platform cron registry. PK on name.
+      -- registerSchedule is process-level, not workspace data.
       name              TEXT PRIMARY KEY,
       interval_ms       BIGINT NOT NULL,
       enabled           BOOLEAN NOT NULL DEFAULT true,

@@ -1,10 +1,11 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 async function ensureGeoInsightsSchema() {
   if (!_db.hasDb()) return;
   await _db.getPool().query(`
     CREATE TABLE IF NOT EXISTS geo_insight_runs (
       id SERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       brand TEXT NOT NULL,
       regions JSONB NOT NULL DEFAULT '[]'::jsonb,
       breakdown JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -15,6 +16,6 @@ async function ensureGeoInsightsSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_geo_brand ON geo_insight_runs(brand, created_at DESC);
   `);
-  try { await addTenantIdColumn('geo_insight_runs'); } catch(e) { console.error('[geo-insights] migration:', e.message); }
+  try { await enforceTenantIdNotNull('geo_insight_runs'); } catch(e) { console.error('[geo-insights] fail-closed tenant_id:', e.message); }
 }
 module.exports = { ensureGeoInsightsSchema };

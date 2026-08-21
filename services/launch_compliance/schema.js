@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 
 const DEFAULT_ITEMS = [
   // brand
@@ -49,6 +50,7 @@ async function ensureLaunchComplianceSchema() {
   await p.query(`
     CREATE TABLE IF NOT EXISTS compliance_checklist_items (
       id            SERIAL PRIMARY KEY,
+      tenant_id     INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       checklist_id  INT NOT NULL REFERENCES campaign_compliance_checklists(id) ON DELETE CASCADE,
       category      TEXT NOT NULL,
       item          TEXT NOT NULL,
@@ -61,6 +63,21 @@ async function ensureLaunchComplianceSchema() {
 
   // Migrations
   await p.query(`ALTER TABLE campaign_compliance_checklists ADD COLUMN IF NOT EXISTS overall_result TEXT`).catch(() => {});
+
+  // Child inherits tenant_id from campaign_compliance_checklists via checklist_id.
+  // Fail-closed: never assign orphans to a default tenant.
+  try {
+    await enforceTenantIdNotNull('compliance_checklist_items', {
+      backfillFrom: {
+        parentTable: 'campaign_compliance_checklists',
+        parentIdColumn: 'id',
+        childFkColumn: 'checklist_id',
+      },
+      indexExtra: ['checklist_id'],
+    });
+  } catch (e) {
+    console.error('[launch-compliance] items fail-closed tenant_id:', e.message);
+  }
 }
 
 module.exports = { ensureLaunchComplianceSchema, DEFAULT_ITEMS };

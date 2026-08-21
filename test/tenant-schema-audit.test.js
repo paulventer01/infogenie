@@ -36,15 +36,28 @@ const KNOWN_GLOBAL = new Set([
   'user_integrations', // per-user credential vault
   'platform_api_keys', // platform-owned API keys, shared across all tenants
   'platform_key_tests', // last live-test verdict per platform key, platform-wide
+  // Platform / network catalogs — not workspace data. See phase2_migrate.js
+  // exclusion comments. Do NOT add a table here just to silence the audit.
+  'benchmark_aggregates', // anonymised cross-customer percentiles; UNIQUE(vertical, region, company_size, metric_key); submissions stay tenant-scoped
+  'job_schedules',        // platform cron registry; PK on name; process-level
+  'job_queue',            // platform worker queue; claimed globally; not tenant business data
+  'simulation_templates', // seeded 24-template catalog; UNIQUE(label); shared library
 ]);
 
 // ── Tables whose tenant_id is intentionally NULLABLE ─────────────────────────
 // Mirrors PHASE2E_NULLABLE_OK in phase2_migrate.js: system rows are global
 // (tenant_id IS NULL) while per-tenant rows are scoped.
-//   • roles        — global system roles vs per-tenant custom roles
-//   • email_tokens — only invite tokens are workspace-bound; password-reset /
-//                    email-verify tokens have no tenant
-const NULLABLE_OK = new Set(['roles', 'email_tokens']);
+//   • roles              — global system roles vs per-tenant custom roles
+//   • email_tokens       — only invite tokens are workspace-bound; password-reset /
+//                          email-verify tokens have no tenant
+//   • vertical_playbooks — MIXED (roles pattern): system catalog (tenant_id IS NULL)
+//                          vs custom tenant-owned playbooks
+const NULLABLE_OK = new Set([
+  'roles',               // global system roles vs per-tenant custom roles
+  'email_tokens',        // invite tokens are workspace-bound; reset/verify are not
+  'vertical_playbooks',  // MIXED (roles pattern): is_system=TRUE catalog stays tenant_id IS NULL;
+                         // custom is_system=FALSE playbooks are tenant-owned
+]);
 
 // Pull the live schema once and share it across the audit assertions.
 async function loadSchema() {

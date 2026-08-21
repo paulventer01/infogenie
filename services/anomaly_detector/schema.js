@@ -1,10 +1,11 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 async function ensureAnomalyDetectorSchema() {
   if (!_db.hasDb()) return;
   await _db.getPool().query(`
     CREATE TABLE IF NOT EXISTS anomaly_detections (
       id SERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       brand TEXT NOT NULL,
       anomaly_type TEXT NOT NULL DEFAULT 'mention_spike',
       severity TEXT NOT NULL DEFAULT 'low',
@@ -20,6 +21,6 @@ async function ensureAnomalyDetectorSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_anomaly_brand ON anomaly_detections(brand, created_at DESC);
   `);
-  try { await addTenantIdColumn('anomaly_detections'); } catch(e) { console.error('[anomaly-detector] migration:', e.message); }
+  try { await enforceTenantIdNotNull('anomaly_detections'); } catch(e) { console.error('[anomaly-detector] fail-closed tenant_id:', e.message); }
 }
 module.exports = { ensureAnomalyDetectorSchema };
