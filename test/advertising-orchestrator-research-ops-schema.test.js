@@ -640,4 +640,54 @@ if (!HAS_DB) {
     assert.strictEqual(Number(limits.max_research_evidence_payload_bytes), 0);
     await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantD]);
   });
+
+  test('a CHECK redefinition that stored rows violate keeps the previous constraint', async () => {
+    const p = db.getPool();
+    const CN = 'orchestrator_research_evidence_headline_check';
+    const defOf = async () => {
+      const r = await p.query(
+        `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+          WHERE conname=$1 AND conrelid='public.orchestrator_research_evidence'::regclass`,
+        [CN]
+      );
+      return r.rowCount ? r.rows[0].def : null;
+    };
+
+    const tenantR = (await p.query(
+      `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+      [`AORO redef ${SUFFIX}`, `aoro-redef-${SUFFIX}`]
+    )).rows[0].id;
+    try {
+      await seedResearchLimits(p, tenantR);
+      const host = await seedHost(p, tenantR);
+      const compId = await insertCompetitor(p, tenantR, host.runId);
+
+      // Stand in for an older, looser definition of the same named constraint,
+      // then store a row that only the loose form accepts.
+      await p.query(`ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT ${CN}`);
+      await p.query(
+        `ALTER TABLE orchestrator_research_evidence
+           ADD CONSTRAINT ${CN} CHECK (char_length(headline) <= 5000)`
+      );
+      await insertEvidence(p, tenantR, host.runId, compId, {
+        id: nid('ev-redef'),
+        headline: 'x'.repeat(600),
+      });
+
+      await assert.rejects(
+        () => ensureAgentOrchestratorSchema(),
+        (err) => err && err.code === '23514',
+        'ensure must fail closed rather than ship a table the new CHECK cannot cover'
+      );
+      assert.strictEqual(
+        await defOf(),
+        'CHECK ((char_length(headline) <= 5000))',
+        'a failed redefinition must roll back to the previous constraint, not drop it'
+      );
+    } finally {
+      await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantR]);
+      await ensureAgentOrchestratorSchema();
+    }
+    assert.strictEqual(await defOf(), 'CHECK ((char_length(headline) <= 500))');
+  });
 }
