@@ -627,6 +627,369 @@ Accepted residuals:
   automatically, so production keeps failing its boot until an operator resolves
   it. That is the intended outcome; see the triple table above.
 
+## Tenant-schema closeout — global vs mixed vs child
+
+Isolation-policy review of the fail-closed `tenant_id` closeout. Every
+classification below was checked against a live Postgres built from the real
+`ensure*Schema()` functions, not read off the source comments. Verdicts are
+**accept** or **reject** per table class; the query predicates Backend still owes
+are listed once, at the end, because the schema cannot enforce them.
+
+Nothing in this review loosens `MULTITENANT_ENFORCEMENT`, `PERMISSION_ENFORCEMENT`,
+`ROUTE_GROUPS`, or the assertions in `test/tenant-schema-audit.test.js`. No entry
+was added to `KNOWN_GLOBAL` or `NULLABLE_OK`.
+
+### Global, no `tenant_id` — accepted
+
+- **`benchmark_aggregates`** — accepted. The row *is* the anonymised network
+  percentile: `UNIQUE (vertical, region, company_size, metric_key)` has no tenant
+  axis, and `_rebuildAggregates` recomputes each bucket from **all**
+  `benchmark_submissions` rows. Adding `tenant_id` would either duplicate the
+  same percentile per workspace or silo the data-moat into single-tenant
+  "benchmarks" that no longer benchmark anything. The tenant-scoped side is
+  intact: `POST /submit` writes `benchmark_submissions` with
+  `resolveTenantId(req, { label:'benchmarks:submit' })`, and the only cross-tenant
+  read of that table is `_rebuildAggregates`, which emits percentiles rather than
+  rows — no route returns another workspace's individual submissions. Backfill
+  rule: none — the table is derived, so it is rebuilt rather than migrated.
+  Residual risk (k-anonymity) is recorded below.
+- **`job_queue`** — accepted, conditionally. It is a platform worker queue:
+  workers claim rows globally by `(status, run_at)` and nothing keys off a
+  workspace. The classification holds only because the payload is empty today —
+  the sole production enqueue site is `_enqueueDueSchedules` in
+  `services/jobs/scheduler.js`, which calls `enqueue(s.name, {}, …)`. The moment a
+  caller enqueues a payload carrying workspace data (or a `tenant_id` field), the
+  table stops being platform registry and must be scoped; a job row is readable by
+  any worker in the install. Treat a non-empty payload as a schema change, not a
+  handler change.
+- **`job_schedules`** — accepted. `PRIMARY KEY (name)` is a process-level cron
+  registry keyed by schedule name, written by `registerSchedule` at boot. There is
+  no per-workspace schedule concept, and `last_enqueued_at` is install-wide
+  bookkeeping. Backfill rule: none.
+- **`simulation_templates`** — accepted. Seeded shared catalog with
+  `UNIQUE (label)`, read by `services/digital_twin/api.js` with no tenant filter
+  and never written by a request path. It is product content, not workspace data,
+  so the read is a catalog read. Backfill rule: none — seeded, never migrated.
+  Tenant-owned simulation *runs* live in separate scoped tables.
+
+### Mixed / `NULLABLE_OK` — accepted as a shape, rejected as currently written
+
+**`vertical_playbooks`** follows the `roles` pattern, and the *shape* is right:
+system catalog rows keep `tenant_id IS NULL` with `is_system = TRUE`, custom rows
+are tenant-owned, and the two partial unique indexes —
+`(vertical) WHERE tenant_id IS NULL` and `(tenant_id, title) WHERE tenant_id IS
+NOT NULL` — separate the two key spaces cleanly. Keeping it in `NULLABLE_OK` is
+correct; the alternative (copying the six-playbook catalog onto every tenant) is
+worse.
+
+The classification nonetheless **fails in practice**, because it depends entirely
+on a precondition the handler does not meet. `POST /generate-custom` inserts with
+`is_system = FALSE` and **no `tenant_id`**, so a custom playbook lands in the
+system key space. Confirmed on a live schema — the inserted row came back
+`tenant_id=null, is_system=false`, with three consequences:
+
+- **Cross-tenant disclosure.** `POST /activate/:id` resolves the playbook with
+  `WHERE id=$1` and nothing else, so any workspace can activate any id. After
+  activating another tenant's custom playbook, `GET /active/list` joins
+  `vertical_playbooks` and returns its `title` and full `content` — a document
+  generated from that tenant's `business_description`, goals and challenges.
+  Reproduced end to end: tenant B read tenant A's private playbook body. This is
+  the highest-severity finding in the set and it is an authorization bug, not a
+  schema bug — the partial index cannot fix it.
+- **Cross-tenant denial of service.** The NULL-tenant custom row occupies the
+  system slot for its vertical, so a second workspace generating a playbook for
+  the same industry gets `23505` on
+  `vertical_playbooks_system_vertical_idx`. Two tenants in one industry lock each
+  other out.
+- **Catalog poisoning.** For the same reason, `seedPlaybooks`' `ON CONFLICT DO
+  NOTHING` silently skips a system playbook whose vertical a tenant has already
+  claimed. That vertical then never reaches the shared catalog, and because the
+  `is_system=TRUE` count never reaches `SYSTEM_PLAYBOOKS.length`, the seed loop
+  re-runs on every `/list` and `/:vertical` request.
+
+`seedPlaybooks` itself is correct and must stay as it is: `tenant_id` omitted,
+`is_system = TRUE`. That is the one INSERT into this table that may legitimately
+skip the tenant stamp, and `test/tenant-closeout-write-audit.test.js` now encodes
+exactly that rule rather than allowlisting the file.
+
+### Child, tenant-owned — accepted
+
+`compliance_checklist_items` (← `campaign_compliance_checklists.id` via
+`checklist_id`), `post_launch_checks` (← `post_launch_audits.id` via `audit_id`),
+`backlink_snapshots` / `backlink_changes` (← `backlink_monitors.id` via
+`monitor_id`), `geo_citation_checks` (← `geo_audit_runs.id` via `run_id`),
+`hashtag_scans` (← `hashtag_watches.id`), and `yt_snapshots` (←
+`yt_channels.id`) are all accepted as tenant-owned children.
+
+- **Why a column and not just the FK.** The parent FK already implies exactly one
+  tenant, so a denormalised `tenant_id` is redundant *if* every query joins the
+  parent. It is worth carrying anyway: it lets a child read filter on one table,
+  it makes an unscoped child query fail closed on `NOT NULL` instead of leaking,
+  and it is what the schema audit can actually assert. The cost is that the column
+  can now disagree with the parent, which is why the stamp must come from the
+  parent row rather than the request.
+- **Backfill rule.** Inherit `parent.tenant_id`, and only where the parent's own
+  `tenant_id` is non-NULL — which is what `options.backfillFrom` does. A child
+  whose parent is missing or itself unowned stays NULL and blocks the flip. No
+  child is default-assigned.
+- **Child uniqueness does not need to lead with `tenant_id`.**
+  `backlink_snapshots UNIQUE (monitor_id, referring_domain)` and
+  `idx_blc_dedupe (monitor_id, change_type, referring_domain, utc_date)` are
+  tenant-safe as written, because `monitor_id` is owned by exactly one tenant, so
+  a conflict can only ever be intra-tenant. The "composite must lead with
+  `tenant_id`" rule in `test/tenant-schema-audit.test.js` applies to
+  `REWRITE_UNIQUE` **natural** keys (a domain, a handle, a slug — values two
+  tenants can independently choose), not to FK-anchored child keys. That is why
+  these two tables are correctly absent from `REWRITE_UNIQUE`.
+
+### Tenant-owned closeout — accepted
+
+The 26 previously-nullable feature tables flipped to `NOT NULL` through the
+fail-closed path are accepted. On an install already carrying Phase-2 data the
+flip is a no-op with respect to ownership — `addTenantIdColumn` had backfilled
+those rows to the default tenant long before, so fail-closed finds zero NULLs and
+only tightens the column. It is genuinely unmappable rows that now block the
+flip, which is the intended trade.
+
+`backlink_monitors` correctly moves from a global `UNIQUE (domain)` to
+`UNIQUE (tenant_id, domain)`: two workspaces may monitor the same domain
+independently, and neither can address the other's row.
+
+### The fail-closed orphan policy is correct
+
+`enforceTenantIdNotNull` behaves as documented, and the policy is the right one.
+
+- **No default-tenant assignment.** `_getDefaultTenantId` is never called on this
+  path. The only write to `tenant_id` is the parent-join `UPDATE`, guarded by
+  `AND parent.tenant_id IS NOT NULL`, so an unowned parent cannot launder
+  ownership onto its children.
+- **No silent delete.** There is no `DELETE` in the function. Leftover rows are
+  counted, left in place, logged, and reported as
+  `{ ok:false, reason:'orphans', orphanCount }`. Deleting rows to make a
+  `NOT NULL` flip succeed would destroy data to improve a schema metric; refusing
+  the flip is correct.
+- **Skipping the flip is the right failure mode.** The alternative — flip anyway —
+  cannot happen (Postgres would reject it), and forcing it by assigning a tenant
+  would hand one workspace another's rows. Leaving the column nullable is a
+  weaker invariant, not a leak: reads filter `WHERE tenant_id = $1`, so a
+  NULL-tenant row is invisible to every tenant. It is inert until someone writes
+  a query that omits the predicate.
+- **Boot safety is preserved.** The work is one transaction per table, rolled back
+  on error, and every failure returns rather than throws, so a single bad table
+  cannot take down boot.
+
+No change was required in `services/tenants/migration.js`. One genuine defect
+found on the *caller* side is handed back to Database below.
+
+### The backlink IMMUTABLE function is not a privilege-escalation vector
+
+`infogenie_timestamptz_utc_date` is safe, and the `IMMUTABLE` marking is
+substantively correct rather than merely convenient. Verified against
+`pg_proc`: `prosecdef = false` (SECURITY INVOKER — no `SECURITY DEFINER`),
+`provolatile = 'i'`, `lanname = sql`, `proconfig = null`.
+
+- **Invoker rights.** With `prosecdef = false` the body executes with the calling
+  role's privileges, so the function grants nothing. The body is a pure
+  expression over its argument — no table reference, no `pg_read_*`, no dynamic
+  SQL — so even the default `EXECUTE` grant to `PUBLIC` conveys no authority
+  beyond arithmetic the caller could already perform inline.
+- **The immutability claim is true**, which matters because a falsely-`IMMUTABLE`
+  function in a unique-index expression silently corrupts the index.
+  `(ts AT TIME ZONE 'UTC')::date` is a fixed conversion and does not read the
+  session `TimeZone`. Demonstrated by evaluating one instant under two zones:
+  the wrapper returned `2026-08-21` under both `Pacific/Kiritimati` and
+  `Pacific/Midway`, while the bare `::date` cast returned `2026-08-22` and
+  `2026-08-21`. So the wrapper is both necessary and sound, and `idx_blc_dedupe`
+  is trustworthy.
+- **No new crypto, no `search_path` dependence on user input.** Hardening
+  recommendation, not a finding: pinning `SET search_path = pg_catalog` on the
+  function would remove the theoretical shadowing path against an index
+  expression. It requires DB-level `CREATE` privilege to exploit, which is
+  already game over, so this is defence in depth for Database to fold into a
+  future `schema.js` edit.
+
+### Required Backend predicates
+
+Confirmed required. Each is either a `NOT NULL` violation reproduced against a
+live schema, or a missing predicate that lets one workspace address another's
+row. Authoritative `tenant_id` comes from `resolveTenantId(req, { label })` or
+from a **trusted parent row already loaded under a tenant predicate** — never
+from `req.body.tenant_id`, which no handler below should read.
+
+**`services/launch_compliance/api.js`**
+
+- `POST /checklists` — the seed loop's `INSERT INTO compliance_checklist_items`
+  must name `tenant_id` and pass the resolved `tid`. Reproduced: `23502
+  null value in column "tenant_id"`. Checklist creation currently 500s at the
+  first item, so this is a hard break, and because the parent row is inserted
+  first the caller is left with an item-less checklist.
+- The follow-up `SELECT … FROM compliance_checklist_items WHERE checklist_id=$1`
+  (create and `GET /checklists/:id`) and the summary
+  `SELECT … WHERE checklist_id=$1` should add `AND tenant_id=$n`.
+- The list query's `LEFT JOIN compliance_checklist_items i ON i.checklist_id=c.id`
+  should add `AND i.tenant_id = c.tenant_id`.
+- `UPDATE campaign_compliance_checklists SET overall_result=… WHERE id=$2` should
+  add `AND tenant_id=$3`; likewise the `ai_feedback` and `brand_score` updates.
+
+  Severity note: these read/update predicates are **defence in depth today, not
+  live leaks**. Every one of those ids is derived from a row already fetched or
+  updated under `tenant_id=$n` (the `PUT /items/:itemId` update joins
+  `campaign_compliance_checklists` on `c.tenant_id=$4` before returning
+  `checklist_id`). They are still required: the transitive argument is invisible
+  at the call site, so it breaks the moment someone reorders the handler, and the
+  `NOT NULL` column is worth nothing if no query reads it.
+
+**`services/post_launch_audit/api.js`**
+
+- `POST /audits` — the seed loop's `INSERT INTO post_launch_checks` must name
+  `tenant_id`. Reproduced: `23502 null value in column "tenant_id"`. Same hard
+  break as above.
+- `UPDATE post_launch_checks … WHERE audit_id=$3 AND check_type IN (…)` (live
+  check) and `… WHERE audit_id=$3 AND check_type=$4` (lead flow) should add
+  `AND tenant_id=$n`.
+- `SELECT * FROM post_launch_checks WHERE audit_id=$1` (`GET /audits/:id`), the
+  `LEFT JOIN post_launch_checks c ON c.audit_id=a.id` in the list query, and
+  `_updateAuditStatus`'s `SELECT status … WHERE audit_id=$1` /
+  `UPDATE post_launch_audits … WHERE id=$3` should carry the tenant. Give
+  `_updateAuditStatus` an explicit `tenantId` parameter rather than letting it
+  infer scope from its caller — it is a module-level helper, so the transitive
+  guarantee is not visible where it executes.
+
+**`services/vertical_playbooks/api.js`**
+
+- `POST /generate-custom` — `INSERT INTO vertical_playbooks` must name
+  `tenant_id` and pass the resolved `tid` with `is_system = FALSE`. This is the
+  fix that stops a custom playbook occupying the shared system key space.
+- `POST /activate/:id` — the lookup must be
+  `WHERE id=$1 AND ((is_system = TRUE AND tenant_id IS NULL) OR tenant_id = $2)`.
+  Without it, an id from another workspace activates and then discloses through
+  `GET /active/list`. Answer `404`, not `403`, so playbook ids stay
+  non-enumerable.
+- `GET /active/list` — already scoped through `active_playbooks.tenant_id`; once
+  `activate` is fixed, no change is needed. If a custom-playbook listing is ever
+  added it must filter
+  `(is_system = TRUE AND tenant_id IS NULL) OR tenant_id = $1`.
+- `seedPlaybooks` — leave unchanged (`tenant_id` omitted, `is_system = TRUE`).
+- `GET /list` and `GET /:vertical` — leave unchanged. Both filter
+  `is_system = TRUE`, which is a catalog read; they need no tenant.
+
+**`services/backlink_monitor/api.js`**
+
+- `POST /domains` — `ON CONFLICT (domain)` must become
+  `ON CONFLICT (tenant_id, domain)`. Confirmed both halves against a live schema:
+  the current statement raises `42P10 there is no unique or exclusion constraint
+  matching the ON CONFLICT specification`, and the composite target succeeds. On
+  a correctly-migrated database this is fail-closed — every create/update 500s,
+  nothing leaks. It is nonetheless urgent, because on any install where the
+  legacy global `UNIQUE (domain)` survived the drop, the *same* statement takes
+  the `DO UPDATE` arm across tenants and `RETURNING *` hands the caller the other
+  workspace's `alert_email` and `alert_slack_webhook` — a webhook secret. Do not
+  "fix" this by re-adding a global unique on `domain`.
+- `_runMonitor` — `DELETE FROM backlink_snapshots WHERE monitor_id=$1` and
+  `UPDATE backlink_changes SET notified_at … WHERE monitor_id=$1` should add
+  `AND tenant_id=$2` from `monitor.tenant_id`.
+- The cron path is **accepted as-is**. `_cronTick` selects due monitors across all
+  tenants — correct for a platform worker — and `_runMonitor` then stamps child
+  writes with `monitor.tenant_id`, a trusted column read from
+  `backlink_monitors`, never from a request body. `POST /run-now` reaches the same
+  helper only through `WHERE id=$1 AND tenant_id=$2`, so a caller cannot steer
+  the worker at another workspace's monitor.
+- `GET /domains`, `POST /domains`, `DELETE /domains/:id`, `GET /changes` and
+  `POST /run-now` call `resolveTenantId` without checking the result. Under
+  enforcement `on` an api-key caller with no tenant gets `tid = null`, which
+  fails closed (reads match nothing, the insert violates `NOT NULL`) but surfaces
+  as an empty list or a `500` rather than `400 no_tenant`. Add the
+  `if (!tid) return _err(res, 400, 'no_tenant')` guard the other services use.
+
+### Handed back to Database
+
+**`brand_foundation` never reaches `NOT NULL` on a fresh install, and the
+fail-closed switch makes that permanent.** `services/brand_foundation/schema.js`
+seeds the legacy `id=1` row *before* `tenant_id` exists (the seed is guarded on
+the column's absence), so `enforceTenantIdNotNull` then finds exactly one
+unowned row, reports `reason:'orphans'`, and skips the flip. Reproduced on a
+clean database: `tenant_id is_nullable = YES` with
+`[{"id":1,"tenant_id":null}]`.
+
+This is not a regression from these three commits — the previous
+`addTenantIdColumn` call did not pass `notNull` either, and on a fresh install
+there is no default tenant to backfill to — but it is now self-perpetuating,
+because on an install that *does* have a default tenant the old path would have
+adopted the blank row and the new path deliberately will not. `brand_foundation`
+is excluded from `phase2_migrate.js` as the "proof case", so nothing else will
+ever flip it, and it is absent from both `NULLABLE_OK` and `PHASE2E_NULLABLE_OK` —
+so `test/tenant-schema-audit.test.js`'s NOT-NULL assertion fails on any fresh
+install, as does `test/tenant-schema-closeout.test.js`'s canonical-path test.
+
+The fix belongs to Database in `services/brand_foundation/schema.js`, not here,
+and it is **not** to add the table to `NULLABLE_OK` — a per-tenant singleton has
+no legitimate global row. Retire the legacy seed (it exists only for
+pre-Phase-2 compatibility and writes an all-defaults row), or delete a
+provably-blank unowned row immediately before the closeout call so the flip can
+proceed. Deleting a row with tenant data would not be acceptable; this specific
+row carries none.
+
+Separately, `test/tenant-schema-closeout.test.js`'s `parent backfill copies
+parent tenant, never tenant 1` asserts its fixture tenant is not id 1, which is
+true only when the test runs against a database that already has tenants. It
+failed on the first run against a clean database and passed on the second. The
+assertion is checking the fixture rather than the helper — the helper's real
+property is that it copies the parent's id — so it should be rewritten to assert
+the child's `tenant_id` equals the parent's regardless of the value. Test-fixture
+defect, no policy impact.
+
+### Accepted residuals (tenant-schema closeout)
+
+- **The fail-closed guarantee covers the closeout set, not the whole install.**
+  `enforceTenantIdNotNull` is used by the child/closeout tables. The ~120 tables
+  in `PLAIN_TABLES` still run `addTenantIdColumn`, which backfills NULLs to the
+  default tenant on **every** boot. That was the deliberate Phase-1 decision for
+  pre-multi-tenancy data (all of it was owner-gated), and it is not being
+  reversed here. The consequence to keep in mind: a row that acquires a NULL
+  `tenant_id` *after* Phase 2 — through a bug or a restore — is silently adopted
+  by the first owner's tenant on the next boot rather than reported. Boot logs
+  `rows backfilled`; a non-zero count on a mature install deserves
+  investigation. `geo_audit_runs` is on this path by design (it is in
+  `PLAIN_TABLES`) even though its child is fail-closed, so the parent can be
+  default-assigned while the child inherits that assignment.
+- **A blocked flip leaves a nullable column, and nothing alerts on it.**
+  `runPhase2Migration`'s phase-2E integrity check and the orphan message are
+  `console.warn` / `console.error` only; a table stuck with `reason:'orphans'`
+  degrades quietly and is caught by `test/tenant-schema-audit.test.js` in CI, not
+  in production. `brand_foundation` is the live instance of this.
+- **`benchmark_aggregates` publishes small-sample buckets.** With
+  `sample_count = 1` the p25/median/p75 for a `(vertical, region, company_size,
+  metric_key)` bucket *is* the single contributing workspace's exact submitted
+  value, re-served to every other workspace through `POST /compare` and
+  `GET /leaderboard`. A tenant submitting into a rare bucket therefore discloses
+  a precise business metric, which is not what "anonymised percentiles" promises.
+  The global classification is still right; the aggregation needs a k-anonymity
+  floor. Recommended for Backend as a follow-up, and deliberately not folded into
+  this review: suppress or refuse to publish buckets below a minimum
+  `sample_count` (5 is the usual floor), and prefer widening to the
+  vertical-level bucket over emitting a one-sample "benchmark".
+  `GET /leaderboard` additionally resolves no tenant at all; it is
+  matrix-gated on `compete.intel.view`, which is the intended control.
+- **`resolveTenantId` still honours `opts.allowFallback`.** No production caller
+  passes it — verified across the tree — but the escape hatch remains in
+  `services/tenants/context.js`, and a future handler could reinstate
+  default-tenant fallback under enforcement `on` with one word. Left in place
+  rather than removed mid-review, since removing it is a behaviour change with no
+  live caller to justify it here; the property is now locked by test instead.
+- **Static write/read audits do not see the closeout tables.** Both
+  `test/tenant-write-audit.test.js` and `test/tenant-read-audit.test.js` derive
+  their scoped-table set from `PLAIN_TABLES + REWRITE_UNIQUE`, and the
+  child/closeout tables are in neither list. That blind spot is why the two
+  missing-`tenant_id` INSERTs above shipped unnoticed.
+  `test/tenant-closeout-write-audit.test.js` closes it by deriving the audited
+  set from the `enforceTenantIdNotNull` call sites in `services/**/schema.js`, so
+  a new fail-closed table is audited with no extra wiring. Neither existing audit
+  was modified or weakened.
+- **The read audit is deliberately lenient within a tenant-aware function.** Once
+  a handler mentions the tenant anywhere, all of its statements are trusted, so
+  the individual missing predicates listed above are invisible to it by design.
+  That is why they are enumerated here rather than left to the scanner.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
