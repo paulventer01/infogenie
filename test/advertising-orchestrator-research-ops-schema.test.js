@@ -81,7 +81,11 @@ test('production schema.js has no replica-role backfill and identify never mutat
   assert.match(identify, /legacy_short_due/);
   assert.match(identify, /missing_expiry/);
   assert.match(identify, /invalid_expiry/);
-  assert.match(identify, /interval\s+'7 days'/);
+  assert.doesNotMatch(
+    identify,
+    /created_at \+ interval '7 days' <= now\(\)/,
+    'identify must not hold every short row whose created_at is older than 7 days'
+  );
   assert.match(identify, /ON CONFLICT \(tenant_id, target_kind, target_id\) DO NOTHING/);
 
   const srcQuota = src.slice(src.indexOf('CREATE OR REPLACE FUNCTION orchestrator_research_evidence_quota_insert'));
@@ -173,8 +177,12 @@ test('legacy identify SQL is tenant-scoped and does not combine 7/30-day UPDATEs
   const sql = extractBacktickSql(fn).join('\n');
   assert.match(sql, /retention_class = 'short'/);
   assert.match(sql, /retention_class IN \('standard', 'short'\)/);
+  assert.match(sql, /expires_at <= now\(\)/);
+  assert.doesNotMatch(sql, /created_at \+ interval '7 days' <= now\(\)/);
   assert.doesNotMatch(sql, /interval\s+'30 days'/);
   assert.doesNotMatch(sql, /^\s*UPDATE\s+/m);
+  assert.match(fn, /_legacyShortDueSnapshotOpen/);
+  assert.match(fn, /_closeLegacyShortDueSnapshot/);
 });
 
 const HAS_DB = db.hasDb();
@@ -710,62 +718,48 @@ if (!HAS_DB) {
     );
   });
 
-  test('identify reports legacy short-due rows and ensure() does not delete them', async () => {
+  test('identify does not hold naturally expired short rows after the first snapshot', async () => {
     const p = db.getPool();
     const host = await seedHost(p, tenantA);
     const comp = await insertCompetitor(p, tenantA, host.runId);
-    const createdAt = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-    const futureAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    const shortEvId = nid('ev-ident-short');
-    const shortAssetId = nid('asset-ident-short');
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const shortEvId = nid('ev-ident-natural');
+    const shortAssetId = nid('asset-ident-natural');
     await insertEvidence(p, tenantA, host.runId, comp, {
       id: shortEvId,
       retentionClass: 'short',
       createdAt,
-      expiresAt: futureAt,
-      dedupKey: nid('ededup-ident-short'),
+      expiresAt: expiredAt,
+      dedupKey: nid('ededup-ident-natural'),
     });
     await insertAsset(p, tenantA, shortEvId, {
       id: shortAssetId,
       retentionClass: 'short',
       createdAt,
-      expiresAt: futureAt,
+      expiresAt: expiredAt,
     });
 
-    const first = await identifyLegacyResearchCleanup();
-    assert.ok(first.evidence >= 1, 'identify must report short-due evidence');
-    assert.ok(first.assets >= 1, 'identify must report short-due assets');
-    const second = await identifyLegacyResearchCleanup();
-    assert.strictEqual(second.evidence, 0, 'identify must be idempotent');
-    assert.strictEqual(second.assets, 0, 'identify must be idempotent for assets');
-
+    await identifyLegacyResearchCleanup();
     await ensureAgentOrchestratorSchema();
 
     const leftover = (await p.query(
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
       [tenantA, shortEvId]
     )).rows;
-    assert.strictEqual(leftover.length, 1, 'ensure() must not delete identified evidence');
+    assert.strictEqual(leftover.length, 1, 'ensure() must not delete naturally expired short evidence');
     const leftoverAsset = (await p.query(
       `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
       [tenantA, shortAssetId]
     )).rows;
-    assert.strictEqual(leftoverAsset.length, 1, 'ensure() must not delete identified assets');
+    assert.strictEqual(leftoverAsset.length, 1, 'ensure() must not delete naturally expired short assets');
 
-    const hold = (await p.query(
-      `SELECT reason FROM orchestrator_research_legacy_holds
-        WHERE tenant_id=$1 AND target_kind='evidence' AND target_id=$2`,
-      [tenantA, shortEvId]
-    )).rows[0];
-    assert.ok(hold);
-    assert.strictEqual(hold.reason, 'legacy_short_due');
-    const assetHold = (await p.query(
-      `SELECT reason FROM orchestrator_research_legacy_holds
-        WHERE tenant_id=$1 AND target_kind='asset' AND target_id=$2`,
-      [tenantA, shortAssetId]
-    )).rows[0];
-    assert.ok(assetHold);
-    assert.strictEqual(assetHold.reason, 'legacy_short_due');
+    const holds = (await p.query(
+      `SELECT target_kind, reason FROM orchestrator_research_legacy_holds
+        WHERE tenant_id=$1 AND target_id = ANY($2)`,
+      [tenantA, [shortEvId, shortAssetId]]
+    )).rows;
+    assert.deepStrictEqual(holds, [], 'naturally expired short rows must not gain a hold after the first snapshot');
   });
 
   test('CHECK stays NOT VALID when violators exist; new invalid INSERT still fails', async () => {
@@ -773,6 +767,9 @@ if (!HAS_DB) {
     const client = await pool.connect();
     const evId = nid('ev-viol');
     const assetId = nid('asset-viol');
+    const evInvalidId = nid('ev-viol-inv');
+    const assetInvalidId = nid('asset-viol-inv');
+    const ts = new Date();
     const expirySql =
       `retention_class = 'legal_hold' OR (expires_at IS NOT NULL AND expires_at > created_at)`;
     try {
@@ -796,6 +793,19 @@ if (!HAS_DB) {
         retentionClass: 'standard',
         expiresAt: null,
       });
+      await insertEvidence(client, tenantA, host.runId, comp, {
+        id: evInvalidId,
+        retentionClass: 'short',
+        createdAt: ts,
+        expiresAt: ts,
+        dedupKey: nid('ededup-viol-inv'),
+      });
+      await insertAsset(client, tenantA, evInvalidId, {
+        id: assetInvalidId,
+        retentionClass: 'short',
+        createdAt: ts,
+        expiresAt: ts,
+      });
       await client.query(
         `ALTER TABLE orchestrator_research_evidence
            ADD CONSTRAINT orchestrator_research_evidence_retention_expiry_check
@@ -815,8 +825,56 @@ if (!HAS_DB) {
     client.release();
 
     const identified = await identifyLegacyResearchCleanup();
-    assert.ok(identified.evidence >= 1);
-    assert.ok(identified.assets >= 1);
+    assert.ok(identified.evidence >= 2);
+    assert.ok(identified.assets >= 2);
+
+    const reasons = (await pool.query(
+      `SELECT target_id, reason FROM orchestrator_research_legacy_holds
+        WHERE tenant_id=$1 AND target_id = ANY($2)
+        ORDER BY target_id`,
+      [tenantA, [evId, assetId, evInvalidId, assetInvalidId]]
+    )).rows;
+    const byId = Object.fromEntries(reasons.map((r) => [r.target_id, r.reason]));
+    assert.strictEqual(byId[evId], 'missing_expiry');
+    assert.strictEqual(byId[assetId], 'missing_expiry');
+    assert.strictEqual(byId[evInvalidId], 'invalid_expiry');
+    assert.strictEqual(byId[assetInvalidId], 'invalid_expiry');
+
+    const evLater = nid('ev-viol-later');
+    const laterClient = await pool.connect();
+    try {
+      await laterClient.query('BEGIN');
+      await laterClient.query(
+        `ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_retention_expiry_check`
+      );
+      const hostLater = await seedHost(laterClient, tenantA);
+      const compLater = await insertCompetitor(laterClient, tenantA, hostLater.runId);
+      await insertEvidence(laterClient, tenantA, hostLater.runId, compLater, {
+        id: evLater,
+        retentionClass: 'standard',
+        expiresAt: null,
+        dedupKey: nid('ededup-viol-later'),
+      });
+      await laterClient.query(
+        `ALTER TABLE orchestrator_research_evidence
+           ADD CONSTRAINT orchestrator_research_evidence_retention_expiry_check
+           CHECK (${expirySql}) NOT VALID`
+      );
+      await laterClient.query('COMMIT');
+    } catch (err) {
+      try { await laterClient.query('ROLLBACK'); } catch (_) { /* already aborted */ }
+      laterClient.release();
+      throw err;
+    }
+    laterClient.release();
+    const later = await identifyLegacyResearchCleanup();
+    assert.ok(later.evidence >= 1, 'missing_expiry must still be identified after the short-due snapshot');
+    const laterHold = (await pool.query(
+      `SELECT reason FROM orchestrator_research_legacy_holds
+        WHERE tenant_id=$1 AND target_kind='evidence' AND target_id=$2`,
+      [tenantA, evLater]
+    )).rows[0];
+    assert.strictEqual(laterHold.reason, 'missing_expiry');
 
     await ensureAgentOrchestratorSchema();
 
@@ -1284,7 +1342,12 @@ if (!HAS_DB) {
       createdAt,
       expiresAt: futureAt,
     });
-    await identifyLegacyResearchCleanup();
+    await p.query(
+      `INSERT INTO orchestrator_research_legacy_holds (tenant_id, target_kind, target_id, reason)
+       VALUES ($1,'evidence',$2,'missing_expiry'), ($1,'asset',$3,'missing_expiry')
+       ON CONFLICT (tenant_id, target_kind, target_id) DO NOTHING`,
+      [tenantA, heldId, heldAsset]
+    );
 
     await assert.rejects(
       () => p.query(

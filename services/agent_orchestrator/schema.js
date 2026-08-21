@@ -240,47 +240,87 @@ async function _preflightAgentOrchestratorSchema(p) {
   }
 }
 
+async function _legacyShortDueSnapshotOpen(p) {
+  const row = (await p.query(`
+    SELECT NOT EXISTS (
+             SELECT 1 FROM orchestrator_research_legacy_holds
+              WHERE reason = 'legacy_short_due'
+              LIMIT 1
+           )
+       AND NOT EXISTS (
+             SELECT 1 FROM orchestrator_research_legacy_short_due_snapshot
+              LIMIT 1
+           ) AS open
+  `)).rows[0];
+  return !!row.open;
+}
+
+async function _closeLegacyShortDueSnapshot(p) {
+  await p.query(`
+    INSERT INTO orchestrator_research_legacy_short_due_snapshot (id) VALUES (1)
+    ON CONFLICT (id) DO NOTHING
+  `);
+}
+
 async function _identifyLegacyResearchCleanup(p) {
+  const shortDueOpen = await _legacyShortDueSnapshotOpen(p);
   const evidence = await p.query(`
     INSERT INTO orchestrator_research_legacy_holds (tenant_id, target_kind, target_id, reason)
-    SELECT e.tenant_id, 'evidence', e.id,
-           CASE
-             WHEN e.retention_class = 'short'
-                  AND e.created_at + interval '7 days' <= now() THEN 'legacy_short_due'
-             WHEN e.expires_at IS NULL THEN 'missing_expiry'
-             ELSE 'invalid_expiry'
-           END
-      FROM orchestrator_research_evidence e
-     WHERE (
-             e.retention_class = 'short'
-             AND e.created_at + interval '7 days' <= now()
-           )
-        OR (
-             e.retention_class IN ('standard', 'short')
-             AND (e.expires_at IS NULL OR e.expires_at <= e.created_at)
-           )
+    SELECT s.tenant_id, s.target_kind, s.target_id, s.reason
+      FROM (
+        SELECT e.tenant_id,
+               'evidence'::text AS target_kind,
+               e.id AS target_id,
+               'missing_expiry'::text AS reason
+          FROM orchestrator_research_evidence e
+         WHERE e.retention_class IN ('standard', 'short')
+           AND e.expires_at IS NULL
+        UNION ALL
+        SELECT e.tenant_id, 'evidence', e.id, 'invalid_expiry'
+          FROM orchestrator_research_evidence e
+         WHERE e.retention_class IN ('standard', 'short')
+           AND e.expires_at IS NOT NULL
+           AND e.expires_at <= e.created_at
+        UNION ALL
+        SELECT e.tenant_id, 'evidence', e.id, 'legacy_short_due'
+          FROM orchestrator_research_evidence e
+         WHERE $1::boolean
+           AND e.retention_class = 'short'
+           AND e.expires_at IS NOT NULL
+           AND e.expires_at > e.created_at
+           AND e.expires_at <= now()
+      ) s
     ON CONFLICT (tenant_id, target_kind, target_id) DO NOTHING
-  `);
+  `, [shortDueOpen]);
   const assets = await p.query(`
     INSERT INTO orchestrator_research_legacy_holds (tenant_id, target_kind, target_id, reason)
-    SELECT a.tenant_id, 'asset', a.id,
-           CASE
-             WHEN a.retention_class = 'short'
-                  AND a.created_at + interval '7 days' <= now() THEN 'legacy_short_due'
-             WHEN a.expires_at IS NULL THEN 'missing_expiry'
-             ELSE 'invalid_expiry'
-           END
-      FROM orchestrator_research_evidence_assets a
-     WHERE (
-             a.retention_class = 'short'
-             AND a.created_at + interval '7 days' <= now()
-           )
-        OR (
-             a.retention_class IN ('standard', 'short')
-             AND (a.expires_at IS NULL OR a.expires_at <= a.created_at)
-           )
+    SELECT s.tenant_id, s.target_kind, s.target_id, s.reason
+      FROM (
+        SELECT a.tenant_id,
+               'asset'::text AS target_kind,
+               a.id AS target_id,
+               'missing_expiry'::text AS reason
+          FROM orchestrator_research_evidence_assets a
+         WHERE a.retention_class IN ('standard', 'short')
+           AND a.expires_at IS NULL
+        UNION ALL
+        SELECT a.tenant_id, 'asset', a.id, 'invalid_expiry'
+          FROM orchestrator_research_evidence_assets a
+         WHERE a.retention_class IN ('standard', 'short')
+           AND a.expires_at IS NOT NULL
+           AND a.expires_at <= a.created_at
+        UNION ALL
+        SELECT a.tenant_id, 'asset', a.id, 'legacy_short_due'
+          FROM orchestrator_research_evidence_assets a
+         WHERE $1::boolean
+           AND a.retention_class = 'short'
+           AND a.expires_at IS NOT NULL
+           AND a.expires_at > a.created_at
+           AND a.expires_at <= now()
+      ) s
     ON CONFLICT (tenant_id, target_kind, target_id) DO NOTHING
-  `);
+  `, [shortDueOpen]);
+  await _closeLegacyShortDueSnapshot(p);
   return {
     evidence: evidence.rowCount || 0,
     assets: assets.rowCount || 0,
@@ -1419,6 +1459,16 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         CHECK (payload_bytes >= 0)
     );
 
+    -- Cluster-wide one-shot latch: first identify() snapshots already-expired
+    -- short leftovers, then this row exists even if that SELECT matched nothing.
+    -- Later boots must not hold naturally expired new short rows.
+    CREATE TABLE IF NOT EXISTS orchestrator_research_legacy_short_due_snapshot (
+      id        SMALLINT PRIMARY KEY DEFAULT 1,
+      taken_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CONSTRAINT orchestrator_research_legacy_short_due_snapshot_singleton
+        CHECK (id = 1)
+    );
+
     CREATE TABLE IF NOT EXISTS orchestrator_research_legacy_holds (
       tenant_id      INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       target_kind    TEXT NOT NULL,
@@ -1549,6 +1599,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await p.query(`ALTER TABLE orchestrator_research_quota ADD COLUMN IF NOT EXISTS evidence_count INTEGER NOT NULL DEFAULT 0`);
   await p.query(`ALTER TABLE orchestrator_research_quota ADD COLUMN IF NOT EXISTS payload_bytes BIGINT NOT NULL DEFAULT 0`);
   await p.query(`ALTER TABLE orchestrator_research_quota ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+
+  await p.query(`ALTER TABLE orchestrator_research_legacy_short_due_snapshot ADD COLUMN IF NOT EXISTS taken_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
 
   await p.query(`ALTER TABLE orchestrator_research_legacy_holds ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT 'missing_expiry'`);
   await p.query(`ALTER TABLE orchestrator_research_legacy_holds ADD COLUMN IF NOT EXISTS identified_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
