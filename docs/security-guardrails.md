@@ -810,6 +810,11 @@ substantively correct rather than merely convenient. Verified against
 
 ### Required Backend predicates
 
+**Status: all closed** by `ff81896` / `e0180a0`. The list below is the review
+record of what was owed; "Re-review after the Backend stamps" verifies each one
+as landed. `Mixed / NULLABLE_OK` above is likewise closed — the rejection there
+was of the handler, not the shape.
+
 Confirmed required. Each is either a `NOT NULL` violation reproduced against a
 live schema, or a missing predicate that lets one workspace address another's
 row. Authoritative `tenant_id` comes from `resolveTenantId(req, { label })` or
@@ -903,6 +908,9 @@ from `req.body.tenant_id`, which no handler below should read.
 
 ### Handed back to Database
 
+**Status: closed** by `b30bd63`, which retired the seed rather than adding the
+table to `NULLABLE_OK`. Verified below.
+
 **`brand_foundation` never reaches `NOT NULL` on a fresh install, and the
 fail-closed switch makes that permanent.** `services/brand_foundation/schema.js`
 seeds the legacy `id=1` row *before* `tenant_id` exists (the seed is guarded on
@@ -938,6 +946,60 @@ property is that it copies the parent's id — so it should be rewritten to asse
 the child's `tenant_id` equals the parent's regardless of the value. Test-fixture
 defect, no policy impact.
 
+### Re-review after the Backend stamps
+
+Second isolation pass over `b30bd63` (Database) and `ff81896` / `e0180a0`
+(Backend). **Every predicate this review asked for is present, and the two
+reproduced leaks are closed.** Verified by re-running the reproductions against a
+live Postgres rather than reading the diffs.
+
+- **Custom playbook disclosure is closed.** `generate-custom` stamps the row from
+  `resolveTenantId` — the inserted row came back owned by the creating tenant,
+  and the four request bodies that spoof `tenant_id` in
+  `test/tenant-closeout-isolation.test.js` are ignored. `activate/:id` now
+  matches `id=$1 AND ((is_system=TRUE AND tenant_id IS NULL) OR tenant_id=$2)`:
+  the cross-tenant lookup returns zero rows (404, and the response body does not
+  name the foreign playbook), the owner still resolves, and the shared catalog is
+  still activatable by any tenant. Two tenants can now generate for the same
+  industry without colliding, because custom rows use the
+  `(tenant_id, title)` index instead of the catalog's `(vertical)` slot.
+- **`seedPlaybooks` is unchanged in policy and tighter in practice.** It still
+  writes `tenant_id` NULL with `is_system=TRUE`, and the conflict target is now
+  the inferred partial index — `ON CONFLICT (vertical) WHERE tenant_id IS NULL`.
+  Confirmed valid and idempotent: two passes leave exactly one catalog row.
+  `/list` and `/:vertical` additionally require `tenant_id IS NULL`, so a row
+  with a stray `is_system=TRUE` cannot reach the shared catalog.
+- **Child stamps and parent predicates are complete.** `compliance_checklist_items`
+  and `post_launch_checks` INSERTs name `tenant_id`; the item/check SELECTs,
+  UPDATEs and both `LEFT JOIN`s carry it; the parent `overall_result`,
+  `ai_feedback` and `brand_score` UPDATEs are `id AND tenant_id`; and
+  `_updateAuditStatus` now takes `tid` explicitly rather than inheriting scope
+  from its caller, with both call sites passing it.
+- **Backlink upsert is per-tenant.** `ON CONFLICT (tenant_id, domain)` lets two
+  tenants hold the same domain: after both upserted `probe.example`, each row
+  kept its own `alert_email`, and the first tenant's `alert_slack_webhook`
+  secret was neither overwritten nor returned to the second. Child
+  DELETE/UPDATE/SELECT now carry `monitor.tenant_id` (the trusted DB column),
+  `_runMonitor` refuses a monitor with no `tenant_id`, and all five routes gained
+  the missing `if (!tid) return 400 no_tenant` guard.
+- **`brand_foundation` reaches `NOT NULL` on a fresh install** — `is_nullable=NO`
+  with zero rows, where it was previously `YES` with one unowned row. The
+  fail-closed helper is untouched and still never maps an orphan to tenant 1.
+  `test/tenant-schema-audit.test.js` is 4/4 green on a booted database (it was
+  failing check 2 on `brand_foundation`), and `tenant-schema-closeout` is 10/10,
+  including a new assertion that `brand_foundation` was *not* added to
+  `NULLABLE_OK` to silence the audit.
+- **No permission work was required.** No new `/api` prefix was added, so no
+  `ROUTE_GROUPS` entry is owed, and no enforcement flag, matrix row, or
+  `context.js` behaviour changed. `allowFallback` still has no production caller.
+- **`test/tenant-closeout-write-audit.test.js` is green, and green for the right
+  reason.** Backend added a seven-line skip for `//`-commented matches, because
+  the retired seed is still quoted in a `brand_foundation/schema.js` comment.
+  Re-running this guard's pre-Backend version against the current tree returns
+  exactly one offender — that comment — and no others, so the skip suppresses a
+  single false positive rather than masking a finding. The three substantive
+  assertions and both meta-guards are unmodified.
+
 ### Accepted residuals (tenant-schema closeout)
 
 - **The fail-closed guarantee covers the closeout set, not the whole install.**
@@ -956,7 +1018,30 @@ defect, no policy impact.
   `runPhase2Migration`'s phase-2E integrity check and the orphan message are
   `console.warn` / `console.error` only; a table stuck with `reason:'orphans'`
   degrades quietly and is caught by `test/tenant-schema-audit.test.js` in CI, not
-  in production. `brand_foundation` is the live instance of this.
+  in production. `b30bd63` improved this for one table — `brand_foundation` now
+  logs an explicit operator instruction on the orphan path — but the general
+  pattern is unchanged.
+- **An install that already ran the retired `brand_foundation` seed still holds
+  the orphan.** `b30bd63` stops the row being *created*; it does not remediate a
+  row that exists. Such an install keeps failing closed (the singleton stays,
+  `NOT NULL` is not applied, nothing is mapped to tenant 1) and keeps failing
+  audit check 2 until an operator stamps a real `tenant_id` or deletes the row.
+  That is the intended trade and is derived from the code path plus the
+  `brand_foundation old-shape id=1 orphan` test — the dev database carried no such
+  row, so it was not observed live here.
+- **Pre-fix custom playbooks are stranded, and one pre-fix leak is not
+  retroactively closed.** A custom playbook created before `ff81896` has
+  `tenant_id IS NULL` with `is_system=FALSE`. Under the new `activate/:id`
+  predicate it now matches for nobody — confirmed zero rows for both its original
+  owner and a second tenant — which is fail-closed but orphans that content. Two
+  consequences need a data decision rather than a code change: such a row still
+  occupies the catalog's `(vertical) WHERE tenant_id IS NULL` slot, so
+  `seedPlaybooks` can never seed that vertical; and any `active_playbooks` row
+  written by the old activate path still pairs a tenant with a foreign playbook,
+  which `/active/list` joins without re-checking ownership. New leaks are
+  prevented; existing pairings are not swept. A remediation pass should stamp or
+  delete unowned `is_system=FALSE` rows and drop `active_playbooks` rows whose
+  playbook is neither shared catalog nor owned by that tenant.
 - **`benchmark_aggregates` publishes small-sample buckets.** With
   `sample_count = 1` the p25/median/p75 for a `(vertical, region, company_size,
   metric_key)` bucket *is* the single contributing workspace's exact submitted
@@ -989,6 +1074,22 @@ defect, no policy impact.
   a handler mentions the tenant anywhere, all of its statements are trusted, so
   the individual missing predicates listed above are invisible to it by design.
   That is why they are enumerated here rather than left to the scanner.
+
+Two items found during the re-review that are **not** isolation defects, recorded
+so they are not mistaken for tenancy bugs later:
+
+- `generate-custom` has no `ON CONFLICT` on the `(tenant_id, title)` partial
+  unique index, and the template fallback title is deterministic
+  (`<industry> Growth Playbook (AI-Generated)`). A tenant generating twice for the
+  same industry while the AI provider is down therefore hits `23505` and a 500.
+  Reproduced. Same-tenant functional bug for Backend; correctly *not* fixed by
+  loosening the index, which is what keeps custom titles per-workspace.
+- `test/tenant-closeout-isolation.test.js` creates the tenant schema but not the
+  auth schema `tenants` depends on, so on a database that has never booted the app
+  all five tests fail in setup with `relation "users" does not exist`. Against a
+  booted database they pass 5/5. Fixture bootstrap gap, no product impact — the
+  same class as the fixture assertion `b30bd63` corrected in
+  `tenant-schema-closeout`.
 
 ## Related existing systems
 
