@@ -43,6 +43,8 @@ const KNOWN_GLOBAL = new Set([
   'job_schedules',        // platform cron registry; PK on name; process-level
   'job_queue',            // platform worker queue; claimed globally; not tenant business data
   'simulation_templates', // seeded 24-template catalog; UNIQUE(label); shared library
+  // cluster-wide one-shot latch for legacy_short_due identify; no tenant data; holds remain tenant-scoped in `orchestrator_research_legacy_holds`.
+  'orchestrator_research_legacy_short_due_snapshot',
 ]);
 
 // ── Tables whose tenant_id is intentionally NULLABLE ─────────────────────────
