@@ -14,6 +14,7 @@ const {
   assertEvidenceItem,
   assertEvidenceAsset,
   computeEvidenceHash,
+  computeContentFingerprint,
   computeCompetitorDedupKey,
   sanitizeEvidenceText,
   stripUnknown,
@@ -269,7 +270,7 @@ test('8. tenant_id mismatch vs context fails (no caller override)', () => {
   assert.strictEqual(ok.tenant_id, TENANT_A);
 });
 
-test('9. evidence_hash mismatch fails; computeEvidenceHash is stable', () => {
+test('9. content_fingerprint mismatch fails; computeContentFingerprint is stable', () => {
   const ev = metaEvidence();
   const subset = {
     platform: ev.platform,
@@ -282,20 +283,30 @@ test('9. evidence_hash mismatch fails; computeEvidenceHash is stable', () => {
     advertiser_name: ev.advertiser_name,
     creative_format: ev.creative_format,
   };
-  const h1 = computeEvidenceHash(subset);
+  const h1 = computeContentFingerprint(subset);
   const h2 = computeEvidenceHash(subset);
   assert.strictEqual(h1, h2);
-  assert.strictEqual(h1, ev.evidence_hash);
+  assert.strictEqual(h1, ev.content_fingerprint);
   assert.match(h1, /^[0-9a-f]{64}$/);
-  const changed = computeEvidenceHash({ ...subset, headline: 'different' });
+  const changed = computeContentFingerprint({ ...subset, headline: 'different' });
   assert.notStrictEqual(changed, h1);
   throwsValidation(() => assertEvidenceItem({
     ...ev,
+    content_fingerprint: 'a'.repeat(64),
+  }, { tenantId: TENANT_A }));
+  throwsValidation(() => assertEvidenceItem({
+    ...ev,
+    content_fingerprint: undefined,
     evidence_hash: 'a'.repeat(64),
   }, { tenantId: TENANT_A }));
-  const recomputed = assertEvidenceItem({ ...ev, evidence_hash: undefined }, { tenantId: TENANT_A });
-  assert.strictEqual(recomputed.evidence_hash, h1);
+  const recomputed = assertEvidenceItem({
+    ...ev,
+    content_fingerprint: undefined,
+    evidence_hash: undefined,
+  }, { tenantId: TENANT_A });
+  assert.strictEqual(recomputed.content_fingerprint, h1);
   assert.strictEqual(recomputed.dedup_key, h1);
+  assert.equal(Object.prototype.hasOwnProperty.call(recomputed, 'evidence_hash'), false);
 });
 
 test('10. same external id objects for two tenants both validate', () => {
@@ -341,7 +352,8 @@ test('11. provenance fields present on every fixture evidence item', () => {
     assert.ok(C.CONNECTOR_IDS.includes(ev.connector_id), 'connector_id');
     assert.ok(ev.connector_version, 'connector_version');
     assert.strictEqual(ev.contract_version, 'v1');
-    assert.match(ev.evidence_hash, /^[0-9a-f]{64}$/);
+    assert.match(ev.content_fingerprint, /^[0-9a-f]{64}$/);
+    assert.equal(Object.prototype.hasOwnProperty.call(ev, 'evidence_hash'), false);
     assert.ok(C.PROVENANCE_METHODS.includes(ev.provenance_method));
   }
 });
@@ -352,6 +364,8 @@ test('12. new modules do not require http clients or call fetch; no live connect
     'services/agent_orchestrator/research_errors.js',
     'services/agent_orchestrator/research_validate.js',
     'services/agent_orchestrator/research_connector.js',
+    'services/agent_orchestrator/research_retention.js',
+    'services/agent_orchestrator/research_store.js',
   ];
   const requireRe = /require\(\s*['"](?:https|http|node-fetch|undici)['"]\s*\)/;
   const fetchRe = /\bfetch\s*\(/;
@@ -578,4 +592,81 @@ test('CONTRACT_VERSION is v1 and connector ids match schema', () => {
   assert.deepStrictEqual([...C.FAILURE_CLASSES], [
     'rate_limit', 'auth_failure', 'transient', 'invalid_response', 'policy_rejection', 'terminal',
   ]);
+});
+
+test('evidence_hash input alias maps; output never emits evidence_hash', () => {
+  const ev = metaEvidence();
+  const hex = ev.content_fingerprint;
+  const viaAlias = assertEvidenceItem({
+    ...ev,
+    content_fingerprint: undefined,
+    evidence_hash: hex,
+  }, { tenantId: TENANT_A });
+  assert.strictEqual(viaAlias.content_fingerprint, hex);
+  assert.equal(Object.prototype.hasOwnProperty.call(viaAlias, 'evidence_hash'), false);
+});
+
+test('public ad copy may contain a business email/phone; extracted-contact keys are rejected', () => {
+  const ev = metaEvidence();
+  const ok = assertEvidenceItem({
+    ...ev,
+    body_text: 'Reach us at ads@brand.example or +1-555-0100',
+  }, { tenantId: TENANT_A });
+  assert.match(ok.body_text, /ads@brand\.example/);
+  assert.match(ok.body_text, /\+1-555-0100/);
+  for (const key of [
+    'extracted_emails', 'extracted_email', 'extracted_phones', 'extracted_phone',
+    'contact_email', 'contact_phone', 'email_address', 'mobile', 'msisdn',
+  ]) {
+    throwsValidation(() => assertEvidenceItem({ ...ev, [key]: ['x@y.com'] }, { tenantId: TENANT_A }));
+  }
+  throwsValidation(() => assertEvidenceItem({ ...ev, extracted_emails: ['x@y.com'] }, { tenantId: TENANT_A }));
+});
+
+test('standard/short default expires_at from RETENTION_TTL; legal_hold may omit it', () => {
+  assert.strictEqual(C.RETENTION_TTL.short, 7 * 24 * 3600 * 1000);
+  assert.strictEqual(C.RETENTION_TTL.standard, 30 * 24 * 3600 * 1000);
+  assert.strictEqual(C.RETENTION_TTL.legal_hold, null);
+
+  const standard = assertEvidenceItem(metaEvidence(), { tenantId: TENANT_A });
+  assert.strictEqual(standard.retention_class, 'standard');
+  assert.strictEqual(
+    new Date(standard.expires_at).getTime() - new Date(standard.captured_at).getTime(),
+    C.RETENTION_TTL.standard
+  );
+
+  const shortEv = clone(loadJson('tiktok.v1.json').evidence[0]);
+  const short = assertEvidenceItem(shortEv, { tenantId: TENANT_A });
+  assert.strictEqual(short.retention_class, 'short');
+  assert.strictEqual(
+    new Date(short.expires_at).getTime() - new Date(short.captured_at).getTime(),
+    C.RETENTION_TTL.short
+  );
+
+  const hold = assertEvidenceItem({
+    ...metaEvidence(),
+    retention_class: 'legal_hold',
+    expires_at: undefined,
+  }, { tenantId: TENANT_A });
+  assert.strictEqual(hold.expires_at, null);
+
+  throwsValidation(() => assertEvidenceItem({
+    ...metaEvidence(),
+    captured_at: '2026-08-21T12:00:00.000Z',
+    created_at: '2026-08-21T12:00:00.000Z',
+    expires_at: '2026-08-21T12:00:00.000Z',
+  }, { tenantId: TENANT_A }));
+});
+
+test('research tables in schema.js have no email/phone columns', () => {
+  const schema = fs.readFileSync(path.join(ROOT, 'services/agent_orchestrator/schema.js'), 'utf8');
+  const blocks = schema.match(/CREATE TABLE IF NOT EXISTS orchestrator_research_[\s\S]*?\n    \);/g) || [];
+  assert.ok(blocks.length >= 4, 'expected research CREATE TABLE blocks');
+  for (const block of blocks) {
+    assert.doesNotMatch(
+      block,
+      /^\s+(email|emails|phone|phones|telephone|phone_number|extracted_email|extracted_phone|contact_email|contact_phone)\s+/im,
+      'research tables must not declare email/phone columns'
+    );
+  }
 });

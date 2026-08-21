@@ -4116,6 +4116,28 @@ BOOT_TASKS.push(async () => { try {
     console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags + gap-priority + ecosystem-spine + ai-governance ready');
   }
 } catch (e) { console.warn('[tier28-32] schema init failed:', e.message); }});
+const _researchRetention = require('./services/agent_orchestrator/research_retention');
+BOOT_TASKS.push(async () => { try {
+  if (_db.hasDb()) {
+    if (typeof _researchRetention.sweepExpiredResearchEvidence === 'function') {
+      const sweepResult = await _researchRetention.sweepExpiredResearchEvidence();
+      if (!sweepResult || sweepResult.ok !== true) {
+        const counts = {
+          purged: sweepResult && sweepResult.purged,
+          failures: sweepResult && sweepResult.failures,
+          invalid_expiry: sweepResult && sweepResult.invalid_expiry,
+        };
+        logger.error('research_evidence_sweep_failed', counts);
+        captureException(new Error('research_evidence_sweep_failed'), counts);
+        if (process.env.NODE_ENV === 'production') process.exit(1);
+      }
+    }
+  }
+} catch (e) {
+  logger.error('research_evidence_sweep_failed', { phase: 'boot' });
+  captureException(new Error('research_evidence_sweep_failed'));
+  if (process.env.NODE_ENV === 'production') process.exit(1);
+}});
 BOOT_TASKS.push(async () => { try {
   if (process.env.DATABASE_URL) {
     await _seoTasksSchema.ensureSeoTasksSchema();

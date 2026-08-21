@@ -241,6 +241,8 @@ test('PR 3A research modules add no fetch sink, no live connector and no route g
     'services/agent_orchestrator/research_errors.js',
     'services/agent_orchestrator/research_validate.js',
     'services/agent_orchestrator/research_connector.js',
+    'services/agent_orchestrator/research_retention.js',
+    'services/agent_orchestrator/research_store.js',
   ];
   for (const rel of modules) {
     const src = fs.readFileSync(path.join(root, rel), 'utf8');
@@ -330,8 +332,8 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   assert.match(flat, /URL checks here are \*\*syntactic\*\*/);
   assert.match(flat, /PR3E must call `services\/security\/safe_url\.js` before any fetch/);
   // Residuals an operator has to plan around.
-  assert.match(flat, /There is \*\*no retention sweeper\*\*/);
-  assert.match(flat, /`evidence_hash` is a content fingerprint, not a signature/);
+  assert.match(flat, /A tenant-scoped retention sweeper now exists/);
+  assert.match(flat, /`content_fingerprint` is a content fingerprint, not a signature/);
   assert.match(flat, /public ad copy can legitimately contain a business email or phone number/);
 });
 

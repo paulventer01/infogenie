@@ -49,7 +49,7 @@
       "connector_id": "google_research",
       "connector_version": "1.0.0",
       "contract_version": "v1",
-      "evidence_hash": "cb3b5f68e02e0759f4841076100eb4a3fd460651c96101bff7d6db5cc467b633",
+      "content_fingerprint": "cb3b5f68e02e0759f4841076100eb4a3fd460651c96101bff7d6db5cc467b633",
       "dedup_key": "cb3b5f68e02e0759f4841076100eb4a3fd460651c96101bff7d6db5cc467b633",
       "retention_class": "standard"
     }

@@ -8,16 +8,19 @@ document and the runtime validators. They must not invent parallel shapes.
 
 This PR does **not** call live advertising APIs, does **not** store binaries,
 does **not** generate creative, and does **not** publish campaigns. There is no
-HTTP router, no `server.js` mount, and no permission-matrix change here.
+HTTP router, no `server.js` `/api` mount, and no permission-matrix change here.
+A boot-time retention sweeper is wired from `server.js` `BOOT_TASKS` (no route).
 
 ## Modules
 
 | File | Role |
 |---|---|
-| `services/agent_orchestrator/research_contracts.js` | Frozen enums, limits, required vs optional field lists |
+| `services/agent_orchestrator/research_contracts.js` | Frozen enums, limits, required vs optional field lists, `RETENTION_TTL` |
 | `services/agent_orchestrator/research_errors.js` | Connector `failure_class` taxonomy (not HTTP) |
 | `services/agent_orchestrator/research_validate.js` | Hand validators; fail closed; `validation_failed` |
 | `services/agent_orchestrator/research_connector.js` | Versioned connector **interface** (shapes + asserts, no network) |
+| `services/agent_orchestrator/research_retention.js` | Tenant-scoped batch retention sweeper (no HTTP) |
+| `services/agent_orchestrator/research_store.js` | Validated INSERT helper; maps quota exception (no HTTP) |
 | `services/agent_orchestrator/fixtures/research/*.v1.json` | Mocked success / error / pagination examples |
 | `services/agent_orchestrator/schema.js` | DDL already landed; do not edit from this freeze |
 
@@ -53,12 +56,14 @@ Those connector files **do not exist** in PR3A. Do not add them here.
 
 ## PR3E reserved (do not implement in PR3B/C/D)
 
-- Runner persistence / INSERT into PR3A tables
 - HTTP routes, `server.js` mounts, permission matrix
 - Live credential vault wiring
 - SSRF pin via `services/security/safe_url.js` for any outbound URL
 - `research_run` state machine in `workflows_api`
 - Mounting connectors into the orchestrator runner
+
+Validated INSERT goes through `research_store.insertEvidenceItem`. Connectors
+must not open their own write path.
 
 A research run is **not executable** without a matching
 `research_execution` **approved** approval (schema trigger
@@ -107,7 +112,7 @@ disagrees is rejected.
 | headline | ≤500 |
 | body_text | ≤4000 |
 | excerpt | ≤2000 |
-| evidence_hash / checksum_sha256 | 64 lowercase hex |
+| content_fingerprint / checksum_sha256 | 64 lowercase hex |
 | dedup_key | 1–128 |
 | provider_metrics JSON object | ≤8192 bytes; type object (not array) |
 | connector_version | 1–64 |
@@ -161,14 +166,18 @@ Unknown top-level keys are discarded. Nested forbidden keys are **rejected**.
 
 **Provenance (every item):** `platform`; `canonical_source_url` **or**
 `provider_external_id` (or both); `captured_at`; `research_run_id`;
-`connector_id`; `connector_version`; `contract_version`; `evidence_hash`.
+`connector_id`; `connector_version`; `contract_version`; `content_fingerprint`.
 
 **Defaults if omitted:** `advertiser_name`/`headline`/`body_text`/`excerpt` empty
 strings; `provider_metrics={}`; `contract_version=v1`; `retention_class=standard`;
-`evidence_hash` computed; `dedup_key` = `evidence_hash`.
+`content_fingerprint` computed; `dedup_key` = `content_fingerprint`; `expires_at`
+= captured/created + TTL (`standard` 30d, `short` 7d). `legal_hold` may omit
+expiry.
 
 **Optional:** `creative_format`, `provider_started_on`, `provider_ended_on`,
-`market`, `language`, `placement`, `expires_at`, `supersedes_id`, `created_at`.
+`market`, `language`, `placement`, `expires_at` (required after defaulting for
+`standard`/`short`), `supersedes_id`, `created_at`. Input alias `evidence_hash`
+is accepted and must match the computed fingerprint; it is **never** emitted.
 
 ### Evidence asset (`assertEvidenceAsset`) — metadata only
 
@@ -190,26 +199,69 @@ exist for two tenants. Validators accept both objects independently.
 |---|---|---|
 | run | `(tenant_id, idempotency_key)` | n/a |
 | competitor | `(tenant_id, research_run_id, platform, dedup_key)` and `(tenant_id, research_run_id, platform, provider_advertiser_id)` | `sha256(platform + ':' + provider_advertiser_id)` as 64 hex (raw UTF-8, not JSON-canonicalized) |
-| evidence | `(tenant_id, research_run_id, dedup_key)` | `evidence_hash` |
+| evidence | `(tenant_id, research_run_id, dedup_key)` | `content_fingerprint` |
 | asset | `(tenant_id, evidence_id, storage_ref)` | n/a |
 
-### evidence_hash
+### content_fingerprint
 
 SHA-256 hex over the frozen canonical subset (via `hash.canonicalize` +
-`hash.sha256Hex`):
+`hash.sha256Hex`). This is a **content fingerprint, not a signature and not an
+authenticity proof**. It does not cover `tenant_id`, `metrics_kind`,
+`provenance_method`, `connector_id` or `captured_at`, and it does not attest
+that the evidence came from the claimed source.
 
 `platform`, `source_type`, `provider_external_id`, `canonical_source_url`,
 `headline`, `body_text`, `excerpt`, `advertiser_name`, `creative_format`.
 
-If the caller supplies `evidence_hash`, it must match. Missing optional
-subset fields hash as `null`.
+If the caller supplies `content_fingerprint` (or the input-only alias
+`evidence_hash`), it must match. Missing optional subset fields hash as `null`.
+Validated output always uses `content_fingerprint` and never `evidence_hash`.
+`computeEvidenceHash` remains a deprecated alias of `computeContentFingerprint`.
 
 ## Retention
 
-`retention_class` is `standard` | `short` | `legal_hold`. `expires_at` is
-optional. **No sweeper in PR3A.** Evidence and asset rows are immutable while
-the parent run exists (schema triggers). Replacement is a new INSERT with
-`supersedes_id`.
+`retention_class` is `standard` | `short` | `legal_hold`. `RETENTION_TTL` is
+`short` = 7 days, `standard` = 30 days, `legal_hold` = no TTL. Validators
+default `expires_at` from captured/created + TTL when omitted for
+`standard`/`short`, and **fail closed** if expiry is still missing or
+`<= created_at`/`captured_at`. `legal_hold` may omit expiry.
+
+`research_retention.sweepExpiredResearchEvidence` is the sweeper:
+
+- Tenant-scoped: every `DELETE` includes `tenant_id = $1`.
+- Batch-limited (`SWEEP_BATCH` = 100): `SELECT … FOR UPDATE SKIP LOCKED LIMIT n`
+  then `DELETE WHERE tenant_id=$1 AND id = ANY($ids)`. One call loops until
+  empty; each inner DELETE is LIMIT-bounded.
+- Deletes expired non-hold evidence (assets cascade from evidence) and also
+  sweeps expired assets independently while the parent evidence is still live.
+- `legal_hold` is never deleted while the parent exists.
+- Idempotent: a second call purges 0.
+- Fail closed: rows with `retention_class IN ('standard','short') AND expires_at
+  IS NULL` are **counted** (`invalid_expiry`) and **not** deleted; no expiry is
+  invented. `ok` is false when `invalid_expiry > 0` or a tenant query fails.
+- Per-tenant try/catch: one tenant failure increments `failures` and continues.
+- Logs via `services/infra/logger.js`: `tenant_id`, numeric counts, error codes
+  only. Never headline/body/excerpt, query-string URLs, PII, credentials, raw
+  payloads or fingerprints.
+- Interval: `startResearchEvidenceSweepInterval()` only when
+  `runtime_flags.backgroundEnabled()`, period 6h. Boot runs one sweep after
+  `ensureAgentOrchestratorSchema` (fail-closed in production).
+
+Evidence and asset rows remain UPDATE-immutable. Replacement is a new INSERT
+with `supersedes_id`.
+
+Public ad copy in `headline` / `body_text` / `excerpt` is retained as **source
+text** under the TTL. It is not parsed into extracted contact indexes.
+
+## Volume limits
+
+`orchestrator_tenant_limits.max_research_evidence_records` and
+`max_research_evidence_payload_bytes` default to 0 (fail closed). Payload bytes
+= `octet_length(headline)+body_text+excerpt+advertiser_name+provider_metrics::text`.
+The insert trigger raises exactly `orchestrator_research_evidence_limit_exceeded`.
+`research_store.insertEvidenceItem` maps that to `OrchError`
+`research_evidence_limit_exceeded` (HTTP 409). Concurrent inserts rely on the
+DB `FOR UPDATE` quota row; the helper does not pre-count.
 
 ## PII / credential / raw-payload exclusions
 
@@ -222,11 +274,15 @@ credentials (`access_token`, `refresh_token`, `authorization`, `bearer`,
 `x_api_key`, `client_secret`, `secret(s)`, `password`/`passwd`/`pwd`/
 `passphrase`, `credential(s)`, `private_key`, `signing_key`, `vault`),
 private identities (`email(s)`, `phone`, `telephone`, `phone_number`,
-`comment(s)`, `commenter`, `user_profile`, `private_profile`, `username`,
-`user_name`, `user_id`, `first_name`, `last_name`, `full_name`, `address`,
-`ip`, `ip_address`, `ssn`, `national_id`, `date_of_birth`, `dob`) and binaries
-(`media_bytes`, `binary`, `buffer`, `image_base64`, `video_base64`,
-`data_uri`).
+`extracted_email(s)`, `extracted_phone(s)`, `contact_email`, `contact_phone`,
+`email_address`, `mobile`, `msisdn`, `comment(s)`, `commenter`, `user_profile`,
+`private_profile`, `username`, `user_name`, `user_id`, `first_name`,
+`last_name`, `full_name`, `address`, `ip`, `ip_address`, `ssn`, `national_id`,
+`date_of_birth`, `dob`) and binaries (`media_bytes`, `binary`, `buffer`,
+`image_base64`, `video_base64`, `data_uri`). Extracted-contact keys are
+rejected so a connector cannot build an email/phone index. A business
+email or phone printed **inside** public ad copy (`headline`/`body_text`/
+`excerpt`) is source text under the TTL and is not parsed into other fields.
 
 Values are scanned as well as key names. Any stored string — evidence text,
 `research_brief`, `error_code`, `error_message`, connector `message`, cursors,
@@ -338,13 +394,16 @@ assertResearchRun(input, { tenantId })
 assertCompetitor(input, { tenantId })
 assertEvidenceItem(input, { tenantId })
 assertEvidenceAsset(input, { tenantId })
-computeEvidenceHash(sanitizedCanonicalObject)
+computeContentFingerprint(sanitizedCanonicalObject)
+computeEvidenceHash(sanitizedCanonicalObject) // deprecated alias
 computeCompetitorDedupKey({ platform, provider_advertiser_id })
+insertEvidenceItem(poolOrClient, item, { tenantId })
+sweepExpiredResearchEvidence()
 sanitizeEvidenceText(s, max)
 stripUnknown(obj, allowedKeys)
 assertNoForbiddenFields(obj)
 assertConnectorIdentity / assertConnectorRequest / assertConnectorResult
 ```
 
-Normalized objects contain only allowed keys and are ready to INSERT in PR3E.
-This PR performs no database writes.
+Normalized objects contain only allowed keys. `insertEvidenceItem` persists
+them. This PR adds no `/api` routes.

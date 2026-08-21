@@ -107,6 +107,9 @@ const SEARCH_PARAMETER_KEYS = Object.freeze([
 
 // Matched after key normalization (lowercase, separators removed), so
 // `access-token`, `Access Token` and `accessToken` are the same rejected key.
+// Extracted-contact keys are refused so ad copy is never parsed into indexed
+// email/phone fields. Public ad copy in headline/body_text/excerpt may still
+// contain a business email or phone as source text under the retention TTL.
 const FORBIDDEN_KEYS = Object.freeze([
   'raw_payload',
   'payload',
@@ -144,6 +147,15 @@ const FORBIDDEN_KEYS = Object.freeze([
   'phone',
   'telephone',
   'phone_number',
+  'extracted_email',
+  'extracted_emails',
+  'extracted_phone',
+  'extracted_phones',
+  'contact_email',
+  'contact_phone',
+  'email_address',
+  'mobile',
+  'msisdn',
   'comment',
   'comments',
   'commenter',
@@ -180,7 +192,11 @@ const HONESTY_FORBIDDEN_KEYS = Object.freeze(['verified', 'independently_verifie
 // outside this allow-list fails closed; adding one is a Security review.
 const STORAGE_REF_SCHEMES = Object.freeze(['https', 'research']);
 
-const EVIDENCE_HASH_FIELDS = Object.freeze([
+// Unkeyed SHA-256 over the canonical content subset. This is a fingerprint for
+// dedup/rewrite detection, not a signature and not an authenticity proof: it
+// does not cover tenant_id, provenance_method, connector_id, metrics_kind or
+// captured_at, and it does not attest that the row came from the claimed source.
+const CONTENT_FINGERPRINT_FIELDS = Object.freeze([
   'platform',
   'source_type',
   'provider_external_id',
@@ -191,6 +207,14 @@ const EVIDENCE_HASH_FIELDS = Object.freeze([
   'advertiser_name',
   'creative_format',
 ]);
+const EVIDENCE_HASH_FIELDS = CONTENT_FINGERPRINT_FIELDS;
+
+const DAY_MS = 24 * 3600 * 1000;
+const RETENTION_TTL = Object.freeze({
+  short: 7 * DAY_MS,
+  standard: 30 * DAY_MS,
+  legal_hold: null,
+});
 
 const RESEARCH_RUN_REQUIRED = Object.freeze([
   'id',
@@ -278,6 +302,7 @@ const EVIDENCE_OPTIONAL = Object.freeze([
   'placement',
   'provider_metrics',
   'contract_version',
+  'content_fingerprint',
   'evidence_hash',
   'dedup_key',
   'expires_at',
@@ -386,7 +411,9 @@ module.exports = Object.freeze({
   POLLUTION_KEYS,
   HONESTY_FORBIDDEN_KEYS,
   STORAGE_REF_SCHEMES,
+  CONTENT_FINGERPRINT_FIELDS,
   EVIDENCE_HASH_FIELDS,
+  RETENTION_TTL,
   RESEARCH_RUN_REQUIRED,
   RESEARCH_RUN_OPTIONAL,
   RESEARCH_RUN_DEFAULTS,

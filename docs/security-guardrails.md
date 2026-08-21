@@ -1712,10 +1712,12 @@ PR 3A adds four tenant-scoped tables (`orchestrator_research_runs`,
 `orchestrator_research_competitors`, `orchestrator_research_evidence`,
 `orchestrator_research_evidence_assets`) and the shared contract modules
 (`research_contracts.js`, `research_errors.js`, `research_validate.js`,
-`research_connector.js`) that PR3B/C/D connectors and PR3E persistence must
-use. There is **no HTTP route, no `ROUTE_GROUPS` entry and no fetch sink** in
-PR 3A, so it adds no permission surface and no SSRF surface; a test asserts all
-three absences, plus that the three connector files do not exist yet.
+`research_connector.js`, `research_retention.js`, `research_store.js`) that PR3B/C/D
+connectors and later persistence must use. There is **no HTTP route, no
+`ROUTE_GROUPS` entry and no fetch sink** in PR 3A, so it adds no permission
+surface and no SSRF surface; a test asserts all three absences, plus that the
+three connector files do not exist yet. Retention sweeping and volume-limit
+INSERTs are in-process helpers, not routes.
 
 ### Tenant isolation of the PR 3A schema
 
@@ -1765,11 +1767,13 @@ move.
 
 Evidence, competitor and asset rows refuse `UPDATE` outright and refuse `DELETE`
 while the parent run (or evidence) still exists — a correction is a new INSERT
-carrying `supersedes_id`, never a rewrite. `evidence_hash` must equal SHA-256
+carrying `supersedes_id`, never a rewrite. `content_fingerprint` must equal SHA-256
 over the frozen canonical subset (`platform`, `source_type`,
 `provider_external_id`, `canonical_source_url`, `headline`, `body_text`,
-`excerpt`, `advertiser_name`, `creative_format`); a caller-supplied hash that
-disagrees is rejected, and the default `dedup_key` is that hash.
+`excerpt`, `advertiser_name`, `creative_format`); a caller-supplied fingerprint that
+disagrees is rejected, and the default `dedup_key` is that fingerprint. The
+deprecated input alias `evidence_hash` is accepted and must match; validators
+never emit it.
 
 ### PII, credential and raw-payload minimization
 
@@ -1849,33 +1853,34 @@ whatever resolves the ref.
 
 ### Accepted residuals (PR 3A)
 
-- **There is **no retention sweeper**.** `expires_at` and `retention_class`
-  (`standard` | `short` | `legal_hold`) exist on evidence and assets and are
-  written, but nothing deletes an expired row, and nothing reports on overdue
-  ones. `orchestrator_research_runs` and `orchestrator_research_competitors`
-  have neither column, so a run's `research_brief` and `search_parameters` are
-  retained until the workflow or tenant is deleted. Evidence rows are
-  UPDATE-immutable and DELETE-refusing while the run exists, so the sweeper PR
-  has to delete the run (cascade) or relax the trigger for an expiry path —
-  a design decision, not a patch.
-- **`evidence_hash` is a content fingerprint, not a signature.** It is an
+- **A tenant-scoped retention sweeper now exists.** `research_retention.js`
+  deletes expired non-`legal_hold` evidence (assets cascade from evidence, and
+  expired assets are also swept independently while the parent is live). It is
+  batch-limited (`SELECT … FOR UPDATE SKIP LOCKED LIMIT` then
+  `DELETE WHERE tenant_id=$1 AND id = ANY($ids)`), fail-closed on NULL
+  `expires_at` for `standard`/`short` (counted as `invalid_expiry`, not deleted,
+  no invented TTL), and wired from `server.js` `BOOT_TASKS` plus a 6h
+  `backgroundEnabled()` interval. `legal_hold` rows are never swept while the
+  parent exists. `orchestrator_research_runs` and
+  `orchestrator_research_competitors` still have no `expires_at`, so a run's
+  `research_brief` and `search_parameters` are retained until the workflow or
+  tenant is deleted.
+- **`content_fingerprint` is a content fingerprint, not a signature.** It is an
   unkeyed SHA-256 over the content subset and does not cover `tenant_id`,
   `metrics_kind`, `provenance_method`, `connector_id` or `captured_at`. It
   detects a rewrite of the canonical content (and the immutability triggers
   refuse one anyway); it does not attest that the evidence came from the claimed
   provenance method, and principal-level DB write access could still insert a
-  new row with the same content and a different `provenance_method`.
+  new row with the same content and a different `provenance_method`. Callers may
+  still supply the deprecated input alias `evidence_hash`; validators never emit
+  it.
 - **Evidence free text is public ad copy, and public ad copy can legitimately
   contain a business email or phone number.** The controls here reject *keyed*
   PII fields and private-user identity keys; they do not attempt to redact a
   phone number a competitor printed in its own ad. Comment threads, commenter
   identities and user profiles are rejected outright.
-- **`search_parameters` and `continuation_state` on the run row are size-checked
-  but not type-checked in the DDL.** `provider_metrics` has `jsonb_typeof(…) =
-  'object'`; the other two only have `octet_length` CHECKs, so a direct SQL
-  writer could store a JSON array. The validators require an object, so this is
-  reachable only by bypassing them; a `jsonb_typeof` CHECK on both columns is
-  owed to Database in a later PR.
+- **`search_parameters` and `continuation_state` on the run row are type-checked
+  in the DDL** (`jsonb_typeof(…) = 'object'`), matching `provider_metrics`.
 - **The producer helper `connectorErrorPage` copies `extra.continuation_state`
   unvalidated.** It is the emit-side convenience; the ingest side
   (`assertConnectorError`) is what validates, and only validated output is
@@ -1883,16 +1888,22 @@ whatever resolves the ref.
   is outside this contract.
 - **The idempotency key is tenant-scoped, not proof of a single run.** The
   partial unique index `(tenant_id, workflow_id, contract_version) WHERE state IN
-  ('pending','running')` allows exactly one live run per workflow, but completed
-  history is unbounded — there is no per-tenant cap on research runs or evidence
-  rows in PR 3A, so volume control is PR3E's rate/credit work, not a schema
-  guarantee.
+  ('pending','running')` allows exactly one live run per workflow. Per-tenant
+  evidence volume is capped by `orchestrator_tenant_limits`
+  (`max_research_evidence_records`, `max_research_evidence_payload_bytes`; 0 =
+  fail closed) and the `orchestrator_research_evidence_limit_exceeded` trigger.
+  Completed *run* history is still unbounded.
 
 Coverage: `test/advertising-orchestrator-research-schema.test.js` (15 DDL tests
 against real Postgres: tenant FK/PK shape, composite-FK cross-tenant rejection,
 approval binding, identity immutability, evidence UPDATE refusal, forbidden
-columns, tenant cascade) and
-`test/advertising-orchestrator-research-contracts.test.js` plus
+columns, tenant cascade),
+`test/advertising-orchestrator-research-ops-schema.test.js` (retention CHECKs,
+quota, fingerprint column),
+`test/advertising-orchestrator-research-contracts.test.js`,
+`test/advertising-orchestrator-research-retention.test.js`,
+`test/advertising-orchestrator-research-store.test.js`,
+`test/advertising-orchestrator-research-sweep-wiring.test.js` plus
 `test/security-guardrails.test.js` (validator-level tenant authority, credential
 scanning, normalized forbidden keys, locator schemes, detachment, no
 route/connector/fetch).

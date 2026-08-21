@@ -447,15 +447,58 @@ function computeCompetitorDedupKey({ platform, provider_advertiser_id }) {
   return crypto.createHash('sha256').update(`${p}:${id}`, 'utf8').digest('hex');
 }
 
-function computeEvidenceHash(sanitizedCanonicalObject) {
-  if (!isPlainObject(sanitizedCanonicalObject)) vf('evidence_hash', 'not_object');
+function computeContentFingerprint(sanitizedCanonicalObject) {
+  if (!isPlainObject(sanitizedCanonicalObject)) vf('content_fingerprint', 'not_object');
   const subset = {};
-  for (const k of C.EVIDENCE_HASH_FIELDS) {
+  for (const k of C.CONTENT_FINGERPRINT_FIELDS) {
     const v = sanitizedCanonicalObject[k];
     if (v === undefined) subset[k] = null;
     else subset[k] = v;
   }
   return sha256Hex(canonicalize(subset));
+}
+
+// Deprecated alias: callers must persist `content_fingerprint`. Input may still
+// use `evidence_hash`; validators never emit that name.
+function computeEvidenceHash(sanitizedCanonicalObject) {
+  return computeContentFingerprint(sanitizedCanonicalObject);
+}
+
+function defaultExpiresAt(retentionClass, originIso) {
+  const ttlMs = C.RETENTION_TTL[retentionClass];
+  if (ttlMs == null) return null;
+  const origin = originIso ? new Date(originIso) : new Date();
+  if (Number.isNaN(origin.getTime())) vf('expires_at', 'invalid_time');
+  return new Date(origin.getTime() + ttlMs).toISOString();
+}
+
+function assertRetentionExpiry(retentionClass, expiresAt, originIso, field) {
+  if (retentionClass === 'legal_hold') {
+    return expiresAt;
+  }
+  if (expiresAt == null || expiresAt === '') vf(field || 'expires_at', 'required');
+  const origin = new Date(originIso);
+  const exp = new Date(expiresAt);
+  if (Number.isNaN(origin.getTime()) || Number.isNaN(exp.getTime())) {
+    vf(field || 'expires_at', 'invalid_time');
+  }
+  if (exp.getTime() <= origin.getTime()) vf(field || 'expires_at', 'not_after_created');
+  return expiresAt;
+}
+
+function resolveContentFingerprint(raw, computed) {
+  const hasFp = raw.content_fingerprint != null && raw.content_fingerprint !== '';
+  const hasAlias = raw.evidence_hash != null && raw.evidence_hash !== '';
+  let supplied = null;
+  if (hasFp) supplied = assertSha256Hex(raw.content_fingerprint, 'content_fingerprint');
+  else if (hasAlias) supplied = assertSha256Hex(raw.evidence_hash, 'content_fingerprint');
+  if (hasFp && hasAlias) {
+    const alias = assertSha256Hex(raw.evidence_hash, 'content_fingerprint');
+    if (alias !== supplied) vf('content_fingerprint', 'mismatch');
+  }
+  const content_fingerprint = supplied == null ? computed : supplied;
+  if (content_fingerprint !== computed) vf('content_fingerprint', 'mismatch');
+  return content_fingerprint;
 }
 
 function prepareInput(input, allowed, label) {
@@ -585,14 +628,22 @@ function assertEvidenceItem(input, opts) {
     advertiser_name,
     creative_format,
   };
-  const computedHash = computeEvidenceHash(canonicalForHash);
-  const evidence_hash = raw.evidence_hash == null || raw.evidence_hash === ''
-    ? computedHash
-    : assertSha256Hex(raw.evidence_hash, 'evidence_hash');
-  if (evidence_hash !== computedHash) vf('evidence_hash', 'mismatch');
+  const computedFingerprint = computeContentFingerprint(canonicalForHash);
+  const content_fingerprint = resolveContentFingerprint(raw, computedFingerprint);
   const dedup_key = raw.dedup_key == null || raw.dedup_key === ''
-    ? evidence_hash
+    ? content_fingerprint
     : boundedText(raw.dedup_key, C.LIMITS.dedup_key.min, C.LIMITS.dedup_key.max, 'dedup_key', { allowEmpty: false });
+  const captured_at = requiredTime(raw.captured_at, 'captured_at');
+  const created_at = optionalTime(raw.created_at, 'created_at');
+  const retention_class = assertEnum(
+    raw.retention_class == null || raw.retention_class === '' ? 'standard' : raw.retention_class,
+    C.RETENTION_CLASSES,
+    'retention_class'
+  );
+  const originIso = created_at || captured_at;
+  let expires_at = optionalTime(raw.expires_at, 'expires_at');
+  if (expires_at == null) expires_at = defaultExpiresAt(retention_class, originIso);
+  expires_at = assertRetentionExpiry(retention_class, expires_at, originIso, 'expires_at');
   const out = {
     id: requiredId(raw.id, 'id'),
     tenant_id,
@@ -609,7 +660,7 @@ function assertEvidenceItem(input, opts) {
     excerpt,
     provider_started_on: optionalDate(raw.provider_started_on, 'provider_started_on'),
     provider_ended_on: optionalDate(raw.provider_ended_on, 'provider_ended_on'),
-    captured_at: requiredTime(raw.captured_at, 'captured_at'),
+    captured_at,
     market: optionalText(raw.market, C.LIMITS.market.max, 'market'),
     language: optionalText(raw.language, C.LIMITS.language.max, 'language'),
     placement: optionalText(raw.placement, C.LIMITS.placement.max, 'placement'),
@@ -621,16 +672,12 @@ function assertEvidenceItem(input, opts) {
       raw.connector_version, C.LIMITS.connector_version.min, C.LIMITS.connector_version.max, 'connector_version', { allowEmpty: false }
     ),
     contract_version: assertContractVersion(raw.contract_version),
-    evidence_hash,
+    content_fingerprint,
     dedup_key,
-    expires_at: optionalTime(raw.expires_at, 'expires_at'),
-    retention_class: assertEnum(
-      raw.retention_class == null || raw.retention_class === '' ? 'standard' : raw.retention_class,
-      C.RETENTION_CLASSES,
-      'retention_class'
-    ),
+    expires_at,
+    retention_class,
     supersedes_id: optionalText(raw.supersedes_id, C.LIMITS.id.max, 'supersedes_id'),
-    created_at: optionalTime(raw.created_at, 'created_at'),
+    created_at,
   };
   return deepFreeze(out);
 }
@@ -639,6 +686,17 @@ function assertEvidenceAsset(input, opts) {
   const tenantId = contextTenant(opts);
   const raw = prepareInput(input, C.ASSET_ALLOWED, 'asset');
   const tenant_id = resolveTenant(input, tenantId);
+  const captured_at = requiredTime(raw.captured_at, 'captured_at');
+  const created_at = optionalTime(raw.created_at, 'created_at');
+  const retention_class = assertEnum(
+    raw.retention_class == null || raw.retention_class === '' ? 'standard' : raw.retention_class,
+    C.RETENTION_CLASSES,
+    'retention_class'
+  );
+  const originIso = created_at || captured_at;
+  let expires_at = optionalTime(raw.expires_at, 'expires_at');
+  if (expires_at == null) expires_at = defaultExpiresAt(retention_class, originIso);
+  expires_at = assertRetentionExpiry(retention_class, expires_at, originIso, 'expires_at');
   const out = {
     id: requiredId(raw.id, 'id'),
     tenant_id,
@@ -649,14 +707,10 @@ function assertEvidenceAsset(input, opts) {
     width_px: raw.width_px == null || raw.width_px === '' ? null : asNonNegInt(raw.width_px, 'width_px'),
     height_px: raw.height_px == null || raw.height_px === '' ? null : asNonNegInt(raw.height_px, 'height_px'),
     duration_ms: raw.duration_ms == null || raw.duration_ms === '' ? null : asNonNegInt(raw.duration_ms, 'duration_ms'),
-    captured_at: requiredTime(raw.captured_at, 'captured_at'),
-    expires_at: optionalTime(raw.expires_at, 'expires_at'),
-    retention_class: assertEnum(
-      raw.retention_class == null || raw.retention_class === '' ? 'standard' : raw.retention_class,
-      C.RETENTION_CLASSES,
-      'retention_class'
-    ),
-    created_at: optionalTime(raw.created_at, 'created_at'),
+    captured_at,
+    expires_at,
+    retention_class,
+    created_at,
   };
   return deepFreeze(out);
 }
@@ -666,6 +720,7 @@ module.exports = {
   assertCompetitor,
   assertEvidenceItem,
   assertEvidenceAsset,
+  computeContentFingerprint,
   computeEvidenceHash,
   computeCompetitorDedupKey,
   boundedText,

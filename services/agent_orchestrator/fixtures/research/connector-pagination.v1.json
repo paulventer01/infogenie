@@ -47,7 +47,7 @@
           "connector_id": "meta_research",
           "connector_version": "1.0.0",
           "contract_version": "v1",
-          "evidence_hash": "9d2fdcdf54e30137a5124fbe97e88b3ffeffd009e910e81d4bcdb796f9d4b812",
+          "content_fingerprint": "9d2fdcdf54e30137a5124fbe97e88b3ffeffd009e910e81d4bcdb796f9d4b812",
           "dedup_key": "9d2fdcdf54e30137a5124fbe97e88b3ffeffd009e910e81d4bcdb796f9d4b812",
           "retention_class": "standard"
         }

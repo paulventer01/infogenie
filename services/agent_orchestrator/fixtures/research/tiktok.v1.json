@@ -47,7 +47,7 @@
       "connector_id": "tiktok_research",
       "connector_version": "1.0.0",
       "contract_version": "v1",
-      "evidence_hash": "98724c04a51599d9a936e8f23e5a6d472a5dc12f6736fd1f945cf89a07b96fcd",
+      "content_fingerprint": "98724c04a51599d9a936e8f23e5a6d472a5dc12f6736fd1f945cf89a07b96fcd",
       "dedup_key": "98724c04a51599d9a936e8f23e5a6d472a5dc12f6736fd1f945cf89a07b96fcd",
       "retention_class": "short"
     }
