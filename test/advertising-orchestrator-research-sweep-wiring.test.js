@@ -58,6 +58,11 @@ test('research_retention.js registers setInterval only when backgroundEnabled, p
   assert.match(src, /phase:\s*'interval'/);
   assert.ok(!/\.catch\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)/.test(src), 'recurring sweep must not use empty catch');
   assert.match(src, /FOR UPDATE SKIP LOCKED/);
+  assert.match(src, /p\.connect\s*\(\s*\)/);
+  assert.match(src, /client\.query\(\s*['"]BEGIN['"]\s*\)/);
+  assert.match(src, /client\.query\(\s*['"]COMMIT['"]\s*\)/);
+  assert.match(src, /client\.query\(\s*['"]ROLLBACK['"]\s*\)/);
+  assert.match(src, /client\.release\s*\(/);
   assert.match(src, /LIMIT \$2/);
   assert.match(src, /id = ANY\(\$2/);
   assert.match(src, /tenant_id=\$1/);

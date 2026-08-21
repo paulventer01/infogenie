@@ -230,8 +230,10 @@ default `expires_at` from captured/created + TTL when omitted for
 
 - Tenant-scoped: every `DELETE` includes `tenant_id = $1`.
 - Batch-limited (`SWEEP_BATCH` = 100): `SELECT … FOR UPDATE SKIP LOCKED LIMIT n`
-  then `DELETE WHERE tenant_id=$1 AND id = ANY($ids)`. One call loops until
-  empty; each inner DELETE is LIMIT-bounded.
+  then `DELETE WHERE tenant_id=$1 AND id = ANY($ids)`. SELECT and DELETE run
+  in one transaction on a dedicated `pool.connect()` client so SKIP LOCKED
+  holds until DELETE. Empty SELECT commits and stops (not a noop-fail). One
+  call loops until empty; each inner DELETE is LIMIT-bounded.
 - Deletes expired non-hold evidence (assets cascade from evidence) and also
   sweeps expired assets independently while the parent evidence is still live.
 - `legal_hold` is never deleted while the parent exists.

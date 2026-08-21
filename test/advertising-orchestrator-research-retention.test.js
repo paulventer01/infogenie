@@ -31,6 +31,31 @@ function nid(prefix) {
   return `${prefix}-${SUFFIX}-${seq}`;
 }
 
+function wrapPool(origPool, hooks = {}) {
+  return {
+    query: async (sql, params) => {
+      if (typeof hooks.query === 'function') {
+        const hijack = await hooks.query(sql, params);
+        if (hijack !== undefined) return hijack;
+      }
+      return origPool.query(sql, params);
+    },
+    connect: async () => {
+      const client = await origPool.connect();
+      return {
+        query: async (sql, params) => {
+          if (typeof hooks.clientQuery === 'function') {
+            const hijack = await hooks.clientQuery(sql, params);
+            if (hijack !== undefined) return hijack;
+          }
+          return client.query(sql, params);
+        },
+        release: (err) => client.release(err),
+      };
+    },
+  };
+}
+
 async function insertWorkflow(p, tenantId, wfId) {
   await p.query(
     `INSERT INTO orchestrator_workflows (id, tenant_id, name) VALUES ($1,$2,$3)`,
@@ -247,12 +272,12 @@ if (!HAS_DB) {
 
     const origGetPool = db.getPool;
     const origPool = db.getPool();
-    db.getPool = () => ({
-      query: async (sql, params) => {
+    db.getPool = () => wrapPool(origPool, {
+      query: async (sql) => {
         if (/UNION/i.test(sql) && /orchestrator_research_evidence/.test(sql)) {
           return { rows: [{ tenant_id: tenantA }], rowCount: 1 };
         }
-        return origPool.query(sql, params);
+        return undefined;
       },
     });
     try {
@@ -292,6 +317,11 @@ if (!HAS_DB) {
     assert.match(src, /LIMIT \$2/);
     assert.match(src, /SWEEP_BATCH/);
     assert.match(src, /FOR UPDATE SKIP LOCKED/);
+    assert.match(src, /p\.connect\s*\(\s*\)/);
+    assert.match(src, /client\.query\(\s*['"]BEGIN['"]\s*\)/);
+    assert.match(src, /client\.query\(\s*['"]COMMIT['"]\s*\)/);
+    assert.match(src, /client\.query\(\s*['"]ROLLBACK['"]\s*\)/);
+    assert.match(src, /client\.release\s*\(/);
     assert.match(src, /id = ANY\(\$2/);
 
     const p = db.getPool();
@@ -351,16 +381,15 @@ if (!HAS_DB) {
 
     const origGetPool = db.getPool;
     const origPool = db.getPool();
-    const origQuery = origPool.query.bind(origPool);
-    db.getPool = () => ({
-      query: async (sql, params) => {
+    db.getPool = () => wrapPool(origPool, {
+      clientQuery: async (sql, params) => {
         if (
           params && params[0] === tenantA
           && /DELETE FROM orchestrator_research_evidence\b/.test(sql)
         ) {
           throw Object.assign(new Error('injected-fail'), { code: 'XX000' });
         }
-        return origQuery(sql, params);
+        return undefined;
       },
     });
     let result;
@@ -518,5 +547,108 @@ if (!HAS_DB) {
     } finally {
       await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantQ]);
     }
+  });
+
+  test('SKIP LOCKED skips a held expired row; second sweep purges it after unlock', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const lockedId = await insertExpiredEvidence(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt });
+    const freeIds = [];
+    for (let i = 0; i < 3; i += 1) {
+      freeIds.push(await insertExpiredEvidence(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt }));
+    }
+
+    const locker = await p.connect();
+    let sweepP = null;
+    try {
+      await locker.query('BEGIN');
+      await locker.query(
+        `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+        [tenantA, lockedId]
+      );
+      sweepP = sweepExpiredResearchEvidence();
+      const timedOut = Object.assign(new Error('sweep blocked on held row'), { code: 'XX000' });
+      let timer;
+      const result = await Promise.race([
+        sweepP,
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(timedOut), 8000);
+        }),
+      ]).finally(() => { if (timer) clearTimeout(timer); });
+      sweepP = null;
+      assert.ok(result);
+      assert.strictEqual(result.failures, 0, 'SKIP LOCKED must not trip delete_noop');
+
+      const freeGone = (await p.query(
+        `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id = ANY($2::text[])`,
+        [tenantA, freeIds]
+      )).rows;
+      assert.strictEqual(freeGone.length, 0, 'unlocked expired rows must be purged');
+      const lockedKept = (await p.query(
+        `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, lockedId]
+      )).rows;
+      assert.strictEqual(lockedKept.length, 1, 'held row must be skipped');
+    } catch (err) {
+      if (sweepP) {
+        try { await locker.query('ROLLBACK'); } catch { /* ignore */ }
+        await sweepP.catch(() => {});
+        sweepP = null;
+      }
+      throw err;
+    } finally {
+      try { await locker.query('ROLLBACK'); } catch { /* ignore */ }
+      locker.release();
+    }
+
+    const second = await sweepExpiredResearchEvidence();
+    assert.strictEqual(second.failures, 0);
+    assert.ok(second.purged >= 1);
+    const leftover = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, lockedId]
+    )).rows;
+    assert.strictEqual(leftover.length, 0, 'second sweep must purge the previously locked row');
+  });
+
+  test('two concurrent sweeps partition expired rows without a noop race', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const ids = [];
+    for (let i = 0; i < 12; i += 1) {
+      ids.push(await insertExpiredEvidence(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt }));
+    }
+
+    const [first, second] = await Promise.all([
+      sweepExpiredResearchEvidence(),
+      sweepExpiredResearchEvidence(),
+    ]);
+    assert.ok(first && second);
+    assert.strictEqual(first.failures, 0, 'ok must not be false because of a noop race');
+    assert.strictEqual(second.failures, 0, 'ok must not be false because of a noop race');
+    assert.ok(
+      (first.purged || 0) + (second.purged || 0) >= ids.length,
+      'union of purged counts must cover the seeded expired set'
+    );
+
+    const leftover = (await p.query(
+      `SELECT COUNT(*)::int AS n FROM orchestrator_research_evidence
+        WHERE tenant_id=$1 AND id = ANY($2::text[])`,
+      [tenantA, ids]
+    )).rows[0].n;
+    assert.strictEqual(leftover, 0, 'union of purged rows must be complete');
+    const leftoverExpired = (await p.query(
+      `SELECT COUNT(*)::int AS n FROM orchestrator_research_evidence
+        WHERE tenant_id=$1 AND research_run_id=$2
+          AND retention_class <> 'legal_hold' AND expires_at IS NOT NULL AND expires_at <= now()`,
+      [tenantA, host.runId]
+    )).rows[0].n;
+    assert.strictEqual(leftoverExpired, 0);
   });
 }

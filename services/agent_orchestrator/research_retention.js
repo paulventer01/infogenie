@@ -70,22 +70,32 @@ async function _listResearchTenantIds(p) {
   return (tenants.rows || []).map((row) => row.tenant_id);
 }
 
-async function _purgeExpiredTable(p, table, tenantId) {
+async function _purgeExpiredTable(client, table, tenantId) {
   let purged = 0;
   for (;;) {
-    const sel = await p.query(expiredLockSql(table), [tenantId, SWEEP_BATCH]);
-    const ids = (sel.rows || []).map((row) => row.id);
-    if (!ids.length) break;
-    const del = await p.query(
-      `DELETE FROM ${table} WHERE tenant_id=$1 AND id = ANY($2)`,
-      [tenantId, ids]
-    );
-    const removed = Number(del.rowCount) || 0;
-    if (removed === 0) {
-      throw Object.assign(new Error('research_evidence_sweep_delete_noop'), { code: 'XX000' });
+    await client.query('BEGIN');
+    try {
+      const sel = await client.query(expiredLockSql(table), [tenantId, SWEEP_BATCH]);
+      const ids = (sel.rows || []).map((row) => row.id);
+      if (!ids.length) {
+        await client.query('COMMIT');
+        break;
+      }
+      const del = await client.query(
+        `DELETE FROM ${table} WHERE tenant_id=$1 AND id = ANY($2)`,
+        [tenantId, ids]
+      );
+      const removed = Number(del.rowCount) || 0;
+      if (removed === 0) {
+        throw Object.assign(new Error('research_evidence_sweep_delete_noop'), { code: 'XX000' });
+      }
+      await client.query('COMMIT');
+      purged += removed;
+      if (ids.length < SWEEP_BATCH) break;
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+      throw err;
     }
-    purged += removed;
-    if (ids.length < SWEEP_BATCH) break;
   }
   return purged;
 }
@@ -97,9 +107,18 @@ async function _sweepTenant(p, tenantId) {
     logger.error('research_evidence_invalid_expiry', { tenant_id: tenantId, invalid_expiry });
     _captureSweepError('research_evidence_invalid_expiry', { tenant_id: tenantId, invalid_expiry });
   }
-  const evidencePurged = await _purgeExpiredTable(p, EVIDENCE_TABLE, tenantId);
-  const assetPurged = await _purgeExpiredTable(p, ASSET_TABLE, tenantId);
-  return { purged: evidencePurged + assetPurged, invalid_expiry };
+
+  const client = await p.connect();
+  try {
+    const evidencePurged = await _purgeExpiredTable(client, EVIDENCE_TABLE, tenantId);
+    const assetPurged = await _purgeExpiredTable(client, ASSET_TABLE, tenantId);
+    return { purged: evidencePurged + assetPurged, invalid_expiry };
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function sweepExpiredResearchEvidence() {
