@@ -2,7 +2,7 @@
 
 // Tenant-scoped research evidence INSERT helper. Validates, then writes
 // `content_fingerprint`. Concurrent volume limits are enforced by the DB
-// FOR UPDATE quota trigger — this module does not COUNT(*) first.
+// FOR UPDATE quota trigger — this module does not pre-count rows.
 // No HTTP, no fetch, no live connectors.
 
 const { fail } = require('./errors');
