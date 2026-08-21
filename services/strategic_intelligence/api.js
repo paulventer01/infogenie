@@ -578,9 +578,9 @@ async function runBenchmarkWorry(tid, verticalIn = 'saas', your = {}) {
   let network = {};
   try {
     const aggs = await pool.query(
-      // Same k-anonymity floor as services/benchmarks/api.js (K = 5).
-      `SELECT metric_key, median, p25, p75, sample_count FROM benchmark_aggregates
-       WHERE LOWER(vertical)=$1 AND sample_count >= 5 LIMIT 40`, [vertical]
+      // Same k-anonymity floor as services/benchmarks/api.js (K = 5 workspaces).
+      `SELECT metric_key, median, p25, p75, sample_count, contributor_count FROM benchmark_aggregates
+       WHERE LOWER(vertical)=$1 AND contributor_count >= 5 LIMIT 40`, [vertical]
     );
     for (const row of aggs.rows) network[row.metric_key] = row;
   } catch (_) {}
@@ -591,7 +591,7 @@ async function runBenchmarkWorry(tid, verticalIn = 'saas', your = {}) {
     const yours = your[key] != null ? Number(your[key]) : null;
     const net = network[key];
     const peer = net?.median != null ? Number(net.median) : sector[key];
-    const source = net?.sample_count >= 5 ? 'network' : 'sector_estimate';
+    const source = net?.contributor_count >= 5 ? 'network' : 'sector_estimate';
     if (yours == null || peer == null) continue;
     const lowerBetter = key === 'cac_payback_months' || key === 'cac';
     const gap_pct = peer === 0 ? 0 : Math.round(((yours - peer) / peer) * 100);
