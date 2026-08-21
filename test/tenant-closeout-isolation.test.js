@@ -75,6 +75,11 @@ before(async () => {
   await ensurePostLaunchAuditSchema();
   await ensureVerticalPlaybooksSchema();
   await ensureBacklinkMonitorSchema();
+  // CREATE TABLE IF NOT EXISTS does not add columns to a pre-existing table.
+  // schema.js declares alert_slack_webhook; older installs may lack the ALTER.
+  await db.getPool().query(
+    `ALTER TABLE backlink_monitors ADD COLUMN IF NOT EXISTS alert_slack_webhook TEXT`
+  );
 
   tenantCtx.resolveTenantId = async (reqObj) => {
     const h = reqObj && reqObj.headers && reqObj.headers['x-test-tid'];

@@ -197,6 +197,13 @@ function findInserts(src) {
   const re = /INSERT\s+INTO\s+([a-z_][a-z0-9_]*)/gi;
   let m;
   while ((m = re.exec(src))) {
+    // Surrounding JavaScript (// comments) is not a live statement. The file
+    // header bounds this scan to SQL string literals; a documented-retired
+    // seed such as `INSERT INTO brand_foundation (id) VALUES (1)` in a comment
+    // must not be treated as a writer. Live query strings still match.
+    const lineStart = src.lastIndexOf('\n', m.index) + 1;
+    const beforeOnLine = src.slice(lineStart, m.index);
+    if (/(?:^|\s)\/\//.test(beforeOnLine)) continue;
     const lit = enclosingLiteral(src, m.index);
     const line = src.slice(0, m.index).split('\n').length;
     if (!lit) { out.push({ table: m[1], line, cols: null, stmt: '' }); continue; }
