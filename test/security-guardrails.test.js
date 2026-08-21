@@ -74,6 +74,32 @@ test('createRateLimiter returns 429 after max', async () => {
   lim.reset();
 });
 
+// serialize/failClosed are opt-in additions used by the playbooks limiter. The
+// assertions below are what stops them from quietly becoming the default and
+// changing authAbuseLimiter, whose fail-open Redis path keeps /api/auth/login
+// reachable during a Redis outage.
+test('createRateLimiter denies an unidentifiable key only when failClosed is set', async () => {
+  const hit = (lim) => new Promise((resolve, reject) => {
+    const res = {
+      setHeader: () => {},
+      status: (code) => ({ json: (body) => { resolve({ code, body }); } }),
+    };
+    try { lim({ path: '/x' }, res, () => resolve({ code: null, body: null })); }
+    catch (err) { reject(err); }
+  });
+
+  const closed = createRateLimiter({ name: 'fc', max: 5, keyFn: () => null, failClosed: true });
+  const denied = await hit(closed);
+  assert.equal(denied.code, 429);
+  assert.equal(denied.body.error, 'rate_limited');
+  closed.reset();
+
+  // Default (what authAbuseLimiter gets): behaviour is unchanged.
+  const open = createRateLimiter({ name: 'fo', max: 5, keyFn: () => 'k' });
+  assert.equal((await hit(open)).code, null);
+  open.reset();
+});
+
 // The meeting-notes summarize route ships before transcript redaction exists.
 // The disclosure below is the only thing standing between an operator and the
 // assumption that transcripts are scrubbed, so it must survive edits to the rest
@@ -154,6 +180,53 @@ test('the guardrails doc does not overstate the boot gate', () => {
   const flat = doc.replace(/\s+/g, ' ');
   assert.doesNotMatch(flat, /cannot serve traffic/);
   assert.match(flat, /`listen` is not gated on boot-task completion/);
+});
+
+// The playbooks section used to tell operators that no limiter existed and that
+// `POST /generate-custom` was uncapped. Both are now false, so the old wording
+// must not survive — and the residuals that replaced it (no spend cap, Redis
+// required for multi-instance, deliberate Redis-error fail-open) must stay
+// written down, because each one is something an operator has to plan around.
+test('the guardrails doc records the playbooks rate limit as remediated', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.match(flat, /## CodeQL missing-rate-limiting on `\/api\/playbooks` — remediated/);
+  assert.match(flat, /\*\*Status: remediated\.\*\*/);
+  assert.doesNotMatch(flat, /No rate limit was added here/);
+  assert.doesNotMatch(flat, /`POST \/generate-custom` is a genuinely un-limited cost surface/);
+
+  // Which limiter, and which one it is deliberately not.
+  assert.match(flat, /`createRateLimiter` from `services\/security\/rate_limit\.js`/);
+  assert.match(flat, /\*\*Not\*\* `server\.js`'s `_RL_PATHS`/);
+  assert.match(flat, /\*\*60 requests \/ 60 s\*\* shared across the whole prefix/);
+  assert.match(flat, /\*\*5 requests \/ 60 s\*\* on `POST \/generate-custom`/);
+
+  // Fail-closed contract.
+  assert.match(flat, /The tenant id comes \*\*only\*\* from `req\.tenant\.id`/);
+  assert.match(flat, /There is no fallback to a default tenant, to the client IP, or to an `unknown` bucket/);
+  assert.match(flat, /This is the intended fail-closed trade-off, not an auth bypass/);
+
+  // The factory is built on express-rate-limit so the query can see it. A
+  // reader must not come away thinking that is a second policy engine, and an
+  // operator must know UI dismissal is now the fallback rather than the answer.
+  assert.match(flat, /\*\*`js\/missing-rate-limiting` fires on a control it cannot see\.\*\*/);
+  assert.match(flat, /Inline `\/\/ codeql\[\.\.\.\]` comments do \*\*not\*\* clear default setup/);
+  assert.match(flat, /\*\*implemented with `express-rate-limit`\*\* and returns that instance directly/);
+  assert.match(flat, /This is \*\*not a second policy\*\*/);
+  assert.match(flat, /\*\*UI dismissal is no longer the primary answer\*\*/);
+  // Claims that stopped being true when the factory changed.
+  assert.doesNotMatch(flat, /without pulling in `express-rate-limit`/);
+  assert.doesNotMatch(flat, /the query still does not model `createRateLimiter`/);
+  assert.doesNotMatch(flat, /both playbooks limiters pass `serialize: true`/);
+
+  // authAbuseLimiter shares the factory; the doc has to keep saying it is intact.
+  assert.match(flat, /`authAbuseLimiter\(\)` is unchanged: still 30 attempts \/ 15 minutes keyed on IP \+ path/);
+
+  // Residuals.
+  assert.match(flat, /Per-tenant AI \*spend\* caps are still not implemented/);
+  assert.match(flat, /Without Redis the limit is process-local/);
+  assert.match(flat, /A Redis outage degrades the limit rather than denying/);
+  assert.match(flat, /`failClosed` in `createRateLimiter` covers only the \*missing key\* case/);
 });
 
 test('originAllowed accepts matching host and localhost in non-prod', () => {

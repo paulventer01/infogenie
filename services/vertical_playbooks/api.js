@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const { createRateLimiter } = require('../security/rate_limit');
 const OpenAI = require('openai');
 
 
@@ -102,14 +103,106 @@ async function seedPlaybooks(p) {
   }
 }
 
-router.get('/list', async (req, res) => {
+// Per-tenant playbooks limiter (not server.js `_RL_PATHS`, which is IP+path and
+// POST-only). Shared bucket: 60 req / 60s per tenant for the whole prefix so
+// spraying paths cannot multiply quota. generate-custom extra: 5 / 60s.
+// Test-only overrides (NODE_ENV === 'test' at module load): PLAYBOOKS_RATE_LIMIT_MAX
+// and PLAYBOOKS_GENERATE_RATE_LIMIT_MAX. Tests must set those before requiring
+// this module (e.g. before require('./helpers'), which loads server.js).
+function _testOnlyMax(envName, fallback) {
+  if (process.env.NODE_ENV !== 'test') return fallback;
+  const n = Number.parseInt(String(process.env[envName] || ''), 10);
+  if (Number.isFinite(n) && n > 0) return n;
+  return fallback;
+}
+
+const PLAYBOOKS_WINDOW_MS = 60_000;
+const PLAYBOOKS_SHARED_MAX = _testOnlyMax('PLAYBOOKS_RATE_LIMIT_MAX', 60);
+const PLAYBOOKS_GENERATE_MAX = _testOnlyMax('PLAYBOOKS_GENERATE_RATE_LIMIT_MAX', 5);
+
+// Reads the server-side tenant only. `req.tenant` is set by
+// services/tenants/middleware.js from a verified membership, or by the
+// server.js API-key path from getCronTenantId(); nothing derives it from the
+// body, query or a header. Never resolveTenantId here — that can fall back to
+// the default tenant when enforcement is off. Safe integer > 0; anything else
+// fail-closed. (Unsafe integers are rejected rather than coerced: two distinct
+// ids past 2^53 would round to one float and share a bucket.)
+//
+// Deliberately not named "…Auth…": this is a cheap lookup of context another
+// middleware already established, not an authorization decision. The permission
+// boundary is enforceMatrix in server.js. CodeQL scores a call whose name looks
+// like an authorization check as expensive work needing its own rate limit.
+function tenantIdFromServerContext(req) {
+  const raw = req && req.tenant ? req.tenant.id : undefined;
+  if (typeof raw === 'number') return Number.isSafeInteger(raw) && raw > 0 ? raw : null;
+  if (typeof raw === 'string' && /^[1-9]\d*$/.test(raw)) {
+    const n = Number(raw);
+    return Number.isSafeInteger(n) ? n : null;
+  }
+  return null;
+}
+
+function playbooksTenantGuard(req, res, next) {
+  if (tenantIdFromServerContext(req) == null) {
+    return res.status(400).json({ ok: false, error: 'no_tenant' });
+  }
+  return next();
+}
+
+function playbooksSharedKey(req) {
+  const tid = tenantIdFromServerContext(req);
+  return tid == null ? null : `playbooks|${tid}`;
+}
+
+function playbooksGenerateKey(req) {
+  const tid = tenantIdFromServerContext(req);
+  return tid == null ? null : `playbooks-generate|${tid}`;
+}
+
+// failClosed: a key the tenant guard somehow let through as null is denied
+// rather than sharing one bucket with every other caller. Opt-in in
+// rate_limit.js, so authAbuseLimiter is unaffected. Admissions no longer need an
+// explicit lock — the store increments before it compares, so concurrent
+// requests cannot both see spare capacity.
+const playbooksSharedLimiter = createRateLimiter({
+  name: 'playbooks',
+  windowMs: PLAYBOOKS_WINDOW_MS,
+  max: PLAYBOOKS_SHARED_MAX,
+  keyFn: playbooksSharedKey,
+  failClosed: true,
+});
+
+const playbooksGenerateLimiter = createRateLimiter({
+  name: 'playbooks-generate',
+  windowMs: PLAYBOOKS_WINDOW_MS,
+  max: PLAYBOOKS_GENERATE_MAX,
+  keyFn: playbooksGenerateKey,
+  failClosed: true,
+});
+
+// Order matters: the guard rejects a missing tenant before any key is derived,
+// and the shared limiter runs before every handler — including the seedPlaybooks
+// write loop on GET /list and GET /:vertical. This router-level mount is the
+// binding one; it also covers unmatched paths under the prefix.
+router.use(playbooksTenantGuard);
+router.use(playbooksSharedLimiter);
+
+// Every route below also passes playbooksSharedLimiter explicitly. It is the
+// same instance and counts a request once (rate_limit.js `alreadyCounted`), so
+// the ceiling is unchanged; the repeat exists so the limiter is visible on each
+// handler's own middleware chain — to readers, and to static analysis, which
+// does not follow `router.use`.
+
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/list', playbooksSharedLimiter, async (req, res) => {
   const p = await _db.getPool();
   await seedPlaybooks(p);
   const rows = await p.query(`SELECT id,vertical,title,description,content FROM vertical_playbooks WHERE is_system=TRUE AND tenant_id IS NULL ORDER BY vertical`);
   res.json({ ok:true, playbooks: rows.rows.map(r=>({ ...r, content: typeof r.content==='string'?JSON.parse(r.content):r.content })) });
 });
 
-router.get('/:vertical', async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/:vertical', playbooksSharedLimiter, async (req, res) => {
   const p = await _db.getPool();
   await seedPlaybooks(p);
   const row = await p.query(`SELECT * FROM vertical_playbooks WHERE vertical=$1 AND is_system=TRUE AND tenant_id IS NULL LIMIT 1`, [req.params.vertical]);
@@ -119,7 +212,8 @@ router.get('/:vertical', async (req, res) => {
   res.json({ ok:true, playbook: { ...pb, content } });
 });
 
-router.post('/activate/:id', async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.post('/activate/:id', playbooksSharedLimiter, async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'playbooks:activate' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const p = await _db.getPool();
@@ -137,7 +231,8 @@ router.post('/activate/:id', async (req, res) => {
   res.json({ ok:true, activated: true });
 });
 
-router.get('/active/list', async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/active/list', playbooksSharedLimiter, async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'playbooks:active' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const p = await _db.getPool();
@@ -152,7 +247,10 @@ router.get('/active/list', async (req, res) => {
   res.json({ ok:true, active: rows.rows.map(r=>({ ...r, content: typeof r.content==='string'?JSON.parse(r.content):r.content })) });
 });
 
-router.post('/generate-custom', async (req, res) => {
+// The generate cap runs ahead of the OpenAI call and both INSERTs. The guard is
+// repeated so this route stays fail-closed if the router-level order ever moves.
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.post('/generate-custom', playbooksTenantGuard, playbooksSharedLimiter, playbooksGenerateLimiter, async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'playbooks:generate-custom' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const { industry, business_description, goals, challenges, budget } = req.body || {};
@@ -190,3 +288,12 @@ Return strict JSON matching this structure:
 });
 
 module.exports = router;
+module.exports.playbooksTenantGuard = playbooksTenantGuard;
+module.exports.tenantIdFromServerContext = tenantIdFromServerContext;
+// Read-only introspection so tests can assert the shipped defaults and that the
+// env overrides stay inert outside NODE_ENV === 'test'.
+module.exports.playbooksLimits = Object.freeze({
+  windowMs: PLAYBOOKS_WINDOW_MS,
+  sharedMax: PLAYBOOKS_SHARED_MAX,
+  generateMax: PLAYBOOKS_GENERATE_MAX,
+});
