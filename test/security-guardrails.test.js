@@ -300,7 +300,7 @@ test('orchestrator constraint redefinition is transactional, and a failed ensure
   assert.match(
     run,
     /p\.release\(\s*failed/,
-    'a client whose backfill failed may still hold session_replication_role=replica and must be destroyed, not pooled'
+    'a client whose ensure failed may still sit in an aborted transaction and must be destroyed, not pooled'
   );
 });
 
@@ -373,11 +373,16 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   // Residuals an operator has to plan around.
   assert.match(flat, /A tenant-scoped retention sweeper now exists/);
   assert.match(flat, /`content_fingerprint` is a content fingerprint, not a signature/);
-  assert.match(flat, /public ad copy can legitimately contain a business email or phone number/);
+  // In-copy PII is redacted now, so the doc must state both the control and the
+  // heuristic limits of the regexes rather than the old "we do not redact" line.
+  assert.match(flat, /In-copy emails and phone numbers are redacted before persist/);
+  assert.match(flat, /Redaction happens \*\*before\*\* `content_fingerprint` is computed/);
+  assert.match(flat, /an address obfuscated as `name \(at\) example\.com` is not matched/);
   // Rewritten once Backend and Database closed the first two. The claims are
   // pinned so a later change cannot quietly reopen them in the code and leave
   // the doc asserting a property the runtime no longer has.
-  assert.match(flat, /`SKIP LOCKED` now holds until the `DELETE`/);
+  assert.match(flat, /`SKIP LOCKED` and the `DELETE` are now one statement/);
+  assert.match(flat, /`55P03` \(`lock_timeout`\) joins `40P01`\/`40001` in the bounded retry/);
   assert.match(flat, /The sweeper\/boot-DDL deadlock is broken at the source and retried at the edge/);
   assert.match(flat, /`_installInTransaction` now installs one table's functions and triggers per `BEGIN`\/`COMMIT`/);
   assert.match(flat, /retries `40P01`\/`40001` up to `DEADLOCK_RETRY_MAX = 5` times per batch/);
@@ -397,12 +402,27 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   // not actually give it, so both the mechanism and its cost are pinned.
   assert.match(flat, /The orchestrator schema ensure fails closed on its own/);
   assert.match(flat, /logs the static key `agent_orchestrator_schema_init_failed` with no fields/);
-  assert.match(flat, /`short` gets `created_at \+ 7 days` and `standard` gets `created_at \+ 30 days`/);
-  assert.match(flat, /`legal_hold` is matched by none of the four `UPDATE`s/);
-  assert.match(flat, /Tightening `short` to 7 days purges legacy short-class rows on the next boot/);
+  // Rewritten again once the replica-role backfills were deleted. The doc used
+  // to say boot repaired legacy rows behind
+  // `SET LOCAL session_replication_role = replica` and that the next sweep then
+  // purged them; boot now only identifies holds, so both claims are inverted
+  // here and the old strings must stay out of the doc.
+  assert.match(flat, /Boot no longer needs a replica-role or trigger-disabling privilege/);
+  assert.match(flat, /Boot identifies legacy rows; it never deletes them/);
+  assert.doesNotMatch(flat, /The boot backfills need a DB role that may set `session_replication_role`/);
+  assert.doesNotMatch(flat, /Tightening `short` to 7 days purges legacy short-class rows on the next boot/);
+  // The GUC is not a secret, so the doc has to name the hold row as the actual
+  // gate rather than implying the GUC is the boundary.
+  assert.match(flat, /The cleanup GUC `infogenie\.research_cleanup` is a switch, not a secret/);
+  assert.match(flat, /a matching row exists in `orchestrator_research_legacy_holds`/);
+  // The cluster-wide latch has no tenant_id by design; say so, and say why that
+  // is not a tenant-isolation hole.
+  assert.match(flat, /`legacy_short_due` is a one-shot cluster snapshot/);
+  assert.match(flat, /It holds no tenant data, no evidence ids and no foreign keys/);
   // Residuals that must survive the rewrite.
-  assert.match(flat, /The boot backfills need a DB role that may set `session_replication_role`/);
-  assert.match(flat, /The evidence quota counter is trigger-maintained, not reconciled/);
+  assert.match(flat, /The evidence quota is recomputed from the table, not trusted from a counter/);
+  assert.match(flat, /`max_records <= 0 OR max_bytes <= 0` raises before any write/);
+  assert.match(flat, /Operator approval is scoped to the tenant, not to the previewed row set/);
   assert.match(flat, /`orchestrator_research_competitors` still have no `expires_at`/);
 });
 
