@@ -51,10 +51,19 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_ai_inflight',
   'orchestrator_ai_request_ticks',
   'orchestrator_outbox',
+  // PR 3A — research runs, public competitor identity, append-only evidence, asset metadata
+  'orchestrator_research_runs',
+  'orchestrator_research_competitors',
+  'orchestrator_research_evidence',
+  'orchestrator_research_evidence_assets',
 ];
 
 async function _ensureNamedCheck(p, table, name, checkBody) {
-  await p.query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${name}`);
+  const existing = await p.query(
+    `SELECT 1 FROM pg_constraint WHERE conname = $1 AND conrelid = $2::regclass`,
+    [name, `public.${table}`]
+  );
+  if (existing.rowCount) return;
   try {
     await p.query(`ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${checkBody})`);
   } catch (e) {
@@ -69,6 +78,18 @@ async function _ensureNamedUnique(p, table, name, cols) {
   );
   if (!r.rowCount) {
     await p.query(`ALTER TABLE ${table} ADD CONSTRAINT ${name} UNIQUE (${cols})`);
+  }
+}
+
+async function _ensureNamedFk(p, table, name, cols, refTable, refCols, fkSuffix) {
+  const r = await p.query(
+    `SELECT 1 FROM pg_constraint WHERE conname = $1 AND conrelid = $2::regclass`,
+    [name, `public.${table}`]
+  );
+  if (!r.rowCount) {
+    await p.query(
+      `ALTER TABLE ${table} ADD CONSTRAINT ${name} FOREIGN KEY (${cols}) REFERENCES ${refTable} (${refCols}) ${fkSuffix}`
+    );
   }
 }
 
@@ -904,6 +925,693 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE UPDATE OR DELETE ON orchestrator_usage_records
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_usage_records_immutable();
+  `);
+
+  // Additive parent uniques so PR3A composite FKs can reference (tenant_id, id)
+  // without replacing existing PKs. Safe on existing rows: workflow id is already
+  // globally unique; approval id is SERIAL.
+  await _ensureNamedUnique(p, 'orchestrator_workflows',
+    'orchestrator_workflows_tenant_unique_id', 'tenant_id, id');
+  await _ensureNamedUnique(p, 'orchestrator_approvals',
+    'orchestrator_approvals_tenant_unique_id', 'tenant_id, id');
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_research_runs (
+      id                         TEXT NOT NULL,
+      tenant_id                  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      workflow_id                TEXT NOT NULL,
+      approval_id                INTEGER NOT NULL,
+      approval_object_version    INTEGER NOT NULL,
+      contract_version           TEXT NOT NULL DEFAULT 'v1',
+      requested_platforms        TEXT[] NOT NULL,
+      research_brief             TEXT NOT NULL DEFAULT '',
+      search_parameters          JSONB NOT NULL DEFAULT '{}',
+      state                      TEXT NOT NULL DEFAULT 'pending',
+      idempotency_key            TEXT NOT NULL,
+      continuation_state         JSONB NOT NULL DEFAULT '{}',
+      failure_class              TEXT NULL,
+      error_code                 TEXT NULL,
+      error_message              TEXT NULL,
+      created_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+      started_at                 TIMESTAMPTZ NULL,
+      completed_at               TIMESTAMPTZ NULL,
+      failed_at                  TIMESTAMPTZ NULL,
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_research_runs_tenant_unique_idempotency_key
+        UNIQUE (tenant_id, idempotency_key),
+      CONSTRAINT orchestrator_research_runs_tenant_workflow_fkey
+        FOREIGN KEY (tenant_id, workflow_id)
+        REFERENCES orchestrator_workflows (tenant_id, id) ON DELETE CASCADE,
+      CONSTRAINT orchestrator_research_runs_tenant_approval_fkey
+        FOREIGN KEY (tenant_id, approval_id)
+        REFERENCES orchestrator_approvals (tenant_id, id)
+        ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
+      CONSTRAINT orchestrator_research_runs_contract_version_check
+        CHECK (contract_version IN ('v1')),
+      CONSTRAINT orchestrator_research_runs_state_check
+        CHECK (state IN ('pending','running','completed','failed','cancelled')),
+      CONSTRAINT orchestrator_research_runs_failure_class_check
+        CHECK (failure_class IS NULL OR failure_class IN (
+          'rate_limit','auth_failure','transient','invalid_response','policy_rejection','terminal'
+        )),
+      CONSTRAINT orchestrator_research_runs_requested_platforms_check
+        CHECK (
+          cardinality(requested_platforms) >= 1
+          AND cardinality(requested_platforms) <= 3
+          AND requested_platforms <@ ARRAY['meta','google','tiktok']::text[]
+        ),
+      CONSTRAINT orchestrator_research_runs_research_brief_check
+        CHECK (char_length(research_brief) <= 4000),
+      CONSTRAINT orchestrator_research_runs_search_parameters_check
+        CHECK (octet_length(search_parameters::text) <= 8192),
+      CONSTRAINT orchestrator_research_runs_continuation_state_check
+        CHECK (octet_length(continuation_state::text) <= 4096),
+      CONSTRAINT orchestrator_research_runs_error_code_check
+        CHECK (char_length(error_code) <= 128),
+      CONSTRAINT orchestrator_research_runs_error_message_check
+        CHECK (char_length(error_message) <= 512),
+      CONSTRAINT orchestrator_research_runs_idempotency_key_check
+        CHECK (char_length(idempotency_key) BETWEEN 1 AND 256),
+      CONSTRAINT orchestrator_research_runs_id_check
+        CHECK (char_length(id) BETWEEN 1 AND 128)
+    );
+
+    CREATE TABLE IF NOT EXISTS orchestrator_research_competitors (
+      id                      TEXT NOT NULL,
+      tenant_id               INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      research_run_id         TEXT NOT NULL,
+      platform                TEXT NOT NULL,
+      provider_advertiser_id  TEXT NOT NULL,
+      normalized_name         TEXT NOT NULL,
+      canonical_url           TEXT NULL,
+      country                 TEXT NULL,
+      market                  TEXT NULL,
+      discovery_source        TEXT NOT NULL,
+      captured_at             TIMESTAMPTZ NOT NULL,
+      dedup_key               TEXT NOT NULL,
+      contract_version        TEXT NOT NULL DEFAULT 'v1',
+      created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_research_competitors_tenant_unique_dedup
+        UNIQUE (tenant_id, research_run_id, platform, dedup_key),
+      CONSTRAINT orchestrator_research_competitors_tenant_unique_ext
+        UNIQUE (tenant_id, research_run_id, platform, provider_advertiser_id),
+      CONSTRAINT orchestrator_research_competitors_tenant_run_fkey
+        FOREIGN KEY (tenant_id, research_run_id)
+        REFERENCES orchestrator_research_runs (tenant_id, id) ON DELETE CASCADE,
+      CONSTRAINT orchestrator_research_competitors_platform_check
+        CHECK (platform IN ('meta','google','tiktok')),
+      CONSTRAINT orchestrator_research_competitors_contract_version_check
+        CHECK (contract_version IN ('v1')),
+      CONSTRAINT orchestrator_research_competitors_discovery_source_check
+        CHECK (discovery_source IN (
+          'ad_library','ads_transparency_center','keyword_planner','public_profile','connector'
+        )),
+      CONSTRAINT orchestrator_research_competitors_provider_advertiser_id_check
+        CHECK (char_length(provider_advertiser_id) BETWEEN 1 AND 256),
+      CONSTRAINT orchestrator_research_competitors_normalized_name_check
+        CHECK (char_length(normalized_name) BETWEEN 1 AND 256),
+      CONSTRAINT orchestrator_research_competitors_canonical_url_check
+        CHECK (canonical_url IS NULL OR char_length(canonical_url) <= 2048),
+      CONSTRAINT orchestrator_research_competitors_country_check
+        CHECK (country IS NULL OR char_length(country) <= 8),
+      CONSTRAINT orchestrator_research_competitors_market_check
+        CHECK (market IS NULL OR char_length(market) <= 64),
+      CONSTRAINT orchestrator_research_competitors_dedup_key_check
+        CHECK (char_length(dedup_key) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_research_competitors_id_check
+        CHECK (char_length(id) BETWEEN 1 AND 128)
+    );
+
+    CREATE TABLE IF NOT EXISTS orchestrator_research_evidence (
+      id                    TEXT NOT NULL,
+      tenant_id             INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      research_run_id       TEXT NOT NULL,
+      competitor_id         TEXT NOT NULL,
+      platform              TEXT NOT NULL,
+      source_type           TEXT NOT NULL,
+      provider_external_id  TEXT NULL,
+      canonical_source_url  TEXT NULL,
+      advertiser_name       TEXT NOT NULL DEFAULT '',
+      creative_format       TEXT NULL,
+      headline              TEXT NOT NULL DEFAULT '',
+      body_text             TEXT NOT NULL DEFAULT '',
+      excerpt               TEXT NOT NULL DEFAULT '',
+      provider_started_on   DATE NULL,
+      provider_ended_on     DATE NULL,
+      captured_at           TIMESTAMPTZ NOT NULL,
+      market                TEXT NULL,
+      language              TEXT NULL,
+      placement             TEXT NULL,
+      provider_metrics      JSONB NOT NULL DEFAULT '{}',
+      metrics_kind          TEXT NOT NULL DEFAULT 'provider_reported',
+      provenance_method     TEXT NOT NULL,
+      connector_id          TEXT NOT NULL,
+      connector_version     TEXT NOT NULL,
+      contract_version      TEXT NOT NULL DEFAULT 'v1',
+      evidence_hash         TEXT NOT NULL,
+      dedup_key             TEXT NOT NULL,
+      expires_at            TIMESTAMPTZ NULL,
+      retention_class       TEXT NOT NULL DEFAULT 'standard',
+      supersedes_id         TEXT NULL,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_research_evidence_tenant_unique_dedup
+        UNIQUE (tenant_id, research_run_id, dedup_key),
+      CONSTRAINT orchestrator_research_evidence_tenant_run_fkey
+        FOREIGN KEY (tenant_id, research_run_id)
+        REFERENCES orchestrator_research_runs (tenant_id, id) ON DELETE CASCADE,
+      CONSTRAINT orchestrator_research_evidence_tenant_competitor_fkey
+        FOREIGN KEY (tenant_id, competitor_id)
+        REFERENCES orchestrator_research_competitors (tenant_id, id) ON DELETE CASCADE,
+      CONSTRAINT orchestrator_research_evidence_platform_check
+        CHECK (platform IN ('meta','google','tiktok')),
+      CONSTRAINT orchestrator_research_evidence_source_type_check
+        CHECK (source_type IN (
+          'ad_creative','ad_copy','landing_page','auction_insight','search_term',
+          'public_page','public_video','labelled_metric'
+        )),
+      CONSTRAINT orchestrator_research_evidence_creative_format_check
+        CHECK (creative_format IS NULL OR creative_format IN (
+          'image','video','carousel','text','html','unknown'
+        )),
+      CONSTRAINT orchestrator_research_evidence_metrics_kind_check
+        CHECK (metrics_kind IN ('provider_reported','estimated')),
+      CONSTRAINT orchestrator_research_evidence_provenance_method_check
+        CHECK (provenance_method IN (
+          'ad_library','ads_transparency_center','keyword_planner','public_scrape','connector'
+        )),
+      CONSTRAINT orchestrator_research_evidence_connector_id_check
+        CHECK (connector_id IN ('meta_research','google_research','tiktok_research')),
+      CONSTRAINT orchestrator_research_evidence_contract_version_check
+        CHECK (contract_version IN ('v1')),
+      CONSTRAINT orchestrator_research_evidence_retention_class_check
+        CHECK (retention_class IN ('standard','short','legal_hold')),
+      CONSTRAINT orchestrator_research_evidence_headline_check
+        CHECK (char_length(headline) <= 500),
+      CONSTRAINT orchestrator_research_evidence_body_text_check
+        CHECK (char_length(body_text) <= 4000),
+      CONSTRAINT orchestrator_research_evidence_excerpt_check
+        CHECK (char_length(excerpt) <= 2000),
+      CONSTRAINT orchestrator_research_evidence_advertiser_name_check
+        CHECK (char_length(advertiser_name) <= 256),
+      CONSTRAINT orchestrator_research_evidence_provider_external_id_check
+        CHECK (provider_external_id IS NULL OR char_length(provider_external_id) BETWEEN 1 AND 256),
+      CONSTRAINT orchestrator_research_evidence_canonical_source_url_check
+        CHECK (canonical_source_url IS NULL OR char_length(canonical_source_url) <= 2048),
+      CONSTRAINT orchestrator_research_evidence_market_check
+        CHECK (market IS NULL OR char_length(market) <= 64),
+      CONSTRAINT orchestrator_research_evidence_language_check
+        CHECK (language IS NULL OR char_length(language) <= 16),
+      CONSTRAINT orchestrator_research_evidence_placement_check
+        CHECK (placement IS NULL OR char_length(placement) <= 64),
+      CONSTRAINT orchestrator_research_evidence_connector_version_check
+        CHECK (char_length(connector_version) BETWEEN 1 AND 64),
+      CONSTRAINT orchestrator_research_evidence_evidence_hash_check
+        CHECK (char_length(evidence_hash) = 64 AND evidence_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_research_evidence_dedup_key_check
+        CHECK (char_length(dedup_key) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_research_evidence_provider_metrics_len_check
+        CHECK (octet_length(provider_metrics::text) <= 8192),
+      CONSTRAINT orchestrator_research_evidence_provider_metrics_type_check
+        CHECK (jsonb_typeof(provider_metrics) = 'object'),
+      CONSTRAINT orchestrator_research_evidence_supersedes_id_check
+        CHECK (supersedes_id IS NULL OR char_length(supersedes_id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_research_evidence_id_check
+        CHECK (char_length(id) BETWEEN 1 AND 128)
+    );
+
+    CREATE TABLE IF NOT EXISTS orchestrator_research_evidence_assets (
+      id                TEXT NOT NULL,
+      tenant_id         INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      evidence_id       TEXT NOT NULL,
+      media_type        TEXT NOT NULL,
+      storage_ref       TEXT NOT NULL,
+      checksum_sha256   TEXT NOT NULL,
+      width_px          INTEGER NULL,
+      height_px         INTEGER NULL,
+      duration_ms       INTEGER NULL,
+      captured_at       TIMESTAMPTZ NOT NULL,
+      expires_at        TIMESTAMPTZ NULL,
+      retention_class   TEXT NOT NULL DEFAULT 'standard',
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_research_evidence_assets_tenant_unique_ref
+        UNIQUE (tenant_id, evidence_id, storage_ref),
+      CONSTRAINT orchestrator_research_evidence_assets_tenant_evidence_fkey
+        FOREIGN KEY (tenant_id, evidence_id)
+        REFERENCES orchestrator_research_evidence (tenant_id, id) ON DELETE CASCADE,
+      CONSTRAINT orchestrator_research_evidence_assets_media_type_check
+        CHECK (media_type IN ('image','video','html','other')),
+      CONSTRAINT orchestrator_research_evidence_assets_retention_class_check
+        CHECK (retention_class IN ('standard','short','legal_hold')),
+      CONSTRAINT orchestrator_research_evidence_assets_storage_ref_check
+        CHECK (char_length(storage_ref) BETWEEN 1 AND 1024),
+      CONSTRAINT orchestrator_research_evidence_assets_checksum_sha256_check
+        CHECK (char_length(checksum_sha256) = 64 AND checksum_sha256 ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_research_evidence_assets_width_px_check
+        CHECK (width_px IS NULL OR width_px >= 0),
+      CONSTRAINT orchestrator_research_evidence_assets_height_px_check
+        CHECK (height_px IS NULL OR height_px >= 0),
+      CONSTRAINT orchestrator_research_evidence_assets_duration_ms_check
+        CHECK (duration_ms IS NULL OR duration_ms >= 0),
+      CONSTRAINT orchestrator_research_evidence_assets_id_check
+        CHECK (char_length(id) BETWEEN 1 AND 128)
+    );
+  `);
+
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS workflow_id TEXT`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS approval_id INTEGER`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS approval_object_version INTEGER NOT NULL DEFAULT 1`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS contract_version TEXT NOT NULL DEFAULT 'v1'`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS requested_platforms TEXT[] NOT NULL DEFAULT ARRAY['meta']::text[]`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS research_brief TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS search_parameters JSONB NOT NULL DEFAULT '{}'`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'pending'`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS continuation_state JSONB NOT NULL DEFAULT '{}'`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS failure_class TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS error_code TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS error_message TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS failed_at TIMESTAMPTZ NULL`);
+
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS research_run_id TEXT`);
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'meta'`);
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS provider_advertiser_id TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS normalized_name TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS canonical_url TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS country TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS market TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS discovery_source TEXT NOT NULL DEFAULT 'ad_library'`);
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS captured_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS dedup_key TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS contract_version TEXT NOT NULL DEFAULT 'v1'`);
+  await p.query(`ALTER TABLE orchestrator_research_competitors ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS research_run_id TEXT`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS competitor_id TEXT`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'meta'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'ad_creative'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS provider_external_id TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS canonical_source_url TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS advertiser_name TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS creative_format TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS headline TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS body_text TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS excerpt TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS provider_started_on DATE NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS provider_ended_on DATE NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS captured_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS market TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS language TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS placement TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS provider_metrics JSONB NOT NULL DEFAULT '{}'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS metrics_kind TEXT NOT NULL DEFAULT 'provider_reported'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS provenance_method TEXT NOT NULL DEFAULT 'ad_library'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS connector_id TEXT NOT NULL DEFAULT 'meta_research'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS connector_version TEXT NOT NULL DEFAULT 'v1'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS contract_version TEXT NOT NULL DEFAULT 'v1'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS evidence_hash TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS dedup_key TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS retention_class TEXT NOT NULL DEFAULT 'standard'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS supersedes_id TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+
+  await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS evidence_id TEXT`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'other'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS storage_ref TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS checksum_sha256 TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS width_px INTEGER NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS height_px INTEGER NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS duration_ms INTEGER NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS captured_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS retention_class TEXT NOT NULL DEFAULT 'standard'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_contract_version_check',
+    `contract_version IN ('v1')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_state_check',
+    `state IN ('pending','running','completed','failed','cancelled')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_failure_class_check',
+    `failure_class IS NULL OR failure_class IN ('rate_limit','auth_failure','transient','invalid_response','policy_rejection','terminal')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_requested_platforms_check',
+    `cardinality(requested_platforms) >= 1 AND cardinality(requested_platforms) <= 3 AND requested_platforms <@ ARRAY['meta','google','tiktok']::text[]`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_research_brief_check',
+    `char_length(research_brief) <= 4000`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_search_parameters_check',
+    `octet_length(search_parameters::text) <= 8192`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_continuation_state_check',
+    `octet_length(continuation_state::text) <= 4096`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_error_code_check',
+    `char_length(error_code) <= 128`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_error_message_check',
+    `char_length(error_message) <= 512`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_idempotency_key_check',
+    `char_length(idempotency_key) BETWEEN 1 AND 256`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_id_check',
+    `char_length(id) BETWEEN 1 AND 128`);
+
+  await _ensureNamedCheck(p, 'orchestrator_research_competitors', 'orchestrator_research_competitors_platform_check',
+    `platform IN ('meta','google','tiktok')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_competitors', 'orchestrator_research_competitors_contract_version_check',
+    `contract_version IN ('v1')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_competitors', 'orchestrator_research_competitors_discovery_source_check',
+    `discovery_source IN ('ad_library','ads_transparency_center','keyword_planner','public_profile','connector')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_competitors', 'orchestrator_research_competitors_provider_advertiser_id_check',
+    `char_length(provider_advertiser_id) BETWEEN 1 AND 256`);
+  await _ensureNamedCheck(p, 'orchestrator_research_competitors', 'orchestrator_research_competitors_normalized_name_check',
+    `char_length(normalized_name) BETWEEN 1 AND 256`);
+  await _ensureNamedCheck(p, 'orchestrator_research_competitors', 'orchestrator_research_competitors_canonical_url_check',
+    `canonical_url IS NULL OR char_length(canonical_url) <= 2048`);
+  await _ensureNamedCheck(p, 'orchestrator_research_competitors', 'orchestrator_research_competitors_country_check',
+    `country IS NULL OR char_length(country) <= 8`);
+  await _ensureNamedCheck(p, 'orchestrator_research_competitors', 'orchestrator_research_competitors_market_check',
+    `market IS NULL OR char_length(market) <= 64`);
+  await _ensureNamedCheck(p, 'orchestrator_research_competitors', 'orchestrator_research_competitors_dedup_key_check',
+    `char_length(dedup_key) BETWEEN 1 AND 128`);
+  await _ensureNamedCheck(p, 'orchestrator_research_competitors', 'orchestrator_research_competitors_id_check',
+    `char_length(id) BETWEEN 1 AND 128`);
+
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_platform_check',
+    `platform IN ('meta','google','tiktok')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_source_type_check',
+    `source_type IN ('ad_creative','ad_copy','landing_page','auction_insight','search_term','public_page','public_video','labelled_metric')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_creative_format_check',
+    `creative_format IS NULL OR creative_format IN ('image','video','carousel','text','html','unknown')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_metrics_kind_check',
+    `metrics_kind IN ('provider_reported','estimated')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_provenance_method_check',
+    `provenance_method IN ('ad_library','ads_transparency_center','keyword_planner','public_scrape','connector')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_connector_id_check',
+    `connector_id IN ('meta_research','google_research','tiktok_research')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_contract_version_check',
+    `contract_version IN ('v1')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_retention_class_check',
+    `retention_class IN ('standard','short','legal_hold')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_headline_check',
+    `char_length(headline) <= 500`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_body_text_check',
+    `char_length(body_text) <= 4000`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_excerpt_check',
+    `char_length(excerpt) <= 2000`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_advertiser_name_check',
+    `char_length(advertiser_name) <= 256`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_provider_external_id_check',
+    `provider_external_id IS NULL OR char_length(provider_external_id) BETWEEN 1 AND 256`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_canonical_source_url_check',
+    `canonical_source_url IS NULL OR char_length(canonical_source_url) <= 2048`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_market_check',
+    `market IS NULL OR char_length(market) <= 64`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_language_check',
+    `language IS NULL OR char_length(language) <= 16`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_placement_check',
+    `placement IS NULL OR char_length(placement) <= 64`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_connector_version_check',
+    `char_length(connector_version) BETWEEN 1 AND 64`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_evidence_hash_check',
+    `char_length(evidence_hash) = 64 AND evidence_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_dedup_key_check',
+    `char_length(dedup_key) BETWEEN 1 AND 128`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_provider_metrics_len_check',
+    `octet_length(provider_metrics::text) <= 8192`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_provider_metrics_type_check',
+    `jsonb_typeof(provider_metrics) = 'object'`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_supersedes_id_check',
+    `supersedes_id IS NULL OR char_length(supersedes_id) BETWEEN 1 AND 128`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_id_check',
+    `char_length(id) BETWEEN 1 AND 128`);
+
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_media_type_check',
+    `media_type IN ('image','video','html','other')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_retention_class_check',
+    `retention_class IN ('standard','short','legal_hold')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_storage_ref_check',
+    `char_length(storage_ref) BETWEEN 1 AND 1024`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_checksum_sha256_check',
+    `char_length(checksum_sha256) = 64 AND checksum_sha256 ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_width_px_check',
+    `width_px IS NULL OR width_px >= 0`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_height_px_check',
+    `height_px IS NULL OR height_px >= 0`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_duration_ms_check',
+    `duration_ms IS NULL OR duration_ms >= 0`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_id_check',
+    `char_length(id) BETWEEN 1 AND 128`);
+
+  await _ensureNamedUnique(p, 'orchestrator_research_runs',
+    'orchestrator_research_runs_tenant_unique_idempotency_key', 'tenant_id, idempotency_key');
+  await _ensureNamedUnique(p, 'orchestrator_research_competitors',
+    'orchestrator_research_competitors_tenant_unique_dedup',
+    'tenant_id, research_run_id, platform, dedup_key');
+  await _ensureNamedUnique(p, 'orchestrator_research_competitors',
+    'orchestrator_research_competitors_tenant_unique_ext',
+    'tenant_id, research_run_id, platform, provider_advertiser_id');
+  await _ensureNamedUnique(p, 'orchestrator_research_evidence',
+    'orchestrator_research_evidence_tenant_unique_dedup',
+    'tenant_id, research_run_id, dedup_key');
+  await _ensureNamedUnique(p, 'orchestrator_research_evidence_assets',
+    'orchestrator_research_evidence_assets_tenant_unique_ref',
+    'tenant_id, evidence_id, storage_ref');
+
+  await _ensureNamedFk(p, 'orchestrator_research_runs',
+    'orchestrator_research_runs_tenant_workflow_fkey',
+    'tenant_id, workflow_id', 'orchestrator_workflows', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  // NO ACTION (not CASCADE): an approval row must not wipe research runs.
+  // DEFERRABLE so tenant/workflow teardown can delete approvals and runs in
+  // one statement without depending on CASCADE child order.
+  await _ensureNamedFk(p, 'orchestrator_research_runs',
+    'orchestrator_research_runs_tenant_approval_fkey',
+    'tenant_id, approval_id', 'orchestrator_approvals', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedFk(p, 'orchestrator_research_competitors',
+    'orchestrator_research_competitors_tenant_run_fkey',
+    'tenant_id, research_run_id', 'orchestrator_research_runs', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_research_evidence',
+    'orchestrator_research_evidence_tenant_run_fkey',
+    'tenant_id, research_run_id', 'orchestrator_research_runs', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_research_evidence',
+    'orchestrator_research_evidence_tenant_competitor_fkey',
+    'tenant_id, competitor_id', 'orchestrator_research_competitors', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_research_evidence_assets',
+    'orchestrator_research_evidence_assets_tenant_evidence_fkey',
+    'tenant_id, evidence_id', 'orchestrator_research_evidence', 'tenant_id, id',
+    'ON DELETE CASCADE');
+
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_research_runs_tenant_unique_live_wf
+      ON orchestrator_research_runs (tenant_id, workflow_id, contract_version)
+      WHERE state IN ('pending','running');
+
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_runs_tenant_wf_created
+      ON orchestrator_research_runs (tenant_id, workflow_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_runs_tenant_state
+      ON orchestrator_research_runs (tenant_id, state);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_runs_tenant_created
+      ON orchestrator_research_runs (tenant_id, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_competitors_tenant_run
+      ON orchestrator_research_competitors (tenant_id, research_run_id);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_competitors_tenant_platform
+      ON orchestrator_research_competitors (tenant_id, platform);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_competitors_tenant_provider
+      ON orchestrator_research_competitors (tenant_id, provider_advertiser_id);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_competitors_tenant_captured
+      ON orchestrator_research_competitors (tenant_id, captured_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_tenant_run
+      ON orchestrator_research_evidence (tenant_id, research_run_id);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_tenant_platform
+      ON orchestrator_research_evidence (tenant_id, platform);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_tenant_captured
+      ON orchestrator_research_evidence (tenant_id, captured_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_tenant_ext
+      ON orchestrator_research_evidence (tenant_id, provider_external_id);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_tenant_hash
+      ON orchestrator_research_evidence (tenant_id, evidence_hash);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_tenant_competitor
+      ON orchestrator_research_evidence (tenant_id, competitor_id);
+
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_assets_tenant_ev
+      ON orchestrator_research_evidence_assets (tenant_id, evidence_id);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_assets_tenant_captured
+      ON orchestrator_research_evidence_assets (tenant_id, captured_at DESC);
+  `);
+
+  await p.query(`
+    CREATE OR REPLACE FUNCTION orchestrator_research_runs_approval_bind()
+    RETURNS trigger AS $fn$
+    DECLARE
+      appr RECORD;
+      approved_list TEXT[];
+    BEGIN
+      SELECT a.tenant_id, a.workflow_id, a.gate, a.decision, a.object_version, a.approved_platforms
+        INTO appr
+        FROM orchestrator_approvals a
+       WHERE a.id = NEW.approval_id
+         AND a.tenant_id = NEW.tenant_id;
+
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'orchestrator_research_runs_approval_required';
+      END IF;
+
+      IF appr.workflow_id IS DISTINCT FROM NEW.workflow_id
+         OR appr.gate IS DISTINCT FROM 'research_execution'
+         OR appr.decision IS DISTINCT FROM 'approved'
+         OR appr.object_version IS DISTINCT FROM NEW.approval_object_version
+      THEN
+        RAISE EXCEPTION 'orchestrator_research_runs_approval_required';
+      END IF;
+
+      IF jsonb_typeof(appr.approved_platforms) IS DISTINCT FROM 'array'
+         OR jsonb_array_length(appr.approved_platforms) < 1
+      THEN
+        RAISE EXCEPTION 'orchestrator_research_runs_approval_required';
+      END IF;
+
+      SELECT ARRAY(SELECT jsonb_array_elements_text(appr.approved_platforms))
+        INTO approved_list;
+
+      IF approved_list IS NULL
+         OR cardinality(approved_list) < 1
+         OR NOT (NEW.requested_platforms <@ approved_list)
+      THEN
+        RAISE EXCEPTION 'orchestrator_research_runs_approval_required';
+      END IF;
+
+      RETURN NEW;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION orchestrator_research_runs_identity_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF NEW.id IS DISTINCT FROM OLD.id
+         OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+         OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id
+         OR NEW.approval_id IS DISTINCT FROM OLD.approval_id
+         OR NEW.approval_object_version IS DISTINCT FROM OLD.approval_object_version
+         OR NEW.contract_version IS DISTINCT FROM OLD.contract_version
+         OR NEW.requested_platforms IS DISTINCT FROM OLD.requested_platforms
+         OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
+         OR NEW.research_brief IS DISTINCT FROM OLD.research_brief
+         OR NEW.search_parameters IS DISTINCT FROM OLD.search_parameters
+         OR NEW.created_at IS DISTINCT FROM OLD.created_at
+      THEN
+        RAISE EXCEPTION 'orchestrator_research_runs_identity_immutable';
+      END IF;
+      RETURN NEW;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION orchestrator_research_competitors_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_research_competitors_immutable';
+      END IF;
+      IF EXISTS (
+        SELECT 1 FROM orchestrator_research_runs r
+         WHERE r.id = OLD.research_run_id AND r.tenant_id = OLD.tenant_id
+      ) THEN
+        RAISE EXCEPTION 'orchestrator_research_competitors_immutable';
+      END IF;
+      RETURN OLD;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION orchestrator_research_evidence_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_research_evidence_immutable';
+      END IF;
+      IF EXISTS (
+        SELECT 1 FROM orchestrator_research_runs r
+         WHERE r.id = OLD.research_run_id AND r.tenant_id = OLD.tenant_id
+      ) THEN
+        RAISE EXCEPTION 'orchestrator_research_evidence_immutable';
+      END IF;
+      RETURN OLD;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION orchestrator_research_evidence_assets_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
+      END IF;
+      IF EXISTS (
+        SELECT 1 FROM orchestrator_research_evidence e
+         WHERE e.id = OLD.evidence_id AND e.tenant_id = OLD.tenant_id
+      ) THEN
+        RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
+      END IF;
+      RETURN OLD;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION orchestrator_research_evidence_supersedes_bind()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF NEW.supersedes_id IS NOT NULL THEN
+        IF NOT EXISTS (
+          SELECT 1 FROM orchestrator_research_evidence e
+           WHERE e.tenant_id = NEW.tenant_id
+             AND e.id = NEW.supersedes_id
+             AND e.research_run_id = NEW.research_run_id
+        ) THEN
+          RAISE EXCEPTION 'orchestrator_research_evidence_supersedes_missing';
+        END IF;
+      END IF;
+      RETURN NEW;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_research_runs_approval_bind ON orchestrator_research_runs;
+    CREATE TRIGGER orchestrator_research_runs_approval_bind
+      BEFORE INSERT OR UPDATE ON orchestrator_research_runs
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_runs_approval_bind();
+
+    DROP TRIGGER IF EXISTS orchestrator_research_runs_identity_immutable ON orchestrator_research_runs;
+    CREATE TRIGGER orchestrator_research_runs_identity_immutable
+      BEFORE UPDATE ON orchestrator_research_runs
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_runs_identity_immutable();
+
+    DROP TRIGGER IF EXISTS orchestrator_research_competitors_immutable ON orchestrator_research_competitors;
+    CREATE TRIGGER orchestrator_research_competitors_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_research_competitors
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_competitors_immutable();
+
+    DROP TRIGGER IF EXISTS orchestrator_research_evidence_immutable ON orchestrator_research_evidence;
+    CREATE TRIGGER orchestrator_research_evidence_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_research_evidence
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_evidence_immutable();
+
+    DROP TRIGGER IF EXISTS orchestrator_research_evidence_assets_immutable ON orchestrator_research_evidence_assets;
+    CREATE TRIGGER orchestrator_research_evidence_assets_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_research_evidence_assets
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_evidence_assets_immutable();
+
+    DROP TRIGGER IF EXISTS orchestrator_research_evidence_supersedes_bind ON orchestrator_research_evidence;
+    CREATE TRIGGER orchestrator_research_evidence_supersedes_bind
+      BEFORE INSERT ON orchestrator_research_evidence
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_evidence_supersedes_bind();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {
