@@ -214,14 +214,23 @@ async function _backfillResearchRetentionExpiry(p) {
   `);
   if (!needEv.rowCount && !needAssets.rowCount) return;
   // Session-local replica role: do not ALTER TABLE DISABLE TRIGGER (cluster-wide).
+  // Frozen v1 TTLs: short = 7 days, standard = 30 days. legal_hold is not backfilled.
   await _backfillInReplicaRole(p, [
     `UPDATE orchestrator_research_evidence
+        SET expires_at = created_at + interval '7 days'
+      WHERE retention_class = 'short'
+        AND (expires_at IS NULL OR expires_at <= created_at)`,
+    `UPDATE orchestrator_research_evidence
         SET expires_at = created_at + interval '30 days'
-      WHERE retention_class IN ('standard','short')
+      WHERE retention_class = 'standard'
+        AND (expires_at IS NULL OR expires_at <= created_at)`,
+    `UPDATE orchestrator_research_evidence_assets
+        SET expires_at = created_at + interval '7 days'
+      WHERE retention_class = 'short'
         AND (expires_at IS NULL OR expires_at <= created_at)`,
     `UPDATE orchestrator_research_evidence_assets
         SET expires_at = created_at + interval '30 days'
-      WHERE retention_class IN ('standard','short')
+      WHERE retention_class = 'standard'
         AND (expires_at IS NULL OR expires_at <= created_at)`,
   ]);
 }

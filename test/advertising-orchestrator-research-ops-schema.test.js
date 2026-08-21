@@ -29,6 +29,20 @@ function extractFunctionSource(src, name) {
   throw new Error(`unclosed function ${name}`);
 }
 
+function extractBacktickSql(fnSrc) {
+  const out = [];
+  const re = /`([^`]+)`/g;
+  let m;
+  while ((m = re.exec(fnSrc))) out.push(m[1]);
+  return out;
+}
+
+function extractRetentionBackfillUpdates() {
+  const src = fs.readFileSync(SCHEMA_SRC_PATH, 'utf8');
+  const fn = extractFunctionSource(src, '_backfillResearchRetentionExpiry');
+  return extractBacktickSql(fn).filter((s) => /^\s*UPDATE\s+/i.test(s));
+}
+
 function extractTaggedTemplates(src, callee) {
   const out = [];
   const startRe = new RegExp(callee.replace('.', '\\.') + '\\((?:[A-Za-z_][\\w]*\\s*,\\s*)?`', 'g');
@@ -117,6 +131,42 @@ test('research trigger install is per-table and not one p.query locking runs+evi
         `${name} CREATE must stay in the same transaction as ${group.table}`
       );
     }
+  }
+});
+
+test('retention backfill SQL uses 7-day short and 30-day standard, not a combined 30-day class list', () => {
+  const src = fs.readFileSync(SCHEMA_SRC_PATH, 'utf8');
+  const fn = extractFunctionSource(src, '_backfillResearchRetentionExpiry');
+  assert.match(fn, /_backfillInReplicaRole/);
+  assert.match(fn, /retention_class IN \('standard','short'\)/);
+
+  const updates = extractRetentionBackfillUpdates();
+  assert.strictEqual(updates.length, 4, 'expected class-split UPDATEs for evidence and assets');
+
+  const byTable = { evidence: [], assets: [] };
+  for (const sql of updates) {
+    assert.doesNotMatch(
+      sql,
+      /retention_class\s+IN\s*\(/,
+      'backfill UPDATE must not apply one TTL to IN (\'standard\',\'short\') together'
+    );
+    assert.doesNotMatch(sql, /legal_hold/);
+    if (/UPDATE\s+orchestrator_research_evidence_assets\b/.test(sql)) byTable.assets.push(sql);
+    else if (/UPDATE\s+orchestrator_research_evidence\b/.test(sql)) byTable.evidence.push(sql);
+    else assert.fail(`unexpected backfill UPDATE table: ${sql}`);
+  }
+  assert.strictEqual(byTable.evidence.length, 2);
+  assert.strictEqual(byTable.assets.length, 2);
+
+  for (const tableSql of [byTable.evidence, byTable.assets]) {
+    const shortSql = tableSql.find((s) => /retention_class\s*=\s*'short'/.test(s));
+    const standardSql = tableSql.find((s) => /retention_class\s*=\s*'standard'/.test(s));
+    assert.ok(shortSql, 'missing short-class UPDATE');
+    assert.ok(standardSql, 'missing standard-class UPDATE');
+    assert.match(shortSql, /interval\s+'7 days'/);
+    assert.doesNotMatch(shortSql, /interval\s+'30 days'/);
+    assert.match(standardSql, /interval\s+'30 days'/);
+    assert.doesNotMatch(standardSql, /interval\s+'7 days'/);
   }
 });
 
@@ -572,6 +622,127 @@ if (!HAS_DB) {
       ),
       /orchestrator_research_evidence_assets_immutable/
     );
+  });
+
+  test('retention backfill migration path sets 7-day short and 30-day standard then rolls back', async () => {
+    const pool = db.getPool();
+    const updates = extractRetentionBackfillUpdates();
+    assert.strictEqual(updates.length, 4);
+    const client = await pool.connect();
+    const shortEvId = nid('ev-bf-short');
+    const stdEvId = nid('ev-bf-std');
+    const holdEvId = nid('ev-bf-hold');
+    const shortAssetId = nid('asset-bf-short');
+    const stdAssetId = nid('asset-bf-std');
+    const holdAssetId = nid('asset-bf-hold');
+    let rolledBack = false;
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_retention_expiry_check`
+      );
+      await client.query(
+        `ALTER TABLE orchestrator_research_evidence_assets DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_assets_retention_expiry_check`
+      );
+
+      const host = await seedHost(client, tenantA);
+      const comp = await insertCompetitor(client, tenantA, host.runId);
+      await insertEvidence(client, tenantA, host.runId, comp, {
+        id: shortEvId,
+        retentionClass: 'short',
+        expiresAt: null,
+        dedupKey: nid('ededup-bf-short'),
+      });
+      await insertEvidence(client, tenantA, host.runId, comp, {
+        id: stdEvId,
+        retentionClass: 'standard',
+        expiresAt: null,
+        dedupKey: nid('ededup-bf-std'),
+      });
+      await insertEvidence(client, tenantA, host.runId, comp, {
+        id: holdEvId,
+        retentionClass: 'legal_hold',
+        expiresAt: null,
+        dedupKey: nid('ededup-bf-hold'),
+      });
+      await insertAsset(client, tenantA, shortEvId, {
+        id: shortAssetId,
+        retentionClass: 'short',
+        expiresAt: null,
+      });
+      await insertAsset(client, tenantA, stdEvId, {
+        id: stdAssetId,
+        retentionClass: 'standard',
+        expiresAt: null,
+      });
+      await insertAsset(client, tenantA, holdEvId, {
+        id: holdAssetId,
+        retentionClass: 'legal_hold',
+        expiresAt: null,
+      });
+
+      await client.query('SET LOCAL session_replication_role = replica');
+      for (const sql of updates) {
+        await client.query(sql);
+      }
+
+      const evRows = (await client.query(
+        `SELECT id, retention_class,
+                EXTRACT(EPOCH FROM (expires_at - created_at)) AS ttl_seconds,
+                expires_at
+           FROM orchestrator_research_evidence
+          WHERE tenant_id=$1 AND id = ANY($2)
+          ORDER BY retention_class`,
+        [tenantA, [shortEvId, stdEvId, holdEvId]]
+      )).rows;
+      const assetRows = (await client.query(
+        `SELECT id, retention_class,
+                EXTRACT(EPOCH FROM (expires_at - created_at)) AS ttl_seconds,
+                expires_at
+           FROM orchestrator_research_evidence_assets
+          WHERE tenant_id=$1 AND id = ANY($2)
+          ORDER BY retention_class`,
+        [tenantA, [shortAssetId, stdAssetId, holdAssetId]]
+      )).rows;
+      assert.strictEqual(evRows.length, 3);
+      assert.strictEqual(assetRows.length, 3);
+
+      const DAY_SECONDS = 24 * 3600;
+      const byClass = (rows) => Object.fromEntries(rows.map((r) => [r.retention_class, r]));
+      const ev = byClass(evRows);
+      const assets = byClass(assetRows);
+      assert.strictEqual(Number(ev.short.ttl_seconds), 7 * DAY_SECONDS);
+      assert.strictEqual(Number(ev.standard.ttl_seconds), 30 * DAY_SECONDS);
+      assert.strictEqual(ev.legal_hold.expires_at, null);
+      assert.strictEqual(Number(assets.short.ttl_seconds), 7 * DAY_SECONDS);
+      assert.strictEqual(Number(assets.standard.ttl_seconds), 30 * DAY_SECONDS);
+      assert.strictEqual(assets.legal_hold.expires_at, null);
+
+      await client.query('ROLLBACK');
+      rolledBack = true;
+    } catch (err) {
+      try { await client.query('ROLLBACK'); rolledBack = true; } catch (_) { /* already aborted */ }
+      throw err;
+    } finally {
+      if (!rolledBack) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* already aborted */ }
+      }
+      client.release();
+    }
+
+    assert.ok(
+      await checkExists('orchestrator_research_evidence', 'orchestrator_research_evidence_retention_expiry_check'),
+      'evidence expiry CHECK must still exist after ROLLBACK'
+    );
+    assert.ok(
+      await checkExists('orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_retention_expiry_check'),
+      'assets expiry CHECK must still exist after ROLLBACK'
+    );
+    const leftover = (await pool.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id = ANY($2)`,
+      [tenantA, [shortEvId, stdEvId, holdEvId]]
+    )).rows;
+    assert.strictEqual(leftover.length, 0, 'backfill probe rows must not survive ROLLBACK');
   });
 
   test('sweep indexes exist, are partial, and lead with tenant_id', async () => {
