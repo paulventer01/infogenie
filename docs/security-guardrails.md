@@ -1075,8 +1075,8 @@ live Postgres rather than reading the diffs.
   the individual missing predicates listed above are invisible to it by design.
   That is why they are enumerated here rather than left to the scanner.
 
-Two items found during the re-review that are **not** isolation defects, recorded
-so they are not mistaken for tenancy bugs later:
+Three items found during the re-review that are **not** isolation defects,
+recorded so they are not mistaken for tenancy bugs later:
 
 - `generate-custom` has no `ON CONFLICT` on the `(tenant_id, title)` partial
   unique index, and the template fallback title is deterministic
@@ -1090,6 +1090,18 @@ so they are not mistaken for tenancy bugs later:
   booted database they pass 5/5. Fixture bootstrap gap, no product impact — the
   same class as the fixture assertion `b30bd63` corrected in
   `tenant-schema-closeout`.
+- **The two DB-backed schema suites race each other, and the loser looks like a
+  tenancy regression.** `tenant-schema-closeout` drops
+  `backlink_changes` / `backlink_snapshots` / `backlink_monitors` to build its
+  old-shape fixture. `node --test` runs test files in parallel processes against
+  one `DATABASE_URL`, so `tenant-schema-audit` can introspect mid-fixture: run
+  the two files separately and they are 4/4 and 10/10, run them in one invocation
+  and audit checks 3 and 4 fail reporting those two tables "absent from the
+  database". Reproducible. Nothing is wrong with the schema — but a red
+  tenant-schema-audit is the signal this review relies on, so it must not be
+  reachable by a fixture race. For QA: either give the destructive suite its own
+  database, or serialise it (`--test-concurrency=1`). Do not resolve it by adding
+  those tables to an allowlist.
 
 ## Related existing systems
 
