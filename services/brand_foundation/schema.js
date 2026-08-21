@@ -20,8 +20,9 @@ const { enforceTenantIdNotNull } = require('../tenants/migration');
 //   • Rows with tenant_id NULL (the old unscoped singleton): FAIL BEFORE DDL —
 //     preflight aborts with zero ADD COLUMN / UNIQUE / DROP CHECK. Leave the
 //     rows in place; do NOT map to tenant 1 / a default tenant. Operator
-//     must stamp a real tenant_id or delete. Do not add this table to
-//     NULLABLE_OK — a per-tenant singleton has no legitimate global row.
+//     must stamp a real tenant_id or delete (explicit operator decision). Do
+//     not add this table to NULLABLE_OK — a per-tenant singleton has no
+//     legitimate global row.
 
 async function ensureBrandFoundationSchema() {
   if (!_db.hasDb()) return;
