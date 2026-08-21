@@ -1840,6 +1840,17 @@ Hardened during this review, because each of these was accepted before it:
   writers block rather than slipping through an unconstrained window) and a
   failed add rolls back to the previous definition. The error still propagates,
   so boot is still fail-closed — the database just keeps its constraint.
+- **A sweep client whose `ROLLBACK` failed is destroyed, not pooled.** Both
+  rollbacks on the retention sweeper's failure path are best effort and
+  swallowed, so `release()` was reached with no proof the connection was clean.
+  `release()` does not roll back: confirmed against node-pg that a client handed
+  back mid-transaction keeps the same backend, and the next borrower sees an
+  assigned xid and reads the previous borrower's uncommitted writes — meaning an
+  unrelated request could have inherited the sweep transaction and its
+  `FOR UPDATE` row locks on the evidence table. A redundant `ROLLBACK` is a
+  warning rather than an error, so one that returns is proof of a clean client;
+  only an unconfirmed rollback destroys the connection, which keeps ordinary
+  sweep failures from churning the pool.
 
 The scan deliberately fails closed and rejects the whole object rather than
 masking, so a message that genuinely needs the word `token:` in it has to be
@@ -1883,18 +1894,33 @@ whatever resolves the ref.
   `orchestrator_research_competitors` still have no `expires_at`, so a run's
   `research_brief` and `search_parameters` are retained until the workflow or
   tenant is deleted.
-- **`SKIP LOCKED` does not de-duplicate work between concurrent sweepers.** The
-  sweeper runs each statement through `pool.query`, so the selecting statement
-  is its own autocommit transaction and its row locks are released before the
-  `DELETE` runs — two processes sweeping the same tenant can select the same
-  batch. Nothing crosses a tenant boundary and nothing unexpired or
-  `legal_hold` is removed (the predicate is re-checked and the DELETE triggers
-  are the backstop), so the failure direction is safe; the cost is that the
-  loser's `DELETE` removes 0 rows, trips the `research_evidence_sweep_delete_noop`
-  guard, and returns `ok: false` — which at boot means `process.exit(1)` in
-  production. Single-instance deployments are unaffected. Running the sweep on
-  a dedicated client inside one transaction is owed to Backend before this
-  service is deployed to more than one Express instance.
+- **`SKIP LOCKED` now holds until the `DELETE`.** Each batch runs
+  `BEGIN` → `SELECT … FOR UPDATE SKIP LOCKED LIMIT` → `DELETE` → `COMMIT` on one
+  `pool.connect()` client, so the row locks survive to the delete and two
+  concurrent sweepers select disjoint batches — verified directly: two open
+  transactions selecting the same tenant's expired rows returned zero overlap.
+  A sweeper that finds every candidate already locked commits an empty batch and
+  stops, which is success rather than the old `ok: false` noop race. A client
+  whose `ROLLBACK` could not be confirmed is destroyed rather than returned to
+  the pool, because `release()` does not roll back and the next borrower would
+  otherwise inherit the batch transaction and its `FOR UPDATE` row locks.
+- **Holding that transaction open makes the sweeper deadlock with boot DDL.**
+  The batch now holds locks on `orchestrator_research_evidence` from the
+  `SELECT` until `COMMIT`, and the `DELETE` then fires
+  `orchestrator_research_evidence_immutable()`, whose
+  `NOT EXISTS (SELECT 1 FROM orchestrator_research_runs …)` needs
+  `AccessShareLock` on the runs table. `ensureAgentOrchestratorSchema` sends its
+  `CREATE OR REPLACE FUNCTION` / `DROP TRIGGER` / `CREATE TRIGGER` block as one
+  multi-statement implicit transaction that takes `AccessExclusiveLock` on the
+  runs table *and* the evidence table, so a boot running beside a live sweep
+  closes the cycle and Postgres kills one side with `40P01`. Reproduced from the
+  server log in 2 of 6 runs of the two research test files; the same files show
+  no deadlock at all with the previous autocommit sweeper, so this arrived with
+  the batch transaction. Nothing is mis-deleted and no tenant boundary moves —
+  the victim's transaction is rolled back whole — but whichever side loses fails
+  closed, so a rolling deploy can exit a booting instance or a live one.
+  Deadlock-aware retry (or excluding the sweep from the boot DDL window) is owed
+  to Backend before this runs on more than one Express instance.
 - **The boot backfills need a DB role that may set `session_replication_role`.**
   `_backfillResearchRetentionExpiry` and `_backfillResearchJsonObjects` repair
   pre-existing non-conforming rows behind a session-local
@@ -1920,12 +1946,15 @@ whatever resolves the ref.
   the quota row is a raw-SQL capability that already implies full table access.
   Evidence *assets* have no volume cap of their own; they are bounded only by
   the evidence rows they hang off and the 1024-character `storage_ref` limit.
-- **`content_fingerprint` keeps a 64-zero column DEFAULT.** The default exists so
-  the rename from `evidence_hash` can add the column `NOT NULL` on a populated
-  table. It is never used by `research_store.js`, which always supplies the
-  computed value, but a direct SQL writer that omits the column gets a
-  well-formed all-zero fingerprint instead of an error. Dropping the default
-  after the rename has landed everywhere is owed to Database.
+- **The 64-zero `content_fingerprint` DEFAULT survives only the `ADD COLUMN`
+  itself.** The default is what lets the rename from `evidence_hash` add the
+  column `NOT NULL` to a populated table; `ensure()` drops it on the next
+  statement, so an `INSERT` that omits the column now fails `23502` naming
+  `content_fingerprint` instead of storing a well-formed all-zero fingerprint.
+  Verified after both a first and a second `ensure()`. Rows the migration
+  backfilled still carry the all-zero value: it is a legible placeholder, not a
+  fingerprint anyone should treat as content-derived, and re-deriving one for a
+  legacy row would require re-reading content that may already be purged.
 - **`content_fingerprint` is a content fingerprint, not a signature.** It is an
   unkeyed SHA-256 over the content subset and does not cover `tenant_id`,
   `metrics_kind`, `provenance_method`, `connector_id` or `captured_at`. It

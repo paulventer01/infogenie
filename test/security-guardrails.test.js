@@ -374,6 +374,19 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   assert.match(flat, /A tenant-scoped retention sweeper now exists/);
   assert.match(flat, /`content_fingerprint` is a content fingerprint, not a signature/);
   assert.match(flat, /public ad copy can legitimately contain a business email or phone number/);
+  // Rewritten once Backend and Database closed the first two. The claims are
+  // pinned so a later change cannot quietly reopen them in the code and leave
+  // the doc asserting a property the runtime no longer has.
+  assert.match(flat, /`SKIP LOCKED` now holds until the `DELETE`/);
+  assert.match(flat, /Holding that transaction open makes the sweeper deadlock with boot DDL/);
+  assert.match(flat, /whichever side loses fails closed, so a rolling deploy can exit a booting instance or a live one/);
+  assert.match(flat, /The 64-zero `content_fingerprint` DEFAULT survives only the `ADD COLUMN` itself/);
+  assert.match(flat, /fails `23502` naming `content_fingerprint`/);
+  assert.match(flat, /A sweep client whose `ROLLBACK` failed is destroyed, not pooled/);
+  // Residuals that must survive the rewrite.
+  assert.match(flat, /The boot backfills need a DB role that may set `session_replication_role`/);
+  assert.match(flat, /The evidence quota counter is trigger-maintained, not reconciled/);
+  assert.match(flat, /`orchestrator_research_competitors` still have no `expires_at`/);
 });
 
 test('originAllowed accepts matching host and localhost in non-prod', () => {
