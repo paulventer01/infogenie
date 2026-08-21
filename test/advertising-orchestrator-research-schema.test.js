@@ -375,12 +375,27 @@ if (!HAS_DB) {
       [tenantB]
     )).rows[0].id;
     await assert.rejects(
+      () => insertEvidence(p, tenantB, hostA.runId, compB, { id: nid('ev-xrun') }),
+      /foreign key|violates/i,
+      'tenant B evidence must not reference tenant A research_run_id'
+    );
+    await assert.rejects(
       () => insertEvidence(p, tenantA, hostA.runId, compB, { id: nid('ev-xcomp') }),
       /foreign key|violates/i,
       'tenant A evidence must not cite tenant B competitor'
     );
 
-    await insertEvidence(p, tenantA, hostA.runId, compA, { id: nid('ev-ok') });
+    const evidenceA = await insertEvidence(p, tenantA, hostA.runId, compA, { id: nid('ev-ok') });
+    await assert.rejects(
+      () => p.query(
+        `INSERT INTO orchestrator_research_evidence_assets
+           (id, tenant_id, evidence_id, media_type, storage_ref, checksum_sha256, captured_at)
+         VALUES ($1,$2,$3,'image',$4,$5, now())`,
+        [nid('asset-xev'), tenantB, evidenceA, `research://meta/${evidenceA}`, SHA256_C]
+      ),
+      /foreign key|violates/i,
+      'tenant B asset must not reference tenant A evidence_id'
+    );
   });
 
   test('CHECK rejects invalid platform, source_type, state, and contract_version', async () => {
