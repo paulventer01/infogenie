@@ -193,7 +193,7 @@ async function _sweepTenant(p, tenantId) {
   }
 }
 
-async function sweepExpiredResearchEvidence() {
+async function sweepExpiredResearchEvidence(opts) {
   if (!_db.hasDb()) {
     return { ok: true, skipped: 'no_db', purged: 0, failures: 0, invalid_expiry: 0 };
   }
@@ -208,7 +208,11 @@ async function sweepExpiredResearchEvidence() {
 
   let tenantIds;
   try {
-    tenantIds = await _listResearchTenantIds(p);
+    if (opts && opts.tenantId != null) {
+      tenantIds = [opts.tenantId];
+    } else {
+      tenantIds = await _listResearchTenantIds(p);
+    }
   } catch (err) {
     failures += 1;
     logger.error('research_evidence_sweep_failed', { phase: 'list_tenants', code: _pgCode(err) });

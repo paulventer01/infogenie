@@ -613,7 +613,7 @@ if (!HAS_DB) {
         [tenantId, lockedId]
       );
       const started = Date.now();
-      sweepP = sweepExpiredResearchEvidence();
+      sweepP = sweepExpiredResearchEvidence({ tenantId });
       const timedOut = Object.assign(new Error('sweep blocked on held row'), { code: 'XX000' });
       let timer;
       const result = await Promise.race([
@@ -650,7 +650,7 @@ if (!HAS_DB) {
       locker.release();
     }
 
-    const second = await sweepExpiredResearchEvidence();
+    const second = await sweepExpiredResearchEvidence({ tenantId });
     assert.strictEqual(second.failures, 0);
     assert.ok(second.purged >= 1);
     const leftover = (await p.query(
@@ -676,8 +676,8 @@ if (!HAS_DB) {
     }
 
     const [first, second] = await Promise.all([
-      sweepExpiredResearchEvidence(),
-      sweepExpiredResearchEvidence(),
+      sweepExpiredResearchEvidence({ tenantId: tenantA }),
+      sweepExpiredResearchEvidence({ tenantId: tenantA }),
     ]);
     assert.ok(first && second);
     assert.strictEqual(first.failures, 0, 'ok must not be false because of a noop race');
@@ -902,11 +902,28 @@ if (!HAS_DB) {
 
     for (let round = 0; round < ROUNDS; round += 1) {
       for (let i = 0; i < PER_ROUND; i += 1) {
-        seeded.push(await insertExpiredEvidence(p, tenantA, host.runId, comp, {
-          createdAt, expiresAt: expiredAt,
-        }));
+        let inserted = null;
+        let lastErr = null;
+        for (let attempt = 1; attempt <= 5; attempt += 1) {
+          try {
+            inserted = await insertExpiredEvidence(p, tenantA, host.runId, comp, {
+              createdAt, expiresAt: expiredAt,
+            });
+            lastErr = null;
+            break;
+          } catch (err) {
+            lastErr = err;
+            if (err && (err.code === '40P01' || err.code === '40001') && attempt < 5) {
+              await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+              continue;
+            }
+            throw err;
+          }
+        }
+        if (lastErr) throw lastErr;
+        seeded.push(inserted);
       }
-      const sweepP = sweepExpiredResearchEvidence();
+      const sweepP = sweepExpiredResearchEvidence({ tenantId: tenantA });
       const ensurePs = [
         ensureAgentOrchestratorSchema(),
         ensureAgentOrchestratorSchema(),

@@ -109,7 +109,7 @@ async function runSkipLockedHeldRowOnce(p, tenantId) {
       [tenantId, lockedId]
     );
     const started = Date.now();
-    sweepP = sweepExpiredResearchEvidence();
+    sweepP = sweepExpiredResearchEvidence({ tenantId });
     const timedOut = Object.assign(new Error('sweep blocked on held row'), { code: 'XX000' });
     let timer;
     const result = await Promise.race([
@@ -146,7 +146,7 @@ async function runSkipLockedHeldRowOnce(p, tenantId) {
     locker.release();
   }
 
-  const second = await sweepExpiredResearchEvidence();
+  const second = await sweepExpiredResearchEvidence({ tenantId });
   assert.strictEqual(second.failures, 0);
   assert.ok(second.purged >= 1);
   const leftover = (await p.query(
@@ -195,8 +195,8 @@ if (!HAS_DB) {
     }
 
     const [first, second] = await Promise.all([
-      sweepExpiredResearchEvidence(),
-      sweepExpiredResearchEvidence(),
+      sweepExpiredResearchEvidence({ tenantId: tenantA }),
+      sweepExpiredResearchEvidence({ tenantId: tenantA }),
     ]);
     assert.ok(first && second);
     assert.strictEqual(first.failures, 0, 'ok must not be false because of a noop race');

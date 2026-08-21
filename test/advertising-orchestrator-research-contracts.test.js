@@ -209,6 +209,9 @@ test('5b. in-copy email and phone are redacted; extracted-contact keys stay forb
   assert.strictEqual(redactContactPii('campaign 123456'), 'campaign 123456');
   const ev = assertEvidenceItem({
     ...metaEvidence(),
+    content_fingerprint: undefined,
+    evidence_hash: undefined,
+    dedup_key: undefined,
     headline: `Talk to ${RAW_EMAIL}`,
     body_text: `Call ${RAW_PHONE} or campaign 123456`,
     excerpt: RAW_EMAIL,
@@ -665,7 +668,7 @@ test('evidence_hash input alias maps; output never emits evidence_hash', () => {
   assert.equal(Object.prototype.hasOwnProperty.call(viaAlias, 'evidence_hash'), false);
 });
 
-test('public ad copy may contain a business email/phone; extracted-contact keys are rejected', () => {
+test('public ad copy is retained after redaction; extracted-contact keys are rejected', () => {
   const ev = metaEvidence();
   const ok = assertEvidenceItem({
     ...ev,
@@ -673,8 +676,9 @@ test('public ad copy may contain a business email/phone; extracted-contact keys 
     evidence_hash: undefined,
     body_text: 'Reach us at ads@brand.example or +1-555-0100',
   }, { tenantId: TENANT_A });
-  assert.match(ok.body_text, /ads@brand\.example/);
-  assert.match(ok.body_text, /\+1-555-0100/);
+  assert.match(ok.body_text, /\[email\]/);
+  assert.ok(!ok.body_text.includes('ads@brand.example'));
+  assert.match(ok.body_text, /\+1-555-0100/, 'short formatted numbers under 10 digits stay');
   for (const key of [
     'extracted_emails', 'extracted_email', 'extracted_phones', 'extracted_phone',
     'contact_email', 'contact_phone', 'email_address', 'mobile', 'msisdn',
