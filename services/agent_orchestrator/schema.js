@@ -146,6 +146,10 @@ async function _ensureContentFingerprintColumn(p) {
     await p.query(`ALTER TABLE orchestrator_research_evidence RENAME COLUMN evidence_hash TO content_fingerprint`);
   }
   await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS content_fingerprint TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'`);
+  // Keep the DEFAULT only for ADD COLUMN so a populated table can gain a
+  // NOT NULL fingerprint. Drop it immediately so a later INSERT that omits
+  // the column fails closed instead of writing a silent all-zero fingerprint.
+  await p.query(`ALTER TABLE orchestrator_research_evidence ALTER COLUMN content_fingerprint DROP DEFAULT`);
   await p.query(`ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_evidence_hash_check`);
   await p.query(`DROP INDEX IF EXISTS idx_orchestrator_research_evidence_tenant_hash`);
   const stale = await p.query(

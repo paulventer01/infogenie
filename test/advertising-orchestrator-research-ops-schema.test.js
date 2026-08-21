@@ -496,6 +496,83 @@ if (!HAS_DB) {
     assert.strictEqual(await indexDef('idx_orchestrator_research_evidence_tenant_hash'), null);
   });
 
+  test('content_fingerprint column_default is NULL after ensure and stays NULL on a second ensure', async () => {
+    const p = db.getPool();
+    const columnDefault = async () => {
+      const row = (await p.query(
+        `SELECT column_default FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='orchestrator_research_evidence'
+            AND column_name='content_fingerprint'`
+      )).rows[0];
+      return row ? row.column_default : undefined;
+    };
+    assert.strictEqual(await columnDefault(), null);
+    await ensureAgentOrchestratorSchema();
+    assert.strictEqual(await columnDefault(), null);
+  });
+
+  test('omitting content_fingerprint fails not-null; supplying a valid 64-hex fingerprint still succeeds', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertCompetitor(p, tenantA, host.runId);
+    const omitId = nid('ev-fp-omit');
+    const omitDedup = nid('ededup-omit');
+    await assert.rejects(
+      () => p.query(
+        `INSERT INTO orchestrator_research_evidence
+           (id, tenant_id, research_run_id, competitor_id, platform, source_type,
+            provider_external_id, headline, body_text, excerpt, advertiser_name,
+            captured_at, provider_metrics, provenance_method, connector_id, connector_version,
+            dedup_key, supersedes_id, retention_class, expires_at, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now(), $12::jsonb, $13,$14,$15,$16,$17,$18,
+                 now() + interval '30 days', now())`,
+        [
+          omitId,
+          tenantA,
+          host.runId,
+          comp,
+          'meta',
+          'ad_creative',
+          null,
+          '',
+          '',
+          '',
+          '',
+          JSON.stringify({}),
+          'ad_library',
+          'meta_research',
+          '1.0.0',
+          omitDedup,
+          null,
+          'standard',
+        ]
+      ),
+      (err) => {
+        assert.strictEqual(err.code, '23502');
+        assert.match(String(err.message), /content_fingerprint/);
+        return true;
+      },
+      'omitting content_fingerprint must fail with not-null (23502), not a silent zero fingerprint'
+    );
+    const sneaky = (await p.query(
+      `SELECT content_fingerprint FROM orchestrator_research_evidence
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, omitId]
+    )).rows;
+    assert.strictEqual(sneaky.length, 0, 'omit insert must not write an all-zero fingerprint row');
+
+    const okId = await insertEvidence(p, tenantA, host.runId, comp, {
+      id: nid('ev-fp-ok'),
+      contentFingerprint: SHA256_A,
+    });
+    const stored = (await p.query(
+      `SELECT content_fingerprint FROM orchestrator_research_evidence
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, okId]
+    )).rows[0];
+    assert.strictEqual(stored.content_fingerprint, SHA256_A);
+  });
+
   test('volume quota: concurrent inserts serialize; payload and cross-tenant isolation; 0 is fail-closed; delete frees quota', async () => {
     const pool = db.getPool();
     const tenantConc = (await pool.query(
