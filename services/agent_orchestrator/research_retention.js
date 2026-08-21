@@ -87,6 +87,7 @@ async function _purgeExpiredTable(client, table, tenantId) {
   for (;;) {
     await client.query('BEGIN');
     try {
+      await client.query("SET LOCAL lock_timeout = '15s'");
       const sel = await client.query(expiredLockSql(table), [tenantId, SWEEP_BATCH]);
       const ids = (sel.rows || []).map((row) => row.id);
       if (!ids.length) {
@@ -94,11 +95,15 @@ async function _purgeExpiredTable(client, table, tenantId) {
         break;
       }
       const del = await client.query(
-        `DELETE FROM ${table} WHERE tenant_id=$1 AND id = ANY($2::text[])`,
+        `DELETE FROM ${table} WHERE tenant_id=$1 AND id = ANY($2)`,
         [tenantId, ids]
       );
       await client.query('COMMIT');
-      purged += Number(del.rowCount) || 0;
+      const removed = Number(del.rowCount) || 0;
+      if (removed === 0) {
+        throw Object.assign(new Error('research_evidence_sweep_delete_noop'), { code: 'XX000' });
+      }
+      purged += removed;
       if (ids.length < SWEEP_BATCH) break;
     } catch (err) {
       try { await client.query('ROLLBACK'); } catch (_rb) { /* keep original */ }

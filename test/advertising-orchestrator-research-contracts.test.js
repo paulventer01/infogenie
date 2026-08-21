@@ -610,6 +610,8 @@ test('public ad copy may contain a business email/phone; extracted-contact keys 
   const ev = metaEvidence();
   const ok = assertEvidenceItem({
     ...ev,
+    content_fingerprint: undefined,
+    evidence_hash: undefined,
     body_text: 'Reach us at ads@brand.example or +1-555-0100',
   }, { tenantId: TENANT_A });
   assert.match(ok.body_text, /ads@brand\.example/);
