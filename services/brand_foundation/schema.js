@@ -7,14 +7,31 @@ const { enforceTenantIdNotNull } = require('../tenants/migration');
 //   • Drop the `brand_foundation_singleton` CHECK constraint
 //   • Add UNIQUE (tenant_id) so each tenant still holds at most one row
 //
-// Closeout is fail-closed (`enforceTenantIdNotNull`): existing rows keep their
-// tenant_id; unmappable NULLs are NOT assigned to tenant 1 / a default tenant.
+// The unscoped legacy seed (`INSERT INTO brand_foundation (id) VALUES (1)`)
+// is retired. That INSERT ran when tenant_id did not yet exist, so
+// enforceTenantIdNotNull saw an unowned row, fail-closed, and never set
+// NOT NULL — which broke a fresh install (audit check 2). The API already
+// lazy-creates a per-tenant row on first access via resolveTenantId.
+//
+// Closeout is fail-closed (`enforceTenantIdNotNull`):
+//   • Fresh install (empty table after CREATE): tenant_id ends NOT NULL.
+//   • Rows that already have tenant_id: SET NOT NULL as usual. Those rows
+//     are never deleted.
+//   • Rows with tenant_id NULL (the old unscoped singleton): FAIL CLOSED —
+//     leave them in place, log orphans, do NOT map to tenant 1 / a default
+//     tenant. Those rows need an explicit operator decision (stamp a real
+//     tenant_id, or delete). Do not add this table to NULLABLE_OK — a
+//     per-tenant singleton has no legitimate global row.
 
 async function ensureBrandFoundationSchema() {
   if (!_db.hasDb()) return;
   const p = _db.getPool();
 
   // ── Original CREATE (idempotent — runs on fresh installs) ────────────────
+  // Shape stays pre-tenant so CREATE TABLE IF NOT EXISTS is a no-op on
+  // existing installs. Do not seed an id=1 row here: an unowned row would
+  // block the fail-closed NOT NULL flip. Closeout runs on the empty table
+  // (fresh) or on whatever rows already exist (production).
   await p.query(`
     CREATE TABLE IF NOT EXISTS brand_foundation (
       id INTEGER PRIMARY KEY DEFAULT 1,
@@ -37,19 +54,8 @@ async function ensureBrandFoundationSchema() {
       CONSTRAINT brand_foundation_singleton CHECK (id = 1)
     );
   `);
-  // Legacy seed of the singleton row — only safe on a *fresh* install where
-  // tenant_id doesn't exist yet. Once Phase 2E set tenant_id NOT NULL, the
-  // un-stamped INSERT would crash, so we skip it whenever tenant_id is
-  // present (migration handles the row in that case).
-  try {
-    const hasTid = await p.query(
-      `SELECT 1 FROM information_schema.columns WHERE table_name='brand_foundation' AND column_name='tenant_id'`);
-    if (!hasTid.rows.length) {
-      await p.query(`INSERT INTO brand_foundation (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
-    }
-  } catch (_) { /* non-fatal */ }
 
-  // ── Phase 2 migration ────────────────────────────────────────────────────
+  // ── Phase 2 closeout ─────────────────────────────────────────────────────
   // Add tenant_id + drop singleton CHECK + UNIQUE (tenant_id).
   // The id PRIMARY KEY stays (with its DEFAULT 1) for backwards-compat; new
   // rows from /save use id=DEFAULT — collisions caught by the UNIQUE constraint.
@@ -60,6 +66,14 @@ async function ensureBrandFoundationSchema() {
   });
   if (mig.added || mig.droppedCheck || mig.uniqueAdded) {
     console.log('[brand-foundation] migration:', JSON.stringify(mig));
+  }
+  if (mig.reason === 'orphans') {
+    console.error(
+      '[brand-foundation] FAIL-CLOSED: ' + (mig.orphanCount || 0) +
+      ' row(s) still have NULL tenant_id (legacy unscoped singleton). ' +
+      'Left in place; NOT NULL not applied; not assigned to tenant 1. ' +
+      'Operator must stamp a real tenant_id or delete those rows explicitly.'
+    );
   }
 
   // The legacy id=1 row's DEFAULT keeps colliding on new tenant inserts. Drop
