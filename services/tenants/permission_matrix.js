@@ -179,6 +179,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/journeys',                  view: 'reach.journeys.view',  write: 'reach.journeys.edit' },
   { prefix: '/api/omnichannel',               view: 'reach.email.view',     write: 'reach.email.send' },
   { prefix: '/api/email-broadcast',           view: 'reach.email.view',     write: 'reach.email.send' },
+  { prefix: '/api/email-replies',             view: 'reach.email.view',     write: 'reach.email.send' },
   { prefix: '/api/cold-email',                view: 'reach.email.view',     write: 'reach.email.send' },
   { prefix: '/api/email-personalizer',        view: 'reach.email.view',     write: 'reach.email.send' },
   { prefix: '/api/deliverability',            view: 'reach.email.view',     write: 'reach.email.send' },
