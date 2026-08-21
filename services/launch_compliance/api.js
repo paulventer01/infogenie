@@ -21,7 +21,7 @@ router.get('/checklists', async (req, res) => {
          COUNT(i.id) FILTER (WHERE i.status='pending') AS pending_count,
          COUNT(i.id) AS total_count
        FROM campaign_compliance_checklists c
-       LEFT JOIN compliance_checklist_items i ON i.checklist_id = c.id
+       LEFT JOIN compliance_checklist_items i ON i.checklist_id = c.id AND i.tenant_id=$1
        WHERE c.tenant_id=$1 GROUP BY c.id ORDER BY c.created_at DESC LIMIT 100`,
       [tid]
     );
@@ -43,16 +43,16 @@ router.post('/checklists', async (req, res) => {
       [tid, campaign_name, platform||'general', landing_page_url||null, ad_copy||null]
     );
     const checklist = rows[0];
-    // Seed default checklist items
+    // Seed default checklist items — stamp the resolved tenant, never body.tenant_id.
     for (const item of DEFAULT_ITEMS) {
       await p.query(
-        'INSERT INTO compliance_checklist_items (checklist_id,category,item,order_idx) VALUES ($1,$2,$3,$4)',
-        [checklist.id, item.category, item.item, item.order_idx]
+        'INSERT INTO compliance_checklist_items (tenant_id,checklist_id,category,item,order_idx) VALUES ($1,$2,$3,$4,$5)',
+        [tid, checklist.id, item.category, item.item, item.order_idx]
       );
     }
     const { rows: items } = await p.query(
-      'SELECT * FROM compliance_checklist_items WHERE checklist_id=$1 ORDER BY order_idx',
-      [checklist.id]
+      'SELECT * FROM compliance_checklist_items WHERE checklist_id=$1 AND tenant_id=$2 ORDER BY order_idx',
+      [checklist.id, tid]
     );
     res.json({ ok: true, checklist: { ...checklist, items } });
   } catch (e) { _err(res, 500, e.message); }
@@ -70,8 +70,8 @@ router.get('/checklists/:id', async (req, res) => {
     );
     if (!rows.length) return _err(res, 404, 'not_found');
     const { rows: items } = await p.query(
-      'SELECT * FROM compliance_checklist_items WHERE checklist_id=$1 ORDER BY order_idx',
-      [rows[0].id]
+      'SELECT * FROM compliance_checklist_items WHERE checklist_id=$1 AND tenant_id=$2 ORDER BY order_idx',
+      [rows[0].id, tid]
     );
     res.json({ ok: true, checklist: { ...rows[0], items } });
   } catch (e) { _err(res, 500, e.message); }
@@ -85,11 +85,11 @@ router.put('/items/:itemId', async (req, res) => {
   if (!['pending','pass','fail','na'].includes(status)) return _err(res, 400, 'invalid status');
   try {
     const p = _db.getPool();
-    // Verify ownership via checklist tenant_id
+    // Verify ownership via checklist + item tenant_id (never body.tenant_id).
     const { rows } = await p.query(
       `UPDATE compliance_checklist_items ci SET status=$1, notes=$2
        FROM campaign_compliance_checklists c
-       WHERE ci.id=$3 AND ci.checklist_id=c.id AND c.tenant_id=$4
+       WHERE ci.id=$3 AND ci.checklist_id=c.id AND c.tenant_id=$4 AND ci.tenant_id=$4
        RETURNING ci.*`,
       [status, notes||null, req.params.itemId, tid]
     );
@@ -101,16 +101,16 @@ router.put('/items/:itemId', async (req, res) => {
          COUNT(*) FILTER (WHERE status='fail') AS fails,
          COUNT(*) FILTER (WHERE status='pending') AS pending,
          COUNT(*) AS total
-       FROM compliance_checklist_items WHERE checklist_id=$1`,
-      [checklistId]
+       FROM compliance_checklist_items WHERE checklist_id=$1 AND tenant_id=$2`,
+      [checklistId, tid]
     );
     const { fails, pending, total } = summary[0];
     let overall_result = 'passed';
     if (Number(fails) > 0) overall_result = 'failed';
     else if (Number(pending) > 0) overall_result = 'in_progress';
     await p.query(
-      'UPDATE campaign_compliance_checklists SET overall_result=$1,updated_at=NOW() WHERE id=$2',
-      [overall_result, checklistId]
+      'UPDATE campaign_compliance_checklists SET overall_result=$1,updated_at=NOW() WHERE id=$2 AND tenant_id=$3',
+      [overall_result, checklistId, tid]
     );
     res.json({ ok: true, item: rows[0], overall_result });
   } catch (e) { _err(res, 500, e.message); }
@@ -163,8 +163,8 @@ router.post('/checklists/:id/proofread', async (req, res) => {
     }
 
     await p.query(
-      'UPDATE campaign_compliance_checklists SET ai_feedback=$1,updated_at=NOW() WHERE id=$2',
-      [JSON.stringify(feedback), rows[0].id]
+      'UPDATE campaign_compliance_checklists SET ai_feedback=$1,updated_at=NOW() WHERE id=$2 AND tenant_id=$3',
+      [JSON.stringify(feedback), rows[0].id, tid]
     );
     res.json({ ok: true, feedback });
   } catch (e) { _err(res, 500, e.message); }
@@ -227,8 +227,8 @@ router.post('/checklists/:id/brand-check', async (req, res) => {
     }
 
     await p.query(
-      'UPDATE campaign_compliance_checklists SET brand_score=$1,updated_at=NOW() WHERE id=$2',
-      [score, checklist.id]
+      'UPDATE campaign_compliance_checklists SET brand_score=$1,updated_at=NOW() WHERE id=$2 AND tenant_id=$3',
+      [score, checklist.id, tid]
     );
     res.json({ ok: true, brand_score: score, issues, brand_found: !!brand });
   } catch (e) { _err(res, 500, e.message); }

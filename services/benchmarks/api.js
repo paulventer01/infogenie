@@ -25,6 +25,10 @@ const VERTICALS = ['e-commerce','saas','local-business','finance','health','agen
 const REGIONS   = ['North America','Europe','APAC','Africa','Latin America','Middle East'];
 const SIZES     = ['1-10','11-50','51-200','201-500','500+'];
 
+// Suppress buckets whose contributing workspaces would identify a single tenant.
+// sample_count stays raw submission rows; publication is gated on contributor_count.
+const K = 5;
+
 router.get('/config', async (req, res) => {
   res.json({ ok:true, metrics:METRICS, verticals:VERTICALS, regions:REGIONS, sizes:SIZES });
 });
@@ -60,8 +64,9 @@ router.post('/compare', async (req, res) => {
   const p = await _db.getPool();
   const aggs = await p.query(
     `SELECT metric_key,p25,median,p75,sample_count FROM benchmark_aggregates
-     WHERE vertical=$1 AND (region=$2 OR region IS NULL) AND (company_size=$3 OR company_size IS NULL)`,
-    [vertical, region||null, company_size||null]
+     WHERE vertical=$1 AND (region=$2 OR region IS NULL) AND (company_size=$3 OR company_size IS NULL)
+       AND contributor_count >= $4`,
+    [vertical, region||null, company_size||null, K]
   );
   const benchmarks = {};
   for (const r of aggs.rows) benchmarks[r.metric_key] = r;
@@ -192,32 +197,67 @@ router.get('/leaderboard', async (req, res) => {
   const p = await _db.getPool();
   const rows = await p.query(
     `SELECT vertical, metric_key, median, p25, p75, sample_count
-     FROM benchmark_aggregates ORDER BY sample_count DESC LIMIT 50`
+     FROM benchmark_aggregates
+     WHERE contributor_count >= $1
+     ORDER BY sample_count DESC LIMIT 50`,
+    [K]
   );
   res.json({ ok:true, leaderboard: rows.rows });
 });
 
 async function _rebuildAggregates(p, vertical, region, company_size) {
   try {
+    // Percentiles over one value per workspace (latest submission). sample_count
+    // remains COUNT(*) of raw rows; contributor_count is COUNT(DISTINCT tenant_id).
     const metrics = await p.query(
-      `SELECT metric_key,
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY metric_value) as p25,
-        PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY metric_value) as median,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY metric_value) as p75,
-        COUNT(*) as sample_count
-       FROM benchmark_submissions
-       WHERE vertical=$1 AND (region=$2 OR ($2 IS NULL AND region IS NULL))
-         AND (company_size=$3 OR ($3 IS NULL AND company_size IS NULL))
-       GROUP BY metric_key`,
+      `WITH bucket AS (
+         SELECT tenant_id, metric_key, metric_value, submitted_at, id
+           FROM benchmark_submissions
+          WHERE vertical=$1
+            AND (region=$2 OR ($2 IS NULL AND region IS NULL))
+            AND (company_size=$3 OR ($3 IS NULL AND company_size IS NULL))
+       ),
+       per_tenant AS (
+         SELECT DISTINCT ON (tenant_id, metric_key)
+                tenant_id, metric_key, metric_value
+           FROM bucket
+          ORDER BY tenant_id, metric_key, submitted_at DESC NULLS LAST, id DESC
+       ),
+       row_counts AS (
+         SELECT metric_key, COUNT(*)::int AS sample_count
+           FROM bucket
+          GROUP BY metric_key
+       )
+       SELECT p.metric_key,
+              PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY p.metric_value) AS p25,
+              PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY p.metric_value) AS median,
+              PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY p.metric_value) AS p75,
+              r.sample_count,
+              COUNT(DISTINCT p.tenant_id)::int AS contributor_count
+         FROM per_tenant p
+         JOIN row_counts r ON r.metric_key = p.metric_key
+        GROUP BY p.metric_key, r.sample_count`,
       [vertical, region, company_size]
     );
     for (const r of metrics.rows) {
+      if (Number(r.contributor_count) < K) {
+        // Drop a previously published statistic — not tenant business rows.
+        await p.query(
+          `DELETE FROM benchmark_aggregates
+            WHERE vertical=$1
+              AND region IS NOT DISTINCT FROM $2
+              AND company_size IS NOT DISTINCT FROM $3
+              AND metric_key=$4`,
+          [vertical, region, company_size, r.metric_key]
+        );
+        continue;
+      }
       await p.query(
-        `INSERT INTO benchmark_aggregates(vertical,region,company_size,metric_key,p25,median,p75,sample_count,updated_at)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+        `INSERT INTO benchmark_aggregates(vertical,region,company_size,metric_key,p25,median,p75,sample_count,contributor_count,updated_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
          ON CONFLICT(vertical,region,company_size,metric_key)
-         DO UPDATE SET p25=$5,median=$6,p75=$7,sample_count=$8,updated_at=NOW()`,
-        [vertical, region, company_size, r.metric_key, r.p25, r.median, r.p75, r.sample_count]
+         DO UPDATE SET p25=$5,median=$6,p75=$7,sample_count=$8,contributor_count=$9,updated_at=NOW()`,
+        [vertical, region, company_size, r.metric_key, r.p25, r.median, r.p75, r.sample_count, r.contributor_count]
       );
     }
   } catch(e) { console.warn('[benchmarks] aggregate rebuild failed:', e.message); }

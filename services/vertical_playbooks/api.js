@@ -88,13 +88,15 @@ const SYSTEM_PLAYBOOKS = [
 
 // Seed system playbooks once
 async function seedPlaybooks(p) {
-  const existing = await p.query(`SELECT COUNT(*) FROM vertical_playbooks WHERE is_system=TRUE`);
+  const existing = await p.query(`SELECT COUNT(*) FROM vertical_playbooks WHERE is_system=TRUE AND tenant_id IS NULL`);
   if (+existing.rows[0].count >= SYSTEM_PLAYBOOKS.length) return;
   for (const pb of SYSTEM_PLAYBOOKS) {
+    // Catalog seed: tenant_id stays NULL and is_system=TRUE on purpose (MIXED
+    // roles pattern). Custom rows must never take this path.
     await p.query(
       `INSERT INTO vertical_playbooks(vertical,title,description,content,is_system)
        VALUES($1,$2,$3,$4,TRUE)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (vertical) WHERE tenant_id IS NULL DO NOTHING`,
       [pb.vertical, pb.title, pb.description, JSON.stringify(pb)]
     );
   }
@@ -103,14 +105,14 @@ async function seedPlaybooks(p) {
 router.get('/list', async (req, res) => {
   const p = await _db.getPool();
   await seedPlaybooks(p);
-  const rows = await p.query(`SELECT id,vertical,title,description,content FROM vertical_playbooks WHERE is_system=TRUE ORDER BY vertical`);
+  const rows = await p.query(`SELECT id,vertical,title,description,content FROM vertical_playbooks WHERE is_system=TRUE AND tenant_id IS NULL ORDER BY vertical`);
   res.json({ ok:true, playbooks: rows.rows.map(r=>({ ...r, content: typeof r.content==='string'?JSON.parse(r.content):r.content })) });
 });
 
 router.get('/:vertical', async (req, res) => {
   const p = await _db.getPool();
   await seedPlaybooks(p);
-  const row = await p.query(`SELECT * FROM vertical_playbooks WHERE vertical=$1 AND is_system=TRUE LIMIT 1`, [req.params.vertical]);
+  const row = await p.query(`SELECT * FROM vertical_playbooks WHERE vertical=$1 AND is_system=TRUE AND tenant_id IS NULL LIMIT 1`, [req.params.vertical]);
   if (!row.rows.length) return res.status(404).json({ ok:false, error:'Playbook not found' });
   const pb = row.rows[0];
   const content = typeof pb.content==='string'?JSON.parse(pb.content):pb.content;
@@ -121,7 +123,11 @@ router.post('/activate/:id', async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'playbooks:activate' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const p = await _db.getPool();
-  const pb = await p.query(`SELECT id FROM vertical_playbooks WHERE id=$1`, [req.params.id]);
+  const pb = await p.query(
+    `SELECT id FROM vertical_playbooks
+      WHERE id=$1 AND ((is_system=TRUE AND tenant_id IS NULL) OR tenant_id=$2)`,
+    [req.params.id, tid]
+  );
   if (!pb.rows.length) return res.status(404).json({ ok:false, error:'Playbook not found' });
   await p.query(
     `INSERT INTO active_playbooks(tenant_id,playbook_id,progress) VALUES($1,$2,'{}')
@@ -138,7 +144,9 @@ router.get('/active/list', async (req, res) => {
   const rows = await p.query(
     `SELECT ap.id, ap.progress, ap.activated_at, vp.vertical, vp.title, vp.description, vp.content
      FROM active_playbooks ap JOIN vertical_playbooks vp ON vp.id=ap.playbook_id
-     WHERE ap.tenant_id=$1 ORDER BY ap.activated_at DESC`,
+     WHERE ap.tenant_id=$1
+       AND ((vp.is_system = TRUE AND vp.tenant_id IS NULL) OR vp.tenant_id = $1)
+     ORDER BY ap.activated_at DESC`,
     [tid]
   );
   res.json({ ok:true, active: rows.rows.map(r=>({ ...r, content: typeof r.content==='string'?JSON.parse(r.content):r.content })) });
@@ -147,7 +155,7 @@ router.get('/active/list', async (req, res) => {
 router.post('/generate-custom', async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'playbooks:generate-custom' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
-  const { industry, business_description, goals, challenges, budget } = req.body;
+  const { industry, business_description, goals, challenges, budget } = req.body || {};
   if (!industry) return res.status(400).json({ ok:false, error:'industry required' });
   let content = {};
   try {
@@ -174,8 +182,8 @@ Return strict JSON matching this structure:
   }
   const p = await _db.getPool();
   const row = await p.query(
-    `INSERT INTO vertical_playbooks(vertical,title,description,content,is_system) VALUES($1,$2,$3,$4,FALSE) RETURNING id`,
-    [industry, content.title, content.description, JSON.stringify(content)]
+    `INSERT INTO vertical_playbooks(tenant_id,vertical,title,description,content,is_system) VALUES($1,$2,$3,$4,$5,FALSE) RETURNING id`,
+    [tid, industry, content.title, content.description, JSON.stringify(content)]
   );
   await p.query(`INSERT INTO active_playbooks(tenant_id,playbook_id,progress) VALUES($1,$2,'{}')`, [tid, row.rows[0].id]);
   res.json({ ok:true, playbook: { id: row.rows[0].id, ...content } });

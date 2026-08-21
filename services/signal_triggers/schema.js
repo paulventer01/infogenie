@@ -1,5 +1,5 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 const hasDb = () => _db.hasDb();
 const pool = { query: (...a) => _db.getPool().query(...a) };
 
@@ -8,6 +8,7 @@ async function ensureSignalTriggersSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS signal_triggers (
       id           TEXT PRIMARY KEY,
+      tenant_id    INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       name         TEXT NOT NULL,
       signal_type  TEXT NOT NULL,
       condition    JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -19,14 +20,15 @@ async function ensureSignalTriggersSchema() {
     );
     CREATE TABLE IF NOT EXISTS signal_events (
       id          BIGSERIAL PRIMARY KEY,
+      tenant_id   INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       signal_type TEXT NOT NULL,
       payload     JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_signal_events_type_time ON signal_events(signal_type, created_at DESC);
   `);
-  await addTenantIdColumn('signal_triggers');
-  await addTenantIdColumn('signal_events');
+  await enforceTenantIdNotNull('signal_triggers');
+  await enforceTenantIdNotNull('signal_events');
 }
 
 module.exports = { ensureSignalTriggersSchema };

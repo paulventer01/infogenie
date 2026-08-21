@@ -1,10 +1,11 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 async function ensureProjectCompareSchema() {
   if (!_db.hasDb()) return;
   await _db.getPool().query(`
     CREATE TABLE IF NOT EXISTS project_comparisons (
       id SERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       brands JSONB NOT NULL DEFAULT '[]'::jsonb,
       results JSONB NOT NULL DEFAULT '[]'::jsonb,
       winner TEXT,
@@ -14,6 +15,6 @@ async function ensureProjectCompareSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_proj_compare_at ON project_comparisons(created_at DESC);
   `);
-  try { await addTenantIdColumn('project_comparisons'); } catch(e) { console.error('[project-compare] migration:', e.message); }
+  try { await enforceTenantIdNotNull('project_comparisons'); } catch(e) { console.error('[project-compare] fail-closed tenant_id:', e.message); }
 }
 module.exports = { ensureProjectCompareSchema };

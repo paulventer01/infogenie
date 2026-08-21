@@ -18,6 +18,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const crypto = require('node:crypto');
 
 const db = require('../db');
 const { PLAIN_TABLES, REWRITE_UNIQUE } = require('../services/tenants/phase2_migrate');
@@ -36,19 +37,55 @@ const KNOWN_GLOBAL = new Set([
   'user_integrations', // per-user credential vault
   'platform_api_keys', // platform-owned API keys, shared across all tenants
   'platform_key_tests', // last live-test verdict per platform key, platform-wide
+  // Platform / network catalogs — not workspace data. See phase2_migrate.js
+  // exclusion comments. Do NOT add a table here just to silence the audit.
+  'benchmark_aggregates', // anonymised cross-customer percentiles; UNIQUE(vertical, region, company_size, metric_key); submissions stay tenant-scoped
+  'job_schedules',        // platform cron registry; PK on name; process-level
+  'job_queue',            // platform worker queue; claimed globally; not tenant business data
+  'simulation_templates', // seeded 24-template catalog; UNIQUE(label); shared library
 ]);
 
 // ── Tables whose tenant_id is intentionally NULLABLE ─────────────────────────
 // Mirrors PHASE2E_NULLABLE_OK in phase2_migrate.js: system rows are global
 // (tenant_id IS NULL) while per-tenant rows are scoped.
-//   • roles        — global system roles vs per-tenant custom roles
-//   • email_tokens — only invite tokens are workspace-bound; password-reset /
-//                    email-verify tokens have no tenant
-const NULLABLE_OK = new Set(['roles', 'email_tokens']);
+//   • roles              — global system roles vs per-tenant custom roles
+//   • email_tokens       — only invite tokens are workspace-bound; password-reset /
+//                          email-verify tokens have no tenant
+//   • vertical_playbooks — MIXED (roles pattern): system catalog (tenant_id IS NULL)
+//                          vs custom tenant-owned playbooks
+const NULLABLE_OK = new Set([
+  'roles',               // global system roles vs per-tenant custom roles
+  'email_tokens',        // invite tokens are workspace-bound; reset/verify are not
+  'vertical_playbooks',  // MIXED (roles pattern): is_system=TRUE catalog stays tenant_id IS NULL;
+                         // custom is_system=FALSE playbooks are tenant-owned
+]);
+
+// Closeout/preflight DROP TABLE now targets a per-file scratch database, so this
+// lock is a no-op against those files (advisory locks are per-database). Kept
+// so any remaining live-DB honorer of the same key still serialises with audit.
+const CLOSEOUT_ADVISORY_LOCK_KEY = crypto
+  .createHash('sha256')
+  .update('infogenie-tenant-schema-closeout')
+  .digest()
+  .readInt32BE(0);
 
 // Pull the live schema once and share it across the audit assertions.
 async function loadSchema() {
-  const p = db.getPool();
+  const pool = db.getPool();
+  const lockClient = await pool.connect();
+  await lockClient.query('SELECT pg_advisory_lock($1)', [CLOSEOUT_ADVISORY_LOCK_KEY]);
+  try {
+    return await loadSchemaUnlocked(lockClient);
+  } finally {
+    try {
+      await lockClient.query('SELECT pg_advisory_unlock($1)', [CLOSEOUT_ADVISORY_LOCK_KEY]);
+    } finally {
+      lockClient.release();
+    }
+  }
+}
+
+async function loadSchemaUnlocked(p) {
   const baseTables = (await p.query(
     `SELECT table_name FROM information_schema.tables
       WHERE table_schema='public' AND table_type='BASE TABLE'`

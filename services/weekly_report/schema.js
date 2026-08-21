@@ -1,5 +1,5 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 
 async function ensureWeeklyReportSchema() {
   if (!_db.hasDb || !_db.hasDb()) return;
@@ -8,6 +8,7 @@ async function ensureWeeklyReportSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS weekly_report_subs (
       id SERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       brand TEXT NOT NULL,
       email TEXT NOT NULL,
       enabled BOOLEAN NOT NULL DEFAULT true,
@@ -17,6 +18,7 @@ async function ensureWeeklyReportSchema() {
     );
     CREATE TABLE IF NOT EXISTS weekly_report_runs (
       id SERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       brand TEXT NOT NULL,
       sections_count INTEGER NOT NULL DEFAULT 0,
       sent_to TEXT,
@@ -27,8 +29,8 @@ async function ensureWeeklyReportSchema() {
   `);
 
   for (const t of ['weekly_report_subs', 'weekly_report_runs']) {
-    try { await addTenantIdColumn(t); }
-    catch (e) { console.error(`[weekly-report] addTenantIdColumn ${t}: ${e.message}`); }
+    try { await enforceTenantIdNotNull(t); }
+    catch (e) { console.error(`[weekly-report] fail-closed tenant_id ${t}: ${e.message}`); }
   }
 
   // Tenant-scoped sub uniqueness so two tenants can each subscribe the same

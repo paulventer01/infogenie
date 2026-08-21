@@ -14,13 +14,27 @@
 //   • platform_key_tests — last live-test verdict per platform key, platform-wide
 //   • kv_store           — handled separately via key prefixing
 //   • brand_foundation   — already migrated end-to-end as the proof case
+//   • benchmark_aggregates — GLOBAL network percentiles. UNIQUE(vertical, region,
+//     company_size, metric_key) has no tenant. Rebuilt from ALL
+//     benchmark_submissions (that table stays tenant-scoped). Adding tenant_id
+//     would split the anonymised data-moat into per-workspace silos.
+//   • job_schedules — GLOBAL platform cron registry. PK on `name`; registerSchedule
+//     is process-level, not workspace data.
+//   • job_queue — GLOBAL platform worker queue. Enqueue site writes empty payload
+//     {}; workers claim globally. Not tenant business data.
+//   • simulation_templates — GLOBAL seeded 24-template catalog, UNIQUE(label),
+//     SELECT without tenant. Shared library, not workspace data.
+//   • vertical_playbooks — MIXED (roles pattern). is_system=TRUE catalog rows stay
+//     tenant_id IS NULL; custom is_system=FALSE rows are tenant-owned. Not a
+//     PLAIN_TABLES default-tenant backfill (that would copy the catalog onto
+//     tenant 1). Listed in PHASE2E_NULLABLE_OK.
 //
 // Tables that need UNIQUE-constraint rewrites (e.g. landing_pages.slug
 // becoming UNIQUE(tenant_id, slug)) are listed in REWRITE_UNIQUE below.
 // Those are the only places where the migration touches existing constraints.
 
 const _db = require('../../db');
-const { addTenantIdColumn } = require('./migration');
+const { addTenantIdColumn, enforceTenantIdNotNull } = require('./migration');
 
 // IMPORTANT — execution timing:
 //   This mass migration runs ~8s after boot, AFTER all parallel CREATE
@@ -99,9 +113,24 @@ const PLAIN_TABLES = [
   'podcast_monitor_runs', 'hunter_searches',
   'newsletter_issues',
   'bulk_audit_runs', 'bulk_audit_items',
+  // backlink_snapshots / backlink_changes: tenant-owned children of
+  // backlink_monitors. Listed here so phase2 still asserts they exist, but
+  // migrated fail-closed (parent backfill, never default-tenant) via
+  // FAIL_CLOSED_PLAIN below — schema.js runs the same helper first.
   'backlink_snapshots', 'backlink_changes',
   'trend_runs',
 ];
+
+// Tables that must NEVER receive addTenantIdColumn's historical
+// default-tenant backfill. Parent-join only; orphans stay NULL.
+const FAIL_CLOSED_PLAIN = {
+  backlink_snapshots: {
+    backfillFrom: { parentTable: 'backlink_monitors', parentIdColumn: 'id', childFkColumn: 'monitor_id' },
+  },
+  backlink_changes: {
+    backfillFrom: { parentTable: 'backlink_monitors', parentIdColumn: 'id', childFkColumn: 'monitor_id' },
+  },
+};
 
 // ── Tables needing index extras (no constraint changes) ─────────────────
 // tenant_id + an extra column makes lookups in busy tables faster.
@@ -128,7 +157,7 @@ const REWRITE_UNIQUE = [
   // NOTE: landing_pages has no slug column in the live schema — different from
   // the legacy inventory. No rewrite needed; covered by plain tenant_id add.
   // backlink_monitors: domain unique per tenant
-  { table:'backlink_monitors', dropConstraint:'backlink_monitors_domain_key',   uniqueExtras:['domain'] },
+  { table:'backlink_monitors', dropConstraint:'backlink_monitors_domain_key',   uniqueExtras:['domain'], failClosed: true },
   // wa_templates: WhatsApp template name unique per tenant
   { table:'wa_templates',      dropConstraint:'wa_templates_name_key',          uniqueExtras:['name'] },
   // wa_contacts: WhatsApp contact phone number unique per tenant. The legacy
@@ -175,6 +204,13 @@ async function _safeDropConstraint(p, table, constraint) {
 }
 
 async function _runPlain(name) {
+  const fc = FAIL_CLOSED_PLAIN[name];
+  if (fc) {
+    return await enforceTenantIdNotNull(name, {
+      indexExtra: INDEX_EXTRAS[name],
+      backfillFrom: fc.backfillFrom,
+    });
+  }
   // notNull:true flips tenant_id NOT NULL after the backfill so every plain
   // table self-enforces the workspace-owner invariant — no manual
   // markTenantIdNotNull() per table, no phase2e regression when a table is
@@ -185,22 +221,30 @@ async function _runPlain(name) {
   });
 }
 
-async function _runRewrite({ table, dropConstraint, uniqueExtras }) {
+async function _runRewrite({ table, dropConstraint, uniqueExtras, failClosed }) {
   if (!_db.hasDb()) return { ok:false, reason:'no_db' };
   const p = _db.getPool();
+  const migrate = failClosed
+    ? (t, opts) => enforceTenantIdNotNull(t, opts)
+    : (t, opts) => addTenantIdColumn(t, opts);
   // First do the standard migration (adds column, backfills, plain index).
-  const base = await addTenantIdColumn(table);
+  // failClosed tables skip default-tenant assignment. Abort on preflight /
+  // orphans / errors so we never DROP a legacy UNIQUE after a failed closeout.
+  const base = await migrate(table, {});
   if (!base.ok) return base;
   // Drop the legacy single-column UNIQUE then add the per-tenant variant, and
   // flip tenant_id NOT NULL once the backfill has run (notNull:true). This is
   // what makes REWRITE_UNIQUE tables stop depending on a manual inline flip.
   await _safeDropConstraint(p, table, dropConstraint);
-  const unique = await addTenantIdColumn(table, { uniqueWithExtra: uniqueExtras, notNull: true });
+  const unique = await migrate(table, { uniqueWithExtra: uniqueExtras, notNull: true });
   return Object.assign({}, base, {
     rewriteDropped: true,
     uniqueAdded: unique.uniqueAdded === true,
     uniqueError: unique.uniqueError || null,
     notNullSet: base.notNullSet === true || unique.notNullSet === true,
+    ok: unique.ok,
+    reason: unique.reason || base.reason,
+    orphanCount: unique.orphanCount || base.orphanCount,
   });
 }
 
@@ -264,7 +308,12 @@ async function runPhase2Migration() {
     // `email_tokens` is intentionally nullable too: only invite tokens are
     // workspace-bound (tenant_id NOT NULL); password-reset / email-verify
     // tokens have no tenant (tenant_id IS NULL). Skip it from the strict check.
-    const PHASE2E_NULLABLE_OK = new Set(['roles', 'email_tokens']);
+    const PHASE2E_NULLABLE_OK = new Set([
+      'roles',            // system roles (tenant_id IS NULL) vs per-tenant custom roles
+      'email_tokens',     // invite tokens are workspace-bound; reset/verify are not
+      'vertical_playbooks', // MIXED: is_system=TRUE catalog stays tenant_id IS NULL;
+                            // custom is_system=FALSE rows require tenant_id (Backend stamps inserts)
+    ]);
     const nullable = await pool.query(`
       SELECT table_name FROM information_schema.columns
        WHERE table_schema='public' AND column_name='tenant_id' AND is_nullable='YES'

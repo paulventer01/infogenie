@@ -19,7 +19,7 @@ router.get('/audits', async (req, res) => {
          json_agg(json_build_object('check_type',c.check_type,'status',c.status,'details',c.details,'run_at',c.run_at)
            ORDER BY c.id) AS checks
        FROM post_launch_audits a
-       LEFT JOIN post_launch_checks c ON c.audit_id = a.id
+       LEFT JOIN post_launch_checks c ON c.audit_id = a.id AND c.tenant_id = $1
        WHERE a.tenant_id=$1 GROUP BY a.id ORDER BY a.created_at DESC LIMIT 50`,
       [tid]
     );
@@ -43,11 +43,11 @@ router.post('/audits', async (req, res) => {
       [tid, campaign_name, platform||'meta', campaign_id||null, win, scheduledFor]
     );
     const audit = rows[0];
-    // Seed pending check slots
+    // Seed pending check slots — stamp the resolved tenant, never body.tenant_id.
     for (const ct of ['live_data','lead_flow','spend','impressions']) {
       await p.query(
-        'INSERT INTO post_launch_checks (audit_id,check_type,status) VALUES ($1,$2,$3)',
-        [audit.id, ct, 'pending']
+        'INSERT INTO post_launch_checks (tenant_id,audit_id,check_type,status) VALUES ($1,$2,$3,$4)',
+        [tid, audit.id, ct, 'pending']
       );
     }
     res.json({ ok: true, audit });
@@ -65,7 +65,7 @@ router.get('/audits/:id', async (req, res) => {
     );
     if (!rows.length) return _err(res, 404, 'not_found');
     const { rows: checks } = await p.query(
-      'SELECT * FROM post_launch_checks WHERE audit_id=$1 ORDER BY id', [rows[0].id]
+      'SELECT * FROM post_launch_checks WHERE audit_id=$1 AND tenant_id=$2 ORDER BY id', [rows[0].id, tid]
     );
     res.json({ ok: true, audit: { ...rows[0], checks } });
   } catch (e) { _err(res, 500, e.message); }
@@ -135,10 +135,10 @@ router.post('/audits/:id/run-live-check', async (req, res) => {
 
     await p.query(
       `UPDATE post_launch_checks SET status=$1,details=$2,run_at=NOW()
-       WHERE audit_id=$3 AND check_type IN ('live_data','spend','impressions')`,
-      [liveStatus, JSON.stringify(details), audit.id]
+       WHERE audit_id=$3 AND tenant_id=$4 AND check_type IN ('live_data','spend','impressions')`,
+      [liveStatus, JSON.stringify(details), audit.id, tid]
     );
-    await _updateAuditStatus(p, audit.id);
+    await _updateAuditStatus(p, audit.id, tid);
     res.json({ ok: true, status: liveStatus, details });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -210,10 +210,10 @@ router.post('/audits/:id/run-lead-flow', async (req, res) => {
     }
 
     await p.query(
-      'UPDATE post_launch_checks SET status=$1,details=$2,run_at=NOW() WHERE audit_id=$3 AND check_type=$4',
-      [flowStatus, JSON.stringify(details), audit.id, 'lead_flow']
+      'UPDATE post_launch_checks SET status=$1,details=$2,run_at=NOW() WHERE audit_id=$3 AND tenant_id=$4 AND check_type=$5',
+      [flowStatus, JSON.stringify(details), audit.id, tid, 'lead_flow']
     );
-    await _updateAuditStatus(p, audit.id);
+    await _updateAuditStatus(p, audit.id, tid);
     res.json({ ok: true, status: flowStatus, details });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -231,17 +231,17 @@ router.delete('/audits/:id', async (req, res) => {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-async function _updateAuditStatus(p, auditId) {
+async function _updateAuditStatus(p, auditId, tid) {
   const { rows } = await p.query(
-    'SELECT status FROM post_launch_checks WHERE audit_id=$1', [auditId]
+    'SELECT status FROM post_launch_checks WHERE audit_id=$1 AND tenant_id=$2', [auditId, tid]
   );
   const statuses = rows.map(r => r.status);
   let overall = 'passed';
   if (statuses.some(s => s === 'fail')) overall = 'failed';
   else if (statuses.some(s => s === 'pending')) overall = 'in_progress';
   await p.query(
-    'UPDATE post_launch_audits SET overall_result=$1,status=$2,updated_at=NOW() WHERE id=$3',
-    [overall, overall, auditId]
+    'UPDATE post_launch_audits SET overall_result=$1,status=$2,updated_at=NOW() WHERE id=$3 AND tenant_id=$4',
+    [overall, overall, auditId, tid]
   );
 }
 

@@ -1,10 +1,11 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 async function ensureAveSchema() {
   if (!_db.hasDb()) return;
   await _db.getPool().query(`
     CREATE TABLE IF NOT EXISTS ave_reports (
       id SERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       brand TEXT NOT NULL,
       period TEXT NOT NULL DEFAULT '30d',
       total_ave_usd NUMERIC(12,2) NOT NULL DEFAULT 0,
@@ -16,6 +17,6 @@ async function ensureAveSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_ave_brand ON ave_reports(brand, created_at DESC);
   `);
-  try { await addTenantIdColumn('ave_reports'); } catch(e) { console.error('[ave] migration:', e.message); }
+  try { await enforceTenantIdNotNull('ave_reports'); } catch(e) { console.error('[ave] fail-closed tenant_id:', e.message); }
 }
 module.exports = { ensureAveSchema };

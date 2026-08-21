@@ -114,6 +114,7 @@ async function _sendDigest(monitor, news, losts) {
 }
 
 async function _runMonitor(monitor) {
+  if (!monitor || !monitor.tenant_id) return { ok: false, error: 'no_tenant' };
   if (!_dfsAuth()) return { ok: false, error: 'DataForSEO not configured' };
   const pool = _db.getPool();
   const target = _normTarget(monitor.domain);
@@ -133,8 +134,8 @@ async function _runMonitor(monitor) {
     // Lock this monitor's snapshot rows so a parallel cron tick + manual
     // run-now can't both compute a diff against the same state.
     const prev = await client.query(
-      `SELECT referring_domain FROM backlink_snapshots WHERE monitor_id=$1 FOR UPDATE`,
-      [monitor.id],
+      `SELECT referring_domain FROM backlink_snapshots WHERE monitor_id=$1 AND tenant_id=$2 FOR UPDATE`,
+      [monitor.id, monitor.tenant_id],
     );
     const prevSet = new Set(prev.rows.map(r => r.referring_domain));
     const currSet = new Set(items.map(it => it.domain));
@@ -159,7 +160,7 @@ async function _runMonitor(monitor) {
         [monitor.tenant_id, monitor.id, c.referring_domain, c.rank, c.country],
       );
     }
-    await client.query(`DELETE FROM backlink_snapshots WHERE monitor_id=$1`, [monitor.id]);
+    await client.query(`DELETE FROM backlink_snapshots WHERE monitor_id=$1 AND tenant_id=$2`, [monitor.id, monitor.tenant_id]);
     for (const it of items) {
       await client.query(
         `INSERT INTO backlink_snapshots (tenant_id, monitor_id, referring_domain, rank, backlinks, country, first_seen)
@@ -170,8 +171,8 @@ async function _runMonitor(monitor) {
       );
     }
     await client.query(
-      `UPDATE backlink_monitors SET last_run_at = now(), last_total_referring = $2 WHERE id = $1`,
-      [monitor.id, items.length],
+      `UPDATE backlink_monitors SET last_run_at = now(), last_total_referring = $2 WHERE id = $1 AND tenant_id = $3`,
+      [monitor.id, items.length, monitor.tenant_id],
     );
     await client.query('COMMIT');
   } catch (e) {
@@ -184,8 +185,8 @@ async function _runMonitor(monitor) {
   if ((news.length || losts.length) && (monitor.alert_email || monitor.alert_slack_webhook)) {
     await _sendDigest(monitor, news, losts);
     await pool.query(
-      `UPDATE backlink_changes SET notified_at = now() WHERE monitor_id=$1 AND notified_at IS NULL`,
-      [monitor.id],
+      `UPDATE backlink_changes SET notified_at = now() WHERE monitor_id=$1 AND tenant_id=$2 AND notified_at IS NULL`,
+      [monitor.id, monitor.tenant_id],
     );
   }
   return { ok: true, target, refreshed: items.length, newCount: news.length, lostCount: losts.length };
@@ -222,6 +223,7 @@ function startCron() {
 router.get('/domains', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, monitors: [] });
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'backlink_monitor:domains' });
+  if (!tid) return _err(res, 400, 'no_tenant');
   const r = await _db.getPool().query(`SELECT * FROM backlink_monitors WHERE tenant_id=$1 ORDER BY id DESC`, [tid]);
   res.json({ ok: true, monitors: r.rows });
 });
@@ -234,11 +236,12 @@ router.post('/domains', async (req, res) => {
   const alert_slack = String(req.body?.alert_slack_webhook || '').trim().slice(0, 500) || null;
   const frequency = ['daily','weekly'].includes(req.body?.frequency) ? req.body.frequency : 'daily';
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'backlink_monitor:create' });
+  if (!tid) return _err(res, 400, 'no_tenant');
   try {
     const r = await _db.getPool().query(
       `INSERT INTO backlink_monitors (tenant_id, domain, alert_email, alert_slack_webhook, frequency)
        VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (domain) DO UPDATE
+       ON CONFLICT (tenant_id, domain) DO UPDATE
          SET alert_email = EXCLUDED.alert_email,
              alert_slack_webhook = EXCLUDED.alert_slack_webhook,
              frequency = EXCLUDED.frequency
@@ -252,6 +255,7 @@ router.post('/domains', async (req, res) => {
 router.delete('/domains/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'backlink_monitor:delete-domain' });
+  if (!tid) return _err(res, 400, 'no_tenant');
   await _db.getPool().query(`DELETE FROM backlink_monitors WHERE id=$1 AND tenant_id=$2`, [parseInt(req.params.id, 10), tid]);
   res.json({ ok: true });
 });
@@ -259,6 +263,7 @@ router.delete('/domains/:id', async (req, res) => {
 router.get('/changes', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, changes: [] });
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'backlink_monitor:changes' });
+  if (!tid) return _err(res, 400, 'no_tenant');
   const monitorId = parseInt(req.query.monitor_id, 10);
   const type = ['new','lost'].includes(req.query.type) ? req.query.type : null;
   const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 100));
@@ -278,6 +283,7 @@ router.post('/run-now', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const id = parseInt(req.body?.monitor_id, 10);
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'backlink_monitor:run-now' });
+  if (!tid) return _err(res, 400, 'no_tenant');
   const pool = _db.getPool();
   const r = id
     ? await pool.query(`SELECT * FROM backlink_monitors WHERE id=$1 AND tenant_id=$2`, [id, tid])

@@ -55,6 +55,8 @@ async function ensureDigitalTwinSchema() {
 
   await p.query(`
     CREATE TABLE IF NOT EXISTS simulation_templates (
+      -- GLOBAL by design: seeded 24-template catalog, UNIQUE(label).
+      -- Shared library selected without a tenant filter — not workspace data.
       id          SERIAL PRIMARY KEY,
       category    TEXT NOT NULL,
       icon        TEXT NOT NULL DEFAULT '📊',

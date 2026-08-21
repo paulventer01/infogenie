@@ -1,5 +1,5 @@
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { enforceTenantIdNotNull } = require('../tenants/migration');
 
 async function ensureYoutubeMonitorSchema() {
   if (!_db.hasDb || !_db.hasDb()) return;
@@ -8,6 +8,7 @@ async function ensureYoutubeMonitorSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS yt_channels (
       id SERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       brand TEXT NOT NULL,
       channel_name TEXT NOT NULL,
       channel_url TEXT NOT NULL,
@@ -18,6 +19,7 @@ async function ensureYoutubeMonitorSchema() {
     );
     CREATE TABLE IF NOT EXISTS yt_snapshots (
       id SERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       channel_id INTEGER NOT NULL REFERENCES yt_channels(id) ON DELETE CASCADE,
       video_title TEXT NOT NULL,
       video_url TEXT,
@@ -33,8 +35,17 @@ async function ensureYoutubeMonitorSchema() {
   `);
 
   for (const t of ['yt_channels', 'yt_snapshots']) {
-    try { await addTenantIdColumn(t); }
-    catch (e) { console.error(`[youtube-monitor] addTenantIdColumn ${t}: ${e.message}`); }
+    try {
+      if (t === 'yt_snapshots') {
+        await enforceTenantIdNotNull(t, {
+          backfillFrom: { parentTable: 'yt_channels', parentIdColumn: 'id', childFkColumn: 'channel_id' },
+          indexExtra: ['channel_id'],
+        });
+      } else {
+        await enforceTenantIdNotNull(t);
+      }
+    }
+    catch (e) { console.error(`[youtube-monitor] fail-closed tenant_id ${t}: ${e.message}`); }
   }
 
   // (tenant_id, brand, channel_url) UNIQUE so two tenants can each track

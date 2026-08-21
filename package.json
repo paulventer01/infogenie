@@ -23,7 +23,8 @@
     "lint": "npm run lint:fabrication && npm run lint:script-tags && npm run lint:duplicate-globals && npm run lint:css",
     "eval:prompts": "node scripts/eval-prompts.js",
     "scan:secrets": "node scripts/secret-scan.js",
-    "checkly:smoke": "node checkly/infogenie.checks.js"
+    "checkly:smoke": "node checkly/infogenie.checks.js",
+    "tenant:preflight": "node scripts/tenant-schema-preflight.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.89.0",
