@@ -1236,12 +1236,16 @@ if (!HAS_DB) {
     assert.deepStrictEqual(await creditSnapshot(pool, tenantA.id), baseline);
     await assertIdempotencyKeyAbsent(pool, tenantA.id, keyL);
 
+    // HTTP framing will not deliver a body larger than Content-Length on one
+    // request (overflow becomes a pipelined 400). A correctly framed small
+    // non-JSON body with a small Content-Length is the live bypass: express.json
+    // skips, rawBody is unset, and the old cap would have called next().
     const keyM = ik('cap-plain-mislead');
     const overM = await credUnparsed('POST', '/grant', {
       cookie: cookieA,
       key: keyM,
       headers: { 'content-length': '10' },
-      body: pad,
+      body: 'x'.repeat(10),
     });
     assert.strictEqual(overM.status, 413, overM.text);
     assert.strictEqual(overM.json.error, 'payload_too_large');
