@@ -34,6 +34,9 @@ test('research-evidence boot task fails closed in production and does not swallo
   assert.match(schemaBlock, /captureException/);
   assert.doesNotMatch(schemaBlock, /\[tier28-32\] schema init failed/);
   assert.doesNotMatch(schemaBlock, /console\.warn/);
+  assert.doesNotMatch(schemaBlock, /approveLegacyCleanup/);
+  assert.doesNotMatch(schemaBlock, /executeLegacyCleanup/);
+  assert.match(schemaBlock, /legacy_holds_identified/);
   assert.ok(!/\.catch\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)/.test(schemaBlock), 'schema ensure must not use empty catch');
 
   const requireIdx = src.indexOf("require('./services/agent_orchestrator/research_retention')");
@@ -73,11 +76,45 @@ test('research_retention.js registers setInterval only when backgroundEnabled, p
   assert.match(src, /client\.query\(\s*['"]ROLLBACK['"]\s*\)/);
   assert.match(src, /client\.release\s*\(/);
   assert.match(src, /LIMIT \$2/);
-  assert.match(src, /id = ANY\(\$2/);
+  assert.match(src, /WITH doomed AS/);
+  assert.match(src, /DELETE FROM \$\{table\} t/);
+  assert.match(src, /orchestrator_research_legacy_holds/);
+  assert.match(src, /lock_timeout/);
+  assert.match(src, /55P03/);
   assert.match(src, /tenant_id=\$1/);
   assert.match(src, /retention_class IN \('standard','short'\)/);
   assert.match(src, /expires_at IS NULL/);
   assert.match(src, /invalid_expiry/);
+  assert.match(src, /NOT EXISTS/);
+});
+
+test('research_cleanup.js is a module required from tests, not an HTTP route', () => {
+  const cleanupSrc = fs.readFileSync(
+    path.join(__dirname, '../services/agent_orchestrator/research_cleanup.js'),
+    'utf8'
+  );
+  assert.match(cleanupSrc, /previewLegacyCleanup/);
+  assert.match(cleanupSrc, /approveLegacyCleanup/);
+  assert.match(cleanupSrc, /executeLegacyCleanup/);
+  assert.match(cleanupSrc, /DELETE_LEGACY_RESEARCH_EVIDENCE/);
+  assert.match(cleanupSrc, /timingSafeEqual/);
+  assert.match(cleanupSrc, /infogenie\.research_cleanup/);
+  assert.doesNotMatch(cleanupSrc, /\b(?:express|Router|app\.use|app\.(?:get|post|put|patch|delete))\b/);
+  assert.doesNotMatch(cleanupSrc, /\bfetch\s*\(/);
+  assert.doesNotMatch(cleanupSrc, /require\(\s*['"](?:https|http|node-fetch|undici)['"]\s*\)/);
+
+  const serverSrc = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  assert.doesNotMatch(serverSrc, /approveLegacyCleanup/);
+  assert.doesNotMatch(serverSrc, /executeLegacyCleanup/);
+  assert.match(serverSrc, /research_cleanup/);
+  assert.match(serverSrc, /countLegacyHolds/);
+  assert.doesNotMatch(serverSrc, /app\.use\(\s*['"]\/api\/.*research_cleanup/);
+
+  const testSrc = fs.readFileSync(
+    path.join(__dirname, 'advertising-orchestrator-research-cleanup.test.js'),
+    'utf8'
+  );
+  assert.match(testSrc, /require\('\.\.\/services\/agent_orchestrator\/research_cleanup'\)/);
 });
 
 test('ensureAgentOrchestratorSchema remains inside a BOOT_TASKS.push', () => {

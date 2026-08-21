@@ -4116,7 +4116,15 @@ BOOT_TASKS.push(async () => { try {
   }
 } catch (e) { console.warn('[tier28-32] schema init failed:', e.message); }});
 BOOT_TASKS.push(async () => { try {
-  if (_db.hasDb()) await _agentOrchSchema.ensureAgentOrchestratorSchema();
+  if (_db.hasDb()) {
+    await _agentOrchSchema.ensureAgentOrchestratorSchema();
+    const { countLegacyHolds } = require('./services/agent_orchestrator/research_cleanup');
+    const holds = await countLegacyHolds();
+    logger.info('legacy_holds_identified', {
+      evidence: holds && holds.evidence,
+      assets: holds && holds.assets,
+    });
+  }
 } catch (e) {
   logger.error('agent_orchestrator_schema_init_failed');
   captureException(new Error('agent_orchestrator_schema_init_failed'));

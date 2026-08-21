@@ -324,7 +324,10 @@ if (!HAS_DB) {
     assert.match(src, /client\.query\(\s*['"]COMMIT['"]\s*\)/);
     assert.match(src, /client\.query\(\s*['"]ROLLBACK['"]\s*\)/);
     assert.match(src, /client\.release\s*\(/);
-    assert.match(src, /id = ANY\(\$2/);
+    assert.match(src, /WITH doomed AS/);
+    assert.match(src, /DELETE FROM \$\{table\} t/);
+    assert.match(src, /orchestrator_research_legacy_holds/);
+    assert.match(src, /lock_timeout/);
 
     const p = db.getPool();
     const host = await seedHost(p, tenantA);
@@ -354,6 +357,8 @@ if (!HAS_DB) {
     assert.match(src, /invalid_expiry/);
     assert.match(src, /retention_class IN \('standard','short'\)/);
     assert.match(src, /expires_at IS NULL/);
+    assert.match(src, /orchestrator_research_legacy_holds/);
+    assert.match(src, /NOT EXISTS/);
 
     const p = db.getPool();
     const host = await seedHost(p, tenantA);
@@ -551,16 +556,52 @@ if (!HAS_DB) {
     }
   });
 
-  test('SKIP LOCKED skips a held expired row; second sweep purges it after unlock', async () => {
+  test('legacy hold rows are skipped by sweep and survive ensureAgentOrchestratorSchema', async () => {
     const p = db.getPool();
     const host = await seedHost(p, tenantA);
     const comp = await insertComp(p, tenantA, host.runId);
     const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const lockedId = await insertExpiredEvidence(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt });
+    const heldId = await insertExpiredEvidence(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt });
+    const freeId = await insertExpiredEvidence(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt });
+    await p.query(
+      `INSERT INTO orchestrator_research_legacy_holds (tenant_id, target_kind, target_id, reason)
+       VALUES ($1,'evidence',$2,'missing_expiry')
+       ON CONFLICT (tenant_id, target_kind, target_id) DO NOTHING`,
+      [tenantA, heldId]
+    );
+
+    await ensureAgentOrchestratorSchema();
+    const afterEnsure = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, heldId]
+    )).rows;
+    assert.strictEqual(afterEnsure.length, 1, 'ensure must identify holds, not delete them');
+
+    const result = await sweepExpiredResearchEvidence();
+    assert.ok(result);
+    assert.strictEqual(result.failures, 0);
+    const heldKept = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, heldId]
+    )).rows;
+    assert.strictEqual(heldKept.length, 1, 'sweeper must skip held rows');
+    const freeGone = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, freeId]
+    )).rows;
+    assert.strictEqual(freeGone.length, 0, 'unlocked expired rows without a hold must still be purged');
+  });
+
+  async function runSkipLockedHeldRowOnce(p, tenantId) {
+    const host = await seedHost(p, tenantId);
+    const comp = await insertComp(p, tenantId, host.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const lockedId = await insertExpiredEvidence(p, tenantId, host.runId, comp, { createdAt, expiresAt: expiredAt });
     const freeIds = [];
     for (let i = 0; i < 3; i += 1) {
-      freeIds.push(await insertExpiredEvidence(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt }));
+      freeIds.push(await insertExpiredEvidence(p, tenantId, host.runId, comp, { createdAt, expiresAt: expiredAt }));
     }
 
     const locker = await p.connect();
@@ -569,29 +610,32 @@ if (!HAS_DB) {
       await locker.query('BEGIN');
       await locker.query(
         `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
-        [tenantA, lockedId]
+        [tenantId, lockedId]
       );
+      const started = Date.now();
       sweepP = sweepExpiredResearchEvidence();
       const timedOut = Object.assign(new Error('sweep blocked on held row'), { code: 'XX000' });
       let timer;
       const result = await Promise.race([
         sweepP,
         new Promise((_, reject) => {
-          timer = setTimeout(() => reject(timedOut), 8000);
+          timer = setTimeout(() => reject(timedOut), 2000);
         }),
       ]).finally(() => { if (timer) clearTimeout(timer); });
       sweepP = null;
+      const elapsed = Date.now() - started;
+      assert.ok(elapsed < 2000, `sweep must return in < 2s, took ${elapsed}ms`);
       assert.ok(result);
       assert.strictEqual(result.failures, 0, 'SKIP LOCKED must not trip delete_noop');
 
       const freeGone = (await p.query(
         `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id = ANY($2::text[])`,
-        [tenantA, freeIds]
+        [tenantId, freeIds]
       )).rows;
       assert.strictEqual(freeGone.length, 0, 'unlocked expired rows must be purged');
       const lockedKept = (await p.query(
         `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
-        [tenantA, lockedId]
+        [tenantId, lockedId]
       )).rows;
       assert.strictEqual(lockedKept.length, 1, 'held row must be skipped');
     } catch (err) {
@@ -611,9 +655,13 @@ if (!HAS_DB) {
     assert.ok(second.purged >= 1);
     const leftover = (await p.query(
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
-      [tenantA, lockedId]
+      [tenantId, lockedId]
     )).rows;
     assert.strictEqual(leftover.length, 0, 'second sweep must purge the previously locked row');
+  }
+
+  test('SKIP LOCKED skips a held expired row; second sweep purges it after unlock', async () => {
+    await runSkipLockedHeldRowOnce(db.getPool(), tenantA);
   });
 
   test('two concurrent sweeps partition expired rows without a noop race', async () => {
@@ -673,10 +721,12 @@ if (!HAS_DB) {
             if (failRollback) throw Object.assign(new Error('rollback failed'), { code: '08006' });
             return { rows: [], rowCount: 0 };
           }
-          if (/FOR UPDATE SKIP LOCKED/.test(sql)) {
-            return { rows: [{ tenant_id: FAKE_TENANT, id: 'ev-stub' }], rowCount: 1 };
+          if (/SET LOCAL/.test(sql) || /^BEGIN/.test(sql) || /^COMMIT/.test(sql)) {
+            return { rows: [], rowCount: 0 };
           }
-          if (/^DELETE/.test(sql)) throw Object.assign(new Error('injected'), { code: 'XX000' });
+          if (/FOR UPDATE SKIP LOCKED/.test(sql) || /DELETE FROM/.test(sql)) {
+            throw Object.assign(new Error('injected'), { code: 'XX000' });
+          }
           return { rows: [], rowCount: 0 };
         },
         release: (err) => releases.push(err === undefined ? 'pooled' : 'destroyed'),
@@ -715,6 +765,7 @@ if (!HAS_DB) {
     );
     assert.match(src, /40P01/);
     assert.match(src, /40001/);
+    assert.match(src, /55P03/);
     assert.match(src, /DEADLOCK_RETRY_MAX/);
     const maxMatch = src.match(/DEADLOCK_RETRY_MAX\s*=\s*(\d+)/);
     assert.ok(maxMatch, 'DEADLOCK_RETRY_MAX must be a numeric constant');

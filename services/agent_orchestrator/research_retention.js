@@ -4,6 +4,10 @@
 // No HTTP, no fetch, no live connectors. Logs tenant_id, numeric counts and
 // error codes only — never headline/body/excerpt, URLs, PII, credentials,
 // payloads or fingerprints.
+//
+// Expired SELECT/DELETE is a single CTE so SKIP LOCKED and DELETE cannot
+// race. Held rows in orchestrator_research_legacy_holds are never purged
+// here; operator cleanup owns those.
 
 const _db = require('../../db');
 const _runtimeFlags = require('../runtime_flags');
@@ -12,43 +16,72 @@ const _sentry = require('../infra/sentry');
 
 const SWEEP_MS = 6 * 3600 * 1000;
 const SWEEP_BATCH = 100;
-// Victim retries for deadlock (40P01) / serialization failure (40001). After
-// this many attempts the batch throws; the per-tenant catch increments
-// failures and production boot still fails closed.
+// Victim retries for deadlock (40P01) / serialization failure (40001) /
+// lock_timeout (55P03). After this many attempts the batch throws; the
+// per-tenant catch increments failures and production boot still fails closed.
 const DEADLOCK_RETRY_MAX = 5;
 const DEADLOCK_RETRY_BASE_MS = 25;
 
 const EVIDENCE_TABLE = 'orchestrator_research_evidence';
 const ASSET_TABLE = 'orchestrator_research_evidence_assets';
+const HOLD_KIND = Object.freeze({
+  [EVIDENCE_TABLE]: 'evidence',
+  [ASSET_TABLE]: 'asset',
+});
 
 const INVALID_EXPIRY_SQL = `
   SELECT
     (
       SELECT COUNT(*)::int
-        FROM orchestrator_research_evidence
-       WHERE tenant_id=$1
-         AND retention_class IN ('standard','short')
-         AND (expires_at IS NULL)
+        FROM orchestrator_research_evidence e
+       WHERE e.tenant_id=$1
+         AND e.retention_class IN ('standard','short')
+         AND e.expires_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM orchestrator_research_legacy_holds h
+            WHERE h.tenant_id=$1
+              AND h.target_kind='evidence'
+              AND h.target_id = e.id
+         )
     )
     +
     (
       SELECT COUNT(*)::int
-        FROM orchestrator_research_evidence_assets
-       WHERE tenant_id=$1
-         AND retention_class IN ('standard','short')
-         AND (expires_at IS NULL)
+        FROM orchestrator_research_evidence_assets a
+       WHERE a.tenant_id=$1
+         AND a.retention_class IN ('standard','short')
+         AND a.expires_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM orchestrator_research_legacy_holds h
+            WHERE h.tenant_id=$1
+              AND h.target_kind='asset'
+              AND h.target_id = a.id
+         )
     ) AS invalid_expiry
 `;
 
-function expiredLockSql(table) {
-  return `SELECT tenant_id, id FROM ${table}
-           WHERE tenant_id=$1
-             AND retention_class <> 'legal_hold'
-             AND expires_at IS NOT NULL
-             AND expires_at <= now()
-           ORDER BY expires_at, id
-           FOR UPDATE SKIP LOCKED
-           LIMIT $2`;
+function expiredPurgeSql(table, targetKind) {
+  return `
+WITH doomed AS (
+  SELECT id FROM ${table}
+   WHERE tenant_id=$1
+     AND retention_class <> 'legal_hold'
+     AND expires_at IS NOT NULL
+     AND expires_at <= now()
+     AND NOT EXISTS (
+       SELECT 1 FROM orchestrator_research_legacy_holds h
+        WHERE h.tenant_id=$1
+          AND h.target_kind='${targetKind}'
+          AND h.target_id = ${table}.id
+     )
+   ORDER BY expires_at, id
+   FOR UPDATE SKIP LOCKED
+   LIMIT $2
+)
+DELETE FROM ${table} t
+ USING doomed
+ WHERE t.tenant_id=$1 AND t.id = doomed.id
+`;
 }
 
 function _captureSweepError(msg, extra) {
@@ -65,7 +98,7 @@ function _pgCode(err) {
 
 function _isRetryableTxConflict(err) {
   const code = _pgCode(err);
-  return code === '40P01' || code === '40001';
+  return code === '40P01' || code === '40001' || code === '55P03';
 }
 
 function _sleep(ms) {
@@ -85,23 +118,17 @@ async function _listResearchTenantIds(p) {
 }
 
 async function _purgeExpiredBatch(client, table, tenantId) {
+  const targetKind = HOLD_KIND[table];
   await client.query('BEGIN');
-  const sel = await client.query(expiredLockSql(table), [tenantId, SWEEP_BATCH]);
-  const ids = (sel.rows || []).map((row) => row.id);
-  if (!ids.length) {
+  await client.query("SET LOCAL lock_timeout = '2s'");
+  const del = await client.query(expiredPurgeSql(table, targetKind), [tenantId, SWEEP_BATCH]);
+  const removed = Number(del.rowCount) || 0;
+  if (removed === 0) {
     await client.query('COMMIT');
     return { empty: true, removed: 0, selected: 0 };
   }
-  const del = await client.query(
-    `DELETE FROM ${table} WHERE tenant_id=$1 AND id = ANY($2)`,
-    [tenantId, ids]
-  );
-  const removed = Number(del.rowCount) || 0;
-  if (removed === 0) {
-    throw Object.assign(new Error('research_evidence_sweep_delete_noop'), { code: 'XX000' });
-  }
   await client.query('COMMIT');
-  return { empty: false, removed, selected: ids.length };
+  return { empty: false, removed, selected: removed };
 }
 
 async function _purgeExpiredTable(client, table, tenantId) {
