@@ -7,6 +7,11 @@ const { canTransition, resolveAdvanceChain, failTargetFor } = require('./states'
 const { assertApprovalFresh } = require('./approvals');
 const { acquireLease, heartbeatLease, releaseLease } = require('./leases');
 const { HANDLERS } = require('./stubs');
+const credits = require('./credits');
+const limits = require('./limits');
+const { estimateMaxCost, DEFAULT_REQUEST_MICROS, PLACEHOLDER_PROVIDER, PLACEHOLDER_MODEL } = require('./pricing');
+const { appendUsage } = require('./usage');
+const { fromPg } = require('./money');
 
 function newId(prefix) {
   return `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
@@ -24,6 +29,12 @@ function isTestFail(req) {
   return process.env.NODE_ENV === 'test'
     && req
     && String((req.headers && req.headers['x-orch-test-fail']) || '') === '1';
+}
+
+function isTestCharge(req) {
+  return process.env.NODE_ENV === 'test'
+    && req
+    && String((req.headers && req.headers['x-orch-test-charge']) || '') === '1';
 }
 
 function testHoldMs(req) {
@@ -53,6 +64,7 @@ async function latestApproval(pool, tenantId, workflowId, gate) {
 const AUDIT_DETAIL_KEYS = Object.freeze([
   'from', 'to', 'state', 'gate', 'phase', 'version', 'action',
   'error_code', 'retry_class', 'step_id', 'lease_cleared', 'expired', 'stub',
+  'reservation_id', 'block_reason', 'amount_micros', 'cost_status',
 ]);
 const AUDIT_VALUE_MAX = 120;
 
@@ -97,6 +109,7 @@ const WRITABLE = new Set([
   'current_state', 'previous_state', 'current_phase', 'next_approval_gate',
   'version', 'paused_at', 'paused_by_user_id', 'pause_reason',
   'cancelled_at', 'cancelled_by_user_id', 'cancel_reason',
+  'credit_ceiling_micros', 'block_reason', 'blocked_at',
 ]);
 const JSONB_COLS = new Set(['target_markets', 'target_audiences', 'selected_platforms']);
 
@@ -112,6 +125,19 @@ const NO_CLOBBER_CODES = new Set([
   'workflow_cancelled',
   'execution_in_progress',
   'not_found',
+  'credit_ceiling_exceeded',
+  'insufficient_credits',
+  'rate_limit_exceeded',
+  'concurrency_limit_exceeded',
+  'tenant_cost_limit_exceeded',
+]);
+
+const COST_BLOCK_CODES = new Set([
+  'credit_ceiling_exceeded',
+  'insufficient_credits',
+  'rate_limit_exceeded',
+  'concurrency_limit_exceeded',
+  'tenant_cost_limit_exceeded',
 ]);
 
 // A guarded UPDATE that matched no row means the workflow moved between the
@@ -277,6 +303,9 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
   let first = null;
   let gate = gatePre;
   let approval = approvalPre;
+  let reservationId = null;
+  let inflightId = null;
+  let reservedAmount = 0n;
 
   try {
     if (workflow.current_state === 'cancelled') fail('workflow_cancelled');
@@ -337,6 +366,112 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
       detail: { from: workflow.current_state, to: first.to, gate, phase, step_id: stepId },
     });
 
+    const chargeable = isTestCharge(req);
+
+    if (chargeable) {
+      try {
+        const estimate = await credits.withTx({ pool }, async (c) => {
+          const priced = await estimateMaxCost(c, {
+            tenantId,
+            provider: PLACEHOLDER_PROVIDER,
+            model: PLACEHOLDER_MODEL,
+            unitType: 'request',
+          });
+          const estimatedMicros = priced.estimatedMicros || DEFAULT_REQUEST_MICROS;
+          const pf = await limits.preflight(c, {
+            tenantId,
+            workflowId: workflow.id,
+            provider: PLACEHOLDER_PROVIDER,
+            model: PLACEHOLDER_MODEL,
+            estimatedMicros,
+            recordStart: true,
+          });
+          const reserved = await credits.reserve({
+            client: c,
+            tenantId,
+            amountMicros: estimatedMicros,
+            workflowId: workflow.id,
+            stepId,
+            provider: PLACEHOLDER_PROVIDER,
+            operation: lockedPlan.name,
+            model: PLACEHOLDER_MODEL,
+            pricingVersion: priced.pricingVersion,
+            estimatedMicros,
+            actorUserId,
+            idempotencyKey: `reserve:${workflow.id}:${stepId}`,
+            runPreflight: false,
+          });
+          await appendUsage(c, {
+            tenantId,
+            reservationId: reserved.reservation.id,
+            workflowId: workflow.id,
+            stepId,
+            provider: PLACEHOLDER_PROVIDER,
+            model: PLACEHOLDER_MODEL,
+            unitType: 'request',
+            estimatedMicros,
+            costStatus: 'estimated',
+            usageSource: 'estimated',
+            pricingVersion: priced.pricingVersion,
+          });
+          return {
+            estimatedMicros,
+            reservation: reserved.reservation,
+            inflight: pf.inflight,
+          };
+        });
+        reservationId = estimate.reservation.id;
+        inflightId = estimate.inflight && estimate.inflight.id;
+        reservedAmount = fromPg(estimate.reservation.amount_micros);
+        await insertAudit(pool, {
+          tenantId,
+          workflowId: workflow.id,
+          event: 'credit_reserved',
+          actorUserId,
+          requestId,
+          state: workflow.current_state,
+          gate,
+          detail: {
+            reservation_id: reservationId,
+            amount_micros: Number(reservedAmount),
+            cost_status: 'estimated',
+          },
+        });
+      } catch (costErr) {
+        const code = costErr && costErr.code;
+        if (COST_BLOCK_CODES.has(code)) {
+          try {
+            await persistWorkflow(pool, tenantId, workflow.id, {
+              current_state: 'paused',
+              previous_state: lockedState,
+              block_reason: code,
+              blocked_at: new Date().toISOString(),
+              paused_at: new Date().toISOString(),
+              pause_reason: code,
+            }, {
+              expectedVersion: approvedVersion,
+              expectedState: lockedState,
+            });
+          } catch (_) { /* already paused/cancelled/stale */ }
+          try {
+            await insertAudit(pool, {
+              tenantId,
+              workflowId: workflow.id,
+              event: 'workflow_blocked',
+              actorUserId,
+              requestId,
+              state: 'paused',
+              gate,
+              errorCode: code,
+              detail: { block_reason: code, error_code: code },
+            });
+          } catch (_) { /* ignore */ }
+          try { await releaseLease(pool, tenantId, workflow.id, holder); } catch (_) { /* ignore */ }
+        }
+        throw costErr;
+      }
+    }
+
     const hold = testHoldMs(req);
     if (hold) await sleep(hold);
     // A break-glass recover/cancel force-releases the lease mid-run. If we no
@@ -348,6 +483,16 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
       const forced = new Error('test_forced_failure');
       forced.code = 'phase_failed';
       forced.retry_class = 'terminal';
+      if (reservationId) {
+        try {
+          await credits.release({
+            pool, tenantId, reservationId, inflightId,
+            reasonCode: 'phase_failed', idempotencyKey: `rel:${reservationId}`,
+          });
+        } catch (_) { /* ignore */ }
+        inflightId = null;
+        reservationId = null;
+      }
       return await markFailed(pool, {
         tenantId, workflow, stepId, holder, actorUserId, requestId, gate, err: forced,
         failedState: failTargetFor(first.to),
@@ -355,7 +500,7 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
     }
 
     const handler = HANDLERS[lockedPlan.name] || HANDLERS.research;
-    const out = await handler({ workflow, approval, gate });
+    const out = await handler({ workflow, approval, gate, chargeable });
     const outputRef = {
       stub: true,
       agent_id: (out && (out.output_ref && out.output_ref.agent_id || out.agent_id)) || lockedPlan.name,
@@ -369,6 +514,41 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
     }
 
     if (!await heartbeatLease(pool, tenantId, workflow.id, holder)) fail('lease_conflict');
+
+    if (reservationId) {
+      const committed = await credits.commit({
+        pool,
+        tenantId,
+        reservationId,
+        actualMicros: reservedAmount,
+        usage: { usageSource: 'estimated', unitType: 'request' },
+        actorUserId,
+        idempotencyKey: `commit:${reservationId}`,
+      });
+      if (inflightId) {
+        await credits.withTx({ pool }, async (c) => {
+          await limits.releaseInflight(c, { tenantId, inflightId });
+        });
+      }
+      if (!committed.replay) {
+        await insertAudit(pool, {
+          tenantId,
+          workflowId: workflow.id,
+          event: 'credit_committed',
+          actorUserId,
+          requestId,
+          state: first.to,
+          gate,
+          detail: {
+            reservation_id: reservationId,
+            amount_micros: Number(reservedAmount),
+            cost_status: 'final',
+          },
+        });
+      }
+      reservationId = null;
+      inflightId = null;
+    }
 
     workflow = await persistWorkflow(pool, tenantId, workflow.id, {
       current_state: stopAt.to,
@@ -411,6 +591,21 @@ async function advanceWorkflow(pool, { tenantId, workflowId, req }) {
     return workflow;
   } catch (err) {
     const code = err && err.code;
+    if (reservationId) {
+      try {
+        await credits.release({
+          pool, tenantId, reservationId, inflightId,
+          reasonCode: code || 'advance_abort',
+          idempotencyKey: `rel:${reservationId}`,
+        });
+      } catch (_) { /* ignore */ }
+    } else if (inflightId) {
+      try {
+        await credits.withTx({ pool }, async (c) => {
+          await limits.releaseInflight(c, { tenantId, inflightId });
+        });
+      } catch (_) { /* ignore */ }
+    }
     // Losing the lease, a concurrent PATCH bumping version, or a pause/cancel
     // landing mid-run all mean this runner must not markFailed over the live row.
     if (NO_CLOBBER_CODES.has(code)) {
@@ -440,6 +635,7 @@ module.exports = {
   newId,
   actorId,
   isTestFail,
+  isTestCharge,
   testHoldMs,
   safeAuditDetail,
   loadWorkflow,

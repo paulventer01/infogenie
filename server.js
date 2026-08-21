@@ -641,6 +641,13 @@ const _OWNER_GATE_ALLOW = [
   // trailing (\/|$) stops a look-alike prefix such as
   // /api/agent-orchestrator/workflows-export from inheriting the exemption.
   /^\/api\/agent-orchestrator\/workflows(?:\/|$)/,
+  // Tenant credit balances, usage and limits (PR 2) — same reasoning and the
+  // same anchoring as workflows above. A view-only role must be able to read
+  // why a workflow was blocked on credits, and `orchestrator.credits.grant`,
+  // `.adjust` and `.limits.edit` are separated per handler by
+  // requirePermission. The trailing (\/|$) keeps /suggest, /apply, /history and
+  // a look-alike such as /credits-export owner-gated.
+  /^\/api\/agent-orchestrator\/credits(?:\/|$)/,
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();

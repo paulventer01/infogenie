@@ -7,6 +7,9 @@ const { csrfGuard, originAllowed } = require('./csrf');
 const { safeEqualString, resolveSessionSecret } = require('./secrets');
 const { validatePassword, MIN_LENGTH } = require('./password');
 const { validate, authSchemas } = require('./validate');
+const {
+  assertSafeHttpsUrl, assertSafeRedirect, assertPinnedAddresses, isBlockedIp,
+} = require('./safe_url');
 
 module.exports = {
   securityHeaders,
@@ -21,4 +24,8 @@ module.exports = {
   MIN_LENGTH,
   validate,
   authSchemas,
+  assertSafeHttpsUrl,
+  assertSafeRedirect,
+  assertPinnedAddresses,
+  isBlockedIp,
 };

@@ -3,6 +3,7 @@
 const { fail } = require('./errors');
 const { sha256Hex } = require('./hash');
 const { GATES, GATE_FOR_WAIT } = require('./states');
+const { toBigInt, dollarsToMicros, microsToDollarNumber, microsToJson } = require('./money');
 
 const ALLOWED_PLATFORMS = Object.freeze(['meta', 'google', 'tiktok']);
 // Anything an approver is deciding ON. Editing one of these after a gate was
@@ -12,6 +13,7 @@ const ALLOWED_PLATFORMS = Object.freeze(['meta', 'google', 'tiktok']);
 const MATERIAL_FIELDS = Object.freeze([
   'selected_platforms',
   'advertising_budget',
+  'credit_ceiling_micros',
   'currency',
   'target_markets',
   'target_audiences',
@@ -49,6 +51,14 @@ function platformsAllowlisted(platforms) {
   return platforms.length > 0 && platforms.every((p) => ALLOWED_PLATFORMS.includes(p));
 }
 
+function ceilingMicrosOf(workflow) {
+  try {
+    return toBigInt(workflow && workflow.credit_ceiling_micros != null ? workflow.credit_ceiling_micros : 0);
+  } catch (_) {
+    return 0n;
+  }
+}
+
 function approvalSnapshot(workflow, gate) {
   return {
     gate: String(gate || ''),
@@ -57,6 +67,7 @@ function approvalSnapshot(workflow, gate) {
     object_version: Number(workflow.version) || 1,
     selected_platforms: asPlatforms(workflow.selected_platforms).slice().sort(),
     advertising_budget: asNumber(workflow.advertising_budget),
+    credit_ceiling_micros: microsToJson(ceilingMicrosOf(workflow)),
     currency: String(workflow.currency || 'USD').toUpperCase(),
     target_markets: asStrList(workflow.target_markets),
     target_audiences: asStrList(workflow.target_audiences),
@@ -71,7 +82,21 @@ function contentHash(workflow, gate) {
   return sha256Hex(approvalSnapshot(workflow, gate));
 }
 
-function validateApproveScope(workflow, { platforms, advertising_budget, credit_ceiling, gate }) {
+function parseApprovedCeiling({ credit_ceiling, credit_ceiling_micros }) {
+  if (credit_ceiling_micros != null && credit_ceiling_micros !== '') {
+    const n = toBigInt(credit_ceiling_micros);
+    if (n < 0n) fail('validation_failed');
+    return n;
+  }
+  if (credit_ceiling != null && credit_ceiling !== '') {
+    const dollars = asNumber(credit_ceiling);
+    if (dollars == null || dollars < 0) fail('validation_failed');
+    return dollarsToMicros(dollars);
+  }
+  return 0n;
+}
+
+function validateApproveScope(workflow, { platforms, advertising_budget, credit_ceiling, credit_ceiling_micros, gate }) {
   if (!GATES.includes(gate)) fail('validation_failed');
   const selected = asPlatforms(workflow.selected_platforms);
   const approved = asPlatforms(platforms);
@@ -83,10 +108,18 @@ function validateApproveScope(workflow, { platforms, advertising_budget, credit_
   if (approvedBudget == null || approvedBudget < 0) fail('approval_scope_mismatch');
   if (wfBudget != null && approvedBudget > wfBudget) fail('approval_scope_mismatch');
 
-  const ceiling = credit_ceiling == null ? null : asNumber(credit_ceiling);
-  if (credit_ceiling != null && (ceiling == null || ceiling < 0)) fail('validation_failed');
-
-  return { approved, approvedBudget, ceiling };
+  const ceilingMicros = parseApprovedCeiling({ credit_ceiling, credit_ceiling_micros });
+  // Spend is enforced against the workflow's own credit_ceiling_micros, never
+  // against this number. Recording a higher one would put authority on the
+  // approval row that preflight will not honour, which is the same defect as an
+  // over-budget approval: the trail would overstate what was authorised.
+  if (ceilingMicros > ceilingMicrosOf(workflow)) fail('approval_scope_mismatch');
+  return {
+    approved,
+    approvedBudget,
+    ceiling: microsToDollarNumber(ceilingMicros),
+    ceilingMicros,
+  };
 }
 
 function assertApprovalFresh(workflow, approval, gate) {
@@ -112,6 +145,10 @@ function materialChanged(before, after) {
     }
     if (f === 'advertising_budget') {
       if (asNumber(before[f]) !== asNumber(after[f])) return true;
+      continue;
+    }
+    if (f === 'credit_ceiling_micros') {
+      if (ceilingMicrosOf(before) !== ceilingMicrosOf(after)) return true;
       continue;
     }
     if (String(before[f] || '') !== String(after[f] || '')) return true;

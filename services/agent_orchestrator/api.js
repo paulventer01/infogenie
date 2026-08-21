@@ -273,4 +273,7 @@ router.get('/history', _route(async (req, res) => {
 const workflowsApi = require('./workflows_api');
 router.use('/workflows', workflowsApi);
 
+const creditsApi = require('./credits_api');
+router.use('/credits', creditsApi);
+
 module.exports = router;

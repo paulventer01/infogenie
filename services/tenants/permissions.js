@@ -97,6 +97,16 @@ const PERMISSIONS = [
   // operator-of-last-resort action, so it stays with owner/admin.
   { key:'orchestrator.workflows.recover',          scope:'tenant', area:'Orchestrator', label:'Recover a stuck workflow (break execution lease)' },
   { key:'orchestrator.workflows.audit.view',       scope:'tenant', area:'Orchestrator', label:'View the orchestrator audit trail' },
+  // Credit accounting (PR 2). Reading spend is a wide grant; changing what may
+  // be spent is not. `grant`, `adjust` and `limits.edit` move real money
+  // authority — they raise the ceiling a workflow is later approved against —
+  // so they stay with tenant administrators and are withheld from Marketer for
+  // the same separation-of-duty reason as the `approve.*` gates.
+  { key:'orchestrator.credits.view',        scope:'tenant', area:'Orchestrator', label:'View credit balance, reservations, usage & block reasons' },
+  { key:'orchestrator.credits.grant',       scope:'tenant', area:'Orchestrator', label:'Issue credit grants to this tenant (admin)' },
+  { key:'orchestrator.credits.adjust',      scope:'tenant', area:'Orchestrator', label:'Make manual credit adjustments & refunds (admin)' },
+  { key:'orchestrator.credits.limits.view', scope:'tenant', area:'Orchestrator', label:'View tenant AI rate/cost limits & credit ceiling' },
+  { key:'orchestrator.credits.limits.edit', scope:'tenant', area:'Orchestrator', label:'Change tenant AI limits & credit ceiling (admin)' },
 
   // ── Reach section ─────────────────────────────────────────────────────────
   { key:'reach.audiences.view',      scope:'tenant',   area:'Reach',     label:'View dynamic audiences & segments' },
@@ -212,6 +222,10 @@ const SYSTEM_ROLES = [
       'orchestrator.workflows.edit', 'orchestrator.workflows.request_approval',
       'orchestrator.workflows.pause', 'orchestrator.workflows.resume',
       'orchestrator.workflows.cancel',
+      // Credits are read-only for a Marketer: they need to see the balance and
+      // the ceiling that will block a run, but issuing a grant, booking a manual
+      // adjustment or raising a limit is a tenant-administrator authority.
+      'orchestrator.credits.view', 'orchestrator.credits.limits.view',
       'reach.audiences.view', 'reach.audiences.edit',
       'reach.journeys.view', 'reach.journeys.edit',
       'reach.email.view', 'reach.email.send',

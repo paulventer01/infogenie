@@ -15,6 +15,12 @@ const HTTP_FOR_CODE = Object.freeze({
   validation_failed: 400,
   payload_too_large: 413,
   not_found: 404,
+  unsafe_url: 400,
+  credit_ceiling_exceeded: 409,
+  insufficient_credits: 409,
+  rate_limit_exceeded: 429,
+  concurrency_limit_exceeded: 429,
+  tenant_cost_limit_exceeded: 409,
 });
 
 class OrchError extends Error {
