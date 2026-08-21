@@ -44,6 +44,11 @@ const CLOSEOUT_ADVISORY_LOCK_KEY = crypto
   .readInt32BE(0);
 
 let _mutationGate = Promise.resolve();
+// Cleanups registered while a mutating test holds the advisory lock. node:test
+// runs t.after hooks in registration order, so a second t.after would run
+// after pg_advisory_unlock and deadlock with closeout's DROP brand_foundation
+// (40P01: DELETE tenants → RowExclusiveLock CASCADE vs AccessExclusiveLock).
+let _lockedCleanups = null;
 
 async function acquireLock() {
   const client = await db.getPool().connect();
@@ -73,14 +78,24 @@ async function guardMutatingTest(t) {
     releaseGate();
     throw err;
   }
+  const lockedCleanups = [];
+  _lockedCleanups = lockedCleanups;
   t.after(async () => {
     try {
-      await restorePreflightFixtures();
+      await restorePreflightFixtures(lockedCleanups);
     } finally {
+      if (_lockedCleanups === lockedCleanups) _lockedCleanups = null;
       await releaseLock(lockClient);
       releaseGate();
     }
   });
+}
+
+function addLockedCleanup(fn) {
+  if (!_lockedCleanups) {
+    throw new Error('addLockedCleanup requires an active guardMutatingTest');
+  }
+  _lockedCleanups.push(fn);
 }
 
 async function tableExists(name) {
@@ -111,16 +126,31 @@ async function seedTenant(label) {
   const r = await db.getPool().query(
     `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
     [`Preflight ${label}`, slug]);
-  return r.rows[0].id;
+  const id = r.rows[0].id;
+  addLockedCleanup(async (p) => {
+    await p.query(`DELETE FROM tenants WHERE id=$1`, [id]);
+  });
+  return id;
 }
 
-async function restorePreflightFixtures() {
+async function restorePreflightFixtures(lockedCleanups) {
   const p = db.getPool();
+  // Probe DROPs and tenant DELETEs must stay in this function: it runs from
+  // guardMutatingTest's t.after while the advisory lock is still held.
   await p.query('DROP TABLE IF EXISTS preflight_child_probe CASCADE');
   await p.query('DROP TABLE IF EXISTS preflight_parent_probe CASCADE');
   await p.query(`DELETE FROM job_queue WHERE name LIKE 'preflight-%'`);
   if (await tableExists('vertical_playbooks')) {
     await p.query(`DELETE FROM vertical_playbooks WHERE vertical LIKE 'preflight_%'`);
+  }
+  try {
+    const extras = lockedCleanups || _lockedCleanups || [];
+    for (const fn of extras) {
+      await fn(p);
+    }
+    await p.query(`DELETE FROM tenants WHERE slug LIKE $1`, ['preflight-%']);
+  } catch (err) {
+    console.warn('[preflight-test] tenant fixture cleanup failed:', err.message);
   }
   if (await tableExists('brand_foundation')) {
     const col = await colNullable('brand_foundation', 'tenant_id');
@@ -371,11 +401,6 @@ test('parent-mappable child is not reported; enforce then SET NOT NULL together'
   const p = db.getPool();
   await ensureTenantSchema();
   const tenantA = await seedTenant('map');
-  t.after(async () => {
-    await p.query('DROP TABLE IF EXISTS preflight_child_probe CASCADE');
-    await p.query('DROP TABLE IF EXISTS preflight_parent_probe CASCADE');
-    await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantA]);
-  });
 
   await p.query(`DROP TABLE IF EXISTS preflight_child_probe CASCADE`);
   await p.query(`DROP TABLE IF EXISTS preflight_parent_probe CASCADE`);
@@ -542,5 +567,4 @@ test('playbook xor CHECK: catalog true+NULL and custom false+tid succeed; invali
   assert.ok(customNull, 'is_system=false AND tenant_id NULL must fail');
 
   await p.query(`DELETE FROM vertical_playbooks WHERE id IN ($1,$2)`, [catalog.rows[0].id, custom.rows[0].id]);
-  await p.query(`DELETE FROM tenants WHERE id=$1`, [tid]);
 });
