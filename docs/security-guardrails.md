@@ -2026,6 +2026,25 @@ work; `PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched.
   evidence tables, not a route-reachable one: PR 3A has no HTTP surface, and
   neither `previewLegacyCleanup`, `approveLegacyCleanup` nor
   `executeLegacyCleanup` is called from `server.js`.
+- **The boot DDL takes `AccessExclusiveLock` with no `lock_timeout`, so it can
+  park a lock queue in front of the evidence table.** The retention sweeper and
+  the operator cleanup both open their batches with
+  `SET LOCAL lock_timeout = '2s'`, so they fail fast and retry. `ensure()` does
+  not: its `ALTER TABLE orchestrator_research_evidence …` waits indefinitely for
+  any conflicting row lock to clear, and every reader that arrives afterwards
+  queues behind *it*. Observed directly while re-reviewing this branch — one
+  transaction holding a `SELECT … FOR UPDATE` on a single evidence row blocked
+  an `ALTER TABLE ADD COLUMN IF NOT EXISTS`, which then blocked an unrelated
+  `SELECT` on the same table and a second `ensure()` waiting on
+  `pg_advisory_lock(87231402)`, all four sessions stalled with no Postgres
+  deadlock report because the holder was `idle in transaction` rather than
+  waiting on a lock. In production the ensure runs once per boot, the sweep
+  batches are 100 rows and the cleanup batches are 100 rows, so the window is
+  short; the exposure is a long-lived transaction against these tables during a
+  deploy, which would stall reads of `orchestrator_research_evidence` until it
+  commits. Bounding it (a `lock_timeout` plus retry on the ensure client) is a
+  boot-behaviour decision for the schema owner: a timeout there converts a stall
+  into a failed boot, which is the safer default but is not free.
 - **The migrator role must own the orchestrator tables, and the preflight does
   not prove that.** `DROP TRIGGER` / `CREATE TRIGGER` / `ALTER TABLE … DROP
   CONSTRAINT` need ownership, which `has_table_privilege` cannot express, and

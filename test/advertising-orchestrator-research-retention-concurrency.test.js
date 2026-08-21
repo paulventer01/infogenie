@@ -124,12 +124,19 @@ async function runSkipLockedHeldRowOnce(p, tenantId) {
       assert.ok(result);
       assert.strictEqual(result.failures, 0, 'SKIP LOCKED must not trip delete_noop');
 
-    const freeGone = (await p.query(
+    // Read back on the locker's own transaction. A fresh connection would ask
+    // for AccessShareLock and queue behind any ALTER TABLE a sibling test file's
+    // ensure() has parked on this table — an ALTER that is itself waiting for
+    // the row lock this transaction still holds, so the file would hang for
+    // good. The locker already holds RowShareLock, which conflicts with that
+    // pending request, so its own read jumps the queue. READ COMMITTED takes a
+    // fresh snapshot per statement, so committed sweeper deletes are visible.
+    const freeGone = (await locker.query(
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id = ANY($2::text[])`,
       [tenantId, freeIds]
     )).rows;
     assert.strictEqual(freeGone.length, 0, 'unlocked expired rows must be purged');
-    const lockedKept = (await p.query(
+    const lockedKept = (await locker.query(
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
       [tenantId, lockedId]
     )).rows;
