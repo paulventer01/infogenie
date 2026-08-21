@@ -17,11 +17,11 @@ const { enforceTenantIdNotNull } = require('../tenants/migration');
 //   • Fresh install (empty table after CREATE): tenant_id ends NOT NULL.
 //   • Rows that already have tenant_id: SET NOT NULL as usual. Those rows
 //     are never deleted.
-//   • Rows with tenant_id NULL (the old unscoped singleton): FAIL CLOSED —
-//     leave them in place, log orphans, do NOT map to tenant 1 / a default
-//     tenant. Those rows need an explicit operator decision (stamp a real
-//     tenant_id, or delete). Do not add this table to NULLABLE_OK — a
-//     per-tenant singleton has no legitimate global row.
+//   • Rows with tenant_id NULL (the old unscoped singleton): FAIL BEFORE DDL —
+//     preflight aborts with zero ADD COLUMN / UNIQUE / DROP CHECK. Leave the
+//     rows in place; do NOT map to tenant 1 / a default tenant. Operator
+//     must stamp a real tenant_id or delete. Do not add this table to
+//     NULLABLE_OK — a per-tenant singleton has no legitimate global row.
 
 async function ensureBrandFoundationSchema() {
   if (!_db.hasDb()) return;
@@ -67,12 +67,13 @@ async function ensureBrandFoundationSchema() {
   if (mig.added || mig.droppedCheck || mig.uniqueAdded) {
     console.log('[brand-foundation] migration:', JSON.stringify(mig));
   }
-  if (mig.reason === 'orphans') {
+  if (mig.reason === 'preflight' || mig.reason === 'orphans') {
     console.error(
-      '[brand-foundation] FAIL-CLOSED: ' + (mig.orphanCount || 0) +
-      ' row(s) still have NULL tenant_id (legacy unscoped singleton). ' +
-      'Left in place; NOT NULL not applied; not assigned to tenant 1. ' +
-      'Operator must stamp a real tenant_id or delete those rows explicitly.'
+      '[brand-foundation] FAIL-BEFORE-DDL: ' + (mig.orphanCount || 0) +
+      ' unmapped row(s) (legacy unscoped singleton). Zero tenant_id DDL applied. ' +
+      'Left in place; not assigned to tenant 1. ' +
+      'Operator must stamp a real tenant_id or delete those rows explicitly. ' +
+      'DATABASE_URL=postgres://… node scripts/tenant-schema-preflight.js'
     );
   }
 

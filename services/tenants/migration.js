@@ -18,11 +18,21 @@
 // NULLABLE during Phase 2 — once every service is wired to set it,
 // `markTenantIdNotNull(tableName)` can flip it (Phase 2 closeout).
 //
-// Closeout (this change-set) uses `enforceTenantIdNotNull` / `{ failClosed:true }`.
-// That path NEVER backfills with `_getDefaultTenantId`. Unmappable rows stay
-// NULL, NOT NULL is skipped, and the helper returns `{ ok:false, reason:'orphans' }`.
+// Closeout uses `enforceTenantIdNotNull` / `{ failClosed:true }`.
+// That path NEVER backfills with `_getDefaultTenantId`. A read-only preflight
+// runs FIRST: if any row would remain NULL after the simulated parent JOIN,
+// the helper returns `{ ok:false, reason:'preflight' }` and performs zero DDL
+// and zero UPDATEs (no half-migrated UNIQUE/CHECK/INDEX/ADD COLUMN).
+// Parent backfill UPDATE is allowed only after preflight says every remaining
+// NULL is parent-mappable, then ADD COLUMN + UPDATE + SET NOT NULL commit
+// together. A defensive in-transaction NULL check ROLLBACKs (never COMMITs
+// partial DDL) with `{ ok:false, reason:'orphans' }`.
 
 const _db = require('../../db');
+const {
+  preflightUnmappedForTable,
+  PARENT_BACKFILL,
+} = require('./preflight');
 
 async function _tableExists(p, name) {
   const r = await p.query(
@@ -97,8 +107,13 @@ async function _isTenantIdNullable(p, table) {
  *
  * Never assigns rows to tenant 1 / the default tenant. Optional
  * `backfillFrom` copies tenant_id from a parent row only when the parent
- * itself has a non-null tenant_id. Remaining NULL rows are left in place:
- * NOT NULL is skipped and the caller gets `{ ok:false, reason:'orphans' }`.
+ * itself has a non-null tenant_id.
+ *
+ * Fail-before-DDL: a read-only preflight runs first. If any row would remain
+ * NULL after the simulated parent JOIN, this returns
+ * `{ ok:false, reason:'preflight' }` with zero DDL and zero UPDATEs.
+ * Parent UPDATE is allowed only after every remaining NULL is parent-mappable;
+ * ADD COLUMN + UPDATE + SET NOT NULL then commit together.
  * Does not DELETE. Boot-safe (never throws). Transactional per table.
  *
  * @param {string} tableName
@@ -128,6 +143,31 @@ async function enforceTenantIdNotNull(tableName, options = {}) {
     fkAdded: false,
   };
 
+  const backfillFrom = options.backfillFrom || PARENT_BACKFILL[t] || null;
+
+  // Read-only preflight BEFORE any DDL / UPDATE. Unresolved rows abort with
+  // zero schema change so the table is never left half-migrated.
+  try {
+    const pre = await preflightUnmappedForTable(t, { backfillFrom });
+    if (pre.count > 0) {
+      console.error(
+        `[tenants/migration] FAIL-BEFORE-DDL preflight on ${t}: ${pre.count} unmapped row(s) — ` +
+        `zero DDL, zero UPDATEs; rows left in place (no default-tenant assignment). ` +
+        `Run: DATABASE_URL=postgres://… node scripts/tenant-schema-preflight.js`
+      );
+      return Object.assign({
+        ok: false,
+        reason: 'preflight',
+        orphanCount: pre.count,
+        ids: pre.ids,
+        columnMissing: pre.columnMissing,
+      }, result);
+    }
+  } catch (e) {
+    console.error(`[tenants/migration] preflight error on ${t}: ${e.message}`);
+    return Object.assign({ ok:false, reason:'preflight', error:e.message }, result);
+  }
+
   const client = await p.connect();
   try {
     await client.query('BEGIN');
@@ -139,10 +179,10 @@ async function enforceTenantIdNotNull(tableName, options = {}) {
       result.added = true;
     }
 
-    if (options.backfillFrom) {
-      const parent = _safeIdent(options.backfillFrom.parentTable);
-      const parentId = _safeIdent(options.backfillFrom.parentIdColumn);
-      const childFk = _safeIdent(options.backfillFrom.childFkColumn);
+    if (backfillFrom) {
+      const parent = _safeIdent(backfillFrom.parentTable);
+      const parentId = _safeIdent(backfillFrom.parentIdColumn);
+      const childFk = _safeIdent(backfillFrom.childFkColumn);
       const r = await client.query(
         `UPDATE ${t} AS child
             SET tenant_id = parent.tenant_id
@@ -196,12 +236,25 @@ async function enforceTenantIdNotNull(tableName, options = {}) {
     const nulls = await client.query(`SELECT COUNT(*)::int AS n FROM ${t} WHERE tenant_id IS NULL`);
     const orphanCount = nulls.rows[0].n;
     if (orphanCount > 0) {
-      await client.query('COMMIT');
+      // Defensive: preflight should have caught this. ROLLBACK so we never
+      // commit ADD COLUMN / INDEX / UNIQUE / DROP CHECK without SET NOT NULL.
+      await client.query('ROLLBACK');
       console.error(
         `[tenants/migration] FAIL-CLOSED orphans on ${t}: ${orphanCount} row(s) still NULL — ` +
-        `NOT NULL not applied, rows left in place (no default-tenant assignment)`
+        `transaction rolled back (no partial DDL); rows left in place (no default-tenant assignment)`
       );
-      return Object.assign({ ok:false, reason:'orphans', orphanCount }, result);
+      return Object.assign({
+        ok: false,
+        reason: 'orphans',
+        orphanCount,
+        added: false,
+        backfilled: 0,
+        indexed: false,
+        droppedCheck: false,
+        uniqueAdded: false,
+        notNullSet: false,
+        fkAdded: false,
+      }, { table: t });
     }
 
     if (await _isTenantIdNullable(client, t)) {

@@ -228,9 +228,10 @@ async function _runRewrite({ table, dropConstraint, uniqueExtras, failClosed }) 
     ? (t, opts) => enforceTenantIdNotNull(t, opts)
     : (t, opts) => addTenantIdColumn(t, opts);
   // First do the standard migration (adds column, backfills, plain index).
-  // failClosed tables skip default-tenant assignment.
+  // failClosed tables skip default-tenant assignment. Abort on preflight /
+  // orphans / errors so we never DROP a legacy UNIQUE after a failed closeout.
   const base = await migrate(table, {});
-  if (!base.ok && base.reason !== 'orphans') return base;
+  if (!base.ok) return base;
   // Drop the legacy single-column UNIQUE then add the per-tenant variant, and
   // flip tenant_id NOT NULL once the backfill has run (notNull:true). This is
   // what makes REWRITE_UNIQUE tables stop depending on a manual inline flip.

@@ -214,7 +214,9 @@ test('enforceTenantIdNotNull source never assigns a default tenant', () => {
   const body = src.slice(start, end);
   assert.doesNotMatch(body, /_getDefaultTenantId/);
   assert.doesNotMatch(body, /SET tenant_id = \$1 WHERE tenant_id IS NULL/);
+  assert.match(body, /reason:'preflight'|reason: 'preflight'/);
   assert.match(body, /reason:'orphans'|reason: 'orphans'/);
+  assert.match(body, /FAIL-BEFORE-DDL|fail-before-DDL|zero DDL/);
 });
 
 test('brand_foundation schema never seeds an unscoped id=1 row', () => {
@@ -357,13 +359,17 @@ test('brand_foundation old-shape id=1 orphan fail-closes (row kept, not mapped t
   await ensureBrandFoundationSchema();
 
   const col = await colNullable('brand_foundation', 'tenant_id');
-  assert.ok(col, 'tenant_id column must exist after closeout');
-  assert.strictEqual(col.is_nullable, 'YES', 'NOT NULL must not be applied while the unscoped singleton remains');
+  assert.strictEqual(col, null, 'tenant_id column must still be absent (no partial ADD COLUMN on preflight abort)');
 
-  const rows = await p.query(`SELECT id, tenant_id FROM brand_foundation ORDER BY id`);
-  assert.strictEqual(rows.rowCount, 1, 'fail-closed must not DELETE the legacy singleton');
+  const rows = await p.query(`SELECT id FROM brand_foundation ORDER BY id`);
+  assert.strictEqual(rows.rowCount, 1, 'fail-before-DDL must not DELETE the legacy singleton');
   assert.strictEqual(rows.rows[0].id, 1);
-  assert.strictEqual(rows.rows[0].tenant_id, null, 'orphan must not be mapped to tenant 1 / a default tenant');
+
+  const singleton = await p.query(
+    `SELECT 1 FROM information_schema.table_constraints
+      WHERE table_schema='public' AND table_name='brand_foundation'
+        AND constraint_name='brand_foundation_singleton'`);
+  assert.strictEqual(singleton.rowCount, 1, 'singleton CHECK must not be dropped on preflight abort');
 });
 
 test('brand_foundation fresh empty table tenant_id is NOT NULL', { skip }, async (t) => {
@@ -476,18 +482,25 @@ test('orphaned child fail-closed: NOT NULL skipped, row kept, orphans reported',
     },
   });
   assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.reason, 'orphans');
-  assert.ok(r.orphanCount >= 2, `expected >=2 orphans, got ${r.orphanCount}`);
+  assert.strictEqual(r.reason, 'preflight');
+  assert.ok(r.orphanCount >= 2, `expected >=2 unmapped, got ${r.orphanCount}`);
+  assert.strictEqual(r.backfilled, 0, 'parent UPDATE must not run on preflight abort');
+  assert.strictEqual(r.indexed, false, 'CREATE INDEX must not run on preflight abort');
+  assert.strictEqual(r.notNullSet, false);
 
   const col = await colNullable('closeout_orphan_child', 'tenant_id');
-  assert.strictEqual(col.is_nullable, 'YES', 'NOT NULL must not be applied when orphans remain');
+  assert.strictEqual(col.is_nullable, 'YES', 'NOT NULL must not be applied when unmapped rows remain');
+
+  const idx = await p.query(
+    `SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='closeout_orphan_child_tenant_idx'`);
+  assert.strictEqual(idx.rowCount, 0, 'must not CREATE INDEX on preflight abort');
 
   const kept = await p.query(`SELECT COUNT(*)::int AS n FROM closeout_orphan_child`);
-  assert.strictEqual(kept.rows[0].n, 3, 'fail-closed must not DELETE rows');
+  assert.strictEqual(kept.rows[0].n, 3, 'fail-before-DDL must not DELETE rows');
 
   const mapped = await p.query(
     `SELECT tenant_id FROM closeout_orphan_child WHERE payload='ok'`);
-  assert.strictEqual(mapped.rows[0].tenant_id, tenantA);
+  assert.strictEqual(mapped.rows[0].tenant_id, null, 'parent UPDATE must not run; mappable row stays NULL until a clean preflight');
 
   const stillNull = await p.query(
     `SELECT COUNT(*)::int AS n FROM closeout_orphan_child WHERE tenant_id IS NULL`);
