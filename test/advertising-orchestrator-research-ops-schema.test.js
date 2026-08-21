@@ -1306,6 +1306,7 @@ if (!HAS_DB) {
     try {
       await client.query('BEGIN');
       await client.query(`SELECT set_config('infogenie.research_cleanup', 'on', true)`);
+      await client.query('SAVEPOINT no_update');
       await assert.rejects(
         () => client.query(
           `UPDATE orchestrator_research_evidence SET headline='tamper' WHERE tenant_id=$1 AND id=$2`,
@@ -1314,6 +1315,7 @@ if (!HAS_DB) {
         /orchestrator_research_evidence_immutable/,
         'UPDATE stays refused even with cleanup GUC'
       );
+      await client.query('ROLLBACK TO SAVEPOINT no_update');
       await client.query(
         `DELETE FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
         [tenantA, heldAsset]
@@ -1322,6 +1324,7 @@ if (!HAS_DB) {
         `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
         [tenantA, heldId]
       );
+      await client.query('SAVEPOINT no_free');
       await assert.rejects(
         () => client.query(
           `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
@@ -1330,6 +1333,7 @@ if (!HAS_DB) {
         /orchestrator_research_evidence_immutable/,
         'GUC without a hold row must still refuse DELETE'
       );
+      await client.query('ROLLBACK TO SAVEPOINT no_free');
       await client.query('COMMIT');
     } catch (err) {
       try { await client.query('ROLLBACK'); } catch (_) { /* already aborted */ }

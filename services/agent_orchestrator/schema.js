@@ -2059,9 +2059,20 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       q_count INTEGER;
       q_bytes BIGINT;
     BEGIN
-      INSERT INTO orchestrator_research_quota (tenant_id)
-      VALUES (OLD.tenant_id)
-      ON CONFLICT (tenant_id) DO NOTHING;
+      IF NOT EXISTS (
+        SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id
+      ) THEN
+        RETURN OLD;
+      END IF;
+
+      BEGIN
+        INSERT INTO orchestrator_research_quota (tenant_id)
+        VALUES (OLD.tenant_id)
+        ON CONFLICT (tenant_id) DO NOTHING;
+      EXCEPTION
+        WHEN foreign_key_violation THEN
+          RETURN OLD;
+      END;
 
       PERFORM 1
         FROM orchestrator_research_quota
