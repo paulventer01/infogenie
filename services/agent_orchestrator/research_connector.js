@@ -26,6 +26,7 @@ const {
   assertNoForbiddenFields,
   assertNoBinaryDeep,
   assertNoCredentialMaterial,
+  boundedText,
   sanitizeEvidenceText,
   deepFreeze,
 } = require('./research_validate');
@@ -166,11 +167,16 @@ function assertConnectorIdentity(input) {
   assertNoForbiddenFields(input);
   const connector_id = String(input.connector_id || '').trim();
   if (!C.CONNECTOR_IDS.includes(connector_id)) vf('connector_id', 'invalid_enum');
-  const connector_version = String(input.connector_version == null ? '' : input.connector_version).trim();
-  if (connector_version.length < C.LIMITS.connector_version.min
-    || connector_version.length > C.LIMITS.connector_version.max) {
-    vf('connector_version', 'length');
-  }
+  // The version string is stored on every evidence row, so it gets the same
+  // credential + NUL scan as the other stored strings rather than a bare
+  // length check.
+  const connector_version = boundedText(
+    input.connector_version,
+    C.LIMITS.connector_version.min,
+    C.LIMITS.connector_version.max,
+    'connector_version',
+    { allowEmpty: false }
+  );
   const contract_version = assertContractVersion(input.contract_version);
   return Object.freeze({ connector_id, connector_version, contract_version });
 }
@@ -208,7 +214,7 @@ function assertConnectorRequest(input, opts) {
     idempotency_key: sanitizeEvidenceText(raw.idempotency_key, C.LIMITS.idempotency_key.max),
   };
   if (!out.idempotency_key) vf('idempotency_key', 'required');
-  return Object.freeze(out);
+  return deepFreeze(out);
 }
 
 function assertItemArray(raw, field) {

@@ -1811,7 +1811,15 @@ Hardened during this review, because each of these was accepted before it:
 - **Validated payloads are detached and deep-frozen.** `continuation_state` and
   `provider_metrics` were returned by reference inside a shallow `Object.freeze`,
   so a connector could add a forbidden key after validation and before the PR3E
-  INSERT into an append-only table.
+  INSERT into an append-only table. The connector *request* kept that shallow
+  freeze one round longer, leaving `requested_platforms` mutable after the
+  platform/connector match had already been checked; the returned array is now
+  frozen by `assertRequestedPlatforms` itself, for every caller.
+- **`connector_version` is scanned, not just measured.** It was the one stored
+  string checked for length alone, so a version like
+  `1.0.0 Bearer <jwt>` validated and would have been written to every evidence
+  row it identified. It now goes through the same bounded-text path as the other
+  stored strings (trim, 1–64, no NUL, credential-shape refusal).
 
 The scan deliberately fails closed and rejects the whole object rather than
 masking, so a message that genuinely needs the word `token:` in it has to be

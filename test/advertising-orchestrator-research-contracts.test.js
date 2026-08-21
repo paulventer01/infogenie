@@ -507,6 +507,59 @@ test('validated payloads are detached from caller JSON and frozen through nestin
   assert.ok(Object.isFrozen(ev.provider_metrics));
 });
 
+test('validated connector requests are frozen through nesting and detached from caller arrays', () => {
+  const platforms = ['meta'];
+  const req = assertConnectorRequest({
+    ...SAMPLE_REQUEST,
+    requested_platforms: platforms,
+    continuation_state: { cursor: 'opaque-1' },
+  }, { tenantId: TENANT_A });
+  assert.ok(Object.isFrozen(req));
+  assert.ok(Object.isFrozen(req.requested_platforms));
+  assert.ok(Object.isFrozen(req.search_parameters));
+  assert.ok(Object.isFrozen(req.continuation_state));
+  assert.throws(() => req.requested_platforms.push('tiktok'), TypeError);
+  assert.throws(() => { req.requested_platforms[0] = 'tiktok'; }, TypeError);
+  assert.deepStrictEqual(req.requested_platforms, ['meta']);
+
+  // The caller keeps its own mutable array; the validated copy does not move.
+  platforms.push('google');
+  assert.deepStrictEqual(req.requested_platforms, ['meta']);
+  assert.notStrictEqual(req.requested_platforms, platforms);
+
+  const run = assertResearchRun(SAMPLE_RUN, { tenantId: TENANT_A });
+  assert.throws(() => run.requested_platforms.push('tiktok'), TypeError);
+});
+
+test('connector_version is scanned for credential material, not just length', () => {
+  const leaks = [
+    '1.0.0 Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig',
+    '1.0.0 token=abcdef',
+    'access_token',
+    '1.0.0\u0000drop',
+  ];
+  for (const leak of leaks) {
+    throwsValidation(() => assertConnectorRequest({
+      ...SAMPLE_REQUEST,
+      connector_version: leak,
+    }, { tenantId: TENANT_A }));
+    throwsValidation(() => assertConnectorPage({
+      ...loadJson('meta.v1.json'),
+      connector_version: leak,
+    }, { tenantId: TENANT_A }));
+  }
+  throwsValidation(() => assertConnectorRequest({
+    ...SAMPLE_REQUEST,
+    connector_version: '',
+  }, { tenantId: TENANT_A }));
+  throwsValidation(() => assertConnectorRequest({
+    ...SAMPLE_REQUEST,
+    connector_version: 'v'.repeat(65),
+  }, { tenantId: TENANT_A }));
+  const ok = assertConnectorRequest({ ...SAMPLE_REQUEST, connector_version: '1.0.0' }, { tenantId: TENANT_A });
+  assert.strictEqual(ok.connector_version, '1.0.0');
+});
+
 test('honesty flags are rejected at any depth in provider_metrics', () => {
   for (const metrics of [
     { verified: true },

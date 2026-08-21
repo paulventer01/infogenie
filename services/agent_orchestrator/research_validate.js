@@ -342,7 +342,9 @@ function assertRequestedPlatforms(v) {
     seen.add(s);
     out.push(s);
   }
-  return out;
+  // Callers embed this array in a frozen payload, so it is frozen here rather
+  // than relying on each caller's own freeze depth.
+  return Object.freeze(out);
 }
 
 function assertSearchParameters(raw) {
@@ -666,6 +668,7 @@ module.exports = {
   assertEvidenceAsset,
   computeEvidenceHash,
   computeCompetitorDedupKey,
+  boundedText,
   sanitizeEvidenceText,
   stripUnknown,
   assertNoForbiddenFields,
