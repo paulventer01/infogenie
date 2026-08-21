@@ -264,12 +264,19 @@ async function enforceTenantIdNotNull(tableName, options = {}) {
 
     if (!(await _tenantFkExists(client, t))) {
       const fkName = `${t}_tenant_id_fkey`.slice(0, 63);
+      // SAVEPOINT so an FK ADD failure cannot abort the outer transaction.
+      // Without it, PostgreSQL treats the later COMMIT as ROLLBACK and the
+      // caller would see { ok:true } while SET NOT NULL / UNIQUE were discarded.
+      await client.query('SAVEPOINT closeout_fk');
       try {
         await client.query(
           `ALTER TABLE ${t} ADD CONSTRAINT ${fkName} FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE`
         );
+        await client.query('RELEASE SAVEPOINT closeout_fk');
         result.fkAdded = true;
       } catch (e) {
+        // Must succeed: if this throws, the outer catch ROLLBACKs (never COMMIT).
+        await client.query('ROLLBACK TO SAVEPOINT closeout_fk');
         console.warn(`[tenants/migration] fail-closed FK on ${t}.tenant_id: ${e.message}`);
         result.fkError = e.message;
       }

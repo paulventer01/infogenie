@@ -111,12 +111,17 @@ function _capIds(ids) {
 
 function _finding(table, reason, ids, extra = {}) {
   const capped = _capIds(ids);
-  return Object.assign({
+  const out = {
     table,
     count: extra.count != null ? extra.count : ids.length,
     reason,
     ids: capped.ids,
-  }, capped.truncated ? { truncated: true } : {}, extra.columnMissing ? { columnMissing: true } : {});
+  };
+  // Callers often pass already-sliced ids (LIMIT ID_CAP). Honor extra.truncated
+  // from preflightUnmappedForTable so the operator report still shows the flag.
+  if (capped.truncated || extra.truncated) out.truncated = true;
+  if (extra.columnMissing) out.columnMissing = true;
+  return out;
 }
 
 /**
@@ -343,6 +348,7 @@ async function preflightTenantSchemaCloseout(options = {}) {
         findings.push(_finding(table, 'unmapped_tenant_id', u.ids, {
           count: u.count,
           columnMissing: u.columnMissing,
+          truncated: !!u.truncated,
         }));
       }
     }
@@ -370,7 +376,10 @@ async function preflightTenantSchemaCloseout(options = {}) {
       if (rows.length) {
         const count = rows[0]._count || rows.length;
         const ids = rows.map((row) => ({ id: row.id, name: row.name, status: row.status }));
-        findings.push(_finding('job_queue', 'job_queue_payload', ids, { count }));
+        findings.push(_finding('job_queue', 'job_queue_payload', ids, {
+          count,
+          truncated: count > ID_CAP,
+        }));
       }
     }
 
@@ -514,6 +523,8 @@ module.exports = {
   JOB_QUEUE_EMPTY_PAYLOAD_SQL,
   PLAYBOOKS_XOR_CHECK,
   PLAYBOOKS_XOR_SQL,
+  ID_CAP,
+  _finding,
   preflightTenantSchemaCloseout,
   preflightUnmappedForTable,
   assertCloseoutPreflightClean,

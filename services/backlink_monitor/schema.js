@@ -67,12 +67,15 @@ async function ensureBacklinkMonitorSchema() {
       ON backlink_changes (monitor_id, change_type, referring_domain, (infogenie_timestamptz_utc_date(detected_at)))
   `);
 
-  // Legacy global UNIQUE(domain) blocks two tenants sharing a domain.
-  await pool.query(`ALTER TABLE backlink_monitors DROP CONSTRAINT IF EXISTS backlink_monitors_domain_key`);
-  await pool.query(`DROP INDEX IF EXISTS backlink_monitors_domain_key`);
-
-  // Fail-closed closeout: never assign orphans to a default tenant.
-  await enforceTenantIdNotNull('backlink_monitors', { uniqueWithExtra: ['domain'] });
+  // Fail-closed closeout first (UNIQUE(tenant_id, domain)). Only drop the
+  // legacy UNIQUE(domain) after closeout commits — matching phase2 _runRewrite:
+  // migrate first; abort without DROP if !ok. If preflight/orphans abort, the
+  // global unique stays so the table is never left with neither unique.
+  const monitorsCloseout = await enforceTenantIdNotNull('backlink_monitors', { uniqueWithExtra: ['domain'] });
+  if (monitorsCloseout && monitorsCloseout.ok) {
+    await pool.query(`ALTER TABLE backlink_monitors DROP CONSTRAINT IF EXISTS backlink_monitors_domain_key`);
+    await pool.query(`DROP INDEX IF EXISTS backlink_monitors_domain_key`);
+  }
   await enforceTenantIdNotNull('backlink_snapshots', {
     backfillFrom: { parentTable: 'backlink_monitors', parentIdColumn: 'id', childFkColumn: 'monitor_id' },
     indexExtra: ['monitor_id'],

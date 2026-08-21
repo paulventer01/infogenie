@@ -40,6 +40,9 @@ const {
   PARENT_BACKFILL,
   JOB_QUEUE_EMPTY_PAYLOAD_CHECK,
   PLAYBOOKS_XOR_CHECK,
+  ID_CAP,
+  _finding,
+  formatPreflightReport,
   preflightTenantSchemaCloseout,
   preflightUnmappedForTable,
   ensureJobQueueEmptyPayloadCheck,
@@ -267,9 +270,36 @@ test('preflight source never maps default tenant and never writes', () => {
   assert.doesNotMatch(src, /\b(INSERT|UPDATE|DELETE)\s+INTO\b/i);
   assert.match(src, /BEGIN READ ONLY/);
   assert.match(src, /brand_foundation/);
+  assert.match(src, /truncated:\s*!!u\.truncated/);
   for (const child of Object.keys(PARENT_BACKFILL)) {
     assert.match(src, new RegExp(child));
   }
+});
+
+test('preflight _finding sets truncated from extras when ids are already sliced', () => {
+  assert.strictEqual(ID_CAP, 500, 'ID_CAP must stay 500');
+  const sliced = Array.from({ length: ID_CAP }, (_, i) => ({ id: i + 1 }));
+  const fromExtras = _finding('ugc_items', 'unmapped_tenant_id', sliced, {
+    count: ID_CAP + 7,
+    truncated: true,
+  });
+  assert.strictEqual(fromExtras.truncated, true, 'pre-sliced path must honor extra.truncated');
+  assert.strictEqual(fromExtras.ids.length, ID_CAP);
+  assert.strictEqual(fromExtras.count, ID_CAP + 7);
+
+  const fromCap = _finding('ugc_items', 'unmapped_tenant_id', sliced.concat({ id: ID_CAP + 1 }), {
+    count: ID_CAP + 1,
+  });
+  assert.strictEqual(fromCap.truncated, true, 'overflow ids must still set truncated');
+  assert.strictEqual(fromCap.ids.length, ID_CAP);
+
+  const clean = _finding('ugc_items', 'unmapped_tenant_id', [{ id: 1 }], { count: 1 });
+  assert.ok(!clean.truncated, 'small findings must not be marked truncated');
+
+  const text = formatPreflightReport({ ok: false, tables: [fromExtras] });
+  assert.match(text, /\(truncated\)/);
+  assert.match(text, /"truncated":\s*true/);
+  assert.match(text, new RegExp(`"count":\\s*${ID_CAP + 7}`));
 });
 
 test('package.json exposes tenant:preflight', () => {

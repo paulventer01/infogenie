@@ -160,6 +160,20 @@ async function restoreCanonicalSchema() {
   await p.query('DROP TABLE IF EXISTS closeout_parent_probe CASCADE');
   await p.query('DROP TABLE IF EXISTS closeout_orphan_child CASCADE');
   await p.query('DROP TABLE IF EXISTS closeout_orphan_parent CASCADE');
+  await p.query('DROP TABLE IF EXISTS closeout_fk_probe CASCADE');
+
+  // Old-shape backlink fixture (UNIQUE(domain) + NULL tenant_id) would
+  // fail-close and leave a global unique. Recreate empty via ensure*.
+  if (await tableExists('backlink_monitors')) {
+    const col = await colNullable('backlink_monitors', 'tenant_id');
+    const cons = await uniqueCols('backlink_monitors');
+    const hasGlobalDomain = cons.some((c) => c.cols === 'domain');
+    if (!col || col.is_nullable === 'YES' || hasGlobalDomain) {
+      await p.query('DROP TABLE IF EXISTS backlink_changes CASCADE');
+      await p.query('DROP TABLE IF EXISTS backlink_snapshots CASCADE');
+      await p.query('DROP TABLE IF EXISTS backlink_monitors CASCADE');
+    }
+  }
 
   // Fail-closed orphan fixture (nullable tenant_id / missing column / id=1
   // singleton) would make audit check 2 fail. Recreate empty — do not re-seed.
@@ -253,6 +267,8 @@ test('enforceTenantIdNotNull source never assigns a default tenant', () => {
   assert.match(body, /reason:'preflight'|reason: 'preflight'/);
   assert.match(body, /reason:'orphans'|reason: 'orphans'/);
   assert.match(body, /FAIL-BEFORE-DDL|fail-before-DDL|zero DDL/);
+  assert.match(body, /SAVEPOINT closeout_fk/);
+  assert.match(body, /ROLLBACK TO SAVEPOINT closeout_fk/);
 });
 
 test('brand_foundation schema never seeds an unscoped id=1 row', () => {
@@ -605,6 +621,123 @@ test('backlink initializer succeeds and UNIQUE(tenant_id, domain) is per-tenant'
 
   await p.query(`DELETE FROM backlink_monitors WHERE tenant_id IN ($1,$2)`, [tenantA, tenantB]);
   await p.query(`DELETE FROM tenants WHERE id IN ($1,$2)`, [tenantA, tenantB]);
+});
+
+test('FK ADD failure uses SAVEPOINT so SET NOT NULL still commits', { skip }, async (t) => {
+  await guardMutatingTest(t);
+  const p = db.getPool();
+  await ensureTenantSchema();
+  const tenantA = await seedTenant('fk-savepoint');
+
+  await p.query(`DROP TABLE IF EXISTS closeout_fk_probe CASCADE`);
+  // Name-clash: occupy ${table}_tenant_id_fkey with a CHECK so ADD FK fails
+  // while _tenantFkExists stays false (CHECK is not a foreign key).
+  await p.query(`
+    CREATE TABLE closeout_fk_probe (
+      id SERIAL PRIMARY KEY,
+      tenant_id INT,
+      payload TEXT NOT NULL,
+      CONSTRAINT closeout_fk_probe_tenant_id_fkey CHECK (tenant_id IS NULL OR tenant_id > 0)
+    )
+  `);
+  await p.query(
+    `INSERT INTO closeout_fk_probe (tenant_id, payload) VALUES ($1, 'mapped')`,
+    [tenantA]);
+
+  const r = await enforceTenantIdNotNull('closeout_fk_probe', { uniqueWithExtra: [] });
+  assert.strictEqual(r.ok, true, `ok must be honest for committed NOT NULL/UNIQUE: ${JSON.stringify(r)}`);
+  assert.strictEqual(r.fkAdded, false, 'FK ADD must not report success');
+  assert.ok(r.fkError, 'fkError must be recorded for the best-effort warn path');
+  assert.strictEqual(r.notNullSet, true);
+  assert.strictEqual(r.uniqueAdded, true);
+
+  const col = await colNullable('closeout_fk_probe', 'tenant_id');
+  assert.ok(col, 'tenant_id must exist');
+  assert.strictEqual(col.is_nullable, 'NO', 'SET NOT NULL must persist after FK SAVEPOINT rollback');
+
+  const cons = await uniqueCols('closeout_fk_probe');
+  assert.ok(cons.some((c) => c.cols === 'tenant_id'),
+    `UNIQUE(tenant_id) must persist; found ${cons.map((c) => c.cols).join(' | ')}`);
+
+  const idx = await p.query(
+    `SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='closeout_fk_probe_tenant_idx'`);
+  assert.ok(idx.rowCount > 0, 'tenant_id index created in the same txn must persist');
+
+  const stillCheck = await p.query(
+    `SELECT 1 FROM information_schema.table_constraints
+      WHERE table_schema='public' AND table_name='closeout_fk_probe'
+        AND constraint_name='closeout_fk_probe_tenant_id_fkey'
+        AND constraint_type='CHECK'`);
+  assert.strictEqual(stillCheck.rowCount, 1, 'name-clash CHECK must still occupy the FK name');
+
+  const row = await p.query(`SELECT tenant_id FROM closeout_fk_probe`);
+  assert.strictEqual(row.rows[0].tenant_id, tenantA, 'must not remap to tenant 1');
+
+  await p.query(`DROP TABLE IF EXISTS closeout_fk_probe CASCADE`);
+  await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantA]);
+});
+
+test('backlink schema keeps UNIQUE(domain) on closeout abort; drops it only after success', { skip }, async (t) => {
+  await guardMutatingTest(t);
+  const p = db.getPool();
+  await ensureAuthSchema();
+  await ensureTenantSchema();
+
+  await p.query(`DROP TABLE IF EXISTS backlink_changes CASCADE`);
+  await p.query(`DROP TABLE IF EXISTS backlink_snapshots CASCADE`);
+  await p.query(`DROP TABLE IF EXISTS backlink_monitors CASCADE`);
+  await p.query(`
+    CREATE TABLE backlink_monitors (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id INT,
+      domain TEXT NOT NULL UNIQUE,
+      alert_email TEXT,
+      frequency TEXT NOT NULL DEFAULT 'daily',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_run_at TIMESTAMPTZ,
+      last_total_referring INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  await p.query(`INSERT INTO backlink_monitors (tenant_id, domain) VALUES (NULL, 'orphan.example')`);
+
+  await ensureBacklinkMonitorSchema();
+
+  const abortCol = await colNullable('backlink_monitors', 'tenant_id');
+  assert.ok(abortCol);
+  assert.strictEqual(abortCol.is_nullable, 'YES', 'NOT NULL must not flip on preflight abort');
+  const abortCons = await uniqueCols('backlink_monitors');
+  assert.ok(abortCons.some((c) => c.cols === 'domain'),
+    `UNIQUE(domain) must survive abort; found ${abortCons.map((c) => c.cols).join(' | ')}`);
+  assert.ok(!abortCons.some((c) => c.cols === 'tenant_id,domain'),
+    'composite UNIQUE must not be added on preflight abort');
+  const kept = await p.query(`SELECT domain, tenant_id FROM backlink_monitors`);
+  assert.strictEqual(kept.rowCount, 1);
+  assert.strictEqual(kept.rows[0].tenant_id, null, 'must not assign orphan to tenant 1');
+
+  // Clean path: empty old-shape table (legacy unique still present).
+  await p.query(`DELETE FROM backlink_monitors`);
+  await ensureBacklinkMonitorSchema();
+
+  const cleanCol = await colNullable('backlink_monitors', 'tenant_id');
+  assert.ok(cleanCol);
+  assert.strictEqual(cleanCol.is_nullable, 'NO');
+  const cleanCons = await uniqueCols('backlink_monitors');
+  assert.ok(cleanCons.some((c) => c.cols === 'tenant_id,domain'),
+    `clean path must have UNIQUE(tenant_id, domain); found ${cleanCons.map((c) => c.cols).join(' | ')}`);
+  assert.ok(!cleanCons.some((c) => c.cols === 'domain'),
+    'legacy UNIQUE(domain) must be dropped after successful closeout');
+});
+
+test('backlink schema drops UNIQUE(domain) only after fail-closed closeout', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../services/backlink_monitor/schema.js'), 'utf8');
+  const enforce = src.indexOf("enforceTenantIdNotNull('backlink_monitors'");
+  const dropConstraint = src.indexOf('DROP CONSTRAINT IF EXISTS backlink_monitors_domain_key');
+  const dropIndex = src.indexOf('DROP INDEX IF EXISTS backlink_monitors_domain_key');
+  assert.ok(enforce >= 0, 'backlink_monitors closeout must exist');
+  assert.ok(dropConstraint >= 0 && dropIndex >= 0, 'legacy UNIQUE(domain) drop must exist');
+  assert.ok(enforce < dropConstraint && enforce < dropIndex,
+    'UNIQUE(domain) must be dropped only after enforceTenantIdNotNull');
+  assert.match(src, /monitorsCloseout\.ok/);
 });
 
 test('tenant-schema-audit still has four unweakened assertions', () => {
