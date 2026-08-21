@@ -16,7 +16,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const playbooksApi = require('../services/vertical_playbooks/api');
-const { playbooksTenantGuard, tenantIdFromAuthContext } = playbooksApi;
+const { playbooksTenantGuard, tenantIdFromServerContext } = playbooksApi;
 const { bootApp, request, login, makeFixtures, hasDb } = require('./helpers');
 const { ensureVerticalPlaybooksSchema } = require('../services/vertical_playbooks/schema');
 const db = require('../db');
@@ -105,7 +105,7 @@ test('tenant key ignores body/header/query when req.tenant.id is valid', () => {
     query: { tenant_id: '99' },
     headers: { 'x-tenant-id': '99', 'X-Tenant-Id': '99', tenant_id: '99' },
   };
-  assert.equal(tenantIdFromAuthContext(req), 7);
+  assert.equal(tenantIdFromServerContext(req), 7);
 
   const { res, state } = fakeRes();
   let nextCount = 0;
@@ -115,14 +115,14 @@ test('tenant key ignores body/header/query when req.tenant.id is valid', () => {
   assert.equal(state.body, null);
 });
 
-test('tenantIdFromAuthContext never reads spoofed ids when context is missing', () => {
+test('tenantIdFromServerContext never reads spoofed ids when context is missing', () => {
   const req = {
     tenant: null,
     body: { tenant_id: 99 },
     query: { tenant_id: '99' },
     headers: { 'x-tenant-id': '99', tenant_id: '99' },
   };
-  assert.equal(tenantIdFromAuthContext(req), null);
+  assert.equal(tenantIdFromServerContext(req), null);
 });
 
 // ── Integration: authenticated HTTP ──────────────────────────────────────────
@@ -189,6 +189,11 @@ test('429 includes Retry-After seconds matching body retryAfterSec', { skip: ski
   assert.equal(Number.isInteger(n) && n > 0, true, `Retry-After must be a positive integer, got ${header}`);
   assert.equal(limited.json.retryAfterSec, n);
   assert.equal(limited.json.error, 'rate_limited');
+  // The limiter is built on express-rate-limit, whose defaults would advertise
+  // the policy on every response. Responses must stay as they were: Retry-After
+  // on the 429 and nothing telling a caller how much headroom is left.
+  const policyHeaders = Object.keys(limited.headers).filter((h) => /ratelimit/i.test(h));
+  assert.deepEqual(policyHeaders, [], `429 must not advertise the policy: ${policyHeaders.join(', ')}`);
 });
 
 test('concurrent burst cannot produce more than max successes', { skip: skipDb }, async (t) => {

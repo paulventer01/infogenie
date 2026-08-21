@@ -1,25 +1,95 @@
-// services/security/rate_limit.js — Sliding-window limiter; Redis when available.
+// services/security/rate_limit.js — Fixed-window limiter.
+//
+// Implemented with `express-rate-limit` rather than a hand-rolled window. That
+// package is the one CodeQL's `js/missing-rate-limiting` models, so building the
+// factory on it turns a protected route into a true negative instead of a
+// high-severity alert an operator has to dismiss by hand. It is a single policy
+// engine, not a second limiter sitting beside a custom one.
+//
+// The public contract is unchanged for callers: `createRateLimiter({ name,
+// windowMs, max, keyFn, ... })` returns an Express middleware that answers
+// `429 { ok:false, error:'rate_limited', retryAfterSec }` with a `Retry-After`
+// header in integer seconds.
 'use strict';
 
+const rateLimit = require('express-rate-limit');
+const { MemoryStore } = require('express-rate-limit');
 const { redisIncr, isRedisConfigured } = require('../infra/redis');
+
+// Key returned when `keyFn` cannot identify the caller. Under `failClosed` the
+// limit for this key is 0, so the request is denied rather than being bucketed
+// together with every other unidentifiable caller.
+const NO_KEY = '__no_key__';
+
+/**
+ * Redis-first store with a process-local fallback.
+ *
+ * Redis `INCR` is atomic and shared across instances, so it is the correct
+ * counter for a multi-instance deployment. When `REDIS_URL` is unset — or set
+ * but unreachable — the store degrades to `MemoryStore`, which keeps the limit
+ * working per process. That degradation is deliberate: making a Redis outage
+ * deny would take `/api/auth/login` down with it.
+ */
+class RedisOrMemoryStore {
+  constructor() {
+    this.memory = new MemoryStore();
+    this.windowMs = 60_000;
+    this.ttlSec = 60;
+  }
+
+  init(options) {
+    this.windowMs = options.windowMs;
+    this.ttlSec = Math.max(1, Math.ceil(options.windowMs / 1000));
+    this.memory.init(options);
+  }
+
+  async increment(key) {
+    if (isRedisConfigured()) {
+      try {
+        const hits = await redisIncr(`rl:${key}`, this.ttlSec);
+        if (typeof hits === 'number' && hits > 0) {
+          return { totalHits: hits, resetTime: new Date(Date.now() + this.windowMs) };
+        }
+      } catch {
+        // fall through to the process-local counter
+      }
+    }
+    // MemoryStore.increment bumps the counter with no await in between, so
+    // concurrent requests get distinct totals and cannot both see spare
+    // capacity. This is what removed the need for the old admission lock.
+    return this.memory.increment(key);
+  }
+
+  async decrement(key) { return this.memory.decrement(key); }
+
+  async resetKey(key) { return this.memory.resetKey(key); }
+
+  // Clears the process-local counters only; Redis keys expire on their own TTL.
+  async resetAll() { return this.memory.resetAll(); }
+}
 
 /**
  * @param {{ windowMs?: number, max?: number, keyFn?: Function, name?: string,
- *          serialize?: boolean, failClosed?: boolean }} opts
+ *          failClosed?: boolean, serialize?: boolean }} opts
  * @returns {import('express').RequestHandler}
  *
- * `serialize` and `failClosed` are opt-in and default to false so existing
- * callers (notably `authAbuseLimiter`) keep their current behaviour exactly.
- * See the notes on `_decide` and on the `failClosed` branch below.
+ * `failClosed` is opt-in and defaults to false, so `authAbuseLimiter` keeps its
+ * behaviour exactly.
  *
- * The returned middleware adjudicates a given request at most once, so the same
- * instance can be mounted several times on one chain (see `alreadyDecided`).
+ * `serialize` is accepted and **does nothing**. It used to install a per-key
+ * admission lock around a check-then-act window that no longer exists: the store
+ * increments before the middleware compares (see `RedisOrMemoryStore.increment`),
+ * so concurrent requests already get distinct totals. It is still accepted so a
+ * caller carrying the old option does not silently break.
+ *
+ * The returned value is the `express-rate-limit` middleware itself, not a
+ * wrapper. Callers may mount the same instance more than once on one chain; it
+ * counts a request at most once (see `alreadyCounted`).
  */
 function createRateLimiter(opts = {}) {
   const windowMs = opts.windowMs ?? 60_000;
   const max = opts.max ?? 20;
   const name = opts.name || 'default';
-  const serialize = opts.serialize === true;
   const failClosed = opts.failClosed === true;
   const keyFn =
     opts.keyFn ||
@@ -31,115 +101,65 @@ function createRateLimiter(opts = {}) {
       return `${name}|${ip}|${req.path}`;
     });
 
-  const buckets = new Map();
-  const ttlSec = Math.max(1, Math.ceil(windowMs / 1000));
+  const retryAfterSec = Math.max(1, Math.ceil(windowMs / 1000));
+  const store = new RedisOrMemoryStore();
 
-  // One limiter instance may appear more than once on a request's middleware
-  // chain — the playbooks router mounts the shared limiter with `use()` and
-  // again as an explicit argument on each route so static analysis can see it
-  // beside the handler it protects. Without this marker the second pass would
-  // spend a second token and halve the tenant's real ceiling. Unique per
-  // instance, so a different limiter on the same request still counts.
-  const alreadyDecided = Symbol(`rate-limit:${name}`);
+  // One instance can appear twice on a chain — the playbooks router mounts the
+  // shared limiter with `use()` and again as an explicit argument on each route
+  // so the limiter is visible beside the handler it protects. `skip` runs before
+  // the store is touched, so the second pass spends no token and the tenant
+  // ceiling is unchanged. Unique per instance: a different limiter on the same
+  // request still counts.
+  const alreadyCounted = Symbol(`rate-limit:${name}`);
+  // Set by keyGenerator when the caller could not be identified; read by the
+  // `limit` function below, which express-rate-limit evaluates after the key.
+  const unidentified = Symbol(`rate-limit-no-key:${name}`);
 
-  // Periodic prune so idle keys don't grow forever in long-lived processes.
-  const pruneEvery = Math.max(windowMs, 60_000);
-  const timer = setInterval(() => {
-    const now = Date.now();
-    for (const [k, arr] of buckets) {
-      const kept = arr.filter((t) => now - t < windowMs);
-      if (kept.length) buckets.set(k, kept);
-      else buckets.delete(k);
-    }
-  }, pruneEvery);
-  if (typeof timer.unref === 'function') timer.unref();
-
-  async function _redisAllow(key) {
-    if (!isRedisConfigured()) return null;
-    const n = await redisIncr(`rl:${key}`, ttlSec);
-    if (n == null) return null;
-    return n <= max;
-  }
-
-  function _localAllow(key) {
-    const now = Date.now();
-    const arr = (buckets.get(key) || []).filter((t) => now - t < windowMs);
-    if (arr.length >= max) return false;
-    arr.push(now);
-    buckets.set(key, arr);
-    return true;
-  }
-
-  // Redis shared counter when configured (atomic INCR, correct across
-  // instances); process-local sliding window when Redis is absent or its call
-  // fails. The fallback is intentional: a Redis outage degrades the limit to
-  // per-process rather than removing it.
-  async function _verdict(key) {
-    let redisVerdict = null;
-    try {
-      redisVerdict = await _redisAllow(key);
-    } catch {
-      redisVerdict = null;
-    }
-    if (redisVerdict === true || redisVerdict === false) return redisVerdict;
-    return _localAllow(key);
-  }
-
-  // The process-local branch is check-then-act across an await, so two
-  // concurrent requests on one key can both observe `arr.length < max` and both
-  // be admitted. `serialize: true` funnels verdicts for a key through a promise
-  // chain, making admissions atomic within this process. Redis remains the
-  // multi-instance counter. Opt-in because it costs a per-key queue and the
-  // IP-keyed auth limiter neither needs it nor may change.
-  const _locks = new Map();
-  function _decide(key) {
-    if (!serialize) return _verdict(key);
-    const run = () => _verdict(key);
-    const prev = _locks.get(key) || Promise.resolve();
-    const chained = prev.then(run, run);
-    // The lock must never reject, or the next waiter would inherit a rejection.
-    const lock = chained.then(() => {}, () => {});
-    _locks.set(key, lock);
-    lock.then(() => { if (_locks.get(key) === lock) _locks.delete(key); });
-    return chained;
-  }
-
-  function middleware(req, res, next) {
-    if (req[alreadyDecided]) return next();
-    req[alreadyDecided] = true;
-
-    const rawKey = keyFn(req);
-
-    const finish = (allowed) => {
-      if (!allowed) {
-        const retryAfterSec = Math.ceil(windowMs / 1000);
-        res.setHeader('Retry-After', String(retryAfterSec));
-        return res.status(429).json({
-          ok: false,
-          error: 'rate_limited',
-          retryAfterSec,
-        });
+  const limiter = rateLimit({
+    windowMs,
+    limit: failClosed ? (req) => (req[unidentified] ? 0 : max) : max,
+    store,
+    keyGenerator: (req, res) => {
+      const raw = keyFn(req, res);
+      if (raw === null || raw === undefined || raw === '') {
+        req[unidentified] = true;
+        return NO_KEY;
       }
-      return next();
-    };
+      return String(raw);
+    },
+    skip: (req) => {
+      if (req[alreadyCounted]) return true;
+      req[alreadyCounted] = true;
+      return false;
+    },
+    // Responses stay byte-identical to the hand-rolled limiter: no RateLimit-*
+    // or X-RateLimit-* headers advertising the policy, and Retry-After set only
+    // on the 429 below.
+    standardHeaders: false,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      res.setHeader('Retry-After', String(retryAfterSec));
+      return res.status(429).json({
+        ok: false,
+        error: 'rate_limited',
+        retryAfterSec,
+      });
+    },
+    validate: {
+      // keyFn is deliberately custom, so the package cannot reason about proxy
+      // configuration or IP handling on our behalf.
+      xForwardedForHeader: false,
+      trustProxy: false,
+      ip: false,
+      // `limit: 0` is the intended failClosed denial, not the v6→v7 migration
+      // footgun this check warns about.
+      limit: false,
+    },
+  });
 
-    // A keyFn that cannot identify the caller must not collapse every caller
-    // into one shared `null` bucket. Callers that derive the key from
-    // authenticated context opt into denying instead.
-    if (failClosed && (rawKey == null || rawKey === '')) return finish(false);
-    const key = String(rawKey);
-
-    _decide(key)
-      .then((allowed) => { finish(allowed); }, () => { finish(!failClosed); })
-      // `finish` itself can only throw once the response is already unusable
-      // (e.g. headers sent). Swallow it rather than raise an unhandled
-      // rejection; the previous shape re-entered and could call next() twice.
-      .catch(() => {});
-  }
-
-  middleware._buckets = buckets; // test seam
-  middleware.reset = () => { buckets.clear(); _locks.clear(); };
-  return middleware;
+  // Test seam. Clears the process-local counters; Redis keys age out on TTL.
+  limiter.reset = () => { store.resetAll(); };
+  return limiter;
 }
 
 /** Stricter limiter for /api/auth/login|signup|request-reset. */

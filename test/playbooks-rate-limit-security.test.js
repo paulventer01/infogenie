@@ -23,6 +23,9 @@ const redisStub = {
   inFlight: 0,
   peakInFlight: 0,
   delayMs: 5,
+  // Returns null by default: "configured but every INCR fails". Tests that need
+  // a working Redis swap in an impl that returns the running count.
+  impl: null,
   reset() { this.inFlight = 0; this.peakInFlight = 0; },
 };
 
@@ -33,19 +36,19 @@ require.cache[_redisPath] = {
   loaded: true,
   exports: {
     isRedisConfigured: () => redisStub.configured,
-    async redisIncr() {
+    async redisIncr(key, ttlSec) {
       redisStub.inFlight += 1;
       if (redisStub.inFlight > redisStub.peakInFlight) redisStub.peakInFlight = redisStub.inFlight;
       await new Promise((r) => setTimeout(r, redisStub.delayMs));
       redisStub.inFlight -= 1;
-      return null; // configured but unreachable → limiter degrades to process-local
+      return redisStub.impl ? redisStub.impl(key, ttlSec) : null;
     },
   },
 };
 
 const { createRateLimiter, authAbuseLimiter } = require('../services/security/rate_limit');
 const playbooksApi = require('../services/vertical_playbooks/api');
-const { playbooksTenantGuard, tenantIdFromAuthContext, playbooksLimits } = playbooksApi;
+const { playbooksTenantGuard, tenantIdFromServerContext, playbooksLimits } = playbooksApi;
 
 const API_SRC_PATH = path.join(__dirname, '../services/vertical_playbooks/api.js');
 const API_SRC = fs.readFileSync(API_SRC_PATH, 'utf8');
@@ -89,9 +92,9 @@ function hit(limiter, req) {
 
 // ── Tenant key: authenticated context only ───────────────────────────────────
 
-test('tenantIdFromAuthContext accepts only a positive safe integer from req.tenant', () => {
-  assert.equal(tenantIdFromAuthContext({ tenant: { id: 7 } }), 7);
-  assert.equal(tenantIdFromAuthContext({ tenant: { id: '7' } }), 7);
+test('tenantIdFromServerContext accepts only a positive safe integer from req.tenant', () => {
+  assert.equal(tenantIdFromServerContext({ tenant: { id: 7 } }), 7);
+  assert.equal(tenantIdFromServerContext({ tenant: { id: '7' } }), 7);
 
   const rejected = [
     { label: 'no req', req: undefined },
@@ -114,7 +117,7 @@ test('tenantIdFromAuthContext accepts only a positive safe integer from req.tena
     { label: 'object', req: { tenant: { id: { valueOf: () => 1 } } } },
   ];
   for (const { label, req } of rejected) {
-    assert.equal(tenantIdFromAuthContext(req), null, `${label} must not yield a tenant id`);
+    assert.equal(tenantIdFromServerContext(req), null, `${label} must not yield a tenant id`);
   }
 });
 
@@ -132,12 +135,12 @@ test('tenant key ignores every caller-controlled source', () => {
     params: { tenant_id: '99' },
     session: { activeTenantId: 99 },
   };
-  assert.equal(tenantIdFromAuthContext(spoof), null);
+  assert.equal(tenantIdFromServerContext(spoof), null);
 
   // Same spoof, but with a real authenticated tenant: the verified id wins and
   // the spoofed one is never mixed into the key.
   const authed = { ...spoof, tenant: { id: 7 } };
-  assert.equal(tenantIdFromAuthContext(authed), 7);
+  assert.equal(tenantIdFromServerContext(authed), 7);
 });
 
 test('playbooksTenantGuard fails closed with 400 no_tenant and does not call next', () => {
@@ -158,7 +161,7 @@ test('playbooksTenantGuard fails closed with 400 no_tenant and does not call nex
 // ── Source-level guardrails ──────────────────────────────────────────────────
 
 test('the playbooks limiter derives its key from req.tenant and nothing else', () => {
-  const start = API_CODE.indexOf('function tenantIdFromAuthContext');
+  const start = API_CODE.indexOf('function tenantIdFromServerContext');
   const end = API_CODE.indexOf('const playbooksSharedLimiter');
   assert.ok(start > -1 && end > start, 'key-derivation region must be locatable');
   const keyRegion = API_CODE.slice(start, end);
@@ -171,8 +174,7 @@ test('the playbooks limiter derives its key from req.tenant and nothing else', (
   // has no authenticated-caller exemption.
   assert.doesNotMatch(API_CODE, /_RL_PATHS/);
   assert.doesNotMatch(API_CODE, /allowFallback/);
-  // Both limiters must carry the fail-closed and atomicity opt-ins.
-  assert.equal((API_CODE.match(/serialize:\s*true/g) || []).length, 2);
+  // Both limiters must keep the fail-closed opt-in.
   assert.equal((API_CODE.match(/failClosed:\s*true/g) || []).length, 2);
 });
 
@@ -326,22 +328,29 @@ test('429 contract: rate_limited plus an integer Retry-After matching the body',
   lim.reset();
 });
 
-test('serialize keeps concurrent admissions atomic when Redis is unreachable', async () => {
-  redisStub.configured = true; // REDIS_URL set...
-  redisStub.reset();           // ...but every INCR fails, so the await is real
+// The store increments before it compares, so overlapping requests get distinct
+// totals and cannot both observe spare capacity. This replaces the admission
+// lock the hand-rolled limiter needed. The stub models "REDIS_URL is set but
+// every INCR fails", which puts a real await in front of the process-local
+// counter — the widest race window the limiter can face.
+test('a concurrent burst cannot exceed max when Redis is unreachable', async () => {
+  redisStub.configured = true;
+  redisStub.reset();
   try {
     const max = 3;
     const burst = 12;
     const lim = createRateLimiter({
-      name: 'atomic', windowMs: 60_000, max, keyFn: () => 'playbooks|42', serialize: true, failClosed: true,
+      name: 'atomic', windowMs: 60_000, max, keyFn: () => 'playbooks|42', failClosed: true,
     });
     const results = await Promise.all(Array.from({ length: burst }, () => hit(lim, {})));
     const allowed = results.filter((r) => r.verdict === 'allowed').length;
     const denied = results.filter((r) => r.verdict === 'denied').length;
-    assert.equal(allowed, max, `serialized limiter must admit exactly ${max}, got ${allowed}`);
+    assert.equal(allowed, max, `limiter must admit exactly ${max}, got ${allowed}`);
     assert.equal(denied, burst - max);
-    // One verdict in flight at a time is what makes the check-then-act atomic.
-    assert.equal(redisStub.peakInFlight, 1);
+    // Requests genuinely overlapped, so the result above is not an artefact of
+    // the burst quietly serialising itself.
+    assert.ok(redisStub.peakInFlight > 1,
+      `expected overlapping store calls, peak was ${redisStub.peakInFlight}`);
     lim.reset();
   } finally {
     redisStub.configured = false;
@@ -349,19 +358,49 @@ test('serialize keeps concurrent admissions atomic when Redis is unreachable', a
   }
 });
 
-test('the burst harness really is concurrent (control for the atomicity test)', async () => {
-  redisStub.configured = true;
+test('a Redis outage degrades to the process-local counter rather than removing the limit', async () => {
+  redisStub.configured = true; // REDIS_URL set, every INCR fails
   redisStub.reset();
   try {
-    // Same burst against a limiter without `serialize`: several verdicts overlap.
-    // Asserted so the atomicity test above cannot pass by never racing at all.
     const lim = createRateLimiter({
-      name: 'control', windowMs: 60_000, max: 3, keyFn: () => 'playbooks|43',
+      name: 'degrade', windowMs: 60_000, max: 2, keyFn: () => 'playbooks|44', failClosed: true,
     });
-    await Promise.all(Array.from({ length: 12 }, () => hit(lim, {})));
-    assert.ok(redisStub.peakInFlight > 1, `expected overlapping verdicts, peak was ${redisStub.peakInFlight}`);
+    assert.equal((await hit(lim, {})).verdict, 'allowed');
+    assert.equal((await hit(lim, {})).verdict, 'allowed');
+    const denied = await hit(lim, {});
+    assert.equal(denied.verdict, 'denied', 'an unreachable Redis must not become unlimited');
+    assert.equal(denied.body.error, 'rate_limited');
+    assert.ok(redisStub.peakInFlight >= 1, 'Redis should have been attempted first');
     lim.reset();
   } finally {
+    redisStub.configured = false;
+    redisStub.reset();
+  }
+});
+
+test('Redis is the counter when it is reachable', async () => {
+  // Model a working Redis: the limiter must honour its count and not consult a
+  // process-local bucket, which is what makes the limit correct across instances.
+  const counts = new Map();
+  redisStub.configured = true;
+  const prevIncr = redisStub.impl;
+  redisStub.impl = async (key) => {
+    const n = (counts.get(key) || 0) + 1;
+    counts.set(key, n);
+    return n;
+  };
+  try {
+    const lim = createRateLimiter({
+      name: 'redis', windowMs: 60_000, max: 2, keyFn: () => 'playbooks|45', failClosed: true,
+    });
+    assert.equal((await hit(lim, {})).verdict, 'allowed');
+    assert.equal((await hit(lim, {})).verdict, 'allowed');
+    assert.equal((await hit(lim, {})).verdict, 'denied');
+    assert.deepEqual([...counts.keys()], ['rl:playbooks|45'], 'key must keep the rl: prefix');
+    assert.equal(counts.get('rl:playbooks|45'), 3);
+    lim.reset();
+  } finally {
+    redisStub.impl = prevIncr;
     redisStub.configured = false;
     redisStub.reset();
   }

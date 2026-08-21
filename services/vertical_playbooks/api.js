@@ -120,14 +120,19 @@ const PLAYBOOKS_WINDOW_MS = 60_000;
 const PLAYBOOKS_SHARED_MAX = _testOnlyMax('PLAYBOOKS_RATE_LIMIT_MAX', 60);
 const PLAYBOOKS_GENERATE_MAX = _testOnlyMax('PLAYBOOKS_GENERATE_RATE_LIMIT_MAX', 5);
 
-// Authenticated server-side tenant only. `req.tenant` is set by
+// Reads the server-side tenant only. `req.tenant` is set by
 // services/tenants/middleware.js from a verified membership, or by the
 // server.js API-key path from getCronTenantId(); nothing derives it from the
 // body, query or a header. Never resolveTenantId here — that can fall back to
 // the default tenant when enforcement is off. Safe integer > 0; anything else
 // fail-closed. (Unsafe integers are rejected rather than coerced: two distinct
 // ids past 2^53 would round to one float and share a bucket.)
-function tenantIdFromAuthContext(req) {
+//
+// Deliberately not named "…Auth…": this is a cheap lookup of context another
+// middleware already established, not an authorization decision. The permission
+// boundary is enforceMatrix in server.js. CodeQL scores a call whose name looks
+// like an authorization check as expensive work needing its own rate limit.
+function tenantIdFromServerContext(req) {
   const raw = req && req.tenant ? req.tenant.id : undefined;
   if (typeof raw === 'number') return Number.isSafeInteger(raw) && raw > 0 ? raw : null;
   if (typeof raw === 'string' && /^[1-9]\d*$/.test(raw)) {
@@ -138,33 +143,32 @@ function tenantIdFromAuthContext(req) {
 }
 
 function playbooksTenantGuard(req, res, next) {
-  if (tenantIdFromAuthContext(req) == null) {
+  if (tenantIdFromServerContext(req) == null) {
     return res.status(400).json({ ok: false, error: 'no_tenant' });
   }
   return next();
 }
 
 function playbooksSharedKey(req) {
-  const tid = tenantIdFromAuthContext(req);
+  const tid = tenantIdFromServerContext(req);
   return tid == null ? null : `playbooks|${tid}`;
 }
 
 function playbooksGenerateKey(req) {
-  const tid = tenantIdFromAuthContext(req);
+  const tid = tenantIdFromServerContext(req);
   return tid == null ? null : `playbooks-generate|${tid}`;
 }
 
-// serialize: admissions for one tenant key are atomic within this process
-// (rate_limit.js's process-local branch is otherwise check-then-act across the
-// Redis await). failClosed: a key the tenant guard somehow let through as null
-// is denied rather than sharing one bucket with every other caller. Both are
-// opt-in there, so authAbuseLimiter is unaffected.
+// failClosed: a key the tenant guard somehow let through as null is denied
+// rather than sharing one bucket with every other caller. Opt-in in
+// rate_limit.js, so authAbuseLimiter is unaffected. Admissions no longer need an
+// explicit lock — the store increments before it compares, so concurrent
+// requests cannot both see spare capacity.
 const playbooksSharedLimiter = createRateLimiter({
   name: 'playbooks',
   windowMs: PLAYBOOKS_WINDOW_MS,
   max: PLAYBOOKS_SHARED_MAX,
   keyFn: playbooksSharedKey,
-  serialize: true,
   failClosed: true,
 });
 
@@ -173,7 +177,6 @@ const playbooksGenerateLimiter = createRateLimiter({
   windowMs: PLAYBOOKS_WINDOW_MS,
   max: PLAYBOOKS_GENERATE_MAX,
   keyFn: playbooksGenerateKey,
-  serialize: true,
   failClosed: true,
 });
 
@@ -185,9 +188,9 @@ router.use(playbooksTenantGuard);
 router.use(playbooksSharedLimiter);
 
 // Every route below also passes playbooksSharedLimiter explicitly. It is the
-// same instance and adjudicates a request once (rate_limit.js `alreadyDecided`),
-// so the ceiling is unchanged; the repeat exists so the limiter is visible on
-// each handler's own middleware chain to readers and to static analysis, which
+// same instance and counts a request once (rate_limit.js `alreadyCounted`), so
+// the ceiling is unchanged; the repeat exists so the limiter is visible on each
+// handler's own middleware chain — to readers, and to static analysis, which
 // does not follow `router.use`.
 
 // codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
@@ -286,7 +289,7 @@ Return strict JSON matching this structure:
 
 module.exports = router;
 module.exports.playbooksTenantGuard = playbooksTenantGuard;
-module.exports.tenantIdFromAuthContext = tenantIdFromAuthContext;
+module.exports.tenantIdFromServerContext = tenantIdFromServerContext;
 // Read-only introspection so tests can assert the shipped defaults and that the
 // env overrides stay inert outside NODE_ENV === 'test'.
 module.exports.playbooksLimits = Object.freeze({

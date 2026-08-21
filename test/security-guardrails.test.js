@@ -206,12 +206,21 @@ test('the guardrails doc records the playbooks rate limit as remediated', () => 
   assert.match(flat, /There is no fallback to a default tenant, to the client IP, or to an `unknown` bucket/);
   assert.match(flat, /This is the intended fail-closed trade-off, not an auth bypass/);
 
-  // The CodeQL check can stay red after a real control ships. An operator
-  // deciding whether to dismiss the alert needs to read why.
-  assert.match(flat, /\*\*The control is shipped; the query still does not model `createRateLimiter`\.\*\*/);
-  assert.match(flat, /the alert is a \*\*visibility gap, not a missing control\*\*/);
-  assert.match(flat, /dismissing the alert in the code-scanning UI remains available and is an operator action/);
-  assert.doesNotMatch(flat, /whether it recognises a router-level `use\(\)` limiter is unverified/);
+  // The factory is built on express-rate-limit so the query can see it. A
+  // reader must not come away thinking that is a second policy engine, and an
+  // operator must know UI dismissal is now the fallback rather than the answer.
+  assert.match(flat, /\*\*`js\/missing-rate-limiting` fires on a control it cannot see\.\*\*/);
+  assert.match(flat, /Inline `\/\/ codeql\[\.\.\.\]` comments do \*\*not\*\* clear default setup/);
+  assert.match(flat, /\*\*implemented with `express-rate-limit`\*\* and returns that instance directly/);
+  assert.match(flat, /This is \*\*not a second policy\*\*/);
+  assert.match(flat, /\*\*UI dismissal is no longer the primary answer\*\*/);
+  // Claims that stopped being true when the factory changed.
+  assert.doesNotMatch(flat, /without pulling in `express-rate-limit`/);
+  assert.doesNotMatch(flat, /the query still does not model `createRateLimiter`/);
+  assert.doesNotMatch(flat, /both playbooks limiters pass `serialize: true`/);
+
+  // authAbuseLimiter shares the factory; the doc has to keep saying it is intact.
+  assert.match(flat, /`authAbuseLimiter\(\)` is unchanged: still 30 attempts \/ 15 minutes keyed on IP \+ path/);
 
   // Residuals.
   assert.match(flat, /Per-tenant AI \*spend\* caps are still not implemented/);

@@ -1492,9 +1492,10 @@ code and a running server rather than taken from the report.
 ### What is enforced now
 
 - **Limiter:** `createRateLimiter` from `services/security/rate_limit.js` — the
-  same primitive `authAbuseLimiter()` uses. **Not** `server.js`'s `_RL_PATHS`
-  (IP + path, POST-only, no authenticated-caller exemption) and **not** the
-  orchestrator's `services/agent_orchestrator/limits.js`.
+  same primitive `authAbuseLimiter()` uses, now implemented on top of
+  `express-rate-limit` (see the CodeQL subsection). **Not** `server.js`'s
+  `_RL_PATHS` (IP + path, POST-only, no authenticated-caller exemption) and
+  **not** the orchestrator's `services/agent_orchestrator/limits.js`.
 - **Key:** `playbooks|<tenant_id>` for the whole prefix, plus
   `playbooks-generate|<tenant_id>` on `POST /generate-custom`. The tenant id
   comes **only** from `req.tenant.id`, which `services/tenants/middleware.js`
@@ -1524,13 +1525,16 @@ code and a running server rather than taken from the report.
   generate cap runs before the OpenAI call and before both `INSERT`s.
 - **429 contract:** `{ ok:false, error:'rate_limited', retryAfterSec }` with a
   `Retry-After` header carrying the same value as bare integer seconds (not an
-  HTTP date).
-- **Atomic admissions:** both playbooks limiters pass `serialize: true`, which
-  funnels verdicts for one key through a promise chain inside
-  `rate_limit.js`. Without it the process-local branch is check-then-act across
-  the Redis `await`, and two concurrent requests can both observe spare capacity.
-  `serialize` and `failClosed` are **opt-in and default to false**, so
-  `authAbuseLimiter()` is unchanged.
+  HTTP date). `standardHeaders` and `legacyHeaders` are both **off**, so no
+  response advertises the policy or the caller's remaining headroom — responses
+  are byte-identical to the hand-rolled limiter this replaced.
+- **Atomic admissions:** the store increments before the middleware compares
+  against the limit, so concurrent requests receive distinct totals and cannot
+  both observe spare capacity. Redis `INCR` is atomic; the process-local
+  fallback bumps its counter with no `await` in between. The earlier hand-rolled
+  limiter needed an explicit admission lock because it was check-then-act across
+  the Redis `await`; that lock is gone, and a concurrent-burst test still
+  asserts a burst of 12 against a max of 3 admits exactly 3.
 
 `GET /list` and `GET /:vertical` serve the global system catalog and previously
 needed no tenant, so they now answer `400 no_tenant` for an authenticated caller
@@ -1541,50 +1545,73 @@ requires `manage.playbook.use`. The practical exposure is an `INFOGENIE_API_KEY`
 caller on a deployment with no default tenant — the case `server.js` already logs
 as `[apikey] no default tenant resolvable`.
 
-### The CodeQL check after the control shipped
+### The CodeQL check, and why the factory uses `express-rate-limit`
 
-**The control is shipped; the query still does not model `createRateLimiter`.**
-On PR #83 the `Analyze (javascript-typescript)` job passes and the separate
-`CodeQL` results check stayed red with three new high-severity
-`js/missing-rate-limiting` alerts *after* the limiter landed.
-`js/missing-rate-limiting` recognises a small set of known limiter packages
-(`express-rate-limit` and friends); it does not recognise this repository's own
-`createRateLimiter`, and it does not follow a limiter installed with
-`router.use()` back to the individual handlers. So the alert is a **visibility
-gap, not a missing control** — the same conclusion PR #82 reached, except that
-this time the limiter genuinely exists.
+**`js/missing-rate-limiting` fires on a control it cannot see.** The query's
+`RateLimitingMiddleware` class recognises a fixed list of packages —
+`express-rate-limit`, `express-brute`, `express-limiter`,
+`rate-limiter-flexible`, `fastify-rate-limit` — and nothing else. A correct
+hand-rolled limiter is invisible to it. Two rounds on PR #83 confirmed this the
+hard way: after the limiter shipped the check reported three alerts, and after
+the limiter was additionally passed as an explicit argument on every route it
+reported seven, while `Analyze (javascript-typescript)` passed both times.
 
-Two things close the gap without adding a second limiter, without pulling in
-`express-rate-limit`, and without touching `_RL_PATHS`:
+Inline `// codeql[...]` comments do **not** clear default setup. They only
+populate SARIF suppression entries for a `dismiss-alerts` workflow, which this
+repository does not run.
+
+So `createRateLimiter` is now **implemented with `express-rate-limit`** and
+returns that instance directly, with no wrapper function, so CodeQL's type
+tracking follows it from the factory through `const lim = createRateLimiter(...)`
+into `router.get(path, lim, handler)`. This is **not a second policy** and not a
+dummy limiter parked beside a real one:
+
+- There is exactly one limiter per bucket. `express-rate-limit` supplies the
+  window bookkeeping that `rate_limit.js` used to implement by hand; every
+  policy decision — the keys, the maxima, the fail-closed behaviour, the 429
+  body, the Redis store — is still ours.
+- The store is `RedisOrMemoryStore` in `rate_limit.js`, which uses the existing
+  `services/infra/redis.js` `redisIncr` under the same `rl:` key prefix and
+  degrades to the package's `MemoryStore` when `REDIS_URL` is unset or Redis is
+  unreachable. Behaviour is unchanged from the hand-rolled version.
+- `authAbuseLimiter()` is unchanged: still 30 attempts / 15 minutes keyed on
+  IP + path, still `Retry-After: 900`, still fail-open when Redis errors, and it
+  opts into none of the playbooks-only settings.
+- Responses gain nothing. `standardHeaders` and `legacyHeaders` are off, so no
+  `RateLimit-*` or `X-RateLimit-*` header appears on any response.
+
+Two supporting changes exist for the same reason:
 
 - **`playbooksSharedLimiter` is passed explicitly on all five route
   registrations**, in addition to the binding `router.use()` mount, so the
-  limiter sits on each handler's own middleware chain where the query looks.
-  It is the same instance, and `rate_limit.js` marks a request it has already
-  adjudicated (`alreadyDecided`), so the second pass spends no token and the
-  60/60 s ceiling is unchanged. The `router.use()` mount stays because it is the
-  one that also covers unmatched paths under the prefix.
-- **An inline `// codeql[js/missing-rate-limiting]` disposition sits directly
-  above each of the five handlers**, naming `createRateLimiter` and the
-  `req.tenant.id` key. Inline dispositions are how this repository answers
-  default-setup scanning: there is no `.github/workflows` CodeQL configuration
-  to scope or filter the query with, so the disposition has to live in the
-  source. Each one is pinned to this single query id — no bare `codeql[...]`
-  that would silence unrelated findings in the same file.
+  limiter is on each handler's own middleware chain where the query looks. It is
+  the same instance and counts a request at most once (`alreadyCounted` drives
+  the package's `skip`), so the 60/60 s ceiling is unchanged. The `router.use()`
+  mount stays because it is the one that also covers unmatched paths under the
+  prefix.
+- **The guard helper is named `tenantIdFromServerContext`, not
+  `…FromAuthContext`.** CodeQL scored the old name as an `AuthorizationCall` —
+  expensive work deserving its own limit — which is what produced the two alerts
+  on `playbooksTenantGuard`. The function only reads context another middleware
+  already established; the authorization boundary is `enforceMatrix`.
 
-Whether GitHub's **default setup** honours inline suppression comments is not
-verifiable from this environment (the code-scanning API answers `403 Resource not
-accessible by integration` for this token, so the alert list cannot be read back
-after a run). If the check stays red, **dismissing the alert in the code-scanning
-UI remains available and is an operator action** — the disposition comments and
-this section are the justification an operator needs to do that safely. What must
-not happen is a second limiter, or `/api/playbooks` being added to `_RL_PATHS`,
-being introduced to satisfy a scanner: see below for why that would make the
-product worse.
+The inline `// codeql[js/missing-rate-limiting]` dispositions above each handler
+are kept as documentation for a reader, pinned to that one query id so they can
+never silence an unrelated finding. They are no longer the mechanism: the
+modeled middleware is.
 
 `test/playbooks-rate-limit-security.test.js` asserts that all five registrations
-still pass the limiter and still carry the disposition, so neither can be dropped
-in a later refactor without a test failing.
+keep the limiter argument and the disposition, so neither can be dropped in a
+later refactor without a test failing.
+
+**Operator note.** With the limiter now modeled, the check is expected to go
+green and **UI dismissal is no longer the primary answer**. It remains available
+if the query still disagrees — this environment cannot verify the outcome, since
+the code-scanning API answers `403 Resource not accessible by integration` for
+this token and no CodeQL CLI is installed, so the alert list cannot be read back
+after a run. What must not happen is a *second* limiter, or `/api/playbooks`
+being added to `_RL_PATHS`, being introduced to satisfy a scanner: see below for
+why that would make the product worse.
 
 ### Why the fix did not go into `_RL_PATHS`
 
@@ -1662,13 +1689,15 @@ surfaces, and this branch adds none.
   loop. That amplification is now bounded at 60 attempts per tenant per minute
   instead of unbounded, but the underlying catalog-poisoning item recorded above
   still needs its housekeeping data decision.
-- **The alert may still need dismissal.** `js/missing-rate-limiting` does not
-  model `createRateLimiter`, so the explicit per-route mount and the inline
-  dispositions described above are a best effort at making the control visible
-  to the query, not a guarantee that the check turns green. If it stays red,
-  dismissing it in the code-scanning UI is an operator action — there is no
-  `.github/workflows` CodeQL config to scope the query (scanning runs from
-  GitHub default setup).
+- **The scanner outcome is not verifiable from here.** Building the factory on
+  `express-rate-limit` should make the query a true negative, but neither the
+  alert list nor a local CodeQL run is available in this environment. If the
+  check stays red, dismissing it in the code-scanning UI is an operator action —
+  there is no `.github/workflows` CodeQL config to scope the query (scanning runs
+  from GitHub default setup).
+- **`express-rate-limit` is now a runtime dependency.** It is pinned at
+  `^7.5.1`; v8 is ESM-only and `require()` from this CommonJS codebase is not
+  verified against it, so a major bump needs checking rather than accepting.
 
 Coverage: `test/playbooks-rate-limit.test.js` (HTTP: 429 contract, per-tenant
 isolation, spoofed body/query/header, concurrent burst, API-key caller,
