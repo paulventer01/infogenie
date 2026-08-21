@@ -301,6 +301,51 @@ test('every ON CONFLICT target on a rewritten-unique table includes tenant_id', 
     offenders.join('\n  '));
 });
 
+// ── 4. MIXED tables: a by-id lookup must constrain ownership ────────────────
+// Rule 2 keeps custom rows out of the shared key space on the way IN. This is
+// the read side: in a MIXED table the caller-supplied primary key spans both
+// key spaces, so `WHERE id=$1` alone resolves the shared catalog AND every other
+// workspace's custom rows. That was a live cross-tenant disclosure in
+// playbooks:activate. A correct lookup names tenant_id — either
+// `tenant_id IS NULL` for a catalog-only read, or an ownership arm such as
+// `(is_system=TRUE AND tenant_id IS NULL) OR tenant_id=$2`.
+//
+// test/tenant-closeout-isolation.test.js proves the 404 against live Postgres,
+// but it is gated on DATABASE_URL and therefore skipped by the no-DB gate this
+// file runs in. This keeps the predicate covered there too.
+test('a by-id read of a MIXED table constrains tenant ownership', () => {
+  const idParam = /\bid\s*=\s*\$\d/i;
+  const offenders = [];
+  for (const full of collectFiles()) {
+    const src = fs.readFileSync(full, 'utf8');
+    const rel = path.relative(REPO_ROOT, full).split(path.sep).join('/');
+    for (const table of MIXED_TABLES.keys()) {
+      const re = new RegExp(`\\b(?:FROM|JOIN|UPDATE)\\s+${table}\\b`, 'gi');
+      let m;
+      while ((m = re.exec(src))) {
+        const lineStart = src.lastIndexOf('\n', m.index) + 1;
+        if (/(?:^|\s)\/\//.test(src.slice(lineStart, m.index))) continue;
+        const lit = enclosingLiteral(src, m.index);
+        if (!lit) continue;
+        // Only statements that resolve a row by caller-supplied id are judged;
+        // a catalog listing has no id predicate and cannot be pivoted.
+        if (!idParam.test(lit.text)) continue;
+        if (/\btenant_id\b/.test(lit.text)) continue;
+        offenders.push(`${rel}:${src.slice(0, m.index).split('\n').length} → ` +
+          `${table} resolved by id with no tenant_id predicate`);
+      }
+    }
+  }
+  assert.deepStrictEqual(offenders, [],
+    `These statements address a MIXED table by a caller-supplied id without ` +
+    `naming tenant_id. Because tenant_id is nullable there, the id space is ` +
+    `shared between the global catalog and every workspace's custom rows, so the ` +
+    `lookup reaches another tenant's row. Constrain it to ` +
+    `(is_system=TRUE AND tenant_id IS NULL) OR tenant_id=$n, and return 404 — not ` +
+    `403 — so the response does not confirm the row exists:\n  ` +
+    offenders.join('\n  '));
+});
+
 // ── Guard the guards ───────────────────────────────────────────────────────
 // Both derived sets must be non-empty, or the audits above pass vacuously — the
 // exact failure mode that let these tables ship unaudited in the first place.
