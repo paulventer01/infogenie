@@ -1706,6 +1706,189 @@ generate-custom ordering) and `test/playbooks-rate-limit-security.test.js`
 input, shipped defaults, `serialize` atomicity under an unreachable Redis, and
 `authAbuseLimiter` regression).
 
+## Advertising orchestrator — research evidence contracts (PR 3A)
+
+PR 3A adds four tenant-scoped tables (`orchestrator_research_runs`,
+`orchestrator_research_competitors`, `orchestrator_research_evidence`,
+`orchestrator_research_evidence_assets`) and the shared contract modules
+(`research_contracts.js`, `research_errors.js`, `research_validate.js`,
+`research_connector.js`) that PR3B/C/D connectors and PR3E persistence must
+use. There is **no HTTP route, no `ROUTE_GROUPS` entry and no fetch sink** in
+PR 3A, so it adds no permission surface and no SSRF surface; a test asserts all
+three absences, plus that the three connector files do not exist yet.
+
+### Tenant isolation of the PR 3A schema
+
+Reviewed `services/agent_orchestrator/schema.js` as landed. **No DDL change was
+required.**
+
+- All four tables carry `tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON
+  DELETE CASCADE` and are keyed `PRIMARY KEY (tenant_id, id)`, so an id is only
+  ever resolvable inside one tenant.
+- Every parent reference is a **composite** FK on `(tenant_id, …)`: runs →
+  `orchestrator_workflows (tenant_id, id)` and `orchestrator_approvals
+  (tenant_id, id)`, competitors and evidence → runs, evidence → competitors,
+  assets → evidence. A row cannot point at another tenant's workflow, approval,
+  run, competitor or evidence item, and `supersedes_id` is bound by trigger to
+  the same tenant *and* the same run.
+- Every unique key leads with `tenant_id` — `(tenant_id, idempotency_key)`,
+  `(tenant_id, research_run_id, platform, dedup_key)`, `(tenant_id,
+  research_run_id, platform, provider_advertiser_id)`, `(tenant_id,
+  research_run_id, dedup_key)`, `(tenant_id, evidence_id, storage_ref)` — so the
+  same public advertiser id or ad id may exist for two tenants and neither can
+  see or collide with the other's evidence. There are no bare natural-key
+  uniques.
+- The approval FK is `NO ACTION DEFERRABLE INITIALLY DEFERRED` rather than
+  `CASCADE`, so deleting an approval cannot silently delete research history;
+  only the tenant cascade removes these rows.
+- Validators never read `req` and take no caller tenant. `tenantId` comes from
+  authenticated context as an argument; a payload carrying a different
+  `tenant_id` fails `validation_failed` rather than winning. That is asserted
+  for runs, competitors, evidence, connector requests and connector pages.
+
+### Approval binding
+
+The `orchestrator_research_runs_approval_bind` trigger fires `BEFORE INSERT OR
+UPDATE`: a run cannot be inserted without a `research_execution` approval whose
+`decision` is `approved`, in the same tenant, on the same `workflow_id`, at the
+same `object_version`, whose `approved_platforms` array is non-empty and
+**contains every** requested platform. A missing, wrong-gate, rejected,
+stale-version or narrower-platform approval raises. The identity-immutable
+trigger then freezes `id`, `tenant_id`, `workflow_id`, `approval_id`,
+`approval_object_version`, `contract_version`, `requested_platforms`,
+`idempotency_key`, `research_brief`, `search_parameters` and `created_at`, so an
+approved run cannot be re-pointed at a different workflow or widened to another
+platform after the fact. Only state, continuation and error/timestamp columns
+move.
+
+### Provenance is append-only
+
+Evidence, competitor and asset rows refuse `UPDATE` outright and refuse `DELETE`
+while the parent run (or evidence) still exists — a correction is a new INSERT
+carrying `supersedes_id`, never a rewrite. `evidence_hash` must equal SHA-256
+over the frozen canonical subset (`platform`, `source_type`,
+`provider_external_id`, `canonical_source_url`, `headline`, `body_text`,
+`excerpt`, `advertiser_name`, `creative_format`); a caller-supplied hash that
+disagrees is rejected, and the default `dedup_key` is that hash.
+
+### PII, credential and raw-payload minimization
+
+There is no raw-payload column: no `payload`, `raw_response`, `body`, `cookie`,
+`email`, `phone` or `BYTEA` column exists on any of the four tables, and assets
+store a locator plus checksum, never bytes. `provider_metrics`,
+`search_parameters` and `continuation_state` are the only free-form JSONB, each
+bounded by both a CHECK and a validator limit (8192 / 8192 / 4096 bytes) that
+**fail closed** — oversize is rejected, never truncated, because clipping would
+put half a secret in the row.
+
+Hardened during this review, because each of these was accepted before it:
+
+- **Forbidden keys are matched after normalization** (lowercase, separators
+  removed), so `access-token`, `Access Token` and `accessToken` are the same
+  rejected key. The list previously matched exact snake_case only, so those
+  variants reached `provider_metrics` and `continuation_state` unchanged.
+- **The reject list now covers the rest of the credential and identity
+  vocabulary**: `api_key`, `x_api_key`, `client_secret`, `secret`, `token`,
+  `id_token`, `session`/`session_id`/`session_token`, `bearer`, `set_cookie`,
+  `password`/`passwd`/`pwd`/`passphrase`, `credential(s)`, `private_key`,
+  `signing_key`, `vault`, plus `username`, `user_id`, `first_name`,
+  `last_name`, `full_name`, `phone_number`, `address`, `ip`/`ip_address`,
+  `ssn`, `national_id`, `date_of_birth`/`dob`.
+- **Values are scanned, not just key names.** Every stored string — evidence
+  text, `research_brief`, `error_code`, `error_message`, connector `message`,
+  cursors, URLs and every string inside the JSONB blobs — is refused if it
+  matches a credential shape (`Authorization`, `access_token`/`refresh_token`,
+  `Bearer`/`Basic` with a long value, a dotted JWT, a PEM private-key header,
+  `Cookie:`/`Set-Cookie`, `api_key=`, `client_secret=`, `password=`,
+  `sk-…`, `infogenie.sid`, or userinfo in a URL). Previously only the producer
+  helper `research_errors.sanitizeConnectorMessage` scanned anything, and the
+  ingest validators did not call it — so a connector error page whose `message`
+  carried `Bearer <jwt>` validated cleanly and would have been written to
+  `orchestrator_research_runs.error_message`.
+- **Honesty flags are rejected at any depth.** `verified`,
+  `independently_verified` and `fact` were refused only on the top level of
+  `provider_metrics`, so a nested `{ inner: { verified: true } }` passed.
+- **Validated payloads are detached and deep-frozen.** `continuation_state` and
+  `provider_metrics` were returned by reference inside a shallow `Object.freeze`,
+  so a connector could add a forbidden key after validation and before the PR3E
+  INSERT into an append-only table.
+
+The scan deliberately fails closed and rejects the whole object rather than
+masking, so a message that genuinely needs the word `token:` in it has to be
+rewritten by the connector author. A message that only mentions credentials
+("connector credentials rejected") still stores.
+
+### URL handling — syntactic only, no fetch sink
+
+URL checks here are **syntactic**: `https://` only, ≤2048, printable ASCII, no
+userinfo, no `data:`/`javascript:`/`http:`, and no credential material in the
+query. Nothing in PR 3A dereferences a URL, and no DNS lookup happens at this
+layer. **PR3E must call `services/security/safe_url.js` before any fetch** —
+that module owns the private/loopback/metadata denylist, the port pin, the
+raw-authority encoding checks and the DNS pinning.
+
+Two URL properties were tightened here. The validator stored the raw string
+while validating a parsed copy, and `new URL` silently strips tabs and newlines
+and rewrites backslash authorities — so `https://evil.example\t/x` and
+`https:\\evil.example/x` were accepted and stored in a form that a later parser
+could read differently from the one the check approved. Both are now refused,
+along with non-ASCII (IDN homograph) forms. `storage_ref` is a locator, not a
+fetch target: it now takes only a scheme-less object key or an `https:` /
+`research:` scheme, with protocol-relative refs and userinfo refused. It
+previously accepted `file:///etc/passwd`, `ftp://…`, `//host/…` and
+`https://user@host/…`, which would have become a file-read or SSRF surface for
+whatever resolves the ref.
+
+### Accepted residuals (PR 3A)
+
+- **There is **no retention sweeper**.** `expires_at` and `retention_class`
+  (`standard` | `short` | `legal_hold`) exist on evidence and assets and are
+  written, but nothing deletes an expired row, and nothing reports on overdue
+  ones. `orchestrator_research_runs` and `orchestrator_research_competitors`
+  have neither column, so a run's `research_brief` and `search_parameters` are
+  retained until the workflow or tenant is deleted. Evidence rows are
+  UPDATE-immutable and DELETE-refusing while the run exists, so the sweeper PR
+  has to delete the run (cascade) or relax the trigger for an expiry path —
+  a design decision, not a patch.
+- **`evidence_hash` is a content fingerprint, not a signature.** It is an
+  unkeyed SHA-256 over the content subset and does not cover `tenant_id`,
+  `metrics_kind`, `provenance_method`, `connector_id` or `captured_at`. It
+  detects a rewrite of the canonical content (and the immutability triggers
+  refuse one anyway); it does not attest that the evidence came from the claimed
+  provenance method, and principal-level DB write access could still insert a
+  new row with the same content and a different `provenance_method`.
+- **Evidence free text is public ad copy, and public ad copy can legitimately
+  contain a business email or phone number.** The controls here reject *keyed*
+  PII fields and private-user identity keys; they do not attempt to redact a
+  phone number a competitor printed in its own ad. Comment threads, commenter
+  identities and user profiles are rejected outright.
+- **`search_parameters` and `continuation_state` on the run row are size-checked
+  but not type-checked in the DDL.** `provider_metrics` has `jsonb_typeof(…) =
+  'object'`; the other two only have `octet_length` CHECKs, so a direct SQL
+  writer could store a JSON array. The validators require an object, so this is
+  reachable only by bypassing them; a `jsonb_typeof` CHECK on both columns is
+  owed to Database in a later PR.
+- **The producer helper `connectorErrorPage` copies `extra.continuation_state`
+  unvalidated.** It is the emit-side convenience; the ingest side
+  (`assertConnectorError`) is what validates, and only validated output is
+  persisted. A connector that logs its own return value before handing it over
+  is outside this contract.
+- **The idempotency key is tenant-scoped, not proof of a single run.** The
+  partial unique index `(tenant_id, workflow_id, contract_version) WHERE state IN
+  ('pending','running')` allows exactly one live run per workflow, but completed
+  history is unbounded — there is no per-tenant cap on research runs or evidence
+  rows in PR 3A, so volume control is PR3E's rate/credit work, not a schema
+  guarantee.
+
+Coverage: `test/advertising-orchestrator-research-schema.test.js` (15 DDL tests
+against real Postgres: tenant FK/PK shape, composite-FK cross-tenant rejection,
+approval binding, identity immutability, evidence UPDATE refusal, forbidden
+columns, tenant cascade) and
+`test/advertising-orchestrator-research-contracts.test.js` plus
+`test/security-guardrails.test.js` (validator-level tenant authority, credential
+scanning, normalized forbidden keys, locator schemes, detachment, no
+route/connector/fetch).
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`

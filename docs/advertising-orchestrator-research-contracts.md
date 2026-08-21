@@ -28,10 +28,17 @@ Validators do not read `req`. Tenant authority is the `tenantId` argument
 from authenticated context. If `input.tenant_id` is present and differs,
 validation fails. Caller-supplied tenant is never an override.
 
-URL checks here are **syntactic HTTPS only** (length ≤2048, reject `http:`,
-`javascript:`, `data:`, credentials-in-URL). Do **not** call
+URL checks here are **syntactic HTTPS only**: a literal `https://` prefix,
+length ≤2048, printable ASCII only (no tabs, newlines, backslash authorities or
+IDN forms — the stored string must be the string that was validated), no
+userinfo, and no credential material in the query. Do **not** call
 `assertSafeHttpsUrl` (DNS) from this layer. **PR3E fetch sinks must use**
 `services/security/safe_url.js`.
+
+`storage_ref` is a locator, not a fetch target: a scheme-less object key, or
+one of `research:` / `https:` (`research_contracts.STORAGE_REF_SCHEMES`).
+Protocol-relative refs, userinfo and every other scheme (`file:`, `ftp:`, `s3:`,
+`data:`) are refused. Adding a scheme is a Security review.
 
 ## Connector file ownership
 
@@ -206,17 +213,38 @@ the parent run exists (schema triggers). Replacement is a new INSERT with
 
 ## PII / credential / raw-payload exclusions
 
-These keys are **rejected** (not stored, not stripped) at any nesting level:
+`research_contracts.FORBIDDEN_KEYS` is **rejected** (not stored, not stripped)
+at any nesting level. Keys are compared with case and separators removed, so
+`access-token`, `Access Token` and `accessToken` are the same rejected key. The
+list covers raw payloads (`raw_payload`, `payload`, `raw`, `raw_response`),
+credentials (`access_token`, `refresh_token`, `authorization`, `bearer`,
+`cookie(s)`, `set_cookie`, `token(s)`, `id_token`, `session*`, `api_key`,
+`x_api_key`, `client_secret`, `secret(s)`, `password`/`passwd`/`pwd`/
+`passphrase`, `credential(s)`, `private_key`, `signing_key`, `vault`),
+private identities (`email(s)`, `phone`, `telephone`, `phone_number`,
+`comment(s)`, `commenter`, `user_profile`, `private_profile`, `username`,
+`user_name`, `user_id`, `first_name`, `last_name`, `full_name`, `address`,
+`ip`, `ip_address`, `ssn`, `national_id`, `date_of_birth`, `dob`) and binaries
+(`media_bytes`, `binary`, `buffer`, `image_base64`, `video_base64`,
+`data_uri`).
 
-`raw_payload`, `payload`, `raw`, `raw_response`, `access_token`,
-`refresh_token`, `authorization`, `cookie`, `cookies`, `email`, `emails`,
-`phone`, `telephone`, `comment`, `comments`, `commenter`, `user_profile`,
-`private_profile`, `media_bytes`, `binary`, `buffer`, `image_base64`,
-`video_base64`, `data_uri`.
+Values are scanned as well as key names. Any stored string — evidence text,
+`research_brief`, `error_code`, `error_message`, connector `message`, cursors,
+URLs and every string inside `search_parameters` / `continuation_state` /
+`provider_metrics` — is rejected when it matches a credential shape
+(`research_errors.containsCredentialMaterial`: `Authorization`,
+`access_token`/`refresh_token`, `Bearer`/`Basic` with a long value, a dotted
+JWT, a PEM private-key header, `Cookie:`/`Set-Cookie`, `api_key=`,
+`client_secret=`, `password=`, `sk-…`, `infogenie.sid`, userinfo in a URL).
+Rejection is deliberate: masking or truncating would store part of a secret.
 
 Also rejected: `Buffer`, `Uint8Array` / `ArrayBuffer`, `data:` URIs, and
 oversized base64 blobs pretending to be media. Unknown **non-forbidden**
 provider fields are discarded; required fields are kept.
+
+Validated objects are detached from the caller's JSON (no shared references)
+and deep-frozen, so a connector cannot add a key after validation and before
+the PR3E INSERT.
 
 ## Metrics honesty
 

@@ -25,7 +25,9 @@ const {
   stripUnknown,
   assertNoForbiddenFields,
   assertNoBinaryDeep,
+  assertNoCredentialMaterial,
   sanitizeEvidenceText,
+  deepFreeze,
 } = require('./research_validate');
 
 /**
@@ -119,6 +121,7 @@ function optionalCursor(v) {
   const s = v.trim();
   if (s.length === 0) return null;
   if (s.length > C.LIMITS.cursor.max) vf('cursor', 'oversized');
+  assertNoCredentialMaterial(s, 'cursor');
   return s;
 }
 
@@ -151,6 +154,7 @@ function assertPageInfo(raw) {
     next_cursor = o.next_cursor.trim();
     if (next_cursor.length > C.LIMITS.cursor.max) vf('page.next_cursor', 'oversized');
     if (next_cursor.length === 0) next_cursor = null;
+    assertNoCredentialMaterial(next_cursor, 'page.next_cursor');
   }
   if (o.has_more === false && next_cursor != null) vf('page.next_cursor', 'must_be_null_when_done');
   if (o.has_more === true && next_cursor == null) vf('page.next_cursor', 'required_when_has_more');
@@ -271,7 +275,7 @@ function assertConnectorPage(input, opts) {
     retry_class: 'none',
     tenant_id,
   };
-  return Object.freeze(out);
+  return deepFreeze(out);
 }
 
 function assertConnectorError(input) {

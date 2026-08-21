@@ -17,6 +17,38 @@ const RETRY_CLASS_BY_FAILURE = Object.freeze({
 
 const MESSAGE_MAX = 512;
 
+// Credential shapes that must never reach a stored error message, an evidence
+// text column or a JSON blob. Named patterns require a value-bearing separator
+// so a message that merely says "credentials rejected" still survives; the
+// header, bearer, JWT, PEM and userinfo-URL forms match on their own because
+// nothing legitimate emits them. Rejecting is the whole point: a scrubber that
+// truncated or masked would put a clipped secret in the row instead.
+const CREDENTIAL_PATTERNS = Object.freeze([
+  /access_token/i,
+  /refresh_token/i,
+  /authorization/i,
+  /\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{12,}/i,
+  /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\./,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  /\bset-?cookie\b/i,
+  /\bcookies?\s*[:=]/i,
+  /\b(?:x-)?api[-_. ]?key\s*[:=]/i,
+  /\bclient[-_. ]?secret\s*[:=]/i,
+  /\b(?:id|session|access|refresh)[-_. ]?token\s*[:=]/i,
+  /\b(?:secret|token|credential|credentials|password|passwd|pwd|passphrase)\s*[:=]\s*\S/i,
+  /\bsk-[A-Za-z0-9_-]{16,}/,
+  /infogenie\.sid/i,
+  /[a-z][a-z0-9+.-]*:\/\/[^/\s@]+@/i,
+]);
+
+function containsCredentialMaterial(value) {
+  if (typeof value !== 'string' || value === '') return false;
+  for (const re of CREDENTIAL_PATTERNS) {
+    if (re.test(value)) return true;
+  }
+  return false;
+}
+
 class ConnectorError extends Error {
   constructor(code, message, extra) {
     super(message || code);
@@ -44,14 +76,7 @@ function sanitizeConnectorMessage(message) {
   if (s.length > MESSAGE_MAX) {
     throw new ConnectorError('invalid_response', 'error message exceeds 512 characters');
   }
-  const lower = s.toLowerCase();
-  if (
-    lower.includes('access_token')
-    || lower.includes('refresh_token')
-    || lower.includes('authorization')
-    || /bearer\s+[a-z0-9._\-]+/i.test(s)
-    || /https?:\/\/[^/\s]+:[^/\s]+@/i.test(s)
-  ) {
+  if (containsCredentialMaterial(s)) {
     throw new ConnectorError('invalid_response', 'error message contains credential material');
   }
   return s;
@@ -91,7 +116,9 @@ function connectorErrorPage(code, message, extra) {
 module.exports = {
   ConnectorError,
   RETRY_CLASS_BY_FAILURE,
+  CREDENTIAL_PATTERNS,
   MESSAGE_MAX,
+  containsCredentialMaterial,
   retryClassFor,
   sanitizeConnectorMessage,
   failConnector,

@@ -229,6 +229,112 @@ test('the guardrails doc records the playbooks rate limit as remediated', () => 
   assert.match(flat, /`failClosed` in `createRateLimiter` covers only the \*missing key\* case/);
 });
 
+// PR 3A ships research evidence DDL and contracts with no route, no connector
+// and no fetch. Those three absences are the reason the PR carries no SSRF or
+// permission surface, so each one is asserted rather than described: a later
+// PR that adds a live connector or a router here has to change this test, and
+// changing it is what puts the review back in front of Security.
+test('PR 3A research modules add no fetch sink, no live connector and no route group', () => {
+  const root = path.join(__dirname, '..');
+  const modules = [
+    'services/agent_orchestrator/research_contracts.js',
+    'services/agent_orchestrator/research_errors.js',
+    'services/agent_orchestrator/research_validate.js',
+    'services/agent_orchestrator/research_connector.js',
+  ];
+  for (const rel of modules) {
+    const src = fs.readFileSync(path.join(root, rel), 'utf8');
+    assert.doesNotMatch(src, /\bfetch\s*\(/, `${rel} must not call fetch`);
+    assert.doesNotMatch(
+      src,
+      /require\(\s*['"](?:https?|node:https?|node-fetch|undici|axios|got)['"]\s*\)/,
+      `${rel} must not load an HTTP client`
+    );
+    assert.doesNotMatch(src, /express|router/i, `${rel} must not expose an HTTP surface`);
+  }
+  for (const connector of ['meta_research.js', 'google_research.js', 'tiktok_research.js']) {
+    assert.equal(
+      fs.existsSync(path.join(root, 'services/agent_orchestrator/connectors', connector)),
+      false,
+      `${connector} belongs to PR3B/C/D, not PR3A`
+    );
+  }
+  const matrix = fs.readFileSync(path.join(root, 'services/tenants/permission_matrix.js'), 'utf8');
+  assert.doesNotMatch(matrix, /research/i, 'PR 3A adds no /api prefix, so it needs no ROUTE_GROUPS entry');
+});
+
+// The forbidden-key list, the credential scanner and the URL/locator shape
+// checks are the only thing standing between a provider payload and an
+// append-only evidence row that cannot be edited afterwards. Each assertion
+// below is a hole that was open when the contracts landed.
+test('PR 3A validators reject credential material, normalized forbidden keys and unsafe locators', () => {
+  const { containsCredentialMaterial } = require('../services/agent_orchestrator/research_errors');
+  const {
+    assertNoForbiddenFields,
+    assertHttpsUrl,
+    assertEvidenceAsset,
+  } = require('../services/agent_orchestrator/research_validate');
+
+  // Separator and case variants of a forbidden key are the same key.
+  for (const key of ['access-token', 'Access Token', 'accessToken', 'API_KEY', 'Set-Cookie']) {
+    assert.throws(() => assertNoForbiddenFields({ provider: { [key]: 'x' } }), /validation_failed/);
+  }
+
+  // Credential shapes, including the ones a provider error body carries.
+  for (const s of [
+    'Authorization: Bearer abc',
+    'set-cookie: sid=1',
+    'api_key=sk-live-000000',
+    'client_secret: abcdef',
+    'Basic YWRtaW46cGFzc3dvcmQ=',
+    'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig',
+    'https://user:pass@example.com/x',
+    'infogenie.sid=s%3Aabc',
+  ]) {
+    assert.equal(containsCredentialMaterial(s), true, `must flag: ${s}`);
+  }
+  // A message that only mentions credentials is still storable.
+  assert.equal(
+    containsCredentialMaterial('connector credentials rejected; do not retry with the same credentials'),
+    false
+  );
+
+  // URLs are stored raw, so a string the URL parser would rewrite is refused.
+  assert.throws(() => assertHttpsUrl('https://evil.example\t/x', 'u', { optional: false }), /validation_failed/);
+  assert.throws(() => assertHttpsUrl('https:\\\\evil.example/x', 'u', { optional: false }), /validation_failed/);
+  assert.throws(() => assertHttpsUrl('http://evil.example/x', 'u', { optional: false }), /validation_failed/);
+  assert.equal(assertHttpsUrl('https://library.tiktok.com/ads?id=1', 'u'), 'https://library.tiktok.com/ads?id=1');
+
+  const asset = (storage_ref) => assertEvidenceAsset({
+    id: 'a1',
+    tenant_id: 7,
+    evidence_id: 'e1',
+    media_type: 'other',
+    storage_ref,
+    checksum_sha256: 'a'.repeat(64),
+    captured_at: '2026-08-21T12:00:00.000Z',
+  }, { tenantId: 7 });
+  for (const bad of ['file:///etc/passwd', 'ftp://host/x', '//evil.example/x', 's3://bucket/key', 'https://user@host/x']) {
+    assert.throws(() => asset(bad), /validation_failed/, `locator must be refused: ${bad}`);
+  }
+  assert.equal(asset('research://meta/ext-1/creative.jpg').storage_ref, 'research://meta/ext-1/creative.jpg');
+});
+
+test('the guardrails doc discloses the PR 3A research evidence boundary', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.match(flat, /## Advertising orchestrator — research evidence contracts \(PR 3A\)/);
+  assert.match(flat, /\*\*No DDL change was required\.\*\*/);
+  assert.match(flat, /There is \*\*no HTTP route, no `ROUTE_GROUPS` entry and no fetch sink\*\* in PR 3A/);
+  assert.match(flat, /a run cannot be inserted without a `research_execution` approval whose `decision` is `approved`/);
+  assert.match(flat, /URL checks here are \*\*syntactic\*\*/);
+  assert.match(flat, /PR3E must call `services\/security\/safe_url\.js` before any fetch/);
+  // Residuals an operator has to plan around.
+  assert.match(flat, /There is \*\*no retention sweeper\*\*/);
+  assert.match(flat, /`evidence_hash` is a content fingerprint, not a signature/);
+  assert.match(flat, /public ad copy can legitimately contain a business email or phone number/);
+});
+
 test('originAllowed accepts matching host and localhost in non-prod', () => {
   const prev = process.env.NODE_ENV;
   process.env.NODE_ENV = 'development';

@@ -105,6 +105,8 @@ const SEARCH_PARAMETER_KEYS = Object.freeze([
   'max_results_per_page',
 ]);
 
+// Matched after key normalization (lowercase, separators removed), so
+// `access-token`, `Access Token` and `accessToken` are the same rejected key.
 const FORBIDDEN_KEYS = Object.freeze([
   'raw_payload',
   'payload',
@@ -115,15 +117,51 @@ const FORBIDDEN_KEYS = Object.freeze([
   'authorization',
   'cookie',
   'cookies',
+  'set_cookie',
+  'token',
+  'tokens',
+  'id_token',
+  'session_token',
+  'session',
+  'session_id',
+  'bearer',
+  'api_key',
+  'x_api_key',
+  'client_secret',
+  'secret',
+  'secrets',
+  'password',
+  'passwd',
+  'pwd',
+  'passphrase',
+  'credential',
+  'credentials',
+  'private_key',
+  'signing_key',
+  'vault',
   'email',
   'emails',
   'phone',
   'telephone',
+  'phone_number',
   'comment',
   'comments',
   'commenter',
   'user_profile',
   'private_profile',
+  'username',
+  'user_name',
+  'user_id',
+  'first_name',
+  'last_name',
+  'full_name',
+  'address',
+  'ip',
+  'ip_address',
+  'ssn',
+  'national_id',
+  'date_of_birth',
+  'dob',
   'media_bytes',
   'binary',
   'buffer',
@@ -133,6 +171,14 @@ const FORBIDDEN_KEYS = Object.freeze([
 ]);
 
 const POLLUTION_KEYS = Object.freeze(['__proto__', 'constructor', 'prototype']);
+
+// Honesty markers: provider numbers are reported or estimated, never verified
+// facts. Rejected at any nesting depth, not just on the top-level object.
+const HONESTY_FORBIDDEN_KEYS = Object.freeze(['verified', 'independently_verified', 'fact']);
+
+// `storage_ref` is a locator, not a fetchable URL. Anything carrying a scheme
+// outside this allow-list fails closed; adding one is a Security review.
+const STORAGE_REF_SCHEMES = Object.freeze(['https', 'research']);
 
 const EVIDENCE_HASH_FIELDS = Object.freeze([
   'platform',
@@ -338,6 +384,8 @@ module.exports = Object.freeze({
   SEARCH_PARAMETER_KEYS,
   FORBIDDEN_KEYS,
   POLLUTION_KEYS,
+  HONESTY_FORBIDDEN_KEYS,
+  STORAGE_REF_SCHEMES,
   EVIDENCE_HASH_FIELDS,
   RESEARCH_RUN_REQUIRED,
   RESEARCH_RUN_OPTIONAL,

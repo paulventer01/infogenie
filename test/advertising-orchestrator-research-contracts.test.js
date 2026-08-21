@@ -447,6 +447,77 @@ test('notImplemented throws terminal connector error without HTTP mapping', () =
   throwsValidation(() => notImplemented('facebook_research'));
 });
 
+// Security review (PR 3A). `error_message` is the one column that carries text
+// a provider chose, and it is written on the run row rather than the
+// append-only evidence row — so it is the easiest place for a token to land.
+test('credential material cannot reach error_message, connector message, or evidence text', () => {
+  const leaks = [
+    'Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig',
+    'Cookie: infogenie.sid=s%3Aabc123.def',
+    'GET /x?api_key=sk-live-ABCDEFGHIJKLMNOP failed',
+    'client_secret: 9f8e7d',
+  ];
+  for (const leak of leaks) {
+    throwsValidation(() => assertResearchRun({
+      ...SAMPLE_RUN,
+      failure_class: 'auth_failure',
+      error_message: leak,
+    }, { tenantId: TENANT_A }));
+    throwsValidation(() => assertConnectorError({
+      ok: false,
+      error: 'auth_failure',
+      retry_class: 'terminal',
+      message: leak,
+    }));
+    throwsValidation(() => assertEvidenceItem({ ...metaEvidence(), body_text: leak }, { tenantId: TENANT_A }));
+  }
+  // The taxonomy's own wording still survives the scan.
+  const kept = assertConnectorError({
+    ok: false,
+    error: 'auth_failure',
+    retry_class: 'terminal',
+    message: 'connector credentials rejected; do not retry with the same credentials',
+  });
+  assert.match(kept.message, /^connector credentials rejected/);
+  const run = assertResearchRun({
+    ...SAMPLE_RUN,
+    failure_class: 'auth_failure',
+    error_message: 'provider refused the request',
+  }, { tenantId: TENANT_A });
+  assert.strictEqual(run.error_message, 'provider refused the request');
+});
+
+// PR3E inserts what the validator returned. If that object still aliases the
+// connector's own JSON, a forbidden key can be added after the checks pass and
+// before the INSERT, and the row is then immutable.
+test('validated payloads are detached from caller JSON and frozen through nesting', () => {
+  const supplied = { cursor: 'opaque-1' };
+  const run = assertResearchRun({ ...SAMPLE_RUN, continuation_state: supplied }, { tenantId: TENANT_A });
+  supplied.access_token = 'LEAK';
+  assert.notStrictEqual(run.continuation_state, supplied);
+  assert.deepStrictEqual(run.continuation_state, { cursor: 'opaque-1' });
+  assert.ok(Object.isFrozen(run.continuation_state));
+  assert.ok(Object.isFrozen(run.search_parameters));
+  assert.ok(Object.isFrozen(run.requested_platforms));
+
+  const metrics = { impressions_range: '100K-500K' };
+  const ev = assertEvidenceItem({ ...metaEvidence(), provider_metrics: metrics }, { tenantId: TENANT_A });
+  metrics.refresh_token = 'LEAK';
+  assert.deepStrictEqual(ev.provider_metrics, { impressions_range: '100K-500K' });
+  assert.ok(Object.isFrozen(ev.provider_metrics));
+});
+
+test('honesty flags are rejected at any depth in provider_metrics', () => {
+  for (const metrics of [
+    { verified: true },
+    { inner: { verified: true } },
+    { inner: { deeper: { independently_verified: true } } },
+    { list: [{ fact: 'yes' }] },
+  ]) {
+    throwsValidation(() => assertEvidenceItem({ ...metaEvidence(), provider_metrics: metrics }, { tenantId: TENANT_A }));
+  }
+});
+
 test('CONTRACT_VERSION is v1 and connector ids match schema', () => {
   assert.strictEqual(C.CONTRACT_VERSION, 'v1');
   assert.deepStrictEqual([...C.PLATFORMS], ['meta', 'google', 'tiktok']);

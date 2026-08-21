@@ -4,14 +4,32 @@ const crypto = require('crypto');
 const { fail } = require('./errors');
 const { sha256Hex, canonicalize } = require('./hash');
 const C = require('./research_contracts');
+const { containsCredentialMaterial } = require('./research_errors');
 
-const FORBIDDEN_SET = new Set([...C.FORBIDDEN_KEYS, ...C.POLLUTION_KEYS]);
 const HEX64 = /^[0-9a-f]{64}$/;
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const BASE64_BLOB = /^[A-Za-z0-9+/]+=*$/;
+const PRINTABLE_ASCII = /^[\x21-\x7e]+$/;
+const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i;
+
+// Keys are compared with separators and case removed, so `access-token`,
+// `Access Token` and `accessToken` cannot walk past a list of snake_case names.
+function normalizeKey(k) {
+  return String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const FORBIDDEN_SET = new Set(
+  [...C.FORBIDDEN_KEYS, ...C.POLLUTION_KEYS].map(normalizeKey)
+);
+const HONESTY_SET = new Set(C.HONESTY_FORBIDDEN_KEYS.map(normalizeKey));
+const STORAGE_REF_SCHEME_SET = new Set(C.STORAGE_REF_SCHEMES.map((s) => s.toLowerCase()));
 
 function vf(field, reason) {
   fail('validation_failed', { field, reason: reason || 'invalid' });
+}
+
+function assertNoCredentialMaterial(value, field) {
+  if (containsCredentialMaterial(value)) vf(field || 'text', 'credential_material');
 }
 
 function isPlainObject(v) {
@@ -76,14 +94,64 @@ function assertNoForbiddenFields(obj) {
       return;
     }
     for (const k of Object.keys(value)) {
-      const lower = String(k).toLowerCase();
-      if (FORBIDDEN_SET.has(k) || FORBIDDEN_SET.has(lower)) {
-        vf(k, 'forbidden');
-      }
+      if (FORBIDDEN_SET.has(normalizeKey(k))) vf(k, 'forbidden');
       walk(value[k], path ? `${path}.${k}` : k);
     }
   }
   walk(obj, '');
+}
+
+// Credential material can arrive as a value under an innocent key, so the JSON
+// blobs that keep arbitrary provider keys are scanned by value too.
+function assertNoCredentialMaterialDeep(value, field) {
+  if (value == null) return;
+  if (typeof value === 'string') {
+    assertNoCredentialMaterial(value, field);
+    return;
+  }
+  if (typeof value !== 'object' || isBinaryValue(value)) return;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      assertNoCredentialMaterialDeep(value[i], `${field || 'arr'}[${i}]`);
+    }
+    return;
+  }
+  for (const k of Object.keys(value)) {
+    assertNoCredentialMaterialDeep(value[k], field ? `${field}.${k}` : k);
+  }
+}
+
+function assertNoHonestyFlagsDeep(value, field) {
+  if (value == null || typeof value !== 'object' || isBinaryValue(value)) return;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      assertNoHonestyFlagsDeep(value[i], `${field || 'arr'}[${i}]`);
+    }
+    return;
+  }
+  for (const k of Object.keys(value)) {
+    if (HONESTY_SET.has(normalizeKey(k))) vf(field || 'provider_metrics', 'verified_flag_forbidden');
+    assertNoHonestyFlagsDeep(value[k], field ? `${field}.${k}` : k);
+  }
+}
+
+function deepFreeze(value) {
+  if (value == null || typeof value !== 'object' || Object.isFrozen(value)) return value;
+  Object.freeze(value);
+  for (const k of Object.keys(value)) deepFreeze(value[k]);
+  return value;
+}
+
+// A validated payload that still aliases the caller's object can be mutated
+// after the checks and before the INSERT, so the accepted JSON is detached.
+function detachJson(value, field) {
+  let out;
+  try {
+    out = JSON.parse(JSON.stringify(value));
+  } catch (_) {
+    vf(field || 'json', 'unserializable');
+  }
+  return deepFreeze(out);
 }
 
 function stripUnknown(obj, allowedKeys) {
@@ -157,6 +225,7 @@ function boundedText(v, min, max, field, { allowEmpty = true, optional = false }
     vf(field, 'too_short');
   }
   if (s.includes('\u0000')) vf(field, 'nul');
+  assertNoCredentialMaterial(s, field);
   return s;
 }
 
@@ -167,6 +236,7 @@ function sanitizeEvidenceText(s, max) {
   const out = String(s).trim();
   if (out.length > max) vf('text', 'oversized');
   if (out.includes('\u0000')) vf('text', 'nul');
+  assertNoCredentialMaterial(out, 'text');
   return out;
 }
 
@@ -230,10 +300,13 @@ function assertHttpsUrl(v, field, { optional = true } = {}) {
     if (optional) return null;
     vf(field, 'required');
   }
-  const lower = url.toLowerCase();
-  if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('http:')) {
-    vf(field, 'unsafe_scheme');
-  }
+  // The stored value is the raw string, but `new URL` strips tabs/newlines and
+  // canonicalises backslashes and IDN hosts — so a URL the parser accepts can
+  // differ from the one that lands in the row and later reaches a PR3E fetch
+  // sink. Requiring a literal `https://` prefix and printable ASCII keeps the
+  // validated string and the stored string the same URL.
+  if (!PRINTABLE_ASCII.test(url)) vf(field, 'invalid_chars');
+  if (!/^https:\/\//i.test(url)) vf(field, 'unsafe_scheme');
   let parsed;
   try {
     parsed = new URL(url);
@@ -242,7 +315,9 @@ function assertHttpsUrl(v, field, { optional = true } = {}) {
   }
   if (parsed.protocol !== 'https:') vf(field, 'unsafe_scheme');
   if (parsed.username || parsed.password) vf(field, 'credentials_in_url');
+  if (!parsed.hostname) vf(field, 'no_host');
   if (parsed.href.length > C.LIMITS.url.max) vf(field, 'oversized');
+  assertNoCredentialMaterial(url, field);
   return url;
 }
 
@@ -324,7 +399,7 @@ function assertSearchParameters(raw) {
     );
   }
   assertJsonBytes(out, C.LIMITS.search_parameters_bytes, 'search_parameters');
-  return out;
+  return detachJson(out, 'search_parameters');
 }
 
 function assertContinuationState(raw) {
@@ -332,8 +407,9 @@ function assertContinuationState(raw) {
   if (!isPlainObject(input)) vf('continuation_state', 'not_object');
   assertNoForbiddenFields(input);
   assertNoBinaryDeep(input, 'continuation_state');
+  assertNoCredentialMaterialDeep(input, 'continuation_state');
   assertJsonBytes(input, C.LIMITS.continuation_state_bytes, 'continuation_state');
-  return input;
+  return detachJson(input, 'continuation_state');
 }
 
 function assertProviderMetrics(raw) {
@@ -341,22 +417,24 @@ function assertProviderMetrics(raw) {
   if (!isPlainObject(input)) vf('provider_metrics', 'not_object');
   assertNoForbiddenFields(input);
   assertNoBinaryDeep(input, 'provider_metrics');
-  if (Object.prototype.hasOwnProperty.call(input, 'verified')
-    || Object.prototype.hasOwnProperty.call(input, 'independently_verified')
-    || Object.prototype.hasOwnProperty.call(input, 'fact')) {
-    vf('provider_metrics', 'verified_flag_forbidden');
-  }
+  assertNoCredentialMaterialDeep(input, 'provider_metrics');
+  assertNoHonestyFlagsDeep(input, 'provider_metrics');
   assertJsonBytes(input, C.LIMITS.provider_metrics_bytes, 'provider_metrics');
-  return input;
+  return detachJson(input, 'provider_metrics');
 }
 
 function assertStorageRef(v) {
   const s = boundedText(v, C.LIMITS.storage_ref.min, C.LIMITS.storage_ref.max, 'storage_ref', { allowEmpty: false });
-  const lower = s.toLowerCase();
-  if (lower.startsWith('data:') || lower.startsWith('javascript:') || lower.startsWith('http:')) {
+  if (!PRINTABLE_ASCII.test(s)) vf('storage_ref', 'invalid_chars');
+  // A locator is either a scheme-less object key or one of the allowed schemes.
+  // `file:`, `ftp:` and protocol-relative refs are refused here rather than at
+  // whatever resolves the ref later.
+  if (s.startsWith('//')) vf('storage_ref', 'protocol_relative');
+  const scheme = URL_SCHEME.exec(s);
+  if (scheme && !STORAGE_REF_SCHEME_SET.has(scheme[1].toLowerCase())) {
     vf('storage_ref', 'unsafe_scheme');
   }
-  if (/^https?:\/\/[^/\s]+:[^/\s]+@/i.test(s)) vf('storage_ref', 'credentials_in_url');
+  if (/^[a-z][a-z0-9+.-]*:\/\/[^/\s@]*@/i.test(s)) vf('storage_ref', 'credentials_in_url');
   return s;
 }
 
@@ -431,7 +509,7 @@ function assertResearchRun(input, opts) {
     completed_at: optionalTime(raw.completed_at, 'completed_at'),
     failed_at: optionalTime(raw.failed_at, 'failed_at'),
   };
-  return Object.freeze(out);
+  return deepFreeze(out);
 }
 
 function assertCompetitor(input, opts) {
@@ -468,7 +546,7 @@ function assertCompetitor(input, opts) {
     contract_version: assertContractVersion(raw.contract_version),
     created_at: optionalTime(raw.created_at, 'created_at'),
   };
-  return Object.freeze(out);
+  return deepFreeze(out);
 }
 
 function assertEvidenceItem(input, opts) {
@@ -552,7 +630,7 @@ function assertEvidenceItem(input, opts) {
     supersedes_id: optionalText(raw.supersedes_id, C.LIMITS.id.max, 'supersedes_id'),
     created_at: optionalTime(raw.created_at, 'created_at'),
   };
-  return Object.freeze(out);
+  return deepFreeze(out);
 }
 
 function assertEvidenceAsset(input, opts) {
@@ -578,7 +656,7 @@ function assertEvidenceAsset(input, opts) {
     ),
     created_at: optionalTime(raw.created_at, 'created_at'),
   };
-  return Object.freeze(out);
+  return deepFreeze(out);
 }
 
 module.exports = {
@@ -592,6 +670,11 @@ module.exports = {
   stripUnknown,
   assertNoForbiddenFields,
   assertNoBinaryDeep,
+  assertNoCredentialMaterial,
+  assertNoCredentialMaterialDeep,
+  assertNoHonestyFlagsDeep,
+  normalizeKey,
+  deepFreeze,
   assertSearchParameters,
   assertContinuationState,
   assertHttpsUrl,
