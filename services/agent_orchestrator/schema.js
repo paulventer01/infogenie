@@ -121,26 +121,6 @@ async function _columnExists(p, table, column) {
   return r.rowCount > 0;
 }
 
-async function _triggerExists(p, table, name) {
-  const r = await p.query(
-    `SELECT 1 FROM pg_trigger t
-       JOIN pg_class c ON c.oid = t.tgrelid
-       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'public'
-        AND c.relname = $1
-        AND t.tgname = $2
-        AND NOT t.tgisinternal
-      LIMIT 1`,
-    [table, name]
-  );
-  return r.rowCount > 0;
-}
-
-async function _setTriggerEnabled(p, table, name, enabled) {
-  if (!(await _triggerExists(p, table, name))) return;
-  await p.query(`ALTER TABLE ${table} ${enabled ? 'ENABLE' : 'DISABLE'} TRIGGER ${name}`);
-}
-
 // Deduplication fingerprint, not authenticity/provenance proof. Idempotent
 // rename from the original evidence_hash column; drop stale CHECKs/indexes.
 async function _ensureContentFingerprintColumn(p) {
@@ -169,44 +149,63 @@ async function _ensureContentFingerprintColumn(p) {
 const RESEARCH_RETENTION_EXPIRY_SQL =
   `retention_class = 'legal_hold' OR (expires_at IS NOT NULL AND expires_at > created_at)`;
 
-async function _backfillResearchRetentionExpiry(p) {
-  await _setTriggerEnabled(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_immutable', false);
-  await _setTriggerEnabled(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_immutable', false);
+async function _backfillInReplicaRole(p, statements) {
+  await p.query('BEGIN');
   try {
-    await p.query(`
-      UPDATE orchestrator_research_evidence
-         SET expires_at = created_at + interval '30 days'
-       WHERE retention_class IN ('standard','short')
-         AND (expires_at IS NULL OR expires_at <= created_at)
-    `);
-    await p.query(`
-      UPDATE orchestrator_research_evidence_assets
-         SET expires_at = created_at + interval '30 days'
-       WHERE retention_class IN ('standard','short')
-         AND (expires_at IS NULL OR expires_at <= created_at)
-    `);
-  } finally {
-    await _setTriggerEnabled(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_immutable', true);
-    await _setTriggerEnabled(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_immutable', true);
+    await p.query('SET LOCAL session_replication_role = replica');
+    for (const sql of statements) {
+      await p.query(sql);
+    }
+    await p.query('COMMIT');
+  } catch (err) {
+    try { await p.query('ROLLBACK'); } catch (_) { /* already aborted */ }
+    throw err;
   }
 }
 
+async function _backfillResearchRetentionExpiry(p) {
+  const needEv = await p.query(`
+    SELECT 1 FROM orchestrator_research_evidence
+     WHERE retention_class IN ('standard','short')
+       AND (expires_at IS NULL OR expires_at <= created_at)
+     LIMIT 1
+  `);
+  const needAssets = await p.query(`
+    SELECT 1 FROM orchestrator_research_evidence_assets
+     WHERE retention_class IN ('standard','short')
+       AND (expires_at IS NULL OR expires_at <= created_at)
+     LIMIT 1
+  `);
+  if (!needEv.rowCount && !needAssets.rowCount) return;
+  // Session-local replica role: do not ALTER TABLE DISABLE TRIGGER (cluster-wide).
+  await _backfillInReplicaRole(p, [
+    `UPDATE orchestrator_research_evidence
+        SET expires_at = created_at + interval '30 days'
+      WHERE retention_class IN ('standard','short')
+        AND (expires_at IS NULL OR expires_at <= created_at)`,
+    `UPDATE orchestrator_research_evidence_assets
+        SET expires_at = created_at + interval '30 days'
+      WHERE retention_class IN ('standard','short')
+        AND (expires_at IS NULL OR expires_at <= created_at)`,
+  ]);
+}
+
 async function _backfillResearchJsonObjects(p) {
-  await _setTriggerEnabled(p, 'orchestrator_research_runs', 'orchestrator_research_runs_identity_immutable', false);
-  try {
-    await p.query(`
-      UPDATE orchestrator_research_runs
-         SET search_parameters = '{}'::jsonb
-       WHERE jsonb_typeof(search_parameters) IS DISTINCT FROM 'object'
-    `);
-    await p.query(`
-      UPDATE orchestrator_research_runs
-         SET continuation_state = '{}'::jsonb
-       WHERE jsonb_typeof(continuation_state) IS DISTINCT FROM 'object'
-    `);
-  } finally {
-    await _setTriggerEnabled(p, 'orchestrator_research_runs', 'orchestrator_research_runs_identity_immutable', true);
-  }
+  const need = await p.query(`
+    SELECT 1 FROM orchestrator_research_runs
+     WHERE jsonb_typeof(search_parameters) IS DISTINCT FROM 'object'
+        OR jsonb_typeof(continuation_state) IS DISTINCT FROM 'object'
+     LIMIT 1
+  `);
+  if (!need.rowCount) return;
+  await _backfillInReplicaRole(p, [
+    `UPDATE orchestrator_research_runs
+        SET search_parameters = '{}'::jsonb
+      WHERE jsonb_typeof(search_parameters) IS DISTINCT FROM 'object'`,
+    `UPDATE orchestrator_research_runs
+        SET continuation_state = '{}'::jsonb
+      WHERE jsonb_typeof(continuation_state) IS DISTINCT FROM 'object'`,
+  ]);
 }
 
 // Serialize DDL so overlapping ensure() callers (parallel test files, boot)
