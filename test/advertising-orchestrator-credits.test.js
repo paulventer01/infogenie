@@ -14,6 +14,7 @@ require('./helpers/env');
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
+const zlib = require('node:zlib');
 
 const { bootApp, request, login, makeFixtures, hasDb } = require('./helpers');
 const db = require('../db');
@@ -200,6 +201,37 @@ if (!HAS_DB) {
       });
       r.on('error', reject);
       r.write(data);
+      r.end();
+    });
+  }
+
+  // Sends a gzip body with an honest Content-Length. The header is truthful
+  // about the bytes on the wire and still far below the cap, so only a check
+  // against the decompressed body can reject the payload.
+  function credGzip(method, urlPath, { cookie, body, headers, key } = {}) {
+    const gz = zlib.gzipSync(Buffer.from(typeof body === 'string' ? body : JSON.stringify(body), 'utf8'));
+    const h = {
+      'content-type': 'application/json',
+      'content-encoding': 'gzip',
+      'content-length': String(gz.length),
+      ...(headers || {}),
+    };
+    if (key) h['Idempotency-Key'] = key;
+    if (cookie) h.cookie = cookie;
+    return new Promise((resolve, reject) => {
+      const r = http.request(`${app.baseUrl}/api/agent-orchestrator/credits${urlPath}`, {
+        method, headers: h,
+      }, (res) => {
+        let buf = '';
+        res.on('data', (c) => { buf += c; });
+        res.on('end', () => {
+          let json = null;
+          try { json = buf ? JSON.parse(buf) : null; } catch (_) { /* non-JSON */ }
+          resolve({ status: res.statusCode, headers: res.headers, json, text: buf, wireBytes: gz.length });
+        });
+      });
+      r.on('error', reject);
+      r.write(gz);
       r.end();
     });
   }
@@ -1055,5 +1087,36 @@ if (!HAS_DB) {
     assert.strictEqual(overC.json.error, 'payload_too_large');
     assert.deepStrictEqual(await creditSnapshot(pool, tenantA.id), baseline);
     await assertIdempotencyKeyAbsent(pool, tenantA.id, keyC);
+  });
+
+  test('21. the payload cap measures the decompressed body, not the wire bytes', async () => {
+    const pool = db.getPool();
+    const baseline = await creditSnapshot(pool, tenantA.id);
+
+    // A gzip body whose Content-Length is honest and small. Anything that
+    // trusts Content-Length, or that measures the compressed bytes, lets an
+    // arbitrarily large payload reach grant/adjust and the request hash.
+    const keyZ = ik('cap-gzip');
+    const overZ = await credGzip('POST', '/grant', {
+      cookie: cookieA,
+      key: keyZ,
+      body: { amount_micros: 1000, pad: 'x'.repeat(70 * 1024) },
+    });
+    assert.ok(overZ.wireBytes < 64 * 1024, `gzip wire bytes ${overZ.wireBytes} must be under the cap`);
+    assert.strictEqual(overZ.status, 413, overZ.text);
+    assert.strictEqual(overZ.json.error, 'payload_too_large');
+    assert.deepStrictEqual(await creditSnapshot(pool, tenantA.id), baseline);
+    await assertIdempotencyKeyAbsent(pool, tenantA.id, keyZ);
+
+    // A gzip body that is under the cap once decompressed still succeeds, so
+    // the cap is measuring size rather than refusing compression outright.
+    const keyOk = ik('cap-gzip-ok');
+    const okZ = await credGzip('POST', '/grant', {
+      cookie: cookieA,
+      key: keyOk,
+      body: { amount_micros: 1000 },
+    });
+    assert.strictEqual(okZ.status, 200, okZ.text);
+    assert.strictEqual(okZ.json.ok, true);
   });
 }
