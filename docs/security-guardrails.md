@@ -1162,6 +1162,131 @@ recorded so they are not mistaken for tenancy bugs later:
   `node --test`, stable across three consecutive runs, and faster than the
   serialised workaround.
 
+## Deployment-safety re-review of the closeout preflight (`3d50e43`, `3dfaf96`)
+
+Security pass over the read-only preflight, the fail-before-DDL abort, and the
+two global-table CHECK constraints. Nothing in `services/security/`,
+`services/auth*/`, `services/credentials/`, `middleware.ts`,
+`permission_enforce.js`, `permissions.js`, `permission_matrix.js` or
+`context.js` moved on this branch, and no audit assertion was relaxed — the
+`tenant-schema-closeout` edits in `3d50e43` only tighten existing expectations
+(`backfilled`, `indexed`, `notNullSet` now asserted false on abort, the index
+asserted absent, the singleton CHECK asserted kept). `PERMISSION_ENFORCEMENT`
+and `MULTITENANT_ENFORCEMENT` are untouched.
+
+Confirmed against live Postgres, and locked by
+`test/tenant-preflight-isolation.test.js`:
+
+- **The preflight cannot write, by privilege and not just by intent.** It runs to
+  completion under a role granted `CONNECT`, `USAGE` and `SELECT` and nothing
+  else — exit 1 with the findings on a dirty database, exit 0 once clean, no
+  `permission denied` and no `read-only transaction` error anywhere in the run.
+  That is a stronger statement than the existing SQL spy, which can only observe
+  the statements the current code happens to emit.
+- **The operator report is identifiers only.** Seeded a job payload holding an
+  email and an `sk-live-` token, a legacy custom playbook whose `description` and
+  `content` carry a contact address and a private strategy blurb, and a legacy
+  `brand_foundation` singleton with prose in `purpose_why`. All three are
+  enumerated; none of that text reaches the report, which contains no string
+  matching an email address at all. Every fixture row is still present and
+  unmodified afterwards — the payload is not stripped, the playbook is not
+  assigned a tenant, and the singleton is not mapped to tenant 1.
+- **`enforceTenantIdNotNull` aborts before any DDL.** On an unmapped table it
+  returns `{ reason:'preflight' }` with `added`, `indexed`, `droppedCheck`,
+  `uniqueAdded`, `notNullSet` and `fkAdded` all false, the `tenant_id` column
+  still absent, and the legacy `brand_foundation_singleton` CHECK intact.
+- **The in-transaction guard behind it also holds.** A NULL `tenant_id` arriving
+  *after* a clean preflight — modelled with a statement trigger that inserts
+  inside the migration transaction, which is what a concurrent write would look
+  like — returns `{ reason:'orphans' }` and rolls the whole transaction back:
+  no index survives, `tenant_id` stays nullable, and the parent backfill UPDATE
+  is undone rather than left committed against a half-migrated table.
+- **`job_queue_global_empty_payload` blocks the caller, not just raw SQL.**
+  `services/jobs/queue.enqueue` with a tenant payload fails `23514` on that
+  constraint and stores nothing; the only live enqueue site,
+  `services/jobs/scheduler.js`, passes `{}` and still succeeds. The CHECK is
+  re-evaluated on every UPDATE, so the worker path was checked end to end —
+  `claimJobs` → `completeJob` → `failJob` → `queueStats` all still run with the
+  constraint in place.
+- **`vertical_playbooks_system_xor_tenant` is a true xor.** Catalog
+  (`is_system` true, `tenant_id` NULL) and custom (`is_system` false, `tenant_id`
+  set) insert; both inverses are refused. `is_system` is nullable and the
+  expression is written with `IS TRUE` / `IS FALSE`, so a NULL flag evaluates
+  false and is rejected rather than passing as unknown — the fail-closed
+  direction. Legacy violators are reported (`playbook_custom_unmapped`,
+  `playbook_system_with_tenant`, `playbook_is_system_null`) and left alone; the
+  ADD CONSTRAINT skips instead of repairing them.
+- **Identifiers are validated, not interpolated.** `_safeIdent` rejects a table
+  name and a `backfillFrom.parentTable` carrying `"; DROP TABLE tenants; --`
+  before either reaches SQL.
+
+### Open — the shared-database race is back, as a deadlock
+
+`80d7c52` closed the two-suite fixture race by putting `tenant-schema-closeout`,
+`tenant-schema-audit` and later `tenant-schema-preflight` on one Postgres session
+advisory lock. `test/tenant-schema-preflight.test.js` takes that lock but then
+does part of its cleanup outside it, so the property `80d7c52` established is
+only partly true again.
+
+`node:test` runs `after` hooks in registration order. The
+`parent-mappable child` test calls `guardMutatingTest(t)` first, which registers
+the hook that restores the fixtures and *releases the advisory lock*; it then
+registers a second `t.after` that drops the two probe tables and runs
+`DELETE FROM tenants WHERE id=$1`. That second hook therefore executes with the
+lock already released. `tenants` is the cascade parent for the tenant-scoped
+tables, so the DELETE takes `RowExclusiveLock` on `brand_foundation`, while
+`tenant-schema-closeout` — holding the advisory lock — is issuing
+`DROP TABLE IF EXISTS brand_foundation CASCADE` and waiting for
+`AccessExclusiveLock`. Postgres reports the cycle verbatim:
+
+```
+ERROR:  deadlock detected
+DETAIL: Process A waits for AccessExclusiveLock on brand_foundation; blocked by process B.
+        Process B waits for RowExclusiveLock on brand_foundation; blocked by process A.
+        Process A: DROP TABLE IF EXISTS brand_foundation CASCADE
+        Process B: DELETE FROM tenants WHERE id=$1
+```
+
+`brand_foundation fresh empty table tenant_id is NOT NULL` is the victim and
+fails `40P01`. Measured on the branch: 3 failures in 12 runs of the parallel
+invocation that includes `tenant-schema-preflight`, and 0 in 6 runs of the same
+invocation with only that file removed — so the suite is the trigger, not
+pre-existing flakiness. Nothing is wrong with the schema, and the deadlock is
+strictly worse than the `80d7c52` race it reopens: an intermittent red that
+clears on retry teaches the operator to re-run until green, and that habit will
+swallow a genuine red just as readily.
+
+For Database, and not for QA to paper over: register the fixture cleanup inside
+`guardMutatingTest` (or acquire the lock again in the second hook) so nothing
+mutating runs after the release. Do not fix it by widening allowlists, dropping
+the `DELETE FROM tenants` assertion, or serialising the whole suite —
+`80d7c52` already showed the lock is the cheaper answer.
+`test/tenant-preflight-isolation.test.js` sidesteps the shared database entirely
+by provisioning its own, which is the other half of the recommendation the
+earlier entry made; it is not a substitute for fixing the hook order.
+
+### Accepted residuals
+
+- **Nothing automatically blocks a deploy.** When violators already exist,
+  `ensureJobQueueEmptyPayloadCheck` / `ensureVerticalPlaybooksXorCheck` log and
+  skip, and boot continues with the table unconstrained — which is the correct
+  boot-safe choice, but it means `npm run tenant:preflight` (exit 1 dirty, exit 2
+  with no `DATABASE_URL`, exit 0 clean) is the only gate, and it is an operator
+  command rather than a step anything enforces. Wire it into the release
+  checklist; a green boot log is not evidence the CHECKs are on.
+- **The truncated count over-reports.** Past `ID_CAP` (500) unmapped rows,
+  `preflightUnmappedForTable` falls back to `COUNT(*) WHERE tenant_id IS NULL`,
+  which drops the parent-JOIN filter and so includes rows that *are* mappable.
+  The abort decision is unaffected (it is already aborting) and the direction is
+  conservative, but the number an operator sees can be much larger than the
+  number of rows they actually have to decide about.
+- **`vertical` is echoed and is user-supplied.** For a custom playbook it is the
+  raw `industry` string from `POST /generate-custom`. It is the only useful
+  disambiguator besides the id, and the report is an operator-console artefact
+  rather than a log sink, so it stays — but it is workspace-authored text, and
+  `title`, `description` and `content` were correctly kept out for the same
+  reason.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
