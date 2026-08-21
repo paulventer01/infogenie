@@ -3,27 +3,30 @@
 //
 // benchmark_aggregates is GLOBAL by design and that classification is right: it
 // is the anonymised cross-customer network. The control that makes "anonymised"
-// true is the floor added in services/benchmarks/api.js (K = 5), which is wired
-// into every read path — /compare, /leaderboard and strategic_intelligence's
-// benchmark read — plus the rebuild.
+// true is the K = 5 floor in services/benchmarks/api.js, gated on
+// contributor_count (COUNT(DISTINCT tenant_id)) across /compare, /leaderboard,
+// strategic_intelligence's benchmark read, and the publish/delete decision.
 //
-// The floor is gated on the stored sample_count, and _rebuildAggregates computes
-// that as COUNT(*) over benchmark_submissions. POST /submit is a plain INSERT
-// with no ON CONFLICT, and benchmark_submissions has no unique key on
-// (tenant_id, vertical, region, company_size, metric_key). So the floor counts
-// ROWS, and one workspace reaches it alone: five submissions of the same metric
-// — a monthly re-submission, not an attack — publish p25 = median = p75 = that
-// workspace's own exact private value, which every other workspace then reads
-// back labelled as a five-sample network benchmark.
+// The regression this exists to prevent: an earlier revision gated on
+// sample_count, which is COUNT(*) over benchmark_submissions. Because POST
+// /submit is a plain INSERT with no ON CONFLICT and benchmark_submissions has no
+// unique key on (tenant_id, vertical, region, company_size, metric_key), that
+// counter counts ROWS — so one workspace reached the floor alone. Five
+// submissions of the same metric (a monthly re-submission, not an attack)
+// published p25 = median = p75 = that workspace's own private value, which every
+// other workspace read back labelled as a five-sample network benchmark. Four
+// rows from one workspace plus one submission from anybody else did the same. No
+// value of K fixes that; only counting workspaces does.
 //
-// Two properties, neither covered by test/benchmark-k-anonymity.test.js (which
+// Three properties, none covered by test/benchmark-k-anonymity.test.js (which
 // seeds five DISTINCT tenants with one submission each and therefore cannot see
 // this):
 //
-//   1. STATIC  — the publish decision must be made on a distinct-tenant count.
-//                Raising K does not help while the counter is COUNT(*).
-//   2. RUNTIME — a bucket whose rows all belong to one workspace must not be
+//   1. STATIC  — the publish decision is made on a distinct-tenant count.
+//   2. RUNTIME — a bucket whose rows all belong to one workspace is not
 //                readable by another workspace, at any row count.
+//   3. RUNTIME — one outside submission cannot tip a suppressed bucket over the
+//                floor, because that bucket still has two contributors.
 //
 // This file adds assertions. It does not modify or relax any existing audit.
 
