@@ -11,6 +11,69 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const BASE64_BLOB = /^[A-Za-z0-9+/]+=*$/;
 const PRINTABLE_ASCII = /^[\x21-\x7e]+$/;
 const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i;
+// Public ad-copy contact shapes. Extracted-contact *keys* stay forbidden;
+// these patterns only rewrite values that already appeared inside copy.
+const EMAIL_IN_COPY = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// Optional +/00, separators, ≥10 digits. Short campaign ids (5–6 digits) stay.
+const PHONE_IN_COPY = /(?<![\w])(?:\+|00)?(?:[\s()./-]*\d){10,}(?![\w])/g;
+
+function redactContactPii(text) {
+  if (text == null) return text;
+  if (typeof text !== 'string' && typeof text !== 'number') return text;
+  const s = String(text);
+  const withoutEmail = s.replace(EMAIL_IN_COPY, '[email]');
+  return withoutEmail.replace(PHONE_IN_COPY, (m) => {
+    const digits = m.replace(/\D/g, '');
+    if (digits.length >= 10) return '[phone]';
+    return m;
+  });
+}
+
+function redactStringLeaves(value) {
+  if (value == null) return value;
+  if (typeof value === 'string') return redactContactPii(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) return value.map((item) => redactStringLeaves(item));
+  if (typeof value === 'object') {
+    if (isBinaryValue(value)) return value;
+    if (!isPlainObject(value)) return value;
+    const out = {};
+    for (const k of Object.keys(value)) out[k] = redactStringLeaves(value[k]);
+    return out;
+  }
+  return value;
+}
+
+const LLM_SAFE_TEXT_FIELDS = Object.freeze([
+  'headline',
+  'body_text',
+  'excerpt',
+  'advertiser_name',
+  'research_brief',
+  'error_message',
+]);
+const LLM_SAFE_OBJECT_FIELDS = Object.freeze([
+  'provider_metrics',
+  'search_parameters',
+  'continuation_state',
+]);
+
+function toLlmSafeEvidence(row) {
+  if (row == null || typeof row !== 'object' || Array.isArray(row)) {
+    vf('evidence', 'not_object');
+  }
+  const out = {};
+  for (const k of LLM_SAFE_TEXT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(row, k)) continue;
+    const v = row[k];
+    out[k] = typeof v === 'string' || typeof v === 'number' ? redactContactPii(v) : v;
+  }
+  for (const k of LLM_SAFE_OBJECT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(row, k)) continue;
+    out[k] = redactStringLeaves(row[k]);
+  }
+  return deepFreeze(out);
+}
 
 // Keys are compared with separators and case removed, so `access-token`,
 // `Access Token` and `accessToken` cannot walk past a list of snake_case names.
@@ -237,7 +300,7 @@ function sanitizeEvidenceText(s, max) {
   if (out.length > max) vf('text', 'oversized');
   if (out.includes('\u0000')) vf('text', 'nul');
   assertNoCredentialMaterial(out, 'text');
-  return out;
+  return redactContactPii(out);
 }
 
 function optionalText(v, max, field) {
@@ -401,7 +464,7 @@ function assertSearchParameters(raw) {
     );
   }
   assertJsonBytes(out, C.LIMITS.search_parameters_bytes, 'search_parameters');
-  return detachJson(out, 'search_parameters');
+  return detachJson(redactStringLeaves(out), 'search_parameters');
 }
 
 function assertContinuationState(raw) {
@@ -411,7 +474,7 @@ function assertContinuationState(raw) {
   assertNoBinaryDeep(input, 'continuation_state');
   assertNoCredentialMaterialDeep(input, 'continuation_state');
   assertJsonBytes(input, C.LIMITS.continuation_state_bytes, 'continuation_state');
-  return detachJson(input, 'continuation_state');
+  return detachJson(redactStringLeaves(input), 'continuation_state');
 }
 
 function assertProviderMetrics(raw) {
@@ -422,7 +485,7 @@ function assertProviderMetrics(raw) {
   assertNoCredentialMaterialDeep(input, 'provider_metrics');
   assertNoHonestyFlagsDeep(input, 'provider_metrics');
   assertJsonBytes(input, C.LIMITS.provider_metrics_bytes, 'provider_metrics');
-  return detachJson(input, 'provider_metrics');
+  return detachJson(redactStringLeaves(input), 'provider_metrics');
 }
 
 function assertStorageRef(v) {
@@ -725,6 +788,8 @@ module.exports = {
   computeCompetitorDedupKey,
   boundedText,
   sanitizeEvidenceText,
+  redactContactPii,
+  toLlmSafeEvidence,
   stripUnknown,
   assertNoForbiddenFields,
   assertNoBinaryDeep,

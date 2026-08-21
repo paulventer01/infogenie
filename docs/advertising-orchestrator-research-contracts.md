@@ -20,7 +20,8 @@ A boot-time retention sweeper is wired from `server.js` `BOOT_TASKS` (no route).
 | `services/agent_orchestrator/research_errors.js` | Connector `failure_class` taxonomy (not HTTP) |
 | `services/agent_orchestrator/research_validate.js` | Hand validators; fail closed; `validation_failed` |
 | `services/agent_orchestrator/research_connector.js` | Versioned connector **interface** (shapes + asserts, no network) |
-| `services/agent_orchestrator/research_retention.js` | Tenant-scoped batch retention sweeper (no HTTP) |
+| `services/agent_orchestrator/research_retention.js` | Tenant-scoped batch retention sweeper (no HTTP); skips legacy holds |
+| `services/agent_orchestrator/research_cleanup.js` | Operator-approved identify-then-delete (no HTTP); boot never executes |
 | `services/agent_orchestrator/research_store.js` | Validated INSERT helper; maps quota exception (no HTTP) |
 | `services/agent_orchestrator/fixtures/research/*.v1.json` | Mocked success / error / pagination examples |
 | `services/agent_orchestrator/schema.js` | DDL already landed; do not edit from this freeze |
@@ -230,32 +231,57 @@ default `expires_at` from captured/created + TTL when omitted for
 `research_retention.sweepExpiredResearchEvidence` is the sweeper:
 
 - Tenant-scoped: every `DELETE` includes `tenant_id = $1`.
-- Batch-limited (`SWEEP_BATCH` = 100): `SELECT … FOR UPDATE SKIP LOCKED LIMIT n`
-  then `DELETE WHERE tenant_id=$1 AND id = ANY($ids)`. SELECT and DELETE run
-  in one transaction on a dedicated `pool.connect()` client so SKIP LOCKED
-  holds until DELETE. Empty SELECT commits and stops (not a noop-fail). One
-  call loops until empty; each inner DELETE is LIMIT-bounded. Batch retries
-  `40P01`/`40001` then fails closed.
+- Batch-limited (`SWEEP_BATCH` = 100): a **single-statement** CTE
+  `SELECT … FOR UPDATE SKIP LOCKED LIMIT n` then `DELETE … USING doomed`
+  so SKIP LOCKED and DELETE cannot race. Each batch transaction starts with
+  `SET LOCAL lock_timeout = '2s'`; `55P03` retries like `40P01`/`40001`,
+  bounded. Empty doomed set commits and stops (not a hang, not a noop-fail).
+  One call loops until empty; each inner DELETE is LIMIT-bounded.
+- **Skips legacy holds:** expired SELECT/DELETE adds
+  `AND NOT EXISTS (SELECT 1 FROM orchestrator_research_legacy_holds h WHERE
+  h.tenant_id=$1 AND h.target_kind=… AND h.target_id = id)`. Held rows are
+  never purged by boot or the interval sweep. Operator cleanup owns them.
 - Deletes expired non-hold evidence (assets cascade from evidence) and also
   sweeps expired assets independently while the parent evidence is still live.
 - `legal_hold` is never deleted while the parent exists.
 - Idempotent: a second call purges 0.
 - Fail closed: rows with `retention_class IN ('standard','short') AND expires_at
-  IS NULL` are **counted** (`invalid_expiry`) and **not** deleted; no expiry is
-  invented. `ok` is false when `invalid_expiry > 0` or a tenant query fails.
+  IS NULL` **without** a hold are **counted** (`invalid_expiry`) and **not**
+  deleted; no expiry is invented. Held missing_expiry is expected until
+  operator cleanup and is excluded from `invalid_expiry`, so it does not make
+  sweep `ok: false` or production `process.exit(1)`. Unexpected NULL expiry
+  without a hold still fail-closes. `ok` is false when `invalid_expiry > 0`
+  or a tenant query fails.
 - Per-tenant try/catch: one tenant failure increments `failures` and continues.
 - Logs via `services/infra/logger.js`: `tenant_id`, numeric counts, error codes
   only. Never headline/body/excerpt, query-string URLs, PII, credentials, raw
   payloads or fingerprints.
 - Interval: `startResearchEvidenceSweepInterval()` only when
   `runtime_flags.backgroundEnabled()`, period 6h. Boot runs one sweep after
-  `ensureAgentOrchestratorSchema` (fail-closed in production).
+  `ensureAgentOrchestratorSchema` (fail-closed in production). Ensure identifies
+  holds and logs `legacy_holds_identified` counts only — it does not delete.
+
+`research_cleanup.js` is the operator path (no HTTP, not called from boot):
+
+- `previewLegacyCleanup` dry-runs tenant hold counts into
+  `orchestrator_research_cleanup_ops` (`state=previewed`). Never deletes.
+- `approveLegacyCleanup` requires the confirmation phrase
+  `DELETE_LEGACY_RESEARCH_EVIDENCE` (timing-safe compare; store sha256 hex
+  only). Human approval is this explicit call.
+- `executeLegacyCleanup` refuses unless `approved` or a crashed
+  `running`/`failed` after approval. Dedicated client, `SET LOCAL
+  infogenie.research_cleanup = 'on'`, `lock_timeout = '2s'`, batch DELETE of
+  held evidence then assets (`FOR UPDATE SKIP LOCKED LIMIT 100`), then the
+  matching hold rows. Idempotent when `completed` and no holds remain.
 
 Evidence and asset rows remain UPDATE-immutable. Replacement is a new INSERT
 with `supersedes_id`.
 
-Public ad copy in `headline` / `body_text` / `excerpt` is retained as **source
-text** under the TTL. It is not parsed into extracted contact indexes.
+Public ad copy in `headline` / `body_text` / `excerpt` is retained **after
+redaction** (`redactContactPii` replaces in-copy emails with `[email]` and
+telephone numbers with `[phone]`). Extracted-contact **keys** remain
+forbidden; redaction is for values inside copy fields. Copy is not parsed
+into extracted contact indexes.
 
 ## Volume limits
 
@@ -286,7 +312,11 @@ private identities (`email(s)`, `phone`, `telephone`, `phone_number`,
 `image_base64`, `video_base64`, `data_uri`). Extracted-contact keys are
 rejected so a connector cannot build an email/phone index. A business
 email or phone printed **inside** public ad copy (`headline`/`body_text`/
-`excerpt`) is source text under the TTL and is not parsed into other fields.
+`excerpt`) is redacted in place (`[email]` / `[phone]`) before persist and
+before `content_fingerprint`. Extracted-contact keys stay forbidden;
+redaction is for values inside copy fields, not a licence to store an
+email/phone index. `toLlmSafeEvidence(row)` returns those already-redacted
+fields for any future LLM call (PR3A has no LLM route).
 
 Values are scanned as well as key names. Any stored string — evidence text,
 `research_brief`, `error_code`, `error_message`, connector `message`, cursors,
@@ -403,7 +433,10 @@ computeEvidenceHash(sanitizedCanonicalObject) // deprecated alias
 computeCompetitorDedupKey({ platform, provider_advertiser_id })
 insertEvidenceItem(poolOrClient, item, { tenantId })
 sweepExpiredResearchEvidence()
+previewLegacyCleanup / approveLegacyCleanup / executeLegacyCleanup
 sanitizeEvidenceText(s, max)
+redactContactPii(text)
+toLlmSafeEvidence(row)
 stripUnknown(obj, allowedKeys)
 assertNoForbiddenFields(obj)
 assertConnectorIdentity / assertConnectorRequest / assertConnectorResult

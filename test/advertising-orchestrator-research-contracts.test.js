@@ -17,6 +17,8 @@ const {
   computeContentFingerprint,
   computeCompetitorDedupKey,
   sanitizeEvidenceText,
+  redactContactPii,
+  toLlmSafeEvidence,
   stripUnknown,
 } = require('../services/agent_orchestrator/research_validate');
 const {
@@ -199,6 +201,62 @@ test('5. forbidden PII and raw-payload keys are rejected', () => {
   }, { tenantId: TENANT_A }));
 });
 
+test('5b. in-copy email and phone are redacted; extracted-contact keys stay forbidden', () => {
+  const RAW_EMAIL = 'ops@ads.example';
+  const RAW_PHONE = '+1 (415) 555-0100';
+  assert.strictEqual(redactContactPii(`Reach ${RAW_EMAIL}`), 'Reach [email]');
+  assert.strictEqual(redactContactPii(`Call ${RAW_PHONE}`), 'Call [phone]');
+  assert.strictEqual(redactContactPii('campaign 123456'), 'campaign 123456');
+  const ev = assertEvidenceItem({
+    ...metaEvidence(),
+    headline: `Talk to ${RAW_EMAIL}`,
+    body_text: `Call ${RAW_PHONE} or campaign 123456`,
+    excerpt: RAW_EMAIL,
+    advertiser_name: `Acme ${RAW_PHONE}`,
+    provider_metrics: { caption: `email ${RAW_EMAIL}` },
+  }, { tenantId: TENANT_A });
+  assert.strictEqual(ev.headline, `Talk to [email]`);
+  assert.ok(ev.body_text.includes('[phone]'));
+  assert.ok(ev.body_text.includes('123456'));
+  assert.strictEqual(ev.excerpt, '[email]');
+  assert.ok(ev.advertiser_name.includes('[phone]'));
+  assert.strictEqual(ev.provider_metrics.caption, 'email [email]');
+  assert.match(ev.content_fingerprint, /^[0-9a-f]{64}$/);
+  assert.strictEqual(ev.dedup_key, ev.content_fingerprint);
+  const rawFp = computeContentFingerprint({
+    platform: ev.platform,
+    source_type: ev.source_type,
+    provider_external_id: ev.provider_external_id,
+    canonical_source_url: ev.canonical_source_url,
+    headline: `Talk to ${RAW_EMAIL}`,
+    body_text: `Call ${RAW_PHONE} or campaign 123456`,
+    excerpt: RAW_EMAIL,
+    advertiser_name: `Acme ${RAW_PHONE}`,
+    creative_format: ev.creative_format,
+  });
+  assert.notStrictEqual(ev.content_fingerprint, rawFp);
+  const llm = toLlmSafeEvidence(ev);
+  assert.ok(!JSON.stringify(llm).includes(RAW_EMAIL));
+  assert.ok(!JSON.stringify(llm).includes(RAW_PHONE));
+  throwsValidation(() => assertEvidenceItem({
+    ...metaEvidence(),
+    extracted_email: RAW_EMAIL,
+  }, { tenantId: TENANT_A }));
+  throwsValidation(() => assertEvidenceItem({
+    ...metaEvidence(),
+    extracted_phone: RAW_PHONE,
+  }, { tenantId: TENANT_A }));
+  const run = assertResearchRun({
+    ...SAMPLE_RUN,
+    research_brief: `Find ${RAW_EMAIL}`,
+    search_parameters: { query: `ads ${RAW_PHONE}` },
+    error_message: `failed for ${RAW_EMAIL}`,
+  }, { tenantId: TENANT_A });
+  assert.ok(run.research_brief.includes('[email]'));
+  assert.ok(run.search_parameters.query.includes('[phone]'));
+  assert.ok(run.error_message.includes('[email]'));
+});
+
 test('6. media binaries, base64 blobs, and Buffer cannot be stored on evidence', () => {
   throwsValidation(() => assertEvidenceItem({
     ...metaEvidence(),
@@ -366,6 +424,7 @@ test('12. new modules do not require http clients or call fetch; no live connect
     'services/agent_orchestrator/research_connector.js',
     'services/agent_orchestrator/research_retention.js',
     'services/agent_orchestrator/research_store.js',
+    'services/agent_orchestrator/research_cleanup.js',
   ];
   const requireRe = /require\(\s*['"](?:https|http|node-fetch|undici)['"]\s*\)/;
   const fetchRe = /\bfetch\s*\(/;

@@ -277,4 +277,122 @@ if (!HAS_DB) {
       /COUNT\(\*\)/
     );
   });
+
+  test('corrupt-low quota cache still refuses insert at cap', async () => {
+    const p = db.getPool();
+    const tenantQ = (await p.query(
+      `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+      [`AORS qcache ${SUFFIX}`, `aors-qc-${SUFFIX}`]
+    )).rows[0].id;
+    try {
+      await ensureResearchLimits(p, tenantQ, { records: 1, bytes: 104857600 });
+      const host = await seedHost(p, tenantQ);
+      const comp = await insertCompetitor(p, competitorPayload(tenantQ, host.runId), { tenantId: tenantQ });
+      await insertEvidenceItem(p, evidencePayload(tenantQ, host.runId, comp.id), { tenantId: tenantQ });
+      await p.query(
+        `UPDATE orchestrator_research_quota SET evidence_count=0, payload_bytes=0 WHERE tenant_id=$1`,
+        [tenantQ]
+      );
+      await assert.rejects(
+        () => insertEvidenceItem(
+          p,
+          evidencePayload(tenantQ, host.runId, comp.id, { headline: nid('cap') }),
+          { tenantId: tenantQ }
+        ),
+        (err) => err instanceof OrchError && err.code === 'research_evidence_limit_exceeded'
+      );
+    } finally {
+      await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantQ]);
+    }
+  });
+
+  test('in-copy email and phone are redacted before persist; fingerprint is of redacted text', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const {
+      redactContactPii,
+      toLlmSafeEvidence,
+      computeContentFingerprint,
+      assertEvidenceItem,
+    } = require('../services/agent_orchestrator/research_validate');
+    const { logger } = require('../services/infra/logger');
+    const RAW_EMAIL = 'ops@ads.example';
+    const RAW_PHONE = '+1 (415) 555-0100';
+    const comp = await insertCompetitor(p, competitorPayload(tenantA, host.runId), { tenantId: tenantA });
+    const payload = evidencePayload(tenantA, host.runId, comp.id, {
+      headline: `Talk to ${RAW_EMAIL}`,
+      bodyText: `Call ${RAW_PHONE} today`,
+      excerpt: `${RAW_EMAIL} or ${RAW_PHONE}`,
+      advertiserName: `Acme ${RAW_EMAIL}`,
+    });
+    delete payload.dedup_key;
+    const row = await insertEvidenceItem(p, payload, { tenantId: tenantA });
+    const expectedHeadline = redactContactPii(`Talk to ${RAW_EMAIL}`);
+    const expectedBody = redactContactPii(`Call ${RAW_PHONE} today`);
+    assert.strictEqual(row.headline, expectedHeadline);
+    assert.strictEqual(row.body_text, expectedBody);
+    assert.ok(!row.headline.includes(RAW_EMAIL));
+    assert.ok(!row.body_text.includes(RAW_PHONE));
+    assert.ok(row.excerpt.includes('[email]'));
+    assert.ok(row.advertiser_name.includes('[email]'));
+    assert.match(row.dedup_key, /^[0-9a-f]{64}$/);
+    assert.ok(!row.dedup_key.includes('@'));
+    assert.ok(!JSON.stringify(row).includes(RAW_EMAIL));
+    assert.ok(!JSON.stringify(row).includes('555-0100'));
+
+    const stored = (await p.query(
+      `SELECT headline, body_text, excerpt, advertiser_name, content_fingerprint, dedup_key
+         FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, row.id]
+    )).rows[0];
+    assert.strictEqual(stored.headline, expectedHeadline);
+    assert.strictEqual(stored.body_text, expectedBody);
+    assert.ok(!JSON.stringify(stored).includes(RAW_EMAIL));
+    assert.ok(!JSON.stringify(stored).includes(RAW_PHONE));
+    assert.strictEqual(stored.content_fingerprint, row.content_fingerprint);
+    assert.strictEqual(stored.dedup_key, stored.content_fingerprint);
+
+    const llm = toLlmSafeEvidence(stored);
+    assert.ok(!JSON.stringify(llm).includes(RAW_EMAIL));
+    assert.ok(!JSON.stringify(llm).includes(RAW_PHONE));
+    assert.strictEqual(llm.headline, stored.headline);
+
+    const recomputed = computeContentFingerprint({
+      platform: 'meta',
+      source_type: 'ad_creative',
+      provider_external_id: row.provider_external_id,
+      canonical_source_url: row.canonical_source_url,
+      headline: stored.headline,
+      body_text: stored.body_text,
+      excerpt: stored.excerpt,
+      advertiser_name: stored.advertiser_name,
+      creative_format: row.creative_format,
+    });
+    assert.strictEqual(recomputed, stored.content_fingerprint);
+
+    const lines = [];
+    const origError = logger.error;
+    logger.error = (msg, fields) => {
+      lines.push(JSON.stringify({ msg, ...(fields || {}) }));
+      return origError(msg, fields);
+    };
+    try {
+      await assert.rejects(
+        () => insertEvidenceItem(
+          p,
+          evidencePayload(tenantA, host.runId, comp.id, {
+            headline: RAW_EMAIL,
+            bodyText: RAW_PHONE,
+            retentionClass: 'nope',
+          }),
+          { tenantId: tenantA }
+        )
+      );
+    } finally {
+      logger.error = origError;
+    }
+    assert.ok(!lines.join('\n').includes(RAW_EMAIL));
+    assert.ok(!lines.join('\n').includes(RAW_PHONE));
+    assert.ok(assertEvidenceItem);
+  });
 }

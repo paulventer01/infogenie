@@ -108,8 +108,8 @@ const SEARCH_PARAMETER_KEYS = Object.freeze([
 // Matched after key normalization (lowercase, separators removed), so
 // `access-token`, `Access Token` and `accessToken` are the same rejected key.
 // Extracted-contact keys are refused so ad copy is never parsed into indexed
-// email/phone fields. Public ad copy in headline/body_text/excerpt may still
-// contain a business email or phone as source text under the retention TTL.
+// email/phone fields. Public ad copy in headline/body_text/excerpt is retained
+// only after redactContactPii replaces in-copy emails and telephone numbers.
 const FORBIDDEN_KEYS = Object.freeze([
   'raw_payload',
   'payload',
