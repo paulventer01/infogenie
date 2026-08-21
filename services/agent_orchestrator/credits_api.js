@@ -16,6 +16,7 @@ const {
 const credits = require('./credits');
 const { ensureLimits, updateLimits, utcDayStart, utcMonthStart, sumFinalUsage } = require('./limits');
 const { listCatalog } = require('./pricing');
+const { capPayload } = require('./payload_cap');
 
 const PERMS = Object.freeze({
   view: 'orchestrator.credits.view',
@@ -182,6 +183,8 @@ function mutation(action, permission, handler) {
     }
   };
 }
+
+router.use(capPayload);
 
 router.get('/', (req, res) => readHandler(req, res, PERMS.view, async (req2, res2, tid, pool) => {
   const snap = await credits.withTx({ pool }, async (c) => {

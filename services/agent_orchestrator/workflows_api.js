@@ -25,8 +25,8 @@ const { isPlatformAdmin } = require('../tenants/permission_enforce');
 const { assertSafeHttpsUrl } = require('../security/safe_url');
 const { toBigInt, microsToJson, dollarsToMicros, toSql } = require('./money');
 const credits = require('./credits');
+const { capPayload } = require('./payload_cap');
 
-const MAX_BYTES = 64 * 1024;
 const BUDGET_CAP = 1e9;
 // Free-text brief fields are hashed into every approval and copied into the
 // idempotency response body, so they are capped per field rather than relying
@@ -42,17 +42,6 @@ const APPROVAL_OBJECT_TYPES = Object.freeze(['workflow']);
 async function assertNoLiveExecution(pool, tenantId, workflowId) {
   const lease = await getLease(pool, tenantId, workflowId);
   if (!isLeaseExpired(lease)) fail('execution_in_progress');
-}
-
-function capPayload(req, res, next) {
-  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
-  const cl = Number(req.headers['content-length']);
-  if (Number.isFinite(cl) && cl > MAX_BYTES) return sendError(res, 413, 'payload_too_large');
-  if (req.rawBody != null) {
-    const n = Buffer.byteLength(typeof req.rawBody === 'string' ? req.rawBody : String(req.rawBody), 'utf8');
-    if (n > MAX_BYTES) return sendError(res, 413, 'payload_too_large');
-  }
-  next();
 }
 
 async function assertLandingUrl(raw) {

@@ -409,11 +409,14 @@ Re-reviewed after implementation; all three are met:
   ledger's partial unique index on `(tenant_id, idempotency_key)` makes a
   reclaimed retry a replay.
 - `orchestrator_tenant_limits.provider_limits` is stored as supplied. There is
-  no size or depth cap on it, and the credits router carries no 64kb payload cap
-  (`workflows_api.js` does), so the 5mb global `express.json` limit applies. It
-  takes `orchestrator.credits.limits.edit`, the blast radius is the editing
-  tenant's own preflight, and every numeric field inside it is still read
-  fail-closed. Backend should add the same `capPayload` and bound the object.
+  no size or depth cap on the object itself, but credits mutations (`grant`,
+  `adjust`, `PUT /limits`) and workflow mutations share the fail-closed 64kb
+  `capPayload` middleware in `services/agent_orchestrator/payload_cap.js`
+  (Content-Length and actual/raw body). It takes
+  `orchestrator.credits.limits.edit`, the blast radius is the editing tenant's
+  own preflight, and every numeric field inside it is still read fail-closed.
+  A future hardening pass may bound `provider_limits` depth/size inside the
+  handler.
 - Neither `grant` nor `adjust` has an upper bound beyond `BIGINT`. An absurd
   amount overflows the column and surfaces as `500 internal_error` rather than
   `400 validation_failed`. Admin authority, no state change, but the wrong

@@ -26,8 +26,70 @@ const outbox = require('../services/agent_orchestrator/outbox');
 const { fromPg } = require('../services/agent_orchestrator/money');
 const { DEFAULT_REQUEST_MICROS } = require('../services/agent_orchestrator/pricing');
 const { contentHash, materialChanged } = require('../services/agent_orchestrator/approvals');
+const { capPayload } = require('../services/agent_orchestrator/payload_cap');
 
 const HAS_DB = hasDb();
+const http = require('node:http');
+
+function runCapPayload(req) {
+  let nextCalled = false;
+  const res = {
+    headersSent: false,
+    statusCode: 200,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(b) { this.body = b; this.headersSent = true; return this; },
+  };
+  capPayload(req, res, () => { nextCalled = true; });
+  return { nextCalled, res };
+}
+
+test('capPayload rejects misleading Content-Length when rawBody exceeds cap', () => {
+  const big = 'x'.repeat(70 * 1024);
+  const { nextCalled, res } = runCapPayload({
+    method: 'POST',
+    headers: { 'content-length': '10' },
+    rawBody: big,
+  });
+  assert.strictEqual(nextCalled, false);
+  assert.strictEqual(res.statusCode, 413);
+  assert.strictEqual(res.body.ok, false);
+  assert.strictEqual(res.body.error, 'payload_too_large');
+});
+
+test('capPayload rejects large rawBody when Content-Length is absent', () => {
+  const big = 'x'.repeat(70 * 1024);
+  const { nextCalled, res } = runCapPayload({
+    method: 'POST',
+    headers: {},
+    rawBody: big,
+  });
+  assert.strictEqual(nextCalled, false);
+  assert.strictEqual(res.statusCode, 413);
+  assert.strictEqual(res.body.error, 'payload_too_large');
+});
+
+test('capPayload rejects large parsed body when rawBody is missing', () => {
+  const body = { amount_micros: 1000, pad: 'x'.repeat(70 * 1024) };
+  const { nextCalled, res } = runCapPayload({
+    method: 'POST',
+    headers: {},
+    body,
+  });
+  assert.strictEqual(nextCalled, false);
+  assert.strictEqual(res.statusCode, 413);
+  assert.strictEqual(res.body.error, 'payload_too_large');
+});
+
+test('capPayload skips GET requests', () => {
+  const { nextCalled, res } = runCapPayload({
+    method: 'GET',
+    headers: { 'content-length': '999999' },
+    rawBody: 'x'.repeat(70 * 1024),
+  });
+  assert.strictEqual(nextCalled, true);
+  assert.strictEqual(res.headersSent, false);
+});
 
 function ik(tag) {
   return `ik-${tag}-${crypto.randomBytes(8).toString('hex')}`;
@@ -114,6 +176,81 @@ if (!HAS_DB) {
     return request(app.baseUrl, method, `/api/agent-orchestrator/credits${urlPath}`, {
       cookie, body, headers: h,
     });
+  }
+
+  function credChunked(method, urlPath, { cookie, body, headers, key } = {}) {
+    const data = typeof body === 'string' ? body : JSON.stringify(body);
+    const h = {
+      'content-type': 'application/json',
+      ...(headers || {}),
+    };
+    if (key) h['Idempotency-Key'] = key;
+    if (cookie) h.cookie = cookie;
+    return new Promise((resolve, reject) => {
+      const r = http.request(`${app.baseUrl}/api/agent-orchestrator/credits${urlPath}`, {
+        method, headers: h,
+      }, (res) => {
+        let buf = '';
+        res.on('data', (c) => { buf += c; });
+        res.on('end', () => {
+          let json = null;
+          try { json = buf ? JSON.parse(buf) : null; } catch (_) { /* non-JSON */ }
+          resolve({ status: res.statusCode, headers: res.headers, json, text: buf });
+        });
+      });
+      r.on('error', reject);
+      r.write(data);
+      r.end();
+    });
+  }
+
+  async function creditSnapshot(pool, tenantId) {
+    const acct = (await pool.query(
+      `SELECT available_micros, reserved_micros, consumed_micros
+         FROM orchestrator_credit_accounts WHERE tenant_id=$1`,
+      [tenantId]
+    )).rows[0];
+    const ledger = (await pool.query(
+      `SELECT COUNT(*)::int AS n, COALESCE(MAX(id), 0)::text AS max_id
+         FROM orchestrator_credit_ledger WHERE tenant_id=$1`,
+      [tenantId]
+    )).rows[0];
+    const reservations = (await pool.query(
+      `SELECT COUNT(*)::int AS n FROM orchestrator_credit_reservations WHERE tenant_id=$1`,
+      [tenantId]
+    )).rows[0];
+    const limits = (await pool.query(
+      `SELECT credit_ceiling_micros, provider_limits
+         FROM orchestrator_tenant_limits WHERE tenant_id=$1`,
+      [tenantId]
+    )).rows[0];
+    const idem = (await pool.query(
+      `SELECT COUNT(*)::int AS n FROM orchestrator_idempotency_keys WHERE tenant_id=$1`,
+      [tenantId]
+    )).rows[0];
+    return {
+      account: acct ? {
+        available_micros: String(acct.available_micros),
+        reserved_micros: String(acct.reserved_micros),
+        consumed_micros: String(acct.consumed_micros),
+      } : null,
+      ledgerCount: ledger.n,
+      ledgerMaxId: ledger.max_id,
+      reservationCount: reservations.n,
+      limits: limits ? {
+        credit_ceiling_micros: String(limits.credit_ceiling_micros),
+        provider_limits: limits.provider_limits,
+      } : null,
+      idempotencyCount: idem.n,
+    };
+  }
+
+  async function assertIdempotencyKeyAbsent(pool, tenantId, key) {
+    const r = await pool.query(
+      `SELECT 1 FROM orchestrator_idempotency_keys WHERE tenant_id=$1 AND key=$2`,
+      [tenantId, key]
+    );
+    assert.strictEqual(r.rows.length, 0, `idempotency key ${key} must not be inserted`);
   }
 
   async function createWf(cookie, over, key) {
@@ -861,5 +998,62 @@ if (!HAS_DB) {
     });
     assert.strictEqual(adv.status, 200, adv.text);
     assert.strictEqual(adv.json.workflow.current_state, 'generation_approval_required');
+  });
+
+  test('20. credits mutation payload cap rejects oversized bodies without side effects', async () => {
+    const pool = db.getPool();
+    const baseline = await creditSnapshot(pool, tenantA.id);
+
+    const keyG = ik('cap-g');
+    const overG = await cred('POST', '/grant', {
+      cookie: cookieA,
+      key: keyG,
+      body: { amount_micros: 1000, pad: 'x'.repeat(70 * 1024) },
+    });
+    assert.strictEqual(overG.status, 413, overG.text);
+    assert.strictEqual(overG.json.error, 'payload_too_large');
+    assert.deepStrictEqual(await creditSnapshot(pool, tenantA.id), baseline);
+    await assertIdempotencyKeyAbsent(pool, tenantA.id, keyG);
+
+    const keyA = ik('cap-a');
+    const overA = await cred('POST', '/adjust', {
+      cookie: cookieA,
+      key: keyA,
+      body: {
+        amount_micros: 1000,
+        direction: 'credit',
+        reason_code: 'refund',
+        pad: 'x'.repeat(70 * 1024),
+      },
+    });
+    assert.strictEqual(overA.status, 413, overA.text);
+    assert.strictEqual(overA.json.error, 'payload_too_large');
+    assert.deepStrictEqual(await creditSnapshot(pool, tenantA.id), baseline);
+    await assertIdempotencyKeyAbsent(pool, tenantA.id, keyA);
+
+    const keyL = ik('cap-l');
+    const overL = await cred('PUT', '/limits', {
+      cookie: cookieAdmin,
+      key: keyL,
+      body: {
+        credit_ceiling_micros: 999999,
+        provider_limits: { pad: 'x'.repeat(70 * 1024) },
+      },
+    });
+    assert.strictEqual(overL.status, 413, overL.text);
+    assert.strictEqual(overL.json.error, 'payload_too_large');
+    assert.deepStrictEqual(await creditSnapshot(pool, tenantA.id), baseline);
+    await assertIdempotencyKeyAbsent(pool, tenantA.id, keyL);
+
+    const keyC = ik('cap-chunk');
+    const overC = await credChunked('POST', '/grant', {
+      cookie: cookieA,
+      key: keyC,
+      body: { amount_micros: 1000, pad: 'x'.repeat(70 * 1024) },
+    });
+    assert.strictEqual(overC.status, 413, overC.text);
+    assert.strictEqual(overC.json.error, 'payload_too_large');
+    assert.deepStrictEqual(await creditSnapshot(pool, tenantA.id), baseline);
+    await assertIdempotencyKeyAbsent(pool, tenantA.id, keyC);
   });
 }
