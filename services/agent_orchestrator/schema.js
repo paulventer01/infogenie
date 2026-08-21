@@ -59,11 +59,7 @@ const ADVERTISING_ORCH_TABLES = [
 ];
 
 async function _ensureNamedCheck(p, table, name, checkBody) {
-  const existing = await p.query(
-    `SELECT 1 FROM pg_constraint WHERE conname = $1 AND conrelid = $2::regclass`,
-    [name, `public.${table}`]
-  );
-  if (existing.rowCount) return;
+  await p.query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${name}`);
   try {
     await p.query(`ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${checkBody})`);
   } catch (e) {
@@ -1016,6 +1012,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         UNIQUE (tenant_id, research_run_id, platform, dedup_key),
       CONSTRAINT orchestrator_research_competitors_tenant_unique_ext
         UNIQUE (tenant_id, research_run_id, platform, provider_advertiser_id),
+      CONSTRAINT orchestrator_research_competitors_tenant_unique_run_id
+        UNIQUE (tenant_id, research_run_id, id),
       CONSTRAINT orchestrator_research_competitors_tenant_run_fkey
         FOREIGN KEY (tenant_id, research_run_id)
         REFERENCES orchestrator_research_runs (tenant_id, id) ON DELETE CASCADE,
@@ -1082,8 +1080,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         FOREIGN KEY (tenant_id, research_run_id)
         REFERENCES orchestrator_research_runs (tenant_id, id) ON DELETE CASCADE,
       CONSTRAINT orchestrator_research_evidence_tenant_competitor_fkey
-        FOREIGN KEY (tenant_id, competitor_id)
-        REFERENCES orchestrator_research_competitors (tenant_id, id) ON DELETE CASCADE,
+        FOREIGN KEY (tenant_id, research_run_id, competitor_id)
+        REFERENCES orchestrator_research_competitors (tenant_id, research_run_id, id) ON DELETE CASCADE,
       CONSTRAINT orchestrator_research_evidence_platform_check
         CHECK (platform IN ('meta','google','tiktok')),
       CONSTRAINT orchestrator_research_evidence_source_type_check
@@ -1371,6 +1369,9 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedUnique(p, 'orchestrator_research_competitors',
     'orchestrator_research_competitors_tenant_unique_ext',
     'tenant_id, research_run_id, platform, provider_advertiser_id');
+  await _ensureNamedUnique(p, 'orchestrator_research_competitors',
+    'orchestrator_research_competitors_tenant_unique_run_id',
+    'tenant_id, research_run_id, id');
   await _ensureNamedUnique(p, 'orchestrator_research_evidence',
     'orchestrator_research_evidence_tenant_unique_dedup',
     'tenant_id, research_run_id, dedup_key');
@@ -1397,9 +1398,13 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'orchestrator_research_evidence_tenant_run_fkey',
     'tenant_id, research_run_id', 'orchestrator_research_runs', 'tenant_id, id',
     'ON DELETE CASCADE');
+  // Existing DBs may still have the 2-column (tenant_id, competitor_id) FK under
+  // this name, which allows same-tenant evidence to cite another run's competitor.
+  await p.query(`ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_tenant_competitor_fkey`);
   await _ensureNamedFk(p, 'orchestrator_research_evidence',
     'orchestrator_research_evidence_tenant_competitor_fkey',
-    'tenant_id, competitor_id', 'orchestrator_research_competitors', 'tenant_id, id',
+    'tenant_id, research_run_id, competitor_id',
+    'orchestrator_research_competitors', 'tenant_id, research_run_id, id',
     'ON DELETE CASCADE');
   await _ensureNamedFk(p, 'orchestrator_research_evidence_assets',
     'orchestrator_research_evidence_assets_tenant_evidence_fkey',

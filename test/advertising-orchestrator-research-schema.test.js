@@ -22,6 +22,7 @@ const TENANT_UNIQUE_CONSTRAINTS = [
   ['orchestrator_research_runs', 'orchestrator_research_runs_tenant_unique_idempotency_key', 'tenant_id,idempotency_key'],
   ['orchestrator_research_competitors', 'orchestrator_research_competitors_tenant_unique_dedup', 'tenant_id,research_run_id,platform,dedup_key'],
   ['orchestrator_research_competitors', 'orchestrator_research_competitors_tenant_unique_ext', 'tenant_id,research_run_id,platform,provider_advertiser_id'],
+  ['orchestrator_research_competitors', 'orchestrator_research_competitors_tenant_unique_run_id', 'tenant_id,research_run_id,id'],
   ['orchestrator_research_evidence', 'orchestrator_research_evidence_tenant_unique_dedup', 'tenant_id,research_run_id,dedup_key'],
   ['orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_tenant_unique_ref', 'tenant_id,evidence_id,storage_ref'],
 ];
@@ -109,6 +110,25 @@ async function tenantFk(table) {
         AND k.n = 1`,
     [table]
   )).rows[0];
+}
+
+async function namedFkCols(table, name) {
+  const p = db.getPool();
+  const row = (await p.query(
+    `SELECT string_agg(att.attname, ',' ORDER BY k.n) AS cols
+       FROM pg_constraint con
+       JOIN pg_class rel ON rel.oid = con.conrelid
+       JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+       JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS k(attnum, n) ON true
+       JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attnum = k.attnum
+      WHERE nsp.nspname = 'public'
+        AND rel.relname = $1
+        AND con.conname = $2
+        AND con.contype = 'f'
+      GROUP BY con.oid`,
+    [table, name]
+  )).rows[0];
+  return row ? row.cols : null;
 }
 
 async function insertWorkflow(p, tenantId, wfId) {
@@ -396,6 +416,40 @@ if (!HAS_DB) {
       /foreign key|violates/i,
       'tenant B asset must not reference tenant A evidence_id'
     );
+  });
+
+  test('evidence competitor FK binds the same research run; UNIQUE (tenant_id, research_run_id, id) exists', async () => {
+    const p = db.getPool();
+
+    const unique = (await constraints('orchestrator_research_competitors'))
+      .filter((c) => c.constraint_type === 'UNIQUE');
+    assert.ok(
+      unique.some((c) =>
+        c.constraint_name === 'orchestrator_research_competitors_tenant_unique_run_id'
+        && c.cols === 'tenant_id,research_run_id,id'
+      ),
+      'orchestrator_research_competitors_tenant_unique_run_id UNIQUE (tenant_id, research_run_id, id) must exist'
+    );
+
+    const fkCols = await namedFkCols(
+      'orchestrator_research_evidence',
+      'orchestrator_research_evidence_tenant_competitor_fkey'
+    );
+    assert.strictEqual(
+      fkCols,
+      'tenant_id,research_run_id,competitor_id',
+      'competitor FK must be (tenant_id, research_run_id, competitor_id)'
+    );
+
+    const run1 = await seedHost(p, tenantA);
+    const run2 = await seedHost(p, tenantA);
+    const compRun1 = await insertCompetitor(p, tenantA, run1.runId);
+    await assert.rejects(
+      () => insertEvidence(p, tenantA, run2.runId, compRun1, { id: nid('ev-xrun-comp') }),
+      /foreign key|violates/i,
+      'same-tenant evidence must not cite a competitor from another research run'
+    );
+    await insertEvidence(p, tenantA, run1.runId, compRun1, { id: nid('ev-samerun') });
   });
 
   test('CHECK rejects invalid platform, source_type, state, and contract_version', async () => {
