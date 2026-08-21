@@ -1475,6 +1475,92 @@ with no `40P01`.
   zeroes those fields explicitly. `ok:false` is the operative signal and no
   caller reads the sub-flags on failure; it is pre-existing and cosmetic.
 
+## CodeQL missing-rate-limiting on `/api/playbooks` — classified residual
+
+CodeQL run 96768259245 reports high-severity `js/missing-rate-limiting` against
+the handlers in `services/vertical_playbooks/api.js`. Classified as a
+**pre-existing residual surfaced by the diff, not a defect introduced by the
+tenant-schema closeout**, and deliberately not "fixed" by adding the prefix to
+`_RL_PATHS`. The alert list itself was not readable from this environment (the
+code-scanning API answers `403 Resource not accessible by integration`), so the
+underlying claim was checked against the code and a running server rather than
+taken from the report.
+
+What the closeout changed in that file is tenant isolation only: the
+`generate-custom` tenant stamp, the `activate/:id` and `/active/list` MIXED
+catalog predicates, and the `seedPlaybooks` partial-index conflict target. All
+five routes — `GET /list`, `GET /:vertical`, `GET /active/list`,
+`POST /activate/:id`, `POST /generate-custom` — exist unchanged on `origin/main`,
+and neither `main` nor this branch references a limiter in the file. `server.js`
+is byte-identical to `origin/main`, so neither `_AUTH_PUBLIC_API_PATHS` nor
+`_RL_PATHS` moved and **no new public endpoint was added**.
+
+The routes are not the anonymous surface the query scores:
+
+- `/api/playbooks` is absent from `_AUTH_PUBLIC_API_PATHS`, so the `/api/*` gate
+  requires a session or `INFOGENIE_API_KEY`. Measured against a running server:
+  120 anonymous `GET /list` and 60 anonymous `POST /generate-custom` requests all
+  returned `401 auth_required`, so an unauthenticated flood reaches no database
+  and no provider — the sink the query traces to is unreachable before the
+  handler runs.
+- All five paths resolve to `manage.playbook.use` for both view and write through
+  the `/api/playbooks` `ROUTE_GROUPS` row, enforced by `enforceMatrix`
+  (`PERMISSION_ENFORCEMENT=on` in production).
+- Each tenant-scoped handler resolves `resolveTenantId(req, { label })` and
+  refuses `400 no_tenant` without one.
+
+`js/missing-rate-limiting` matches "handler performs an expensive operation" and
+models neither the auth gate, the permission matrix nor tenant resolution, so it
+scores these identically to a public POST. It fires on the file because the file
+entered the diff.
+
+### Why these are not going into `_RL_PATHS`
+
+`_RL_PATHS` is "public POST surfaces (cheap; never blocks dashboard usage)".
+Adding a dashboard prefix breaks both halves of that, measured rather than
+assumed:
+
+- `_rateLimitPublic` keys on IP + path only, with **no authenticated-caller
+  exemption**: 25 POSTs to `/api/visitor-intel/ping` carrying a valid
+  `X-InfoGenie-Key` returned 20×200 then 5×429. At 20 requests/60s per IP+path
+  that 429s real operators, and a NAT'd office shares one bucket.
+- The middleware returns early unless `req.method === 'POST'`, so it structurally
+  cannot cover `GET /list`, `GET /:vertical` or `GET /active/list` — three of the
+  flagged handlers, and the two that carry the `seedPlaybooks` write loop.
+
+An authenticated dashboard limiter is a platform-wide capacity program, not a
+closeout edit. `createRateLimiter` is general enough to host one, but its only
+caller today is `authAbuseLimiter()`, and introducing a second policy class for
+one file the diff happened to touch would set the threshold for ~270 other
+`ROUTE_GROUPS` prefixes from a scanner alert rather than from a capacity
+decision. No rate limit was added here, and adoption checklist item 5 stands as
+written: it asks for a limiter on new **public** POST surfaces, and this branch
+adds none.
+
+### Accepted residuals
+
+- **`POST /generate-custom` is a genuinely un-limited cost surface for an
+  authenticated caller.** It calls OpenAI (`gpt-5`, `max_tokens: 1500`) and
+  writes two rows per request with no per-tenant request or spend cap. The caller
+  needs a session, `manage.playbook.use` and a resolvable tenant, so the exposure
+  is an authorised tenant user burning platform AI spend, not anonymous abuse. It
+  is unchanged from `main` and belongs to the **per-tenant AI rate/cost limiting**
+  follow-up already named under the meeting-notes section — the place to
+  generalise the orchestrator's `requests_per_minute` and daily/monthly cost caps
+  (`services/agent_orchestrator/limits.js`) from. Recorded so the CodeQL alert is
+  closed as misdirected rather than as unfounded.
+- **`seedPlaybooks` still runs on every `GET /list` and `GET /:vertical`.** Where
+  a legacy unowned row squats a catalog vertical slot the `is_system` count never
+  reaches `SYSTEM_PLAYBOOKS.length`, so each request re-attempts the six-row seed
+  loop. The amplification is authenticated-only and is the catalog-poisoning item
+  already recorded above; it needs the housekeeping data decision noted there,
+  not a limiter.
+- **The alert will reappear** on any future PR touching this file until a limiter
+  exists or it is dismissed in the GitHub code-scanning UI. Dismissal is an
+  operator action — there is no `.github/workflows` CodeQL config to scope the
+  query (scanning runs from GitHub default setup), and nothing in the repository
+  suppresses it.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
