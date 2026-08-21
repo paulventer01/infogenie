@@ -1047,59 +1047,69 @@ live Postgres rather than reading the diffs.
   needs no destructive migration. What remains is housekeeping, not a leak —
   unowned `is_system=FALSE` rows still squat a catalog vertical slot, and the
   stale `active_playbooks` rows are inert.
-- **`benchmark_aggregates` still publishes single-workspace buckets — the k=5
-  floor counts rows, not workspaces. STILL OPEN.** The original finding: the
-  p25/median/p75 for a `(vertical, region, company_size, metric_key)` bucket with
-  one contributor *is* that workspace's exact submitted value, re-served to every
-  other workspace through `POST /compare`, `GET /leaderboard` and
-  `strategic_intelligence`'s benchmark read. The global classification is right;
-  the aggregation needed a k-anonymity floor.
+- **`benchmark_aggregates` published single-workspace buckets. CLOSED** by
+  `bd7625e` + `7dd418c`. The finding: the p25/median/p75 for a
+  `(vertical, region, company_size, metric_key)` bucket with one contributor *is*
+  that workspace's exact submitted value, re-served to every other workspace
+  through `POST /compare`, `GET /leaderboard` and `strategic_intelligence`'s
+  benchmark read. The global classification was always right; the aggregation
+  needed a k-anonymity floor.
 
-  `440bdbd` added `K = 5` and wired it into every one of those read paths plus the
-  rebuild (no UPSERT below the floor, and a `DELETE` of a bucket that falls back
-  under it, correctly using `IS NOT DISTINCT FROM` for the nullable
-  `region` / `company_size`). **The wiring is complete and no read path was
-  missed. The counter it gates on is the wrong measure.**
-  `_rebuildAggregates` computes `sample_count` as `COUNT(*)` over
-  `benchmark_submissions`, `POST /submit` is a plain `INSERT` with no
-  `ON CONFLICT`, and `benchmark_submissions` has no unique key on
-  `(tenant_id, vertical, region, company_size, metric_key)`. So `sample_count`
-  counts **submission rows**, and one workspace reaches the floor alone.
+  The first attempt (`440bdbd`) added `K = 5` and wired it into every read path
+  plus the rebuild, but gated on `sample_count`, which `_rebuildAggregates`
+  computed as `COUNT(*)` over `benchmark_submissions`. Since `POST /submit` is a
+  plain `INSERT` and the table has no unique key on
+  `(tenant_id, vertical, region, company_size, metric_key)`, that counter counts
+  **rows**, so one workspace reached the floor alone: five submissions of the same
+  metric published `p25 = median = p75 = 12.3400`, its own private cost-per-lead,
+  readable by an unrelated workspace as a five-sample network benchmark. Four rows
+  from one workspace plus **one** submission from anybody else had the same
+  effect. Recording that here because it is the instructive part: the wiring was
+  complete and every read path was covered — the counter was the wrong measure,
+  and no value of `K` fixes a `COUNT(*)`.
 
-  Reproduced end-to-end. A single workspace submitting the same metric five times
-  — a monthly re-submission, not an attack — publishes the bucket at
-  `sample_count = 5` with `p25 = median = p75 = 12.3400`, its own exact private
-  cost-per-lead, which an unrelated workspace then reads back from both
-  `/compare` and `/leaderboard` labelled as a five-sample network benchmark. The
-  adjacent case is worse because it is cross-tenant and cheap: four rows from one
-  workspace stay correctly suppressed, and **one** submission from any other
-  workspace forces publication, whereupon `p25`/`median` disclose the first
-  workspace's value. The floor raises the cost of the disclosure from one
-  submission to five; it does not remove it.
+  The floor now counts workspaces. `benchmark_aggregates` gained a
+  `contributor_count INT NOT NULL DEFAULT 0` column (still no `tenant_id` — the
+  table stays GLOBAL), `_rebuildAggregates` computes it as
+  `COUNT(DISTINCT tenant_id)`, percentiles are taken over one value per workspace
+  (`DISTINCT ON (tenant_id, metric_key)` ordered by `submitted_at DESC`), and all
+  three read paths plus the publish/delete decision gate on `contributor_count`.
+  `sample_count` is left as raw rows. Verified across six cases: one workspace with
+  five rows is suppressed and unreadable from both `/compare` and `/leaderboard`;
+  two workspaces with five rows between them stay suppressed, so the
+  one-submission unmasking is gone; five distinct workspaces publish correctly
+  (median 30 of 10/20/30/40/50); a workspace adding forty rows to a legitimate
+  bucket moves the median by one position and no further, with
+  `contributor_count` still 5 against `sample_count` 45, confirming one workspace
+  contributes exactly one value; and a bucket that falls back under the floor is
+  deleted on the next rebuild.
 
-  Required fix (Backend, with Database if a column is added): gate publication on
-  the number of **distinct contributing tenants**, not the row count — compute
-  `COUNT(DISTINCT tenant_id)` in `_rebuildAggregates` and suppress below `K`.
-  Because the read paths filter on the stored `sample_count`, that distinct count
-  has to be what is stored (or stored alongside, as a `contributor_count` column,
-  which is Database's call — do not repurpose `sample_count`'s meaning silently,
-  since it is returned to clients). Percentiles should also be computed over one
-  value per workspace, otherwise a workspace with forty rows still dominates the
-  median of a nominally five-workspace bucket. Do **not** close this by raising
-  `K` alone: any `K` is reachable by one workspace while the counter is
-  `COUNT(*)`.
-
-  `test/benchmark-contributor-anonymity.test.js` locks the three properties and
-  is **red by design** until this is fixed: the static check refuses a floor
-  applied to a bare row count (and accepts either `COUNT(DISTINCT tenant_id)` or
-  a `contributor_count` column), and two runtime checks reproduce the
-  single-workspace publication and the one-submission unmasking. It is not in the
-  `test:core` file list, so the fast gate stays green.
-  `test/benchmark-k-anonymity.test.js` is Backend's and passes — it seeds five
-  distinct tenants with one submission each, which is why it cannot see this.
-
-  `GET /leaderboard` additionally resolves no tenant at all; it is
+  Two things about this that are correct but worth knowing. The `DEFAULT 0`
+  fail-closes the upgrade: every bucket published before the migration is
+  suppressed until a fresh submission rebuilds it, verified with a pre-upgrade row
+  carrying `sample_count = 9`. Nothing guesses a contributor count for historical
+  data, which is the right trade — the network simply goes quiet per bucket until
+  it re-earns publication. And `GET /leaderboard` resolves no tenant at all; it is
   matrix-gated on `compete.intel.view`, which is the intended control.
+
+  `test/benchmark-contributor-anonymity.test.js` locks all three properties and is
+  now green: a static check that refuses a floor applied to a bare row count, plus
+  runtime checks for the single-workspace publication and the one-submission
+  unmasking. It is not in the `test:core` file list.
+
+  Residual, accepted: `K` counts distinct `tenant_id`, so anyone able to stand up
+  five workspaces can still surround a single real contributor and recover its
+  value from the order statistics. That is the standard limit of k-anonymity
+  without contributor vetting, it costs five workspace registrations, and it is
+  auditable from `benchmark_submissions.tenant_id`. Not worth further code here;
+  worth remembering before this data is ever marketed as anonymised.
+
+  Minor, for Backend and not a disclosure: `/compare` and `/leaderboard` return
+  `sample_count` but not `contributor_count`, so a client sees `sample_count: 45`
+  for a percentile computed over five values. Under the honesty rules the number
+  presented next to a statistic should describe that statistic — return
+  `contributor_count` (as `strategic_intelligence` does, where it also drives the
+  `network` vs `sector_estimate` tag) or relabel it.
 - **`resolveTenantId` still honours `opts.allowFallback`.** No production caller
   passes it — verified across the tree — but the escape hatch remains in
   `services/tenants/context.js`, and a future handler could reinstate
