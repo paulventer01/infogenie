@@ -1388,6 +1388,93 @@ Residual risks, stated plainly:
   `title`, `description` and `content` were correctly kept out for the same
   reason.
 
+## Closeout honesty fixes — FK savepoint, unique drop order, truncation (`6de0bcf`)
+
+Security re-review of Database's answer to the Reviewer rejection. The diff
+against `9263261` touches `services/tenants/migration.js`,
+`services/backlink_monitor/schema.js`, `services/tenants/preflight.js` and two
+test files only. Nothing in `services/security/`, `services/auth*/`,
+`services/credentials/`, `middleware.ts`, `permission_enforce.js`,
+`permissions.js`, `permission_matrix.js` or `context.js` moved,
+`PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched, and the
+diff contains no new `skip`, no relaxed audit assertion and no `allowFallback`.
+The scratch-database isolation closed above still holds: `tenant-schema-closeout`
+and `tenant-schema-preflight` still reassign `DATABASE_URL` before
+`require('../db')`, and the three tenant-schema suites run 26/26 concurrently
+with no `40P01`.
+
+- **The FK savepoint cannot report a rollback as a commit.** `SAVEPOINT
+  closeout_fk` wraps the `ADD CONSTRAINT … FOREIGN KEY` statement and nothing
+  else, so `ROLLBACK TO SAVEPOINT` restores to the point immediately *after*
+  `SET NOT NULL`, and the outer `COMMIT` is a real commit rather than the
+  implicit rollback an aborted transaction used to turn it into. Verified with a
+  name-clash fixture that occupies `<table>_tenant_id_fkey` with a CHECK (so
+  `_tenantFkExists` stays false and the FK ADD must fail): the call returns
+  `ok:true, fkAdded:false, fkError:<message>`, and `tenant_id` is `is_nullable:NO`,
+  `UNIQUE(tenant_id)` is present and `<table>_tenant_idx` exists on the table
+  afterwards. Every field the result claims is now backed by committed state.
+  Should the `ROLLBACK TO SAVEPOINT` itself throw, the outer `catch` issues a
+  full `ROLLBACK` and returns `ok:false` — there is no path from a broken
+  savepoint to `ok:true`.
+- **`ok:true` with `fkError` is accepted as the fail-closed policy, not
+  weakened.** The FK is defence in depth for referential cleanup on tenant
+  delete; isolation itself rests on `tenant_id NOT NULL`, `resolveTenantId` and
+  the `WHERE tenant_id = $1` predicates, all of which do commit on this path.
+  Requiring `ok:false` on an FK failure would, for `backlink_monitors`, pin the
+  legacy global `UNIQUE(domain)` in place forever over a constraint-name clash —
+  strictly worse operationally with no isolation gain. `enforceTenantIdNotNull`
+  still never calls `_getDefaultTenantId`; the FK path adds no orphan→tenant-1
+  route, and the probe row keeps its seeded tenant.
+- **`backlink_monitors` can no longer end with neither unique.** The legacy
+  `UNIQUE(domain)` is now dropped only when `monitorsCloseout.ok`. Two abort
+  shapes were exercised against live Postgres. A preflight abort (one row with
+  `tenant_id IS NULL` under the old shape) leaves `UNIQUE(domain)` in place, does
+  not add the composite, does not flip `NOT NULL`, and leaves the orphan
+  unmapped. A composite-`UNIQUE` failure is not silently survivable either:
+  `ADD CONSTRAINT` aborts the transaction, the following `COUNT(*)` fails
+  `25P02`, and the helper returns `ok:false, reason:'error'` with `uniqueError`
+  recorded — so the drop is skipped there too. The clean path still drops the
+  legacy unique and keeps `UNIQUE(tenant_id, domain)`, and the existing
+  two-tenant same-domain test still passes.
+- **The truncation flag exposes no additional data.** `_finding` still caps ids
+  at `ID_CAP` (500) via `_capIds`, and the callers still `LIMIT ID_CAP + 1` and
+  slice; the change adds the boolean `truncated` only. `ACTION REQUIRED` is
+  driven by `findings.length`, which the flag does not touch, and `(truncated)`
+  is appended inside that branch — it cannot suppress the banner. The job-queue
+  finding still carries `id`, `name` and `status` and no payload.
+
+### Accepted residuals (`6de0bcf`)
+
+- **`phase2_migrate._runRewrite` still drops before it adds.** For
+  `backlink_monitors` it calls `_safeDropConstraint(…, 'backlink_monitors_domain_key')`
+  *between* the base closeout and the composite-`UNIQUE` call, which is the
+  inverse of the order `schema.js` now uses. It is unchanged by this diff and is
+  hard to reach: it early-returns before the drop when the base closeout aborts,
+  and while `UNIQUE(domain)` holds a duplicate `(tenant_id, domain)` is
+  arithmetically impossible, so only an infrastructural DDL failure between the
+  two calls could leave neither unique. It self-heals on the next boot, and the
+  degraded window fails closed at the API — `POST /domains` upserts
+  `ON CONFLICT (tenant_id, domain)` and errors rather than writing across
+  tenants. Worth aligning with the `schema.js` order in a later Database slice.
+- **The abort state is a weak cross-tenant existence oracle.** While the legacy
+  `UNIQUE(domain)` is retained, one tenant creating a monitor for a domain
+  another tenant already watches gets a unique-violation `500` instead of a row.
+  That leaks the fact that *somebody* watches the domain, not who; it is the
+  pre-migration behaviour of this table, it only occurs in the aborted state an
+  operator is being asked to resolve, and the alternative (dropping the unique
+  anyway) is what the fix exists to prevent.
+- **`_listPlaybookXorViolations` still drops its truncated flag.** It slices to
+  `ID_CAP` and computes `truncated` locally, but returns rows only, so a
+  `vertical_playbooks` finding past 500 violations reports `count: 500` with no
+  marker — the same under-report class that was just fixed for
+  `unmapped_tenant_id` and `job_queue_payload`. `ACTION REQUIRED` still fires, so
+  no decision changes, but the number an operator reads is wrong.
+- **The `reason:'error'` result still echoes pre-rollback progress.** The outer
+  `catch` returns the accumulated `result`, so a rolled-back transaction can
+  report `indexed:true` beside `ok:false`, unlike the `orphans` branch which
+  zeroes those fields explicitly. `ok:false` is the operative signal and no
+  caller reads the sub-flags on failure; it is pre-existing and cosmetic.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
