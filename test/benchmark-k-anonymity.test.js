@@ -31,6 +31,12 @@ const METRIC = 'cpa';
 const savedOpenAi = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
 const savedOpenaiKey = process.env.OPENAI_API_KEY;
 const originalResolve = tenantCtx.resolveTenantId;
+const originalFetch = global.fetch;
+
+async function blockExternalFetch(input) {
+  const url = typeof input === 'string' ? input : input && input.url;
+  throw new Error(`External fetch blocked by benchmark k-anonymity test: ${url || 'unknown URL'}`);
+}
 
 const tenants = [];
 let server = null;
@@ -75,6 +81,7 @@ function hasMetric(benchmarks) {
 }
 
 before(async () => {
+  global.fetch = blockExternalFetch;
   if (!HAS_DB) return;
   delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   delete process.env.OPENAI_API_KEY;
@@ -108,6 +115,7 @@ before(async () => {
 
 after(async () => {
   tenantCtx.resolveTenantId = originalResolve;
+  global.fetch = originalFetch;
   if (savedOpenAi === undefined) delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   else process.env.AI_INTEGRATIONS_OPENAI_API_KEY = savedOpenAi;
   if (savedOpenaiKey === undefined) delete process.env.OPENAI_API_KEY;

@@ -61,6 +61,12 @@ const PRIVATE_VALUE = 12.34;
 const savedOpenAi = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
 const savedOpenaiKey = process.env.OPENAI_API_KEY;
 const originalResolve = tenantCtx.resolveTenantId;
+const originalFetch = global.fetch;
+
+async function blockExternalFetch(input) {
+  const url = typeof input === 'string' ? input : input && input.url;
+  throw new Error(`External fetch blocked by benchmark anonymity test: ${url || 'unknown URL'}`);
+}
 
 const tenants = [];
 let server = null;
@@ -102,6 +108,7 @@ async function bucket() {
 }
 
 before(async () => {
+  global.fetch = blockExternalFetch;
   if (!HAS_DB) return;
   // Keep the AI branch of /compare on its offline fallback — this test is about
   // what the SQL publishes, not about model output.
@@ -136,6 +143,7 @@ before(async () => {
 
 after(async () => {
   tenantCtx.resolveTenantId = originalResolve;
+  global.fetch = originalFetch;
   if (savedOpenAi === undefined) delete process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
   else process.env.AI_INTEGRATIONS_OPENAI_API_KEY = savedOpenAi;
   if (savedOpenaiKey === undefined) delete process.env.OPENAI_API_KEY;
