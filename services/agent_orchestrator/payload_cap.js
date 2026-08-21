@@ -26,20 +26,53 @@ function measuredBodyBytes(req) {
   return 0;
 }
 
+function parseContentLength(req) {
+  const raw = req.headers && req.headers['content-length'];
+  if (raw == null || raw === '') return null;
+  const cl = Number(raw);
+  return Number.isFinite(cl) ? cl : null;
+}
+
+function isChunkedTransfer(req) {
+  const te = req.headers && req.headers['transfer-encoding'];
+  if (te == null || te === '') return false;
+  return String(te).toLowerCase().includes('chunked');
+}
+
+function drainUnread(req) {
+  if (!req || typeof req.resume !== 'function') return;
+  if (typeof req.on === 'function') req.on('error', () => {});
+  req.resume();
+}
+
+function rejectTooLarge(req, res) {
+  sendError(res, 413, 'payload_too_large');
+  drainUnread(req);
+}
+
 function capPayload(req, res, next) {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
 
-  const cl = Number(req.headers['content-length']);
-  if (Number.isFinite(cl) && cl > MAX_BYTES) {
-    return sendError(res, 413, 'payload_too_large');
+  const cl = parseContentLength(req);
+  if (cl != null && cl > MAX_BYTES) {
+    return rejectTooLarge(req, res);
   }
 
-  const actual = measuredBodyBytes(req);
-  if (actual > MAX_BYTES) {
-    return sendError(res, 413, 'payload_too_large');
+  // express.json only captures rawBody when it actually parses JSON.
+  if (req.rawBody != null) {
+    if (byteLengthOfRaw(req.rawBody) > MAX_BYTES) return rejectTooLarge(req, res);
+    return next();
+  }
+  if (bodyHasContent(req.body)) {
+    if (measuredBodyBytes(req) > MAX_BYTES) return rejectTooLarge(req, res);
+    return next();
   }
 
-  return next();
+  // Parser did not capture the body. Content-Length alone is not trustworthy
+  // (missing, chunked, or a misleading small value on a non-JSON type).
+  // Allow only a provably empty body: finite Content-Length === 0 and not chunked.
+  if (cl === 0 && !isChunkedTransfer(req)) return next();
+  return rejectTooLarge(req, res);
 }
 
 module.exports = { MAX_BYTES, capPayload, measuredBodyBytes };

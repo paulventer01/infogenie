@@ -34,6 +34,10 @@ const http = require('node:http');
 
 function runCapPayload(req) {
   let nextCalled = false;
+  let resumed = false;
+  if (typeof req.resume !== 'function') {
+    req.resume = () => { resumed = true; };
+  }
   const res = {
     headersSent: false,
     statusCode: 200,
@@ -42,7 +46,7 @@ function runCapPayload(req) {
     json(b) { this.body = b; this.headersSent = true; return this; },
   };
   capPayload(req, res, () => { nextCalled = true; });
-  return { nextCalled, res };
+  return { nextCalled, resumed, res };
 }
 
 test('capPayload rejects misleading Content-Length when rawBody exceeds cap', () => {
@@ -90,6 +94,50 @@ test('capPayload skips GET requests', () => {
   });
   assert.strictEqual(nextCalled, true);
   assert.strictEqual(res.headersSent, false);
+});
+
+test('capPayload rejects unmeasurable body when Content-Length is missing', () => {
+  const { nextCalled, resumed, res } = runCapPayload({
+    method: 'POST',
+    headers: {},
+  });
+  assert.strictEqual(nextCalled, false);
+  assert.strictEqual(res.statusCode, 413);
+  assert.strictEqual(res.body.ok, false);
+  assert.strictEqual(res.body.error, 'payload_too_large');
+  assert.strictEqual(resumed, true);
+});
+
+test('capPayload rejects misleading Content-Length when parser skipped the body', () => {
+  const { nextCalled, resumed, res } = runCapPayload({
+    method: 'POST',
+    headers: { 'content-length': '10' },
+  });
+  assert.strictEqual(nextCalled, false);
+  assert.strictEqual(res.statusCode, 413);
+  assert.strictEqual(res.body.error, 'payload_too_large');
+  assert.strictEqual(resumed, true);
+});
+
+test('capPayload allows provably empty body (Content-Length 0, no chunked TE)', () => {
+  const { nextCalled, resumed, res } = runCapPayload({
+    method: 'POST',
+    headers: { 'content-length': '0' },
+  });
+  assert.strictEqual(nextCalled, true);
+  assert.strictEqual(res.headersSent, false);
+  assert.strictEqual(resumed, false);
+});
+
+test('capPayload rejects Content-Length 0 when Transfer-Encoding is chunked', () => {
+  const { nextCalled, resumed, res } = runCapPayload({
+    method: 'POST',
+    headers: { 'content-length': '0', 'transfer-encoding': 'chunked' },
+  });
+  assert.strictEqual(nextCalled, false);
+  assert.strictEqual(res.statusCode, 413);
+  assert.strictEqual(res.body.error, 'payload_too_large');
+  assert.strictEqual(resumed, true);
 });
 
 function ik(tag) {
@@ -183,6 +231,36 @@ if (!HAS_DB) {
     const data = typeof body === 'string' ? body : JSON.stringify(body);
     const h = {
       'content-type': 'application/json',
+      ...(headers || {}),
+    };
+    if (key) h['Idempotency-Key'] = key;
+    if (cookie) h.cookie = cookie;
+    return new Promise((resolve, reject) => {
+      const r = http.request(`${app.baseUrl}/api/agent-orchestrator/credits${urlPath}`, {
+        method, headers: h,
+      }, (res) => {
+        let buf = '';
+        res.on('data', (c) => { buf += c; });
+        res.on('end', () => {
+          let json = null;
+          try { json = buf ? JSON.parse(buf) : null; } catch (_) { /* non-JSON */ }
+          resolve({ status: res.statusCode, headers: res.headers, json, text: buf });
+        });
+      });
+      r.on('error', reject);
+      r.write(data);
+      r.end();
+    });
+  }
+
+  // Non-JSON body so express.json skips verify/rawBody. Omitting Content-Length
+  // makes http.request use chunked Transfer-Encoding. Passing content-length in
+  // headers lets the test lie independently of the bytes written.
+  function credUnparsed(method, urlPath, { cookie, body, headers, key } = {}) {
+    const data = Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
+    const h = {
+      'content-type': 'text/plain',
+      connection: 'close',
       ...(headers || {}),
     };
     if (key) h['Idempotency-Key'] = key;
@@ -1118,5 +1196,56 @@ if (!HAS_DB) {
     });
     assert.strictEqual(okZ.status, 200, okZ.text);
     assert.strictEqual(okZ.json.ok, true);
+  });
+
+  test('22. unparsed non-JSON bodies fail closed before credit mutation', async () => {
+    const pool = db.getPool();
+    const baseline = await creditSnapshot(pool, tenantA.id);
+    const pad = 'x'.repeat(70 * 1024);
+
+    const keyG = ik('cap-plain-g');
+    const overG = await credUnparsed('POST', '/grant', {
+      cookie: cookieA,
+      key: keyG,
+      body: pad,
+    });
+    assert.strictEqual(overG.status, 413, overG.text);
+    assert.strictEqual(overG.json.error, 'payload_too_large');
+    assert.deepStrictEqual(await creditSnapshot(pool, tenantA.id), baseline);
+    await assertIdempotencyKeyAbsent(pool, tenantA.id, keyG);
+
+    const keyA = ik('cap-plain-a');
+    const overA = await credUnparsed('POST', '/adjust', {
+      cookie: cookieA,
+      key: keyA,
+      body: pad,
+    });
+    assert.strictEqual(overA.status, 413, overA.text);
+    assert.strictEqual(overA.json.error, 'payload_too_large');
+    assert.deepStrictEqual(await creditSnapshot(pool, tenantA.id), baseline);
+    await assertIdempotencyKeyAbsent(pool, tenantA.id, keyA);
+
+    const keyL = ik('cap-plain-l');
+    const overL = await credUnparsed('PUT', '/limits', {
+      cookie: cookieAdmin,
+      key: keyL,
+      body: pad,
+    });
+    assert.strictEqual(overL.status, 413, overL.text);
+    assert.strictEqual(overL.json.error, 'payload_too_large');
+    assert.deepStrictEqual(await creditSnapshot(pool, tenantA.id), baseline);
+    await assertIdempotencyKeyAbsent(pool, tenantA.id, keyL);
+
+    const keyM = ik('cap-plain-mislead');
+    const overM = await credUnparsed('POST', '/grant', {
+      cookie: cookieA,
+      key: keyM,
+      headers: { 'content-length': '10' },
+      body: pad,
+    });
+    assert.strictEqual(overM.status, 413, overM.text);
+    assert.strictEqual(overM.json.error, 'payload_too_large');
+    assert.deepStrictEqual(await creditSnapshot(pool, tenantA.id), baseline);
+    await assertIdempotencyKeyAbsent(pool, tenantA.id, keyM);
   });
 }
