@@ -77,16 +77,38 @@ async function _ensureNamedUnique(p, table, name, cols) {
   }
 }
 
+function _fkColList(cols) {
+  return String(cols || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(',');
+}
+
 async function _ensureNamedFk(p, table, name, cols, refTable, refCols, fkSuffix) {
+  const wanted = _fkColList(cols);
   const r = await p.query(
-    `SELECT 1 FROM pg_constraint WHERE conname = $1 AND conrelid = $2::regclass`,
-    [name, `public.${table}`]
+    `SELECT string_agg(att.attname, ',' ORDER BY k.n) AS cols
+       FROM pg_constraint con
+       JOIN pg_class rel ON rel.oid = con.conrelid
+       JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+       JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS k(attnum, n) ON true
+       JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attnum = k.attnum
+      WHERE nsp.nspname = 'public'
+        AND rel.relname = $1
+        AND con.conname = $2
+        AND con.contype = 'f'
+      GROUP BY con.oid`,
+    [table, name]
   );
-  if (!r.rowCount) {
-    await p.query(
-      `ALTER TABLE ${table} ADD CONSTRAINT ${name} FOREIGN KEY (${cols}) REFERENCES ${refTable} (${refCols}) ${fkSuffix}`
-    );
+  const existing = r.rowCount ? _fkColList(r.rows[0].cols) : null;
+  if (existing === wanted) return;
+  if (existing) {
+    await p.query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${name}`);
   }
+  await p.query(
+    `ALTER TABLE ${table} ADD CONSTRAINT ${name} FOREIGN KEY (${cols}) REFERENCES ${refTable} (${refCols}) ${fkSuffix}`
+  );
 }
 
 // Serialize DDL so overlapping ensure() callers (parallel test files, boot)
@@ -1400,7 +1422,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'ON DELETE CASCADE');
   // Existing DBs may still have the 2-column (tenant_id, competitor_id) FK under
   // this name, which allows same-tenant evidence to cite another run's competitor.
-  await p.query(`ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_tenant_competitor_fkey`);
+  // _ensureNamedFk DROP+ADDs only when the local column list differs; a matching
+  // 3-col FK is a no-op so repeated ensure() does not take ACCESS EXCLUSIVE.
   await _ensureNamedFk(p, 'orchestrator_research_evidence',
     'orchestrator_research_evidence_tenant_competitor_fkey',
     'tenant_id, research_run_id, competitor_id',

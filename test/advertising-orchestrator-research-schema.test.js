@@ -304,6 +304,15 @@ if (!HAS_DB) {
   test('second ensureAgentOrchestratorSchema is idempotent', async () => {
     await ensureAgentOrchestratorSchema();
     await ensureAgentOrchestratorSchema();
+    const fkCols = await namedFkCols(
+      'orchestrator_research_evidence',
+      'orchestrator_research_evidence_tenant_competitor_fkey'
+    );
+    assert.strictEqual(
+      fkCols,
+      'tenant_id,research_run_id,competitor_id',
+      'competitor FK must stay (tenant_id, research_run_id, competitor_id) after repeated ensure'
+    );
   });
 
   test('unique indexes/constraints lead with tenant_id; no bare natural-key uniques', async () => {
