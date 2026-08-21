@@ -1952,16 +1952,53 @@ whatever resolves the ref.
   pre-existing non-conforming rows behind a session-local
   `SET LOCAL session_replication_role = replica` (chosen over
   `ALTER TABLE … DISABLE TRIGGER`, which is cluster-wide) so the immutability
-  triggers do not refuse the repair. The GUC is superuser-gated: a plain
-  `LOGIN` role gets `42501 permission denied to set parameter`. This is not a
-  runtime escalation path — the statement is boot-only, reachable solely from
+  triggers do not refuse the repair. The retention repair uses the frozen v1
+  TTLs: `short` gets `created_at + 7 days` and `standard` gets
+  `created_at + 30 days`, on evidence and on assets, and `legal_hold` is matched
+  by none of the four `UPDATE`s, so a hold is never handed an expiry and never
+  becomes sweepable. Verified end to end rather than from the SQL text: legacy
+  rows seeded with a NULL `expires_at` came out of a real
+  `ensureAgentOrchestratorSchema()` at 7 days, 30 days and NULL respectively,
+  and the same run reinstated the `retention_expiry` CHECK it had repaired them
+  for — the backfill is ordered before that constraint is added, so a legacy
+  database heals first and then enforces instead of failing the `ADD CONSTRAINT`.
+  The GUC is superuser-gated: a plain `LOGIN` role gets
+  `42501 permission denied to set parameter`. This is not a runtime escalation
+  path — the statement is boot-only, reachable solely from
   `ensureAgentOrchestratorSchema` (no route calls it), transaction-scoped, run
-  on a dedicated `pool.connect()` client under `pg_advisory_lock(87231402)`, and
-  only entered when a scan finds rows to repair. It is a *boot availability*
-  residual: on a correctly least-privileged production role, a database that
-  does carry legacy rows will fail the backfill and, being fail-closed, exit.
-  Either grant `SET ON PARAMETER session_replication_role` for the migration or
-  repair those rows out of band.
+  on a dedicated `pool.connect()` client under `pg_advisory_lock(87231402)`,
+  destroyed rather than returned to the pool if it fails, and only entered when
+  a scan finds rows to repair. It is a *boot availability* residual: on a
+  correctly least-privileged production role, a database that does carry legacy
+  rows will fail the backfill and exit. That exit is only real since the ensure
+  became its own `BOOT_TASKS` entry; while it sat inside the tier28-32 block its
+  `catch` ran `console.warn('[tier28-32] schema init failed:', e.message)` and
+  the instance booted on a half-migrated schema, so this entry previously
+  claimed a fail-closed property the wiring did not have. Either grant
+  `SET ON PARAMETER session_replication_role` for the migration or repair those
+  rows out of band.
+- **The orchestrator schema ensure fails closed on its own.** It is a dedicated
+  `BOOT_TASKS` entry rather than one `await` inside the tier28-32 block. On a
+  throw it logs the static key `agent_orchestrator_schema_init_failed` with no
+  fields, captures a synthetic `Error` of the same name — so a Postgres error's
+  `message` or `detail`, which can quote a failing row, reaches neither the log
+  nor Sentry — and calls `process.exit(1)` under `NODE_ENV === 'production'`.
+  `captureException` returns early without `SENTRY_DSN` and swallows its own
+  failures, so nothing on that path can throw before the exit and hand control
+  to the boot runner's `catch (e) { console.error('[boot] task failed:', …) }`,
+  which would otherwise swallow the failure and continue booting. Registration
+  order is schema ensure → `require` of `research_retention` → sweep, and the
+  runner awaits tasks in registration order, so the sweep cannot run against a
+  schema this entry failed to install.
+- **Tightening `short` to 7 days purges legacy short-class rows on the next
+  boot.** The backfill previously gave `standard` and `short` one 30-day TTL.
+  With `short` split to 7 days, any legacy `short` row older than 7 days is
+  backfilled with an `expires_at` already in the past — measured: rows aged 20
+  days come out of the backfill already expired — and the sweep is the next
+  `BOOT_TASKS` entry after the schema ensure, so it deletes them during that
+  same boot. Shorter retention is the safe direction and `legal_hold` is
+  untouched, but this is irreversible deletion on first boot after the upgrade,
+  with no separate operator gate and no warning before it happens.
 - **The evidence quota counter is trigger-maintained, not reconciled.**
   `orchestrator_research_quota` is incremented `BEFORE INSERT` under a
   `FOR UPDATE` row lock (no `COUNT(*)`, so concurrent inserts serialize instead

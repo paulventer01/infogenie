@@ -392,6 +392,14 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   assert.match(flat, /The 64-zero `content_fingerprint` DEFAULT survives only the `ADD COLUMN` itself/);
   assert.match(flat, /fails `23502` naming `content_fingerprint`/);
   assert.match(flat, /A sweep client whose `ROLLBACK` failed is destroyed, not pooled/);
+  // Rewritten once the ensure became its own boot task and the backfill TTLs
+  // split. The old entry claimed a fail-closed exit the tier28-32 wiring did
+  // not actually give it, so both the mechanism and its cost are pinned.
+  assert.match(flat, /The orchestrator schema ensure fails closed on its own/);
+  assert.match(flat, /logs the static key `agent_orchestrator_schema_init_failed` with no fields/);
+  assert.match(flat, /`short` gets `created_at \+ 7 days` and `standard` gets `created_at \+ 30 days`/);
+  assert.match(flat, /`legal_hold` is matched by none of the four `UPDATE`s/);
+  assert.match(flat, /Tightening `short` to 7 days purges legacy short-class rows on the next boot/);
   // Residuals that must survive the rewrite.
   assert.match(flat, /The boot backfills need a DB role that may set `session_replication_role`/);
   assert.match(flat, /The evidence quota counter is trigger-maintained, not reconciled/);
