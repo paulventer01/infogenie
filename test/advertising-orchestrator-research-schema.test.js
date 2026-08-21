@@ -211,33 +211,83 @@ async function insertCompetitor(p, tenantId, runId, opts = {}) {
   return id;
 }
 
+async function seedResearchLimits(p, tenantId, opts = {}) {
+  await p.query(
+    `INSERT INTO orchestrator_tenant_limits
+       (tenant_id, max_research_evidence_records, max_research_evidence_payload_bytes)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (tenant_id) DO UPDATE SET
+       max_research_evidence_records = EXCLUDED.max_research_evidence_records,
+       max_research_evidence_payload_bytes = EXCLUDED.max_research_evidence_payload_bytes`,
+    [tenantId, opts.records ?? 10000, opts.bytes ?? 104857600]
+  );
+}
+
 async function insertEvidence(p, tenantId, runId, competitorId, opts = {}) {
   const id = opts.id || nid('ev');
+  const retentionClass = opts.retentionClass || 'standard';
+  const fingerprint = opts.contentFingerprint || opts.evidenceHash || SHA256_A;
+  const hasExpires = Object.prototype.hasOwnProperty.call(opts, 'expiresAt');
+  const hasCreated = Object.prototype.hasOwnProperty.call(opts, 'createdAt');
+  const params = [
+    id,
+    tenantId,
+    runId,
+    competitorId,
+    opts.platform || 'meta',
+    opts.sourceType || 'ad_creative',
+    opts.providerExternalId || null,
+    opts.headline || '',
+    opts.bodyText || '',
+    JSON.stringify(opts.providerMetrics || {}),
+    opts.provenanceMethod || 'ad_library',
+    opts.connectorId || 'meta_research',
+    opts.connectorVersion || '1.0.0',
+    fingerprint,
+    opts.dedupKey || nid('ededup'),
+    opts.supersedesId || null,
+    retentionClass,
+  ];
+  const expiresSql = hasExpires ? `$${params.length + 1}::timestamptz` : `now() + interval '30 days'`;
+  if (hasExpires) params.push(opts.expiresAt);
+  const createdSql = hasCreated ? `$${params.length + 1}::timestamptz` : 'now()';
+  if (hasCreated) params.push(opts.createdAt);
   await p.query(
     `INSERT INTO orchestrator_research_evidence
        (id, tenant_id, research_run_id, competitor_id, platform, source_type,
         provider_external_id, headline, body_text, captured_at, provider_metrics,
-        provenance_method, connector_id, connector_version, evidence_hash, dedup_key,
-        supersedes_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now(), $10::jsonb, $11,$12,$13,$14,$15,$16)`,
-    [
-      id,
-      tenantId,
-      runId,
-      competitorId,
-      opts.platform || 'meta',
-      opts.sourceType || 'ad_creative',
-      opts.providerExternalId || null,
-      opts.headline || '',
-      opts.bodyText || '',
-      JSON.stringify(opts.providerMetrics || {}),
-      opts.provenanceMethod || 'ad_library',
-      opts.connectorId || 'meta_research',
-      opts.connectorVersion || '1.0.0',
-      opts.evidenceHash || SHA256_A,
-      opts.dedupKey || nid('ededup'),
-      opts.supersedesId || null,
-    ]
+        provenance_method, connector_id, connector_version, content_fingerprint, dedup_key,
+        supersedes_id, retention_class, expires_at, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now(), $10::jsonb, $11,$12,$13,$14,$15,$16,$17, ${expiresSql}, ${createdSql})`,
+    params
+  );
+  return id;
+}
+
+async function insertAsset(p, tenantId, evidenceId, opts = {}) {
+  const id = opts.id || nid('asset');
+  const retentionClass = opts.retentionClass || 'standard';
+  const hasExpires = Object.prototype.hasOwnProperty.call(opts, 'expiresAt');
+  const hasCreated = Object.prototype.hasOwnProperty.call(opts, 'createdAt');
+  const params = [
+    id,
+    tenantId,
+    evidenceId,
+    opts.mediaType || 'image',
+    opts.storageRef || `s3://orch/${id}`,
+    opts.checksum || SHA256_C,
+    retentionClass,
+  ];
+  const expiresSql = hasExpires ? `$${params.length + 1}::timestamptz` : `now() + interval '30 days'`;
+  if (hasExpires) params.push(opts.expiresAt);
+  const createdSql = hasCreated ? `$${params.length + 1}::timestamptz` : 'now()';
+  if (hasCreated) params.push(opts.createdAt);
+  await p.query(
+    `INSERT INTO orchestrator_research_evidence_assets
+       (id, tenant_id, evidence_id, media_type, storage_ref, checksum_sha256, captured_at,
+        retention_class, expires_at, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6, now(), $7, ${expiresSql}, ${createdSql})`,
+    params
   );
   return id;
 }
@@ -258,6 +308,8 @@ if (!HAS_DB) {
     )).rows[0].id;
     tenantA = await mk(`AOR A ${SUFFIX}`, `aor-a-${SUFFIX}`);
     tenantB = await mk(`AOR B ${SUFFIX}`, `aor-b-${SUFFIX}`);
+    await seedResearchLimits(p, tenantA);
+    await seedResearchLimits(p, tenantB);
   });
 
   after(async () => {
@@ -416,12 +468,10 @@ if (!HAS_DB) {
 
     const evidenceA = await insertEvidence(p, tenantA, hostA.runId, compA, { id: nid('ev-ok') });
     await assert.rejects(
-      () => p.query(
-        `INSERT INTO orchestrator_research_evidence_assets
-           (id, tenant_id, evidence_id, media_type, storage_ref, checksum_sha256, captured_at)
-         VALUES ($1,$2,$3,'image',$4,$5, now())`,
-        [nid('asset-xev'), tenantB, evidenceA, `research://meta/${evidenceA}`, SHA256_C]
-      ),
+      () => insertAsset(p, tenantB, evidenceA, {
+        id: nid('asset-xev'),
+        storageRef: `research://meta/${evidenceA}`,
+      }),
       /foreign key|violates/i,
       'tenant B asset must not reference tenant A evidence_id'
     );
@@ -885,15 +935,14 @@ if (!HAS_DB) {
       `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
       [`AOR C ${SUFFIX}`, `aor-c-${SUFFIX}`]
     )).rows[0].id;
+    await seedResearchLimits(p, tenantC);
     const host = await seedHost(p, tenantC);
     const comp = await insertCompetitor(p, tenantC, host.runId, { id: nid('comp-casc') });
     const evId = await insertEvidence(p, tenantC, host.runId, comp, { id: nid('ev-casc') });
-    await p.query(
-      `INSERT INTO orchestrator_research_evidence_assets
-         (id, tenant_id, evidence_id, media_type, storage_ref, checksum_sha256, captured_at)
-       VALUES ($1,$2,$3,'image',$4,$5, now())`,
-      [nid('asset-casc'), tenantC, evId, `s3://orch/${SUFFIX}/asset`, SHA256_C]
-    );
+    await insertAsset(p, tenantC, evId, {
+      id: nid('asset-casc'),
+      storageRef: `s3://orch/${SUFFIX}/asset`,
+    });
 
     await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantC]);
 
@@ -919,12 +968,10 @@ if (!HAS_DB) {
     const comp = await insertCompetitor(p, tenantA, host.runId);
     const evId = await insertEvidence(p, tenantA, host.runId, comp);
     const assetId = nid('asset-immut');
-    await p.query(
-      `INSERT INTO orchestrator_research_evidence_assets
-         (id, tenant_id, evidence_id, media_type, storage_ref, checksum_sha256, captured_at)
-       VALUES ($1,$2,$3,'image',$4,$5, now())`,
-      [assetId, tenantA, evId, `s3://orch/${assetId}`, SHA256_C]
-    );
+    await insertAsset(p, tenantA, evId, {
+      id: assetId,
+      storageRef: `s3://orch/${assetId}`,
+    });
     await assert.rejects(
       () => p.query(
         `UPDATE orchestrator_research_evidence_assets SET storage_ref='s3://tamper'

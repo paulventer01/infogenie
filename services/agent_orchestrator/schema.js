@@ -56,6 +56,7 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_research_competitors',
   'orchestrator_research_evidence',
   'orchestrator_research_evidence_assets',
+  'orchestrator_research_quota',
 ];
 
 async function _ensureNamedCheck(p, table, name, checkBody) {
@@ -109,6 +110,103 @@ async function _ensureNamedFk(p, table, name, cols, refTable, refCols, fkSuffix)
   await p.query(
     `ALTER TABLE ${table} ADD CONSTRAINT ${name} FOREIGN KEY (${cols}) REFERENCES ${refTable} (${refCols}) ${fkSuffix}`
   );
+}
+
+async function _columnExists(p, table, column) {
+  const r = await p.query(
+    `SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name=$1 AND column_name=$2 LIMIT 1`,
+    [table, column]
+  );
+  return r.rowCount > 0;
+}
+
+async function _triggerExists(p, table, name) {
+  const r = await p.query(
+    `SELECT 1 FROM pg_trigger t
+       JOIN pg_class c ON c.oid = t.tgrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = $1
+        AND t.tgname = $2
+        AND NOT t.tgisinternal
+      LIMIT 1`,
+    [table, name]
+  );
+  return r.rowCount > 0;
+}
+
+async function _setTriggerEnabled(p, table, name, enabled) {
+  if (!(await _triggerExists(p, table, name))) return;
+  await p.query(`ALTER TABLE ${table} ${enabled ? 'ENABLE' : 'DISABLE'} TRIGGER ${name}`);
+}
+
+// Deduplication fingerprint, not authenticity/provenance proof. Idempotent
+// rename from the original evidence_hash column; drop stale CHECKs/indexes.
+async function _ensureContentFingerprintColumn(p) {
+  const hasHash = await _columnExists(p, 'orchestrator_research_evidence', 'evidence_hash');
+  const hasFp = await _columnExists(p, 'orchestrator_research_evidence', 'content_fingerprint');
+  if (hasHash && !hasFp) {
+    await p.query(`ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_evidence_hash_check`);
+    await p.query(`ALTER TABLE orchestrator_research_evidence RENAME COLUMN evidence_hash TO content_fingerprint`);
+  }
+  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS content_fingerprint TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'`);
+  await p.query(`ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_evidence_hash_check`);
+  await p.query(`DROP INDEX IF EXISTS idx_orchestrator_research_evidence_tenant_hash`);
+  const stale = await p.query(
+    `SELECT indexname FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND tablename = 'orchestrator_research_evidence'
+        AND indexdef ILIKE '%evidence_hash%'`
+  );
+  for (const row of stale.rows) {
+    if (/^[a-z0-9_]+$/.test(row.indexname)) {
+      await p.query(`DROP INDEX IF EXISTS ${row.indexname}`);
+    }
+  }
+}
+
+const RESEARCH_RETENTION_EXPIRY_SQL =
+  `retention_class = 'legal_hold' OR (expires_at IS NOT NULL AND expires_at > created_at)`;
+
+async function _backfillResearchRetentionExpiry(p) {
+  await _setTriggerEnabled(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_immutable', false);
+  await _setTriggerEnabled(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_immutable', false);
+  try {
+    await p.query(`
+      UPDATE orchestrator_research_evidence
+         SET expires_at = created_at + interval '30 days'
+       WHERE retention_class IN ('standard','short')
+         AND (expires_at IS NULL OR expires_at <= created_at)
+    `);
+    await p.query(`
+      UPDATE orchestrator_research_evidence_assets
+         SET expires_at = created_at + interval '30 days'
+       WHERE retention_class IN ('standard','short')
+         AND (expires_at IS NULL OR expires_at <= created_at)
+    `);
+  } finally {
+    await _setTriggerEnabled(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_immutable', true);
+    await _setTriggerEnabled(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_immutable', true);
+  }
+}
+
+async function _backfillResearchJsonObjects(p) {
+  await _setTriggerEnabled(p, 'orchestrator_research_runs', 'orchestrator_research_runs_identity_immutable', false);
+  try {
+    await p.query(`
+      UPDATE orchestrator_research_runs
+         SET search_parameters = '{}'::jsonb
+       WHERE jsonb_typeof(search_parameters) IS DISTINCT FROM 'object'
+    `);
+    await p.query(`
+      UPDATE orchestrator_research_runs
+         SET continuation_state = '{}'::jsonb
+       WHERE jsonb_typeof(continuation_state) IS DISTINCT FROM 'object'
+    `);
+  } finally {
+    await _setTriggerEnabled(p, 'orchestrator_research_runs', 'orchestrator_research_runs_identity_immutable', true);
+  }
 }
 
 // Serialize DDL so overlapping ensure() callers (parallel test files, boot)
@@ -564,6 +662,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       provider_limits           JSONB NOT NULL DEFAULT '{}',
       updated_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_by_user_id        INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+      max_research_evidence_records INTEGER NOT NULL DEFAULT 0,
+      max_research_evidence_payload_bytes BIGINT NOT NULL DEFAULT 0,
       CONSTRAINT orchestrator_tenant_limits_credit_ceiling_micros_check
         CHECK (credit_ceiling_micros >= 0),
       CONSTRAINT orchestrator_tenant_limits_requests_per_minute_check
@@ -575,7 +675,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       CONSTRAINT orchestrator_tenant_limits_monthly_ai_cost_micros_check
         CHECK (monthly_ai_cost_micros >= 0),
       CONSTRAINT orchestrator_tenant_limits_per_workflow_cost_micros_check
-        CHECK (per_workflow_cost_micros >= 0)
+        CHECK (per_workflow_cost_micros >= 0),
+      CONSTRAINT orchestrator_tenant_limits_max_research_evidence_records_check
+        CHECK (max_research_evidence_records >= 0),
+      CONSTRAINT orchestrator_tenant_limits_max_research_evidence_payload_bytes_check
+        CHECK (max_research_evidence_payload_bytes >= 0)
     );
 
     CREATE TABLE IF NOT EXISTS orchestrator_pricing_catalog (
@@ -730,6 +834,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await p.query(`ALTER TABLE orchestrator_tenant_limits ADD COLUMN IF NOT EXISTS provider_limits JSONB NOT NULL DEFAULT '{}'`);
   await p.query(`ALTER TABLE orchestrator_tenant_limits ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
   await p.query(`ALTER TABLE orchestrator_tenant_limits ADD COLUMN IF NOT EXISTS updated_by_user_id INTEGER NULL REFERENCES users(id) ON DELETE SET NULL`);
+  await p.query(`ALTER TABLE orchestrator_tenant_limits ADD COLUMN IF NOT EXISTS max_research_evidence_records INTEGER NOT NULL DEFAULT 0`);
+  await p.query(`ALTER TABLE orchestrator_tenant_limits ADD COLUMN IF NOT EXISTS max_research_evidence_payload_bytes BIGINT NOT NULL DEFAULT 0`);
 
   await p.query(`ALTER TABLE orchestrator_pricing_catalog ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT ''`);
   await p.query(`ALTER TABLE orchestrator_pricing_catalog ADD COLUMN IF NOT EXISTS model_or_service TEXT NOT NULL DEFAULT ''`);
@@ -817,6 +923,10 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     `daily_ai_cost_micros >= 0`);
   await _ensureNamedCheck(p, 'orchestrator_tenant_limits', 'orchestrator_tenant_limits_monthly_ai_cost_micros_check',
     `monthly_ai_cost_micros >= 0`);
+  await _ensureNamedCheck(p, 'orchestrator_tenant_limits', 'orchestrator_tenant_limits_max_research_evidence_records_check',
+    `max_research_evidence_records >= 0`);
+  await _ensureNamedCheck(p, 'orchestrator_tenant_limits', 'orchestrator_tenant_limits_max_research_evidence_payload_bytes_check',
+    `max_research_evidence_payload_bytes >= 0`);
   await _ensureNamedCheck(p, 'orchestrator_tenant_limits', 'orchestrator_tenant_limits_per_workflow_cost_micros_check',
     `per_workflow_cost_micros >= 0`);
   await _ensureNamedCheck(p, 'orchestrator_pricing_catalog', 'orchestrator_pricing_catalog_unit_type_check',
@@ -1002,8 +1112,12 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         CHECK (char_length(research_brief) <= 4000),
       CONSTRAINT orchestrator_research_runs_search_parameters_check
         CHECK (octet_length(search_parameters::text) <= 8192),
+      CONSTRAINT orchestrator_research_runs_search_parameters_type_check
+        CHECK (jsonb_typeof(search_parameters) = 'object'),
       CONSTRAINT orchestrator_research_runs_continuation_state_check
         CHECK (octet_length(continuation_state::text) <= 4096),
+      CONSTRAINT orchestrator_research_runs_continuation_state_type_check
+        CHECK (jsonb_typeof(continuation_state) = 'object'),
       CONSTRAINT orchestrator_research_runs_error_code_check
         CHECK (char_length(error_code) <= 128),
       CONSTRAINT orchestrator_research_runs_error_message_check
@@ -1089,7 +1203,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       connector_id          TEXT NOT NULL,
       connector_version     TEXT NOT NULL,
       contract_version      TEXT NOT NULL DEFAULT 'v1',
-      evidence_hash         TEXT NOT NULL,
+      content_fingerprint   TEXT NOT NULL,
       dedup_key             TEXT NOT NULL,
       expires_at            TIMESTAMPTZ NULL,
       retention_class       TEXT NOT NULL DEFAULT 'standard',
@@ -1127,6 +1241,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         CHECK (contract_version IN ('v1')),
       CONSTRAINT orchestrator_research_evidence_retention_class_check
         CHECK (retention_class IN ('standard','short','legal_hold')),
+      CONSTRAINT orchestrator_research_evidence_retention_expiry_check
+        CHECK (retention_class = 'legal_hold' OR (expires_at IS NOT NULL AND expires_at > created_at)),
       CONSTRAINT orchestrator_research_evidence_headline_check
         CHECK (char_length(headline) <= 500),
       CONSTRAINT orchestrator_research_evidence_body_text_check
@@ -1147,8 +1263,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         CHECK (placement IS NULL OR char_length(placement) <= 64),
       CONSTRAINT orchestrator_research_evidence_connector_version_check
         CHECK (char_length(connector_version) BETWEEN 1 AND 64),
-      CONSTRAINT orchestrator_research_evidence_evidence_hash_check
-        CHECK (char_length(evidence_hash) = 64 AND evidence_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_research_evidence_content_fingerprint_check
+        CHECK (char_length(content_fingerprint) = 64 AND content_fingerprint ~ '^[0-9a-f]{64}$'),
       CONSTRAINT orchestrator_research_evidence_dedup_key_check
         CHECK (char_length(dedup_key) BETWEEN 1 AND 128),
       CONSTRAINT orchestrator_research_evidence_provider_metrics_len_check
@@ -1185,6 +1301,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         CHECK (media_type IN ('image','video','html','other')),
       CONSTRAINT orchestrator_research_evidence_assets_retention_class_check
         CHECK (retention_class IN ('standard','short','legal_hold')),
+      CONSTRAINT orchestrator_research_evidence_assets_retention_expiry_check
+        CHECK (retention_class = 'legal_hold' OR (expires_at IS NOT NULL AND expires_at > created_at)),
       CONSTRAINT orchestrator_research_evidence_assets_storage_ref_check
         CHECK (char_length(storage_ref) BETWEEN 1 AND 1024),
       CONSTRAINT orchestrator_research_evidence_assets_checksum_sha256_check
@@ -1197,6 +1315,17 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         CHECK (duration_ms IS NULL OR duration_ms >= 0),
       CONSTRAINT orchestrator_research_evidence_assets_id_check
         CHECK (char_length(id) BETWEEN 1 AND 128)
+    );
+
+    CREATE TABLE IF NOT EXISTS orchestrator_research_quota (
+      tenant_id       INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+      evidence_count  INTEGER NOT NULL DEFAULT 0,
+      payload_bytes   BIGINT NOT NULL DEFAULT 0,
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CONSTRAINT orchestrator_research_quota_evidence_count_check
+        CHECK (evidence_count >= 0),
+      CONSTRAINT orchestrator_research_quota_payload_bytes_check
+        CHECK (payload_bytes >= 0)
     );
   `);
 
@@ -1254,7 +1383,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS connector_id TEXT NOT NULL DEFAULT 'meta_research'`);
   await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS connector_version TEXT NOT NULL DEFAULT 'v1'`);
   await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS contract_version TEXT NOT NULL DEFAULT 'v1'`);
-  await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS evidence_hash TEXT NOT NULL DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'`);
+  await _ensureContentFingerprintColumn(p);
   await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS dedup_key TEXT NOT NULL DEFAULT ''`);
   await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NULL`);
   await p.query(`ALTER TABLE orchestrator_research_evidence ADD COLUMN IF NOT EXISTS retention_class TEXT NOT NULL DEFAULT 'standard'`);
@@ -1273,6 +1402,13 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS retention_class TEXT NOT NULL DEFAULT 'standard'`);
   await p.query(`ALTER TABLE orchestrator_research_evidence_assets ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
 
+  await p.query(`ALTER TABLE orchestrator_research_quota ADD COLUMN IF NOT EXISTS evidence_count INTEGER NOT NULL DEFAULT 0`);
+  await p.query(`ALTER TABLE orchestrator_research_quota ADD COLUMN IF NOT EXISTS payload_bytes BIGINT NOT NULL DEFAULT 0`);
+  await p.query(`ALTER TABLE orchestrator_research_quota ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+
+  await _backfillResearchJsonObjects(p);
+  await _backfillResearchRetentionExpiry(p);
+
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_contract_version_check',
     `contract_version IN ('v1')`);
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_state_check',
@@ -1285,8 +1421,12 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     `char_length(research_brief) <= 4000`);
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_search_parameters_check',
     `octet_length(search_parameters::text) <= 8192`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_search_parameters_type_check',
+    `jsonb_typeof(search_parameters) = 'object'`);
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_continuation_state_check',
     `octet_length(continuation_state::text) <= 4096`);
+  await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_continuation_state_type_check',
+    `jsonb_typeof(continuation_state) = 'object'`);
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_error_code_check',
     `char_length(error_code) <= 128`);
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_error_message_check',
@@ -1333,6 +1473,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     `contract_version IN ('v1')`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_retention_class_check',
     `retention_class IN ('standard','short','legal_hold')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_retention_expiry_check',
+    RESEARCH_RETENTION_EXPIRY_SQL);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_headline_check',
     `char_length(headline) <= 500`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_body_text_check',
@@ -1353,8 +1495,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     `placement IS NULL OR char_length(placement) <= 64`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_connector_version_check',
     `char_length(connector_version) BETWEEN 1 AND 64`);
-  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_evidence_hash_check',
-    `char_length(evidence_hash) = 64 AND evidence_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_content_fingerprint_check',
+    `char_length(content_fingerprint) = 64 AND content_fingerprint ~ '^[0-9a-f]{64}$'`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_dedup_key_check',
     `char_length(dedup_key) BETWEEN 1 AND 128`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_provider_metrics_len_check',
@@ -1370,6 +1512,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     `media_type IN ('image','video','html','other')`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_retention_class_check',
     `retention_class IN ('standard','short','legal_hold')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_retention_expiry_check',
+    RESEARCH_RETENTION_EXPIRY_SQL);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_storage_ref_check',
     `char_length(storage_ref) BETWEEN 1 AND 1024`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_checksum_sha256_check',
@@ -1382,6 +1526,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     `duration_ms IS NULL OR duration_ms >= 0`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_id_check',
     `char_length(id) BETWEEN 1 AND 128`);
+
+  await _ensureNamedCheck(p, 'orchestrator_research_quota', 'orchestrator_research_quota_evidence_count_check',
+    `evidence_count >= 0`);
+  await _ensureNamedCheck(p, 'orchestrator_research_quota', 'orchestrator_research_quota_payload_bytes_check',
+    `payload_bytes >= 0`);
 
   await _ensureNamedUnique(p, 'orchestrator_research_runs',
     'orchestrator_research_runs_tenant_unique_idempotency_key', 'tenant_id, idempotency_key');
@@ -1463,15 +1612,21 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       ON orchestrator_research_evidence (tenant_id, captured_at DESC);
     CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_tenant_ext
       ON orchestrator_research_evidence (tenant_id, provider_external_id);
-    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_tenant_hash
-      ON orchestrator_research_evidence (tenant_id, evidence_hash);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_tenant_fingerprint
+      ON orchestrator_research_evidence (tenant_id, content_fingerprint);
     CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_tenant_competitor
       ON orchestrator_research_evidence (tenant_id, competitor_id);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_tenant_expires
+      ON orchestrator_research_evidence (tenant_id, expires_at, id)
+      WHERE retention_class <> 'legal_hold' AND expires_at IS NOT NULL;
 
     CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_assets_tenant_ev
       ON orchestrator_research_evidence_assets (tenant_id, evidence_id);
     CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_assets_tenant_captured
       ON orchestrator_research_evidence_assets (tenant_id, captured_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_assets_tenant_expires
+      ON orchestrator_research_evidence_assets (tenant_id, expires_at, id)
+      WHERE retention_class <> 'legal_hold' AND expires_at IS NOT NULL;
   `);
 
   await p.query(`
@@ -1562,13 +1717,18 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       IF TG_OP = 'UPDATE' THEN
         RAISE EXCEPTION 'orchestrator_research_evidence_immutable';
       END IF;
-      IF EXISTS (
+      IF NOT EXISTS (
         SELECT 1 FROM orchestrator_research_runs r
          WHERE r.id = OLD.research_run_id AND r.tenant_id = OLD.tenant_id
       ) THEN
-        RAISE EXCEPTION 'orchestrator_research_evidence_immutable';
+        RETURN OLD;
       END IF;
-      RETURN OLD;
+      IF OLD.retention_class IS DISTINCT FROM 'legal_hold'
+         AND OLD.expires_at IS NOT NULL
+         AND OLD.expires_at <= now() THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_research_evidence_immutable';
     END;
     $fn$ LANGUAGE plpgsql;
 
@@ -1578,13 +1738,18 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       IF TG_OP = 'UPDATE' THEN
         RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
       END IF;
-      IF EXISTS (
+      IF NOT EXISTS (
         SELECT 1 FROM orchestrator_research_evidence e
          WHERE e.id = OLD.evidence_id AND e.tenant_id = OLD.tenant_id
       ) THEN
-        RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
+        RETURN OLD;
       END IF;
-      RETURN OLD;
+      IF OLD.retention_class IS DISTINCT FROM 'legal_hold'
+         AND OLD.expires_at IS NOT NULL
+         AND OLD.expires_at <= now() THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
     END;
     $fn$ LANGUAGE plpgsql;
 
@@ -1640,6 +1805,96 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE INSERT ON orchestrator_research_evidence
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_research_evidence_supersedes_bind();
+
+    CREATE OR REPLACE FUNCTION orchestrator_research_evidence_quota_insert()
+    RETURNS trigger AS $fn$
+    DECLARE
+      row_bytes BIGINT;
+      q_count INTEGER;
+      q_bytes BIGINT;
+      max_records INTEGER;
+      max_bytes BIGINT;
+    BEGIN
+      INSERT INTO orchestrator_research_quota (tenant_id)
+      VALUES (NEW.tenant_id)
+      ON CONFLICT (tenant_id) DO NOTHING;
+
+      SELECT evidence_count, payload_bytes
+        INTO q_count, q_bytes
+        FROM orchestrator_research_quota
+       WHERE tenant_id = NEW.tenant_id
+       FOR UPDATE;
+
+      SELECT max_research_evidence_records, max_research_evidence_payload_bytes
+        INTO max_records, max_bytes
+        FROM orchestrator_tenant_limits
+       WHERE tenant_id = NEW.tenant_id;
+
+      IF NOT FOUND THEN
+        max_records := 0;
+        max_bytes := 0;
+      END IF;
+
+      max_records := COALESCE(max_records, 0);
+      max_bytes := COALESCE(max_bytes, 0);
+      q_count := COALESCE(q_count, 0);
+      q_bytes := COALESCE(q_bytes, 0);
+
+      row_bytes := octet_length(coalesce(NEW.headline, ''))
+                 + octet_length(coalesce(NEW.body_text, ''))
+                 + octet_length(coalesce(NEW.excerpt, ''))
+                 + octet_length(coalesce(NEW.advertiser_name, ''))
+                 + octet_length(coalesce(NEW.provider_metrics::text, '{}'));
+
+      IF max_records <= 0
+         OR max_bytes <= 0
+         OR (q_count + 1) > max_records
+         OR (q_bytes + row_bytes) > max_bytes THEN
+        RAISE EXCEPTION 'orchestrator_research_evidence_limit_exceeded';
+      END IF;
+
+      UPDATE orchestrator_research_quota
+         SET evidence_count = evidence_count + 1,
+             payload_bytes = payload_bytes + row_bytes,
+             updated_at = now()
+       WHERE tenant_id = NEW.tenant_id;
+
+      RETURN NEW;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION orchestrator_research_evidence_quota_delete()
+    RETURNS trigger AS $fn$
+    DECLARE
+      row_bytes BIGINT;
+    BEGIN
+      row_bytes := octet_length(coalesce(OLD.headline, ''))
+                 + octet_length(coalesce(OLD.body_text, ''))
+                 + octet_length(coalesce(OLD.excerpt, ''))
+                 + octet_length(coalesce(OLD.advertiser_name, ''))
+                 + octet_length(coalesce(OLD.provider_metrics::text, '{}'));
+
+      UPDATE orchestrator_research_quota
+         SET evidence_count = GREATEST(0, evidence_count - 1),
+             payload_bytes = GREATEST(0, payload_bytes - row_bytes),
+             updated_at = now()
+       WHERE tenant_id = OLD.tenant_id;
+
+      RETURN OLD;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_research_evidence_quota_insert ON orchestrator_research_evidence;
+    CREATE TRIGGER orchestrator_research_evidence_quota_insert
+      BEFORE INSERT ON orchestrator_research_evidence
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_evidence_quota_insert();
+
+    DROP TRIGGER IF EXISTS orchestrator_research_evidence_quota_delete ON orchestrator_research_evidence;
+    CREATE TRIGGER orchestrator_research_evidence_quota_delete
+      AFTER DELETE ON orchestrator_research_evidence
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_evidence_quota_delete();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {
