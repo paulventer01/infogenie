@@ -7,9 +7,14 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
+const { Pool } = require('pg');
 
 const db = require('../db');
-const { ensureAgentOrchestratorSchema } = require('../services/agent_orchestrator/schema');
+const {
+  ensureAgentOrchestratorSchema,
+  identifyLegacyResearchCleanup,
+} = require('../services/agent_orchestrator/schema');
 const { ensureTenantSchema } = require('../services/tenants/schema');
 
 const SCHEMA_SRC_PATH = path.join(__dirname, '../services/agent_orchestrator/schema.js');
@@ -37,12 +42,6 @@ function extractBacktickSql(fnSrc) {
   return out;
 }
 
-function extractRetentionBackfillUpdates() {
-  const src = fs.readFileSync(SCHEMA_SRC_PATH, 'utf8');
-  const fn = extractFunctionSource(src, '_backfillResearchRetentionExpiry');
-  return extractBacktickSql(fn).filter((s) => /^\s*UPDATE\s+/i.test(s));
-}
-
 function extractTaggedTemplates(src, callee) {
   const out = [];
   const startRe = new RegExp(callee.replace('.', '\\.') + '\\((?:[A-Za-z_][\\w]*\\s*,\\s*)?`', 'g');
@@ -60,6 +59,37 @@ function extractTaggedTemplates(src, callee) {
 function mentionsTriggerOn(sql, table) {
   return new RegExp(`\\bON\\s+${table}\\b`).test(sql);
 }
+
+test('production schema.js has no replica-role backfill and identify never mutates evidence rows', () => {
+  const src = fs.readFileSync(SCHEMA_SRC_PATH, 'utf8');
+  assert.doesNotMatch(src, /session_replication_role/);
+  assert.doesNotMatch(src, /_backfillInReplicaRole/);
+  assert.doesNotMatch(src, /_backfillResearchRetentionExpiry/);
+  assert.doesNotMatch(src, /_backfillResearchJsonObjects/);
+  assert.doesNotMatch(src, /DISABLE TRIGGER/);
+  assert.match(src, /_preflightAgentOrchestratorSchema/);
+  assert.match(src, /orchestrator_schema_preflight_failed/);
+  assert.match(src, /NOT VALID/);
+  assert.match(src, /VALIDATE CONSTRAINT/);
+  assert.match(src, /identifyLegacyResearchCleanup/);
+
+  const identify = extractFunctionSource(src, '_identifyLegacyResearchCleanup');
+  assert.doesNotMatch(identify, /UPDATE\s+orchestrator_research_evidence\b/);
+  assert.doesNotMatch(identify, /DELETE\s+FROM\s+orchestrator_research_evidence\b/);
+  assert.doesNotMatch(identify, /UPDATE\s+orchestrator_research_evidence_assets\b/);
+  assert.doesNotMatch(identify, /DELETE\s+FROM\s+orchestrator_research_evidence_assets\b/);
+  assert.match(identify, /legacy_short_due/);
+  assert.match(identify, /missing_expiry/);
+  assert.match(identify, /invalid_expiry/);
+  assert.match(identify, /interval\s+'7 days'/);
+  assert.match(identify, /ON CONFLICT \(tenant_id, target_kind, target_id\) DO NOTHING/);
+
+  const srcQuota = src.slice(src.indexOf('CREATE OR REPLACE FUNCTION orchestrator_research_evidence_quota_insert'));
+  assert.match(srcQuota, /FOR UPDATE/);
+  assert.match(srcQuota, /COUNT\(\*\)::int/);
+  assert.match(srcQuota, /orchestrator_research_evidence_payload_bytes/);
+  assert.doesNotMatch(srcQuota, /evidence_count \+ 1/);
+});
 
 test('research trigger install is per-table and not one p.query locking runs+evidence', () => {
   const src = fs.readFileSync(SCHEMA_SRC_PATH, 'utf8');
@@ -134,40 +164,17 @@ test('research trigger install is per-table and not one p.query locking runs+evi
   }
 });
 
-test('retention backfill SQL uses 7-day short and 30-day standard, not a combined 30-day class list', () => {
+test('legacy identify SQL is tenant-scoped and does not combine 7/30-day UPDATEs', () => {
   const src = fs.readFileSync(SCHEMA_SRC_PATH, 'utf8');
-  const fn = extractFunctionSource(src, '_backfillResearchRetentionExpiry');
-  assert.match(fn, /_backfillInReplicaRole/);
-  assert.match(fn, /retention_class IN \('standard','short'\)/);
-
-  const updates = extractRetentionBackfillUpdates();
-  assert.strictEqual(updates.length, 4, 'expected class-split UPDATEs for evidence and assets');
-
-  const byTable = { evidence: [], assets: [] };
-  for (const sql of updates) {
-    assert.doesNotMatch(
-      sql,
-      /retention_class\s+IN\s*\(/,
-      'backfill UPDATE must not apply one TTL to IN (\'standard\',\'short\') together'
-    );
-    assert.doesNotMatch(sql, /legal_hold/);
-    if (/UPDATE\s+orchestrator_research_evidence_assets\b/.test(sql)) byTable.assets.push(sql);
-    else if (/UPDATE\s+orchestrator_research_evidence\b/.test(sql)) byTable.evidence.push(sql);
-    else assert.fail(`unexpected backfill UPDATE table: ${sql}`);
-  }
-  assert.strictEqual(byTable.evidence.length, 2);
-  assert.strictEqual(byTable.assets.length, 2);
-
-  for (const tableSql of [byTable.evidence, byTable.assets]) {
-    const shortSql = tableSql.find((s) => /retention_class\s*=\s*'short'/.test(s));
-    const standardSql = tableSql.find((s) => /retention_class\s*=\s*'standard'/.test(s));
-    assert.ok(shortSql, 'missing short-class UPDATE');
-    assert.ok(standardSql, 'missing standard-class UPDATE');
-    assert.match(shortSql, /interval\s+'7 days'/);
-    assert.doesNotMatch(shortSql, /interval\s+'30 days'/);
-    assert.match(standardSql, /interval\s+'30 days'/);
-    assert.doesNotMatch(standardSql, /interval\s+'7 days'/);
-  }
+  const fn = extractFunctionSource(src, '_identifyLegacyResearchCleanup');
+  assert.match(fn, /INSERT INTO orchestrator_research_legacy_holds/);
+  assert.match(fn, /target_kind, target_id, reason/);
+  assert.doesNotMatch(fn, /session_replication_role/);
+  const sql = extractBacktickSql(fn).join('\n');
+  assert.match(sql, /retention_class = 'short'/);
+  assert.match(sql, /retention_class IN \('standard', 'short'\)/);
+  assert.doesNotMatch(sql, /interval\s+'30 days'/);
+  assert.doesNotMatch(sql, /^\s*UPDATE\s+/m);
 });
 
 const HAS_DB = db.hasDb();
@@ -362,6 +369,85 @@ async function checkExists(table, name) {
     [name, `public.${table}`]
   )).rows[0];
   return !!row;
+}
+
+async function checkValidated(table, name) {
+  const row = (await db.getPool().query(
+    `SELECT convalidated FROM pg_constraint
+      WHERE conname=$1 AND conrelid=$2::regclass`,
+    [name, `public.${table}`]
+  )).rows[0];
+  return row ? row.convalidated : null;
+}
+
+async function snapshotPublicSchema(p) {
+  const tables = (await p.query(
+    `SELECT table_name FROM information_schema.tables
+      WHERE table_schema='public' ORDER BY 1`
+  )).rows.map((r) => r.table_name);
+  const cons = (await p.query(
+    `SELECT c.relname || ':' || con.conname AS ident
+       FROM pg_constraint con
+       JOIN pg_class c ON c.oid = con.conrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname='public'
+      ORDER BY 1`
+  )).rows.map((r) => r.ident);
+  return { tables, cons };
+}
+
+function dbUrlParts() {
+  const u = new URL(process.env.DATABASE_URL);
+  return {
+    host: u.hostname,
+    port: u.port || '5432',
+    database: decodeURIComponent(u.pathname.replace(/^\//, '')),
+  };
+}
+
+async function createLoginRole(admin, { name, password, schemaCreate }) {
+  const { database } = dbUrlParts();
+  await admin.query(`CREATE ROLE ${name} LOGIN NOSUPERUSER PASSWORD '${password}'`);
+  await admin.query(`GRANT CONNECT ON DATABASE ${database} TO ${name}`);
+  if (schemaCreate) {
+    await admin.query(`GRANT USAGE, CREATE ON SCHEMA public TO ${name}`);
+  } else {
+    await admin.query(`GRANT USAGE ON SCHEMA public TO ${name}`);
+  }
+}
+
+async function dropLoginRole(admin, name) {
+  await admin.query(`REASSIGN OWNED BY ${name} TO CURRENT_USER`);
+  await admin.query(`DROP OWNED BY ${name}`);
+  await admin.query(`DROP ROLE IF EXISTS ${name}`);
+}
+
+async function grantOrchestratorMigrator(admin, name) {
+  await admin.query(`GRANT SELECT, REFERENCES ON TABLE tenants TO ${name}`);
+  const users = await admin.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='users'`
+  );
+  if (users.rowCount) {
+    await admin.query(`GRANT SELECT, REFERENCES ON TABLE users TO ${name}`);
+  }
+  await admin.query(`GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ${name}`);
+  const tables = (await admin.query(`
+    SELECT tablename FROM pg_tables
+     WHERE schemaname='public'
+       AND (tablename LIKE 'orchestrator_%' OR tablename = 'agent_orchestrator_runs')
+  `)).rows;
+  for (const t of tables) {
+    await admin.query(`ALTER TABLE public.${t.tablename} OWNER TO ${name}`);
+  }
+  const fns = (await admin.query(`
+    SELECT p.oid::regprocedure AS ident
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname='public' AND p.proname LIKE 'orchestrator_%'
+  `)).rows;
+  for (const f of fns) {
+    await admin.query(`ALTER FUNCTION ${f.ident} OWNER TO ${name}`);
+  }
 }
 
 if (!HAS_DB) {
@@ -624,18 +710,71 @@ if (!HAS_DB) {
     );
   });
 
-  test('retention backfill migration path sets 7-day short and 30-day standard then rolls back', async () => {
+  test('identify reports legacy short-due rows and ensure() does not delete them', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertCompetitor(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    const futureAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const shortEvId = nid('ev-ident-short');
+    const shortAssetId = nid('asset-ident-short');
+    await insertEvidence(p, tenantA, host.runId, comp, {
+      id: shortEvId,
+      retentionClass: 'short',
+      createdAt,
+      expiresAt: futureAt,
+      dedupKey: nid('ededup-ident-short'),
+    });
+    await insertAsset(p, tenantA, shortEvId, {
+      id: shortAssetId,
+      retentionClass: 'short',
+      createdAt,
+      expiresAt: futureAt,
+    });
+
+    const first = await identifyLegacyResearchCleanup();
+    assert.ok(first.evidence >= 1, 'identify must report short-due evidence');
+    assert.ok(first.assets >= 1, 'identify must report short-due assets');
+    const second = await identifyLegacyResearchCleanup();
+    assert.strictEqual(second.evidence, 0, 'identify must be idempotent');
+    assert.strictEqual(second.assets, 0, 'identify must be idempotent for assets');
+
+    await ensureAgentOrchestratorSchema();
+
+    const leftover = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, shortEvId]
+    )).rows;
+    assert.strictEqual(leftover.length, 1, 'ensure() must not delete identified evidence');
+    const leftoverAsset = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, shortAssetId]
+    )).rows;
+    assert.strictEqual(leftoverAsset.length, 1, 'ensure() must not delete identified assets');
+
+    const hold = (await p.query(
+      `SELECT reason FROM orchestrator_research_legacy_holds
+        WHERE tenant_id=$1 AND target_kind='evidence' AND target_id=$2`,
+      [tenantA, shortEvId]
+    )).rows[0];
+    assert.ok(hold);
+    assert.strictEqual(hold.reason, 'legacy_short_due');
+    const assetHold = (await p.query(
+      `SELECT reason FROM orchestrator_research_legacy_holds
+        WHERE tenant_id=$1 AND target_kind='asset' AND target_id=$2`,
+      [tenantA, shortAssetId]
+    )).rows[0];
+    assert.ok(assetHold);
+    assert.strictEqual(assetHold.reason, 'legacy_short_due');
+  });
+
+  test('CHECK stays NOT VALID when violators exist; new invalid INSERT still fails', async () => {
     const pool = db.getPool();
-    const updates = extractRetentionBackfillUpdates();
-    assert.strictEqual(updates.length, 4);
     const client = await pool.connect();
-    const shortEvId = nid('ev-bf-short');
-    const stdEvId = nid('ev-bf-std');
-    const holdEvId = nid('ev-bf-hold');
-    const shortAssetId = nid('asset-bf-short');
-    const stdAssetId = nid('asset-bf-std');
-    const holdAssetId = nid('asset-bf-hold');
-    let rolledBack = false;
+    const evId = nid('ev-viol');
+    const assetId = nid('asset-viol');
+    const expirySql =
+      `retention_class = 'legal_hold' OR (expires_at IS NOT NULL AND expires_at > created_at)`;
     try {
       await client.query('BEGIN');
       await client.query(
@@ -644,105 +783,71 @@ if (!HAS_DB) {
       await client.query(
         `ALTER TABLE orchestrator_research_evidence_assets DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_assets_retention_expiry_check`
       );
-
       const host = await seedHost(client, tenantA);
       const comp = await insertCompetitor(client, tenantA, host.runId);
       await insertEvidence(client, tenantA, host.runId, comp, {
-        id: shortEvId,
-        retentionClass: 'short',
-        expiresAt: null,
-        dedupKey: nid('ededup-bf-short'),
-      });
-      await insertEvidence(client, tenantA, host.runId, comp, {
-        id: stdEvId,
+        id: evId,
         retentionClass: 'standard',
         expiresAt: null,
-        dedupKey: nid('ededup-bf-std'),
+        dedupKey: nid('ededup-viol'),
       });
-      await insertEvidence(client, tenantA, host.runId, comp, {
-        id: holdEvId,
-        retentionClass: 'legal_hold',
-        expiresAt: null,
-        dedupKey: nid('ededup-bf-hold'),
-      });
-      await insertAsset(client, tenantA, shortEvId, {
-        id: shortAssetId,
-        retentionClass: 'short',
-        expiresAt: null,
-      });
-      await insertAsset(client, tenantA, stdEvId, {
-        id: stdAssetId,
+      await insertAsset(client, tenantA, evId, {
+        id: assetId,
         retentionClass: 'standard',
         expiresAt: null,
       });
-      await insertAsset(client, tenantA, holdEvId, {
-        id: holdAssetId,
-        retentionClass: 'legal_hold',
-        expiresAt: null,
-      });
-
-      await client.query('SET LOCAL session_replication_role = replica');
-      for (const sql of updates) {
-        await client.query(sql);
-      }
-
-      const evRows = (await client.query(
-        `SELECT id, retention_class,
-                EXTRACT(EPOCH FROM (expires_at - created_at)) AS ttl_seconds,
-                expires_at
-           FROM orchestrator_research_evidence
-          WHERE tenant_id=$1 AND id = ANY($2)
-          ORDER BY retention_class`,
-        [tenantA, [shortEvId, stdEvId, holdEvId]]
-      )).rows;
-      const assetRows = (await client.query(
-        `SELECT id, retention_class,
-                EXTRACT(EPOCH FROM (expires_at - created_at)) AS ttl_seconds,
-                expires_at
-           FROM orchestrator_research_evidence_assets
-          WHERE tenant_id=$1 AND id = ANY($2)
-          ORDER BY retention_class`,
-        [tenantA, [shortAssetId, stdAssetId, holdAssetId]]
-      )).rows;
-      assert.strictEqual(evRows.length, 3);
-      assert.strictEqual(assetRows.length, 3);
-
-      const DAY_SECONDS = 24 * 3600;
-      const byClass = (rows) => Object.fromEntries(rows.map((r) => [r.retention_class, r]));
-      const ev = byClass(evRows);
-      const assets = byClass(assetRows);
-      assert.strictEqual(Number(ev.short.ttl_seconds), 7 * DAY_SECONDS);
-      assert.strictEqual(Number(ev.standard.ttl_seconds), 30 * DAY_SECONDS);
-      assert.strictEqual(ev.legal_hold.expires_at, null);
-      assert.strictEqual(Number(assets.short.ttl_seconds), 7 * DAY_SECONDS);
-      assert.strictEqual(Number(assets.standard.ttl_seconds), 30 * DAY_SECONDS);
-      assert.strictEqual(assets.legal_hold.expires_at, null);
-
-      await client.query('ROLLBACK');
-      rolledBack = true;
+      await client.query(
+        `ALTER TABLE orchestrator_research_evidence
+           ADD CONSTRAINT orchestrator_research_evidence_retention_expiry_check
+           CHECK (${expirySql}) NOT VALID`
+      );
+      await client.query(
+        `ALTER TABLE orchestrator_research_evidence_assets
+           ADD CONSTRAINT orchestrator_research_evidence_assets_retention_expiry_check
+           CHECK (${expirySql}) NOT VALID`
+      );
+      await client.query('COMMIT');
     } catch (err) {
-      try { await client.query('ROLLBACK'); rolledBack = true; } catch (_) { /* already aborted */ }
-      throw err;
-    } finally {
-      if (!rolledBack) {
-        try { await client.query('ROLLBACK'); } catch (_) { /* already aborted */ }
-      }
+      try { await client.query('ROLLBACK'); } catch (_) { /* already aborted */ }
       client.release();
+      throw err;
     }
+    client.release();
 
-    assert.ok(
-      await checkExists('orchestrator_research_evidence', 'orchestrator_research_evidence_retention_expiry_check'),
-      'evidence expiry CHECK must still exist after ROLLBACK'
-    );
-    assert.ok(
-      await checkExists('orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_retention_expiry_check'),
-      'assets expiry CHECK must still exist after ROLLBACK'
-    );
+    const identified = await identifyLegacyResearchCleanup();
+    assert.ok(identified.evidence >= 1);
+    assert.ok(identified.assets >= 1);
+
+    await ensureAgentOrchestratorSchema();
+
     const leftover = (await pool.query(
-      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id = ANY($2)`,
-      [tenantA, [shortEvId, stdEvId, holdEvId]]
+      `SELECT id, expires_at FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, evId]
     )).rows;
-    assert.strictEqual(leftover.length, 0, 'backfill probe rows must not survive ROLLBACK');
+    assert.strictEqual(leftover.length, 1, 'ensure() must not delete violating evidence');
+    assert.strictEqual(leftover[0].expires_at, null, 'ensure() must not UPDATE immutable evidence');
+
+    assert.strictEqual(
+      await checkValidated('orchestrator_research_evidence', 'orchestrator_research_evidence_retention_expiry_check'),
+      false,
+      'expiry CHECK must stay NOT VALID while violators exist'
+    );
+    assert.strictEqual(
+      await checkValidated('orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_retention_expiry_check'),
+      false
+    );
+
+    const host2 = await seedHost(pool, tenantA);
+    const comp2 = await insertCompetitor(pool, tenantA, host2.runId);
+    await assert.rejects(
+      () => insertEvidence(pool, tenantA, host2.runId, comp2, {
+        id: nid('ev-new-null'),
+        retentionClass: 'standard',
+        expiresAt: null,
+      }),
+      /retention_expiry|check/i,
+      'NOT VALID CHECK must still reject new standard inserts without expires_at'
+    );
   });
 
   test('sweep indexes exist, are partial, and lead with tenant_id', async () => {
@@ -1029,6 +1134,272 @@ if (!HAS_DB) {
       'orchestrator_research_evidence_assets:orchestrator_research_evidence_assets_immutable',
     ]) {
       assert.ok(names.has(want), `missing trigger ${want}`);
+    }
+  });
+
+  test('legacy holds and cleanup_ops tables are tenant-scoped with integer-only cleanup counts', async () => {
+    const p = db.getPool();
+    const holdPk = (await p.query(
+      `SELECT string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position) AS cols
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+          AND tc.table_name = kcu.table_name
+        WHERE tc.table_schema='public' AND tc.table_name='orchestrator_research_legacy_holds'
+          AND tc.constraint_type='PRIMARY KEY'
+        GROUP BY tc.constraint_name`
+    )).rows[0];
+    assert.strictEqual(holdPk.cols, 'tenant_id,target_kind,target_id');
+
+    const opsPk = (await p.query(
+      `SELECT string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position) AS cols
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+          AND tc.table_name = kcu.table_name
+        WHERE tc.table_schema='public' AND tc.table_name='orchestrator_research_cleanup_ops'
+          AND tc.constraint_type='PRIMARY KEY'
+        GROUP BY tc.constraint_name`
+    )).rows[0];
+    assert.strictEqual(opsPk.cols, 'tenant_id,id');
+    assert.ok(await checkExists('orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_tenant_unique_idempotency_key'));
+
+    const forbidden = (await p.query(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema='public'
+          AND table_name IN ('orchestrator_research_legacy_holds','orchestrator_research_cleanup_ops')
+          AND column_name IN ('headline','body_text','excerpt','email','body','raw_payload')`
+    )).rows;
+    assert.deepStrictEqual(forbidden, []);
+
+    await assert.rejects(
+      () => p.query(
+        `INSERT INTO orchestrator_research_cleanup_ops
+           (id, tenant_id, idempotency_key, state, confirmation_sha256)
+         VALUES ($1,$2,$3,'previewed',$4)`,
+        [nid('op-bad'), tenantA, nid('op-idemp'), 'not-a-hash']
+      ),
+      /confirmation_sha256|check/i
+    );
+  });
+
+  test('quota recompute refuses corrupt-low cache, heals on DELETE, and ignores corrupt-high cache', async () => {
+    const pool = db.getPool();
+    const tenantQ = (await pool.query(
+      `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
+      [`AORO q ${SUFFIX}`, `aoro-q-${SUFFIX}`]
+    )).rows[0].id;
+    try {
+      await seedResearchLimits(pool, tenantQ, { records: 2, bytes: 104857600 });
+      const host = await seedHost(pool, tenantQ);
+      const comp = await insertCompetitor(pool, tenantQ, host.runId);
+      const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const futureAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+      const liveId = await insertEvidence(pool, tenantQ, host.runId, comp, {
+        id: nid('ev-q-live'),
+        createdAt,
+        expiresAt: futureAt,
+      });
+      const expiredId = await insertEvidence(pool, tenantQ, host.runId, comp, {
+        id: nid('ev-q-exp'),
+        createdAt,
+        expiresAt: expiredAt,
+      });
+
+      await pool.query(
+        `UPDATE orchestrator_research_quota SET evidence_count=0, payload_bytes=0 WHERE tenant_id=$1`,
+        [tenantQ]
+      );
+      await assert.rejects(
+        () => insertEvidence(pool, tenantQ, host.runId, comp, { id: nid('ev-q-bypass') }),
+        /orchestrator_research_evidence_limit_exceeded/,
+        'corrupt-low cache must not bypass COUNT(*) cap'
+      );
+
+      await pool.query(
+        `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+        [tenantQ, expiredId]
+      );
+      const afterDel = (await pool.query(
+        `SELECT evidence_count,
+                (SELECT COUNT(*)::int FROM orchestrator_research_evidence WHERE tenant_id=$1) AS live
+           FROM orchestrator_research_quota WHERE tenant_id=$1`,
+        [tenantQ]
+      )).rows[0];
+      assert.strictEqual(afterDel.live, 1);
+      assert.strictEqual(afterDel.evidence_count, 1, 'DELETE must heal cache to COUNT(*)');
+
+      await pool.query(
+        `UPDATE orchestrator_research_quota SET evidence_count=999, payload_bytes=1 WHERE tenant_id=$1`,
+        [tenantQ]
+      );
+      await insertEvidence(pool, tenantQ, host.runId, comp, {
+        id: nid('ev-q-high'),
+        createdAt,
+        expiresAt: futureAt,
+      });
+      const afterHigh = (await pool.query(
+        `SELECT evidence_count,
+                (SELECT COUNT(*)::int FROM orchestrator_research_evidence WHERE tenant_id=$1) AS live
+           FROM orchestrator_research_quota WHERE tenant_id=$1`,
+        [tenantQ]
+      )).rows[0];
+      assert.strictEqual(afterHigh.live, 2);
+      assert.strictEqual(afterHigh.evidence_count, 2, 'insert after corrupt-high must write recomputed COUNT(*)');
+      await assert.rejects(
+        () => insertEvidence(pool, tenantQ, host.runId, comp, { id: nid('ev-q-cap') }),
+        /orchestrator_research_evidence_limit_exceeded/
+      );
+      assert.ok(liveId);
+    } finally {
+      await pool.query(`DELETE FROM tenants WHERE id=$1`, [tenantQ]);
+    }
+  });
+
+  test('custom GUC cleanup delete allowed only with hold row; UPDATE stays refused', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertCompetitor(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    const futureAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const heldId = await insertEvidence(p, tenantA, host.runId, comp, {
+      id: nid('ev-guc-hold'),
+      retentionClass: 'short',
+      createdAt,
+      expiresAt: futureAt,
+    });
+    const heldAsset = await insertAsset(p, tenantA, heldId, {
+      id: nid('asset-guc-hold'),
+      retentionClass: 'short',
+      createdAt,
+      expiresAt: futureAt,
+    });
+    const freeId = await insertEvidence(p, tenantA, host.runId, comp, {
+      id: nid('ev-guc-free'),
+      retentionClass: 'standard',
+      createdAt,
+      expiresAt: futureAt,
+    });
+    await identifyLegacyResearchCleanup();
+
+    await assert.rejects(
+      () => p.query(
+        `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, heldId]
+      ),
+      /orchestrator_research_evidence_immutable/,
+      'hold without GUC must still refuse DELETE'
+    );
+    await assert.rejects(
+      () => p.query(
+        `UPDATE orchestrator_research_evidence SET headline='tamper' WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, heldId]
+      ),
+      /orchestrator_research_evidence_immutable/
+    );
+
+    const client = await p.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('infogenie.research_cleanup', 'on', true)`);
+      await assert.rejects(
+        () => client.query(
+          `UPDATE orchestrator_research_evidence SET headline='tamper' WHERE tenant_id=$1 AND id=$2`,
+          [tenantA, heldId]
+        ),
+        /orchestrator_research_evidence_immutable/,
+        'UPDATE stays refused even with cleanup GUC'
+      );
+      await client.query(
+        `DELETE FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, heldAsset]
+      );
+      await client.query(
+        `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, heldId]
+      );
+      await assert.rejects(
+        () => client.query(
+          `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+          [tenantA, freeId]
+        ),
+        /orchestrator_research_evidence_immutable/,
+        'GUC without a hold row must still refuse DELETE'
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch (_) { /* already aborted */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    const gone = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, heldId]
+    )).rows;
+    assert.strictEqual(gone.length, 0);
+    const still = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, freeId]
+    )).rows;
+    assert.strictEqual(still.length, 1);
+  });
+
+  test('NOSUPERUSER ensure succeeds; missing CREATE fails preflight with no schema change', async () => {
+    const admin = db.getPool();
+    const { host, port, database } = dbUrlParts();
+    const password = crypto.randomBytes(16).toString('hex');
+    const okRole = `orch_nsu_ok_${SUFFIX.replace(/[^a-z0-9_]/g, '')}`.slice(0, 63);
+    const denyRole = `orch_nsu_no_${SUFFIX.replace(/[^a-z0-9_]/g, '')}`.slice(0, 63);
+    const origGetPool = db.getPool.bind(db);
+    let okPool = null;
+    let denyPool = null;
+
+    const connectNsu = (role) => new Pool({
+      connectionString: `postgres://${role}:${password}@${host}:${port}/${database}`,
+      ssl: { rejectUnauthorized: false },
+    });
+
+    try {
+      await createLoginRole(admin, { name: okRole, password, schemaCreate: true });
+      await grantOrchestratorMigrator(admin, okRole);
+      okPool = connectNsu(okRole);
+      db.getPool = () => okPool;
+      await ensureAgentOrchestratorSchema();
+      const who = (await okPool.query(`SELECT current_user AS u, rolsuper FROM pg_roles WHERE rolname = current_user`)).rows[0];
+      assert.strictEqual(who.u, okRole);
+      assert.strictEqual(who.rolsuper, false);
+      db.getPool = origGetPool;
+
+      await createLoginRole(admin, { name: denyRole, password, schemaCreate: false });
+      await admin.query(
+        `GRANT INSERT, UPDATE, DELETE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public TO ${denyRole}`
+      );
+      denyPool = connectNsu(denyRole);
+      const before = await snapshotPublicSchema(admin);
+      db.getPool = () => denyPool;
+      await assert.rejects(
+        () => ensureAgentOrchestratorSchema(),
+        (err) => {
+          assert.match(String(err && err.message), /orchestrator_schema_preflight_failed/);
+          return true;
+        }
+      );
+      db.getPool = origGetPool;
+      const after = await snapshotPublicSchema(admin);
+      assert.deepStrictEqual(after.tables, before.tables, 'failed preflight must not create tables');
+      assert.deepStrictEqual(after.cons, before.cons, 'failed preflight must not create constraints');
+    } finally {
+      db.getPool = origGetPool;
+      if (okPool) await okPool.end().catch(() => {});
+      if (denyPool) await denyPool.end().catch(() => {});
+      try { await dropLoginRole(admin, okRole); } catch (_) { /* best-effort */ }
+      try { await dropLoginRole(admin, denyRole); } catch (_) { /* best-effort */ }
     }
   });
 }
