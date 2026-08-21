@@ -1475,27 +1475,75 @@ with no `40P01`.
   zeroes those fields explicitly. `ok:false` is the operative signal and no
   caller reads the sub-flags on failure; it is pre-existing and cosmetic.
 
-## CodeQL missing-rate-limiting on `/api/playbooks` — classified residual
+## CodeQL missing-rate-limiting on `/api/playbooks` — remediated
 
-CodeQL run 96768259245 reports high-severity `js/missing-rate-limiting` against
-the handlers in `services/vertical_playbooks/api.js`. Classified as a
-**pre-existing residual surfaced by the diff, not a defect introduced by the
-tenant-schema closeout**, and deliberately not "fixed" by adding the prefix to
-`_RL_PATHS`. The alert list itself was not readable from this environment (the
-code-scanning API answers `403 Resource not accessible by integration`), so the
-underlying claim was checked against the code and a running server rather than
-taken from the report.
+**Status: remediated.** `/api/playbooks` now carries a fail-closed per-tenant
+rate limit. This section previously classified the alert as an accepted residual
+and recorded that no limiter had been added; that is no longer the shipped state
+and the classification below is kept only as the history of why the fix took the
+shape it did.
 
-What the closeout changed in that file is tenant isolation only: the
-`generate-custom` tenant stamp, the `activate/:id` and `/active/list` MIXED
-catalog predicates, and the `seedPlaybooks` partial-index conflict target. All
-five routes — `GET /list`, `GET /:vertical`, `GET /active/list`,
-`POST /activate/:id`, `POST /generate-custom` — exist unchanged on `origin/main`,
-and neither `main` nor this branch references a limiter in the file. `server.js`
-is byte-identical to `origin/main`, so neither `_AUTH_PUBLIC_API_PATHS` nor
-`_RL_PATHS` moved and **no new public endpoint was added**.
+CodeQL run 96768259245 reported high-severity `js/missing-rate-limiting` against
+the handlers in `services/vertical_playbooks/api.js`. The alert list itself was
+not readable from this environment (the code-scanning API answers `403 Resource
+not accessible by integration`), so the underlying claim was checked against the
+code and a running server rather than taken from the report.
 
-The routes are not the anonymous surface the query scores:
+### What is enforced now
+
+- **Limiter:** `createRateLimiter` from `services/security/rate_limit.js` — the
+  same primitive `authAbuseLimiter()` uses. **Not** `server.js`'s `_RL_PATHS`
+  (IP + path, POST-only, no authenticated-caller exemption) and **not** the
+  orchestrator's `services/agent_orchestrator/limits.js`.
+- **Key:** `playbooks|<tenant_id>` for the whole prefix, plus
+  `playbooks-generate|<tenant_id>` on `POST /generate-custom`. The tenant id
+  comes **only** from `req.tenant.id`, which `services/tenants/middleware.js`
+  sets from a verified membership (or `server.js` injects from
+  `getCronTenantId()` for `INFOGENIE_API_KEY` callers). It is never read from the
+  body, query string, headers or route params, and never from
+  `resolveTenantId()`, which can fall back to the default tenant when
+  `MULTITENANT_ENFORCEMENT` is off. The id must be a **positive safe integer**;
+  unsafe integers are rejected rather than coerced, so two distinct ids past
+  2<sup>53</sup> cannot round to one float and share a bucket.
+- **Defaults:** **60 requests / 60 s** shared across the whole prefix, so
+  spraying paths cannot multiply a tenant's quota, and an additional **5 requests
+  / 60 s** on `POST /generate-custom`. `PLAYBOOKS_RATE_LIMIT_MAX` and
+  `PLAYBOOKS_GENERATE_RATE_LIMIT_MAX` override those maxima **only when
+  `NODE_ENV === 'test'`**; in production the defaults are not tunable by
+  environment.
+- **Fail-closed on missing tenant:** `playbooksTenantGuard` runs before every
+  handler and answers `400 {ok:false, error:'no_tenant'}` when `req.tenant` is
+  absent or its id is `0`, negative, non-integer, `NaN`, unsafe or unparseable.
+  There is no fallback to a default tenant, to the client IP, or to an `unknown`
+  bucket. Both limiters additionally carry `failClosed: true`, so a key that
+  cannot identify the caller is denied instead of collapsing every caller into
+  one shared bucket.
+- **Ordered before the expensive work:** the guard and the shared limiter are
+  router-level `use()` calls registered ahead of every route, so they run before
+  the `seedPlaybooks` write loop on `GET /list` and `GET /:vertical`. The
+  generate cap runs before the OpenAI call and before both `INSERT`s.
+- **429 contract:** `{ ok:false, error:'rate_limited', retryAfterSec }` with a
+  `Retry-After` header carrying the same value as bare integer seconds (not an
+  HTTP date).
+- **Atomic admissions:** both playbooks limiters pass `serialize: true`, which
+  funnels verdicts for one key through a promise chain inside
+  `rate_limit.js`. Without it the process-local branch is check-then-act across
+  the Redis `await`, and two concurrent requests can both observe spare capacity.
+  `serialize` and `failClosed` are **opt-in and default to false**, so
+  `authAbuseLimiter()` is unchanged.
+
+`GET /list` and `GET /:vertical` serve the global system catalog and previously
+needed no tenant, so they now answer `400 no_tenant` for an authenticated caller
+with no resolvable tenant where they used to answer `200`. **This is the intended
+fail-closed trade-off, not an auth bypass**: the `/api/*` gate still rejects
+anonymous callers with `401` before any of this runs, and `enforceMatrix` still
+requires `manage.playbook.use`. The practical exposure is an `INFOGENIE_API_KEY`
+caller on a deployment with no default tenant — the case `server.js` already logs
+as `[apikey] no default tenant resolvable`.
+
+### Why the fix did not go into `_RL_PATHS`
+
+The routes were never the anonymous surface the query scores:
 
 - `/api/playbooks` is absent from `_AUTH_PUBLIC_API_PATHS`, so the `/api/*` gate
   requires a session or `INFOGENIE_API_KEY`. Measured against a running server:
@@ -1511,10 +1559,9 @@ The routes are not the anonymous surface the query scores:
 
 `js/missing-rate-limiting` matches "handler performs an expensive operation" and
 models neither the auth gate, the permission matrix nor tenant resolution, so it
-scores these identically to a public POST. It fires on the file because the file
-entered the diff.
-
-### Why these are not going into `_RL_PATHS`
+scored these identically to a public POST. The alert was directionally right
+about the cost surface and wrong about the exposure, which is why the remediation
+is a per-tenant authenticated limiter rather than an IP bucket.
 
 `_RL_PATHS` is "public POST surfaces (cheap; never blocks dashboard usage)".
 Adding a dashboard prefix breaks both halves of that, measured rather than
@@ -1528,38 +1575,61 @@ assumed:
   cannot cover `GET /list`, `GET /:vertical` or `GET /active/list` — three of the
   flagged handlers, and the two that carry the `seedPlaybooks` write loop.
 
-An authenticated dashboard limiter is a platform-wide capacity program, not a
-closeout edit. `createRateLimiter` is general enough to host one, but its only
-caller today is `authAbuseLimiter()`, and introducing a second policy class for
-one file the diff happened to touch would set the threshold for ~270 other
-`ROUTE_GROUPS` prefixes from a scanner alert rather than from a capacity
-decision. No rate limit was added here, and adoption checklist item 5 stands as
-written: it asks for a limiter on new **public** POST surfaces, and this branch
-adds none.
+So the limiter is a **second policy class**, keyed on authenticated tenant rather
+than IP, scoped to this prefix. It is not yet a platform-wide capacity program:
+the other ~270 `ROUTE_GROUPS` prefixes are still unlimited, and their thresholds
+should come from a capacity decision rather than from this hotfix. Adoption
+checklist item 5 is unaffected — it asks for a limiter on new **public** POST
+surfaces, and this branch adds none.
 
-### Accepted residuals
+### Residuals after the fix
 
-- **`POST /generate-custom` is a genuinely un-limited cost surface for an
-  authenticated caller.** It calls OpenAI (`gpt-5`, `max_tokens: 1500`) and
-  writes two rows per request with no per-tenant request or spend cap. The caller
-  needs a session, `manage.playbook.use` and a resolvable tenant, so the exposure
-  is an authorised tenant user burning platform AI spend, not anonymous abuse. It
-  is unchanged from `main` and belongs to the **per-tenant AI rate/cost limiting**
-  follow-up already named under the meeting-notes section — the place to
-  generalise the orchestrator's `requests_per_minute` and daily/monthly cost caps
-  (`services/agent_orchestrator/limits.js`) from. Recorded so the CodeQL alert is
-  closed as misdirected rather than as unfounded.
+- **Per-tenant AI *spend* caps are still not implemented.** This hotfix caps
+  *requests* (5 per tenant per minute on `POST /generate-custom`), which bounds
+  the burst but not the cumulative bill: a tenant can still spend 5 `gpt-5`
+  completions a minute indefinitely, and no other AI route is capped at all. The
+  **per-tenant AI rate/cost limiting** follow-up named under the meeting-notes
+  section still stands — the place to generalise the orchestrator's
+  `requests_per_minute` and daily/monthly cost caps
+  (`services/agent_orchestrator/limits.js`) from. That work is **not** in this
+  change and is not the Advertising Orchestrator PR 3.
+- **Without Redis the limit is process-local.** `rate_limit.js` prefers an atomic
+  Redis `INCR` when `REDIS_URL` (or `UPSTASH_REDIS_URL`) is set and falls back to
+  an in-process sliding window otherwise, so with *n* app instances and no Redis
+  the effective ceiling is *n* × the configured max. `docs/capacity.md` already
+  records Redis as **required for ≥ 2 app instances (rate limits + cache)**; this
+  limiter does not change that requirement, it inherits it. No Postgres-backed
+  limiter was added — a per-request write to `kv_store` would put a database
+  round trip in front of every dashboard read.
+- **A Redis outage degrades the limit rather than denying.** When `REDIS_URL` is
+  set but `redisIncr` fails, `createRateLimiter` falls back to the process-local
+  window, so a multi-instance deployment silently loses the shared counter for
+  the duration. This fail-open is **deliberately left in place**: making it deny
+  would take `/api/auth/login`, `signup` and `request-reset` down with Redis,
+  since `authAbuseLimiter()` shares the primitive. `failClosed` in
+  `createRateLimiter` covers only the *missing key* case and is opt-in, so the
+  auth limiter's behaviour is byte-for-byte unchanged. Turning the Redis-error
+  path into a denial is an explicit, separately-reviewed opt-in if it is ever
+  wanted.
 - **`seedPlaybooks` still runs on every `GET /list` and `GET /:vertical`.** Where
   a legacy unowned row squats a catalog vertical slot the `is_system` count never
   reaches `SYSTEM_PLAYBOOKS.length`, so each request re-attempts the six-row seed
-  loop. The amplification is authenticated-only and is the catalog-poisoning item
-  already recorded above; it needs the housekeeping data decision noted there,
-  not a limiter.
-- **The alert will reappear** on any future PR touching this file until a limiter
-  exists or it is dismissed in the GitHub code-scanning UI. Dismissal is an
-  operator action — there is no `.github/workflows` CodeQL config to scope the
-  query (scanning runs from GitHub default setup), and nothing in the repository
-  suppresses it.
+  loop. That amplification is now bounded at 60 attempts per tenant per minute
+  instead of unbounded, but the underlying catalog-poisoning item recorded above
+  still needs its housekeeping data decision.
+- **The alert may still need dismissal.** CodeQL's `js/missing-rate-limiting`
+  traces middleware it can see on the route; whether it recognises a router-level
+  `use()` limiter is unverified from this environment. If it reappears,
+  dismissing it is an operator action — there is no `.github/workflows` CodeQL
+  config to scope the query (scanning runs from GitHub default setup), and
+  nothing in the repository suppresses it.
+
+Coverage: `test/playbooks-rate-limit.test.js` (HTTP: 429 contract, per-tenant
+isolation, spoofed body/query/header, concurrent burst, API-key caller,
+generate-custom ordering) and `test/playbooks-rate-limit-security.test.js`
+(fail-closed key validation, source-level guard that the key never reads caller
+input, shipped defaults, `serialize` atomicity under an unreachable Redis, and
+`authAbuseLimiter` regression).
 
 ## Related existing systems
 

@@ -293,6 +293,38 @@ test('spoofed tenant_id / X-Tenant-Id / query consume caller bucket only', { ski
     `tenant B must keep a full bucket after A's spoof, got ${bHits.map((r) => r.status).join(',')}`);
 });
 
+// The INFOGENIE_API_KEY path in server.js populates req.user and injects
+// req.tenant from getCronTenantId(). A programmatic caller must land in a tenant
+// bucket like anyone else — an owner-principal bypass here would nullify the
+// control for the one client type most able to generate load.
+test('INFOGENIE_API_KEY callers are limited, not exempt', { skip: skipDb }, async (t) => {
+  const { fx, tenant, owner } = await seedPlaybooksOwner();
+  const app = await bootApp();
+  t.after(async () => {
+    await app.close();
+    await cleanupTenantPlaybooks([tenant.id]);
+    await fx.cleanup();
+  });
+  assert.ok(owner.email);
+
+  const hits = [];
+  for (let i = 0; i < SHARED_MAX + 2; i++) {
+    hits.push(await request(app.baseUrl, 'GET', '/api/playbooks/list', { apiKey: true }));
+  }
+  const statuses = hits.map((r) => r.status);
+  assert.ok(!statuses.includes(401), `api-key auth should be accepted: ${statuses.join(',')}`);
+  // Either a default tenant was injected (bucketed, so the tail 429s) or none
+  // was (fail-closed 400). Unbounded 200s is the outcome that must not happen.
+  const ok = hits.filter((r) => r.status === 200);
+  assert.ok(ok.length <= SHARED_MAX, `api-key caller got ${ok.length} successes, max is ${SHARED_MAX}`);
+  const blocked = hits.filter((r) => r.status === 429 || r.status === 400);
+  assert.ok(blocked.length >= 1, `expected the api-key caller to be blocked: ${statuses.join(',')}`);
+  for (const r of blocked) {
+    assert.ok(['rate_limited', 'no_tenant'].includes(r.json && r.json.error), r.text);
+    if (r.status === 429) assert.ok(r.headers['retry-after']);
+  }
+});
+
 test('generate-custom limiter is mounted before the handler', { skip: skipDb }, async (t) => {
   const { fx, tenant, owner } = await seedPlaybooksOwner();
   const app = await bootApp();
