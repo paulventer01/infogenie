@@ -87,7 +87,7 @@ test('e2c15fa hook-order (restore while holding lock, unlock last, addLockedClea
 
 test('restorePreflightFixtures and isolation/k-anonymity tenant cleanup rethrow 40P01', () => {
   const preflight = read(PREFLIGHT_SRC);
-  assert.match(preflight, /isDeadlockError\(err\) throw err/);
+  assert.match(preflight, /isDeadlockError\(err\)\) throw err/);
   assert.match(preflight, /40P01/);
 
   for (const [label, src] of [

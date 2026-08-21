@@ -176,7 +176,10 @@ async function restorePreflightFixtures(lockedCleanups) {
   // guardMutatingTest's t.after while the advisory lock is still held.
   await p.query('DROP TABLE IF EXISTS preflight_child_probe CASCADE');
   await p.query('DROP TABLE IF EXISTS preflight_parent_probe CASCADE');
-  await p.query(`DELETE FROM job_queue WHERE name LIKE 'preflight-%'`);
+  // Scratch DBs start empty — do not assume live QA tables already exist.
+  if (await tableExists('job_queue')) {
+    await p.query(`DELETE FROM job_queue WHERE name LIKE 'preflight-%'`);
+  }
   if (await tableExists('vertical_playbooks')) {
     await p.query(`DELETE FROM vertical_playbooks WHERE vertical LIKE 'preflight_%'`);
   }
@@ -185,7 +188,9 @@ async function restorePreflightFixtures(lockedCleanups) {
     for (const fn of extras) {
       await fn(p);
     }
-    await p.query(`DELETE FROM tenants WHERE slug LIKE $1`, ['preflight-%']);
+    if (await tableExists('tenants')) {
+      await p.query(`DELETE FROM tenants WHERE slug LIKE $1`, ['preflight-%']);
+    }
   } catch (err) {
     // Deadlocks (40P01) and serialization failures (40001) must fail the test —
     // warn-and-pass hid the DROP vs DELETE tenants lock-order cycle.
