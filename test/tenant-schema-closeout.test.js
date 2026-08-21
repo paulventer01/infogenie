@@ -4,12 +4,30 @@
 // runPhase2Migration()) plus helper invariants: parent backfill, orphan
 // fail-closed, backlink IMMUTABLE repair, and composite UNIQUE(tenant_id, domain).
 // Skip the whole file when DATABASE_URL is unset. Do not weaken tenant-schema-audit.
+//
+// Destructive DDL (DROP TABLE brand_foundation / backlink_*) runs on a per-file
+// scratch database, not the live QA DATABASE_URL. Parallel files that
+// DELETE FROM tenants on the shared database therefore cannot take
+// RowExclusiveLock on the same brand_foundation this suite DROPs (40P01).
+// Intra-file restore still holds the e2c15fa advisory lock until unlock-last.
 
-const { test } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const {
+  scratchName,
+  swapDatabase,
+  createScratchDatabase,
+  dropScratchDatabase,
+} = require('./helpers/scratch_db');
+
+const ADMIN_URL = process.env.DATABASE_URL || '';
+const SCRATCH_DB = scratchName('closeout');
+const SCRATCH_URL = ADMIN_URL ? swapDatabase(ADMIN_URL, SCRATCH_DB) : '';
+// Must run before db.getPool() / ensure*Schema() — db.js reads DATABASE_URL lazily.
+if (SCRATCH_URL) process.env.DATABASE_URL = SCRATCH_URL;
 
 const db = require('../db');
 const { enforceTenantIdNotNull } = require('../services/tenants/migration');
@@ -45,8 +63,26 @@ const { ensureJobsSchema } = require('../services/jobs/schema');
 const { ensureDigitalTwinSchema } = require('../services/digital_twin/schema');
 const { ensureBacklinkMonitorSchema } = require('../services/backlink_monitor/schema');
 
-const HAS_DB = db.hasDb();
+const HAS_DB = !!ADMIN_URL;
 const skip = HAS_DB ? false : 'no DATABASE_URL — closeout tests skipped';
+let scratchReady = false;
+
+before(async () => {
+  if (skip) return;
+  await createScratchDatabase(ADMIN_URL, SCRATCH_DB);
+  scratchReady = true;
+});
+
+after(async () => {
+  if (!ADMIN_URL) return;
+  try {
+    if (scratchReady) {
+      const p = db.getPool();
+      if (p) await p.end();
+    }
+  } catch { /* pool may already be ended */ }
+  try { await dropScratchDatabase(ADMIN_URL, SCRATCH_DB); } catch { /* ignore */ }
+});
 
 const CLOSEOUT_TABLES = [
   'ai_call_traces', 'ai_providers', 'ai_visibility_runs', 'anomaly_detections',
@@ -233,6 +269,10 @@ test('canonical old-shape → ensure* + phase2 yields scoped NOT NULL tables', {
   const p = db.getPool();
   await ensureAuthSchema();
   await ensureTenantSchema();
+  // Scratch DB is empty — create the child tables before simulating old-shape
+  // (DROP COLUMN tenant_id). On a live install they already exist.
+  await ensureLaunchComplianceSchema();
+  await ensurePostLaunchAuditSchema();
 
   // Old-shape backlink: UNIQUE(domain) + the non-immutable index that used to
   // abort the implicit transaction so the three tables never existed.

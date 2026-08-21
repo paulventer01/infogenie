@@ -125,15 +125,18 @@ after(async () => {
   if (!HAS_DB) return;
   const p = db.getPool();
   const ids = tenants.filter(Boolean);
+  const { rethrowDeadlock } = require('./helpers/scratch_db');
+  // Best-effort teardown when setup failed partway (missing tables). Deadlock
+  // (40P01) / serialization failure (40001) always fail — do not swallow them.
   await p.query(
     `DELETE FROM benchmark_aggregates
       WHERE vertical = ANY($1) AND region IS NOT DISTINCT FROM $2
         AND company_size IS NOT DISTINCT FROM $3 AND metric_key=$4`,
     [[VERTICAL, VERTICAL_DROP], REGION, SIZE, METRIC]
-  ).catch(() => {});
+  ).catch(rethrowDeadlock);
   if (ids.length) {
-    await p.query(`DELETE FROM benchmark_submissions WHERE tenant_id = ANY($1)`, [ids]).catch(() => {});
-    await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]).catch(() => {});
+    await p.query(`DELETE FROM benchmark_submissions WHERE tenant_id = ANY($1)`, [ids]).catch(rethrowDeadlock);
+    await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]).catch(rethrowDeadlock);
   }
 });
 

@@ -60,7 +60,9 @@ const NULLABLE_OK = new Set([
                          // custom is_system=FALSE playbooks are tenant-owned
 ]);
 
-// Must match tenant-schema-closeout.test.js so loadSchema waits out DROP TABLE.
+// Closeout/preflight DROP TABLE now targets a per-file scratch database, so this
+// lock is a no-op against those files (advisory locks are per-database). Kept
+// so any remaining live-DB honorer of the same key still serialises with audit.
 const CLOSEOUT_ADVISORY_LOCK_KEY = crypto
   .createHash('sha256')
   .update('infogenie-tenant-schema-closeout')

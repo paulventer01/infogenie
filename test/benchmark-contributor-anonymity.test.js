@@ -152,11 +152,14 @@ after(async () => {
   if (server) await new Promise(r => server.close(r));
   if (!HAS_DB) return;
   const p = db.getPool();
-  await p.query(`DELETE FROM benchmark_aggregates WHERE vertical=$1`, [VERTICAL]).catch(() => {});
+  const { rethrowDeadlock } = require('./helpers/scratch_db');
+  // Best-effort teardown when setup failed partway (missing tables). Deadlock
+  // (40P01) / serialization failure (40001) always fail — do not swallow them.
+  await p.query(`DELETE FROM benchmark_aggregates WHERE vertical=$1`, [VERTICAL]).catch(rethrowDeadlock);
   const ids = tenants.filter(Boolean);
   if (!ids.length) return;
-  await p.query(`DELETE FROM benchmark_submissions WHERE tenant_id = ANY($1)`, [ids]).catch(() => {});
-  await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]).catch(() => {});
+  await p.query(`DELETE FROM benchmark_submissions WHERE tenant_id = ANY($1)`, [ids]).catch(rethrowDeadlock);
+  await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]).catch(rethrowDeadlock);
 });
 
 // ── 1. The publish decision must be made on a distinct-tenant count ─────────

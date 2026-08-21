@@ -1265,6 +1265,18 @@ the `DELETE FROM tenants` assertion, or serialising the whole suite —
 by provisioning its own, which is the other half of the recommendation the
 earlier entry made; it is not a substitute for fixing the hook order.
 
+**Database follow-up (pending Security re-review).** `e2c15fa` keeps the hook-order
+fix (restore while holding the advisory lock, unlock last, `addLockedCleanup`).
+Residual isolation: `tenant-schema-closeout` and `tenant-schema-preflight` now
+provision a per-file scratch database and point `DROP TABLE … brand_foundation`
+at that database, not the live QA `DATABASE_URL`. Unlocked `DELETE FROM tenants`
+on the shared database therefore cannot take `RowExclusiveLock` on the same
+`brand_foundation` a closer DROPs. `restorePreflightFixtures` and
+isolation/k-anonymity tenant cleanup rethrow `40P01` / `40001` instead of
+warn-and-pass. `test/tenant-closeout-drop-isolation.test.js` pins the scratch
+contract and runs concurrent DROP (scratch) vs DELETE tenants (live). This
+paragraph does not close the Open finding — isolation review is still Security's.
+
 ### Accepted residuals
 
 - **Nothing automatically blocks a deploy.** When violators already exist,

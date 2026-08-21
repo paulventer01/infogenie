@@ -5,14 +5,33 @@
 // vertical_playbooks system xor tenant CHECK.
 // Skip the whole DB-dependent file when DATABASE_URL is unset. Do not weaken
 // tenant-schema-audit.
+//
+// Destructive DDL (DROP TABLE brand_foundation) runs on a per-file scratch
+// database, not the live QA DATABASE_URL. Parallel files that DELETE FROM
+// tenants on the shared database therefore cannot take RowExclusiveLock on
+// the same brand_foundation this suite DROPs (40P01). Intra-file restore
+// still holds the e2c15fa advisory lock until unlock-last; 40P01 is rethrown.
 
-const { test } = require('node:test');
+const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const pg = require('pg');
+const {
+  scratchName,
+  swapDatabase,
+  createScratchDatabase,
+  dropScratchDatabase,
+  isDeadlockError,
+} = require('./helpers/scratch_db');
+
+const ADMIN_URL = process.env.DATABASE_URL || '';
+const SCRATCH_DB = scratchName('preflight');
+const SCRATCH_URL = ADMIN_URL ? swapDatabase(ADMIN_URL, SCRATCH_DB) : '';
+// Must run before db.getPool() / ensure*Schema() — db.js reads DATABASE_URL lazily.
+if (SCRATCH_URL) process.env.DATABASE_URL = SCRATCH_URL;
 
 const db = require('../db');
 const { enforceTenantIdNotNull } = require('../services/tenants/migration');
@@ -32,8 +51,26 @@ const { ensureBrandFoundationSchema } = require('../services/brand_foundation/sc
 const { ensureJobsSchema } = require('../services/jobs/schema');
 const { ensureVerticalPlaybooksSchema } = require('../services/vertical_playbooks/schema');
 
-const HAS_DB = db.hasDb();
+const HAS_DB = !!ADMIN_URL;
 const skip = HAS_DB ? false : 'no DATABASE_URL — preflight tests skipped';
+let scratchReady = false;
+
+before(async () => {
+  if (skip) return;
+  await createScratchDatabase(ADMIN_URL, SCRATCH_DB);
+  scratchReady = true;
+});
+
+after(async () => {
+  if (!ADMIN_URL) return;
+  try {
+    if (scratchReady) {
+      const p = db.getPool();
+      if (p) await p.end();
+    }
+  } catch { /* pool may already be ended */ }
+  try { await dropScratchDatabase(ADMIN_URL, SCRATCH_DB); } catch { /* ignore */ }
+});
 
 const PREFLIGHT_SCRIPT = path.join(__dirname, '../scripts/tenant-schema-preflight.js');
 
@@ -150,6 +187,11 @@ async function restorePreflightFixtures(lockedCleanups) {
     }
     await p.query(`DELETE FROM tenants WHERE slug LIKE $1`, ['preflight-%']);
   } catch (err) {
+    // Deadlocks (40P01) and serialization failures (40001) must fail the test —
+    // warn-and-pass hid the DROP vs DELETE tenants lock-order cycle.
+    if (isDeadlockError(err)) throw err;
+    // Best-effort otherwise: missing tables or already-deleted fixture rows
+    // during teardown must not fail a passing assertion.
     console.warn('[preflight-test] tenant fixture cleanup failed:', err.message);
   }
   if (await tableExists('brand_foundation')) {

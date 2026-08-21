@@ -118,12 +118,15 @@ after(async () => {
   const p = db.getPool();
   const ids = [tenantA, tenantB].filter(Boolean);
   if (!ids.length) return;
-  await p.query(`DELETE FROM active_playbooks WHERE tenant_id = ANY($1)`, [ids]).catch(() => {});
-  await p.query(`DELETE FROM vertical_playbooks WHERE tenant_id = ANY($1)`, [ids]).catch(() => {});
-  await p.query(`DELETE FROM backlink_monitors WHERE tenant_id = ANY($1)`, [ids]).catch(() => {});
-  await p.query(`DELETE FROM campaign_compliance_checklists WHERE tenant_id = ANY($1)`, [ids]).catch(() => {});
-  await p.query(`DELETE FROM post_launch_audits WHERE tenant_id = ANY($1)`, [ids]).catch(() => {});
-  await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]).catch(() => {});
+  const { rethrowDeadlock } = require('./helpers/scratch_db');
+  // Best-effort teardown when setup failed partway (missing tables). Deadlock
+  // (40P01) / serialization failure (40001) always fail — do not swallow them.
+  await p.query(`DELETE FROM active_playbooks WHERE tenant_id = ANY($1)`, [ids]).catch(rethrowDeadlock);
+  await p.query(`DELETE FROM vertical_playbooks WHERE tenant_id = ANY($1)`, [ids]).catch(rethrowDeadlock);
+  await p.query(`DELETE FROM backlink_monitors WHERE tenant_id = ANY($1)`, [ids]).catch(rethrowDeadlock);
+  await p.query(`DELETE FROM campaign_compliance_checklists WHERE tenant_id = ANY($1)`, [ids]).catch(rethrowDeadlock);
+  await p.query(`DELETE FROM post_launch_audits WHERE tenant_id = ANY($1)`, [ids]).catch(rethrowDeadlock);
+  await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]).catch(rethrowDeadlock);
 });
 
 // ── vertical_playbooks: live cross-tenant activate leak ──────────────────────
