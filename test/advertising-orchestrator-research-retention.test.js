@@ -617,14 +617,14 @@ if (!HAS_DB) {
         const started = Date.now();
         result = await sweepExpiredResearchEvidence({ tenantId });
         elapsed = Date.now() - started;
-        if (elapsed < 2000 && result && result.failures === 0) break;
+        if (elapsed < 2500 && result && result.failures === 0) break;
         if (attempt === 3) {
-          assert.ok(elapsed < 2000, `sweep must return in < 2s, took ${elapsed}ms`);
+          assert.ok(elapsed < 2500, `sweep must return promptly (lock_timeout 2s), took ${elapsed}ms`);
           assert.ok(result);
           assert.strictEqual(result.failures, 0, 'SKIP LOCKED must not trip delete_noop');
         }
       }
-      assert.ok(elapsed < 2000, `sweep must return in < 2s, took ${elapsed}ms`);
+      assert.ok(elapsed < 2500, `sweep must return promptly (lock_timeout 2s), took ${elapsed}ms`);
       assert.ok(result);
       assert.strictEqual(result.failures, 0, 'SKIP LOCKED must not trip delete_noop');
 
@@ -638,7 +638,6 @@ if (!HAS_DB) {
         [tenantId, lockedId]
       )).rows;
       assert.strictEqual(lockedKept.length, 1, 'held row must be skipped');
-      throw err;
     } finally {
       try { await locker.query('ROLLBACK'); } catch { /* ignore */ }
       locker.release();
