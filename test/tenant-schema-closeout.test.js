@@ -7,6 +7,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -93,6 +94,80 @@ async function applyCanonicalCloseout() {
   return runPhase2Migration();
 }
 
+// Session-level lock shared with tenant-schema-audit.test.js so parallel
+// node --test workers wait instead of inspecting a mid-DROP schema.
+const CLOSEOUT_ADVISORY_LOCK_KEY = crypto
+  .createHash('sha256')
+  .update('infogenie-tenant-schema-closeout')
+  .digest()
+  .readInt32BE(0);
+
+async function acquireCloseoutLock() {
+  const client = await db.getPool().connect();
+  await client.query('SELECT pg_advisory_lock($1)', [CLOSEOUT_ADVISORY_LOCK_KEY]);
+  return client;
+}
+
+async function releaseCloseoutLock(client) {
+  if (!client) return;
+  try {
+    await client.query('SELECT pg_advisory_unlock($1)', [CLOSEOUT_ADVISORY_LOCK_KEY]);
+  } finally {
+    client.release();
+  }
+}
+
+async function restoreCanonicalSchema() {
+  const p = db.getPool();
+  // Probe tables are test-only; never leave them for the audit.
+  await p.query('DROP TABLE IF EXISTS closeout_child_probe CASCADE');
+  await p.query('DROP TABLE IF EXISTS closeout_parent_probe CASCADE');
+  await p.query('DROP TABLE IF EXISTS closeout_orphan_child CASCADE');
+  await p.query('DROP TABLE IF EXISTS closeout_orphan_parent CASCADE');
+
+  // Fail-closed orphan fixture (nullable tenant_id / missing column / id=1
+  // singleton) would make audit check 2 fail. Recreate empty — do not re-seed.
+  if (await tableExists('brand_foundation')) {
+    const col = await colNullable('brand_foundation', 'tenant_id');
+    if (!col || col.is_nullable === 'YES') {
+      await p.query('DROP TABLE IF EXISTS brand_foundation CASCADE');
+    }
+  }
+
+  await applyCanonicalCloseout();
+}
+
+/** Hold the closeout advisory lock for the test; restore + unlock in t.after. */
+let _mutationGate = Promise.resolve();
+
+async function guardMutatingTest(t) {
+  // Session locks need a dedicated pool client. Serialise mutating tests in
+  // this process so waiters cannot occupy every connection while restore
+  // still needs getPool().query() (deadlock at PG_POOL_MAX=5).
+  let releaseGate = () => {};
+  const gate = new Promise((resolve) => { releaseGate = resolve; });
+  const prev = _mutationGate;
+  _mutationGate = gate;
+  await prev;
+
+  let lockClient;
+  try {
+    lockClient = await acquireCloseoutLock();
+  } catch (err) {
+    releaseGate();
+    throw err;
+  }
+
+  t.after(async () => {
+    try {
+      await restoreCanonicalSchema();
+    } finally {
+      await releaseCloseoutLock(lockClient);
+      releaseGate();
+    }
+  });
+}
+
 async function colNullable(table, column) {
   const r = await db.getPool().query(
     `SELECT is_nullable FROM information_schema.columns
@@ -151,7 +226,8 @@ test('brand_foundation schema never seeds an unscoped id=1 row', () => {
   assert.match(src, /explicit operator decision/);
 });
 
-test('canonical old-shape → ensure* + phase2 yields scoped NOT NULL tables', { skip }, async () => {
+test('canonical old-shape → ensure* + phase2 yields scoped NOT NULL tables', { skip }, async (t) => {
+  await guardMutatingTest(t);
   const p = db.getPool();
   await ensureAuthSchema();
   await ensureTenantSchema();
@@ -231,7 +307,8 @@ test('canonical old-shape → ensure* + phase2 yields scoped NOT NULL tables', {
     'legacy UNIQUE(domain) must be gone from backlink_monitors');
 });
 
-test('ensure* closeout is idempotent (second run does not throw)', { skip }, async () => {
+test('ensure* closeout is idempotent (second run does not throw)', { skip }, async (t) => {
+  await guardMutatingTest(t);
   await applyCanonicalCloseout();
   await applyCanonicalCloseout();
   const col = await colNullable('backlink_monitors', 'tenant_id');
@@ -262,7 +339,8 @@ const OLD_SHAPE_BRAND_FOUNDATION = `
   )
 `;
 
-test('brand_foundation old-shape id=1 orphan fail-closes (row kept, not mapped to tenant 1)', { skip }, async () => {
+test('brand_foundation old-shape id=1 orphan fail-closes (row kept, not mapped to tenant 1)', { skip }, async (t) => {
+  await guardMutatingTest(t);
   const p = db.getPool();
   await ensureAuthSchema();
   await ensureTenantSchema();
@@ -288,7 +366,8 @@ test('brand_foundation old-shape id=1 orphan fail-closes (row kept, not mapped t
   assert.strictEqual(rows.rows[0].tenant_id, null, 'orphan must not be mapped to tenant 1 / a default tenant');
 });
 
-test('brand_foundation fresh empty table tenant_id is NOT NULL', { skip }, async () => {
+test('brand_foundation fresh empty table tenant_id is NOT NULL', { skip }, async (t) => {
+  await guardMutatingTest(t);
   const p = db.getPool();
   await ensureAuthSchema();
   await ensureTenantSchema();
@@ -304,7 +383,8 @@ test('brand_foundation fresh empty table tenant_id is NOT NULL', { skip }, async
   assert.strictEqual(n.rows[0].n, 0, 'fresh install must not seed an unscoped id=1 row');
 });
 
-test('parent backfill copies parent tenant, never tenant 1', { skip }, async () => {
+test('parent backfill copies parent tenant, never tenant 1', { skip }, async (t) => {
+  await guardMutatingTest(t);
   const p = db.getPool();
   await ensureTenantSchema();
   // On a clean database the first INSERT into tenants is often id 1. The
@@ -354,7 +434,8 @@ test('parent backfill copies parent tenant, never tenant 1', { skip }, async () 
   await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantA]);
 });
 
-test('orphaned child fail-closed: NOT NULL skipped, row kept, orphans reported', { skip }, async () => {
+test('orphaned child fail-closed: NOT NULL skipped, row kept, orphans reported', { skip }, async (t) => {
+  await guardMutatingTest(t);
   const p = db.getPool();
   await ensureTenantSchema();
   const tenantA = await seedTenant('orphan-a');
@@ -421,7 +502,8 @@ test('orphaned child fail-closed: NOT NULL skipped, row kept, orphans reported',
   await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantA]);
 });
 
-test('backlink initializer succeeds and UNIQUE(tenant_id, domain) is per-tenant', { skip }, async () => {
+test('backlink initializer succeeds and UNIQUE(tenant_id, domain) is per-tenant', { skip }, async (t) => {
+  await guardMutatingTest(t);
   const p = db.getPool();
   await ensureAuthSchema();
   await ensureTenantSchema();

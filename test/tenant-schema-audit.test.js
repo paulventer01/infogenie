@@ -18,6 +18,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const crypto = require('node:crypto');
 
 const db = require('../db');
 const { PLAIN_TABLES, REWRITE_UNIQUE } = require('../services/tenants/phase2_migrate');
@@ -59,9 +60,30 @@ const NULLABLE_OK = new Set([
                          // custom is_system=FALSE playbooks are tenant-owned
 ]);
 
+// Must match tenant-schema-closeout.test.js so loadSchema waits out DROP TABLE.
+const CLOSEOUT_ADVISORY_LOCK_KEY = crypto
+  .createHash('sha256')
+  .update('infogenie-tenant-schema-closeout')
+  .digest()
+  .readInt32BE(0);
+
 // Pull the live schema once and share it across the audit assertions.
 async function loadSchema() {
-  const p = db.getPool();
+  const pool = db.getPool();
+  const lockClient = await pool.connect();
+  await lockClient.query('SELECT pg_advisory_lock($1)', [CLOSEOUT_ADVISORY_LOCK_KEY]);
+  try {
+    return await loadSchemaUnlocked(lockClient);
+  } finally {
+    try {
+      await lockClient.query('SELECT pg_advisory_unlock($1)', [CLOSEOUT_ADVISORY_LOCK_KEY]);
+    } finally {
+      lockClient.release();
+    }
+  }
+}
+
+async function loadSchemaUnlocked(p) {
   const baseTables = (await p.query(
     `SELECT table_name FROM information_schema.tables
       WHERE table_schema='public' AND table_type='BASE TABLE'`
