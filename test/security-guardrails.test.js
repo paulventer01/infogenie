@@ -265,6 +265,45 @@ test('PR 3A research modules add no fetch sink, no live connector and no route g
   assert.doesNotMatch(matrix, /research/i, 'PR 3A adds no /api prefix, so it needs no ROUTE_GROUPS entry');
 });
 
+// A named constraint is redefined by dropping it and adding it back. Split
+// across two autocommit statements that leaves the table unconstrained between
+// them, and unconstrained for good when the add fails validation. Asserted on
+// the source rather than against Postgres because the behavioural version has
+// to leave a violating row in place across an ensure() call, which fails
+// ensureAgentOrchestratorSchema for every DB test file running beside it.
+test('orchestrator constraint redefinition is transactional, and a failed ensure destroys its client', () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, '../services/agent_orchestrator/schema.js'),
+    'utf8'
+  );
+  const bodyOf = (name) => {
+    const start = src.indexOf(`async function ${name}(`);
+    assert.ok(start >= 0, `${name} must exist`);
+    const next = src.indexOf('\nasync function ', start + 1);
+    return src.slice(start, next > 0 ? next : undefined);
+  };
+
+  for (const name of ['_ensureNamedCheck', '_ensureNamedFk']) {
+    const body = bodyOf(name);
+    assert.match(body, /DROP CONSTRAINT IF EXISTS/, `${name} still redefines by dropping`);
+    const begin = body.indexOf("query('BEGIN')");
+    const drop = body.indexOf('DROP CONSTRAINT IF EXISTS');
+    const add = body.indexOf('ADD CONSTRAINT');
+    const commit = body.indexOf("query('COMMIT')");
+    assert.ok(begin >= 0, `${name} must open a transaction before dropping`);
+    assert.ok(begin < drop, `${name} must drop inside the transaction`);
+    assert.ok(drop < add && add < commit, `${name} must add and commit after the drop`);
+    assert.match(body, /ROLLBACK/, `${name} must roll back to the previous definition on failure`);
+  }
+
+  const run = bodyOf('_runEnsureAgentOrchestratorSchema');
+  assert.match(
+    run,
+    /p\.release\(\s*failed/,
+    'a client whose backfill failed may still hold session_replication_role=replica and must be destroyed, not pooled'
+  );
+});
+
 // The forbidden-key list, the credential scanner and the URL/locator shape
 // checks are the only thing standing between a provider payload and an
 // append-only evidence row that cannot be edited afterwards. Each assertion
