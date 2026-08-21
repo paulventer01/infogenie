@@ -172,6 +172,56 @@ test('custom playbook created by A cannot be activated or read by B (404)', { sk
     'tenant A can read its own custom playbook via /active/list');
 });
 
+test('stale active_playbooks mapping does not disclose foreign custom playbook content', { skip }, async () => {
+  const created = await req('POST', '/api/playbooks/generate-custom', {
+    tid: tenantA,
+    body: {
+      industry: `stale-${SUFFIX}`,
+      business_description: 'stale mapping fixture',
+    },
+  });
+  assert.strictEqual(created.status, 200, created.text);
+  assert.ok(created.json && created.json.ok);
+  const playbookId = created.json.playbook.id;
+  const secretTitle = created.json.playbook.title;
+  assert.ok(Number.isFinite(playbookId));
+  assert.ok(secretTitle);
+
+  const p = db.getPool();
+  // Pre-fix mapping: tenant B paired with tenant A's custom playbook.
+  // Keep the row — /active/list must hide the content, not DELETE the mapping.
+  await p.query(
+    `INSERT INTO active_playbooks(tenant_id,playbook_id,progress)
+     VALUES($1,$2,'{}')
+     ON CONFLICT(tenant_id,playbook_id) DO NOTHING`,
+    [tenantB, playbookId]
+  );
+  const mapping = (await p.query(
+    `SELECT id FROM active_playbooks WHERE tenant_id=$1 AND playbook_id=$2`,
+    [tenantB, playbookId]
+  )).rows[0];
+  assert.ok(mapping, 'stale mapping row must be stored');
+
+  const listB = await req('GET', '/api/playbooks/active/list', { tid: tenantB });
+  assert.strictEqual(listB.status, 200, listB.text);
+  const leaked = (listB.json.active || []).some(r =>
+    r.title === secretTitle ||
+    (r.content && (r.content.title === secretTitle || JSON.stringify(r.content).includes(secretTitle)))
+  );
+  assert.strictEqual(leaked, false, 'tenant B must not receive tenant A custom AI content via stale mapping');
+
+  const stillThere = (await p.query(
+    `SELECT id FROM active_playbooks WHERE tenant_id=$1 AND playbook_id=$2`,
+    [tenantB, playbookId]
+  )).rows[0];
+  assert.ok(stillThere, 'list must not DELETE the stale mapping row');
+
+  const listA = await req('GET', '/api/playbooks/active/list', { tid: tenantA });
+  assert.strictEqual(listA.status, 200, listA.text);
+  assert.ok((listA.json.active || []).some(r => r.title === secretTitle),
+    'tenant A can still see its own custom playbook');
+});
+
 test('system catalog playbooks remain activatable by any tenant', { skip }, async () => {
   const list = await req('GET', '/api/playbooks/list');
   assert.strictEqual(list.status, 200, list.text);

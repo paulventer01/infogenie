@@ -144,7 +144,9 @@ router.get('/active/list', async (req, res) => {
   const rows = await p.query(
     `SELECT ap.id, ap.progress, ap.activated_at, vp.vertical, vp.title, vp.description, vp.content
      FROM active_playbooks ap JOIN vertical_playbooks vp ON vp.id=ap.playbook_id
-     WHERE ap.tenant_id=$1 ORDER BY ap.activated_at DESC`,
+     WHERE ap.tenant_id=$1
+       AND ((vp.is_system = TRUE AND vp.tenant_id IS NULL) OR vp.tenant_id = $1)
+     ORDER BY ap.activated_at DESC`,
     [tid]
   );
   res.json({ ok:true, active: rows.rows.map(r=>({ ...r, content: typeof r.content==='string'?JSON.parse(r.content):r.content })) });

@@ -578,8 +578,9 @@ async function runBenchmarkWorry(tid, verticalIn = 'saas', your = {}) {
   let network = {};
   try {
     const aggs = await pool.query(
+      // Same k-anonymity floor as services/benchmarks/api.js (K = 5).
       `SELECT metric_key, median, p25, p75, sample_count FROM benchmark_aggregates
-       WHERE LOWER(vertical)=$1 LIMIT 40`, [vertical]
+       WHERE LOWER(vertical)=$1 AND sample_count >= 5 LIMIT 40`, [vertical]
     );
     for (const row of aggs.rows) network[row.metric_key] = row;
   } catch (_) {}
