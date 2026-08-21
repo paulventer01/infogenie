@@ -1036,23 +1036,68 @@ live Postgres rather than reading the diffs.
   owner and a second tenant — which is fail-closed but orphans that content. Two
   consequences need a data decision rather than a code change: such a row still
   occupies the catalog's `(vertical) WHERE tenant_id IS NULL` slot, so
-  `seedPlaybooks` can never seed that vertical; and any `active_playbooks` row
-  written by the old activate path still pairs a tenant with a foreign playbook,
-  which `/active/list` joins without re-checking ownership. New leaks are
-  prevented; existing pairings are not swept. A remediation pass should stamp or
-  delete unowned `is_system=FALSE` rows and drop `active_playbooks` rows whose
-  playbook is neither shared catalog nor owned by that tenant.
-- **`benchmark_aggregates` publishes small-sample buckets.** With
-  `sample_count = 1` the p25/median/p75 for a `(vertical, region, company_size,
-  metric_key)` bucket *is* the single contributing workspace's exact submitted
-  value, re-served to every other workspace through `POST /compare` and
-  `GET /leaderboard`. A tenant submitting into a rare bucket therefore discloses
-  a precise business metric, which is not what "anonymised percentiles" promises.
-  The global classification is still right; the aggregation needs a k-anonymity
-  floor. Recommended for Backend as a follow-up, and deliberately not folded into
-  this review: suppress or refuse to publish buckets below a minimum
-  `sample_count` (5 is the usual floor), and prefer widening to the
-  vertical-level bucket over emitting a one-sample "benchmark".
+  `seedPlaybooks` can never seed that vertical. **The disclosure half is now
+  closed** by `440bdbd`: `/active/list` joins on
+  `(vp.is_system AND vp.tenant_id IS NULL) OR vp.tenant_id = $tid`, so a stale
+  pre-fix pairing returns no row. Verified against a seeded pre-fix state — a
+  tenant holding three mappings (a foreign custom playbook, a legacy unowned one,
+  and a legitimate catalog entry) sees only the catalog entry, and the foreign
+  content does not appear anywhere in the response. The mapping rows are
+  deliberately kept rather than swept, which is the right call: hiding the content
+  needs no destructive migration. What remains is housekeeping, not a leak —
+  unowned `is_system=FALSE` rows still squat a catalog vertical slot, and the
+  stale `active_playbooks` rows are inert.
+- **`benchmark_aggregates` still publishes single-workspace buckets — the k=5
+  floor counts rows, not workspaces. STILL OPEN.** The original finding: the
+  p25/median/p75 for a `(vertical, region, company_size, metric_key)` bucket with
+  one contributor *is* that workspace's exact submitted value, re-served to every
+  other workspace through `POST /compare`, `GET /leaderboard` and
+  `strategic_intelligence`'s benchmark read. The global classification is right;
+  the aggregation needed a k-anonymity floor.
+
+  `440bdbd` added `K = 5` and wired it into every one of those read paths plus the
+  rebuild (no UPSERT below the floor, and a `DELETE` of a bucket that falls back
+  under it, correctly using `IS NOT DISTINCT FROM` for the nullable
+  `region` / `company_size`). **The wiring is complete and no read path was
+  missed. The counter it gates on is the wrong measure.**
+  `_rebuildAggregates` computes `sample_count` as `COUNT(*)` over
+  `benchmark_submissions`, `POST /submit` is a plain `INSERT` with no
+  `ON CONFLICT`, and `benchmark_submissions` has no unique key on
+  `(tenant_id, vertical, region, company_size, metric_key)`. So `sample_count`
+  counts **submission rows**, and one workspace reaches the floor alone.
+
+  Reproduced end-to-end. A single workspace submitting the same metric five times
+  — a monthly re-submission, not an attack — publishes the bucket at
+  `sample_count = 5` with `p25 = median = p75 = 12.3400`, its own exact private
+  cost-per-lead, which an unrelated workspace then reads back from both
+  `/compare` and `/leaderboard` labelled as a five-sample network benchmark. The
+  adjacent case is worse because it is cross-tenant and cheap: four rows from one
+  workspace stay correctly suppressed, and **one** submission from any other
+  workspace forces publication, whereupon `p25`/`median` disclose the first
+  workspace's value. The floor raises the cost of the disclosure from one
+  submission to five; it does not remove it.
+
+  Required fix (Backend, with Database if a column is added): gate publication on
+  the number of **distinct contributing tenants**, not the row count — compute
+  `COUNT(DISTINCT tenant_id)` in `_rebuildAggregates` and suppress below `K`.
+  Because the read paths filter on the stored `sample_count`, that distinct count
+  has to be what is stored (or stored alongside, as a `contributor_count` column,
+  which is Database's call — do not repurpose `sample_count`'s meaning silently,
+  since it is returned to clients). Percentiles should also be computed over one
+  value per workspace, otherwise a workspace with forty rows still dominates the
+  median of a nominally five-workspace bucket. Do **not** close this by raising
+  `K` alone: any `K` is reachable by one workspace while the counter is
+  `COUNT(*)`.
+
+  `test/benchmark-contributor-anonymity.test.js` locks the three properties and
+  is **red by design** until this is fixed: the static check refuses a floor
+  applied to a bare row count (and accepts either `COUNT(DISTINCT tenant_id)` or
+  a `contributor_count` column), and two runtime checks reproduce the
+  single-workspace publication and the one-submission unmasking. It is not in the
+  `test:core` file list, so the fast gate stays green.
+  `test/benchmark-k-anonymity.test.js` is Backend's and passes — it seeds five
+  distinct tenants with one submission each, which is why it cannot see this.
+
   `GET /leaderboard` additionally resolves no tenant at all; it is
   matrix-gated on `compete.intel.view`, which is the intended control.
 - **`resolveTenantId` still honours `opts.allowFallback`.** No production caller
@@ -1097,11 +1142,15 @@ recorded so they are not mistaken for tenancy bugs later:
   one `DATABASE_URL`, so `tenant-schema-audit` can introspect mid-fixture: run
   the two files separately and they are 4/4 and 10/10, run them in one invocation
   and audit checks 3 and 4 fail reporting those two tables "absent from the
-  database". Reproducible. Nothing is wrong with the schema — but a red
-  tenant-schema-audit is the signal this review relies on, so it must not be
-  reachable by a fixture race. For QA: either give the destructive suite its own
-  database, or serialise it (`--test-concurrency=1`). Do not resolve it by adding
-  those tables to an allowlist.
+  database". Nothing was wrong with the schema — but a red tenant-schema-audit is
+  the signal this review relies on, so it must not be reachable by a fixture race.
+  **Closed** by `80d7c52`, and closed the right way: both suites take a shared
+  Postgres session advisory lock, the destructive suite restores the canonical
+  schema in `t.after`, and no assertion, allowlist or table set was touched — in
+  particular the tables were not allowlisted to make the audit quiet. Verified by
+  re-running the exact invocation that used to fail: 14/14 in one parallel
+  `node --test`, stable across three consecutive runs, and faster than the
+  serialised workaround.
 
 ## Related existing systems
 
