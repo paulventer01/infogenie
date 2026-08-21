@@ -57,20 +57,38 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_research_evidence',
   'orchestrator_research_evidence_assets',
   'orchestrator_research_quota',
+  'orchestrator_research_legacy_holds',
+  'orchestrator_research_cleanup_ops',
 ];
+
+const RESEARCH_RETENTION_EXPIRY_SQL =
+  `retention_class = 'legal_hold' OR (expires_at IS NOT NULL AND expires_at > created_at)`;
 
 // Redefine in one transaction. A bare DROP followed by a separate ADD leaves
 // the table with no CHECK between the two autocommit statements, and leaves it
 // permanently unconstrained when the ADD fails validation.
-async function _ensureNamedCheck(p, table, name, checkBody) {
+//
+// `{ notValid: true }` still DROP+ADDs atomically, but ADD … CHECK (…) NOT VALID
+// so legacy rows cannot fail boot. NOT VALID still enforces NEW inserts/updates.
+// After commit, a violator scan of ZERO rows VALIDATE CONSTRAINTs (fail-closed
+// if VALIDATE throws). Other CHECKs keep the validating ADD.
+async function _ensureNamedCheck(p, table, name, checkBody, opts = {}) {
+  const notValid = !!(opts && opts.notValid);
   await p.query('BEGIN');
   try {
     await p.query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${name}`);
-    await p.query(`ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${checkBody})`);
+    const suffix = notValid ? ' NOT VALID' : '';
+    await p.query(`ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${checkBody})${suffix}`);
     await p.query('COMMIT');
   } catch (e) {
     try { await p.query('ROLLBACK'); } catch (_) { /* already aborted */ }
     if (!e || e.code !== '42710') throw e;
+    return;
+  }
+  if (!notValid) return;
+  const violators = await p.query(`SELECT 1 FROM ${table} WHERE NOT (${checkBody}) LIMIT 1`);
+  if (violators.rowCount === 0) {
+    await p.query(`ALTER TABLE ${table} VALIDATE CONSTRAINT ${name}`);
   }
 }
 
@@ -182,75 +200,97 @@ async function _ensureContentFingerprintColumn(p) {
   }
 }
 
-const RESEARCH_RETENTION_EXPIRY_SQL =
-  `retention_class = 'legal_hold' OR (expires_at IS NOT NULL AND expires_at > created_at)`;
+function _preflightFailed() {
+  const err = new Error('orchestrator_schema_preflight_failed');
+  err.code = 'orchestrator_schema_preflight_failed';
+  return err;
+}
 
-async function _backfillInReplicaRole(p, statements) {
-  await p.query('BEGIN');
-  try {
-    await p.query('SET LOCAL session_replication_role = replica');
-    for (const sql of statements) {
-      await p.query(sql);
+// SELECT-only privilege probes. Must run before any CREATE/ALTER/UPDATE/DELETE
+// in the locked ensure path. Never SET replica-role GUCs.
+async function _preflightAgentOrchestratorSchema(p) {
+  const flags = (await p.query(`
+    SELECT has_database_privilege(current_user, current_database(), 'CONNECT') AS can_connect,
+           has_schema_privilege(current_user, 'public', 'CREATE') AS schema_create,
+           has_schema_privilege(current_user, 'public', 'USAGE') AS schema_usage
+  `)).rows[0];
+  if (!flags.can_connect || !flags.schema_create || !flags.schema_usage) {
+    throw _preflightFailed();
+  }
+
+  const tables = (await p.query(`
+    SELECT c.relname AS table_name,
+           has_table_privilege(current_user, c.oid, 'INSERT') AS can_insert,
+           has_table_privilege(current_user, c.oid, 'UPDATE') AS can_update,
+           has_table_privilege(current_user, c.oid, 'DELETE') AS can_delete,
+           has_table_privilege(current_user, c.oid, 'REFERENCES') AS can_references,
+           has_table_privilege(current_user, c.oid, 'TRIGGER') AS can_trigger
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public'
+       AND c.relkind = 'r'
+       AND c.relname LIKE 'orchestrator_%'
+     ORDER BY 1
+  `)).rows;
+
+  for (const row of tables) {
+    if (!row.can_insert || !row.can_update || !row.can_delete || !row.can_references || !row.can_trigger) {
+      throw _preflightFailed();
     }
-    await p.query('COMMIT');
-  } catch (err) {
-    try { await p.query('ROLLBACK'); } catch (_) { /* already aborted */ }
-    throw err;
   }
 }
 
-async function _backfillResearchRetentionExpiry(p) {
-  const needEv = await p.query(`
-    SELECT 1 FROM orchestrator_research_evidence
-     WHERE retention_class IN ('standard','short')
-       AND (expires_at IS NULL OR expires_at <= created_at)
-     LIMIT 1
+async function _identifyLegacyResearchCleanup(p) {
+  const evidence = await p.query(`
+    INSERT INTO orchestrator_research_legacy_holds (tenant_id, target_kind, target_id, reason)
+    SELECT e.tenant_id, 'evidence', e.id,
+           CASE
+             WHEN e.retention_class = 'short'
+                  AND e.created_at + interval '7 days' <= now() THEN 'legacy_short_due'
+             WHEN e.expires_at IS NULL THEN 'missing_expiry'
+             ELSE 'invalid_expiry'
+           END
+      FROM orchestrator_research_evidence e
+     WHERE (
+             e.retention_class = 'short'
+             AND e.created_at + interval '7 days' <= now()
+           )
+        OR (
+             e.retention_class IN ('standard', 'short')
+             AND (e.expires_at IS NULL OR e.expires_at <= e.created_at)
+           )
+    ON CONFLICT (tenant_id, target_kind, target_id) DO NOTHING
   `);
-  const needAssets = await p.query(`
-    SELECT 1 FROM orchestrator_research_evidence_assets
-     WHERE retention_class IN ('standard','short')
-       AND (expires_at IS NULL OR expires_at <= created_at)
-     LIMIT 1
+  const assets = await p.query(`
+    INSERT INTO orchestrator_research_legacy_holds (tenant_id, target_kind, target_id, reason)
+    SELECT a.tenant_id, 'asset', a.id,
+           CASE
+             WHEN a.retention_class = 'short'
+                  AND a.created_at + interval '7 days' <= now() THEN 'legacy_short_due'
+             WHEN a.expires_at IS NULL THEN 'missing_expiry'
+             ELSE 'invalid_expiry'
+           END
+      FROM orchestrator_research_evidence_assets a
+     WHERE (
+             a.retention_class = 'short'
+             AND a.created_at + interval '7 days' <= now()
+           )
+        OR (
+             a.retention_class IN ('standard', 'short')
+             AND (a.expires_at IS NULL OR a.expires_at <= a.created_at)
+           )
+    ON CONFLICT (tenant_id, target_kind, target_id) DO NOTHING
   `);
-  if (!needEv.rowCount && !needAssets.rowCount) return;
-  // Session-local replica role: do not ALTER TABLE DISABLE TRIGGER (cluster-wide).
-  // Frozen v1 TTLs: short = 7 days, standard = 30 days. legal_hold is not backfilled.
-  await _backfillInReplicaRole(p, [
-    `UPDATE orchestrator_research_evidence
-        SET expires_at = created_at + interval '7 days'
-      WHERE retention_class = 'short'
-        AND (expires_at IS NULL OR expires_at <= created_at)`,
-    `UPDATE orchestrator_research_evidence
-        SET expires_at = created_at + interval '30 days'
-      WHERE retention_class = 'standard'
-        AND (expires_at IS NULL OR expires_at <= created_at)`,
-    `UPDATE orchestrator_research_evidence_assets
-        SET expires_at = created_at + interval '7 days'
-      WHERE retention_class = 'short'
-        AND (expires_at IS NULL OR expires_at <= created_at)`,
-    `UPDATE orchestrator_research_evidence_assets
-        SET expires_at = created_at + interval '30 days'
-      WHERE retention_class = 'standard'
-        AND (expires_at IS NULL OR expires_at <= created_at)`,
-  ]);
+  return {
+    evidence: evidence.rowCount || 0,
+    assets: assets.rowCount || 0,
+  };
 }
 
-async function _backfillResearchJsonObjects(p) {
-  const need = await p.query(`
-    SELECT 1 FROM orchestrator_research_runs
-     WHERE jsonb_typeof(search_parameters) IS DISTINCT FROM 'object'
-        OR jsonb_typeof(continuation_state) IS DISTINCT FROM 'object'
-     LIMIT 1
-  `);
-  if (!need.rowCount) return;
-  await _backfillInReplicaRole(p, [
-    `UPDATE orchestrator_research_runs
-        SET search_parameters = '{}'::jsonb
-      WHERE jsonb_typeof(search_parameters) IS DISTINCT FROM 'object'`,
-    `UPDATE orchestrator_research_runs
-        SET continuation_state = '{}'::jsonb
-      WHERE jsonb_typeof(continuation_state) IS DISTINCT FROM 'object'`,
-  ]);
+async function identifyLegacyResearchCleanup(client) {
+  if (!_db.hasDb()) return { evidence: 0, assets: 0 };
+  const p = client || _db.getPool();
+  return _identifyLegacyResearchCleanup(p);
 }
 
 // Serialize DDL so overlapping ensure() callers (parallel test files, boot)
@@ -279,14 +319,14 @@ async function _runEnsureAgentOrchestratorSchema() {
     failed = err;
     throw err;
   } finally {
-    // A failed backfill can leave this client inside a transaction whose
-    // SET LOCAL session_replication_role is still in force. Destroy it instead
-    // of handing replica mode back to the pool.
+    // A failed ensure can leave this client inside an aborted transaction.
+    // Destroy it instead of handing a tainted client back to the pool.
     p.release(failed || undefined);
   }
 }
 
 async function _runEnsureAgentOrchestratorSchemaLocked(p) {
+  await _preflightAgentOrchestratorSchema(p);
   await p.query(`
     CREATE TABLE IF NOT EXISTS agent_orchestrator_runs (
       id              TEXT PRIMARY KEY,
@@ -1378,6 +1418,59 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       CONSTRAINT orchestrator_research_quota_payload_bytes_check
         CHECK (payload_bytes >= 0)
     );
+
+    CREATE TABLE IF NOT EXISTS orchestrator_research_legacy_holds (
+      tenant_id      INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      target_kind    TEXT NOT NULL,
+      target_id      TEXT NOT NULL,
+      reason         TEXT NOT NULL,
+      identified_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, target_kind, target_id),
+      CONSTRAINT orchestrator_research_legacy_holds_target_kind_check
+        CHECK (target_kind IN ('evidence','asset')),
+      CONSTRAINT orchestrator_research_legacy_holds_reason_check
+        CHECK (reason IN ('legacy_short_due','missing_expiry','invalid_expiry')),
+      CONSTRAINT orchestrator_research_legacy_holds_target_id_check
+        CHECK (char_length(target_id) BETWEEN 1 AND 128)
+    );
+
+    CREATE TABLE IF NOT EXISTS orchestrator_research_cleanup_ops (
+      id                      TEXT NOT NULL,
+      tenant_id               INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      idempotency_key         TEXT NOT NULL,
+      state                   TEXT NOT NULL,
+      dry_run_evidence_count  INTEGER NOT NULL DEFAULT 0,
+      dry_run_assets_count    INTEGER NOT NULL DEFAULT 0,
+      purged_evidence_count   INTEGER NOT NULL DEFAULT 0,
+      purged_assets_count     INTEGER NOT NULL DEFAULT 0,
+      actor_user_id           INTEGER NULL,
+      approved_at             TIMESTAMPTZ NULL,
+      confirmation_sha256     TEXT NULL,
+      created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_research_cleanup_ops_tenant_unique_idempotency_key
+        UNIQUE (tenant_id, idempotency_key),
+      CONSTRAINT orchestrator_research_cleanup_ops_state_check
+        CHECK (state IN ('previewed','approved','running','completed','failed')),
+      CONSTRAINT orchestrator_research_cleanup_ops_id_check
+        CHECK (char_length(id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_research_cleanup_ops_idempotency_key_check
+        CHECK (char_length(idempotency_key) BETWEEN 1 AND 256),
+      CONSTRAINT orchestrator_research_cleanup_ops_dry_run_evidence_count_check
+        CHECK (dry_run_evidence_count >= 0),
+      CONSTRAINT orchestrator_research_cleanup_ops_dry_run_assets_count_check
+        CHECK (dry_run_assets_count >= 0),
+      CONSTRAINT orchestrator_research_cleanup_ops_purged_evidence_count_check
+        CHECK (purged_evidence_count >= 0),
+      CONSTRAINT orchestrator_research_cleanup_ops_purged_assets_count_check
+        CHECK (purged_assets_count >= 0),
+      CONSTRAINT orchestrator_research_cleanup_ops_confirmation_sha256_check
+        CHECK (
+          confirmation_sha256 IS NULL
+          OR (char_length(confirmation_sha256) = 64 AND confirmation_sha256 ~ '^[0-9a-f]{64}$')
+        )
+    );
   `);
 
   await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS workflow_id TEXT`);
@@ -1457,8 +1550,33 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await p.query(`ALTER TABLE orchestrator_research_quota ADD COLUMN IF NOT EXISTS payload_bytes BIGINT NOT NULL DEFAULT 0`);
   await p.query(`ALTER TABLE orchestrator_research_quota ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
 
-  await _backfillResearchJsonObjects(p);
-  await _backfillResearchRetentionExpiry(p);
+  await p.query(`ALTER TABLE orchestrator_research_legacy_holds ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT 'missing_expiry'`);
+  await p.query(`ALTER TABLE orchestrator_research_legacy_holds ADD COLUMN IF NOT EXISTS identified_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'previewed'`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS dry_run_evidence_count INTEGER NOT NULL DEFAULT 0`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS dry_run_assets_count INTEGER NOT NULL DEFAULT 0`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS purged_evidence_count INTEGER NOT NULL DEFAULT 0`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS purged_assets_count INTEGER NOT NULL DEFAULT 0`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS actor_user_id INTEGER NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS confirmation_sha256 TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+
+  const usersPresent = await p.query(`
+    SELECT 1 FROM information_schema.tables
+     WHERE table_schema='public' AND table_name='users' LIMIT 1
+  `);
+  if (usersPresent.rowCount) {
+    await _ensureNamedFk(p, 'orchestrator_research_cleanup_ops',
+      'orchestrator_research_cleanup_ops_actor_user_fkey',
+      'actor_user_id', 'users', 'id',
+      'ON DELETE SET NULL');
+  }
+
+  await _identifyLegacyResearchCleanup(p);
 
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_contract_version_check',
     `contract_version IN ('v1')`);
@@ -1473,11 +1591,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_search_parameters_check',
     `octet_length(search_parameters::text) <= 8192`);
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_search_parameters_type_check',
-    `jsonb_typeof(search_parameters) = 'object'`);
+    `jsonb_typeof(search_parameters) = 'object'`, { notValid: true });
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_continuation_state_check',
     `octet_length(continuation_state::text) <= 4096`);
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_continuation_state_type_check',
-    `jsonb_typeof(continuation_state) = 'object'`);
+    `jsonb_typeof(continuation_state) = 'object'`, { notValid: true });
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_error_code_check',
     `char_length(error_code) <= 128`);
   await _ensureNamedCheck(p, 'orchestrator_research_runs', 'orchestrator_research_runs_error_message_check',
@@ -1525,7 +1643,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_retention_class_check',
     `retention_class IN ('standard','short','legal_hold')`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_retention_expiry_check',
-    RESEARCH_RETENTION_EXPIRY_SQL);
+    RESEARCH_RETENTION_EXPIRY_SQL, { notValid: true });
   await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_headline_check',
     `char_length(headline) <= 500`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence', 'orchestrator_research_evidence_body_text_check',
@@ -1564,7 +1682,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_retention_class_check',
     `retention_class IN ('standard','short','legal_hold')`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_retention_expiry_check',
-    RESEARCH_RETENTION_EXPIRY_SQL);
+    RESEARCH_RETENTION_EXPIRY_SQL, { notValid: true });
   await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_storage_ref_check',
     `char_length(storage_ref) BETWEEN 1 AND 1024`);
   await _ensureNamedCheck(p, 'orchestrator_research_evidence_assets', 'orchestrator_research_evidence_assets_checksum_sha256_check',
@@ -1583,6 +1701,30 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedCheck(p, 'orchestrator_research_quota', 'orchestrator_research_quota_payload_bytes_check',
     `payload_bytes >= 0`);
 
+  await _ensureNamedCheck(p, 'orchestrator_research_legacy_holds', 'orchestrator_research_legacy_holds_target_kind_check',
+    `target_kind IN ('evidence','asset')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_legacy_holds', 'orchestrator_research_legacy_holds_reason_check',
+    `reason IN ('legacy_short_due','missing_expiry','invalid_expiry')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_legacy_holds', 'orchestrator_research_legacy_holds_target_id_check',
+    `char_length(target_id) BETWEEN 1 AND 128`);
+
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_state_check',
+    `state IN ('previewed','approved','running','completed','failed')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_id_check',
+    `char_length(id) BETWEEN 1 AND 128`);
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_idempotency_key_check',
+    `char_length(idempotency_key) BETWEEN 1 AND 256`);
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_dry_run_evidence_count_check',
+    `dry_run_evidence_count >= 0`);
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_dry_run_assets_count_check',
+    `dry_run_assets_count >= 0`);
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_purged_evidence_count_check',
+    `purged_evidence_count >= 0`);
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_purged_assets_count_check',
+    `purged_assets_count >= 0`);
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_confirmation_sha256_check',
+    `confirmation_sha256 IS NULL OR (char_length(confirmation_sha256) = 64 AND confirmation_sha256 ~ '^[0-9a-f]{64}$')`);
+
   await _ensureNamedUnique(p, 'orchestrator_research_runs',
     'orchestrator_research_runs_tenant_unique_idempotency_key', 'tenant_id, idempotency_key');
   await _ensureNamedUnique(p, 'orchestrator_research_competitors',
@@ -1600,6 +1742,9 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedUnique(p, 'orchestrator_research_evidence_assets',
     'orchestrator_research_evidence_assets_tenant_unique_ref',
     'tenant_id, evidence_id, storage_ref');
+  await _ensureNamedUnique(p, 'orchestrator_research_cleanup_ops',
+    'orchestrator_research_cleanup_ops_tenant_unique_idempotency_key',
+    'tenant_id, idempotency_key');
 
   await _ensureNamedFk(p, 'orchestrator_research_runs',
     'orchestrator_research_runs_tenant_workflow_fkey',
@@ -1678,6 +1823,12 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE INDEX IF NOT EXISTS idx_orchestrator_research_evidence_assets_tenant_expires
       ON orchestrator_research_evidence_assets (tenant_id, expires_at, id)
       WHERE retention_class <> 'legal_hold' AND expires_at IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_legacy_holds_tenant_kind
+      ON orchestrator_research_legacy_holds (tenant_id, target_kind, reason);
+
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_cleanup_ops_tenant_state
+      ON orchestrator_research_cleanup_ops (tenant_id, state, created_at DESC);
   `);
 
   // Per-table transactions: never hold AccessExclusiveLock on
@@ -1786,6 +1937,18 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   `);
 
   await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_research_evidence_payload_bytes(e orchestrator_research_evidence)
+    RETURNS BIGINT
+    LANGUAGE sql
+    IMMUTABLE
+    AS $fn$
+      SELECT octet_length(coalesce(e.headline, ''))
+           + octet_length(coalesce(e.body_text, ''))
+           + octet_length(coalesce(e.excerpt, ''))
+           + octet_length(coalesce(e.advertiser_name, ''))
+           + octet_length(coalesce(e.provider_metrics::text, '{}'));
+    $fn$;
+
     CREATE OR REPLACE FUNCTION orchestrator_research_evidence_immutable()
     RETURNS trigger AS $fn$
     BEGIN
@@ -1801,6 +1964,15 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       IF OLD.retention_class IS DISTINCT FROM 'legal_hold'
          AND OLD.expires_at IS NOT NULL
          AND OLD.expires_at <= now() THEN
+        RETURN OLD;
+      END IF;
+      IF current_setting('infogenie.research_cleanup', true) = 'on'
+         AND EXISTS (
+           SELECT 1 FROM orchestrator_research_legacy_holds h
+            WHERE h.tenant_id = OLD.tenant_id
+              AND h.target_kind = 'evidence'
+              AND h.target_id = OLD.id
+         ) THEN
         RETURN OLD;
       END IF;
       RAISE EXCEPTION 'orchestrator_research_evidence_immutable';
@@ -1837,11 +2009,16 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       VALUES (NEW.tenant_id)
       ON CONFLICT (tenant_id) DO NOTHING;
 
-      SELECT evidence_count, payload_bytes
-        INTO q_count, q_bytes
+      PERFORM 1
         FROM orchestrator_research_quota
        WHERE tenant_id = NEW.tenant_id
        FOR UPDATE;
+
+      SELECT COUNT(*)::int,
+             COALESCE(SUM(orchestrator_research_evidence_payload_bytes(e)), 0)
+        INTO q_count, q_bytes
+        FROM orchestrator_research_evidence e
+       WHERE e.tenant_id = NEW.tenant_id;
 
       SELECT max_research_evidence_records, max_research_evidence_payload_bytes
         INTO max_records, max_bytes
@@ -1857,12 +2034,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       max_bytes := COALESCE(max_bytes, 0);
       q_count := COALESCE(q_count, 0);
       q_bytes := COALESCE(q_bytes, 0);
-
-      row_bytes := octet_length(coalesce(NEW.headline, ''))
-                 + octet_length(coalesce(NEW.body_text, ''))
-                 + octet_length(coalesce(NEW.excerpt, ''))
-                 + octet_length(coalesce(NEW.advertiser_name, ''))
-                 + octet_length(coalesce(NEW.provider_metrics::text, '{}'));
+      row_bytes := orchestrator_research_evidence_payload_bytes(NEW);
 
       IF max_records <= 0
          OR max_bytes <= 0
@@ -1872,8 +2044,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       END IF;
 
       UPDATE orchestrator_research_quota
-         SET evidence_count = evidence_count + 1,
-             payload_bytes = payload_bytes + row_bytes,
+         SET evidence_count = q_count + 1,
+             payload_bytes = q_bytes + row_bytes,
              updated_at = now()
        WHERE tenant_id = NEW.tenant_id;
 
@@ -1884,17 +2056,27 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE OR REPLACE FUNCTION orchestrator_research_evidence_quota_delete()
     RETURNS trigger AS $fn$
     DECLARE
-      row_bytes BIGINT;
+      q_count INTEGER;
+      q_bytes BIGINT;
     BEGIN
-      row_bytes := octet_length(coalesce(OLD.headline, ''))
-                 + octet_length(coalesce(OLD.body_text, ''))
-                 + octet_length(coalesce(OLD.excerpt, ''))
-                 + octet_length(coalesce(OLD.advertiser_name, ''))
-                 + octet_length(coalesce(OLD.provider_metrics::text, '{}'));
+      INSERT INTO orchestrator_research_quota (tenant_id)
+      VALUES (OLD.tenant_id)
+      ON CONFLICT (tenant_id) DO NOTHING;
+
+      PERFORM 1
+        FROM orchestrator_research_quota
+       WHERE tenant_id = OLD.tenant_id
+       FOR UPDATE;
+
+      SELECT COUNT(*)::int,
+             COALESCE(SUM(orchestrator_research_evidence_payload_bytes(e)), 0)
+        INTO q_count, q_bytes
+        FROM orchestrator_research_evidence e
+       WHERE e.tenant_id = OLD.tenant_id;
 
       UPDATE orchestrator_research_quota
-         SET evidence_count = GREATEST(0, evidence_count - 1),
-             payload_bytes = GREATEST(0, payload_bytes - row_bytes),
+         SET evidence_count = COALESCE(q_count, 0),
+             payload_bytes = COALESCE(q_bytes, 0),
              updated_at = now()
        WHERE tenant_id = OLD.tenant_id;
 
@@ -1945,6 +2127,15 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
          AND OLD.expires_at <= now() THEN
         RETURN OLD;
       END IF;
+      IF current_setting('infogenie.research_cleanup', true) = 'on'
+         AND EXISTS (
+           SELECT 1 FROM orchestrator_research_legacy_holds h
+            WHERE h.tenant_id = OLD.tenant_id
+              AND h.target_kind = 'asset'
+              AND h.target_id = OLD.id
+         ) THEN
+        RETURN OLD;
+      END IF;
       RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
     END;
     $fn$ LANGUAGE plpgsql;
@@ -1962,4 +2153,4 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   return true;
 }
 
-module.exports = { ensureAgentOrchestratorSchema };
+module.exports = { ensureAgentOrchestratorSchema, identifyLegacyResearchCleanup };
