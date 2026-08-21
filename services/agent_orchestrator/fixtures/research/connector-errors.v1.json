@@ -1,0 +1,84 @@
+{
+  "errors": [
+    {
+      "ok": false,
+      "error": "rate_limit",
+      "retry_class": "retryable",
+      "retry_after_ms": 15000,
+      "rate_limit": {
+        "limit": 200,
+        "remaining": 0,
+        "reset_at": "2026-08-21T13:00:00.000Z"
+      },
+      "continuation_state": {
+        "cursor": "opaque-rate-limit-1"
+      },
+      "message": "provider rate limit reached",
+      "contract_version": "v1",
+      "connector_id": "meta_research",
+      "connector_version": "1.0.0"
+    },
+    {
+      "ok": false,
+      "error": "auth_failure",
+      "retry_class": "terminal",
+      "retry_after_ms": null,
+      "rate_limit": null,
+      "continuation_state": {},
+      "message": "connector credentials rejected; do not retry with the same credentials",
+      "contract_version": "v1",
+      "connector_id": "google_research",
+      "connector_version": "1.0.0"
+    },
+    {
+      "ok": false,
+      "error": "transient",
+      "retry_class": "retryable",
+      "retry_after_ms": 2000,
+      "rate_limit": null,
+      "continuation_state": {
+        "cursor": "opaque-transient-1"
+      },
+      "message": "temporary provider unavailable",
+      "contract_version": "v1",
+      "connector_id": "tiktok_research",
+      "connector_version": "1.0.0"
+    },
+    {
+      "ok": false,
+      "error": "invalid_response",
+      "retry_class": "terminal",
+      "retry_after_ms": null,
+      "rate_limit": null,
+      "continuation_state": {},
+      "message": "provider response failed contract validation",
+      "contract_version": "v1",
+      "connector_id": "meta_research",
+      "connector_version": "1.0.0"
+    },
+    {
+      "ok": false,
+      "error": "policy_rejection",
+      "retry_class": "terminal",
+      "retry_after_ms": null,
+      "rate_limit": null,
+      "continuation_state": {},
+      "message": "request rejected by research policy",
+      "contract_version": "v1",
+      "connector_id": "google_research",
+      "connector_version": "1.0.0"
+    },
+    {
+      "ok": false,
+      "error": "terminal",
+      "retry_class": "terminal",
+      "retry_after_ms": null,
+      "rate_limit": null,
+      "continuation_state": {},
+      "message": "connector cannot continue this run",
+      "contract_version": "v1",
+      "connector_id": "tiktok_research",
+      "connector_version": "1.0.0"
+    }
+  ]
+}

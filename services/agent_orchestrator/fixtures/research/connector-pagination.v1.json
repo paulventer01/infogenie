@@ -1,0 +1,108 @@
+{
+  "pages": [
+    {
+      "ok": true,
+      "contract_version": "v1",
+      "connector_id": "meta_research",
+      "connector_version": "1.0.0",
+      "competitors": [
+        {
+          "id": "comp-meta-page1",
+          "tenant_id": 1,
+          "research_run_id": "run-meta-page",
+          "platform": "meta",
+          "provider_advertiser_id": "ext-meta-page-001",
+          "normalized_name": "Northwind Outdoor Co",
+          "canonical_url": "https://www.facebook.com/ads/library/?view_all_page_id=ext-meta-page-001",
+          "country": "US",
+          "market": "US",
+          "discovery_source": "ad_library",
+          "captured_at": "2026-08-21T12:20:00.000Z",
+          "dedup_key": "a63c590f07c88e5219e99301040d8be7389165ac0575a6a8ff20830c382dab11",
+          "contract_version": "v1"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "ev-meta-page1",
+          "tenant_id": 1,
+          "research_run_id": "run-meta-page",
+          "competitor_id": "comp-meta-page1",
+          "platform": "meta",
+          "source_type": "ad_creative",
+          "provider_external_id": "ext-meta-ad-page1",
+          "canonical_source_url": "https://www.facebook.com/ads/library/?id=ext-meta-ad-page1",
+          "advertiser_name": "Northwind Outdoor Co",
+          "creative_format": "carousel",
+          "headline": "Page one creative",
+          "body_text": "Pagination fixture page 1.",
+          "excerpt": "Page one creative",
+          "captured_at": "2026-08-21T12:20:00.000Z",
+          "market": "US",
+          "language": "en",
+          "placement": "instagram_feed",
+          "provider_metrics": {},
+          "metrics_kind": "provider_reported",
+          "provenance_method": "ad_library",
+          "connector_id": "meta_research",
+          "connector_version": "1.0.0",
+          "contract_version": "v1",
+          "evidence_hash": "9d2fdcdf54e30137a5124fbe97e88b3ffeffd009e910e81d4bcdb796f9d4b812",
+          "dedup_key": "9d2fdcdf54e30137a5124fbe97e88b3ffeffd009e910e81d4bcdb796f9d4b812",
+          "retention_class": "standard"
+        }
+      ],
+      "assets": [
+        {
+          "id": "asset-meta-page1",
+          "tenant_id": 1,
+          "evidence_id": "ev-meta-page1",
+          "media_type": "image",
+          "storage_ref": "research://meta/ext-meta-ad-page1/creative.jpg",
+          "checksum_sha256": "6694b947a8d71288616ae3b0bb266f50b067d21530b83a7e1779e29c3d2efebd",
+          "width_px": 1080,
+          "height_px": 1080,
+          "duration_ms": null,
+          "captured_at": "2026-08-21T12:20:00.000Z",
+          "retention_class": "standard"
+        }
+      ],
+      "page": {
+        "next_cursor": "opaque-cursor-page-2",
+        "has_more": true
+      },
+      "continuation_state": {
+        "page": 1
+      },
+      "rate_limit": {
+        "limit": 200,
+        "remaining": 198,
+        "reset_at": "2026-08-21T13:00:00.000Z"
+      },
+      "retry_class": "none"
+    },
+    {
+      "ok": true,
+      "contract_version": "v1",
+      "connector_id": "meta_research",
+      "connector_version": "1.0.0",
+      "competitors": [],
+      "evidence": [],
+      "assets": [],
+      "page": {
+        "next_cursor": null,
+        "has_more": false
+      },
+      "continuation_state": {
+        "page": 2,
+        "done": true
+      },
+      "rate_limit": {
+        "limit": 200,
+        "remaining": 197,
+        "reset_at": "2026-08-21T13:00:00.000Z"
+      },
+      "retry_class": "none"
+    }
+  ]
+}
