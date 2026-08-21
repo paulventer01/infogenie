@@ -59,11 +59,17 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_research_quota',
 ];
 
+// Redefine in one transaction. A bare DROP followed by a separate ADD leaves
+// the table with no CHECK between the two autocommit statements, and leaves it
+// permanently unconstrained when the ADD fails validation.
 async function _ensureNamedCheck(p, table, name, checkBody) {
-  await p.query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${name}`);
+  await p.query('BEGIN');
   try {
+    await p.query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${name}`);
     await p.query(`ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${checkBody})`);
+    await p.query('COMMIT');
   } catch (e) {
+    try { await p.query('ROLLBACK'); } catch (_) { /* already aborted */ }
     if (!e || e.code !== '42710') throw e;
   }
 }
@@ -104,12 +110,21 @@ async function _ensureNamedFk(p, table, name, cols, refTable, refCols, fkSuffix)
   );
   const existing = r.rowCount ? _fkColList(r.rows[0].cols) : null;
   if (existing === wanted) return;
-  if (existing) {
-    await p.query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${name}`);
+  // Same reason as _ensureNamedCheck: swap the column list atomically so a
+  // failed ADD cannot leave the table with no foreign key at all.
+  await p.query('BEGIN');
+  try {
+    if (existing) {
+      await p.query(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${name}`);
+    }
+    await p.query(
+      `ALTER TABLE ${table} ADD CONSTRAINT ${name} FOREIGN KEY (${cols}) REFERENCES ${refTable} (${refCols}) ${fkSuffix}`
+    );
+    await p.query('COMMIT');
+  } catch (e) {
+    try { await p.query('ROLLBACK'); } catch (_) { /* already aborted */ }
+    throw e;
   }
-  await p.query(
-    `ALTER TABLE ${table} ADD CONSTRAINT ${name} FOREIGN KEY (${cols}) REFERENCES ${refTable} (${refCols}) ${fkSuffix}`
-  );
 }
 
 async function _columnExists(p, table, column) {
@@ -222,6 +237,7 @@ async function ensureAgentOrchestratorSchema() {
 async function _runEnsureAgentOrchestratorSchema() {
   const pool = _db.getPool();
   const p = await pool.connect();
+  let failed = null;
   try {
     await p.query('SELECT pg_advisory_lock($1)', [87231402]);
     try {
@@ -229,8 +245,14 @@ async function _runEnsureAgentOrchestratorSchema() {
     } finally {
       await p.query('SELECT pg_advisory_unlock($1)', [87231402]);
     }
+  } catch (err) {
+    failed = err;
+    throw err;
   } finally {
-    p.release();
+    // A failed backfill can leave this client inside a transaction whose
+    // SET LOCAL session_replication_role is still in force. Destroy it instead
+    // of handing replica mode back to the pool.
+    p.release(failed || undefined);
   }
 }
 
