@@ -1220,7 +1220,7 @@ Confirmed against live Postgres, and locked by
   name and a `backfillFrom.parentTable` carrying `"; DROP TABLE tenants; --`
   before either reaches SQL.
 
-### Open — the shared-database race is back, as a deadlock
+### Closed — the shared-database race is back, as a deadlock
 
 `80d7c52` closed the two-suite fixture race by putting `tenant-schema-closeout`,
 `tenant-schema-audit` and later `tenant-schema-preflight` on one Postgres session
@@ -1256,26 +1256,115 @@ strictly worse than the `80d7c52` race it reopens: an intermittent red that
 clears on retry teaches the operator to re-run until green, and that habit will
 swallow a genuine red just as readily.
 
-For Database, and not for QA to paper over: register the fixture cleanup inside
+The recommendation to Database was: register the fixture cleanup inside
 `guardMutatingTest` (or acquire the lock again in the second hook) so nothing
-mutating runs after the release. Do not fix it by widening allowlists, dropping
-the `DELETE FROM tenants` assertion, or serialising the whole suite —
-`80d7c52` already showed the lock is the cheaper answer.
-`test/tenant-preflight-isolation.test.js` sidesteps the shared database entirely
-by provisioning its own, which is the other half of the recommendation the
-earlier entry made; it is not a substitute for fixing the hook order.
+mutating runs after the release, and do not paper over it by widening
+allowlists, dropping the `DELETE FROM tenants` assertion, or serialising the
+whole suite. `test/tenant-preflight-isolation.test.js` already sidesteps the
+shared database by provisioning its own; that was named as the other half of the
+answer, not a substitute for the hook order.
 
-**Database follow-up (pending Security re-review).** `e2c15fa` keeps the hook-order
-fix (restore while holding the advisory lock, unlock last, `addLockedCleanup`).
-Residual isolation: `tenant-schema-closeout` and `tenant-schema-preflight` now
-provision a per-file scratch database and point `DROP TABLE … brand_foundation`
-at that database, not the live QA `DATABASE_URL`. Unlocked `DELETE FROM tenants`
-on the shared database therefore cannot take `RowExclusiveLock` on the same
-`brand_foundation` a closer DROPs. `restorePreflightFixtures` and
-isolation/k-anonymity tenant cleanup rethrow `40P01` / `40001` instead of
-warn-and-pass. `test/tenant-closeout-drop-isolation.test.js` pins the scratch
-contract and runs concurrent DROP (scratch) vs DELETE tenants (live). This
-paragraph does not close the Open finding — isolation review is still Security's.
+**Closed by `e2c15fa` (hook order) and `467cbf9` (scratch isolation, rethrow,
+regression).** Both halves shipped:
+
+- `e2c15fa` collapses the cleanup into the single `t.after` that
+  `guardMutatingTest` registers: restore runs while the advisory lock is still
+  held, the unlock happens last, and per-test extras go through
+  `addLockedCleanup` instead of a second hook. Nothing mutating executes after
+  the release.
+- `029e4c0` / `467cbf9` move the destructive DDL off the shared database.
+  `tenant-schema-closeout` and `tenant-schema-preflight` reassign
+  `process.env.DATABASE_URL` to a per-file scratch database **before**
+  `require('../db')` — `db.js` reads the variable lazily in `getPool()`, so
+  every `DROP TABLE IF EXISTS brand_foundation CASCADE`, every `ensure*Schema()`
+  and the `spawnSync` of `scripts/tenant-schema-preflight.js` land on the
+  scratch database. `DELETE FROM tenants` in a parallel worker can no longer
+  take `RowExclusiveLock` on the same relation a closer holds
+  `AccessExclusiveLock` on, because they are not the same relation.
+- The swallowing that hid the cycle is gone. `restorePreflightFixtures` rethrows
+  when `isDeadlockError(err)`, and the tenant `DELETE` teardowns in
+  `tenant-closeout-isolation`, `benchmark-k-anonymity` and
+  `benchmark-contributor-anonymity` use `.catch(rethrowDeadlock)` instead of
+  `.catch(() => {})`. A future deadlock fails a test rather than printing a
+  warning under a green run.
+- `467cbf9` also drops `require('./helpers')` from those three files. That
+  module loads `server.js`, whose register-time `ensure*Schema()` calls raced
+  each other on `pg_class_relname_nsp_index` (`23505`) on the live database.
+  Only `advertising-orchestrator-credits`, `advertising-orchestrator-workflows`
+  and `diag-capture-restore` still load it.
+- `test/tenant-closeout-drop-isolation.test.js` pins the contract in source
+  (scratch swap ordered before `require('../db')`, restore-before-unlock, no
+  `.catch(() => {})` on `DELETE FROM tenants`, no `require('./helpers')`) and
+  runs 40 iterations of concurrent DROP-on-scratch against DELETE-tenants-on-live.
+
+Verified independently, not taken on report:
+
+- The mechanism is real and the new assertion is not vacuous. A direct probe
+  looping `DROP TABLE brand_foundation CASCADE` against
+  `INSERT`/`DELETE FROM tenants` produced 4 `40P01` in 80 iterations when both
+  ran on **one** database (the pre-`467cbf9` shape) and **0** when the DROP was
+  moved to a second database (the shipped shape).
+- 7 consecutive default-parallel `node --test` runs of the 10-file schema/tenant
+  set: 51/51 pass, 0 fail, 0 skipped, 0 real `40P01`, 0 `23505`. A wider
+  25-file parallel slice (`tenant-*`, `meeting-notes-*`, `benchmark-*`,
+  `*-tenant-isolation`) ran 158/158 three times with the same zero counts.
+  `meeting-notes-tenant-isolation`, the extra probe file from the previous
+  review, is clean.
+- Test count went up, not down: the same nine files at `e2c15fa` report 47
+  passing; HEAD reports 51 across ten files, and the four new ones are
+  `tenant-closeout-drop-isolation`. No assertion, allowlist or table set was
+  removed, `npm run test:core` is 70/70, and
+  `security-guardrails` + `permission-matrix` + `permission-matrix-coverage` are
+  31/31. The delta `e2c15fa..467cbf9` touches only `test/` and this document —
+  no `services/`, no `server.js`, no `db.js`.
+- The isolation cannot silently degrade back to the live database. When the role
+  cannot `CREATE DATABASE`, `tenant-schema-closeout` fails 10/10 in the `before`
+  hook rather than skipping or falling back — checked against a `NOCREATEDB`
+  role.
+- `tenant-schema-audit` still introspects the **live** `DATABASE_URL` with no
+  swap, and it still fails loudly rather than passing quietly on a database that
+  has no schema: run against an empty database it reports 2/4 failing with
+  "absent from the database".
+
+Residual risks, stated plainly:
+
+- **Other suites still `DELETE FROM tenants` on the live database.** That is now
+  safe not because the DELETEs changed but because nothing on that database
+  `DROP`s the relation they cascade into. If a future test reintroduces
+  destructive DDL against a shared app table on the live `DATABASE_URL`, the
+  cycle comes back. `tenant-closeout-drop-isolation` guards the two known
+  offenders by source; it cannot guard a file that does not exist yet.
+- **`CREATE DATABASE` in tests assumes a local-dev or disposable Postgres.**
+  `test/helpers/scratch_db.js` connects to the `postgres` maintenance database
+  on the same server and issues `CREATE DATABASE` /
+  `DROP DATABASE IF EXISTS … WITH (FORCE)` against a generated
+  `infogenie_<prefix>_<pid>_<hex>` name, validated against `^[a-z][a-z0-9_]*$`
+  at both call sites. Pointing `DATABASE_URL` at a shared or managed instance
+  would create and drop databases there. The failure mode is the safe one — a
+  role without `CREATEDB` fails the suite instead of dropping live tables — but
+  the helper is test-only by convention, not by a runtime guard. It is not
+  imported anywhere under `services/` or from `server.js`, and neither
+  `services/`, `server.js`, `db.js` nor `scripts/` contains any
+  `DROP TABLE` / `DROP DATABASE` / `TRUNCATE`: this whole class of hazard is
+  test-isolation only and has never been a production code path.
+- **Scratch-database cleanup is best-effort.** The `after` hooks swallow
+  `dropScratchDatabase` failures, so a hard-killed run can leave an
+  `infogenie_*` database behind. Nothing leaked across 10 parallel runs here,
+  but a QA host may need an occasional sweep.
+- **The closeout and preflight suites no longer exercise the live schema.**
+  Running on an empty scratch database makes their fixtures fully controlled,
+  which is what those suites are for (fail-before-DDL behaviour), but it means
+  the live schema is now verified solely by `tenant-schema-audit`,
+  `tenant-read-audit`, `tenant-write-audit` and `tenant-closeout-write-audit`.
+  Those suites still require a database the app has booted against; that
+  precondition was already documented in the audit file's header and is now the
+  only thing standing behind it.
+- **`ensure*Schema()` concurrency on the live database is untouched by this
+  change.** Several suites still call `ensureTenantSchema()` in parallel
+  workers, and `CREATE INDEX IF NOT EXISTS` is not race-safe in Postgres, so a
+  `23505` on `pg_class_relname_nsp_index` remains theoretically reachable
+  between two of them. It did not fire in 10 parallel runs, it is pre-existing
+  rather than introduced here, and it fails loudly if it ever does.
 
 ### Accepted residuals
 
