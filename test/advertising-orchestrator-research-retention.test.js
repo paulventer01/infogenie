@@ -13,6 +13,7 @@ const {
   sweepExpiredResearchEvidence,
   SWEEP_BATCH,
   SWEEP_MS,
+  DEADLOCK_RETRY_MAX,
 } = require('../services/agent_orchestrator/research_retention');
 const {
   insertEvidenceItem,
@@ -198,6 +199,7 @@ if (!HAS_DB) {
     assert.strictEqual(typeof sweepExpiredResearchEvidence, 'function');
     assert.strictEqual(SWEEP_BATCH, 100);
     assert.strictEqual(SWEEP_MS, 6 * 3600 * 1000);
+    assert.ok(DEADLOCK_RETRY_MAX >= 3 && DEADLOCK_RETRY_MAX <= 5);
   });
 
   test('expired standard evidence is purged; future and legal_hold are kept', async () => {
@@ -704,5 +706,186 @@ if (!HAS_DB) {
     } finally {
       db.getPool = origGetPool;
     }
+  });
+
+  test('source: 40P01/40001 batch retry is bounded then fails closed', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../services/agent_orchestrator/research_retention.js'),
+      'utf8'
+    );
+    assert.match(src, /40P01/);
+    assert.match(src, /40001/);
+    assert.match(src, /DEADLOCK_RETRY_MAX/);
+    const maxMatch = src.match(/DEADLOCK_RETRY_MAX\s*=\s*(\d+)/);
+    assert.ok(maxMatch, 'DEADLOCK_RETRY_MAX must be a numeric constant');
+    const max = Number(maxMatch[1]);
+    assert.ok(max >= 3 && max <= 5, 'retry bound must be 3–5 attempts');
+    assert.match(src, /research_evidence_sweep_retry/);
+    assert.match(src, /_isRetryableTxConflict/);
+    assert.match(src, /attempt < DEADLOCK_RETRY_MAX/);
+    assert.doesNotMatch(src, /process\.exit\s*\(/);
+    const retryBlock = src.slice(
+      src.indexOf('async function _purgeExpiredTable'),
+      src.indexOf('async function _sweepTenant')
+    );
+    assert.match(retryBlock, /_isRetryableTxConflict/);
+    assert.match(retryBlock, /throw err/);
+  });
+
+  test('a single 40P01 on DELETE is retried; the batch then succeeds', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const id = await insertExpiredEvidence(p, tenantA, host.runId, comp, {
+      createdAt,
+      expiresAt: expiredAt,
+      bodyText: 'SECRET_RETRY_BODY',
+    });
+
+    let evidenceDeletes = 0;
+    const retryLogs = [];
+    const origGetPool = db.getPool;
+    const origWarn = logger.warn;
+    const origPool = db.getPool();
+    logger.warn = (msg, fields) => {
+      retryLogs.push({ msg, ...(fields || {}) });
+      return origWarn(msg, fields);
+    };
+    db.getPool = () => wrapPool(origPool, {
+      clientQuery: async (sql, params) => {
+        if (
+          params && params[0] === tenantA
+          && /DELETE FROM orchestrator_research_evidence\b/.test(sql)
+        ) {
+          evidenceDeletes += 1;
+          if (evidenceDeletes === 1) {
+            throw Object.assign(new Error('deadlock detected'), { code: '40P01' });
+          }
+        }
+        return undefined;
+      },
+    });
+    let result;
+    try {
+      result = await sweepExpiredResearchEvidence();
+    } finally {
+      db.getPool = origGetPool;
+      logger.warn = origWarn;
+    }
+    assert.ok(result);
+    assert.strictEqual(result.failures, 0, 'a single 40P01 must not be a hard failure');
+    assert.strictEqual(result.ok, true);
+    assert.ok(evidenceDeletes >= 2, 'DELETE must run again after the 40P01 victim retry');
+    const gone = (await origPool.query(
+      `SELECT 1 FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, id]
+    )).rows;
+    assert.strictEqual(gone.length, 0);
+    const retryLine = retryLogs.find((row) => row.msg === 'research_evidence_sweep_retry');
+    assert.ok(retryLine, 'retry must be logged');
+    assert.strictEqual(retryLine.tenant_id, tenantA);
+    assert.strictEqual(retryLine.code, '40P01');
+    assert.strictEqual(typeof retryLine.attempt, 'number');
+    const dumped = JSON.stringify(retryLogs);
+    assert.ok(!dumped.includes('SECRET_RETRY_BODY'), 'retry logs must not include evidence body');
+  });
+
+  test('exhausted 40P01 retries fail closed; the other tenant is still swept', async () => {
+    const p = db.getPool();
+    const hostA = await seedHost(p, tenantA);
+    const hostB = await seedHost(p, tenantB);
+    const compA = await insertComp(p, tenantA, hostA.runId);
+    const compB = await insertComp(p, tenantB, hostB.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const idA = await insertExpiredEvidence(p, tenantA, hostA.runId, compA, { createdAt, expiresAt: expiredAt });
+    const idB = await insertExpiredEvidence(p, tenantB, hostB.runId, compB, { createdAt, expiresAt: expiredAt });
+
+    let evidenceDeletesA = 0;
+    const origGetPool = db.getPool;
+    const origPool = db.getPool();
+    db.getPool = () => wrapPool(origPool, {
+      clientQuery: async (sql, params) => {
+        if (
+          params && params[0] === tenantA
+          && /DELETE FROM orchestrator_research_evidence\b/.test(sql)
+        ) {
+          evidenceDeletesA += 1;
+          throw Object.assign(new Error('deadlock detected'), { code: '40P01' });
+        }
+        return undefined;
+      },
+    });
+    let result;
+    try {
+      result = await sweepExpiredResearchEvidence();
+    } finally {
+      db.getPool = origGetPool;
+    }
+    assert.strictEqual(evidenceDeletesA, DEADLOCK_RETRY_MAX);
+    assert.ok(result.failures >= 1);
+    assert.strictEqual(result.ok, false);
+    const aKept = (await origPool.query(
+      `SELECT 1 FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idA]
+    )).rows;
+    assert.strictEqual(aKept.length, 1, 'exhausted retries must not skip or invent a delete');
+    const bGone = (await origPool.query(
+      `SELECT 1 FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantB, idB]
+    )).rows;
+    assert.strictEqual(bGone.length, 0, 'tenant B must still be swept');
+  });
+
+  test('concurrent sweep vs ensureAgentOrchestratorSchema does not leak a transaction', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const seeded = [];
+    const ROUNDS = 6;
+    const PER_ROUND = 24;
+
+    for (let round = 0; round < ROUNDS; round += 1) {
+      for (let i = 0; i < PER_ROUND; i += 1) {
+        seeded.push(await insertExpiredEvidence(p, tenantA, host.runId, comp, {
+          createdAt, expiresAt: expiredAt,
+        }));
+      }
+      const sweepP = sweepExpiredResearchEvidence();
+      const ensurePs = [
+        ensureAgentOrchestratorSchema(),
+        ensureAgentOrchestratorSchema(),
+        ensureAgentOrchestratorSchema(),
+      ];
+      const [sweepSettled] = await Promise.allSettled([sweepP, ...ensurePs]);
+      assert.strictEqual(
+        sweepSettled.status,
+        'fulfilled',
+        `sweep must not throw uncaught (round ${round}): ${
+          sweepSettled.status === 'rejected' ? String(sweepSettled.reason && sweepSettled.reason.message) : ''
+        }`
+      );
+      const sweepResult = sweepSettled.value;
+      assert.ok(sweepResult && typeof sweepResult.ok === 'boolean');
+    }
+
+    let leftover = -1;
+    for (let i = 0; i < 3; i += 1) {
+      leftover = (await p.query(
+        `SELECT COUNT(*)::int AS n FROM orchestrator_research_evidence
+          WHERE tenant_id=$1 AND id = ANY($2::text[])`,
+        [tenantA, seeded]
+      )).rows[0].n;
+      if (leftover === 0) break;
+      await sweepExpiredResearchEvidence();
+    }
+    assert.strictEqual(leftover, 0, 'leftover expired rows must eventually go to 0');
+
+    const probe = await p.query('SELECT 1::int AS ok');
+    assert.strictEqual(probe.rows[0].ok, 1, 'follow-up pool query must work (no leaked transaction)');
   });
 }

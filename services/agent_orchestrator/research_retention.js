@@ -12,6 +12,11 @@ const _sentry = require('../infra/sentry');
 
 const SWEEP_MS = 6 * 3600 * 1000;
 const SWEEP_BATCH = 100;
+// Victim retries for deadlock (40P01) / serialization failure (40001). After
+// this many attempts the batch throws; the per-tenant catch increments
+// failures and production boot still fails closed.
+const DEADLOCK_RETRY_MAX = 5;
+const DEADLOCK_RETRY_BASE_MS = 25;
 
 const EVIDENCE_TABLE = 'orchestrator_research_evidence';
 const ASSET_TABLE = 'orchestrator_research_evidence_assets';
@@ -58,6 +63,15 @@ function _pgCode(err) {
   return undefined;
 }
 
+function _isRetryableTxConflict(err) {
+  const code = _pgCode(err);
+  return code === '40P01' || code === '40001';
+}
+
+function _sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function _listResearchTenantIds(p) {
   const tenants = await p.query(
     `SELECT tenant_id FROM (
@@ -70,32 +84,56 @@ async function _listResearchTenantIds(p) {
   return (tenants.rows || []).map((row) => row.tenant_id);
 }
 
+async function _purgeExpiredBatch(client, table, tenantId) {
+  await client.query('BEGIN');
+  const sel = await client.query(expiredLockSql(table), [tenantId, SWEEP_BATCH]);
+  const ids = (sel.rows || []).map((row) => row.id);
+  if (!ids.length) {
+    await client.query('COMMIT');
+    return { empty: true, removed: 0, selected: 0 };
+  }
+  const del = await client.query(
+    `DELETE FROM ${table} WHERE tenant_id=$1 AND id = ANY($2)`,
+    [tenantId, ids]
+  );
+  const removed = Number(del.rowCount) || 0;
+  if (removed === 0) {
+    throw Object.assign(new Error('research_evidence_sweep_delete_noop'), { code: 'XX000' });
+  }
+  await client.query('COMMIT');
+  return { empty: false, removed, selected: ids.length };
+}
+
 async function _purgeExpiredTable(client, table, tenantId) {
   let purged = 0;
   for (;;) {
-    await client.query('BEGIN');
-    try {
-      const sel = await client.query(expiredLockSql(table), [tenantId, SWEEP_BATCH]);
-      const ids = (sel.rows || []).map((row) => row.id);
-      if (!ids.length) {
-        await client.query('COMMIT');
+    let batch = null;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= DEADLOCK_RETRY_MAX; attempt += 1) {
+      try {
+        batch = await _purgeExpiredBatch(client, table, tenantId);
+        lastErr = null;
         break;
+      } catch (err) {
+        lastErr = err;
+        let rolled = false;
+        try { await client.query('ROLLBACK'); rolled = true; } catch { /* ignore */ }
+        if (rolled && _isRetryableTxConflict(err) && attempt < DEADLOCK_RETRY_MAX) {
+          logger.warn('research_evidence_sweep_retry', {
+            tenant_id: tenantId,
+            attempt,
+            code: _pgCode(err),
+          });
+          await _sleep(DEADLOCK_RETRY_BASE_MS * attempt);
+          continue;
+        }
+        throw err;
       }
-      const del = await client.query(
-        `DELETE FROM ${table} WHERE tenant_id=$1 AND id = ANY($2)`,
-        [tenantId, ids]
-      );
-      const removed = Number(del.rowCount) || 0;
-      if (removed === 0) {
-        throw Object.assign(new Error('research_evidence_sweep_delete_noop'), { code: 'XX000' });
-      }
-      await client.query('COMMIT');
-      purged += removed;
-      if (ids.length < SWEEP_BATCH) break;
-    } catch (err) {
-      try { await client.query('ROLLBACK'); } catch { /* ignore */ }
-      throw err;
     }
+    if (lastErr) throw lastErr;
+    if (!batch || batch.empty) break;
+    purged += batch.removed;
+    if (batch.selected < SWEEP_BATCH) break;
   }
   return purged;
 }
@@ -203,4 +241,5 @@ module.exports = {
   startResearchEvidenceSweepInterval,
   SWEEP_MS,
   SWEEP_BATCH,
+  DEADLOCK_RETRY_MAX,
 };
