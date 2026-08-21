@@ -26,6 +26,15 @@ test('research-evidence boot task fails closed in production and does not swallo
   assert.ok(schemaIdx >= 0, 'ensureAgentOrchestratorSchema must remain registered');
   const schemaPush = src.lastIndexOf('BOOT_TASKS.push', schemaIdx);
   assert.ok(schemaPush >= 0 && schemaPush < schemaIdx);
+  const nextPushAfterSchema = src.indexOf('BOOT_TASKS.push', schemaPush + 1);
+  const schemaBlock = src.slice(schemaPush, nextPushAfterSchema > 0 ? nextPushAfterSchema : undefined);
+  assert.match(schemaBlock, /ensureAgentOrchestratorSchema/);
+  assert.match(schemaBlock, /process\.exit\(1\)/);
+  assert.match(schemaBlock, /NODE_ENV === 'production'/);
+  assert.match(schemaBlock, /captureException/);
+  assert.doesNotMatch(schemaBlock, /\[tier28-32\] schema init failed/);
+  assert.doesNotMatch(schemaBlock, /console\.warn/);
+  assert.ok(!/\.catch\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)/.test(schemaBlock), 'schema ensure must not use empty catch');
 
   const requireIdx = src.indexOf("require('./services/agent_orchestrator/research_retention')");
   assert.ok(requireIdx > schemaIdx, 'research_retention boot task must follow the schema BOOT_TASKS entry');
@@ -78,4 +87,10 @@ test('ensureAgentOrchestratorSchema remains inside a BOOT_TASKS.push', () => {
   const pushIdx = serverSrc.lastIndexOf('BOOT_TASKS.push', orchIdx);
   assert.ok(pushIdx >= 0 && pushIdx < orchIdx,
     'ensureAgentOrchestratorSchema must sit inside a BOOT_TASKS.push');
+  const nextPushIdx = serverSrc.indexOf('BOOT_TASKS.push', pushIdx + 1);
+  const window = serverSrc.slice(pushIdx, nextPushIdx > 0 ? nextPushIdx : undefined);
+  assert.match(window, /process\.exit\(1\)/);
+  assert.match(window, /NODE_ENV === 'production'/);
+  assert.match(window, /captureException/);
+  assert.doesNotMatch(window, /\[tier28-32\] schema init failed/);
 });

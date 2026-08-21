@@ -4110,12 +4110,18 @@ BOOT_TASKS.push(async () => { try {
     await _referralSchema.ensureReferralSchema();
     await _affiliateSchema.ensureAffiliateSchema();
     await _marketingSpineSchema.ensureMarketingSpineSchema();
-    await _agentOrchSchema.ensureAgentOrchestratorSchema();
     await _segmentSchema.ensureSegmentSchema();
     await _aiGovSchema.ensureAiGovernanceSchema();
     console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags + gap-priority + ecosystem-spine + ai-governance ready');
   }
 } catch (e) { console.warn('[tier28-32] schema init failed:', e.message); }});
+BOOT_TASKS.push(async () => { try {
+  if (_db.hasDb()) await _agentOrchSchema.ensureAgentOrchestratorSchema();
+} catch (e) {
+  logger.error('agent_orchestrator_schema_init_failed');
+  captureException(new Error('agent_orchestrator_schema_init_failed'));
+  if (process.env.NODE_ENV === 'production') process.exit(1);
+}});
 const _researchRetention = require('./services/agent_orchestrator/research_retention');
 BOOT_TASKS.push(async () => { try {
   if (_db.hasDb()) {

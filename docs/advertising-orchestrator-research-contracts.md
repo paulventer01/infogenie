@@ -10,6 +10,7 @@ This PR does **not** call live advertising APIs, does **not** store binaries,
 does **not** generate creative, and does **not** publish campaigns. There is no
 HTTP router, no `server.js` `/api` mount, and no permission-matrix change here.
 A boot-time retention sweeper is wired from `server.js` `BOOT_TASKS` (no route).
+`ensureAgentOrchestratorSchema` is its own production fail-closed `BOOT_TASKS` entry, not part of the tier28-32 warn-catching schema block.
 
 ## Modules
 
