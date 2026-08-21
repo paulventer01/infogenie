@@ -109,15 +109,22 @@ async function _sweepTenant(p, tenantId) {
   }
 
   const client = await p.connect();
+  let unrolled = null;
   try {
     const evidencePurged = await _purgeExpiredTable(client, EVIDENCE_TABLE, tenantId);
     const assetPurged = await _purgeExpiredTable(client, ASSET_TABLE, tenantId);
     return { purged: evidencePurged + assetPurged, invalid_expiry };
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+    unrolled = err;
+    // A ROLLBACK with no transaction open is a warning, not an error, so this
+    // succeeding is proof the client carries no batch transaction.
+    try { await client.query('ROLLBACK'); unrolled = null; } catch { /* stays unrolled */ }
     throw err;
   } finally {
-    client.release();
+    // release() does not roll back: a client returned mid-transaction hands the
+    // next borrower an open transaction and its FOR UPDATE row locks. Destroy
+    // it instead whenever the rollback could not be confirmed.
+    client.release(unrolled || undefined);
   }
 }
 

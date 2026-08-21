@@ -651,4 +651,58 @@ if (!HAS_DB) {
     )).rows[0].n;
     assert.strictEqual(leftoverExpired, 0);
   });
+
+  // release() does not roll back. A client handed back mid-transaction gives the
+  // next borrower an open transaction and the batch's FOR UPDATE row locks, so a
+  // rollback that could not be confirmed has to destroy the client instead.
+  // Fully stubbed: this test reads and writes no table.
+  test('a sweep whose ROLLBACK fails destroys its client instead of pooling it', async () => {
+    const FAKE_TENANT = -4242;
+    const releases = [];
+    const stubPool = (failRollback) => ({
+      query: async (sql) => {
+        if (/UNION/i.test(sql)) return { rows: [{ tenant_id: FAKE_TENANT }], rowCount: 1 };
+        if (/invalid_expiry/i.test(sql)) return { rows: [{ invalid_expiry: 0 }], rowCount: 1 };
+        return { rows: [], rowCount: 0 };
+      },
+      connect: async () => ({
+        query: async (sql) => {
+          if (/^ROLLBACK/.test(sql)) {
+            if (failRollback) throw Object.assign(new Error('rollback failed'), { code: '08006' });
+            return { rows: [], rowCount: 0 };
+          }
+          if (/FOR UPDATE SKIP LOCKED/.test(sql)) {
+            return { rows: [{ tenant_id: FAKE_TENANT, id: 'ev-stub' }], rowCount: 1 };
+          }
+          if (/^DELETE/.test(sql)) throw Object.assign(new Error('injected'), { code: 'XX000' });
+          return { rows: [], rowCount: 0 };
+        },
+        release: (err) => releases.push(err === undefined ? 'pooled' : 'destroyed'),
+      }),
+    });
+
+    const origGetPool = db.getPool;
+    try {
+      db.getPool = () => stubPool(false);
+      const clean = await sweepExpiredResearchEvidence();
+      assert.strictEqual(clean.ok, false, 'the injected DELETE failure must still be reported');
+      assert.deepStrictEqual(
+        releases,
+        ['pooled'],
+        'a confirmed ROLLBACK leaves the client reusable — do not churn the pool'
+      );
+
+      releases.length = 0;
+      db.getPool = () => stubPool(true);
+      const dirty = await sweepExpiredResearchEvidence();
+      assert.strictEqual(dirty.ok, false);
+      assert.deepStrictEqual(
+        releases,
+        ['destroyed'],
+        'an unconfirmed ROLLBACK must destroy the client, not return an open transaction to the pool'
+      );
+    } finally {
+      db.getPool = origGetPool;
+    }
+  });
 }
