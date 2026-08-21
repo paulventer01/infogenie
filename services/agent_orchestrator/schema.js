@@ -127,6 +127,23 @@ async function _ensureNamedFk(p, table, name, cols, refTable, refCols, fkSuffix)
   }
 }
 
+// One table's functions+triggers per transaction. DROP+CREATE stay atomic so
+// boot never commits a window with no trigger (same fail-open class as
+// _ensureNamedCheck). Runs DDL and evidence DDL must not share a transaction:
+// node-pg would otherwise hold AccessExclusiveLock on both tables at once and
+// deadlock (40P01) with the retention sweeper, which holds evidence row locks
+// until COMMIT then needs AccessShareLock on runs from the DELETE trigger.
+async function _installInTransaction(p, sql) {
+  await p.query('BEGIN');
+  try {
+    await p.query(sql);
+    await p.query('COMMIT');
+  } catch (e) {
+    try { await p.query('ROLLBACK'); } catch (_) { /* already aborted */ }
+    throw e;
+  }
+}
+
 async function _columnExists(p, table, column) {
   const r = await p.query(
     `SELECT 1 FROM information_schema.columns
@@ -1654,7 +1671,9 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       WHERE retention_class <> 'legal_hold' AND expires_at IS NOT NULL;
   `);
 
-  await p.query(`
+  // Per-table transactions: never hold AccessExclusiveLock on
+  // orchestrator_research_runs and orchestrator_research_evidence together.
+  await _installInTransaction(p, `
     CREATE OR REPLACE FUNCTION orchestrator_research_runs_approval_bind()
     RETURNS trigger AS $fn$
     DECLARE
@@ -1720,6 +1739,20 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     END;
     $fn$ LANGUAGE plpgsql;
 
+    DROP TRIGGER IF EXISTS orchestrator_research_runs_approval_bind ON orchestrator_research_runs;
+    CREATE TRIGGER orchestrator_research_runs_approval_bind
+      BEFORE INSERT OR UPDATE ON orchestrator_research_runs
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_runs_approval_bind();
+
+    DROP TRIGGER IF EXISTS orchestrator_research_runs_identity_immutable ON orchestrator_research_runs;
+    CREATE TRIGGER orchestrator_research_runs_identity_immutable
+      BEFORE UPDATE ON orchestrator_research_runs
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_runs_identity_immutable();
+  `);
+
+  await _installInTransaction(p, `
     CREATE OR REPLACE FUNCTION orchestrator_research_competitors_immutable()
     RETURNS trigger AS $fn$
     BEGIN
@@ -1736,6 +1769,14 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     END;
     $fn$ LANGUAGE plpgsql;
 
+    DROP TRIGGER IF EXISTS orchestrator_research_competitors_immutable ON orchestrator_research_competitors;
+    CREATE TRIGGER orchestrator_research_competitors_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_research_competitors
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_competitors_immutable();
+  `);
+
+  await _installInTransaction(p, `
     CREATE OR REPLACE FUNCTION orchestrator_research_evidence_immutable()
     RETURNS trigger AS $fn$
     BEGIN
@@ -1757,27 +1798,6 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     END;
     $fn$ LANGUAGE plpgsql;
 
-    CREATE OR REPLACE FUNCTION orchestrator_research_evidence_assets_immutable()
-    RETURNS trigger AS $fn$
-    BEGIN
-      IF TG_OP = 'UPDATE' THEN
-        RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
-      END IF;
-      IF NOT EXISTS (
-        SELECT 1 FROM orchestrator_research_evidence e
-         WHERE e.id = OLD.evidence_id AND e.tenant_id = OLD.tenant_id
-      ) THEN
-        RETURN OLD;
-      END IF;
-      IF OLD.retention_class IS DISTINCT FROM 'legal_hold'
-         AND OLD.expires_at IS NOT NULL
-         AND OLD.expires_at <= now() THEN
-        RETURN OLD;
-      END IF;
-      RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
-    END;
-    $fn$ LANGUAGE plpgsql;
-
     CREATE OR REPLACE FUNCTION orchestrator_research_evidence_supersedes_bind()
     RETURNS trigger AS $fn$
     BEGIN
@@ -1794,42 +1814,6 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       RETURN NEW;
     END;
     $fn$ LANGUAGE plpgsql;
-
-    DROP TRIGGER IF EXISTS orchestrator_research_runs_approval_bind ON orchestrator_research_runs;
-    CREATE TRIGGER orchestrator_research_runs_approval_bind
-      BEFORE INSERT OR UPDATE ON orchestrator_research_runs
-      FOR EACH ROW
-      EXECUTE FUNCTION orchestrator_research_runs_approval_bind();
-
-    DROP TRIGGER IF EXISTS orchestrator_research_runs_identity_immutable ON orchestrator_research_runs;
-    CREATE TRIGGER orchestrator_research_runs_identity_immutable
-      BEFORE UPDATE ON orchestrator_research_runs
-      FOR EACH ROW
-      EXECUTE FUNCTION orchestrator_research_runs_identity_immutable();
-
-    DROP TRIGGER IF EXISTS orchestrator_research_competitors_immutable ON orchestrator_research_competitors;
-    CREATE TRIGGER orchestrator_research_competitors_immutable
-      BEFORE UPDATE OR DELETE ON orchestrator_research_competitors
-      FOR EACH ROW
-      EXECUTE FUNCTION orchestrator_research_competitors_immutable();
-
-    DROP TRIGGER IF EXISTS orchestrator_research_evidence_immutable ON orchestrator_research_evidence;
-    CREATE TRIGGER orchestrator_research_evidence_immutable
-      BEFORE UPDATE OR DELETE ON orchestrator_research_evidence
-      FOR EACH ROW
-      EXECUTE FUNCTION orchestrator_research_evidence_immutable();
-
-    DROP TRIGGER IF EXISTS orchestrator_research_evidence_assets_immutable ON orchestrator_research_evidence_assets;
-    CREATE TRIGGER orchestrator_research_evidence_assets_immutable
-      BEFORE UPDATE OR DELETE ON orchestrator_research_evidence_assets
-      FOR EACH ROW
-      EXECUTE FUNCTION orchestrator_research_evidence_assets_immutable();
-
-    DROP TRIGGER IF EXISTS orchestrator_research_evidence_supersedes_bind ON orchestrator_research_evidence;
-    CREATE TRIGGER orchestrator_research_evidence_supersedes_bind
-      BEFORE INSERT ON orchestrator_research_evidence
-      FOR EACH ROW
-      EXECUTE FUNCTION orchestrator_research_evidence_supersedes_bind();
 
     CREATE OR REPLACE FUNCTION orchestrator_research_evidence_quota_insert()
     RETURNS trigger AS $fn$
@@ -1909,6 +1893,18 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     END;
     $fn$ LANGUAGE plpgsql;
 
+    DROP TRIGGER IF EXISTS orchestrator_research_evidence_immutable ON orchestrator_research_evidence;
+    CREATE TRIGGER orchestrator_research_evidence_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_research_evidence
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_evidence_immutable();
+
+    DROP TRIGGER IF EXISTS orchestrator_research_evidence_supersedes_bind ON orchestrator_research_evidence;
+    CREATE TRIGGER orchestrator_research_evidence_supersedes_bind
+      BEFORE INSERT ON orchestrator_research_evidence
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_evidence_supersedes_bind();
+
     DROP TRIGGER IF EXISTS orchestrator_research_evidence_quota_insert ON orchestrator_research_evidence;
     CREATE TRIGGER orchestrator_research_evidence_quota_insert
       BEFORE INSERT ON orchestrator_research_evidence
@@ -1920,6 +1916,35 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       AFTER DELETE ON orchestrator_research_evidence
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_research_evidence_quota_delete();
+  `);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_research_evidence_assets_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM orchestrator_research_evidence e
+         WHERE e.id = OLD.evidence_id AND e.tenant_id = OLD.tenant_id
+      ) THEN
+        RETURN OLD;
+      END IF;
+      IF OLD.retention_class IS DISTINCT FROM 'legal_hold'
+         AND OLD.expires_at IS NOT NULL
+         AND OLD.expires_at <= now() THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_research_evidence_assets_immutable ON orchestrator_research_evidence_assets;
+    CREATE TRIGGER orchestrator_research_evidence_assets_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_research_evidence_assets
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_research_evidence_assets_immutable();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {

@@ -5,10 +5,120 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const db = require('../db');
 const { ensureAgentOrchestratorSchema } = require('../services/agent_orchestrator/schema');
 const { ensureTenantSchema } = require('../services/tenants/schema');
+
+const SCHEMA_SRC_PATH = path.join(__dirname, '../services/agent_orchestrator/schema.js');
+
+function extractFunctionSource(src, name) {
+  const start = src.indexOf(`async function ${name}`);
+  assert.ok(start >= 0, `${name} must exist`);
+  const brace = src.indexOf('{', start);
+  let depth = 0;
+  for (let i = brace; i < src.length; i += 1) {
+    if (src[i] === '{') depth += 1;
+    else if (src[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return src.slice(start, i + 1);
+    }
+  }
+  throw new Error(`unclosed function ${name}`);
+}
+
+function extractTaggedTemplates(src, callee) {
+  const out = [];
+  const startRe = new RegExp(`${callee.replace('.', '\\.')}\\(\\s*\``, 'g');
+  let m;
+  while ((m = startRe.exec(src))) {
+    const from = m.index + m[0].length;
+    const to = src.indexOf('`', from);
+    assert.ok(to > from, `${callee} template must close`);
+    out.push(src.slice(from, to));
+    startRe.lastIndex = to + 1;
+  }
+  return out;
+}
+
+function mentionsTriggerOn(sql, table) {
+  return new RegExp(`\\bON\\s+${table}\\b`).test(sql);
+}
+
+test('research trigger install is per-table and not one p.query locking runs+evidence', () => {
+  const src = fs.readFileSync(SCHEMA_SRC_PATH, 'utf8');
+  const helper = extractFunctionSource(src, '_installInTransaction');
+  assert.match(helper, /p\.query\(\s*'BEGIN'\s*\)/);
+  assert.match(helper, /p\.query\(\s*'COMMIT'\s*\)/);
+  assert.match(helper, /p\.query\(\s*'ROLLBACK'\s*\)/);
+  assert.match(helper, /catch/);
+
+  const installSql = extractTaggedTemplates(src, '_installInTransaction');
+  const querySql = extractTaggedTemplates(src, 'p.query');
+  for (const sql of querySql) {
+    assert.ok(
+      !/CREATE\s+TRIGGER\s+orchestrator_research/i.test(sql),
+      'research CREATE TRIGGER must use _installInTransaction, not a bare p.query'
+    );
+  }
+
+  const triggerInstalls = installSql.filter((sql) => /CREATE\s+TRIGGER/i.test(sql));
+  assert.ok(triggerInstalls.length >= 4, 'expected one trigger transaction per research table');
+
+  for (const sql of [...installSql, ...querySql].filter((s) => /(?:DROP|CREATE)\s+TRIGGER/i.test(s))) {
+    const onRuns = mentionsTriggerOn(sql, 'orchestrator_research_runs');
+    const onEvidence = mentionsTriggerOn(sql, 'orchestrator_research_evidence');
+    assert.ok(
+      !(onRuns && onEvidence),
+      'runs and evidence trigger DDL must not share a p.query / _installInTransaction string'
+    );
+  }
+
+  const groups = [
+    {
+      table: 'orchestrator_research_runs',
+      triggers: [
+        'orchestrator_research_runs_approval_bind',
+        'orchestrator_research_runs_identity_immutable',
+      ],
+    },
+    {
+      table: 'orchestrator_research_competitors',
+      triggers: ['orchestrator_research_competitors_immutable'],
+    },
+    {
+      table: 'orchestrator_research_evidence',
+      triggers: [
+        'orchestrator_research_evidence_immutable',
+        'orchestrator_research_evidence_supersedes_bind',
+        'orchestrator_research_evidence_quota_insert',
+        'orchestrator_research_evidence_quota_delete',
+      ],
+    },
+    {
+      table: 'orchestrator_research_evidence_assets',
+      triggers: ['orchestrator_research_evidence_assets_immutable'],
+    },
+  ];
+  for (const group of groups) {
+    const blob = triggerInstalls.find((sql) => mentionsTriggerOn(sql, group.table));
+    assert.ok(blob, `missing _installInTransaction for ${group.table}`);
+    for (const name of group.triggers) {
+      assert.match(
+        blob,
+        new RegExp(`DROP\\s+TRIGGER\\s+IF\\s+EXISTS\\s+${name}\\s+ON\\s+${group.table}`),
+        `${name} DROP must stay in the same transaction as ${group.table}`
+      );
+      assert.match(
+        blob,
+        new RegExp(`CREATE\\s+TRIGGER\\s+${name}[\\s\\S]*?\\sON\\s+${group.table}`),
+        `${name} CREATE must stay in the same transaction as ${group.table}`
+      );
+    }
+  }
+});
 
 const HAS_DB = db.hasDb();
 const SHA256_A = 'a'.repeat(64);
@@ -716,5 +826,38 @@ if (!HAS_DB) {
     assert.strictEqual(limits.max_research_evidence_records, 0);
     assert.strictEqual(Number(limits.max_research_evidence_payload_bytes), 0);
     await p.query(`DELETE FROM tenants WHERE id=$1`, [tenantD]);
+  });
+
+  test('research triggers remain installed after a second ensure()', async () => {
+    await ensureAgentOrchestratorSchema();
+    const p = db.getPool();
+    const rows = (await p.query(`
+      SELECT c.relname AS table_name, t.tgname
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public'
+         AND NOT t.tgisinternal
+         AND c.relname IN (
+           'orchestrator_research_runs',
+           'orchestrator_research_competitors',
+           'orchestrator_research_evidence',
+           'orchestrator_research_evidence_assets'
+         )
+       ORDER BY 1, 2
+    `)).rows;
+    const names = new Set(rows.map((r) => `${r.table_name}:${r.tgname}`));
+    for (const want of [
+      'orchestrator_research_runs:orchestrator_research_runs_approval_bind',
+      'orchestrator_research_runs:orchestrator_research_runs_identity_immutable',
+      'orchestrator_research_competitors:orchestrator_research_competitors_immutable',
+      'orchestrator_research_evidence:orchestrator_research_evidence_immutable',
+      'orchestrator_research_evidence:orchestrator_research_evidence_supersedes_bind',
+      'orchestrator_research_evidence:orchestrator_research_evidence_quota_insert',
+      'orchestrator_research_evidence:orchestrator_research_evidence_quota_delete',
+      'orchestrator_research_evidence_assets:orchestrator_research_evidence_assets_immutable',
+    ]) {
+      assert.ok(names.has(want), `missing trigger ${want}`);
+    }
   });
 }
