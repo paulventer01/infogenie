@@ -286,7 +286,7 @@ if (!HAS_DB) {
     )).rows;
     assert.strictEqual(still.length, 1, 'ensure must not delete held evidence');
 
-    const swept = await sweepExpiredResearchEvidence();
+    const swept = await sweepExpiredResearchEvidence({ tenantId: tenantA });
     assert.ok(swept);
     const kept = (await p.query(
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
@@ -560,12 +560,12 @@ if (!HAS_DB) {
           return undefined;
         },
       });
-      const dirty = await sweepExpiredResearchEvidence();
+      const dirty = await sweepExpiredResearchEvidence({ tenantId: tenantA });
       assert.strictEqual(dirty.ok, false, 'unheld NULL expiry must fail-close');
       assert.ok(dirty.invalid_expiry >= 1);
 
       await insertHold(p, tenantA, 'evidence', unheldNullId);
-      const clean = await sweepExpiredResearchEvidence();
+      const clean = await sweepExpiredResearchEvidence({ tenantId: tenantA });
       assert.strictEqual(clean.invalid_expiry, 0, 'held missing_expiry must not count as invalid_expiry');
       assert.strictEqual(clean.failures, 0);
       assert.strictEqual(clean.ok, true);

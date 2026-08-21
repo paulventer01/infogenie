@@ -232,7 +232,7 @@ if (!HAS_DB) {
       createdAt, expiresAt: expiredAt, retentionClass: 'legal_hold',
     });
 
-    const result = await sweepExpiredResearchEvidence();
+    const result = await sweepExpiredResearchEvidence({ tenantId: tenantA });
     assert.ok(result && result.ok === true);
     assert.ok(result.purged >= 2, 'expired evidence and expired asset must be purged');
     assert.strictEqual(result.invalid_expiry, 0);
@@ -283,7 +283,7 @@ if (!HAS_DB) {
       },
     });
     try {
-      await sweepExpiredResearchEvidence();
+      await sweepExpiredResearchEvidence({ tenantId: tenantA });
     } finally {
       db.getPool = origGetPool;
     }
@@ -304,9 +304,9 @@ if (!HAS_DB) {
     const host = await seedHost(p, tenantA);
     const comp = await insertComp(p, tenantA, host.runId);
     await insertExpiredEvidence(p, tenantA, host.runId, comp);
-    const first = await sweepExpiredResearchEvidence();
+    const first = await sweepExpiredResearchEvidence({ tenantId: tenantA });
     assert.ok(first.purged >= 1);
-    const second = await sweepExpiredResearchEvidence();
+    const second = await sweepExpiredResearchEvidence({ tenantId: tenantA });
     assert.ok(second.ok === true);
     assert.strictEqual(second.purged, 0);
   });
@@ -338,7 +338,7 @@ if (!HAS_DB) {
     for (let i = 0; i < n; i += 1) {
       await insertExpiredEvidence(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt });
     }
-    const result = await sweepExpiredResearchEvidence();
+    const result = await sweepExpiredResearchEvidence({ tenantId: tenantA });
     assert.ok(result.purged >= n, 'one call loops until empty; each DELETE is still LIMIT-bounded');
     const leftover = (await p.query(
       `SELECT COUNT(*)::int AS n FROM orchestrator_research_evidence
@@ -370,7 +370,7 @@ if (!HAS_DB) {
       }),
       /retention_expiry|check/i
     );
-    const result = await sweepExpiredResearchEvidence();
+    const result = await sweepExpiredResearchEvidence({ tenantId: tenantA });
     assert.ok(result);
     assert.strictEqual(typeof result.invalid_expiry, 'number');
   });
@@ -401,7 +401,14 @@ if (!HAS_DB) {
     });
     let result;
     try {
-      result = await sweepExpiredResearchEvidence();
+      const rA = await sweepExpiredResearchEvidence({ tenantId: tenantA });
+      const rB = await sweepExpiredResearchEvidence({ tenantId: tenantB });
+      result = {
+        ok: rA.ok && rB.ok,
+        failures: (rA.failures || 0) + (rB.failures || 0),
+        purged: (rA.purged || 0) + (rB.purged || 0),
+        invalid_expiry: (rA.invalid_expiry || 0) + (rB.invalid_expiry || 0),
+      };
     } finally {
       db.getPool = origGetPool;
     }
@@ -442,7 +449,7 @@ if (!HAS_DB) {
     console.log = (...args) => { lines.push(args.map(String).join(' ')); };
     console.error = (...args) => { lines.push(args.map(String).join(' ')); };
     try {
-      const result = await sweepExpiredResearchEvidence();
+      const result = await sweepExpiredResearchEvidence({ tenantId: tenantA });
       assert.ok(result.purged >= 1);
     } finally {
       logger.info = origInfo;
@@ -526,7 +533,7 @@ if (!HAS_DB) {
         (err) => err instanceof OrchError && err.code === 'research_evidence_limit_exceeded'
       );
 
-      const swept = await sweepExpiredResearchEvidence();
+      const swept = await sweepExpiredResearchEvidence({ tenantId: tenantQ });
       assert.ok(swept.purged >= 1);
 
       const again = await insertEvidenceItem(p, {
@@ -578,7 +585,7 @@ if (!HAS_DB) {
     )).rows;
     assert.strictEqual(afterEnsure.length, 1, 'ensure must identify holds, not delete them');
 
-    const result = await sweepExpiredResearchEvidence();
+    const result = await sweepExpiredResearchEvidence({ tenantId: tenantA });
     assert.ok(result);
     assert.strictEqual(result.failures, 0);
     const heldKept = (await p.query(
@@ -813,7 +820,7 @@ if (!HAS_DB) {
     });
     let result;
     try {
-      result = await sweepExpiredResearchEvidence();
+      result = await sweepExpiredResearchEvidence({ tenantId: tenantA });
     } finally {
       db.getPool = origGetPool;
       logger.warn = origWarn;
@@ -864,7 +871,14 @@ if (!HAS_DB) {
     });
     let result;
     try {
-      result = await sweepExpiredResearchEvidence();
+      const rA = await sweepExpiredResearchEvidence({ tenantId: tenantA });
+      const rB = await sweepExpiredResearchEvidence({ tenantId: tenantB });
+      result = {
+        ok: rA.ok && rB.ok,
+        failures: (rA.failures || 0) + (rB.failures || 0),
+        purged: (rA.purged || 0) + (rB.purged || 0),
+        invalid_expiry: (rA.invalid_expiry || 0) + (rB.invalid_expiry || 0),
+      };
     } finally {
       db.getPool = origGetPool;
     }
@@ -942,7 +956,7 @@ if (!HAS_DB) {
         [tenantA, seeded]
       )).rows[0].n;
       if (leftover === 0) break;
-      await sweepExpiredResearchEvidence();
+      await sweepExpiredResearchEvidence({ tenantId: tenantA });
     }
     assert.strictEqual(leftover, 0, 'leftover expired rows must eventually go to 0');
 
