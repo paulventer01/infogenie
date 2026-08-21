@@ -254,7 +254,6 @@ if (!HAS_DB) {
         }
         return origPool.query(sql, params);
       },
-      connect: () => origPool.connect(),
     });
     try {
       await sweepExpiredResearchEvidence();
@@ -352,21 +351,16 @@ if (!HAS_DB) {
 
     const origGetPool = db.getPool;
     const origPool = db.getPool();
+    const origQuery = origPool.query.bind(origPool);
     db.getPool = () => ({
-      query: (sql, params) => origPool.query(sql, params),
-      connect: async () => {
-        const client = await origPool.connect();
-        const origQuery = client.query.bind(client);
-        client.query = async (sql, params) => {
-          if (
-            params && params[0] === tenantA
-            && /DELETE FROM orchestrator_research_evidence\b/.test(sql)
-          ) {
-            throw Object.assign(new Error('injected-fail'), { code: 'XX000' });
-          }
-          return origQuery(sql, params);
-        };
-        return client;
+      query: async (sql, params) => {
+        if (
+          params && params[0] === tenantA
+          && /DELETE FROM orchestrator_research_evidence\b/.test(sql)
+        ) {
+          throw Object.assign(new Error('injected-fail'), { code: 'XX000' });
+        }
+        return origQuery(sql, params);
       },
     });
     let result;
