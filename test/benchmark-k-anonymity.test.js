@@ -13,12 +13,12 @@ process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:post
 require('./helpers/env');
 
 const db = require('../db');
-const { hasDb } = require('./helpers');
+const { rethrowDeadlock } = require('./helpers/scratch_db');
 const { ensureTenantSchema } = require('../services/tenants/schema');
 const { ensureBenchmarksSchema } = require('../services/benchmarks/schema');
 const tenantCtx = require('../services/tenants/context');
 
-const HAS_DB = hasDb();
+const HAS_DB = db.hasDb();
 const skip = HAS_DB ? false : 'no DATABASE_URL — benchmark k-anonymity skipped';
 
 const SUFFIX = `kanon-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
@@ -125,7 +125,6 @@ after(async () => {
   if (!HAS_DB) return;
   const p = db.getPool();
   const ids = tenants.filter(Boolean);
-  const { rethrowDeadlock } = require('./helpers/scratch_db');
   // Best-effort teardown when setup failed partway (missing tables). Deadlock
   // (40P01) / serialization failure (40001) always fail — do not swallow them.
   await p.query(

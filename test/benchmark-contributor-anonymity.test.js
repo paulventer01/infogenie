@@ -41,13 +41,13 @@ process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:post
 require('./helpers/env');
 
 const db = require('../db');
-const { hasDb } = require('./helpers');
+const { rethrowDeadlock } = require('./helpers/scratch_db');
 const { ensureAuthSchema } = require('../services/auth/schema');
 const { ensureTenantSchema } = require('../services/tenants/schema');
 const { ensureBenchmarksSchema } = require('../services/benchmarks/schema');
 const tenantCtx = require('../services/tenants/context');
 
-const HAS_DB = hasDb();
+const HAS_DB = db.hasDb();
 const skip = HAS_DB ? false : 'no DATABASE_URL — contributor anonymity skipped';
 
 const SUFFIX = `contrib-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
@@ -152,7 +152,6 @@ after(async () => {
   if (server) await new Promise(r => server.close(r));
   if (!HAS_DB) return;
   const p = db.getPool();
-  const { rethrowDeadlock } = require('./helpers/scratch_db');
   // Best-effort teardown when setup failed partway (missing tables). Deadlock
   // (40P01) / serialization failure (40001) always fail — do not swallow them.
   await p.query(`DELETE FROM benchmark_aggregates WHERE vertical=$1`, [VERTICAL]).catch(rethrowDeadlock);

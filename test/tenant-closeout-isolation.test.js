@@ -21,7 +21,7 @@ process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:post
 require('./helpers/env');
 
 const db = require('../db');
-const { hasDb } = require('./helpers');
+const { rethrowDeadlock } = require('./helpers/scratch_db');
 const { ensureTenantSchema } = require('../services/tenants/schema');
 const { ensureLaunchComplianceSchema } = require('../services/launch_compliance/schema');
 const { ensurePostLaunchAuditSchema } = require('../services/post_launch_audit/schema');
@@ -29,7 +29,7 @@ const { ensureVerticalPlaybooksSchema } = require('../services/vertical_playbook
 const { ensureBacklinkMonitorSchema } = require('../services/backlink_monitor/schema');
 const tenantCtx = require('../services/tenants/context');
 
-const HAS_DB = hasDb();
+const HAS_DB = db.hasDb();
 const skip = HAS_DB ? false : 'no DATABASE_URL — closeout isolation skipped';
 
 const SUFFIX = `co-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
@@ -118,7 +118,6 @@ after(async () => {
   const p = db.getPool();
   const ids = [tenantA, tenantB].filter(Boolean);
   if (!ids.length) return;
-  const { rethrowDeadlock } = require('./helpers/scratch_db');
   // Best-effort teardown when setup failed partway (missing tables). Deadlock
   // (40P01) / serialization failure (40001) always fail — do not swallow them.
   await p.query(`DELETE FROM active_playbooks WHERE tenant_id = ANY($1)`, [ids]).catch(rethrowDeadlock);

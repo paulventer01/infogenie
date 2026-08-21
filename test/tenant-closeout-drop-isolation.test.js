@@ -98,6 +98,10 @@ test('restorePreflightFixtures and isolation/k-anonymity tenant cleanup rethrow 
     assert.match(src, /rethrowDeadlock/, `${label} must rethrow deadlock-class errors`);
     assert.doesNotMatch(src, /DELETE FROM tenants[\s\S]{0,80}\.catch\(\(\) => \{\}\)/,
       `${label} must not swallow DELETE FROM tenants failures with .catch(() => {})`);
+    // helpers/index.js requires server.js, which fires every ensure*Schema at
+    // load and 23505-races CREATE INDEX on the live QA database.
+    assert.doesNotMatch(src, /require\('\.\/helpers'\)/,
+      `${label} must not require test/helpers/index.js (loads server.js)`);
   }
 });
 
