@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const { createRateLimiter } = require('../security/rate_limit');
 const OpenAI = require('openai');
 
 
@@ -102,6 +103,132 @@ async function seedPlaybooks(p) {
   }
 }
 
+// Per-tenant playbooks limiter (not server.js `_RL_PATHS`, which is IP+path and
+// POST-only). Shared bucket: 60 req / 60s per tenant for the whole prefix so
+// spraying paths cannot multiply quota. generate-custom extra: 5 / 60s.
+// Test-only overrides (NODE_ENV === 'test' at module load): PLAYBOOKS_RATE_LIMIT_MAX
+// and PLAYBOOKS_GENERATE_RATE_LIMIT_MAX. Tests must set those before requiring
+// this module (e.g. before require('./helpers'), which loads server.js).
+function _testOnlyMax(envName, fallback) {
+  if (process.env.NODE_ENV !== 'test') return fallback;
+  const n = Number.parseInt(String(process.env[envName] || ''), 10);
+  if (Number.isFinite(n) && n > 0) return n;
+  return fallback;
+}
+
+const PLAYBOOKS_WINDOW_MS = 60_000;
+const PLAYBOOKS_SHARED_MAX = _testOnlyMax('PLAYBOOKS_RATE_LIMIT_MAX', 60);
+const PLAYBOOKS_GENERATE_MAX = _testOnlyMax('PLAYBOOKS_GENERATE_RATE_LIMIT_MAX', 5);
+
+// Authenticated server-side tenant only. Never body/query/headers, never
+// resolveTenantId (that can fall back to the default tenant when enforcement
+// is off). Finite integer > 0; anything else fail-closed.
+function tenantIdFromAuthContext(req) {
+  const raw = req && req.tenant ? req.tenant.id : undefined;
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw) || !Number.isInteger(raw) || raw <= 0) return null;
+    return raw;
+  }
+  if (typeof raw === 'string' && /^[1-9]\d*$/.test(raw)) {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function playbooksTenantGuard(req, res, next) {
+  if (tenantIdFromAuthContext(req) == null) {
+    return res.status(400).json({ ok: false, error: 'no_tenant' });
+  }
+  return next();
+}
+
+function playbooksSharedKey(req) {
+  const tid = tenantIdFromAuthContext(req);
+  return tid == null ? null : `playbooks|${tid}`;
+}
+
+function playbooksGenerateKey(req) {
+  const tid = tenantIdFromAuthContext(req);
+  return tid == null ? null : `playbooks-generate|${tid}`;
+}
+
+const _limiterQueues = new Map();
+
+// createRateLimiter's in-memory path is check-then-act after an async Redis
+// probe and can race. Serialize per key in this process so concurrent
+// requests cannot bypass max. Redis remains the multi-instance counter.
+function serializeLimiter(limiter, keyFn) {
+  return function serializedLimiter(req, res, next) {
+    const key = keyFn(req);
+    if (key == null) {
+      return res.status(400).json({ ok: false, error: 'no_tenant' });
+    }
+
+    const run = () => new Promise((resolve) => {
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      const origJson = res.json;
+      const origEnd = res.end;
+      const restore = () => {
+        res.json = origJson;
+        res.end = origEnd;
+      };
+      res.json = function patchedJson(...args) {
+        settle();
+        restore();
+        return origJson.apply(this, args);
+      };
+      res.end = function patchedEnd(...args) {
+        settle();
+        restore();
+        return origEnd.apply(this, args);
+      };
+      const wrappedNext = (err) => {
+        settle();
+        restore();
+        next(err);
+      };
+      try {
+        limiter(req, res, wrappedNext);
+      } catch (err) {
+        settle();
+        restore();
+        next(err);
+      }
+    });
+
+    const prev = _limiterQueues.get(key) || Promise.resolve();
+    const chained = prev.then(run, run);
+    _limiterQueues.set(key, chained);
+    chained.catch(() => {});
+    chained.finally(() => {
+      if (_limiterQueues.get(key) === chained) _limiterQueues.delete(key);
+    });
+  };
+}
+
+const playbooksSharedLimiter = createRateLimiter({
+  name: 'playbooks',
+  windowMs: PLAYBOOKS_WINDOW_MS,
+  max: PLAYBOOKS_SHARED_MAX,
+  keyFn: playbooksSharedKey,
+});
+
+const playbooksGenerateLimiter = createRateLimiter({
+  name: 'playbooks-generate',
+  windowMs: PLAYBOOKS_WINDOW_MS,
+  max: PLAYBOOKS_GENERATE_MAX,
+  keyFn: playbooksGenerateKey,
+});
+
+router.use(playbooksTenantGuard);
+router.use(serializeLimiter(playbooksSharedLimiter, playbooksSharedKey));
+
 router.get('/list', async (req, res) => {
   const p = await _db.getPool();
   await seedPlaybooks(p);
@@ -152,7 +279,7 @@ router.get('/active/list', async (req, res) => {
   res.json({ ok:true, active: rows.rows.map(r=>({ ...r, content: typeof r.content==='string'?JSON.parse(r.content):r.content })) });
 });
 
-router.post('/generate-custom', async (req, res) => {
+router.post('/generate-custom', serializeLimiter(playbooksGenerateLimiter, playbooksGenerateKey), async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'playbooks:generate-custom' });
   if (!tid) return res.status(400).json({ ok:false, error:'no_tenant' });
   const { industry, business_description, goals, challenges, budget } = req.body || {};
@@ -190,3 +317,5 @@ Return strict JSON matching this structure:
 });
 
 module.exports = router;
+module.exports.playbooksTenantGuard = playbooksTenantGuard;
+module.exports.tenantIdFromAuthContext = tenantIdFromAuthContext;

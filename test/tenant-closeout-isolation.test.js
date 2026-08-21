@@ -99,6 +99,16 @@ before(async () => {
   const express = require('express');
   const app = express();
   app.use(express.json());
+  // Playbooks limiter keys exclusively on req.tenant.id (not resolveTenantId).
+  // Stamp it from the same trusted x-test-tid the handlers already use.
+  app.use((req, _res, next) => {
+    const h = req.headers['x-test-tid'];
+    if (h != null && h !== '') {
+      const n = parseInt(h, 10);
+      if (Number.isFinite(n) && n > 0) req.tenant = { id: n };
+    }
+    next();
+  });
   app.use('/api/launch-compliance', require('../services/launch_compliance/api'));
   app.use('/api/post-launch-audit', require('../services/post_launch_audit/api'));
   app.use('/api/playbooks', require('../services/vertical_playbooks/api'));
@@ -225,7 +235,7 @@ test('stale active_playbooks mapping does not disclose foreign custom playbook c
 });
 
 test('system catalog playbooks remain activatable by any tenant', { skip }, async () => {
-  const list = await req('GET', '/api/playbooks/list');
+  const list = await req('GET', '/api/playbooks/list', { tid: tenantA });
   assert.strictEqual(list.status, 200, list.text);
   assert.ok(list.json.playbooks && list.json.playbooks.length > 0, 'system catalog must seed');
   const sysId = list.json.playbooks[0].id;
