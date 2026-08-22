@@ -457,38 +457,62 @@ async function createLoginRole(admin, { name, password, schemaCreate }) {
   }
 }
 
+// Test-only: serialize AccessExclusiveLock takers (OWNER TO / REASSIGN /
+// DROP OWNED) with ensure() and the concurrency locker. Gate is a third
+// connection so the work client never holds 87231402 — ensure() already
+// holds that lock for its whole run and would self-deadlock if we took it
+// on a client we then used to call ensureAgentOrchestratorSchema().
+async function withEnsureDdlGate(pool, work) {
+  const gate = await pool.connect();
+  const client = await pool.connect();
+  try {
+    await gate.query('SELECT pg_advisory_lock($1)', [87231402]);
+    await client.query("SET lock_timeout = '30s'");
+    return await work(client);
+  } finally {
+    try { await client.query('SET lock_timeout TO DEFAULT'); } catch { /* ignore */ }
+    client.release();
+    try { await gate.query('SELECT pg_advisory_unlock($1)', [87231402]); } catch { /* ignore */ }
+    gate.release();
+  }
+}
+
 async function dropLoginRole(admin, name) {
-  await admin.query(`REASSIGN OWNED BY ${name} TO CURRENT_USER`);
-  await admin.query(`DROP OWNED BY ${name}`);
-  await admin.query(`DROP ROLE IF EXISTS ${name}`);
+  await withEnsureDdlGate(admin, async (client) => {
+    await client.query(`REASSIGN OWNED BY ${name} TO CURRENT_USER`);
+    await client.query(`DROP OWNED BY ${name}`);
+    await client.query(`DROP ROLE IF EXISTS ${name}`);
+  });
 }
 
 async function grantOrchestratorMigrator(admin, name) {
-  await admin.query(`GRANT SELECT, REFERENCES ON TABLE tenants TO ${name}`);
-  const users = await admin.query(
-    `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='users'`
-  );
-  if (users.rowCount) {
-    await admin.query(`GRANT SELECT, REFERENCES ON TABLE users TO ${name}`);
-  }
-  await admin.query(`GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ${name}`);
-  const tables = (await admin.query(`
-    SELECT tablename FROM pg_tables
-     WHERE schemaname='public'
-       AND (tablename LIKE 'orchestrator_%' OR tablename = 'agent_orchestrator_runs')
-  `)).rows;
-  for (const t of tables) {
-    await admin.query(`ALTER TABLE public.${t.tablename} OWNER TO ${name}`);
-  }
-  const fns = (await admin.query(`
-    SELECT p.oid::regprocedure AS ident
-      FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
-     WHERE n.nspname='public' AND p.proname LIKE 'orchestrator_%'
-  `)).rows;
-  for (const f of fns) {
-    await admin.query(`ALTER FUNCTION ${f.ident} OWNER TO ${name}`);
-  }
+  await withEnsureDdlGate(admin, async (client) => {
+    await client.query(`GRANT SELECT, REFERENCES ON TABLE tenants TO ${name}`);
+    const users = await client.query(
+      `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='users'`
+    );
+    if (users.rowCount) {
+      await client.query(`GRANT SELECT, REFERENCES ON TABLE users TO ${name}`);
+    }
+    await client.query(`GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ${name}`);
+    const tables = (await client.query(`
+      SELECT tablename FROM pg_tables
+       WHERE schemaname='public'
+         AND (tablename LIKE 'orchestrator_%' OR tablename = 'agent_orchestrator_runs')
+    `)).rows;
+    for (const t of tables) {
+      await client.query(`ALTER TABLE public.${t.tablename} OWNER TO ${name}`);
+    }
+    const fns = (await client.query(`
+      SELECT p.oid::regprocedure AS ident
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname='public' AND p.proname LIKE 'orchestrator_%'
+    `)).rows;
+    for (const f of fns) {
+      await client.query(`ALTER FUNCTION ${f.ident} OWNER TO ${name}`);
+    }
+  });
 }
 
 if (!HAS_DB) {

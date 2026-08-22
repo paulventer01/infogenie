@@ -92,21 +92,26 @@ async function insertExpiredEvidence(p, tenantId, runId, competitorId) {
 }
 
 async function runSkipLockedHeldRowOnce(p, tenantId) {
-  const host = await seedHost(p, tenantId);
-  const comp = await insertComp(p, tenantId, host.runId);
-  const lockedId = await insertExpiredEvidence(p, tenantId, host.runId, comp);
-  const freeIds = [];
-  for (let i = 0; i < 3; i += 1) {
-    freeIds.push(await insertExpiredEvidence(p, tenantId, host.runId, comp));
-  }
-
   const gate = await p.connect();
   const locker = await p.connect();
+  let lockedId;
   try {
-    // Test-only third connection. Sibling ensure() waits on 87231402 and
-    // must not start ALTER while this row is locked. Production sweep/ensure
-    // do not share this advisory lock with the sweeper.
+    // Test-only third connection. Take 87231402 BEFORE seeding: sibling
+    // REASSIGN OWNED / OWNER TO take AccessExclusiveLock on evidence, and
+    // seed INSERTs take AccessShareLock on evidence then tenant_limits
+    // (quota trigger). Opposite lock order deadlocks if we insert first.
+    // Sibling ensure() also waits here and cannot start ALTER while this
+    // row is locked. Production sweep/ensure do not share this lock with
+    // the sweeper.
     await gate.query('SELECT pg_advisory_lock($1)', [87231402]);
+    const host = await seedHost(p, tenantId);
+    const comp = await insertComp(p, tenantId, host.runId);
+    lockedId = await insertExpiredEvidence(p, tenantId, host.runId, comp);
+    const freeIds = [];
+    for (let i = 0; i < 3; i += 1) {
+      freeIds.push(await insertExpiredEvidence(p, tenantId, host.runId, comp));
+    }
+
     await locker.query('BEGIN');
     await locker.query(
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
@@ -196,11 +201,18 @@ if (!HAS_DB) {
 
   test('two concurrent sweeps partition expired rows without a noop race', async () => {
     const p = db.getPool();
-    const host = await seedHost(p, tenantA);
-    const comp = await insertComp(p, tenantA, host.runId);
+    const gate = await p.connect();
     const ids = [];
-    for (let i = 0; i < 12; i += 1) {
-      ids.push(await insertExpiredEvidence(p, tenantA, host.runId, comp));
+    try {
+      await gate.query('SELECT pg_advisory_lock($1)', [87231402]);
+      const host = await seedHost(p, tenantA);
+      const comp = await insertComp(p, tenantA, host.runId);
+      for (let i = 0; i < 12; i += 1) {
+        ids.push(await insertExpiredEvidence(p, tenantA, host.runId, comp));
+      }
+    } finally {
+      try { await gate.query('SELECT pg_advisory_unlock($1)', [87231402]); } catch { /* ignore */ }
+      gate.release();
     }
 
     const [first, second] = await Promise.all([
