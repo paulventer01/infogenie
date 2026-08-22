@@ -75,11 +75,11 @@ function renderResult(r: SimResults, question: string, showShare?: { id:number; 
         ? `<a href="/simulator/share/${showShare.token}" target="_blank" rel="noreferrer" style="padding:6px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:.8rem;font-weight:600;color:#1d4ed8;text-decoration:none">🔗 Share link</a>`
         : `<button onclick="window._dtShare(${showShare.id})" style="padding:6px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:.8rem;font-weight:600;color:#1d4ed8;cursor:pointer">🔗 Get share link</button>`
       }
-      <a href="/api/digital-twin/scenarios/${showShare.id}/pdf" target="_blank" rel="noreferrer" style="padding:6px 14px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:6px;font-size:.8rem;font-weight:600;color:#7c3aed;text-decoration:none">📄 Export PDF</a>
+      <a href="/api/digital-twin/scenarios/${showShare.id}/pdf" target="_blank" rel="noreferrer" style="padding:6px 14px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:6px;font-size:.8rem;font-weight:600;color:#0f766e;text-decoration:none">📄 Export PDF</a>
     </div>` : '';
 
   return `
-<div class="ig-card" style="border-left:4px solid #8b5cf6;margin-bottom:16px">
+<div class="ig-card" style="border-left:4px solid #0284c7;margin-bottom:16px">
   <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap">
     ${scoreRing(r.confidence || 65)}
     <div>
@@ -93,7 +93,7 @@ function renderResult(r: SimResults, question: string, showShare?: { id:number; 
     <div style="font-size:.75rem;font-weight:600;color:#6b7280;margin-bottom:8px">WHAT HAPPENS OVER 90 DAYS</div>
     <div style="display:flex;flex-direction:column;gap:8px">${r.timeline.map(t=>`
       <div style="display:flex;gap:12px;padding:10px;background:#faf5ff;border-radius:8px">
-        <div style="width:80px;min-width:80px;font-size:.75rem;font-weight:700;color:#8b5cf6;padding-top:2px">${esc(t.period)}</div>
+        <div style="width:80px;min-width:80px;font-size:.75rem;font-weight:700;color:#0284c7;padding-top:2px">${esc(t.period)}</div>
         <div><div style="font-size:.85rem;font-weight:600">${esc(t.what_happens)}</div><div style="font-size:.8rem;color:#6b7280">${esc(t.metric_impact)}</div></div>
       </div>`).join("")}</div>
   </div>` : ""}
@@ -398,7 +398,7 @@ function CompareTab({ history }: { history: SimRow[] }) {
             const sel = selected.includes(s.id);
             return (
               <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer",
-                padding: "10px 14px", borderRadius: 8, border: `2px solid ${sel ? "#8b5cf6" : "#e5e7eb"}`,
+                padding: "10px 14px", borderRadius: 8, border: `2px solid ${sel ? "#0284c7" : "#e5e7eb"}`,
                 background: sel ? "#faf5ff" : "#fff", transition: "all .15s" }}>
                 <input type="checkbox" checked={sel} onChange={() => toggle(s.id)} style={{ width: 16, height: 16 }} />
                 <div style={{ flex: 1 }}>
@@ -490,7 +490,7 @@ function CompareTab({ history }: { history: SimRow[] }) {
                   )}
                   <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
                     <a href={`/api/digital-twin/scenarios/${s.id}/pdf`} target="_blank" rel="noreferrer"
-                      style={{ fontSize: ".72rem", color: "#7c3aed", textDecoration: "none",
+                      style={{ fontSize: ".72rem", color: "#0f766e", textDecoration: "none",
                         background: "#f5f3ff", borderRadius: 4, padding: "3px 8px" }}>
                       📄 PDF
                     </a>
@@ -628,9 +628,9 @@ export default function DigitalTwin() {
               style={{
                 padding: "8px 18px", border: "none", borderRadius: "6px 6px 0 0", cursor: "pointer",
                 fontWeight: 600, fontSize: ".85rem",
-                background: tab === t.id ? "#8b5cf6" : "transparent",
+                background: tab === t.id ? "#0284c7" : "transparent",
                 color: tab === t.id ? "#fff" : "#6b7280",
-                borderBottom: tab === t.id ? "2px solid #8b5cf6" : "none",
+                borderBottom: tab === t.id ? "2px solid #0284c7" : "none",
                 marginBottom: tab === t.id ? -2 : 0,
               }}>
               {t.label}

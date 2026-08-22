@@ -64,7 +64,7 @@ const SEED_CLIENTS: Client[] = [
   { id: "cl3", name: "Nova Fintech", domain: "novafintech.co", industry: "Fintech", contact: "Priya Patel", email: "priya@novafintech.co", budget: 7200, status: "active", campaigns: 4, addedDate: "20 Jan 2026", lastReport: "8 Apr 2026", freq: "monthly", color: "#DC2626", revenue: 21000 },
 ];
 
-const COLORS = ["#6366F1", "#059669", "#DC2626", "#D97706", "#0066FF", "#7C3AED", "#0A66C2", "#E1306C"];
+const COLORS = ["#6366F1", "#059669", "#DC2626", "#D97706", "#0066FF", "#0f766e", "#0A66C2", "#E1306C"];
 const INDUSTRIES = ["SaaS", "eCommerce", "Fintech", "Health & Wellness", "Real Estate", "Education", "Agency", "Retail", "B2B Services", "Travel"];
 
 const TABS = [

@@ -427,11 +427,11 @@ export default function Backlinks() {
             style={{
               padding: "10px 22px",
               background: "#fff",
-              border: "2px solid #7C3AED",
+              border: "2px solid #0f766e",
               borderRadius: 8,
               fontSize: "0.84rem",
               fontWeight: 800,
-              color: "#7C3AED",
+              color: "#0f766e",
               cursor: "pointer",
             }}
           >

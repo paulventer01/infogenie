@@ -7,11 +7,13 @@
 // toggle, and "run now". State is client-side (matching the legacy panel,
 // which tracked toggle state on window globals) — no API calls. Cross-tool
 // "View" links route via lib/nav#goToView.
+// Also hosts the Zapier / n8n Automation Bridge (outbound + inbound webhooks).
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
 import { useToast } from "@/hooks/useToast";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 
 interface Automation {
   id: string;
@@ -35,7 +37,7 @@ interface LogEntry {
 
 const AUTOMATIONS: Automation[] = [
   {
-    id: "social-autopub", cat: "social", icon: "🚀", color: "#7C3AED", bg: "#F5F3FF", border: "#DDD6FE",
+    id: "social-autopub", cat: "social", icon: "🚀", color: "#0f766e", bg: "#F5F3FF", border: "#DDD6FE",
     name: "Social Auto-Publisher",
     desc: "Monitors your scheduled posts every 60 seconds and automatically publishes them to connected platforms at their exact scheduled time.",
     trigger: "Scheduled post time reached",
@@ -83,7 +85,7 @@ const AUTOMATIONS: Automation[] = [
     nav: "campaigns",
   },
   {
-    id: "competitor-spend-alert", cat: "campaigns", icon: "🔔", color: "#7C3AED", bg: "#F5F3FF", border: "#DDD6FE",
+    id: "competitor-spend-alert", cat: "campaigns", icon: "🔔", color: "#0f766e", bg: "#F5F3FF", border: "#DDD6FE",
     name: "Competitor Spend Alert",
     desc: "Detects significant changes in competitor estimated ad spend. Sends an in-app alert when a competitor increases or decreases spend by 25%+.",
     trigger: "Competitor spend change ≥ 25%",
@@ -107,7 +109,7 @@ const AUTOMATIONS: Automation[] = [
     nav: "intelligence",
   },
   {
-    id: "reddit-watcher", cat: "intelligence", icon: "🔴", color: "#FF6B35", bg: "#FFF4EF", border: "#FDBA74",
+    id: "reddit-watcher", cat: "intelligence", icon: "🔴", color: "#0f766e", bg: "#FFF4EF", border: "#FDBA74",
     name: "Reddit Signal Watcher",
     desc: "Auto-monitors subreddits relevant to your industry every 2 hours. Surfaces high-relevance threads and pre-drafts reply suggestions.",
     trigger: "Every 2 hours",
@@ -161,7 +163,7 @@ const CAT_LABELS: Record<string, string> = {
   intelligence: "Intelligence", reengage: "Re-Engagement", ai: "AI Visibility",
 };
 const CAT_COLORS: Record<string, string> = {
-  all: "#10B981", social: "#7C3AED", campaigns: "#059669",
+  all: "#10B981", social: "#0f766e", campaigns: "#059669",
   intelligence: "#0066FF", reengage: "#D97706", ai: "#10A37F",
 };
 
@@ -412,6 +414,8 @@ export default function Automations() {
         })}
       </div>
 
+      <AutomationBridgePanel />
+
       {/* Activity log */}
       {log.length > 0 && (
         <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 16, padding: 20, marginTop: 24, boxShadow: "0 1px 4px rgba(0,0,0,.04)" }}>
@@ -431,6 +435,169 @@ export default function Automations() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function AutomationBridgePanel() {
+  const toast = useToast();
+  const [targets, setTargets] = useState<Array<{
+    id: number; provider: string; name: string; target_url: string; triggers: string[]; enabled: boolean;
+  }>>([]);
+  const [inbound, setInbound] = useState<{ webhook_path?: string; webhook_url?: string; token?: string } | null>(null);
+  const [catalog, setCatalog] = useState<{ triggers: Array<{ id: string; label: string }>; actions: Array<{ id: string; label: string }> }>({ triggers: [], actions: [] });
+  const [provider, setProvider] = useState("zapier");
+  const [url, setUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    const [t, i, c] = await Promise.all([
+      apiGet<{ ok: boolean; items: typeof targets }>("/api/automation-bridge/targets"),
+      apiGet<{ ok: boolean; items: Array<{ webhook_path?: string; webhook_url?: string; token?: string }> }>("/api/automation-bridge/inbound"),
+      apiGet<{ ok: boolean; triggers: Array<{ id: string; label: string }>; actions: Array<{ id: string; label: string }> }>("/api/automation-bridge/catalog"),
+    ]);
+    if (t.ok) setTargets(t.items || []);
+    if (i.ok) setInbound((i.items || [])[0] || null);
+    if (c.ok) setCatalog({ triggers: c.triggers || [], actions: c.actions || [] });
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function addTarget() {
+    if (!url.trim()) {
+      toast("⚠️ Paste a Zapier / n8n / Make webhook URL");
+      return;
+    }
+    setSaving(true);
+    const r = await apiPost<{ ok: boolean; error?: string }>("/api/automation-bridge/targets", {
+      provider,
+      name: `${provider} outbound`,
+      target_url: url.trim(),
+      triggers: ["*"],
+    });
+    setSaving(false);
+    if (!r.ok) {
+      toast("❌ " + (r.error || "Could not save webhook"));
+      return;
+    }
+    toast("✅ Outbound webhook saved");
+    setUrl("");
+    load();
+  }
+
+  async function testFire() {
+    const r = await apiPost<{ ok: boolean; delivered?: number; error?: string }>("/api/automation-bridge/test-fire", {
+      event: "alert.raised",
+      data: { message: "InfoGenie automation bridge test", severity: "info" },
+    });
+    toast(r.ok ? `✅ Delivered to ${r.delivered || 0} target(s)` : "❌ " + (r.error || "test failed"));
+  }
+
+  async function removeTarget(id: number) {
+    await apiDelete(`/api/automation-bridge/targets/${id}`);
+    load();
+  }
+
+  async function copyInbound() {
+    const text = inbound?.webhook_url || (typeof window !== "undefined" ? `${window.location.origin}${inbound?.webhook_path || ""}` : "");
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("✅ Inbound webhook URL copied");
+    } catch {
+      toast(text);
+    }
+  }
+
+  return (
+    <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 16, padding: 22, marginTop: 28, boxShadow: "0 1px 4px rgba(0,0,0,.04)" }}>
+      <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontSize: "1rem", fontWeight: 800, color: "#0A1628", marginBottom: 4 }}>
+        ⚡ Zapier · n8n · Make bridge
+      </div>
+      <p style={{ margin: "0 0 16px", fontSize: "0.82rem", color: "#64748b", maxWidth: 720 }}>
+        Push InfoGenie events to external DIY automation, and let those tools call back into Document RAG, Marketing Memory, or officer tasks.
+      </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+        <div>
+          <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "#0f766e", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Outbound (InfoGenie → Zapier/n8n)</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #E5E7EB", fontSize: "0.8rem" }}
+            >
+              <option value="zapier">Zapier</option>
+              <option value="n8n">n8n</option>
+              <option value="make">Make</option>
+              <option value="custom">Custom</option>
+            </select>
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://hooks.zapier.com/... or n8n webhook URL"
+              style={{ flex: 1, minWidth: 180, padding: "8px 10px", borderRadius: 8, border: "1px solid #E5E7EB", fontSize: "0.8rem" }}
+            />
+            <button
+              type="button"
+              disabled={saving}
+              onClick={addTarget}
+              style={{ padding: "8px 12px", borderRadius: 8, border: 0, background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#fff", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={testFire}
+              style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #bae6fd", background: "#f0f9ff", color: "#0369a1", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}
+            >
+              Test fire
+            </button>
+          </div>
+          {!targets.length ? (
+            <div style={{ fontSize: "0.78rem", color: "#94a3b8" }}>No outbound targets yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {targets.map((t) => (
+                <div key={t.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 10px", background: "#F8FAFC", borderRadius: 8, fontSize: "0.75rem" }}>
+                  <strong style={{ textTransform: "capitalize" }}>{t.provider}</strong>
+                  <span style={{ color: "#64748b", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.target_url}</span>
+                  <button type="button" onClick={() => removeTarget(t.id)} style={{ border: 0, background: "transparent", color: "#94a3b8", cursor: "pointer" }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {!!catalog.triggers.length && (
+            <div style={{ marginTop: 10, fontSize: "0.7rem", color: "#94a3b8" }}>
+              Events: {catalog.triggers.map((t) => t.id).join(" · ")}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div style={{ fontSize: "0.72rem", fontWeight: 800, color: "#0f766e", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Inbound (Zapier/n8n → InfoGenie)</div>
+          <div style={{ padding: "10px 12px", background: "#F0FDFA", border: "1px solid #99F6E4", borderRadius: 10, marginBottom: 10 }}>
+            <div style={{ fontSize: "0.72rem", color: "#0f766e", fontWeight: 700, marginBottom: 4 }}>Webhook URL</div>
+            <code style={{ fontSize: "0.72rem", wordBreak: "break-all", color: "#134e4a" }}>
+              {inbound?.webhook_url || (inbound?.webhook_path ? `(origin)${inbound.webhook_path}` : "Loading…")}
+            </code>
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={copyInbound}
+                style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid #99F6E4", background: "#fff", color: "#0f766e", fontWeight: 700, fontSize: "0.72rem", cursor: "pointer" }}
+              >
+                Copy URL
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "#64748b", lineHeight: 1.5 }}>
+            POST JSON: <code>{`{ "action": "memory.ingest", "params": { "summary": "…" } }`}</code>
+            <br />
+            Actions: {(catalog.actions || []).map((a) => a.id).join(", ") || "webhook.echo, memory.ingest, document.ingest_text, task.create"}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

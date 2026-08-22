@@ -166,7 +166,7 @@ function industryName(ad?: AnalysisData): string {
 
 const CHANNEL_MIX = [
   { channel: "Paid Search (Google / Bing)", pct: 32, color: "#2563EB" },
-  { channel: "Paid Social (Meta / TikTok / LinkedIn)", pct: 28, color: "#7C3AED" },
+  { channel: "Paid Social (Meta / TikTok / LinkedIn)", pct: 28, color: "#0f766e" },
   { channel: "SEO & Content", pct: 18, color: "#059669" },
   { channel: "Email / CRM / Retargeting", pct: 12, color: "#D97706" },
   { channel: "Creative & Landing Pages", pct: 6, color: "#DB2777" },

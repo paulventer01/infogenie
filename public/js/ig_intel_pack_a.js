@@ -32,7 +32,7 @@ window.buildHubspotSync = async function() {
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
         <div style="font-weight:800;color:#0A1628;margin-bottom:10px">📥 Sync from Lead Finder</div>
         <p style="margin:0 0 10px;color:#6B7280;font-size:0.82rem">Run a B2B Lead Finder search first, then click below to push the most recent run into HubSpot.</p>
-        <button onclick="_hsBulkFromLeads()" style="padding:10px 16px;background:#F97316;border:2px solid #F97316;border-radius:8px;color:#fff;-webkit-text-fill-color:#fff;font-weight:800;cursor:pointer;font-size:0.84rem;width:100%;text-shadow:0 1px 2px rgba(0,0,0,.4)">→ Push last lead-finder run</button>
+        <button onclick="_hsBulkFromLeads()" style="padding:10px 16px;background:#0f766e;border:2px solid #0f766e;border-radius:8px;color:#fff;-webkit-text-fill-color:#fff;font-weight:800;cursor:pointer;font-size:0.84rem;width:100%;text-shadow:0 1px 2px rgba(0,0,0,.4)">→ Push last lead-finder run</button>
       </div>
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
         <div style="font-weight:800;color:#0A1628;margin-bottom:10px">✏️ Push single contact</div>
@@ -44,12 +44,12 @@ window.buildHubspotSync = async function() {
           <input id="hsTitle" placeholder="Job title" style="padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.82rem">
           <input id="hsCompany" placeholder="Company" style="padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.82rem">
         </div>
-        <button onclick="_hsPushOne()" style="padding:9px 14px;background:#F97316;border:2px solid #F97316;border-radius:6px;color:#fff;-webkit-text-fill-color:#fff;font-weight:800;cursor:pointer;font-size:0.82rem;width:100%;text-shadow:0 1px 2px rgba(0,0,0,.4)">→ Push to HubSpot</button>
+        <button onclick="_hsPushOne()" style="padding:9px 14px;background:#0f766e;border:2px solid #0f766e;border-radius:6px;color:#fff;-webkit-text-fill-color:#fff;font-weight:800;cursor:pointer;font-size:0.82rem;width:100%;text-shadow:0 1px 2px rgba(0,0,0,.4)">→ Push to HubSpot</button>
       </div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <h3 style="margin:0;color:#0A1628;font-size:1.05rem">Recent HubSpot contacts</h3>
-      <button onclick="_hsLoadRecent()" style="padding:7px 14px;background:#fff;border:1.5px solid #F97316;color:#F97316;border-radius:6px;font-size:0.78rem;font-weight:700;cursor:pointer">↻ Refresh</button>
+      <button onclick="_hsLoadRecent()" style="padding:7px 14px;background:#fff;border:1.5px solid #0f766e;color:#0f766e;border-radius:6px;font-size:0.78rem;font-weight:700;cursor:pointer">↻ Refresh</button>
     </div>
     <div id="hsRecent"></div>`;
   _hsLoadRecent();
@@ -154,7 +154,7 @@ window._miLoad = async function() {
       const m = s.summary;
       const tile = (label, val, color) => `<div style="background:#fff;border:1px solid #E5E7EB;border-top:3px solid ${color};border-radius:10px;padding:14px"><div style="font-size:0.7rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${label}</div><div style="font-size:1.5rem;font-weight:800;color:#0A1628;margin-top:4px">${val}</div></div>`;
       sumEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:12px">
-        ${tile('Spend',_miFmt(m.spend,'money'),'#8B5CF6')}
+        ${tile('Spend',_miFmt(m.spend,'money'),'#0284c7')}
         ${tile('Revenue',_miFmt(m.revenue,'money'),'#15803D')}
         ${tile('ROAS', _miFmt(m.roas,'roas'), m.roas>=2?'#15803D':m.roas>=1?'#F59E0B':'#DC2626')}
         ${tile('Impressions',_miFmt(m.impressions),'#0EA5E9')}
@@ -244,12 +244,12 @@ window.buildKeywordExplorer = async function() {
         <div style="position:relative">
           <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">
             <label style="font-size:0.7rem;font-weight:700;color:#6B7280">Seed keyword</label>
-            <button onclick="_keAiSuggest(event)" id="keAiSuggestBtn" title="Show keywords from your analysis" style="padding:2px 9px;background:linear-gradient(135deg,#7C3AED,#A855F7);border:none;border-radius:6px;color:#fff;font-size:0.62rem;font-weight:700;cursor:pointer;line-height:1.6">✨ AI Suggest</button>
+            <button onclick="_keAiSuggest(event)" id="keAiSuggestBtn" title="Show keywords from your analysis" style="padding:2px 9px;background:linear-gradient(135deg,#0f766e,#0284c7);border:none;border-radius:6px;color:#fff;font-size:0.62rem;font-weight:700;cursor:pointer;line-height:1.6">✨ AI Suggest</button>
           </div>
           <input id="keSeed" placeholder="e.g. forex trading" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;box-sizing:border-box">
-          <div id="keKwPicker" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1.5px solid #7C3AED;border-radius:10px;box-shadow:0 8px 28px rgba(124,58,237,.22);z-index:9999;padding:12px 14px">
+          <div id="keKwPicker" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1.5px solid #0f766e;border-radius:10px;box-shadow:0 8px 28px rgba(124,58,237,.22);z-index:9999;padding:12px 14px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <span style="font-size:0.65rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em">Keywords from your analysis — click to use</span>
+              <span style="font-size:0.65rem;font-weight:700;color:#0f766e;text-transform:uppercase;letter-spacing:.06em">Keywords from your analysis — click to use</span>
               <span onclick="document.getElementById('keKwPicker').style.display='none'" style="cursor:pointer;color:#9CA3AF;font-size:0.85rem;line-height:1" title="Close">✕</span>
             </div>
             <div id="keKwPickerList" style="display:flex;flex-wrap:wrap;gap:6px"></div>
@@ -267,7 +267,7 @@ window.buildKeywordExplorer = async function() {
           </div>
         </div>
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Ideas</label><input id="keLim" type="number" value="25" min="5" max="50" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;box-sizing:border-box"></div>
-        <button onclick="_keGo()" style="padding:10px 18px;background:#8B5CF6;border:2px solid #8B5CF6;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap">🔬 Explore</button>
+        <button onclick="_keGo()" style="padding:10px 18px;background:#0284c7;border:2px solid #0284c7;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap">🔬 Explore</button>
       </div>
     </div>
     <div id="keOut"></div>`;
@@ -336,7 +336,7 @@ window._keAiSuggest = function(evt) {
 
   // Render clickable keyword chips — up to 24
   pickerList.innerHTML = pool.slice(0, 24).map(kw =>
-    `<button onclick="document.getElementById('keSeed').value='${kw.replace(/'/g,"\\'")}';document.getElementById('keKwPicker').style.display='none';document.getElementById('keSeed').focus()" style="padding:5px 12px;background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:20px;font-size:0.76rem;font-weight:600;color:#5B21B6;cursor:pointer;white-space:nowrap" onmouseover="this.style.background='#EDE9FE';this.style.borderColor='#7C3AED'" onmouseout="this.style.background='#F5F3FF';this.style.borderColor='#DDD6FE'">${(window._escapeHtml||String)(kw)}</button>`
+    `<button onclick="document.getElementById('keSeed').value='${kw.replace(/'/g,"\\'")}';document.getElementById('keKwPicker').style.display='none';document.getElementById('keSeed').focus()" style="padding:5px 12px;background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:20px;font-size:0.76rem;font-weight:600;color:#5B21B6;cursor:pointer;white-space:nowrap" onmouseover="this.style.background='#EDE9FE';this.style.borderColor='#0f766e'" onmouseout="this.style.background='#F5F3FF';this.style.borderColor='#DDD6FE'">${(window._escapeHtml||String)(kw)}</button>`
   ).join('');
 
   picker.style.display = 'block';
@@ -380,7 +380,7 @@ window._keGo = async function() {
   const sm = r.seed_metrics, kd = _keKD(sm.keyword_difficulty);
   const tile = (label, val, color) => `<div style="background:#fff;border:1px solid #E5E7EB;border-top:3px solid ${color};border-radius:10px;padding:13px"><div style="font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${label}</div><div style="font-size:1.3rem;font-weight:800;color:#0A1628;margin-top:3px">${val}</div></div>`;
   out.innerHTML = `
-    <div style="background:linear-gradient(135deg,#8B5CF6 0%,#6D28D9 100%);color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:14px">
+    <div style="background:linear-gradient(135deg,#0284c7 0%,#6D28D9 100%);color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:14px">
       <div style="font-weight:800;font-size:1.1rem">🔬 ${_escapeHtml(sm.keyword)}</div>
       <div style="font-size:0.78rem;opacity:.9;margin-top:2px">${country==='global'?'🌍 Global':((country||'us').toUpperCase())} · ${sm.intent ? sm.intent + ' intent' : 'no intent data'}</div>
     </div>
@@ -411,7 +411,7 @@ window._keGo = async function() {
           <td style="padding:9px 12px;color:#6B7280;font-size:0.78rem">${_escapeHtml(it.competition_level||'—')}</td>
           <td style="padding:9px 12px;color:#6B7280;font-size:0.78rem">${_escapeHtml(it.intent||'—')}</td>
         </tr>`;}).join('')}</tbody></table></div>
-    <div style="margin-top:12px;text-align:right"><button id="keCsvBtn" style="padding:8px 14px;background:#fff;border:1.5px solid #8B5CF6;color:#8B5CF6;border-radius:6px;font-size:0.8rem;font-weight:700;cursor:pointer">📥 Export CSV</button></div>`;
+    <div style="margin-top:12px;text-align:right"><button id="keCsvBtn" style="padding:8px 14px;background:#fff;border:1.5px solid #0284c7;color:#0284c7;border-radius:6px;font-size:0.8rem;font-weight:700;cursor:pointer">📥 Export CSV</button></div>`;
   window._keLastResult = { ideas: r.ideas, seed: sm.keyword };
   try { _applyKeOutliers(); } catch(e) {}
   const btn = document.getElementById('keCsvBtn');
@@ -1168,7 +1168,7 @@ window.buildEmailPersonalizer = function() {
       <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">👥 Leads (one per line, JSON)</h3>
       <textarea id="epLeads" rows="6" placeholder='{"name":"Jane Doe","role":"VP Marketing","company":"Acme Corp","website":"acme.com"}' style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.78rem;font-family:monospace;resize:vertical;box-sizing:border-box"></textarea>
       <div style="font-size:0.7rem;color:#9CA3AF;margin-top:4px">Each line = one lead JSON. Max 25 per batch.</div>
-      <button id="epGo" style="margin-top:14px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:0.86rem;font-weight:800;cursor:pointer">✨ Personalize All</button>
+      <button id="epGo" style="margin-top:14px;background:linear-gradient(135deg,#0f766e,#0284c7);color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:0.86rem;font-weight:800;cursor:pointer">✨ Personalize All</button>
     </div>
 
     <div id="epOut"></div>
@@ -1235,7 +1235,7 @@ window._epRun = async function() {
         const e = x.email || {}; const lead = x.lead || {};
         const sourcePill = x.source==='ai' ? 'AI' : 'TEMPLATE';
         const sourceColor = x.source==='ai' ? ['#EDE9FE','#5B21B6'] : ['#F3F4F6','#374151'];
-        return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:3px solid #7C3AED;border-radius:10px;padding:14px 16px">
+        return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:3px solid #0f766e;border-radius:10px;padding:14px 16px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap">
             <div style="font-weight:700;color:#0A1628;font-size:0.88rem">${_escapeHtml(lead.name||'?')} · <span style="color:#6B7280;font-weight:500">${_escapeHtml(lead.role||'')} @ ${_escapeHtml(lead.company||'')}</span></div>
             <div style="display:flex;gap:6px;align-items:center">
@@ -1547,7 +1547,7 @@ window.buildRedditPulse = function() {
       <div>
         <label style="display:flex;align-items:center;justify-content:space-between;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">
           <span>EXTRA KEYWORDS (optional, comma-sep)</span>
-          <button type="button" onclick="window._rpKwSuggest()" title="Pull keywords from your last analysis" style="padding:3px 8px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);border:none;border-radius:5px;color:#fff;-webkit-text-fill-color:#fff;font-size:0.6rem;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:0">🤖 AI Suggest</button>
+          <button type="button" onclick="window._rpKwSuggest()" title="Pull keywords from your last analysis" style="padding:3px 8px;background:linear-gradient(135deg,#0f766e,#0EA5E9);border:none;border-radius:5px;color:#fff;-webkit-text-fill-color:#fff;font-size:0.6rem;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:0">🤖 AI Suggest</button>
         </label>
         <input id="rpKw" placeholder="defaults to brand name" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
       </div>
@@ -1619,7 +1619,7 @@ window.buildRedditPulse = function() {
             </div>
             <div style="margin-top:10px;padding-top:9px;border-top:1px solid #F3F4F6;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
               <span style="font-size:0.67rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.04em">Reply tone:</span>
-              ${['Engaging','Direct','Balanced'].map(t => `<button class="rpTone_${pi}" data-tone="${t.toLowerCase()}" onclick="window._rpSetTone(${pi},'${t.toLowerCase()}')" style="padding:3px 9px;border-radius:4px;border:1.5px solid ${t==='Balanced'?'#7C3AED':'#D1D5DB'};background:${t==='Balanced'?'#EDE9FE':'#fff'};color:${t==='Balanced'?'#6D28D9':'#374151'};font-size:0.67rem;font-weight:700;cursor:pointer">${t}</button>`).join('')}
+              ${['Engaging','Direct','Balanced'].map(t => `<button class="rpTone_${pi}" data-tone="${t.toLowerCase()}" onclick="window._rpSetTone(${pi},'${t.toLowerCase()}')" style="padding:3px 9px;border-radius:4px;border:1.5px solid ${t==='Balanced'?'#0f766e':'#D1D5DB'};background:${t==='Balanced'?'#EDE9FE':'#fff'};color:${t==='Balanced'?'#6D28D9':'#374151'};font-size:0.67rem;font-weight:700;cursor:pointer">${t}</button>`).join('')}
               <button onclick="window._rpGenerateReply(${pi},'${_escapeHtml((p.title||'').replace(/'/g,"\\'")).slice(0,120)}','${_escapeHtml((p.selftext||'').replace(/'/g,"\\'")).slice(0,200)}')" style="margin-left:auto;padding:4px 12px;background:linear-gradient(135deg,#FF4500,#FF8C42);border:none;border-radius:5px;color:#fff;font-size:0.72rem;font-weight:800;cursor:pointer">✍️ Generate Reply</button>
             </div>
             <div id="rpReply_${pi}" style="display:none;margin-top:8px"></div>
@@ -1634,7 +1634,7 @@ window.buildRedditPulse = function() {
     window._rpTones[pi] = tone;
     document.querySelectorAll('.rpTone_' + pi).forEach(btn => {
       const active = btn.dataset.tone === tone;
-      btn.style.borderColor = active ? '#7C3AED' : '#D1D5DB';
+      btn.style.borderColor = active ? '#0f766e' : '#D1D5DB';
       btn.style.background  = active ? '#EDE9FE' : '#fff';
       btn.style.color       = active ? '#6D28D9' : '#374151';
     });
@@ -1659,7 +1659,7 @@ window.buildRedditPulse = function() {
       if (!r.ok) { replyDiv.innerHTML = `<div style="color:#991B1B;font-size:0.78rem">⚠ ${_escapeHtml(r.error)}</div>`; return; }
       replyDiv.innerHTML = `
         <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;padding:10px 13px;position:relative">
-          <div style="font-size:0.67rem;font-weight:800;color:#7C3AED;text-transform:uppercase;margin-bottom:5px">AI Reply · ${_escapeHtml(tone)}</div>
+          <div style="font-size:0.67rem;font-weight:800;color:#0f766e;text-transform:uppercase;margin-bottom:5px">AI Reply · ${_escapeHtml(tone)}</div>
           <div id="rpReplyTxt_${pi}" style="font-size:0.82rem;color:#1F2937;line-height:1.55;white-space:pre-wrap">${_escapeHtml(r.reply)}</div>
           <button onclick="navigator.clipboard?.writeText(document.getElementById('rpReplyTxt_${pi}')?.textContent||'').then(()=>showToast('✅ Reply copied!'))" style="margin-top:8px;padding:4px 10px;background:#EDE9FE;border:none;border-radius:5px;font-size:0.68rem;font-weight:700;color:#6D28D9;cursor:pointer">📋 Copy</button>
         </div>`;
@@ -1747,7 +1747,7 @@ window.buildAdLibrary = function() {
             </label>`).join('')}
         </div>
       </div>
-      <button id="alRun" style="width:100%;background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:none;padding:13px;border-radius:8px;font-size:0.92rem;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(0,102,255,.25)">🚀 Run Ad Library Search</button>
+      <button id="alRun" style="width:100%;background:linear-gradient(135deg,#0066FF,#0f766e);color:#fff;border:none;padding:13px;border-radius:8px;font-size:0.92rem;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(0,102,255,.25)">🚀 Run Ad Library Search</button>
       <div style="margin-top:8px;font-size:0.7rem;color:#6B7280;line-height:1.45">
         📘 Meta = live Graph API · the rest scrape each platform's public ad transparency archive (requires PERPLEXITY_API_KEY).
       </div>
@@ -2119,7 +2119,7 @@ window.buildNewsletterTracker = async function() {
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND</label><input id="ntBrand" placeholder="e.g. Stripe" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">NEWSLETTER NAME</label><input id="ntName" placeholder="e.g. Stripe Weekly" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">ARCHIVE URL (Substack/Beehiiv/Mailchimp/etc)</label><input id="ntUrl" placeholder="https://example.substack.com/archive" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
-        <button id="ntAdd" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:0.78rem;font-weight:800;cursor:pointer">➕ Track</button>
+        <button id="ntAdd" style="background:linear-gradient(135deg,#0f766e,#0284c7);color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:0.78rem;font-weight:800;cursor:pointer">➕ Track</button>
       </div>
     </div>
     <div id="ntList"></div>
@@ -2143,7 +2143,7 @@ async function _ntLoad() {
           <div style="font-size:0.68rem;color:#9CA3AF;margin-top:2px">${t.last_scanned_at ? 'Last scanned ' + new Date(t.last_scanned_at).toLocaleString() : 'Never scanned'}</div>
         </div>
         <div style="display:flex;gap:6px">
-          <button onclick="_ntScan(${t.id})" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:0.74rem;font-weight:800;cursor:pointer">🔍 Scan</button>
+          <button onclick="_ntScan(${t.id})" style="background:linear-gradient(135deg,#0f766e,#0284c7);color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:0.74rem;font-weight:800;cursor:pointer">🔍 Scan</button>
           <button onclick="_ntHistory(${t.id})" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">📜 History</button>
           <button onclick="_ntDelete(${t.id})" style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">🗑</button>
         </div>
@@ -2230,7 +2230,7 @@ window.buildMeetingNotes = function() {
       const r = await fetch('/api/meeting-notes/summarize', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ transcript, contact: contact.name || contact.company ? contact : null }) }).then(x => x.json());
       if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
       const s = r.summary; const bant = s.bant || {};
-      const stageColor = { discovery:'#6B7280', qualification:'#3B82F6', proposal:'#8B5CF6', negotiation:'#F59E0B', closed_won:'#10B981', closed_lost:'#EF4444' };
+      const stageColor = { discovery:'#6B7280', qualification:'#3B82F6', proposal:'#0284c7', negotiation:'#F59E0B', closed_won:'#10B981', closed_lost:'#EF4444' };
       const sentColor = { positive:'#10B981', neutral:'#6B7280', negative:'#EF4444' };
       out.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px">
@@ -2299,7 +2299,7 @@ window.buildHeadlineTester = function() {
       <div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
           <label style="font-size:0.7rem;font-weight:700;color:#6B7280">HEADLINE</label>
-          <button type="button" id="htHeadlineAI" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
+          <button type="button" id="htHeadlineAI" style="background:linear-gradient(135deg,#0f766e,#0284c7);color:#fff;border:0;padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
         </div>
         <input id="htHeadline" placeholder='e.g. "Stop wasting ad budget — automate it"' style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;box-sizing:border-box">
       </div>
@@ -2307,14 +2307,14 @@ window.buildHeadlineTester = function() {
         <div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
             <label style="font-size:0.7rem;font-weight:700;color:#6B7280">AUDIENCE</label>
-            <button type="button" id="htAudienceAI" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
+            <button type="button" id="htAudienceAI" style="background:linear-gradient(135deg,#0f766e,#0284c7);color:#fff;border:0;padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
           </div>
           <input id="htAudience" placeholder="e.g. SaaS founders, Series A-B" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
         </div>
         <div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
             <label style="font-size:0.7rem;font-weight:700;color:#6B7280">CHANNEL</label>
-            <button type="button" id="htChannelAI" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
+            <button type="button" id="htChannelAI" style="background:linear-gradient(135deg,#0f766e,#0284c7);color:#fff;border:0;padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
           </div>
           <select id="htChannel" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
             <option value="landing_page">Landing page</option><option value="email">Email subject</option><option value="ad">Paid ad</option><option value="social">Social post</option><option value="blog">Blog post</option>
@@ -2541,7 +2541,7 @@ window.buildReviewAggregator = function() {
         <select id="raComparePlatform" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box;margin-bottom:8px">
           <option value="trustpilot">Trustpilot</option><option value="g2">G2</option><option value="google">Google</option><option value="capterra">Capterra</option>
         </select>
-        <button id="raCompareGo" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">⚖️ Compare</button>
+        <button id="raCompareGo" style="background:linear-gradient(135deg,#0f766e,#0284c7);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">⚖️ Compare</button>
       </div>
       <div id="raDeleted" style="display:none">
         <div style="color:#9CA3AF;padding:20px;text-align:center;font-size:0.82rem">Loading deleted reviews…</div>
@@ -2680,7 +2680,7 @@ window.buildReviewAggregator = function() {
       const statsHtml = sRes.ok && sRes.stats && sRes.stats.length ? `
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">${sRes.stats.map(s =>
           `<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px">
-            <div style="font-size:1.1rem;font-weight:800;color:#C2410C">${s.deleted_count}</div>
+            <div style="font-size:1.1rem;font-weight:800;color:#0b5f59">${s.deleted_count}</div>
             <div style="font-size:0.65rem;font-weight:700;color:#9A3412;text-transform:uppercase">${_escapeHtml(s.platform)}</div>
             <div style="font-size:0.65rem;color:#9CA3AF">${s.active_count} tracked</div>
           </div>`).join('')}
@@ -2779,7 +2779,7 @@ window.buildTwitterPulse = function() {
         </div>
         <div>
           <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">EXTRA KEYWORDS (optional, comma-sep)
-            <button type="button" id="twKwSuggestBtn" onclick="window._twKwSuggest()" style="margin-left:6px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:2px 8px;border-radius:8px;font-size:0.6rem;font-weight:800;cursor:pointer;vertical-align:middle">🤖 AI Suggest</button>
+            <button type="button" id="twKwSuggestBtn" onclick="window._twKwSuggest()" style="margin-left:6px;background:linear-gradient(135deg,#0f766e,#0284c7);color:#fff;border:0;padding:2px 8px;border-radius:8px;font-size:0.6rem;font-weight:800;cursor:pointer;vertical-align:middle">🤖 AI Suggest</button>
           </label>
           <input id="twKw" placeholder="cybertruck, FSD, autopilot" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
         </div>
@@ -2852,12 +2852,12 @@ window.buildTwitterPulse = function() {
           <div><div style="font-size:1.5rem;font-weight:800;color:#10B981">${_n(r.counts && r.counts.pos)}</div><div style="font-size:0.7rem;color:#6B7280;font-weight:700">POSITIVE</div></div>
           <div><div style="font-size:1.5rem;font-weight:800;color:#6B7280">${_n(r.counts && r.counts.neu)}</div><div style="font-size:0.7rem;color:#6B7280;font-weight:700">NEUTRAL</div></div>
           <div><div style="font-size:1.5rem;font-weight:800;color:#EF4444">${_n(r.counts && r.counts.neg)}</div><div style="font-size:0.7rem;color:#6B7280;font-weight:700">NEGATIVE</div></div>
-          <div><div style="font-size:1.5rem;font-weight:800;color:#7C3AED">🔥 ${_n(r.viral_count)}</div><div style="font-size:0.7rem;color:#6B7280;font-weight:700">VIRAL</div></div>
+          <div><div style="font-size:1.5rem;font-weight:800;color:#0f766e">🔥 ${_n(r.viral_count)}</div><div style="font-size:0.7rem;color:#6B7280;font-weight:700">VIRAL</div></div>
         </div>
         ${r.tweets.length === 0 ? '<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">No recent tweets found.</div>' :
         '<div style="display:grid;gap:10px">' + r.tweets.map(t => {
           const sc = sentColor[(t.sentiment||'neutral').toLowerCase()] || sentColor.neutral;
-          return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:3px solid ${t.viral?'#7C3AED':'#1DA1F2'};border-radius:8px;padding:12px 14px">
+          return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:3px solid ${t.viral?'#0f766e':'#1DA1F2'};border-radius:8px;padding:12px 14px">
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:start">
               <div style="flex:1">
                 <div style="font-weight:700;color:#0A1628;font-size:0.86rem">${_escapeHtml(t.handle||t.author||'@unknown')} ${t.viral ? '<span style="background:#FEF3C7;color:#92400E;padding:1px 6px;border-radius:3px;font-size:0.66rem;font-weight:700">🔥 VIRAL</span>' : ''}</div>
@@ -2882,7 +2882,7 @@ window.buildJobBoardSpy = function() {
   try { window.IGFields && IGFields.pause && IGFields.pause(); } catch(_) {}
   try {
   const DEPTS = ['engineering','sales','marketing','product','design','ops','finance','hr','other'];
-  const DEPT_COLORS = { engineering:'#0066FF', sales:'#10B981', marketing:'#F59E0B', product:'#7C3AED', design:'#EC4899', ops:'#6B7280', finance:'#059669', hr:'#DC2626', other:'#9CA3AF' };
+  const DEPT_COLORS = { engineering:'#0066FF', sales:'#10B981', marketing:'#F59E0B', product:'#0f766e', design:'#EC4899', ops:'#6B7280', finance:'#059669', hr:'#DC2626', other:'#9CA3AF' };
 
   // ── Build company list from last analysis ──
   const ownBrand = (window.analysisData && (window.analysisData.brandName || window.analysisData.companyName)) || '';
@@ -3112,7 +3112,7 @@ window.buildVideoScript = function() {
             <div style="color:#9CA3AF;font-weight:700">${_n(bi+1)}.</div>
             <div><div style="font-size:0.66rem;color:#9CA3AF;font-weight:700">SPOKEN</div><div style="color:#0A1628">${_escapeHtml(b.line||'')}</div></div>
             <div><div style="font-size:0.66rem;color:#9CA3AF;font-weight:700">ON-SCREEN</div><div style="color:#1E1B4B;font-weight:700">${_escapeHtml(b.onscreen_text||'')}</div></div>
-            <div><div style="font-size:0.66rem;color:#9CA3AF;font-weight:700">CUE</div><div style="color:#7C3AED;font-style:italic">${_escapeHtml(b.cue||'')}</div></div>
+            <div><div style="font-size:0.66rem;color:#9CA3AF;font-weight:700">CUE</div><div style="color:#0f766e;font-style:italic">${_escapeHtml(b.cue||'')}</div></div>
           </div>`).join('')}
         </div>
         <div style="background:linear-gradient(135deg,#10B981,#34D399);color:#fff;border-radius:8px;padding:10px 14px;margin-bottom:10px">
@@ -3144,7 +3144,7 @@ window.buildChatbotBuilder = function() {
         </select></div>
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">ACCENT COLOR</label><input id="cbAccent" type="color" value="#6366F1" style="width:100%;padding:3px;border:1px solid #D1D5DB;border-radius:5px;height:34px;box-sizing:border-box"></div>
       </div>
-      <button id="cbGo" style="background:linear-gradient(135deg,#6366F1,#8B5CF6);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">💬 Generate Chatbot</button>
+      <button id="cbGo" style="background:linear-gradient(135deg,#6366F1,#0284c7);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">💬 Generate Chatbot</button>
     </div>
     <div id="cbOut"></div>
   `;
@@ -3257,11 +3257,11 @@ window.buildGlassdoor = function() {
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;text-align:center">
             <div><div style="font-size:1.6rem;font-weight:800;color:#0E9F6E">${ratingNum !== null ? ratingNum.toFixed(1) : '—'}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">OVERALL ⭐</div><div style="background:#E5E7EB;height:5px;border-radius:3px;margin-top:6px;overflow:hidden"><div style="background:#0E9F6E;height:100%;width:${ratingPct}%"></div></div></div>
             <div><div style="font-size:1.6rem;font-weight:800;color:#0066FF">${_n(r.ceo_approval) || '—'}${r.ceo_approval != null ? '%' : ''}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">CEO APPROVAL</div></div>
-            <div><div style="font-size:1.6rem;font-weight:800;color:#7C3AED">${_n(r.recommend_pct) || '—'}${r.recommend_pct != null ? '%' : ''}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">RECOMMEND</div></div>
+            <div><div style="font-size:1.6rem;font-weight:800;color:#0f766e">${_n(r.recommend_pct) || '—'}${r.recommend_pct != null ? '%' : ''}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">RECOMMEND</div></div>
             <div><div style="font-size:1.6rem;font-weight:800;color:#374151">${_n(r.total_reviews) || '—'}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">REVIEWS</div></div>
           </div>
         </div>
-        ${(r.culture_signals||[]).length ? `<div style="background:linear-gradient(135deg,#F3E8FF,#FAE8FF);border-radius:12px;padding:16px 20px;margin-bottom:14px;border-left:4px solid #7C3AED">
+        ${(r.culture_signals||[]).length ? `<div style="background:linear-gradient(135deg,#F3E8FF,#FAE8FF);border-radius:12px;padding:16px 20px;margin-bottom:14px;border-left:4px solid #0f766e">
           <h3 style="margin:0 0 8px;color:#5B21B6;font-size:0.96rem">🎯 Culture Signals (Strategic)</h3>
           <ul style="margin:0;padding-left:22px;color:#0A1628;font-size:0.85rem;line-height:1.65">${(r.culture_signals||[]).map(s => `<li style="margin-bottom:4px">${_escapeHtml(s)}</li>`).join('')}</ul>
         </div>` : ''}
@@ -3310,7 +3310,7 @@ window.buildQuoraMining = function() {
     try {
       const r = await fetch('/api/quora-mining/mine', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ topic, brand }) }).then(x => x.json());
       if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
-      const intentColor = { informational:'#0066FF', comparison:'#7C3AED', recommendation:'#EC4899', complaint:'#DC2626', 'how-to':'#0E9F6E', definition:'#F59E0B' };
+      const intentColor = { informational:'#0066FF', comparison:'#0f766e', recommendation:'#EC4899', complaint:'#DC2626', 'how-to':'#0E9F6E', definition:'#F59E0B' };
       out.innerHTML = `
         <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px 18px;margin-bottom:14px">
           <strong style="color:#0A1628;font-size:0.96rem">${_n(r.total)} Quora questions about "${_escapeHtml(r.topic)}"</strong>
@@ -3353,7 +3353,7 @@ window.buildSocialAnalytics = async function() {
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">RANGE</label><select id="saRange" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
           <option value="7d">Last 7 days</option><option value="30d" selected>Last 30 days</option><option value="90d">Last 90 days</option>
         </select></div>
-        <div><button id="saGo" style="width:100%;background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">📈 Load Analytics</button></div>
+        <div><button id="saGo" style="width:100%;background:linear-gradient(135deg,#0066FF,#0f766e);color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">📈 Load Analytics</button></div>
       </div>
     </div>
     <div id="saOut"></div>
@@ -3370,7 +3370,7 @@ window.buildSocialAnalytics = async function() {
       if (r.note) { out.innerHTML = `<div style="background:#FEF3C7;color:#78350F;padding:16px;border-radius:10px"><strong>${_escapeHtml(r.note)}</strong> <a href="#" id="saGoSP2" style="font-weight:700;color:#B45309;margin-left:8px">Open Social Publisher →</a></div>`; const g = document.getElementById('saGoSP2'); if (g) g.addEventListener('click', e => { e.preventDefault(); navigateTo('social-publisher'); }); return; }
       const t = r.totals || {};
       const totalsHtml = `
-        <div style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border-radius:12px;padding:18px;margin-bottom:14px">
+        <div style="background:linear-gradient(135deg,#0066FF,#0f766e);color:#fff;border-radius:12px;padding:18px;margin-bottom:14px">
           <div style="font-size:0.74rem;font-weight:700;text-transform:uppercase;opacity:.85;margin-bottom:8px">📊 Totals across ${_n((r.accounts||[]).length)} account(s) · last ${_escapeHtml(r.range)}</div>
           <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;text-align:center">
             <div><div style="font-size:1.5rem;font-weight:800">${_n(t.posts).toLocaleString()}</div><div style="font-size:0.68rem;opacity:.85;font-weight:700">POSTS</div></div>
@@ -3395,7 +3395,7 @@ window.buildSocialAnalytics = async function() {
           </div>
           <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;text-align:center;margin-bottom:${a.topPost ? '12px' : '0'}">
             <div><div style="font-size:1.1rem;font-weight:800;color:#0066FF">${_n(s.posts).toLocaleString()}</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">POSTS</div></div>
-            <div><div style="font-size:1.1rem;font-weight:800;color:#7C3AED">${_n(s.impressions).toLocaleString()}</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">IMPRESS.</div></div>
+            <div><div style="font-size:1.1rem;font-weight:800;color:#0f766e">${_n(s.impressions).toLocaleString()}</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">IMPRESS.</div></div>
             <div><div style="font-size:1.1rem;font-weight:800;color:#EC4899">${_n(s.likes).toLocaleString()}</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">LIKES</div></div>
             <div><div style="font-size:1.1rem;font-weight:800;color:#0E9F6E">${_n(s.comments).toLocaleString()}</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">COMMENTS</div></div>
             <div><div style="font-size:1.1rem;font-weight:800;color:#F59E0B">${_n(s.shares).toLocaleString()}</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">SHARES</div></div>
@@ -3512,7 +3512,7 @@ window.buildVoiceover = function() {
           </select></div>
         <div><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:4px">LABEL (opt.)</label>
           <input id="voLabel" placeholder="e.g. Q4 launch hero" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
-        <div><button id="voGo" style="width:100%;background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🔊 Generate</button></div>
+        <div><button id="voGo" style="width:100%;background:linear-gradient(135deg,#0066FF,#0f766e);color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🔊 Generate</button></div>
       </div>
       <div id="voCount" style="margin-top:6px;font-size:0.7rem;color:#9CA3AF">0 chars</div>
     </div>
@@ -3584,13 +3584,13 @@ function _rpInjectDiscover() {
   if (!wrap || document.getElementById('rpDiscoverPanel')) return;
   const panel = document.createElement('div');
   panel.id = 'rpDiscoverPanel';
-  panel.style.cssText = 'background:linear-gradient(135deg,#7C3AED 0%,#5B21B6 100%);color:#fff;-webkit-text-fill-color:#fff;border-radius:12px;padding:18px;margin-bottom:18px';
+  panel.style.cssText = 'background:linear-gradient(135deg,#0f766e 0%,#5B21B6 100%);color:#fff;-webkit-text-fill-color:#fff;border-radius:12px;padding:18px;margin-bottom:18px';
   panel.innerHTML = `
     <div style="font-weight:800;margin-bottom:6px;color:#fff;-webkit-text-fill-color:#fff;font-size:1rem;text-shadow:0 1px 2px rgba(0,0,0,.25)">💡 Discover Questions Customers Ask</div>
     <div style="font-size:0.82rem;color:#fff;-webkit-text-fill-color:#fff;margin-bottom:12px;text-shadow:0 1px 2px rgba(0,0,0,.2)">Enter what you sell — get the real questions strangers ask about it on Reddit right now. Perfect for blog topics, FAQ pages, and your next carousel.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <input id="rpDqInput" placeholder='What do you sell? e.g. "roof repair", "wedding photography"' style="flex:1;min-width:240px;padding:10px;border:none;border-radius:8px;font-size:0.88rem;color:#0F172A">
-      <button onclick="_rpDiscover()" id="rpDqBtn" style="background:white;color:#7C3AED;border:none;padding:10px 18px;border-radius:8px;font-weight:800;cursor:pointer">🔍 Find Questions</button>
+      <button onclick="_rpDiscover()" id="rpDqBtn" style="background:white;color:#0f766e;border:none;padding:10px 18px;border-radius:8px;font-weight:800;cursor:pointer">🔍 Find Questions</button>
     </div>
     <div id="rpDqOut" style="margin-top:14px"></div>
   `;
@@ -3621,7 +3621,7 @@ async function _rpDiscover() {
               <span>r/${_esc(q.subreddit||'')}</span>
               <span>▲ ${q.upvotes||0}</span>
               <span>💬 ${q.comments||0}</span>
-              ${q.url ? `<a href="${_esc(q.url)}" target="_blank" rel="noopener" style="color:#7C3AED;font-weight:700">View on Reddit ↗</a>` : ''}
+              ${q.url ? `<a href="${_esc(q.url)}" target="_blank" rel="noopener" style="color:#0f766e;font-weight:700">View on Reddit ↗</a>` : ''}
               <button onclick="_rpToCarousel(${JSON.stringify(q.title).replace(/"/g,'&quot;')})" style="margin-left:auto;background:#F1F5F9;color:#0F172A;border:1px solid #CBD5E1;padding:3px 10px;border-radius:6px;font-size:0.7rem;font-weight:700;cursor:pointer">→ Make Carousel</button>
             </div>
           </div>`).join('')}

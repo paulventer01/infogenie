@@ -305,7 +305,7 @@ export default function SiteBuilder() {
                     <button
                       onClick={() => openAddSearch(p.slug)}
                       style={{
-                        background: "#7C3AED",
+                        background: "#0f766e",
                         color: "white",
                         border: 0,
                         padding: "6px 10px",
@@ -435,7 +435,7 @@ export default function SiteBuilder() {
               onClick={saveSearchBlock}
               disabled={savingBlock}
               style={{
-                background: "#7C3AED",
+                background: "#0f766e",
                 color: "white",
                 border: 0,
                 padding: "10px 18px",

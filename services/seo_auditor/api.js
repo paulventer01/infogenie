@@ -17,6 +17,17 @@ function _safeAsync(h) {
 
 // Firecrawl fallback — used when direct _fetchHtml is blocked (Cloudflare/WAF).
 // Returns the same { ok, html, finalUrl, headers } shape as _fetchHtml.
+function _auditFetchError(raw) {
+  const msg = String(raw || 'Could not fetch page');
+  if (/firecrawl_not_configured/i.test(msg)) {
+    return 'This site blocked the direct fetch (often Cloudflare/WAF). Configure FIRECRAWL_API_KEY in Manage → AI Providers / platform keys to audit protected sites, or try a publicly reachable URL.';
+  }
+  if (/^HTTP\s*403/i.test(msg) || /Forbidden/i.test(msg)) {
+    return 'Site returned HTTP 403 (bot/WAF block). Configure FIRECRAWL_API_KEY to scrape protected pages, or try another URL.';
+  }
+  return msg;
+}
+
 async function _firecrawlFetchHtml(url) {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return { ok: false, error: 'firecrawl_not_configured' };
@@ -377,10 +388,21 @@ router.post('/audit', _safeAsync(async (req, res) => {
       const headlessAttempt = await _headless.fetchHtmlHeadless(url);
       if (headlessAttempt.ok) { fetched = headlessAttempt; renderMode = 'headless-auto'; }
     }
-    // Firecrawl fallback — handles Cloudflare/WAF-protected sites.
+    // Blocked / failed HTTP fetch — try headless (often bypasses soft bot filters),
+    // then Firecrawl (handles hard Cloudflare/WAF blocks).
+    if (!fetched.ok && _headless.isAvailable()) {
+      const headlessAttempt = await _headless.fetchHtmlHeadless(url);
+      if (headlessAttempt.ok) { fetched = headlessAttempt; renderMode = 'headless-auto'; }
+      else if (!fetched.error || /^HTTP\s*403/i.test(String(fetched.error))) {
+        // Prefer the more specific headless error when the plain fetch was a WAF block.
+        fetched = { ok: false, error: headlessAttempt.error || fetched.error };
+      }
+    }
     if (!fetched.ok) { fetched = await _firecrawlFetchHtml(url); renderMode = 'firecrawl'; }
   }
-  if (!fetched.ok) return _err(res, 502, fetched.error);
+  // Use 422 (not 502): Cloudflare quick tunnels replace origin 502 bodies with
+  // their own HTML "Bad gateway" page, which hides our JSON error in the UI.
+  if (!fetched.ok) return _err(res, 422, _auditFetchError(fetched.error));
 
   const parsed = _parseAndScore(fetched.html, fetched.finalUrl, fetched.headers || {});
 
@@ -451,10 +473,14 @@ async function runAudit(url, opts = {}) {
     fetched = await _headless.fetchHtmlHeadless(url);
   } else {
     fetched = await _fetchHtml(url);
+    if (!fetched.ok && _headless.isAvailable()) {
+      const headlessAttempt = await _headless.fetchHtmlHeadless(url);
+      if (headlessAttempt.ok) fetched = headlessAttempt;
+    }
     // Firecrawl fallback — handles Cloudflare/WAF-protected sites.
     if (!fetched.ok) fetched = await _firecrawlFetchHtml(url);
   }
-  if (!fetched.ok) return { ok: false, error: fetched.error };
+  if (!fetched.ok) return { ok: false, error: _auditFetchError(fetched.error) };
   const parsed = _parseAndScore(fetched.html, fetched.finalUrl, fetched.headers || {});
   let originRoot = '';
   try { const u = new URL(fetched.finalUrl); originRoot = `${u.protocol}//${u.host}`; } catch (_) {}

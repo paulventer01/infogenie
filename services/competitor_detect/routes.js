@@ -39,7 +39,34 @@ async function _firecrawlFetch(url, timeoutMs = 14000) {
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
-  const { INFO_SITE_PATTERN, _db, callDataForSEO, openai, openaiChatWithRetry, startMsg } = ctx;
+  const { INFO_SITE_PATTERN, _db, callDataForSEO, openai, openaiChatWithRetry, anthropic, startMsg } = ctx;
+  const { verifyCompetitors, discoverWithLlms } = require('./services/competitor_detect/verify');
+  let resolvePlatformKey = (name) => process.env[name];
+  try {
+    ({ resolvePlatformKey } = require('./services/credentials/platform_keys'));
+  } catch (_) { /* env-only when vault module is unavailable */ }
+
+  function _dfsConfigured() {
+    const login = (resolvePlatformKey('DATAFORSEO_LOGIN') || process.env.DATAFORSEO_LOGIN || '').trim();
+    const password = (resolvePlatformKey('DATAFORSEO_PASSWORD') || process.env.DATAFORSEO_PASSWORD || '').trim();
+    return !!(login && password);
+  }
+
+  async function _gateSameBusiness(subject, candidates) {
+    const tagged = (candidates || []).map((c) => ({
+      ...c,
+      url: c.url || c.domain,
+      source: c.source || null,
+    }));
+    const result = await verifyCompetitors({
+      subject,
+      candidates: tagged,
+      openaiChatWithRetry,
+      anthropic,
+      infoSitePattern: INFO_SITE_PATTERN,
+    });
+    return result;
+  }
 
 app.get('/api/db/status', async (_req, res) => {
   try {
@@ -127,7 +154,7 @@ app.post('/api/smart-detect', async (req, res) => {
 
     // ── 2b) Real organic competitors via DataForSEO (keyword-overlap based) ──
     let dfsCompetitors = [];
-    if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) {
+    if (_dfsConfigured()) {
       try {
         const compRaw = await callDataForSEO(
           '/v3/dataforseo_labs/google/competitors_domain/live',
@@ -140,6 +167,7 @@ app.post('/api/smart-detect', async (req, res) => {
           dfsCompetitors = items
             .map(i => i.domain)
             .filter(d => d && !SKIP.some(s => d.includes(s)) && d.replace(/^www\./,'') !== cleanInput)
+            .filter(d => !INFO_SITE_PATTERN.test(String(d).replace(/^www\./,'')))
             .slice(0, 15);
           console.log(`[smart-detect] DataForSEO real competitors for ${cleanInput}:`, dfsCompetitors);
         }
@@ -203,24 +231,31 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
 
     let aiResult = null;
     try {
-      const completion = await openaiChatWithRetry({
-        model: 'gpt-5',
-        messages: [
-          { role: 'system', content: 'You are a precise market-research analyst. Output strict JSON only — no markdown fences, no prose. Always identify the specific sub-niche, not just the broad industry. When in doubt about a candidate competitor, EXCLUDE it — accuracy beats completeness.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 1200,
-        response_format: { type: 'json_object' },
+      aiResult = await discoverWithLlms({
+        prompt,
+        system: 'You are a precise market-research analyst. Output strict JSON only — no markdown fences, no prose. Always identify the specific sub-niche, not just the broad industry. When in doubt about a candidate competitor, EXCLUDE it — accuracy beats completeness.',
+        openaiChatWithRetry,
+        anthropic,
+        timeoutMs: 14000,
       });
-      const raw = completion.choices?.[0]?.message?.content || '{}';
-      aiResult = JSON.parse(raw);
     } catch (aiErr) {
-      console.error('smart-detect OpenAI error (after retry+fallback):', aiErr.message);
+      console.error('smart-detect LLM discovery error:', aiErr.message);
+      aiResult = null;
+    }
+    if (!aiResult) {
       // Deterministic fallback: if we have ANY DataForSEO competitor data,
       // return that with a generic industry label rather than a hard failure.
       // The client can still proceed with real same-niche domains.
       if (dfsCompetitors.length >= 3) {
+        const gated = await _gateSameBusiness(
+          { domain: cleanInput, industryName: title || cleanInput, subNiche: '', businessSummary: metaDesc || bodyText.slice(0, 280) },
+          dfsCompetitors.slice(0, 12).map(d => ({
+            name: d.replace(/\.[a-z.]+$/i, '').replace(/^[a-z]/, c=>c.toUpperCase()),
+            url: d,
+            why: 'Ranks for the same organic keywords as your domain (DataForSEO competitors_domain).',
+            source: 'dataforseo',
+          })),
+        );
         return res.json({
           ok: true,
           domain: cleanInput,
@@ -229,17 +264,16 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
           businessSummary: '',
           subNiche: '',
           country: null,
-          competitors: dfsCompetitors.slice(0, 8).map(d => ({
-            name: d.replace(/\.[a-z.]+$/i, '').replace(/^[a-z]/, c=>c.toUpperCase()),
-            url:  d,
-            why:  'Ranks for the same organic keywords as your domain (DataForSEO competitors_domain).',
-          })),
+          competitors: gated.accepted,
+          rejected: gated.rejected.map((c) => ({ url: c.url, reason: (c.votes || [])[0]?.reason || 'failed same-industry/same-business vote' })),
+          modelsUsed: gated.modelsUsed,
+          unverified: gated.unverified,
           signals: { title, metaDesc, ogSiteName },
           htmlFetched: html.length > 0,
           _fallback: 'serp-only',
         });
       }
-      return res.status(502).json({ error: 'AI detection failed', detail: aiErr.message, signals });
+      return res.status(502).json({ error: 'AI detection failed', detail: 'All LLM providers failed', signals });
     }
 
     // ── 4) Sanitise + return ─────────────────────────────────────────────────
@@ -250,6 +284,7 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
         name: String(c.name).trim().slice(0, 60),
         url:  String(c.url).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].trim().toLowerCase(),
         why:  String(c.why || '').trim().slice(0, 200),
+        source: c.source || 'llm',
       }))
       .filter(c => c.url && c.url !== cleanInput)
       // Belt-and-braces: strip any aggregator/news/info/review domain the AI
@@ -258,15 +293,37 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
       .filter(c => !INFO_SITE_PATTERN.test(c.url))
       .slice(0, 10) : [];
 
+    const industryName = String(aiResult.industryName || '').trim().slice(0, 80) || 'Unknown industry';
+    const businessSummary = String(aiResult.businessSummary || '').trim().slice(0, 280);
+    const subNiche = String(aiResult.subNiche || '').trim().slice(0, 60);
+    const gated = await _gateSameBusiness(
+      { domain: cleanInput, industryName, subNiche, businessSummary },
+      [
+        ...competitors,
+        ...dfsCompetitors.map((d) => ({
+          name: d.replace(/\.[a-z.]+$/i, '').replace(/^[a-z]/, (c) => c.toUpperCase()),
+          url: d,
+          why: 'DataForSEO keyword-overlap candidate',
+          source: 'dataforseo',
+        })),
+      ],
+    );
+
     res.json({
       ok: true,
       domain: cleanInput,
-      industryName: String(aiResult.industryName || '').trim().slice(0, 80) || 'Unknown industry',
+      industryName,
       industryKey: safeKey,
-      businessSummary: String(aiResult.businessSummary || '').trim().slice(0, 280),
-      subNiche: String(aiResult.subNiche || '').trim().slice(0, 60),
+      businessSummary,
+      subNiche,
       country: aiResult.country || null,
-      competitors,
+      competitors: gated.accepted.slice(0, 10),
+      rejected: gated.rejected.slice(0, 12).map((c) => ({
+        name: c.name, url: c.url,
+        reason: (c.votes || []).map((v) => v.reason).filter(Boolean)[0] || 'not same industry and business',
+      })),
+      modelsUsed: gated.modelsUsed,
+      unverified: gated.unverified,
       signals: { title, metaDesc, ogSiteName },
       htmlFetched: html.length > 0,
     });
@@ -295,7 +352,7 @@ app.post('/api/sector-competitors', async (req, res) => {
     // ── Pull real SERP results for the niche via DataForSEO so the AI can
     //    rank actual ranking domains rather than relying purely on memory.
     let serpDomains = [];
-    if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) {
+    if (_dfsConfigured()) {
       try {
         const queries = [
           `best ${industryClean} companies`,
@@ -378,37 +435,43 @@ CRITICAL RULES — accuracy beats completeness:
         url:  d,
         why:  `Currently ranks in Google for "${industryClean}"-related search terms (live SERP data).`,
         marketShare: 'top-ranked',
+        source: 'serp',
       }));
 
     let aiResult = null;
     try {
-      const completion = await openaiChatWithRetry({
-        model: 'gpt-5',
-        messages: [
-          { role: 'system', content: 'You are a precise market-research analyst with encyclopedic knowledge of real-world companies in every sub-niche. Output strict JSON only — no markdown, no prose. Always pick competitors operating in the user\'s EXACT sub-niche, never just the broad industry. When in doubt about a candidate, EXCLUDE it — accuracy beats completeness.' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 1400,
-        response_format: { type: 'json_object' },
+      aiResult = await discoverWithLlms({
+        prompt,
+        system: 'You are a precise market-research analyst with encyclopedic knowledge of real-world companies in every sub-niche. Output strict JSON only — no markdown, no prose. Always pick competitors operating in the user\'s EXACT sub-niche, never just the broad industry. When in doubt about a candidate, EXCLUDE it — accuracy beats completeness.',
+        openaiChatWithRetry,
+        anthropic,
+        timeoutMs: 14000,
       });
-      const raw = completion.choices?.[0]?.message?.content || '{}';
-      aiResult = JSON.parse(raw);
     } catch (aiErr) {
-      console.error('sector-competitors OpenAI error (after retry+fallback):', aiErr.message);
+      console.error('sector-competitors LLM discovery error:', aiErr.message);
+      aiResult = null;
+    }
+    if (!aiResult) {
       // Deterministic SERP-only response — better than failing the whole flow.
       if (serpCompetitorFallback.length >= 3) {
+        const gated = await _gateSameBusiness(
+          { domain: urlClean, industryName: industryClean, subNiche: industryClean, businessSummary: industryClean },
+          serpCompetitorFallback,
+        );
         return res.json({
           ok: true,
           industryName: industryClean,
           subNiche: '',
           country: countryClean || null,
-          competitors: serpCompetitorFallback,
-          count: serpCompetitorFallback.length,
+          competitors: gated.accepted,
+          rejected: gated.rejected.map((c) => ({ url: c.url, reason: (c.votes || [])[0]?.reason || 'failed same-business vote' })),
+          modelsUsed: gated.modelsUsed,
+          unverified: gated.unverified,
+          count: gated.accepted.length,
           _fallback: 'serp-only',
         });
       }
-      return res.status(502).json({ error: 'AI lookup failed', detail: aiErr.message });
+      return res.status(502).json({ error: 'AI lookup failed', detail: 'All LLM providers failed' });
     }
 
     const competitors = Array.isArray(aiResult.competitors) ? aiResult.competitors
@@ -418,6 +481,7 @@ CRITICAL RULES — accuracy beats completeness:
         url:  String(c.url).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].trim().toLowerCase(),
         why:  String(c.why || '').trim().slice(0, 200),
         marketShare: String(c.marketShare || '').trim().slice(0, 30),
+        source: c.source || 'llm',
       }))
       .filter(c => c.url && c.url !== urlClean)
       // de-duplicate by domain
@@ -430,17 +494,58 @@ CRITICAL RULES — accuracy beats completeness:
       .filter(c => !/^(en\.)?wikipedia\.org$/i.test(c.url))
       .slice(0, 10) : [];
 
+    const industryName = String(aiResult.industryName || industryClean).trim().slice(0, 80);
+    const subNiche = String(aiResult.subNiche || '').trim().slice(0, 60);
+    const gated = await _gateSameBusiness(
+      { domain: urlClean, industryName, subNiche, businessSummary: industryClean },
+      [
+        ...competitors,
+        ...serpCompetitorFallback,
+      ],
+    );
+
     res.json({
       ok: true,
-      industryName: String(aiResult.industryName || industryClean).trim().slice(0, 80),
-      subNiche: String(aiResult.subNiche || '').trim().slice(0, 60),
+      industryName,
+      subNiche,
       country: countryClean || null,
-      competitors,
-      count: competitors.length,
+      competitors: gated.accepted.slice(0, 10),
+      rejected: gated.rejected.slice(0, 12).map((c) => ({
+        name: c.name, url: c.url,
+        reason: (c.votes || []).map((v) => v.reason).filter(Boolean)[0] || 'not same industry and business',
+      })),
+      modelsUsed: gated.modelsUsed,
+      unverified: gated.unverified,
+      count: gated.accepted.length,
     });
   } catch (err) {
     console.error('/api/sector-competitors error:', err);
     res.status(500).json({ error: err.message || 'Internal error' });
+  }
+});
+
+// ── POST /api/verify-competitors ──────────────────────────────────────────────
+// Re-run the multi-LLM same-industry / same-business gate on a candidate list.
+app.post('/api/verify-competitors', async (req, res) => {
+  try {
+    const { domain, industryName, subNiche, businessSummary, competitors } = req.body || {};
+    if (!Array.isArray(competitors) || !competitors.length) {
+      return res.status(400).json({ ok: false, error: 'competitors[] required' });
+    }
+    const gated = await _gateSameBusiness(
+      { domain, industryName, subNiche, businessSummary },
+      competitors,
+    );
+    res.json({
+      ok: true,
+      competitors: gated.accepted,
+      rejected: gated.rejected,
+      modelsUsed: gated.modelsUsed,
+      unverified: gated.unverified,
+    });
+  } catch (err) {
+    console.error('/api/verify-competitors error:', err);
+    res.status(500).json({ ok: false, error: err.message || 'Internal error' });
   }
 });
 

@@ -91,7 +91,7 @@ interface RoleMeta {
   icon: string;
 }
 const roleMap: Record<Role, RoleMeta> = {
-  ceo: { label: "Chief Executive Officer", color: "#7C3AED", accent: "rgba(124,58,237,.15)", icon: "👔" },
+  ceo: { label: "Chief Executive Officer", color: "#0f766e", accent: "rgba(124,58,237,.15)", icon: "👔" },
   cmo: { label: "Chief Marketing Officer", color: "#0066FF", accent: "rgba(0,102,255,.12)", icon: "📣" },
   cfo: { label: "Chief Financial Officer", color: "#059669", accent: "rgba(5,150,105,.12)", icon: "💰" },
   coo: { label: "Chief Operating Officer", color: "#D97706", accent: "rgba(217,119,6,.12)", icon: "⚙️" },
@@ -842,7 +842,7 @@ function CMOReport({ d, rm, period, setPeriod }: ReportProps) {
   const funnel: [string, string, string, number][] = [
     ["Impressions", impr > 0 ? impr.toLocaleString() : "Pending", "#0066FF", 100],
     ["Clicks", clicks > 0 ? clicks.toLocaleString() : "Pending", "#00C9C8", Math.round((clicks / Math.max(impr, 1)) * 100) || 45],
-    ["Leads", leads > 0 ? leads.toLocaleString() : "Pending", "#7C3AED", Math.round((leads / Math.max(impr, 1)) * 100) || 8],
+    ["Leads", leads > 0 ? leads.toLocaleString() : "Pending", "#0f766e", Math.round((leads / Math.max(impr, 1)) * 100) || 8],
     ["Conversions", conv > 0 ? conv.toLocaleString() : "Pending", "#10B981", Math.round((conv / Math.max(impr, 1)) * 100) || 2],
     ["Revenue", budget > 0 ? "$" + (budget * roas).toLocaleString(undefined, { maximumFractionDigits: 0 }) : "—", "#F59E0B", Math.round((conv / Math.max(impr, 1)) * 70) || 1],
   ];
@@ -1182,7 +1182,7 @@ function COOReport({ d, rm, period, setPeriod }: ReportProps) {
     campaign_launch: "#0066FF",
     analysis: "#00C9C8",
     campaigns: "#10B981",
-    audience: "#7C3AED",
+    audience: "#0f766e",
     config: "#6B7280",
   };
 
@@ -1200,7 +1200,7 @@ function COOReport({ d, rm, period, setPeriod }: ReportProps) {
     {
       icon: "🧪",
       bg: "#FDF4FF",
-      col: "#7C3AED",
+      col: "#0f766e",
       title: "A/B Testing Cadence",
       desc:
         abTests.length === 0
@@ -1330,7 +1330,7 @@ function COOReport({ d, rm, period, setPeriod }: ReportProps) {
             </div>
           </div>
           {logItems.map((a, i) => {
-            const col = logColMap[a.type || ""] || "#7C3AED";
+            const col = logColMap[a.type || ""] || "#0f766e";
             return (
               <div className="cs-insight" key={i}>
                 <div className="cs-insight-icon" style={{ background: `${col}15`, color: col }}>
@@ -1384,7 +1384,7 @@ interface ReportProps {
 
 const PDF_STYLE = `*{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',Arial,sans-serif;color:#1a1a2e;background:#fff;padding:28px 36px}
-h1{font-size:1.5rem;color:#7C3AED;margin-bottom:4px}
+h1{font-size:1.5rem;color:#0f766e;margin-bottom:4px}
 .subtitle{font-size:0.8rem;color:#6B7280;margin-bottom:24px}
 .logo-row{display:flex;align-items:center;gap:10px;margin-bottom:20px}
 .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#00C9C8,#0066FF);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:900;font-size:0.9rem}
@@ -1397,7 +1397,7 @@ h1{font-size:1.5rem;color:#7C3AED;margin-bottom:4px}
 .cs-exec-stat-label{font-size:0.58rem;color:rgba(255,255,255,.4);text-transform:uppercase}
 .cs-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
 .cs-kpi{border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px}
-.cs-kpi-val{font-size:1.3rem;font-weight:800;color:#7C3AED}
+.cs-kpi-val{font-size:1.3rem;font-weight:800;color:#0f766e}
 .cs-kpi-label{font-size:0.62rem;color:#6B7280;margin-top:3px}
 .cs-kpi-delta{font-size:0.62rem;margin-top:2px;color:#10B981}
 .cs-card{border:1px solid #E2E8F0;border-radius:12px;padding:16px 18px;margin-bottom:14px}

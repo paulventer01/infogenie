@@ -71,7 +71,7 @@ export default function ReferralManager() {
             <h3 style={{ margin: "0 0 12px" }}>New program</h3>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Program name" style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #D1D5DB", marginBottom: 8, boxSizing: "border-box" }} />
             <input type="number" value={reward} onChange={(e) => setReward(Number(e.target.value))} placeholder="Reward %" style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #D1D5DB", marginBottom: 10, boxSizing: "border-box" }} />
-            <button type="button" onClick={createProgram} style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#7C3AED", color: "white", fontWeight: 700, cursor: "pointer" }}>Create program</button>
+            <button type="button" onClick={createProgram} style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#0f766e", color: "white", fontWeight: 700, cursor: "pointer" }}>Create program</button>
           </div>
 
           <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 14, padding: 18 }}>

@@ -73,7 +73,7 @@ interface ProposalsResponse {
 
 const STATUS_COL: Record<string, string> = {
   pass: "#10b981", caution: "#f59e0b", fail: "#ef4444", approved: "#10b981",
-  pending_approval: "#3b82f6", executing: "#8b5cf6", executed: "#10b981",
+  pending_approval: "#3b82f6", executing: "#0284c7", executed: "#10b981",
   rejected: "#6b7280", rolled_back: "#ef4444",
 };
 const STATUS_ICON: Record<string, string> = {
@@ -255,7 +255,7 @@ export default function SafeAgent() {
 
         {p.rollback_plan && (
           <div style={{ background: "#faf5ff", borderRadius: 8, padding: 10 }}>
-            <span style={{ fontWeight: 600, color: "#8b5cf6" }}>↩ Rollback plan: </span>{p.rollback_plan}
+            <span style={{ fontWeight: 600, color: "#0284c7" }}>↩ Rollback plan: </span>{p.rollback_plan}
           </div>
         )}
         {p._recommendation_reason && (

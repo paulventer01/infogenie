@@ -151,7 +151,7 @@ export default function Digest() {
       <div style={{ marginBottom: 18 }}>
         <div
           style={{
-            background: "linear-gradient(135deg,#7C3AED 0%,#5B21B6 100%)",
+            background: "linear-gradient(135deg,#0f766e 0%,#5B21B6 100%)",
             color: "#fff",
             borderRadius: "12px 12px 0 0",
             padding: "20px 24px",
@@ -313,8 +313,8 @@ export default function Digest() {
               onClick={runDigest}
               style={{
                 padding: "10px 20px",
-                background: "#7C3AED",
-                border: "2px solid #7C3AED",
+                background: "#0f766e",
+                border: "2px solid #0f766e",
                 borderRadius: 8,
                 fontSize: "0.82rem",
                 fontWeight: 800,
@@ -383,7 +383,7 @@ export default function Digest() {
                       gap: 14,
                       alignItems: "center",
                     }}
-                    onMouseOver={(e) => (e.currentTarget.style.borderColor = "#7C3AED")}
+                    onMouseOver={(e) => (e.currentTarget.style.borderColor = "#0f766e")}
                     onMouseOut={(e) => (e.currentTarget.style.borderColor = "#E5E7EB")}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -396,7 +396,7 @@ export default function Digest() {
                         {(d.delivered_to || []).length ? " · ✉️ sent" : ""}
                       </div>
                     </div>
-                    <div style={{ fontSize: "1.1rem", color: "#7C3AED" }}>→</div>
+                    <div style={{ fontSize: "1.1rem", color: "#0f766e" }}>→</div>
                   </div>
                 ))}
               </div>

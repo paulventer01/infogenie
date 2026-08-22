@@ -101,7 +101,7 @@ function toast(msg: string): void {
   if (typeof w.showToast === "function") w.showToast(msg);
 }
 
-const PRIMARY = "#7C3AED";
+const PRIMARY = "#0f766e";
 
 export default function IcpStudio() {
   const router = useRouter();
@@ -762,7 +762,7 @@ Rules:
     <div className="view-header-wrap">
       <div
         className="view-header ig-panel-hero"
-        style={{ background: "linear-gradient(135deg,#7C3AED 0%,#EC4899 100%)" }}
+        style={{ background: "linear-gradient(135deg,#0f766e 0%,#EC4899 100%)" }}
       >
         <div className="container">
           <div className="vh-inner">
@@ -880,7 +880,7 @@ Rules:
               disabled={drafting}
               style={{
                 padding: "9px 18px",
-                background: "linear-gradient(135deg,#7C3AED,#EC4899)",
+                background: "linear-gradient(135deg,#0f766e,#EC4899)",
                 border: "none",
                 borderRadius: 10,
                 fontSize: "0.78rem",
@@ -1046,7 +1046,7 @@ Rules:
               style={{
                 marginTop: 10,
                 fontSize: "0.74rem",
-                color: "#7C3AED",
+                color: "#0f766e",
               }}
             >
               ⏳ AI is drafting your ICP from {domain} brand intelligence…
@@ -1138,7 +1138,7 @@ Rules:
             <VocColumn
               title="Top 5 Emotional Drivers"
               icon="❤️"
-              color="#7C3AED"
+              color="#0f766e"
               bg="#F5F3FF"
               items={voc?.emotionalDrivers}
               emptyText='Click "Mine My Data" — surfaces what they want to feel.'
@@ -1202,7 +1202,7 @@ Rules:
               icon="🎨"
               title="Use as Creative Studio Target"
               desc="Pre-fills your next ad with this ICP as the target persona."
-              color="#7C3AED"
+              color="#0f766e"
               bg="#F5F3FF"
               disabled={!hasICP}
               disabledReason="Build & save your ICP first."
@@ -1249,7 +1249,7 @@ Rules:
                   type="button"
                   onClick={() => goToView(router, "social")}
                   style={{
-                    color: "#7C3AED",
+                    color: "#0f766e",
                     fontWeight: 700,
                     textDecoration: "underline",
                     background: "none",
@@ -1296,7 +1296,7 @@ Rules:
           >
             <div
               style={{
-                background: "linear-gradient(135deg,#0891B2,#7C3AED)",
+                background: "linear-gradient(135deg,#0891B2,#0f766e)",
                 borderRadius: "18px 18px 0 0",
                 padding: "20px 24px",
                 display: "flex",
@@ -1377,7 +1377,7 @@ Rules:
                           width: 28,
                           height: 28,
                           background:
-                            "linear-gradient(135deg,#0891B2,#7C3AED)",
+                            "linear-gradient(135deg,#0891B2,#0f766e)",
                           color: "white",
                           borderRadius: "50%",
                           display: "flex",
@@ -1465,7 +1465,7 @@ Rules:
                   style={{
                     flex: 1,
                     padding: 11,
-                    background: "linear-gradient(135deg,#7C3AED,#EC4899)",
+                    background: "linear-gradient(135deg,#0f766e,#EC4899)",
                     border: "none",
                     borderRadius: 10,
                     fontSize: "0.82rem",

@@ -5110,7 +5110,7 @@ p, span, label, td, li {
 .chip-saas   { background: #8B5CF6 !important; }
 .chip-edu    { background: #F59E0B !important; }
 .chip-travel { background: #EC4899 !important; }
-.chip-crypto { background: #F97316 !important; }
+.chip-crypto { background: #0f766e !important; }
 
 /* ── Platform trust strip ── */
 .platform-strip {
