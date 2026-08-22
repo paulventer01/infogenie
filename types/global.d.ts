@@ -26,6 +26,8 @@ declare global {
     __igReactRouting?: boolean;
     /** View id React is currently routing to (paired with __igReactRouting). */
     __igPendingView?: string;
+    /** Next.js client navigation with query strings (LegacyNavBridge). */
+    __igNavigate?: (path: string) => void;
     // ig_diag.js watchdog / breadcrumb helper.
     IGDiag?: {
       setBreadcrumb?: (s: string) => void;

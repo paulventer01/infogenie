@@ -21,10 +21,126 @@
 /* =============================================================================
    FEATURE 2: REAL-TIME ALERTS — bell, panel, polling
    ============================================================================= */
-window._alertsState = { open:false, alerts:[], unread:0, lastChecked:0, polling:false };
+window._alertsState = { open:false, alerts:[], unread:0, lastChecked:0, polling:false, providers:null };
+
+async function _loadAlertProviders() {
+  if (window._alertsState.providers) return window._alertsState.providers;
+  try {
+    const r = await fetch('/api/alerts/provider-links');
+    const j = await r.json();
+    if (j.ok) window._alertsState.providers = j.providers || {};
+  } catch (e) { window._alertsState.providers = {}; }
+  return window._alertsState.providers || {};
+}
+
+function _inferProviderKey(alert) {
+  if (alert.providerKey) return alert.providerKey;
+  const t = String(alert.title || '') + ' ' + String(alert.body || '');
+  if (/dataforseo/i.test(t)) return 'DATAFORSEO_LOGIN';
+  if (/openai/i.test(t)) return 'OPENAI_API_KEY';
+  if (/anthropic|claude/i.test(t)) return 'ANTHROPIC_API_KEY';
+  if (/perplexity/i.test(t)) return 'PERPLEXITY_API_KEY';
+  if (/gemini/i.test(t)) return 'GEMINI_API_KEY';
+  if (/firecrawl/i.test(t)) return 'FIRECRAWL_API_KEY';
+  if (/resend/i.test(t)) return 'RESEND_API_KEY';
+  if (/hubspot/i.test(t)) return 'HUBSPOT_PRIVATE_APP_TOKEN';
+  const m = String(alert.body || '').match(/\b([A-Z][A-Z0-9_]{4,})\b/);
+  return m ? m[1] : null;
+}
+
+function _adminPlatformKeysPath(focusKey) {
+  const q = new URLSearchParams({ tab: 'platform-keys' });
+  if (focusKey) q.set('focus', focusKey);
+  return `/manage/admin?${q.toString()}`;
+}
+
+function _spaGo(path, viewId) {
+  toggleAlertsPanel();
+  if (typeof window.__igNavigate === 'function') {
+    window.__igNavigate(path);
+    try { window.navigateTo && window.navigateTo(viewId || 'admin'); } catch (_) {}
+    return;
+  }
+  window.location.assign(path);
+}
+
+function _alertProviderKey(alert) {
+  return alert.providerKey || _inferProviderKey(alert);
+}
+
+function _alertExternalAction(alert) {
+  const key = _alertProviderKey(alert);
+  const p = (window._alertsState.providers || {})[key];
+  if (!p) return null;
+  const creditTypes = ['credit_low', 'credit_error'];
+  const missingTypes = ['service_missing', 'key_placeholder'];
+  if (creditTypes.includes(alert.type)) {
+    return { url: p.billingUrl, label: `Top up ${p.name} balance →` };
+  }
+  if (missingTypes.includes(alert.type)) {
+    return { url: p.signupUrl || p.billingUrl, label: `Open ${p.name} website →` };
+  }
+  return null;
+}
+
+function _alertAction(alert) {
+  const key = _alertProviderKey(alert);
+  const creditTypes = ['credit_low', 'credit_error'];
+  const missingTypes = ['service_missing', 'key_placeholder'];
+  if (key && (missingTypes.includes(alert.type) || creditTypes.includes(alert.type))) {
+    return {
+      url: alert.settingsUrl || _adminPlatformKeysPath(key),
+      label: missingTypes.includes(alert.type)
+        ? (alert.settingsLabel || 'Configure in Platform APIs →')
+        : 'Review in Platform APIs →',
+      external: false,
+      providerKey: key,
+    };
+  }
+  if (alert.actionUrl && !/^https?:\/\//i.test(alert.actionUrl)) {
+    return {
+      url: alert.actionUrl,
+      label: alert.actionLabel || 'Open in InfoGenie →',
+      external: false,
+    };
+  }
+  if (alert.actionUrl) {
+    return {
+      url: alert.actionUrl,
+      label: alert.actionLabel || 'Open provider →',
+      external: true,
+    };
+  }
+  return null;
+}
+
+function _openAlertAction(alert, evt) {
+  if (evt) evt.stopPropagation();
+  const act = _alertAction(alert);
+  if (!act || !act.url) return;
+  if (act.external) {
+    window.open(act.url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  _spaGo(act.url, 'admin');
+}
+
+function _openAlertExternal(alert, evt) {
+  if (evt) evt.stopPropagation();
+  const ext = _alertExternalAction(alert);
+  if (!ext || !ext.url) return;
+  window.open(ext.url, '_blank', 'noopener,noreferrer');
+}
+
+function _openAlertSettings(alert, evt) {
+  if (evt) evt.stopPropagation();
+  const key = _alertProviderKey(alert);
+  _spaGo(_adminPlatformKeysPath(key), 'admin');
+}
 
 async function loadAlertsList() {
   try {
+    await _loadAlertProviders();
     const r = await fetch('/api/alerts/list?limit=30');
     const j = await r.json();
     if (!j.ok) return;
@@ -50,8 +166,10 @@ function toggleAlertsPanel() {
   panel.classList.toggle('hidden');
   window._alertsState.open = opening;
   if (opening) {
-    renderAlertsPanel();
-    loadAlertsList();
+    _loadAlertProviders().then(() => {
+      renderAlertsPanel();
+      loadAlertsList();
+    });
   }
 }
 
@@ -69,17 +187,43 @@ function renderAlertsPanel() {
     body.innerHTML = `<div style="padding:32px;text-align:center;color:#64748b;font-size:.85rem">No alerts yet. Click <strong>Check now</strong> to scan for mention surges and rank drops.</div>`;
     return;
   }
-  body.innerHTML = arr.map(a => {
+  body.innerHTML = arr.map((a, idx) => {
     const sevColor = a.severity === 'high' ? '#EF4444' : a.severity === 'medium' ? '#F59E0B' : '#3B82F6';
-    return `<div class="alert-item ${a.read ? 'alert-read' : 'alert-unread'}">
+    const act = _alertAction(a);
+    const ext = _alertExternalAction(a);
+    const clickable = !!act;
+    const settingsLink = (a.settingsUrl || (a.type === 'service_missing' || a.type === 'key_placeholder'));
+    return `<div class="alert-item ${a.read ? 'alert-read' : 'alert-unread'}${clickable ? ' alert-clickable' : ''}" data-alert-idx="${idx}"${clickable ? ` role="link" tabindex="0" title="${_esc(act.label)}"` : ''}>
       <div class="alert-bar" style="background:${sevColor}"></div>
       <div class="alert-content">
         <div class="alert-title">${_esc(a.title)}</div>
         <div class="alert-body">${_esc(a.body)}</div>
-        <div class="alert-meta">${_relativeTimeShort(a.timestamp)} · ${_esc(a.type.replace(/_/g,' '))}</div>
+        <div class="alert-meta">${_relativeTimeShort(a.timestamp)} · ${_esc(a.type.replace(/_/g,' '))}${clickable ? ` · <span class="alert-action-hint">${_esc(act.label)}</span>` : ''}</div>
+        <div class="alert-actions">${settingsLink ? `<button type="button" class="alert-settings-link" data-settings-idx="${idx}">${_esc(a.settingsLabel || 'Configure in Platform APIs')}</button>` : ''}${ext ? `<button type="button" class="alert-external-link" data-external-idx="${idx}">${_esc(ext.label)}</button>` : ''}</div>
       </div>
     </div>`;
   }).join('');
+  arr.forEach((a, idx) => {
+    const act = _alertAction(a);
+    const row = body.querySelector(`.alert-item[data-alert-idx="${idx}"]`);
+    const settingsBtn = body.querySelector(`button.alert-settings-link[data-settings-idx="${idx}"]`);
+    const externalBtn = body.querySelector(`button.alert-external-link[data-external-idx="${idx}"]`);
+    if (row && act) {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
+        _openAlertAction(a, e);
+      });
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _openAlertAction(a, e); }
+      });
+    }
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', (e) => _openAlertSettings(a, e));
+    }
+    if (externalBtn) {
+      externalBtn.addEventListener('click', (e) => _openAlertExternal(a, e));
+    }
+  });
 }
 
 function _relativeTimeShort(ts) {
@@ -113,7 +257,19 @@ async function checkAlertsNow() {
     if (j.newCount > 0) showToast(`🔔 ${j.newCount} new alert${j.newCount>1?'s':''}`);
     await loadAlertsList();
   } catch (e) {
-    if (body) body.innerHTML = `<div style="padding:32px;text-align:center;color:#EF4444;font-size:.85rem">⚠️ ${_esc(e.message)}</div>`;
+    const msg = String(e.message || e);
+    const needsDfs = /dataforseo-not-configured/i.test(msg);
+    if (body) {
+      body.innerHTML = `<div style="padding:32px;text-align:center;color:#64748b;font-size:.85rem">
+        ⚠️ ${_esc(msg)}
+        ${needsDfs ? `<div style="margin-top:14px"><button type="button" class="alert-settings-link" id="alertsCheckNowConfigure">Configure DataForSEO in Platform APIs →</button></div>` : ''}
+      </div>`;
+      if (needsDfs) {
+        document.getElementById('alertsCheckNowConfigure')?.addEventListener('click', () => {
+          _spaGo(_adminPlatformKeysPath('DATAFORSEO_LOGIN'), 'admin');
+        });
+      }
+    }
   }
 }
 
@@ -140,7 +296,7 @@ async function checkCreditsNow() {
 window.checkCreditsNow = checkCreditsNow;
 
 // Auto-load alert count on app boot
-setTimeout(loadAlertsList, 1500);
+setTimeout(() => { _loadAlertProviders().then(loadAlertsList); }, 1500);
 // Run a credit-check sweep on boot (server also runs it, but this ensures the
 // badge reflects current balance state without waiting for the next 5-min poll).
 setTimeout(() => { fetch('/api/alerts/check-credits').then(() => loadAlertsList()).catch(()=>{}); }, 3000);
