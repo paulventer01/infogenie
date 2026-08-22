@@ -36,8 +36,8 @@ const REGISTRY = [
   { key: 'PERPLEXITY_API_KEY', group: 'AI Models', service: 'Perplexity', label: 'Perplexity API Key', desc: 'Perplexity — live web-grounded research', secret: true, test: 'perplexity', settingsIds: ['perplexity'] },
   { key: 'CLOUDFLARE_ACCOUNT_ID', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare Account ID', desc: 'Workers AI (Llama 3.1) — account identifier', secret: false, settingsIds: ['cloudflare'] },
   { key: 'CLOUDFLARE_AI_TOKEN', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare AI Token', desc: 'Workers AI (Llama 3.1) — API token', secret: true, test: 'cloudflare', settingsIds: ['cloudflare'] },
-  { key: 'RAPIDAPI_KEY', group: 'AI Models', service: 'RapidAPI', label: 'RapidAPI Key', desc: 'Multi-purpose RapidAPI key — Meta Llama 3.2 Vision (LLM fallback) + Google SEO Keyword Research (keyword-research-for-seo)', secret: true, test: 'rapidapi_llama', settingsIds: ['rapidapi'] },
-  { key: 'ZAI_API_KEY', group: 'AI Models', service: 'Z.ai / AutoClaw', label: 'Z.ai API Key', desc: 'GLM 5.2 via chat.z.ai / autoclaw.z.ai — lead classification, agent tasks, Coding Plan endpoint', secret: true, aliases: ['GLM_API_KEY', 'Z_AI_API_KEY'], test: 'zai', settingsIds: ['zai', 'glm', 'autoclaw'] },
+  { key: 'RAPIDAPI_KEY', group: 'AI Models', service: 'RapidAPI', label: 'RapidAPI Key', desc: 'X-RapidAPI-Key from rapidapi.com/developer/security. Subscribe on Pricing for Meta Llama 3.2 Vision (and any Google Search APIs you use). Save stores the key; Test checks subscription + reachability.', secret: true, test: 'rapidapi_llama', settingsIds: ['rapidapi'] },
+  { key: 'ZAI_API_KEY', group: 'AI Models', service: 'Z.ai / AutoClaw', label: 'Z.ai API Key', desc: 'GLM via api.z.ai — lead classification, agent tasks, Coding Plan. HTTP 429 on Test means the key works but the account is rate-limited — wait and retry.', secret: true, aliases: ['GLM_API_KEY', 'Z_AI_API_KEY'], test: 'zai', settingsIds: ['zai', 'glm', 'autoclaw'] },
   { key: 'MOONSHOT_API_KEY', group: 'AI Models', service: 'Moonshot / Kimi', label: 'Moonshot API Key', desc: 'Kimi K3 via api.moonshot.ai — long-context analysis, vision, agentic research (OpenAI-compatible)', secret: true, aliases: ['KIMI_API_KEY'], test: 'moonshot', settingsIds: ['moonshot', 'kimi'] },
   { key: 'GROQ_API_KEY', group: 'AI Models', service: 'Groq', label: 'Groq API Key', desc: 'Llama 3.1 70B and other Groq OpenAI-compatible chat models', secret: true, settingsIds: ['groq'] },
   { key: 'DEEPSEEK_API_KEY', group: 'AI Models', service: 'DeepSeek', label: 'DeepSeek API Key', desc: 'DeepSeek Chat — OpenAI-compatible analysis & writing', secret: true, settingsIds: ['deepseek'] },
@@ -359,16 +359,31 @@ async function _runTest(keyName) {
     if (entry.test === 'zai') {
       const key = resolvePlatformKey('ZAI_API_KEY');
       if (!key) return _UNCONF();
-      const base = (process.env.ZAI_API_BASE_URL || process.env.ZAI_CODING_BASE_URL || 'https://api.z.ai/api/coding/paas/v4').replace(/\/$/, '');
-      const r = await _fetchT(base + '/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key, 'Accept-Language': 'en-US,en' },
-        body: JSON.stringify({ model: process.env.ZAI_MODEL || 'glm-5.2', messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
-      });
-      if (r.ok) return _OK('Z.ai GLM reachable');
-      if (r.status === 401 || r.status === 403) return _BAD('Z.ai rejected the key (HTTP ' + r.status + ')');
-      if (r.status === 400 || r.status === 422) return _OK('Z.ai authenticated');
-      return _HTTP('Z.ai', r);
+      // Prefer the same endpoint probe order as AutoClaw (general → coding).
+      const bases = [
+        process.env.ZAI_API_BASE_URL,
+        process.env.ZAI_CODING_BASE_URL,
+        'https://api.z.ai/api/paas/v4',
+        'https://api.z.ai/api/coding/paas/v4',
+      ].filter(Boolean).map((b) => String(b).replace(/\/$/, ''));
+      const models = [process.env.ZAI_MODEL, 'glm-5.2', 'glm-5.1', 'glm-4.7'].filter(Boolean);
+      let lastStatus = 0;
+      for (const base of [...new Set(bases)]) {
+        for (const model of [...new Set(models)]) {
+          const r = await _fetchT(base + '/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key, 'Accept-Language': 'en-US,en' },
+            body: JSON.stringify({ model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }),
+          });
+          lastStatus = r.status;
+          if (r.ok) return _OK('Z.ai GLM reachable (' + model + ')');
+          // Auth accepted — payload/model mismatch or temporary throttle.
+          if (r.status === 400 || r.status === 422) return _OK('Z.ai authenticated');
+          if (r.status === 429) return _OK('Z.ai key accepted (rate limited — wait a minute and retry if needed)');
+          if (r.status === 401 || r.status === 403) return _BAD('Z.ai rejected the key (HTTP ' + r.status + ')');
+        }
+      }
+      return { ok: false, status: 'error', message: 'Z.ai returned HTTP ' + lastStatus };
     }
     if (entry.test === 'moonshot') {
       const key = resolvePlatformKey('MOONSHOT_API_KEY');
@@ -549,21 +564,49 @@ async function _runTest(keyName) {
     if (entry.test === 'rapidapi_llama') {
       const key = resolvePlatformKey('RAPIDAPI_KEY');
       if (!key) return _UNCONF();
-      // Probe: tiny chat completion — reveals a bad key (401/403) without using
-      // meaningful quota. The RapidAPI host is the Llama 3.2 Vision endpoint.
+      // Meta Llama Vision host — playground uses POST / ; some proxies also
+      // expose /chat/completions. Try both. 401 = bad app key, 403 = not
+      // subscribed, 429 = key OK but throttled, 404 = wrong path (try next).
       const host = 'meta-llama-3-2-vision.p.rapidapi.com';
-      const r = await _fetchT('https://' + host + '/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-rapidapi-key': key,
-          'x-rapidapi-host': host,
-        },
-        body: JSON.stringify({ model: 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo', messages: [{ role: 'user', content: 'Say ok' }], max_tokens: 5 }),
-      });
-      if (r.status === 401 || r.status === 403) return _BAD('RapidAPI rejected the key (HTTP ' + r.status + ')');
-      if (r.ok || r.status === 400 || r.status === 422) return _OK('Meta Llama (RapidAPI) reachable');
-      return _HTTP('Meta Llama (RapidAPI)', r);
+      const headers = {
+        'Content-Type': 'application/json',
+        'x-rapidapi-key': key,
+        'x-rapidapi-host': host,
+      };
+      const bodies = [
+        JSON.stringify({
+          model: 'llama-3.2-11b-vision-preview',
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'Say ok' }] }],
+          max_tokens: 5,
+        }),
+        JSON.stringify({
+          model: 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo',
+          messages: [{ role: 'user', content: 'Say ok' }],
+          max_tokens: 5,
+        }),
+      ];
+      const paths = ['/', '/chat/completions'];
+      let saw404 = false;
+      let lastStatus = 0;
+      for (const path of paths) {
+        for (const body of bodies) {
+          const r = await _fetchT('https://' + host + path, { method: 'POST', headers, body });
+          lastStatus = r.status;
+          if (r.status === 401) {
+            return _BAD('RapidAPI rejected the application key (HTTP 401) — use X-RapidAPI-Key from rapidapi.com/developer/security');
+          }
+          if (r.status === 403) {
+            return _BAD('Not subscribed to Meta Llama 3.2 Vision (HTTP 403). Open rapidapi.com/swift-api-swift-api-default/api/meta-llama-3-2-vision → Pricing → Subscribe, then Test again. Your key is saved.');
+          }
+          if (r.status === 429) return _OK('RapidAPI key accepted (rate limited)');
+          if (r.ok || r.status === 400 || r.status === 422) return _OK('Meta Llama (RapidAPI) reachable');
+          if (r.status === 404) { saw404 = true; continue; }
+        }
+      }
+      if (saw404) {
+        return _BAD('Meta Llama endpoint returned 404 — key is saved, but subscribe/check the API at rapidapi.com/swift-api-swift-api-default/api/meta-llama-3-2-vision (Pricing → Subscribe), then Test again.');
+      }
+      return { ok: false, status: 'error', message: 'Meta Llama (RapidAPI) returned HTTP ' + lastStatus };
     }
     return { ok: false, status: 'error', message: 'no test available for this key' };
   } catch (e) {
