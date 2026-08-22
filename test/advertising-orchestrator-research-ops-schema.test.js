@@ -21,7 +21,8 @@ const { ensureTenantSchema } = require('../services/tenants/schema');
 const SCHEMA_SRC_PATH = path.join(__dirname, '../services/agent_orchestrator/schema.js');
 
 function extractFunctionSource(src, name) {
-  const start = src.indexOf(`async function ${name}`);
+  let start = src.indexOf(`async function ${name}`);
+  if (start < 0) start = src.indexOf(`function ${name}`);
   assert.ok(start >= 0, `${name} must exist`);
   const brace = src.indexOf('{', start);
   let depth = 0;
@@ -97,12 +98,15 @@ test('production schema.js has no replica-role backfill and identify never mutat
   assert.match(src, /pg_try_advisory_lock/);
   assert.match(src, /agent_orchestrator_schema_init_timeout/);
 
+  const timeoutErrFn = extractFunctionSource(src, '_schemaInitTimeoutError');
+  assert.match(timeoutErrFn, /agent_orchestrator_schema_init_timeout/);
+
   const tryLockFn = extractFunctionSource(src, '_tryAdvisoryLockUntil');
   assert.match(tryLockFn, /pg_try_advisory_lock/);
-  assert.match(tryLockFn, /agent_orchestrator_schema_init_timeout/);
+  assert.match(tryLockFn, /_schemaInitTimeoutError/);
 
   const ensureFn = extractFunctionSource(src, 'ensureAgentOrchestratorSchema');
-  assert.match(ensureFn, /agent_orchestrator_schema_init_timeout/);
+  assert.match(ensureFn, /_schemaInitTimeoutError/);
   assert.match(ensureFn, /cancelled/);
 
   const identify = extractFunctionSource(src, '_identifyLegacyResearchCleanup');
