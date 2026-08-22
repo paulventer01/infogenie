@@ -6,8 +6,10 @@
 // payloads or fingerprints.
 //
 // Expired SELECT/DELETE is a single CTE so SKIP LOCKED and DELETE cannot
-// race. Boot calls skipHolds:true so first-boot leftovers stay operator-
-// owned. Interval/default sweep purges valid-expired rows even if held.
+// race. After SKIP LOCKED batches go empty, COUNT remaining eligible rows
+// and retry this tenant with bounded backoff (no lock_timeout). Boot calls
+// skipHolds:true so first-boot leftovers stay operator-owned on every
+// retry pass. Interval/default sweep purges valid-expired rows even if held.
 
 const _db = require('../../db');
 const _runtimeFlags = require('../runtime_flags');
@@ -21,6 +23,11 @@ const SWEEP_BATCH = 100;
 // per-tenant catch increments failures and production boot still fails closed.
 const DEADLOCK_RETRY_MAX = 5;
 const DEADLOCK_RETRY_BASE_MS = 25;
+// After SKIP LOCKED batches go empty, COUNT remaining eligible rows (no
+// SKIP LOCKED). If locked leftovers remain, retry this tenant only with
+// bounded backoff. After max attempts the next interval picks them up.
+const LOCKED_RETRY_MAX = 5;
+const LOCKED_RETRY_BASE_MS = 25;
 
 const EVIDENCE_TABLE = 'orchestrator_research_evidence';
 const ASSET_TABLE = 'orchestrator_research_evidence_assets';
@@ -60,7 +67,7 @@ const INVALID_EXPIRY_SQL = `
     ) AS invalid_expiry
 `;
 
-function expiredPurgeSql(table, targetKind, { skipHolds } = {}) {
+function expiredEligibleWhere(table, targetKind, { skipHolds } = {}) {
   const holdFilter = skipHolds ? `
      AND NOT EXISTS (
        SELECT 1 FROM orchestrator_research_legacy_holds h
@@ -69,14 +76,20 @@ function expiredPurgeSql(table, targetKind, { skipHolds } = {}) {
           AND h.target_id = ${table}.id
      )` : '';
   return `
+    tenant_id=$1
+    AND retention_class <> 'legal_hold'
+    AND expires_at IS NOT NULL
+    AND expires_at <= now()
+    AND expires_at > created_at
+    ${holdFilter}
+  `;
+}
+
+function expiredPurgeSql(table, targetKind, { skipHolds } = {}) {
+  return `
 WITH doomed AS (
   SELECT id FROM ${table}
-   WHERE tenant_id=$1
-     AND retention_class <> 'legal_hold'
-     AND expires_at IS NOT NULL
-     AND expires_at <= now()
-     AND expires_at > created_at
-     ${holdFilter}
+   WHERE ${expiredEligibleWhere(table, targetKind, { skipHolds })}
    ORDER BY expires_at, id
    FOR UPDATE SKIP LOCKED
    LIMIT $2
@@ -85,6 +98,13 @@ DELETE FROM ${table} t
  USING doomed
  WHERE t.tenant_id=$1 AND t.id = doomed.id
  RETURNING t.id
+`;
+}
+
+function expiredEligibleCountSql(table, targetKind, { skipHolds } = {}) {
+  return `
+SELECT COUNT(*)::int AS n FROM ${table}
+ WHERE ${expiredEligibleWhere(table, targetKind, { skipHolds })}
 `;
 }
 
@@ -179,6 +199,19 @@ async function _purgeExpiredTable(client, table, tenantId, { skipHolds } = {}) {
   return purged;
 }
 
+async function _countExpiredEligible(client, tenantId, { skipHolds } = {}) {
+  const ev = await client.query(
+    expiredEligibleCountSql(EVIDENCE_TABLE, HOLD_KIND[EVIDENCE_TABLE], { skipHolds }),
+    [tenantId]
+  );
+  const assets = await client.query(
+    expiredEligibleCountSql(ASSET_TABLE, HOLD_KIND[ASSET_TABLE], { skipHolds }),
+    [tenantId]
+  );
+  return (Number(ev.rows[0] && ev.rows[0].n) || 0)
+    + (Number(assets.rows[0] && assets.rows[0].n) || 0);
+}
+
 async function _sweepTenant(p, tenantId, { skipHolds } = {}) {
   const client = await p.connect();
   let unrolled = null;
@@ -190,8 +223,20 @@ async function _sweepTenant(p, tenantId, { skipHolds } = {}) {
       _captureSweepError('research_evidence_invalid_expiry', { tenant_id: tenantId, invalid_expiry });
     }
 
-    const evidencePurged = await _purgeExpiredTable(client, EVIDENCE_TABLE, tenantId, { skipHolds });
-    const assetPurged = await _purgeExpiredTable(client, ASSET_TABLE, tenantId, { skipHolds });
+    let evidencePurged = 0;
+    let assetPurged = 0;
+    for (let attempt = 1; attempt <= LOCKED_RETRY_MAX; attempt += 1) {
+      evidencePurged += await _purgeExpiredTable(client, EVIDENCE_TABLE, tenantId, { skipHolds });
+      assetPurged += await _purgeExpiredTable(client, ASSET_TABLE, tenantId, { skipHolds });
+      const remaining = await _countExpiredEligible(client, tenantId, { skipHolds });
+      if (remaining <= 0) break;
+      if (attempt >= LOCKED_RETRY_MAX) break;
+      logger.info('research_evidence_sweep_locked_retry', {
+        tenant_id: tenantId,
+        attempt,
+      });
+      await _sleep(LOCKED_RETRY_BASE_MS * attempt);
+    }
     return { purged: evidencePurged + assetPurged, invalid_expiry };
   } catch (err) {
     unrolled = err;
@@ -289,4 +334,6 @@ module.exports = {
   SWEEP_MS,
   SWEEP_BATCH,
   DEADLOCK_RETRY_MAX,
+  LOCKED_RETRY_MAX,
+  LOCKED_RETRY_BASE_MS,
 };

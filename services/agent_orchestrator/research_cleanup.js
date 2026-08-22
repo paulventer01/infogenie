@@ -5,8 +5,10 @@
 // Boot must never call approveLegacyCleanup or executeLegacyCleanup.
 //
 // Logs tenant_id, op id, state, integer counts and error codes only — never
-// evidence content, URLs with query data, raw emails/phones, credentials or
-// payloads. confirmation_sha256 is a hex digest of the confirmation phrase.
+// evidence content, URLs with query data, raw emails/phones, credentials,
+// payloads or raw target ids. confirmation_sha256 is a hex digest of the
+// confirmation phrase. snapshot_sha256 is a hex digest of the preview
+// target set. Approve reads actor from req.user.id, never a caller id.
 
 const crypto = require('crypto');
 const _db = require('../../db');
@@ -53,6 +55,52 @@ function _timingSafeEqualString(a, b) {
     return false;
   }
   return crypto.timingSafeEqual(left, right);
+}
+
+// Numeric session user id, never an email. Zero/negative is the synthetic
+// api-key principal used when no owner row exists — not attributable, so it is
+// rejected rather than written into an approval or audit row.
+function _actorId(req) {
+  const n = Number(req && req.user && req.user.id);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function _hashSnapshotTargets(rows) {
+  const lines = (rows || [])
+    .map((row) => `${String(row.target_kind)}\0${String(row.target_id)}`)
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return crypto.createHash('sha256').update(lines.join('\n'), 'utf8').digest('hex');
+}
+
+async function _loadSnapshotTargets(p, tenantId, opId) {
+  const rows = (await p.query(
+    `SELECT target_kind, target_id
+       FROM orchestrator_research_cleanup_targets
+      WHERE tenant_id=$1 AND op_id=$2`,
+    [tenantId, opId]
+  )).rows;
+  return rows || [];
+}
+
+async function _storePreviewSnapshotHash(client, tenantId, opId) {
+  const rows = await _loadSnapshotTargets(client, tenantId, opId);
+  const digest = _hashSnapshotTargets(rows);
+  await client.query(
+    `UPDATE orchestrator_research_cleanup_ops
+        SET snapshot_sha256 = $3, updated_at = now()
+      WHERE tenant_id=$1 AND id=$2 AND state='previewed'`,
+    [tenantId, opId, digest]
+  );
+  return digest;
+}
+
+async function _assertSnapshotUntampered(p, tenantId, op) {
+  const stored = op && op.snapshot_sha256 != null ? String(op.snapshot_sha256) : '';
+  const rows = await _loadSnapshotTargets(p, tenantId, op.id);
+  const computed = _hashSnapshotTargets(rows);
+  if (!_timingSafeEqualString(computed, stored)) {
+    fail('validation_failed', { field: 'snapshot_sha256', reason: 'mismatch' });
+  }
 }
 
 function _assertPositiveInt(v, field) {
@@ -292,8 +340,10 @@ async function previewLegacyCleanup({ tenantId, idempotencyKey } = {}) {
       [id, tid, key, counts.evidence, counts.assets]
     )).rows[0];
     // Snapshot is writable only while previewed. Approve freezes it.
+    // Hash is derived from stored targets, never from a caller-supplied list.
     if (row.state === 'previewed') {
       await _replacePreviewTargets(client, tid, row.id);
+      await _storePreviewSnapshotHash(client, tid, row.id);
     }
     await client.query('COMMIT');
     _logOp('research_evidence_cleanup_preview', {
@@ -313,9 +363,15 @@ async function previewLegacyCleanup({ tenantId, idempotencyKey } = {}) {
   }
 }
 
-async function approveLegacyCleanup({ tenantId, idempotencyKey, opId, actorUserId, confirmation } = {}) {
+async function approveLegacyCleanup(opts = {}) {
+  if (Object.prototype.hasOwnProperty.call(opts, 'actorUserId')) {
+    fail('validation_failed', { field: 'actorUserId', reason: 'caller_supplied' });
+  }
+  const { tenantId, idempotencyKey, opId, confirmation, req } = opts;
   const tid = _assertPositiveInt(tenantId, 'tenantId');
-  const actor = _assertPositiveInt(actorUserId, 'actorUserId');
+  if (req == null) fail('validation_failed', { field: 'req', reason: 'required' });
+  const actor = _actorId(req);
+  if (actor == null) fail('auth_required');
   if (!_timingSafeEqualString(confirmation, DELETE_LEGACY_RESEARCH_EVIDENCE)) {
     fail('validation_failed', { field: 'confirmation', reason: 'mismatch' });
   }
@@ -325,6 +381,7 @@ async function approveLegacyCleanup({ tenantId, idempotencyKey, opId, actorUserI
   if (existing.state !== 'previewed') {
     fail('validation_failed', { field: 'state', reason: 'not_previewed' });
   }
+  await _assertSnapshotUntampered(p, tid, existing);
   const digest = _sha256Hex(DELETE_LEGACY_RESEARCH_EVIDENCE);
   const row = (await p.query(
     `UPDATE orchestrator_research_cleanup_ops
@@ -379,6 +436,8 @@ async function executeLegacyCleanup({ tenantId, idempotencyKey, opId } = {}) {
   if (!_canExecute(existing)) {
     fail('validation_failed', { field: 'state', reason: 'not_approved' });
   }
+
+  await _assertSnapshotUntampered(p, tid, existing);
 
   const started = (await p.query(
     `UPDATE orchestrator_research_cleanup_ops

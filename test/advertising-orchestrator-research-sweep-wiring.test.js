@@ -89,6 +89,11 @@ test('research_retention.js registers setInterval only when backgroundEnabled, p
   assert.match(src, /expires_at IS NULL/);
   assert.match(src, /invalid_expiry/);
   assert.match(src, /NOT EXISTS/);
+  assert.match(src, /LOCKED_RETRY_MAX/);
+  assert.match(src, /LOCKED_RETRY_BASE_MS/);
+  assert.match(src, /research_evidence_sweep_locked_retry/);
+  assert.match(src, /expiredEligibleCountSql/);
+  assert.doesNotMatch(src, /87231402/);
 });
 
 test('research_cleanup.js is a module required from tests, not an HTTP route', () => {
@@ -101,6 +106,10 @@ test('research_cleanup.js is a module required from tests, not an HTTP route', (
   assert.match(cleanupSrc, /executeLegacyCleanup/);
   assert.match(cleanupSrc, /DELETE_LEGACY_RESEARCH_EVIDENCE/);
   assert.match(cleanupSrc, /timingSafeEqual/);
+  assert.match(cleanupSrc, /snapshot_sha256/);
+  assert.match(cleanupSrc, /Number\(req && req\.user && req\.user\.id\)/);
+  assert.match(cleanupSrc, /actorUserId/);
+  assert.doesNotMatch(cleanupSrc, /require\(\s*['"]\.\/runner['"]\s*\)/);
   assert.match(cleanupSrc, /orchestrator_research_cleanup_targets/);
   assert.doesNotMatch(cleanupSrc, /infogenie\.research_cleanup/);
   assert.doesNotMatch(cleanupSrc, /\b(?:express|Router|app\.use|app\.(?:get|post|put|patch|delete))\b/);

@@ -239,7 +239,15 @@ is the sweeper:
   `ensure()` `AccessExclusiveLock`). `40P01`/`40001` (and `55P03` if a
   timeout still appears) retry, bounded. Empty doomed set commits and
   stops (not a hang, not a noop-fail). One call loops until empty; each
-  inner DELETE is LIMIT-bounded.
+  inner DELETE is LIMIT-bounded. After a tenant's SKIP LOCKED batches go
+  empty, COUNT remaining expired eligible rows with the **same predicates
+  as the CTE** (no SKIP LOCKED). If count > 0, sleep
+  `LOCKED_RETRY_BASE_MS * attempt` (25ms base, max 5 attempts) and run
+  another batch pass for **that tenant only**. Boot `{ skipHolds: true }`
+  still skips holds on every retry pass. After max retries, remaining
+  locked rows wait for the next interval. Log
+  `research_evidence_sweep_locked_retry` with `tenant_id` + `attempt`
+  only. The production sweeper does not take advisory lock `87231402`.
 - **`skipHolds: true` (BOOT ONLY):** expired SELECT/DELETE adds
   `AND NOT EXISTS (SELECT 1 FROM orchestrator_research_legacy_holds h WHERE
   h.tenant_id=$1 AND h.target_kind=… AND h.target_id = id)`. First-boot
@@ -282,19 +290,36 @@ is the sweeper:
   `orchestrator_research_cleanup_ops` (`state=previewed`) and **replaces**
   `orchestrator_research_cleanup_targets` for that op with the current hold
   ids (evidence/asset). Snapshot rewrite happens only while `state=previewed`.
-  Never deletes evidence. After approve, the snapshot is frozen.
-- `approveLegacyCleanup` requires the confirmation phrase
+  After replacing targets, compute canonical SHA-256 over sorted
+  `target_kind + '\\0' + target_id` lines (utf8), lowercase hex, and store
+  in `orchestrator_research_cleanup_ops.snapshot_sha256` **only while
+  `state='previewed'`**. Never hashes a caller-supplied list. Never deletes
+  evidence. After approve, the snapshot is frozen.
+- `approveLegacyCleanup` rejects a caller-supplied `actorUserId`
+  (`validation_failed` field `actorUserId`). It requires `req` and reads
+  the actor with the same rule as `runner.js` `actorId`:
+  `Number(req.user.id)` must be a positive integer (`validation_failed`
+  field `req` if `req` is missing; `auth_required` otherwise). It does
+  not `require('./runner')`. Confirmation phrase
   `DELETE_LEGACY_RESEARCH_EVIDENCE` (timing-safe compare; store sha256 hex
-  only). Human approval is this explicit call.
+  only). Before the state change, recompute the snapshot hash from that
+  op's targets and `timingSafeEqual` it against stored `snapshot_sha256`.
+  Mismatch fails closed (`validation_failed` field `snapshot_sha256`).
+  Human approval is this explicit call. No HTTP route.
 - `executeLegacyCleanup` refuses unless `approved` or a crashed
-  `running`/`failed` after approval. Transitions `approved` → `running`
-  before DELETE so the immutability trigger can join this op's snapshot
+  `running`/`failed` after approval. Recomputes the snapshot hash and
+  `timingSafeEqual`s it **before any DELETE**. Mismatch fails closed; no
+  DELETE. Transitions `approved` → `running` before DELETE so the
+  immutability trigger can join this op's snapshot
   (`state IN ('approved','running')`). Dedicated client, `lock_timeout = '2s'`,
   batch DELETE of **only** ids listed in that op's
   `orchestrator_research_cleanup_targets` (`FOR UPDATE SKIP LOCKED LIMIT 100`),
   then the matching hold rows. No `SET LOCAL infogenie.research_cleanup`.
   `completed` is idempotent `{ purged: 0 }` — leftover holds that are not in
   this snapshot, including rows identified after preview, are not deleted.
+  Rows created after preview are off-snapshot. Evidence/assets are
+  UPDATE-immutable, so a later change cannot rewrite an id in place.
+  Logs never include raw target ids.
 
 Evidence and asset rows remain UPDATE-immutable. Replacement is a new INSERT
 with `supersedes_id`.

@@ -2,6 +2,7 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -221,6 +222,17 @@ if (!HAS_DB) {
   let tenantB = null;
   let actorUserId = null;
 
+  function actorReq(id) {
+    return { user: { id: id == null ? actorUserId : id } };
+  }
+
+  function expectedSnapshotSha256(rows) {
+    const lines = (rows || [])
+      .map((row) => `${row.target_kind}\0${row.target_id}`)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    return crypto.createHash('sha256').update(lines.join('\n'), 'utf8').digest('hex');
+  }
+
   before(async () => {
     await ensureTenantSchema();
     await ensureAgentOrchestratorSchema();
@@ -256,7 +268,10 @@ if (!HAS_DB) {
     );
     assert.match(src, /timingSafeEqual/);
     assert.match(src, /confirmation_sha256/);
+    assert.match(src, /snapshot_sha256/);
     assert.match(src, /orchestrator_research_cleanup_targets/);
+    assert.match(src, /Number\(req && req\.user && req\.user\.id\)/);
+    assert.doesNotMatch(src, /require\(\s*['"]\.\/runner['"]\s*\)/);
     assert.doesNotMatch(src, /infogenie\.research_cleanup/);
     assert.match(src, /lock_timeout/);
     assert.match(src, /tenant_id=\$1/);
@@ -332,12 +347,13 @@ if (!HAS_DB) {
     )).rows[0].n;
     assert.strictEqual(leftover, 3, 'preview must not delete');
     const stored = (await p.query(
-      `SELECT confirmation_sha256, state FROM orchestrator_research_cleanup_ops
+      `SELECT confirmation_sha256, snapshot_sha256, state FROM orchestrator_research_cleanup_ops
         WHERE tenant_id=$1 AND id=$2`,
       [tenantA, first.id]
     )).rows[0];
     assert.strictEqual(stored.state, 'previewed');
     assert.strictEqual(stored.confirmation_sha256, null);
+    assert.match(stored.snapshot_sha256, /^[0-9a-f]{64}$/);
     const targets = (await p.query(
       `SELECT target_kind, target_id FROM orchestrator_research_cleanup_targets
         WHERE tenant_id=$1 AND op_id=$2`,
@@ -345,6 +361,7 @@ if (!HAS_DB) {
     )).rows;
     assert.ok(targets.some((row) => row.target_kind === 'evidence' && evIds.includes(row.target_id)));
     assert.ok(targets.some((row) => row.target_kind === 'asset' && row.target_id === assetId));
+    assert.strictEqual(stored.snapshot_sha256, expectedSnapshotSha256(targets));
   });
 
   test('execute without approve fails; wrong confirmation fails', async () => {
@@ -363,7 +380,7 @@ if (!HAS_DB) {
     );
     await assert.rejects(
       () => approveLegacyCleanup({
-        tenantId: tenantA, opId: preview.id, actorUserId, confirmation: 'please-delete',
+        tenantId: tenantA, opId: preview.id, req: actorReq(), confirmation: 'please-delete',
       }),
       (err) => err instanceof OrchError && err.code === 'validation_failed'
         && err.extra && err.extra.field === 'confirmation'
@@ -397,7 +414,7 @@ if (!HAS_DB) {
     assert.ok(preview.dry_run_evidence_count >= n);
 
     const approved = await approveLegacyCleanup({
-      tenantId: tenantA, idempotencyKey: key, actorUserId,
+      tenantId: tenantA, idempotencyKey: key, req: actorReq(),
       confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
     });
     assert.strictEqual(approved.state, 'approved');
@@ -463,7 +480,7 @@ if (!HAS_DB) {
     assert.ok(!afterAdd.includes(idOff), 'off-snapshot hold must not join the preview set');
 
     await approveLegacyCleanup({
-      tenantId: tenantA, idempotencyKey: key, actorUserId,
+      tenantId: tenantA, idempotencyKey: key, req: actorReq(),
       confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
     });
     const executed = await executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
@@ -501,6 +518,154 @@ if (!HAS_DB) {
     assert.strictEqual(offStill.length, 1, 'completed op must not delete off-snapshot holds');
   });
 
+  test('caller actorUserId is refused; missing req.user is refused', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const evId = await insertEvidenceRow(p, tenantA, host.runId, comp);
+    await insertHold(p, tenantA, 'evidence', evId);
+    const key = nid('idemp-actor');
+    const preview = await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
+
+    await assert.rejects(
+      () => approveLegacyCleanup({
+        tenantId: tenantA, opId: preview.id, actorUserId,
+        req: actorReq(), confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+      }),
+      (err) => err instanceof OrchError && err.code === 'validation_failed'
+        && err.extra && err.extra.field === 'actorUserId'
+    );
+    await assert.rejects(
+      () => approveLegacyCleanup({
+        tenantId: tenantA, opId: preview.id,
+        confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+      }),
+      (err) => err instanceof OrchError && err.code === 'validation_failed'
+        && err.extra && err.extra.field === 'req'
+    );
+    await assert.rejects(
+      () => approveLegacyCleanup({
+        tenantId: tenantA, opId: preview.id, req: {},
+        confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+      }),
+      (err) => err instanceof OrchError && err.code === 'auth_required'
+    );
+    await assert.rejects(
+      () => approveLegacyCleanup({
+        tenantId: tenantA, opId: preview.id, req: { user: { id: 0 } },
+        confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+      }),
+      (err) => err instanceof OrchError && err.code === 'auth_required'
+    );
+
+    const approved = await approveLegacyCleanup({
+      tenantId: tenantA, opId: preview.id, req: actorReq(),
+      confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+    });
+    assert.strictEqual(approved.state, 'approved');
+    assert.strictEqual(approved.actor_user_id, Number(actorUserId));
+    const still = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, evId]
+    )).rows;
+    assert.strictEqual(still.length, 1, 'refused approve must not delete');
+  });
+
+  test('tampered cleanup_targets after preview refuse approve/execute; A and B stay', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const idA = await insertEvidenceRow(p, tenantA, host.runId, comp, { headline: RAW_EMAIL });
+    await insertHold(p, tenantA, 'evidence', idA);
+    const key = nid('idemp-tamper');
+    const preview = await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
+    const storedHash = (await p.query(
+      `SELECT snapshot_sha256 FROM orchestrator_research_cleanup_ops
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, preview.id]
+    )).rows[0].snapshot_sha256;
+    assert.match(storedHash, /^[0-9a-f]{64}$/);
+
+    const idB = await insertEvidenceRow(p, tenantA, host.runId, comp, { headline: RAW_PHONE });
+    await insertHold(p, tenantA, 'evidence', idB);
+    await p.query(
+      `INSERT INTO orchestrator_research_cleanup_targets
+         (tenant_id, op_id, target_kind, target_id)
+       VALUES ($1,$2,'evidence',$3)`,
+      [tenantA, preview.id, idB]
+    );
+
+    const cap = captureLogs(async () => {
+      await assert.rejects(
+        () => approveLegacyCleanup({
+          tenantId: tenantA, idempotencyKey: key, req: actorReq(),
+          confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+        }),
+        (err) => err instanceof OrchError && err.code === 'validation_failed'
+          && err.extra && err.extra.field === 'snapshot_sha256'
+      );
+      await assert.rejects(
+        () => executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: key }),
+        (err) => err instanceof OrchError && err.code === 'validation_failed'
+      );
+    });
+    await cap.run();
+    const joined = cap.lines.join('\n');
+    assert.ok(!joined.includes(idA), 'logs must not contain raw target id A');
+    assert.ok(!joined.includes(idB), 'logs must not contain raw target id B');
+    assertNoRawContact(joined);
+
+    const aKept = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idA]
+    )).rows;
+    const bKept = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idB]
+    )).rows;
+    assert.strictEqual(aKept.length, 1, 'tamper must fail closed; A stays');
+    assert.strictEqual(bKept.length, 1, 'tamper must fail closed; B stays');
+
+    const hostExec = await seedHost(p, tenantA);
+    const compExec = await insertComp(p, tenantA, hostExec.runId);
+    const idExecA = await insertEvidenceRow(p, tenantA, hostExec.runId, compExec);
+    await insertHold(p, tenantA, 'evidence', idExecA);
+    const keyExec = nid('idemp-tamper-exec');
+    const previewExec = await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: keyExec });
+    const idExecB = await insertEvidenceRow(p, tenantA, hostExec.runId, compExec);
+    await insertHold(p, tenantA, 'evidence', idExecB);
+    await approveLegacyCleanup({
+      tenantId: tenantA, idempotencyKey: keyExec, req: actorReq(),
+      confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+    });
+    await p.query(
+      `INSERT INTO orchestrator_research_cleanup_targets
+         (tenant_id, op_id, target_kind, target_id)
+       VALUES ($1,$2,'evidence',$3)`,
+      [tenantA, previewExec.id, idExecB]
+    );
+    await assert.rejects(
+      () => executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: keyExec }),
+      (err) => err instanceof OrchError && err.code === 'validation_failed'
+        && err.extra && err.extra.field === 'snapshot_sha256'
+    );
+    const execA = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idExecA]
+    )).rows;
+    const execB = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idExecB]
+    )).rows;
+    assert.strictEqual(execA.length, 1, 'execute mismatch must not DELETE A');
+    assert.strictEqual(execB.length, 1, 'execute mismatch must not DELETE B');
+    const state = (await p.query(
+      `SELECT state FROM orchestrator_research_cleanup_ops WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, previewExec.id]
+    )).rows[0].state;
+    assert.strictEqual(state, 'approved', 'hash mismatch must not start DELETE / running');
+  });
+
   test('retry after injected failure resumes', async () => {
     const p = db.getPool();
     const host = await seedHost(p, tenantA);
@@ -510,7 +675,7 @@ if (!HAS_DB) {
     const key = nid('idemp-retry');
     await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
     await approveLegacyCleanup({
-      tenantId: tenantA, idempotencyKey: key, actorUserId,
+      tenantId: tenantA, idempotencyKey: key, req: actorReq(),
       confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
     });
 
@@ -576,7 +741,7 @@ if (!HAS_DB) {
     await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: keyA });
     const previewB = await previewLegacyCleanup({ tenantId: tenantB, idempotencyKey: keyB });
     await approveLegacyCleanup({
-      tenantId: tenantA, idempotencyKey: keyA, actorUserId,
+      tenantId: tenantA, idempotencyKey: keyA, req: actorReq(),
       confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
     });
     await executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: keyA });
@@ -689,11 +854,11 @@ if (!HAS_DB) {
       await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
       await assert.rejects(
         () => approveLegacyCleanup({
-          tenantId: tenantA, idempotencyKey: key, actorUserId, confirmation: 'nope',
+          tenantId: tenantA, idempotencyKey: key, req: actorReq(), confirmation: 'nope',
         })
       );
       await approveLegacyCleanup({
-        tenantId: tenantA, idempotencyKey: key, actorUserId,
+        tenantId: tenantA, idempotencyKey: key, req: actorReq(),
         confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
       });
       await executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });

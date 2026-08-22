@@ -14,6 +14,8 @@ const {
   SWEEP_BATCH,
   SWEEP_MS,
   DEADLOCK_RETRY_MAX,
+  LOCKED_RETRY_MAX,
+  LOCKED_RETRY_BASE_MS,
 } = require('../services/agent_orchestrator/research_retention');
 const {
   insertEvidenceItem,
@@ -200,6 +202,8 @@ if (!HAS_DB) {
     assert.strictEqual(SWEEP_BATCH, 100);
     assert.strictEqual(SWEEP_MS, 6 * 3600 * 1000);
     assert.ok(DEADLOCK_RETRY_MAX >= 3 && DEADLOCK_RETRY_MAX <= 5);
+    assert.strictEqual(LOCKED_RETRY_MAX, 5);
+    assert.strictEqual(LOCKED_RETRY_BASE_MS, 25);
   });
 
   test('expired standard evidence is purged; future and legal_hold are kept', async () => {
@@ -745,6 +749,79 @@ if (!HAS_DB) {
     await runSkipLockedHeldRowOnce(db.getPool(), tenantA);
   });
 
+  test('in-sweep SKIP LOCKED retry purges after unlock; log is tenant_id + attempt only', async () => {
+    const p = db.getPool();
+    const gate = await p.connect();
+    const locker = await p.connect();
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const retryLogs = [];
+    const origInfo = logger.info;
+    let lockedId;
+    try {
+      await gate.query('SELECT pg_advisory_lock($1)', [87231402]);
+      const host = await seedHost(p, tenantA);
+      const comp = await insertComp(p, tenantA, host.runId);
+      lockedId = await insertExpiredEvidence(p, tenantA, host.runId, comp, {
+        createdAt, expiresAt: expiredAt, bodyText: 'SECRET_LOCKED_RETRY_BODY',
+      });
+
+      await locker.query('BEGIN');
+      await locker.query(
+        `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+        [tenantA, lockedId]
+      );
+
+      logger.info = (msg, fields) => {
+        retryLogs.push({ msg, ...(fields || {}) });
+        return origInfo(msg, fields);
+      };
+      const sweepP = sweepExpiredResearchEvidence({ tenantId: tenantA });
+      const deadline = Date.now() + 1500;
+      while (
+        !retryLogs.some((row) => row.msg === 'research_evidence_sweep_locked_retry')
+        && Date.now() < deadline
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      await locker.query('COMMIT');
+      const result = await sweepP;
+      assert.ok(result);
+      assert.strictEqual(result.failures, 0);
+
+      let leftover = (await p.query(
+        `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, lockedId]
+      )).rows;
+      if (leftover.length) {
+        const later = await sweepExpiredResearchEvidence({ tenantId: tenantA });
+        assert.strictEqual(later.failures, 0);
+        leftover = (await p.query(
+          `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+          [tenantA, lockedId]
+        )).rows;
+      }
+      assert.strictEqual(leftover.length, 0, 'unlocked expired row must be purged');
+
+      const retryLine = retryLogs.find((row) => row.msg === 'research_evidence_sweep_locked_retry');
+      assert.ok(retryLine, 'in-sweep locked retry must be logged');
+      assert.strictEqual(retryLine.tenant_id, tenantA);
+      assert.strictEqual(typeof retryLine.attempt, 'number');
+      assert.ok(retryLine.attempt >= 1 && retryLine.attempt < LOCKED_RETRY_MAX);
+      const retryKeys = Object.keys(retryLine).filter((k) => k !== 'msg');
+      assert.deepStrictEqual(retryKeys.sort(), ['attempt', 'tenant_id']);
+      const dumped = JSON.stringify(retryLogs);
+      assert.ok(!dumped.includes(lockedId), 'retry logs must not include target ids');
+      assert.ok(!dumped.includes('SECRET_LOCKED_RETRY_BODY'), 'retry logs must not include evidence body');
+    } finally {
+      logger.info = origInfo;
+      try { await locker.query('ROLLBACK'); } catch { /* ignore */ }
+      locker.release();
+      try { await gate.query('SELECT pg_advisory_unlock($1)', [87231402]); } catch { /* ignore */ }
+      gate.release();
+    }
+  });
+
   test('two concurrent sweeps partition expired rows without a noop race', async () => {
     const p = db.getPool();
     const gate = await p.connect();
@@ -861,8 +938,12 @@ if (!HAS_DB) {
     const max = Number(maxMatch[1]);
     assert.ok(max >= 3 && max <= 5, 'retry bound must be 3–5 attempts');
     assert.match(src, /research_evidence_sweep_retry/);
+    assert.match(src, /research_evidence_sweep_locked_retry/);
+    assert.match(src, /LOCKED_RETRY_MAX/);
+    assert.match(src, /LOCKED_RETRY_BASE_MS/);
     assert.match(src, /_isRetryableTxConflict/);
     assert.match(src, /attempt < DEADLOCK_RETRY_MAX/);
+    assert.doesNotMatch(src, /87231402/);
     assert.doesNotMatch(src, /process\.exit\s*\(/);
     const retryBlock = src.slice(
       src.indexOf('async function _purgeExpiredTable'),
