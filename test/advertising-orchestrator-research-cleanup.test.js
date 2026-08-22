@@ -275,6 +275,18 @@ if (!HAS_DB) {
     assert.doesNotMatch(src, /infogenie\.research_cleanup/);
     assert.match(src, /lock_timeout/);
     assert.match(src, /tenant_id=\$1/);
+    assert.match(src, /retention_class <> 'legal_hold'/);
+    assert.match(src, /expires_at IS NOT NULL/);
+    assert.match(src, /expires_at <= now\(\)/);
+    assert.match(src, /NOT EXISTS/);
+    assert.match(src, /orchestrator_research_evidence_assets/);
+    const execBlock = src.slice(
+      src.indexOf('async function executeLegacyCleanup'),
+      src.indexOf('module.exports')
+    );
+    const assetIdx = execBlock.indexOf("_purgeHeldKind(client, tid, started.id, 'asset')");
+    const evidenceIdx = execBlock.indexOf("_purgeHeldKind(client, tid, started.id, 'evidence')");
+    assert.ok(assetIdx >= 0 && evidenceIdx > assetIdx, 'execute must purge assets before evidence');
     assert.doesNotMatch(src, /\bfetch\s*\(/);
     assert.doesNotMatch(src, /app\.(?:get|post|use)/);
     const serverSrc = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
@@ -406,7 +418,9 @@ if (!HAS_DB) {
       await insertHold(p, tenantA, 'evidence', id);
       evIds.push(id);
     }
-    const assetId = await insertAssetRow(p, tenantA, evIds[0]);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const assetId = await insertAssetRow(p, tenantA, evIds[0], { createdAt, expiresAt: expiredAt });
     await insertHold(p, tenantA, 'asset', assetId);
 
     const key = nid('idemp-exec');
@@ -429,6 +443,7 @@ if (!HAS_DB) {
     const executed = await cap.run();
     assert.strictEqual(executed.state, 'completed');
     assert.ok(executed.purged_evidence_count >= n);
+    assert.ok(executed.purged_assets_count >= 1);
     assertNoRawContact(cap.lines.join('\n'));
 
     const leftover = (await p.query(
@@ -867,5 +882,373 @@ if (!HAS_DB) {
     const joined = cap.lines.join('\n');
     assertNoRawContact(joined);
     assert.ok(!joined.includes('Secret '), 'headline copy must not be logged');
+  });
+
+  test('legal-hold and future-expiry assets survive cleanup; parents with them are retained', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const futureAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    const holdParent = await insertEvidenceRow(p, tenantA, host.runId, comp, {
+      createdAt, expiresAt: expiredAt, headline: RAW_EMAIL,
+    });
+    const futureParent = await insertEvidenceRow(p, tenantA, host.runId, comp, {
+      createdAt, expiresAt: expiredAt,
+    });
+    const freeParent = await insertEvidenceRow(p, tenantA, host.runId, comp, {
+      createdAt, expiresAt: expiredAt,
+    });
+    const holdAsset = await insertAssetRow(p, tenantA, holdParent, {
+      createdAt, expiresAt: expiredAt, retentionClass: 'legal_hold',
+    });
+    const futureAsset = await insertAssetRow(p, tenantA, futureParent, {
+      createdAt, expiresAt: futureAt,
+    });
+    const expiredSnapAsset = await insertAssetRow(p, tenantA, freeParent, {
+      createdAt, expiresAt: expiredAt,
+    });
+
+    await insertHold(p, tenantA, 'evidence', holdParent);
+    await insertHold(p, tenantA, 'evidence', futureParent);
+    await insertHold(p, tenantA, 'evidence', freeParent);
+    await insertHold(p, tenantA, 'asset', holdAsset);
+    await insertHold(p, tenantA, 'asset', futureAsset);
+    await insertHold(p, tenantA, 'asset', expiredSnapAsset);
+
+    const key = nid('idemp-protect');
+    await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
+    await approveLegacyCleanup({
+      tenantId: tenantA, idempotencyKey: key, req: actorReq(),
+      confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+    });
+    const executed = await executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
+    assert.strictEqual(executed.state, 'completed');
+    assert.ok(executed.purged_assets_count >= 1);
+    assert.ok(executed.purged_evidence_count >= 1);
+
+    const holdAssetStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, holdAsset]
+    )).rows;
+    const futureAssetStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, futureAsset]
+    )).rows;
+    const expiredAssetGone = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, expiredSnapAsset]
+    )).rows;
+    assert.strictEqual(holdAssetStill.length, 1, 'legal-hold asset must survive parent cleanup');
+    assert.strictEqual(futureAssetStill.length, 1, 'future-expiry asset must survive');
+    assert.strictEqual(expiredAssetGone.length, 0, 'snapshot expired non-hold asset must be deleted');
+
+    const holdParentStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, holdParent]
+    )).rows;
+    const futureParentStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, futureParent]
+    )).rows;
+    const freeParentGone = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, freeParent]
+    )).rows;
+    assert.strictEqual(holdParentStill.length, 1, 'parent of surviving legal-hold asset must be retained');
+    assert.strictEqual(futureParentStill.length, 1, 'parent of surviving future-expiry asset must be retained');
+    assert.strictEqual(freeParentGone.length, 0, 'parent with no remaining children must be purged');
+  });
+
+  test('expired off-snapshot assets survive; only snapshot-approved expired non-held assets are deleted', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const snapParent = await insertEvidenceRow(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt });
+    const offParent = await insertEvidenceRow(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt });
+    const snapExpired = await insertAssetRow(p, tenantA, snapParent, { createdAt, expiresAt: expiredAt });
+    const offExpired = await insertAssetRow(p, tenantA, offParent, { createdAt, expiresAt: expiredAt });
+    const offOnSnapParent = await insertAssetRow(p, tenantA, snapParent, { createdAt, expiresAt: expiredAt });
+
+    await insertHold(p, tenantA, 'evidence', snapParent);
+    await insertHold(p, tenantA, 'asset', snapExpired);
+    const key = nid('idemp-off-snap');
+    await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
+
+    await insertHold(p, tenantA, 'evidence', offParent);
+    await insertHold(p, tenantA, 'asset', offExpired);
+    await insertHold(p, tenantA, 'asset', offOnSnapParent);
+
+    await approveLegacyCleanup({
+      tenantId: tenantA, idempotencyKey: key, req: actorReq(),
+      confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+    });
+    const executed = await executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
+    assert.strictEqual(executed.state, 'completed');
+
+    const snapExpiredGone = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, snapExpired]
+    )).rows;
+    const offExpiredStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, offExpired]
+    )).rows;
+    const leftoverOnSnapParent = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, offOnSnapParent]
+    )).rows;
+    assert.strictEqual(snapExpiredGone.length, 0, 'snapshot-approved expired asset must be deleted');
+    assert.strictEqual(offExpiredStill.length, 1, 'expired asset outside the approved snapshot must survive');
+    assert.strictEqual(leftoverOnSnapParent.length, 1, 'off-snapshot expired child on a snapshot parent must survive');
+
+    const snapParentStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, snapParent]
+    )).rows;
+    const offParentStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, offParent]
+    )).rows;
+    assert.strictEqual(snapParentStill.length, 1, 'parent with surviving off-snapshot child must be retained');
+    assert.strictEqual(offParentStill.length, 1, 'off-snapshot evidence must remain');
+  });
+
+  test('raw DELETE parent does not remove protected children', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const parentId = await insertEvidenceRow(p, tenantA, host.runId, comp, {
+      createdAt, expiresAt: expiredAt,
+    });
+    const holdChild = await insertAssetRow(p, tenantA, parentId, {
+      createdAt, expiresAt: expiredAt, retentionClass: 'legal_hold',
+    });
+    await assert.rejects(
+      () => p.query(
+        `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, parentId]
+      ),
+      /orchestrator_research_evidence|orchestrator_research_evidence_assets|foreign key|violates/i,
+      'raw parent DELETE must not orphan or cascade-remove a protected child'
+    );
+    const parentStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, parentId]
+    )).rows;
+    const childStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, holdChild]
+    )).rows;
+    assert.strictEqual(parentStill.length, 1, 'parent must remain when a protected child blocks DELETE');
+    assert.strictEqual(childStill.length, 1, 'protected child must remain after refused parent DELETE');
+  });
+
+  test('preview/execute tenant A cannot include or purge tenant B ids', async () => {
+    const p = db.getPool();
+    const hostA = await seedHost(p, tenantA);
+    const hostB = await seedHost(p, tenantB);
+    const compA = await insertComp(p, tenantA, hostA.runId);
+    const compB = await insertComp(p, tenantB, hostB.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const idA = await insertEvidenceRow(p, tenantA, hostA.runId, compA, { createdAt, expiresAt: expiredAt });
+    const assetA = await insertAssetRow(p, tenantA, idA, { createdAt, expiresAt: expiredAt });
+    const idB = await insertEvidenceRow(p, tenantB, hostB.runId, compB, { createdAt, expiresAt: expiredAt });
+    const assetB = await insertAssetRow(p, tenantB, idB, { createdAt, expiresAt: expiredAt });
+    await insertHold(p, tenantA, 'evidence', idA);
+    await insertHold(p, tenantA, 'asset', assetA);
+    await insertHold(p, tenantB, 'evidence', idB);
+    await insertHold(p, tenantB, 'asset', assetB);
+    await insertHold(p, tenantA, 'evidence', idB);
+
+    const keyA = nid('idemp-xt-a');
+    const previewA = await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: keyA });
+    const targetsA = (await p.query(
+      `SELECT target_kind, target_id FROM orchestrator_research_cleanup_targets
+        WHERE tenant_id=$1 AND op_id=$2`,
+      [tenantA, previewA.id]
+    )).rows;
+    assert.ok(targetsA.some((row) => row.target_id === idA));
+    assert.ok(targetsA.some((row) => row.target_id === assetA));
+    assert.ok(!targetsA.some((row) => row.target_id === assetB), 'tenant A snapshot must not include tenant B assets');
+    const bEvidenceInA = targetsA.filter((row) => row.target_kind === 'evidence' && row.target_id === idB);
+    assert.ok(bEvidenceInA.length <= 1, 'A may snapshot a colliding id string from an A-scoped hold');
+    assert.ok(!targetsA.some((row) => row.target_kind === 'asset' && row.target_id === assetB));
+
+    await approveLegacyCleanup({
+      tenantId: tenantA, idempotencyKey: keyA, req: actorReq(),
+      confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+    });
+    await executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: keyA });
+
+    const aGone = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idA]
+    )).rows;
+    const bEv = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantB, idB]
+    )).rows;
+    const bAsset = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantB, assetB]
+    )).rows;
+    assert.strictEqual(aGone.length, 0);
+    assert.strictEqual(bEv.length, 1, 'tenant A execute must not delete tenant B evidence');
+    assert.strictEqual(bAsset.length, 1, 'tenant A execute must not delete tenant B assets');
+  });
+
+  test('missing snapshot_sha256 and unapproved execute fail closed; completed replay stays purged 0', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const evId = await insertEvidenceRow(p, tenantA, host.runId, comp);
+    await insertHold(p, tenantA, 'evidence', evId);
+
+    const missingKey = nid('idemp-missing-hash');
+    const missingPreview = await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: missingKey });
+    await p.query(
+      `UPDATE orchestrator_research_cleanup_ops SET snapshot_sha256 = NULL
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, missingPreview.id]
+    );
+    await assert.rejects(
+      () => approveLegacyCleanup({
+        tenantId: tenantA, idempotencyKey: missingKey, req: actorReq(),
+        confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+      }),
+      (err) => err instanceof OrchError && err.code === 'validation_failed'
+        && err.extra && err.extra.field === 'snapshot_sha256'
+        && err.extra.reason === 'missing'
+    );
+    await p.query(
+      `UPDATE orchestrator_research_cleanup_ops
+          SET snapshot_sha256 = $3, state = 'approved', confirmation_sha256 = $4
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, missingPreview.id, 'a'.repeat(64), 'b'.repeat(64)]
+    );
+    await p.query(
+      `UPDATE orchestrator_research_cleanup_ops SET snapshot_sha256 = NULL
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, missingPreview.id]
+    );
+    await assert.rejects(
+      () => executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: missingKey }),
+      (err) => err instanceof OrchError && err.code === 'validation_failed'
+        && err.extra && err.extra.field === 'snapshot_sha256'
+        && err.extra.reason === 'missing'
+    );
+    const stillMissing = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, evId]
+    )).rows;
+    assert.strictEqual(stillMissing.length, 1, 'missing snapshot hash must not DELETE');
+
+    const unapprovedKey = nid('idemp-unapproved');
+    await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: unapprovedKey });
+    await assert.rejects(
+      () => executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: unapprovedKey }),
+      (err) => err instanceof OrchError && err.code === 'validation_failed'
+        && err.extra && err.extra.reason === 'not_approved'
+    );
+
+    const replayKey = nid('idemp-replay');
+    await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: replayKey });
+    await approveLegacyCleanup({
+      tenantId: tenantA, idempotencyKey: replayKey, req: actorReq(),
+      confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+    });
+    const first = await executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: replayKey });
+    assert.strictEqual(first.state, 'completed');
+    const leftoverId = await insertEvidenceRow(p, tenantA, host.runId, comp);
+    await insertHold(p, tenantA, 'evidence', leftoverId);
+    const replay = await executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: replayKey });
+    assert.strictEqual(replay.state, 'completed');
+    assert.strictEqual(replay.purged_evidence_count, 0);
+    assert.strictEqual(replay.purged_assets_count, 0);
+    assert.strictEqual(replay.idempotent, true);
+    const leftoverStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, leftoverId]
+    )).rows;
+    assert.strictEqual(leftoverStill.length, 1, 'completed replay must not expand the deletion set');
+  });
+
+  test('concurrent cleanup cannot expand the approved deletion set', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const idA = await insertEvidenceRow(p, tenantA, host.runId, comp, {
+      createdAt, expiresAt: expiredAt, headline: RAW_EMAIL,
+    });
+    const assetA = await insertAssetRow(p, tenantA, idA, { createdAt, expiresAt: expiredAt });
+    await insertHold(p, tenantA, 'evidence', idA);
+    await insertHold(p, tenantA, 'asset', assetA);
+
+    const key1 = nid('idemp-conc-1');
+    await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: key1 });
+    const leftover = await insertEvidenceRow(p, tenantA, host.runId, comp, {
+      createdAt, expiresAt: expiredAt, headline: RAW_PHONE,
+    });
+    const leftoverAsset = await insertAssetRow(p, tenantA, leftover, { createdAt, expiresAt: expiredAt });
+    await insertHold(p, tenantA, 'evidence', leftover);
+    await insertHold(p, tenantA, 'asset', leftoverAsset);
+
+    const key2 = nid('idemp-conc-2');
+    await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: key2 });
+
+    await approveLegacyCleanup({
+      tenantId: tenantA, idempotencyKey: key1, req: actorReq(),
+      confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+    });
+
+    const [first, second, unapproved] = await Promise.all([
+      executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: key1 }),
+      executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: key1 }),
+      executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: key2 }).then(
+        () => { throw new Error('op2 must not execute while unapproved'); },
+        (err) => err
+      ),
+    ]);
+    assert.ok(first && second);
+    assert.strictEqual(first.state, 'completed');
+    assert.strictEqual(second.state, 'completed');
+    assert.ok(unapproved instanceof OrchError && unapproved.code === 'validation_failed'
+      && unapproved.extra && unapproved.extra.reason === 'not_approved');
+
+    const aGone = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idA]
+    )).rows;
+    const leftoverStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, leftover]
+    )).rows;
+    const leftoverAssetStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, leftoverAsset]
+    )).rows;
+    assert.strictEqual(aGone.length, 0, 'approved snapshot A must be purged');
+    assert.strictEqual(leftoverStill.length, 1, 'leftover hold after preview must survive concurrent execute');
+    assert.strictEqual(leftoverAssetStill.length, 1, 'leftover asset after preview must survive concurrent execute');
+
+    const replay = await executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: key1 });
+    assert.strictEqual(replay.idempotent, true);
+    assert.strictEqual(replay.purged_evidence_count, 0);
+    const leftoverAfterReplay = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, leftover]
+    )).rows;
+    assert.strictEqual(leftoverAfterReplay.length, 1);
   });
 }

@@ -96,6 +96,9 @@ async function _storePreviewSnapshotHash(client, tenantId, opId) {
 
 async function _assertSnapshotUntampered(p, tenantId, op) {
   const stored = op && op.snapshot_sha256 != null ? String(op.snapshot_sha256) : '';
+  if (!stored) {
+    fail('validation_failed', { field: 'snapshot_sha256', reason: 'missing' });
+  }
   const rows = await _loadSnapshotTargets(p, tenantId, op.id);
   const computed = _hashSnapshotTargets(rows);
   if (!_timingSafeEqualString(computed, stored)) {
@@ -211,22 +214,48 @@ async function _replacePreviewTargets(client, tenantId, opId) {
   );
 }
 
+function _snapshotEligibleExistsSql(targetKind) {
+  const table = HOLD_KIND[targetKind];
+  if (targetKind === 'asset') {
+    // Snapshot membership is not enough: skip legal_hold and unexpired
+    // (NULL or future) even when those ids were frozen at preview.
+    return `
+        AND EXISTS (
+          SELECT 1 FROM ${table} r
+           WHERE r.tenant_id = t.tenant_id AND r.id = t.target_id
+             AND r.retention_class <> 'legal_hold'
+             AND r.expires_at IS NOT NULL
+             AND r.expires_at <= now()
+        )`;
+  }
+  // Evidence: only when no child asset remains (protected, off-snapshot,
+  // or unexpired). Skip the id; do not fail the op.
+  return `
+        AND EXISTS (
+          SELECT 1 FROM ${table} r
+           WHERE r.tenant_id = t.tenant_id AND r.id = t.target_id
+             AND NOT EXISTS (
+               SELECT 1 FROM ${ASSET_TABLE} a
+                WHERE a.tenant_id = r.tenant_id AND a.evidence_id = r.id
+             )
+        )`;
+}
+
 async function _purgeSnapshotBatch(client, tenantId, opId, targetKind) {
   const table = HOLD_KIND[targetKind];
   await client.query('BEGIN');
   await client.query("SET LOCAL lock_timeout = '2s'");
-  // Delete only this op's frozen snapshot IDs. The immutability trigger
-  // joins cleanup_ops (approved/running) to cleanup_targets — no GUC.
+  // Delete only this op's frozen snapshot IDs that are still live-eligible.
+  // The immutability trigger joins cleanup_ops (approved/running) to
+  // cleanup_targets — no GUC. Assets first at the caller; evidence here
+  // requires no remaining child assets.
   const selected = await client.query(
     `SELECT t.target_id
        FROM orchestrator_research_cleanup_targets t
       WHERE t.tenant_id=$1
         AND t.op_id=$2
         AND t.target_kind=$3
-        AND EXISTS (
-          SELECT 1 FROM ${table} r
-           WHERE r.tenant_id = t.tenant_id AND r.id = t.target_id
-        )
+        ${_snapshotEligibleExistsSql(targetKind)}
       ORDER BY t.target_id
       FOR UPDATE OF t SKIP LOCKED
       LIMIT $4`,
@@ -459,16 +488,7 @@ async function executeLegacyCleanup({ tenantId, idempotencyKey, opId } = {}) {
   let evidencePurged = 0;
   let assetPurged = 0;
   try {
-    evidencePurged = await _purgeHeldKind(client, tid, started.id, 'evidence');
-    if (evidencePurged) {
-      await p.query(
-        `UPDATE orchestrator_research_cleanup_ops
-            SET purged_evidence_count = purged_evidence_count + $3,
-                updated_at = now()
-          WHERE tenant_id=$1 AND id=$2`,
-        [tid, started.id, evidencePurged]
-      );
-    }
+    // Assets first so a parent DELETE never races the asset FK / child trigger.
     assetPurged = await _purgeHeldKind(client, tid, started.id, 'asset');
     if (assetPurged) {
       await p.query(
@@ -477,6 +497,16 @@ async function executeLegacyCleanup({ tenantId, idempotencyKey, opId } = {}) {
                 updated_at = now()
           WHERE tenant_id=$1 AND id=$2`,
         [tid, started.id, assetPurged]
+      );
+    }
+    evidencePurged = await _purgeHeldKind(client, tid, started.id, 'evidence');
+    if (evidencePurged) {
+      await p.query(
+        `UPDATE orchestrator_research_cleanup_ops
+            SET purged_evidence_count = purged_evidence_count + $3,
+                updated_at = now()
+          WHERE tenant_id=$1 AND id=$2`,
+        [tid, started.id, evidencePurged]
       );
     }
 

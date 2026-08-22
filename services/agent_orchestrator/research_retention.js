@@ -6,8 +6,10 @@
 // payloads or fingerprints.
 //
 // Expired SELECT/DELETE is a single CTE so SKIP LOCKED and DELETE cannot
-// race. After SKIP LOCKED batches go empty, COUNT remaining eligible rows
-// and retry this tenant with bounded backoff (no lock_timeout). Boot calls
+// race. Assets are purged first; evidence CTE adds NOT EXISTS remaining
+// child assets so a parent with live children is not selected. After
+// SKIP LOCKED batches go empty, COUNT remaining eligible rows and retry
+// this tenant with bounded backoff (no lock_timeout). Boot calls
 // skipHolds:true so first-boot leftovers stay operator-owned on every
 // retry pass. Interval/default sweep purges valid-expired rows even if held.
 
@@ -75,6 +77,12 @@ function expiredEligibleWhere(table, targetKind, { skipHolds } = {}) {
           AND h.target_kind='${targetKind}'
           AND h.target_id = ${table}.id
      )` : '';
+  const childFilter = table === EVIDENCE_TABLE ? `
+     AND NOT EXISTS (
+       SELECT 1 FROM orchestrator_research_evidence_assets a
+        WHERE a.tenant_id = ${table}.tenant_id
+          AND a.evidence_id = ${table}.id
+     )` : '';
   return `
     tenant_id=$1
     AND retention_class <> 'legal_hold'
@@ -82,6 +90,7 @@ function expiredEligibleWhere(table, targetKind, { skipHolds } = {}) {
     AND expires_at <= now()
     AND expires_at > created_at
     ${holdFilter}
+    ${childFilter}
   `;
 }
 
@@ -226,8 +235,9 @@ async function _sweepTenant(p, tenantId, { skipHolds } = {}) {
     let evidencePurged = 0;
     let assetPurged = 0;
     for (let attempt = 1; attempt <= LOCKED_RETRY_MAX; attempt += 1) {
-      evidencePurged += await _purgeExpiredTable(client, EVIDENCE_TABLE, tenantId, { skipHolds });
+      // Assets first so a parent with remaining children is never selected.
       assetPurged += await _purgeExpiredTable(client, ASSET_TABLE, tenantId, { skipHolds });
+      evidencePurged += await _purgeExpiredTable(client, EVIDENCE_TABLE, tenantId, { skipHolds });
       const remaining = await _countExpiredEligible(client, tenantId, { skipHolds });
       if (remaining <= 0) break;
       if (attempt >= LOCKED_RETRY_MAX) break;

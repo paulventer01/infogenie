@@ -260,9 +260,15 @@ is the sweeper:
   without an approved op.
 - `missing_expiry` (`expires_at IS NULL`) is **not** sweeper-eligible.
   Operator snapshot cleanup remains required.
-- Deletes expired evidence (assets cascade from evidence) and also
-  sweeps expired assets independently while the parent evidence is still live.
-- `legal_hold` is never deleted while the parent exists.
+- Purges **expired assets first**, then expired evidence. The evidence
+  SELECT/DELETE CTE adds
+  `AND NOT EXISTS (SELECT 1 FROM orchestrator_research_evidence_assets a
+  WHERE a.tenant_id = evidence.tenant_id AND a.evidence_id = evidence.id)`
+  so a parent with any remaining child is not selected. The asset→evidence
+  FK is `ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED`; there is no
+  cascade and no asset-trigger orphan hatch.
+- `legal_hold`, future-expiry, and off-snapshot assets are never swept.
+  If such an asset remains, the parent evidence is retained.
 - Idempotent: a second call purges 0.
 - Fail closed: rows with `retention_class IN ('standard','short') AND expires_at
   IS NULL` **without** a hold are **counted** (`invalid_expiry`) and **not**
@@ -311,15 +317,24 @@ is the sweeper:
   `timingSafeEqual`s it **before any DELETE**. Mismatch fails closed; no
   DELETE. Transitions `approved` → `running` before DELETE so the
   immutability trigger can join this op's snapshot
-  (`state IN ('approved','running')`). Dedicated client, `lock_timeout = '2s'`,
-  batch DELETE of **only** ids listed in that op's
-  `orchestrator_research_cleanup_targets` (`FOR UPDATE SKIP LOCKED LIMIT 100`),
-  then the matching hold rows. No `SET LOCAL infogenie.research_cleanup`.
+  (`state IN ('approved','running')`).   Dedicated client, `lock_timeout = '2s'`. Purge **assets first**, then
+  evidence. Asset DELETE is this op's `cleanup_targets` where
+  `target_kind='asset'` **and** the live row is
+  `retention_class <> 'legal_hold'` **and**
+  `expires_at IS NOT NULL AND expires_at <= now()`. Legal-hold and
+  future-expiry assets are skipped even when they are in the snapshot.
+  Evidence DELETE is this op's snapshot evidence ids that have **no
+  remaining child assets**. If a protected, off-snapshot, or unexpired
+  asset still references the parent, that evidence id is skipped (the
+  op does not fail unless a trigger/FK error is unexpected).
+  `FOR UPDATE SKIP LOCKED LIMIT 100`, then the matching hold rows for
+  ids that were actually deleted. No `SET LOCAL infogenie.research_cleanup`.
   `completed` is idempotent `{ purged: 0 }` — leftover holds that are not in
   this snapshot, including rows identified after preview, are not deleted.
-  Rows created after preview are off-snapshot. Evidence/assets are
-  UPDATE-immutable, so a later change cannot rewrite an id in place.
-  Logs never include raw target ids.
+  Rows created after preview are off-snapshot. Missing, stale, or
+  mismatched `snapshot_sha256` fails closed before any DELETE.
+  Evidence/assets are UPDATE-immutable, so a later change cannot rewrite
+  an id in place. Logs never include raw target ids.
 
 Evidence and asset rows remain UPDATE-immutable. Replacement is a new INSERT
 with `supersedes_id`.

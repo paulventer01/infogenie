@@ -332,8 +332,20 @@ if (!HAS_DB) {
     assert.match(src, /DELETE FROM \$\{table\} t/);
     assert.match(src, /orchestrator_research_legacy_holds/);
     assert.match(src, /skipHolds/);
+    assert.match(src, /a\.tenant_id = \$\{table\}\.tenant_id/);
+    assert.match(src, /a\.evidence_id = \$\{table\}\.id/);
     assert.doesNotMatch(src, /SET lock_timeout = '2s'/);
     assert.doesNotMatch(src, /SET LOCAL lock_timeout/);
+    const sweepTenant = src.slice(
+      src.indexOf('async function _sweepTenant'),
+      src.indexOf('async function sweepExpiredResearchEvidence')
+    );
+    const assetPurgeIdx = sweepTenant.indexOf('_purgeExpiredTable(client, ASSET_TABLE');
+    const evidencePurgeIdx = sweepTenant.indexOf('_purgeExpiredTable(client, EVIDENCE_TABLE');
+    assert.ok(
+      assetPurgeIdx >= 0 && evidencePurgeIdx > assetPurgeIdx,
+      'sweep must purge expired assets before expired evidence'
+    );
 
     const p = db.getPool();
     const host = await seedHost(p, tenantA);
@@ -1132,5 +1144,69 @@ if (!HAS_DB) {
 
     const probe = await p.query('SELECT 1::int AS ok');
     assert.strictEqual(probe.rows[0].ok, 1, 'follow-up pool query must work (no leaked transaction)');
+  });
+
+  test('sweep retains parents while legal-hold or future-expiry children remain', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const futureAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    const holdParent = await insertExpiredEvidence(p, tenantA, host.runId, comp, {
+      createdAt, expiresAt: expiredAt,
+    });
+    const futureParent = await insertExpiredEvidence(p, tenantA, host.runId, comp, {
+      createdAt, expiresAt: expiredAt,
+    });
+    const freeParent = await insertExpiredEvidence(p, tenantA, host.runId, comp, {
+      createdAt, expiresAt: expiredAt,
+    });
+    const holdAsset = await insertAssetRaw(p, tenantA, holdParent, {
+      createdAt, expiresAt: expiredAt, retentionClass: 'legal_hold',
+    });
+    const futureAsset = await insertAssetRaw(p, tenantA, futureParent, {
+      createdAt, expiresAt: futureAt,
+    });
+    const expiredChild = await insertAssetRaw(p, tenantA, freeParent, {
+      createdAt, expiresAt: expiredAt,
+    });
+
+    const result = await sweepExpiredResearchEvidence({ tenantId: tenantA });
+    assert.ok(result && result.ok === true);
+    assert.ok(result.purged >= 2, 'expired child and childless parent must be purged');
+
+    const holdAssetStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, holdAsset]
+    )).rows;
+    const futureAssetStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, futureAsset]
+    )).rows;
+    const expiredChildGone = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, expiredChild]
+    )).rows;
+    assert.strictEqual(holdAssetStill.length, 1, 'legal-hold asset must survive sweep');
+    assert.strictEqual(futureAssetStill.length, 1, 'future-expiry asset must survive sweep');
+    assert.strictEqual(expiredChildGone.length, 0, 'expired non-hold asset must be purged first');
+
+    const holdParentStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, holdParent]
+    )).rows;
+    const futureParentStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, futureParent]
+    )).rows;
+    const freeParentGone = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, freeParent]
+    )).rows;
+    assert.strictEqual(holdParentStill.length, 1, 'parent of surviving legal-hold asset must be retained');
+    assert.strictEqual(futureParentStill.length, 1, 'parent of surviving future-expiry asset must be retained');
+    assert.strictEqual(freeParentGone.length, 0, 'parent is purged only after its expired children are gone');
   });
 }
