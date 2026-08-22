@@ -1706,6 +1706,687 @@ generate-custom ordering) and `test/playbooks-rate-limit-security.test.js`
 input, shipped defaults, `serialize` atomicity under an unreachable Redis, and
 `authAbuseLimiter` regression).
 
+## Advertising orchestrator — research evidence contracts (PR 3A)
+
+PR 3A adds four tenant-scoped evidence tables (`orchestrator_research_runs`,
+`orchestrator_research_competitors`, `orchestrator_research_evidence`,
+`orchestrator_research_evidence_assets`), three tenant-scoped operational tables
+(`orchestrator_research_quota`, `orchestrator_research_legacy_holds`,
+`orchestrator_research_cleanup_ops`), one cluster-wide singleton latch
+(`orchestrator_research_legacy_short_due_snapshot`, no tenant data — see the
+residuals), and the shared contract modules (`research_contracts.js`,
+`research_errors.js`, `research_validate.js`, `research_connector.js`,
+`research_retention.js`, `research_cleanup.js`, `research_store.js`) that PR3B/C/D
+connectors and later persistence must use. There is **no HTTP route, no
+`ROUTE_GROUPS` entry and no fetch sink** in PR 3A, so it adds no permission
+surface and no SSRF surface; a test asserts all three absences, plus that the
+three connector files do not exist yet. Retention sweeping and volume-limit
+INSERTs are in-process helpers, not routes.
+
+### Tenant isolation of the PR 3A schema
+
+Reviewed `services/agent_orchestrator/schema.js` as landed. **No DDL change was
+required.** (Isolation-wise. Later BLOCK remediation added the operational
+tables, the `NOT VALID` CHECK path, the preflight and the cleanup triggers
+described below; every one of them keeps the shape stated here.)
+
+- All four tables carry `tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON
+  DELETE CASCADE` and are keyed `PRIMARY KEY (tenant_id, id)`, so an id is only
+  ever resolvable inside one tenant.
+- Every parent reference is a **composite** FK on `(tenant_id, …)`: runs →
+  `orchestrator_workflows (tenant_id, id)` and `orchestrator_approvals
+  (tenant_id, id)`, competitors and evidence → runs, evidence → competitors,
+  assets → evidence. A row cannot point at another tenant's workflow, approval,
+  run, competitor or evidence item, and `supersedes_id` is bound by trigger to
+  the same tenant *and* the same run.
+- Every unique key leads with `tenant_id` — `(tenant_id, idempotency_key)`,
+  `(tenant_id, research_run_id, platform, dedup_key)`, `(tenant_id,
+  research_run_id, platform, provider_advertiser_id)`, `(tenant_id,
+  research_run_id, dedup_key)`, `(tenant_id, evidence_id, storage_ref)` — so the
+  same public advertiser id or ad id may exist for two tenants and neither can
+  see or collide with the other's evidence. There are no bare natural-key
+  uniques.
+- The approval FK is `NO ACTION DEFERRABLE INITIALLY DEFERRED` rather than
+  `CASCADE`, so deleting an approval cannot silently delete research history;
+  only the tenant cascade removes these rows.
+- Validators never read `req` and take no caller tenant. `tenantId` comes from
+  authenticated context as an argument; a payload carrying a different
+  `tenant_id` fails `validation_failed` rather than winning. That is asserted
+  for runs, competitors, evidence, connector requests and connector pages.
+
+### Approval binding
+
+The `orchestrator_research_runs_approval_bind` trigger fires `BEFORE INSERT OR
+UPDATE`: a run cannot be inserted without a `research_execution` approval whose
+`decision` is `approved`, in the same tenant, on the same `workflow_id`, at the
+same `object_version`, whose `approved_platforms` array is non-empty and
+**contains every** requested platform. A missing, wrong-gate, rejected,
+stale-version or narrower-platform approval raises. The identity-immutable
+trigger then freezes `id`, `tenant_id`, `workflow_id`, `approval_id`,
+`approval_object_version`, `contract_version`, `requested_platforms`,
+`idempotency_key`, `research_brief`, `search_parameters` and `created_at`, so an
+approved run cannot be re-pointed at a different workflow or widened to another
+platform after the fact. Only state, continuation and error/timestamp columns
+move.
+
+### Provenance is append-only
+
+Evidence, competitor and asset rows refuse `UPDATE` outright and refuse `DELETE`
+while the parent run (or evidence) still exists — a correction is a new INSERT
+carrying `supersedes_id`, never a rewrite. `content_fingerprint` must equal SHA-256
+over the frozen canonical subset (`platform`, `source_type`,
+`provider_external_id`, `canonical_source_url`, `headline`, `body_text`,
+`excerpt`, `advertiser_name`, `creative_format`); a caller-supplied fingerprint that
+disagrees is rejected, and the default `dedup_key` is that fingerprint. The
+deprecated input alias `evidence_hash` is accepted and must match; validators
+never emit it.
+
+### PII, credential and raw-payload minimization
+
+There is no raw-payload column: no `payload`, `raw_response`, `body`, `cookie`,
+`email`, `phone` or `BYTEA` column exists on any of the four tables, and assets
+store a locator plus checksum, never bytes. `provider_metrics`,
+`search_parameters` and `continuation_state` are the only free-form JSONB, each
+bounded by both a CHECK and a validator limit (8192 / 8192 / 4096 bytes) that
+**fail closed** — oversize is rejected, never truncated, because clipping would
+put half a secret in the row.
+
+Hardened during this review, because each of these was accepted before it:
+
+- **Forbidden keys are matched after normalization** (lowercase, separators
+  removed), so `access-token`, `Access Token` and `accessToken` are the same
+  rejected key. The list previously matched exact snake_case only, so those
+  variants reached `provider_metrics` and `continuation_state` unchanged.
+- **The reject list now covers the rest of the credential and identity
+  vocabulary**: `api_key`, `x_api_key`, `client_secret`, `secret`, `token`,
+  `id_token`, `session`/`session_id`/`session_token`, `bearer`, `set_cookie`,
+  `password`/`passwd`/`pwd`/`passphrase`, `credential(s)`, `private_key`,
+  `signing_key`, `vault`, plus `username`, `user_id`, `first_name`,
+  `last_name`, `full_name`, `phone_number`, `address`, `ip`/`ip_address`,
+  `ssn`, `national_id`, `date_of_birth`/`dob`.
+- **Values are scanned, not just key names.** Every stored string — evidence
+  text, `research_brief`, `error_code`, `error_message`, connector `message`,
+  cursors, URLs and every string inside the JSONB blobs — is refused if it
+  matches a credential shape (`Authorization`, `access_token`/`refresh_token`,
+  `Bearer`/`Basic` with a long value, a dotted JWT, a PEM private-key header,
+  `Cookie:`/`Set-Cookie`, `api_key=`, `client_secret=`, `password=`,
+  `sk-…`, `infogenie.sid`, or userinfo in a URL). Previously only the producer
+  helper `research_errors.sanitizeConnectorMessage` scanned anything, and the
+  ingest validators did not call it — so a connector error page whose `message`
+  carried `Bearer <jwt>` validated cleanly and would have been written to
+  `orchestrator_research_runs.error_message`.
+- **Honesty flags are rejected at any depth.** `verified`,
+  `independently_verified` and `fact` were refused only on the top level of
+  `provider_metrics`, so a nested `{ inner: { verified: true } }` passed.
+- **Validated payloads are detached and deep-frozen.** `continuation_state` and
+  `provider_metrics` were returned by reference inside a shallow `Object.freeze`,
+  so a connector could add a forbidden key after validation and before the PR3E
+  INSERT into an append-only table. The connector *request* kept that shallow
+  freeze one round longer, leaving `requested_platforms` mutable after the
+  platform/connector match had already been checked; the returned array is now
+  frozen by `assertRequestedPlatforms` itself, for every caller.
+- **`connector_version` is scanned, not just measured.** It was the one stored
+  string checked for length alone, so a version like
+  `1.0.0 Bearer <jwt>` validated and would have been written to every evidence
+  row it identified. It now goes through the same bounded-text path as the other
+  stored strings (trim, 1–64, no NUL, credential-shape refusal).
+- **Named CHECK and FK constraints are redefined atomically.** So that a changed
+  CHECK body would actually take effect on an existing database,
+  `_ensureNamedCheck` had started dropping every named CHECK on the orchestrator
+  tables and re-adding it as two separate autocommit statements. That left the
+  table with no CHECK at all between them on *every* boot, and left it
+  unconstrained permanently whenever the re-add failed: a row the new definition
+  rejects makes `ADD CONSTRAINT` raise `23514`, the boot task then exits in
+  production, and the CHECK stays dropped on the live table. Verified by
+  redefining `orchestrator_research_evidence_headline_check` over a stored
+  600-character headline — before the fix the table went on to accept a
+  9000-character headline. `_ensureNamedFk` had the same shape for the
+  3-column competitor swap. Both now run the drop and the add in one
+  transaction, so the DDL lock spans the whole swap (concurrent readers and
+  writers block rather than slipping through an unconstrained window) and a
+  failed add rolls back to the previous definition. The error still propagates,
+  so boot is still fail-closed — the database just keeps its constraint.
+- **A sweep client whose `ROLLBACK` failed is destroyed, not pooled.** Both
+  rollbacks on the retention sweeper's failure path are best effort and
+  swallowed, so `release()` was reached with no proof the connection was clean.
+  `release()` does not roll back: confirmed against node-pg that a client handed
+  back mid-transaction keeps the same backend, and the next borrower sees an
+  assigned xid and reads the previous borrower's uncommitted writes — meaning an
+  unrelated request could have inherited the sweep transaction and its
+  `FOR UPDATE` row locks on the evidence table. A redundant `ROLLBACK` is a
+  warning rather than an error, so one that returns is proof of a clean client;
+  only an unconfirmed rollback destroys the connection, which keeps ordinary
+  sweep failures from churning the pool.
+
+The scan deliberately fails closed and rejects the whole object rather than
+masking, so a message that genuinely needs the word `token:` in it has to be
+rewritten by the connector author. A message that only mentions credentials
+("connector credentials rejected") still stores.
+
+### URL handling — syntactic only, no fetch sink
+
+URL checks here are **syntactic**: `https://` only, ≤2048, printable ASCII, no
+userinfo, no `data:`/`javascript:`/`http:`, and no credential material in the
+query. Nothing in PR 3A dereferences a URL, and no DNS lookup happens at this
+layer. **PR3E must call `services/security/safe_url.js` before any fetch** —
+that module owns the private/loopback/metadata denylist, the port pin, the
+raw-authority encoding checks and the DNS pinning.
+
+Two URL properties were tightened here. The validator stored the raw string
+while validating a parsed copy, and `new URL` silently strips tabs and newlines
+and rewrites backslash authorities — so `https://evil.example\t/x` and
+`https:\\evil.example/x` were accepted and stored in a form that a later parser
+could read differently from the one the check approved. Both are now refused,
+along with non-ASCII (IDN homograph) forms. `storage_ref` is a locator, not a
+fetch target: it now takes only a scheme-less object key or an `https:` /
+`research:` scheme, with protocol-relative refs and userinfo refused. It
+previously accepted `file:///etc/passwd`, `ftp://…`, `//host/…` and
+`https://user@host/…`, which would have become a file-read or SSRF surface for
+whatever resolves the ref.
+
+### Re-review after the BLOCK remediation (`b3a7497`)
+
+The five BLOCKs raised against the first PR 3A schema pass were re-checked
+against the code as it stands, not against the commit messages that claim to
+close them. All five are now closed; the fifth took three passes and its entry
+below records what was wrong on each of them.
+
+- **No ungated delete at boot.** `BOOT_TASKS` calls
+  `ensureAgentOrchestratorSchema()` (which identifies holds), then
+  `countLegacyHolds()`, then one retention sweep. `approveLegacyCleanup` and
+  `executeLegacyCleanup` are unreachable from `server.js` and from every
+  `services/**/api.js` — the only `require` of `research_cleanup` outside tests
+  destructures `countLegacyHolds`, which is a `SELECT COUNT(*)`. The one delete
+  boot can still perform is the retention sweep of rows whose own `expires_at`
+  has passed, which is the retention policy rather than a legacy purge, and the
+  boot call passes `skipHolds: true`, so no held id is deleted on the boot path.
+- **No replica-role dependency, and a failed preflight is a no-op.** Proved with
+  real `NOSUPERUSER` roles and a before/after `pg_class`/`pg_constraint`
+  snapshot, not by reading the SQL.
+- **The quota cannot be bought back by corrupting its cache.** The trigger
+  recomputes from `COUNT`/`SUM` under `FOR UPDATE`; `0` is fail-closed.
+- **PII is redacted before it is stored, fingerprinted or handed to an LLM
+  shape**, with the heuristic limits of that redaction written down rather than
+  claimed away.
+- **`SKIP LOCKED` and the `DELETE` are one statement**, with the held-row
+  scenario run 20 consecutive times. The sweeper sets no `lock_timeout` of its
+  own, and that scenario now survives a default-parallel test run — see the
+  closed entry below.
+- **The operator delete is bound to the previewed snapshot**, and the cleanup
+  GUC that used to stand beside the hold row is gone.
+
+No new `/api` route, no `ROUTE_GROUPS` entry, no `connectors/` directory and no
+edit to `permission_enforce.js`, `permissions.js`, `permission_matrix.js`,
+`services/tenants/context.js`, `middleware.ts` or the vault landed with this
+work; `PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched.
+
+### Accepted residuals (PR 3A)
+
+- **A tenant-scoped retention sweeper now exists.** `research_retention.js`
+  deletes expired non-`legal_hold` evidence (assets cascade from evidence, and
+  expired assets are also swept independently while the parent is live). It is
+  batch-limited, treats `orchestrator_research_legacy_holds` differently on the
+  boot path and the interval path (see the next entry),
+  is fail-closed on NULL `expires_at` for unheld `standard`/`short` rows
+  (counted as `invalid_expiry`, not deleted, no invented TTL), and is wired from
+  `server.js` `BOOT_TASKS` plus a 6h `backgroundEnabled()` interval. The boot
+  pass fails closed: a sweep that returns `ok !== true`, or throws, logs,
+  captures to Sentry and calls `process.exit(1)` when
+  `NODE_ENV === 'production'`. `legal_hold` rows are never swept while the
+  parent exists. `orchestrator_research_runs` and
+  `orchestrator_research_competitors` still have no `expires_at`, so a run's
+  `research_brief` and `search_parameters` are retained until the workflow or
+  tenant is deleted.
+- **A held row is skipped at boot and purged on the interval, and that split is
+  what keeps retention from failing open.** `server.js` calls the sweep with
+  `{ skipHolds: true }`, so first-boot leftovers stay operator-owned and boot
+  never deletes a row an operator has not previewed. The interval and default
+  sweep pass no `skipHolds`, so `expiredPurgeSql` emits no hold filter and a row
+  that is genuinely expired on its own terms
+  (`retention_class <> 'legal_hold' AND expires_at IS NOT NULL AND
+  expires_at <= now() AND expires_at > created_at`) is purged **even when a hold
+  row names it**, with the matching `orchestrator_research_legacy_holds` rows
+  deleted in the same batch transaction so a purged id cannot survive as a
+  preview ghost. Without that, a `legacy_short_due` hold written once at boot
+  would have pinned an expired row in the database forever. What the interval
+  sweep still cannot touch is a `missing_expiry` row: `expires_at IS NULL` fails
+  the `IS NOT NULL` predicate, there is no invented TTL, and the row waits for
+  the operator preview/approve/execute sequence. That is the deliberate residual
+  — a retention overrun an operator has to clear, not a silent deletion.
+- **`SKIP LOCKED` and the `DELETE` are now one statement.** Each batch runs
+  `BEGIN` → a single CTE
+  (`WITH doomed AS (SELECT id … FOR UPDATE SKIP LOCKED LIMIT $2) DELETE …
+  USING doomed`) → `COMMIT` on one `pool.connect()` client, so there is no
+  window at all between the lock and the delete, and two concurrent sweepers
+  take disjoint batches — verified directly against Postgres: a row held by an
+  open `FOR UPDATE` transaction was skipped, every unheld expired row was
+  purged, the sweep returned promptly rather than blocking, and the held row was
+  purged by the next sweep, repeated 20 consecutive times.
+  **The sweeper sets no `lock_timeout` at all** — neither a session-level
+  `SET lock_timeout = '2s'` nor a per-batch `SET LOCAL lock_timeout`. An earlier
+  revision did, and a 2s timeout on the sweep client turned every sibling DDL
+  wait into a `55P03` the sweep then retried into another one. `SKIP LOCKED` is
+  what makes the sweep prompt; the timeout was doing nothing the CTE did not
+  already do, and it left the sweep client carrying a session GUC it then had to
+  reset before returning to the pool. `55P03` still joins `40P01`/`40001` in the
+  bounded retry, because a `lock_timeout` can still arrive from a server- or
+  role-level default. A sweeper that finds every candidate already locked
+  commits an empty batch and stops, which is success rather than the old
+  `ok: false` noop race. A client whose `ROLLBACK` could not be confirmed is
+  destroyed rather than returned to the pool, because `release()` does not roll
+  back and the next borrower would otherwise inherit the batch transaction and
+  its `FOR UPDATE` row locks.
+- **A batch that empties while expired rows are still locked is retried inside
+  the same sweep, and exhausting those retries is not a failure.** After both
+  tables drain for a tenant, the sweeper re-counts that tenant's remaining
+  eligible rows with the **same predicates as the CTE** and no `SKIP LOCKED`; a
+  non-zero count means the leftovers are locked rather than ineligible, so it
+  sleeps `LOCKED_RETRY_BASE_MS * attempt` (25ms base) and runs another pass, up
+  to `LOCKED_RETRY_MAX = 5` attempts, for that tenant only. The count is a plain
+  MVCC read, so it never waits on the locks it is counting, and the boot
+  `skipHolds` flag is carried into every retry pass, so a boot sweep still
+  refuses to delete a held row on attempt five. This is the difference between
+  eventual deletion and none: `SKIP LOCKED` alone would have let one concurrent
+  reader defer an expired row for a full 6h interval. The bound is deliberate,
+  and so is its cost: after the fifth attempt the sweep returns normally, the
+  still-locked rows wait for the next interval, and `failures` is **not**
+  incremented — unlike an exhausted `40P01`/`40001` retry, a locked leftover
+  does not set `ok: false` and does not exit a production boot. That last pass
+  also logs nothing, so a persistently locked expired row shows up only as
+  `research_evidence_sweep_locked_retry` lines that stop at
+  `attempt: 4` rather than as a metric an operator can alert on. Adding that
+  terminal count log is retention work, not a security control, and is left to
+  the owner of `research_retention.js`.
+- **The sweeper/boot-DDL deadlock is broken at the source and retried at the
+  edge.** The batch holds locks on `orchestrator_research_evidence` from the
+  `SELECT` until `COMMIT`, and the `DELETE` fires
+  `orchestrator_research_evidence_immutable()`, whose
+  `NOT EXISTS (SELECT 1 FROM orchestrator_research_runs …)` needs a lock on the
+  runs table. `ensureAgentOrchestratorSchema` used to send its
+  `CREATE OR REPLACE FUNCTION` / `DROP TRIGGER` / `CREATE TRIGGER` block as one
+  multi-statement implicit transaction holding `AccessExclusiveLock` on the runs
+  table *and* the evidence table, which closed the cycle: Postgres logged
+  `deadlock detected` with one side waiting for `AccessExclusiveLock` on
+  `orchestrator_research_evidence` / `orchestrator_research_competitors` and the
+  other waiting for `RowShareLock` on `orchestrator_research_runs`.
+  `_installInTransaction` now installs one table's functions and triggers per
+  `BEGIN`/`COMMIT`, so no `ensure()` transaction holds the runs table and the
+  evidence table at once. Grouping a table's functions with its own triggers
+  costs nothing, because `CREATE OR REPLACE FUNCTION` takes no lock on the
+  tables its body names — checked against `pg_locks`, which reported no lock on
+  either table for a function whose body selects from both. A failed install
+  rolls back, so a `DROP TRIGGER` is never committed without its
+  `CREATE TRIGGER`; that is the same fail-open shape `_ensureNamedCheck` had,
+  and it was confirmed by forcing a `CREATE TRIGGER` to fail mid-transaction and
+  finding the previous trigger definition still installed. The sweeper also
+  retries `40P01`/`40001` up to `DEADLOCK_RETRY_MAX = 5` times per batch, and
+  only when the `ROLLBACK` was confirmed; every other error, including the
+  `removed === 0` noop guard, is rethrown on the first occurrence rather than
+  retried. Exhausted retries still increment `failures`, so `ok` is false and
+  the boot pass still exits in production. Measured on this branch: 18 parallel
+  runs of the two research test files produced 0 test failures and 0
+  `deadlock detected` lines in the Postgres log, against 2 logged deadlocks from
+  the same harness on the previous commit.
+- **That is not a proof the schema suite cannot deadlock.** `ensure()` still
+  sends the `CREATE TABLE IF NOT EXISTS` block and the
+  `CREATE … INDEX IF NOT EXISTS` block as multi-table implicit transactions, and
+  the `_ensureNamedFk` swap of the evidence→runs foreign key takes
+  `AccessExclusiveLock` on both tables inside one transaction — measured, not
+  assumed. That FK atomicity is deliberate: splitting it back into two
+  autocommit statements would restore the fail-open window this review closed,
+  and the swap is skipped entirely once the stored column list already matches,
+  so it is a one-time migration path rather than a per-boot one. Any other
+  writer that holds an exclusive lock spanning these tables can still form a
+  cycle. The bounded retry is what covers that residual, and a lost race still
+  fails closed rather than mis-deleting or crossing a tenant boundary — the
+  victim's transaction is rolled back whole.
+- **Boot no longer needs a replica-role or trigger-disabling privilege.** The
+  two `session_replication_role = replica` backfills are gone: there is no
+  `session_replication_role` and no `ALTER TABLE … DISABLE TRIGGER` anywhere in
+  the production path, asserted by `doesNotMatch` on the whole of `schema.js`.
+  Boot no longer rewrites legacy rows at all, so it no longer needs a privilege
+  that a managed PostgreSQL provider (RDS, Cloud SQL, Neon, Supabase) will not
+  grant. Instead, `ensure()` runs a SELECT-only preflight
+  (`_preflightAgentOrchestratorSchema`) **before any CREATE/ALTER/UPDATE/DELETE**
+  — `has_database_privilege … CONNECT`, `has_schema_privilege(public, CREATE |
+  USAGE)` and `has_table_privilege(INSERT | UPDATE | DELETE | REFERENCES |
+  TRIGGER)` on every `orchestrator_%` table — and throws
+  `orchestrator_schema_preflight_failed` when any probe is false. Proved against
+  real Postgres with real roles rather than from the SQL text: a
+  `NOSUPERUSER LOGIN` role that owns the orchestrator tables completes a full
+  `ensureAgentOrchestratorSchema()`, and a role without `CREATE ON SCHEMA
+  public` fails the preflight with a `pg_class`/`pg_constraint` snapshot that is
+  byte-identical before and after — no table and no constraint is created on the
+  way to the failure.
+- **The cleanup GUC `infogenie.research_cleanup` is gone, and the approval
+  record is now the whole gate.** The earlier version of this entry described a
+  trigger predicate of "GUC is `on` **and** a hold row exists", and argued that
+  the hold row carried the boundary because a custom (dotted) GUC is a switch
+  any role can set in its own session, not a secret. That argument no longer has
+  to be made: `current_setting('infogenie.research_cleanup', …)` appears nowhere
+  in `schema.js`, and `SET LOCAL infogenie.research_cleanup` appears nowhere in
+  `research_cleanup.js` or any other production JS. The immutability triggers on
+  `orchestrator_research_evidence` and `orchestrator_research_evidence_assets`
+  now permit a `DELETE` of a row that is not already past its own `expires_at`
+  only when an `orchestrator_research_cleanup_ops` row for the same `tenant_id`
+  is in state `approved` or `running` **and** an
+  `orchestrator_research_cleanup_targets` row for that op names that exact
+  `target_kind`/`target_id`. A hold row on its own no longer authorises
+  anything. Verified behaviourally against real Postgres: setting the old GUC
+  `on` in a session that also has a hold on the row is still refused with
+  `orchestrator_research_evidence_immutable`; an `approved` or `running` op
+  whose targets list the row permits the `DELETE`; a hold that is absent from
+  that op's targets is refused; and `UPDATE` stays refused in every one of those
+  cases. The residual is unchanged in shape and smaller in reach: a principal
+  with `DELETE` on the evidence tables can also `INSERT` its own `cleanup_ops`
+  and `cleanup_targets` rows, so this is a tamper-evident audit boundary against
+  an operator mistake, not a privilege boundary against a hostile DB principal.
+  PR 3A still has no HTTP surface, and neither `previewLegacyCleanup`,
+  `approveLegacyCleanup` nor `executeLegacyCleanup` is called from `server.js`.
+- **`ensure()` now bounds its DDL lock waits at 30s, and the advisory wait is
+  the part that is still unbounded.** `_runEnsureAgentOrchestratorSchema` runs
+  `SET lock_timeout = '30s'` on its dedicated client immediately after
+  `pool.connect()` and **before** `pg_advisory_lock(87231402)`, and resets it
+  with `SET lock_timeout TO DEFAULT` in the `finally` before the client is
+  released or destroyed. So an `ALTER TABLE orchestrator_research_evidence …`
+  that queues behind a long-lived `FOR UPDATE` now aborts with `55P03` after 30s
+  instead of parking an `AccessExclusiveLock` request in front of every
+  subsequent reader; the ensure throws, the boot task logs
+  `agent_orchestrator_schema_init_failed` and production exits. That converts an
+  indefinite deploy stall into a fail-closed boot, which is the intended
+  trade. The sweeper deliberately carries no `lock_timeout`; the operator
+  cleanup keeps a per-batch `SET LOCAL lock_timeout = '2s'`, which is scoped to
+  its own transaction and never outlives it. Advisory lock 87231402 is **not**
+  shared with the sweeper — the sweeper takes no advisory lock at all, so an
+  ensure cannot deadlock against a sweeper that is holding evidence rows. What
+  `lock_timeout` does not bound is the `pg_advisory_lock(87231402)` call itself:
+  measured on this branch, an ensure client with `lock_timeout = '30s'` set
+  waited more than 17 minutes for that advisory lock without aborting. In
+  production the only contenders for 87231402 are other boot ensures, each of
+  whose DDL waits is capped at 30s, so the wait is bounded in practice; a
+  session that takes 87231402 and holds it (as the tests do) can still stall a
+  boot indefinitely.
+- **The migrator role must own the orchestrator tables, and the preflight does
+  not prove that.** `DROP TRIGGER` / `CREATE TRIGGER` / `ALTER TABLE … DROP
+  CONSTRAINT` need ownership, which `has_table_privilege` cannot express, and
+  the probe loop matches `orchestrator_%` so `agent_orchestrator_runs` is not
+  covered. A role that passes the preflight but does not own the tables still
+  fails later with `42501`. That is a boot-availability residual in the
+  fail-closed direction — the ensure throws, the boot task logs the static key
+  `agent_orchestrator_schema_init_failed` and exits in production — not a
+  half-migrated schema that keeps serving.
+- **The orchestrator schema ensure fails closed on its own.** It is a dedicated
+  `BOOT_TASKS` entry rather than one `await` inside the tier28-32 block. On a
+  throw it logs the static key `agent_orchestrator_schema_init_failed` with no
+  fields, captures a synthetic `Error` of the same name — so a Postgres error's
+  `message` or `detail`, which can quote a failing row, reaches neither the log
+  nor Sentry — and calls `process.exit(1)` under `NODE_ENV === 'production'`.
+  `captureException` returns early without `SENTRY_DSN` and swallows its own
+  failures, so nothing on that path can throw before the exit and hand control
+  to the boot runner's `catch (e) { console.error('[boot] task failed:', …) }`,
+  which would otherwise swallow the failure and continue booting. Registration
+  order is schema ensure → `require` of `research_retention` → sweep, and the
+  runner awaits tasks in registration order, so the sweep cannot run against a
+  schema this entry failed to install.
+- **Boot identifies legacy rows; it never deletes them.** The earlier version of
+  this entry described a boot that backfilled a TTL onto legacy rows and let the
+  next sweep delete them in the same boot. That path is gone. `ensure()` now
+  only `INSERT … ON CONFLICT DO NOTHING`s the offending ids into
+  `orchestrator_research_legacy_holds` with a `reason` of `missing_expiry`,
+  `invalid_expiry` or `legacy_short_due`, and boot logs
+  `legacy_holds_identified` with two integers. No evidence row and no asset row
+  is deleted by identification, the boot sweep passes `skipHolds: true` so its
+  CTE excludes held ids, and `invalid_expiry` ignores held rows so the expected
+  leftovers do not turn boot into `process.exit(1)`. Deleting them is an
+  explicit operator act:
+  `previewLegacyCleanup` → `approveLegacyCleanup` (confirmation phrase
+  `DELETE_LEGACY_RESEARCH_EVIDENCE`, compared with `crypto.timingSafeEqual`,
+  stored only as a SHA-256 hex digest) → `executeLegacyCleanup`. The residual
+  moves rather than disappearing: legacy rows now persist past their intended
+  TTL until an operator runs that sequence, which is a retention-overrun
+  residual instead of an irreversible-deletion one.
+- **`legacy_short_due` is a one-shot cluster snapshot, and its latch table is
+  deliberately not tenant-scoped.** Without a latch, every boot would re-hold
+  every naturally expired `short` row and the sweeper would never be allowed to
+  delete anything again. `orchestrator_research_legacy_short_due_snapshot` is
+  that latch: `id SMALLINT PRIMARY KEY DEFAULT 1` with a `CHECK (id = 1)`
+  singleton constraint and a `taken_at` timestamp. It holds no tenant data, no
+  evidence ids and no foreign keys, it is not in `ADVERTISING_ORCH_TABLES`, and
+  it is never read to answer a tenant query — the only reads are "does a row
+  exist" and "is there any `legacy_short_due` hold". It carries no `tenant_id`
+  because there is nothing tenant-shaped in it to leak; the rows it gates are
+  still written per tenant into `orchestrator_research_legacy_holds`, which is
+  `tenant_id NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` and keyed
+  `(tenant_id, target_kind, target_id)`. Cluster scope does mean a tenant
+  onboarded after the latch closes never gets a `legacy_short_due` hold, which
+  is the intended behaviour: it has no legacy rows, and its `short` rows expire
+  and are swept normally.
+- **The evidence quota is recomputed from the table, not trusted from a
+  counter.** `orchestrator_research_evidence_quota_insert` takes `FOR UPDATE` on
+  the tenant's `orchestrator_research_quota` row and then derives `q_count` /
+  `q_bytes` from `COUNT(*)` and `SUM(orchestrator_research_evidence_payload_bytes(e))`
+  over that tenant's evidence, so a corrupted cache row cannot buy extra
+  capacity — verified by writing `evidence_count = 0, payload_bytes = 0` onto a
+  tenant already at its record cap and watching the next INSERT still raise
+  `orchestrator_research_evidence_limit_exceeded`. A corrupt-high cache is
+  ignored for the same reason, and the `AFTER DELETE` trigger recomputes rather
+  than decrementing, so the row heals. Limits still live in
+  `orchestrator_tenant_limits` and a missing row (or an explicit `0`) is
+  fail-closed: `max_records <= 0 OR max_bytes <= 0` raises before any write. The
+  cost is write amplification — every evidence INSERT scans that tenant's
+  evidence under a row lock, bounded by the 10,000-record default cap — and the
+  limits row itself remains the authority, so a raw-SQL write to
+  `orchestrator_tenant_limits` still moves the ceiling. Evidence *assets* have
+  no volume cap of their own; they are bounded only by the evidence rows they
+  hang off and the 1024-character `storage_ref` limit.
+- **Execute is bound to the previewed snapshot and to a hash of it; the actor is
+  read from the session rather than supplied, and tenant membership of that
+  actor is still unchecked.** The earlier version of this entry recorded the
+  opposite: `executeLegacyCleanup` used to delete whatever was held for the
+  tenant at the moment it ran, so a hold identified after the human read the
+  preview could be deleted by that human's approval, and replaying a `completed`
+  op could purge a later boot's new holds without a fresh confirmation phrase.
+  Both are closed. `previewLegacyCleanup` writes the tenant's holds into
+  `orchestrator_research_cleanup_targets` inside the preview transaction and
+  **only while the op is in state `previewed`** — the `ON CONFLICT` re-preview
+  path leaves the target set untouched once the op has moved on, so `approve`
+  freezes it. The same transaction stores
+  `orchestrator_research_cleanup_ops.snapshot_sha256`: a SHA-256 over that op's
+  stored target rows, canonicalised as `target_kind` + NUL + `target_id` lines,
+  sorted and newline-joined, derived from the table and never from a
+  caller-supplied list. The framing is unambiguous rather than merely tidy —
+  Postgres `text` cannot hold a NUL byte, so the field separator can never occur
+  inside a `target_id`, and a row added to the set always adds a line. Both
+  `approveLegacyCleanup` and `executeLegacyCleanup` recompute that digest from
+  the rows and compare it with `crypto.timingSafeEqual` **before** they change
+  state or delete anything; a mismatch fails closed with `validation_failed`
+  field `snapshot_sha256`, the op stays where it was, and no `DELETE` is issued.
+  `executeLegacyCleanup` then selects strictly from that op's `cleanup_targets`
+  rows, and the immutability trigger independently refuses any `DELETE` of a row
+  that op does not name, so the snapshot bound holds even if the execute query
+  were wrong. An op already in `completed` returns
+  `{ purged: 0, idempotent: true }` without opening a transaction, so a replay
+  cannot delete leftover or newly identified holds. Verified end to end against
+  Postgres: preview hold A, add hold B and an off-snapshot hold afterwards,
+  approve and execute — A is purged, B and the off-snapshot hold survive, and
+  re-running the completed op leaves both in place; and with a target row
+  inserted after preview, approve and execute both refuse on
+  `snapshot_sha256`, the op stays `approved`, and A and B are both still in the
+  evidence table. `approveLegacyCleanup` refuses a caller-supplied `actorUserId`
+  outright (`validation_failed` field `actorUserId`, checked with
+  `hasOwnProperty` so an explicit `undefined` is refused too) and reads the
+  actor from `req.user.id` under the same rule `runner.js` uses: a missing `req`
+  is `validation_failed`, and a non-integer, zero or negative id is
+  `auth_required`, so the synthetic api-key principal that exists when no owner
+  row does cannot sign an approval. What remains: an approval authorises one
+  op's row set for one tenant, the actor is not checked for membership of that
+  tenant, and because the module has no HTTP surface the `req` it reads is built
+  by the in-process operator caller rather than by the session middleware — so
+  the audit row attributes rather than authenticates. The digest is also
+  recomputed once per phase and not held under a lock for the duration of the
+  delete, so a target row inserted between the execute-time check and a later
+  batch of the same run is not re-hashed; there is no DB-level guard that
+  refuses a `cleanup_targets` write once the op has left `previewed`, and what
+  confines such a row is the immutability trigger, which still requires the same
+  tenant and an `approved`/`running` op of that tenant. Both are acceptable for
+  a module with no HTTP surface that only an operator with database and process
+  access can call; authenticating the actor, and pinning the target set with a
+  DB-level state guard, belong with the first UI or API that exposes it.
+- **The 64-zero `content_fingerprint` DEFAULT survives only the `ADD COLUMN`
+  itself.** The default is what lets the rename from `evidence_hash` add the
+  column `NOT NULL` to a populated table; `ensure()` drops it on the next
+  statement, so an `INSERT` that omits the column now fails `23502` naming
+  `content_fingerprint` instead of storing a well-formed all-zero fingerprint.
+  Verified after both a first and a second `ensure()`. Rows the migration
+  backfilled still carry the all-zero value: it is a legible placeholder, not a
+  fingerprint anyone should treat as content-derived, and re-deriving one for a
+  legacy row would require re-reading content that may already be purged.
+- **`content_fingerprint` is a content fingerprint, not a signature.** It is an
+  unkeyed SHA-256 over the content subset and does not cover `tenant_id`,
+  `metrics_kind`, `provenance_method`, `connector_id` or `captured_at`. It
+  detects a rewrite of the canonical content (and the immutability triggers
+  refuse one anyway); it does not attest that the evidence came from the claimed
+  provenance method, and principal-level DB write access could still insert a
+  new row with the same content and a different `provenance_method`. It is
+  unkeyed by design: there is no HMAC key, so no secret is stored in the row or
+  derivable from it, and the column must not be read as an authenticity or
+  provenance attestation. A caller-supplied value is accepted only when it
+  equals the recomputed one, so it cannot be used to assert a fingerprint the
+  content does not have. Callers may still supply the deprecated input alias
+  `evidence_hash`; validators never emit it.
+- **In-copy emails and phone numbers are redacted before persist, and the
+  redaction is pattern-based rather than exhaustive.** `redactContactPii` runs
+  inside `sanitizeEvidenceText` — so `headline`, `body_text`, `excerpt`,
+  `advertiser_name`, `research_brief` and `error_message` are rewritten to
+  `[email]` / `[phone]` before the row is built — and `redactStringLeaves`
+  applies it to every string leaf of `provider_metrics`, `search_parameters` and
+  `continuation_state`. Redaction happens **before** `content_fingerprint` is
+  computed, so the fingerprint commits to the redacted text and a fingerprint
+  match cannot be used to confirm a guessed address. `toLlmSafeEvidence(row)`
+  returns only those already-redacted fields (no `canonical_source_url`, no
+  `provider_external_id`) for any future outbound LLM call; PR 3A has no LLM
+  route. Extracted-contact *keys* stay forbidden, so this is not a licence to
+  store an email or phone index, and comment threads, commenter identities and
+  user profiles are still rejected outright. What it is not: perfect. Measured
+  on the shipped regexes, `sales@example.com`, `First.Last+tag@sub.domain.co.uk`,
+  `+1 (415) 555-2671`, `(415) 555-2671`, `415.555.2671`, `00442079460958` and a
+  bare `4155552671` are all redacted, while `12345`, `987654` and
+  `1,234,567,890` survive — but an address obfuscated as `name (at) example.com`
+  is not matched, a run of ≥10 digits glued to a word character
+  (`ref14155552671x`) is not matched because the pattern is word-boundary
+  anchored, and a non-ASCII separator (`415‑555‑2671` with U+2011) is not
+  matched. There are false positives in the other direction: two ISO dates in a
+  row, or a ≥10-digit identifier, are rewritten to `[phone]`. Free-text PII
+  detection is heuristic; the durable controls remain the forbidden-key list,
+  the credential-value scanner and the TTL.
+- **JSON and text byte limits are measured before redaction, and the DDL CHECKs
+  after it.** `[email]` is seven characters, so redacting a six-character
+  address (`a@b.co`) grows the value by one byte. A payload sitting exactly on
+  the validator's 8192/8192/4096-byte limit can therefore cross the matching
+  `octet_length(… ::text) <= …` CHECK and be refused by Postgres with `23514`
+  instead of by the validator with `validation_failed`. Both refuse the write;
+  only the error class and the layer differ.
+- **`search_parameters` and `continuation_state` on the run row are type-checked
+  in the DDL** (`jsonb_typeof(…) = 'object'`), matching `provider_metrics`.
+- **The producer helper `connectorErrorPage` copies `extra.continuation_state`
+  unvalidated.** It is the emit-side convenience; the ingest side
+  (`assertConnectorError`) is what validates, and only validated output is
+  persisted. A connector that logs its own return value before handing it over
+  is outside this contract.
+- **The idempotency key is tenant-scoped, not proof of a single run.** The
+  partial unique index `(tenant_id, workflow_id, contract_version) WHERE state IN
+  ('pending','running')` allows exactly one live run per workflow. Per-tenant
+  evidence volume is capped by `orchestrator_tenant_limits`
+  (`max_research_evidence_records`, `max_research_evidence_payload_bytes`; 0 =
+  fail closed) and the `orchestrator_research_evidence_limit_exceeded` trigger.
+  Completed *run* history is still unbounded.
+
+### The live-PostgreSQL suite is now stable in parallel (closed)
+
+This entry was open across two revisions. It is now closed, and the two earlier
+descriptions are kept out of the doc deliberately: the first blamed the
+constraint-swap `ALTER`, the second blamed `REASSIGN OWNED BY`, and both were
+correct at the time. Every `AccessExclusiveLock` taker in the
+advertising-orchestrator tests is now serialized against ensure() and against
+the concurrency locker on the same advisory lock the production ensure uses.
+
+`test/advertising-orchestrator-research-ops-schema.test.js` routes its DDL
+through one helper, `withEnsureDdlGate`: a third connection takes
+`pg_advisory_lock(87231402)`, the work client sets `lock_timeout = '30s'`, and
+the `finally` resets the timeout and unlocks. The work client never holds
+87231402 itself, because ensure() holds that lock for its whole run and a client
+that held it and then called `ensureAgentOrchestratorSchema()` would deadlock
+against itself. Both role-lifecycle helpers go through it —
+`dropLoginRole` (`REASSIGN OWNED BY` / `DROP OWNED BY` / `DROP ROLE`) and
+`grantOrchestratorMigrator` (`ALTER TABLE … OWNER TO`,
+`ALTER FUNCTION … OWNER TO`) — and the constraint-swap `ALTER`s stay gated as
+well.
+
+The victim side is serialized too, which is what the second revision was
+missing. `runSkipLockedHeldRowOnce` in both the concurrency and retention files
+now takes 87231402 **before** it seeds, so the workflow, competitor and evidence
+INSERTs are inside the gate rather than racing outside it, and the lock is held
+through the locker's `SELECT … FOR UPDATE` and the first sweep. The
+two-concurrent-sweeps tests hold the same lock for their seed. That matters
+because the seed INSERT and `REASSIGN OWNED BY` reach for
+`orchestrator_research_evidence` and `orchestrator_tenant_limits` — the table
+the quota insert trigger reads — in opposite orders, which is exactly the cycle
+Postgres reported when this was open.
+
+`GRANT … ON ALL TABLES IN SCHEMA public` is the one remaining un-gated statement
+in these files and it does not need a gate: probed against Postgres inside a
+transaction, it takes no `AccessExclusiveLock` at all and no lock of any mode on
+any `orchestrator_%` relation. There is no `TRUNCATE`, `DROP TABLE`, `CLUSTER`
+or `VACUUM FULL` in this suite.
+
+Verified on `8ddfb4fb` rather than accepted: sixteen consecutive
+default-parallel `node --test` runs of the complete eight-file research suite —
+no `--test-concurrency=1` — all green at 107 of 107, with no hang and no
+failure. The stronger signal is the server log for the exact run window, which
+recorded **zero** `deadlock detected` lines and zero
+`canceling statement due to lock timeout` lines: the lock discipline is clean
+rather than merely masked by the sweeper's bounded `40P01` retry. The
+`research_evidence_sweep_retry` and `research_evidence_sweep_failed` lines that
+do appear are identical in every run (five and four), because they come from the
+tests that inject synthetic conflicts through a wrapped pool. At the roughly
+one-in-six failure rate measured while this was open, sixteen clean runs would
+occur about five percent of the time by luck, and zero logged deadlocks would
+not occur at all.
+
+Production never depended on any of this. Its `AccessExclusiveLock` comes from
+`ensure()`, whose client carries `lock_timeout = '30s'`, so a boot that queues
+behind a long-lived `FOR UPDATE` aborts with `55P03` and fails closed rather
+than stalling. `REASSIGN OWNED BY`, `DROP OWNED BY` and `ALTER … OWNER TO` are
+test-only role teardown and appear nowhere in the product path. No production
+file changed to close this: the fix is entirely in the test layer, and
+`schema.js`, `research_retention.js` and `research_cleanup.js` are byte-identical
+to the revision that was reviewed for findings 1 through 4.
+
+Coverage: `test/advertising-orchestrator-research-schema.test.js` (15 DDL tests
+against real Postgres: tenant FK/PK shape, composite-FK cross-tenant rejection,
+approval binding, identity immutability, evidence UPDATE refusal, forbidden
+columns, tenant cascade),
+`test/advertising-orchestrator-research-ops-schema.test.js` (retention CHECKs,
+`NOT VALID` behaviour, quota recompute, fingerprint column, the ensure
+`lock_timeout` ordering, the refusal of a GUC-only delete, the approved/running
+op plus snapshot target delete, the refusal of an off-snapshot hold,
+`NOSUPERUSER` ensure and the no-op failed preflight),
+`test/advertising-orchestrator-research-contracts.test.js`,
+`test/advertising-orchestrator-research-retention.test.js`,
+`test/advertising-orchestrator-research-retention-concurrency.test.js`
+(held-row `SKIP LOCKED` 20×, two concurrent sweeps; the held-row scenario wraps
+its locker and sweep in `pg_advisory_lock(87231402)` on a third connection so an
+`ensure()` in a sibling file cannot start its `ALTER` while the row is locked —
+see the open BLOCK above for the DDL that gate does not cover),
+`test/advertising-orchestrator-research-cleanup.test.js` (preview → approve →
+execute bound to the snapshot, later and off-snapshot holds surviving,
+confirmation phrase, digest-only storage, tenant scoping),
+`test/advertising-orchestrator-research-store.test.js`,
+`test/advertising-orchestrator-research-sweep-wiring.test.js` plus
+`test/security-guardrails.test.js` (validator-level tenant authority, credential
+scanning, normalized forbidden keys, locator schemes, detachment, no
+route/connector/fetch).
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`

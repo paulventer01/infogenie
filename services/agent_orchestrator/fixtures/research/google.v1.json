@@ -1,0 +1,69 @@
+{
+  "ok": true,
+  "contract_version": "v1",
+  "connector_id": "google_research",
+  "connector_version": "1.0.0",
+  "competitors": [
+    {
+      "id": "comp-google-001",
+      "tenant_id": 1,
+      "research_run_id": "run-google-001",
+      "platform": "google",
+      "provider_advertiser_id": "ext-google-adv-001",
+      "normalized_name": "Contoso Finance",
+      "canonical_url": "https://adstransparency.google.com/advertiser/AR-ext-google-adv-001?region=US",
+      "country": "US",
+      "market": "US",
+      "discovery_source": "ads_transparency_center",
+      "captured_at": "2026-08-21T12:05:00.000Z",
+      "dedup_key": "aea0dc074ba27391a9a776d54fa03640341772acc5774808ac4e0ee8f54798c1",
+      "contract_version": "v1"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev-google-001",
+      "tenant_id": 1,
+      "research_run_id": "run-google-001",
+      "competitor_id": "comp-google-001",
+      "platform": "google",
+      "source_type": "ad_copy",
+      "provider_external_id": "ext-google-creative-001",
+      "canonical_source_url": "https://adstransparency.google.com/advertiser/AR-ext-google-adv-001/creative/ext-google-creative-001?region=US",
+      "advertiser_name": "Contoso Finance",
+      "creative_format": "text",
+      "headline": "Compare business checking in minutes",
+      "body_text": "Public Ads Transparency Center creative: no click-through tracking in this freeze.",
+      "excerpt": "Compare business checking in minutes",
+      "provider_started_on": "2026-06-15",
+      "provider_ended_on": "2026-08-15",
+      "captured_at": "2026-08-21T12:05:00.000Z",
+      "market": "US",
+      "language": "en",
+      "placement": "search",
+      "provider_metrics": {
+        "estimated_search_volume_band": "10K-100K"
+      },
+      "metrics_kind": "estimated",
+      "provenance_method": "ads_transparency_center",
+      "connector_id": "google_research",
+      "connector_version": "1.0.0",
+      "contract_version": "v1",
+      "content_fingerprint": "cb3b5f68e02e0759f4841076100eb4a3fd460651c96101bff7d6db5cc467b633",
+      "dedup_key": "cb3b5f68e02e0759f4841076100eb4a3fd460651c96101bff7d6db5cc467b633",
+      "retention_class": "standard"
+    }
+  ],
+  "assets": [],
+  "page": {
+    "next_cursor": null,
+    "has_more": false
+  },
+  "continuation_state": {},
+  "rate_limit": {
+    "limit": 100,
+    "remaining": 99,
+    "reset_at": "2026-08-21T13:00:00.000Z"
+  },
+  "retry_class": "none"
+}

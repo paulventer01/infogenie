@@ -1,0 +1,77 @@
+{
+  "ok": true,
+  "contract_version": "v1",
+  "connector_id": "tiktok_research",
+  "connector_version": "1.0.0",
+  "competitors": [
+    {
+      "id": "comp-tiktok-001",
+      "tenant_id": 1,
+      "research_run_id": "run-tiktok-001",
+      "platform": "tiktok",
+      "provider_advertiser_id": "ext-tiktok-advertiser-001",
+      "normalized_name": "Harbor Home Goods",
+      "canonical_url": "https://library.tiktok.com/ads?advertiser=ext-tiktok-advertiser-001",
+      "country": "US",
+      "market": "US",
+      "discovery_source": "public_profile",
+      "captured_at": "2026-08-21T12:10:00.000Z",
+      "dedup_key": "71ea1d99fbb7f811d818eec6efdef81ed2ff666f768af5a50bccb4dc3093c04b",
+      "contract_version": "v1"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev-tiktok-001",
+      "tenant_id": 1,
+      "research_run_id": "run-tiktok-001",
+      "competitor_id": "comp-tiktok-001",
+      "platform": "tiktok",
+      "source_type": "public_video",
+      "provider_external_id": "ext-tiktok-ad-001",
+      "canonical_source_url": "https://library.tiktok.com/ads?region=US&id=ext-tiktok-ad-001",
+      "advertiser_name": "Harbor Home Goods",
+      "creative_format": "video",
+      "headline": "30s kitchen restock routine",
+      "body_text": "Public TikTok Ad Library video used as creative evidence only.",
+      "excerpt": "30s kitchen restock routine",
+      "captured_at": "2026-08-21T12:10:00.000Z",
+      "market": "US",
+      "language": "en",
+      "placement": "for_you",
+      "provider_metrics": {
+        "like_count_band": "10K+"
+      },
+      "metrics_kind": "provider_reported",
+      "provenance_method": "public_scrape",
+      "connector_id": "tiktok_research",
+      "connector_version": "1.0.0",
+      "contract_version": "v1",
+      "content_fingerprint": "98724c04a51599d9a936e8f23e5a6d472a5dc12f6736fd1f945cf89a07b96fcd",
+      "dedup_key": "98724c04a51599d9a936e8f23e5a6d472a5dc12f6736fd1f945cf89a07b96fcd",
+      "retention_class": "short"
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-tiktok-001",
+      "tenant_id": 1,
+      "evidence_id": "ev-tiktok-001",
+      "media_type": "video",
+      "storage_ref": "research://tiktok/ext-tiktok-ad-001/creative.mp4",
+      "checksum_sha256": "d47e340fa7d08c3c45bc94b2cf700be0eb67236ab8d60a37ff3a5cf839d99572",
+      "width_px": 1080,
+      "height_px": 1920,
+      "duration_ms": 30000,
+      "captured_at": "2026-08-21T12:10:00.000Z",
+      "retention_class": "short"
+    }
+  ],
+  "page": {
+    "next_cursor": null,
+    "has_more": false
+  },
+  "continuation_state": {},
+  "rate_limit": null,
+  "retry_class": "none"
+}

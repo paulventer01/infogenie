@@ -1,0 +1,84 @@
+{
+  "ok": true,
+  "contract_version": "v1",
+  "connector_id": "meta_research",
+  "connector_version": "1.0.0",
+  "competitors": [
+    {
+      "id": "comp-meta-001",
+      "tenant_id": 1,
+      "research_run_id": "run-meta-001",
+      "platform": "meta",
+      "provider_advertiser_id": "ext-meta-page-001",
+      "normalized_name": "Northwind Outdoor Co",
+      "canonical_url": "https://www.facebook.com/ads/library/?view_all_page_id=ext-meta-page-001",
+      "country": "US",
+      "market": "US",
+      "discovery_source": "ad_library",
+      "captured_at": "2026-08-21T12:00:00.000Z",
+      "dedup_key": "a63c590f07c88e5219e99301040d8be7389165ac0575a6a8ff20830c382dab11",
+      "contract_version": "v1"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev-meta-001",
+      "tenant_id": 1,
+      "research_run_id": "run-meta-001",
+      "competitor_id": "comp-meta-001",
+      "platform": "meta",
+      "source_type": "ad_creative",
+      "provider_external_id": "ext-meta-ad-001",
+      "canonical_source_url": "https://www.facebook.com/ads/library/?id=ext-meta-ad-001",
+      "advertiser_name": "Northwind Outdoor Co",
+      "creative_format": "image",
+      "headline": "Trail-ready jackets for fall",
+      "body_text": "Shop the public Ad Library listing for this image campaign.",
+      "excerpt": "Trail-ready jackets for fall",
+      "provider_started_on": "2026-07-01",
+      "provider_ended_on": null,
+      "captured_at": "2026-08-21T12:00:00.000Z",
+      "market": "US",
+      "language": "en",
+      "placement": "facebook_feed",
+      "provider_metrics": {
+        "impressions_range": "100K-500K",
+        "eu_reach": false
+      },
+      "metrics_kind": "provider_reported",
+      "provenance_method": "ad_library",
+      "connector_id": "meta_research",
+      "connector_version": "1.0.0",
+      "contract_version": "v1",
+      "content_fingerprint": "102fa9cb9fca0d9db0d0279c22a8030883dc97e334140c31dff1f0a9cfaf5edf",
+      "dedup_key": "102fa9cb9fca0d9db0d0279c22a8030883dc97e334140c31dff1f0a9cfaf5edf",
+      "retention_class": "standard"
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-meta-001",
+      "tenant_id": 1,
+      "evidence_id": "ev-meta-001",
+      "media_type": "image",
+      "storage_ref": "research://meta/ext-meta-ad-001/creative.jpg",
+      "checksum_sha256": "72441aadfb34ce36c0d9276489c354b784880e3735298026b3ac8199baac3f5c",
+      "width_px": 1080,
+      "height_px": 1080,
+      "duration_ms": null,
+      "captured_at": "2026-08-21T12:00:00.000Z",
+      "retention_class": "standard"
+    }
+  ],
+  "page": {
+    "next_cursor": null,
+    "has_more": false
+  },
+  "continuation_state": {},
+  "rate_limit": {
+    "limit": 200,
+    "remaining": 199,
+    "reset_at": "2026-08-21T13:00:00.000Z"
+  },
+  "retry_class": "none"
+}

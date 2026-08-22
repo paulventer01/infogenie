@@ -4110,12 +4110,48 @@ BOOT_TASKS.push(async () => { try {
     await _referralSchema.ensureReferralSchema();
     await _affiliateSchema.ensureAffiliateSchema();
     await _marketingSpineSchema.ensureMarketingSpineSchema();
-    await _agentOrchSchema.ensureAgentOrchestratorSchema();
     await _segmentSchema.ensureSegmentSchema();
     await _aiGovSchema.ensureAiGovernanceSchema();
     console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags + gap-priority + ecosystem-spine + ai-governance ready');
   }
 } catch (e) { console.warn('[tier28-32] schema init failed:', e.message); }});
+BOOT_TASKS.push(async () => { try {
+  if (_db.hasDb()) {
+    await _agentOrchSchema.ensureAgentOrchestratorSchema();
+    const { countLegacyHolds } = require('./services/agent_orchestrator/research_cleanup');
+    const holds = await countLegacyHolds();
+    logger.info('legacy_holds_identified', {
+      evidence: holds && holds.evidence,
+      assets: holds && holds.assets,
+    });
+  }
+} catch (e) {
+  logger.error('agent_orchestrator_schema_init_failed');
+  captureException(new Error('agent_orchestrator_schema_init_failed'));
+  if (process.env.NODE_ENV === 'production') process.exit(1);
+}});
+const _researchRetention = require('./services/agent_orchestrator/research_retention');
+BOOT_TASKS.push(async () => { try {
+  if (_db.hasDb()) {
+    if (typeof _researchRetention.sweepExpiredResearchEvidence === 'function') {
+      const sweepResult = await _researchRetention.sweepExpiredResearchEvidence({ skipHolds: true });
+      if (!sweepResult || sweepResult.ok !== true) {
+        const counts = {
+          purged: sweepResult && sweepResult.purged,
+          failures: sweepResult && sweepResult.failures,
+          invalid_expiry: sweepResult && sweepResult.invalid_expiry,
+        };
+        logger.error('research_evidence_sweep_failed', counts);
+        captureException(new Error('research_evidence_sweep_failed'), counts);
+        if (process.env.NODE_ENV === 'production') process.exit(1);
+      }
+    }
+  }
+} catch (e) {
+  logger.error('research_evidence_sweep_failed', { phase: 'boot' });
+  captureException(new Error('research_evidence_sweep_failed'));
+  if (process.env.NODE_ENV === 'production') process.exit(1);
+}});
 BOOT_TASKS.push(async () => { try {
   if (process.env.DATABASE_URL) {
     await _seoTasksSchema.ensureSeoTasksSchema();

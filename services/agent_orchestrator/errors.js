@@ -21,6 +21,7 @@ const HTTP_FOR_CODE = Object.freeze({
   rate_limit_exceeded: 429,
   concurrency_limit_exceeded: 429,
   tenant_cost_limit_exceeded: 409,
+  research_evidence_limit_exceeded: 409,
 });
 
 class OrchError extends Error {

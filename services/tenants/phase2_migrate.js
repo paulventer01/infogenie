@@ -28,6 +28,10 @@
 //     tenant_id IS NULL; custom is_system=FALSE rows are tenant-owned. Not a
 //     PLAIN_TABLES default-tenant backfill (that would copy the catalog onto
 //     tenant 1). Listed in PHASE2E_NULLABLE_OK.
+//   • orchestrator_research_legacy_short_due_snapshot — GLOBAL cluster-wide
+//     one-shot latch for legacy_short_due identify (id=1 only). No tenant
+//     data; holds remain tenant-scoped in orchestrator_research_legacy_holds.
+//     Not a PLAIN_TABLES default-tenant backfill.
 //
 // Tables that need UNIQUE-constraint rewrites (e.g. landing_pages.slug
 // becoming UNIQUE(tenant_id, slug)) are listed in REWRITE_UNIQUE below.

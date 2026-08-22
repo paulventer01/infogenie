@@ -43,9 +43,14 @@ test('ensureAgentOrchestratorSchema is registered in BOOT_TASKS and run when bac
   const pushIdx = serverSrc.lastIndexOf('BOOT_TASKS.push', orchIdx);
   assert.ok(pushIdx >= 0 && pushIdx < orchIdx,
     'ensureAgentOrchestratorSchema must sit inside a BOOT_TASKS.push');
-  const window = serverSrc.slice(pushIdx, orchIdx + 'ensureAgentOrchestratorSchema'.length);
+  const nextPushIdx = serverSrc.indexOf('BOOT_TASKS.push', pushIdx + 1);
+  const window = serverSrc.slice(pushIdx, nextPushIdx > 0 ? nextPushIdx : orchIdx + 'ensureAgentOrchestratorSchema'.length);
   assert.match(window, /BOOT_TASKS\.push\s*\(/);
   assert.match(window, /ensureAgentOrchestratorSchema/);
+  assert.match(window, /process\.exit\(1\)/);
+  assert.match(window, /NODE_ENV === 'production'/);
+  assert.match(window, /captureException/);
+  assert.doesNotMatch(window, /\[tier28-32\] schema init failed/);
 
   assert.match(routesSrc, /backgroundEnabled\s*\(\s*\)/);
   assert.match(routesSrc, /for\s*\(\s*const\s+_bootTask\s+of\s+BOOT_TASKS\s*\)/);
