@@ -967,6 +967,11 @@ if (!HAS_DB) {
       await client.query("SET lock_timeout = '30s'");
       await laterClient.query("SET lock_timeout = '30s'");
       await client.query('BEGIN');
+      // Assets→evidence is DEFERRABLE INITIALLY DEFERRED; ALTER TABLE on
+      // assets fails (55006) while that FK trigger is still pending.
+      await client.query(
+        'SET CONSTRAINTS orchestrator_research_evidence_assets_tenant_evidence_fkey IMMEDIATE'
+      );
       await client.query(
         `ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_retention_expiry_check`
       );

@@ -2154,6 +2154,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
 
     CREATE OR REPLACE FUNCTION orchestrator_research_evidence_immutable()
     RETURNS trigger AS $fn$
+    DECLARE
+      allowed boolean := false;
     BEGIN
       IF TG_OP = 'UPDATE' THEN
         RAISE EXCEPTION 'orchestrator_research_evidence_immutable';
@@ -2163,24 +2165,16 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       ) THEN
         RETURN OLD;
       END IF;
-      IF EXISTS (
-        SELECT 1 FROM orchestrator_research_evidence_assets a
-         WHERE a.tenant_id = OLD.tenant_id AND a.evidence_id = OLD.id
-      ) THEN
-        RAISE EXCEPTION 'orchestrator_research_evidence_has_assets';
-      END IF;
       IF NOT EXISTS (
         SELECT 1 FROM orchestrator_research_runs r
          WHERE r.id = OLD.research_run_id AND r.tenant_id = OLD.tenant_id
       ) THEN
-        RETURN OLD;
-      END IF;
-      IF OLD.retention_class IS DISTINCT FROM 'legal_hold'
+        allowed := true;
+      ELSIF OLD.retention_class IS DISTINCT FROM 'legal_hold'
          AND OLD.expires_at IS NOT NULL
          AND OLD.expires_at <= now() THEN
-        RETURN OLD;
-      END IF;
-      IF EXISTS (
+        allowed := true;
+      ELSIF EXISTS (
         SELECT 1
           FROM orchestrator_research_cleanup_ops o
           JOIN orchestrator_research_cleanup_targets t
@@ -2190,6 +2184,15 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
            AND t.target_kind = 'evidence'
            AND t.target_id = OLD.id
       ) THEN
+        allowed := true;
+      END IF;
+      IF allowed THEN
+        IF EXISTS (
+          SELECT 1 FROM orchestrator_research_evidence_assets a
+           WHERE a.tenant_id = OLD.tenant_id AND a.evidence_id = OLD.id
+        ) THEN
+          RAISE EXCEPTION 'orchestrator_research_evidence_has_assets';
+        END IF;
         RETURN OLD;
       END IF;
       RAISE EXCEPTION 'orchestrator_research_evidence_immutable';
