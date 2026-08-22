@@ -437,21 +437,28 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   assert.match(flat, /Advisory lock 87231402 is \*\*not\*\* shared with the sweeper/);
   assert.match(flat, /What `lock_timeout` does not bound is the `pg_advisory_lock\(87231402\)` call itself/);
   assert.doesNotMatch(flat, /The boot DDL takes `AccessExclusiveLock` with no `lock_timeout`/);
-  // The suite failure is still open. It must stay written down as open until
-  // the schema-test owner closes it, so a green local run cannot be read as
-  // proof. The constraint-swap ALTERs were gated and that half is closed; the
-  // entry must name the statement that still is not, rather than the one that
-  // was already fixed.
-  assert.match(flat, /### Open BLOCK \(PR 3A\): the live-PostgreSQL suite still fails in parallel/);
+  // The suite failure took three passes to close. None of the three "still
+  // open" headings may survive in the doc, and the closed entry has to name
+  // both halves of the fix — the AccessExclusiveLock takers AND the victim
+  // side — because closing only one of them is what failed the last two times.
+  assert.match(flat, /### The live-PostgreSQL suite is now stable in parallel \(closed\)/);
+  assert.doesNotMatch(flat, /### Open BLOCK \(PR 3A\)/);
   assert.doesNotMatch(flat, /the live-PostgreSQL suite still hangs in parallel/);
-  assert.doesNotMatch(flat, /The blocking `ALTER` does not come from `ensure\(\)`/);
-  assert.match(flat, /`dropLoginRole` runs `REASSIGN OWNED BY <role> TO CURRENT_USER`/);
-  assert.match(flat, /It takes no advisory lock, sets no `lock_timeout`, and runs on the admin pool/);
-  assert.match(flat, /five passes and one run in which `SKIP LOCKED held-row scenario succeeds 20 consecutive times` failed with `40P01 deadlock detected`/);
-  assert.match(flat, /The `87231402` gate as currently placed cannot cover this/);
-  // The half that Database did close has to be credited, so the entry cannot be
-  // read as a claim that nothing moved.
-  assert.match(flat, /now runs while a third connection holds `pg_advisory_lock\(87231402\)`/);
+  assert.doesNotMatch(flat, /the live-PostgreSQL suite still fails in parallel/);
+  assert.doesNotMatch(flat, /The `87231402` gate as currently placed cannot cover this/);
+  assert.doesNotMatch(flat, /It takes no advisory lock, sets no `lock_timeout`, and runs on the admin pool/);
+  assert.match(flat, /routes its DDL through one helper, `withEnsureDdlGate`/);
+  assert.match(flat, /The work client never holds 87231402 itself/);
+  assert.match(flat, /`dropLoginRole` \(`REASSIGN OWNED BY` \/ `DROP OWNED BY` \/ `DROP ROLE`\) and `grantOrchestratorMigrator`/);
+  assert.match(flat, /now takes 87231402 \*\*before\*\* it seeds/);
+  assert.match(flat, /it takes no `AccessExclusiveLock` at all and no lock of any mode on any `orchestrator_%` relation/);
+  // The evidence has to be default-parallel and has to include the server-log
+  // check, because a green suite alone can be the sweeper's retry masking a
+  // deadlock rather than a clean lock order.
+  assert.match(flat, /sixteen consecutive default-parallel `node --test` runs of the complete eight-file research suite/);
+  assert.match(flat, /recorded \*\*zero\*\* `deadlock detected` lines/);
+  assert.match(flat, /rather than merely masked by the sweeper's bounded `40P01` retry/);
+  assert.match(flat, /No production file changed to close this/);
   // The cluster-wide latch has no tenant_id by design; say so, and say why that
   // is not a tenant-isolation hole.
   assert.match(flat, /`legacy_short_due` is a one-shot cluster snapshot/);
