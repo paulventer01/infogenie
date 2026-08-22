@@ -103,7 +103,7 @@ export default function SocialApprovalsPanel({ onEditDraft, refreshKey = 0 }: Pr
           {drafts.map((d) => {
             const sh = selfHealMeta(d);
             return (
-              <div key={d.id} style={{ border: "1px solid #FED7AA", background: "#FFF7ED", borderRadius: 8, padding: 12 }}>
+              <div key={d.id} style={{ border: "1px solid #FED7AA", background: "#f3f6fb", borderRadius: 8, padding: 12 }}>
                 <div style={{ fontSize: "0.82rem", color: "#0A1628", lineHeight: 1.45, marginBottom: 8 }}>
                   {(d.text || "").slice(0, 220)}
                   {(d.text || "").length > 220 ? "…" : ""}

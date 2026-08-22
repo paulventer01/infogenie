@@ -372,7 +372,7 @@ export default function LinkSuggester() {
     };
     const cards: [string, number | string, string, string][] = [
       ["🌐", stats.pages, "Pages analysed", "#1E40AF"],
-      ["🔗", stats.suggestions, "Link suggestions", "#7C3AED"],
+      ["🔗", stats.suggestions, "Link suggestions", "#0f766e"],
       ["🔥", stats.high, "High priority", "#DC2626"],
       ["📈", "+" + stats.totalLift, "Est. equity lift", "#059669"],
     ];
@@ -527,7 +527,7 @@ export default function LinkSuggester() {
                       <strong style={{ color: "#1E40AF" }}>FROM:</strong>{" "}
                       <span style={{ color: "#374151" }}>{s.sourceTitle}</span>
                       <span style={{ color: "#94A3B8", margin: "0 6px" }}>→</span>
-                      <strong style={{ color: "#7C3AED" }}>TO:</strong>{" "}
+                      <strong style={{ color: "#0f766e" }}>TO:</strong>{" "}
                       <span style={{ color: "#374151" }}>{s.targetTitle}</span>
                     </div>
                     <div style={{ fontSize: "0.75rem", color: "#475569", marginTop: 6 }}>

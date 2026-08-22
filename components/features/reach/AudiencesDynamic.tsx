@@ -817,13 +817,13 @@ function SegmentCard({
         </button>
         <button
           onClick={onHsList}
-          style={actionBtn("#EA580C", "#EA580C", !!b.hsList)}
+          style={actionBtn("#0f766e", "#0f766e", !!b.hsList)}
         >
           🔗 HS List
         </button>
         <button
           onClick={onReengage}
-          style={actionBtn("#7C3AED", "#7C3AED", !!b.reng)}
+          style={actionBtn("#0f766e", "#0f766e", !!b.reng)}
         >
           💔 Re-eng
         </button>
@@ -2866,8 +2866,8 @@ function ReengageModal({
                 disabled={generating}
                 style={{
                   padding: "8px 14px",
-                  background: "#7C3AED",
-                  border: "2px solid #7C3AED",
+                  background: "#0f766e",
+                  border: "2px solid #0f766e",
                   borderRadius: 7,
                   fontSize: "0.75rem",
                   fontWeight: 800,

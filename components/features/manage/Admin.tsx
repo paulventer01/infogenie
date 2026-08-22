@@ -1775,7 +1775,7 @@ const AUDIT_ACTION_META: Record<string, { label: string; color: string; icon: st
   "membership.role_change": { label: "Role changed", color: "#2563EB", icon: "🔄" },
   "membership.remove": { label: "Member removed", color: "#DC2626", icon: "➖" },
   "membership.accept": { label: "Invite accepted", color: "#16A34A", icon: "✅" },
-  "platform_role.grant": { label: "Platform role granted", color: "#7C3AED", icon: "🛡️" },
+  "platform_role.grant": { label: "Platform role granted", color: "#0f766e", icon: "🛡️" },
   "platform_role.revoke": { label: "Platform role revoked", color: "#B45309", icon: "🚫" },
   "invite.send": { label: "Invite sent", color: "#0891B2", icon: "✉️" },
   "invite.resend": { label: "Invite resent", color: "#0EA5E9", icon: "🔁" },
@@ -1929,7 +1929,7 @@ function AuditTab() {
 // ════════════════════════════════════════════════════════════════════════════
 const SEV_COLOR: Record<string, string> = {
   critical: "#DC2626",
-  error: "#EA580C",
+  error: "#0f766e",
   warning: "#B45309",
   info: "#2563EB",
 };

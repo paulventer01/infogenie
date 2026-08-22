@@ -78,17 +78,17 @@ const PRICE_BG: Record<string, string> = {
   $$$$: "#FEE2E2",
 };
 const PRICE_COL: Record<string, string> = {
-  $: "#7C3AED",
+  $: "#0f766e",
   $$: "#1D4ED8",
   $$$: "#92400E",
   $$$$: "#991B1B",
 };
 const MATURITY_COL: Record<string, string> = {
   saturated: "#DC2626",
-  mature: "#F97316",
+  mature: "#0f766e",
   moderate: "#0EA5E9",
   emerging: "#059669",
-  fragmented: "#8B5CF6",
+  fragmented: "#0284c7",
 };
 
 function getAnalysisData(): AnalysisData {
@@ -416,7 +416,7 @@ export default function MapsIntel() {
             style={{
               padding: "4px 12px",
               background: "#EDE9FE",
-              color: "#7C3AED",
+              color: "#0f766e",
               border: "1px solid #DDD6FE",
               borderRadius: 12,
               fontSize: "0.74rem",

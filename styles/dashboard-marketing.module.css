@@ -112,18 +112,19 @@
 
 .metricDark {
   background: #ffffff;
-  border: 1px solid rgba(15, 118, 110, 0.14);
+  border: 1px solid rgba(11, 18, 32, 0.1);
+  border-left: 3px solid #0f766e;
   border-radius: 14px;
   padding: 18px 18px 16px;
   color: #0f172a;
   min-height: 108px;
-  box-shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 10px 24px rgba(11, 18, 32, 0.05);
+  box-shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 10px 28px rgba(11, 18, 32, 0.06);
 }
 
 .metricOwner {
   font-size: 0.68rem;
   font-weight: 800;
-  color: #0066ff;
+  color: #0f766e;
   letter-spacing: 0.01em;
   margin-bottom: 6px;
   white-space: nowrap;

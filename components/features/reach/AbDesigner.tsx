@@ -47,10 +47,10 @@ const ANGLE_COLOR: Record<string, string> = {
   rational: "#0891B2",
   FOMO: "#DC2626",
   social_proof: "#059669",
-  curiosity: "#7C3AED",
+  curiosity: "#0f766e",
   benefit_led: "#15803D",
   loss_aversion: "#B91C1C",
-  urgency: "#EA580C",
+  urgency: "#0f766e",
   authority: "#1E40AF",
   novelty: "#DB2777",
 };

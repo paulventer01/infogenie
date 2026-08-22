@@ -1,32 +1,41 @@
-/* Domain overview strip + module grid (Semrush / Marketing OS inspired) */
+/* Domain overview — unified InfoGenie tile / journey language */
 
 .strip {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
 }
 
 .stripCard {
-  background: var(--ig-surface, #fff);
-  border: 1px solid var(--ig-border, #e2e8f0);
-  border-radius: 10px;
-  padding: 12px 14px;
-  min-height: 96px;
+  background: #ffffff;
+  border: 1px solid rgba(11, 18, 32, 0.1);
+  border-left: 3px solid #0f766e;
+  border-radius: 14px;
+  padding: 14px 16px;
+  min-height: 108px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 2px;
+  gap: 4px;
   text-align: left;
   cursor: pointer;
   font-family: inherit;
+  box-shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 10px 28px rgba(11, 18, 32, 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.stripCard:hover {
+  border-color: rgba(15, 118, 110, 0.28);
+  box-shadow: 0 4px 18px rgba(15, 118, 110, 0.12);
+  transform: translateY(-1px);
 }
 
 .stripOwner {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.02em;
-  color: var(--ig-primary, #0066ff);
+  color: #0f766e;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
@@ -36,63 +45,66 @@
 
 .stripLabel {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--ig-text-muted, #64748b);
+  letter-spacing: 0.06em;
+  color: #64748b;
 }
 
 .stripValue {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--ig-text, #0f172a);
-  line-height: 1.2;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #0b1220;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-family: var(--font-display), inherit;
 }
 
 .stripHint {
   font-size: 11px;
-  color: var(--ig-text-muted, #94a3b8);
+  color: #94a3b8;
 }
 
 .journey {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 22px;
   padding: 12px 14px;
-  background: var(--ig-surface-muted, #f8fafc);
-  border-radius: 10px;
-  border: 1px solid var(--ig-border, #e2e8f0);
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid rgba(11, 18, 32, 0.1);
+  box-shadow: 0 1px 0 rgba(11, 18, 32, 0.04);
 }
 
 .journeyStep {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 7px 12px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--ig-text-muted, #64748b);
+  color: #64748b;
   cursor: pointer;
   font-family: inherit;
 }
 
 .journeyStep:hover {
-  background: var(--ig-surface, #fff);
-  border-color: var(--ig-border, #e2e8f0);
+  background: #f8fafc;
+  border-color: rgba(11, 18, 32, 0.1);
 }
 
 .journeyCurrent {
-  background: var(--ig-primary-soft, #eef2ff);
-  color: var(--ig-primary, #4f46e5);
-  border-color: var(--ig-primary-border, #c7d2fe);
+  background: rgba(15, 118, 110, 0.1);
+  color: #0f766e;
+  border-color: rgba(15, 118, 110, 0.28);
 }
 
 .journeyDone {
-  color: var(--ig-success, #059669);
+  color: #059669;
 }
 
 .journeyNum {
@@ -103,47 +115,54 @@
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  background: var(--ig-border, #e2e8f0);
-  color: var(--ig-text-muted, #64748b);
+  font-weight: 800;
+  background: #e2e8f0;
+  color: #64748b;
 }
 
 .journeyCurrent .journeyNum {
-  background: var(--ig-primary, #4f46e5);
+  background: #0f766e;
   color: #fff;
 }
 
 .journeyDone .journeyNum {
-  background: var(--ig-success, #059669);
+  background: #059669;
   color: #fff;
 }
 
 .moduleGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }
 
 .moduleCard {
   text-align: left;
-  padding: 14px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--ig-border, #e2e8f0);
-  background: var(--ig-surface, #fff);
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(11, 18, 32, 0.1);
+  border-left: 3px solid #0f766e;
+  background: #ffffff;
   cursor: pointer;
   font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  box-shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 10px 28px rgba(11, 18, 32, 0.06);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  min-height: 148px;
+  display: flex;
+  flex-direction: column;
 }
 
 .moduleCard:hover {
-  border-color: var(--ig-primary-border, #c7d2fe);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 118, 110, 0.28);
+  box-shadow: 0 4px 18px rgba(15, 118, 110, 0.12);
+  transform: translateY(-1px);
 }
 
 .moduleOwner {
   font-size: 11px;
   font-weight: 800;
-  color: var(--ig-primary, #0066ff);
+  color: #0f766e;
   letter-spacing: 0.01em;
   margin-bottom: 4px;
   white-space: nowrap;
@@ -154,34 +173,38 @@
 .moduleIcon {
   font-size: 20px;
   margin-bottom: 6px;
+  line-height: 1;
 }
 
 .moduleTitle {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--ig-text, #0f172a);
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #0b1220;
   margin-bottom: 4px;
+  letter-spacing: -0.015em;
+  font-family: var(--font-display), inherit;
 }
 
 .moduleDesc {
-  font-size: 12px;
-  color: var(--ig-text-muted, #64748b);
-  line-height: 1.4;
-  margin-bottom: 8px;
+  font-size: 0.78rem;
+  color: #64748b;
+  line-height: 1.45;
+  margin-bottom: 10px;
+  flex: 1;
 }
 
 .moduleStat {
   font-size: 11px;
-  font-weight: 600;
-  color: var(--ig-primary, #4f46e5);
+  font-weight: 700;
+  color: #0f766e;
 }
 
 .sectionTitle {
-  font-size: 13px;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ig-text-muted, #64748b);
+  letter-spacing: 0.06em;
+  color: #64748b;
   margin: 0 0 12px;
 }
 
@@ -202,11 +225,11 @@
   margin: 0;
   font-size: 13px;
   font-weight: 500;
-  color: var(--ig-text-muted, #64748b);
+  color: #64748b;
   line-height: 1.35;
 }
 
 .snapshotOwner strong {
-  color: var(--ig-text, #0f172a);
+  color: #0b1220;
   font-weight: 800;
 }

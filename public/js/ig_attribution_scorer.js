@@ -399,7 +399,7 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('cmdSpinnerCSS')) return;
   const s = document.createElement('style');
   s.id = 'cmdSpinnerCSS';
-  s.textContent = '.cmdSpinner{width:14px;height:14px;border:2px solid #CBD5E1;border-top-color:#7C3AED;border-radius:50%;animation:cmdSpin .7s linear infinite}@keyframes cmdSpin{to{transform:rotate(360deg)}}';
+  s.textContent = '.cmdSpinner{width:14px;height:14px;border:2px solid #CBD5E1;border-top-color:#0f766e;border-radius:50%;animation:cmdSpin .7s linear infinite}@keyframes cmdSpin{to{transform:rotate(360deg)}}';
   document.head.appendChild(s);
 })();
 
@@ -1649,7 +1649,7 @@ function _contentScorerHtml(j) {
           <div class="cs-multi-grid">
             ${sorted.map(r => {
               const sc = Number(r.score || 0);
-              const col = sc >= 80 ? '#10B981' : sc >= 60 ? '#F59E0B' : sc >= 40 ? '#F97316' : '#EF4444';
+              const col = sc >= 80 ? '#10B981' : sc >= 60 ? '#F59E0B' : sc >= 40 ? '#0f766e' : '#EF4444';
               return `<div class="cs-multi-card">
                 <div class="cs-multi-circle" style="background:conic-gradient(${col} ${sc*3.6}deg, #1E293B 0deg)">
                   <div class="cs-multi-circle-inner"><div style="color:${col};font-weight:800;font-size:1.4rem">${sc}</div><div style="opacity:.6;font-size:.7rem">/100</div></div>
@@ -1688,7 +1688,7 @@ function _csSwitchTab(btn, idx) {
 function _csCountryHtml(j, targetSummary, generatedAt, isMulti) {
   const esc = _escapeHtml;
   const score = Number(j.score || 0);
-  const scoreColor = score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : score >= 40 ? '#F97316' : '#EF4444';
+  const scoreColor = score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : score >= 40 ? '#0f766e' : '#EF4444';
   const scoreLabel = score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : score >= 40 ? 'Needs work' : 'Underperforming';
   const b = j.breakdown || {};
   const target = targetSummary || j.target || {};
@@ -1749,7 +1749,7 @@ function _csCountryHtml(j, targetSummary, generatedAt, isMulti) {
   // Competitor table
   const compRows = (j.competitorSummary || []).map(c => `
     <tr>
-      <td style="text-align:center;font-weight:700;color:#7C3AED">${c.rank}</td>
+      <td style="text-align:center;font-weight:700;color:#0f766e">${c.rank}</td>
       <td><div style="font-weight:600;font-size:.88rem">${esc(c.domain)}</div><div style="opacity:.6;font-size:.78rem">${esc((c.title || '').slice(0, 80))}</div></td>
       <td style="text-align:right;font-variant-numeric:tabular-nums">${c.ok ? c.wordCount.toLocaleString() : '—'}</td>
       <td style="text-align:center">${c.ok ? c.h2 : '—'}</td>

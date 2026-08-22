@@ -128,9 +128,106 @@ router.post('/format', (req, res) => {
   res.json({ ok:true, type, formatted, charCount: formatted.length });
 });
 
+function _canvaConfigured() {
+  const id = process.env.CANVA_CLIENT_ID || process.env.CANVA_API_KEY || '';
+  const secret = process.env.CANVA_CLIENT_SECRET || '';
+  return {
+    clientId: !!(id && !/^_DUMMY/i.test(id)),
+    clientSecret: !!(secret && !/^_DUMMY/i.test(secret)),
+    oauthReady: !!(id && secret && !/^_DUMMY/i.test(id) && !/^_DUMMY/i.test(secret)),
+  };
+}
+
 // ── GET /status ───────────────────────────────────────────────────────────────
 router.get('/status', (req, res) => {
-  res.json({ ok:true, apiKey: false, templateLibrary: TEMPLATE_LIBRARY.length, note: 'No API key required — template library opens Canva directly.' });
+  const cfg = _canvaConfigured();
+  res.json({
+    ok: true,
+    apiKey: cfg.clientId,
+    oauthReady: cfg.oauthReady,
+    templateLibrary: TEMPLATE_LIBRARY.length,
+    note: cfg.oauthReady
+      ? 'Canva Connect credentials detected — use Design Kit to push briefs into Canva.'
+      : 'Template library works without OAuth. Add CANVA_CLIENT_ID + CANVA_CLIENT_SECRET for Connect.',
+  });
+});
+
+// ── GET /oauth/start ──────────────────────────────────────────────────────────
+// Starts Canva Connect Authorization Code flow when credentials are present.
+router.get('/oauth/start', (req, res) => {
+  const cfg = _canvaConfigured();
+  const clientId = process.env.CANVA_CLIENT_ID || '';
+  if (!cfg.oauthReady) {
+    return res.status(400).json({
+      ok: false,
+      error: 'Canva Connect not configured — set CANVA_CLIENT_ID and CANVA_CLIENT_SECRET.',
+      connect_url: 'https://www.canva.com/developers/',
+    });
+  }
+  const redirect = encodeURIComponent(
+    String(req.query.redirect_uri || `${req.protocol}://${req.get('host')}/api/canva/oauth/callback`)
+  );
+  const url = `https://www.canva.com/api/oauth/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${redirect}&scope=design:content:read%20design:content:write%20design:meta:read`;
+  res.json({ ok: true, authorize_url: url });
+});
+
+router.get('/oauth/callback', (req, res) => {
+  // Scaffold: exchange code for tokens once Connect app is approved.
+  const code = req.query.code;
+  if (!code) {
+    return res.status(400).send('Missing authorization code. Return to InfoGenie → Canva and try Connect again.');
+  }
+  res.send(`<!doctype html><html><body style="font-family:system-ui;padding:40px">
+    <h2>Canva Connect</h2>
+    <p>Authorization code received. Token exchange will complete once your Canva app is approved for production.</p>
+    <p><a href="/create/canva">← Back to Canva in InfoGenie</a></p>
+    <script>setTimeout(()=>location.href='/create/canva',2500)</script>
+  </body></html>`);
+});
+
+// ── POST /design-kit ──────────────────────────────────────────────────────────
+// Builds a ready-to-paste creative brief + deep-links into matching Canva templates.
+router.post('/design-kit', (req, res) => {
+  const {
+    type = 'ad-creative',
+    title = '',
+    body = '',
+    cta = 'Learn more',
+    brand = '',
+    platform = 'Multi',
+    colors = [],
+  } = req.body || {};
+  const cat = TEMPLATE_LIBRARY.find((t) => t.category === type) || TEMPLATE_LIBRARY[3];
+  const templates = (cat.templates || []).slice(0, 4).map((t) => ({
+    ...t,
+    open_url: t.url,
+  }));
+  const brief = [
+    `CANVA DESIGN BRIEF`,
+    `Brand: ${brand || 'Your brand'}`,
+    `Format: ${cat.label}`,
+    `Platform: ${platform}`,
+    title ? `Headline: ${title}` : null,
+    body ? `Body: ${body}` : null,
+    `CTA: ${cta}`,
+    colors?.length ? `Brand colors: ${colors.join(', ')}` : null,
+    '',
+    'Instructions: Open a template below, replace placeholder text with this brief, export PNG/MP4, then upload back into InfoGenie Creatives.',
+  ].filter((x) => x != null).join('\n');
+
+  res.json({
+    ok: true,
+    type: cat.category,
+    category_label: cat.label,
+    brief,
+    templates,
+    next: [
+      'Open a Canva template',
+      'Paste the brief into text layers',
+      'Export and upload to InfoGenie Creatives',
+    ],
+    oauth: _canvaConfigured(),
+  });
 });
 
 module.exports = router;

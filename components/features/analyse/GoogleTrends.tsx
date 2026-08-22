@@ -29,7 +29,7 @@ const GEO_OPTIONS = [
   { k: "DE", label: "Germany" }, { k: "FR", label: "France" },
 ];
 
-const COLORS = ["#0ea5e9","#8b5cf6","#10b981","#f59e0b","#ef4444"];
+const COLORS = ["#0ea5e9","#0284c7","#10b981","#f59e0b","#ef4444"];
 
 function MiniSparkline({ data, color }: { data: number[]; color: string }) {
   if (!data.length) return null;

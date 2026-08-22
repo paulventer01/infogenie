@@ -119,7 +119,7 @@ const CADENCES: Record<Cadence, CadenceMeta> = {
 // ── Visual constants ─────────────────────────────────────────────────────────
 
 const KIND_STYLE: Record<string, { bg: string; border: string; badge: string; icon: string }> = {
-  warning:     { bg: '#FFF7ED', border: '#FED7AA', badge: '#EA580C', icon: '⚠️' },
+  warning:     { bg: '#FFF7ED', border: '#FED7AA', badge: '#0f766e', icon: '⚠️' },
   risk:        { bg: '#FEF2F2', border: '#FECACA', badge: '#DC2626', icon: '🔮' },
   win:         { bg: '#F0FDF4', border: '#BBF7D0', badge: '#16A34A', icon: '✅' },
   opportunity: { bg: '#EFF6FF', border: '#BFDBFE', badge: '#2563EB', icon: '💡' },
@@ -534,7 +534,7 @@ function RecCard({ rec, onAct, onDismiss }: {
           </span>
         </div>
         {rec.problem_summary && (
-          <div style={{ fontSize: '0.76rem', color: '#9A3412', background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 6, padding: '6px 8px', marginBottom: 6, lineHeight: 1.4 }}>
+          <div style={{ fontSize: '0.76rem', color: '#9A3412', background: '#f3f6fb', border: '1px solid #FED7AA', borderRadius: 6, padding: '6px 8px', marginBottom: 6, lineHeight: 1.4 }}>
             <strong>Not working:</strong> {rec.problem_summary}
           </div>
         )}
@@ -582,7 +582,7 @@ function RecCard({ rec, onAct, onDismiss }: {
             </span>
           )}
           {rec.cost_estimate && (
-            <span style={{ background: '#FFF7ED', color: '#C2410C', borderRadius: 4, padding: '1px 6px', fontSize: '0.68rem', fontWeight: 600 }}>
+            <span style={{ background: '#f3f6fb', color: '#0b5f59', borderRadius: 4, padding: '1px 6px', fontSize: '0.68rem', fontWeight: 600 }}>
               {rec.cost_estimate}
             </span>
           )}

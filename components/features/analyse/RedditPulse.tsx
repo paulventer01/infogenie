@@ -603,7 +603,7 @@ export default function RedditPulse() {
                                 style={{
                                   padding: "3px 9px",
                                   borderRadius: 4,
-                                  border: `1.5px solid ${active ? "#7C3AED" : "#D1D5DB"}`,
+                                  border: `1.5px solid ${active ? "#0f766e" : "#D1D5DB"}`,
                                   background: active ? "#EDE9FE" : "#fff",
                                   color: active ? "#6D28D9" : "#374151",
                                   fontSize: "0.67rem",
@@ -669,7 +669,7 @@ export default function RedditPulse() {
                                   style={{
                                     fontSize: "0.67rem",
                                     fontWeight: 800,
-                                    color: "#7C3AED",
+                                    color: "#0f766e",
                                     textTransform: "uppercase",
                                     marginBottom: 5,
                                   }}

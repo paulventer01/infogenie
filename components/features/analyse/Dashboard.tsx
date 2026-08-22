@@ -32,6 +32,8 @@ import OverviewWidgets from "./OverviewWidgets";
 import MessagingChannelStrip from "./MessagingChannelStrip";
 import { buildCompanyOverview } from "@/lib/companyOverview";
 import { restoreCanvasForReact } from "@/lib/domSafety";
+import PanelShell from "@/components/layout/PanelShell";
+import IgButton from "@/components/ui/IgButton";
 
 interface WebsiteKPIs {
   ctr: number;
@@ -149,8 +151,8 @@ function parseAdSpend(s: number | string | undefined): number {
   return num * mult;
 }
 
-const SOV_PALETTE = ["#0066FF", "#00C9C8", "#6366F1", "#F59E0B", "#10B981", "#EF4444", "#8B5CF6", "#14B8A6"];
-const CHIP_DOTS = ["#0066FF", "#10B981", "#F59E0B", "#8B5CF6", "#EF4444", "#06B6D4", "#EC4899", "#84CC16"];
+const SOV_PALETTE = ["#0066FF", "#00C9C8", "#6366F1", "#F59E0B", "#10B981", "#EF4444", "#0284c7", "#14B8A6"];
+const CHIP_DOTS = ["#0066FF", "#10B981", "#F59E0B", "#0284c7", "#EF4444", "#06B6D4", "#EC4899", "#84CC16"];
 
 interface AlertTmpl {
   icon: string;
@@ -390,7 +392,7 @@ export default function Dashboard() {
           label: "ROAS",
           data: [yourROAS, ...competitors.map((c) => c.roas)],
           backgroundColor: ["rgba(0,229,255,0.8)", ...competitors.map(() => "rgba(124,58,237,0.7)")],
-          borderColor: ["#00E5FF", ...competitors.map(() => "#7C3AED")],
+          borderColor: ["#00E5FF", ...competitors.map(() => "#0f766e")],
           borderWidth: 2,
           borderRadius: 6,
         }],
@@ -406,9 +408,9 @@ export default function Dashboard() {
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const palette = [
       { bg: "rgba(0,201,200,0.15)", border: "#00C9C8" }, { bg: "rgba(0,102,255,0.12)", border: "#0066FF" },
-      { bg: "rgba(124,58,237,0.12)", border: "#7C3AED" }, { bg: "rgba(245,158,11,0.12)", border: "#F59E0B" },
+      { bg: "rgba(124,58,237,0.12)", border: "#0f766e" }, { bg: "rgba(245,158,11,0.12)", border: "#F59E0B" },
       { bg: "rgba(16,185,129,0.12)", border: "#10B981" }, { bg: "rgba(239,68,68,0.12)", border: "#EF4444" },
-      { bg: "rgba(139,92,246,0.12)", border: "#8B5CF6" }, { bg: "rgba(236,72,153,0.12)", border: "#EC4899" },
+      { bg: "rgba(139,92,246,0.12)", border: "#0284c7" }, { bg: "rgba(236,72,153,0.12)", border: "#EC4899" },
     ];
     const trendDatasets = competitors
       .slice(0, 8)
@@ -674,41 +676,35 @@ export default function Dashboard() {
   const alertRows = competitors.slice(0, 4);
 
   return (
-    <div className="view-header-wrap">
-      <div className="view-header ig-panel-hero">
-        <div className="container">
-          <div className="vh-inner">
-            <div>
-              <div className="breadcrumb">
-                <span className="bc-group">Analyse</span> <span className="bc-sep">›</span> Dashboard
-              </div>
-              <h2 className="view-title">
-                {ad.sectorOnly ? `Sector Overview: ${industryName}` : `Intelligence Report: ${url}`}
-              </h2>
-              <p className="view-sub" style={{ color: "#0f172a", opacity: 1, textShadow: "none" }}>
-                {ad.sectorOnly
-                  ? `Industry-wide intelligence · ${competitors.length} top competitors mapped · No website yet — add one anytime to personalise this report`
-                  : `${industryName} · ${competitors.length} competitors analysed · AI recommendations generated`}
-              </p>
-            </div>
-            <div className="vh-actions">
-              <div className="analysis-tags">
-                <span className="atag" title="Your industry category — all benchmarks and AI recommendations are calibrated to this vertical.">{industryName}</span>
-                <span className="atag" title="Geographic scope of the analysis — traffic, ad spend and benchmarks are filtered to this market.">{countryLabel}</span>
-                <span className="atag" title={`${competitors.length} rival domains are being tracked and benchmarked in this report.`}>{competitors.length} Competitors</span>
-                <span className="atag live-tag" title="Data is refreshed in real time — competitor signals, traffic estimates and alerts are always current.">
-                  <span className="live-dot-inline" />Live Intel
-                </span>
-              </div>
-              <button className="btn-secondary" title="Refresh all competitor data and regenerate AI recommendations from scratch. Takes 30–60 seconds." onClick={() => goToView(router, "home")}>
-                ↺ Re-run Analysis
-              </button>
-            </div>
+    <PanelShell
+      group="Analyse"
+      title={ad.sectorOnly ? `Sector Overview: ${industryName}` : `Intelligence Report: ${url}`}
+      subtitle={
+        ad.sectorOnly
+          ? `Industry-wide intelligence · ${competitors.length} top competitors mapped · No website yet — add one anytime to personalise this report`
+          : `${industryName} · ${competitors.length} competitors analysed · AI recommendations generated`
+      }
+      maxWidth={1200}
+      actions={
+        <>
+          <div className="analysis-tags" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <span className="atag" title="Your industry category — all benchmarks and AI recommendations are calibrated to this vertical.">{industryName}</span>
+            <span className="atag" title="Geographic scope of the analysis — traffic, ad spend and benchmarks are filtered to this market.">{countryLabel}</span>
+            <span className="atag" title={`${competitors.length} rival domains are being tracked and benchmarked in this report.`}>{competitors.length} Competitors</span>
+            <span className="atag live-tag" title="Data is refreshed in real time — competitor signals, traffic estimates and alerts are always current.">
+              <span className="live-dot-inline" />Live Intel
+            </span>
           </div>
-        </div>
-      </div>
-
-      <div className="container">
+          <IgButton
+            variant="secondary"
+            title="Refresh all competitor data and regenerate AI recommendations from scratch. Takes 30–60 seconds."
+            onClick={() => goToView(router, "home")}
+          >
+            ↺ Re-run Analysis
+          </IgButton>
+        </>
+      }
+    >
         {companyOverview && (
           <>
             <DomainOverview overview={companyOverview} currentView="dashboard" />
@@ -1056,7 +1052,7 @@ export default function Dashboard() {
               <div className="roi-metric-lbl">Conversion Lift</div>
             </div>
             <div className="roi-metric" title={`Average ROAS improvement observed across similar InfoGenie campaigns in the ${industryName} sector.`}>
-              <div className="roi-metric-val" style={{ color: "#7C3AED" }}>3.2×</div>
+              <div className="roi-metric-val" style={{ color: "#0f766e" }}>3.2×</div>
               <div className="roi-metric-lbl">Avg ROAS Lift</div>
             </div>
           </div>
@@ -1180,7 +1176,7 @@ export default function Dashboard() {
             <div className="chart-box">
               <div className="chart-box-header">
                 <h3 title="AI-generated revenue projection for the next 90 days based on your current KPIs, competitor trajectories and seasonal trends in your industry.">
-                  90-Day Revenue Forecast <span className="chart-tag" style={{ background: "#7C3AED20", color: "#7C3AED" }} title="Generated by GPT-4o using your industry benchmarks and competitor performance data.">AI</span>
+                  90-Day Revenue Forecast <span className="chart-tag" style={{ background: "#0f766e20", color: "#0f766e" }} title="Generated by GPT-4o using your industry benchmarks and competitor performance data.">AI</span>
                 </h3>
                 <span style={{ fontSize: "0.72rem", color: "#9CA3AF" }}>{forecastStatus}</span>
               </div>
@@ -1245,7 +1241,6 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-      </div>
 
       {threatIdx != null && competitors[threatIdx] && (
         <div className={dm.modalBackdrop} onClick={() => setThreatIdx(null)}>
@@ -1290,6 +1285,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </div>
+    </PanelShell>
   );
 }

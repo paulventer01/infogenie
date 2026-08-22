@@ -225,7 +225,7 @@ export default function BulkReports() {
                 e.preventDefault();
                 goToView(router, "white-label");
               }}
-              style={{ color: "#7C3AED", fontWeight: 700 }}
+              style={{ color: "#0f766e", fontWeight: 700 }}
             >
               White-Label
             </a>{" "}
@@ -411,7 +411,7 @@ export default function BulkReports() {
                           <a
                             href={`/api/bulk-reports/${run.id}/zip`}
                             style={{
-                              color: "#7C3AED",
+                              color: "#0f766e",
                               fontWeight: 700,
                               fontSize: "0.8rem",
                               textDecoration: "none",

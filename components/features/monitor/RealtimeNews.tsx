@@ -116,7 +116,7 @@ function ArticleCard({
           </p>
         )}
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: "#7c3aed",
+          <span style={{ fontSize: 11, fontWeight: 600, color: "#0f766e",
             background: "#ede9fe", borderRadius: 4, padding: "2px 7px" }}>
             {article.source}
           </span>
@@ -136,7 +136,7 @@ function ArticleCard({
         </a>
         {onSave && !isSaved && (
           <button onClick={() => onSave(article)}
-            style={{ fontSize: 11, color: "#7c3aed", background: "none", border: "none",
+            style={{ fontSize: 11, color: "#0f766e", background: "none", border: "none",
               cursor: "pointer", fontWeight: 600, padding: 0, whiteSpace: "nowrap" }}>
             🔖 Save
           </button>
@@ -280,7 +280,7 @@ export default function RealtimeNews() {
             </ol>
           </div>
           <button onClick={() => window.open("https://rapidapi.com/letscrape-6bRBa3QguO5/api/real-time-news-data", "_blank")}
-            style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8,
+            style={{ background: "#0f766e", color: "#fff", border: "none", borderRadius: 8,
               padding: "12px 24px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
             Open RapidAPI →
           </button>
@@ -322,8 +322,8 @@ export default function RealtimeNews() {
             style={{
               background: "none", border: "none", padding: "10px 20px",
               fontWeight: 700, fontSize: 14, cursor: "pointer",
-              color: tab === t ? "#7c3aed" : "#64748b",
-              borderBottom: tab === t ? "2px solid #7c3aed" : "2px solid transparent",
+              color: tab === t ? "#0f766e" : "#64748b",
+              borderBottom: tab === t ? "2px solid #0f766e" : "2px solid transparent",
               marginBottom: -2,
             }}>
             {t === "search" ? "🔍 Search" : t === "topics" ? "📂 Topic Feeds" : `🔖 Saved (${savedArticles.length})`}
@@ -352,7 +352,7 @@ export default function RealtimeNews() {
             />
             <button onClick={() => doSearch()}
               disabled={loading || !query.trim()}
-              style={{ background: loading ? "#a78bfa" : "#7c3aed", color: "#fff", border: "none",
+              style={{ background: loading ? "#a78bfa" : "#0f766e", color: "#fff", border: "none",
                 borderRadius: 10, padding: "12px 24px", fontWeight: 700, fontSize: 14,
                 cursor: loading ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}>
               {loading ? "Searching…" : "Search"}
@@ -418,7 +418,7 @@ export default function RealtimeNews() {
               <button key={t.id}
                 onClick={() => { setActiveTopic(t.id); doLoadTopic(t.id); }}
                 style={{
-                  background: activeTopic === t.id ? "#7c3aed" : "#f8fafc",
+                  background: activeTopic === t.id ? "#0f766e" : "#f8fafc",
                   color: activeTopic === t.id ? "#fff" : "#475569",
                   border: activeTopic === t.id ? "none" : "1px solid #e2e8f0",
                   borderRadius: 20, padding: "8px 16px", fontSize: 13, fontWeight: 700,
@@ -428,7 +428,7 @@ export default function RealtimeNews() {
               </button>
             ))}
             <button onClick={() => doLoadTopic()}
-              style={{ background: "#f1f5f9", color: "#7c3aed", border: "1px solid #ddd6fe",
+              style={{ background: "#f1f5f9", color: "#0f766e", border: "1px solid #ddd6fe",
                 borderRadius: 20, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
               ↻ Refresh
             </button>

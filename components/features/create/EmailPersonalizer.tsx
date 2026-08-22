@@ -406,7 +406,7 @@ Paul`);
             disabled={status === "loading"}
             style={{
               marginTop: 14,
-              background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               color: "#fff",
               border: "none",
               padding: "12px 24px",
@@ -512,7 +512,7 @@ Paul`);
                       style={{
                         background: "#fff",
                         border: "1px solid #E5E7EB",
-                        borderLeft: "3px solid #7C3AED",
+                        borderLeft: "3px solid #0f766e",
                         borderRadius: 10,
                         padding: "14px 16px",
                       }}

@@ -871,7 +871,7 @@ export default function AdLibrary() {
             disabled={running}
             style={{
               width: "100%",
-              background: "linear-gradient(135deg,#0066FF,#7C3AED)",
+              background: "linear-gradient(135deg,#0066FF,#0f766e)",
               color: "#fff",
               border: "none",
               padding: 13,

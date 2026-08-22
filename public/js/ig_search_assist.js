@@ -173,7 +173,7 @@
         <div style="background:linear-gradient(135deg,#EFF6FF,#F5F3FF);border:1.5px solid #BFDBFE;border-radius:14px;padding:18px 20px;margin-bottom:20px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
             <div style="display:flex;align-items:center;gap:8px">
-              <div style="background:linear-gradient(135deg,#0066FF,#7C3AED);border-radius:8px;padding:4px 10px;font-size:0.68rem;font-weight:800;color:#fff;letter-spacing:.04em">🎯 AI SUGGESTS</div>
+              <div style="background:linear-gradient(135deg,#0066FF,#0f766e);border-radius:8px;padding:4px 10px;font-size:0.68rem;font-weight:800;color:#fff;letter-spacing:.04em">🎯 AI SUGGESTS</div>
               <div style="font-size:0.8rem;font-weight:700;color:#1E1B4B">Competitors you may be missing</div>
             </div>
             <button onclick="this.closest('[style]').remove()" style="background:none;border:none;color:#9CA3AF;cursor:pointer;font-size:1rem;padding:2px 6px">✕</button>
@@ -185,7 +185,7 @@
                 <div style="font-size:0.72rem;color:#6B7280;margin-bottom:6px">${_esc(rec.url || '')}</div>
                 <div style="font-size:0.72rem;color:#4B5563;line-height:1.4;margin-bottom:10px">${_esc(rec.reason || '')}</div>
                 <div style="display:flex;gap:6px">
-                  <button onclick="window.igAddRecommendedCompetitor(${JSON.stringify(JSON.stringify(rec))})" style="flex:1;background:linear-gradient(135deg,#0066FF,#7C3AED);border:none;border-radius:6px;color:#fff;font-size:0.7rem;font-weight:700;padding:5px 8px;cursor:pointer">⊕ Track</button>
+                  <button onclick="window.igAddRecommendedCompetitor(${JSON.stringify(JSON.stringify(rec))})" style="flex:1;background:linear-gradient(135deg,#0066FF,#0f766e);border:none;border-radius:6px;color:#fff;font-size:0.7rem;font-weight:700;padding:5px 8px;cursor:pointer">⊕ Track</button>
                   <button onclick="if(window.analysisData){window.analysisData._recs=window.analysisData._recs||[];window.analysisData._recs.push('${_esc(rec.name)}');this.textContent='✓';this.disabled=true;}" style="background:#F3F4F6;border:1px solid #E5E7EB;border-radius:6px;color:#6B7280;font-size:0.7rem;padding:5px 8px;cursor:pointer">Skip</button>
                 </div>
               </div>

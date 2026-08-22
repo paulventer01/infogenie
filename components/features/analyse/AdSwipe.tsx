@@ -294,7 +294,7 @@ export default function AdSwipe() {
                   type="button"
                   onClick={suggestTags}
                   style={{
-                    background: "linear-gradient(135deg,#7C3AED,#0066FF)",
+                    background: "linear-gradient(135deg,#0f766e,#0066FF)",
                     color: "#fff",
                     border: 0,
                     padding: "3px 10px",
@@ -432,7 +432,7 @@ function TagSuggestions({
         <div
           style={{
             fontSize: "0.7rem",
-            color: "#7C3AED",
+            color: "#0f766e",
             marginBottom: 6,
             fontStyle: "italic",
           }}

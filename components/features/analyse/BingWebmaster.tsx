@@ -311,7 +311,7 @@ function ActivityView({
         {[
           { label: "Total Impressions (30d)", value: fmtNum(summary.Impressions), color: "#0078d4" },
           { label: "Total Clicks (30d)", value: fmtNum(summary.Clicks), color: "#16a34a" },
-          { label: "Avg Position", value: summary.Position ? "#" + summary.Position.toFixed(1) : "—", color: "#7c3aed" },
+          { label: "Avg Position", value: summary.Position ? "#" + summary.Position.toFixed(1) : "—", color: "#0f766e" },
         ].map(m => (
           <div key={m.label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "18px 22px", flex: "1 1 160px", minWidth: 140 }}>
             <div style={{ color: "#64748b", fontSize: "0.78rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
