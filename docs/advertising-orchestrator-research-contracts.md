@@ -20,7 +20,7 @@ A boot-time retention sweeper is wired from `server.js` `BOOT_TASKS` (no route).
 | `services/agent_orchestrator/research_errors.js` | Connector `failure_class` taxonomy (not HTTP) |
 | `services/agent_orchestrator/research_validate.js` | Hand validators; fail closed; `validation_failed` |
 | `services/agent_orchestrator/research_connector.js` | Versioned connector **interface** (shapes + asserts, no network) |
-| `services/agent_orchestrator/research_retention.js` | Tenant-scoped batch retention sweeper (no HTTP); skips legacy holds |
+| `services/agent_orchestrator/research_retention.js` | Tenant-scoped batch retention sweeper (no HTTP); boot `skipHolds` |
 | `services/agent_orchestrator/research_cleanup.js` | Operator-approved identify-then-delete (no HTTP); boot never executes |
 | `services/agent_orchestrator/research_store.js` | Validated INSERT helper; maps quota exception (no HTTP) |
 | `services/agent_orchestrator/fixtures/research/*.v1.json` | Mocked success / error / pagination examples |
@@ -228,20 +228,31 @@ default `expires_at` from captured/created + TTL when omitted for
 `standard`/`short`, and **fail closed** if expiry is still missing or
 `<= created_at`/`captured_at`. `legal_hold` may omit expiry.
 
-`research_retention.sweepExpiredResearchEvidence` is the sweeper:
+`research_retention.sweepExpiredResearchEvidence({ tenantId, skipHolds })`
+is the sweeper:
 
 - Tenant-scoped: every `DELETE` includes `tenant_id = $1`.
 - Batch-limited (`SWEEP_BATCH` = 100): a **single-statement** CTE
   `SELECT … FOR UPDATE SKIP LOCKED LIMIT n` then `DELETE … USING doomed`
-  so SKIP LOCKED and DELETE cannot race. Each batch transaction starts with
-  `SET LOCAL lock_timeout = '2s'`; `55P03` retries like `40P01`/`40001`,
-  bounded. Empty doomed set commits and stops (not a hang, not a noop-fail).
-  One call loops until empty; each inner DELETE is LIMIT-bounded.
-- **Skips legacy holds:** expired SELECT/DELETE adds
+  so SKIP LOCKED and DELETE cannot race. No session-level or `SET LOCAL
+  lock_timeout` on the sweep client (a 2s timeout 55P03s against sibling
+  `ensure()` `AccessExclusiveLock`). `40P01`/`40001` (and `55P03` if a
+  timeout still appears) retry, bounded. Empty doomed set commits and
+  stops (not a hang, not a noop-fail). One call loops until empty; each
+  inner DELETE is LIMIT-bounded.
+- **`skipHolds: true` (BOOT ONLY):** expired SELECT/DELETE adds
   `AND NOT EXISTS (SELECT 1 FROM orchestrator_research_legacy_holds h WHERE
-  h.tenant_id=$1 AND h.target_kind=… AND h.target_id = id)`. Held rows are
-  never purged by boot or the interval sweep. Operator cleanup owns them.
-- Deletes expired non-hold evidence (assets cascade from evidence) and also
+  h.tenant_id=$1 AND h.target_kind=… AND h.target_id = id)`. First-boot
+  leftovers stay operator-owned.
+- **Interval / default (`skipHolds` false or omitted):** purge expired
+  rows even if held, when `expires_at IS NOT NULL AND expires_at <= now()
+  AND expires_at > created_at AND retention_class <> 'legal_hold'`. After
+  purge, matching hold rows for those ids are deleted so previews do not
+  count ghosts. The immutability trigger already allows expired DELETE
+  without an approved op.
+- `missing_expiry` (`expires_at IS NULL`) is **not** sweeper-eligible.
+  Operator snapshot cleanup remains required.
+- Deletes expired evidence (assets cascade from evidence) and also
   sweeps expired assets independently while the parent evidence is still live.
 - `legal_hold` is never deleted while the parent exists.
 - Idempotent: a second call purges 0.
@@ -257,22 +268,33 @@ default `expires_at` from captured/created + TTL when omitted for
   only. Never headline/body/excerpt, query-string URLs, PII, credentials, raw
   payloads or fingerprints.
 - Interval: `startResearchEvidenceSweepInterval()` only when
-  `runtime_flags.backgroundEnabled()`, period 6h. Boot runs one sweep after
+  `runtime_flags.backgroundEnabled()`, period 6h, calls
+  `sweepExpiredResearchEvidence()` (no skipHolds). Boot runs
+  `sweepExpiredResearchEvidence({ skipHolds: true })` after
   `ensureAgentOrchestratorSchema` (fail-closed in production). Ensure identifies
   holds and logs `legacy_holds_identified` counts only — it does not delete.
+  No `infogenie.research_cleanup` GUC anywhere in cleanup, retention, or
+  `server.js`.
 
 `research_cleanup.js` is the operator path (no HTTP, not called from boot):
 
 - `previewLegacyCleanup` dry-runs tenant hold counts into
-  `orchestrator_research_cleanup_ops` (`state=previewed`). Never deletes.
+  `orchestrator_research_cleanup_ops` (`state=previewed`) and **replaces**
+  `orchestrator_research_cleanup_targets` for that op with the current hold
+  ids (evidence/asset). Snapshot rewrite happens only while `state=previewed`.
+  Never deletes evidence. After approve, the snapshot is frozen.
 - `approveLegacyCleanup` requires the confirmation phrase
   `DELETE_LEGACY_RESEARCH_EVIDENCE` (timing-safe compare; store sha256 hex
   only). Human approval is this explicit call.
 - `executeLegacyCleanup` refuses unless `approved` or a crashed
-  `running`/`failed` after approval. Dedicated client, `SET LOCAL
-  infogenie.research_cleanup = 'on'`, `lock_timeout = '2s'`, batch DELETE of
-  held evidence then assets (`FOR UPDATE SKIP LOCKED LIMIT 100`), then the
-  matching hold rows. Idempotent when `completed` and no holds remain.
+  `running`/`failed` after approval. Transitions `approved` → `running`
+  before DELETE so the immutability trigger can join this op's snapshot
+  (`state IN ('approved','running')`). Dedicated client, `lock_timeout = '2s'`,
+  batch DELETE of **only** ids listed in that op's
+  `orchestrator_research_cleanup_targets` (`FOR UPDATE SKIP LOCKED LIMIT 100`),
+  then the matching hold rows. No `SET LOCAL infogenie.research_cleanup`.
+  `completed` is idempotent `{ purged: 0 }` — leftover holds that are not in
+  this snapshot, including rows identified after preview, are not deleted.
 
 Evidence and asset rows remain UPDATE-immutable. Replacement is a new INSERT
 with `supersedes_id`.

@@ -100,29 +100,34 @@ async function runSkipLockedHeldRowOnce(p, tenantId) {
     freeIds.push(await insertExpiredEvidence(p, tenantId, host.runId, comp));
   }
 
-    const locker = await p.connect();
-    try {
-      await locker.query('BEGIN');
-      await locker.query(
-        `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
-        [tenantId, lockedId]
-      );
-      let result = null;
-      let elapsed = 0;
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
-        const started = Date.now();
-        result = await sweepExpiredResearchEvidence({ tenantId });
-        elapsed = Date.now() - started;
-        if (elapsed < 2500 && result && result.failures === 0) break;
-        if (attempt === 3) {
-          assert.ok(elapsed < 2500, `sweep must return promptly (lock_timeout 2s), took ${elapsed}ms`);
-          assert.ok(result);
-          assert.strictEqual(result.failures, 0, 'SKIP LOCKED must not trip delete_noop');
-        }
+  const gate = await p.connect();
+  const locker = await p.connect();
+  try {
+    // Test-only third connection. Sibling ensure() waits on 87231402 and
+    // must not start ALTER while this row is locked. Production sweep/ensure
+    // do not share this advisory lock with the sweeper.
+    await gate.query('SELECT pg_advisory_lock($1)', [87231402]);
+    await locker.query('BEGIN');
+    await locker.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+      [tenantId, lockedId]
+    );
+    let result = null;
+    let elapsed = 0;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const started = Date.now();
+      result = await sweepExpiredResearchEvidence({ tenantId });
+      elapsed = Date.now() - started;
+      if (elapsed < 2500 && result && result.failures === 0) break;
+      if (attempt === 3) {
+        assert.ok(elapsed < 2500, `sweep must return promptly via SKIP LOCKED, took ${elapsed}ms`);
+        assert.ok(result);
+        assert.strictEqual(result.failures, 0, 'SKIP LOCKED must not trip delete_noop');
       }
-      assert.ok(elapsed < 2500, `sweep must return promptly (lock_timeout 2s), took ${elapsed}ms`);
-      assert.ok(result);
-      assert.strictEqual(result.failures, 0, 'SKIP LOCKED must not trip delete_noop');
+    }
+    assert.ok(elapsed < 2500, `sweep must return promptly via SKIP LOCKED, took ${elapsed}ms`);
+    assert.ok(result);
+    assert.strictEqual(result.failures, 0, 'SKIP LOCKED must not trip delete_noop');
 
     // Read back on the locker's own transaction. A fresh connection would ask
     // for AccessShareLock and queue behind any ALTER TABLE a sibling test file's
@@ -146,6 +151,8 @@ async function runSkipLockedHeldRowOnce(p, tenantId) {
   } finally {
     try { await locker.query('ROLLBACK'); } catch { /* ignore */ }
     locker.release();
+    try { await gate.query('SELECT pg_advisory_unlock($1)', [87231402]); } catch { /* ignore */ }
+    gate.release();
   }
 
   const second = await sweepExpiredResearchEvidence({ tenantId });

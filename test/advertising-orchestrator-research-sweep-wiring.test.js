@@ -48,7 +48,7 @@ test('research-evidence boot task fails closed in production and does not swallo
   assert.ok(sweepPush > schemaPush, 'a new BOOT_TASKS.push must be added after the schema task');
   const nextPushRel = afterRequire.indexOf('BOOT_TASKS.push', sweepPushRel + 1);
   const block = afterRequire.slice(sweepPushRel, nextPushRel > 0 ? nextPushRel : undefined);
-  assert.match(block, /sweepExpiredResearchEvidence\(\)/);
+  assert.match(block, /sweepExpiredResearchEvidence\(\s*\{\s*skipHolds:\s*true\s*\}\s*\)/);
   assert.match(block, /sweepResult\.ok !== true/);
   assert.match(block, /process\.exit\(1\)/);
   assert.match(block, /NODE_ENV === 'production'/);
@@ -68,6 +68,7 @@ test('research_retention.js registers setInterval only when backgroundEnabled, p
   assert.match(src, /startResearchEvidenceSweepInterval/);
   assert.match(src, /sweepExpiredResearchEvidence\(\)\.catch\(/);
   assert.match(src, /phase:\s*'interval'/);
+  assert.match(src, /skipHolds/);
   assert.ok(!/\.catch\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)/.test(src), 'recurring sweep must not use empty catch');
   assert.match(src, /FOR UPDATE SKIP LOCKED/);
   assert.match(src, /p\.connect\s*\(\s*\)/);
@@ -79,7 +80,9 @@ test('research_retention.js registers setInterval only when backgroundEnabled, p
   assert.match(src, /WITH doomed AS/);
   assert.match(src, /DELETE FROM \$\{table\} t/);
   assert.match(src, /orchestrator_research_legacy_holds/);
-  assert.match(src, /lock_timeout/);
+  assert.doesNotMatch(src, /SET lock_timeout = '2s'/);
+  assert.doesNotMatch(src, /SET LOCAL lock_timeout/);
+  assert.doesNotMatch(src, /infogenie\.research_cleanup/);
   assert.match(src, /55P03/);
   assert.match(src, /tenant_id=\$1/);
   assert.match(src, /retention_class IN \('standard','short'\)/);
@@ -98,7 +101,8 @@ test('research_cleanup.js is a module required from tests, not an HTTP route', (
   assert.match(cleanupSrc, /executeLegacyCleanup/);
   assert.match(cleanupSrc, /DELETE_LEGACY_RESEARCH_EVIDENCE/);
   assert.match(cleanupSrc, /timingSafeEqual/);
-  assert.match(cleanupSrc, /infogenie\.research_cleanup/);
+  assert.match(cleanupSrc, /orchestrator_research_cleanup_targets/);
+  assert.doesNotMatch(cleanupSrc, /infogenie\.research_cleanup/);
   assert.doesNotMatch(cleanupSrc, /\b(?:express|Router|app\.use|app\.(?:get|post|put|patch|delete))\b/);
   assert.doesNotMatch(cleanupSrc, /\bfetch\s*\(/);
   assert.doesNotMatch(cleanupSrc, /require\(\s*['"](?:https|http|node-fetch|undici)['"]\s*\)/);
@@ -106,8 +110,10 @@ test('research_cleanup.js is a module required from tests, not an HTTP route', (
   const serverSrc = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
   assert.doesNotMatch(serverSrc, /approveLegacyCleanup/);
   assert.doesNotMatch(serverSrc, /executeLegacyCleanup/);
+  assert.doesNotMatch(serverSrc, /infogenie\.research_cleanup/);
   assert.match(serverSrc, /research_cleanup/);
   assert.match(serverSrc, /countLegacyHolds/);
+  assert.match(serverSrc, /skipHolds:\s*true/);
   assert.doesNotMatch(serverSrc, /app\.use\(\s*['"]\/api\/.*research_cleanup/);
 
   const testSrc = fs.readFileSync(

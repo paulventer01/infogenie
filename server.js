@@ -4134,7 +4134,7 @@ const _researchRetention = require('./services/agent_orchestrator/research_reten
 BOOT_TASKS.push(async () => { try {
   if (_db.hasDb()) {
     if (typeof _researchRetention.sweepExpiredResearchEvidence === 'function') {
-      const sweepResult = await _researchRetention.sweepExpiredResearchEvidence();
+      const sweepResult = await _researchRetention.sweepExpiredResearchEvidence({ skipHolds: true });
       if (!sweepResult || sweepResult.ok !== true) {
         const counts = {
           purged: sweepResult && sweepResult.purged,

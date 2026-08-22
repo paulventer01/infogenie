@@ -327,7 +327,9 @@ if (!HAS_DB) {
     assert.match(src, /WITH doomed AS/);
     assert.match(src, /DELETE FROM \$\{table\} t/);
     assert.match(src, /orchestrator_research_legacy_holds/);
-    assert.match(src, /lock_timeout/);
+    assert.match(src, /skipHolds/);
+    assert.doesNotMatch(src, /SET lock_timeout = '2s'/);
+    assert.doesNotMatch(src, /SET LOCAL lock_timeout/);
 
     const p = db.getPool();
     const host = await seedHost(p, tenantA);
@@ -563,7 +565,7 @@ if (!HAS_DB) {
     }
   });
 
-  test('legacy hold rows are skipped by sweep and survive ensureAgentOrchestratorSchema', async () => {
+  test('skipHolds leaves held expired rows; default sweep purges valid-expired holds', async () => {
     const p = db.getPool();
     const host = await seedHost(p, tenantA);
     const comp = await insertComp(p, tenantA, host.runId);
@@ -573,7 +575,7 @@ if (!HAS_DB) {
     const freeId = await insertExpiredEvidence(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt });
     await p.query(
       `INSERT INTO orchestrator_research_legacy_holds (tenant_id, target_kind, target_id, reason)
-       VALUES ($1,'evidence',$2,'missing_expiry')
+       VALUES ($1,'evidence',$2,'legacy_short_due')
        ON CONFLICT (tenant_id, target_kind, target_id) DO NOTHING`,
       [tenantA, heldId]
     );
@@ -585,19 +587,91 @@ if (!HAS_DB) {
     )).rows;
     assert.strictEqual(afterEnsure.length, 1, 'ensure must identify holds, not delete them');
 
-    const result = await sweepExpiredResearchEvidence({ tenantId: tenantA });
-    assert.ok(result);
-    assert.strictEqual(result.failures, 0);
+    const bootStyle = await sweepExpiredResearchEvidence({ tenantId: tenantA, skipHolds: true });
+    assert.ok(bootStyle);
+    assert.strictEqual(bootStyle.failures, 0);
     const heldKept = (await p.query(
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
       [tenantA, heldId]
     )).rows;
-    assert.strictEqual(heldKept.length, 1, 'sweeper must skip held rows');
+    assert.strictEqual(heldKept.length, 1, 'boot-style skipHolds must leave held expired rows');
     const freeGone = (await p.query(
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
       [tenantA, freeId]
     )).rows;
     assert.strictEqual(freeGone.length, 0, 'unlocked expired rows without a hold must still be purged');
+
+    const interval = await sweepExpiredResearchEvidence({ tenantId: tenantA });
+    assert.strictEqual(interval.failures, 0);
+    assert.ok(interval.purged >= 1, 'default sweep must purge valid-expired held rows');
+    const heldGone = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, heldId]
+    )).rows;
+    assert.strictEqual(heldGone.length, 0, 'legacy_short_due / valid-expired holds are interval-eligible');
+    const holdGhost = (await p.query(
+      `SELECT 1 FROM orchestrator_research_legacy_holds WHERE tenant_id=$1 AND target_id=$2`,
+      [tenantA, heldId]
+    )).rows;
+    assert.strictEqual(holdGhost.length, 0, 'purged hold rows must not remain as preview ghosts');
+  });
+
+  test('missing_expiry holds are not sweeper-eligible even on the default interval path', async () => {
+    const p = db.getPool();
+    const expirySql =
+      `retention_class = 'legal_hold' OR (expires_at IS NOT NULL AND expires_at > created_at)`;
+    const gate = await p.connect();
+    const client = await p.connect();
+    const missingId = nid('ev-missing-expiry');
+    try {
+      await gate.query('SELECT pg_advisory_lock($1)', [87231402]);
+      await client.query('BEGIN');
+      await client.query(
+        `ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_retention_expiry_check`
+      );
+      const host = await seedHost(client, tenantA);
+      const comp = await insertComp(client, tenantA, host.runId);
+      await insertExpiredEvidence(client, tenantA, host.runId, comp, {
+        id: missingId, expiresAt: null,
+      });
+      await client.query(
+        `INSERT INTO orchestrator_research_legacy_holds (tenant_id, target_kind, target_id, reason)
+         VALUES ($1,'evidence',$2,'missing_expiry')
+         ON CONFLICT (tenant_id, target_kind, target_id) DO NOTHING`,
+        [tenantA, missingId]
+      );
+      await client.query(
+        `ALTER TABLE orchestrator_research_evidence
+           ADD CONSTRAINT orchestrator_research_evidence_retention_expiry_check
+           CHECK (${expirySql}) NOT VALID`
+      );
+      await client.query('COMMIT');
+
+      const bootStyle = await sweepExpiredResearchEvidence({ tenantId: tenantA, skipHolds: true });
+      assert.strictEqual(bootStyle.failures, 0);
+      const interval = await sweepExpiredResearchEvidence({ tenantId: tenantA });
+      assert.strictEqual(interval.failures, 0);
+      const still = (await p.query(
+        `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, missingId]
+      )).rows;
+      assert.strictEqual(still.length, 1, 'missing_expiry (expires_at IS NULL) is not sweeper-eligible');
+    } finally {
+      try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+      try {
+        await p.query(
+          `ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_retention_expiry_check`
+        );
+        await p.query(
+          `ALTER TABLE orchestrator_research_evidence
+             ADD CONSTRAINT orchestrator_research_evidence_retention_expiry_check
+             CHECK (${expirySql}) NOT VALID`
+        );
+      } catch { /* parallel files may race the constraint */ }
+      client.release();
+      try { await gate.query('SELECT pg_advisory_unlock($1)', [87231402]); } catch { /* ignore */ }
+      gate.release();
+    }
   });
 
   async function runSkipLockedHeldRowOnce(p, tenantId) {
@@ -611,8 +685,12 @@ if (!HAS_DB) {
       freeIds.push(await insertExpiredEvidence(p, tenantId, host.runId, comp, { createdAt, expiresAt: expiredAt }));
     }
 
+    const gate = await p.connect();
     const locker = await p.connect();
     try {
+      // Test-only: hold ensure()'s advisory lock so a sibling ALTER cannot
+      // start AccessExclusiveLock while this row is locked.
+      await gate.query('SELECT pg_advisory_lock($1)', [87231402]);
       await locker.query('BEGIN');
       await locker.query(
         `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
@@ -626,21 +704,21 @@ if (!HAS_DB) {
         elapsed = Date.now() - started;
         if (elapsed < 2500 && result && result.failures === 0) break;
         if (attempt === 3) {
-          assert.ok(elapsed < 2500, `sweep must return promptly (lock_timeout 2s), took ${elapsed}ms`);
+          assert.ok(elapsed < 2500, `sweep must return promptly via SKIP LOCKED, took ${elapsed}ms`);
           assert.ok(result);
           assert.strictEqual(result.failures, 0, 'SKIP LOCKED must not trip delete_noop');
         }
       }
-      assert.ok(elapsed < 2500, `sweep must return promptly (lock_timeout 2s), took ${elapsed}ms`);
+      assert.ok(elapsed < 2500, `sweep must return promptly via SKIP LOCKED, took ${elapsed}ms`);
       assert.ok(result);
       assert.strictEqual(result.failures, 0, 'SKIP LOCKED must not trip delete_noop');
 
-      const freeGone = (await p.query(
+      const freeGone = (await locker.query(
         `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id = ANY($2::text[])`,
         [tenantId, freeIds]
       )).rows;
       assert.strictEqual(freeGone.length, 0, 'unlocked expired rows must be purged');
-      const lockedKept = (await p.query(
+      const lockedKept = (await locker.query(
         `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
         [tenantId, lockedId]
       )).rows;
@@ -648,6 +726,8 @@ if (!HAS_DB) {
     } finally {
       try { await locker.query('ROLLBACK'); } catch { /* ignore */ }
       locker.release();
+      try { await gate.query('SELECT pg_advisory_unlock($1)', [87231402]); } catch { /* ignore */ }
+      gate.release();
     }
 
     const second = await sweepExpiredResearchEvidence({ tenantId });

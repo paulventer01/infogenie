@@ -6,8 +6,8 @@
 // payloads or fingerprints.
 //
 // Expired SELECT/DELETE is a single CTE so SKIP LOCKED and DELETE cannot
-// race. Held rows in orchestrator_research_legacy_holds are never purged
-// here; operator cleanup owns those.
+// race. Boot calls skipHolds:true so first-boot leftovers stay operator-
+// owned. Interval/default sweep purges valid-expired rows even if held.
 
 const _db = require('../../db');
 const _runtimeFlags = require('../runtime_flags');
@@ -60,7 +60,14 @@ const INVALID_EXPIRY_SQL = `
     ) AS invalid_expiry
 `;
 
-function expiredPurgeSql(table, targetKind) {
+function expiredPurgeSql(table, targetKind, { skipHolds } = {}) {
+  const holdFilter = skipHolds ? `
+     AND NOT EXISTS (
+       SELECT 1 FROM orchestrator_research_legacy_holds h
+        WHERE h.tenant_id=$1
+          AND h.target_kind='${targetKind}'
+          AND h.target_id = ${table}.id
+     )` : '';
   return `
 WITH doomed AS (
   SELECT id FROM ${table}
@@ -68,12 +75,8 @@ WITH doomed AS (
      AND retention_class <> 'legal_hold'
      AND expires_at IS NOT NULL
      AND expires_at <= now()
-     AND NOT EXISTS (
-       SELECT 1 FROM orchestrator_research_legacy_holds h
-        WHERE h.tenant_id=$1
-          AND h.target_kind='${targetKind}'
-          AND h.target_id = ${table}.id
-     )
+     AND expires_at > created_at
+     ${holdFilter}
    ORDER BY expires_at, id
    FOR UPDATE SKIP LOCKED
    LIMIT $2
@@ -81,6 +84,7 @@ WITH doomed AS (
 DELETE FROM ${table} t
  USING doomed
  WHERE t.tenant_id=$1 AND t.id = doomed.id
+ RETURNING t.id
 `;
 }
 
@@ -117,28 +121,38 @@ async function _listResearchTenantIds(p) {
   return (tenants.rows || []).map((row) => row.tenant_id);
 }
 
-async function _purgeExpiredBatch(client, table, tenantId) {
+async function _purgeExpiredBatch(client, table, tenantId, { skipHolds } = {}) {
   const targetKind = HOLD_KIND[table];
   await client.query('BEGIN');
-  await client.query("SET LOCAL lock_timeout = '2s'");
-  const del = await client.query(expiredPurgeSql(table, targetKind), [tenantId, SWEEP_BATCH]);
+  const del = await client.query(
+    expiredPurgeSql(table, targetKind, { skipHolds }),
+    [tenantId, SWEEP_BATCH]
+  );
   const removed = Number(del.rowCount) || 0;
   if (removed === 0) {
     await client.query('COMMIT');
     return { empty: true, removed: 0, selected: 0 };
   }
+  const ids = (del.rows || []).map((row) => row.id).filter(Boolean);
+  if (ids.length) {
+    await client.query(
+      `DELETE FROM orchestrator_research_legacy_holds
+        WHERE tenant_id=$1 AND target_kind=$2 AND target_id = ANY($3::text[])`,
+      [tenantId, targetKind, ids]
+    );
+  }
   await client.query('COMMIT');
   return { empty: false, removed, selected: removed };
 }
 
-async function _purgeExpiredTable(client, table, tenantId) {
+async function _purgeExpiredTable(client, table, tenantId, { skipHolds } = {}) {
   let purged = 0;
   for (;;) {
     let batch = null;
     let lastErr = null;
     for (let attempt = 1; attempt <= DEADLOCK_RETRY_MAX; attempt += 1) {
       try {
-        batch = await _purgeExpiredBatch(client, table, tenantId);
+        batch = await _purgeExpiredBatch(client, table, tenantId, { skipHolds });
         lastErr = null;
         break;
       } catch (err) {
@@ -165,13 +179,10 @@ async function _purgeExpiredTable(client, table, tenantId) {
   return purged;
 }
 
-async function _sweepTenant(p, tenantId) {
+async function _sweepTenant(p, tenantId, { skipHolds } = {}) {
   const client = await p.connect();
   let unrolled = null;
   try {
-    // Session-scoped on this dedicated client so invalid_expiry (and not only
-    // the DELETE batch) becomes an error instead of waiting on DDL/table locks.
-    await client.query("SET lock_timeout = '2s'");
     const invalidRow = await client.query(INVALID_EXPIRY_SQL, [tenantId]);
     const invalid_expiry = Number(invalidRow.rows[0] && invalidRow.rows[0].invalid_expiry) || 0;
     if (invalid_expiry > 0) {
@@ -179,8 +190,8 @@ async function _sweepTenant(p, tenantId) {
       _captureSweepError('research_evidence_invalid_expiry', { tenant_id: tenantId, invalid_expiry });
     }
 
-    const evidencePurged = await _purgeExpiredTable(client, EVIDENCE_TABLE, tenantId);
-    const assetPurged = await _purgeExpiredTable(client, ASSET_TABLE, tenantId);
+    const evidencePurged = await _purgeExpiredTable(client, EVIDENCE_TABLE, tenantId, { skipHolds });
+    const assetPurged = await _purgeExpiredTable(client, ASSET_TABLE, tenantId, { skipHolds });
     return { purged: evidencePurged + assetPurged, invalid_expiry };
   } catch (err) {
     unrolled = err;
@@ -189,7 +200,6 @@ async function _sweepTenant(p, tenantId) {
     try { await client.query('ROLLBACK'); unrolled = null; } catch { /* stays unrolled */ }
     throw err;
   } finally {
-    try { await client.query('SET lock_timeout TO DEFAULT'); } catch { /* ignore */ }
     // release() does not roll back: a client returned mid-transaction hands the
     // next borrower an open transaction and its FOR UPDATE row locks. Destroy
     // it instead whenever the rollback could not be confirmed.
@@ -229,7 +239,9 @@ async function sweepExpiredResearchEvidence(opts) {
 
   for (const tenantId of tenantIds) {
     try {
-      const r = await _sweepTenant(p, tenantId);
+      const r = await _sweepTenant(p, tenantId, {
+        skipHolds: !!(opts && opts.skipHolds),
+      });
       purged += r.purged || 0;
       invalid_expiry += r.invalid_expiry || 0;
     } catch (err) {

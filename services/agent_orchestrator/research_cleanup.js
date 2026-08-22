@@ -147,34 +147,68 @@ async function _loadOp(p, tenantId, { idempotencyKey, opId }) {
   return row;
 }
 
-async function _purgeHeldBatch(client, tenantId, targetKind) {
+async function _replacePreviewTargets(client, tenantId, opId) {
+  await client.query(
+    `DELETE FROM orchestrator_research_cleanup_targets
+      WHERE tenant_id=$1 AND op_id=$2`,
+    [tenantId, opId]
+  );
+  await client.query(
+    `INSERT INTO orchestrator_research_cleanup_targets
+       (tenant_id, op_id, target_kind, target_id)
+     SELECT tenant_id, $2, target_kind, target_id
+       FROM orchestrator_research_legacy_holds
+      WHERE tenant_id=$1`,
+    [tenantId, opId]
+  );
+}
+
+async function _purgeSnapshotBatch(client, tenantId, opId, targetKind) {
   const table = HOLD_KIND[targetKind];
   await client.query('BEGIN');
-  await client.query("SET LOCAL infogenie.research_cleanup = 'on'");
   await client.query("SET LOCAL lock_timeout = '2s'");
-  // Lock holds first and keep them until after the evidence/asset DELETE so
-  // the immutable trigger still sees a matching hold + GUC.
-  const held = await client.query(
-    `SELECT target_id
-       FROM orchestrator_research_legacy_holds
-      WHERE tenant_id=$1
-        AND target_kind=$2
-      ORDER BY target_id
-      FOR UPDATE SKIP LOCKED
-      LIMIT $3`,
-    [tenantId, targetKind, CLEANUP_BATCH]
+  // Delete only this op's frozen snapshot IDs. The immutability trigger
+  // joins cleanup_ops (approved/running) to cleanup_targets — no GUC.
+  const selected = await client.query(
+    `SELECT t.target_id
+       FROM orchestrator_research_cleanup_targets t
+      WHERE t.tenant_id=$1
+        AND t.op_id=$2
+        AND t.target_kind=$3
+        AND EXISTS (
+          SELECT 1 FROM ${table} r
+           WHERE r.tenant_id = t.tenant_id AND r.id = t.target_id
+        )
+      ORDER BY t.target_id
+      FOR UPDATE OF t SKIP LOCKED
+      LIMIT $4`,
+    [tenantId, opId, targetKind, CLEANUP_BATCH]
   );
-  const ids = (held.rows || []).map((row) => row.target_id);
+  const ids = (selected.rows || []).map((row) => row.target_id);
   if (!ids.length) {
+    await client.query(
+      `DELETE FROM orchestrator_research_legacy_holds h
+        WHERE h.tenant_id=$1
+          AND h.target_kind=$2
+          AND EXISTS (
+            SELECT 1 FROM orchestrator_research_cleanup_targets t
+             WHERE t.tenant_id=h.tenant_id
+               AND t.op_id=$3
+               AND t.target_kind=h.target_kind
+               AND t.target_id=h.target_id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM ${table} r
+             WHERE r.tenant_id=h.tenant_id AND r.id=h.target_id
+          )`,
+      [tenantId, targetKind, opId]
+    );
     await client.query('COMMIT');
     return { empty: true, purged: 0, selected: 0 };
   }
   const del = await client.query(
-    `DELETE FROM ${table} WHERE tenant_id=$1 AND id IN (
-       SELECT target_id FROM orchestrator_research_legacy_holds
-        WHERE tenant_id=$1 AND target_kind=$2 AND target_id = ANY($3::text[])
-     )`,
-    [tenantId, targetKind, ids]
+    `DELETE FROM ${table} WHERE tenant_id=$1 AND id = ANY($2::text[])`,
+    [tenantId, ids]
   );
   await client.query(
     `DELETE FROM orchestrator_research_legacy_holds
@@ -189,14 +223,14 @@ async function _purgeHeldBatch(client, tenantId, targetKind) {
   };
 }
 
-async function _purgeHeldKind(client, tenantId, targetKind) {
+async function _purgeHeldKind(client, tenantId, opId, targetKind) {
   let purged = 0;
   for (;;) {
     let batch = null;
     let lastErr = null;
     for (let attempt = 1; attempt <= DEADLOCK_RETRY_MAX; attempt += 1) {
       try {
-        batch = await _purgeHeldBatch(client, tenantId, targetKind);
+        batch = await _purgeSnapshotBatch(client, tenantId, opId, targetKind);
         lastErr = null;
         break;
       } catch (err) {
@@ -228,39 +262,55 @@ async function previewLegacyCleanup({ tenantId, idempotencyKey } = {}) {
   const key = _assertText(idempotencyKey, 'idempotencyKey', 1, 256);
   if (!_db.hasDb()) fail('validation_failed', { field: 'db', reason: 'no_db' });
   const p = _db.getPool();
-  const counts = await _countTenantHolds(p, tid);
-  const id = crypto.randomBytes(16).toString('hex');
-  const row = (await p.query(
-    `INSERT INTO orchestrator_research_cleanup_ops
-       (id, tenant_id, idempotency_key, state, dry_run_evidence_count, dry_run_assets_count)
-     VALUES ($1,$2,$3,'previewed',$4,$5)
-     ON CONFLICT (tenant_id, idempotency_key) DO UPDATE SET
-       dry_run_evidence_count = CASE
-         WHEN orchestrator_research_cleanup_ops.state = 'previewed'
-         THEN EXCLUDED.dry_run_evidence_count
-         ELSE orchestrator_research_cleanup_ops.dry_run_evidence_count
-       END,
-       dry_run_assets_count = CASE
-         WHEN orchestrator_research_cleanup_ops.state = 'previewed'
-         THEN EXCLUDED.dry_run_assets_count
-         ELSE orchestrator_research_cleanup_ops.dry_run_assets_count
-       END,
-       updated_at = CASE
-         WHEN orchestrator_research_cleanup_ops.state = 'previewed'
-         THEN now()
-         ELSE orchestrator_research_cleanup_ops.updated_at
-       END
-     RETURNING *`,
-    [id, tid, key, counts.evidence, counts.assets]
-  )).rows[0];
-  _logOp('research_evidence_cleanup_preview', {
-    tenant_id: tid,
-    op_id: row.id,
-    state: row.state,
-    dry_run_evidence_count: Number(row.dry_run_evidence_count) || 0,
-    dry_run_assets_count: Number(row.dry_run_assets_count) || 0,
-  });
-  return _publicOp(row);
+  const client = await p.connect();
+  let unrolled = null;
+  try {
+    await client.query('BEGIN');
+    const counts = await _countTenantHolds(client, tid);
+    const id = crypto.randomBytes(16).toString('hex');
+    const row = (await client.query(
+      `INSERT INTO orchestrator_research_cleanup_ops
+         (id, tenant_id, idempotency_key, state, dry_run_evidence_count, dry_run_assets_count)
+       VALUES ($1,$2,$3,'previewed',$4,$5)
+       ON CONFLICT (tenant_id, idempotency_key) DO UPDATE SET
+         dry_run_evidence_count = CASE
+           WHEN orchestrator_research_cleanup_ops.state = 'previewed'
+           THEN EXCLUDED.dry_run_evidence_count
+           ELSE orchestrator_research_cleanup_ops.dry_run_evidence_count
+         END,
+         dry_run_assets_count = CASE
+           WHEN orchestrator_research_cleanup_ops.state = 'previewed'
+           THEN EXCLUDED.dry_run_assets_count
+           ELSE orchestrator_research_cleanup_ops.dry_run_assets_count
+         END,
+         updated_at = CASE
+           WHEN orchestrator_research_cleanup_ops.state = 'previewed'
+           THEN now()
+           ELSE orchestrator_research_cleanup_ops.updated_at
+         END
+       RETURNING *`,
+      [id, tid, key, counts.evidence, counts.assets]
+    )).rows[0];
+    // Snapshot is writable only while previewed. Approve freezes it.
+    if (row.state === 'previewed') {
+      await _replacePreviewTargets(client, tid, row.id);
+    }
+    await client.query('COMMIT');
+    _logOp('research_evidence_cleanup_preview', {
+      tenant_id: tid,
+      op_id: row.id,
+      state: row.state,
+      dry_run_evidence_count: Number(row.dry_run_evidence_count) || 0,
+      dry_run_assets_count: Number(row.dry_run_assets_count) || 0,
+    });
+    return _publicOp(row);
+  } catch (err) {
+    unrolled = err;
+    try { await client.query('ROLLBACK'); unrolled = null; } catch { /* stays unrolled */ }
+    throw err;
+  } finally {
+    client.release(unrolled || undefined);
+  }
 }
 
 async function approveLegacyCleanup({ tenantId, idempotencyKey, opId, actorUserId, confirmation } = {}) {
@@ -300,8 +350,7 @@ async function approveLegacyCleanup({ tenantId, idempotencyKey, opId, actorUserI
 function _canExecute(row) {
   if (!row) return false;
   if (row.state === 'approved') return true;
-  if ((row.state === 'running' || row.state === 'failed' || row.state === 'completed')
-      && row.confirmation_sha256) {
+  if ((row.state === 'running' || row.state === 'failed') && row.confirmation_sha256) {
     return true;
   }
   return false;
@@ -313,19 +362,18 @@ async function executeLegacyCleanup({ tenantId, idempotencyKey, opId } = {}) {
   const p = _db.getPool();
   const existing = await _loadOp(p, tid, { idempotencyKey, opId });
 
+  // Completed is frozen: leftover holds that are not in this snapshot (or
+  // newly identified after preview) must not be deleted by a re-run.
   if (existing.state === 'completed') {
-    const leftover = await _countTenantHolds(p, tid);
-    if (leftover.evidence === 0 && leftover.assets === 0) {
-      _logOp('research_evidence_cleanup_complete', {
-        tenant_id: tid,
-        op_id: existing.id,
-        state: 'completed',
-        purged_evidence_count: 0,
-        purged_assets_count: 0,
-        idempotent: true,
-      });
-      return { ..._publicOp(existing), purged_evidence_count: 0, purged_assets_count: 0, idempotent: true };
-    }
+    _logOp('research_evidence_cleanup_complete', {
+      tenant_id: tid,
+      op_id: existing.id,
+      state: 'completed',
+      purged_evidence_count: 0,
+      purged_assets_count: 0,
+      idempotent: true,
+    });
+    return { ..._publicOp(existing), purged_evidence_count: 0, purged_assets_count: 0, idempotent: true };
   }
 
   if (!_canExecute(existing)) {
@@ -335,7 +383,7 @@ async function executeLegacyCleanup({ tenantId, idempotencyKey, opId } = {}) {
   const started = (await p.query(
     `UPDATE orchestrator_research_cleanup_ops
         SET state = 'running', updated_at = now()
-      WHERE tenant_id=$1 AND id=$2 AND state IN ('approved','running','failed','completed')
+      WHERE tenant_id=$1 AND id=$2 AND state IN ('approved','running','failed')
       RETURNING *`,
     [tid, existing.id]
   )).rows[0];
@@ -352,7 +400,7 @@ async function executeLegacyCleanup({ tenantId, idempotencyKey, opId } = {}) {
   let evidencePurged = 0;
   let assetPurged = 0;
   try {
-    evidencePurged = await _purgeHeldKind(client, tid, 'evidence');
+    evidencePurged = await _purgeHeldKind(client, tid, started.id, 'evidence');
     if (evidencePurged) {
       await p.query(
         `UPDATE orchestrator_research_cleanup_ops
@@ -362,7 +410,7 @@ async function executeLegacyCleanup({ tenantId, idempotencyKey, opId } = {}) {
         [tid, started.id, evidencePurged]
       );
     }
-    assetPurged = await _purgeHeldKind(client, tid, 'asset');
+    assetPurged = await _purgeHeldKind(client, tid, started.id, 'asset');
     if (assetPurged) {
       await p.query(
         `UPDATE orchestrator_research_cleanup_ops

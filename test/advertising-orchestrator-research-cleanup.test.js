@@ -256,7 +256,8 @@ if (!HAS_DB) {
     );
     assert.match(src, /timingSafeEqual/);
     assert.match(src, /confirmation_sha256/);
-    assert.match(src, /SET LOCAL infogenie\.research_cleanup/);
+    assert.match(src, /orchestrator_research_cleanup_targets/);
+    assert.doesNotMatch(src, /infogenie\.research_cleanup/);
     assert.match(src, /lock_timeout/);
     assert.match(src, /tenant_id=\$1/);
     assert.doesNotMatch(src, /\bfetch\s*\(/);
@@ -286,13 +287,13 @@ if (!HAS_DB) {
     )).rows;
     assert.strictEqual(still.length, 1, 'ensure must not delete held evidence');
 
-    const swept = await sweepExpiredResearchEvidence({ tenantId: tenantA });
+    const swept = await sweepExpiredResearchEvidence({ tenantId: tenantA, skipHolds: true });
     assert.ok(swept);
     const kept = (await p.query(
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
       [tenantA, heldId]
     )).rows;
-    assert.strictEqual(kept.length, 1, 'sweep must skip held evidence');
+    assert.strictEqual(kept.length, 1, 'boot-style skipHolds must skip held evidence');
     const assetKept = (await p.query(
       `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
       [tenantA, heldAsset]
@@ -337,6 +338,13 @@ if (!HAS_DB) {
     )).rows[0];
     assert.strictEqual(stored.state, 'previewed');
     assert.strictEqual(stored.confirmation_sha256, null);
+    const targets = (await p.query(
+      `SELECT target_kind, target_id FROM orchestrator_research_cleanup_targets
+        WHERE tenant_id=$1 AND op_id=$2`,
+      [tenantA, first.id]
+    )).rows;
+    assert.ok(targets.some((row) => row.target_kind === 'evidence' && evIds.includes(row.target_id)));
+    assert.ok(targets.some((row) => row.target_kind === 'asset' && row.target_id === assetId));
   });
 
   test('execute without approve fails; wrong confirmation fails', async () => {
@@ -423,6 +431,74 @@ if (!HAS_DB) {
     assert.strictEqual(again.state, 'completed');
     assert.strictEqual(again.purged_evidence_count, 0);
     assert.strictEqual(again.idempotent, true);
+  });
+
+  test('execute deletes only the preview snapshot; later holds survive completed re-run', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertComp(p, tenantA, host.runId);
+    const idA = await insertEvidenceRow(p, tenantA, host.runId, comp, { headline: RAW_EMAIL });
+    await insertHold(p, tenantA, 'evidence', idA, 'missing_expiry');
+
+    const key = nid('idemp-snapshot');
+    const preview = await previewLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
+    const snapA = (await p.query(
+      `SELECT target_id FROM orchestrator_research_cleanup_targets
+        WHERE tenant_id=$1 AND op_id=$2 AND target_kind='evidence'`,
+      [tenantA, preview.id]
+    )).rows.map((row) => row.target_id);
+    assert.ok(snapA.includes(idA), 'preview must snapshot hold A');
+
+    const idB = await insertEvidenceRow(p, tenantA, host.runId, comp, { headline: RAW_PHONE });
+    await insertHold(p, tenantA, 'evidence', idB, 'missing_expiry');
+    const idOff = await insertEvidenceRow(p, tenantA, host.runId, comp);
+    await insertHold(p, tenantA, 'evidence', idOff, 'legacy_short_due');
+
+    const afterAdd = (await p.query(
+      `SELECT target_id FROM orchestrator_research_cleanup_targets
+        WHERE tenant_id=$1 AND op_id=$2 AND target_kind='evidence'`,
+      [tenantA, preview.id]
+    )).rows.map((row) => row.target_id);
+    assert.ok(!afterAdd.includes(idB), 'snapshot must stay frozen after preview');
+    assert.ok(!afterAdd.includes(idOff), 'off-snapshot hold must not join the preview set');
+
+    await approveLegacyCleanup({
+      tenantId: tenantA, idempotencyKey: key, actorUserId,
+      confirmation: DELETE_LEGACY_RESEARCH_EVIDENCE,
+    });
+    const executed = await executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
+    assert.strictEqual(executed.state, 'completed');
+
+    const aGone = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idA]
+    )).rows;
+    const bKept = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idB]
+    )).rows;
+    const offKept = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idOff]
+    )).rows;
+    assert.strictEqual(aGone.length, 0, 'snapshot A must be purged');
+    assert.strictEqual(bKept.length, 1, 'hold B added after preview must remain');
+    assert.strictEqual(offKept.length, 1, 'off-snapshot hold must remain after execute');
+
+    const again = await executeLegacyCleanup({ tenantId: tenantA, idempotencyKey: key });
+    assert.strictEqual(again.state, 'completed');
+    assert.strictEqual(again.idempotent, true);
+    assert.strictEqual(again.purged_evidence_count, 0);
+    const bStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idB]
+    )).rows;
+    const offStill = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, idOff]
+    )).rows;
+    assert.strictEqual(bStill.length, 1, 'completed op must not delete leftover B');
+    assert.strictEqual(offStill.length, 1, 'completed op must not delete off-snapshot holds');
   });
 
   test('retry after injected failure resumes', async () => {
@@ -528,10 +604,12 @@ if (!HAS_DB) {
     const origGetPool = db.getPool;
     const expirySql =
       `retention_class = 'legal_hold' OR (expires_at IS NOT NULL AND expires_at > created_at)`;
+    const gate = await p.connect();
     const client = await p.connect();
     const heldNullId = nid('ev-held-null');
     const unheldNullId = nid('ev-unheld-null');
     try {
+      await gate.query('SELECT pg_advisory_lock($1)', [87231402]);
       await client.query('BEGIN');
       await client.query(
         `ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_retention_expiry_check`
@@ -591,6 +669,8 @@ if (!HAS_DB) {
         );
       } catch { /* parallel files may race the constraint */ }
       client.release();
+      try { await gate.query('SELECT pg_advisory_unlock($1)', [87231402]); } catch { /* ignore */ }
+      gate.release();
     }
   });
 
