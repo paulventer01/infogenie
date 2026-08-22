@@ -9,6 +9,7 @@
 // `/api/admin/*` Express endpoints the legacy builder used, via lib/api.
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiFetch, apiBlob, type ApiResult } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
 
@@ -1276,8 +1277,9 @@ function healthColor(status?: string): string {
   return "#CBD5E1";
 }
 
-function PlatformKeysTab() {
+function PlatformKeysTab({ focusKey }: { focusKey?: string | null }) {
   const toast = useToast();
+  const focusRef = useRef<HTMLDivElement | null>(null);
   const [groups, setGroups] = useState<PlatformKeyGroup[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -1308,6 +1310,14 @@ function PlatformKeysTab() {
       cancelled = true;
     };
   }, [reloadKey]);
+
+  useEffect(() => {
+    if (!focusKey || groups === null) return;
+    const t = window.setTimeout(() => {
+      focusRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [focusKey, groups]);
 
   async function saveKey(key: string) {
     const value = values[key] || "";
@@ -1412,8 +1422,19 @@ function PlatformKeysTab() {
                 const lt = tests[it.key];
                 const ph = it.configured ? "Current: " + (it.masked || "") : it.secret ? "Not configured — paste a value to set" : "Not configured";
                 const msg = testMsg[it.key];
+                const highlighted = focusKey && (it.key === focusKey || focusKey.startsWith(it.key));
                 return (
-                  <div key={it.key} style={{ border: "1px solid #E2E8F0", borderRadius: 10, padding: 14, background: "#fff" }}>
+                  <div
+                    key={it.key}
+                    ref={highlighted ? focusRef : undefined}
+                    style={{
+                      border: highlighted ? "2px solid #0066FF" : "1px solid #E2E8F0",
+                      borderRadius: 10,
+                      padding: 14,
+                      background: highlighted ? "#EFF6FF" : "#fff",
+                      boxShadow: highlighted ? "0 0 0 3px rgba(0,102,255,.12)" : undefined,
+                    }}
+                  >
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                       <span style={{ fontWeight: 700, color: "#1E293B", fontSize: 14 }}>{it.label}</span>
                       {!it.configured ? (
@@ -2089,9 +2110,18 @@ function IssuesTab() {
 // Main Admin Portal
 // ════════════════════════════════════════════════════════════════════════════
 export default function Admin() {
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<string>("data-mode");
+  const [focusKey, setFocusKey] = useState<string | null>(null);
   const [gate, setGate] = useState<"loading" | "ok" | "error">("loading");
   const [gateMsg, setGateMsg] = useState<{ forbidden: boolean; text: string }>({ forbidden: false, text: "" });
+
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t) setTab(t);
+    const f = searchParams.get("focus");
+    if (f) setFocusKey(f);
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2167,7 +2197,7 @@ export default function Admin() {
               {tab === "workspaces" && <WorkspacesTab />}
               {tab === "clients" && <ClientsTab />}
               {tab === "users" && <UsersTab />}
-              {tab === "platform-keys" && <PlatformKeysTab />}
+              {tab === "platform-keys" && <PlatformKeysTab focusKey={focusKey} />}
               {tab === "permissions" && <PermissionsTab />}
               {tab === "audit" && <AuditTab />}
               {tab === "issues" && <IssuesTab />}

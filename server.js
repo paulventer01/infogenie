@@ -453,6 +453,7 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/status$/,                 // global status
   /^\/api\/[^\/]+\/status$/,         // per-integration status pings
   /^\/api\/budget\/status$/,         // budget telemetry (useful pre-login)
+  /^\/api\/alerts\/provider-links$/, // public billing/signup URLs for alert click-through (no secrets)
   /^\/api\/seo-widget\/embed\/[^\/]+\.js$/, // public embed loader (T23)
   /^\/api\/seo-widget\/audit\/[^\/]+$/,     // public widget audit endpoint (T23, rate-limited)
   /^\/api\/conversion-boosters\/embed\/[^\/]+\.js$/, // public booster loader (T27)
