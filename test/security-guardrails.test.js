@@ -382,7 +382,18 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   // pinned so a later change cannot quietly reopen them in the code and leave
   // the doc asserting a property the runtime no longer has.
   assert.match(flat, /`SKIP LOCKED` and the `DELETE` are now one statement/);
-  assert.match(flat, /`55P03` \(`lock_timeout`\) joins `40P01`\/`40001` in the bounded retry/);
+  assert.match(flat, /`55P03` still joins `40P01`\/`40001` in the bounded retry/);
+  // The sweeper's 2s timeout was removed. The doc must say so, and must not
+  // describe a batch that still opens with one.
+  assert.match(flat, /\*\*The sweeper sets no `lock_timeout` at all\*\*/);
+  assert.doesNotMatch(flat, /`BEGIN` → `SET LOCAL lock_timeout = '2s'` → a single CTE/);
+  assert.doesNotMatch(flat, /the session-level `lock_timeout` the sweeper sets is reset to `DEFAULT`/);
+  // Boot and interval treat holds differently on purpose; collapsing the two
+  // either deletes un-previewed rows at boot or pins expired rows forever.
+  assert.match(flat, /A held row is skipped at boot and purged on the interval/);
+  assert.match(flat, /`server\.js` calls the sweep with `\{ skipHolds: true \}`/);
+  assert.match(flat, /is purged \*\*even when a hold row names it\*\*/);
+  assert.match(flat, /`expires_at IS NULL` fails the `IS NOT NULL` predicate/);
   assert.match(flat, /The sweeper\/boot-DDL deadlock is broken at the source and retried at the edge/);
   assert.match(flat, /`_installInTransaction` now installs one table's functions and triggers per `BEGIN`\/`COMMIT`/);
   assert.match(flat, /retries `40P01`\/`40001` up to `DEADLOCK_RETRY_MAX = 5` times per batch/);
@@ -411,10 +422,26 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   assert.match(flat, /Boot identifies legacy rows; it never deletes them/);
   assert.doesNotMatch(flat, /The boot backfills need a DB role that may set `session_replication_role`/);
   assert.doesNotMatch(flat, /Tightening `short` to 7 days purges legacy short-class rows on the next boot/);
-  // The GUC is not a secret, so the doc has to name the hold row as the actual
-  // gate rather than implying the GUC is the boundary.
-  assert.match(flat, /The cleanup GUC `infogenie\.research_cleanup` is a switch, not a secret/);
-  assert.match(flat, /a matching row exists in `orchestrator_research_legacy_holds`/);
+  // The GUC was removed entirely. The doc used to argue that the GUC was a
+  // switch rather than a secret and that the hold row carried the boundary;
+  // that argument must not survive the code it described, and the approval
+  // record is now the whole gate.
+  assert.match(flat, /The cleanup GUC `infogenie\.research_cleanup` is gone/);
+  assert.doesNotMatch(flat, /is a switch, not a secret, and it is not sufficient on its own/);
+  assert.match(flat, /in state `approved` or `running` \*\*and\*\* an `orchestrator_research_cleanup_targets` row for that op names that exact `target_kind`\/`target_id`/);
+  assert.match(flat, /A hold row on its own no longer authorises anything/);
+  // ensure() bounds its DDL waits now, and the honest limit of that bound has
+  // to travel with the claim.
+  assert.match(flat, /`ensure\(\)` now bounds its DDL lock waits at 30s/);
+  assert.match(flat, /`SET lock_timeout = '30s'` on its dedicated client immediately after `pool\.connect\(\)` and \*\*before\*\* `pg_advisory_lock\(87231402\)`/);
+  assert.match(flat, /Advisory lock 87231402 is \*\*not\*\* shared with the sweeper/);
+  assert.match(flat, /What `lock_timeout` does not bound is the `pg_advisory_lock\(87231402\)` call itself/);
+  assert.doesNotMatch(flat, /The boot DDL takes `AccessExclusiveLock` with no `lock_timeout`/);
+  // The suite hang is still open. It must stay written down as open until the
+  // schema-test owner closes it, so a green local run cannot be read as proof.
+  assert.match(flat, /### Open BLOCK \(PR 3A\): the live-PostgreSQL suite still hangs in parallel/);
+  assert.match(flat, /one run that hung until it was killed, and one run in which the required test failed with `40P01`/);
+  assert.match(flat, /The blocking `ALTER` does not come from `ensure\(\)`/);
   // The cluster-wide latch has no tenant_id by design; say so, and say why that
   // is not a tenant-isolation hole.
   assert.match(flat, /`legacy_short_due` is a one-shot cluster snapshot/);
@@ -422,8 +449,17 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   // Residuals that must survive the rewrite.
   assert.match(flat, /The evidence quota is recomputed from the table, not trusted from a counter/);
   assert.match(flat, /`max_records <= 0 OR max_bytes <= 0` raises before any write/);
-  assert.match(flat, /Operator approval is scoped to the tenant, not to the previewed row set/);
+  // Execute is snapshot-bound now, but the two residuals underneath it are
+  // still true and must not be closed along with it.
+  assert.match(flat, /Execute is bound to the previewed snapshot; approval is still tenant- and op-scoped, and `actor_user_id` is still self-asserted/);
+  assert.match(flat, /\*\*only while the op is in state `previewed`\*\*/);
+  assert.match(flat, /An op already in `completed` returns `\{ purged: 0, idempotent: true \}`/);
+  assert.match(flat, /is supplied by the caller and is not checked for membership of that tenant/);
+  assert.doesNotMatch(flat, /Operator approval is scoped to the tenant, not to the previewed row set/);
   assert.match(flat, /`orchestrator_research_competitors` still have no `expires_at`/);
+  // Residuals that predate this pass and are still true.
+  assert.match(flat, /The migrator role must own the orchestrator tables, and the preflight does not prove that/);
+  assert.match(flat, /JSON and text byte limits are measured before redaction, and the DDL CHECKs after it/);
 });
 
 test('originAllowed accepts matching host and localhost in non-prod', () => {

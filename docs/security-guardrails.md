@@ -1884,11 +1884,12 @@ previously accepted `file:///etc/passwd`, `ftp://…`, `//host/…` and
 `https://user@host/…`, which would have become a file-read or SSRF surface for
 whatever resolves the ref.
 
-### Re-review after the BLOCK remediation (`d85d181`)
+### Re-review after the BLOCK remediation (`b3a7497`)
 
 The five BLOCKs raised against the first PR 3A schema pass were re-checked
 against the code as it stands, not against the commit messages that claim to
-close them.
+close them. Four are closed. The fifth is still open and is recorded as such
+below rather than written up as a fix.
 
 - **No ungated delete at boot.** `BOOT_TASKS` calls
   `ensureAgentOrchestratorSchema()` (which identifies holds), then
@@ -1897,8 +1898,8 @@ close them.
   `services/**/api.js` — the only `require` of `research_cleanup` outside tests
   destructures `countLegacyHolds`, which is a `SELECT COUNT(*)`. The one delete
   boot can still perform is the retention sweep of rows whose own `expires_at`
-  has passed, which is the retention policy rather than a legacy purge, and it
-  skips every held id.
+  has passed, which is the retention policy rather than a legacy purge, and the
+  boot call passes `skipHolds: true`, so no held id is deleted on the boot path.
 - **No replica-role dependency, and a failed preflight is a no-op.** Proved with
   real `NOSUPERUSER` roles and a before/after `pg_class`/`pg_constraint`
   snapshot, not by reading the SQL.
@@ -1907,8 +1908,12 @@ close them.
 - **PII is redacted before it is stored, fingerprinted or handed to an LLM
   shape**, with the heuristic limits of that redaction written down rather than
   claimed away.
-- **`SKIP LOCKED` and the `DELETE` are one statement**, under a 2s
-  `lock_timeout`, with the held-row scenario run 20 consecutive times.
+- **`SKIP LOCKED` and the `DELETE` are one statement**, with the held-row
+  scenario run 20 consecutive times. The sweeper sets no `lock_timeout` of its
+  own — see the open BLOCK below for why that scenario is still not reliable
+  under a parallel test run.
+- **The operator delete is bound to the previewed snapshot**, and the cleanup
+  GUC that used to stand beside the hold row is gone.
 
 No new `/api` route, no `ROUTE_GROUPS` entry, no `connectors/` directory and no
 edit to `permission_enforce.js`, `permissions.js`, `permission_matrix.js`,
@@ -1920,7 +1925,8 @@ work; `PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched.
 - **A tenant-scoped retention sweeper now exists.** `research_retention.js`
   deletes expired non-`legal_hold` evidence (assets cascade from evidence, and
   expired assets are also swept independently while the parent is live). It is
-  batch-limited, skips every row named in `orchestrator_research_legacy_holds`,
+  batch-limited, treats `orchestrator_research_legacy_holds` differently on the
+  boot path and the interval path (see the next entry),
   is fail-closed on NULL `expires_at` for unheld `standard`/`short` rows
   (counted as `invalid_expiry`, not deleted, no invented TTL), and is wired from
   `server.js` `BOOT_TASKS` plus a 6h `backgroundEnabled()` interval. The boot
@@ -1931,23 +1937,45 @@ work; `PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched.
   `orchestrator_research_competitors` still have no `expires_at`, so a run's
   `research_brief` and `search_parameters` are retained until the workflow or
   tenant is deleted.
+- **A held row is skipped at boot and purged on the interval, and that split is
+  what keeps retention from failing open.** `server.js` calls the sweep with
+  `{ skipHolds: true }`, so first-boot leftovers stay operator-owned and boot
+  never deletes a row an operator has not previewed. The interval and default
+  sweep pass no `skipHolds`, so `expiredPurgeSql` emits no hold filter and a row
+  that is genuinely expired on its own terms
+  (`retention_class <> 'legal_hold' AND expires_at IS NOT NULL AND
+  expires_at <= now() AND expires_at > created_at`) is purged **even when a hold
+  row names it**, with the matching `orchestrator_research_legacy_holds` rows
+  deleted in the same batch transaction so a purged id cannot survive as a
+  preview ghost. Without that, a `legacy_short_due` hold written once at boot
+  would have pinned an expired row in the database forever. What the interval
+  sweep still cannot touch is a `missing_expiry` row: `expires_at IS NULL` fails
+  the `IS NOT NULL` predicate, there is no invented TTL, and the row waits for
+  the operator preview/approve/execute sequence. That is the deliberate residual
+  — a retention overrun an operator has to clear, not a silent deletion.
 - **`SKIP LOCKED` and the `DELETE` are now one statement.** Each batch runs
-  `BEGIN` → `SET LOCAL lock_timeout = '2s'` → a single CTE
+  `BEGIN` → a single CTE
   (`WITH doomed AS (SELECT id … FOR UPDATE SKIP LOCKED LIMIT $2) DELETE …
   USING doomed`) → `COMMIT` on one `pool.connect()` client, so there is no
   window at all between the lock and the delete, and two concurrent sweepers
   take disjoint batches — verified directly against Postgres: a row held by an
   open `FOR UPDATE` transaction was skipped, every unheld expired row was
-  purged, the sweep returned inside the `lock_timeout` rather than blocking, and
-  the held row was purged by the next sweep, repeated 20 consecutive times.
-  `55P03` (`lock_timeout`) joins `40P01`/`40001` in the bounded retry. A sweeper
-  that finds every candidate already locked commits an empty batch and stops,
-  which is success rather than the old `ok: false` noop race. A client whose
-  `ROLLBACK` could not be confirmed is destroyed rather than returned to the
-  pool, because `release()` does not roll back and the next borrower would
-  otherwise inherit the batch transaction and its `FOR UPDATE` row locks; the
-  session-level `lock_timeout` the sweeper sets is reset to `DEFAULT` before any
-  client goes back.
+  purged, the sweep returned promptly rather than blocking, and the held row was
+  purged by the next sweep, repeated 20 consecutive times.
+  **The sweeper sets no `lock_timeout` at all** — neither a session-level
+  `SET lock_timeout = '2s'` nor a per-batch `SET LOCAL lock_timeout`. An earlier
+  revision did, and a 2s timeout on the sweep client turned every sibling DDL
+  wait into a `55P03` the sweep then retried into another one. `SKIP LOCKED` is
+  what makes the sweep prompt; the timeout was doing nothing the CTE did not
+  already do, and it left the sweep client carrying a session GUC it then had to
+  reset before returning to the pool. `55P03` still joins `40P01`/`40001` in the
+  bounded retry, because a `lock_timeout` can still arrive from a server- or
+  role-level default. A sweeper that finds every candidate already locked
+  commits an empty batch and stops, which is success rather than the old
+  `ok: false` noop race. A client whose `ROLLBACK` could not be confirmed is
+  destroyed rather than returned to the pool, because `release()` does not roll
+  back and the next borrower would otherwise inherit the batch transaction and
+  its `FOR UPDATE` row locks.
 - **The sweeper/boot-DDL deadlock is broken at the source and retried at the
   edge.** The batch holds locks on `orchestrator_research_evidence` from the
   `SELECT` until `COMMIT`, and the `DELETE` fires
@@ -2009,42 +2037,54 @@ work; `PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched.
   public` fails the preflight with a `pg_class`/`pg_constraint` snapshot that is
   byte-identical before and after — no table and no constraint is created on the
   way to the failure.
-- **The cleanup GUC `infogenie.research_cleanup` is a switch, not a secret, and
-  it is not sufficient on its own.** Postgres lets any role set a custom
-  (dotted) GUC in its own session, so `SET LOCAL infogenie.research_cleanup =
-  'on'` is not a privilege boundary and is not treated as one. The boundary is
-  the second half of the trigger predicate: the immutability trigger permits a
-  `DELETE` only when the GUC is `on` **and** a matching row exists in
-  `orchestrator_research_legacy_holds` for the same `tenant_id`, `target_kind`
-  and `target_id`. Verified behaviourally: a hold with no GUC is refused, the
-  GUC with no hold is refused, `UPDATE` stays refused under the GUC, and only
-  the held row is deleted while an unheld row in the same transaction is not.
-  Hold rows are written in exactly one place — the boot `identify` INSERT in
-  `schema.js` — and `SET LOCAL infogenie.research_cleanup` appears in exactly
-  one place, `research_cleanup.js`'s execute path. So the residual is a
-  *self-inflicted operator* risk on a role that already has `DELETE` on the
-  evidence tables, not a route-reachable one: PR 3A has no HTTP surface, and
-  neither `previewLegacyCleanup`, `approveLegacyCleanup` nor
-  `executeLegacyCleanup` is called from `server.js`.
-- **The boot DDL takes `AccessExclusiveLock` with no `lock_timeout`, so it can
-  park a lock queue in front of the evidence table.** The retention sweeper and
-  the operator cleanup both open their batches with
-  `SET LOCAL lock_timeout = '2s'`, so they fail fast and retry. `ensure()` does
-  not: its `ALTER TABLE orchestrator_research_evidence …` waits indefinitely for
-  any conflicting row lock to clear, and every reader that arrives afterwards
-  queues behind *it*. Observed directly while re-reviewing this branch — one
-  transaction holding a `SELECT … FOR UPDATE` on a single evidence row blocked
-  an `ALTER TABLE ADD COLUMN IF NOT EXISTS`, which then blocked an unrelated
-  `SELECT` on the same table and a second `ensure()` waiting on
-  `pg_advisory_lock(87231402)`, all four sessions stalled with no Postgres
-  deadlock report because the holder was `idle in transaction` rather than
-  waiting on a lock. In production the ensure runs once per boot, the sweep
-  batches are 100 rows and the cleanup batches are 100 rows, so the window is
-  short; the exposure is a long-lived transaction against these tables during a
-  deploy, which would stall reads of `orchestrator_research_evidence` until it
-  commits. Bounding it (a `lock_timeout` plus retry on the ensure client) is a
-  boot-behaviour decision for the schema owner: a timeout there converts a stall
-  into a failed boot, which is the safer default but is not free.
+- **The cleanup GUC `infogenie.research_cleanup` is gone, and the approval
+  record is now the whole gate.** The earlier version of this entry described a
+  trigger predicate of "GUC is `on` **and** a hold row exists", and argued that
+  the hold row carried the boundary because a custom (dotted) GUC is a switch
+  any role can set in its own session, not a secret. That argument no longer has
+  to be made: `current_setting('infogenie.research_cleanup', …)` appears nowhere
+  in `schema.js`, and `SET LOCAL infogenie.research_cleanup` appears nowhere in
+  `research_cleanup.js` or any other production JS. The immutability triggers on
+  `orchestrator_research_evidence` and `orchestrator_research_evidence_assets`
+  now permit a `DELETE` of a row that is not already past its own `expires_at`
+  only when an `orchestrator_research_cleanup_ops` row for the same `tenant_id`
+  is in state `approved` or `running` **and** an
+  `orchestrator_research_cleanup_targets` row for that op names that exact
+  `target_kind`/`target_id`. A hold row on its own no longer authorises
+  anything. Verified behaviourally against real Postgres: setting the old GUC
+  `on` in a session that also has a hold on the row is still refused with
+  `orchestrator_research_evidence_immutable`; an `approved` or `running` op
+  whose targets list the row permits the `DELETE`; a hold that is absent from
+  that op's targets is refused; and `UPDATE` stays refused in every one of those
+  cases. The residual is unchanged in shape and smaller in reach: a principal
+  with `DELETE` on the evidence tables can also `INSERT` its own `cleanup_ops`
+  and `cleanup_targets` rows, so this is a tamper-evident audit boundary against
+  an operator mistake, not a privilege boundary against a hostile DB principal.
+  PR 3A still has no HTTP surface, and neither `previewLegacyCleanup`,
+  `approveLegacyCleanup` nor `executeLegacyCleanup` is called from `server.js`.
+- **`ensure()` now bounds its DDL lock waits at 30s, and the advisory wait is
+  the part that is still unbounded.** `_runEnsureAgentOrchestratorSchema` runs
+  `SET lock_timeout = '30s'` on its dedicated client immediately after
+  `pool.connect()` and **before** `pg_advisory_lock(87231402)`, and resets it
+  with `SET lock_timeout TO DEFAULT` in the `finally` before the client is
+  released or destroyed. So an `ALTER TABLE orchestrator_research_evidence …`
+  that queues behind a long-lived `FOR UPDATE` now aborts with `55P03` after 30s
+  instead of parking an `AccessExclusiveLock` request in front of every
+  subsequent reader; the ensure throws, the boot task logs
+  `agent_orchestrator_schema_init_failed` and production exits. That converts an
+  indefinite deploy stall into a fail-closed boot, which is the intended
+  trade. The sweeper deliberately carries no `lock_timeout`; the operator
+  cleanup keeps a per-batch `SET LOCAL lock_timeout = '2s'`, which is scoped to
+  its own transaction and never outlives it. Advisory lock 87231402 is **not**
+  shared with the sweeper — the sweeper takes no advisory lock at all, so an
+  ensure cannot deadlock against a sweeper that is holding evidence rows. What
+  `lock_timeout` does not bound is the `pg_advisory_lock(87231402)` call itself:
+  measured on this branch, an ensure client with `lock_timeout = '30s'` set
+  waited more than 17 minutes for that advisory lock without aborting. In
+  production the only contenders for 87231402 are other boot ensures, each of
+  whose DDL waits is capped at 30s, so the wait is bounded in practice; a
+  session that takes 87231402 and holds it (as the tests do) can still stall a
+  boot indefinitely.
 - **The migrator role must own the orchestrator tables, and the preflight does
   not prove that.** `DROP TRIGGER` / `CREATE TRIGGER` / `ALTER TABLE … DROP
   CONSTRAINT` need ownership, which `has_table_privilege` cannot express, and
@@ -2074,9 +2114,10 @@ work; `PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched.
   `orchestrator_research_legacy_holds` with a `reason` of `missing_expiry`,
   `invalid_expiry` or `legacy_short_due`, and boot logs
   `legacy_holds_identified` with two integers. No evidence row and no asset row
-  is deleted by identification, the sweeper's CTE excludes held ids, and
-  `invalid_expiry` ignores held rows so the expected leftovers do not turn boot
-  into `process.exit(1)`. Deleting them is an explicit operator act:
+  is deleted by identification, the boot sweep passes `skipHolds: true` so its
+  CTE excludes held ids, and `invalid_expiry` ignores held rows so the expected
+  leftovers do not turn boot into `process.exit(1)`. Deleting them is an
+  explicit operator act:
   `previewLegacyCleanup` → `approveLegacyCleanup` (confirmation phrase
   `DELETE_LEGACY_RESEARCH_EVIDENCE`, compared with `crypto.timingSafeEqual`,
   stored only as a SHA-256 hex digest) → `executeLegacyCleanup`. The residual
@@ -2117,19 +2158,31 @@ work; `PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched.
   `orchestrator_tenant_limits` still moves the ceiling. Evidence *assets* have
   no volume cap of their own; they are bounded only by the evidence rows they
   hang off and the 1024-character `storage_ref` limit.
-- **Operator approval is scoped to the tenant, not to the previewed row set.**
-  `executeLegacyCleanup` deletes whatever is held for that tenant when it runs,
-  and it will re-run for an op already in `completed` when holds still exist, so
-  a later boot that identifies new holds can be purged by replaying an old
-  op id without a fresh confirmation phrase. Every deletion is still limited to
-  identified legacy rows in one tenant, batched at 100 under
-  `FOR UPDATE SKIP LOCKED`, and recorded in `orchestrator_research_cleanup_ops`
-  with the actor and the purged counts. `actor_user_id` is self-asserted by the
-  caller and is not checked for membership of that tenant, so the audit row
-  attributes rather than authenticates. Both are acceptable for a module with no
-  HTTP surface that only an operator with database and process access can call;
-  binding an approval to a hold snapshot belongs with the first UI or API that
-  exposes it.
+- **Execute is bound to the previewed snapshot; approval is still tenant- and
+  op-scoped, and `actor_user_id` is still self-asserted.** The earlier version
+  of this entry recorded the opposite: `executeLegacyCleanup` used to delete
+  whatever was held for the tenant at the moment it ran, so a hold identified
+  after the human read the preview could be deleted by that human's approval,
+  and replaying a `completed` op could purge a later boot's new holds without a
+  fresh confirmation phrase. Both are closed. `previewLegacyCleanup` writes the
+  tenant's holds into `orchestrator_research_cleanup_targets` inside the preview
+  transaction and **only while the op is in state `previewed`** — the
+  `ON CONFLICT` re-preview path leaves the target set untouched once the op has
+  moved on, so `approve` freezes it. `executeLegacyCleanup` then selects
+  strictly from that op's `cleanup_targets` rows, and the immutability trigger
+  independently refuses any `DELETE` of a row that op does not name, so the
+  snapshot bound holds even if the execute query were wrong. An op already in
+  `completed` returns `{ purged: 0, idempotent: true }` without opening a
+  transaction, so a replay cannot delete leftover or newly identified holds.
+  Verified end to end against Postgres: preview hold A, add hold B and an
+  off-snapshot hold afterwards, approve and execute — A is purged, B and the
+  off-snapshot hold survive, and re-running the completed op leaves both in
+  place. What remains: an approval authorises one op's row set for one tenant,
+  and `actor_user_id` is supplied by the caller and is not checked for
+  membership of that tenant, so the audit row attributes rather than
+  authenticates. That is acceptable for a module with no HTTP surface that only
+  an operator with database and process access can call; authenticating the
+  actor belongs with the first UI or API that exposes it.
 - **The 64-zero `content_fingerprint` DEFAULT survives only the `ADD COLUMN`
   itself.** The default is what lets the rename from `evidence_hash` add the
   column `NOT NULL` to a populated table; `ensure()` drops it on the next
@@ -2199,19 +2252,73 @@ work; `PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched.
   fail closed) and the `orchestrator_research_evidence_limit_exceeded` trigger.
   Completed *run* history is still unbounded.
 
+### Open BLOCK (PR 3A): the live-PostgreSQL suite still hangs in parallel
+
+This is recorded as open, not closed. The required concurrency test
+(`SKIP LOCKED held-row scenario succeeds 20 consecutive times`) does not survive
+a default-parallel `node --test` run of the research files. Measured on
+`b3a7497`, three consecutive runs of
+`advertising-orchestrator-research-ops-schema` +
+`-retention-concurrency` + `-retention` gave one pass, one run that hung until
+it was killed, and one run in which the required test failed with `40P01`
+`deadlock detected`. The same four files **without** the ops-schema file pass 36
+of 36 in five seconds, and the ops-schema file alone passes 21 of 21 in two
+seconds, so this is an interaction between files rather than a flaky assertion.
+
+The lock graph of the hung run, read from `pg_locks` and `pg_blocking_pids`
+while it was stalled: the concurrency test's locker held `RowShareLock` on
+`orchestrator_research_evidence` from a `SELECT … FOR UPDATE` and sat
+`idle in transaction`; an
+`ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS
+orchestrator_research_evidence_retention_expiry_check` waited on
+`AccessExclusiveLock` behind it; and the sweeper's `WITH doomed` CTE waited on
+`RowShareLock` behind the pending `AccessExclusiveLock`. The locker does not
+commit until the sweep it is asserting on returns, so the wait is circular — but
+it closes through the test process rather than through Postgres, the holder is
+`idle in transaction` rather than waiting on a lock, and the deadlock detector
+therefore never fires.
+
+The blocking `ALTER` does not come from `ensure()`. It holds no advisory lock at
+all, so the 30s `lock_timeout` and the `pg_advisory_lock(87231402)` gate on the
+ensure client do not apply to it: it is raw constraint-swap DDL issued directly
+by `test/advertising-orchestrator-research-ops-schema.test.js`, which drops and
+re-adds `orchestrator_research_evidence_retention_expiry_check` (and the assets
+equivalent) inside its own transaction **without** taking 87231402. The sibling
+files already gate the identical DDL —
+`advertising-orchestrator-research-retention.test.js` and
+`advertising-orchestrator-research-cleanup.test.js` both wrap it in
+`pg_advisory_lock(87231402)` on a third connection — and the concurrency test's
+own gate can only exclude DDL that goes through that gate. Nothing bounds the
+un-gated client: it has no `lock_timeout`, and the server default is `0`.
+
+Production is not exposed to the indefinite form of this. The same
+`_ensureNamedCheck` `ALTER` runs there on the ensure client, which does carry
+`lock_timeout = '30s'`, so a boot that queues behind a long-lived `FOR UPDATE`
+aborts with `55P03` and fails closed instead of stalling. The open item is the
+test layer: the suite that is supposed to prove the retention sweeper is safe
+under concurrency cannot currently be trusted to run to completion, so its green
+result is not evidence. Closing it belongs to the owner of the orchestrator
+schema tests, not to Security.
+
 Coverage: `test/advertising-orchestrator-research-schema.test.js` (15 DDL tests
 against real Postgres: tenant FK/PK shape, composite-FK cross-tenant rejection,
 approval binding, identity immutability, evidence UPDATE refusal, forbidden
 columns, tenant cascade),
 `test/advertising-orchestrator-research-ops-schema.test.js` (retention CHECKs,
-`NOT VALID` behaviour, quota recompute, fingerprint column, GUC-plus-hold
-delete, `NOSUPERUSER` ensure and the no-op failed preflight),
+`NOT VALID` behaviour, quota recompute, fingerprint column, the ensure
+`lock_timeout` ordering, the refusal of a GUC-only delete, the approved/running
+op plus snapshot target delete, the refusal of an off-snapshot hold,
+`NOSUPERUSER` ensure and the no-op failed preflight),
 `test/advertising-orchestrator-research-contracts.test.js`,
 `test/advertising-orchestrator-research-retention.test.js`,
 `test/advertising-orchestrator-research-retention-concurrency.test.js`
-(held-row `SKIP LOCKED` 20×, two concurrent sweeps),
+(held-row `SKIP LOCKED` 20×, two concurrent sweeps; the held-row scenario wraps
+its locker and sweep in `pg_advisory_lock(87231402)` on a third connection so an
+`ensure()` in a sibling file cannot start its `ALTER` while the row is locked —
+see the open BLOCK above for the DDL that gate does not cover),
 `test/advertising-orchestrator-research-cleanup.test.js` (preview → approve →
-execute, confirmation phrase, digest-only storage, tenant scoping),
+execute bound to the snapshot, later and off-snapshot holds surviving,
+confirmation phrase, digest-only storage, tenant scoping),
 `test/advertising-orchestrator-research-store.test.js`,
 `test/advertising-orchestrator-research-sweep-wiring.test.js` plus
 `test/security-guardrails.test.js` (validator-level tenant authority, credential
