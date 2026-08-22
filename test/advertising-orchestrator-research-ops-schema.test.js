@@ -797,15 +797,26 @@ if (!HAS_DB) {
 
   test('CHECK stays NOT VALID when violators exist; new invalid INSERT still fails', async () => {
     const pool = db.getPool();
+    // Third connection holds ensure()'s advisory lock so a sibling ensure()
+    // cannot start AccessExclusiveLock while these DROP/ADD transactions run.
+    // Do not take 87231402 on the ALTER client — ensure() already holds it
+    // for its whole run and would self-deadlock if we called ensure() on the
+    // same client. Unlock before ensure() below.
+    const gate = await pool.connect();
     const client = await pool.connect();
+    const laterClient = await pool.connect();
     const evId = nid('ev-viol');
     const assetId = nid('asset-viol');
     const evInvalidId = nid('ev-viol-inv');
     const assetInvalidId = nid('asset-viol-inv');
+    const evLater = nid('ev-viol-later');
     const ts = new Date();
     const expirySql =
       `retention_class = 'legal_hold' OR (expires_at IS NOT NULL AND expires_at > created_at)`;
     try {
+      await gate.query('SELECT pg_advisory_lock($1)', [87231402]);
+      await client.query("SET lock_timeout = '30s'");
+      await laterClient.query("SET lock_timeout = '30s'");
       await client.query('BEGIN');
       await client.query(
         `ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_retention_expiry_check`
@@ -850,32 +861,23 @@ if (!HAS_DB) {
            CHECK (${expirySql}) NOT VALID`
       );
       await client.query('COMMIT');
-    } catch (err) {
-      try { await client.query('ROLLBACK'); } catch (_) { /* already aborted */ }
-      client.release();
-      throw err;
-    }
-    client.release();
 
-    const identified = await identifyLegacyResearchCleanup();
-    assert.ok(identified.evidence >= 2);
-    assert.ok(identified.assets >= 2);
+      const identified = await identifyLegacyResearchCleanup();
+      assert.ok(identified.evidence >= 2);
+      assert.ok(identified.assets >= 2);
 
-    const reasons = (await pool.query(
-      `SELECT target_id, reason FROM orchestrator_research_legacy_holds
-        WHERE tenant_id=$1 AND target_id = ANY($2)
-        ORDER BY target_id`,
-      [tenantA, [evId, assetId, evInvalidId, assetInvalidId]]
-    )).rows;
-    const byId = Object.fromEntries(reasons.map((r) => [r.target_id, r.reason]));
-    assert.strictEqual(byId[evId], 'missing_expiry');
-    assert.strictEqual(byId[assetId], 'missing_expiry');
-    assert.strictEqual(byId[evInvalidId], 'invalid_expiry');
-    assert.strictEqual(byId[assetInvalidId], 'invalid_expiry');
+      const reasons = (await pool.query(
+        `SELECT target_id, reason FROM orchestrator_research_legacy_holds
+          WHERE tenant_id=$1 AND target_id = ANY($2)
+          ORDER BY target_id`,
+        [tenantA, [evId, assetId, evInvalidId, assetInvalidId]]
+      )).rows;
+      const byId = Object.fromEntries(reasons.map((r) => [r.target_id, r.reason]));
+      assert.strictEqual(byId[evId], 'missing_expiry');
+      assert.strictEqual(byId[assetId], 'missing_expiry');
+      assert.strictEqual(byId[evInvalidId], 'invalid_expiry');
+      assert.strictEqual(byId[assetInvalidId], 'invalid_expiry');
 
-    const evLater = nid('ev-viol-later');
-    const laterClient = await pool.connect();
-    try {
       await laterClient.query('BEGIN');
       await laterClient.query(
         `ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS orchestrator_research_evidence_retention_expiry_check`
@@ -894,20 +896,24 @@ if (!HAS_DB) {
            CHECK (${expirySql}) NOT VALID`
       );
       await laterClient.query('COMMIT');
-    } catch (err) {
-      try { await laterClient.query('ROLLBACK'); } catch (_) { /* already aborted */ }
+      const later = await identifyLegacyResearchCleanup();
+      assert.ok(later.evidence >= 1, 'missing_expiry must still be identified after the short-due snapshot');
+      const laterHold = (await pool.query(
+        `SELECT reason FROM orchestrator_research_legacy_holds
+          WHERE tenant_id=$1 AND target_kind='evidence' AND target_id=$2`,
+        [tenantA, evLater]
+      )).rows[0];
+      assert.strictEqual(laterHold.reason, 'missing_expiry');
+    } finally {
+      try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+      try { await laterClient.query('ROLLBACK'); } catch { /* ignore */ }
+      try { await client.query('SET lock_timeout TO DEFAULT'); } catch { /* ignore */ }
+      try { await laterClient.query('SET lock_timeout TO DEFAULT'); } catch { /* ignore */ }
+      client.release();
       laterClient.release();
-      throw err;
+      try { await gate.query('SELECT pg_advisory_unlock($1)', [87231402]); } catch { /* ignore */ }
+      gate.release();
     }
-    laterClient.release();
-    const later = await identifyLegacyResearchCleanup();
-    assert.ok(later.evidence >= 1, 'missing_expiry must still be identified after the short-due snapshot');
-    const laterHold = (await pool.query(
-      `SELECT reason FROM orchestrator_research_legacy_holds
-        WHERE tenant_id=$1 AND target_kind='evidence' AND target_id=$2`,
-      [tenantA, evLater]
-    )).rows[0];
-    assert.strictEqual(laterHold.reason, 'missing_expiry');
 
     await ensureAgentOrchestratorSchema();
 
