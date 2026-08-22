@@ -78,6 +78,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "ask-infogenie": L("ask-infogenie", () => import("@/components/features/manage/AskInfoGenie")),
   "strategic-intelligence": L("strategic-intelligence", () => import("@/components/features/manage/StrategicIntelligence")),
   "marketing-memory": L("marketing-memory", () => import("@/components/features/manage/MarketingMemory")),
+  "knowledge-hub": L("knowledge-hub", () => import("@/components/features/manage/KnowledgeHub")),
   "predictive-intelligence": L("predictive-intelligence", () => import("@/components/features/manage/PredictiveIntelligence")),
   "agent-goals": L("agent-goals", () => import("@/components/features/manage/GoalsHub")),
   "ai-providers": L("ai-providers", () => import("@/components/features/manage/AiProviders")),
