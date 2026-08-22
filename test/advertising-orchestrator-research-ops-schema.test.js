@@ -67,11 +67,24 @@ test('production schema.js has no replica-role backfill and identify never mutat
   assert.doesNotMatch(src, /_backfillResearchRetentionExpiry/);
   assert.doesNotMatch(src, /_backfillResearchJsonObjects/);
   assert.doesNotMatch(src, /DISABLE TRIGGER/);
+  assert.doesNotMatch(src, /infogenie\.research_cleanup/);
   assert.match(src, /_preflightAgentOrchestratorSchema/);
   assert.match(src, /orchestrator_schema_preflight_failed/);
   assert.match(src, /NOT VALID/);
   assert.match(src, /VALIDATE CONSTRAINT/);
   assert.match(src, /identifyLegacyResearchCleanup/);
+  assert.match(src, /orchestrator_research_cleanup_targets/);
+  assert.match(src, /'orchestrator_research_cleanup_targets'/);
+
+  const runEnsure = extractFunctionSource(src, '_runEnsureAgentOrchestratorSchema');
+  assert.match(runEnsure, /SET lock_timeout = '30s'/);
+  assert.match(runEnsure, /SET lock_timeout TO DEFAULT/);
+  const lockTimeoutAt = runEnsure.indexOf("SET lock_timeout = '30s'");
+  const advisoryAt = runEnsure.indexOf('pg_advisory_lock');
+  assert.ok(lockTimeoutAt >= 0 && advisoryAt > lockTimeoutAt,
+    'lock_timeout must be set on the ensure client before the advisory lock');
+  assert.ok(runEnsure.includes('SET lock_timeout TO DEFAULT'),
+    'ensure finally must reset lock_timeout');
 
   const identify = extractFunctionSource(src, '_identifyLegacyResearchCleanup');
   assert.doesNotMatch(identify, /UPDATE\s+orchestrator_research_evidence\b/);
@@ -361,6 +374,26 @@ async function insertAsset(p, tenantId, evidenceId, opts = {}) {
     params
   );
   return id;
+}
+
+async function insertCleanupOp(p, tenantId, opts = {}) {
+  const id = opts.id || nid('op');
+  await p.query(
+    `INSERT INTO orchestrator_research_cleanup_ops
+       (id, tenant_id, idempotency_key, state)
+     VALUES ($1,$2,$3,$4)`,
+    [id, tenantId, opts.idempotencyKey || nid('op-idemp'), opts.state || 'approved']
+  );
+  return id;
+}
+
+async function insertCleanupTarget(p, tenantId, opId, kind, targetId) {
+  await p.query(
+    `INSERT INTO orchestrator_research_cleanup_targets
+       (tenant_id, op_id, target_kind, target_id)
+     VALUES ($1,$2,$3,$4)`,
+    [tenantId, opId, kind, targetId]
+  );
 }
 
 async function indexDef(name) {
@@ -1224,10 +1257,32 @@ if (!HAS_DB) {
     assert.strictEqual(opsPk.cols, 'tenant_id,id');
     assert.ok(await checkExists('orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_tenant_unique_idempotency_key'));
 
+    const tgtPk = (await p.query(
+      `SELECT string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position) AS cols
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+          AND tc.table_name = kcu.table_name
+        WHERE tc.table_schema='public' AND tc.table_name='orchestrator_research_cleanup_targets'
+          AND tc.constraint_type='PRIMARY KEY'
+        GROUP BY tc.constraint_name`
+    )).rows[0];
+    assert.strictEqual(tgtPk.cols, 'tenant_id,op_id,target_kind,target_id');
+    assert.ok(await checkExists('orchestrator_research_cleanup_targets', 'orchestrator_research_cleanup_targets_target_kind_check'));
+    assert.ok(await checkExists('orchestrator_research_cleanup_targets', 'orchestrator_research_cleanup_targets_op_fkey'));
+    const tgtIdx = await indexDef('idx_orchestrator_research_cleanup_targets_tenant_op');
+    assert.ok(tgtIdx, 'tenant-leading index on cleanup_targets must exist');
+    assert.match(tgtIdx, /tenant_id.*op_id/);
+
     const forbidden = (await p.query(
       `SELECT column_name FROM information_schema.columns
         WHERE table_schema='public'
-          AND table_name IN ('orchestrator_research_legacy_holds','orchestrator_research_cleanup_ops')
+          AND table_name IN (
+            'orchestrator_research_legacy_holds',
+            'orchestrator_research_cleanup_ops',
+            'orchestrator_research_cleanup_targets'
+          )
           AND column_name IN ('headline','body_text','excerpt','email','body','raw_payload')`
     )).rows;
     assert.deepStrictEqual(forbidden, []);
@@ -1318,7 +1373,7 @@ if (!HAS_DB) {
     }
   });
 
-  test('custom GUC cleanup delete allowed only with hold row; UPDATE stays refused', async () => {
+  test('GUC-only cleanup delete is refused even with a hold; UPDATE stays refused', async () => {
     const p = db.getPool();
     const host = await seedHost(p, tenantA);
     const comp = await insertCompetitor(p, tenantA, host.runId);
@@ -1336,12 +1391,6 @@ if (!HAS_DB) {
       createdAt,
       expiresAt: futureAt,
     });
-    const freeId = await insertEvidence(p, tenantA, host.runId, comp, {
-      id: nid('ev-guc-free'),
-      retentionClass: 'standard',
-      createdAt,
-      expiresAt: futureAt,
-    });
     await p.query(
       `INSERT INTO orchestrator_research_legacy_holds (tenant_id, target_kind, target_id, reason)
        VALUES ($1,'evidence',$2,'missing_expiry'), ($1,'asset',$3,'missing_expiry')
@@ -1349,26 +1398,30 @@ if (!HAS_DB) {
       [tenantA, heldId, heldAsset]
     );
 
-    await assert.rejects(
-      () => p.query(
-        `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
-        [tenantA, heldId]
-      ),
-      /orchestrator_research_evidence_immutable/,
-      'hold without GUC must still refuse DELETE'
-    );
-    await assert.rejects(
-      () => p.query(
-        `UPDATE orchestrator_research_evidence SET headline='tamper' WHERE tenant_id=$1 AND id=$2`,
-        [tenantA, heldId]
-      ),
-      /orchestrator_research_evidence_immutable/
-    );
-
     const client = await p.connect();
     try {
       await client.query('BEGIN');
       await client.query(`SELECT set_config('infogenie.research_cleanup', 'on', true)`);
+      await client.query('SAVEPOINT no_ev');
+      await assert.rejects(
+        () => client.query(
+          `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+          [tenantA, heldId]
+        ),
+        /orchestrator_research_evidence_immutable/,
+        'GUC on + hold with no approved op must still refuse DELETE'
+      );
+      await client.query('ROLLBACK TO SAVEPOINT no_ev');
+      await client.query('SAVEPOINT no_asset');
+      await assert.rejects(
+        () => client.query(
+          `DELETE FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+          [tenantA, heldAsset]
+        ),
+        /orchestrator_research_evidence_assets_immutable/,
+        'GUC on + asset hold with no approved op must still refuse DELETE'
+      );
+      await client.query('ROLLBACK TO SAVEPOINT no_asset');
       await client.query('SAVEPOINT no_update');
       await assert.rejects(
         () => client.query(
@@ -1376,27 +1429,9 @@ if (!HAS_DB) {
           [tenantA, heldId]
         ),
         /orchestrator_research_evidence_immutable/,
-        'UPDATE stays refused even with cleanup GUC'
+        'UPDATE stays fully refused with cleanup GUC'
       );
       await client.query('ROLLBACK TO SAVEPOINT no_update');
-      await client.query(
-        `DELETE FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
-        [tenantA, heldAsset]
-      );
-      await client.query(
-        `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
-        [tenantA, heldId]
-      );
-      await client.query('SAVEPOINT no_free');
-      await assert.rejects(
-        () => client.query(
-          `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
-          [tenantA, freeId]
-        ),
-        /orchestrator_research_evidence_immutable/,
-        'GUC without a hold row must still refuse DELETE'
-      );
-      await client.query('ROLLBACK TO SAVEPOINT no_free');
       await client.query('COMMIT');
     } catch (err) {
       try { await client.query('ROLLBACK'); } catch (_) { /* already aborted */ }
@@ -1405,16 +1440,156 @@ if (!HAS_DB) {
       client.release();
     }
 
-    const gone = (await p.query(
+    const still = (await p.query(
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
       [tenantA, heldId]
     )).rows;
-    assert.strictEqual(gone.length, 0);
-    const still = (await p.query(
-      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
-      [tenantA, freeId]
-    )).rows;
     assert.strictEqual(still.length, 1);
+  });
+
+  test('approved or running cleanup op + snapshot target allows DELETE; UPDATE stays refused', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertCompetitor(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    const futureAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const approvedEv = await insertEvidence(p, tenantA, host.runId, comp, {
+      id: nid('ev-op-approved'),
+      retentionClass: 'short',
+      createdAt,
+      expiresAt: futureAt,
+    });
+    const runningEv = await insertEvidence(p, tenantA, host.runId, comp, {
+      id: nid('ev-op-running'),
+      retentionClass: 'short',
+      createdAt,
+      expiresAt: futureAt,
+    });
+    const approvedAsset = await insertAsset(p, tenantA, approvedEv, {
+      id: nid('asset-op-approved'),
+      retentionClass: 'short',
+      createdAt,
+      expiresAt: futureAt,
+    });
+    await p.query(
+      `INSERT INTO orchestrator_research_legacy_holds (tenant_id, target_kind, target_id, reason)
+       VALUES ($1,'evidence',$2,'missing_expiry'), ($1,'evidence',$3,'missing_expiry'),
+              ($1,'asset',$4,'missing_expiry')
+       ON CONFLICT (tenant_id, target_kind, target_id) DO NOTHING`,
+      [tenantA, approvedEv, runningEv, approvedAsset]
+    );
+
+    const approvedOp = await insertCleanupOp(p, tenantA, { state: 'approved' });
+    await insertCleanupTarget(p, tenantA, approvedOp, 'evidence', approvedEv);
+    await insertCleanupTarget(p, tenantA, approvedOp, 'asset', approvedAsset);
+
+    await assert.rejects(
+      () => p.query(
+        `UPDATE orchestrator_research_evidence SET headline='tamper' WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, approvedEv]
+      ),
+      /orchestrator_research_evidence_immutable/,
+      'UPDATE stays fully refused even with an approved cleanup op'
+    );
+
+    await p.query(
+      `DELETE FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, approvedAsset]
+    );
+    await p.query(
+      `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, approvedEv]
+    );
+
+    const runningOp = await insertCleanupOp(p, tenantA, { state: 'running' });
+    await insertCleanupTarget(p, tenantA, runningOp, 'evidence', runningEv);
+    await p.query(
+      `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, runningEv]
+    );
+
+    const goneApproved = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, approvedEv]
+    )).rows;
+    const goneRunning = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, runningEv]
+    )).rows;
+    const goneAsset = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, approvedAsset]
+    )).rows;
+    assert.strictEqual(goneApproved.length, 0, 'approved op + snapshot target must allow DELETE');
+    assert.strictEqual(goneRunning.length, 0, 'running op + snapshot target must allow DELETE');
+    assert.strictEqual(goneAsset.length, 0, 'approved op + asset snapshot target must allow DELETE');
+  });
+
+  test('approved cleanup op does not delete a hold absent from its targets', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertCompetitor(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    const futureAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const snapId = await insertEvidence(p, tenantA, host.runId, comp, {
+      id: nid('ev-off-snap-in'),
+      retentionClass: 'short',
+      createdAt,
+      expiresAt: futureAt,
+    });
+    const offSnapId = await insertEvidence(p, tenantA, host.runId, comp, {
+      id: nid('ev-off-snap'),
+      retentionClass: 'short',
+      createdAt,
+      expiresAt: futureAt,
+    });
+    const offSnapAsset = await insertAsset(p, tenantA, offSnapId, {
+      id: nid('asset-off-snap'),
+      retentionClass: 'short',
+      createdAt,
+      expiresAt: futureAt,
+    });
+    await p.query(
+      `INSERT INTO orchestrator_research_legacy_holds (tenant_id, target_kind, target_id, reason)
+       VALUES ($1,'evidence',$2,'missing_expiry'), ($1,'evidence',$3,'missing_expiry'),
+              ($1,'asset',$4,'missing_expiry')
+       ON CONFLICT (tenant_id, target_kind, target_id) DO NOTHING`,
+      [tenantA, snapId, offSnapId, offSnapAsset]
+    );
+
+    const opId = await insertCleanupOp(p, tenantA, { state: 'approved' });
+    await insertCleanupTarget(p, tenantA, opId, 'evidence', snapId);
+
+    await assert.rejects(
+      () => p.query(
+        `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, offSnapId]
+      ),
+      /orchestrator_research_evidence_immutable/,
+      'hold that is not in the approved op targets must stay refused'
+    );
+    await assert.rejects(
+      () => p.query(
+        `DELETE FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, offSnapAsset]
+      ),
+      /orchestrator_research_evidence_assets_immutable/,
+      'asset hold absent from the approved op targets must stay refused'
+    );
+    await assert.rejects(
+      () => p.query(
+        `UPDATE orchestrator_research_evidence SET headline='tamper' WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, offSnapId]
+      ),
+      /orchestrator_research_evidence_immutable/,
+      'UPDATE stays fully refused for an off-snapshot hold'
+    );
+
+    const still = (await p.query(
+      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id IN ($2,$3) ORDER BY 1`,
+      [tenantA, snapId, offSnapId]
+    )).rows;
+    assert.strictEqual(still.length, 2);
   });
 
   test('NOSUPERUSER ensure succeeds; missing CREATE fails preflight with no schema change', async () => {

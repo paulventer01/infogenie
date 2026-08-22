@@ -59,6 +59,7 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_research_quota',
   'orchestrator_research_legacy_holds',
   'orchestrator_research_cleanup_ops',
+  'orchestrator_research_cleanup_targets',
 ];
 
 const RESEARCH_RETENTION_EXPIRY_SQL =
@@ -349,6 +350,10 @@ async function _runEnsureAgentOrchestratorSchema() {
   const p = await pool.connect();
   let failed = null;
   try {
+    // Fail closed (55P03) instead of waiting forever on a blocked ALTER.
+    // Must run after connect and before advisory lock / DDL. Do not share
+    // this advisory lock with the sweeper — that deadlocks a held-row locker.
+    await p.query("SET lock_timeout = '30s'");
     await p.query('SELECT pg_advisory_lock($1)', [87231402]);
     try {
       return await _runEnsureAgentOrchestratorSchemaLocked(p);
@@ -359,6 +364,11 @@ async function _runEnsureAgentOrchestratorSchema() {
     failed = err;
     throw err;
   } finally {
+    try {
+      await p.query('SET lock_timeout TO DEFAULT');
+    } catch (resetErr) {
+      failed = failed || resetErr;
+    }
     // A failed ensure can leave this client inside an aborted transaction.
     // Destroy it instead of handing a tainted client back to the pool.
     p.release(failed || undefined);
@@ -1521,6 +1531,24 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
           OR (char_length(confirmation_sha256) = 64 AND confirmation_sha256 ~ '^[0-9a-f]{64}$')
         )
     );
+
+    CREATE TABLE IF NOT EXISTS orchestrator_research_cleanup_targets (
+      tenant_id    INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      op_id        TEXT NOT NULL,
+      target_kind  TEXT NOT NULL,
+      target_id    TEXT NOT NULL,
+      PRIMARY KEY (tenant_id, op_id, target_kind, target_id),
+      CONSTRAINT orchestrator_research_cleanup_targets_op_fkey
+        FOREIGN KEY (tenant_id, op_id)
+        REFERENCES orchestrator_research_cleanup_ops (tenant_id, id)
+        ON DELETE CASCADE,
+      CONSTRAINT orchestrator_research_cleanup_targets_target_kind_check
+        CHECK (target_kind IN ('evidence','asset')),
+      CONSTRAINT orchestrator_research_cleanup_targets_op_id_check
+        CHECK (char_length(op_id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_research_cleanup_targets_target_id_check
+        CHECK (char_length(target_id) BETWEEN 1 AND 128)
+    );
   `);
 
   await p.query(`ALTER TABLE orchestrator_research_runs ADD COLUMN IF NOT EXISTS workflow_id TEXT`);
@@ -1616,6 +1644,10 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS confirmation_sha256 TEXT NULL`);
   await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
   await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_targets ADD COLUMN IF NOT EXISTS op_id TEXT NOT NULL DEFAULT ''`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_targets ADD COLUMN IF NOT EXISTS target_kind TEXT NOT NULL DEFAULT 'evidence'`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_targets ADD COLUMN IF NOT EXISTS target_id TEXT NOT NULL DEFAULT ''`);
 
   const usersPresent = await p.query(`
     SELECT 1 FROM information_schema.tables
@@ -1777,6 +1809,13 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedCheck(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_confirmation_sha256_check',
     `confirmation_sha256 IS NULL OR (char_length(confirmation_sha256) = 64 AND confirmation_sha256 ~ '^[0-9a-f]{64}$')`);
 
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_targets', 'orchestrator_research_cleanup_targets_target_kind_check',
+    `target_kind IN ('evidence','asset')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_targets', 'orchestrator_research_cleanup_targets_op_id_check',
+    `char_length(op_id) BETWEEN 1 AND 128`);
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_targets', 'orchestrator_research_cleanup_targets_target_id_check',
+    `char_length(target_id) BETWEEN 1 AND 128`);
+
   await _ensureNamedUnique(p, 'orchestrator_research_runs',
     'orchestrator_research_runs_tenant_unique_idempotency_key', 'tenant_id, idempotency_key');
   await _ensureNamedUnique(p, 'orchestrator_research_competitors',
@@ -1830,6 +1869,10 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'orchestrator_research_evidence_assets_tenant_evidence_fkey',
     'tenant_id, evidence_id', 'orchestrator_research_evidence', 'tenant_id, id',
     'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_research_cleanup_targets',
+    'orchestrator_research_cleanup_targets_op_fkey',
+    'tenant_id, op_id', 'orchestrator_research_cleanup_ops', 'tenant_id, id',
+    'ON DELETE CASCADE');
 
   await p.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_research_runs_tenant_unique_live_wf
@@ -1881,6 +1924,9 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
 
     CREATE INDEX IF NOT EXISTS idx_orchestrator_research_cleanup_ops_tenant_state
       ON orchestrator_research_cleanup_ops (tenant_id, state, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_orchestrator_research_cleanup_targets_tenant_op
+      ON orchestrator_research_cleanup_targets (tenant_id, op_id);
   `);
 
   // Per-table transactions: never hold AccessExclusiveLock on
@@ -2018,13 +2064,16 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
          AND OLD.expires_at <= now() THEN
         RETURN OLD;
       END IF;
-      IF current_setting('infogenie.research_cleanup', true) = 'on'
-         AND EXISTS (
-           SELECT 1 FROM orchestrator_research_legacy_holds h
-            WHERE h.tenant_id = OLD.tenant_id
-              AND h.target_kind = 'evidence'
-              AND h.target_id = OLD.id
-         ) THEN
+      IF EXISTS (
+        SELECT 1
+          FROM orchestrator_research_cleanup_ops o
+          JOIN orchestrator_research_cleanup_targets t
+            ON t.tenant_id = o.tenant_id AND t.op_id = o.id
+         WHERE o.tenant_id = OLD.tenant_id
+           AND o.state IN ('approved', 'running')
+           AND t.target_kind = 'evidence'
+           AND t.target_id = OLD.id
+      ) THEN
         RETURN OLD;
       END IF;
       RAISE EXCEPTION 'orchestrator_research_evidence_immutable';
@@ -2190,13 +2239,16 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
          AND OLD.expires_at <= now() THEN
         RETURN OLD;
       END IF;
-      IF current_setting('infogenie.research_cleanup', true) = 'on'
-         AND EXISTS (
-           SELECT 1 FROM orchestrator_research_legacy_holds h
-            WHERE h.tenant_id = OLD.tenant_id
-              AND h.target_kind = 'asset'
-              AND h.target_id = OLD.id
-         ) THEN
+      IF EXISTS (
+        SELECT 1
+          FROM orchestrator_research_cleanup_ops o
+          JOIN orchestrator_research_cleanup_targets t
+            ON t.tenant_id = o.tenant_id AND t.op_id = o.id
+         WHERE o.tenant_id = OLD.tenant_id
+           AND o.state IN ('approved', 'running')
+           AND t.target_kind = 'asset'
+           AND t.target_id = OLD.id
+      ) THEN
         RETURN OLD;
       END IF;
       RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
