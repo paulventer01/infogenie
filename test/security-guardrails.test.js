@@ -229,12 +229,9 @@ test('the guardrails doc records the playbooks rate limit as remediated', () => 
   assert.match(flat, /`failClosed` in `createRateLimiter` covers only the \*missing key\* case/);
 });
 
-// PR 3A ships research evidence DDL and contracts with no route, no connector
-// and no fetch. Those three absences are the reason the PR carries no SSRF or
-// permission surface, so each one is asserted rather than described: a later
-// PR that adds a live connector or a router here has to change this test, and
-// changing it is what puts the review back in front of Security.
-test('PR 3A research modules add no fetch sink, no live connector and no route group', () => {
+// PR 3A contract modules still have no fetch sink. PR3B-1 adds fixture-backed
+// adapter shells and a research route group; Security must review that add.
+test('PR 3A research modules add no fetch sink; PR3B-1 adds reviewed connectors and a route group', () => {
   const root = path.join(__dirname, '..');
   const modules = [
     'services/agent_orchestrator/research_contracts.js',
@@ -257,12 +254,12 @@ test('PR 3A research modules add no fetch sink, no live connector and no route g
   for (const connector of ['meta_research.js', 'google_research.js', 'tiktok_research.js']) {
     assert.equal(
       fs.existsSync(path.join(root, 'services/agent_orchestrator/connectors', connector)),
-      false,
-      `${connector} belongs to PR3B/C/D, not PR3A`
+      true,
+      `${connector} is the PR3B-1 fixture-backed adapter shell`
     );
   }
   const matrix = fs.readFileSync(path.join(root, 'services/tenants/permission_matrix.js'), 'utf8');
-  assert.doesNotMatch(matrix, /research/i, 'PR 3A adds no /api prefix, so it needs no ROUTE_GROUPS entry');
+  assert.match(matrix, /\/api\/agent-orchestrator\/research/, 'PR3B adds a research route group');
 });
 
 // A named constraint is redefined by dropping it and adding it back. Split
