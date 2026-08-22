@@ -751,9 +751,10 @@ if (!HAS_DB) {
     const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const ids = [];
+    let host;
     try {
       await gate.query('SELECT pg_advisory_lock($1)', [87231402]);
-      const host = await seedHost(p, tenantA);
+      host = await seedHost(p, tenantA);
       const comp = await insertComp(p, tenantA, host.runId);
       for (let i = 0; i < 12; i += 1) {
         ids.push(await insertExpiredEvidence(p, tenantA, host.runId, comp, { createdAt, expiresAt: expiredAt }));
