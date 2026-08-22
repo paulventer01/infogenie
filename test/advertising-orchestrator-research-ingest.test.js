@@ -111,6 +111,10 @@ if (!HAS_DB) {
 
   after(async () => {
     if (app) await app.close();
+    const ids = [tenantA && tenantA.id, tenantB && tenantB.id].filter(Boolean);
+    if (ids.length && db.hasDb()) {
+      await db.getPool().query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]);
+    }
     await fx.cleanup();
   });
 
