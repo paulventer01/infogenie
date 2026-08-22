@@ -466,13 +466,33 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   // Residuals that must survive the rewrite.
   assert.match(flat, /The evidence quota is recomputed from the table, not trusted from a counter/);
   assert.match(flat, /`max_records <= 0 OR max_bytes <= 0` raises before any write/);
-  // Execute is snapshot-bound now, but the two residuals underneath it are
-  // still true and must not be closed along with it.
-  assert.match(flat, /Execute is bound to the previewed snapshot; approval is still tenant- and op-scoped, and `actor_user_id` is still self-asserted/);
+  // Execute is snapshot-bound and hash-bound now, and the actor is no longer
+  // caller-supplied. The residuals underneath that must not be closed with it:
+  // the actor is still unverified against the tenant, and the digest is not
+  // held under a lock across the delete.
+  assert.match(flat, /Execute is bound to the previewed snapshot and to a hash of it; the actor is read from the session rather than supplied, and tenant membership of that actor is still unchecked/);
   assert.match(flat, /\*\*only while the op is in state `previewed`\*\*/);
+  assert.match(flat, /canonicalised as `target_kind` \+ NUL \+ `target_id` lines, sorted and newline-joined, derived from the table and never from a caller-supplied list/);
+  assert.match(flat, /compare it with `crypto\.timingSafeEqual` \*\*before\*\* they change state or delete anything/);
+  assert.match(flat, /refuses a caller-supplied `actorUserId` outright/);
+  assert.match(flat, /reads the actor from `req\.user\.id`/);
   assert.match(flat, /An op already in `completed` returns `\{ purged: 0, idempotent: true \}`/);
-  assert.match(flat, /is supplied by the caller and is not checked for membership of that tenant/);
+  assert.match(flat, /the actor is not checked for membership of that tenant/);
+  assert.match(flat, /there is no DB-level guard that refuses a `cleanup_targets` write once the op has left `previewed`/);
+  // The old claim was that the caller supplied the actor. It no longer does, so
+  // the doc must not keep asserting a weakness the code closed.
+  assert.doesNotMatch(flat, /`actor_user_id` is still self-asserted/);
+  assert.doesNotMatch(flat, /is supplied by the caller and is not checked for membership of that tenant/);
   assert.doesNotMatch(flat, /Operator approval is scoped to the tenant, not to the previewed row set/);
+  // Locked leftovers are retried in-sweep. The bound, the tenant scope, the
+  // boot skipHolds carry-through and the fact that exhaustion is not a failure
+  // all have to travel together, or the entry reads as a stronger guarantee
+  // than the sweeper gives.
+  assert.match(flat, /A batch that empties while expired rows are still locked is retried inside the same sweep, and exhausting those retries is not a failure/);
+  assert.match(flat, /same predicates as the CTE\*\* and no `SKIP LOCKED`/);
+  assert.match(flat, /up to `LOCKED_RETRY_MAX = 5` attempts, for that tenant only/);
+  assert.match(flat, /boot `skipHolds` flag is carried into every retry pass/);
+  assert.match(flat, /`failures` is \*\*not\*\* incremented/);
   assert.match(flat, /`orchestrator_research_competitors` still have no `expires_at`/);
   // Residuals that predate this pass and are still true.
   assert.match(flat, /The migrator role must own the orchestrator tables, and the preflight does not prove that/);

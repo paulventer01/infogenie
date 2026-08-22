@@ -1976,6 +1976,27 @@ work; `PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched.
   destroyed rather than returned to the pool, because `release()` does not roll
   back and the next borrower would otherwise inherit the batch transaction and
   its `FOR UPDATE` row locks.
+- **A batch that empties while expired rows are still locked is retried inside
+  the same sweep, and exhausting those retries is not a failure.** After both
+  tables drain for a tenant, the sweeper re-counts that tenant's remaining
+  eligible rows with the **same predicates as the CTE** and no `SKIP LOCKED`; a
+  non-zero count means the leftovers are locked rather than ineligible, so it
+  sleeps `LOCKED_RETRY_BASE_MS * attempt` (25ms base) and runs another pass, up
+  to `LOCKED_RETRY_MAX = 5` attempts, for that tenant only. The count is a plain
+  MVCC read, so it never waits on the locks it is counting, and the boot
+  `skipHolds` flag is carried into every retry pass, so a boot sweep still
+  refuses to delete a held row on attempt five. This is the difference between
+  eventual deletion and none: `SKIP LOCKED` alone would have let one concurrent
+  reader defer an expired row for a full 6h interval. The bound is deliberate,
+  and so is its cost: after the fifth attempt the sweep returns normally, the
+  still-locked rows wait for the next interval, and `failures` is **not**
+  incremented — unlike an exhausted `40P01`/`40001` retry, a locked leftover
+  does not set `ok: false` and does not exit a production boot. That last pass
+  also logs nothing, so a persistently locked expired row shows up only as
+  `research_evidence_sweep_locked_retry` lines that stop at
+  `attempt: 4` rather than as a metric an operator can alert on. Adding that
+  terminal count log is retention work, not a security control, and is left to
+  the owner of `research_retention.js`.
 - **The sweeper/boot-DDL deadlock is broken at the source and retried at the
   edge.** The batch holds locks on `orchestrator_research_evidence` from the
   `SELECT` until `COMMIT`, and the `DELETE` fires
@@ -2158,31 +2179,59 @@ work; `PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched.
   `orchestrator_tenant_limits` still moves the ceiling. Evidence *assets* have
   no volume cap of their own; they are bounded only by the evidence rows they
   hang off and the 1024-character `storage_ref` limit.
-- **Execute is bound to the previewed snapshot; approval is still tenant- and
-  op-scoped, and `actor_user_id` is still self-asserted.** The earlier version
-  of this entry recorded the opposite: `executeLegacyCleanup` used to delete
-  whatever was held for the tenant at the moment it ran, so a hold identified
-  after the human read the preview could be deleted by that human's approval,
-  and replaying a `completed` op could purge a later boot's new holds without a
-  fresh confirmation phrase. Both are closed. `previewLegacyCleanup` writes the
-  tenant's holds into `orchestrator_research_cleanup_targets` inside the preview
-  transaction and **only while the op is in state `previewed`** — the
-  `ON CONFLICT` re-preview path leaves the target set untouched once the op has
-  moved on, so `approve` freezes it. `executeLegacyCleanup` then selects
-  strictly from that op's `cleanup_targets` rows, and the immutability trigger
-  independently refuses any `DELETE` of a row that op does not name, so the
-  snapshot bound holds even if the execute query were wrong. An op already in
-  `completed` returns `{ purged: 0, idempotent: true }` without opening a
-  transaction, so a replay cannot delete leftover or newly identified holds.
-  Verified end to end against Postgres: preview hold A, add hold B and an
-  off-snapshot hold afterwards, approve and execute — A is purged, B and the
-  off-snapshot hold survive, and re-running the completed op leaves both in
-  place. What remains: an approval authorises one op's row set for one tenant,
-  and `actor_user_id` is supplied by the caller and is not checked for
-  membership of that tenant, so the audit row attributes rather than
-  authenticates. That is acceptable for a module with no HTTP surface that only
-  an operator with database and process access can call; authenticating the
-  actor belongs with the first UI or API that exposes it.
+- **Execute is bound to the previewed snapshot and to a hash of it; the actor is
+  read from the session rather than supplied, and tenant membership of that
+  actor is still unchecked.** The earlier version of this entry recorded the
+  opposite: `executeLegacyCleanup` used to delete whatever was held for the
+  tenant at the moment it ran, so a hold identified after the human read the
+  preview could be deleted by that human's approval, and replaying a `completed`
+  op could purge a later boot's new holds without a fresh confirmation phrase.
+  Both are closed. `previewLegacyCleanup` writes the tenant's holds into
+  `orchestrator_research_cleanup_targets` inside the preview transaction and
+  **only while the op is in state `previewed`** — the `ON CONFLICT` re-preview
+  path leaves the target set untouched once the op has moved on, so `approve`
+  freezes it. The same transaction stores
+  `orchestrator_research_cleanup_ops.snapshot_sha256`: a SHA-256 over that op's
+  stored target rows, canonicalised as `target_kind` + NUL + `target_id` lines,
+  sorted and newline-joined, derived from the table and never from a
+  caller-supplied list. The framing is unambiguous rather than merely tidy —
+  Postgres `text` cannot hold a NUL byte, so the field separator can never occur
+  inside a `target_id`, and a row added to the set always adds a line. Both
+  `approveLegacyCleanup` and `executeLegacyCleanup` recompute that digest from
+  the rows and compare it with `crypto.timingSafeEqual` **before** they change
+  state or delete anything; a mismatch fails closed with `validation_failed`
+  field `snapshot_sha256`, the op stays where it was, and no `DELETE` is issued.
+  `executeLegacyCleanup` then selects strictly from that op's `cleanup_targets`
+  rows, and the immutability trigger independently refuses any `DELETE` of a row
+  that op does not name, so the snapshot bound holds even if the execute query
+  were wrong. An op already in `completed` returns
+  `{ purged: 0, idempotent: true }` without opening a transaction, so a replay
+  cannot delete leftover or newly identified holds. Verified end to end against
+  Postgres: preview hold A, add hold B and an off-snapshot hold afterwards,
+  approve and execute — A is purged, B and the off-snapshot hold survive, and
+  re-running the completed op leaves both in place; and with a target row
+  inserted after preview, approve and execute both refuse on
+  `snapshot_sha256`, the op stays `approved`, and A and B are both still in the
+  evidence table. `approveLegacyCleanup` refuses a caller-supplied `actorUserId`
+  outright (`validation_failed` field `actorUserId`, checked with
+  `hasOwnProperty` so an explicit `undefined` is refused too) and reads the
+  actor from `req.user.id` under the same rule `runner.js` uses: a missing `req`
+  is `validation_failed`, and a non-integer, zero or negative id is
+  `auth_required`, so the synthetic api-key principal that exists when no owner
+  row does cannot sign an approval. What remains: an approval authorises one
+  op's row set for one tenant, the actor is not checked for membership of that
+  tenant, and because the module has no HTTP surface the `req` it reads is built
+  by the in-process operator caller rather than by the session middleware — so
+  the audit row attributes rather than authenticates. The digest is also
+  recomputed once per phase and not held under a lock for the duration of the
+  delete, so a target row inserted between the execute-time check and a later
+  batch of the same run is not re-hashed; there is no DB-level guard that
+  refuses a `cleanup_targets` write once the op has left `previewed`, and what
+  confines such a row is the immutability trigger, which still requires the same
+  tenant and an `approved`/`running` op of that tenant. Both are acceptable for
+  a module with no HTTP surface that only an operator with database and process
+  access can call; authenticating the actor, and pinning the target set with a
+  DB-level state guard, belong with the first UI or API that exposes it.
 - **The 64-zero `content_fingerprint` DEFAULT survives only the `ADD COLUMN`
   itself.** The default is what lets the rename from `evidence_hash` add the
   column `NOT NULL` to a populated table; `ensure()` drops it on the next
