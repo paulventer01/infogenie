@@ -2252,53 +2252,66 @@ work; `PERMISSION_ENFORCEMENT` and `MULTITENANT_ENFORCEMENT` are untouched.
   fail closed) and the `orchestrator_research_evidence_limit_exceeded` trigger.
   Completed *run* history is still unbounded.
 
-### Open BLOCK (PR 3A): the live-PostgreSQL suite still hangs in parallel
+### Open BLOCK (PR 3A): the live-PostgreSQL suite still fails in parallel
 
-This is recorded as open, not closed. The required concurrency test
-(`SKIP LOCKED held-row scenario succeeds 20 consecutive times`) does not survive
-a default-parallel `node --test` run of the research files. Measured on
-`b3a7497`, three consecutive runs of
-`advertising-orchestrator-research-ops-schema` +
-`-retention-concurrency` + `-retention` gave one pass, one run that hung until
-it was killed, and one run in which the required test failed with `40P01`
-`deadlock detected`. The same four files **without** the ops-schema file pass 36
-of 36 in five seconds, and the ops-schema file alone passes 21 of 21 in two
-seconds, so this is an interaction between files rather than a flaky assertion.
+This is recorded as open, not closed. The constraint-swap half of it **is**
+fixed: every `ALTER TABLE orchestrator_research_evidence*` `DROP`/`ADD` in
+`test/advertising-orchestrator-research-ops-schema.test.js` now runs while a
+third connection holds `pg_advisory_lock(87231402)`, on clients that carry
+`lock_timeout = '30s'`, with the unlock in a `finally` ahead of the
+`ensureAgentOrchestratorSchema()` call so ensure cannot self-deadlock. That was
+the statement named in the previous revision of this entry, and it no longer
+blocks anything.
 
-The lock graph of the hung run, read from `pg_locks` and `pg_blocking_pids`
-while it was stalled: the concurrency test's locker held `RowShareLock` on
-`orchestrator_research_evidence` from a `SELECT … FOR UPDATE` and sat
-`idle in transaction`; an
-`ALTER TABLE orchestrator_research_evidence DROP CONSTRAINT IF EXISTS
-orchestrator_research_evidence_retention_expiry_check` waited on
-`AccessExclusiveLock` behind it; and the sweeper's `WITH doomed` CTE waited on
-`RowShareLock` behind the pending `AccessExclusiveLock`. The locker does not
-commit until the sweep it is asserting on returns, so the wait is circular — but
-it closes through the test process rather than through Postgres, the holder is
-`idle in transaction` rather than waiting on a lock, and the deadlock detector
-therefore never fires.
+What is not fixed is the same `AccessExclusiveLock` on the same table, taken by
+a different statement in the same file. `dropLoginRole` runs
+`REASSIGN OWNED BY <role> TO CURRENT_USER` followed by `DROP OWNED BY <role>` in
+the `finally` of the `NOSUPERUSER ensure` test. The role it is dismantling was
+granted ownership of the orchestrator tables by `grantOrchestratorMigrator`, so
+`REASSIGN OWNED BY` walks those tables one at a time taking
+`AccessExclusiveLock` on each — including `orchestrator_research_evidence` and
+`orchestrator_tenant_limits`. It takes no advisory lock, sets no `lock_timeout`,
+and runs on the admin pool.
 
-The blocking `ALTER` does not come from `ensure()`. It holds no advisory lock at
-all, so the 30s `lock_timeout` and the `pg_advisory_lock(87231402)` gate on the
-ensure client do not apply to it: it is raw constraint-swap DDL issued directly
-by `test/advertising-orchestrator-research-ops-schema.test.js`, which drops and
-re-adds `orchestrator_research_evidence_retention_expiry_check` (and the assets
-equivalent) inside its own transaction **without** taking 87231402. The sibling
-files already gate the identical DDL —
-`advertising-orchestrator-research-retention.test.js` and
-`advertising-orchestrator-research-cleanup.test.js` both wrap it in
-`pg_advisory_lock(87231402)` on a third connection — and the concurrency test's
-own gate can only exclude DDL that goes through that gate. Nothing bounds the
-un-gated client: it has no `lock_timeout`, and the server default is `0`.
+Both failure modes reproduce on `35b3514`. Six consecutive default-parallel runs
+(no `--test-concurrency=1`) of
+`advertising-orchestrator-research-ops-schema` + `-retention-concurrency` +
+`-retention` gave five passes and one run in which
+`SKIP LOCKED held-row scenario succeeds 20 consecutive times` failed with
+`40P01 deadlock detected`. Postgres named both sides: `REASSIGN OWNED BY` waited
+for `AccessExclusiveLock` on `orchestrator_research_evidence` while an
+`INSERT INTO orchestrator_research_evidence` waited for `AccessShareLock` on
+`orchestrator_tenant_limits` — the table the quota insert trigger reads — each
+blocked by the other, because the two acquire the pair in opposite orders.
 
-Production is not exposed to the indefinite form of this. The same
-`_ensureNamedCheck` `ALTER` runs there on the ensure client, which does carry
-`lock_timeout = '30s'`, so a boot that queues behind a long-lived `FOR UPDATE`
-aborts with `55P03` and fails closed instead of stalling. The open item is the
-test layer: the suite that is supposed to prove the retention sweeper is safe
-under concurrency cannot currently be trusted to run to completion, so its green
-result is not evidence. Closing it belongs to the owner of the orchestrator
-schema tests, not to Security.
+Running only the `NOSUPERUSER` test beside the concurrency file reproduces the
+indefinite form instead: it stalled for more than ten minutes and had to be
+killed. `pg_blocking_pids` while it was stuck showed the concurrency test's
+locker holding `RowShareLock` on `orchestrator_research_evidence` from a
+`SELECT … FOR UPDATE` and sitting `idle in transaction`; `REASSIGN OWNED BY`
+waiting for `AccessExclusiveLock` behind it; and the sweeper's `invalid_expiry`
+`SELECT` waiting behind that. The locker does not commit until the sweep it is
+asserting on returns, so the wait is circular — but it closes through the test
+process rather than through Postgres, the holder is `idle in transaction` rather
+than waiting on a lock, the deadlock detector never fires, and nothing bounds
+`REASSIGN OWNED BY`.
+
+The `87231402` gate as currently placed cannot cover this. Neither side of the
+cycle goes through it: `dropLoginRole` never takes it, and the concurrency
+test's own gate is acquired *after* it has seeded its workflow, competitor and
+evidence rows, so the seeding INSERTs that lose the race are outside the gate
+too.
+
+Production is not exposed to either form. The `AccessExclusiveLock` there comes
+from `ensure()`, on a client that carries `lock_timeout = '30s'`, so a boot that
+queues behind a long-lived `FOR UPDATE` aborts with `55P03` and fails closed
+rather than stalling; `REASSIGN OWNED BY` and `DROP OWNED BY` are test-only role
+teardown and appear nowhere in the product path. The open item is the test
+layer: the suite that is supposed to prove the retention sweeper safe under
+concurrency still cannot be trusted to run to completion, so a green run of it
+is not evidence, and three green runs are not evidence either at an observed
+failure rate near one in six. Closing it belongs to the owner of the
+orchestrator schema tests, not to Security.
 
 Coverage: `test/advertising-orchestrator-research-schema.test.js` (15 DDL tests
 against real Postgres: tenant FK/PK shape, composite-FK cross-tenant rejection,

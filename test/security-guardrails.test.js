@@ -437,11 +437,21 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   assert.match(flat, /Advisory lock 87231402 is \*\*not\*\* shared with the sweeper/);
   assert.match(flat, /What `lock_timeout` does not bound is the `pg_advisory_lock\(87231402\)` call itself/);
   assert.doesNotMatch(flat, /The boot DDL takes `AccessExclusiveLock` with no `lock_timeout`/);
-  // The suite hang is still open. It must stay written down as open until the
-  // schema-test owner closes it, so a green local run cannot be read as proof.
-  assert.match(flat, /### Open BLOCK \(PR 3A\): the live-PostgreSQL suite still hangs in parallel/);
-  assert.match(flat, /one run that hung until it was killed, and one run in which the required test failed with `40P01`/);
-  assert.match(flat, /The blocking `ALTER` does not come from `ensure\(\)`/);
+  // The suite failure is still open. It must stay written down as open until
+  // the schema-test owner closes it, so a green local run cannot be read as
+  // proof. The constraint-swap ALTERs were gated and that half is closed; the
+  // entry must name the statement that still is not, rather than the one that
+  // was already fixed.
+  assert.match(flat, /### Open BLOCK \(PR 3A\): the live-PostgreSQL suite still fails in parallel/);
+  assert.doesNotMatch(flat, /the live-PostgreSQL suite still hangs in parallel/);
+  assert.doesNotMatch(flat, /The blocking `ALTER` does not come from `ensure\(\)`/);
+  assert.match(flat, /`dropLoginRole` runs `REASSIGN OWNED BY <role> TO CURRENT_USER`/);
+  assert.match(flat, /It takes no advisory lock, sets no `lock_timeout`, and runs on the admin pool/);
+  assert.match(flat, /five passes and one run in which `SKIP LOCKED held-row scenario succeeds 20 consecutive times` failed with `40P01 deadlock detected`/);
+  assert.match(flat, /The `87231402` gate as currently placed cannot cover this/);
+  // The half that Database did close has to be credited, so the entry cannot be
+  // read as a claim that nothing moved.
+  assert.match(flat, /now runs while a third connection holds `pg_advisory_lock\(87231402\)`/);
   // The cluster-wide latch has no tenant_id by design; say so, and say why that
   // is not a tenant-isolation hole.
   assert.match(flat, /`legacy_short_due` is a one-shot cluster snapshot/);
