@@ -3038,7 +3038,12 @@ async function runAnalysis(url, country, industryOverride) {
       }, 25000)
     : Promise.resolve(null);
 
-  const industry = INDUSTRY_DB[industryKey];
+  const _industrySeed = (INDUSTRY_DB && INDUSTRY_DB[industryKey]) || { name: 'Unknown', keywords: [], competitors: [] };
+  const industry = {
+    name: _industrySeed.name,
+    keywords: Array.isArray(_industrySeed.keywords) ? _industrySeed.keywords.slice() : [],
+    competitors: [], // never seed from INDUSTRY_DB — those are generic vertical brands, not this business
+  };
   const websiteKPIs = generateWebsiteKPIs(cleanUrl, industryKey);
   igTrack('Analysis Started', { domain: cleanUrl, country, industry: industry.name, industrySource });
 
@@ -3185,7 +3190,7 @@ async function runAnalysis(url, country, industryOverride) {
     const n = Array.isArray(sectorDetected.competitors) ? sectorDetected.competitors.length : 0;
     _igLoadingActivity(`Sector match returned ${n} competitors`, 'active');
   } else {
-    _igLoadingActivity(`Using same-industry shortlist for ${industry.name} (live AI unavailable)`, 'active');
+    _igLoadingActivity(`Live AI unavailable — will not invent ${industry.name} rivals from a generic list`, 'active');
   }
   statusText.textContent = `✅ Industry & competitors locked in — fetching live metrics…`;
   _igLoadingActivity('Industry & competitors locked — fetching live metrics', 'active');
@@ -3312,9 +3317,9 @@ async function runAnalysis(url, country, industryOverride) {
       }
     }
     if (Array.isArray(aiDetected.competitors) && aiDetected.competitors.length >= 1) {
-      // Convert AI competitors into the same shape the rest of the UI expects.
-      aiCompetitorPool = aiDetected.competitors.map((c, idx) => {
-        const threats = ['critical','high','medium'];
+      // Convert verified same-industry/same-business rivals only.
+      // No synthesised campaigns, ad copy, or threat rotation — those were simulated.
+      aiCompetitorPool = aiDetected.competitors.map((c) => {
         const initials = (c.name || '?').split(/\s+/).slice(0,2).map(s=>s.charAt(0).toUpperCase()).join('');
         return {
           name: c.name,
@@ -3322,45 +3327,21 @@ async function runAnalysis(url, country, industryOverride) {
           url: c.url,
           why: c.why,
           logo: initials || '?',
-          // Start with NULL sentinels — real values are filled in by the
-          // DataForSEO overlay (live scrape) + dual-LLM AI-validation pass
-          // below. No Math.random() anywhere. If neither source returns data
-          // the UI shows "—" with a "Limited public data" tooltip.
           roas: null,
           ctr:  null,
           traffic: null,
           adSpend: null,
           dataSource: 'pending',
           confidence: null,
-          // topChannel is filled by /api/ai-validate-metrics (which asks both
-          // GPT-4o and Claude which channel each brand actually invests in).
-          // Until then it stays null and the UI renders "—".
           topChannel: null,
           topChannels: [],
-          threatLevel: threats[idx % threats.length],
-          // Synthesize campaign rows so the "Competitor Campaign Breakdown"
-          // table has structure. Names + channels are filled later from the
-          // validated topChannel; nothing is randomised.
-          campaigns: (() => {
-            const camp1Names = ['Brand Search Domination', 'Lookalike Audience Push', 'Retargeting Wave', 'Awareness Reels Burst'];
-            const camp2Names = ['Comparison Landing Funnel', 'Free Trial Lead Gen', 'Top-Funnel Display', 'High-Intent Keyword Steal'];
-            return [
-              { name: camp1Names[idx % camp1Names.length], channel: null, ctr: null, roas: null, budget: null, _split: 0.6 },
-              { name: camp2Names[idx % camp2Names.length], channel: null, ctr: null, roas: null, budget: null, _split: 0.4 },
-            ];
-          })(),
-          // Audience splits — empty until enriched. The audience overlap
-          // panel handles an empty array gracefully ("No audience data").
+          threatLevel: null,
+          campaigns: [],
           audiences: [],
-          // Sample ad copy so the "InfoGenie Improved Ads" section has material
-          adCopy: [
-            { headline: `Trade smarter than ${c.name}`, body: `See why thousands switched from ${c.name} to a faster, lower-fee platform.` },
-          ],
-          suggestions: [
-            `Outflank ${c.name} on long-tail variations of their core keywords — they over-index on brand terms`,
-            `Use comparison content (${c.name} vs You) to capture their branded search intent`,
-            `Target ${c.name}'s mid-funnel comparison queries with high-intent landing pages`,
-          ],
+          adCopy: [],
+          suggestions: c.why ? [c.why] : [],
+          verified: c.verified !== false,
+          modelsUsed: aiDetected.modelsUsed || [],
           aiDetected: true,
         };
       });
@@ -3538,69 +3519,7 @@ async function runAnalysis(url, country, industryOverride) {
         }
       } catch(e) { console.warn('AI validation pass failed:', e); }
 
-      // Derive per-campaign breakdown rows from the now-real top-level metrics.
-      // No more random fakery — the two campaign rows are weighted splits
-      // (60/40) of the competitor's actual ad-spend, with CTR = top-level CTR
-      // ± a small deterministic delta and ROAS = top-level ROAS ± delta.
-      aiCompetitorPool.forEach(c => {
-        if (!Array.isArray(c.campaigns) || !c.campaigns.length) return;
-        const topRoas = (typeof c.roas === 'number' && c.roas > 0) ? c.roas : null;
-        const topCtrN = parseFloat(c.ctr);
-        const topSpendN = (() => {
-          const s = String(c.adSpend || '').replace(/[$,\s]/g,'').toUpperCase();
-          const n = parseFloat(s); if (!isFinite(n) || n <= 0) return null;
-          if (s.includes('B')) return n * 1e9;
-          if (s.includes('M')) return n * 1e6;
-          if (s.includes('K')) return n * 1e3;
-          return n;
-        })();
-        const fmtMoney = n => n >= 1e6 ? '$'+(n/1e6).toFixed(1)+'M/mo'
-                          : n >= 1e3 ? '$'+(n/1e3).toFixed(0)+'K/mo'
-                          : '$'+Math.round(n)+'/mo';
-        c.campaigns.forEach((row, i) => {
-          const split = row._split ?? (i === 0 ? 0.6 : 0.4);
-          if (topCtrN > 0) {
-            row.ctr = (topCtrN + (i === 0 ? 0.4 : -0.4)).toFixed(1) + '%';
-          } else {
-            row.ctr = '—';
-          }
-          if (topRoas !== null) {
-            row.roas = parseFloat((topRoas + (i === 0 ? 0.3 : -0.3)).toFixed(1));
-            if (row.roas < 0.5) row.roas = 0.5;
-          } else {
-            row.roas = '—';
-          }
-          if (topSpendN !== null) {
-            row.budget = fmtMoney(topSpendN * split);
-          } else {
-            // Estimate the monthly budget required to achieve the shown CTR/ROAS
-            // using traffic × industry CPC × paid-traffic fraction.
-            const IND_CPC = { fintech:8, saas:5, ecommerce:1.5, travel:2.5, education:3,
-              marketing:4, crypto:6, realestate:5, legal:12, insurance:9, health:4,
-              automotive:3, retail:1.5, hospitality:2, fitness:2, software:5 };
-            const cpc = IND_CPC[industryKey] || 4;
-            const parseT = t => {
-              const s = String(t||'').replace(/[^0-9.KMkm]/g,'').toUpperCase();
-              const n = parseFloat(s);
-              if (!isFinite(n) || n <= 0) return 0;
-              if (s.includes('M')) return n * 1e6;
-              if (s.includes('K')) return n * 1e3;
-              return n;
-            };
-            const trafficN = parseT(c.traffic);
-            // Higher ROAS means the competitor is more efficient — they don't need
-            // as much paid traffic relative to organic; lower ROAS = more spend.
-            const roasN = topRoas || 2.5;
-            const paidFrac = roasN >= 4 ? 0.10 : roasN >= 3 ? 0.16 : 0.22;
-            const estTotal = trafficN * paidFrac * cpc;
-            if (estTotal >= 200) {
-              row.budget = '~' + fmtMoney(estTotal * split);
-            } else {
-              row.budget = '—';
-            }
-          }
-        });
-      });
+      // Do not invent campaign rows or split CTR/ROAS/budget. Those were simulated.
 
       // Final safety net — anything still null after both overlays gets a
       // clean "—" placeholder so the UI never shows "null" or random fakes.
@@ -3621,15 +3540,12 @@ async function runAnalysis(url, country, industryOverride) {
     }
   }
 
-  // Pick a different set of competitors on every re-run:
-  // 1. Split pool into "not seen last run" vs "seen last run"
-  // 2. Shuffle each group independently
-  // 3. Take fresh competitors first, then fill from seen ones if needed
-  const _prevNames = window._lastCompetitorNames || [];
-  const fresh = industry.competitors.filter(c => !_prevNames.includes(c.name));
-  const seen  = industry.competitors.filter(c =>  _prevNames.includes(c.name));
-  const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  const poolOrdered = [...shuffle(fresh), ...shuffle(seen)];
+  // Only use the verified same-industry pool. Never fall back to INDUSTRY_DB
+  // (Amazon/Shopify/etc. for a mis-bucketed domain — wrong business).
+  if (!aiCompetitorPool || !aiCompetitorPool.length) {
+    industry.competitors = [];
+  }
+  const poolOrdered = Array.isArray(industry.competitors) ? industry.competitors.slice() : [];
 
   // Merge manual competitors — they always appear first, then AI-selected ones fill the rest
   const manuals = (window._manualCompetitors || []).map(mc => ({
@@ -3647,11 +3563,7 @@ async function runAnalysis(url, country, industryOverride) {
     // than randomly picking a channel.
     topChannel: (mc.topChannel && mc.topChannel !== '—') ? mc.topChannel : null,
     topChannels: (mc.topChannel && mc.topChannel !== '—') ? [mc.topChannel] : [],
-    suggestions: mc.suggestions.length ? mc.suggestions : [
-      `Target ${mc.name || mc.domain}'s branded keywords — they have weak presence on long-tail terms`,
-      'Their landing pages likely lack mobile optimisation — use mobile-first creative to capture mobile share',
-      'Minimal retargeting detected — RLSA campaigns will outperform their static audience setup'
-    ]
+    suggestions: Array.isArray(mc.suggestions) ? mc.suggestions : []
   }));
 
   // Cap auto-selected competitors to leave room for manual ones (max 8 total)
@@ -3707,6 +3619,8 @@ async function runAnalysis(url, country, industryOverride) {
     industry,
     websiteKPIs,
     competitors: selectedComps,
+    rejectedCompetitors: (aiDetected && aiDetected.rejected) || [],
+    modelsUsed: (aiDetected && aiDetected.modelsUsed) || [],
     sectorOnly,
     companyProfile,
     keywords: _seedKeywords.slice(0, 30),
@@ -3792,7 +3706,11 @@ async function runAnalysis(url, country, industryOverride) {
   try {
     document.dispatchEvent(new CustomEvent('ig:analysis-ready', { detail: { url: cleanUrl } }));
   } catch(_) {}
-  showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
+  if (!selectedComps.length) {
+    showToast(`⚠ Analysis finished for ${cleanUrl} — no verified same-industry / same-business competitors (refusing generic or simulated rivals)`);
+  } else {
+    showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} verified competitors in ${industry.name}`);
+  }
 
   // Pre-build the dashboard in the background and defer all other views
   // to a background queue with generous gaps. This prevents the main thread
