@@ -337,13 +337,12 @@ async function identifyLegacyResearchCleanup(client) {
 // Serialize DDL so overlapping ensure() callers (parallel test files, boot)
 // cannot race CREATE TABLE IF NOT EXISTS on the same relation types.
 const SCHEMA_INIT_TIMEOUT_MS = 30000;
-const SCHEMA_INIT_TIMEOUT_KEY = 'agent_orchestrator_schema_init_timeout';
 const SCHEMA_TRY_LOCK_SLEEP_MS = 50;
 let _ensureMutex = Promise.resolve();
 
 function _schemaInitTimeoutError() {
-  const err = new Error(SCHEMA_INIT_TIMEOUT_KEY);
-  err.code = SCHEMA_INIT_TIMEOUT_KEY;
+  const err = new Error('agent_orchestrator_schema_init_timeout');
+  err.code = 'agent_orchestrator_schema_init_timeout';
   return err;
 }
 
