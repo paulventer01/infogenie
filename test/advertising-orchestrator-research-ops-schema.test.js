@@ -14,6 +14,7 @@ const db = require('../db');
 const {
   ensureAgentOrchestratorSchema,
   identifyLegacyResearchCleanup,
+  _tryAdvisoryLockUntil,
 } = require('../services/agent_orchestrator/schema');
 const { ensureTenantSchema } = require('../services/tenants/schema');
 
@@ -75,16 +76,34 @@ test('production schema.js has no replica-role backfill and identify never mutat
   assert.match(src, /identifyLegacyResearchCleanup/);
   assert.match(src, /orchestrator_research_cleanup_targets/);
   assert.match(src, /'orchestrator_research_cleanup_targets'/);
+  assert.match(src, /snapshot_sha256/);
+  assert.match(src, /ADD COLUMN IF NOT EXISTS snapshot_sha256 TEXT NULL/);
+  assert.match(src, /orchestrator_research_cleanup_ops_snapshot_sha256_check/);
+  assert.match(src, /_ensureNamedCheck\(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_snapshot_sha256_check'/);
 
   const runEnsure = extractFunctionSource(src, '_runEnsureAgentOrchestratorSchema');
   assert.match(runEnsure, /SET lock_timeout = '30s'/);
   assert.match(runEnsure, /SET lock_timeout TO DEFAULT/);
   const lockTimeoutAt = runEnsure.indexOf("SET lock_timeout = '30s'");
-  const advisoryAt = runEnsure.indexOf('pg_advisory_lock');
+  const tryLockCallAt = runEnsure.indexOf('_tryAdvisoryLockUntil');
+  const tryLockSqlAt = runEnsure.indexOf('pg_try_advisory_lock');
+  const advisoryAt = tryLockCallAt >= 0 ? tryLockCallAt : tryLockSqlAt;
   assert.ok(lockTimeoutAt >= 0 && advisoryAt > lockTimeoutAt,
     'lock_timeout must be set on the ensure client before the advisory lock');
   assert.ok(runEnsure.includes('SET lock_timeout TO DEFAULT'),
     'ensure finally must reset lock_timeout');
+  assert.match(runEnsure, /87231402/);
+  assert.doesNotMatch(runEnsure, /SELECT pg_advisory_lock\(/);
+  assert.match(src, /pg_try_advisory_lock/);
+  assert.match(src, /agent_orchestrator_schema_init_timeout/);
+
+  const tryLockFn = extractFunctionSource(src, '_tryAdvisoryLockUntil');
+  assert.match(tryLockFn, /pg_try_advisory_lock/);
+  assert.match(tryLockFn, /agent_orchestrator_schema_init_timeout/);
+
+  const ensureFn = extractFunctionSource(src, 'ensureAgentOrchestratorSchema');
+  assert.match(ensureFn, /agent_orchestrator_schema_init_timeout/);
+  assert.match(ensureFn, /cancelled/);
 
   const identify = extractFunctionSource(src, '_identifyLegacyResearchCleanup');
   assert.doesNotMatch(identify, /UPDATE\s+orchestrator_research_evidence\b/);
@@ -1326,6 +1345,42 @@ if (!HAS_DB) {
       ),
       /confirmation_sha256|check/i
     );
+
+    const snapCol = (await p.query(
+      `SELECT column_name, is_nullable, data_type
+         FROM information_schema.columns
+        WHERE table_schema='public'
+          AND table_name='orchestrator_research_cleanup_ops'
+          AND column_name='snapshot_sha256'`
+    )).rows[0];
+    assert.ok(snapCol, 'snapshot_sha256 must exist on cleanup_ops');
+    assert.strictEqual(snapCol.is_nullable, 'YES');
+    assert.strictEqual(snapCol.data_type, 'text');
+    assert.ok(await checkExists('orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_snapshot_sha256_check'));
+
+    const snapOk = nid('op-snap-ok');
+    await p.query(
+      `INSERT INTO orchestrator_research_cleanup_ops
+         (id, tenant_id, idempotency_key, state, snapshot_sha256)
+       VALUES ($1,$2,$3,'previewed',$4)`,
+      [snapOk, tenantA, nid('op-snap-idemp'), SHA256_A]
+    );
+    const storedSnap = (await p.query(
+      `SELECT snapshot_sha256 FROM orchestrator_research_cleanup_ops
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, snapOk]
+    )).rows[0];
+    assert.strictEqual(storedSnap.snapshot_sha256, SHA256_A);
+
+    await assert.rejects(
+      () => p.query(
+        `INSERT INTO orchestrator_research_cleanup_ops
+           (id, tenant_id, idempotency_key, state, snapshot_sha256)
+         VALUES ($1,$2,$3,'previewed',$4)`,
+        [nid('op-snap-bad'), tenantA, nid('op-snap-bad-idemp'), 'not-a-hash']
+      ),
+      /snapshot_sha256|check/i
+    );
   });
 
   test('quota recompute refuses corrupt-low cache, heals on DELETE, and ignores corrupt-high cache', async () => {
@@ -1620,6 +1675,27 @@ if (!HAS_DB) {
       [tenantA, snapId, offSnapId]
     )).rows;
     assert.strictEqual(still.length, 2);
+  });
+
+  test('try-lock times out with agent_orchestrator_schema_init_timeout when 87231402 is held', async () => {
+    const pool = db.getPool();
+    const gate = await pool.connect();
+    const client = await pool.connect();
+    try {
+      await gate.query('SELECT pg_advisory_lock($1)', [87231402]);
+      await assert.rejects(
+        () => _tryAdvisoryLockUntil(client, 87231402, Date.now() + 120),
+        (err) => {
+          assert.match(String(err && err.message), /agent_orchestrator_schema_init_timeout/);
+          assert.strictEqual(err.code, 'agent_orchestrator_schema_init_timeout');
+          return true;
+        }
+      );
+    } finally {
+      try { await gate.query('SELECT pg_advisory_unlock($1)', [87231402]); } catch { /* ignore */ }
+      gate.release();
+      client.release();
+    }
   });
 
   test('NOSUPERUSER ensure succeeds; missing CREATE fails preflight with no schema change', async () => {

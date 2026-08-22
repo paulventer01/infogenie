@@ -336,25 +336,84 @@ async function identifyLegacyResearchCleanup(client) {
 
 // Serialize DDL so overlapping ensure() callers (parallel test files, boot)
 // cannot race CREATE TABLE IF NOT EXISTS on the same relation types.
+const SCHEMA_INIT_TIMEOUT_MS = 30000;
+const SCHEMA_INIT_TIMEOUT_KEY = 'agent_orchestrator_schema_init_timeout';
+const SCHEMA_TRY_LOCK_SLEEP_MS = 50;
 let _ensureMutex = Promise.resolve();
+
+function _schemaInitTimeoutError() {
+  const err = new Error(SCHEMA_INIT_TIMEOUT_KEY);
+  err.code = SCHEMA_INIT_TIMEOUT_KEY;
+  return err;
+}
+
+function _sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Bounded try-lock. Session-level 87231402 is ensure-only — do not share
+// it with the sweeper. lock_timeout does not bound pg_advisory_lock, so
+// callers must use this loop (or fail closed) instead of a blocking wait.
+async function _tryAdvisoryLockUntil(p, key, deadlineMs) {
+  for (;;) {
+    const r = await p.query('SELECT pg_try_advisory_lock($1) AS locked', [key]);
+    if (r.rows[0] && r.rows[0].locked) return true;
+    const remaining = deadlineMs - Date.now();
+    if (remaining <= 0) throw _schemaInitTimeoutError();
+    await _sleepMs(Math.min(SCHEMA_TRY_LOCK_SLEEP_MS, remaining));
+  }
+}
 
 async function ensureAgentOrchestratorSchema() {
   if (!_db.hasDb()) return false;
-  const queued = _ensureMutex.then(() => _runEnsureAgentOrchestratorSchema());
+  const queuedAt = Date.now();
+  let started = false;
+  let cancelled = false;
+
+  const queued = _ensureMutex.then(() => {
+    // Timed-out waiters must not start DDL when the previous ensure finishes.
+    if (cancelled || Date.now() - queuedAt >= SCHEMA_INIT_TIMEOUT_MS) {
+      throw _schemaInitTimeoutError();
+    }
+    started = true;
+    return _runEnsureAgentOrchestratorSchema();
+  });
   _ensureMutex = queued.catch(() => {});
-  return queued;
+
+  const remaining = SCHEMA_INIT_TIMEOUT_MS - (Date.now() - queuedAt);
+  if (remaining <= 0) {
+    cancelled = true;
+    throw _schemaInitTimeoutError();
+  }
+
+  let timer = null;
+  const timedOut = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      if (!started) {
+        cancelled = true;
+        reject(_schemaInitTimeoutError());
+      }
+    }, remaining);
+  });
+
+  try {
+    return await Promise.race([queued, timedOut]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function _runEnsureAgentOrchestratorSchema() {
   const pool = _db.getPool();
   const p = await pool.connect();
+  const deadlineMs = Date.now() + SCHEMA_INIT_TIMEOUT_MS;
   let failed = null;
   try {
     // Fail closed (55P03) instead of waiting forever on a blocked ALTER.
     // Must run after connect and before advisory lock / DDL. Do not share
     // this advisory lock with the sweeper — that deadlocks a held-row locker.
     await p.query("SET lock_timeout = '30s'");
-    await p.query('SELECT pg_advisory_lock($1)', [87231402]);
+    await _tryAdvisoryLockUntil(p, 87231402, deadlineMs);
     try {
       return await _runEnsureAgentOrchestratorSchemaLocked(p);
     } finally {
@@ -1506,6 +1565,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       actor_user_id           INTEGER NULL,
       approved_at             TIMESTAMPTZ NULL,
       confirmation_sha256     TEXT NULL,
+      snapshot_sha256         TEXT NULL,
       created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (tenant_id, id),
@@ -1529,6 +1589,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         CHECK (
           confirmation_sha256 IS NULL
           OR (char_length(confirmation_sha256) = 64 AND confirmation_sha256 ~ '^[0-9a-f]{64}$')
+        ),
+      CONSTRAINT orchestrator_research_cleanup_ops_snapshot_sha256_check
+        CHECK (
+          snapshot_sha256 IS NULL
+          OR (char_length(snapshot_sha256) = 64 AND snapshot_sha256 ~ '^[0-9a-f]{64}$')
         )
     );
 
@@ -1642,6 +1707,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS actor_user_id INTEGER NULL`);
   await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ NULL`);
   await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS confirmation_sha256 TEXT NULL`);
+  await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS snapshot_sha256 TEXT NULL`);
   await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
   await p.query(`ALTER TABLE orchestrator_research_cleanup_ops ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
 
@@ -1808,6 +1874,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     `purged_assets_count >= 0`);
   await _ensureNamedCheck(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_confirmation_sha256_check',
     `confirmation_sha256 IS NULL OR (char_length(confirmation_sha256) = 64 AND confirmation_sha256 ~ '^[0-9a-f]{64}$')`);
+  await _ensureNamedCheck(p, 'orchestrator_research_cleanup_ops', 'orchestrator_research_cleanup_ops_snapshot_sha256_check',
+    `snapshot_sha256 IS NULL OR (char_length(snapshot_sha256) = 64 AND snapshot_sha256 ~ '^[0-9a-f]{64}$')`);
 
   await _ensureNamedCheck(p, 'orchestrator_research_cleanup_targets', 'orchestrator_research_cleanup_targets_target_kind_check',
     `target_kind IN ('evidence','asset')`);
@@ -2268,4 +2336,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   return true;
 }
 
-module.exports = { ensureAgentOrchestratorSchema, identifyLegacyResearchCleanup };
+module.exports = {
+  ensureAgentOrchestratorSchema,
+  identifyLegacyResearchCleanup,
+  _tryAdvisoryLockUntil,
+};
