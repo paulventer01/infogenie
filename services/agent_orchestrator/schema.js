@@ -111,10 +111,30 @@ function _fkColList(cols) {
     .join(',');
 }
 
+// Catalog comparison for _ensureNamedFk. ON DELETE omitted → NO ACTION ('a').
+// DEFERRABLE is compared so a CASCADE FK is swapped to NO ACTION DEFERRABLE
+// without rewriting matching FKs on every boot.
+function _fkActionSpec(suffix) {
+  const s = String(suffix || '').replace(/\s+/g, ' ').trim().toUpperCase();
+  let deltype = 'a';
+  if (/\bON DELETE CASCADE\b/.test(s)) deltype = 'c';
+  else if (/\bON DELETE SET NULL\b/.test(s)) deltype = 'n';
+  else if (/\bON DELETE SET DEFAULT\b/.test(s)) deltype = 'd';
+  else if (/\bON DELETE RESTRICT\b/.test(s)) deltype = 'r';
+  const notDeferrable = /\bNOT DEFERRABLE\b/.test(s);
+  const deferrable = !notDeferrable && /\bDEFERRABLE\b/.test(s);
+  const deferred = deferrable && /\bINITIALLY DEFERRED\b/.test(s);
+  return { deltype, deferrable, deferred };
+}
+
 async function _ensureNamedFk(p, table, name, cols, refTable, refCols, fkSuffix) {
   const wanted = _fkColList(cols);
+  const wantedAction = _fkActionSpec(fkSuffix);
   const r = await p.query(
-    `SELECT string_agg(att.attname, ',' ORDER BY k.n) AS cols
+    `SELECT string_agg(att.attname, ',' ORDER BY k.n) AS cols,
+            con.confdeltype AS deltype,
+            con.condeferrable AS deferrable,
+            con.condeferred AS deferred
        FROM pg_constraint con
        JOIN pg_class rel ON rel.oid = con.conrelid
        JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
@@ -124,13 +144,26 @@ async function _ensureNamedFk(p, table, name, cols, refTable, refCols, fkSuffix)
         AND rel.relname = $1
         AND con.conname = $2
         AND con.contype = 'f'
-      GROUP BY con.oid`,
+      GROUP BY con.oid, con.confdeltype, con.condeferrable, con.condeferred`,
     [table, name]
   );
   const existing = r.rowCount ? _fkColList(r.rows[0].cols) : null;
-  if (existing === wanted) return;
-  // Same reason as _ensureNamedCheck: swap the column list atomically so a
-  // failed ADD cannot leave the table with no foreign key at all.
+  const existingAction = r.rowCount
+    ? {
+      deltype: r.rows[0].deltype,
+      deferrable: !!r.rows[0].deferrable,
+      deferred: !!r.rows[0].deferred,
+    }
+    : null;
+  if (
+    existing === wanted
+    && existingAction
+    && existingAction.deltype === wantedAction.deltype
+    && existingAction.deferrable === wantedAction.deferrable
+    && existingAction.deferred === wantedAction.deferred
+  ) return;
+  // Same reason as _ensureNamedCheck: swap the column list / ON DELETE action
+  // atomically so a failed ADD cannot leave the table with no foreign key at all.
   await p.query('BEGIN');
   try {
     if (existing) {
@@ -1495,7 +1528,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         UNIQUE (tenant_id, evidence_id, storage_ref),
       CONSTRAINT orchestrator_research_evidence_assets_tenant_evidence_fkey
         FOREIGN KEY (tenant_id, evidence_id)
-        REFERENCES orchestrator_research_evidence (tenant_id, id) ON DELETE CASCADE,
+        REFERENCES orchestrator_research_evidence (tenant_id, id)
+        ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
       CONSTRAINT orchestrator_research_evidence_assets_media_type_check
         CHECK (media_type IN ('image','video','html','other')),
       CONSTRAINT orchestrator_research_evidence_assets_retention_class_check
@@ -1925,17 +1959,21 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'ON DELETE CASCADE');
   // Existing DBs may still have the 2-column (tenant_id, competitor_id) FK under
   // this name, which allows same-tenant evidence to cite another run's competitor.
-  // _ensureNamedFk DROP+ADDs only when the local column list differs; a matching
-  // 3-col FK is a no-op so repeated ensure() does not take ACCESS EXCLUSIVE.
+  // _ensureNamedFk DROP+ADDs only when the local column list or ON DELETE action
+  // differs; a matching FK is a no-op so repeated ensure() does not take
+  // ACCESS EXCLUSIVE.
   await _ensureNamedFk(p, 'orchestrator_research_evidence',
     'orchestrator_research_evidence_tenant_competitor_fkey',
     'tenant_id, research_run_id, competitor_id',
     'orchestrator_research_competitors', 'tenant_id, research_run_id, id',
     'ON DELETE CASCADE');
+  // NO ACTION (not CASCADE): deleting parent evidence must not wipe child
+  // assets (legal_hold / future-expiry). DEFERRABLE matches the approval FK
+  // so tenant teardown can delete both tables in one statement.
   await _ensureNamedFk(p, 'orchestrator_research_evidence_assets',
     'orchestrator_research_evidence_assets_tenant_evidence_fkey',
     'tenant_id, evidence_id', 'orchestrator_research_evidence', 'tenant_id, id',
-    'ON DELETE CASCADE');
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
   await _ensureNamedFk(p, 'orchestrator_research_cleanup_targets',
     'orchestrator_research_cleanup_targets_op_fkey',
     'tenant_id, op_id', 'orchestrator_research_cleanup_ops', 'tenant_id, id',
@@ -2121,6 +2159,17 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         RAISE EXCEPTION 'orchestrator_research_evidence_immutable';
       END IF;
       IF NOT EXISTS (
+        SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id
+      ) THEN
+        RETURN OLD;
+      END IF;
+      IF EXISTS (
+        SELECT 1 FROM orchestrator_research_evidence_assets a
+         WHERE a.tenant_id = OLD.tenant_id AND a.evidence_id = OLD.id
+      ) THEN
+        RAISE EXCEPTION 'orchestrator_research_evidence_has_assets';
+      END IF;
+      IF NOT EXISTS (
         SELECT 1 FROM orchestrator_research_runs r
          WHERE r.id = OLD.research_run_id AND r.tenant_id = OLD.tenant_id
       ) THEN
@@ -2296,26 +2345,13 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';
       END IF;
       IF NOT EXISTS (
-        SELECT 1 FROM orchestrator_research_evidence e
-         WHERE e.id = OLD.evidence_id AND e.tenant_id = OLD.tenant_id
+        SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id
       ) THEN
         RETURN OLD;
       END IF;
       IF OLD.retention_class IS DISTINCT FROM 'legal_hold'
          AND OLD.expires_at IS NOT NULL
          AND OLD.expires_at <= now() THEN
-        RETURN OLD;
-      END IF;
-      IF EXISTS (
-        SELECT 1
-          FROM orchestrator_research_cleanup_ops o
-          JOIN orchestrator_research_cleanup_targets t
-            ON t.tenant_id = o.tenant_id AND t.op_id = o.id
-         WHERE o.tenant_id = OLD.tenant_id
-           AND o.state IN ('approved', 'running')
-           AND t.target_kind = 'asset'
-           AND t.target_id = OLD.id
-      ) THEN
         RETURN OLD;
       END IF;
       RAISE EXCEPTION 'orchestrator_research_evidence_assets_immutable';

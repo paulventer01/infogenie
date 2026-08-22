@@ -319,6 +319,23 @@ if (!HAS_DB) {
     await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]);
   });
 
+  async function namedFkAction(table, name) {
+    const p = db.getPool();
+    return (await p.query(
+      `SELECT con.confdeltype AS delete_type,
+              con.condeferrable AS deferrable,
+              con.condeferred AS deferred
+         FROM pg_constraint con
+         JOIN pg_class rel ON rel.oid = con.conrelid
+         JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        WHERE nsp.nspname = 'public'
+          AND rel.relname = $1
+          AND con.conname = $2
+          AND con.contype = 'f'`,
+      [table, name]
+    )).rows[0] || null;
+  }
+
   test('PR3A research tables exist with NOT NULL tenant_id FK CASCADE and PK (tenant_id, id)', async () => {
     const p = db.getPool();
     const present = (await p.query(
@@ -351,6 +368,34 @@ if (!HAS_DB) {
         WHERE table_schema='public' AND table_name='orchestrator_workflows'`
     )).rows;
     assert.strictEqual(wf.length, 1, 'PR1 orchestrator_workflows must still exist');
+  });
+
+  test('assets→evidence FK is NO ACTION DEFERRABLE and ensure() does not weaken it', async () => {
+    const fk = await namedFkAction(
+      'orchestrator_research_evidence_assets',
+      'orchestrator_research_evidence_assets_tenant_evidence_fkey'
+    );
+    assert.ok(fk, 'orchestrator_research_evidence_assets_tenant_evidence_fkey must exist');
+    assert.strictEqual(fk.delete_type, 'a', 'assets→evidence must be ON DELETE NO ACTION');
+    assert.strictEqual(fk.deferrable, true, 'assets→evidence must be DEFERRABLE');
+    assert.strictEqual(fk.deferred, true, 'assets→evidence must be INITIALLY DEFERRED');
+
+    await ensureAgentOrchestratorSchema();
+    const again = await namedFkAction(
+      'orchestrator_research_evidence_assets',
+      'orchestrator_research_evidence_assets_tenant_evidence_fkey'
+    );
+    assert.strictEqual(again.delete_type, 'a');
+    assert.strictEqual(again.deferrable, true);
+    assert.strictEqual(again.deferred, true);
+
+    const approvalFk = await namedFkAction(
+      'orchestrator_research_runs',
+      'orchestrator_research_runs_tenant_approval_fkey'
+    );
+    assert.ok(approvalFk);
+    assert.strictEqual(approvalFk.delete_type, 'a', 'approval FK must stay NO ACTION');
+    assert.strictEqual(approvalFk.deferrable, true);
   });
 
   test('second ensureAgentOrchestratorSchema is idempotent', async () => {

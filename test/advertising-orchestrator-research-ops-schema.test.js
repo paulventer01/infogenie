@@ -129,6 +129,38 @@ test('production schema.js has no replica-role backfill and identify never mutat
   assert.match(srcQuota, /COUNT\(\*\)::int/);
   assert.match(srcQuota, /orchestrator_research_evidence_payload_bytes/);
   assert.doesNotMatch(srcQuota, /evidence_count \+ 1/);
+
+  const ensureFk = extractFunctionSource(src, '_ensureNamedFk');
+  assert.match(ensureFk, /confdeltype/, '_ensureNamedFk must compare ON DELETE action, not only columns');
+  assert.match(ensureFk, /condeferrable/, '_ensureNamedFk must compare deferrability');
+  assert.match(ensureFk, /condeferred/);
+
+  const createAssetsAt = src.indexOf('CREATE TABLE IF NOT EXISTS orchestrator_research_evidence_assets');
+  const createAssets = src.slice(createAssetsAt, src.indexOf('CREATE TABLE IF NOT EXISTS orchestrator_research_quota', createAssetsAt));
+  assert.match(
+    createAssets,
+    /orchestrator_research_evidence_assets_tenant_evidence_fkey[\s\S]*ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED/
+  );
+  assert.match(createAssets, /REFERENCES tenants\(id\) ON DELETE CASCADE/);
+
+  const assetFnAt = src.indexOf('CREATE OR REPLACE FUNCTION orchestrator_research_evidence_assets_immutable');
+  const assetFn = src.slice(assetFnAt, src.indexOf('$fn$ LANGUAGE plpgsql', assetFnAt));
+  assert.match(assetFn, /FROM tenants t WHERE t\.id = OLD\.tenant_id/);
+  assert.doesNotMatch(
+    assetFn,
+    /FROM orchestrator_research_evidence e/,
+    'asset trigger must not allow DELETE when the parent evidence row is gone'
+  );
+  assert.doesNotMatch(
+    assetFn,
+    /target_kind = 'asset'/,
+    'asset trigger must not let snapshot membership override legal_hold or future expiry'
+  );
+
+  const evFnAt = src.indexOf('CREATE OR REPLACE FUNCTION orchestrator_research_evidence_immutable');
+  const evFn = src.slice(evFnAt, src.indexOf('$fn$ LANGUAGE plpgsql', evFnAt));
+  assert.match(evFn, /orchestrator_research_evidence_has_assets/);
+  assert.match(evFn, /FROM orchestrator_research_evidence_assets a/);
 });
 
 test('research trigger install is per-table and not one p.query locking runs+evidence', () => {
@@ -796,6 +828,76 @@ if (!HAS_DB) {
       ),
       /orchestrator_research_evidence_assets_immutable/
     );
+  });
+
+  test('expired parent DELETE cannot destroy legal_hold, future-expiry, or leftover expired children', async () => {
+    const p = db.getPool();
+    const host = await seedHost(p, tenantA);
+    const comp = await insertCompetitor(p, tenantA, host.runId);
+    const createdAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const futureAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const parentFail = /orchestrator_research_evidence_has_assets|foreign key|violates/i;
+
+    async function assertParentAndChildRemain(evId, assetId, label) {
+      await assert.rejects(
+        () => p.query(
+          `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+          [tenantA, evId]
+        ),
+        parentFail,
+        label
+      );
+      const ev = (await p.query(
+        `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, evId]
+      )).rows;
+      const asset = (await p.query(
+        `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, assetId]
+      )).rows;
+      assert.strictEqual(ev.length, 1, `${label}: parent must remain`);
+      assert.strictEqual(asset.length, 1, `${label}: child must remain`);
+    }
+
+    const holdEv = await insertEvidence(p, tenantA, host.runId, comp, {
+      id: nid('ev-parent-hold'),
+      retentionClass: 'standard',
+      createdAt,
+      expiresAt: expiredAt,
+    });
+    const holdAsset = await insertAsset(p, tenantA, holdEv, {
+      id: nid('asset-parent-hold'),
+      retentionClass: 'legal_hold',
+      expiresAt: null,
+    });
+    await assertParentAndChildRemain(holdEv, holdAsset, 'legal_hold child');
+
+    const futureEv = await insertEvidence(p, tenantA, host.runId, comp, {
+      id: nid('ev-parent-future'),
+      retentionClass: 'standard',
+      createdAt,
+      expiresAt: expiredAt,
+    });
+    const futureAsset = await insertAsset(p, tenantA, futureEv, {
+      id: nid('asset-parent-future'),
+      createdAt,
+      expiresAt: futureAt,
+    });
+    await assertParentAndChildRemain(futureEv, futureAsset, 'future-expiry child');
+
+    const leftoverEv = await insertEvidence(p, tenantA, host.runId, comp, {
+      id: nid('ev-parent-left'),
+      retentionClass: 'standard',
+      createdAt,
+      expiresAt: expiredAt,
+    });
+    const leftoverAsset = await insertAsset(p, tenantA, leftoverEv, {
+      id: nid('asset-parent-left'),
+      createdAt,
+      expiresAt: expiredAt,
+    });
+    await assertParentAndChildRemain(leftoverEv, leftoverAsset, 'expired child not deleted first');
   });
 
   test('identify does not hold naturally expired short rows after the first snapshot', async () => {
@@ -1581,13 +1683,21 @@ if (!HAS_DB) {
       'UPDATE stays fully refused even with an approved cleanup op'
     );
 
-    await p.query(
-      `DELETE FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
-      [tenantA, approvedAsset]
+    await assert.rejects(
+      () => p.query(
+        `DELETE FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, approvedAsset]
+      ),
+      /orchestrator_research_evidence_assets_immutable/,
+      'snapshot must not override future-expiry asset DELETE'
     );
-    await p.query(
-      `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
-      [tenantA, approvedEv]
+    await assert.rejects(
+      () => p.query(
+        `DELETE FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, approvedEv]
+      ),
+      /orchestrator_research_evidence_has_assets/,
+      'parent evidence stays while a future-expiry child remains'
     );
 
     const runningOp = await insertCleanupOp(p, tenantA, { state: 'running' });
@@ -1597,7 +1707,7 @@ if (!HAS_DB) {
       [tenantA, runningEv]
     );
 
-    const goneApproved = (await p.query(
+    const stillApproved = (await p.query(
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
       [tenantA, approvedEv]
     )).rows;
@@ -1605,13 +1715,13 @@ if (!HAS_DB) {
       `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND id=$2`,
       [tenantA, runningEv]
     )).rows;
-    const goneAsset = (await p.query(
+    const stillAsset = (await p.query(
       `SELECT id FROM orchestrator_research_evidence_assets WHERE tenant_id=$1 AND id=$2`,
       [tenantA, approvedAsset]
     )).rows;
-    assert.strictEqual(goneApproved.length, 0, 'approved op + snapshot target must allow DELETE');
-    assert.strictEqual(goneRunning.length, 0, 'running op + snapshot target must allow DELETE');
-    assert.strictEqual(goneAsset.length, 0, 'approved op + asset snapshot target must allow DELETE');
+    assert.strictEqual(stillApproved.length, 1, 'approved evidence with a living child must remain');
+    assert.strictEqual(goneRunning.length, 0, 'running op + snapshot target must allow DELETE when no child assets exist');
+    assert.strictEqual(stillAsset.length, 1, 'future-expiry asset must remain despite snapshot membership');
   });
 
   test('approved cleanup op does not delete a hold absent from its targets', async () => {
