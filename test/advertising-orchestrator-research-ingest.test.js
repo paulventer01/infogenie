@@ -18,9 +18,10 @@ const { ensureAgentOrchestratorSchema } = require('../services/agent_orchestrato
 const { ensureResearchLimits } = require('../services/agent_orchestrator/research_store');
 const { createResearchRuntime } = require('../services/agent_orchestrator/research_runtime');
 const {
-  startResearchRun, cancelResearchRun, getResearchRun, executeResearchRun,
+  startResearchRun, cancelResearchRun, getResearchRun, executeResearchRun, persistPage,
 } = require('../services/agent_orchestrator/research_ingest');
 const { acquireLease, releaseLease } = require('../services/agent_orchestrator/leases');
+const googleFixture = require('../services/agent_orchestrator/fixtures/research/google.v1.json');
 
 const HAS_DB = hasDb();
 
@@ -308,6 +309,199 @@ if (!HAS_DB) {
     );
     assert.strictEqual(persisted.rowCount, 0);
     assert.notStrictEqual(lost.state, 'completed');
+  });
+
+  function multiRowGooglePage(tenantId, runId, tag) {
+    const src = JSON.parse(JSON.stringify(googleFixture));
+    const baseComp = src.competitors[0];
+    const baseEv = src.evidence[0];
+    const competitors = [1, 2].map((n) => {
+      const row = { ...baseComp };
+      row.id = `comp-${tag}-${n}`;
+      row.tenant_id = tenantId;
+      row.research_run_id = runId;
+      row.provider_advertiser_id = `ext-google-adv-${tag}-${n}`;
+      delete row.dedup_key;
+      return row;
+    });
+    const evidence = [1, 2].map((n) => {
+      const row = { ...baseEv };
+      row.id = `ev-${tag}-${n}`;
+      row.tenant_id = tenantId;
+      row.research_run_id = runId;
+      row.competitor_id = competitors[n - 1].id;
+      row.provider_external_id = `ext-google-creative-${tag}-${n}`;
+      row.canonical_source_url = `https://adstransparency.google.com/advertiser/AR-${tag}/${n}`;
+      row.headline = `${baseEv.headline} ${tag} ${n}`;
+      row.provider_metrics = {
+        ...baseEv.provider_metrics,
+        source: 'mock',
+        _fabricated: true,
+        _estimated: true,
+      };
+      row.metrics_kind = 'estimated';
+      delete row.dedup_key;
+      delete row.content_fingerprint;
+      return row;
+    });
+    return {
+      ...src,
+      competitors,
+      evidence,
+      continuation_state: { honesty_class: 'fixture', ...(src.continuation_state || {}) },
+    };
+  }
+
+  async function runningResearchWithLease(tag) {
+    const wf = await approvedWorkflow(cookieA);
+    const created = await startResearchRun(db.getPool(), {
+      tenantId: tenantA.id,
+      userId: ownerA.id,
+      workflowId: wf.id,
+      requestedPlatforms: ['google'],
+      idempotencyKey: ik(tag),
+      credentialRefs: { google_research: 'user_integrations' },
+      execute: false,
+    });
+    await db.getPool().query(
+      `UPDATE orchestrator_research_runs SET state='running', started_at=now()
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, created.run.id]
+    );
+    const lease = await acquireLease(db.getPool(), tenantA.id, wf.id, { actorUserId: ownerA.id });
+    return { wf, run: created.run, lease };
+  }
+
+  async function countPersisted(runId) {
+    const pool = db.getPool();
+    const comps = await pool.query(
+      `SELECT id FROM orchestrator_research_competitors
+        WHERE tenant_id=$1 AND research_run_id=$2 ORDER BY id`,
+      [tenantA.id, runId]
+    );
+    const ev = await pool.query(
+      `SELECT id FROM orchestrator_research_evidence
+        WHERE tenant_id=$1 AND research_run_id=$2 ORDER BY id`,
+      [tenantA.id, runId]
+    );
+    return { competitors: comps.rows.map((r) => r.id), evidence: ev.rows.map((r) => r.id) };
+  }
+
+  test('mid-page cancel or lease loss prevents remaining stale writes', async () => {
+    const pool = db.getPool();
+
+    const cancelledHost = await runningResearchWithLease('midc');
+    const cancelPage = multiRowGooglePage(tenantA.id, cancelledHost.run.id, 'midc');
+    const cancelled = await persistPage(pool, cancelPage, {
+      tenantId: tenantA.id,
+      runId: cancelledHost.run.id,
+      workflowId: cancelledHost.wf.id,
+      holder: cancelledHost.lease.holder,
+      mode: 'fixture',
+      version: cancelledHost.run.approval_object_version,
+      approval_object_version: cancelledHost.run.approval_object_version,
+      beforeWrite: async ({ records }) => {
+        if (records === 1) {
+          await cancelResearchRun(pool, tenantA.id, cancelledHost.run.id);
+        }
+      },
+    });
+    assert.strictEqual(cancelled.stale, true);
+    assert.strictEqual(cancelled.records, 1);
+    const afterCancel = await countPersisted(cancelledHost.run.id);
+    assert.deepStrictEqual(afterCancel.competitors, [`comp-midc-1`]);
+    assert.deepStrictEqual(afterCancel.evidence, []);
+    const retryCancel = await persistPage(pool, cancelPage, {
+      tenantId: tenantA.id,
+      runId: cancelledHost.run.id,
+      workflowId: cancelledHost.wf.id,
+      holder: cancelledHost.lease.holder,
+      mode: 'fixture',
+      version: cancelledHost.run.approval_object_version,
+      approval_object_version: cancelledHost.run.approval_object_version,
+    });
+    assert.strictEqual(retryCancel.stale, true);
+    assert.strictEqual(retryCancel.records, 0);
+    const afterRetry = await countPersisted(cancelledHost.run.id);
+    assert.deepStrictEqual(afterRetry.competitors, [`comp-midc-1`]);
+    assert.deepStrictEqual(afterRetry.evidence, []);
+
+    const leaseHost = await runningResearchWithLease('midl');
+    const leasePage = multiRowGooglePage(tenantA.id, leaseHost.run.id, 'midl');
+    const lostLease = await persistPage(pool, leasePage, {
+      tenantId: tenantA.id,
+      runId: leaseHost.run.id,
+      workflowId: leaseHost.wf.id,
+      holder: leaseHost.lease.holder,
+      mode: 'fixture',
+      version: leaseHost.run.approval_object_version,
+      approval_object_version: leaseHost.run.approval_object_version,
+      beforeWrite: async ({ records }) => {
+        if (records === 1) {
+          await releaseLease(pool, tenantA.id, leaseHost.wf.id, leaseHost.lease.holder);
+        }
+      },
+    });
+    assert.strictEqual(lostLease.stale, true);
+    assert.strictEqual(lostLease.records, 1);
+    const afterLease = await countPersisted(leaseHost.run.id);
+    assert.deepStrictEqual(afterLease.competitors, [`comp-midl-1`]);
+    assert.deepStrictEqual(afterLease.evidence, []);
+
+    const expiredHost = await runningResearchWithLease('mide');
+    const expiredPage = multiRowGooglePage(tenantA.id, expiredHost.run.id, 'mide');
+    const expired = await persistPage(pool, expiredPage, {
+      tenantId: tenantA.id,
+      runId: expiredHost.run.id,
+      workflowId: expiredHost.wf.id,
+      holder: expiredHost.lease.holder,
+      mode: 'fixture',
+      version: expiredHost.run.approval_object_version,
+      approval_object_version: expiredHost.run.approval_object_version,
+      beforeWrite: async ({ records }) => {
+        if (records === 1) {
+          await pool.query(
+            `UPDATE orchestrator_execution_leases
+                SET expires_at=now() - interval '1 second'
+              WHERE tenant_id=$1 AND workflow_id=$2 AND holder=$3`,
+            [tenantA.id, expiredHost.wf.id, expiredHost.lease.holder]
+          );
+        }
+      },
+    });
+    assert.strictEqual(expired.stale, true);
+    assert.strictEqual(expired.records, 1);
+    const afterExpire = await countPersisted(expiredHost.run.id);
+    assert.deepStrictEqual(afterExpire.competitors, [`comp-mide-1`]);
+    assert.deepStrictEqual(afterExpire.evidence, []);
+    await releaseLease(pool, tenantA.id, expiredHost.wf.id, expiredHost.lease.holder);
+
+    const supersededHost = await runningResearchWithLease('mids');
+    const supersededPage = multiRowGooglePage(tenantA.id, supersededHost.run.id, 'mids');
+    const superseded = await persistPage(pool, supersededPage, {
+      tenantId: tenantA.id,
+      runId: supersededHost.run.id,
+      workflowId: supersededHost.wf.id,
+      holder: supersededHost.lease.holder,
+      mode: 'fixture',
+      version: supersededHost.run.approval_object_version,
+      approval_object_version: supersededHost.run.approval_object_version,
+      beforeWrite: async ({ records }) => {
+        if (records === 1) {
+          await pool.query(
+            `UPDATE orchestrator_workflows SET version=version+1, current_state='cancelled'
+              WHERE tenant_id=$1 AND id=$2`,
+            [tenantA.id, supersededHost.wf.id]
+          );
+        }
+      },
+    });
+    assert.strictEqual(superseded.stale, true);
+    assert.strictEqual(superseded.records, 1);
+    const afterSupersede = await countPersisted(supersededHost.run.id);
+    assert.deepStrictEqual(afterSupersede.competitors, [`comp-mids-1`]);
+    assert.deepStrictEqual(afterSupersede.evidence, []);
+    await releaseLease(pool, tenantA.id, supersededHost.wf.id, supersededHost.lease.holder);
   });
 
   test('research status is tenant-scoped and omits secret-like fields', async () => {

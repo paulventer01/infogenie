@@ -6,7 +6,7 @@ const C = require('./research_contracts');
 const { assertResearchRun, assertContinuationState } = require('./research_validate');
 const { insertCompetitor, insertEvidenceItem } = require('./research_store');
 const { assertPageHonesty, honestyFieldsFromPage } = require('./research_honesty');
-const { acquireLease, heartbeatLease, releaseLease, getLease } = require('./leases');
+const { acquireLease, heartbeatLease, releaseLease, getLease, isLeaseExpired } = require('./leases');
 const { latestApproval } = require('./runner');
 const { createResearchRuntime } = require('./research_runtime');
 const { safeRef } = require('./research_auth');
@@ -14,6 +14,9 @@ const { sanitizeConnectorMessage } = require('./research_errors');
 const { logger } = require('../infra/logger');
 
 const TERMINAL_RUN = new Set(['completed', 'failed', 'cancelled']);
+const STALE_WORKFLOW_STATES = new Set([
+  'cancelled', 'paused', 'completed', 'failed', 'stopped', 'research_failed',
+]);
 
 function newRunId() {
   return `rr_${crypto.randomBytes(8).toString('hex')}`;
@@ -93,10 +96,42 @@ async function updateRun(pool, tenantId, runId, fields, { requireState, holder, 
   return r.rows[0] || null;
 }
 
-async function stillWritable(pool, { tenantId, runId, workflowId, holder }) {
+function capturedNumber(ctx, ...keys) {
+  if (!ctx) return null;
+  for (const key of keys) {
+    if (ctx[key] != null && ctx[key] !== '') return Number(ctx[key]);
+  }
+  return null;
+}
+
+async function stillWritable(pool, ctx = {}) {
+  const { tenantId, runId, holder } = ctx;
   const run = await loadRun(pool, tenantId, runId);
   if (!run || run.state !== 'running') return null;
+
+  const workflowId = ctx.workflowId || run.workflow_id;
+  if (workflowId) {
+    const wf = (await pool.query(
+      `SELECT id, current_state, version FROM orchestrator_workflows
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, workflowId]
+    )).rows[0];
+    if (!wf) return null;
+    if (STALE_WORKFLOW_STATES.has(wf.current_state)) return null;
+    const capturedVersion = capturedNumber(ctx, 'version', 'workflowVersion');
+    const capturedApproval = capturedNumber(ctx, 'approval_object_version', 'approvalObjectVersion');
+    if (capturedVersion != null && Number(wf.version) !== capturedVersion) return null;
+    if (capturedApproval != null && Number(wf.version) !== capturedApproval) return null;
+    if (capturedApproval != null && Number(run.approval_object_version) !== capturedApproval) return null;
+    if (run.approval_object_version != null
+        && Number(wf.version) !== Number(run.approval_object_version)) {
+      return null;
+    }
+  }
+
   if (holder && workflowId) {
+    const lease = await getLease(pool, tenantId, workflowId);
+    if (!lease || isLeaseExpired(lease) || lease.holder !== holder) return null;
     const beat = await heartbeatLease(pool, tenantId, workflowId, holder);
     if (!beat) return null;
   }
@@ -105,22 +140,36 @@ async function stillWritable(pool, { tenantId, runId, workflowId, holder }) {
 
 async function persistPage(pool, page, ctx) {
   assertPageHonesty({ mode: ctx && ctx.mode, page });
-  const run = await stillWritable(pool, ctx);
-  if (!run) return { stale: true, records: 0 };
   let records = 0;
-  for (const comp of page.competitors || []) {
+
+  async function beforeDurableWrite(kind, index) {
+    if (ctx && typeof ctx.beforeWrite === 'function') {
+      await ctx.beforeWrite({ kind, index, records });
+    }
+    return stillWritable(pool, ctx);
+  }
+
+  const competitors = page.competitors || [];
+  for (let i = 0; i < competitors.length; i++) {
+    const writable = await beforeDurableWrite('competitor', i);
+    if (!writable) return { stale: true, records };
     try {
-      await insertCompetitor(pool, comp, { tenantId: ctx.tenantId });
+      await insertCompetitor(pool, competitors[i], { tenantId: ctx.tenantId });
       records += 1;
     } catch (err) {
       if (!isUnique(err)) throw err;
     }
   }
-  const afterComp = await stillWritable(pool, ctx);
-  if (!afterComp) return { stale: true, records };
-  for (const ev of page.evidence || []) {
+
+  const evidence = page.evidence || [];
+  for (let i = 0; i < evidence.length; i++) {
+    const writable = await beforeDurableWrite('evidence', i);
+    if (!writable) return { stale: true, records };
     try {
-      await insertEvidenceItem(pool, ev, { tenantId: ctx.tenantId, mode: ctx && ctx.mode });
+      await insertEvidenceItem(pool, evidence[i], {
+        tenantId: ctx.tenantId,
+        mode: ctx && ctx.mode,
+      });
       records += 1;
     } catch (err) {
       if (!isUnique(err)) throw err;
@@ -168,6 +217,8 @@ async function executeResearchRun(pool, {
       }
       const writable = await stillWritable(pool, {
         tenantId, runId, workflowId: run.workflow_id, holder,
+        version: run.approval_object_version,
+        approval_object_version: run.approval_object_version,
       });
       if (!writable) return loadRun(pool, tenantId, runId);
 
@@ -212,6 +263,8 @@ async function executeResearchRun(pool, {
 
       const saved = await persistPage(pool, page, {
         tenantId, runId, workflowId: run.workflow_id, holder, mode: rt.mode,
+        version: run.approval_object_version,
+        approval_object_version: run.approval_object_version,
       });
       if (saved.stale) return loadRun(pool, tenantId, runId);
       records += saved.records;
