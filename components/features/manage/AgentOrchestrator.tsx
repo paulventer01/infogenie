@@ -144,7 +144,16 @@ interface TimelineEvent {
   created_at: string;
 }
 
+interface ResearchRun {
+  id: string;
+  state: string;
+  error_code: string | null;
+  continuation_state?: { honesty_class?: string };
+}
+
 type LoadStatus = "loading" | "error" | "ready";
+
+const ACTIVE_RESEARCH_STATES = new Set(["pending", "running"]);
 
 const PLATFORMS = ["meta", "google", "tiktok"] as const;
 
@@ -235,6 +244,14 @@ function validateHttpsUrl(raw: string): boolean {
   }
 }
 
+function researchHonestyLabel(honestyClass: string | undefined): string {
+  if (honestyClass === "fixture" || honestyClass === "synthetic") {
+    return "Fixture / not live Meta data";
+  }
+  if (honestyClass === "live") return "Live Meta Ad Library response";
+  return "";
+}
+
 async function orchMutate<T extends { ok: boolean; error?: string }>(
   path: string,
   method: "POST" | "PATCH" | "PUT",
@@ -307,6 +324,17 @@ export default function AgentOrchestrator() {
     monthly_ai_cost_dollars: "0",
     per_workflow_cost_dollars: "0",
   });
+
+  const [metaQuery, setMetaQuery] = useState("");
+  const [metaCountries, setMetaCountries] = useState("US");
+  const [metaLookback, setMetaLookback] = useState("30");
+  const [metaMaxPages, setMetaMaxPages] = useState("2");
+  const [metaMaxResults, setMetaMaxResults] = useState("25");
+  const [metaMode, setMetaMode] = useState<"fixture" | "live">("fixture");
+  const [metaResearchRun, setMetaResearchRun] = useState<ResearchRun | null>(null);
+  const [metaResearchBusy, setMetaResearchBusy] = useState("");
+  const [metaResearchMsg, setMetaResearchMsg] = useState("");
+  const [metaResearchMsgIsError, setMetaResearchMsgIsError] = useState(false);
 
   const can = useCallback(
     (key: string) => isPlatformAdmin || permissions.includes(key),
@@ -478,6 +506,28 @@ export default function AgentOrchestrator() {
       setTimeline(null);
     }
   }, [selectedId, loadSelected]);
+
+  useEffect(() => {
+    setMetaResearchRun(null);
+    setMetaResearchMsg("");
+    setMetaResearchMsgIsError(false);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!metaResearchRun?.id || !ACTIVE_RESEARCH_STATES.has(metaResearchRun.state)) return;
+    const runId = metaResearchRun.id;
+    let cancelled = false;
+    const poll = async () => {
+      const r = await apiGet<{ ok: boolean; run?: ResearchRun; error?: string }>(
+        `/api/agent-orchestrator/research/runs/${runId}`,
+      );
+      if (cancelled || r.ok === false || !r.run) return;
+      setMetaResearchRun(r.run);
+    };
+    poll();
+    const iv = setInterval(poll, 2500);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [metaResearchRun?.id, metaResearchRun?.state]);
 
   const actionsLocked = status === "loading" || !!busy;
   const wfActionsLocked = wfStatus === "loading" || !!wfBusy || detailLoading;
@@ -716,6 +766,67 @@ export default function AgentOrchestrator() {
     await loadCredits();
   }
 
+  async function startMetaResearch() {
+    if (!selected || !can("orchestrator.workflows.approve.research_execution")) return;
+    const query = metaQuery.trim();
+    if (metaMode === "live" && !query) {
+      setMetaResearchMsgIsError(true);
+      setMetaResearchMsg("Search query is required for live Meta research.");
+      return;
+    }
+    const countries = metaCountries.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+    setMetaResearchBusy("start");
+    setMetaResearchMsg("");
+    setMetaResearchMsgIsError(false);
+    const r = await orchMutate<{ ok: boolean; run?: ResearchRun; error?: string }>(
+      "/api/agent-orchestrator/research/runs",
+      "POST",
+      {
+        workflow_id: selected.id,
+        idempotency_key: crypto.randomUUID(),
+        requested_platforms: ["meta"],
+        mode: metaMode,
+        credential_refs: { meta_research: "user_integrations" },
+        search_parameters: {
+          query: query || "competitor ads",
+          countries: countries.length ? countries : ["US"],
+          lookback_days: Math.min(365, Math.max(1, Number(metaLookback) || 30)),
+          max_pages: Math.min(50, Math.max(1, Number(metaMaxPages) || 2)),
+          max_results_per_page: Math.min(100, Math.max(1, Number(metaMaxResults) || 25)),
+        },
+        research_brief: [selected.objective, selected.product_or_service].filter(Boolean).join(" — ") || query,
+      },
+    );
+    setMetaResearchBusy("");
+    if (r.ok === false) {
+      setMetaResearchMsgIsError(true);
+      setMetaResearchMsg(r.error || "Research start failed");
+      return;
+    }
+    if (r.run) setMetaResearchRun(r.run);
+    setMetaResearchMsgIsError(false);
+    setMetaResearchMsg("Meta research run started.");
+  }
+
+  async function cancelMetaResearch() {
+    if (!metaResearchRun?.id) return;
+    setMetaResearchBusy("cancel");
+    setMetaResearchMsg("");
+    const r = await orchMutate<{ ok: boolean; run?: ResearchRun; error?: string }>(
+      `/api/agent-orchestrator/research/runs/${metaResearchRun.id}/cancel`,
+      "POST",
+    );
+    setMetaResearchBusy("");
+    if (r.ok === false) {
+      setMetaResearchMsgIsError(true);
+      setMetaResearchMsg(r.error || "Cancel failed");
+      return;
+    }
+    if (r.run) setMetaResearchRun(r.run);
+    setMetaResearchMsgIsError(false);
+    setMetaResearchMsg("Research run cancelled.");
+  }
+
   async function submitLimits() {
     if (!can("orchestrator.credits.limits.edit")) return;
     setCreditsBusy("limits");
@@ -780,6 +891,13 @@ export default function AgentOrchestrator() {
   const showRecover = selected
     && (selected.current_state === "failed" || selected.current_state === "research_failed")
     && can("orchestrator.workflows.recover");
+
+  const canStartMetaResearch = can("orchestrator.workflows.approve.research_execution");
+  const showCancelMetaResearch = metaResearchRun
+    && ACTIVE_RESEARCH_STATES.has(metaResearchRun.state)
+    && can("orchestrator.workflows.cancel");
+  const metaResearchLocked = !!metaResearchBusy || detailLoading;
+  const metaHonestyLabel = researchHonestyLabel(metaResearchRun?.continuation_state?.honesty_class);
 
   const showCredits = can("orchestrator.credits.view");
   const showLimits = can("orchestrator.credits.limits.view");
@@ -1235,12 +1353,14 @@ export default function AgentOrchestrator() {
             color: "#92400E",
           }}
         >
-          <strong>Future features — not yet implemented.</strong>{" "}
-          Competitor research, creative generation, campaign publishing, and performance optimization agents
-          are stubbed in PR 1 and do not produce live results. Do not expect live ROAS, CTR, impressions,
-          or fabricated campaign metrics from this control plane. Tenant credit balances, ceilings and limits
-          are recorded here. Automatic AI spend charging is not enabled in production yet; live ad-platform
-          spend is not connected.
+          <strong>Partial rollout — limited live connectors.</strong>{" "}
+          Meta competitor-ad research can be run from this panel when the workflow has a research_execution
+          approval and Meta credentials are connected via Settings (opaque{" "}
+          <code>user_integrations</code> ref). Google and TikTok research remain fixture-only. Creative
+          generation, campaign publishing, activation, and optimization are not yet implemented. Do not expect
+          live ROAS, CTR, impressions, or fabricated campaign metrics from this control plane. Tenant credit
+          balances, ceilings and limits are recorded here.{" "}
+          Automatic AI spend charging is not enabled in production yet; live ad-platform spend is not connected.
         </div>
 
         <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 14, padding: 18 }}>
@@ -1625,6 +1745,117 @@ export default function AgentOrchestrator() {
                       >
                         Recover
                       </button>
+                    )}
+                  </div>
+
+                  <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 14, marginBottom: 16, background: "#F9FAFB" }}>
+                    <h5 style={{ margin: "0 0 10px", fontSize: "0.85rem" }}>Meta research</h5>
+                    <p style={{ margin: "0 0 10px", fontSize: "0.72rem", color: "#6B7280" }}>
+                      Uses Meta credentials from Settings via <code>user_integrations</code>. No tokens entered here.
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 10 }}>
+                      <label style={{ fontSize: "0.78rem", gridColumn: "1 / -1" }}>
+                        Search query{metaMode === "live" ? " (required)" : ""}
+                        <input
+                          type="text"
+                          value={metaQuery}
+                          onChange={(e) => setMetaQuery(e.target.value)}
+                          placeholder="competitor brand or keyword"
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Countries
+                        <input
+                          type="text"
+                          value={metaCountries}
+                          onChange={(e) => setMetaCountries(e.target.value)}
+                          placeholder="US, GB"
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Lookback days
+                        <input
+                          type="number"
+                          min="1"
+                          max="365"
+                          value={metaLookback}
+                          onChange={(e) => setMetaLookback(e.target.value)}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Max pages
+                        <input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={metaMaxPages}
+                          onChange={(e) => setMetaMaxPages(e.target.value)}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Results / page
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={metaMaxResults}
+                          onChange={(e) => setMetaMaxResults(e.target.value)}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 10, fontSize: "0.78rem" }}>
+                      <span style={{ fontWeight: 600 }}>Mode</span>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input type="radio" name="metaMode" checked={metaMode === "fixture"} onChange={() => setMetaMode("fixture")} />
+                        Fixture (safe)
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input type="radio" name="metaMode" checked={metaMode === "live"} onChange={() => setMetaMode("live")} />
+                        Live Meta Ad Library
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                      {canStartMetaResearch && (
+                        <button
+                          type="button"
+                          disabled={metaResearchLocked}
+                          onClick={startMetaResearch}
+                          style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: metaResearchLocked ? 0.6 : 1 }}
+                        >
+                          {metaResearchBusy === "start" ? "Starting…" : "Start Meta research"}
+                        </button>
+                      )}
+                      {showCancelMetaResearch && (
+                        <button
+                          type="button"
+                          disabled={metaResearchLocked}
+                          onClick={cancelMetaResearch}
+                          style={{ ...btnSecondary, opacity: metaResearchLocked ? 0.6 : 1 }}
+                        >
+                          {metaResearchBusy === "cancel" ? "Cancelling…" : "Cancel run"}
+                        </button>
+                      )}
+                    </div>
+                    {metaResearchMsg && (
+                      <p style={{ fontSize: "0.78rem", color: metaResearchMsgIsError ? "#B91C1C" : "#3730A3", margin: "0 0 8px" }}>
+                        {metaResearchMsg}
+                      </p>
+                    )}
+                    {metaResearchRun && (
+                      <div style={{ fontSize: "0.78rem", color: "#374151" }}>
+                        <div>Run: {metaResearchRun.id} · State: {metaResearchRun.state}</div>
+                        {metaResearchRun.error_code && (
+                          <div style={{ color: "#B91C1C" }}>Error: {metaResearchRun.error_code}</div>
+                        )}
+                        {metaHonestyLabel && (
+                          <div style={{ marginTop: 4, color: "#6B7280" }}>{metaHonestyLabel}</div>
+                        )}
+                      </div>
                     )}
                   </div>
 

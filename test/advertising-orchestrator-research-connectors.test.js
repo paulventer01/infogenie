@@ -279,8 +279,8 @@ const liveEnv = {
   tiktok: process.env.INFOGENIE_LIVE_TIKTOK_RESEARCH === '1',
 };
 
-test('meta live adapter skipped — credentials absent', {
-  skip: liveEnv.meta ? false : 'INFOGENIE_LIVE_META_RESEARCH not set',
+test('meta live smoke lives in advertising-orchestrator-research-meta-live.test.js', {
+  skip: 'live Meta smoke is in test/advertising-orchestrator-research-meta-live.test.js',
 }, () => {});
 
 test('google live adapter skipped — credentials absent', {
