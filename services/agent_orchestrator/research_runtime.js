@@ -60,7 +60,7 @@ const CAPABILITY_MATRIX = Object.freeze({
       'ad_library', 'ads_transparency_center', 'keyword_planner',
       'competitor_account_access', 'campaign_publish', 'campaign_mutate',
     ]),
-    documented: 'TikTok Commercial Content Library API',
+    documented: 'TikTok Commercial Content API (open.tiktokapis.com /v2/research/adlib/ad/query/)',
     live: 'PR3B-4',
   }),
 });
