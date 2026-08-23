@@ -348,7 +348,8 @@ test('14. Authorization and secret-like values are redacted', async () => {
   assert.strictEqual(redacted.token, '[redacted]');
   assert.strictEqual(redacted.access_token, '[redacted]');
   assert.strictEqual(redacted.nested.Authorization, '[redacted]');
-  assertNoSecrets(redacted);
+  assert.doesNotMatch(JSON.stringify(redacted), new RegExp(TOKEN));
+  assert.doesNotMatch(JSON.stringify(redacted), /Bearer /i);
 });
 
 test('15. live vs fixture honesty stays distinct', async () => {
