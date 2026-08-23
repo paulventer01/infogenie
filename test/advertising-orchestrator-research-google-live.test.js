@@ -538,11 +538,27 @@ test('unknown country omits location_code; multi-country does not invent geograp
   for (const ev of page.evidence) {
     assert.strictEqual(ev.market, null);
   }
-  const unknown = (await liveFetch(baseReq({
+  const unknown = await liveFetch(baseReq({
     idempotency_key: 'ik-xx',
     search_parameters: { query: 'jackets', countries: ['ZZ'], max_results_per_page: 10 },
-  }), twoHop([sampleAdvertiser()], [sampleAd()]))).hops;
-  assert.equal(Object.prototype.hasOwnProperty.call(JSON.parse(unknown[0].body)[0], 'location_code'), false);
+  }), twoHop([sampleAdvertiser()], [sampleAd()]));
+  assert.equal(Object.prototype.hasOwnProperty.call(JSON.parse(unknown.hops[0].body)[0], 'location_code'), false);
+  for (const row of unknown.page.competitors) {
+    assert.strictEqual(row.country, null);
+    assert.strictEqual(row.market, null);
+  }
+  for (const ev of unknown.page.evidence) {
+    assert.strictEqual(ev.country == null, true);
+    assert.strictEqual(ev.market, null);
+  }
+  const supported = await liveFetch(baseReq({
+    idempotency_key: 'ik-us',
+    search_parameters: { query: 'jackets', countries: ['US'], max_results_per_page: 10 },
+  }), twoHop([sampleAdvertiser()], [sampleAd()]));
+  assert.strictEqual(JSON.parse(supported.hops[0].body)[0].location_code, 2840);
+  assert.strictEqual(supported.page.competitors[0].country, 'US');
+  assert.strictEqual(supported.page.competitors[0].market, 'US');
+  assert.strictEqual(supported.page.evidence[0].market, 'US');
 });
 
 test('domain query can use target; missing query fails closed; no new /api prefix', async () => {

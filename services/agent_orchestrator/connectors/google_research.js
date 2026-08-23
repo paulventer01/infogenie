@@ -176,7 +176,10 @@ function locationCodeFor(countries) {
 
 function requestedGeography(countries) {
   if (!Array.isArray(countries) || countries.length !== 1) return null;
-  return clip(countries[0], C.LIMITS.country.max) || null;
+  const iso = clip(countries[0], C.LIMITS.country.max);
+  if (!iso) return null;
+  if (locationCodeFor([iso]) == null) return null;
+  return iso;
 }
 
 function looksLikeDomain(query) {
