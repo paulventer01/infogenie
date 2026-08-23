@@ -3,6 +3,7 @@
 const C = require('../research_contracts');
 const { assertConnectorRequest, assertConnectorResult } = require('../research_connector');
 const { connectorErrorPage } = require('../research_errors');
+const { stampPageHonesty, assertPageHonesty } = require('../research_honesty');
 const { hostAllowed } = require('./transport');
 
 const UNSUPPORTED_ALWAYS = Object.freeze([
@@ -13,7 +14,8 @@ const UNSUPPORTED_ALWAYS = Object.freeze([
   'optimization',
 ]);
 
-function bindPage(page, req) {
+function bindPage(page, req, ctx) {
+  const mode = (ctx && ctx.mode) || 'fixture';
   const remap = (id) => `${req.research_run_id}:${id}`.slice(0, C.LIMITS.id.max);
   const idMap = {};
   const competitors = (page.competitors || []).map((row) => {
@@ -37,7 +39,7 @@ function bindPage(page, req) {
     tenant_id: req.tenant_id,
     evidence_id: remap(row.evidence_id),
   }));
-  return {
+  const bound = stampPageHonesty({
     ...page,
     ok: true,
     contract_version: 'v1',
@@ -47,7 +49,9 @@ function bindPage(page, req) {
     evidence,
     assets,
     retry_class: 'none',
-  };
+  }, mode);
+  assertPageHonesty({ mode, page: bound });
+  return bound;
 }
 
 function pageForCursor(spec, cursor) {
@@ -130,7 +134,7 @@ function createResearchAdapter(spec) {
           }));
         }
       }
-      return assertConnectorResult(bindPage(chosen, req), { tenantId: req.tenant_id });
+      return assertConnectorResult(bindPage(chosen, req, ctx), { tenantId: req.tenant_id });
     }
     if (spec.allowLive !== true && !(ctx && ctx.injected)) {
       return assertConnectorResult(connectorErrorPage('terminal', 'connector_unavailable', {
@@ -194,7 +198,7 @@ function createResearchAdapter(spec) {
           contract_version: 'v1',
         }));
       }
-      return assertConnectorResult(bindPage(page, req), { tenantId: req.tenant_id });
+      return assertConnectorResult(bindPage(page, req, ctx), { tenantId: req.tenant_id });
     }
     return assertConnectorResult(connectorErrorPage('invalid_response', 'unmapped_provider_page', {
       connector_id: spec.id,

@@ -174,10 +174,18 @@ if (!HAS_DB) {
     });
     assert.strictEqual(replay.json.run.id, first.json.run.id);
     const rows = await db.getPool().query(
-      `SELECT id FROM orchestrator_research_evidence WHERE tenant_id=$1 AND research_run_id=$2`,
+      `SELECT id, provider_metrics, metrics_kind FROM orchestrator_research_evidence
+        WHERE tenant_id=$1 AND research_run_id=$2`,
       [tenantA.id, first.json.run.id]
     );
     assert.ok(rows.rowCount >= 1);
+    for (const row of rows.rows) {
+      assert.strictEqual(row.provider_metrics.source, 'mock');
+      assert.strictEqual(row.provider_metrics._fabricated, true);
+      assert.strictEqual(row.provider_metrics._estimated, true);
+      assert.strictEqual(row.metrics_kind, 'estimated');
+      assert.notStrictEqual(row.metrics_kind, 'provider_reported');
+    }
     const dup = await db.getPool().query(
       `SELECT COUNT(*)::int AS n FROM orchestrator_research_evidence
         WHERE tenant_id=$1 AND research_run_id=$2`,

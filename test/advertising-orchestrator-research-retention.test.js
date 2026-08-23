@@ -23,6 +23,7 @@ const {
   ensureResearchLimits,
 } = require('../services/agent_orchestrator/research_store');
 const { OrchError } = require('../services/agent_orchestrator/errors');
+const { nonLiveHonestyMetrics } = require('../services/agent_orchestrator/research_honesty');
 
 const HAS_DB = db.hasDb();
 const SHA256_A = 'a'.repeat(64);
@@ -519,8 +520,8 @@ if (!HAS_DB) {
         created_at: now,
         expires_at: expired,
         retention_class: 'standard',
-        provider_metrics: {},
-        metrics_kind: 'provider_reported',
+        provider_metrics: nonLiveHonestyMetrics(),
+        metrics_kind: 'estimated',
         provenance_method: 'ad_library',
         connector_id: 'meta_research',
         connector_version: '1.0.0',
@@ -541,8 +542,8 @@ if (!HAS_DB) {
           excerpt: 'copy',
           captured_at: new Date().toISOString(),
           retention_class: 'standard',
-          provider_metrics: {},
-          metrics_kind: 'provider_reported',
+          provider_metrics: nonLiveHonestyMetrics(),
+          metrics_kind: 'estimated',
           provenance_method: 'ad_library',
           connector_id: 'meta_research',
           connector_version: '1.0.0',
@@ -567,8 +568,8 @@ if (!HAS_DB) {
         excerpt: 'copy',
         captured_at: new Date().toISOString(),
         retention_class: 'standard',
-        provider_metrics: {},
-        metrics_kind: 'provider_reported',
+        provider_metrics: nonLiveHonestyMetrics(),
+        metrics_kind: 'estimated',
         provenance_method: 'ad_library',
         connector_id: 'meta_research',
         connector_version: '1.0.0',

@@ -14,6 +14,7 @@ const {
   insertCompetitor,
   ensureResearchLimits,
 } = require('../services/agent_orchestrator/research_store');
+const { nonLiveHonestyMetrics } = require('../services/agent_orchestrator/research_honesty');
 
 const HAS_DB = db.hasDb();
 const SUFFIX = `aors-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -89,8 +90,8 @@ function evidencePayload(tenantId, runId, competitorId, extra = {}) {
     created_at: extra.createdAt || now,
     expires_at: extra.expiresAt,
     retention_class: extra.retentionClass || 'standard',
-    provider_metrics: extra.providerMetrics || {},
-    metrics_kind: 'provider_reported',
+    provider_metrics: extra.providerMetrics || nonLiveHonestyMetrics(),
+    metrics_kind: extra.metricsKind || 'estimated',
     provenance_method: 'ad_library',
     connector_id: 'meta_research',
     connector_version: '1.0.0',

@@ -41,8 +41,12 @@
           "market": "US",
           "language": "en",
           "placement": "instagram_feed",
-          "provider_metrics": {},
-          "metrics_kind": "provider_reported",
+          "provider_metrics": {
+            "source": "mock",
+            "_fabricated": true,
+            "_estimated": true
+          },
+          "metrics_kind": "estimated",
           "provenance_method": "ad_library",
           "connector_id": "meta_research",
           "connector_version": "1.0.0",
@@ -72,7 +76,9 @@
         "has_more": true
       },
       "continuation_state": {
-        "page": 1
+        "page": 1,
+        "source": "mock",
+        "honesty_class": "fixture"
       },
       "rate_limit": {
         "limit": 200,
@@ -95,7 +101,9 @@
       },
       "continuation_state": {
         "page": 2,
-        "done": true
+        "done": true,
+        "source": "mock",
+        "honesty_class": "fixture"
       },
       "rate_limit": {
         "limit": 200,

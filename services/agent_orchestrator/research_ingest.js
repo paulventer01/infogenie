@@ -5,6 +5,7 @@ const { fail } = require('./errors');
 const C = require('./research_contracts');
 const { assertResearchRun, assertContinuationState } = require('./research_validate');
 const { insertCompetitor, insertEvidenceItem } = require('./research_store');
+const { assertPageHonesty, honestyFieldsFromPage } = require('./research_honesty');
 const { acquireLease, heartbeatLease, releaseLease, getLease } = require('./leases');
 const { latestApproval } = require('./runner');
 const { createResearchRuntime } = require('./research_runtime');
@@ -103,6 +104,7 @@ async function stillWritable(pool, { tenantId, runId, workflowId, holder }) {
 }
 
 async function persistPage(pool, page, ctx) {
+  assertPageHonesty({ mode: ctx && ctx.mode, page });
   const run = await stillWritable(pool, ctx);
   if (!run) return { stale: true, records: 0 };
   let records = 0;
@@ -118,7 +120,7 @@ async function persistPage(pool, page, ctx) {
   if (!afterComp) return { stale: true, records };
   for (const ev of page.evidence || []) {
     try {
-      await insertEvidenceItem(pool, ev, { tenantId: ctx.tenantId });
+      await insertEvidenceItem(pool, ev, { tenantId: ctx.tenantId, mode: ctx && ctx.mode });
       records += 1;
     } catch (err) {
       if (!isUnique(err)) throw err;
@@ -142,6 +144,7 @@ async function executeResearchRun(pool, {
   const rt = runtime || createResearchRuntime({ mode: 'fixture' });
   let records = Number((run.continuation_state && run.continuation_state.records) || 0);
   let pages = Number((run.continuation_state && run.continuation_state.pages) || 0);
+  let honesty = honestyFieldsFromPage({ continuation_state: run.continuation_state });
   const platforms = run.requested_platforms || [];
   const maxPages = Math.min(
     C.LIMITS.max_pages.max,
@@ -208,15 +211,16 @@ async function executeResearchRun(pool, {
       }
 
       const saved = await persistPage(pool, page, {
-        tenantId, runId, workflowId: run.workflow_id, holder,
+        tenantId, runId, workflowId: run.workflow_id, holder, mode: rt.mode,
       });
       if (saved.stale) return loadRun(pool, tenantId, runId);
       records += saved.records;
       pages += 1;
       pageNo += 1;
       cursor = page.page && page.page.has_more ? page.page.next_cursor : null;
+      honesty = { ...honesty, ...honestyFieldsFromPage(page) };
       const cont = assertContinuationState({
-        pages, records, cursor, connector: connectorId,
+        pages, records, cursor, connector: connectorId, ...honesty,
       });
       const moved = await updateRun(pool, tenantId, runId, { continuation_state: cont }, {
         requireState: 'running', holder, workflowId: run.workflow_id,
@@ -230,7 +234,7 @@ async function executeResearchRun(pool, {
   const done = await updateRun(pool, tenantId, runId, {
     state: 'completed',
     completed_at: new Date().toISOString(),
-    continuation_state: { pages, records, cursor: null },
+    continuation_state: { pages, records, cursor: null, ...honesty },
   }, { requireState: 'running', holder, workflowId: run.workflow_id });
   return done || loadRun(pool, tenantId, runId);
 }

@@ -84,6 +84,12 @@ for (const [name, adapter, platform] of [
     assert.strictEqual(page.evidence[0].tenant_id, 9);
     assert.strictEqual(page.evidence[0].research_run_id, `run-${name}-fix`);
     assert.ok(page.evidence[0].canonical_source_url || page.evidence[0].provider_external_id);
+    assert.strictEqual(page.evidence[0].metrics_kind, 'estimated');
+    assert.strictEqual(page.evidence[0].provider_metrics.source, 'mock');
+    assert.strictEqual(page.evidence[0].provider_metrics._fabricated, true);
+    assert.strictEqual(page.evidence[0].provider_metrics._estimated, true);
+    assert.notStrictEqual(page.evidence[0].metrics_kind, 'provider_reported');
+    assert.strictEqual(page.continuation_state.source, 'mock');
     assert.ok(!JSON.stringify(page).includes('fixture-token'));
     assert.strictEqual(hops.length, 1);
   });

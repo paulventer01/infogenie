@@ -40,9 +40,12 @@
       "language": "en",
       "placement": "for_you",
       "provider_metrics": {
-        "like_count_band": "10K+"
+        "like_count_band": "10K+",
+        "source": "mock",
+        "_fabricated": true,
+        "_estimated": true
       },
-      "metrics_kind": "provider_reported",
+      "metrics_kind": "estimated",
       "provenance_method": "public_scrape",
       "connector_id": "tiktok_research",
       "connector_version": "1.0.0",
@@ -71,7 +74,10 @@
     "next_cursor": null,
     "has_more": false
   },
-  "continuation_state": {},
+  "continuation_state": {
+    "source": "mock",
+    "honesty_class": "fixture"
+  },
   "rate_limit": null,
   "retry_class": "none"
 }
