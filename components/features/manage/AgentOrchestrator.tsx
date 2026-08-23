@@ -2575,9 +2575,7 @@ export default function AgentOrchestrator() {
                         </button>
                       )}
                     </div>
-                    {orchPlanHash && (
-                      <p style={{ fontSize: "0.72rem", color: "#6B7280", margin: "0 0 8px" }}>Plan hash: {orchPlanHash}</p>
-                    )}
+                    {orchPlanHash && <p style={{ fontSize: "0.72rem", color: "#6B7280", margin: "0 0 8px" }}>Saved plan ready</p>}
                     {orchMsg && (
                       <p style={{ fontSize: "0.78rem", color: orchMsgIsError ? "#B91C1C" : "#3730A3", margin: "0 0 8px" }}>{orchMsg}</p>
                     )}
