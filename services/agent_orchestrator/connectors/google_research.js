@@ -484,11 +484,6 @@ function liveErrorFromHop(hop, req) {
   if (hop.oversized) return failPage('invalid_response', 'oversized_provider_response', req);
   const status = hop.status;
   const json = hop.json;
-  const extra = {
-    ident: ident(req),
-    retryAfterMs: hop.retryAfterMs,
-    rate_limit: hop.rate_limit,
-  };
   if (status === 401 || status === 403 || status === 400 || status === 408 || status === 429 || (status && status >= 500)) {
     const mappedHttp = mapDfsHttpError({
       status, json, retryAfterMs: hop.retryAfterMs, rate_limit: hop.rate_limit, ident: ident(req),
