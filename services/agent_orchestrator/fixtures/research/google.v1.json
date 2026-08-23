@@ -42,7 +42,10 @@
       "language": "en",
       "placement": "search",
       "provider_metrics": {
-        "estimated_search_volume_band": "10K-100K"
+        "estimated_search_volume_band": "10K-100K",
+        "source": "fixture",
+        "_fabricated": true,
+        "_estimated": true
       },
       "metrics_kind": "estimated",
       "provenance_method": "ads_transparency_center",
@@ -59,7 +62,9 @@
     "next_cursor": null,
     "has_more": false
   },
-  "continuation_state": {},
+  "continuation_state": {
+    "honesty_class": "fixture"
+  },
   "rate_limit": {
     "limit": 100,
     "remaining": 99,

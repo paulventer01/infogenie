@@ -428,6 +428,7 @@ test('12. new modules do not require http clients or call fetch; no live connect
     'services/agent_orchestrator/research_retention.js',
     'services/agent_orchestrator/research_store.js',
     'services/agent_orchestrator/research_cleanup.js',
+    'services/agent_orchestrator/research_honesty.js',
   ];
   const requireRe = /require\(\s*['"](?:https|http|node-fetch|undici)['"]\s*\)/;
   const fetchRe = /\bfetch\s*\(/;
@@ -438,18 +439,18 @@ test('12. new modules do not require http clients or call fetch; no live connect
   }
   assert.equal(
     fs.existsSync(path.join(ROOT, 'services/agent_orchestrator/connectors/meta_research.js')),
-    false,
-    'PR3B connector file must not be added in PR3A'
+    true,
+    'PR3B-1 ships the Meta adapter shell'
   );
   assert.equal(
     fs.existsSync(path.join(ROOT, 'services/agent_orchestrator/connectors/google_research.js')),
-    false,
-    'PR3C connector file must not be added in PR3A'
+    true,
+    'PR3B-1 ships the Google adapter shell'
   );
   assert.equal(
     fs.existsSync(path.join(ROOT, 'services/agent_orchestrator/connectors/tiktok_research.js')),
-    false,
-    'PR3D connector file must not be added in PR3A'
+    true,
+    'PR3B-1 ships the TikTok adapter shell'
   );
 });
 
@@ -470,8 +471,10 @@ test('13. metrics_kind is labelled; fixtures do not claim verified facts', () =>
       assert.ok(!Array.isArray(ev.provider_metrics));
     }
   }
-  assert.ok(kinds.has('provider_reported'));
-  assert.ok(kinds.has('estimated'), 'google fixture should demonstrate estimated metrics_kind');
+  assert.equal(kinds.has('provider_reported'), false,
+    'invented fixture metrics must not claim provider_reported');
+  assert.ok(kinds.has('estimated'), 'fixture invented metrics use estimated metrics_kind');
+  assert.ok(C.METRICS_KINDS.includes('provider_reported'));
   throwsValidation(() => assertEvidenceItem({
     ...metaEvidence(),
     metrics_kind: 'verified',

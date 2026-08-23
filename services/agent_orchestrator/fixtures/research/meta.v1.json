@@ -43,9 +43,12 @@
       "placement": "facebook_feed",
       "provider_metrics": {
         "impressions_range": "100K-500K",
-        "eu_reach": false
+        "eu_reach": false,
+        "source": "fixture",
+        "_fabricated": true,
+        "_estimated": true
       },
-      "metrics_kind": "provider_reported",
+      "metrics_kind": "estimated",
       "provenance_method": "ad_library",
       "connector_id": "meta_research",
       "connector_version": "1.0.0",
@@ -74,7 +77,9 @@
     "next_cursor": null,
     "has_more": false
   },
-  "continuation_state": {},
+  "continuation_state": {
+    "honesty_class": "fixture"
+  },
   "rate_limit": {
     "limit": 200,
     "remaining": 199,

@@ -7,6 +7,7 @@
 
 const { fail } = require('./errors');
 const { assertEvidenceItem, assertCompetitor } = require('./research_validate');
+const { assertEvidenceHonesty } = require('./research_honesty');
 
 const QUOTA_EXCEPTION = 'orchestrator_research_evidence_limit_exceeded';
 
@@ -74,6 +75,10 @@ async function insertCompetitor(poolOrClient, item, opts) {
 async function insertEvidenceItem(poolOrClient, item, opts) {
   const tenantId = opts && opts.tenantId;
   const row = assertEvidenceItem(item, { tenantId });
+  assertEvidenceHonesty({
+    mode: opts && opts.mode,
+    evidence: row,
+  });
   try {
     await poolOrClient.query(
       `INSERT INTO orchestrator_research_evidence

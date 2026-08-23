@@ -276,4 +276,7 @@ router.use('/workflows', workflowsApi);
 const creditsApi = require('./credits_api');
 router.use('/credits', creditsApi);
 
+const researchApi = require('./research_api');
+router.use('/research', researchApi);
+
 module.exports = router;
