@@ -170,6 +170,11 @@ if (!HAS_DB) {
   function fixtureRuntime(page) {
     return {
       mode: 'fixture',
+      connectors: {
+        google_research: { version: '1.0.0' },
+        meta_research: { version: '1.0.0' },
+        tiktok_research: { version: '1.0.0' },
+      },
       fetchPage: async () => JSON.parse(JSON.stringify(page)),
     };
   }
