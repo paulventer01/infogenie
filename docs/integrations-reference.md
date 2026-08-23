@@ -143,6 +143,26 @@ Competitor-ad research over DataForSEO’s documented Google Ads Transparency AP
 
 Do not request targeting of individuals, emails, phones, or profiles. Creatives are not downloaded (`assets` stays empty). Live mode never falls back to fixtures on empty or error results.
 
+### 4.3 TikTok research connector (`tiktok_research`)
+
+Competitor-ad research over the official TikTok Commercial Content Library (Ad Library) API. Used by Advertising Orchestrator research runs (`/api/agent-orchestrator/research`) — not a new API prefix. This connector does **not** scrape `library.tiktok.com`, call the Marketing API (`business-api.tiktok.com`), download creatives, or use RapidAPI scrapers.
+
+| Item | Value |
+|------|--------|
+| **Module** | `services/agent_orchestrator/connectors/tiktok_research.js` |
+| **Host allowlist** | `open.tiktokapis.com` only (`library.tiktok.com` and `business-api.tiktok.com` are refused for fetch) |
+| **Path** | `POST /v2/research/adlib/ad/query/` with allowlisted `fields` only |
+| **Auth** | Tenant vault `tiktok_ads` via opaque `credential_ref` → `Authorization: Bearer`. Token never in the URL, query, body, cursor, logs, or evidence. Dummy `/^_DUMMY/i` or missing token fails closed (`auth_failure` / `missing_credentials`) with no transport |
+| **Required params** | `search_parameters.query` (≤500) → `search_term`. Missing → `policy_rejection` `search_query_required`. Capability is `public_profile` only |
+| **Optional** | Exactly one ISO country → `filters.country_code`; 0 or many countries omit the vendor geo filter (do not invent). `lookback_days` 1–365 → `filters.ad_published_date_range.min/max` as `YYYYMMDD`. `max_results_per_page` 1–100, vendor `max_count` capped at 50 (default 25) |
+| **Pagination** | Bound continuation `{v:1,t,r,s,f}` (tenant + run + `search_id` + first ad id). `search_id` is sent on page 2+ only. Same `search_id` rebound or same first ad id → `invalid_response` `repeated_continuation_token`. Provider next URLs and `library.tiktok.com` are never fetched |
+| **Errors** | HTTP 401 / vendor auth codes → `auth_failure` `provider_auth_rejected`. 403 / permission / scope → `policy_rejection`. 429 / rate messages → `rate_limit` (Retry-After honoured). 408/timeout → transient. 5xx → transient. 400/validation → `invalid_response`. Auth/validation are not retried |
+| **Honesty** | Live pages stamp `provider_metrics.source=live` (no `_fabricated`). Empty live results stay live — never substitute the fixture page. Canonical source URLs are syntactic (`https://library.tiktok.com/ads?id=…`) and are not fetched. Live `assets` is always `[]` |
+| **Limits** | Transport timeout 8s; body cap 256KiB |
+| **Live smoke** | `INFOGENIE_LIVE_TIKTOK_RESEARCH=1` plus a non-dummy `INFOGENIE_LIVE_TIKTOK_RESEARCH_TOKEN`. Skips when unset. Never prints the token |
+
+Do not request targeting, emails, phones, profiles, comments, follower counts, reach, or `ad_group.targeting_info`. Do not fetch `ad.videos`, `image_urls`, or `download_url`. Live mode never falls back to fixtures on empty or error results.
+
 ---
 
 ## 5 · Data & Intelligence

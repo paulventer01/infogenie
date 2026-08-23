@@ -15,7 +15,7 @@ const MAX_BODY_BYTES = 256 * 1024;
 const HOST_ALLOW = Object.freeze({
   meta_research: Object.freeze(['graph.facebook.com']),
   google_research: Object.freeze(['api.dataforseo.com']),
-  tiktok_research: Object.freeze(['business-api.tiktok.com']),
+  tiktok_research: Object.freeze(['open.tiktokapis.com']),
 });
 
 function hostAllowed(connectorId, hostname) {
