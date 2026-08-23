@@ -43,7 +43,7 @@
       "placement": "search",
       "provider_metrics": {
         "estimated_search_volume_band": "10K-100K",
-        "source": "mock",
+        "source": "fixture",
         "_fabricated": true,
         "_estimated": true
       },

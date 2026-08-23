@@ -28,6 +28,7 @@ const {
   ensureResearchLimits,
 } = require('../services/agent_orchestrator/research_store');
 const { bindPage } = require('../services/agent_orchestrator/connectors/factory');
+const { detectFabrication } = require('../services/admin/enforcement');
 const db = require('../db');
 const { ensureTenantSchema } = require('../services/tenants/schema');
 const { ensureAgentOrchestratorSchema } = require('../services/agent_orchestrator/schema');
@@ -89,13 +90,13 @@ function baseBindReq(over) {
 }
 
 for (const [name, file] of PLATFORMS) {
-  test(`${name} fixture evidence is stamped mock/_fabricated and is not provider_reported`, () => {
+  test(`${name} fixture evidence is stamped fixture/_fabricated and is not provider_reported`, () => {
     const page = loadJson(file);
     assert.ok(page.evidence.length >= 1);
     for (const ev of page.evidence) {
       assert.strictEqual(ev.metrics_kind, 'estimated');
       assert.notStrictEqual(ev.metrics_kind, 'provider_reported');
-      assert.strictEqual(ev.provider_metrics.source, 'mock');
+      assert.strictEqual(ev.provider_metrics.source, 'fixture');
       assert.ok(FAKE_SOURCES.includes(ev.provider_metrics.source));
       assert.strictEqual(ev.provider_metrics._fabricated, true);
       assert.strictEqual(ev.provider_metrics._estimated, true);
@@ -165,6 +166,14 @@ for (const [name, file] of PLATFORMS) {
     );
   });
 
+  test(`${name} persistPage refuses live mode with synthetic classification before INSERT`, async () => {
+    const page = stampPageHonesty(clone(loadJson(file)), 'synthetic');
+    await assert.rejects(
+      () => persistPage(refuseWritePool(), page, { tenantId: 9, runId: 'run-x', mode: 'live' }),
+      (err) => isHonestyFail(err, 'classification_conflict')
+    );
+  });
+
   test(`${name} insertEvidenceItem refuses missing honesty tags before INSERT`, async () => {
     const ev = clone(loadJson(file).evidence[0]);
     ev.provider_metrics = stripHonesty(ev.provider_metrics);
@@ -184,14 +193,14 @@ for (const [name, file] of PLATFORMS) {
   });
 }
 
-test('pagination fixture evidence is estimated + mock, not provider_reported', () => {
+test('pagination fixture evidence is estimated + fixture, not provider_reported', () => {
   const pages = loadJson('connector-pagination.v1.json').pages;
   const withEvidence = pages.filter((p) => (p.evidence || []).length);
   assert.ok(withEvidence.length >= 1);
   for (const page of withEvidence) {
     for (const ev of page.evidence) {
       assert.strictEqual(ev.metrics_kind, 'estimated');
-      assert.strictEqual(ev.provider_metrics.source, 'mock');
+      assert.strictEqual(ev.provider_metrics.source, 'fixture');
       assert.strictEqual(ev.provider_metrics._fabricated, true);
       assert.strictEqual(ev.provider_metrics._estimated, true);
     }
@@ -211,22 +220,60 @@ test('bindPage stamps fixture classification from ctx.mode for Meta, Google and 
     }), { mode: 'fixture' });
     assert.ok(bound.evidence.length >= 1, name);
     for (const ev of bound.evidence) {
-      assert.strictEqual(ev.provider_metrics.source, 'mock', name);
+      assert.strictEqual(ev.provider_metrics.source, 'fixture', name);
       assert.strictEqual(ev.provider_metrics._fabricated, true, name);
       assert.strictEqual(ev.provider_metrics._estimated, true, name);
       assert.strictEqual(ev.metrics_kind, 'estimated', name);
+      assert.notStrictEqual(ev.metrics_kind, 'provider_reported', name);
     }
     assert.strictEqual(bound.continuation_state.honesty_class, 'fixture', name);
     assert.equal(Object.prototype.hasOwnProperty.call(bound.continuation_state, 'source'), false, name);
   }
 });
 
-test('bindPage live mode rejects fixture-tagged evidence', () => {
-  const raw = clone(loadJson('meta.v1.json'));
-  assert.throws(
-    () => bindPage(raw, baseBindReq({ connector_id: 'meta_research' }), { mode: 'live' }),
-    (err) => isHonestyFail(err, 'classification_conflict')
-  );
+test('bindPage stamps synthetic classification from ctx.mode for Meta, Google and TikTok', () => {
+  for (const [name, file] of PLATFORMS) {
+    const raw = clone(loadJson(file));
+    for (const ev of raw.evidence) ev.provider_metrics = stripHonesty(ev.provider_metrics);
+    raw.continuation_state = {};
+    const bound = bindPage(raw, baseBindReq({
+      connector_id: raw.connector_id,
+      research_run_id: `run-${name}-synth`,
+    }), { mode: 'synthetic' });
+    assert.ok(bound.evidence.length >= 1, name);
+    for (const ev of bound.evidence) {
+      assert.strictEqual(ev.provider_metrics.source, 'synthetic', name);
+      assert.strictEqual(ev.provider_metrics._fabricated, true, name);
+      assert.strictEqual(ev.provider_metrics._estimated, true, name);
+      assert.strictEqual(ev.metrics_kind, 'estimated', name);
+      assert.notStrictEqual(ev.metrics_kind, 'provider_reported', name);
+    }
+    assert.strictEqual(bound.continuation_state.honesty_class, 'synthetic', name);
+    assert.equal(Object.prototype.hasOwnProperty.call(bound.continuation_state, 'source'), false, name);
+  }
+});
+
+test('bindPage live mode rejects fixture and synthetic tags for Meta, Google and TikTok', () => {
+  for (const [name, file] of PLATFORMS) {
+    const fixtureRaw = clone(loadJson(file));
+    assert.throws(
+      () => bindPage(fixtureRaw, baseBindReq({
+        connector_id: fixtureRaw.connector_id,
+        research_run_id: `run-${name}-live-fix`,
+      }), { mode: 'live' }),
+      (err) => isHonestyFail(err, 'classification_conflict'),
+      name
+    );
+    const synthRaw = stampPageHonesty(clone(loadJson(file)), 'synthetic');
+    assert.throws(
+      () => bindPage(synthRaw, baseBindReq({
+        connector_id: synthRaw.connector_id,
+        research_run_id: `run-${name}-live-synth`,
+      }), { mode: 'live' }),
+      (err) => isHonestyFail(err, 'classification_conflict'),
+      name
+    );
+  }
 });
 
 test('simulated/demo/synthetic/test modes require fake source and fabrication markers', () => {
@@ -249,12 +296,25 @@ test('live mode accepts explicit live/provider source without fabrication marker
   assertEvidenceHonesty({ mode: 'provider', evidence: ev });
 });
 
-test('nonLiveHonestyMetrics is a FAKE_SOURCES mock stamp', () => {
+test('nonLiveHonestyMetrics is a FAKE_SOURCES fixture stamp', () => {
   const tagged = nonLiveHonestyMetrics({ impressions_range: '100K-500K' });
-  assert.strictEqual(tagged.source, 'mock');
+  assert.strictEqual(tagged.source, 'fixture');
+  assert.ok(FAKE_SOURCES.includes(tagged.source));
   assert.strictEqual(tagged._fabricated, true);
   assert.strictEqual(tagged._estimated, true);
   assert.strictEqual(tagged.impressions_range, '100K-500K');
+  const synth = nonLiveHonestyMetrics({ source: 'synthetic' });
+  assert.strictEqual(synth.source, 'synthetic');
+  assert.strictEqual(synth._fabricated, true);
+});
+
+test('data-mode FAKE_SOURCES treat fixture and synthetic as non-live', () => {
+  assert.ok(FAKE_SOURCES.includes('fixture'));
+  assert.ok(FAKE_SOURCES.includes('synthetic'));
+  assert.deepStrictEqual(detectFabrication({ source: 'fixture' }), { kind: 'source', value: 'fixture' });
+  assert.deepStrictEqual(detectFabrication({ source: 'synthetic' }), { kind: 'source', value: 'synthetic' });
+  assert.equal(detectFabrication({ source: 'live' }), null);
+  assert.equal(detectFabrication({ source: 'provider' }), null);
 });
 
 test('stampPageHonesty in fixture mode forces estimated metrics_kind', () => {
@@ -266,8 +326,24 @@ test('stampPageHonesty in fixture mode forces estimated metrics_kind', () => {
     continuation_state: {},
   }, 'fixture');
   assert.strictEqual(page.evidence[0].metrics_kind, 'estimated');
-  assert.strictEqual(page.evidence[0].provider_metrics.source, 'mock');
+  assert.strictEqual(page.evidence[0].provider_metrics.source, 'fixture');
   assert.strictEqual(page.evidence[0].provider_metrics._fabricated, true);
+});
+
+test('stampPageHonesty in synthetic mode stamps source synthetic, not live', () => {
+  const page = stampPageHonesty({
+    evidence: [{
+      metrics_kind: 'provider_reported',
+      provider_metrics: { impressions_range: '1' },
+    }],
+    continuation_state: {},
+  }, 'synthetic');
+  assert.strictEqual(page.evidence[0].metrics_kind, 'estimated');
+  assert.strictEqual(page.evidence[0].provider_metrics.source, 'synthetic');
+  assert.strictEqual(page.evidence[0].provider_metrics._fabricated, true);
+  assert.strictEqual(page.evidence[0].provider_metrics._estimated, true);
+  assert.strictEqual(page.continuation_state.honesty_class, 'synthetic');
+  assert.equal(Object.prototype.hasOwnProperty.call(page.continuation_state, 'source'), false);
 });
 
 const HAS_DB = db.hasDb();
@@ -337,7 +413,7 @@ if (!HAS_DB) {
       const comp = await insertCompetitor(p, compIn, { tenantId });
       const row = await insertEvidenceItem(p, evIn, { tenantId, mode: 'fixture' });
       assert.strictEqual(comp.platform, name);
-      assert.strictEqual(row.provider_metrics.source, 'mock');
+      assert.strictEqual(row.provider_metrics.source, 'fixture');
       assert.strictEqual(row.provider_metrics._fabricated, true);
       assert.strictEqual(row.provider_metrics._estimated, true);
       assert.strictEqual(row.metrics_kind, 'estimated');
@@ -346,11 +422,42 @@ if (!HAS_DB) {
           WHERE tenant_id=$1 AND id=$2`,
         [tenantId, row.id]
       )).rows[0];
-      assert.strictEqual(stored.provider_metrics.source, 'mock');
+      assert.strictEqual(stored.provider_metrics.source, 'fixture');
       assert.strictEqual(stored.provider_metrics._fabricated, true);
       assert.strictEqual(stored.provider_metrics._estimated, true);
       assert.strictEqual(stored.metrics_kind, 'estimated');
       assert.notStrictEqual(stored.metrics_kind, 'provider_reported');
+    });
+
+    test(`${name} persisted synthetic evidence stores source synthetic, never live`, async () => {
+      const p = db.getPool();
+      const host = await seedHost(p);
+      const stamped = stampPageHonesty(clone(loadJson(file)), 'synthetic');
+      const compIn = clone(stamped.competitors[0]);
+      compIn.id = nid('comp');
+      compIn.tenant_id = tenantId;
+      compIn.research_run_id = host.runId;
+      const evIn = clone(stamped.evidence[0]);
+      evIn.id = nid('ev');
+      evIn.tenant_id = tenantId;
+      evIn.research_run_id = host.runId;
+      evIn.competitor_id = compIn.id;
+      await insertCompetitor(p, compIn, { tenantId });
+      const row = await insertEvidenceItem(p, evIn, { tenantId, mode: 'synthetic' });
+      assert.strictEqual(row.provider_metrics.source, 'synthetic');
+      assert.strictEqual(row.provider_metrics._fabricated, true);
+      assert.strictEqual(row.provider_metrics._estimated, true);
+      assert.strictEqual(row.metrics_kind, 'estimated');
+      assert.notStrictEqual(row.metrics_kind, 'provider_reported');
+      const stored = (await p.query(
+        `SELECT provider_metrics, metrics_kind FROM orchestrator_research_evidence
+          WHERE tenant_id=$1 AND id=$2`,
+        [tenantId, row.id]
+      )).rows[0];
+      assert.strictEqual(stored.provider_metrics.source, 'synthetic');
+      assert.notStrictEqual(stored.provider_metrics.source, 'live');
+      assert.notStrictEqual(stored.provider_metrics.source, 'provider');
+      assert.strictEqual(stored.metrics_kind, 'estimated');
     });
   }
 }

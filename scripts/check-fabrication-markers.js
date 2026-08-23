@@ -3,7 +3,7 @@
 //
 // Data-mode enforcement (services/admin/enforcement.js) is marker-driven: it
 // only withholds/badges a response that carries a recognized fabrication marker
-// (source ∈ {placeholder,fallback,template,serp-fallback,demo,mock,sample},
+// (source ∈ {placeholder,fallback,template,serp-fallback,demo,mock,sample,fixture,synthetic},
 // _estimated:true, _fabricated:true). An untagged synthetic fallback silently
 // bypasses honesty mode.
 //
@@ -27,7 +27,7 @@ const SERVICES_DIR = path.join(__dirname, '..', 'services');
 const HELPER_RE = /(?:function\s+_(?:template|fallback)\w*)|(?:\b(?:const|let|var)\s+_(?:template|fallback)\w*\s*=)/;
 
 // Any recognized fabrication marker (object literal `:` OR assignment `=`).
-const MARKER_RE = /source\s*[:=]\s*['"](?:placeholder|fallback|template|serp-fallback|demo|mock|sample)['"]|_estimated\s*[:=]\s*true|_fabricated\s*[:=]\s*true/i;
+const MARKER_RE = /source\s*[:=]\s*['"](?:placeholder|fallback|template|serp-fallback|demo|mock|sample|fixture|synthetic)['"]|_estimated\s*[:=]\s*true|_fabricated\s*[:=]\s*true/i;
 
 // Files that define a _template/_fallback helper but are intentionally NOT
 // fabrication-tagged. Each entry must say WHY tagging would be wrong (would

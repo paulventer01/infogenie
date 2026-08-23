@@ -41,7 +41,7 @@
       "placement": "for_you",
       "provider_metrics": {
         "like_count_band": "10K+",
-        "source": "mock",
+        "source": "fixture",
         "_fabricated": true,
         "_estimated": true
       },

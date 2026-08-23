@@ -42,7 +42,7 @@
           "language": "en",
           "placement": "instagram_feed",
           "provider_metrics": {
-            "source": "mock",
+            "source": "fixture",
             "_fabricated": true,
             "_estimated": true
           },

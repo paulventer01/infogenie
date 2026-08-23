@@ -181,7 +181,7 @@ if (!HAS_DB) {
     );
     assert.ok(rows.rowCount >= 1);
     for (const row of rows.rows) {
-      assert.strictEqual(row.provider_metrics.source, 'mock');
+      assert.strictEqual(row.provider_metrics.source, 'fixture');
       assert.strictEqual(row.provider_metrics._fabricated, true);
       assert.strictEqual(row.provider_metrics._estimated, true);
       assert.strictEqual(row.metrics_kind, 'estimated');
@@ -335,7 +335,7 @@ if (!HAS_DB) {
       row.headline = `${baseEv.headline} ${tag} ${n}`;
       row.provider_metrics = {
         ...baseEv.provider_metrics,
-        source: 'mock',
+        source: 'fixture',
         _fabricated: true,
         _estimated: true,
       };

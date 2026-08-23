@@ -10,7 +10,9 @@
  * mode-conflicting classification.
  *
  * `source` on persisted metrics is either a data-mode FAKE_SOURCES value
- * (non-live) or `live` / `provider` (not fabrication markers).
+ * (non-live: fixture/synthetic/mock/demo/…) or `live` / `provider`
+ * (not fabrication markers). Fixture/mock/test evidence stamps
+ * `source: 'fixture'`; synthetic mode stamps `source: 'synthetic'`.
  * Do not put `verified` / `independently_verified` / `fact` on
  * provider_metrics — research_validate.assertNoHonestyFlagsDeep forbids them.
  */
@@ -25,6 +27,8 @@ const FAKE_SOURCES = Object.freeze([
   'demo',
   'mock',
   'sample',
+  'fixture',
+  'synthetic',
 ]);
 
 const LIVE_SOURCES = Object.freeze(['live', 'provider']);
@@ -44,12 +48,12 @@ const NON_LIVE_MODES = Object.freeze([
 const LIVE_MODES = Object.freeze(['live', 'provider']);
 
 const MODE_CLASSIFICATION = Object.freeze({
-  fixture: Object.freeze({ class: 'fixture', source: 'mock', kind: 'non_live' }),
-  simulated: Object.freeze({ class: 'simulated', source: 'mock', kind: 'non_live' }),
+  fixture: Object.freeze({ class: 'fixture', source: 'fixture', kind: 'non_live' }),
+  simulated: Object.freeze({ class: 'simulated', source: 'fixture', kind: 'non_live' }),
   demo: Object.freeze({ class: 'demo', source: 'demo', kind: 'non_live' }),
-  synthetic: Object.freeze({ class: 'synthetic', source: 'sample', kind: 'non_live' }),
-  test: Object.freeze({ class: 'test', source: 'mock', kind: 'non_live' }),
-  mock: Object.freeze({ class: 'mock', source: 'mock', kind: 'non_live' }),
+  synthetic: Object.freeze({ class: 'synthetic', source: 'synthetic', kind: 'non_live' }),
+  test: Object.freeze({ class: 'test', source: 'fixture', kind: 'non_live' }),
+  mock: Object.freeze({ class: 'mock', source: 'fixture', kind: 'non_live' }),
   sample: Object.freeze({ class: 'sample', source: 'sample', kind: 'non_live' }),
   placeholder: Object.freeze({ class: 'placeholder', source: 'placeholder', kind: 'non_live' }),
   template: Object.freeze({ class: 'template', source: 'template', kind: 'non_live' }),
@@ -136,10 +140,11 @@ function pageSourceOf(page) {
 function inferModeFromSource(source) {
   const key = normalizeToken(source);
   if (!key) return null;
+  const mapped = MODE_CLASSIFICATION[key];
+  if (mapped) return key;
   if (FAKE_SOURCE_SET.has(key)) return 'fixture';
   if (LIVE_SOURCE_SET.has(key)) return 'live';
-  const mapped = MODE_CLASSIFICATION[key];
-  return mapped ? key : null;
+  return null;
 }
 
 function resolveMode(mode, evidence, page) {
@@ -172,7 +177,8 @@ function assertModeSourceAgreement(mode, source, field) {
 
 function nonLiveHonestyMetrics(extra) {
   const out = isPlainObject(extra) ? { ...extra } : {};
-  out.source = isFakeSource(out.source) ? normalizeToken(out.source) : 'mock';
+  const incoming = normalizeToken(out.source);
+  out.source = incoming === 'synthetic' ? 'synthetic' : 'fixture';
   out._fabricated = true;
   out._estimated = true;
   return out;
@@ -182,8 +188,7 @@ function stampProviderMetrics(rawMetrics, mode) {
   const spec = classificationForMode(mode) || classificationForMode('fixture');
   const metrics = isPlainObject(rawMetrics) ? { ...rawMetrics } : {};
   if (spec.kind === 'non_live') {
-    if (!isFakeSource(metrics.source)) metrics.source = spec.source;
-    else metrics.source = normalizeToken(metrics.source);
+    metrics.source = spec.source;
     metrics._fabricated = true;
     metrics._estimated = true;
     return metrics;

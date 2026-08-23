@@ -10,9 +10,21 @@ const assert = require('node:assert');
 const { assertConnectorRequest } = require('../services/agent_orchestrator/research_connector');
 const { createResearchRuntime, CAPABILITY_MATRIX, MAX_RETRIES } = require('../services/agent_orchestrator/research_runtime');
 const { parseRetryAfter, hostAllowed } = require('../services/agent_orchestrator/connectors/transport');
+const { bindPage } = require('../services/agent_orchestrator/connectors/factory');
+const { OrchError } = require('../services/agent_orchestrator/errors');
 const meta = require('../services/agent_orchestrator/connectors/meta_research');
 const google = require('../services/agent_orchestrator/connectors/google_research');
 const tiktok = require('../services/agent_orchestrator/connectors/tiktok_research');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const FIXTURE_DIR = path.join(__dirname, '..', 'services/agent_orchestrator/fixtures/research');
+function loadFixture(name) {
+  return JSON.parse(fs.readFileSync(path.join(FIXTURE_DIR, name), 'utf8'));
+}
+function clone(v) {
+  return JSON.parse(JSON.stringify(v));
+}
 
 function baseReq(over) {
   return {
@@ -85,14 +97,77 @@ for (const [name, adapter, platform] of [
     assert.strictEqual(page.evidence[0].research_run_id, `run-${name}-fix`);
     assert.ok(page.evidence[0].canonical_source_url || page.evidence[0].provider_external_id);
     assert.strictEqual(page.evidence[0].metrics_kind, 'estimated');
-    assert.strictEqual(page.evidence[0].provider_metrics.source, 'mock');
+    assert.strictEqual(page.evidence[0].provider_metrics.source, 'fixture');
+    assert.ok(['fixture', 'synthetic'].includes(page.evidence[0].provider_metrics.source));
     assert.strictEqual(page.evidence[0].provider_metrics._fabricated, true);
     assert.strictEqual(page.evidence[0].provider_metrics._estimated, true);
     assert.notStrictEqual(page.evidence[0].metrics_kind, 'provider_reported');
+    assert.notStrictEqual(page.evidence[0].provider_metrics.source, 'live');
+    assert.notStrictEqual(page.evidence[0].provider_metrics.source, 'provider');
     assert.strictEqual(page.continuation_state.honesty_class, 'fixture');
-    assert.notStrictEqual(page.continuation_state.source, 'mock');
+    assert.equal(Object.prototype.hasOwnProperty.call(page.continuation_state, 'source'), false);
     assert.ok(!JSON.stringify(page).includes('fixture-token'));
     assert.strictEqual(hops.length, 1);
+  });
+
+  test(`${name} synthetic bindPage stamps source synthetic, never provider_reported live`, () => {
+    const raw = clone(loadFixture(`${name}.v1.json`));
+    const bound = bindPage(raw, baseReq({
+      connector_id: adapter.id,
+      requested_platforms: [platform],
+      research_run_id: `run-${name}-synth`,
+      idempotency_key: `ik-${name}-synth`,
+    }), { mode: 'synthetic' });
+    assert.ok(bound.evidence.length >= 1);
+    for (const ev of bound.evidence) {
+      assert.strictEqual(ev.provider_metrics.source, 'synthetic');
+      assert.strictEqual(ev.provider_metrics._fabricated, true);
+      assert.strictEqual(ev.provider_metrics._estimated, true);
+      assert.strictEqual(ev.metrics_kind, 'estimated');
+      assert.notStrictEqual(ev.metrics_kind, 'provider_reported');
+      assert.notStrictEqual(ev.provider_metrics.source, 'live');
+      assert.notStrictEqual(ev.provider_metrics.source, 'provider');
+    }
+    assert.strictEqual(bound.continuation_state.honesty_class, 'synthetic');
+    assert.equal(Object.prototype.hasOwnProperty.call(bound.continuation_state, 'source'), false);
+  });
+
+  test(`${name} live mode rejects fixture and synthetic evidence tags`, () => {
+    const fixtureRaw = clone(loadFixture(`${name}.v1.json`));
+    assert.throws(
+      () => bindPage(fixtureRaw, baseReq({
+        connector_id: adapter.id,
+        requested_platforms: [platform],
+        research_run_id: `run-${name}-live-fix`,
+        idempotency_key: `ik-${name}-live-fix`,
+      }), { mode: 'live' }),
+      (err) => err instanceof OrchError
+        && err.code === 'validation_failed'
+        && err.extra
+        && err.extra.reason === 'classification_conflict'
+    );
+    const synthRaw = clone(loadFixture(`${name}.v1.json`));
+    for (const ev of synthRaw.evidence) {
+      ev.provider_metrics = {
+        ...ev.provider_metrics,
+        source: 'synthetic',
+        _fabricated: true,
+        _estimated: true,
+      };
+    }
+    synthRaw.continuation_state = { honesty_class: 'synthetic' };
+    assert.throws(
+      () => bindPage(synthRaw, baseReq({
+        connector_id: adapter.id,
+        requested_platforms: [platform],
+        research_run_id: `run-${name}-live-synth`,
+        idempotency_key: `ik-${name}-live-synth`,
+      }), { mode: 'live' }),
+      (err) => err instanceof OrchError
+        && err.code === 'validation_failed'
+        && err.extra
+        && err.extra.reason === 'classification_conflict'
+    );
   });
 
   test(`${name} missing credentials fail closed with no transport call`, async () => {

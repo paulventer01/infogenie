@@ -44,7 +44,7 @@
       "provider_metrics": {
         "impressions_range": "100K-500K",
         "eu_reach": false,
-        "source": "mock",
+        "source": "fixture",
         "_fabricated": true,
         "_estimated": true
       },

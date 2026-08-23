@@ -10,7 +10,8 @@
 //              data_unavailable response and an issue is raised for the admin.
 //
 // Markers recognised (the existing fabrication convention in this codebase):
-//   • source ∈ { placeholder, fallback, template, serp-fallback, demo, mock }
+//   • source ∈ { placeholder, fallback, template, serp-fallback, demo, mock,
+//     sample, fixture, synthetic }
 //   • _estimated === true   |   _fabricated === true
 // Detected at the top level and one level into nested objects/arrays so a
 // fabricated block inside an otherwise-real response is still caught.
@@ -18,7 +19,7 @@
 const _dataMode = require('./data_mode');
 const _issues = require('./issues');
 
-const FAKE_SOURCES = new Set(['placeholder', 'fallback', 'template', 'serp-fallback', 'demo', 'mock', 'sample']);
+const FAKE_SOURCES = new Set(['placeholder', 'fallback', 'template', 'serp-fallback', 'demo', 'mock', 'sample', 'fixture', 'synthetic']);
 
 function _markerIn(obj, depth) {
   if (!obj || typeof obj !== 'object' || depth < 0) return null;
