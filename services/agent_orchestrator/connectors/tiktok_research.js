@@ -19,21 +19,25 @@ const CONNECTOR_VERSION = '1.0.0';
 const ADLIB_HOST = 'open.tiktokapis.com';
 const ADLIB_PATH = '/v2/research/adlib/ad/query/';
 const ADLIB_URL = `https://${ADLIB_HOST}${ADLIB_PATH}`;
-const DEFAULT_LIMIT = 25;
-const VENDOR_MAX_COUNT = 50;
+const DEFAULT_LIMIT = 10;
+const VENDOR_MAX_COUNT = 10;
+const VENDOR_SEARCH_TERM_MAX = 50;
+const DEFAULT_LOOKBACK_DAYS = 30;
+const DATE_MIN = '20221001';
 const DUMMY_KEY = /^_DUMMY/i;
 const ISO2 = /^[A-Z]{2}$/;
 const YMD8 = /^\d{8}$/;
+const MEDIA_FIELD = /^(videos|image_urls|download_url|preview_url)$/i;
 
 const ADLIB_FIELDS = Object.freeze([
   'ad.id',
   'ad.first_shown_date',
   'ad.last_shown_date',
-  'ad.title',
-  'ad.external_url',
+  'ad.status',
+  'ad.videos',
+  'ad.image_urls',
   'advertiser.business_id',
   'advertiser.business_name',
-  'advertiser.country_code',
 ]);
 
 const fixtureAdapter = createResearchAdapter({
@@ -107,12 +111,23 @@ function ymdUtc(d) {
   return `${y}${m}${day}`;
 }
 
+function lookbackOrDefault(lookbackDays) {
+  const n = Number(lookbackDays);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_LOOKBACK_DAYS;
+  return Math.min(C.LIMITS.lookback_days.max, Math.floor(n));
+}
+
 function publishedRange(lookbackDays, now) {
-  if (!lookbackDays) return null;
+  const days = lookbackOrDefault(lookbackDays);
   const end = now != null ? new Date(now) : new Date();
-  if (Number.isNaN(end.getTime())) return null;
-  const start = new Date(end.getTime() - Number(lookbackDays) * 86400000);
-  return { min: ymdUtc(start), max: ymdUtc(end) };
+  const when = Number.isNaN(end.getTime()) ? new Date() : end;
+  const start = new Date(when.getTime() - days * 86400000);
+  let min = ymdUtc(start);
+  let max = ymdUtc(when);
+  if (min < DATE_MIN) min = DATE_MIN;
+  if (max < DATE_MIN) max = DATE_MIN;
+  if (min > max) min = max;
+  return { min, max };
 }
 
 function maxCount(maxResults) {
@@ -219,22 +234,37 @@ function buildAdlibUrl() {
   return url.toString();
 }
 
+function platformClientToken() {
+  const raw = process.env.TIKTOK_RESEARCH_CLIENT_TOKEN;
+  if (raw == null) return null;
+  const token = String(raw).trim();
+  if (!token || DUMMY_KEY.test(token)) return null;
+  return token;
+}
+
+function actorTokenPresent(token) {
+  if (token == null) return false;
+  const s = String(token).trim();
+  if (!s || DUMMY_KEY.test(s)) return false;
+  return true;
+}
+
 function buildAdlibBody({
   query, countries, lookbackDays, maxResults, searchId, now,
 } = {}) {
   const body = {
-    search_term: String(query || '').slice(0, C.LIMITS.search_query.max),
+    search_term: clip(query, VENDOR_SEARCH_TERM_MAX),
     max_count: maxCount(maxResults),
   };
   if (searchId) body.search_id = String(searchId);
-  const filters = {};
+  const filters = {
+    ad_published_date_range: publishedRange(lookbackDays, now),
+  };
   if (Array.isArray(countries) && countries.length === 1) {
     const iso = isoCountry(countries[0]);
     if (iso) filters.country_code = iso;
   }
-  const range = publishedRange(lookbackDays, now);
-  if (range) filters.ad_published_date_range = range;
-  if (Object.keys(filters).length) body.filters = filters;
+  body.filters = filters;
   return body;
 }
 
@@ -255,6 +285,39 @@ function nestedOrFlat(row, nestedKey, flatKey) {
   if (row && row.ad && row.ad[nestedKey] != null) return row.ad[nestedKey];
   if (row && row[flatKey] != null) return row[flatKey];
   return null;
+}
+
+function mediaList(row, key) {
+  const nested = row && row.ad && row.ad[key];
+  if (Array.isArray(nested)) return nested;
+  if (row && Array.isArray(row[key])) return row[key];
+  return [];
+}
+
+function formatFromMedia(row) {
+  if (mediaList(row, 'videos').length > 0) {
+    return { source_type: 'public_video', creative_format: 'video' };
+  }
+  if (mediaList(row, 'image_urls').length > 0) {
+    return { source_type: 'ad_creative', creative_format: 'image' };
+  }
+  return { source_type: 'ad_creative', creative_format: 'unknown' };
+}
+
+function stripMediaFields(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) stripMediaFields(item);
+    return value;
+  }
+  if (!value || typeof value !== 'object') return value;
+  for (const key of Object.keys(value)) {
+    if (MEDIA_FIELD.test(key)) {
+      delete value[key];
+      continue;
+    }
+    stripMediaFields(value[key]);
+  }
+  return value;
 }
 
 function advertiserOf(row) {
@@ -305,17 +368,18 @@ function normalizeAdlibPage(json, req, opts) {
     }
 
     const headline = safeCopy(nestedOrFlat(row, 'title', 'title'), C.LIMITS.headline.max);
+    const format = formatFromMedia(row);
     evidence.push({
       id: bindId(req.research_run_id, adId),
       tenant_id: req.tenant_id,
       research_run_id: req.research_run_id,
       competitor_id: bindId(req.research_run_id, advertiserId),
       platform: 'tiktok',
-      source_type: 'public_video',
+      source_type: format.source_type,
       provider_external_id: adId,
       canonical_source_url: `https://library.tiktok.com/ads?id=${encodeURIComponent(adId)}`,
       advertiser_name: safeCopy((adv && adv.business_name) || name, C.LIMITS.advertiser_name.max),
-      creative_format: 'unknown',
+      creative_format: format.creative_format,
       headline,
       body_text: '',
       excerpt: headline,
@@ -338,7 +402,7 @@ function normalizeAdlibPage(json, req, opts) {
   const searchId = json && json.data && json.data.search_id != null ? String(json.data.search_id) : '';
   const hasMore = isMore(json && json.data && json.data.has_more) && !!searchId;
   const next_cursor = hasMore ? bindTikTokCursor(req.tenant_id, req.research_run_id, searchId, firstAdId) : null;
-  return {
+  return stripMediaFields({
     ok: true,
     contract_version: 'v1',
     connector_id: CONNECTOR_ID,
@@ -352,7 +416,7 @@ function normalizeAdlibPage(json, req, opts) {
     retry_class: 'none',
     _search_id: searchId,
     _first_ad_id: firstAdId,
-  };
+  });
 }
 
 function liveErrorFromHop(hop, req) {
@@ -407,7 +471,11 @@ async function fetchLivePage(input, ctx) {
     logLiveFailure(req, 'capability_not_supported');
     return assertConnectorResult(denied);
   }
-  if (!ctx || ctx.token == null || ctx.token === '' || DUMMY_KEY.test(String(ctx.token))) {
+  if (!ctx || !actorTokenPresent(ctx.token)) {
+    return failPage('auth_failure', 'missing_credentials', req);
+  }
+  const platformToken = platformClientToken();
+  if (!platformToken) {
     return failPage('auth_failure', 'missing_credentials', req);
   }
   if (ctx.signal && ctx.signal.aborted) return failPage('terminal', 'cancelled', req);
@@ -449,7 +517,7 @@ async function fetchLivePage(input, ctx) {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${ctx.token}`,
+        Authorization: `Bearer ${platformToken}`,
       },
       body: JSON.stringify(body),
       signal: ctx.signal,
@@ -503,6 +571,9 @@ module.exports = {
   ADLIB_URL,
   ADLIB_HOST,
   ADLIB_PATH,
+  DATE_MIN,
+  VENDOR_MAX_COUNT,
+  VENDOR_SEARCH_TERM_MAX,
   buildAdlibUrl,
   buildAdlibBody,
   normalizeAdlibPage,

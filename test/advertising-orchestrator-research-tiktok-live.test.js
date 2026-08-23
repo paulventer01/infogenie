@@ -22,7 +22,19 @@ const { hostAllowed, parseRetryAfter, REQUEST_TIMEOUT_MS, MAX_BODY_BYTES } = req
 const tiktok = require('../services/agent_orchestrator/connectors/tiktok_research');
 
 const TOKEN = 'tiktok-research-token-ABCDEF123456';
+const ORIG_CLIENT_TOKEN = process.env.TIKTOK_RESEARCH_CLIENT_TOKEN;
+const PLATFORM_TOKEN = 'clt.test-research-ABCDEF123456';
 const ROOT = path.join(__dirname, '..');
+
+function installTestKeys() {
+  process.env.TIKTOK_RESEARCH_CLIENT_TOKEN = PLATFORM_TOKEN;
+}
+function restoreKeys() {
+  if (ORIG_CLIENT_TOKEN == null) delete process.env.TIKTOK_RESEARCH_CLIENT_TOKEN;
+  else process.env.TIKTOK_RESEARCH_CLIENT_TOKEN = ORIG_CLIENT_TOKEN;
+}
+installTestKeys();
+after(() => { restoreKeys(); });
 
 function baseReq(over) {
   return {
@@ -48,6 +60,7 @@ function sampleAd(over) {
     first_shown_date: '20260801',
     last_shown_date: '20260820',
     external_url: 'https://example.com/coats',
+    videos: [{}],
   };
   const advertiser = {
     business_id: '1755645247067185',
@@ -97,6 +110,7 @@ async function liveFetch(req, hopOrFn, ctxOver) {
 function assertNoSecrets(value) {
   const dumped = typeof value === 'string' ? value : JSON.stringify(value);
   assert.doesNotMatch(dumped, new RegExp(TOKEN));
+  assert.doesNotMatch(dumped, new RegExp(PLATFORM_TOKEN));
   assert.doesNotMatch(dumped, /Bearer /i);
 }
 
@@ -111,16 +125,24 @@ test('1. live TikTok page normalizes documented fields and is ingestible', async
   assert.ok(hops[0].url.startsWith(tiktok.ADLIB_URL));
   assert.match(hops[0].url, /[?&]fields=/);
   assert.strictEqual(hops[0].method, 'POST');
-  assert.strictEqual(hops[0].headers.Authorization, `Bearer ${TOKEN}`);
+  assert.strictEqual(hops[0].headers.Authorization, `Bearer ${PLATFORM_TOKEN}`);
+  assert.notStrictEqual(hops[0].headers.Authorization, `Bearer ${TOKEN}`);
   assert.strictEqual(hops[0].timeoutMs, REQUEST_TIMEOUT_MS);
   assert.strictEqual(hops[0].maxBodyBytes, MAX_BODY_BYTES);
   const body = hopBody(hops[0]);
   assert.strictEqual(body.search_term, 'jackets');
+  assert.ok(body.search_term.length <= tiktok.VENDOR_SEARCH_TERM_MAX);
   assert.strictEqual(body.max_count, 10);
+  assert.ok(body.max_count <= tiktok.VENDOR_MAX_COUNT);
   assert.equal(Object.prototype.hasOwnProperty.call(body, 'search_id'), false);
+  assert.ok(body.filters && body.filters.ad_published_date_range);
   assert.strictEqual(body.filters.country_code, 'US');
   assert.strictEqual(body.filters.ad_published_date_range.min, '20260724');
   assert.strictEqual(body.filters.ad_published_date_range.max, '20260823');
+  assert.ok(body.filters.ad_published_date_range.min >= tiktok.DATE_MIN);
+  const fields = new URL(hops[0].url).searchParams.get('fields');
+  assert.strictEqual(fields, tiktok.ADLIB_FIELDS.join(','));
+  assert.doesNotMatch(fields, /ad\.title|ad\.external_url|advertiser\.country_code|ad\.reach|targeting|ages|gender/);
   assert.doesNotMatch(hops[0].url, /library\.tiktok\.com|access_token|Bearer/);
   assert.doesNotMatch(JSON.stringify(body), new RegExp(TOKEN));
   assert.strictEqual(page.evidence.length, 1);
@@ -138,6 +160,7 @@ test('1. live TikTok page normalizes documented fields and is ingestible', async
   assert.strictEqual(page.competitors[0].canonical_url, 'https://library.tiktok.com/ads?advertiser=1755645247067185');
   assert.strictEqual(page.evidence[0].provenance_method, 'ad_library');
   assert.strictEqual(page.evidence[0].source_type, 'public_video');
+  assert.strictEqual(page.evidence[0].creative_format, 'video');
   assert.strictEqual(page.evidence[0].headline, 'Trail coats');
   assert.strictEqual(page.evidence[0].provider_started_on, '2026-08-01');
   assert.strictEqual(page.evidence[0].provider_ended_on, '2026-08-20');
@@ -254,6 +277,7 @@ test('6. malformed and oversized provider bodies fail closed', async () => {
 });
 
 test('7. missing and dummy tokens fail closed with no hop', async () => {
+  installTestKeys();
   for (const token of [undefined, '', '_DUMMY_tiktok', '_dummy_token']) {
     let calls = 0;
     const page = await tiktok.fetchPage(baseReq({ idempotency_key: `ik-tok-${token || 'none'}` }), {
@@ -264,6 +288,23 @@ test('7. missing and dummy tokens fail closed with no hop', async () => {
     assert.strictEqual(page.error, 'auth_failure');
     assert.match(page.message, /missing_credentials/);
     assert.strictEqual(calls, 0);
+  }
+  try {
+    for (const platform of [undefined, '', '_DUMMY_client', '_dummy_clt']) {
+      if (platform == null) delete process.env.TIKTOK_RESEARCH_CLIENT_TOKEN;
+      else process.env.TIKTOK_RESEARCH_CLIENT_TOKEN = platform;
+      let calls = 0;
+      const page = await tiktok.fetchPage(baseReq({ idempotency_key: `ik-plt-${platform || 'none'}` }), {
+        tenantId: 9, token: TOKEN, mode: 'live',
+        transport: async () => { calls += 1; return liveHop(adlibOk([])); },
+      });
+      assert.strictEqual(page.ok, false);
+      assert.strictEqual(page.error, 'auth_failure');
+      assert.match(page.message, /missing_credentials/);
+      assert.strictEqual(calls, 0);
+    }
+  } finally {
+    installTestKeys();
   }
   let queryCalls = 0;
   const missingQuery = await tiktok.fetchPage(baseReq({
@@ -406,9 +447,14 @@ test('16. host allowlist is open.tiktokapis.com only; media/library URLs never f
   })])));
   assert.strictEqual(page.ok, true);
   assert.strictEqual(page.assets.length, 0);
+  assert.strictEqual(page.evidence[0].source_type, 'public_video');
+  assert.strictEqual(page.evidence[0].creative_format, 'video');
+  const dumpedMedia = JSON.stringify(page);
+  assert.doesNotMatch(dumpedMedia, /https:\/\/library\.tiktok\.com\/ads\?id=1"/);
+  assert.doesNotMatch(dumpedMedia, /evil\.example\/video\.mp4/);
   for (const hop of hops) {
     assert.match(hop.url, /^https:\/\/open\.tiktokapis\.com\//);
-    assert.doesNotMatch(hop.url, /library\.tiktok\.com|evil\.example|ad\.videos|image_urls|download_url/);
+    assert.doesNotMatch(hop.url, /library\.tiktok\.com|evil\.example|download_url/);
   }
   const mapped = tiktok.mapTikTokHttpError({ status: 200, json: { error: { code: 'access_token_invalid' } } });
   assert.strictEqual(mapped.error, 'auth_failure');
@@ -418,18 +464,21 @@ test('17. Authorization Bearer is sent and redacted from page JSON', async () =>
   const { page, hops } = await liveFetch(baseReq(), liveHop(adlibOk([sampleAd()])));
   assertNoSecrets(page);
   assert.ok(hops[0].headers.Authorization.startsWith('Bearer '));
-  assert.strictEqual(hops[0].headers.Authorization, `Bearer ${TOKEN}`);
+  assert.strictEqual(hops[0].headers.Authorization, `Bearer ${PLATFORM_TOKEN}`);
+  assert.notStrictEqual(hops[0].headers.Authorization, `Bearer ${TOKEN}`);
   const redacted = redactSecrets({
     authorization: hops[0].headers.Authorization,
     token: TOKEN,
+    client_token: PLATFORM_TOKEN,
     Authorization: hops[0].headers.Authorization,
-    nested: { Authorization: `Bearer ${TOKEN}` },
+    nested: { Authorization: `Bearer ${PLATFORM_TOKEN}` },
   });
   assert.strictEqual(redacted.authorization, '[redacted]');
   assert.strictEqual(redacted.token, '[redacted]');
   assert.strictEqual(redacted.Authorization, '[redacted]');
   assert.strictEqual(redacted.nested.Authorization, '[redacted]');
   assert.doesNotMatch(JSON.stringify(redacted), new RegExp(TOKEN));
+  assert.doesNotMatch(JSON.stringify(redacted), new RegExp(PLATFORM_TOKEN));
   assert.doesNotMatch(JSON.stringify(redacted), /Bearer /i);
 });
 
@@ -444,7 +493,8 @@ test('18. PII minimization: no email/phone fields; targeting not requested; no r
   assert.doesNotMatch(dumped, /"targeting"|ad_group\.targeting_info|follower_count/);
   const fields = new URL(hops[0].url).searchParams.get('fields');
   assert.strictEqual(fields, tiktok.ADLIB_FIELDS.join(','));
-  assert.doesNotMatch(fields, /targeting|email|phone|profile|comment|reach|videos|image_urls|follower/);
+  assert.strictEqual(fields, 'ad.id,ad.first_shown_date,ad.last_shown_date,ad.status,ad.videos,ad.image_urls,advertiser.business_id,advertiser.business_name');
+  assert.doesNotMatch(fields, /targeting|email|phone|profile|comment|reach|follower|ad\.title|ad\.external_url|advertiser\.country_code|ad_group|ages|gender/);
   const body = hopBody(hops[0]);
   assert.equal(Object.prototype.hasOwnProperty.call(body.filters || {}, 'ages'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(body.filters || {}, 'gender'), false);
@@ -492,32 +542,99 @@ test('unsupported operation fails closed; multi-country omits vendor geo', async
     idempotency_key: 'ik-geo',
     search_parameters: { query: 'jackets', countries: ['US', 'GB'], lookback_days: 30, max_results_per_page: 10 },
   }), liveHop(adlibOk([sampleAd({ advertiser: { country_code: undefined } })])));
-  assert.equal(Object.prototype.hasOwnProperty.call(hopBody(hops[0]).filters || {}, 'country_code'), false);
+  const multiBody = hopBody(hops[0]);
+  assert.equal(Object.prototype.hasOwnProperty.call(multiBody.filters || {}, 'country_code'), false);
+  assert.ok(multiBody.filters && multiBody.filters.ad_published_date_range);
+  assert.ok(multiBody.filters.ad_published_date_range.min >= tiktok.DATE_MIN);
   assert.strictEqual(page.competitors[0].country, null);
   assert.strictEqual(page.evidence[0].market, null);
 });
 
-const liveToken = process.env.INFOGENIE_LIVE_TIKTOK_RESEARCH_TOKEN;
-const liveSmoke = process.env.INFOGENIE_LIVE_TIKTOK_RESEARCH === '1'
-  && !!liveToken
-  && !/^_DUMMY/i.test(String(liveToken));
+test('Query Ads body clips search_term, caps max_count, and always sends a date range', async () => {
+  const longQuery = 'q'.repeat(80);
+  const { hops } = await liveFetch(baseReq({
+    idempotency_key: 'ik-clip',
+    search_parameters: {
+      query: longQuery,
+      countries: ['US'],
+      max_results_per_page: 100,
+    },
+  }), liveHop(adlibOk([])));
+  const body = hopBody(hops[0]);
+  assert.strictEqual(body.search_term.length, 50);
+  assert.ok(body.search_term.length <= 50);
+  assert.strictEqual(body.max_count, 10);
+  assert.ok(body.max_count <= 10);
+  assert.ok(body.filters && body.filters.ad_published_date_range);
+  assert.ok(body.filters.ad_published_date_range.min >= '20221001');
+  assert.strictEqual(body.filters.ad_published_date_range.min, '20260724');
+  assert.strictEqual(body.filters.ad_published_date_range.max, '20260823');
+
+  const early = await liveFetch(baseReq({
+    idempotency_key: 'ik-clamp',
+    search_parameters: { query: 'jackets', countries: ['US'], lookback_days: 30, max_results_per_page: 10 },
+  }), liveHop(adlibOk([])), { now: Date.parse('2022-10-15T12:00:00.000Z') });
+  const earlyBody = hopBody(early.hops[0]);
+  assert.strictEqual(earlyBody.filters.ad_published_date_range.min, '20221001');
+  assert.ok(earlyBody.filters.ad_published_date_range.min >= '20221001');
+});
+
+test('format detection uses videos/image_urls presence only and strips media URLs', async () => {
+  const video = (await liveFetch(baseReq({ idempotency_key: 'ik-fmt-v' }), liveHop(adlibOk([
+    sampleAd({ ad: { videos: [{}] } }),
+  ])))).page;
+  assert.strictEqual(video.evidence[0].source_type, 'public_video');
+  assert.strictEqual(video.evidence[0].creative_format, 'video');
+  assert.strictEqual(video.assets.length, 0);
+
+  const imageUrl = 'https://cdn.example/x.jpg';
+  const image = (await liveFetch(baseReq({ idempotency_key: 'ik-fmt-i' }), liveHop(adlibOk([
+    sampleAd({ ad: { videos: [], image_urls: [imageUrl] } }),
+  ])))).page;
+  assert.strictEqual(image.evidence[0].source_type, 'ad_creative');
+  assert.strictEqual(image.evidence[0].creative_format, 'image');
+  assert.strictEqual(image.assets.length, 0);
+  assert.doesNotMatch(JSON.stringify(image), /cdn\.example\/x\.jpg/);
+  assert.doesNotMatch(JSON.stringify(image), /image_urls/);
+
+  const empty = (await liveFetch(baseReq({ idempotency_key: 'ik-fmt-e' }), liveHop(adlibOk([
+    sampleAd({ ad: { videos: [], image_urls: [] } }),
+  ])))).page;
+  assert.strictEqual(empty.evidence[0].source_type, 'ad_creative');
+  assert.strictEqual(empty.evidence[0].creative_format, 'unknown');
+  assert.notStrictEqual(empty.evidence[0].source_type, 'public_video');
+  assert.strictEqual(empty.assets.length, 0);
+});
+
+const liveActor = process.env.INFOGENIE_LIVE_TIKTOK_RESEARCH_TOKEN;
+const livePlatform = [ORIG_CLIENT_TOKEN, liveActor].find((t) => t && !/^_DUMMY/i.test(String(t)));
+const liveSmoke = process.env.INFOGENIE_LIVE_TIKTOK_RESEARCH === '1' && !!livePlatform;
+
+function escapeRe(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 test('20. opt-in live TikTok Commercial Content API smoke', {
-  skip: liveSmoke ? false : 'INFOGENIE_LIVE_TIKTOK_RESEARCH=1 and a non-dummy INFOGENIE_LIVE_TIKTOK_RESEARCH_TOKEN are required',
+  skip: liveSmoke ? false : 'INFOGENIE_LIVE_TIKTOK_RESEARCH=1 and a non-dummy INFOGENIE_LIVE_TIKTOK_RESEARCH_TOKEN or TIKTOK_RESEARCH_CLIENT_TOKEN are required',
 }, async () => {
-  const token = process.env.INFOGENIE_LIVE_TIKTOK_RESEARCH_TOKEN;
+  restoreKeys();
+  const actor = liveActor && !/^_DUMMY/i.test(String(liveActor)) ? liveActor : 'tiktok-live-actor-present';
+  if (!process.env.TIKTOK_RESEARCH_CLIENT_TOKEN || /^_DUMMY/i.test(String(process.env.TIKTOK_RESEARCH_CLIENT_TOKEN))) {
+    process.env.TIKTOK_RESEARCH_CLIENT_TOKEN = livePlatform;
+  }
   const { defaultTransport } = require('../services/agent_orchestrator/connectors/transport');
   const page = await tiktok.fetchPage(baseReq({
     idempotency_key: 'ik-live-smoke',
     search_parameters: { query: 'shoes', countries: ['US'], lookback_days: 7, max_results_per_page: 1 },
   }), {
     tenantId: 9,
-    token,
+    token: actor,
     mode: 'live',
     transport: defaultTransport,
   });
   const dumped = JSON.stringify(page);
-  assert.doesNotMatch(dumped, new RegExp(String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(dumped, new RegExp(escapeRe(actor)));
+  if (livePlatform) assert.doesNotMatch(dumped, new RegExp(escapeRe(livePlatform)));
   assert.doesNotMatch(dumped, /Bearer /i);
   if (page.ok) {
     assert.strictEqual(page.continuation_state.honesty_class, 'live');
@@ -527,8 +644,10 @@ test('20. opt-in live TikTok Commercial Content API smoke', {
     }
   } else {
     assert.ok(page.error);
-    assert.doesNotMatch(String(page.message || ''), new RegExp(String(token).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.doesNotMatch(String(page.message || ''), new RegExp(escapeRe(actor)));
+    if (livePlatform) assert.doesNotMatch(String(page.message || ''), new RegExp(escapeRe(livePlatform)));
   }
+  installTestKeys();
 });
 
 let dbHarness = null;
