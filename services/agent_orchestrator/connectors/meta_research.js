@@ -147,6 +147,8 @@ function unbindMetaCursor(cursor, tenantId, researchRunId) {
   return { ok: true, after: parsed.a };
 }
 
+const META_THROTTLE_CODES = Object.freeze([4, 17, 32, 613]);
+
 function mapMetaHttpError({ status, json, retryAfterMs, rate_limit, ident: extra } = {}) {
   const err = json && json.error && typeof json.error === 'object' ? json.error : null;
   const code = err && Number(err.code);
@@ -154,7 +156,7 @@ function mapMetaHttpError({ status, json, retryAfterMs, rate_limit, ident: extra
     ...(extra || {}),
     rate_limit: rate_limit || null,
   };
-  if (status === 429) {
+  if (status === 429 || META_THROTTLE_CODES.includes(code)) {
     return connectorErrorPage('rate_limit', 'provider_rate_limit', {
       ...opts,
       retry_after_ms: retryAfterMs != null ? retryAfterMs : null,
@@ -202,11 +204,14 @@ function inferCreativeFormat(ad) {
   const titles = Array.isArray(ad.ad_creative_link_titles) ? ad.ad_creative_link_titles : [];
   if (bodies.length > 1 || titles.length > 1) return 'carousel';
   const hasText = bodies.length > 0 || titles.length > 0;
-  const snap = typeof ad.ad_snapshot_url === 'string' ? ad.ad_snapshot_url : '';
+  const snap = typeof ad.ad_snapshot_url === 'string' && ad.ad_snapshot_url.trim();
   if (hasText && !snap) return 'text';
-  if (snap) return 'image';
-  if (hasText) return 'text';
   return 'unknown';
+}
+
+function requestedGeography(countries) {
+  if (!Array.isArray(countries) || countries.length !== 1) return null;
+  return clip(countries[0], C.LIMITS.country.max) || null;
 }
 
 function impressionBounds(impr) {
@@ -235,8 +240,7 @@ function pagingAfter(json) {
 
 function normalizeMetaArchivePage(json, req, opts) {
   const captured = (opts && opts.capturedAt) || new Date().toISOString();
-  const countries = (opts && opts.countries) || DEFAULT_COUNTRIES;
-  const country = clip(countries[0] || 'US', C.LIMITS.country.max) || 'US';
+  const geo = requestedGeography(opts && opts.countries);
   const data = Array.isArray(json && json.data) ? json.data : [];
   const competitorsByPage = new Map();
   const evidence = [];
@@ -257,8 +261,8 @@ function normalizeMetaArchivePage(json, req, opts) {
         provider_advertiser_id: pageId,
         normalized_name: pageName,
         canonical_url: `https://www.facebook.com/ads/library/?view_all_page_id=${encodeURIComponent(pageId)}`,
-        country,
-        market: country,
+        country: geo,
+        market: geo,
         discovery_source: 'ad_library',
         captured_at: captured,
         contract_version: 'v1',
@@ -295,7 +299,7 @@ function normalizeMetaArchivePage(json, req, opts) {
       provider_started_on: dateOnly(ad.ad_delivery_start_time || ad.ad_creation_time),
       provider_ended_on: dateOnly(ad.ad_delivery_stop_time),
       captured_at: captured,
-      market: country,
+      market: geo,
       language: safeCopy(langs[0], C.LIMITS.language.max) || null,
       placement: safeCopy(plats[0], C.LIMITS.placement.max) || null,
       provider_metrics: metrics,
@@ -371,9 +375,10 @@ async function fetchLivePage(input, ctx) {
   const unbound = unbindMetaCursor(req.cursor, req.tenant_id, req.research_run_id);
   if (!unbound.ok) return failPage('invalid_response', 'invalid_pagination_cursor', req);
 
-  const countries = (req.search_parameters.countries && req.search_parameters.countries.length)
+  const requestedCountries = (req.search_parameters.countries && req.search_parameters.countries.length)
     ? req.search_parameters.countries
-    : [...DEFAULT_COUNTRIES];
+    : [];
+  const countries = requestedCountries.length ? requestedCountries : [...DEFAULT_COUNTRIES];
   const url = buildMetaArchiveUrl({
     query,
     countries,
@@ -418,7 +423,7 @@ async function fetchLivePage(input, ctx) {
 
   const raw = normalizeMetaArchivePage(hop.json, req, {
     capturedAt: (ctx.now != null ? new Date(ctx.now) : new Date()).toISOString(),
-    countries,
+    countries: requestedCountries,
     rate_limit: hop.rate_limit || null,
   });
   const stamped = stampPageHonesty(raw, 'live');

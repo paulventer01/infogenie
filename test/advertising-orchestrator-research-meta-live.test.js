@@ -390,6 +390,81 @@ test('16. no new /api prefix and search_parameters reject access_token', () => {
   );
 });
 
+test('snapshot URL is not proof of image; multi-country search does not invent geography', async () => {
+  const snapOnly = (await liveFetch(baseReq({ idempotency_key: 'ik-snap' }), liveHop(archiveJson([sampleAd({
+    ad_creative_bodies: [],
+    ad_creative_link_titles: [],
+    ad_creative_link_descriptions: [],
+    ad_snapshot_url: 'https://www.facebook.com/ads/archive/render_ad/?id=111222333',
+  })], null)))).page;
+  assert.strictEqual(snapOnly.ok, true);
+  assert.strictEqual(snapOnly.evidence[0].creative_format, 'unknown');
+  assert.notStrictEqual(snapOnly.evidence[0].creative_format, 'image');
+  assert.notStrictEqual(snapOnly.evidence[0].creative_format, 'video');
+  assert.strictEqual(snapOnly.evidence[0].source_type, 'ad_creative');
+
+  const textOnly = (await liveFetch(baseReq({ idempotency_key: 'ik-txt' }), liveHop(archiveJson([sampleAd({
+    ad_snapshot_url: null,
+    ad_creative_bodies: ['Copy only'],
+    ad_creative_link_titles: [],
+  })], null)))).page;
+  assert.strictEqual(textOnly.evidence[0].creative_format, 'text');
+  assert.strictEqual(textOnly.evidence[0].source_type, 'ad_copy');
+
+  const multi = (await liveFetch(baseReq({
+    idempotency_key: 'ik-geo',
+    search_parameters: { query: 'jackets', countries: ['US', 'GB'], lookback_days: 30, max_results_per_page: 10 },
+  }), liveHop(archiveJson([sampleAd()], null)))).page;
+  assert.strictEqual(multi.ok, true);
+  assert.ok(multi.competitors.length >= 1);
+  for (const row of multi.competitors) {
+    assert.strictEqual(row.country, null);
+    assert.strictEqual(row.market, null);
+  }
+  for (const ev of multi.evidence) {
+    assert.strictEqual(ev.market, null);
+    assert.notStrictEqual(ev.market, 'US');
+    assert.notStrictEqual(ev.market, 'GB');
+  }
+});
+
+test('Meta throttle codes 4/17/32/613 are rate_limit; code 100 stays terminal', async () => {
+  for (const code of [4, 17, 32, 613]) {
+    const mapped = meta.mapMetaHttpError({
+      status: 400,
+      json: { error: { code, message: 'throttled' } },
+      retryAfterMs: 1500,
+    });
+    assert.strictEqual(mapped.ok, false, `code ${code}`);
+    assert.strictEqual(mapped.error, 'rate_limit', `code ${code}`);
+    assert.strictEqual(mapped.retry_class, 'retryable', `code ${code}`);
+    assert.strictEqual(mapped.retry_after_ms, 1500, `code ${code}`);
+
+    const page = (await liveFetch(baseReq({ idempotency_key: `ik-th-${code}` }), {
+      ok: true,
+      status: 400,
+      json: { error: { code, type: 'OAuthException' } },
+      retryAfterMs: 2000,
+    })).page;
+    assert.strictEqual(page.error, 'rate_limit', `fetch code ${code}`);
+    assert.strictEqual(page.retry_class, 'retryable', `fetch code ${code}`);
+    assert.strictEqual(page.retry_after_ms, 2000, `fetch code ${code}`);
+  }
+  const validation = meta.mapMetaHttpError({
+    status: 400,
+    json: { error: { code: 100, message: 'Invalid parameter' } },
+  });
+  assert.strictEqual(validation.error, 'invalid_response');
+  assert.strictEqual(validation.retry_class, 'terminal');
+  const fetched = (await liveFetch(baseReq({ idempotency_key: 'ik-100' }), {
+    ok: true,
+    status: 400,
+    json: { error: { code: 100 } },
+  })).page;
+  assert.strictEqual(fetched.error, 'invalid_response');
+  assert.strictEqual(fetched.retry_class, 'terminal');
+});
+
 test('200 body with Meta error object is mapped, not treated as success', async () => {
   const page = (await liveFetch(baseReq({ idempotency_key: 'ik-200e' }), liveHop({
     error: { message: 'Invalid OAuth', type: 'OAuthException', code: 190 },
