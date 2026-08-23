@@ -53,6 +53,23 @@ function deferred() {
   return { promise, resolve };
 }
 
+async function waitUntilQueryWaitingOnLock(pool, match, { timeoutMs = 8000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const waiting = await pool.query(
+      `SELECT pid, wait_event_type, wait_event, query
+         FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND wait_event_type = 'Lock'
+          AND query ILIKE $1`,
+      [match]
+    );
+    if (waiting.rowCount > 0) return waiting.rows[0];
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+  throw new Error(`timed out waiting for lock wait matching ${match}`);
+}
+
 if (!HAS_DB) {
   test('advertising-orchestrator research ingest concurrency skipped — no DATABASE_URL', {
     skip: 'no DATABASE_URL',
@@ -405,5 +422,41 @@ if (!HAS_DB) {
     );
     assert.strictEqual(otherTenant.rowCount, 0);
     await releaseLease(pool, tenantA.id, host.wf.id, host.lease.holder);
+  });
+
+  test('persistPage cancel after FOR UPDATE cannot sneak in before INSERT', async () => {
+    const pool = db.getPool();
+    const host = await runningResearchWithLease('tct');
+    const page = multiRowGooglePage(tenantA.id, host.run.id, 'tct');
+    const lockHeld = deferred();
+    const cancelBlocked = deferred();
+    let cancelResolved = false;
+
+    const persist = persistPage(pool, page, persistCtx(host, {
+      afterLock: async ({ records, writable }) => {
+        if (records === 0 && writable) {
+          lockHeld.resolve();
+          await cancelBlocked.promise;
+          assert.strictEqual(cancelResolved, false, 'cancel must wait on FOR UPDATE');
+        }
+      },
+    }));
+
+    await lockHeld.promise;
+    const cancelP = cancelResearchRun(pool, tenantA.id, host.run.id)
+      .then((row) => {
+        cancelResolved = true;
+        return row;
+      });
+    await waitUntilQueryWaitingOnLock(pool, '%orchestrator_research_runs%');
+    cancelBlocked.resolve();
+
+    const [saved, cancelled] = await Promise.all([persist, cancelP]);
+    assert.strictEqual(cancelled.state, 'cancelled');
+    assert.strictEqual(saved.stale, true);
+    assert.strictEqual(saved.records, 1);
+    const after = await countPersisted(host.run.id);
+    assert.deepStrictEqual(after.competitors, ['comp-tct-1']);
+    assert.deepStrictEqual(after.evidence, []);
   });
 }

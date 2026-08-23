@@ -58,9 +58,10 @@ function errorCodeOf(page) {
   return s.slice(0, 40) || 'terminal';
 }
 
-async function loadRun(pool, tenantId, runId) {
+async function loadRun(pool, tenantId, runId, { forUpdate = false } = {}) {
   const r = await pool.query(
-    `SELECT * FROM orchestrator_research_runs WHERE tenant_id=$1 AND id=$2`,
+    `SELECT * FROM orchestrator_research_runs
+      WHERE tenant_id=$1 AND id=$2${forUpdate ? ' FOR UPDATE' : ''}`,
     [tenantId, runId]
   );
   return r.rows[0] || null;
@@ -104,16 +105,16 @@ function capturedNumber(ctx, ...keys) {
   return null;
 }
 
-async function stillWritable(pool, ctx = {}) {
+async function stillWritable(pool, ctx = {}, { forUpdate = false } = {}) {
   const { tenantId, runId, holder } = ctx;
-  const run = await loadRun(pool, tenantId, runId);
+  const run = await loadRun(pool, tenantId, runId, { forUpdate });
   if (!run || run.state !== 'running') return null;
 
   const workflowId = ctx.workflowId || run.workflow_id;
   if (workflowId) {
     const wf = (await pool.query(
       `SELECT id, current_state, version FROM orchestrator_workflows
-        WHERE tenant_id=$1 AND id=$2`,
+        WHERE tenant_id=$1 AND id=$2${forUpdate ? ' FOR UPDATE' : ''}`,
       [tenantId, workflowId]
     )).rows[0];
     if (!wf) return null;
@@ -130,7 +131,13 @@ async function stillWritable(pool, ctx = {}) {
   }
 
   if (holder && workflowId) {
-    const lease = await getLease(pool, tenantId, workflowId);
+    const lease = forUpdate
+      ? ((await pool.query(
+        `SELECT * FROM orchestrator_execution_leases
+          WHERE tenant_id=$1 AND workflow_id=$2 FOR UPDATE`,
+        [tenantId, workflowId]
+      )).rows[0] || null)
+      : await getLease(pool, tenantId, workflowId);
     if (!lease || isLeaseExpired(lease) || lease.holder !== holder) return null;
     const beat = await heartbeatLease(pool, tenantId, workflowId, holder);
     if (!beat) return null;
@@ -138,42 +145,74 @@ async function stillWritable(pool, ctx = {}) {
   return run;
 }
 
+async function persistDurableRecord(pool, ctx, { kind, index, records, write }) {
+  // beforeWrite stays outside BEGIN so cancelResearchRun in tests cannot
+  // deadlock behind this transaction's FOR UPDATE.
+  if (ctx && typeof ctx.beforeWrite === 'function') {
+    await ctx.beforeWrite({ kind, index, records });
+  }
+
+  const client = await pool.connect();
+  let unrolled = null;
+  try {
+    await client.query('BEGIN');
+    const writable = await stillWritable(client, ctx, { forUpdate: true });
+    if (ctx && typeof ctx.afterLock === 'function') {
+      await ctx.afterLock({ kind, index, records, writable: !!writable });
+    }
+    if (!writable) {
+      await client.query('ROLLBACK');
+      return { stale: true };
+    }
+    await client.query('SAVEPOINT persist_row');
+    try {
+      await write(client);
+      await client.query('COMMIT');
+      return { stale: false, wrote: true };
+    } catch (err) {
+      if (!isUnique(err)) throw err;
+      await client.query('ROLLBACK TO SAVEPOINT persist_row');
+      await client.query('COMMIT');
+      return { stale: false, wrote: false };
+    }
+  } catch (err) {
+    unrolled = err;
+    try { await client.query('ROLLBACK'); unrolled = null; } catch (_) { /* ignore */ }
+    throw err;
+  } finally {
+    client.release(unrolled || undefined);
+  }
+}
+
 async function persistPage(pool, page, ctx) {
   assertPageHonesty({ mode: ctx && ctx.mode, page });
   let records = 0;
 
-  async function beforeDurableWrite(kind, index) {
-    if (ctx && typeof ctx.beforeWrite === 'function') {
-      await ctx.beforeWrite({ kind, index, records });
-    }
-    return stillWritable(pool, ctx);
-  }
-
   const competitors = page.competitors || [];
   for (let i = 0; i < competitors.length; i++) {
-    const writable = await beforeDurableWrite('competitor', i);
-    if (!writable) return { stale: true, records };
-    try {
-      await insertCompetitor(pool, competitors[i], { tenantId: ctx.tenantId });
-      records += 1;
-    } catch (err) {
-      if (!isUnique(err)) throw err;
-    }
+    const result = await persistDurableRecord(pool, ctx, {
+      kind: 'competitor',
+      index: i,
+      records,
+      write: (client) => insertCompetitor(client, competitors[i], { tenantId: ctx.tenantId }),
+    });
+    if (result.stale) return { stale: true, records };
+    if (result.wrote) records += 1;
   }
 
   const evidence = page.evidence || [];
   for (let i = 0; i < evidence.length; i++) {
-    const writable = await beforeDurableWrite('evidence', i);
-    if (!writable) return { stale: true, records };
-    try {
-      await insertEvidenceItem(pool, evidence[i], {
+    const result = await persistDurableRecord(pool, ctx, {
+      kind: 'evidence',
+      index: i,
+      records,
+      write: (client) => insertEvidenceItem(client, evidence[i], {
         tenantId: ctx.tenantId,
         mode: ctx && ctx.mode,
-      });
-      records += 1;
-    } catch (err) {
-      if (!isUnique(err)) throw err;
-    }
+      }),
+    });
+    if (result.stale) return { stale: true, records };
+    if (result.wrote) records += 1;
   }
   return { stale: false, records };
 }
