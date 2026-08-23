@@ -125,9 +125,10 @@ function pageSourceOf(page) {
   if (!page || !isPlainObject(page)) return null;
   const cont = isPlainObject(page.continuation_state) ? page.continuation_state : null;
   return (
-    normalizeToken(page.source)
-    || normalizeToken(page.honesty)
-    || (cont && (normalizeToken(cont.source) || normalizeToken(cont.honesty_class)))
+    normalizeToken(page.honesty)
+    || normalizeToken(page.honesty_class)
+    || (cont && normalizeToken(cont.honesty_class))
+    || (cont && normalizeToken(cont.honesty_source))
     || null
   );
 }
@@ -161,10 +162,10 @@ function assertModeSourceAgreement(mode, source, field) {
   if (source != null && source !== '' && !isKnownSource(source) && !classificationForMode(source)) {
     honestyFail('invalid_classification', field || 'provider_metrics.source');
   }
-  if (isLiveMode(mode) && isFakeSource(source)) {
+  if (isLiveMode(mode) && (isFakeSource(source) || isNonLiveMode(source))) {
     honestyFail('classification_conflict', field || 'provider_metrics.source');
   }
-  if (isNonLiveMode(mode) && isLiveSource(source)) {
+  if (isNonLiveMode(mode) && (isLiveSource(source) || isLiveMode(source))) {
     honestyFail('classification_conflict', field || 'provider_metrics.source');
   }
 }
@@ -198,15 +199,16 @@ function stampProviderMetrics(rawMetrics, mode) {
 function stampContinuation(raw, mode) {
   const spec = classificationForMode(mode) || classificationForMode('fixture');
   const next = isPlainObject(raw) ? { ...raw } : {};
+  // Do not write FAKE_SOURCES onto continuation_state.source — publicRun
+  // returns that jsonb and strict data-mode would withhold the run status.
+  delete next.source;
   if (spec.kind === 'non_live') {
-    next.source = spec.source;
     next.honesty_class = spec.class;
     return next;
   }
-  if (isFakeSource(next.source) || isNonLiveMode(next.honesty_class)) {
+  if (isNonLiveMode(next.honesty_class) || isFakeSource(next.honesty_source)) {
     return next;
   }
-  if (!isLiveSource(next.source)) next.source = spec.source;
   if (!next.honesty_class) next.honesty_class = spec.class;
   return next;
 }
@@ -252,16 +254,16 @@ function assertEvidenceHonesty({ mode, evidence, competitor, page } = {}) {
   if (resolvedMode) assertModeSourceAgreement(resolvedMode, source);
 
   const pageSource = pageSourceOf(page);
-  if (pageSource) {
+    if (pageSource) {
     if (!isKnownSource(pageSource) && !classificationForMode(pageSource)) {
-      honestyFail('invalid_classification', 'continuation_state.source');
+      honestyFail('invalid_classification', 'continuation_state.honesty_class');
     }
-    if (resolvedMode) assertModeSourceAgreement(resolvedMode, pageSource, 'continuation_state.source');
-    if (isLiveSource(source) && isFakeSource(pageSource)) {
-      honestyFail('classification_conflict', 'continuation_state.source');
+    if (resolvedMode) assertModeSourceAgreement(resolvedMode, pageSource, 'continuation_state.honesty_class');
+    if ((isLiveSource(source) || isLiveMode(source)) && (isFakeSource(pageSource) || isNonLiveMode(pageSource))) {
+      honestyFail('classification_conflict', 'continuation_state.honesty_class');
     }
-    if (isFakeSource(source) && isLiveSource(pageSource)) {
-      honestyFail('classification_conflict', 'continuation_state.source');
+    if ((isFakeSource(source) || isNonLiveMode(source)) && (isLiveSource(pageSource) || isLiveMode(pageSource))) {
+      honestyFail('classification_conflict', 'continuation_state.honesty_class');
     }
   }
 
@@ -322,14 +324,14 @@ function assertPageHonesty({ mode, page } = {}) {
   if (competitors.length > 0) {
     const pageSource = pageSourceOf(page);
     if (!pageSource && evidence.length === 0) {
-      honestyFail('missing_classification', 'continuation_state.source');
+      honestyFail('missing_classification', 'continuation_state.honesty_class');
     }
     if (pageSource) {
       if (!isKnownSource(pageSource) && !classificationForMode(pageSource)) {
-        honestyFail('invalid_classification', 'continuation_state.source');
+        honestyFail('invalid_classification', 'continuation_state.honesty_class');
       }
       if (resolvedMode || mode) {
-        assertModeSourceAgreement(resolvedMode || mode, pageSource, 'continuation_state.source');
+        assertModeSourceAgreement(resolvedMode || mode, pageSource, 'continuation_state.honesty_class');
       }
     }
   }
@@ -341,7 +343,6 @@ function honestyFieldsFromPage(page) {
   if (!page || !isPlainObject(page)) return {};
   const cont = isPlainObject(page.continuation_state) ? page.continuation_state : {};
   const out = {};
-  if (cont.source != null && cont.source !== '') out.source = normalizeToken(cont.source) || cont.source;
   if (cont.honesty_class != null && cont.honesty_class !== '') {
     out.honesty_class = normalizeToken(cont.honesty_class) || cont.honesty_class;
   }

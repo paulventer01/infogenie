@@ -103,8 +103,8 @@ for (const [name, file] of PLATFORMS) {
       assert.equal(Object.prototype.hasOwnProperty.call(ev.provider_metrics, 'fact'), false);
       assertEvidenceHonesty({ mode: 'fixture', evidence: ev, page });
     }
-    assert.strictEqual(page.continuation_state.source, 'mock');
     assert.strictEqual(page.continuation_state.honesty_class, 'fixture');
+    assert.equal(Object.prototype.hasOwnProperty.call(page.continuation_state, 'source'), false);
     assertPageHonesty({ mode: 'fixture', page });
   });
 
@@ -141,7 +141,7 @@ for (const [name, file] of PLATFORMS) {
     throwsHonesty(
       () => assertPageHonesty({
         mode: 'live',
-        page: { competitors: [], evidence: [ev], continuation_state: { source: 'mock', honesty_class: 'fixture' } },
+        page: { competitors: [], evidence: [ev], continuation_state: { honesty_class: 'fixture' } },
       }),
       'classification_conflict'
     );
@@ -195,7 +195,7 @@ test('pagination fixture evidence is estimated + mock, not provider_reported', (
       assert.strictEqual(ev.provider_metrics._fabricated, true);
       assert.strictEqual(ev.provider_metrics._estimated, true);
     }
-    assert.strictEqual(page.continuation_state.source, 'mock');
+    assert.strictEqual(page.continuation_state.honesty_class, 'fixture');
     assertPageHonesty({ mode: 'fixture', page });
   }
 });
@@ -216,8 +216,8 @@ test('bindPage stamps fixture classification from ctx.mode for Meta, Google and 
       assert.strictEqual(ev.provider_metrics._estimated, true, name);
       assert.strictEqual(ev.metrics_kind, 'estimated', name);
     }
-    assert.strictEqual(bound.continuation_state.source, 'mock', name);
     assert.strictEqual(bound.continuation_state.honesty_class, 'fixture', name);
+    assert.equal(Object.prototype.hasOwnProperty.call(bound.continuation_state, 'source'), false, name);
   }
 });
 

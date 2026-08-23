@@ -75,7 +75,6 @@
     "has_more": false
   },
   "continuation_state": {
-    "source": "mock",
     "honesty_class": "fixture"
   },
   "rate_limit": null,

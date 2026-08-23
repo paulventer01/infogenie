@@ -77,7 +77,6 @@
       },
       "continuation_state": {
         "page": 1,
-        "source": "mock",
         "honesty_class": "fixture"
       },
       "rate_limit": {
@@ -102,7 +101,6 @@
       "continuation_state": {
         "page": 2,
         "done": true,
-        "source": "mock",
         "honesty_class": "fixture"
       },
       "rate_limit": {

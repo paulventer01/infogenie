@@ -89,7 +89,8 @@ for (const [name, adapter, platform] of [
     assert.strictEqual(page.evidence[0].provider_metrics._fabricated, true);
     assert.strictEqual(page.evidence[0].provider_metrics._estimated, true);
     assert.notStrictEqual(page.evidence[0].metrics_kind, 'provider_reported');
-    assert.strictEqual(page.continuation_state.source, 'mock');
+    assert.strictEqual(page.continuation_state.honesty_class, 'fixture');
+    assert.notStrictEqual(page.continuation_state.source, 'mock');
     assert.ok(!JSON.stringify(page).includes('fixture-token'));
     assert.strictEqual(hops.length, 1);
   });
