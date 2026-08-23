@@ -112,15 +112,20 @@ test('AgentOrchestrator Google research copy disclaims token and ATC URL entry',
   );
 });
 
-test('AgentOrchestrator rollout banner notes Meta and Google live, TikTok fixture-only', () => {
+test('AgentOrchestrator rollout banner notes Meta Google and TikTok live research', () => {
+  assert.match(
+    SRC,
+    /Meta, Google, and TikTok competitor-ad research/,
+    'banner mentions Meta Google and TikTok live research',
+  );
   assert.match(
     SRC,
     /DataForSEO/,
     'banner mentions DataForSEO for live Google research',
   );
-  assert.match(
+  assert.doesNotMatch(
     SRC,
     /TikTok research[\s\S]*fixture-only/i,
-    'banner notes TikTok remains fixture-only',
+    'banner no longer says TikTok is fixture-only',
   );
 });

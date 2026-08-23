@@ -245,20 +245,40 @@ function validateHttpsUrl(raw: string): boolean {
 }
 
 function researchHonestyLabel(
-  platform: "meta" | "google",
+  platform: "meta" | "google" | "tiktok",
   honestyClass: string | undefined,
 ): string {
   if (honestyClass === "fixture" || honestyClass === "synthetic") {
-    return platform === "meta"
-      ? "Fixture / not live Meta data"
-      : "Fixture / not live Google data";
+    if (platform === "meta") return "Fixture / not live Meta data";
+    if (platform === "google") return "Fixture / not live Google data";
+    return "Fixture / not live TikTok data";
   }
   if (honestyClass === "live") {
-    return platform === "meta"
-      ? "Live Meta Ad Library response"
-      : "Live Google Ads Transparency (DataForSEO) response";
+    if (platform === "meta") return "Live Meta Ad Library response";
+    if (platform === "google") return "Live Google Ads Transparency (DataForSEO) response";
+    return "Live TikTok Commercial Content Library response";
   }
   return "";
+}
+
+function tiktokResearchErrorLabel(errorCode: string | null | undefined): string {
+  if (!errorCode) return "";
+  switch (errorCode) {
+    case "missing_credentials":
+    case "provider_auth_rejected":
+    case "auth_failure":
+      return "Unavailable — TikTok research is not configured or not authorised";
+    case "provider_permission_denied":
+    case "capability_not_supported":
+      return "Permission denied";
+    case "provider_rate_limit":
+    case "rate_limit":
+      return "Rate limited — try again later";
+    case "provider_unavailable":
+      return "Unavailable — TikTok research provider is not reachable";
+    default:
+      return errorCode;
+  }
 }
 
 async function orchMutate<T extends { ok: boolean; error?: string }>(
@@ -355,6 +375,17 @@ export default function AgentOrchestrator() {
   const [googleResearchBusy, setGoogleResearchBusy] = useState("");
   const [googleResearchMsg, setGoogleResearchMsg] = useState("");
   const [googleResearchMsgIsError, setGoogleResearchMsgIsError] = useState(false);
+
+  const [tiktokQuery, setTiktokQuery] = useState("");
+  const [tiktokCountries, setTiktokCountries] = useState("US");
+  const [tiktokLookback, setTiktokLookback] = useState("30");
+  const [tiktokMaxPages, setTiktokMaxPages] = useState("2");
+  const [tiktokMaxResults, setTiktokMaxResults] = useState("25");
+  const [tiktokMode, setTiktokMode] = useState<"fixture" | "live">("fixture");
+  const [tiktokResearchRun, setTiktokResearchRun] = useState<ResearchRun | null>(null);
+  const [tiktokResearchBusy, setTiktokResearchBusy] = useState("");
+  const [tiktokResearchMsg, setTiktokResearchMsg] = useState("");
+  const [tiktokResearchMsgIsError, setTiktokResearchMsgIsError] = useState(false);
 
   const can = useCallback(
     (key: string) => isPlatformAdmin || permissions.includes(key),
@@ -534,6 +565,9 @@ export default function AgentOrchestrator() {
     setGoogleResearchRun(null);
     setGoogleResearchMsg("");
     setGoogleResearchMsgIsError(false);
+    setTiktokResearchRun(null);
+    setTiktokResearchMsg("");
+    setTiktokResearchMsgIsError(false);
   }, [selectedId]);
 
   useEffect(() => {
@@ -567,6 +601,22 @@ export default function AgentOrchestrator() {
     const iv = setInterval(poll, 2500);
     return () => { cancelled = true; clearInterval(iv); };
   }, [googleResearchRun?.id, googleResearchRun?.state]);
+
+  useEffect(() => {
+    if (!tiktokResearchRun?.id || !ACTIVE_RESEARCH_STATES.has(tiktokResearchRun.state)) return;
+    const runId = tiktokResearchRun.id;
+    let cancelled = false;
+    const poll = async () => {
+      const r = await apiGet<{ ok: boolean; run?: ResearchRun; error?: string }>(
+        `/api/agent-orchestrator/research/runs/${runId}`,
+      );
+      if (cancelled || r.ok === false || !r.run) return;
+      setTiktokResearchRun(r.run);
+    };
+    poll();
+    const iv = setInterval(poll, 2500);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [tiktokResearchRun?.id, tiktokResearchRun?.state]);
 
   const actionsLocked = status === "loading" || !!busy;
   const wfActionsLocked = wfStatus === "loading" || !!wfBusy || detailLoading;
@@ -927,6 +977,67 @@ export default function AgentOrchestrator() {
     setGoogleResearchMsg("Research run cancelled.");
   }
 
+  async function startTikTokResearch() {
+    if (!selected || !can("orchestrator.workflows.approve.research_execution")) return;
+    const query = tiktokQuery.trim();
+    if (tiktokMode === "live" && !query) {
+      setTiktokResearchMsgIsError(true);
+      setTiktokResearchMsg("Search query is required for live TikTok research.");
+      return;
+    }
+    const countries = tiktokCountries.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+    setTiktokResearchBusy("start");
+    setTiktokResearchMsg("");
+    setTiktokResearchMsgIsError(false);
+    const r = await orchMutate<{ ok: boolean; run?: ResearchRun; error?: string }>(
+      "/api/agent-orchestrator/research/runs",
+      "POST",
+      {
+        workflow_id: selected.id,
+        idempotency_key: crypto.randomUUID(),
+        requested_platforms: ["tiktok"],
+        mode: tiktokMode,
+        credential_refs: { tiktok_research: "user_integrations" },
+        search_parameters: {
+          query: query || "competitor ads",
+          countries: countries.length ? countries : ["US"],
+          lookback_days: Math.min(365, Math.max(1, Number(tiktokLookback) || 30)),
+          max_pages: Math.min(50, Math.max(1, Number(tiktokMaxPages) || 2)),
+          max_results_per_page: Math.min(100, Math.max(1, Number(tiktokMaxResults) || 25)),
+        },
+        research_brief: [selected.objective, selected.product_or_service].filter(Boolean).join(" — ") || query,
+      },
+    );
+    setTiktokResearchBusy("");
+    if (r.ok === false) {
+      setTiktokResearchMsgIsError(true);
+      setTiktokResearchMsg(r.error || "Research start failed");
+      return;
+    }
+    if (r.run) setTiktokResearchRun(r.run);
+    setTiktokResearchMsgIsError(false);
+    setTiktokResearchMsg("TikTok research run started.");
+  }
+
+  async function cancelTikTokResearch() {
+    if (!tiktokResearchRun?.id) return;
+    setTiktokResearchBusy("cancel");
+    setTiktokResearchMsg("");
+    const r = await orchMutate<{ ok: boolean; run?: ResearchRun; error?: string }>(
+      `/api/agent-orchestrator/research/runs/${tiktokResearchRun.id}/cancel`,
+      "POST",
+    );
+    setTiktokResearchBusy("");
+    if (r.ok === false) {
+      setTiktokResearchMsgIsError(true);
+      setTiktokResearchMsg(r.error || "Cancel failed");
+      return;
+    }
+    if (r.run) setTiktokResearchRun(r.run);
+    setTiktokResearchMsgIsError(false);
+    setTiktokResearchMsg("Research run cancelled.");
+  }
+
   async function submitLimits() {
     if (!can("orchestrator.credits.limits.edit")) return;
     setCreditsBusy("limits");
@@ -1003,6 +1114,12 @@ export default function AgentOrchestrator() {
     && can("orchestrator.workflows.cancel");
   const googleResearchLocked = !!googleResearchBusy || detailLoading;
   const googleHonestyLabel = researchHonestyLabel("google", googleResearchRun?.continuation_state?.honesty_class);
+  const showCancelTikTokResearch = tiktokResearchRun
+    && ACTIVE_RESEARCH_STATES.has(tiktokResearchRun.state)
+    && can("orchestrator.workflows.cancel");
+  const tiktokResearchLocked = !!tiktokResearchBusy || detailLoading;
+  const tiktokHonestyLabel = researchHonestyLabel("tiktok", tiktokResearchRun?.continuation_state?.honesty_class);
+  const tiktokErrorLabel = tiktokResearchErrorLabel(tiktokResearchRun?.error_code);
 
   const showCredits = can("orchestrator.credits.view");
   const showLimits = can("orchestrator.credits.limits.view");
@@ -1459,11 +1576,10 @@ export default function AgentOrchestrator() {
           }}
         >
           <strong>Partial rollout — limited live connectors.</strong>{" "}
-          Meta competitor-ad research (live Ad Library) and Google Ads Transparency research (live via
-          platform DataForSEO credentials) can be run from this panel when the workflow has a research_execution
-          approval. Meta uses credentials connected via Settings (opaque <code>user_integrations</code> ref);
-          Google live uses configured DataForSEO platform keys — no tokens entered in this form. TikTok research
-          remains fixture-only. Creative generation, campaign publishing, activation, and optimization are not yet
+          Meta, Google, and TikTok competitor-ad research can be run from this panel when the workflow has a
+          research_execution approval. Meta uses credentials connected via Settings (opaque <code>user_integrations</code> ref);
+          Google live uses configured DataForSEO platform keys — no tokens entered in this form; TikTok live uses
+          connected TikTok Ads credentials (opaque <code>user_integrations</code> ref). Creative generation, campaign publishing, activation, and optimization are not yet
           implemented. Do not expect live ROAS, CTR, impressions, or fabricated campaign metrics from this control
           plane. Tenant credit balances, ceilings and limits are recorded here.{" "}
           Automatic AI spend charging is not enabled in production yet; live ad-platform spend is not connected.
@@ -2073,6 +2189,119 @@ export default function AgentOrchestrator() {
                         )}
                         {googleHonestyLabel && (
                           <div style={{ marginTop: 4, color: "#6B7280" }}>{googleHonestyLabel}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 14, marginBottom: 16, background: "#F9FAFB" }}>
+                    <h5 style={{ margin: "0 0 10px", fontSize: "0.85rem" }}>TikTok research</h5>
+                    <p style={{ margin: "0 0 10px", fontSize: "0.72rem", color: "#6B7280" }}>
+                      Live TikTok research uses the tenant&apos;s connected TikTok Ads credentials (opaque{" "}
+                      <code>user_integrations</code> ref). This form does not accept tokens or library URLs. Fixture
+                      mode works without credentials.
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 10 }}>
+                      <label style={{ fontSize: "0.78rem", gridColumn: "1 / -1" }}>
+                        Search query{tiktokMode === "live" ? " (required)" : ""}
+                        <input
+                          type="text"
+                          value={tiktokQuery}
+                          onChange={(e) => setTiktokQuery(e.target.value)}
+                          placeholder="competitor brand or keyword"
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Countries
+                        <input
+                          type="text"
+                          value={tiktokCountries}
+                          onChange={(e) => setTiktokCountries(e.target.value)}
+                          placeholder="US, GB"
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Lookback days
+                        <input
+                          type="number"
+                          min="1"
+                          max="365"
+                          value={tiktokLookback}
+                          onChange={(e) => setTiktokLookback(e.target.value)}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Max pages
+                        <input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={tiktokMaxPages}
+                          onChange={(e) => setTiktokMaxPages(e.target.value)}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Results / page
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={tiktokMaxResults}
+                          onChange={(e) => setTiktokMaxResults(e.target.value)}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 10, fontSize: "0.78rem" }}>
+                      <span style={{ fontWeight: 600 }}>Mode</span>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input type="radio" name="tiktokMode" checked={tiktokMode === "fixture"} onChange={() => setTiktokMode("fixture")} />
+                        Fixture (safe)
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input type="radio" name="tiktokMode" checked={tiktokMode === "live"} onChange={() => setTiktokMode("live")} />
+                        Live TikTok research
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                      {canStartResearch && (
+                        <button
+                          type="button"
+                          disabled={tiktokResearchLocked}
+                          onClick={startTikTokResearch}
+                          style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: tiktokResearchLocked ? 0.6 : 1 }}
+                        >
+                          {tiktokResearchBusy === "start" ? "Starting…" : "Start TikTok research"}
+                        </button>
+                      )}
+                      {showCancelTikTokResearch && (
+                        <button
+                          type="button"
+                          disabled={tiktokResearchLocked}
+                          onClick={cancelTikTokResearch}
+                          style={{ ...btnSecondary, opacity: tiktokResearchLocked ? 0.6 : 1 }}
+                        >
+                          {tiktokResearchBusy === "cancel" ? "Cancelling…" : "Cancel run"}
+                        </button>
+                      )}
+                    </div>
+                    {tiktokResearchMsg && (
+                      <p style={{ fontSize: "0.78rem", color: tiktokResearchMsgIsError ? "#B91C1C" : "#3730A3", margin: "0 0 8px" }}>
+                        {tiktokResearchMsg}
+                      </p>
+                    )}
+                    {tiktokResearchRun && (
+                      <div style={{ fontSize: "0.78rem", color: "#374151" }}>
+                        <div>Run: {tiktokResearchRun.id} · State: {tiktokResearchRun.state}</div>
+                        {tiktokErrorLabel && (
+                          <div style={{ color: "#B91C1C" }}>Error: {tiktokErrorLabel}</div>
+                        )}
+                        {tiktokHonestyLabel && (
+                          <div style={{ marginTop: 4, color: "#6B7280" }}>{tiktokHonestyLabel}</div>
                         )}
                       </div>
                     )}
