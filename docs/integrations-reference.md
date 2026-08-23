@@ -69,7 +69,7 @@ All **✅ integrated** services whose keys are optional (not required to boot) s
 
 | Tool | Env var | API base | Status | What it provides |
 |------|---------|----------|--------|-----------------|
-| **DataForSEO** | `DATAFORSEO_LOGIN` + `DATAFORSEO_PASSWORD` | `api.dataforseo.com/v3/` | ✅ | SERP results, keyword suggestions, ranked keywords, keyword difficulty, AI optimization data — used across Keyword Explorer, SEO Auditor, Crawler, SERP Tracker, GEO Audit |
+| **DataForSEO** | `DATAFORSEO_LOGIN` + `DATAFORSEO_PASSWORD` | `api.dataforseo.com/v3/` | ✅ | SERP results, keyword suggestions, ranked keywords, keyword difficulty, AI optimization data — used across Keyword Explorer, SEO Auditor, Crawler, SERP Tracker, GEO Audit, and Advertising Orchestrator Google research (`ads_advertisers` / `ads_search`) |
 | **Google Custom Search** | `GOOGLE_SEARCH_API_KEY` + `GOOGLE_SEARCH_CX` / `GOOGLE_SEARCH_ENGINE_ID` | `googleapis.com/customsearch/v1` | ✅ | Branded SERP visibility checks, competitor SERP monitoring |
 | **Google PageSpeed / Core Web Vitals** | `GOOGLE_PAGESPEED_API_KEY` | `googleapis.com/pagespeedonline/v5/run` | ✅ | CWV scores (LCP/FID/CLS/INP), performance audits, mobile vs desktop |
 | **Bing Webmaster Tools** | `BING_WEBMASTER_API_KEY` | `api.bing.com/webmaster/` | ✅ | Bing keyword performance, crawl stats, page stats — free second SEO data source |
@@ -122,6 +122,26 @@ Competitor-ad research over the official Meta Ad Library Graph `ads_archive` end
 | **Live smoke** | `INFOGENIE_LIVE_META_RESEARCH=1` plus `INFOGENIE_LIVE_META_RESEARCH_TOKEN`. Skips when unset. Never prints the token |
 
 Do not request demographic targeting, bylines, emails, phones, profiles, or comments. Creatives are not downloaded (`assets` stays empty). Source URLs are syntactic Ad Library links (`https://www.facebook.com/ads/library/?id=…`) and are not fetched.
+
+### 4.2 Google research connector (`google_research`)
+
+Competitor-ad research over DataForSEO’s documented Google Ads Transparency APIs. Google has no official commercial Ads Transparency Center API — this connector does **not** call `adstransparency.google.com`, scrape HTML, or use browser automation. Used by Advertising Orchestrator research runs (`/api/agent-orchestrator/research`) — not a new API prefix.
+
+| Item | Value |
+|------|--------|
+| **Module** | `services/agent_orchestrator/connectors/google_research.js` |
+| **Host allowlist** | `api.dataforseo.com` only (`adstransparency.google.com` is refused for fetch) |
+| **Paths** | `POST /v3/serp/google/ads_advertisers/live/advanced` (first page) then `POST /v3/serp/google/ads_search/live/advanced` |
+| **Auth** | Platform keys `DATAFORSEO_LOGIN` + `DATAFORSEO_PASSWORD` → `Authorization: Basic`. Tenant vault `google_ads` via `credential_ref` is the actor gate only — Google Ads OAuth / `ctx.token` is never sent upstream. Dummy `/^_DUMMY/i` or missing keys fail closed (`auth_failure` / `missing_credentials`) with no transport |
+| **Required params** | `search_parameters.query` (≤500). Missing → `policy_rejection` `search_query_required`. Advertiser resolve uses `keyword`; ads search uses collected `advertiser_ids` (max 25) or `target` when the query looks like `example.com` |
+| **Optional** | Countries ≤20 mapped through a fixed ISO→`location_code` table (US/GB/CA/AU/DE/FR); unknown codes omit `location_code`. `lookback_days` 1–365 → `date_from`/`date_to` (min 2018-05-31). `max_results_per_page` 1–100, DataForSEO `depth` capped at 40 |
+| **Pagination** | Bound continuation `{v:1,t,r,a}` (tenant + run + advertiser ids / page). Later pages are ads_search only. Same first `creative_id` as the previous page → `invalid_response` `repeated_continuation_token`. ATC `url` / `preview_url` / `preview_image` are never fetched |
+| **Errors** | HTTP 401 / DataForSEO 401xx → `auth_failure` `provider_auth_rejected`. 403 / payment-required → `policy_rejection`. 429 / 40202 / 40501 → `rate_limit` (Retry-After honoured). 408/timeout → transient. 5xx / 50000+ → transient. 400/validation → `invalid_response`. Auth/validation are not retried |
+| **Honesty** | Live pages stamp `provider_metrics.source=live` (no `_fabricated`). Empty live results stay live — never substitute the fixture page. ATC source URLs are syntactic HTTPS refs only |
+| **Limits** | Transport timeout 8s; body cap 256KiB; one JSON task per POST |
+| **Live smoke** | `INFOGENIE_LIVE_GOOGLE_RESEARCH=1` plus real (non-dummy) `DATAFORSEO_LOGIN` + `DATAFORSEO_PASSWORD`. Skips when unset. Never prints secrets |
+
+Do not request targeting of individuals, emails, phones, or profiles. Creatives are not downloaded (`assets` stays empty). Live mode never falls back to fixtures on empty or error results.
 
 ---
 
@@ -295,7 +315,7 @@ The following are either referenced in the codebase without a working integratio
 | `PERPLEXITY_API_KEY` | Real-time market signals, competitor news, web-grounded research |
 | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_AI_TOKEN` | Llama 3.1 inference, market signals fallback |
 | `RAPIDAPI_KEY` | Llama 3.2 Vision fallback, keyword research endpoint |
-| `DATAFORSEO_LOGIN` + `DATAFORSEO_PASSWORD` | SERP Tracker, Keyword Explorer, SEO Auditor, Crawler, GEO Audit |
+| `DATAFORSEO_LOGIN` + `DATAFORSEO_PASSWORD` | SERP Tracker, Keyword Explorer, SEO Auditor, Crawler, GEO Audit, Advertising Orchestrator Google research |
 | `FIRECRAWL_API_KEY` | SEO Crawler, Competitor Detect, Tech Stack, Pricing Watch, Content Scorer |
 | `GOOGLE_SEARCH_API_KEY` + `GOOGLE_SEARCH_CX` | SERP visibility, competitor monitoring, brand SERP check |
 | `GOOGLE_PAGESPEED_API_KEY` | Web Vitals panel, CWV scores, PageSpeed insights |

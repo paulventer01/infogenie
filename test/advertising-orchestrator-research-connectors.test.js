@@ -57,7 +57,8 @@ test('capability matrix lists Meta, Google and TikTok without competitor-account
 test('host allowlists refuse off-platform destinations', () => {
   assert.strictEqual(hostAllowed('meta_research', 'graph.facebook.com'), true);
   assert.strictEqual(hostAllowed('meta_research', 'evil.example'), false);
-  assert.strictEqual(hostAllowed('google_research', 'adstransparency.google.com'), true);
+  assert.strictEqual(hostAllowed('google_research', 'api.dataforseo.com'), true);
+  assert.strictEqual(hostAllowed('google_research', 'adstransparency.google.com'), false);
   assert.strictEqual(hostAllowed('tiktok_research', 'business-api.tiktok.com'), true);
 });
 
@@ -275,7 +276,6 @@ test('meta pagination fixture yields a validated next_cursor then a terminal pag
 
 const liveEnv = {
   meta: process.env.INFOGENIE_LIVE_META_RESEARCH === '1',
-  google: process.env.INFOGENIE_LIVE_GOOGLE_RESEARCH === '1',
   tiktok: process.env.INFOGENIE_LIVE_TIKTOK_RESEARCH === '1',
 };
 
@@ -283,8 +283,8 @@ test('meta live smoke lives in advertising-orchestrator-research-meta-live.test.
   skip: 'live Meta smoke is in test/advertising-orchestrator-research-meta-live.test.js',
 }, () => {});
 
-test('google live adapter skipped — credentials absent', {
-  skip: liveEnv.google ? false : 'INFOGENIE_LIVE_GOOGLE_RESEARCH not set',
+test('google live smoke lives in advertising-orchestrator-research-google-live.test.js', {
+  skip: 'live Google smoke is in test/advertising-orchestrator-research-google-live.test.js',
 }, () => {});
 
 test('tiktok live adapter skipped — credentials absent', {
