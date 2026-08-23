@@ -12,7 +12,7 @@ const SRC = fs.readFileSync(
 );
 
 function googleResearchBlock() {
-  const start = SRC.indexOf('Google research');
+  const start = SRC.indexOf('>Google research</h5>');
   assert.ok(start >= 0, 'Google research card heading exists');
   const end = SRC.indexOf('Approval history', start);
   assert.ok(end > start, 'Google research card precedes approval history');
@@ -38,13 +38,8 @@ test('AgentOrchestrator Google research uses user_integrations credential ref', 
   const block = googleResearchBlock();
   assert.doesNotMatch(
     block,
-    /access_token|client_secret|Authorization|type="password"/i,
-    'Google research card must not expose token or secret inputs',
-  );
-  assert.doesNotMatch(
-    block,
-    /graph\.facebook|ATC URL/i,
-    'Google research card must not reference Graph or ATC URLs',
+    /access_token|client_secret|Authorization|type="password"|type="url"/i,
+    'Google research card must not expose token, secret, or URL inputs',
   );
 });
 
@@ -103,11 +98,25 @@ test('AgentOrchestrator Google research poll inspects r.ok before setGoogleResea
   assert.ok(okIdx < setIdx, 'r.ok checked before setGoogleResearchRun');
 });
 
-test('AgentOrchestrator Google research banner mentions DataForSEO live availability', () => {
+test('AgentOrchestrator Google research copy disclaims token and ATC URL entry', () => {
+  const block = googleResearchBlock();
+  assert.match(
+    block,
+    /does not accept tokens/i,
+    'copy states form does not accept tokens',
+  );
+  assert.match(
+    block,
+    /DataForSEO/,
+    'copy references DataForSEO platform credentials',
+  );
+});
+
+test('AgentOrchestrator rollout banner notes Meta and Google live, TikTok fixture-only', () => {
   assert.match(
     SRC,
     /DataForSEO/,
-    'banner or copy mentions DataForSEO for live Google research',
+    'banner mentions DataForSEO for live Google research',
   );
   assert.match(
     SRC,
