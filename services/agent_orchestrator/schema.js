@@ -13,6 +13,8 @@ const { addTenantIdColumn } = require('../tenants/migration');
 //   campaign_publishing, campaign_activation, optimization_application
 // Platforms (selected_platforms / approved_platforms JSONB arrays) are stored
 // as JSONB; allowed values meta|google|tiktok are validated by Backend.
+// research_plan (orchestrator_workflows): PR3C canonical research plan (search
+// params, platforms, ceilings, connector/contract versions). Empty {} means no plan yet.
 
 const WORKFLOW_STATES_SQL = `
   'draft',
@@ -646,6 +648,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await p.query(`ALTER TABLE orchestrator_workflows ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ NULL`);
   await p.query(`ALTER TABLE orchestrator_workflows ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
   await p.query(`ALTER TABLE orchestrator_workflows ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`);
+  await p.query(`ALTER TABLE orchestrator_workflows ADD COLUMN IF NOT EXISTS research_plan JSONB NOT NULL DEFAULT '{}'`);
 
   await p.query(`ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS workflow_id TEXT`);
   await p.query(`ALTER TABLE orchestrator_steps ADD COLUMN IF NOT EXISTS phase TEXT NOT NULL DEFAULT 'research'`);
