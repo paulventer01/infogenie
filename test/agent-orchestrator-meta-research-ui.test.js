@@ -62,7 +62,7 @@ test('AgentOrchestrator Meta research start is permission-gated', () => {
     'start Meta research gated by research_execution approval permission',
   );
   const block = metaResearchBlock();
-  assert.match(block, /canStartMetaResearch/, 'start button wrapped in permission flag');
+  assert.match(block, /canStartResearch/, 'start button wrapped in permission flag');
 });
 
 test('AgentOrchestrator Meta research cancel uses orchestrator.workflows.cancel when running', () => {

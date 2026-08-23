@@ -244,11 +244,20 @@ function validateHttpsUrl(raw: string): boolean {
   }
 }
 
-function researchHonestyLabel(honestyClass: string | undefined): string {
+function researchHonestyLabel(
+  platform: "meta" | "google",
+  honestyClass: string | undefined,
+): string {
   if (honestyClass === "fixture" || honestyClass === "synthetic") {
-    return "Fixture / not live Meta data";
+    return platform === "meta"
+      ? "Fixture / not live Meta data"
+      : "Fixture / not live Google data";
   }
-  if (honestyClass === "live") return "Live Meta Ad Library response";
+  if (honestyClass === "live") {
+    return platform === "meta"
+      ? "Live Meta Ad Library response"
+      : "Live Google Ads Transparency (DataForSEO) response";
+  }
   return "";
 }
 
@@ -335,6 +344,17 @@ export default function AgentOrchestrator() {
   const [metaResearchBusy, setMetaResearchBusy] = useState("");
   const [metaResearchMsg, setMetaResearchMsg] = useState("");
   const [metaResearchMsgIsError, setMetaResearchMsgIsError] = useState(false);
+
+  const [googleQuery, setGoogleQuery] = useState("");
+  const [googleCountries, setGoogleCountries] = useState("US");
+  const [googleLookback, setGoogleLookback] = useState("30");
+  const [googleMaxPages, setGoogleMaxPages] = useState("2");
+  const [googleMaxResults, setGoogleMaxResults] = useState("25");
+  const [googleMode, setGoogleMode] = useState<"fixture" | "live">("fixture");
+  const [googleResearchRun, setGoogleResearchRun] = useState<ResearchRun | null>(null);
+  const [googleResearchBusy, setGoogleResearchBusy] = useState("");
+  const [googleResearchMsg, setGoogleResearchMsg] = useState("");
+  const [googleResearchMsgIsError, setGoogleResearchMsgIsError] = useState(false);
 
   const can = useCallback(
     (key: string) => isPlatformAdmin || permissions.includes(key),
@@ -511,6 +531,9 @@ export default function AgentOrchestrator() {
     setMetaResearchRun(null);
     setMetaResearchMsg("");
     setMetaResearchMsgIsError(false);
+    setGoogleResearchRun(null);
+    setGoogleResearchMsg("");
+    setGoogleResearchMsgIsError(false);
   }, [selectedId]);
 
   useEffect(() => {
@@ -528,6 +551,22 @@ export default function AgentOrchestrator() {
     const iv = setInterval(poll, 2500);
     return () => { cancelled = true; clearInterval(iv); };
   }, [metaResearchRun?.id, metaResearchRun?.state]);
+
+  useEffect(() => {
+    if (!googleResearchRun?.id || !ACTIVE_RESEARCH_STATES.has(googleResearchRun.state)) return;
+    const runId = googleResearchRun.id;
+    let cancelled = false;
+    const poll = async () => {
+      const r = await apiGet<{ ok: boolean; run?: ResearchRun; error?: string }>(
+        `/api/agent-orchestrator/research/runs/${runId}`,
+      );
+      if (cancelled || r.ok === false || !r.run) return;
+      setGoogleResearchRun(r.run);
+    };
+    poll();
+    const iv = setInterval(poll, 2500);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [googleResearchRun?.id, googleResearchRun?.state]);
 
   const actionsLocked = status === "loading" || !!busy;
   const wfActionsLocked = wfStatus === "loading" || !!wfBusy || detailLoading;
@@ -827,6 +866,67 @@ export default function AgentOrchestrator() {
     setMetaResearchMsg("Research run cancelled.");
   }
 
+  async function startGoogleResearch() {
+    if (!selected || !can("orchestrator.workflows.approve.research_execution")) return;
+    const query = googleQuery.trim();
+    if (googleMode === "live" && !query) {
+      setGoogleResearchMsgIsError(true);
+      setGoogleResearchMsg("Search query is required for live Google research.");
+      return;
+    }
+    const countries = googleCountries.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+    setGoogleResearchBusy("start");
+    setGoogleResearchMsg("");
+    setGoogleResearchMsgIsError(false);
+    const r = await orchMutate<{ ok: boolean; run?: ResearchRun; error?: string }>(
+      "/api/agent-orchestrator/research/runs",
+      "POST",
+      {
+        workflow_id: selected.id,
+        idempotency_key: crypto.randomUUID(),
+        requested_platforms: ["google"],
+        mode: googleMode,
+        credential_refs: { google_research: "user_integrations" },
+        search_parameters: {
+          query: query || "competitor ads",
+          countries: countries.length ? countries : ["US"],
+          lookback_days: Math.min(365, Math.max(1, Number(googleLookback) || 30)),
+          max_pages: Math.min(50, Math.max(1, Number(googleMaxPages) || 2)),
+          max_results_per_page: Math.min(100, Math.max(1, Number(googleMaxResults) || 25)),
+        },
+        research_brief: [selected.objective, selected.product_or_service].filter(Boolean).join(" — ") || query,
+      },
+    );
+    setGoogleResearchBusy("");
+    if (r.ok === false) {
+      setGoogleResearchMsgIsError(true);
+      setGoogleResearchMsg(r.error || "Research start failed");
+      return;
+    }
+    if (r.run) setGoogleResearchRun(r.run);
+    setGoogleResearchMsgIsError(false);
+    setGoogleResearchMsg("Google research run started.");
+  }
+
+  async function cancelGoogleResearch() {
+    if (!googleResearchRun?.id) return;
+    setGoogleResearchBusy("cancel");
+    setGoogleResearchMsg("");
+    const r = await orchMutate<{ ok: boolean; run?: ResearchRun; error?: string }>(
+      `/api/agent-orchestrator/research/runs/${googleResearchRun.id}/cancel`,
+      "POST",
+    );
+    setGoogleResearchBusy("");
+    if (r.ok === false) {
+      setGoogleResearchMsgIsError(true);
+      setGoogleResearchMsg(r.error || "Cancel failed");
+      return;
+    }
+    if (r.run) setGoogleResearchRun(r.run);
+    setGoogleResearchMsgIsError(false);
+    setGoogleResearchMsg("Research run cancelled.");
+  }
+
   async function submitLimits() {
     if (!can("orchestrator.credits.limits.edit")) return;
     setCreditsBusy("limits");
@@ -892,12 +992,17 @@ export default function AgentOrchestrator() {
     && (selected.current_state === "failed" || selected.current_state === "research_failed")
     && can("orchestrator.workflows.recover");
 
-  const canStartMetaResearch = can("orchestrator.workflows.approve.research_execution");
+  const canStartResearch = can("orchestrator.workflows.approve.research_execution");
   const showCancelMetaResearch = metaResearchRun
     && ACTIVE_RESEARCH_STATES.has(metaResearchRun.state)
     && can("orchestrator.workflows.cancel");
   const metaResearchLocked = !!metaResearchBusy || detailLoading;
-  const metaHonestyLabel = researchHonestyLabel(metaResearchRun?.continuation_state?.honesty_class);
+  const metaHonestyLabel = researchHonestyLabel("meta", metaResearchRun?.continuation_state?.honesty_class);
+  const showCancelGoogleResearch = googleResearchRun
+    && ACTIVE_RESEARCH_STATES.has(googleResearchRun.state)
+    && can("orchestrator.workflows.cancel");
+  const googleResearchLocked = !!googleResearchBusy || detailLoading;
+  const googleHonestyLabel = researchHonestyLabel("google", googleResearchRun?.continuation_state?.honesty_class);
 
   const showCredits = can("orchestrator.credits.view");
   const showLimits = can("orchestrator.credits.limits.view");
@@ -1354,12 +1459,13 @@ export default function AgentOrchestrator() {
           }}
         >
           <strong>Partial rollout — limited live connectors.</strong>{" "}
-          Meta competitor-ad research can be run from this panel when the workflow has a research_execution
-          approval and Meta credentials are connected via Settings (opaque{" "}
-          <code>user_integrations</code> ref). Google and TikTok research remain fixture-only. Creative
-          generation, campaign publishing, activation, and optimization are not yet implemented. Do not expect
-          live ROAS, CTR, impressions, or fabricated campaign metrics from this control plane. Tenant credit
-          balances, ceilings and limits are recorded here.{" "}
+          Meta competitor-ad research (live Ad Library) and Google Ads Transparency research (live via
+          platform DataForSEO credentials) can be run from this panel when the workflow has a research_execution
+          approval. Meta uses credentials connected via Settings (opaque <code>user_integrations</code> ref);
+          Google live uses configured DataForSEO platform keys — no tokens entered in this form. TikTok research
+          remains fixture-only. Creative generation, campaign publishing, activation, and optimization are not yet
+          implemented. Do not expect live ROAS, CTR, impressions, or fabricated campaign metrics from this control
+          plane. Tenant credit balances, ceilings and limits are recorded here.{" "}
           Automatic AI spend charging is not enabled in production yet; live ad-platform spend is not connected.
         </div>
 
@@ -1820,7 +1926,7 @@ export default function AgentOrchestrator() {
                       </label>
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                      {canStartMetaResearch && (
+                      {canStartResearch && (
                         <button
                           type="button"
                           disabled={metaResearchLocked}
@@ -1854,6 +1960,119 @@ export default function AgentOrchestrator() {
                         )}
                         {metaHonestyLabel && (
                           <div style={{ marginTop: 4, color: "#6B7280" }}>{metaHonestyLabel}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 14, marginBottom: 16, background: "#F9FAFB" }}>
+                    <h5 style={{ margin: "0 0 10px", fontSize: "0.85rem" }}>Google research</h5>
+                    <p style={{ margin: "0 0 10px", fontSize: "0.72rem", color: "#6B7280" }}>
+                      Live Google Ads Transparency research uses configured DataForSEO platform credentials on the
+                      server. This form does not accept tokens, Graph URLs, or ATC URLs. Fixture mode works without
+                      DataForSEO.
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 10 }}>
+                      <label style={{ fontSize: "0.78rem", gridColumn: "1 / -1" }}>
+                        Search query{googleMode === "live" ? " (required)" : ""}
+                        <input
+                          type="text"
+                          value={googleQuery}
+                          onChange={(e) => setGoogleQuery(e.target.value)}
+                          placeholder="competitor brand or keyword"
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Countries
+                        <input
+                          type="text"
+                          value={googleCountries}
+                          onChange={(e) => setGoogleCountries(e.target.value)}
+                          placeholder="US, GB"
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Lookback days
+                        <input
+                          type="number"
+                          min="1"
+                          max="365"
+                          value={googleLookback}
+                          onChange={(e) => setGoogleLookback(e.target.value)}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Max pages
+                        <input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={googleMaxPages}
+                          onChange={(e) => setGoogleMaxPages(e.target.value)}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>
+                        Results / page
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={googleMaxResults}
+                          onChange={(e) => setGoogleMaxResults(e.target.value)}
+                          style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }}
+                        />
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 10, fontSize: "0.78rem" }}>
+                      <span style={{ fontWeight: 600 }}>Mode</span>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input type="radio" name="googleMode" checked={googleMode === "fixture"} onChange={() => setGoogleMode("fixture")} />
+                        Fixture (safe)
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input type="radio" name="googleMode" checked={googleMode === "live"} onChange={() => setGoogleMode("live")} />
+                        Live Google Ads Transparency (DataForSEO)
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                      {canStartResearch && (
+                        <button
+                          type="button"
+                          disabled={googleResearchLocked}
+                          onClick={startGoogleResearch}
+                          style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: googleResearchLocked ? 0.6 : 1 }}
+                        >
+                          {googleResearchBusy === "start" ? "Starting…" : "Start Google research"}
+                        </button>
+                      )}
+                      {showCancelGoogleResearch && (
+                        <button
+                          type="button"
+                          disabled={googleResearchLocked}
+                          onClick={cancelGoogleResearch}
+                          style={{ ...btnSecondary, opacity: googleResearchLocked ? 0.6 : 1 }}
+                        >
+                          {googleResearchBusy === "cancel" ? "Cancelling…" : "Cancel run"}
+                        </button>
+                      )}
+                    </div>
+                    {googleResearchMsg && (
+                      <p style={{ fontSize: "0.78rem", color: googleResearchMsgIsError ? "#B91C1C" : "#3730A3", margin: "0 0 8px" }}>
+                        {googleResearchMsg}
+                      </p>
+                    )}
+                    {googleResearchRun && (
+                      <div style={{ fontSize: "0.78rem", color: "#374151" }}>
+                        <div>Run: {googleResearchRun.id} · State: {googleResearchRun.state}</div>
+                        {googleResearchRun.error_code && (
+                          <div style={{ color: "#B91C1C" }}>Error: {googleResearchRun.error_code}</div>
+                        )}
+                        {googleHonestyLabel && (
+                          <div style={{ marginTop: 4, color: "#6B7280" }}>{googleHonestyLabel}</div>
                         )}
                       </div>
                     )}
