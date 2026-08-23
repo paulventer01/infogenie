@@ -14,7 +14,7 @@ const MAX_REDIRECTS = 2;
 const MAX_BODY_BYTES = 256 * 1024;
 const HOST_ALLOW = Object.freeze({
   meta_research: Object.freeze(['graph.facebook.com']),
-  google_research: Object.freeze(['adstransparency.google.com']),
+  google_research: Object.freeze(['api.dataforseo.com']),
   tiktok_research: Object.freeze(['business-api.tiktok.com']),
 });
 
