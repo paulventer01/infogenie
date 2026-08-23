@@ -144,10 +144,22 @@ interface TimelineEvent {
   created_at: string;
 }
 
+interface PlatformProgress {
+  state?: string;
+  pages?: number;
+  records?: number;
+  error_code?: string | null;
+  honesty_class?: string | null;
+}
+
 interface ResearchRun {
   id: string;
   state: string;
   error_code: string | null;
+  plan_hash?: string | null;
+  outcome?: string | null;
+  requested_platforms?: string[];
+  platform_progress?: Record<string, PlatformProgress>;
   continuation_state?: { honesty_class?: string };
 }
 
@@ -259,6 +271,40 @@ function researchHonestyLabel(
     return "Live TikTok Commercial Content Library response";
   }
   return "";
+}
+
+function orchestratedPlatforms(wf: Workflow | null): string[] {
+  if (!wf) return [...PLATFORMS];
+  const picked = wf.selected_platforms.filter((p) => (PLATFORMS as readonly string[]).includes(p));
+  return picked.length ? picked : [...PLATFORMS];
+}
+
+function orchCredentialRefs(platforms: string[]): Record<string, string> {
+  const refs: Record<string, string> = {};
+  if (platforms.includes("meta")) refs.meta_research = "user_integrations";
+  if (platforms.includes("google")) refs.google_research = "user_integrations";
+  if (platforms.includes("tiktok")) refs.tiktok_research = "user_integrations";
+  return refs;
+}
+
+function orchestratedHonestyLabel(run: ResearchRun | null): string {
+  const slots = Object.values(run?.platform_progress || {});
+  const classes = slots.map((s) => s.honesty_class).filter(Boolean) as string[];
+  if (classes.some((c) => c === "fixture" || c === "synthetic")) return "Fixture / not live vendor data";
+  if (classes.length > 0 && classes.every((c) => c === "live")) return "Live vendor research";
+  return "";
+}
+
+function platformProgressLine(run: ResearchRun | null, wf: Workflow | null): string {
+  const platforms = run?.requested_platforms || orchestratedPlatforms(wf);
+  const progress = run?.platform_progress || {};
+  return platforms.map((p) => {
+    const slot = progress[p];
+    if (!slot) return `${p}: pending`;
+    let line = `${p}: ${slot.state || "pending"}`;
+    if (slot.error_code) line += ` (${slot.error_code})`;
+    return line;
+  }).join(" · ");
 }
 
 function tiktokResearchErrorLabel(errorCode: string | null | undefined): string {
@@ -386,6 +432,18 @@ export default function AgentOrchestrator() {
   const [tiktokResearchBusy, setTiktokResearchBusy] = useState("");
   const [tiktokResearchMsg, setTiktokResearchMsg] = useState("");
   const [tiktokResearchMsgIsError, setTiktokResearchMsgIsError] = useState(false);
+
+  const [orchQuery, setOrchQuery] = useState("");
+  const [orchCountries, setOrchCountries] = useState("US");
+  const [orchLookback, setOrchLookback] = useState("30");
+  const [orchMaxPages, setOrchMaxPages] = useState("2");
+  const [orchMaxResults, setOrchMaxResults] = useState("25");
+  const [orchMode, setOrchMode] = useState<"fixture" | "live">("fixture");
+  const [orchPlanHash, setOrchPlanHash] = useState<string | null>(null);
+  const [orchRun, setOrchRun] = useState<ResearchRun | null>(null);
+  const [orchBusy, setOrchBusy] = useState("");
+  const [orchMsg, setOrchMsg] = useState("");
+  const [orchMsgIsError, setOrchMsgIsError] = useState(false);
 
   const can = useCallback(
     (key: string) => isPlatformAdmin || permissions.includes(key),
@@ -568,6 +626,10 @@ export default function AgentOrchestrator() {
     setTiktokResearchRun(null);
     setTiktokResearchMsg("");
     setTiktokResearchMsgIsError(false);
+    setOrchPlanHash(null);
+    setOrchRun(null);
+    setOrchMsg("");
+    setOrchMsgIsError(false);
   }, [selectedId]);
 
   useEffect(() => {
@@ -617,6 +679,22 @@ export default function AgentOrchestrator() {
     const iv = setInterval(poll, 2500);
     return () => { cancelled = true; clearInterval(iv); };
   }, [tiktokResearchRun?.id, tiktokResearchRun?.state]);
+
+  useEffect(() => {
+    if (!orchRun?.id || !ACTIVE_RESEARCH_STATES.has(orchRun.state)) return;
+    const runId = orchRun.id;
+    let cancelled = false;
+    const poll = async () => {
+      const r = await apiGet<{ ok: boolean; run?: ResearchRun; error?: string }>(
+        `/api/agent-orchestrator/research/runs/${runId}`,
+      );
+      if (cancelled || r.ok === false || !r.run) return;
+      setOrchRun(r.run);
+    };
+    poll();
+    const iv = setInterval(poll, 2500);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [orchRun?.id, orchRun?.state]);
 
   const actionsLocked = status === "loading" || !!busy;
   const wfActionsLocked = wfStatus === "loading" || !!wfBusy || detailLoading;
@@ -1038,6 +1116,126 @@ export default function AgentOrchestrator() {
     setTiktokResearchMsg("Research run cancelled.");
   }
 
+  async function saveResearchPlan(): Promise<string | null> {
+    if (!selected) return null;
+    const platforms = orchestratedPlatforms(selected);
+    const countries = orchCountries.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+    setOrchBusy("save");
+    setOrchMsg("");
+    setOrchMsgIsError(false);
+    const r = await orchMutate<{
+      ok: boolean; plan_hash?: string; error?: string;
+    }>("/api/agent-orchestrator/research/plans", "PUT", {
+      workflow_id: selected.id,
+      requested_platforms: platforms,
+      search_parameters: {
+        query: orchQuery.trim() || "competitor ads",
+        countries: countries.length ? countries : ["US"],
+        lookback_days: Math.min(365, Math.max(1, Number(orchLookback) || 30)),
+        max_pages: Math.min(50, Math.max(1, Number(orchMaxPages) || 2)),
+        max_results_per_page: Math.min(100, Math.max(1, Number(orchMaxResults) || 25)),
+      },
+    });
+    setOrchBusy("");
+    if (r.ok === false) {
+      setOrchMsgIsError(true);
+      setOrchMsg(r.error || "Plan save failed");
+      return null;
+    }
+    const hash = r.plan_hash || null;
+    if (hash) setOrchPlanHash(hash);
+    setOrchMsgIsError(false);
+    setOrchMsg("Research plan saved.");
+    return hash;
+  }
+
+  async function startOrchestratedResearch() {
+    if (!selected || !can("orchestrator.workflows.approve.research_execution")) return;
+    const query = orchQuery.trim();
+    if (orchMode === "live" && !query) {
+      setOrchMsgIsError(true);
+      setOrchMsg("Search query is required for live cross-platform research.");
+      return;
+    }
+    let planHash = orchPlanHash;
+    if (!planHash) planHash = await saveResearchPlan();
+    if (!planHash) return;
+    const platforms = orchestratedPlatforms(selected);
+    const countries = orchCountries.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+    setOrchBusy("start");
+    setOrchMsg("");
+    setOrchMsgIsError(false);
+    const r = await orchMutate<{ ok: boolean; run?: ResearchRun; error?: string }>(
+      "/api/agent-orchestrator/research/runs",
+      "POST",
+      {
+        workflow_id: selected.id,
+        idempotency_key: crypto.randomUUID(),
+        plan_hash: planHash,
+        requested_platforms: platforms,
+        mode: orchMode,
+        credential_refs: orchCredentialRefs(platforms),
+        search_parameters: {
+          query: query || "competitor ads",
+          countries: countries.length ? countries : ["US"],
+          lookback_days: Math.min(365, Math.max(1, Number(orchLookback) || 30)),
+          max_pages: Math.min(50, Math.max(1, Number(orchMaxPages) || 2)),
+          max_results_per_page: Math.min(100, Math.max(1, Number(orchMaxResults) || 25)),
+        },
+        research_brief: [selected.objective, selected.product_or_service].filter(Boolean).join(" — ") || query,
+      },
+    );
+    setOrchBusy("");
+    if (r.ok === false) {
+      setOrchMsgIsError(true);
+      setOrchMsg(r.error || "Orchestrated research start failed");
+      return;
+    }
+    if (r.run) setOrchRun(r.run);
+    setOrchMsgIsError(false);
+    setOrchMsg("Cross-platform research run started.");
+  }
+
+  async function cancelOrchestratedResearch() {
+    if (!orchRun?.id) return;
+    setOrchBusy("cancel");
+    setOrchMsg("");
+    const r = await orchMutate<{ ok: boolean; run?: ResearchRun; error?: string }>(
+      `/api/agent-orchestrator/research/runs/${orchRun.id}/cancel`,
+      "POST",
+    );
+    setOrchBusy("");
+    if (r.ok === false) {
+      setOrchMsgIsError(true);
+      setOrchMsg(r.error || "Cancel failed");
+      return;
+    }
+    if (r.run) setOrchRun(r.run);
+    setOrchMsgIsError(false);
+    setOrchMsg("Research run cancelled.");
+  }
+
+  async function continueOrchestratedResearch() {
+    if (!orchRun?.id || !can("orchestrator.workflows.approve.research_execution")) return;
+    const platforms = orchRun.requested_platforms || orchestratedPlatforms(selected);
+    setOrchBusy("continue");
+    setOrchMsg("");
+    const r = await orchMutate<{ ok: boolean; run?: ResearchRun; error?: string }>(
+      `/api/agent-orchestrator/research/runs/${orchRun.id}/continue`,
+      "POST",
+      { mode: orchMode, credential_refs: orchCredentialRefs(platforms) },
+    );
+    setOrchBusy("");
+    if (r.ok === false) {
+      setOrchMsgIsError(true);
+      setOrchMsg(r.error || "Continue failed");
+      return;
+    }
+    if (r.run) setOrchRun(r.run);
+    setOrchMsgIsError(false);
+    setOrchMsg("Research run continued.");
+  }
+
   async function submitLimits() {
     if (!can("orchestrator.credits.limits.edit")) return;
     setCreditsBusy("limits");
@@ -1120,6 +1318,19 @@ export default function AgentOrchestrator() {
   const tiktokResearchLocked = !!tiktokResearchBusy || detailLoading;
   const tiktokHonestyLabel = researchHonestyLabel("tiktok", tiktokResearchRun?.continuation_state?.honesty_class);
   const tiktokErrorLabel = tiktokResearchErrorLabel(tiktokResearchRun?.error_code);
+  const orchResearchLocked = !!orchBusy || detailLoading;
+  const orchHonestyLabel = orchestratedHonestyLabel(orchRun);
+  const orchProgressLine = platformProgressLine(orchRun, selected);
+  const showCancelOrchResearch = orchRun
+    && ACTIVE_RESEARCH_STATES.has(orchRun.state)
+    && can("orchestrator.workflows.cancel");
+  const orchIncomplete = Object.values(orchRun?.platform_progress || {}).some(
+    (s) => s.state === "pending" || s.state === "running",
+  );
+  const showContinueOrchResearch = orchRun
+    && orchRun.state === "running"
+    && canStartResearch
+    && (orchRun.outcome === "partially_completed" || orchIncomplete);
 
   const showCredits = can("orchestrator.credits.view");
   const showLimits = can("orchestrator.credits.limits.view");
@@ -2305,6 +2516,77 @@ export default function AgentOrchestrator() {
                         {tiktokHonestyLabel && (
                           <div style={{ marginTop: 4, color: "#6B7280" }}>{tiktokHonestyLabel}</div>
                         )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 14, marginBottom: 16, background: "#F9FAFB" }}>
+                    <h5 style={{ margin: "0 0 10px", fontSize: "0.85rem" }}>Cross-platform research</h5>
+                    <p style={{ margin: "0 0 10px", fontSize: "0.72rem", color: "#6B7280" }}>
+                      Save a plan, then start after <code>research_execution</code> approval. One approved plan
+                      coordinates Meta, Google, and TikTok via <code>user_integrations</code> — no tokens in this form.
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 10 }}>
+                      <label style={{ fontSize: "0.78rem", gridColumn: "1 / -1" }}>
+                        Search query{orchMode === "live" ? " (required)" : ""}
+                        <input type="text" value={orchQuery} onChange={(e) => setOrchQuery(e.target.value)} placeholder="competitor brand or keyword" style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }} />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>Countries
+                        <input type="text" value={orchCountries} onChange={(e) => setOrchCountries(e.target.value)} placeholder="US, GB" style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }} />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>Lookback days
+                        <input type="number" min="1" max="365" value={orchLookback} onChange={(e) => setOrchLookback(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }} />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>Max pages
+                        <input type="number" min="1" max="50" value={orchMaxPages} onChange={(e) => setOrchMaxPages(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }} />
+                      </label>
+                      <label style={{ fontSize: "0.78rem" }}>Results / page
+                        <input type="number" min="1" max="100" value={orchMaxResults} onChange={(e) => setOrchMaxResults(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: "6px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: "0.82rem" }} />
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 10, fontSize: "0.78rem" }}>
+                      <span style={{ fontWeight: 600 }}>Mode</span>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input type="radio" name="orchMode" checked={orchMode === "fixture"} onChange={() => setOrchMode("fixture")} />
+                        Fixture (safe)
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input type="radio" name="orchMode" checked={orchMode === "live"} onChange={() => setOrchMode("live")} />
+                        Live vendor research
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                      <button type="button" disabled={orchResearchLocked} onClick={saveResearchPlan} style={{ ...btnSecondary, opacity: orchResearchLocked ? 0.6 : 1 }}>
+                        {orchBusy === "save" ? "Saving…" : "Save research plan"}
+                      </button>
+                      {canStartResearch && (
+                        <button type="button" disabled={orchResearchLocked} onClick={startOrchestratedResearch} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: orchResearchLocked ? 0.6 : 1 }}>
+                          {orchBusy === "start" ? "Starting…" : "Start cross-platform research"}
+                        </button>
+                      )}
+                      {showContinueOrchResearch && (
+                        <button type="button" disabled={orchResearchLocked} onClick={continueOrchestratedResearch} style={{ ...btnSecondary, opacity: orchResearchLocked ? 0.6 : 1 }}>
+                          {orchBusy === "continue" ? "Continuing…" : "Continue run"}
+                        </button>
+                      )}
+                      {showCancelOrchResearch && (
+                        <button type="button" disabled={orchResearchLocked} onClick={cancelOrchestratedResearch} style={{ ...btnSecondary, opacity: orchResearchLocked ? 0.6 : 1 }}>
+                          {orchBusy === "cancel" ? "Cancelling…" : "Cancel run"}
+                        </button>
+                      )}
+                    </div>
+                    {orchPlanHash && (
+                      <p style={{ fontSize: "0.72rem", color: "#6B7280", margin: "0 0 8px" }}>Plan hash: {orchPlanHash}</p>
+                    )}
+                    {orchMsg && (
+                      <p style={{ fontSize: "0.78rem", color: orchMsgIsError ? "#B91C1C" : "#3730A3", margin: "0 0 8px" }}>{orchMsg}</p>
+                    )}
+                    {orchRun && (
+                      <div style={{ fontSize: "0.78rem", color: "#374151" }}>
+                        <div>Run: {orchRun.id} · State: {orchRun.state}{orchRun.outcome ? ` · Outcome: ${orchRun.outcome}` : ""}</div>
+                        {orchRun.error_code && <div style={{ color: "#B91C1C" }}>Error: {orchRun.error_code}</div>}
+                        {orchProgressLine && <div style={{ marginTop: 4 }}>{orchProgressLine}</div>}
+                        {orchHonestyLabel && <div style={{ marginTop: 4, color: "#6B7280" }}>{orchHonestyLabel}</div>}
                       </div>
                     )}
                   </div>
