@@ -4,6 +4,7 @@ const { fail } = require('./errors');
 const { sha256Hex } = require('./hash');
 const { GATES, GATE_FOR_WAIT } = require('./states');
 const { toBigInt, dollarsToMicros, microsToDollarNumber, microsToJson } = require('./money');
+const { planHash } = require('./research_plan');
 
 const ALLOWED_PLATFORMS = Object.freeze(['meta', 'google', 'tiktok']);
 // Anything an approver is deciding ON. Editing one of these after a gate was
@@ -21,6 +22,7 @@ const MATERIAL_FIELDS = Object.freeze([
   'offer',
   'objective',
   'product_or_service',
+  'research_plan',
 ]);
 const SET_FIELDS = Object.freeze(['selected_platforms', 'target_markets', 'target_audiences']);
 
@@ -75,6 +77,7 @@ function approvalSnapshot(workflow, gate) {
     offer: String(workflow.offer || ''),
     objective: String(workflow.objective || ''),
     product_or_service: String(workflow.product_or_service || ''),
+    research_plan_hash: planHash(workflow.research_plan || {}),
   };
 }
 
@@ -149,6 +152,11 @@ function materialChanged(before, after) {
     }
     if (f === 'credit_ceiling_micros') {
       if (ceilingMicrosOf(before) !== ceilingMicrosOf(after)) return true;
+      continue;
+    }
+    if (f === 'research_plan') {
+      if (after[f] === undefined) continue;
+      if (planHash(before[f] || {}) !== planHash(after[f] || {})) return true;
       continue;
     }
     if (String(before[f] || '') !== String(after[f] || '')) return true;
