@@ -1578,8 +1578,9 @@ export default function AgentOrchestrator() {
           <strong>Partial rollout — limited live connectors.</strong>{" "}
           Meta, Google, and TikTok competitor-ad research can be run from this panel when the workflow has a
           research_execution approval. Meta uses credentials connected via Settings (opaque <code>user_integrations</code> ref);
-          Google live uses configured DataForSEO platform keys — no tokens entered in this form; TikTok live uses
-          connected TikTok Ads credentials (opaque <code>user_integrations</code> ref). Creative generation, campaign publishing, activation, and optimization are not yet
+          Google live uses configured DataForSEO platform keys — no tokens entered in this form; TikTok live uses a configured
+          Commercial Content Library client token on the server — no tokens entered in this form — plus connected TikTok Ads
+          credentials as an actor gate (opaque <code>user_integrations</code> ref). Creative generation, campaign publishing, activation, and optimization are not yet
           implemented. Do not expect live ROAS, CTR, impressions, or fabricated campaign metrics from this control
           plane. Tenant credit balances, ceilings and limits are recorded here.{" "}
           Automatic AI spend charging is not enabled in production yet; live ad-platform spend is not connected.
@@ -2197,7 +2198,8 @@ export default function AgentOrchestrator() {
                   <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 14, marginBottom: 16, background: "#F9FAFB" }}>
                     <h5 style={{ margin: "0 0 10px", fontSize: "0.85rem" }}>TikTok research</h5>
                     <p style={{ margin: "0 0 10px", fontSize: "0.72rem", color: "#6B7280" }}>
-                      Live TikTok research uses the tenant&apos;s connected TikTok Ads credentials (opaque{" "}
+                      Live TikTok research uses a configured Commercial Content Library client token on the server plus
+                      the tenant&apos;s connected TikTok Ads credentials as an actor gate (opaque{" "}
                       <code>user_integrations</code> ref). This form does not accept tokens or library URLs. Fixture
                       mode works without credentials.
                     </p>

@@ -102,6 +102,16 @@ test('AgentOrchestrator TikTok research copy disclaims token and library URL ent
   const block = tiktokResearchBlock();
   assert.match(
     block,
+    /Commercial Content Library client token/i,
+    'copy references server Commercial Content client token',
+  );
+  assert.match(
+    block,
+    /actor gate/i,
+    'copy describes TikTok Ads credentials as actor gate',
+  );
+  assert.match(
+    block,
     /does not accept tokens/i,
     'copy states form does not accept tokens',
   );
@@ -109,6 +119,11 @@ test('AgentOrchestrator TikTok research copy disclaims token and library URL ent
     block,
     /library URLs/i,
     'copy states form does not accept library URLs',
+  );
+  assert.doesNotMatch(
+    block,
+    /type="password"|TIKTOK_RESEARCH_CLIENT_TOKEN|enter.*token/i,
+    'TikTok card must not prompt users to enter a client token',
   );
 });
 
@@ -135,6 +150,16 @@ test('AgentOrchestrator rollout banner notes Meta Google and TikTok live researc
     SRC,
     /Meta, Google, and TikTok competitor-ad research/,
     'banner mentions Meta Google and TikTok live research',
+  );
+  assert.match(
+    SRC,
+    /Commercial Content Library client token/i,
+    'banner references TikTok server Commercial Content client token',
+  );
+  assert.match(
+    SRC,
+    /no tokens entered in this form[\s\S]*actor gate/i,
+    'banner states TikTok uses server token plus actor gate without form token entry',
   );
   assert.doesNotMatch(
     SRC,
