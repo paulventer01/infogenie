@@ -11,6 +11,7 @@ const { connectorErrorPage } = require('../research_errors');
 
 const REQUEST_TIMEOUT_MS = 8000;
 const MAX_REDIRECTS = 2;
+const MAX_BODY_BYTES = 256 * 1024;
 const HOST_ALLOW = Object.freeze({
   meta_research: Object.freeze(['graph.facebook.com']),
   google_research: Object.freeze(['adstransparency.google.com']),
@@ -52,11 +53,19 @@ function rateLimitFrom(headers) {
   return { limit: Math.max(0, Math.floor(limit)), remaining: Math.max(0, Math.floor(remaining)), reset_at: resetAt };
 }
 
-function requestOnce({ url, method, headers, body, signal, timeoutMs, addresses }) {
+function requestOnce({ url, method, headers, body, signal, timeoutMs, addresses, maxBodyBytes }) {
   const u = new URL(url);
   const ip = addresses[0];
   const host = u.hostname.includes(':') ? `[${ip}]` : ip;
+  const bodyCap = maxBodyBytes != null ? maxBodyBytes : null;
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (value, err) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve(value);
+    };
     const req = https.request({
       host,
       port: 443,
@@ -68,32 +77,62 @@ function requestOnce({ url, method, headers, body, signal, timeoutMs, addresses 
       setHost: false,
     }, (res) => {
       const chunks = [];
+      let total = 0;
+      let oversized = false;
       res.on('data', (c) => {
-        if (chunks.length < 32) chunks.push(c);
+        if (settled) return;
+        total += c.length;
+        if (bodyCap != null && total > bodyCap) {
+          oversized = true;
+          req.destroy();
+          res.destroy();
+          finish({
+            status: res.statusCode || 0,
+            headers: res.headers || {},
+            json: null,
+            oversized: true,
+            malformed: false,
+            location: res.headers && res.headers.location,
+          });
+          return;
+        }
+        if (bodyCap == null && chunks.length >= 32) return;
+        chunks.push(c);
       });
       res.on('end', () => {
+        if (settled || oversized) return;
         let json = null;
+        let malformed = false;
         const raw = Buffer.concat(chunks).toString('utf8');
-        try { json = raw ? JSON.parse(raw) : null; } catch (_) { json = null; }
-        resolve({
+        try { json = raw ? JSON.parse(raw) : null; } catch (_) {
+          json = null;
+          malformed = raw.length > 0;
+        }
+        finish({
           status: res.statusCode || 0,
           headers: res.headers || {},
           json,
+          oversized: false,
+          malformed,
           location: res.headers && res.headers.location,
         });
       });
+      res.on('error', (err) => {
+        if (settled || oversized) return;
+        finish(null, err);
+      });
     });
-    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); finish(null, new Error('timeout')); });
+    req.on('error', (err) => finish(null, err));
     if (signal) {
       if (signal.aborted) {
         req.destroy();
-        reject(Object.assign(new Error('cancelled'), { code: 'cancelled' }));
+        finish(null, Object.assign(new Error('cancelled'), { code: 'cancelled' }));
         return;
       }
       signal.addEventListener('abort', () => {
         req.destroy();
-        reject(Object.assign(new Error('cancelled'), { code: 'cancelled' }));
+        finish(null, Object.assign(new Error('cancelled'), { code: 'cancelled' }));
       }, { once: true });
     }
     if (body) req.write(body);
@@ -129,12 +168,16 @@ async function defaultTransport(opts) {
         signal: opts.signal,
         timeoutMs: opts.timeoutMs,
         addresses: pin.addresses,
+        maxBodyBytes: opts.maxBodyBytes,
       });
     } catch (err) {
       if (err && err.code === 'cancelled') {
         return { ok: false, errorPage: connectorErrorPage('terminal', 'cancelled') };
       }
       return { ok: false, errorPage: connectorErrorPage('transient', 'provider_unavailable') };
+    }
+    if (res.oversized) {
+      return { ok: false, errorPage: connectorErrorPage('invalid_response', 'oversized_provider_response') };
     }
     if (res.status >= 300 && res.status < 400 && res.location) {
       hops += 1;
@@ -149,6 +192,7 @@ async function defaultTransport(opts) {
       status: res.status,
       headers: res.headers,
       json: res.json,
+      malformed: !!res.malformed,
       retryAfterMs: parseRetryAfter(header(res.headers, 'retry-after')),
       rate_limit: rateLimitFrom(res.headers),
     };
@@ -163,6 +207,7 @@ function createFixtureTransport(handler) {
 module.exports = {
   REQUEST_TIMEOUT_MS,
   MAX_REDIRECTS,
+  MAX_BODY_BYTES,
   HOST_ALLOW,
   hostAllowed,
   parseRetryAfter,

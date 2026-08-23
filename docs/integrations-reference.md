@@ -104,6 +104,25 @@ All **✅ integrated** services whose keys are optional (not required to boot) s
 | **Twitter/X Ads** | — | — | ❌ | Not integrated |
 | **Connected TV (CTV)** | — | — | ⚙️ | CTV service module exists (`services/ctv/`); no live ad platform connected |
 
+### 4.1 Meta research connector (`meta_research`)
+
+Competitor-ad research over the official Meta Ad Library Graph `ads_archive` endpoint. Used by Advertising Orchestrator research runs (`/api/agent-orchestrator/research`) — not a new API prefix.
+
+| Item | Value |
+|------|--------|
+| **Module** | `services/agent_orchestrator/connectors/meta_research.js` |
+| **Host allowlist** | `graph.facebook.com` only |
+| **Path** | `/{GRAPH_VERSION}/ads_archive` (`v21.0`, or `META_GRAPH_API_VERSION` if it matches `/^v\d{1,2}\.\d{1,2}$/`) |
+| **Auth** | Tenant vault `meta_ads` via opaque `credential_ref` → `Authorization: Bearer`. Token never in the URL, query, logs, evidence, or cursors |
+| **Required params** | `search_terms` (from `search_parameters.query`, ≤500), `ad_reached_countries` (≤20 codes), `ad_type=ALL`, `ad_active_status=ALL`, allowlisted `fields`, `limit` 1–100 |
+| **Optional** | `lookback_days` 1–365 → `ad_delivery_date_min`/`max`; bound `after` cursor (never `paging.next`) |
+| **Permissions** | Meta Ad Library / ads_read. 401/190/102 → `auth_failure`; 403/10/200/294 → `policy_rejection` |
+| **Limits** | Transport timeout 8s; body cap 256KiB; Retry-After honoured (capped 30s) by the research runtime |
+| **Honesty** | Live pages stamp `provider_metrics.source=live` (no `_fabricated`). Fixture/synthetic still uses the canned adapter |
+| **Live smoke** | `INFOGENIE_LIVE_META_RESEARCH=1` plus `INFOGENIE_LIVE_META_RESEARCH_TOKEN`. Skips when unset. Never prints the token |
+
+Do not request demographic targeting, bylines, emails, phones, profiles, or comments. Creatives are not downloaded (`assets` stays empty). Source URLs are syntactic Ad Library links (`https://www.facebook.com/ads/library/?id=…`) and are not fetched.
+
 ---
 
 ## 5 · Data & Intelligence
