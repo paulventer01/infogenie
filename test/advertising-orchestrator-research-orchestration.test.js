@@ -408,7 +408,9 @@ if (!HAS_DB) {
   });
 
   test('continue resumes from stored cursor and skips completed pages', async () => {
-    const wf = await plannedApproved(cookieA, { plan: { requested_platforms: ['meta'] } });
+    const wf = await plannedApproved(cookieA, {
+      plan: { requested_platforms: ['meta'], search_parameters: { query: 'ads', max_pages: 2 } },
+    });
     const runtime = hopRuntime({ pagesPerPlatform: 2 });
     const created = await startResearchRun(db.getPool(), {
       tenantId: tenantA.id,
