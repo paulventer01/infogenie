@@ -861,6 +861,58 @@ if (!HAS_DB) {
     )).rows[0].status, 'committed');
   });
 
+  test('tenant B stale sweep cannot dead-letter tenant A row or release tenant A credits', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const res = await postImg(cookieA, seed, 'xtstalesweep');
+    assert.equal(res.status, 201, res.text);
+    const jobId = res.json.job.id;
+    const jobRow = (await p().query(
+      `SELECT outbox_id, reservation_id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    await p().query(
+      `UPDATE orchestrator_outbox SET state='processing', claimed_by='dead',
+              claimed_until=now() - interval '2 minutes', attempt_count=max_attempts
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobRow.outbox_id]
+    );
+    await p().query(
+      `UPDATE orchestrator_static_image_jobs SET status='running', lease_holder='dead',
+              lease_expires_at=now() - interval '2 minutes', started_at=now(), attempt_count=1
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    );
+    const beforeSweep = (await p().query(
+      `SELECT state, attempt_count FROM orchestrator_outbox WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobRow.outbox_id]
+    )).rows[0];
+
+    await runWorker(tenantB.id);
+
+    assert.deepEqual((await p().query(
+      `SELECT state, attempt_count FROM orchestrator_outbox WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobRow.outbox_id]
+    )).rows[0], beforeSweep);
+    assert.equal((await p().query(
+      `SELECT status FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0].status, 'running');
+    assert.equal((await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobRow.reservation_id]
+    )).rows[0].status, 'reserved');
+
+    await runWorker(tenantA.id);
+    assert.equal((await p().query(
+      `SELECT state FROM orchestrator_outbox WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobRow.outbox_id]
+    )).rows[0].state, 'dead_letter');
+    assert.equal((await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobRow.reservation_id]
+    )).rows[0].status, 'released');
+  });
+
   test('stale processing with exhausted outbox attempts terminally fails without generate', async () => {
     await p().query(
       `UPDATE orchestrator_outbox SET state='dead_letter', updated_at=now()
