@@ -62,6 +62,10 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_research_legacy_holds',
   'orchestrator_research_cleanup_ops',
   'orchestrator_research_cleanup_targets',
+  // PR 4A — versioned evidence-backed angles, hooks, claims, creative briefs
+  'orchestrator_creative_artifacts',
+  'orchestrator_creative_citations',
+  'orchestrator_creative_audit',
 ];
 
 const RESEARCH_RETENTION_EXPIRY_SQL =
@@ -2369,6 +2373,280 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE UPDATE OR DELETE ON orchestrator_research_evidence_assets
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_research_evidence_assets_immutable();
+  `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_creative_artifacts (
+      id                         TEXT NOT NULL,
+      tenant_id                  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      artifact_id                TEXT NOT NULL,
+      kind                       TEXT NOT NULL,
+      workflow_id                TEXT NOT NULL,
+      research_run_id            TEXT NOT NULL,
+      version                    INTEGER NOT NULL,
+      supersedes_id              TEXT NULL,
+      status                     TEXT NOT NULL DEFAULT 'draft',
+      contract_version           TEXT NOT NULL DEFAULT 'v1',
+      content_hash               TEXT NOT NULL,
+      evidence_hash              TEXT NOT NULL,
+      approval_id                INTEGER NULL,
+      approval_object_version    INTEGER NULL,
+      payload                    JSONB NOT NULL,
+      created_by                 INTEGER NULL,
+      approved_by                INTEGER NULL,
+      created_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+      approved_at                TIMESTAMPTZ NULL,
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_creative_artifacts_tenant_unique_version
+        UNIQUE (tenant_id, artifact_id, version),
+      CONSTRAINT orchestrator_creative_artifacts_kind_check
+        CHECK (kind IN ('angle','hook','message','claim','creative_concept','creative_brief')),
+      CONSTRAINT orchestrator_creative_artifacts_status_check
+        CHECK (status IN ('draft','approved','invalidated','superseded')),
+      CONSTRAINT orchestrator_creative_artifacts_contract_version_check
+        CHECK (contract_version IN ('v1')),
+      CONSTRAINT orchestrator_creative_artifacts_version_check
+        CHECK (version >= 1),
+      CONSTRAINT orchestrator_creative_artifacts_id_check
+        CHECK (char_length(id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_creative_artifacts_artifact_id_check
+        CHECK (char_length(artifact_id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_creative_artifacts_content_hash_check
+        CHECK (char_length(content_hash) = 64 AND content_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_creative_artifacts_evidence_hash_check
+        CHECK (char_length(evidence_hash) = 64 AND evidence_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_creative_artifacts_payload_type_check
+        CHECK (jsonb_typeof(payload) = 'object'),
+      CONSTRAINT orchestrator_creative_artifacts_payload_len_check
+        CHECK (octet_length(payload::text) <= 32768)
+    );
+
+    CREATE TABLE IF NOT EXISTS orchestrator_creative_citations (
+      id                     TEXT NOT NULL,
+      tenant_id              INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      artifact_row_id        TEXT NOT NULL,
+      evidence_id            TEXT NOT NULL,
+      research_run_id        TEXT NOT NULL,
+      workflow_id            TEXT NOT NULL,
+      source_url             TEXT NULL,
+      platform_source_id     TEXT NULL,
+      evidence_fingerprint   TEXT NOT NULL,
+      evidence_hash          TEXT NOT NULL,
+      honesty_class          TEXT NOT NULL,
+      source_label           TEXT NOT NULL,
+      captured_at            TIMESTAMPTZ NOT NULL,
+      expires_at             TIMESTAMPTZ NULL,
+      contract_version       TEXT NOT NULL DEFAULT 'v1',
+      created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_creative_citations_tenant_unique_evidence
+        UNIQUE (tenant_id, artifact_row_id, evidence_id),
+      CONSTRAINT orchestrator_creative_citations_honesty_class_check
+        CHECK (honesty_class IN (
+          'fixture','simulated','demo','synthetic','test','mock',
+          'sample','placeholder','template','live','provider'
+        )),
+      CONSTRAINT orchestrator_creative_citations_source_label_check
+        CHECK (source_label IN (
+          'fixture','simulated','demo','synthetic','test','mock',
+          'sample','placeholder','template','live','provider'
+        )),
+      CONSTRAINT orchestrator_creative_citations_live_honesty_check
+        CHECK (NOT (
+          honesty_class IN ('fixture','simulated','demo','synthetic','test','mock','sample','placeholder','template')
+          AND source_label IN ('live','provider')
+        )),
+      CONSTRAINT orchestrator_creative_citations_contract_version_check
+        CHECK (contract_version IN ('v1')),
+      CONSTRAINT orchestrator_creative_citations_id_check
+        CHECK (char_length(id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_creative_citations_evidence_id_check
+        CHECK (char_length(evidence_id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_creative_citations_fingerprint_check
+        CHECK (char_length(evidence_fingerprint) = 64 AND evidence_fingerprint ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_creative_citations_evidence_hash_check
+        CHECK (char_length(evidence_hash) = 64 AND evidence_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_creative_citations_source_url_check
+        CHECK (source_url IS NULL OR char_length(source_url) <= 2048),
+      CONSTRAINT orchestrator_creative_citations_platform_source_id_check
+        CHECK (platform_source_id IS NULL OR char_length(platform_source_id) BETWEEN 1 AND 256),
+      CONSTRAINT orchestrator_creative_citations_source_present_check
+        CHECK (source_url IS NOT NULL OR platform_source_id IS NOT NULL)
+    );
+
+    CREATE TABLE IF NOT EXISTS orchestrator_creative_audit (
+      id               SERIAL,
+      tenant_id        INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      artifact_id      TEXT NOT NULL,
+      artifact_row_id  TEXT NOT NULL,
+      workflow_id      TEXT NOT NULL,
+      event            TEXT NOT NULL,
+      actor_user_id    INTEGER NULL,
+      content_hash     TEXT NOT NULL,
+      evidence_hash    TEXT NOT NULL,
+      detail           JSONB NOT NULL DEFAULT '{}',
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_creative_audit_event_check
+        CHECK (event IN ('created','revised','approved','invalidated','superseded','approval_rejected')),
+      CONSTRAINT orchestrator_creative_audit_content_hash_check
+        CHECK (char_length(content_hash) = 64 AND content_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_creative_audit_evidence_hash_check
+        CHECK (char_length(evidence_hash) = 64 AND evidence_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_creative_audit_detail_type_check
+        CHECK (jsonb_typeof(detail) = 'object'),
+      CONSTRAINT orchestrator_creative_audit_detail_len_check
+        CHECK (octet_length(detail::text) <= 2048)
+    );
+  `);
+
+  await _ensureNamedUnique(p, 'orchestrator_creative_artifacts',
+    'orchestrator_creative_artifacts_tenant_unique_version', 'tenant_id, artifact_id, version');
+  await _ensureNamedFk(p, 'orchestrator_creative_artifacts',
+    'orchestrator_creative_artifacts_tenant_workflow_fkey',
+    'tenant_id, workflow_id', 'orchestrator_workflows', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_creative_artifacts',
+    'orchestrator_creative_artifacts_tenant_run_fkey',
+    'tenant_id, research_run_id', 'orchestrator_research_runs', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_creative_artifacts',
+    'orchestrator_creative_artifacts_tenant_approval_fkey',
+    'tenant_id, approval_id', 'orchestrator_approvals', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedFk(p, 'orchestrator_creative_citations',
+    'orchestrator_creative_citations_tenant_artifact_fkey',
+    'tenant_id, artifact_row_id', 'orchestrator_creative_artifacts', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_creative_audit',
+    'orchestrator_creative_audit_tenant_artifact_fkey',
+    'tenant_id, artifact_row_id', 'orchestrator_creative_artifacts', 'tenant_id, id',
+    'ON DELETE CASCADE');
+
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_creative_artifacts_tenant_workflow
+    ON orchestrator_creative_artifacts (tenant_id, workflow_id)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_creative_citations_tenant_evidence
+    ON orchestrator_creative_citations (tenant_id, evidence_id)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_creative_audit_tenant_artifact
+    ON orchestrator_creative_audit (tenant_id, artifact_id)`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_creative_artifacts_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'DELETE' THEN
+        IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+          RETURN OLD;
+        END IF;
+        RAISE EXCEPTION 'orchestrator_creative_artifacts_immutable';
+      END IF;
+      IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id
+         OR OLD.id IS DISTINCT FROM NEW.id
+         OR OLD.artifact_id IS DISTINCT FROM NEW.artifact_id
+         OR OLD.kind IS DISTINCT FROM NEW.kind
+         OR OLD.workflow_id IS DISTINCT FROM NEW.workflow_id
+         OR OLD.research_run_id IS DISTINCT FROM NEW.research_run_id
+         OR OLD.version IS DISTINCT FROM NEW.version
+         OR OLD.contract_version IS DISTINCT FROM NEW.contract_version
+         OR OLD.content_hash IS DISTINCT FROM NEW.content_hash
+         OR OLD.evidence_hash IS DISTINCT FROM NEW.evidence_hash
+         OR OLD.payload IS DISTINCT FROM NEW.payload
+         OR OLD.created_by IS DISTINCT FROM NEW.created_by THEN
+        RAISE EXCEPTION 'orchestrator_creative_artifacts_immutable';
+      END IF;
+      IF OLD.status IN ('superseded', 'invalidated') THEN
+        RAISE EXCEPTION 'orchestrator_creative_artifacts_immutable';
+      END IF;
+      IF OLD.status = 'approved' AND NEW.status NOT IN ('superseded', 'invalidated') THEN
+        RAISE EXCEPTION 'orchestrator_creative_artifacts_immutable';
+      END IF;
+      IF OLD.status = 'draft' AND NEW.status NOT IN ('draft', 'approved', 'superseded', 'invalidated') THEN
+        RAISE EXCEPTION 'orchestrator_creative_artifacts_immutable';
+      END IF;
+      RETURN NEW;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION orchestrator_creative_artifacts_approval_bind()
+    RETURNS trigger AS $fn$
+    DECLARE
+      appr RECORD;
+    BEGIN
+      IF NEW.status IS DISTINCT FROM 'approved' THEN
+        RETURN NEW;
+      END IF;
+      IF NEW.approval_id IS NULL THEN
+        RAISE EXCEPTION 'orchestrator_creative_artifacts_approval_required';
+      END IF;
+      SELECT a.tenant_id, a.workflow_id, a.gate, a.decision, a.object_type,
+             a.object_id, a.object_version, a.content_hash
+        INTO appr
+        FROM orchestrator_approvals a
+       WHERE a.tenant_id = NEW.tenant_id AND a.id = NEW.approval_id;
+      IF appr.tenant_id IS NULL
+         OR appr.workflow_id IS DISTINCT FROM NEW.workflow_id
+         OR appr.gate IS DISTINCT FROM 'creative_generation'
+         OR appr.decision IS DISTINCT FROM 'approved'
+         OR appr.object_type IS DISTINCT FROM 'creative_artifact'
+         OR appr.object_id IS DISTINCT FROM NEW.artifact_id
+         OR appr.object_version IS DISTINCT FROM NEW.version
+         OR appr.content_hash IS NULL
+         OR char_length(appr.content_hash) <> 64 THEN
+        RAISE EXCEPTION 'orchestrator_creative_artifacts_approval_required';
+      END IF;
+      RETURN NEW;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION orchestrator_creative_citations_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_creative_citations_immutable';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_creative_citations_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION orchestrator_creative_audit_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_creative_audit_immutable';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_creative_audit_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_creative_artifacts_immutable ON orchestrator_creative_artifacts;
+    CREATE TRIGGER orchestrator_creative_artifacts_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_creative_artifacts
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_creative_artifacts_immutable();
+
+    DROP TRIGGER IF EXISTS orchestrator_creative_artifacts_approval_bind ON orchestrator_creative_artifacts;
+    CREATE TRIGGER orchestrator_creative_artifacts_approval_bind
+      BEFORE INSERT OR UPDATE ON orchestrator_creative_artifacts
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_creative_artifacts_approval_bind();
+
+    DROP TRIGGER IF EXISTS orchestrator_creative_citations_immutable ON orchestrator_creative_citations;
+    CREATE TRIGGER orchestrator_creative_citations_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_creative_citations
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_creative_citations_immutable();
+
+    DROP TRIGGER IF EXISTS orchestrator_creative_audit_immutable ON orchestrator_creative_audit;
+    CREATE TRIGGER orchestrator_creative_audit_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_creative_audit
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_creative_audit_immutable();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {
