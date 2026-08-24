@@ -134,6 +134,39 @@ if (!HAS_DB) {
     const pubs = await pkAndUniques('orchestrator_campaign_publish_approvals');
     assert.ok(pubs.some((c) => c.constraint_name === 'orchestrator_campaign_publish_approvals_tenant_unique_idemp'
       && c.cols === 'tenant_id,idempotency_key'));
+    assert.ok(!pubs.some((c) => c.constraint_name === 'orchestrator_campaign_publish_approvals_tenant_unique_snapshot'),
+      'the former full snapshot UNIQUE constraint must be removed');
+    const reasonColumn = (await p.query(
+      `SELECT data_type, is_nullable
+         FROM information_schema.columns
+        WHERE table_schema='public'
+          AND table_name='orchestrator_campaign_publish_approvals'
+          AND column_name='revoke_reason'`
+    )).rows[0];
+    assert.deepStrictEqual(reasonColumn, { data_type: 'text', is_nullable: 'YES' });
+    const reasonChecks = await checkNames('orchestrator_campaign_publish_approvals');
+    assert.ok(reasonChecks.includes('orchestrator_campaign_publish_approvals_revoke_reason_check'));
+    const reasonCheckDef = (await p.query(
+      `SELECT pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+        WHERE conrelid='public.orchestrator_campaign_publish_approvals'::regclass
+          AND conname='orchestrator_campaign_publish_approvals_revoke_reason_check'`
+    )).rows[0].definition;
+    assert.match(reasonCheckDef, /revoke_reason IS NULL/);
+    assert.match(reasonCheckDef, /revoke_reason = btrim\(revoke_reason\)/);
+    assert.match(reasonCheckDef, /char_length\(revoke_reason\) >= 1/);
+    assert.match(reasonCheckDef, /char_length\(revoke_reason\) <= 500/);
+    const snapshotIndex = (await p.query(
+      `SELECT indexdef
+         FROM pg_indexes
+        WHERE schemaname='public'
+          AND tablename='orchestrator_campaign_publish_approvals'
+          AND indexname='orchestrator_campaign_publish_approvals_tenant_unique_snapshot'`
+    )).rows[0];
+    assert.ok(snapshotIndex, 'active-snapshot partial unique index must exist');
+    assert.match(snapshotIndex.indexdef, /CREATE UNIQUE INDEX/);
+    assert.match(snapshotIndex.indexdef, /\(tenant_id, draft_id, revision, contract_hash\)/);
+    assert.match(snapshotIndex.indexdef, /WHERE \(revoked_at IS NULL\)$/);
   });
 
   test('CREATE TABLE CHECKs exist for status, hashes, kind, validation_status', async () => {
@@ -194,37 +227,60 @@ if (!HAS_DB) {
     );
   });
 
-  test('publish approval cannot UPDATE snapshot_json; can set revoked_at', async () => {
+  test('publish approvals require a revoke reason and allow only one active copy of a snapshot', async () => {
     const p = db.getPool();
     const draftId = await insertDraft(p, tenantA, hostA);
-    const pubId = nid('pub');
-    await p.query(
+    const firstId = nid('pub');
+    const insertApproval = (id) => p.query(
       `INSERT INTO orchestrator_campaign_publish_approvals
          (id, tenant_id, draft_id, revision, contract_hash, snapshot_json, workflow_approval_id,
           actor_user_id, idempotency_key, expires_at)
        VALUES ($1,$2,$3,1,$4,'{"ok":true}'::jsonb,$5,$6,$7,now()+'1 hour'::interval)`,
-      [pubId, tenantA, draftId, HEX, hostA.approvalId, userId, nid('pidemp')]
+      [id, tenantA, draftId, HEX, hostA.approvalId, userId, nid('pidemp')]
     );
+    await insertApproval(firstId);
     await assert.rejects(
-      () => p.query(
-        `UPDATE orchestrator_campaign_publish_approvals SET snapshot_json='{"tampered":true}'::jsonb WHERE tenant_id=$1 AND id=$2`,
-        [tenantA, pubId]
-      ),
-      /orchestrator_campaign_publish_approvals_immutable/
+      () => insertApproval(nid('duplicate-active')),
+      /unique|duplicate/i,
+      'a second active approval for the same snapshot must be blocked'
     );
-    await p.query(
-      `UPDATE orchestrator_campaign_publish_approvals SET revoked_at=now() WHERE tenant_id=$1 AND id=$2`,
-      [tenantA, pubId]
-    );
-    const row = (await p.query(
-      `SELECT revoked_at FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND id=$2`,
-      [tenantA, pubId]
-    )).rows[0];
-    assert.ok(row.revoked_at);
     await assert.rejects(
       () => p.query(
         `UPDATE orchestrator_campaign_publish_approvals SET revoked_at=now() WHERE tenant_id=$1 AND id=$2`,
-        [tenantA, pubId]
+        [tenantA, firstId]
+      ),
+      /orchestrator_campaign_publish_approvals_immutable/,
+      'the revoke trigger must require a reason'
+    );
+    await p.query(
+      `UPDATE orchestrator_campaign_publish_approvals
+          SET revoked_at=now(), revoke_reason='Creative no longer approved'
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, firstId]
+    );
+    const secondId = nid('pub');
+    await insertApproval(secondId);
+    const copies = (await p.query(
+      `SELECT id, revoked_at, revoke_reason
+         FROM orchestrator_campaign_publish_approvals
+        WHERE tenant_id=$1 AND draft_id=$2 AND revision=1 AND contract_hash=$3
+        ORDER BY created_at`,
+      [tenantA, draftId, HEX]
+    )).rows;
+    assert.equal(copies.length, 2, 'one revoked and one active snapshot row are retained');
+    assert.equal(copies.filter((row) => row.revoked_at == null).length, 1);
+    assert.equal(copies.find((row) => row.id === firstId).revoke_reason, 'Creative no longer approved');
+    await assert.rejects(
+      () => p.query(
+        `UPDATE orchestrator_campaign_publish_approvals SET snapshot_json='{"tampered":true}'::jsonb WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, firstId]
+      ),
+      /orchestrator_campaign_publish_approvals_immutable/
+    );
+    await assert.rejects(
+      () => p.query(
+        `UPDATE orchestrator_campaign_publish_approvals SET revoke_reason='Changed after revoke' WHERE tenant_id=$1 AND id=$2`,
+        [tenantA, firstId]
       ),
       /orchestrator_campaign_publish_approvals_immutable/
     );

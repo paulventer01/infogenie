@@ -100,13 +100,14 @@ router.post('/:id/approve', capPayload, wrap(GATE_PERMISSION.campaign_publishing
   tenantMismatch(body, tid);
   const key = String(body.idempotency_key || extractIdempotencyKey(req) || '').trim();
   if (!key) fail('validation_failed', { field: 'idempotency_key' });
+  const draftId = String(req.params.id || '');
   const run = await runIdempotent(pool, {
     tenantId: tid, key, endpoint: endpointOf(req), action: 'campaign_draft_approve',
     requestHash: requestHashFrom(req), actorUserId: userId,
     workflowId: undefined, requestId: req.requestId,
     fn: async () => {
       const { draft, approval, replay } = await drafts.approveDraft(pool, {
-        tenantId: tid, userId, draftId: String(req.params.id || ''),
+        tenantId: tid, userId, draftId,
         idempotencyKey: key, body, bodyTenantId: body.tenant_id,
       });
       return {
@@ -122,6 +123,14 @@ router.post('/:id/approve', capPayload, wrap(GATE_PERMISSION.campaign_publishing
     },
   });
   if (run.replay) {
+    const apprId = run.body && run.body.approval && run.body.approval.id;
+    if (apprId) {
+      const pub = (await pool.query(
+        `SELECT revoked_at FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND id=$2`,
+        [tid, apprId]
+      )).rows[0];
+      if (pub && pub.revoked_at) fail('idempotency_conflict', { field: 'idempotency_key' });
+    }
     const bodyOut = run.body && typeof run.body === 'object' ? { ...run.body, replay: true } : run.body;
     return { status: 200, body: bodyOut };
   }
@@ -132,7 +141,8 @@ router.post('/:id/revoke', capPayload, wrap(GATE_PERMISSION.campaign_publishing,
   const body = bodyOf(req);
   tenantMismatch(body, tid);
   const draft = await drafts.revokeDraft(pool, {
-    tenantId: tid, userId, draftId: String(req.params.id || ''), bodyTenantId: body.tenant_id,
+    tenantId: tid, userId, draftId: String(req.params.id || ''),
+    bodyTenantId: body.tenant_id, reason: body.reason,
   });
   return { status: 200, body: { ok: true, draft } };
 }, { rejectApiKey: true }));

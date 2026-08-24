@@ -3461,12 +3461,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       snapshot_json JSONB NOT NULL, workflow_approval_id INTEGER NOT NULL,
       actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
       idempotency_key TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL,
-      revoked_at TIMESTAMPTZ NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      revoked_at TIMESTAMPTZ NULL, revoke_reason TEXT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (tenant_id, id),
       CONSTRAINT orchestrator_campaign_publish_approvals_tenant_unique_idemp
         UNIQUE (tenant_id, idempotency_key),
-      CONSTRAINT orchestrator_campaign_publish_approvals_tenant_unique_snapshot
-        UNIQUE (tenant_id, draft_id, revision, contract_hash),
       CONSTRAINT orchestrator_campaign_publish_approvals_revision_check CHECK (revision >= 1),
       CONSTRAINT orchestrator_campaign_publish_approvals_len_check CHECK (
         char_length(id) BETWEEN 1 AND 128 AND char_length(idempotency_key) BETWEEN 1 AND 256),
@@ -3478,12 +3477,19 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     );
   `);
   await p.query(`ALTER TABLE orchestrator_campaign_publish_approvals
-    ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ NULL`);
+    ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ NULL,
+    ADD COLUMN IF NOT EXISTS revoke_reason TEXT NULL`);
   await _ensureNamedUnique(p, 'orchestrator_campaign_publish_approvals',
     'orchestrator_campaign_publish_approvals_tenant_unique_idemp', 'tenant_id, idempotency_key');
-  await _ensureNamedUnique(p, 'orchestrator_campaign_publish_approvals',
-    'orchestrator_campaign_publish_approvals_tenant_unique_snapshot',
-    'tenant_id, draft_id, revision, contract_hash');
+  await _ensureNamedCheck(p, 'orchestrator_campaign_publish_approvals',
+    'orchestrator_campaign_publish_approvals_revoke_reason_check',
+    `revoke_reason IS NULL OR (revoke_reason = btrim(revoke_reason) AND char_length(revoke_reason) BETWEEN 1 AND 500)`);
+  await p.query(`ALTER TABLE orchestrator_campaign_publish_approvals
+    DROP CONSTRAINT IF EXISTS orchestrator_campaign_publish_approvals_tenant_unique_snapshot`);
+  await p.query(`DROP INDEX IF EXISTS orchestrator_campaign_publish_approvals_tenant_unique_snapshot`);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_campaign_publish_approvals_tenant_unique_snapshot
+    ON orchestrator_campaign_publish_approvals (tenant_id, draft_id, revision, contract_hash)
+    WHERE revoked_at IS NULL`);
   await _ensureNamedFk(p, 'orchestrator_campaign_publish_approvals',
     'orchestrator_campaign_publish_approvals_tenant_draft_fkey',
     'tenant_id, draft_id', 'orchestrator_campaign_drafts', 'tenant_id, id',
@@ -3506,19 +3512,31 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         END IF;
         RAISE EXCEPTION 'orchestrator_campaign_publish_approvals_immutable';
       END IF;
-      IF OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL
-         AND OLD.tenant_id IS NOT DISTINCT FROM NEW.tenant_id
-         AND OLD.id IS NOT DISTINCT FROM NEW.id
-         AND OLD.draft_id IS NOT DISTINCT FROM NEW.draft_id
-         AND OLD.revision IS NOT DISTINCT FROM NEW.revision
-         AND OLD.contract_hash IS NOT DISTINCT FROM NEW.contract_hash
-         AND OLD.snapshot_json IS NOT DISTINCT FROM NEW.snapshot_json
-         AND OLD.workflow_approval_id IS NOT DISTINCT FROM NEW.workflow_approval_id
-         AND OLD.actor_user_id IS NOT DISTINCT FROM NEW.actor_user_id
-         AND OLD.idempotency_key IS NOT DISTINCT FROM NEW.idempotency_key
-         AND OLD.expires_at IS NOT DISTINCT FROM NEW.expires_at
-         AND OLD.created_at IS NOT DISTINCT FROM NEW.created_at THEN
-        RETURN NEW;
+      IF OLD.revoked_at IS NOT NULL THEN
+        RAISE EXCEPTION 'orchestrator_campaign_publish_approvals_immutable';
+      END IF;
+      IF NEW.revoked_at IS NOT NULL THEN
+        IF NEW.revoke_reason IS NULL
+           OR NEW.revoke_reason IS DISTINCT FROM btrim(NEW.revoke_reason)
+           OR char_length(NEW.revoke_reason) < 1
+           OR char_length(NEW.revoke_reason) > 500 THEN
+          RAISE EXCEPTION 'orchestrator_campaign_publish_approvals_immutable';
+        END IF;
+        IF OLD.tenant_id IS NOT DISTINCT FROM NEW.tenant_id
+           AND OLD.id IS NOT DISTINCT FROM NEW.id
+           AND OLD.draft_id IS NOT DISTINCT FROM NEW.draft_id
+           AND OLD.revision IS NOT DISTINCT FROM NEW.revision
+           AND OLD.contract_hash IS NOT DISTINCT FROM NEW.contract_hash
+           AND OLD.snapshot_json IS NOT DISTINCT FROM NEW.snapshot_json
+           AND OLD.workflow_approval_id IS NOT DISTINCT FROM NEW.workflow_approval_id
+           AND OLD.actor_user_id IS NOT DISTINCT FROM NEW.actor_user_id
+           AND OLD.idempotency_key IS NOT DISTINCT FROM NEW.idempotency_key
+           AND OLD.expires_at IS NOT DISTINCT FROM NEW.expires_at
+           AND OLD.created_at IS NOT DISTINCT FROM NEW.created_at
+           AND OLD.revoke_reason IS NULL THEN
+          RETURN NEW;
+        END IF;
+        RAISE EXCEPTION 'orchestrator_campaign_publish_approvals_immutable';
       END IF;
       RAISE EXCEPTION 'orchestrator_campaign_publish_approvals_immutable';
     END;

@@ -572,6 +572,7 @@ export default function AgentOrchestrator() {
   const [draftHistory, setDraftHistory] = useState<{ revisions?: { revision: number; contract_hash: string; created_at: string }[]; approvals?: { id: number; revision: number; contract_hash: string; created_at: string; revoked_at?: string | null }[] } | null>(null);
   const [draftForm, setDraftForm] = useState({ label: "", notes: "", landing_page_url: "", credential_ref: "user_integrations", asset_id: "", asset_version: "1", content_hash: "", budget_micros: "1000000", start_at: defaultDraftStartLocal() });
   const [draftApproveConfirm, setDraftApproveConfirm] = useState(false);
+  const [draftRevokeReason, setDraftRevokeReason] = useState("");
   const [draftBusy, setDraftBusy] = useState(""); const [draftMsg, setDraftMsg] = useState(""); const [draftMsgIsError, setDraftMsgIsError] = useState(false);
 
   const can = useCallback(
@@ -765,12 +766,13 @@ export default function AgentOrchestrator() {
     setStaticGenMsg("");
     setStaticGenMsgIsError(false);
     setVideoJob(null); setVideoGenConfirm(false); setVideoGenBusy(""); setVideoGenMsg(""); setVideoGenMsgIsError(false);
-    setCampaignDraft(null); setDraftSnapshot(null); setDraftHistory(null); setDraftApproveConfirm(false);
+    setCampaignDraft(null); setDraftSnapshot(null); setDraftHistory(null); setDraftApproveConfirm(false); setDraftRevokeReason("");
     setDraftBusy(""); setDraftMsg(""); setDraftMsgIsError(false);
     setDraftForm({ label: "", notes: "", landing_page_url: "", credential_ref: "user_integrations", asset_id: "", asset_version: "1", content_hash: "", budget_micros: "1000000", start_at: defaultDraftStartLocal() });
   }, [selectedId]);
 
   const loadCampaignDraft = useCallback(async (wfId: string, wf: Workflow | null, brief?: { artifact_id?: string; id?: string; version?: number; content_hash?: string }) => {
+    setDraftRevokeReason("");
     const r = await apiGet<{ ok: boolean; drafts?: CampaignDraft[]; error?: string }>(
       `/api/agent-orchestrator/campaign-drafts?workflow_id=${encodeURIComponent(wfId)}`,
     );
@@ -1612,7 +1614,9 @@ export default function AgentOrchestrator() {
 
   async function revokeCampaignDraft() {
     if (!campaignDraft?.id || !selected || !can("orchestrator.workflows.approve.campaign_publishing") || campaignDraft.status !== "approved_for_publish") return;
-    await draftAct("revoke", () => orchMutate(`/api/agent-orchestrator/campaign-drafts/${campaignDraft.id}/revoke`, "POST", {}), "Campaign draft approval revoked.", () => loadCampaignDraft(selected.id, selected));
+    const trimmedReason = draftRevokeReason.trim();
+    if (!trimmedReason) return;
+    await draftAct("revoke", () => orchMutate(`/api/agent-orchestrator/campaign-drafts/${campaignDraft.id}/revoke`, "POST", { reason: trimmedReason }), "Campaign draft approval revoked.", async () => { setDraftRevokeReason(""); await loadCampaignDraft(selected.id, selected); });
   }
 
   async function submitLimits() {
@@ -3075,7 +3079,10 @@ export default function AgentOrchestrator() {
                             <button type="button" disabled={!!draftBusy || !draftApproveConfirm} onClick={approveCampaignDraft} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: draftBusy || !draftApproveConfirm ? 0.6 : 1 }}>{draftBusy === "approve" ? "Approving…" : "Approve snapshot"}</button>
                           )}
                           {can("orchestrator.workflows.approve.campaign_publishing") && campaignDraft.status === "approved_for_publish" && (
-                            <button type="button" disabled={!!draftBusy} onClick={revokeCampaignDraft} style={{ ...btnSecondary, opacity: draftBusy ? 0.6 : 1 }}>{draftBusy === "revoke" ? "Revoking…" : "Revoke approval"}</button>
+                            <input placeholder="Reason for revoking approval (required)" value={draftRevokeReason} onChange={(e) => setDraftRevokeReason(e.target.value)} maxLength={500} style={{ ...draftFld, width: "100%" }} />
+                          )}
+                          {can("orchestrator.workflows.approve.campaign_publishing") && campaignDraft.status === "approved_for_publish" && (
+                            <button type="button" disabled={!!draftBusy || !draftRevokeReason.trim()} onClick={revokeCampaignDraft} style={{ ...btnSecondary, opacity: draftBusy || !draftRevokeReason.trim() ? 0.6 : 1 }}>{draftBusy === "revoke" ? "Revoking…" : "Revoke approval"}</button>
                           )}
                         </div>
                         {draftSnapshot && <div style={{ marginBottom: 8, padding: 8, background: "#fff", borderRadius: 6, border: "1px solid #E5E7EB" }}>Snapshot · {draftSnapshot.object_kind} · {draftSnapshot.status} · published: {String(draftSnapshot.published ?? false)} · hash {draftSnapshot.contract_hash}</div>}

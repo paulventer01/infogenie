@@ -324,6 +324,17 @@ function parseExpires(raw) {
   return new Date(t).toISOString();
 }
 
+async function ensureApprovedDraft(c, row, approval, expiresAt) {
+  if (row.status === 'approved_for_publish') return row;
+  assertGo(row.status, 'approved_for_publish');
+  return (await c.query(
+    `UPDATE orchestrator_campaign_drafts
+        SET status='approved_for_publish', approval_id=$3, approval_hash=$4, approval_expires_at=$5, updated_at=now()
+      WHERE tenant_id=$1 AND id=$2 RETURNING *`,
+    [row.tenant_id, row.id, approval.workflow_approval_id, row.contract_hash, expiresAt || approval.expires_at]
+  )).rows[0];
+}
+
 async function approveDraft(pool, o) {
   if (o.bodyTenantId != null && Number(o.bodyTenantId) !== Number(o.tenantId)) fail('validation_failed');
   const body = o.body && typeof o.body === 'object' ? o.body : {};
@@ -340,7 +351,14 @@ async function approveDraft(pool, o) {
       `SELECT * FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND idempotency_key=$2`,
       [o.tenantId, key]);
     if (existing) {
+      if (existing.revoked_at) fail('idempotency_conflict', { field: 'idempotency_key' });
+      if (String(existing.draft_id) !== String(row.id)) fail('idempotency_conflict', { field: 'idempotency_key' });
+      if (Number(existing.revision) !== Number(row.current_revision)
+          || String(existing.contract_hash) !== String(row.contract_hash)) {
+        fail('idempotency_conflict', { field: 'idempotency_key' });
+      }
       const rev = await loadRev(c, o.tenantId, row.id, row.current_revision);
+      row = await ensureApprovedDraft(c, row, existing, existing.expires_at);
       return { draft: publicDraft(row, rev), approval: existing, replay: true };
     }
     const rev = await loadRev(c, o.tenantId, row.id, row.current_revision);
@@ -350,18 +368,23 @@ async function approveDraft(pool, o) {
       fail('approval_stale');
     }
     if (!approveMatches(contract, body, row.current_revision, row.contract_hash)) fail('approval_stale');
+    const preErrors = [];
+    preErrors.push(...await checkCreatives(c, o.tenantId, contract.creatives || []));
+    preErrors.push(...await checkCredentials(o.userId, contract));
+    if (preErrors.length) fail('validation_failed', { errors: preErrors });
+    const same = await one(c,
+      `SELECT * FROM orchestrator_campaign_publish_approvals
+        WHERE tenant_id=$1 AND draft_id=$2 AND revision=$3 AND contract_hash=$4 AND revoked_at IS NULL`,
+      [o.tenantId, row.id, row.current_revision, row.contract_hash]);
+    if (same) {
+      row = await ensureApprovedDraft(c, row, same, same.expires_at);
+      return { draft: publicDraft(row, rev), approval: same, replay: true };
+    }
     const snap = {
       ...canonicalize(contract), object_kind: 'campaign_draft',
       actor_user_id: o.userId, expires_at: expiresAt, revision: Number(row.current_revision),
       contract_hash: row.contract_hash,
     };
-    const same = await one(c,
-      `SELECT * FROM orchestrator_campaign_publish_approvals
-        WHERE tenant_id=$1 AND draft_id=$2 AND revision=$3 AND contract_hash=$4`,
-      [o.tenantId, row.id, row.current_revision, row.contract_hash]);
-    if (same) {
-      return { draft: publicDraft(row, rev), approval: same, replay: true };
-    }
     const wfAppr = (await c.query(
       `INSERT INTO orchestrator_approvals
          (tenant_id, workflow_id, gate, object_type, object_id, object_version, content_hash, actor_user_id, decision, approved_platforms)
@@ -391,19 +414,30 @@ async function approveDraft(pool, o) {
   });
 }
 
+function parseRevokeReason(raw) {
+  if (typeof raw !== 'string') fail('validation_failed', { field: 'reason' });
+  if (raw !== raw.trim()) fail('validation_failed', { field: 'reason' });
+  if (raw.length < 1 || raw.length > 500) fail('validation_failed', { field: 'reason' });
+  return raw;
+}
+
 async function revokeDraft(pool, o) {
   if (o.bodyTenantId != null && Number(o.bodyTenantId) !== Number(o.tenantId)) fail('validation_failed');
   return withTx(pool, async (c) => {
     let row = await lockDraft(c, o.tenantId, o.draftId);
     if (!row) fail('not_found');
+    const reason = parseRevokeReason(o.reason);
     row = await maybeExpire(c, row);
     if (row.status === 'approval_expired') fail('approval_expired');
     if (row.status !== 'approved_for_publish') fail('approval_required');
-    await c.query(
-      `UPDATE orchestrator_campaign_publish_approvals SET revoked_at=now()
-        WHERE tenant_id=$1 AND draft_id=$2 AND revision=$3 AND contract_hash=$4 AND revoked_at IS NULL`,
-      [o.tenantId, row.id, row.current_revision, row.contract_hash]
+    const revoked = await c.query(
+      `UPDATE orchestrator_campaign_publish_approvals
+          SET revoked_at=now(), revoke_reason=$5
+        WHERE tenant_id=$1 AND draft_id=$2 AND revision=$3 AND contract_hash=$4 AND revoked_at IS NULL
+        RETURNING *`,
+      [o.tenantId, row.id, row.current_revision, row.contract_hash, reason]
     );
+    if (!revoked.rowCount) fail('approval_required');
     assertGo(row.status, 'ready_for_approval');
     row = (await c.query(
       `UPDATE orchestrator_campaign_drafts
@@ -414,7 +448,10 @@ async function revokeDraft(pool, o) {
     await insertAudit(c, {
       tenantId: o.tenantId, workflowId: row.workflow_id, event: 'approval_rejected',
       actorUserId: o.userId, state: row.status, gate: 'campaign_publishing',
-      detail: { action: 'revoke', version: Number(row.current_revision), state: row.status, gate: 'campaign_publishing', from: 'approved_for_publish', to: 'ready_for_approval' },
+      detail: {
+        action: 'revoke', revoke_reason: reason, version: Number(row.current_revision), state: row.status,
+        gate: 'campaign_publishing', from: 'approved_for_publish', to: 'ready_for_approval',
+      },
     });
     const rev = await loadRev(c, o.tenantId, row.id, row.current_revision);
     return publicDraft(row, rev);
@@ -475,8 +512,10 @@ async function snapshotDraft(pool, tenantId, draftId) {
     row = await maybeExpire(c, row);
     const rev = await loadRev(c, tenantId, row.id, row.current_revision);
     const pub = row.approval_id
-      ? await one(c, `SELECT * FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND draft_id=$2 AND revision=$3 AND contract_hash=$4`,
-        [tenantId, row.id, row.current_revision, row.contract_hash])
+      ? await one(c,
+        `SELECT * FROM orchestrator_campaign_publish_approvals
+           WHERE tenant_id=$1 AND draft_id=$2 AND workflow_approval_id=$3 AND revoked_at IS NULL`,
+        [tenantId, row.id, row.approval_id])
       : null;
     const snapshot = pub ? pub.snapshot_json : (rev && rev.contract_json);
     return {
@@ -498,7 +537,7 @@ async function historyDraft(pool, tenantId, draftId, { includeAudit }) {
     [tenantId, draftId]
   )).rows;
   const approvals = (await pool.query(
-    `SELECT id, revision, contract_hash, expires_at, revoked_at, created_at, actor_user_id
+    `SELECT id, revision, contract_hash, expires_at, revoked_at, revoke_reason, created_at, actor_user_id
        FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND draft_id=$2 ORDER BY created_at ASC`,
     [tenantId, draftId]
   )).rows;
@@ -518,15 +557,18 @@ async function assertPublishAuthorized(pool, tenantId, draftId) {
     let row = await lockDraft(c, tenantId, draftId);
     if (!row) fail('not_found');
     row = await maybeExpire(c, row);
-    const pub = await one(c,
-      `SELECT * FROM orchestrator_campaign_publish_approvals
-        WHERE tenant_id=$1 AND draft_id=$2 ORDER BY created_at DESC LIMIT 1`,
-      [tenantId, draftId]);
     if (row.status === 'approval_expired') fail('approval_expired');
-    if (pub && pub.revoked_at) fail('approval_revoked');
     if (row.status !== 'approved_for_publish') fail('approval_required');
-    if (!pub) fail('approval_required');
-    if (pub.revoked_at) fail('approval_revoked');
+    const pub = row.approval_id
+      ? await one(c,
+        `SELECT * FROM orchestrator_campaign_publish_approvals
+           WHERE tenant_id=$1 AND draft_id=$2 AND workflow_approval_id=$3 AND revoked_at IS NULL`,
+        [tenantId, draftId, row.approval_id])
+      : null;
+    if (!pub) {
+      if (row.approval_id) fail('approval_revoked');
+      fail('approval_required');
+    }
     if (new Date(pub.expires_at).getTime() <= Date.now()) fail('approval_expired');
     if (String(pub.contract_hash) !== String(row.contract_hash) || Number(pub.revision) !== Number(row.current_revision)) {
       fail('approval_stale');
