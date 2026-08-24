@@ -36,7 +36,7 @@ function looksMarkup(buf) {
   const head = buf.slice(0, 256).toString('utf8').replace(/^\uFEFF/, '').trim().toLowerCase();
   return head.startsWith('<svg') || head.startsWith('<?xml') || head.includes('image/svg+xml')
     || head.startsWith('<html') || head.startsWith('<!doctype') || head.startsWith('<script')
-    || head.startsWith('javascript:');
+    || head.startsWith('javascript:') || head.startsWith('data:') || head.startsWith('vbscript:');
 }
 
 function detectMime(buf) {
@@ -134,6 +134,8 @@ function withTimeout(promise, ms) {
 }
 
 async function fetchProviderBytes(url, runtime = {}) {
+  const raw = String(url || '').trim().toLowerCase();
+  if (raw.startsWith('javascript:') || raw.startsWith('data:') || raw.startsWith('vbscript:')) fail('unsafe_url');
   const checked = await assertSafeHttpsUrl(url);
   if (!checked.ok) fail('unsafe_url');
   const href = typeof checked.url === 'string' ? checked.url : String(url);

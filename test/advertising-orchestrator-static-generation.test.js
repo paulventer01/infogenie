@@ -76,12 +76,17 @@ test('live OpenAI static-image generation is skipped without a real key', {
 test('adapter rejects unsafe urls, markup, mismatch, oversize, malformed raster', async () => {
   await assert.rejects(() => fetchProviderBytes('file:///etc/passwd'), (e) => e instanceof OrchError && e.code === 'unsafe_url');
   await assert.rejects(() => fetchProviderBytes('http://127.0.0.1/x'), (e) => e.code === 'unsafe_url');
+  await assert.rejects(() => fetchProviderBytes('data:text/html;base64,PHNjcmlwdD4='), (e) => e.code === 'unsafe_url');
+  await assert.rejects(() => fetchProviderBytes('vbscript:msgbox(1)'), (e) => e.code === 'unsafe_url');
+  await assert.rejects(() => fetchProviderBytes('javascript:alert(1)'), (e) => e.code === 'unsafe_url');
   await assert.rejects(
     () => fetchProviderBytes('https://example.com/x.png', { fetchUrl: async () => ({ status: 302 }) }),
     (e) => e.code === 'unsafe_url'
   );
   assert.throws(() => validateRaster(Buffer.from('<html>x</html>'), 'image/png'), (e) => e.code === 'moderation_failed' || e.code === 'unsafe_asset');
   assert.throws(() => validateRaster(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>')), (e) => e.code === 'moderation_failed');
+  assert.throws(() => validateRaster(Buffer.from('data:text/html,hi')), (e) => e.code === 'moderation_failed');
+  assert.throws(() => validateRaster(Buffer.from('vbscript:msgbox(1)')), (e) => e.code === 'moderation_failed');
   assert.throws(() => validateRaster(Buffer.alloc(10 * 1024 * 1024 + 1)), (e) => e.code === 'payload_too_large');
   const bad = Buffer.from(FIXTURE_PNG);
   bad.write('XXXX', 12); // smash IHDR
@@ -423,6 +428,83 @@ if (!HAS_DB) {
     assert.equal(c.json.job.status, 'cancelled');
     const rid = (await p().query(`SELECT reservation_id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`, [tenantA.id, res.json.job.id])).rows[0].reservation_id;
     assert.equal((await p().query(`SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`, [tenantA.id, rid])).rows[0].status, 'released');
+  });
+
+  test('cancel running job skips putObject, releases after generate, no second charge', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const consumedBefore = (await p().query(
+      `SELECT consumed_micros FROM orchestrator_credit_accounts WHERE tenant_id=$1`,
+      [tenantA.id]
+    )).rows[0].consumed_micros;
+    const res = await postImg(cookieA, seed, 'canrun');
+    assert.equal(res.status, 201, res.text);
+    const jobId = res.json.job.id;
+    const rid = (await p().query(
+      `SELECT reservation_id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0].reservation_id;
+    assert.equal((await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, rid]
+    )).rows[0].status, 'reserved');
+
+    let releaseGenerate;
+    const gate = new Promise((resolve) => { releaseGenerate = resolve; });
+    let entered = false;
+    const workerP = runWorker(tenantA.id, createGenerationRuntime({
+      mode: 'fixture',
+      generate: async () => {
+        entered = true;
+        await gate;
+        return FIXTURE_PNG;
+      },
+    }));
+    const t0 = Date.now();
+    while (!entered && Date.now() - t0 < 5000) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.ok(entered, 'worker never entered generate');
+    const running = (await p().query(
+      `SELECT status FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    assert.equal(running.status, 'running');
+
+    const c = await imgs('POST', `/${jobId}/cancel`, { cookie: cookieA, body: {} });
+    assert.equal(c.status, 200, c.text);
+    assert.equal(c.json.job.status, 'cancelled');
+    assert.equal((await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, rid]
+    )).rows[0].status, 'reserved', 'running cancel must not release yet');
+
+    releaseGenerate();
+    await workerP;
+
+    const job = (await p().query(
+      `SELECT status FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    assert.equal(job.status, 'cancelled');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
+    const reservation = (await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, rid]
+    )).rows[0];
+    assert.equal(reservation.status, 'released');
+    assert.notEqual(reservation.status, 'committed');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_credit_ledger WHERE tenant_id=$1 AND reservation_id=$2 AND entry_type='commit'`,
+      [tenantA.id, rid]
+    )).rowCount, 0);
+    const consumedAfter = (await p().query(
+      `SELECT consumed_micros FROM orchestrator_credit_accounts WHERE tenant_id=$1`,
+      [tenantA.id]
+    )).rows[0].consumed_micros;
+    assert.equal(String(consumedAfter), String(consumedBefore));
   });
 
   test('HTTP approve-brief then generate succeeds', async () => {
