@@ -309,6 +309,16 @@ if (!HAS_DB) {
       briefInput(tenantA, host, ev, { artifact_id: nid('immut') }),
       { tenantId: tenantA, req: req() }
     );
+    await assert.rejects(
+      () => approveCreativeArtifact(p, {
+        tenantId: tenantA,
+        artifactId: created.artifact_id,
+        req: req(),
+        contentHash: 'c'.repeat(64),
+        objectVersion: created.version,
+      }),
+      (err) => err instanceof OrchError && err.code === 'approval_stale'
+    );
     const approved = await approveCreativeArtifact(p, {
       tenantId: tenantA,
       artifactId: created.artifact_id,
@@ -321,18 +331,8 @@ if (!HAS_DB) {
     await assert.rejects(
       p.query(
         `UPDATE orchestrator_creative_artifacts SET payload = payload || '{"x":1}'::jsonb WHERE tenant_id=$1 AND id=$2`,
-        [tenantId, created.id]
+        [tenantA, created.id]
       )
-    );
-    await assert.rejects(
-      () => approveCreativeArtifact(p, {
-        tenantId: tenantA,
-        artifactId: created.artifact_id,
-        req: req(),
-        contentHash: 'c'.repeat(64),
-        objectVersion: created.version,
-      }),
-      (err) => err instanceof OrchError && err.code === 'approval_stale'
     );
     const revised = await reviseCreativeArtifact(
       p,
@@ -346,7 +346,7 @@ if (!HAS_DB) {
     assert.strictEqual(old.status, 'superseded');
     const events = (await p.query(
       `SELECT event FROM orchestrator_creative_audit WHERE tenant_id=$1 AND artifact_id=$2 ORDER BY id`,
-      [tenantId, created.artifact_id]
+      [tenantA, created.artifact_id]
     )).rows.map((r) => r.event);
     assert.ok(events.includes('approved'));
     assert.ok(events.includes('invalidated'));
