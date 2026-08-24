@@ -54,6 +54,8 @@ interface Workflow {
   product_or_service: string;
   offer: string;
   landing_page_url: string;
+  target_markets?: string[];
+  target_audiences?: string[];
   selected_platforms: string[];
   advertising_budget: number;
   currency: string;
@@ -210,7 +212,52 @@ interface VideoJob {
   output?: { mime_type: string; width_px: number; height_px: number; duration_ms: number; fps: number; honesty_class?: string; provenance?: string } | null;
 }
 
+interface CampaignDraft {
+  id: string; status: string; object_kind: string; current_revision: number;
+  contract_hash: string; approval_id: number | null; validation_status?: string;
+  validation?: { errors?: { code?: string; field?: string }[] };
+  contract?: Record<string, unknown>; published?: boolean; label?: string; notes?: string;
+  approval_expires_at?: string | null;
+}
+
 type LoadStatus = "loading" | "error" | "ready";
+
+const CAMPAIGN_OBJECTIVES = new Set(["awareness", "traffic", "leads", "sales", "app"]);
+const CAMPAIGN_CURRENCIES = new Set(["USD", "EUR", "GBP", "AUD", "CAD"]);
+
+function defaultDraftStartLocal(): string {
+  const d = new Date(Date.now() + 86400000);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
+function draftPlatforms(wf: Workflow): string[] {
+  const p = (wf.selected_platforms || []).filter((x) => PLATFORMS.includes(x as typeof PLATFORMS[number]));
+  return p.length ? p : ["meta"];
+}
+
+function buildCampaignDraftContract(wf: Workflow, f: {
+  landing_page_url: string; credential_ref: string; asset_id: string; asset_version: string;
+  content_hash: string; budget_micros: string; start_at: string;
+}) {
+  const markets = Array.isArray(wf.target_markets) ? wf.target_markets : [];
+  const geo = markets.map(String).find((m) => /^[A-Z]{2}$/.test(m)) || "US";
+  const aud = Array.isArray(wf.target_audiences) && wf.target_audiences[0] ? String(wf.target_audiences[0]) : "Audience";
+  const plats = draftPlatforms(wf);
+  const obj = CAMPAIGN_OBJECTIVES.has(wf.objective) ? wf.objective : "traffic";
+  const cur = CAMPAIGN_CURRENCIES.has(wf.currency) ? wf.currency : "USD";
+  return {
+    contract_version: "campaign_draft_v1", objective: obj, platforms: plats,
+    accounts: plats.map((platform) => ({ platform, credential_ref: f.credential_ref.trim() || "user_integrations" })),
+    destination: { landing_page_url: f.landing_page_url.trim() },
+    budget: { amount_micros: Math.max(0, Math.round(Number(f.budget_micros) || 0)), currency: cur },
+    schedule: { start_at: new Date(f.start_at).toISOString() },
+    geo: { countries: [geo] }, audience: { name: aud },
+    creatives: [{ kind: "creative_brief", asset_id: f.asset_id.trim(), version: Number(f.asset_version) || 1, content_hash: f.content_hash.trim() }],
+    tracking: { utm_source: "ig", utm_medium: "cpc", utm_campaign: "draft" },
+    provenance: { workflow_id: wf.id },
+  };
+}
 
 const ACTIVE_RESEARCH_STATES = new Set(["pending", "running"]);
 const ACTIVE_VIDEO_JOB_STATES = new Set(["queued", "reserved", "running", "retryable"]);
@@ -264,6 +311,8 @@ const btnSecondary: CSSProperties = {
   cursor: "pointer",
   fontSize: "0.75rem",
 };
+
+const draftFld: CSSProperties = { padding: 6, borderRadius: 6, border: "1px solid #E5E7EB", width: "100%" };
 
 function deriveAutonomousStatus(state: string): string {
   if (
@@ -518,6 +567,12 @@ export default function AgentOrchestrator() {
   const [videoJob, setVideoJob] = useState<VideoJob | null>(null);
   const [videoGenConfirm, setVideoGenConfirm] = useState(false);
   const [videoGenBusy, setVideoGenBusy] = useState(""); const [videoGenMsg, setVideoGenMsg] = useState(""); const [videoGenMsgIsError, setVideoGenMsgIsError] = useState(false);
+  const [campaignDraft, setCampaignDraft] = useState<CampaignDraft | null>(null);
+  const [draftSnapshot, setDraftSnapshot] = useState<{ contract_hash?: string; status?: string; object_kind?: string; published?: boolean } | null>(null);
+  const [draftHistory, setDraftHistory] = useState<{ revisions?: { revision: number; contract_hash: string; created_at: string }[]; approvals?: { id: number; revision: number; contract_hash: string; created_at: string; revoked_at?: string | null }[] } | null>(null);
+  const [draftForm, setDraftForm] = useState({ label: "", notes: "", landing_page_url: "", credential_ref: "user_integrations", asset_id: "", asset_version: "1", content_hash: "", budget_micros: "1000000", start_at: defaultDraftStartLocal() });
+  const [draftApproveConfirm, setDraftApproveConfirm] = useState(false);
+  const [draftBusy, setDraftBusy] = useState(""); const [draftMsg, setDraftMsg] = useState(""); const [draftMsgIsError, setDraftMsgIsError] = useState(false);
 
   const can = useCallback(
     (key: string) => isPlatformAdmin || permissions.includes(key),
@@ -710,7 +765,47 @@ export default function AgentOrchestrator() {
     setStaticGenMsg("");
     setStaticGenMsgIsError(false);
     setVideoJob(null); setVideoGenConfirm(false); setVideoGenBusy(""); setVideoGenMsg(""); setVideoGenMsgIsError(false);
+    setCampaignDraft(null); setDraftSnapshot(null); setDraftHistory(null); setDraftApproveConfirm(false);
+    setDraftBusy(""); setDraftMsg(""); setDraftMsgIsError(false);
+    setDraftForm({ label: "", notes: "", landing_page_url: "", credential_ref: "user_integrations", asset_id: "", asset_version: "1", content_hash: "", budget_micros: "1000000", start_at: defaultDraftStartLocal() });
   }, [selectedId]);
+
+  const loadCampaignDraft = useCallback(async (wfId: string, wf: Workflow | null, brief?: { artifact_id?: string; id?: string; version?: number; content_hash?: string }) => {
+    const r = await apiGet<{ ok: boolean; drafts?: CampaignDraft[]; error?: string }>(
+      `/api/agent-orchestrator/campaign-drafts?workflow_id=${encodeURIComponent(wfId)}`,
+    );
+    if (r.ok !== false && r.drafts && r.drafts.length > 0) {
+      const d = r.drafts[0];
+      setCampaignDraft(d);
+      setDraftForm((f) => ({ ...f, label: d.label || "", notes: d.notes || "" }));
+      setDraftSnapshot(null);
+      const h = await apiGet<{ ok: boolean; revisions?: { revision: number; contract_hash: string; created_at: string }[]; approvals?: { id: number; revision: number; contract_hash: string; created_at: string; revoked_at?: string | null }[] }>(
+        `/api/agent-orchestrator/campaign-drafts/${d.id}/history`,
+      );
+      if (h.ok !== false) setDraftHistory({ revisions: h.revisions, approvals: h.approvals });
+      return;
+    }
+    setCampaignDraft(null);
+    setDraftHistory(null);
+    setDraftSnapshot(null);
+    if (wf) {
+      setDraftForm({
+        label: "", notes: "", landing_page_url: wf.landing_page_url || "",
+        credential_ref: "user_integrations",
+        asset_id: brief?.artifact_id || brief?.id || "",
+        asset_version: String(brief?.version ?? 1),
+        content_hash: brief?.content_hash || "",
+        budget_micros: String(Math.round((wf.advertising_budget || 0) * MICROS_PER_USD) || 1000000),
+        start_at: defaultDraftStartLocal(),
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selected?.id) return;
+    const brief = imageBriefOf(creativeProposal);
+    loadCampaignDraft(selected.id, selected, brief);
+  }, [selected?.id, creativeProposal?.id, loadCampaignDraft]);
 
   useEffect(() => {
     if (!metaResearchRun?.id || !ACTIVE_RESEARCH_STATES.has(metaResearchRun.state)) return;
@@ -1463,6 +1558,61 @@ export default function AgentOrchestrator() {
     if (r.ok === false) { setVideoGenMsgIsError(true); setVideoGenMsg(r.error || "Cancel failed"); return; }
     if (r.job) setVideoJob(r.job);
     setVideoGenMsgIsError(false); setVideoGenMsg("Video job cancelled.");
+  }
+
+  async function draftAct(busy: string, run: () => Promise<{ ok: boolean; error?: string; draft?: CampaignDraft }>, okMsg: string, after?: () => void | Promise<void>) {
+    setDraftBusy(busy); setDraftMsg("");
+    const r = await run();
+    setDraftBusy("");
+    if (r.ok === false) { setDraftMsgIsError(true); setDraftMsg(r.error || "Request failed"); return; }
+    if (r.draft) setCampaignDraft(r.draft);
+    await after?.();
+    setDraftMsgIsError(false); setDraftMsg(okMsg);
+  }
+
+  async function createCampaignDraft() {
+    if (!selected || !can("orchestrator.workflows.edit")) return;
+    await draftAct("create", () => orchMutate("/api/agent-orchestrator/campaign-drafts", "POST", {
+      workflow_id: selected.id, idempotency_key: crypto.randomUUID(), contract: buildCampaignDraftContract(selected, draftForm),
+      label: draftForm.label.trim() || undefined, notes: draftForm.notes.trim() || undefined,
+    }), "Campaign draft created (not published).", () => loadCampaignDraft(selected.id, selected));
+  }
+
+  async function patchCampaignDraft() {
+    if (!campaignDraft?.id || !can("orchestrator.workflows.edit")) return;
+    await draftAct("patch", () => orchMutate(`/api/agent-orchestrator/campaign-drafts/${campaignDraft.id}`, "PATCH", { label: draftForm.label, notes: draftForm.notes }), "Campaign draft label/notes updated.");
+  }
+
+  async function validateCampaignDraft() {
+    if (!campaignDraft?.id || !can("orchestrator.workflows.edit")) return;
+    await draftAct("validate", () => orchMutate(`/api/agent-orchestrator/campaign-drafts/${campaignDraft.id}/validate`, "POST", {}), "Validation finished.");
+  }
+
+  async function loadCampaignSnapshot() {
+    if (!campaignDraft?.id) return;
+    setDraftBusy("snapshot"); setDraftMsg("");
+    const r = await apiGet<{ ok: boolean; status?: string; object_kind?: string; published?: boolean; snapshot?: { contract_hash?: string }; error?: string }>(
+      `/api/agent-orchestrator/campaign-drafts/${campaignDraft.id}/snapshot`,
+    );
+    setDraftBusy("");
+    if (r.ok === false) { setDraftMsgIsError(true); setDraftMsg(r.error || "Snapshot failed"); return; }
+    setDraftSnapshot({ contract_hash: r.snapshot?.contract_hash || campaignDraft.contract_hash, status: r.status, object_kind: r.object_kind, published: r.published });
+    setDraftMsgIsError(false); setDraftMsg("Publishing snapshot preview loaded (draft only — not published).");
+  }
+
+  async function approveCampaignDraft() {
+    const c = campaignDraft?.contract as { platforms: string[]; accounts: { credential_ref: string }[]; creatives: { asset_id: string; version: number }[]; budget: { amount_micros: number; currency: string }; schedule: Record<string, unknown>; geo: Record<string, unknown>; destination: { landing_page_url: string } } | undefined;
+    if (!campaignDraft || !c || !selected || !can("orchestrator.workflows.approve.campaign_publishing") || campaignDraft.status !== "ready_for_approval" || !draftApproveConfirm) return;
+    await draftAct("approve", () => orchMutate(`/api/agent-orchestrator/campaign-drafts/${campaignDraft.id}/approve`, "POST", {
+      revision: campaignDraft.current_revision, contract_hash: campaignDraft.contract_hash, platforms: c.platforms,
+      accounts: c.accounts.map((a) => a.credential_ref), creatives: c.creatives.map((x) => ({ asset_id: x.asset_id, version: x.version })),
+      budget: c.budget, schedule: c.schedule, targeting: { geo: c.geo }, landing_page_url: c.destination.landing_page_url, idempotency_key: crypto.randomUUID(),
+    }), "Campaign draft approved for publish (still a draft — nothing published).", async () => { setDraftApproveConfirm(false); await loadCampaignDraft(selected.id, selected); });
+  }
+
+  async function revokeCampaignDraft() {
+    if (!campaignDraft?.id || !selected || !can("orchestrator.workflows.approve.campaign_publishing") || campaignDraft.status !== "approved_for_publish") return;
+    await draftAct("revoke", () => orchMutate(`/api/agent-orchestrator/campaign-drafts/${campaignDraft.id}/revoke`, "POST", {}), "Campaign draft approval revoked.", () => loadCampaignDraft(selected.id, selected));
   }
 
   async function submitLimits() {
@@ -2904,6 +3054,61 @@ export default function AgentOrchestrator() {
                       {videoJob && (["fixture", "synthetic", "demo", "test", "mock"].includes(videoJob.output?.honesty_class || videoJob.honesty_class || "") || videoJob.output?.provenance === "fixture") && <p style={{ fontSize: "0.72rem", color: "#B45309", margin: "8px 0 0" }}>Fixture / synthetic — not live-provider generated. No finished video is stored.</p>}
                     </div>
                   )}
+
+                  <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 14, marginBottom: 16, background: "#F9FAFB" }}>
+                    <h5 style={{ margin: "0 0 8px", fontSize: "0.85rem" }}>Campaign draft (not published)</h5>
+                    <p style={{ margin: "0 0 10px", fontSize: "0.72rem", color: "#6B7280" }}>Draft-only campaign contract — validate, preview snapshot, approve or revoke. Nothing has been published.</p>
+                    {campaignDraft ? (
+                      <div style={{ fontSize: "0.78rem", color: "#374151" }}>
+                        <div>Campaign draft {campaignDraft.id} · {campaignDraft.status} · rev {campaignDraft.current_revision}{campaignDraft.label ? ` · ${campaignDraft.label}` : ""}</div>
+                        {(campaignDraft.validation?.errors || []).map((e, i) => <div key={i} style={{ color: "#B91C1C", marginTop: 4 }}>{e.code}{e.field ? ` (${e.field})` : ""}</div>)}
+                        <input placeholder="Label" value={draftForm.label} onChange={(e) => setDraftForm((f) => ({ ...f, label: e.target.value }))} style={{ ...draftFld, marginTop: 8 }} />
+                        <textarea placeholder="Notes" value={draftForm.notes} onChange={(e) => setDraftForm((f) => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...draftFld, marginTop: 6 }} />
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "10px 0" }}>
+                          {can("orchestrator.workflows.edit") && <button type="button" disabled={!!draftBusy} onClick={patchCampaignDraft} style={{ ...btnSecondary, opacity: draftBusy ? 0.6 : 1 }}>{draftBusy === "patch" ? "Saving…" : "Save label/notes"}</button>}
+                          {can("orchestrator.workflows.edit") && <button type="button" disabled={!!draftBusy} onClick={validateCampaignDraft} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: draftBusy ? 0.6 : 1 }}>{draftBusy === "validate" ? "Validating…" : "Validate draft"}</button>}
+                          <button type="button" disabled={!!draftBusy} onClick={loadCampaignSnapshot} style={{ ...btnSecondary, opacity: draftBusy ? 0.6 : 1 }}>{draftBusy === "snapshot" ? "Loading…" : "Preview snapshot"}</button>
+                          {can("orchestrator.workflows.approve.campaign_publishing") && campaignDraft.status === "ready_for_approval" && (
+                            <label style={{ display: "flex", gap: 6, alignItems: "center", width: "100%" }}><input type="checkbox" checked={draftApproveConfirm} onChange={(e) => setDraftApproveConfirm(e.target.checked)} />I confirm this campaign draft snapshot (not a live publish)</label>
+                          )}
+                          {can("orchestrator.workflows.approve.campaign_publishing") && campaignDraft.status === "ready_for_approval" && (
+                            <button type="button" disabled={!!draftBusy || !draftApproveConfirm} onClick={approveCampaignDraft} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: draftBusy || !draftApproveConfirm ? 0.6 : 1 }}>{draftBusy === "approve" ? "Approving…" : "Approve snapshot"}</button>
+                          )}
+                          {can("orchestrator.workflows.approve.campaign_publishing") && campaignDraft.status === "approved_for_publish" && (
+                            <button type="button" disabled={!!draftBusy} onClick={revokeCampaignDraft} style={{ ...btnSecondary, opacity: draftBusy ? 0.6 : 1 }}>{draftBusy === "revoke" ? "Revoking…" : "Revoke approval"}</button>
+                          )}
+                        </div>
+                        {draftSnapshot && <div style={{ marginBottom: 8, padding: 8, background: "#fff", borderRadius: 6, border: "1px solid #E5E7EB" }}>Snapshot · {draftSnapshot.object_kind} · {draftSnapshot.status} · published: {String(draftSnapshot.published ?? false)} · hash {draftSnapshot.contract_hash}</div>}
+                        {draftHistory && (
+                          <div style={{ marginTop: 8 }}>
+                            <div style={{ fontWeight: 600 }}>Campaign draft history</div>
+                            <p style={{ fontSize: "0.72rem", color: "#6B7280", margin: "4px 0" }}>This is a draft — nothing has been published.</p>
+                            {(draftHistory.revisions || []).map((rev) => <div key={rev.revision}>Rev {rev.revision} · {rev.contract_hash.slice(0, 12)}… · {rev.created_at}</div>)}
+                            {(draftHistory.approvals || []).map((ap) => <div key={ap.id}>Approval rev {ap.revision}{ap.revoked_at ? " (revoked)" : ""} · {ap.created_at}</div>)}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: "0.78rem", color: "#374151" }}>
+                        {(["label", "notes"] as const).map((k) => k === "label" ? (
+                          <input key={k} placeholder="Label" value={draftForm.label} onChange={(e) => setDraftForm((f) => ({ ...f, label: e.target.value }))} style={{ ...draftFld, marginBottom: 6 }} />
+                        ) : (
+                          <textarea key={k} placeholder="Notes" value={draftForm.notes} onChange={(e) => setDraftForm((f) => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...draftFld, marginBottom: 6 }} />
+                        ))}
+                        <input placeholder="Landing page URL" value={draftForm.landing_page_url} onChange={(e) => setDraftForm((f) => ({ ...f, landing_page_url: e.target.value }))} style={{ ...draftFld, marginBottom: 6 }} />
+                        <input placeholder="Credential ref" value={draftForm.credential_ref} onChange={(e) => setDraftForm((f) => ({ ...f, credential_ref: e.target.value }))} style={{ ...draftFld, marginBottom: 6 }} />
+                        <input placeholder="Creative asset_id" value={draftForm.asset_id} onChange={(e) => setDraftForm((f) => ({ ...f, asset_id: e.target.value }))} style={{ ...draftFld, marginBottom: 6 }} />
+                        <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                          <input placeholder="Version" value={draftForm.asset_version} onChange={(e) => setDraftForm((f) => ({ ...f, asset_version: e.target.value }))} style={{ ...draftFld, flex: 1 }} />
+                          <input placeholder="content_hash" value={draftForm.content_hash} onChange={(e) => setDraftForm((f) => ({ ...f, content_hash: e.target.value }))} style={{ ...draftFld, flex: 2 }} />
+                        </div>
+                        <input type="number" placeholder="Budget micros" value={draftForm.budget_micros} onChange={(e) => setDraftForm((f) => ({ ...f, budget_micros: e.target.value }))} style={{ ...draftFld, marginBottom: 6 }} />
+                        <input type="datetime-local" value={draftForm.start_at} onChange={(e) => setDraftForm((f) => ({ ...f, start_at: e.target.value }))} style={{ ...draftFld, marginBottom: 10 }} />
+                        {can("orchestrator.workflows.edit") && <button type="button" disabled={!!draftBusy} onClick={createCampaignDraft} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: draftBusy ? 0.6 : 1 }}>{draftBusy === "create" ? "Creating…" : "Create campaign draft"}</button>}
+                      </div>
+                    )}
+                    {draftMsg && <p style={{ fontSize: "0.78rem", color: draftMsgIsError ? "#B91C1C" : "#3730A3", margin: "8px 0 0" }}>{draftMsg}</p>}
+                  </div>
 
                   <div style={{ marginBottom: 14 }}>
                     <h5 style={{ margin: "0 0 8px", fontSize: "0.85rem" }}>Approval history</h5>

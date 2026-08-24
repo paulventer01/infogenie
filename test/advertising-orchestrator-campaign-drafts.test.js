@@ -57,6 +57,14 @@ test('source: no connectors, outbox, or live platform fetch', () => {
   assert.match(SRC_DRAFTS, /FOR UPDATE/);
 });
 
+test('PR6A UI campaign drafts (no publish claim)', () => {
+  const SRC = fs.readFileSync(path.join(__dirname, '../components/features/manage/AgentOrchestrator.tsx'), 'utf8');
+  assert.match(SRC, /\/api\/agent-orchestrator\/campaign-drafts/);
+  assert.match(SRC, /Campaign draft/);
+  assert.match(SRC, /nothing has been published/i);
+  assert.doesNotMatch(SRC, /mode:\s*"live"/);
+});
+
 test('malformed budget, unsafe URL, unknown extension rejected', async () => {
   const art = { assetId: 'a1', version: 1, contentHash: 'a'.repeat(64) };
   const base = validContract('wf1', art);
