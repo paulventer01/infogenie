@@ -35,7 +35,7 @@ const {
   processStaticImageJobs, enqueueStaticImageJob, reserveKey,
 } = require('../services/agent_orchestrator/generation_jobs');
 const {
-  createGenerationRuntime, generateStaticImage, validateRaster, fetchProviderBytes, FIXTURE_PNG,
+  createGenerationRuntime, generateStaticImage, validateRaster, fetchProviderBytes, FIXTURE_PNG, hasLiveKey,
 } = require('../services/agent_orchestrator/generation_adapter');
 
 const HAS_DB = hasDb();
@@ -72,6 +72,74 @@ test('live OpenAI static-image generation is skipped without a real key', {
   skip: !process.env.OPENAI_API_KEY || /^_DUMMY/i.test(process.env.OPENAI_API_KEY)
     ? 'OPENAI_API_KEY dummy or unset' : false,
 }, () => {});
+
+test('dummy or missing OpenAI key + mode live throws provider_not_configured without network', async () => {
+  const prev = process.env.OPENAI_API_KEY;
+  const origFetch = global.fetch;
+  let fetched = 0;
+  global.fetch = async () => { fetched += 1; throw new Error('network must not be called'); };
+  try {
+    for (const key of ['_DUMMY_PR5A', '_dummy_key', '', undefined]) {
+      fetched = 0;
+      if (key === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = key;
+      assert.equal(hasLiveKey(), false);
+      await assert.rejects(
+        () => generateStaticImage({ runtime: createGenerationRuntime({ mode: 'live' }) }),
+        (e) => e instanceof OrchError && e.code === 'provider_not_configured'
+      );
+      assert.equal(fetched, 0);
+    }
+    const src = fs.readFileSync(path.join(__dirname, '../services/agent_orchestrator/generation_adapter.js'), 'utf8');
+    const liveFn = src.slice(src.indexOf('async function liveOpenAi'));
+    const gateIdx = liveFn.indexOf('hasLiveKey()');
+    const clientIdx = liveFn.indexOf('new OpenAI');
+    assert.ok(gateIdx >= 0 && clientIdx > gateIdx, 'dummy-key gate must precede OpenAI client');
+  } finally {
+    global.fetch = origFetch;
+    if (prev === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = prev;
+  }
+});
+
+test('adapter coerces conflicting honesty tags from custom generate', async () => {
+  const tagged = async (mode, honesty_class, provenance, source) => generateStaticImage({
+    runtime: createGenerationRuntime({
+      mode,
+      generate: async () => ({
+        bytes: FIXTURE_PNG, mime: 'image/png', honesty_class, provenance,
+        moderation: { status: 'passed', source },
+      }),
+    }),
+  });
+
+  const leakedLive = await tagged('fixture', 'provider', 'live', 'provider');
+  assert.equal(leakedLive.honesty_class, 'fixture');
+  assert.equal(leakedLive.provenance, 'fixture');
+  assert.equal(leakedLive.moderation.source, 'fixture');
+  assert.notEqual(leakedLive.honesty_class, 'live');
+  assert.notEqual(leakedLive.honesty_class, 'provider');
+
+  const syn = await tagged('fixture', 'synthetic', 'fixture', 'synthetic');
+  assert.equal(syn.honesty_class, 'synthetic');
+  assert.equal(syn.provenance, 'fixture');
+
+  const prev = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = 'unused-not-dummy';
+  try {
+    const leakedFix = await tagged('live', 'fixture', 'fixture', 'fixture');
+    assert.equal(leakedFix.honesty_class, 'provider');
+    assert.equal(leakedFix.provenance, 'live');
+    assert.equal(leakedFix.moderation.source, 'provider');
+    assert.notEqual(leakedFix.honesty_class, 'fixture');
+    const keepLive = await tagged('live', 'live', 'live', 'provider');
+    assert.equal(keepLive.honesty_class, 'live');
+    assert.equal(keepLive.provenance, 'live');
+  } finally {
+    if (prev === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = prev;
+  }
+});
 
 test('adapter rejects unsafe urls, markup, mismatch, oversize, malformed raster', async () => {
   await assert.rejects(() => fetchProviderBytes('file:///etc/passwd'), (e) => e instanceof OrchError && e.code === 'unsafe_url');

@@ -155,6 +155,10 @@ async function fetchProviderBytes(url, runtime = {}) {
   return buf;
 }
 
+const FIXTURE_HONESTY = new Set(['fixture', 'synthetic', 'demo', 'test', 'mock']);
+const LIVE_HONESTY = new Set(['live', 'provider']);
+const MOD_SOURCES = new Set(['fixture', 'synthetic', 'provider', 'internal']);
+
 function fixtureResult(bytes) {
   const v = validateRaster(bytes, 'image/png');
   return {
@@ -165,7 +169,32 @@ function fixtureResult(bytes) {
   };
 }
 
+// Pairing matches generation_jobs finishSuccess; mode is source of truth so a
+// custom rt.generate cannot label fixture/synthetic/demo/test/mock as live, or
+// live/provider as fixture.
+function coerceHonesty(out, mode) {
+  let honesty = String(out.honesty_class || 'fixture');
+  if (mode === 'live') {
+    if (!LIVE_HONESTY.has(honesty)) honesty = 'provider';
+    out.honesty_class = honesty;
+    out.provenance = 'live';
+  } else {
+    if (!FIXTURE_HONESTY.has(honesty)) honesty = 'fixture';
+    out.honesty_class = honesty;
+    out.provenance = 'fixture';
+  }
+  if (out.moderation) {
+    let src = out.moderation.source;
+    if (!MOD_SOURCES.has(src)) src = mode === 'live' ? 'provider' : 'fixture';
+    if (mode === 'live' && src === 'fixture') src = 'provider';
+    if (mode !== 'live' && src === 'provider') src = 'fixture';
+    out.moderation.source = src;
+  }
+  return out;
+}
+
 async function liveOpenAi({ brief, signal }) {
+  // Dummy/missing keys must not construct the client or hit the network.
   if (!hasLiveKey()) fail('provider_not_configured');
   const OpenAI = require('openai');
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: TIMEOUT_MS, maxRetries: 0 });
@@ -216,11 +245,7 @@ async function generateStaticImage({ job, brief, runtime, signal }) {
       } else if (!out.moderation || out.moderation.status !== 'passed') {
         out.moderation = { status: 'passed', source: mode === 'live' ? 'provider' : 'fixture' };
       }
-      if (mode !== 'live') {
-        out.honesty_class = 'fixture';
-        out.provenance = 'fixture';
-        if (out.moderation) out.moderation.source = out.moderation.source === 'provider' ? 'fixture' : out.moderation.source;
-      }
+      coerceHonesty(out, mode);
       out.mime = v.mime;
       out.width = v.width;
       out.height = v.height;
