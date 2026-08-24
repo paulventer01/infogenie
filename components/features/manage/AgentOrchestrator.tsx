@@ -163,6 +163,21 @@ interface ResearchRun {
   continuation_state?: { honesty_class?: string };
 }
 
+interface CreativeProposal {
+  id: string;
+  status: string;
+  version: number;
+  provider?: string;
+  model?: string;
+  prompt_template_version?: string;
+  error_code?: string | null;
+  artifacts?: Array<{
+    kind: string;
+    status: string;
+    citations?: Array<{ evidence_id?: string }>;
+  }>;
+}
+
 type LoadStatus = "loading" | "error" | "ready";
 
 const ACTIVE_RESEARCH_STATES = new Set(["pending", "running"]);
@@ -444,6 +459,10 @@ export default function AgentOrchestrator() {
   const [orchBusy, setOrchBusy] = useState("");
   const [orchMsg, setOrchMsg] = useState("");
   const [orchMsgIsError, setOrchMsgIsError] = useState(false);
+  const [creativeProposal, setCreativeProposal] = useState<CreativeProposal | null>(null);
+  const [proposalBusy, setProposalBusy] = useState("");
+  const [proposalMsg, setProposalMsg] = useState("");
+  const [proposalMsgIsError, setProposalMsgIsError] = useState(false);
 
   const can = useCallback(
     (key: string) => isPlatformAdmin || permissions.includes(key),
@@ -1234,6 +1253,35 @@ export default function AgentOrchestrator() {
     if (r.run) setOrchRun(r.run);
     setOrchMsgIsError(false);
     setOrchMsg("Research run continued.");
+  }
+
+  async function generateCreativeProposal() {
+    if (!selected || !orchRun?.id) return;
+    if (!can("orchestrator.workflows.edit") && !can("orchestrator.workflows.approve.creative_generation")) return;
+    setProposalBusy("generate");
+    setProposalMsg("");
+    const r = await orchMutate<{ ok: boolean; generation?: CreativeProposal; error?: string }>(
+      "/api/agent-orchestrator/proposals",
+      "POST",
+      { workflow_id: selected.id, research_run_id: orchRun.id, mode: "fixture" },
+    );
+    setProposalBusy("");
+    if (r.ok === false) {
+      setProposalMsgIsError(true);
+      setProposalMsg(r.error || "Proposal generation failed");
+      return;
+    }
+    if (r.generation) setCreativeProposal(r.generation);
+    setProposalMsgIsError(false);
+    setProposalMsg("Proposal generated for review. No ads were published.");
+  }
+
+  async function refreshCreativeProposal() {
+    if (!creativeProposal?.id) return;
+    const r = await apiGet<{ ok: boolean; generation?: CreativeProposal; error?: string }>(
+      `/api/agent-orchestrator/proposals/${creativeProposal.id}`,
+    );
+    if (r.ok && r.generation) setCreativeProposal(r.generation);
   }
 
   async function submitLimits() {
@@ -2585,6 +2633,33 @@ export default function AgentOrchestrator() {
                         {orchRun.error_code && <div style={{ color: "#B91C1C" }}>Error: {orchRun.error_code}</div>}
                         {orchProgressLine && <div style={{ marginTop: 4 }}>{orchProgressLine}</div>}
                         {orchHonestyLabel && <div style={{ marginTop: 4, color: "#6B7280" }}>{orchHonestyLabel}</div>}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 14, marginBottom: 16, background: "#F9FAFB" }}>
+                    <h5 style={{ margin: "0 0 10px", fontSize: "0.85rem" }}>Evidence-backed proposals</h5>
+                    <p style={{ margin: "0 0 10px", fontSize: "0.72rem", color: "#6B7280" }}>
+                      Generate angles, hooks, messages, claims and creative briefs from an approved research snapshot. Outputs stay pending review — this stage does not render images or videos and does not draft or activate campaigns.
+                    </p>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                      {orchRun?.state === "completed" && (can("orchestrator.workflows.edit") || can("orchestrator.workflows.approve.creative_generation")) && (
+                        <button type="button" disabled={!!proposalBusy} onClick={generateCreativeProposal} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", opacity: proposalBusy ? 0.6 : 1 }}>
+                          {proposalBusy === "generate" ? "Generating…" : "Generate proposals"}
+                        </button>
+                      )}
+                      {creativeProposal?.id && (
+                        <button type="button" disabled={!!proposalBusy} onClick={refreshCreativeProposal} style={{ ...btnSecondary, opacity: proposalBusy ? 0.6 : 1 }}>Refresh status</button>
+                      )}
+                    </div>
+                    {proposalMsg && <p style={{ fontSize: "0.78rem", color: proposalMsgIsError ? "#B91C1C" : "#3730A3", margin: "0 0 8px" }}>{proposalMsg}</p>}
+                    {creativeProposal && (
+                      <div style={{ fontSize: "0.78rem", color: "#374151" }}>
+                        <div>Proposal {creativeProposal.id} · {creativeProposal.status} · v{creativeProposal.version}</div>
+                        {creativeProposal.provider && <div style={{ color: "#6B7280" }}>{creativeProposal.provider}/{creativeProposal.model} · template {creativeProposal.prompt_template_version}</div>}
+                        {(creativeProposal.artifacts || []).map((a) => (
+                          <div key={a.kind + a.status}>{a.kind} · {a.status} · citations {(a.citations || []).length}</div>
+                        ))}
                       </div>
                     )}
                   </div>

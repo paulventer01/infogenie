@@ -279,4 +279,7 @@ router.use('/credits', creditsApi);
 const researchApi = require('./research_api');
 router.use('/research', researchApi);
 
+const proposalApi = require('./proposal_api');
+router.use('/proposals', proposalApi);
+
 module.exports = router;

@@ -25,6 +25,10 @@ const HTTP_FOR_CODE = Object.freeze({
   capability_not_supported: 409,
   connector_unavailable: 409,
   missing_credentials: 409,
+  provider_timeout: 503,
+  provider_malformed: 503,
+  provider_transient: 503,
+  provider_not_configured: 409,
 });
 
 class OrchError extends Error {

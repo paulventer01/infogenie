@@ -66,6 +66,8 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_creative_artifacts',
   'orchestrator_creative_citations',
   'orchestrator_creative_audit',
+  // PR 4B — immutable proposal-generation bundles (no finished creative)
+  'orchestrator_proposal_generations',
 ];
 
 const RESEARCH_RETENTION_EXPIRY_SQL =
@@ -2647,6 +2649,115 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE UPDATE OR DELETE ON orchestrator_creative_audit
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_creative_audit_immutable();
+  `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_proposal_generations (
+      id                                TEXT NOT NULL,
+      tenant_id                         INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      workflow_id                       TEXT NOT NULL,
+      research_run_id                   TEXT NOT NULL,
+      version                           INTEGER NOT NULL DEFAULT 1,
+      status                            TEXT NOT NULL DEFAULT 'pending',
+      contract_version                  TEXT NOT NULL DEFAULT 'v1',
+      prompt_template_version           TEXT NOT NULL,
+      provider                          TEXT NOT NULL,
+      model                             TEXT NOT NULL,
+      evidence_snapshot_hash            TEXT NOT NULL,
+      research_approval_id              INTEGER NOT NULL,
+      research_approval_hash            TEXT NOT NULL,
+      research_approval_object_version  INTEGER NOT NULL,
+      content_hash                      TEXT NOT NULL,
+      idempotency_key                   TEXT NOT NULL,
+      reservation_id                    TEXT NULL,
+      artifact_ids                      JSONB NOT NULL DEFAULT '[]',
+      error_code                        TEXT NULL,
+      created_at                        TIMESTAMPTZ NOT NULL DEFAULT now(),
+      generated_at                      TIMESTAMPTZ NULL,
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_proposal_generations_tenant_unique_idemp UNIQUE (tenant_id, idempotency_key),
+      CONSTRAINT orchestrator_proposal_generations_status_check CHECK (status IN ('pending','running','pending_review','failed','cancelled')),
+      CONSTRAINT orchestrator_proposal_generations_contract_version_check CHECK (contract_version IN ('v1')),
+      CONSTRAINT orchestrator_proposal_generations_version_check CHECK (version >= 1),
+      CONSTRAINT orchestrator_proposal_generations_id_check CHECK (char_length(id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_proposal_generations_prompt_check CHECK (char_length(prompt_template_version) BETWEEN 1 AND 32),
+      CONSTRAINT orchestrator_proposal_generations_provider_check CHECK (char_length(provider) BETWEEN 1 AND 64),
+      CONSTRAINT orchestrator_proposal_generations_model_check CHECK (char_length(model) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_proposal_generations_evidence_hash_check CHECK (char_length(evidence_snapshot_hash) = 64 AND evidence_snapshot_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_proposal_generations_approval_hash_check CHECK (char_length(research_approval_hash) = 64 AND research_approval_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_proposal_generations_content_hash_check CHECK (char_length(content_hash) = 64 AND content_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_proposal_generations_idemp_check CHECK (char_length(idempotency_key) BETWEEN 1 AND 256),
+      CONSTRAINT orchestrator_proposal_generations_artifacts_type_check CHECK (jsonb_typeof(artifact_ids) = 'array'),
+      CONSTRAINT orchestrator_proposal_generations_artifacts_len_check CHECK (octet_length(artifact_ids::text) <= 4096)
+    );
+  `);
+
+  await _ensureNamedUnique(p, 'orchestrator_proposal_generations',
+    'orchestrator_proposal_generations_tenant_unique_idemp', 'tenant_id, idempotency_key');
+  await _ensureNamedFk(p, 'orchestrator_proposal_generations',
+    'orchestrator_proposal_generations_tenant_workflow_fkey',
+    'tenant_id, workflow_id', 'orchestrator_workflows', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_proposal_generations',
+    'orchestrator_proposal_generations_tenant_run_fkey',
+    'tenant_id, research_run_id', 'orchestrator_research_runs', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_proposal_generations',
+    'orchestrator_proposal_generations_tenant_approval_fkey',
+    'tenant_id, research_approval_id', 'orchestrator_approvals', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_proposal_generations_tenant_workflow
+    ON orchestrator_proposal_generations (tenant_id, workflow_id)`);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_proposal_generations_active_version
+    ON orchestrator_proposal_generations (tenant_id, workflow_id, research_run_id, version)
+    WHERE status IN ('pending', 'running', 'pending_review')`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_proposal_generations_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'DELETE' THEN
+        IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+          RETURN OLD;
+        END IF;
+        RAISE EXCEPTION 'orchestrator_proposal_generations_immutable';
+      END IF;
+      IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id OR OLD.id IS DISTINCT FROM NEW.id
+         OR OLD.workflow_id IS DISTINCT FROM NEW.workflow_id OR OLD.research_run_id IS DISTINCT FROM NEW.research_run_id
+         OR OLD.version IS DISTINCT FROM NEW.version OR OLD.contract_version IS DISTINCT FROM NEW.contract_version
+         OR OLD.prompt_template_version IS DISTINCT FROM NEW.prompt_template_version
+         OR OLD.idempotency_key IS DISTINCT FROM NEW.idempotency_key
+         OR OLD.research_approval_id IS DISTINCT FROM NEW.research_approval_id
+         OR OLD.research_approval_hash IS DISTINCT FROM NEW.research_approval_hash
+         OR OLD.research_approval_object_version IS DISTINCT FROM NEW.research_approval_object_version
+         OR OLD.evidence_snapshot_hash IS DISTINCT FROM NEW.evidence_snapshot_hash THEN
+        RAISE EXCEPTION 'orchestrator_proposal_generations_immutable';
+      END IF;
+      IF OLD.status IN ('pending_review') THEN
+        RAISE EXCEPTION 'orchestrator_proposal_generations_immutable';
+      END IF;
+      IF OLD.status IN ('failed', 'cancelled')
+         AND (NEW.status IS DISTINCT FROM OLD.status
+              OR NEW.content_hash IS DISTINCT FROM OLD.content_hash
+              OR NEW.artifact_ids IS DISTINCT FROM OLD.artifact_ids) THEN
+        RAISE EXCEPTION 'orchestrator_proposal_generations_immutable';
+      END IF;
+      IF OLD.status = 'pending' AND NEW.status NOT IN ('pending', 'running', 'failed', 'cancelled') THEN
+        RAISE EXCEPTION 'orchestrator_proposal_generations_immutable';
+      END IF;
+      IF OLD.status = 'running' AND NEW.status NOT IN ('running', 'pending_review', 'failed', 'cancelled') THEN
+        RAISE EXCEPTION 'orchestrator_proposal_generations_immutable';
+      END IF;
+      RETURN NEW;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_proposal_generations_immutable ON orchestrator_proposal_generations;
+    CREATE TRIGGER orchestrator_proposal_generations_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_proposal_generations
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_proposal_generations_immutable();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {
