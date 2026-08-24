@@ -444,6 +444,25 @@ if (!HAS_DB) {
     assert.equal(got.json.job.status, 'succeeded', got.text);
   });
 
+  test('tenant B cannot generate from or approve tenant A objects', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const gen = await postImg(cookieB, seed, 'xtpost');
+    assert.equal(gen.status, 404, gen.text);
+    assert.equal(gen.json.error, 'not_found');
+    const ap = await imgs('POST', '/approve-brief', {
+      cookie: cookieB,
+      body: { proposal_id: seed.generation.id, artifact_id: seed.brief.artifact_id },
+    });
+    assert.equal(ap.status, 404, ap.text);
+    assert.equal(ap.json.error, 'not_found');
+    for (const t of [tenantA.id, tenantB.id]) {
+      assert.equal((await p().query(
+        `SELECT id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND proposal_id=$2`,
+        [t, seed.generation.id]
+      )).rowCount, 0);
+    }
+  });
+
   test('approval on a non-image artifact can neither be minted nor drive generation', async () => {
     const seed = await seedReady(tenantA.id, ownerA.id, { approve: false });
     const rows = (await p().query(
