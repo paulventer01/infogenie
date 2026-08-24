@@ -74,6 +74,13 @@ const ADVERTISING_ORCH_TABLES = [
   // PR 5B — video-generation jobs + output metadata (no bytes/prompts/live provider)
   'orchestrator_video_generation_jobs',
   'orchestrator_video_generation_outputs',
+  // PR 6A — campaign draft contracts + human publishing-approval snapshots
+  // (no live publish/activate/pause). Audit uses orchestrator_audit_events;
+  // do not add a fifth table.
+  'orchestrator_campaign_drafts',
+  'orchestrator_campaign_draft_revisions',
+  'orchestrator_campaign_draft_creatives',
+  'orchestrator_campaign_publish_approvals',
 ];
 
 const RESEARCH_RETENTION_EXPIRY_SQL =
@@ -3191,6 +3198,337 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE UPDATE OR DELETE ON orchestrator_video_generation_outputs
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_video_generation_outputs_immutable();
+  `);
+
+  // PR 6A — tenant-scoped campaign draft contracts + human publishing approval.
+  // Does not publish, activate, pause, or mutate live advertising campaigns.
+  // No outbox, connector tables, or live-platform side effects.
+  // Audit events reuse orchestrator_audit_events (no fifth table).
+  // publishing/published/publish_failed are on CHECK only; the trigger
+  // fail-closes those transitions until a later PR extends it.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_drafts (
+      id TEXT NOT NULL, tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      workflow_id TEXT NOT NULL, label TEXT NOT NULL DEFAULT 'Campaign draft', notes TEXT NULL,
+      status TEXT NOT NULL DEFAULT 'draft', current_revision INTEGER NOT NULL DEFAULT 1,
+      contract_hash TEXT NOT NULL, approval_id INTEGER NULL, approval_hash TEXT NULL,
+      approval_expires_at TIMESTAMPTZ NULL, idempotency_key TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_campaign_drafts_tenant_unique_idemp UNIQUE (tenant_id, idempotency_key),
+      CONSTRAINT orchestrator_campaign_drafts_status_check CHECK (status IN (
+        'draft','validating','validation_failed','ready_for_approval','approved_for_publish',
+        'approval_expired','publishing','published','publish_failed','cancelled')),
+      CONSTRAINT orchestrator_campaign_drafts_revision_check CHECK (current_revision >= 1),
+      CONSTRAINT orchestrator_campaign_drafts_len_check CHECK (
+        char_length(id) BETWEEN 1 AND 128 AND char_length(idempotency_key) BETWEEN 1 AND 256
+        AND char_length(label) BETWEEN 1 AND 200
+        AND (notes IS NULL OR char_length(notes) <= 500)),
+      CONSTRAINT orchestrator_campaign_drafts_contract_hash_check CHECK (
+        char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_campaign_drafts_approval_hash_check CHECK (
+        approval_hash IS NULL OR (char_length(approval_hash)=64 AND approval_hash ~ '^[0-9a-f]{64}$'))
+    );
+  `);
+  await p.query(`ALTER TABLE orchestrator_campaign_drafts
+    ADD COLUMN IF NOT EXISTS notes TEXT NULL,
+    ADD COLUMN IF NOT EXISTS approval_id INTEGER NULL,
+    ADD COLUMN IF NOT EXISTS approval_hash TEXT NULL,
+    ADD COLUMN IF NOT EXISTS approval_expires_at TIMESTAMPTZ NULL`);
+  await _ensureNamedUnique(p, 'orchestrator_campaign_drafts',
+    'orchestrator_campaign_drafts_tenant_unique_idemp', 'tenant_id, idempotency_key');
+  await _ensureNamedFk(p, 'orchestrator_campaign_drafts',
+    'orchestrator_campaign_drafts_tenant_workflow_fkey',
+    'tenant_id, workflow_id', 'orchestrator_workflows', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_drafts',
+    'orchestrator_campaign_drafts_tenant_approval_fkey',
+    'tenant_id, approval_id', 'orchestrator_approvals', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedCheck(p, 'orchestrator_campaign_drafts', 'orchestrator_campaign_drafts_status_check',
+    `status IN ('draft','validating','validation_failed','ready_for_approval','approved_for_publish','approval_expired','publishing','published','publish_failed','cancelled')`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_drafts', 'orchestrator_campaign_drafts_contract_hash_check',
+    `char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_drafts', 'orchestrator_campaign_drafts_approval_hash_check',
+    `approval_hash IS NULL OR (char_length(approval_hash)=64 AND approval_hash ~ '^[0-9a-f]{64}$')`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_campaign_drafts_tenant_workflow
+    ON orchestrator_campaign_drafts (tenant_id, workflow_id)`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_campaign_drafts_immutable()
+    RETURNS trigger AS $fn$
+    DECLARE
+      mutable_statuses TEXT[] := ARRAY['draft','validating','validation_failed','ready_for_approval'];
+      entering_approved BOOLEAN;
+      leaving_approved BOOLEAN;
+      revision_mutable BOOLEAN;
+    BEGIN
+      IF TG_OP = 'DELETE' THEN
+        IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+          RETURN OLD;
+        END IF;
+        RAISE EXCEPTION 'orchestrator_campaign_drafts_immutable';
+      END IF;
+      IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id OR OLD.id IS DISTINCT FROM NEW.id
+         OR OLD.workflow_id IS DISTINCT FROM NEW.workflow_id
+         OR OLD.idempotency_key IS DISTINCT FROM NEW.idempotency_key
+         OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+        RAISE EXCEPTION 'orchestrator_campaign_drafts_immutable';
+      END IF;
+      IF OLD.status = 'cancelled' THEN
+        RAISE EXCEPTION 'orchestrator_campaign_drafts_immutable';
+      END IF;
+      IF NEW.status IN ('publishing','published','publish_failed') THEN
+        RAISE EXCEPTION 'orchestrator_campaign_drafts_immutable';
+      END IF;
+      IF OLD.status IS DISTINCT FROM NEW.status AND NOT (
+           (OLD.status = 'draft' AND NEW.status IN ('validating','cancelled'))
+        OR (OLD.status = 'validating' AND NEW.status IN ('validation_failed','ready_for_approval','cancelled'))
+        OR (OLD.status = 'validation_failed' AND NEW.status IN ('draft','validating','cancelled'))
+        OR (OLD.status = 'ready_for_approval' AND NEW.status IN ('approved_for_publish','validating','draft','cancelled'))
+        OR (OLD.status = 'approved_for_publish' AND NEW.status IN ('ready_for_approval','approval_expired','cancelled'))
+        OR (OLD.status = 'approval_expired' AND NEW.status IN ('ready_for_approval','validating','cancelled'))
+      ) THEN
+        RAISE EXCEPTION 'orchestrator_campaign_drafts_immutable';
+      END IF;
+      entering_approved := (OLD.status IS DISTINCT FROM 'approved_for_publish' AND NEW.status = 'approved_for_publish');
+      leaving_approved := (OLD.status = 'approved_for_publish' AND NEW.status IS DISTINCT FROM 'approved_for_publish');
+      revision_mutable := (OLD.status = ANY (mutable_statuses) AND NEW.status = ANY (mutable_statuses));
+      IF revision_mutable THEN
+        IF NEW.current_revision < OLD.current_revision THEN
+          RAISE EXCEPTION 'orchestrator_campaign_drafts_immutable';
+        END IF;
+        IF NEW.contract_hash IS DISTINCT FROM OLD.contract_hash
+           AND NEW.current_revision <= OLD.current_revision THEN
+          RAISE EXCEPTION 'orchestrator_campaign_drafts_immutable';
+        END IF;
+      ELSIF NEW.contract_hash IS DISTINCT FROM OLD.contract_hash
+         OR NEW.current_revision IS DISTINCT FROM OLD.current_revision THEN
+        RAISE EXCEPTION 'orchestrator_campaign_drafts_immutable';
+      END IF;
+      IF entering_approved THEN
+        NULL;
+      ELSIF leaving_approved THEN
+        IF NEW.approval_id IS NOT NULL OR NEW.approval_hash IS NOT NULL
+           OR NEW.approval_expires_at IS NOT NULL THEN
+          RAISE EXCEPTION 'orchestrator_campaign_drafts_immutable';
+        END IF;
+      ELSIF NEW.approval_id IS DISTINCT FROM OLD.approval_id
+         OR NEW.approval_hash IS DISTINCT FROM OLD.approval_hash
+         OR NEW.approval_expires_at IS DISTINCT FROM OLD.approval_expires_at THEN
+        RAISE EXCEPTION 'orchestrator_campaign_drafts_immutable';
+      END IF;
+      RETURN NEW;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_campaign_drafts_immutable ON orchestrator_campaign_drafts;
+    CREATE TRIGGER orchestrator_campaign_drafts_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_campaign_drafts
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_campaign_drafts_immutable();
+  `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_draft_revisions (
+      id TEXT NOT NULL, tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      draft_id TEXT NOT NULL, revision INTEGER NOT NULL, contract_json JSONB NOT NULL,
+      contract_hash TEXT NOT NULL, validation_status TEXT NOT NULL DEFAULT 'pending',
+      validation_json JSONB NOT NULL DEFAULT '{}', provenance_json JSONB NOT NULL DEFAULT '{}',
+      actor_user_id INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_campaign_draft_revisions_tenant_unique_rev
+        UNIQUE (tenant_id, draft_id, revision),
+      CONSTRAINT orchestrator_campaign_draft_revisions_revision_check CHECK (revision >= 1),
+      CONSTRAINT orchestrator_campaign_draft_revisions_id_check CHECK (char_length(id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_campaign_draft_revisions_contract_hash_check CHECK (
+        char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_campaign_draft_revisions_contract_json_check CHECK (
+        jsonb_typeof(contract_json)='object' AND octet_length(contract_json::text) BETWEEN 2 AND 16384),
+      CONSTRAINT orchestrator_campaign_draft_revisions_validation_status_check CHECK (
+        validation_status IN ('pending','passed','failed')),
+      CONSTRAINT orchestrator_campaign_draft_revisions_validation_json_check CHECK (
+        jsonb_typeof(validation_json)='object' AND octet_length(validation_json::text) BETWEEN 2 AND 8192),
+      CONSTRAINT orchestrator_campaign_draft_revisions_provenance_json_check CHECK (
+        jsonb_typeof(provenance_json)='object' AND octet_length(provenance_json::text) BETWEEN 2 AND 8192)
+    );
+  `);
+  await p.query(`ALTER TABLE orchestrator_campaign_draft_revisions
+    ADD COLUMN IF NOT EXISTS validation_json JSONB,
+    ADD COLUMN IF NOT EXISTS provenance_json JSONB,
+    ADD COLUMN IF NOT EXISTS actor_user_id INTEGER`);
+  await _ensureNamedUnique(p, 'orchestrator_campaign_draft_revisions',
+    'orchestrator_campaign_draft_revisions_tenant_unique_rev', 'tenant_id, draft_id, revision');
+  await _ensureNamedFk(p, 'orchestrator_campaign_draft_revisions',
+    'orchestrator_campaign_draft_revisions_tenant_draft_fkey',
+    'tenant_id, draft_id', 'orchestrator_campaign_drafts', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedCheck(p, 'orchestrator_campaign_draft_revisions',
+    'orchestrator_campaign_draft_revisions_contract_hash_check',
+    `char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_draft_revisions',
+    'orchestrator_campaign_draft_revisions_validation_status_check',
+    `validation_status IN ('pending','passed','failed')`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_campaign_draft_revisions_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'DELETE' THEN
+        IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+          RETURN OLD;
+        END IF;
+        RAISE EXCEPTION 'orchestrator_campaign_draft_revisions_immutable';
+      END IF;
+      IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id OR OLD.id IS DISTINCT FROM NEW.id
+         OR OLD.draft_id IS DISTINCT FROM NEW.draft_id OR OLD.revision IS DISTINCT FROM NEW.revision
+         OR OLD.contract_json IS DISTINCT FROM NEW.contract_json
+         OR OLD.contract_hash IS DISTINCT FROM NEW.contract_hash
+         OR OLD.provenance_json IS DISTINCT FROM NEW.provenance_json
+         OR OLD.actor_user_id IS DISTINCT FROM NEW.actor_user_id
+         OR OLD.created_at IS DISTINCT FROM NEW.created_at THEN
+        RAISE EXCEPTION 'orchestrator_campaign_draft_revisions_immutable';
+      END IF;
+      IF OLD.validation_status IS NOT DISTINCT FROM NEW.validation_status
+         AND OLD.validation_json IS NOT DISTINCT FROM NEW.validation_json THEN
+        RETURN NEW;
+      END IF;
+      IF OLD.validation_status = 'pending' AND NEW.validation_status IN ('passed','failed') THEN
+        RETURN NEW;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_campaign_draft_revisions_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_campaign_draft_revisions_immutable ON orchestrator_campaign_draft_revisions;
+    CREATE TRIGGER orchestrator_campaign_draft_revisions_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_campaign_draft_revisions
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_campaign_draft_revisions_immutable();
+  `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_draft_creatives (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      draft_id TEXT NOT NULL, revision INTEGER NOT NULL, kind TEXT NOT NULL,
+      asset_id TEXT NOT NULL, asset_version INTEGER NOT NULL, content_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, draft_id, revision, kind, asset_id, asset_version),
+      CONSTRAINT orchestrator_campaign_draft_creatives_kind_check CHECK (
+        kind IN ('static_image','video','creative_brief')),
+      CONSTRAINT orchestrator_campaign_draft_creatives_asset_check CHECK (
+        asset_version >= 1 AND char_length(asset_id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_campaign_draft_creatives_content_hash_check CHECK (
+        char_length(content_hash)=64 AND content_hash ~ '^[0-9a-f]{64}$')
+    );
+  `);
+  await _ensureNamedFk(p, 'orchestrator_campaign_draft_creatives',
+    'orchestrator_campaign_draft_creatives_tenant_revision_fkey',
+    'tenant_id, draft_id, revision', 'orchestrator_campaign_draft_revisions',
+    'tenant_id, draft_id, revision', 'ON DELETE CASCADE');
+  await _ensureNamedCheck(p, 'orchestrator_campaign_draft_creatives',
+    'orchestrator_campaign_draft_creatives_kind_check',
+    `kind IN ('static_image','video','creative_brief')`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_draft_creatives',
+    'orchestrator_campaign_draft_creatives_content_hash_check',
+    `char_length(content_hash)=64 AND content_hash ~ '^[0-9a-f]{64}$'`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_campaign_draft_creatives_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_campaign_draft_creatives_immutable';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_campaign_draft_creatives_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_campaign_draft_creatives_immutable ON orchestrator_campaign_draft_creatives;
+    CREATE TRIGGER orchestrator_campaign_draft_creatives_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_campaign_draft_creatives
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_campaign_draft_creatives_immutable();
+  `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_publish_approvals (
+      id TEXT NOT NULL, tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      draft_id TEXT NOT NULL, revision INTEGER NOT NULL, contract_hash TEXT NOT NULL,
+      snapshot_json JSONB NOT NULL, workflow_approval_id INTEGER NOT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+      idempotency_key TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL,
+      revoked_at TIMESTAMPTZ NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_campaign_publish_approvals_tenant_unique_idemp
+        UNIQUE (tenant_id, idempotency_key),
+      CONSTRAINT orchestrator_campaign_publish_approvals_tenant_unique_snapshot
+        UNIQUE (tenant_id, draft_id, revision, contract_hash),
+      CONSTRAINT orchestrator_campaign_publish_approvals_revision_check CHECK (revision >= 1),
+      CONSTRAINT orchestrator_campaign_publish_approvals_len_check CHECK (
+        char_length(id) BETWEEN 1 AND 128 AND char_length(idempotency_key) BETWEEN 1 AND 256),
+      CONSTRAINT orchestrator_campaign_publish_approvals_contract_hash_check CHECK (
+        char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_campaign_publish_approvals_snapshot_json_check CHECK (
+        jsonb_typeof(snapshot_json)='object' AND octet_length(snapshot_json::text) BETWEEN 2 AND 16384),
+      CONSTRAINT orchestrator_campaign_publish_approvals_expires_check CHECK (expires_at > created_at)
+    );
+  `);
+  await p.query(`ALTER TABLE orchestrator_campaign_publish_approvals
+    ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ NULL`);
+  await _ensureNamedUnique(p, 'orchestrator_campaign_publish_approvals',
+    'orchestrator_campaign_publish_approvals_tenant_unique_idemp', 'tenant_id, idempotency_key');
+  await _ensureNamedUnique(p, 'orchestrator_campaign_publish_approvals',
+    'orchestrator_campaign_publish_approvals_tenant_unique_snapshot',
+    'tenant_id, draft_id, revision, contract_hash');
+  await _ensureNamedFk(p, 'orchestrator_campaign_publish_approvals',
+    'orchestrator_campaign_publish_approvals_tenant_draft_fkey',
+    'tenant_id, draft_id', 'orchestrator_campaign_drafts', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_publish_approvals',
+    'orchestrator_campaign_publish_approvals_tenant_approval_fkey',
+    'tenant_id, workflow_approval_id', 'orchestrator_approvals', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedCheck(p, 'orchestrator_campaign_publish_approvals',
+    'orchestrator_campaign_publish_approvals_contract_hash_check',
+    `char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_campaign_publish_approvals_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'DELETE' THEN
+        IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+          RETURN OLD;
+        END IF;
+        RAISE EXCEPTION 'orchestrator_campaign_publish_approvals_immutable';
+      END IF;
+      IF OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL
+         AND OLD.tenant_id IS NOT DISTINCT FROM NEW.tenant_id
+         AND OLD.id IS NOT DISTINCT FROM NEW.id
+         AND OLD.draft_id IS NOT DISTINCT FROM NEW.draft_id
+         AND OLD.revision IS NOT DISTINCT FROM NEW.revision
+         AND OLD.contract_hash IS NOT DISTINCT FROM NEW.contract_hash
+         AND OLD.snapshot_json IS NOT DISTINCT FROM NEW.snapshot_json
+         AND OLD.workflow_approval_id IS NOT DISTINCT FROM NEW.workflow_approval_id
+         AND OLD.actor_user_id IS NOT DISTINCT FROM NEW.actor_user_id
+         AND OLD.idempotency_key IS NOT DISTINCT FROM NEW.idempotency_key
+         AND OLD.expires_at IS NOT DISTINCT FROM NEW.expires_at
+         AND OLD.created_at IS NOT DISTINCT FROM NEW.created_at THEN
+        RETURN NEW;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_campaign_publish_approvals_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_campaign_publish_approvals_immutable ON orchestrator_campaign_publish_approvals;
+    CREATE TRIGGER orchestrator_campaign_publish_approvals_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_campaign_publish_approvals
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_campaign_publish_approvals_immutable();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {
