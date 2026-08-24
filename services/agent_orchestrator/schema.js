@@ -68,6 +68,9 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_creative_audit',
   // PR 4B — immutable proposal-generation bundles (no finished creative)
   'orchestrator_proposal_generations',
+  // PR 5A — static-image generation jobs + asset metadata (no bytes/prompts)
+  'orchestrator_static_image_jobs',
+  'orchestrator_static_image_assets',
 ];
 
 const RESEARCH_RETENTION_EXPIRY_SQL =
@@ -2758,6 +2761,209 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE UPDATE OR DELETE ON orchestrator_proposal_generations
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_proposal_generations_immutable();
+  `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_static_image_jobs (
+      id TEXT NOT NULL, tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      workflow_id TEXT NOT NULL, proposal_id TEXT NOT NULL, proposal_version INTEGER NOT NULL,
+      proposal_content_hash TEXT NOT NULL, approval_id INTEGER NOT NULL, approval_hash TEXT NOT NULL,
+      generation_request_hash TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
+      model_version TEXT NOT NULL DEFAULT 'v1', idempotency_key TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued', state_version INTEGER NOT NULL DEFAULT 1,
+      attempt_count INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 3,
+      reservation_id TEXT NULL, estimated_cost_micros BIGINT NOT NULL, reserved_cost_micros BIGINT NOT NULL,
+      actual_cost_micros BIGINT NULL, credential_ref TEXT NULL, outbox_id TEXT NULL, asset_id TEXT NULL,
+      error_code TEXT NULL, honesty_class TEXT NOT NULL, lease_holder TEXT NULL,
+      lease_expires_at TIMESTAMPTZ NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), started_at TIMESTAMPTZ NULL, completed_at TIMESTAMPTZ NULL,
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_static_image_jobs_tenant_unique_idemp UNIQUE (tenant_id, idempotency_key),
+      CONSTRAINT orchestrator_static_image_jobs_status_check
+        CHECK (status IN ('queued','running','succeeded','failed','cancelled')),
+      CONSTRAINT orchestrator_static_image_jobs_len_check CHECK (
+        char_length(id) BETWEEN 1 AND 128 AND char_length(provider) BETWEEN 1 AND 64
+        AND char_length(model) BETWEEN 1 AND 128 AND char_length(model_version) BETWEEN 1 AND 64
+        AND char_length(idempotency_key) BETWEEN 1 AND 256),
+      CONSTRAINT orchestrator_static_image_jobs_nums_check CHECK (
+        proposal_version >= 1 AND state_version >= 1 AND attempt_count >= 0
+        AND max_attempts BETWEEN 1 AND 8 AND estimated_cost_micros >= 0 AND reserved_cost_micros >= 0
+        AND (actual_cost_micros IS NULL OR actual_cost_micros >= 0)),
+      CONSTRAINT orchestrator_static_image_jobs_hex_check CHECK (
+        char_length(proposal_content_hash)=64 AND proposal_content_hash ~ '^[0-9a-f]{64}$'
+        AND char_length(approval_hash)=64 AND approval_hash ~ '^[0-9a-f]{64}$'
+        AND char_length(generation_request_hash)=64 AND generation_request_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_static_image_jobs_credential_ref_check
+        CHECK (credential_ref IS NULL OR credential_ref ~ '^[A-Za-z0-9_:-]{1,128}$'),
+      CONSTRAINT orchestrator_static_image_jobs_error_code_check
+        CHECK (error_code IS NULL OR error_code ~ '^[a-z0-9_]{1,40}$'),
+      CONSTRAINT orchestrator_static_image_jobs_honesty_class_check
+        CHECK (honesty_class IN ('fixture','synthetic','demo','test','mock','live','provider'))
+    );
+  `);
+
+  await p.query(`ALTER TABLE orchestrator_static_image_jobs
+    ADD COLUMN IF NOT EXISTS reservation_id TEXT NULL,
+    ADD COLUMN IF NOT EXISTS actual_cost_micros BIGINT NULL,
+    ADD COLUMN IF NOT EXISTS credential_ref TEXT NULL,
+    ADD COLUMN IF NOT EXISTS outbox_id TEXT NULL,
+    ADD COLUMN IF NOT EXISTS asset_id TEXT NULL,
+    ADD COLUMN IF NOT EXISTS error_code TEXT NULL,
+    ADD COLUMN IF NOT EXISTS lease_holder TEXT NULL,
+    ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ NULL,
+    ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NULL,
+    ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NULL`);
+
+  await _ensureNamedUnique(p, 'orchestrator_static_image_jobs',
+    'orchestrator_static_image_jobs_tenant_unique_idemp', 'tenant_id, idempotency_key');
+  await _ensureNamedFk(p, 'orchestrator_static_image_jobs',
+    'orchestrator_static_image_jobs_tenant_workflow_fkey',
+    'tenant_id, workflow_id', 'orchestrator_workflows', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_static_image_jobs',
+    'orchestrator_static_image_jobs_tenant_proposal_fkey',
+    'tenant_id, proposal_id', 'orchestrator_proposal_generations', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedFk(p, 'orchestrator_static_image_jobs',
+    'orchestrator_static_image_jobs_tenant_approval_fkey',
+    'tenant_id, approval_id', 'orchestrator_approvals', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_static_image_jobs_tenant_workflow
+    ON orchestrator_static_image_jobs (tenant_id, workflow_id)`);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_static_image_jobs_active_request
+    ON orchestrator_static_image_jobs (tenant_id, proposal_id, generation_request_hash)
+    WHERE status IN ('queued', 'running')`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_static_image_jobs_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'DELETE' THEN
+        IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+          RETURN OLD;
+        END IF;
+        RAISE EXCEPTION 'orchestrator_static_image_jobs_immutable';
+      END IF;
+      IF OLD.tenant_id IS DISTINCT FROM NEW.tenant_id OR OLD.id IS DISTINCT FROM NEW.id
+         OR OLD.workflow_id IS DISTINCT FROM NEW.workflow_id OR OLD.proposal_id IS DISTINCT FROM NEW.proposal_id
+         OR OLD.proposal_version IS DISTINCT FROM NEW.proposal_version
+         OR OLD.proposal_content_hash IS DISTINCT FROM NEW.proposal_content_hash
+         OR OLD.approval_id IS DISTINCT FROM NEW.approval_id OR OLD.approval_hash IS DISTINCT FROM NEW.approval_hash
+         OR OLD.generation_request_hash IS DISTINCT FROM NEW.generation_request_hash
+         OR OLD.idempotency_key IS DISTINCT FROM NEW.idempotency_key
+         OR OLD.estimated_cost_micros IS DISTINCT FROM NEW.estimated_cost_micros THEN
+        RAISE EXCEPTION 'orchestrator_static_image_jobs_immutable';
+      END IF;
+      IF OLD.status IN ('succeeded', 'failed', 'cancelled') THEN
+        RAISE EXCEPTION 'orchestrator_static_image_jobs_immutable';
+      END IF;
+      IF OLD.status = 'queued' AND NEW.status NOT IN ('queued', 'running', 'failed', 'cancelled') THEN
+        RAISE EXCEPTION 'orchestrator_static_image_jobs_immutable';
+      END IF;
+      IF OLD.status = 'running' AND NEW.status NOT IN ('running', 'succeeded', 'failed', 'cancelled') THEN
+        RAISE EXCEPTION 'orchestrator_static_image_jobs_immutable';
+      END IF;
+      IF (NEW.error_code IS DISTINCT FROM OLD.error_code OR NEW.completed_at IS DISTINCT FROM OLD.completed_at)
+         AND NOT (OLD.status IS DISTINCT FROM NEW.status AND NEW.status IN ('failed','cancelled','succeeded')) THEN
+        RAISE EXCEPTION 'orchestrator_static_image_jobs_immutable';
+      END IF;
+      IF (NEW.asset_id IS DISTINCT FROM OLD.asset_id OR NEW.actual_cost_micros IS DISTINCT FROM OLD.actual_cost_micros)
+         AND NOT (OLD.status = 'running' AND NEW.status = 'succeeded') THEN
+        RAISE EXCEPTION 'orchestrator_static_image_jobs_immutable';
+      END IF;
+      RETURN NEW;
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_static_image_jobs_immutable ON orchestrator_static_image_jobs;
+    CREATE TRIGGER orchestrator_static_image_jobs_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_static_image_jobs
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_static_image_jobs_immutable();
+  `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_static_image_assets (
+      id TEXT NOT NULL, tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      workflow_id TEXT NOT NULL, job_id TEXT NOT NULL, proposal_id TEXT NOT NULL,
+      proposal_version INTEGER NOT NULL, proposal_content_hash TEXT NOT NULL, approval_hash TEXT NOT NULL,
+      provider TEXT NOT NULL, model TEXT NOT NULL, model_version TEXT NOT NULL, request_hash TEXT NOT NULL,
+      mime_type TEXT NOT NULL, width_px INTEGER NOT NULL, height_px INTEGER NOT NULL, byte_size INTEGER NOT NULL,
+      asset_hash TEXT NOT NULL, storage_ref TEXT NOT NULL, moderation_status TEXT NOT NULL,
+      moderation_source TEXT NOT NULL, honesty_class TEXT NOT NULL, provenance TEXT NOT NULL,
+      usable BOOLEAN NOT NULL DEFAULT false, generated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_static_image_assets_tenant_unique_job UNIQUE (tenant_id, job_id),
+      CONSTRAINT orchestrator_static_image_assets_len_check CHECK (
+        char_length(id) BETWEEN 1 AND 128 AND char_length(provider) BETWEEN 1 AND 64
+        AND char_length(model) BETWEEN 1 AND 128 AND char_length(model_version) BETWEEN 1 AND 64
+        AND proposal_version >= 1 AND width_px BETWEEN 1 AND 8192 AND height_px BETWEEN 1 AND 8192
+        AND byte_size BETWEEN 1 AND 10485760),
+      CONSTRAINT orchestrator_static_image_assets_hex_check CHECK (
+        char_length(proposal_content_hash)=64 AND proposal_content_hash ~ '^[0-9a-f]{64}$'
+        AND char_length(approval_hash)=64 AND approval_hash ~ '^[0-9a-f]{64}$'
+        AND char_length(request_hash)=64 AND request_hash ~ '^[0-9a-f]{64}$'
+        AND char_length(asset_hash)=64 AND asset_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_static_image_assets_mime_type_check
+        CHECK (mime_type IN ('image/png','image/jpeg','image/webp')),
+      CONSTRAINT orchestrator_static_image_assets_storage_ref_check
+        CHECK (char_length(storage_ref) BETWEEN 1 AND 1024 AND storage_ref !~* '^data:'),
+      CONSTRAINT orchestrator_static_image_assets_moderation_status_check
+        CHECK (moderation_status IN ('passed','failed')),
+      CONSTRAINT orchestrator_static_image_assets_moderation_source_check
+        CHECK (moderation_source IN ('fixture','synthetic','provider','internal')),
+      CONSTRAINT orchestrator_static_image_assets_honesty_class_check
+        CHECK (honesty_class IN ('fixture','synthetic','demo','test','mock','live','provider')),
+      CONSTRAINT orchestrator_static_image_assets_provenance_check CHECK (provenance IN ('fixture','live')),
+      CONSTRAINT orchestrator_static_image_assets_usable_check
+        CHECK (usable = false OR moderation_status = 'passed'),
+      CONSTRAINT orchestrator_static_image_assets_honesty_provenance_check CHECK (
+        (provenance = 'fixture' AND honesty_class IN ('fixture','synthetic','demo','test','mock'))
+        OR (provenance = 'live' AND honesty_class IN ('live','provider')))
+    );
+  `);
+
+  await p.query(`ALTER TABLE orchestrator_static_image_assets
+    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NULL,
+    ADD COLUMN IF NOT EXISTS storage_ref TEXT,
+    ADD COLUMN IF NOT EXISTS asset_hash TEXT,
+    ADD COLUMN IF NOT EXISTS request_hash TEXT`);
+
+  await _ensureNamedUnique(p, 'orchestrator_static_image_assets',
+    'orchestrator_static_image_assets_tenant_unique_job', 'tenant_id, job_id');
+  await _ensureNamedFk(p, 'orchestrator_static_image_assets',
+    'orchestrator_static_image_assets_tenant_job_fkey',
+    'tenant_id, job_id', 'orchestrator_static_image_jobs', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_static_image_assets',
+    'orchestrator_static_image_assets_tenant_workflow_fkey',
+    'tenant_id, workflow_id', 'orchestrator_workflows', 'tenant_id, id',
+    'ON DELETE CASCADE');
+
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_static_image_assets_tenant_workflow
+    ON orchestrator_static_image_assets (tenant_id, workflow_id)`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_static_image_assets_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_static_image_assets_immutable';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_static_image_assets_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_static_image_assets_immutable ON orchestrator_static_image_assets;
+    CREATE TRIGGER orchestrator_static_image_assets_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_static_image_assets
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_static_image_assets_immutable();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {
