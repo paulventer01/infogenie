@@ -282,4 +282,7 @@ router.use('/research', researchApi);
 const proposalApi = require('./proposal_api');
 router.use('/proposals', proposalApi);
 
+const generationApi = require('./generation_api');
+router.use('/static-images', generationApi);
+
 module.exports = router;
