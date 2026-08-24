@@ -330,11 +330,17 @@ async function finishFail(pool, { tenantId, job, outboxId, code }) {
 
 async function claimAndStart(pool, { tenantId, workerId }) {
   return withTx(pool, async (client) => {
-    const claimed = await outbox.claim(client, { tenantId, workerId, limit: 1 });
+    const claimed = await outbox.claim(client, {
+      tenantId, workerId, limit: 1, operation: 'static_image_generate',
+    });
     if (!claimed.length) return null;
     const ob = claimed[0];
     if (ob.operation !== 'static_image_generate') {
-      await outbox.complete(client, { tenantId, id: ob.id });
+      await client.query(
+        `UPDATE orchestrator_outbox SET state='pending', claimed_by=NULL, claimed_until=NULL, updated_at=now()
+          WHERE tenant_id=$1 AND id=$2 AND state='processing'`,
+        [tenantId, ob.id]
+      );
       return { skip: true };
     }
     const job = await one(client, `SELECT * FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND outbox_id=$2 FOR UPDATE`, [tenantId, ob.id]);

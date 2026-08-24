@@ -29,6 +29,7 @@ const { createProposalRuntime } = require('../services/agent_orchestrator/propos
 const { approveCreativeArtifact } = require('../services/agent_orchestrator/creative_store');
 const { approvalContentHash } = require('../services/agent_orchestrator/creative_validate');
 const { DEFAULT_REQUEST_MICROS } = require('../services/agent_orchestrator/pricing');
+const outbox = require('../services/agent_orchestrator/outbox');
 const { logger } = require('../services/infra/logger');
 const {
   processStaticImageJobs, enqueueStaticImageJob, reserveKey,
@@ -441,5 +442,22 @@ if (!HAS_DB) {
     await runWorker(tenantA.id);
     const got = await imgs('GET', `/${res.json.job.id}`, { cookie: cookieA });
     assert.equal(got.json.job.status, 'succeeded', got.text);
+  });
+
+  test('static-image worker does not complete foreign outbox rows', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const foreign = await outbox.enqueue(p(), {
+      tenantId: tenantA.id, workflowId: seed.wfId, destination: 'internal',
+      operation: 'research_ingest', idempotencyKey: ik('foreign-obx'),
+    });
+    assert.equal(foreign.state, 'pending');
+    await runWorker(tenantA.id);
+    const row = (await p().query(
+      `SELECT state FROM orchestrator_outbox WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, foreign.id]
+    )).rows[0];
+    assert.ok(row);
+    assert.notEqual(row.state, 'completed');
+    assert.equal(row.state, 'pending');
   });
 }

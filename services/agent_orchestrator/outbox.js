@@ -107,19 +107,26 @@ async function enqueue(client, {
 }
 
 async function claim(client, {
-  tenantId, workerId, limit = 1,
+  tenantId, workerId, limit = 1, operation,
 } = {}) {
   const holder = String(workerId || `orch:${process.pid}`);
   const until = new Date(Date.now() + CLAIM_TTL_MS);
+  const vals = [tenantId, Math.max(1, Number(limit) || 1)];
+  let opClause = '';
+  if (operation != null && String(operation) !== '') {
+    vals.push(String(operation));
+    opClause = `AND operation=$${vals.length}`;
+  }
   const picked = await client.query(
     `SELECT id FROM orchestrator_outbox
       WHERE tenant_id=$1
         AND state IN ('pending','failed')
         AND next_attempt_at <= now()
+        ${opClause}
       ORDER BY next_attempt_at ASC
       FOR UPDATE SKIP LOCKED
       LIMIT $2`,
-    [tenantId, Math.max(1, Number(limit) || 1)]
+    vals
   );
   if (!picked.rowCount) return [];
   const ids = picked.rows.map((r) => r.id);
