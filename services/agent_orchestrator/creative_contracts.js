@@ -106,6 +106,12 @@ const MATERIAL_FIELDS = Object.freeze([
   'visual_direction',
   'script_or_storyboard',
   'prohibited_claims',
+  'text',
+  'title',
+  'summary',
+  'claim_kind',
+  'evidence_backed',
+  'targeting',
 ]);
 
 const CITATION_REQUIRED = Object.freeze([

@@ -228,5 +228,12 @@ test('creative brief carries required generation-prep fields without generating'
   assert.match(bound, /^[0-9a-f]{64}$/);
   assert.strictEqual(materialChanged(brief, { ...brief, hook: { ...brief.hook, text: 'changed' } }), true);
   assert.strictEqual(materialChanged(brief, brief), false);
+  const angle = assertAngle({
+    ...envelope(),
+    kind: 'angle',
+    text: 'Stay warm without the bulk',
+    targeting: { platform: 'meta', format: 'image' },
+  }, { tenantId: TENANT_A });
+  assert.strictEqual(materialChanged(angle, { ...angle, text: 'Different angle text' }), true);
   assert.notStrictEqual(approvalContentHash(brief.content_hash, FP2), bound);
 });

@@ -15,6 +15,24 @@ const { isFakeSource, isLiveSource } = require('./research_honesty');
 
 const UNIQUE_VIOLATION = '23505';
 
+async function withTx(poolOrClient, fn) {
+  if (poolOrClient && typeof poolOrClient.connect === 'function') {
+    const c = await poolOrClient.connect();
+    try {
+      await c.query('BEGIN');
+      const result = await fn(c);
+      await c.query('COMMIT');
+      return result;
+    } catch (err) {
+      try { await c.query('ROLLBACK'); } catch (_) { /* ignore */ }
+      throw err;
+    } finally {
+      c.release();
+    }
+  }
+  return fn(poolOrClient);
+}
+
 function actorId(req) {
   const n = Number(req && req.user && req.user.id);
   return Number.isInteger(n) && n > 0 ? n : null;
@@ -255,7 +273,7 @@ async function insertVersionRow(client, {
   return { id, version, status };
 }
 
-async function insertCreativeArtifact(client, input, opts) {
+async function insertCreativeArtifactTx(client, input, opts) {
   const tenantId = opts && opts.tenantId;
   const createdBy = requireActor(opts);
   const payload = assertCreativeArtifact(input, { tenantId });
@@ -293,7 +311,7 @@ async function insertCreativeArtifact(client, input, opts) {
   return publicRow(row, { ...payload, citations, approval_status: 'draft' });
 }
 
-async function reviseCreativeArtifact(client, input, opts) {
+async function reviseCreativeArtifactTx(client, input, opts) {
   const tenantId = opts && opts.tenantId;
   const createdBy = requireActor(opts);
   const payload = assertCreativeArtifact(input, { tenantId });
@@ -359,7 +377,7 @@ async function reviseCreativeArtifact(client, input, opts) {
     artifact_id: payload.artifact_id,
     artifact_row_id: inserted.id,
     workflow_id: payload.workflow_id,
-    event: wasApproved ? 'revised' : 'revised',
+    event: 'revised',
     actor_user_id: createdBy,
     content_hash: payload.content_hash,
     evidence_hash: payload.evidence_hash,
@@ -374,23 +392,24 @@ async function reviseCreativeArtifact(client, input, opts) {
   return publicRow(row, { ...payload, citations, approval_status: 'draft' });
 }
 
-async function approveCreativeArtifact(client, opts) {
+async function approveCreativeArtifactTx(client, opts) {
   const tenantId = opts && opts.tenantId;
   const actorUserId = requireActor(opts);
   const artifactId = String(opts.artifactId || '');
   if (!artifactId) fail('validation_failed', { field: 'artifactId', reason: 'required' });
+  const claimedVersion = Number(opts && opts.objectVersion);
+  if (!Number.isInteger(claimedVersion)) fail('validation_failed', { field: 'objectVersion', reason: 'required' });
+  if (!opts || opts.contentHash == null || opts.contentHash === '') {
+    fail('validation_failed', { field: 'contentHash', reason: 'required' });
+  }
   const latest = await lockArtifact(client, tenantId, artifactId);
   if (!latest) fail('not_found');
   if (latest.status !== 'draft') {
     fail('validation_failed', { field: 'status', reason: 'not_draft' });
   }
   const hash = approvalContentHash(latest.content_hash, latest.evidence_hash);
-  if (opts.contentHash && String(opts.contentHash) !== hash) {
-    fail('approval_stale');
-  }
-  if (opts.objectVersion != null && Number(opts.objectVersion) !== Number(latest.version)) {
-    fail('approval_stale');
-  }
+  if (claimedVersion !== Number(latest.version)) fail('approval_stale');
+  if (String(opts.contentHash) !== hash) fail('approval_stale');
   const approval = (await client.query(
     `INSERT INTO orchestrator_approvals (
        tenant_id, workflow_id, gate, object_type, object_id, object_version,
@@ -458,6 +477,18 @@ async function loadCreativeArtifact(client, opts) {
   if (!r.rowCount) fail('not_found');
   const row = r.rows[0];
   return publicRow(row, row.payload);
+}
+
+function insertCreativeArtifact(poolOrClient, input, opts) {
+  return withTx(poolOrClient, (client) => insertCreativeArtifactTx(client, input, opts));
+}
+
+function reviseCreativeArtifact(poolOrClient, input, opts) {
+  return withTx(poolOrClient, (client) => reviseCreativeArtifactTx(client, input, opts));
+}
+
+function approveCreativeArtifact(poolOrClient, opts) {
+  return withTx(poolOrClient, (client) => approveCreativeArtifactTx(client, opts));
 }
 
 module.exports = {

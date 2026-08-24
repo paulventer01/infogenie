@@ -314,6 +314,14 @@ if (!HAS_DB) {
         tenantId: tenantA,
         artifactId: created.artifact_id,
         req: req(),
+      }),
+      (err) => isValidation(err, 'required')
+    );
+    await assert.rejects(
+      () => approveCreativeArtifact(p, {
+        tenantId: tenantA,
+        artifactId: created.artifact_id,
+        req: req(),
         contentHash: 'c'.repeat(64),
         objectVersion: created.version,
       }),
