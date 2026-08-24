@@ -238,6 +238,23 @@ if (!HAS_DB) {
     );
   });
 
+  test('nested supporting-claim citations cannot attach cross-tenant evidence', async () => {
+    const p = db.getPool();
+    const a = await seedEvidence(p, tenantA);
+    const b = await seedEvidence(p, tenantB);
+    const input = briefInput(tenantA, a.host, a.ev, { citations: [] });
+    input.supporting_claims = [{
+      text: 'Public ads use packable-warmth language',
+      claim_kind: 'factual',
+      evidence_backed: true,
+      citations: [citationFrom(b.ev, a.host.wfId)],
+    }];
+    await assert.rejects(
+      () => insertCreativeArtifact(p, input, { tenantId: tenantA, req: req() }),
+      (err) => isValidation(err, 'missing_evidence') || isValidation(err, 'run_mismatch')
+    );
+  });
+
   test('cross-tenant evidence cannot be attached', async () => {
     const p = db.getPool();
     const a = await seedEvidence(p, tenantA);

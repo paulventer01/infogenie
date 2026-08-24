@@ -210,6 +210,23 @@ function assertCitations(raw, opts) {
   return Object.freeze(out);
 }
 
+function mergeCitationLists(lists) {
+  const byId = new Map();
+  for (const list of lists) {
+    if (!list) continue;
+    for (const c of list) {
+      const prev = byId.get(c.evidence_id);
+      if (prev) {
+        if (prev.evidence_fingerprint !== c.evidence_fingerprint) vf('citations', 'fingerprint_mismatch');
+        continue;
+      }
+      byId.set(c.evidence_id, c);
+    }
+  }
+  if (byId.size > C.LIMITS.citations.max) vf('citations', 'too_many');
+  return Object.freeze([...byId.values()]);
+}
+
 function assertSourceEvidenceIds(raw, citations) {
   if (raw == null) {
     return Object.freeze(citations.map((c) => c.evidence_id));
@@ -450,21 +467,36 @@ function assertCreativeBrief(input, opts) {
   if (!Array.isArray(prohibited)) vf('prohibited_claims', 'not_array');
   if (prohibited.length > C.LIMITS.prohibited_claims.max) vf('prohibited_claims', 'too_many');
   const supporting = assertSupportingClaims(raw.supporting_claims, opts, env.citations);
+  const angle = assertNestedAngle(raw.angle, opts, env.citations);
+  const hook = assertNestedHook(raw.hook, opts, env.citations);
+  const primary_message = assertNestedMessage(raw.primary_message, opts, env.citations);
+  const citations = mergeCitationLists([
+    env.citations,
+    angle.citations,
+    hook.citations,
+    primary_message.citations,
+    ...supporting.map((c) => c.citations),
+  ]);
   for (const claim of supporting) {
-    if (claim.claim_kind === 'factual' && claim.evidence_backed && claim.citations.length < 1 && env.citations.length < 1) {
+    if (claim.claim_kind === 'factual' && claim.evidence_backed && claim.citations.length < 1 && citations.length < 1) {
       vf('supporting_claims', 'citation_required');
     }
   }
   return finalize({
     ...env,
+    citations,
+    source_evidence_ids: assertSourceEvidenceIds(
+      raw.source_evidence_ids == null ? citations.map((c) => c.evidence_id) : raw.source_evidence_ids,
+      citations
+    ),
     objective: publicCopy(raw.objective, C.LIMITS.objective.max, 'objective'),
     target_audience: audience,
     platform: assertEnum(raw.platform, C.PLATFORMS, 'platform'),
     placement: boundedText(raw.placement, C.LIMITS.placement.min, C.LIMITS.placement.max, 'placement', { allowEmpty: false }),
     format: assertEnum(raw.format, C.FORMATS, 'format'),
-    angle: assertNestedAngle(raw.angle, opts, env.citations),
-    hook: assertNestedHook(raw.hook, opts, env.citations),
-    primary_message: assertNestedMessage(raw.primary_message, opts, env.citations),
+    angle,
+    hook,
+    primary_message,
     supporting_claims: supporting,
     offer,
     call_to_action: cta,

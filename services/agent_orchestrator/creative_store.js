@@ -71,6 +71,10 @@ function assertBindableEvidence(row, artifact, citation) {
   if (String(row.workflow_id) !== String(artifact.workflow_id)) {
     fail('validation_failed', { field: 'citations', reason: 'cross_workflow_evidence' });
   }
+  if (String(row.research_run_id) !== String(citation.research_run_id)
+      || String(row.research_run_id) !== String(artifact.research_run_id)) {
+    fail('validation_failed', { field: 'citations', reason: 'run_mismatch' });
+  }
   if (String(row.run_state) !== 'completed'
       || String(row.approval_gate) !== 'research_execution'
       || String(row.approval_decision) !== 'approved') {

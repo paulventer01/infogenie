@@ -192,7 +192,33 @@ test('oversized and malformed contracts fail closed', () => {
   }, { tenantId: TENANT_A }), 'unsupported');
 });
 
-test('creative brief carries required generation-prep fields without generating', () => {
+  test('nested brief citations are bound and hashed with top-level citations', () => {
+    const nestedOnly = citation({ evidence_id: 'ev-nested', evidence_fingerprint: FP2, evidence_hash: FP2 });
+    const brief = assertCreativeBrief({
+      ...envelope({ citations: [] }),
+      kind: 'creative_brief',
+      objective: 'Awareness',
+      target_audience: 'Outdoor shoppers',
+      platform: 'meta',
+      placement: 'feed',
+      format: 'image',
+      angle: { text: 'Warm layers' },
+      hook: { text: 'Stay warm' },
+      primary_message: { text: 'Shop the drop' },
+      supporting_claims: [{
+        text: 'Public ads use packable language',
+        claim_kind: 'factual',
+        evidence_backed: true,
+        citations: [nestedOnly],
+      }],
+      call_to_action: 'Shop now',
+    }, { tenantId: TENANT_A });
+    assert.strictEqual(brief.citations.length, 1);
+    assert.strictEqual(brief.citations[0].evidence_id, 'ev-nested');
+    assert.strictEqual(brief.evidence_hash, computeEvidenceHash(brief.citations));
+  });
+
+  test('creative brief carries required generation-prep fields without generating', () => {
   const brief = assertCreativeBrief({
     ...envelope(),
     kind: 'creative_brief',
