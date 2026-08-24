@@ -285,4 +285,7 @@ router.use('/proposals', proposalApi);
 const generationApi = require('./generation_api');
 router.use('/static-images', generationApi);
 
+const videoApi = require('./video_api');
+router.use('/video-jobs', videoApi);
+
 module.exports = router;
