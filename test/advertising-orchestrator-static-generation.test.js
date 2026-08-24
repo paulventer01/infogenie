@@ -550,12 +550,17 @@ if (!HAS_DB) {
     await workerP;
 
     const job = (await p().query(
-      `SELECT status FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      `SELECT status, error_code FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
       [tenantA.id, jobId]
     )).rows[0];
     assert.equal(job.status, 'cancelled');
+    assert.equal(job.error_code, 'cancelled');
     assert.equal((await p().query(
       `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2 AND usable=true`,
       [tenantA.id, jobId]
     )).rowCount, 0);
     const reservation = (await p().query(
@@ -573,6 +578,38 @@ if (!HAS_DB) {
       [tenantA.id]
     )).rows[0].consumed_micros;
     assert.equal(String(consumedAfter), String(consumedBefore));
+  });
+
+  test('workflow cancel stops worker with no usable asset', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const res = await postImg(cookieA, seed, 'wfcancel');
+    assert.equal(res.status, 201, res.text);
+    const jobId = res.json.job.id;
+    await p().query(
+      `UPDATE orchestrator_workflows SET current_state='cancelled' WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, seed.wfId]
+    );
+    let n = 0;
+    await runWorker(tenantA.id, createGenerationRuntime({
+      mode: 'fixture',
+      generate: async () => { n += 1; return FIXTURE_PNG; },
+    }));
+    const job = (await p().query(
+      `SELECT status, error_code FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    assert.notEqual(job.status, 'succeeded');
+    assert.ok(job.status === 'cancelled' || job.status === 'failed', job.status);
+    assert.equal(job.error_code, 'cancelled');
+    assert.equal(n, 0);
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2 AND usable=true`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
   });
 
   test('HTTP approve-brief then generate succeeds', async () => {

@@ -132,19 +132,29 @@ async function bindApproval(client, o) {
   return { wf, proposal, approval, artifact };
 }
 
+async function settleReleaseSafe(client, { tenantId, job }) {
+  if (!job || !job.reservation_id) return;
+  try {
+    await credits.release({
+      client, tenantId, reservationId: job.reservation_id, reasonCode: 'static_image_release',
+      idempotencyKey: `${reserveKey(job.idempotency_key)}:release`,
+    });
+  } catch (err) {
+    if (err instanceof OrchError && err.code === 'not_found') return;
+    throw err;
+  }
+}
+
 async function settle(client, { tenantId, job, commit }) {
-  if (!job.reservation_id) return;
+  if (!job || !job.reservation_id) return;
   if (commit) {
     await credits.commit({
       client, tenantId, reservationId: job.reservation_id, actualMicros: toBigInt(job.reserved_cost_micros || ESTIMATE),
       idempotencyKey: `${reserveKey(job.idempotency_key)}:commit`,
     });
-  } else {
-    await credits.release({
-      client, tenantId, reservationId: job.reservation_id, reasonCode: 'static_image_release',
-      idempotencyKey: `${reserveKey(job.idempotency_key)}:release`,
-    });
+    return;
   }
+  await settleReleaseSafe(client, { tenantId, job });
 }
 
 async function completeOutboxForCancel(client, { tenantId, outboxId }) {
@@ -156,25 +166,69 @@ async function completeOutboxForCancel(client, { tenantId, outboxId }) {
   }
 }
 
-// Running cancel leaves the reservation held until the worker observes that
-// generate finished (or threw) and skips putObject. Idempotent :release key.
-async function finishCancelled(pool, { tenantId, job, outboxId }) {
+async function loadWorkflowStop(client, tenantId, workflowId, { forUpdate = false } = {}) {
+  const wf = await one(client,
+    `SELECT current_state FROM orchestrator_workflows WHERE tenant_id=$1 AND id=$2${forUpdate ? ' FOR UPDATE' : ''}`,
+    [tenantId, workflowId]);
+  if (!wf || wf.current_state === 'cancelled') return { jobStatus: 'cancelled', errorCode: 'cancelled' };
+  if (wf.current_state === 'paused') return { jobStatus: 'failed', errorCode: 'workflow_paused' };
+  return null;
+}
+
+async function abortLockedJob(client, { tenantId, job, outboxId, jobStatus, errorCode }) {
+  const status = jobStatus === 'failed' ? 'failed' : 'cancelled';
+  const code = sanitizeCode(errorCode || (status === 'failed' ? 'workflow_paused' : 'cancelled'));
+  if (!job) {
+    await completeOutboxForCancel(client, { tenantId, outboxId });
+    return null;
+  }
+  if (['succeeded', 'cancelled', 'failed'].includes(job.status)) {
+    await settleReleaseSafe(client, { tenantId, job });
+    await completeOutboxForCancel(client, { tenantId, outboxId: outboxId || job.outbox_id });
+    return job;
+  }
+  const row = (await client.query(
+    `UPDATE orchestrator_static_image_jobs SET status=$3, error_code=$4, completed_at=now(),
+            updated_at=now(), lease_holder=NULL, lease_expires_at=NULL, state_version=state_version+1
+      WHERE tenant_id=$1 AND id=$2 AND status IN ('queued','running') RETURNING *`,
+    [tenantId, job.id, status, code]
+  )).rows[0] || job;
+  await settleReleaseSafe(client, { tenantId, job: row });
+  await completeOutboxForCancel(client, { tenantId, outboxId: outboxId || row.outbox_id });
+  await note(client, {
+    tenantId, workflowId: row.workflow_id,
+    event: status === 'failed' ? 'static_image_failed' : 'static_image_cancelled',
+    jobId: row.id, state: status, errorCode: code,
+  });
+  return row;
+}
+
+async function abortIfStopped(pool, { tenantId, job, outboxId }) {
   return withTx(pool, async (client) => {
     const locked = await one(client,
       `SELECT * FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
       [tenantId, job.id]);
-    const row = locked || job;
-    await settle(client, { tenantId, job: row, commit: false });
-    await completeOutboxForCancel(client, { tenantId, outboxId: outboxId || row.outbox_id });
-    return row;
+    if (!locked) {
+      await completeOutboxForCancel(client, { tenantId, outboxId });
+      return true;
+    }
+    if (locked.status === 'succeeded') {
+      try { await outbox.complete(client, { tenantId, id: outboxId || locked.outbox_id }); } catch (_) { /* ignore */ }
+      return true;
+    }
+    const stop = await loadWorkflowStop(client, tenantId, locked.workflow_id, { forUpdate: true });
+    if (stop) {
+      await abortLockedJob(client, { tenantId, job: locked, outboxId, ...stop });
+      return true;
+    }
+    if (locked.status !== 'running') {
+      await abortLockedJob(client, {
+        tenantId, job: locked, outboxId, jobStatus: 'cancelled', errorCode: 'cancelled',
+      });
+      return true;
+    }
+    return false;
   });
-}
-
-async function abortIfNotRunning(pool, { tenantId, job, outboxId }) {
-  const still = await loadJob(pool, tenantId, job.id);
-  if (still && still.status === 'running') return false;
-  await finishCancelled(pool, { tenantId, job: still || job, outboxId });
-  return true;
 }
 
 async function enqueueStaticImageJob(pool, opts) {
@@ -301,12 +355,30 @@ async function cancelStaticImageJob(pool, tenantId, id) {
 async function finishSuccess(pool, { tenantId, job, outboxId, generated, storageRef }) {
   return withTx(pool, async (client) => {
     const locked = await one(client, `SELECT * FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, [tenantId, job.id]);
-    if (!locked || locked.status !== 'running') {
-      if (locked && locked.status === 'succeeded') await outbox.complete(client, { tenantId, id: outboxId });
+    if (!locked) {
+      await completeOutboxForCancel(client, { tenantId, outboxId });
+      return null;
+    }
+    const stop = await loadWorkflowStop(client, tenantId, locked.workflow_id, { forUpdate: true });
+    if (stop) return abortLockedJob(client, { tenantId, job: locked, outboxId, ...stop });
+    if (locked.status !== 'running') {
+      if (locked.status === 'succeeded') {
+        await outbox.complete(client, { tenantId, id: outboxId });
+        return locked;
+      }
+      await settleReleaseSafe(client, { tenantId, job: locked });
+      await completeOutboxForCancel(client, { tenantId, outboxId: outboxId || locked.outbox_id });
       return locked;
     }
-    let asset = await loadAsset(client, tenantId, job.id);
+    let ref = storageRef;
+    if (!ref) {
+      if (!generated || !Buffer.isBuffer(generated.bytes)) fail('provider_malformed');
+      const ext = generated.mime === 'image/jpeg' ? 'jpeg' : generated.mime === 'image/webp' ? 'webp' : 'png';
+      ref = await putObject(`orchestrator/static-images/${tenantId}/${locked.id}.${ext}`, generated.bytes, { contentType: generated.mime });
+    }
+    let asset = await loadAsset(client, tenantId, locked.id);
     if (!asset) {
+      if (!generated || !Buffer.isBuffer(generated.bytes) || generated.bytes.length < 1) fail('provider_malformed');
       let honesty = String(generated.honesty_class || 'fixture');
       let provenance = generated.provenance === 'live' ? 'live' : 'fixture';
       if (provenance === 'live') { if (honesty !== 'live' && honesty !== 'provider') honesty = 'provider'; }
@@ -323,7 +395,7 @@ async function finishSuccess(pool, { tenantId, job, outboxId, generated, storage
         [nid('sia'), tenantId, locked.workflow_id, locked.id, locked.proposal_id, locked.proposal_version,
           locked.proposal_content_hash, locked.approval_hash, locked.provider, locked.model, locked.model_version,
           locked.generation_request_hash, generated.mime, generated.width, generated.height, generated.bytes.length,
-          hash, storageRef, modSource, honesty, provenance]
+          hash, ref, modSource, honesty, provenance]
       )).rows[0];
     }
     const row = (await client.query(
@@ -332,6 +404,7 @@ async function finishSuccess(pool, { tenantId, job, outboxId, generated, storage
         WHERE tenant_id=$1 AND id=$2 AND status='running' RETURNING *`,
       [tenantId, locked.id, asset.id, toBigInt(locked.reserved_cost_micros || ESTIMATE).toString(), asset.honesty_class]
     )).rows[0];
+    if (!row) throw new Error('static_image_job_not_running');
     await settle(client, { tenantId, job: locked, commit: true });
     await outbox.complete(client, { tenantId, id: outboxId });
     await note(client, {
@@ -346,8 +419,17 @@ async function finishFail(pool, { tenantId, job, outboxId, code }) {
   const errCode = sanitizeCode(code);
   return withTx(pool, async (client) => {
     const locked = await one(client, `SELECT * FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, [tenantId, job.id]);
+    if (locked) {
+      const stop = await loadWorkflowStop(client, tenantId, locked.workflow_id, { forUpdate: true });
+      if (stop) return abortLockedJob(client, { tenantId, job: locked, outboxId, ...stop });
+    }
     if (!locked || ['succeeded', 'cancelled', 'failed'].includes(locked.status)) {
-      if (locked && locked.status === 'failed') await outbox.fail(client, { tenantId, id: outboxId, errorCode: errCode });
+      if (locked && locked.status === 'cancelled') {
+        await settleReleaseSafe(client, { tenantId, job: locked });
+        await completeOutboxForCancel(client, { tenantId, outboxId: outboxId || locked.outbox_id });
+      } else if (locked && locked.status === 'failed') {
+        await outbox.fail(client, { tenantId, id: outboxId, errorCode: errCode });
+      }
       return locked;
     }
     const retry = RETRYABLE.has(errCode) && (Number(locked.attempt_count) || 0) < (Number(locked.max_attempts) || 3);
@@ -391,9 +473,23 @@ async function claimAndStart(pool, { tenantId, workerId }) {
       return { skip: true };
     }
     const job = await one(client, `SELECT * FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND outbox_id=$2 FOR UPDATE`, [tenantId, ob.id]);
-    if (!job || job.status === 'succeeded' || job.status === 'cancelled') {
-      if (job && job.status === 'cancelled') await settle(client, { tenantId, job, commit: false });
+    if (!job) {
       await outbox.complete(client, { tenantId, id: ob.id });
+      return { skip: true, job };
+    }
+    if (job.status === 'succeeded') {
+      await outbox.complete(client, { tenantId, id: ob.id });
+      return { skip: true, job };
+    }
+    const stop = await loadWorkflowStop(client, tenantId, job.workflow_id, { forUpdate: true });
+    if (stop) {
+      await abortLockedJob(client, { tenantId, job, outboxId: ob.id, ...stop });
+      return { skip: true, job };
+    }
+    if (job.status === 'cancelled') {
+      await abortLockedJob(client, {
+        tenantId, job, outboxId: ob.id, jobStatus: 'cancelled', errorCode: 'cancelled',
+      });
       return { skip: true, job };
     }
     if (job.status === 'failed') {
@@ -442,26 +538,25 @@ async function processStaticImageJobs(pool, { tenantId, workerId, runtime } = {}
     const { job, brief } = claimed;
     const outboxId = claimed.outbox.id;
     try {
+      if (await abortIfStopped(pool, { tenantId, job, outboxId })) { if (n >= 20) break; continue; }
       if (!brief) fail('approval_scope_mismatch');
       const existing = await loadAsset(pool, tenantId, job.id);
       const jobRt = runtime || createGenerationRuntime({ mode: job.provider === 'openai' ? 'live' : 'fixture' });
       if (existing) {
-        if (await abortIfNotRunning(pool, { tenantId, job, outboxId })) { if (n >= 20) break; continue; }
-        await finishSuccess(pool, { tenantId, job, outboxId, generated: { bytes: existing, mime: existing.mime_type, width: existing.width_px, height: existing.height_px, honesty_class: existing.honesty_class, provenance: existing.provenance, moderation: { source: existing.moderation_source } }, storageRef: existing.storage_ref });
+        await finishSuccess(pool, {
+          tenantId, job, outboxId, storageRef: existing.storage_ref,
+          generated: {
+            bytes: Buffer.alloc(0), mime: existing.mime_type, width: existing.width_px, height: existing.height_px,
+            honesty_class: existing.honesty_class, provenance: existing.provenance,
+            moderation: { source: existing.moderation_source },
+          },
+        });
       } else {
         const generated = await generateStaticImage({ job, brief, runtime: jobRt });
-        if (await abortIfNotRunning(pool, { tenantId, job, outboxId })) { if (n >= 20) break; continue; }
-        const ext = generated.mime === 'image/jpeg' ? 'jpeg' : generated.mime === 'image/webp' ? 'webp' : 'png';
-        const storageRef = await putObject(`orchestrator/static-images/${tenantId}/${job.id}.${ext}`, generated.bytes, { contentType: generated.mime });
-        await finishSuccess(pool, { tenantId, job, outboxId, generated, storageRef });
+        await finishSuccess(pool, { tenantId, job, outboxId, generated });
       }
     } catch (err) {
-      const still = await loadJob(pool, tenantId, job.id);
-      if (!still || still.status !== 'running') {
-        await finishCancelled(pool, { tenantId, job: still || job, outboxId });
-      } else {
-        await finishFail(pool, { tenantId, job, outboxId, code: (err instanceof OrchError && err.code) || (err && err.code) || 'provider_malformed' });
-      }
+      await finishFail(pool, { tenantId, job, outboxId, code: (err instanceof OrchError && err.code) || (err && err.code) || 'provider_malformed' });
     }
     if (n >= 20) break;
   }
