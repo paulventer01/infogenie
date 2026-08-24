@@ -410,6 +410,7 @@ router.patch('/:id', mutation('edit', PERMS.edit, async (req, tid, userId, pool)
     currency: body.currency != null ? String(body.currency).trim().toUpperCase() : wf.currency,
     planned_start: body.planned_start !== undefined ? optionalTime(body.planned_start) : wf.planned_start,
     planned_end: body.planned_end !== undefined ? optionalTime(body.planned_end) : wf.planned_end,
+    research_plan: wf.research_plan,
   };
   if (!next.name || next.name.length > 200) fail('validation_failed');
   next.landing_page_url = await assertLandingUrl(next.landing_page_url);

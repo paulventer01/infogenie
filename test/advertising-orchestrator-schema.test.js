@@ -130,6 +130,32 @@ if (!HAS_DB) {
     await p.query(`DELETE FROM tenants WHERE id = ANY($1)`, [ids]);
   });
 
+  test('orchestrator_workflows.research_plan exists as JSONB NOT NULL defaulting to {}', async () => {
+    const p = db.getPool();
+    const col = (await p.query(
+      `SELECT column_name, udt_name, is_nullable, column_default
+         FROM information_schema.columns
+        WHERE table_schema='public'
+          AND table_name='orchestrator_workflows'
+          AND column_name='research_plan'`
+    )).rows[0];
+    assert.ok(col, 'orchestrator_workflows.research_plan must exist');
+    assert.strictEqual(col.udt_name, 'jsonb');
+    assert.strictEqual(col.is_nullable, 'NO');
+    assert.match(col.column_default, /'{}'/);
+
+    const wfId = `owf-research-plan-${SUFFIX}`;
+    await p.query(
+      `INSERT INTO orchestrator_workflows (id, tenant_id, name) VALUES ($1,$2,$3)`,
+      [wfId, tenantA, 'research plan default']
+    );
+    const row = (await p.query(
+      `SELECT research_plan FROM orchestrator_workflows WHERE id=$1 AND tenant_id=$2`,
+      [wfId, tenantA]
+    )).rows[0];
+    assert.deepStrictEqual(row.research_plan, {});
+  });
+
   test('all six advertising orchestrator tables exist with NOT NULL tenant_id and a PK', async () => {
     const p = db.getPool();
     const present = (await p.query(
