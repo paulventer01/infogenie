@@ -370,6 +370,18 @@ async function finishSuccess(pool, { tenantId, job, outboxId, generated, storage
       await completeOutboxForCancel(client, { tenantId, outboxId: outboxId || locked.outbox_id });
       return locked;
     }
+    const reservation = locked.reservation_id
+      ? await one(client,
+        `SELECT id, status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+        [tenantId, locked.reservation_id])
+      : null;
+    if (!reservation || reservation.status !== 'reserved') {
+      return abortLockedJob(client, {
+        tenantId, job: locked, outboxId,
+        jobStatus: locked.status === 'cancelled' ? 'cancelled' : 'failed',
+        errorCode: locked.status === 'cancelled' ? 'cancelled' : 'insufficient_credits',
+      });
+    }
     let ref = storageRef;
     if (!ref) {
       if (!generated || !Buffer.isBuffer(generated.bytes)) fail('provider_malformed');

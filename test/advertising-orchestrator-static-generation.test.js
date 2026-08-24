@@ -612,6 +612,77 @@ if (!HAS_DB) {
     )).rowCount, 0);
   });
 
+  test('released reservation cannot persist an uncharged usable asset', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const wfBefore = (await p().query(
+      `SELECT current_state FROM orchestrator_workflows WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, seed.wfId]
+    )).rows[0].current_state;
+    const res = await postImg(cookieA, seed, 'chargeskip');
+    assert.equal(res.status, 201, res.text);
+    const jobId = res.json.job.id;
+    const row = (await p().query(
+      `SELECT reservation_id, idempotency_key FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    const rid = row.reservation_id;
+
+    let releaseGenerate;
+    const gate = new Promise((resolve) => { releaseGenerate = resolve; });
+    let entered = false;
+    const workerP = runWorker(tenantA.id, createGenerationRuntime({
+      mode: 'fixture',
+      generate: async () => {
+        entered = true;
+        await gate;
+        return FIXTURE_PNG;
+      },
+    }));
+    const t0 = Date.now();
+    while (!entered && Date.now() - t0 < 5000) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.ok(entered, 'worker never entered generate');
+
+    await credits.release({
+      pool: p(), tenantId: tenantA.id, reservationId: rid, reasonCode: 'paused',
+      idempotencyKey: `release-wf:${seed.wfId}:${rid}`,
+    });
+    await p().query(
+      `UPDATE orchestrator_workflows SET current_state=$3 WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, seed.wfId, wfBefore]
+    );
+
+    releaseGenerate();
+    await workerP;
+
+    const job = (await p().query(
+      `SELECT status, error_code FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    assert.notEqual(job.status, 'succeeded');
+    assert.equal(job.status, 'failed');
+    assert.equal(job.error_code, 'insufficient_credits');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2 AND usable=true`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
+    const reservation = (await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, rid]
+    )).rows[0];
+    assert.equal(reservation.status, 'released');
+    assert.notEqual(reservation.status, 'committed');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_credit_ledger WHERE tenant_id=$1 AND reservation_id=$2 AND entry_type='commit'`,
+      [tenantA.id, rid]
+    )).rowCount, 0);
+  });
+
   test('HTTP approve-brief then generate succeeds', async () => {
     const seed = await seedReady(tenantA.id, ownerA.id, { approve: false });
     const ap = await imgs('POST', '/approve-brief', {
