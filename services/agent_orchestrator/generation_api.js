@@ -10,6 +10,8 @@ const { PERMS, GATE_PERMISSION } = require('./states');
 const { actorId } = require('./runner');
 const { extractIdempotencyKey, requestHashFrom, endpointOf, runIdempotent } = require('./idempotency');
 const { capPayload } = require('./payload_cap');
+const { approveCreativeArtifact } = require('./creative_store');
+const { approvalContentHash } = require('./creative_validate');
 const {
   enqueueStaticImageJob, getStaticImageJob, cancelStaticImageJob, publicJob,
 } = require('./generation_jobs');
@@ -91,6 +93,48 @@ router.post('/', capPayload, wrap(
       return { status, body };
     }
     return { status: run.status, body: run.body };
+  }
+));
+
+router.post('/approve-brief', capPayload, wrap(
+  GATE_PERMISSION.creative_generation,
+  async (req, tid, userId, pool) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    if (body.tenant_id != null && Number(body.tenant_id) !== Number(tid)) {
+      fail('validation_failed', { field: 'tenant_id', reason: 'mismatch' });
+    }
+    const proposalId = String(body.proposal_id || '').trim();
+    if (!proposalId) fail('validation_failed');
+    const proposal = (await pool.query(
+      `SELECT * FROM orchestrator_proposal_generations WHERE tenant_id=$1 AND id=$2`, [tid, proposalId]
+    )).rows[0];
+    if (!proposal) fail('not_found');
+    const ids = Array.isArray(proposal.artifact_ids) ? proposal.artifact_ids : [];
+    const arts = ids.length
+      ? (await pool.query(
+        `SELECT * FROM orchestrator_creative_artifacts WHERE tenant_id=$1 AND id = ANY($2::text[])`,
+        [tid, ids]
+      )).rows : [];
+    const want = body.artifact_id != null && String(body.artifact_id).trim();
+    const artifact = want
+      ? arts.find((a) => String(a.artifact_id) === want)
+      : arts.find((a) => a.kind === 'creative_brief' && a.status === 'draft' && a.payload && a.payload.format === 'image');
+    if (!artifact) fail('not_found');
+    const contentHash = approvalContentHash(artifact.content_hash, artifact.evidence_hash);
+    const approved = await approveCreativeArtifact(pool, {
+      tenantId: tid, artifactId: artifact.artifact_id, objectVersion: artifact.version,
+      contentHash, req: { user: { id: userId } },
+    });
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        approval: {
+          id: approved.approval_id, content_hash: contentHash,
+          object_version: Number(approved.version), artifact_id: approved.artifact_id,
+        },
+      },
+    };
   }
 ));
 

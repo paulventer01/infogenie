@@ -5,6 +5,7 @@ const { fail } = require('./errors');
 const { contentHash, assertApprovalFresh } = require('./approvals');
 const { insertAudit } = require('./runner');
 const { insertCreativeArtifactTx } = require('./creative_store');
+const { approvalContentHash } = require('./creative_validate');
 const {
   generateProposalBundle, evidenceSnapshotHash, bundleContentHash,
 } = require('./proposal_generate');
@@ -145,6 +146,8 @@ async function loadArtifacts(client, tenantId, artifactRowIds) {
     content_hash: row.content_hash,
     evidence_hash: row.evidence_hash,
     approval_id: row.approval_id,
+    approval_hash: row.approval_id ? approvalContentHash(row.content_hash, row.evidence_hash) : null,
+    format: row.payload && row.payload.format,
     payload: row.payload,
     citations: (row.payload && row.payload.citations) || [],
   }));

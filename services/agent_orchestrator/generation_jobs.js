@@ -13,6 +13,8 @@ const { toBigInt, microsToJson } = require('./money');
 const { logger } = require('../infra/logger');
 const { putObject } = require('../infra/object_storage');
 const { createGenerationRuntime, generateStaticImage, hasLiveKey } = require('./generation_adapter');
+const _db = require('../../db');
+const _runtimeFlags = require('../runtime_flags');
 
 const ESTIMATE = DEFAULT_REQUEST_MICROS;
 const MAX_APPROVAL_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -400,7 +402,41 @@ async function processStaticImageJobs(pool, { tenantId, workerId, runtime } = {}
   return n;
 }
 
+const WORKER_MS = 2_000;
+
+async function tickStaticImageWorker() {
+  if (!_db.hasDb()) return;
+  const pool = _db.getPool();
+  const due = await pool.query(
+    `SELECT DISTINCT tenant_id FROM orchestrator_outbox
+      WHERE destination='internal' AND operation='static_image_generate'
+        AND state IN ('pending','failed') AND next_attempt_at <= now()`
+  );
+  for (const row of due.rows) {
+    try {
+      await processStaticImageJobs(pool, { tenantId: row.tenant_id });
+    } catch (err) {
+      logger.info('static_image_worker_failed', {
+        tenant_id: row.tenant_id, error_code: sanitizeCode(err && err.code),
+      });
+    }
+  }
+}
+
+function startStaticImageWorker() {
+  if (!_runtimeFlags.backgroundEnabled()) return null;
+  return setInterval(() => {
+    tickStaticImageWorker().catch((err) => {
+      logger.info('static_image_worker_failed', {
+        tenant_id: null, error_code: sanitizeCode(err && err.code),
+      });
+    });
+  }, WORKER_MS);
+}
+
+startStaticImageWorker();
+
 module.exports = {
   enqueueStaticImageJob, getStaticImageJob, cancelStaticImageJob, processStaticImageJobs,
-  publicJob, generationRequestHash, MAX_APPROVAL_AGE_MS, reserveKey,
+  publicJob, generationRequestHash, MAX_APPROVAL_AGE_MS, reserveKey, startStaticImageWorker,
 };

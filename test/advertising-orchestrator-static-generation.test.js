@@ -11,6 +11,8 @@ require('./helpers/env');
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const { bootApp, request, login, makeFixtures, hasDb } = require('./helpers');
 const db = require('../db');
@@ -42,6 +44,14 @@ const ik = (t) => `ik-${t}-${crypto.randomBytes(6).toString('hex')}`;
 test('enforcement flags stay on', () => {
   assert.equal(process.env.PERMISSION_ENFORCEMENT, 'on');
   assert.equal(process.env.MULTITENANT_ENFORCEMENT, 'on');
+});
+
+test('generation_jobs.js registers setInterval only when backgroundEnabled', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../services/agent_orchestrator/generation_jobs.js'), 'utf8');
+  assert.match(src, /backgroundEnabled\(\)/);
+  assert.match(src, /setInterval/);
+  assert.match(src, /startStaticImageWorker/);
+  assert.match(src, /startStaticImageWorker\(\)/);
 });
 
 test('live OpenAI static-image generation is skipped without a real key', {
@@ -399,5 +409,24 @@ if (!HAS_DB) {
     assert.equal(c.json.job.status, 'cancelled');
     const rid = (await p().query(`SELECT reservation_id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`, [tenantA.id, res.json.job.id])).rows[0].reservation_id;
     assert.equal((await p().query(`SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`, [tenantA.id, rid])).rows[0].status, 'released');
+  });
+
+  test('HTTP approve-brief then generate succeeds', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id, { approve: false });
+    const ap = await imgs('POST', '/approve-brief', {
+      cookie: cookieA,
+      body: { proposal_id: seed.generation.id, artifact_id: seed.brief.artifact_id },
+    });
+    assert.equal(ap.status, 200, ap.text);
+    assert.ok(ap.json.approval && ap.json.approval.id);
+    const res = await postImg(cookieA, {
+      ...seed,
+      approved: { approval_id: ap.json.approval.id },
+      approvalHash: ap.json.approval.content_hash,
+    }, 'httpap');
+    assert.equal(res.status, 201, res.text);
+    await runWorker(tenantA.id);
+    const got = await imgs('GET', `/${res.json.job.id}`, { cookie: cookieA });
+    assert.equal(got.json.job.status, 'succeeded', got.text);
   });
 }
