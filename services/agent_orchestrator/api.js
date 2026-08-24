@@ -288,4 +288,7 @@ router.use('/static-images', generationApi);
 const videoApi = require('./video_api');
 router.use('/video-jobs', videoApi);
 
+const campaignApi = require('./campaign_api');
+router.use('/campaign-drafts', campaignApi);
+
 module.exports = router;
