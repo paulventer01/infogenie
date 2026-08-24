@@ -203,9 +203,17 @@ interface StaticImageJob {
   } | null;
 }
 
+interface VideoJob {
+  id: string; status: string; proposal_version?: number; honesty_class?: string;
+  estimated_cost_micros?: number | string; actual_cost_micros?: number | string;
+  error_code?: string | null; approval_hash?: string; contract_hash?: string;
+  output?: { mime_type: string; width_px: number; height_px: number; duration_ms: number; fps: number; honesty_class?: string; provenance?: string } | null;
+}
+
 type LoadStatus = "loading" | "error" | "ready";
 
 const ACTIVE_RESEARCH_STATES = new Set(["pending", "running"]);
+const ACTIVE_VIDEO_JOB_STATES = new Set(["queued", "reserved", "running", "retryable"]);
 
 const PLATFORMS = ["meta", "google", "tiktok"] as const;
 
@@ -384,6 +392,10 @@ function imageBriefOf(p: CreativeProposal | null | undefined) {
   return (p?.artifacts || []).find((a) => a.kind === "creative_brief" && a.format === "image");
 }
 
+function videoBriefOf(p: CreativeProposal | null | undefined) {
+  return (p?.artifacts || []).find((a) => a.kind === "creative_brief" && a.format === "video");
+}
+
 function isNonLiveStaticAsset(job: StaticImageJob | null, asset: StaticImageJob["asset"]) {
   if (!asset) return false;
   const hc = asset.honesty_class || job?.honesty_class || "";
@@ -503,6 +515,9 @@ export default function AgentOrchestrator() {
   const [staticGenBusy, setStaticGenBusy] = useState("");
   const [staticGenMsg, setStaticGenMsg] = useState("");
   const [staticGenMsgIsError, setStaticGenMsgIsError] = useState(false);
+  const [videoJob, setVideoJob] = useState<VideoJob | null>(null);
+  const [videoGenConfirm, setVideoGenConfirm] = useState(false);
+  const [videoGenBusy, setVideoGenBusy] = useState(""); const [videoGenMsg, setVideoGenMsg] = useState(""); const [videoGenMsgIsError, setVideoGenMsgIsError] = useState(false);
 
   const can = useCallback(
     (key: string) => isPlatformAdmin || permissions.includes(key),
@@ -694,6 +709,7 @@ export default function AgentOrchestrator() {
     setStaticGenBusy("");
     setStaticGenMsg("");
     setStaticGenMsgIsError(false);
+    setVideoJob(null); setVideoGenConfirm(false); setVideoGenBusy(""); setVideoGenMsg(""); setVideoGenMsgIsError(false);
   }, [selectedId]);
 
   useEffect(() => {
@@ -775,6 +791,20 @@ export default function AgentOrchestrator() {
     const iv = setInterval(poll, 2000);
     return () => { cancelled = true; clearInterval(iv); };
   }, [staticImageJob?.id, staticImageJob?.status]);
+
+  useEffect(() => {
+    if (!videoJob?.id || !ACTIVE_VIDEO_JOB_STATES.has(videoJob.status)) return;
+    const jobId = videoJob.id;
+    let cancelled = false;
+    const poll = async () => {
+      const r = await apiGet<{ ok: boolean; job?: VideoJob; error?: string }>(`/api/agent-orchestrator/video-jobs/${jobId}`);
+      if (cancelled || r.ok === false || !r.job) return;
+      setVideoJob(r.job);
+    };
+    poll();
+    const iv = setInterval(poll, 2000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [videoJob?.id, videoJob?.status]);
 
   const actionsLocked = status === "loading" || !!busy;
   const wfActionsLocked = wfStatus === "loading" || !!wfBusy || detailLoading;
@@ -1398,6 +1428,43 @@ export default function AgentOrchestrator() {
     setStaticGenMsg("Static image job queued.");
   }
 
+  async function approveVideoBrief() {
+    const brief = videoBriefOf(creativeProposal);
+    if (!creativeProposal?.id || !brief || brief.status !== "draft" || !can("orchestrator.workflows.approve.creative_generation")) return;
+    setVideoGenBusy("approve"); setVideoGenMsg("");
+    const r = await orchMutate<{ ok: boolean; error?: string }>("/api/agent-orchestrator/video-jobs/approve-brief", "POST", { proposal_id: creativeProposal.id, artifact_id: brief.artifact_id || brief.id });
+    setVideoGenBusy("");
+    if (r.ok === false) { setVideoGenMsgIsError(true); setVideoGenMsg(r.error || "Brief approval failed"); return; }
+    await refreshCreativeProposal();
+    setVideoGenMsgIsError(false); setVideoGenMsg("Video brief approved.");
+  }
+
+  async function submitVideoJob() {
+    const brief = videoBriefOf(creativeProposal);
+    if (!selected || !creativeProposal?.content_hash || !brief?.approval_id || !brief.approval_hash || !videoGenConfirm) return;
+    if (!can("orchestrator.workflows.edit") && !can("orchestrator.workflows.approve.creative_generation")) return;
+    setVideoGenBusy("generate"); setVideoGenMsg("");
+    const r = await orchMutate<{ ok: boolean; job?: VideoJob; error?: string }>("/api/agent-orchestrator/video-jobs", "POST", {
+      workflow_id: selected.id, proposal_id: creativeProposal.id, proposal_version: creativeProposal.version,
+      proposal_content_hash: creativeProposal.content_hash, approval_id: brief.approval_id, approval_hash: brief.approval_hash,
+      estimated_max_cost_micros: 10000, confirm: true,
+    });
+    setVideoGenBusy("");
+    if (r.ok === false) { setVideoGenMsgIsError(true); setVideoGenMsg(r.error || "Enqueue failed"); return; }
+    if (r.job) setVideoJob(r.job);
+    setVideoGenMsgIsError(false); setVideoGenMsg("Video job queued.");
+  }
+
+  async function cancelVideoJob() {
+    if (!videoJob?.id || !ACTIVE_VIDEO_JOB_STATES.has(videoJob.status) || !can("orchestrator.workflows.cancel")) return;
+    setVideoGenBusy("cancel"); setVideoGenMsg("");
+    const r = await orchMutate<{ ok: boolean; job?: VideoJob; error?: string }>(`/api/agent-orchestrator/video-jobs/${videoJob.id}/cancel`, "POST", {});
+    setVideoGenBusy("");
+    if (r.ok === false) { setVideoGenMsgIsError(true); setVideoGenMsg(r.error || "Cancel failed"); return; }
+    if (r.job) setVideoJob(r.job);
+    setVideoGenMsgIsError(false); setVideoGenMsg("Video job cancelled.");
+  }
+
   async function submitLimits() {
     if (!can("orchestrator.credits.limits.edit")) return;
     setCreditsBusy("limits");
@@ -1485,6 +1552,8 @@ export default function AgentOrchestrator() {
   const orchProgressLine = platformProgressLine(orchRun, selected);
   const imgBrief = imageBriefOf(creativeProposal);
   const imgBriefApproved = !!(imgBrief?.status === "approved" && imgBrief.approval_id && imgBrief.approval_hash);
+  const vidBrief = videoBriefOf(creativeProposal);
+  const vidBriefApproved = !!(vidBrief?.status === "approved" && vidBrief.approval_id && vidBrief.approval_hash);
   const showCancelOrchResearch = orchRun
     && ACTIVE_RESEARCH_STATES.has(orchRun.state)
     && can("orchestrator.workflows.cancel");
@@ -2817,6 +2886,22 @@ export default function AgentOrchestrator() {
                           <div style={{ fontSize: "0.72rem", color: "#6B7280", marginTop: 4 }}>{staticImageJob.asset.mime_type} · {staticImageJob.asset.width_px}×{staticImageJob.asset.height_px}px</div>
                         </div>
                       )}
+                      <h5 style={{ margin: "16px 0 10px", fontSize: "0.85rem" }}>Video generation jobs</h5>
+                      <p style={{ margin: "0 0 10px", fontSize: "0.72rem", color: "#6B7280" }}>Enqueue an approved video-generation job from an exact PR4B video brief. This stage does not call a live provider, does not render or download finished video, and does not publish or activate campaigns.</p>
+                      {vidBrief?.status === "draft" && can("orchestrator.workflows.approve.creative_generation") && (
+                        <button type="button" disabled={!!videoGenBusy} onClick={approveVideoBrief} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", marginBottom: 10, opacity: videoGenBusy ? 0.6 : 1 }}>{videoGenBusy === "approve" ? "Approving…" : "Approve video brief"}</button>
+                      )}
+                      {vidBriefApproved && (
+                        <div style={{ fontSize: "0.78rem", color: "#374151", marginBottom: 10 }}>
+                          <div>Exact proposal version: v{creativeProposal.version}</div><div>Estimated maximum cost: 10000 micros</div>
+                          <label style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "flex-start" }}><input type="checkbox" checked={videoGenConfirm} onChange={(e) => setVideoGenConfirm(e.target.checked)} /><span>I confirm enqueue of this exact approved proposal version</span></label>
+                          {(can("orchestrator.workflows.edit") || can("orchestrator.workflows.approve.creative_generation")) && <button type="button" disabled={!!videoGenBusy || !videoGenConfirm} onClick={submitVideoJob} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", marginTop: 8, opacity: videoGenBusy || !videoGenConfirm ? 0.6 : 1 }}>{videoGenBusy === "generate" ? "Enqueuing…" : "Enqueue video job"}</button>}
+                          {videoJob && ACTIVE_VIDEO_JOB_STATES.has(videoJob.status) && can("orchestrator.workflows.cancel") && <button type="button" disabled={!!videoGenBusy} onClick={cancelVideoJob} style={{ ...btnSecondary, fontSize: "0.75rem", padding: "8px 12px", marginTop: 8, marginLeft: 8, opacity: videoGenBusy ? 0.6 : 1 }}>{videoGenBusy === "cancel" ? "Cancelling…" : "Cancel job"}</button>}
+                        </div>
+                      )}
+                      {videoGenMsg && <p style={{ fontSize: "0.78rem", color: videoGenMsgIsError ? "#B91C1C" : "#3730A3", margin: "0 0 8px" }}>{videoGenMsg}</p>}
+                      {videoJob && <div style={{ fontSize: "0.78rem", color: "#374151" }}>Job {videoJob.id} · {videoJob.status}{videoJob.error_code ? ` · ${videoJob.error_code}` : ""}{videoJob.estimated_cost_micros != null ? ` · ${videoJob.estimated_cost_micros}` : ""}{videoJob.output ? ` · ${videoJob.output.mime_type} · ${videoJob.output.duration_ms}ms · ${videoJob.output.width_px}×${videoJob.output.height_px}px · ${videoJob.output.fps}fps` : ""}</div>}
+                      {videoJob && (["fixture", "synthetic", "demo", "test", "mock"].includes(videoJob.output?.honesty_class || videoJob.honesty_class || "") || videoJob.output?.provenance === "fixture") && <p style={{ fontSize: "0.72rem", color: "#B45309", margin: "8px 0 0" }}>Fixture / synthetic — not live-provider generated. No finished video is stored.</p>}
                     </div>
                   )}
 
