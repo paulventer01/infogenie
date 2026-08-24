@@ -410,6 +410,17 @@ async function finishSuccess(pool, { tenantId, job, outboxId, generated, storage
         errorCode: locked.status === 'cancelled' ? 'cancelled' : 'insufficient_credits',
       });
     }
+    // Re-bind approval at persist (generate ran outside this tx; recovery too).
+    await bindApproval(client, {
+      tenantId,
+      workflowId: locked.workflow_id,
+      proposalId: locked.proposal_id,
+      proposalVersion: locked.proposal_version,
+      proposalContentHash: locked.proposal_content_hash,
+      approvalId: locked.approval_id,
+      approvalHash: locked.approval_hash,
+      now: Date.now(),
+    });
     let ref = storageRef;
     if (!ref) {
       if (!generated || !Buffer.isBuffer(generated.bytes)) fail('provider_malformed');

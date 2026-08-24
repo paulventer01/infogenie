@@ -764,6 +764,135 @@ if (!HAS_DB) {
     )).rowCount, 0);
   });
 
+  test('brief superseded during generate cannot persist a charged usable asset', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const key = ik('supgen');
+    const res = await postImg(cookieA, seed, 'supgen', { key });
+    assert.equal(res.status, 201, res.text);
+    const jobId = res.json.job.id;
+    const row = (await p().query(
+      `SELECT reservation_id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    const rid = row.reservation_id;
+
+    let releaseGenerate;
+    const gate = new Promise((resolve) => { releaseGenerate = resolve; });
+    let generateCalls = 0;
+    const workerP = runWorker(tenantA.id, createGenerationRuntime({
+      mode: 'fixture',
+      generate: async () => {
+        generateCalls += 1;
+        await gate;
+        return FIXTURE_PNG;
+      },
+    }));
+    const t0 = Date.now();
+    while (!generateCalls && Date.now() - t0 < 5000) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.ok(generateCalls >= 1, 'worker never entered generate');
+
+    await p().query(
+      `UPDATE orchestrator_creative_artifacts SET status='superseded' WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, seed.brief.id]
+    );
+
+    releaseGenerate();
+    await workerP;
+
+    const job = (await p().query(
+      `SELECT status, error_code FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    assert.notEqual(job.status, 'succeeded');
+    assert.equal(job.status, 'failed');
+    assert.equal(job.error_code, 'approval_expired');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2 AND usable=true`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
+    const reservation = (await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, rid]
+    )).rows[0];
+    assert.equal(reservation.status, 'released');
+    assert.notEqual(reservation.status, 'committed');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_credit_ledger WHERE tenant_id=$1 AND reservation_id=$2 AND entry_type='commit'`,
+      [tenantA.id, rid]
+    )).rowCount, 0);
+    assert.ok(generateCalls <= 1, 'persist must fail closed without retrying generate');
+  });
+
+  test('brief invalidated during generate cannot persist a charged usable asset', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const key = ik('invgen');
+    const res = await postImg(cookieA, seed, 'invgen', { key });
+    assert.equal(res.status, 201, res.text);
+    const jobId = res.json.job.id;
+    const row = (await p().query(
+      `SELECT reservation_id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    const rid = row.reservation_id;
+
+    let releaseGenerate;
+    const gate = new Promise((resolve) => { releaseGenerate = resolve; });
+    let entered = false;
+    const workerP = runWorker(tenantA.id, createGenerationRuntime({
+      mode: 'fixture',
+      generate: async () => {
+        entered = true;
+        await gate;
+        return FIXTURE_PNG;
+      },
+    }));
+    const t0 = Date.now();
+    while (!entered && Date.now() - t0 < 5000) {
+      await new Promise((r) => setTimeout(r, 15));
+    }
+    assert.ok(entered, 'worker never entered generate');
+
+    await p().query(
+      `UPDATE orchestrator_creative_artifacts SET status='invalidated' WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, seed.brief.id]
+    );
+
+    releaseGenerate();
+    await workerP;
+
+    const job = (await p().query(
+      `SELECT status, error_code FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    assert.notEqual(job.status, 'succeeded');
+    assert.equal(job.status, 'failed');
+    assert.equal(job.error_code, 'approval_expired');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2 AND usable=true`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
+    const reservation = (await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, rid]
+    )).rows[0];
+    assert.equal(reservation.status, 'released');
+    assert.notEqual(reservation.status, 'committed');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_credit_ledger WHERE tenant_id=$1 AND reservation_id=$2 AND entry_type='commit'`,
+      [tenantA.id, rid]
+    )).rowCount, 0);
+  });
+
   test('brief superseded after enqueue fails the job closed and releases credits', async () => {
     const seed = await seedReady(tenantA.id, ownerA.id);
     const key = ik('matchg');
