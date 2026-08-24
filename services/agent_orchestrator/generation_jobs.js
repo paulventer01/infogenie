@@ -27,6 +27,11 @@ const loadJob = (c, tid, id) => one(c, `SELECT * FROM orchestrator_static_image_
 const loadByKey = (c, tid, k) => one(c, `SELECT * FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND idempotency_key=$2`, [tid, k]);
 const loadAsset = (c, tid, jid) => one(c, `SELECT * FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2`, [tid, jid]);
 
+function isImageBrief(row) {
+  return !!row && String(row.kind) === 'creative_brief'
+    && !!row.payload && typeof row.payload === 'object' && row.payload.format === 'image';
+}
+
 function generationRequestHash(f) {
   return sha256Hex({
     proposal_id: String(f.proposal_id), proposal_version: Number(f.proposal_version),
@@ -100,6 +105,11 @@ async function bindApproval(client, o) {
     `SELECT * FROM orchestrator_creative_artifacts WHERE tenant_id=$1 AND artifact_id=$2 AND version=$3`,
     [o.tenantId, approval.object_id, approval.object_version]);
   if (!artifact) fail('approval_scope_mismatch');
+  // The proposal bundle carries seven artifacts, including a VIDEO brief and
+  // several text artifacts. An approval on any of them is a `creative_generation`
+  // approval on a `creative_artifact`, so the gate/object-type checks above do
+  // not distinguish them. Only the image brief authorises a static image.
+  if (!isImageBrief(artifact)) fail('approval_scope_mismatch');
   if (String(artifact.workflow_id) !== String(o.workflowId)) fail('not_found');
   if (artifact.status === 'invalidated' || artifact.status === 'superseded') fail('approval_expired');
   if (artifact.status !== 'approved') fail('approval_required');
@@ -362,13 +372,17 @@ async function claimAndStart(pool, { tenantId, workerId }) {
       [tenantId, job.id, workerId, new Date(now + 30_000)]
     )).rows[0];
     if (!started) return { skip: true, job };
-    const proposal = await one(client, `SELECT * FROM orchestrator_proposal_generations WHERE tenant_id=$1 AND id=$2`, [tenantId, started.proposal_id]);
-    const ids = proposal && Array.isArray(proposal.artifact_ids) ? proposal.artifact_ids : [];
-    let brief = null;
-    if (ids.length) {
-      const arts = await client.query(`SELECT * FROM orchestrator_creative_artifacts WHERE tenant_id=$1 AND id = ANY($2::text[])`, [tenantId, ids]);
-      brief = arts.rows.find((a) => a.kind === 'creative_brief' && a.payload && a.payload.format === 'image') || null;
-    }
+    // Resolve the brief through the job's own approval, not by re-scanning the
+    // proposal: the bytes must come from the exact artifact version a human
+    // approved, otherwise a later revision would be rendered under an older
+    // approval.
+    const approval = await one(client,
+      `SELECT object_id, object_version FROM orchestrator_approvals WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, started.approval_id]);
+    const bound = approval ? await one(client,
+      `SELECT * FROM orchestrator_creative_artifacts WHERE tenant_id=$1 AND artifact_id=$2 AND version=$3`,
+      [tenantId, approval.object_id, approval.object_version]) : null;
+    const brief = isImageBrief(bound) && bound.status === 'approved' ? bound : null;
     return { job: started, outbox: ob, brief };
   });
 }
@@ -390,6 +404,7 @@ async function processStaticImageJobs(pool, { tenantId, workerId, runtime } = {}
     const { job, brief } = claimed;
     const outboxId = claimed.outbox.id;
     try {
+      if (!brief) fail('approval_scope_mismatch');
       const existing = await loadAsset(pool, tenantId, job.id);
       const jobRt = runtime || createGenerationRuntime({ mode: job.provider === 'openai' ? 'live' : 'fixture' });
       if (existing) {

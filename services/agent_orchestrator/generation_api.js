@@ -16,6 +16,11 @@ const {
   enqueueStaticImageJob, getStaticImageJob, cancelStaticImageJob, publicJob,
 } = require('./generation_jobs');
 
+function isImageBrief(row) {
+  return !!row && String(row.kind) === 'creative_brief'
+    && !!row.payload && typeof row.payload === 'object' && row.payload.format === 'image';
+}
+
 function guardPerm(req, res, key) {
   let allowed = false;
   requirePermission(key)(req, res, () => { allowed = true; });
@@ -118,8 +123,13 @@ router.post('/approve-brief', capPayload, wrap(
     const want = body.artifact_id != null && String(body.artifact_id).trim();
     const artifact = want
       ? arts.find((a) => String(a.artifact_id) === want)
-      : arts.find((a) => a.kind === 'creative_brief' && a.status === 'draft' && a.payload && a.payload.format === 'image');
+      : arts.find((a) => isImageBrief(a) && a.status === 'draft');
     if (!artifact) fail('not_found');
+    // This endpoint mints the creative_generation approval that authorises
+    // static-image rendering. The bundle also holds a video brief and text
+    // artifacts; approving one of those here would produce an approval the
+    // generation gate accepts for an image it does not describe.
+    if (!isImageBrief(artifact)) fail('approval_scope_mismatch');
     const contentHash = approvalContentHash(artifact.content_hash, artifact.evidence_hash);
     const approved = await approveCreativeArtifact(pool, {
       tenantId: tid, artifactId: artifact.artifact_id, objectVersion: artifact.version,

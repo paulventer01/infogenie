@@ -444,6 +444,75 @@ if (!HAS_DB) {
     assert.equal(got.json.job.status, 'succeeded', got.text);
   });
 
+  test('approval on a non-image artifact can neither be minted nor drive generation', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id, { approve: false });
+    const rows = (await p().query(
+      `SELECT * FROM orchestrator_creative_artifacts WHERE tenant_id=$1 AND workflow_id=$2`,
+      [tenantA.id, seed.wfId]
+    )).rows;
+    const video = rows.find((a) => a.kind === 'creative_brief' && a.payload && a.payload.format === 'video');
+    const angle = rows.find((a) => a.kind === 'angle');
+    assert.ok(video && angle, 'bundle carries a video brief and text artifacts');
+
+    for (const art of [video, angle]) {
+      const r = await imgs('POST', '/approve-brief', {
+        cookie: cookieA,
+        body: { proposal_id: seed.generation.id, artifact_id: art.artifact_id },
+      });
+      assert.equal(r.status, 409, r.text);
+      assert.equal(r.json.error, 'approval_scope_mismatch');
+      assert.equal((await p().query(
+        `SELECT status FROM orchestrator_creative_artifacts WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, art.id]
+      )).rows[0].status, 'draft');
+    }
+
+    const hash = approvalContentHash(video.content_hash, video.evidence_hash);
+    const approved = await approveCreativeArtifact(p(), {
+      tenantId: tenantA.id, artifactId: video.artifact_id, objectVersion: video.version,
+      contentHash: hash, req: { user: { id: ownerA.id } },
+    });
+    await assert.rejects(
+      () => enqueueStaticImageJob(p(), {
+        tenantId: tenantA.id, userId: ownerA.id, workflowId: seed.wfId, proposalId: seed.generation.id,
+        proposalVersion: seed.generation.version, proposalContentHash: seed.generation.content_hash,
+        approvalId: approved.approval_id, approvalHash: hash, estimatedMaxCostMicros: COST,
+        confirm: true, idempotencyKey: ik('vid'), mode: 'fixture',
+      }),
+      (e) => e.code === 'approval_scope_mismatch'
+    );
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND approval_id=$2`,
+      [tenantA.id, approved.approval_id]
+    )).rowCount, 0);
+  });
+
+  test('brief superseded after enqueue fails the job closed and releases credits', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const key = ik('matchg');
+    const res = await postImg(cookieA, seed, 'matchg', { key });
+    assert.equal(res.status, 201, res.text);
+    await p().query(
+      `UPDATE orchestrator_creative_artifacts SET status='superseded' WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, seed.brief.id]
+    );
+    await runWorker(tenantA.id);
+    const job = (await p().query(
+      `SELECT status, error_code FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, res.json.job.id]
+    )).rows[0];
+    assert.equal(job.status, 'failed');
+    assert.equal(job.error_code, 'approval_scope_mismatch');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2`,
+      [tenantA.id, res.json.job.id]
+    )).rowCount, 0);
+    assert.equal((await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND idempotency_key=$2`,
+      [tenantA.id, reserveKey(key)]
+    )).rows[0].status, 'released');
+  });
+
   test('static-image worker does not complete foreign outbox rows', async () => {
     const seed = await seedReady(tenantA.id, ownerA.id);
     const foreign = await outbox.enqueue(p(), {
