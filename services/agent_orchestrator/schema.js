@@ -3044,9 +3044,10 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
 
   await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_video_generation_jobs_tenant_workflow
     ON orchestrator_video_generation_jobs (tenant_id, workflow_id)`);
+  await p.query(`DROP INDEX IF EXISTS orchestrator_video_generation_jobs_active_request`);
   await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_video_generation_jobs_active_request
     ON orchestrator_video_generation_jobs (tenant_id, proposal_id, generation_request_hash)
-    WHERE status IN ('queued','reserved','running','retryable')`);
+    WHERE status IN ('queued','reserved','running','retryable','succeeded')`);
 
   await _installInTransaction(p, `
     CREATE OR REPLACE FUNCTION orchestrator_video_generation_jobs_immutable()

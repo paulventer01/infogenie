@@ -169,4 +169,64 @@ if (!HAS_DB) {
     await assert.rejects(() => insertJob(p, tenantA, hostA, { credentialRef: 'vault:video' }), /credential_ref|check/i);
     await assert.rejects(() => insertJob(p, tenantA, hostA, { provider: 'openai' }), /provider|check/i);
   });
+
+  test('two succeeded jobs with same tenant/proposal/generation_request_hash are rejected', async () => {
+    const p = db.getPool();
+    const requestHash = nextHex();
+    const firstId = await insertJob(p, tenantA, hostA, { requestHash });
+    await p.query(`UPDATE orchestrator_video_generation_jobs SET status='reserved', reservation_id=$3 WHERE tenant_id=$1 AND id=$2`, [tenantA, firstId, nid('res')]);
+    await p.query(`UPDATE orchestrator_video_generation_jobs SET status='running' WHERE tenant_id=$1 AND id=$2`, [tenantA, firstId]);
+    await p.query(`UPDATE orchestrator_video_generation_jobs SET status='succeeded', output_id=$3, actual_cost_micros=0 WHERE tenant_id=$1 AND id=$2`, [tenantA, firstId, nid('outok')]);
+    await assert.rejects(
+      () => insertJob(p, tenantA, hostA, { requestHash }),
+      /unique|duplicate/i
+    );
+  });
+
+  test('F2 probe: trigger does not pin contract_json or reserved_cost_micros', async () => {
+    const p = db.getPool();
+    const id = await insertJob(p, tenantA, hostA);
+    const mutatedJson = await p.query(
+      `UPDATE orchestrator_video_generation_jobs SET contract_json='{"tampered":true}'::jsonb WHERE tenant_id=$1 AND id=$2 RETURNING contract_json`,
+      [tenantA, id]
+    );
+    assert.equal(mutatedJson.rowCount, 1);
+    assert.equal(mutatedJson.rows[0].contract_json.tampered, true);
+    const mutatedCost = await p.query(
+      `UPDATE orchestrator_video_generation_jobs SET reserved_cost_micros=999999 WHERE tenant_id=$1 AND id=$2 RETURNING reserved_cost_micros`,
+      [tenantA, id]
+    );
+    assert.equal(mutatedCost.rowCount, 1);
+    assert.equal(Number(mutatedCost.rows[0].reserved_cost_micros), 999999);
+    await assert.rejects(
+      () => p.query(`UPDATE orchestrator_video_generation_jobs SET contract_hash=$3 WHERE tenant_id=$1 AND id=$2`, [tenantA, id, nextHex()]),
+      /orchestrator_video_generation_jobs_immutable/
+    );
+  });
+
+  test('F3 probe: CHECK allows storage_ref digits that are not this tenant_id', async () => {
+    const p = db.getPool();
+    const jobId = await insertJob(p, tenantA, hostA);
+    await insertOutput(p, tenantA, hostA, jobId, { storageRef: `orchestrator/video/${tenantB}/${jobId}` });
+    const row = (await p.query(
+      `SELECT storage_ref FROM orchestrator_video_generation_outputs WHERE tenant_id=$1 AND job_id=$2`,
+      [tenantA, jobId]
+    )).rows[0];
+    assert.equal(row.storage_ref, `orchestrator/video/${tenantB}/${jobId}`);
+  });
+
+  test('F4 probe: DROP credential_ref CHECK then ensureSchema does not restore it', async () => {
+    const p = db.getPool();
+    const name = 'orchestrator_video_generation_jobs_credential_ref_check';
+    const before = (await p.query(`SELECT 1 FROM pg_constraint WHERE conname=$1`, [name])).rowCount;
+    assert.equal(before, 1);
+    await p.query(`ALTER TABLE orchestrator_video_generation_jobs DROP CONSTRAINT ${name}`);
+    await ensureAgentOrchestratorSchema();
+    const after = (await p.query(`SELECT 1 FROM pg_constraint WHERE conname=$1`, [name])).rowCount;
+    // Restore so later suites still have the CREATE TABLE invariant.
+    if (after === 0) {
+      await p.query(`ALTER TABLE orchestrator_video_generation_jobs ADD CONSTRAINT ${name} CHECK (credential_ref IS NULL)`);
+    }
+    assert.equal(after, 0, 'ensureSchema did not re-ADD the dropped CHECK');
+  });
 }

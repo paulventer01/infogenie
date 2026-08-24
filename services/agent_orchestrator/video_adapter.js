@@ -47,7 +47,7 @@ async function completeVideoJob({ job, brief, contract, runtime }) {
   out.provenance = 'fixture';
   const mod = out.moderation && typeof out.moderation === 'object' ? out.moderation : {};
   const src = MOD_SRC.has(mod.source) ? mod.source : 'fixture';
-  if (mod.status === 'failed' || mod.status === 'fail') fail('moderation_failed');
+  if (mod.status !== 'passed') fail('moderation_failed');
   out.moderation = { status: 'passed', source: src };
   assertStorageRef(out.storage_ref, job.tenant_id, job.id);
   return out;

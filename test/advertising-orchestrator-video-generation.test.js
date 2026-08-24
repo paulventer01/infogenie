@@ -76,6 +76,27 @@ test('contract rejects unknown field, https source url, and api_key', () => {
   assert.throws(() => validateContract({ ...validContract(), api_key: 'sk-test' }), (e) => e.code === 'validation_failed');
 });
 
+test('F1: fail/failed/blocked/rejected are moderation_failed', async () => {
+  const job = { id: 'vgj_mod', tenant_id: 1 };
+  const contract = validContract();
+  const run = (status) => completeVideoJob({
+    job, contract,
+    runtime: createVideoRuntime({
+      generate: async () => ({
+        storage_ref: 'orchestrator/video/1/vgj_mod', mime: 'video/mp4',
+        width: 1080, height: 1920, duration_ms: 15000, fps: 30,
+        honesty_class: 'fixture', moderation: { status, source: 'fixture' },
+      }),
+    }),
+  });
+  await assert.rejects(() => run('failed'), (e) => e instanceof OrchError && e.code === 'moderation_failed');
+  await assert.rejects(() => run('fail'), (e) => e instanceof OrchError && e.code === 'moderation_failed');
+  await assert.rejects(() => run('blocked'), (e) => e instanceof OrchError && e.code === 'moderation_failed');
+  await assert.rejects(() => run('rejected'), (e) => e instanceof OrchError && e.code === 'moderation_failed');
+  const passed = await run('passed');
+  assert.equal(passed.moderation.status, 'passed');
+});
+
 test('adapter rejects bytes Buffer; default fixture has no live honesty', async () => {
   const job = { id: 'vgj_x', tenant_id: 1 };
   const contract = validContract();
@@ -401,5 +422,80 @@ if (!HAS_DB) {
     assert.notEqual(job.status, 'succeeded');
     assert.equal(job.error_code, 'approval_revoked');
     assert.equal((await p().query(`SELECT id FROM orchestrator_video_generation_outputs WHERE tenant_id=$1 AND job_id=$2`, [tenantA.id, res.json.job.id])).rowCount, 0);
+  });
+
+  test('F2: persist path binds deriveContract(bound.artifact) without SQL tamper', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const res = await postVid(cookieA, seed, 'f2');
+    assert.equal(res.status, 201, res.text);
+    await runWorker(tenantA.id);
+    const job = (await p().query(
+      `SELECT status, contract_hash FROM orchestrator_video_generation_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, res.json.job.id]
+    )).rows[0];
+    assert.equal(job.status, 'succeeded');
+    assert.equal(job.contract_hash, res.json.job.contract_hash);
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_video_generation_outputs WHERE tenant_id=$1 AND job_id=$2 AND usable=true`,
+      [tenantA.id, res.json.job.id]
+    )).rowCount, 1);
+    assert.match(JOBS_SRC, /deriveContract\(bound\.artifact\)/);
+    assert.match(JOBS_SRC, /contractHash\(deriveContract\(bound\.artifact\)\)/);
+  });
+
+  test('F3 probe: worker rejects cross-tenant storage_ref from adapter', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const res = await postVid(cookieA, seed, 'f3');
+    assert.equal(res.status, 201, res.text);
+    await runWorker(tenantA.id, createVideoRuntime({
+      generate: async ({ job }) => ({
+        storage_ref: `orchestrator/video/${tenantB.id}/${job.id}`,
+        mime: 'video/mp4', width: 1080, height: 1920, duration_ms: 15000, fps: 30,
+      }),
+    }));
+    const row = (await p().query(
+      `SELECT status, error_code FROM orchestrator_video_generation_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, res.json.job.id]
+    )).rows[0];
+    assert.equal(row.status, 'failed');
+    assert.equal(row.error_code, 'provider_malformed');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_video_generation_outputs WHERE tenant_id=$1 AND job_id=$2`,
+      [tenantA.id, res.json.job.id]
+    )).rowCount, 0);
+  });
+
+  test('F6 probe: non-owner with approve gate is owner_only before enqueue wrap', async () => {
+    const marketer = await fx.seedUser({ tenantId: tenantA.id, owner: false, roleKey: 'marketer' });
+    const cookieM = (await login(app.baseUrl, marketer.email, marketer.password)).cookie;
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const r = await postVid(cookieM, seed, 'f6');
+    assert.equal(r.status, 403, r.text);
+    assert.equal(r.json.error, 'owner_only');
+  });
+
+  test('F7: new idempotency key after success replays same job without second charge', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const k1 = ik('f7a');
+    const first = await postVid(cookieA, seed, 'f7a', { key: k1 });
+    assert.equal(first.status, 201, first.text);
+    await runWorker(tenantA.id);
+    const k2 = ik('f7b');
+    const second = await postVid(cookieA, seed, 'f7b', { key: k2 });
+    assert.equal(second.status, 200, second.text);
+    assert.equal(second.json.replay, true);
+    assert.equal(second.json.job.id, first.json.job.id);
+    const jobs = (await p().query(
+      `SELECT id, status FROM orchestrator_video_generation_jobs WHERE tenant_id=$1 AND approval_id=$2`,
+      [tenantA.id, seed.approved.approval_id]
+    )).rows;
+    assert.equal(jobs.length, 1);
+    const commits = (await p().query(
+      `SELECT idempotency_key, status FROM orchestrator_credit_reservations
+        WHERE tenant_id=$1 AND idempotency_key = ANY($2) ORDER BY created_at`,
+      [tenantA.id, [reserveKey(k1), reserveKey(k2)]]
+    )).rows;
+    assert.equal(commits.filter((c) => c.idempotency_key === reserveKey(k1) && c.status === 'committed').length, 1);
+    assert.equal(commits.filter((c) => c.idempotency_key === reserveKey(k2)).length, 0);
   });
 }

@@ -30,6 +30,10 @@ const loadJob = (c, tid, id) => one(c, `${QJ} AND id=$2`, [tid, id]);
 const loadByKey = (c, tid, k) => one(c, `${QJ} AND idempotency_key=$2`, [tid, k]);
 const lockJob = (c, tid, id) => one(c, `${QJ} AND id=$2 FOR UPDATE`, [tid, id]);
 const loadOutput = (c, tid, jid) => one(c, `SELECT * FROM orchestrator_video_generation_outputs WHERE tenant_id=$1 AND job_id=$2`, [tid, jid]);
+const REPLAYABLE = "('queued','reserved','running','retryable','succeeded')";
+const loadReplayableByHash = (c, tid, proposalId, reqHash) => one(c,
+  `${QJ} AND proposal_id=$2 AND generation_request_hash=$3 AND status IN ${REPLAYABLE}`,
+  [tid, proposalId, reqHash]);
 
 async function withTx(pool, fn) {
   const c = await pool.connect();
@@ -189,12 +193,10 @@ async function enqueueVideoJob(pool, opts) {
       contract_hash: cHash, estimated_max_cost_micros: Number(ESTIMATE),
     });
     const consumed = await client.query(
-      `SELECT id FROM orchestrator_video_generation_jobs WHERE tenant_id=$1 AND approval_id=$2 AND generation_request_hash <> $3 AND status IN ('queued','reserved','running','retryable','succeeded') LIMIT 1`,
+      `SELECT id FROM orchestrator_video_generation_jobs WHERE tenant_id=$1 AND approval_id=$2 AND generation_request_hash <> $3 AND status IN ${REPLAYABLE} LIMIT 1`,
       [tenantId, approvalId, reqHash]);
     if (consumed.rowCount) fail('approval_stale');
-    const active = await one(client,
-      `SELECT * FROM orchestrator_video_generation_jobs WHERE tenant_id=$1 AND proposal_id=$2 AND generation_request_hash=$3 AND status IN ('queued','reserved','running','retryable')`,
-      [tenantId, proposalId, reqHash]);
+    const active = await loadReplayableByHash(client, tenantId, proposalId, reqHash);
     if (active) return { job: active, replay: true };
     const pf = await preflight(client, {
       tenantId, workflowId, provider: PLACEHOLDER_PROVIDER, model: PLACEHOLDER_MODEL, estimatedMicros: ESTIMATE, recordStart: true,
@@ -212,6 +214,8 @@ async function enqueueVideoJob(pool, opts) {
         if (err && err.code === '23505') {
           const byKey = await loadByKey(client, tenantId, idempotencyKey);
           if (byKey) return { job: byKey, replay: true };
+          const byHash = await loadReplayableByHash(client, tenantId, proposalId, reqHash);
+          if (byHash) return { job: byHash, replay: true };
           fail('execution_in_progress');
         }
         throw err;
