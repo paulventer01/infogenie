@@ -497,6 +497,7 @@ function approveCreativeArtifact(poolOrClient, opts) {
 
 module.exports = {
   insertCreativeArtifact,
+  insertCreativeArtifactTx,
   reviseCreativeArtifact,
   approveCreativeArtifact,
   loadCreativeArtifact,
