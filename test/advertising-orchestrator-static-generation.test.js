@@ -32,7 +32,7 @@ const { DEFAULT_REQUEST_MICROS } = require('../services/agent_orchestrator/prici
 const outbox = require('../services/agent_orchestrator/outbox');
 const { logger } = require('../services/infra/logger');
 const {
-  processStaticImageJobs, enqueueStaticImageJob, reserveKey,
+  processStaticImageJobs, enqueueStaticImageJob, reserveKey, tickStaticImageWorker,
 } = require('../services/agent_orchestrator/generation_jobs');
 const {
   createGenerationRuntime, generateStaticImage, validateRaster, fetchProviderBytes, FIXTURE_PNG, hasLiveKey,
@@ -805,5 +805,223 @@ if (!HAS_DB) {
     assert.ok(row);
     assert.notEqual(row.state, 'completed');
     assert.equal(row.state, 'pending');
+  });
+
+  test('tickStaticImageWorker recovers processing-only stale outbox', async () => {
+    await p().query(
+      `UPDATE orchestrator_outbox SET state='dead_letter', updated_at=now()
+        WHERE tenant_id=$1 AND operation='static_image_generate' AND state IN ('pending','failed')`,
+      [tenantA.id]
+    );
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const res = await postImg(cookieA, seed, 'staleproc');
+    assert.equal(res.status, 201, res.text);
+    const jobId = res.json.job.id;
+    const jobRow = (await p().query(
+      `SELECT outbox_id, reservation_id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    await p().query(
+      `UPDATE orchestrator_outbox SET state='processing', claimed_by='dead', claimed_until=now() - interval '2 minutes'
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobRow.outbox_id]
+    );
+    await p().query(
+      `UPDATE orchestrator_static_image_jobs SET status='running', lease_holder='dead',
+              lease_expires_at=now() - interval '2 minutes', started_at=now(), attempt_count=1
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    );
+    const leftover = await p().query(
+      `SELECT id FROM orchestrator_outbox
+        WHERE tenant_id=$1 AND operation='static_image_generate' AND state IN ('pending','failed')`,
+      [tenantA.id]
+    );
+    assert.equal(leftover.rowCount, 0, 'fixture must be processing-only');
+    let n = 0;
+    await tickStaticImageWorker({
+      runtime: createGenerationRuntime({
+        mode: 'fixture',
+        generate: async ({ job }) => { if (job && job.id === jobId) n += 1; return FIXTURE_PNG; },
+      }),
+    });
+    assert.equal(n, 1);
+    const job = (await p().query(
+      `SELECT status FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    assert.equal(job.status, 'succeeded');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2 AND usable=true`,
+      [tenantA.id, jobId]
+    )).rowCount, 1);
+    assert.equal((await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobRow.reservation_id]
+    )).rows[0].status, 'committed');
+  });
+
+  test('stale processing with exhausted outbox attempts terminally fails without generate', async () => {
+    await p().query(
+      `UPDATE orchestrator_outbox SET state='dead_letter', updated_at=now()
+        WHERE tenant_id=$1 AND operation='static_image_generate' AND state IN ('pending','failed')`,
+      [tenantA.id]
+    );
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const key = ik('obxdead');
+    const res = await postImg(cookieA, seed, 'obxdead', { key });
+    assert.equal(res.status, 201, res.text);
+    const jobId = res.json.job.id;
+    const jobRow = (await p().query(
+      `SELECT outbox_id, reservation_id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    await p().query(
+      `UPDATE orchestrator_outbox SET state='processing', claimed_by='dead', claimed_until=now() - interval '2 minutes',
+              attempt_count=max_attempts
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobRow.outbox_id]
+    );
+    let n = 0;
+    await tickStaticImageWorker({
+      runtime: createGenerationRuntime({
+        mode: 'fixture',
+        generate: async ({ job }) => { if (job && job.id === jobId) n += 1; return FIXTURE_PNG; },
+      }),
+    });
+    assert.equal(n, 0);
+    const job = (await p().query(
+      `SELECT status, error_code FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    assert.equal(job.status, 'failed');
+    assert.equal(job.error_code, 'lease_expired');
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
+    const ob = (await p().query(
+      `SELECT state FROM orchestrator_outbox WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobRow.outbox_id]
+    )).rows[0];
+    assert.equal(ob.state, 'dead_letter');
+    assert.equal((await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobRow.reservation_id]
+    )).rows[0].status, 'released');
+  });
+
+  test('max_concurrent_ai is held during generate; overlapping workers serialize', async () => {
+    const restore = {
+      credit_ceiling_micros: 10_000_000, requests_per_minute: 60, max_concurrent_ai: 10,
+      daily_ai_cost_micros: 10_000_000, monthly_ai_cost_micros: 50_000_000, per_workflow_cost_micros: 10_000_000,
+    };
+    try {
+      await limits.updateLimits(p(), tenantA.id, { ...restore, max_concurrent_ai: 1 }, ownerA.id);
+      const seed1 = await seedReady(tenantA.id, ownerA.id);
+      const seed2 = await seedReady(tenantA.id, ownerA.id);
+      const key1 = ik('conc1');
+      const key2 = ik('conc2');
+      const a = await postImg(cookieA, seed1, 'conc1', { key: key1 });
+      const b = await postImg(cookieA, seed2, 'conc2', { key: key2 });
+      assert.equal(a.status, 201, a.text);
+      assert.equal(b.status, 201, b.text);
+      assert.notEqual(a.json.job.id, b.json.job.id);
+
+      let inFlight = 0;
+      let maxInFlight = 0;
+      let entered = 0;
+      let releaseFirst;
+      const gate = new Promise((resolve) => { releaseFirst = resolve; });
+      const runtime = createGenerationRuntime({
+        mode: 'fixture',
+        generate: async () => {
+          inFlight += 1;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          entered += 1;
+          if (entered === 1) await gate;
+          inFlight -= 1;
+          return FIXTURE_PNG;
+        },
+      });
+      const w1 = processStaticImageJobs(p(), { tenantId: tenantA.id, runtime, workerId: 'sij-conc-a' });
+      const w2 = processStaticImageJobs(p(), { tenantId: tenantA.id, runtime, workerId: 'sij-conc-b' });
+      const t0 = Date.now();
+      while (entered < 1 && Date.now() - t0 < 5000) {
+        await new Promise((r) => setTimeout(r, 15));
+      }
+      assert.ok(entered >= 1, 'worker never entered generate');
+      assert.equal(inFlight, 1);
+      await new Promise((r) => setTimeout(r, 50));
+      assert.equal(maxInFlight, 1);
+      releaseFirst();
+      await Promise.all([w1, w2]);
+      assert.equal(maxInFlight, 1);
+      assert.equal(entered, 2);
+      for (const jobId of [a.json.job.id, b.json.job.id]) {
+        const row = (await p().query(
+          `SELECT status FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+          [tenantA.id, jobId]
+        )).rows[0];
+        assert.equal(row.status, 'succeeded');
+        assert.equal((await p().query(
+          `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2 AND usable=true`,
+          [tenantA.id, jobId]
+        )).rowCount, 1);
+      }
+      assert.equal((await p().query(
+        `SELECT id FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND idempotency_key=$2 AND status='committed'`,
+        [tenantA.id, reserveKey(key1)]
+      )).rowCount, 1);
+      assert.equal((await p().query(
+        `SELECT id FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND idempotency_key=$2 AND status='committed'`,
+        [tenantA.id, reserveKey(key2)]
+      )).rowCount, 1);
+      assert.equal((await p().query(
+        `SELECT id FROM orchestrator_credit_ledger WHERE tenant_id=$1 AND reservation_id IN (
+           SELECT reservation_id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=ANY($2)
+         ) AND entry_type='commit'`,
+        [tenantA.id, [a.json.job.id, b.json.job.id]]
+      )).rowCount, 2);
+    } finally {
+      await limits.updateLimits(p(), tenantA.id, restore, ownerA.id);
+    }
+  });
+
+  test('job at max_attempts with expired lease does not generate again', async () => {
+    const seed = await seedReady(tenantA.id, ownerA.id);
+    const key = ik('maxatt');
+    const res = await postImg(cookieA, seed, 'maxatt', { key });
+    assert.equal(res.status, 201, res.text);
+    const jobId = res.json.job.id;
+    await p().query(
+      `UPDATE orchestrator_static_image_jobs SET status='running', lease_holder='dead',
+              lease_expires_at=now() - interval '2 minutes', started_at=now(),
+              attempt_count=max_attempts, state_version=state_version+1
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    );
+    let n = 0;
+    await runWorker(tenantA.id, createGenerationRuntime({
+      mode: 'fixture', generate: async () => { n += 1; return FIXTURE_PNG; },
+    }));
+    assert.equal(n, 0);
+    const job = (await p().query(
+      `SELECT status, attempt_count, max_attempts, reservation_id FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, jobId]
+    )).rows[0];
+    assert.equal(job.status, 'failed');
+    assert.ok(Number(job.attempt_count) <= Number(job.max_attempts));
+    assert.equal((await p().query(
+      `SELECT id FROM orchestrator_static_image_assets WHERE tenant_id=$1 AND job_id=$2`,
+      [tenantA.id, jobId]
+    )).rowCount, 0);
+    const reservation = (await p().query(
+      `SELECT status FROM orchestrator_credit_reservations WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, job.reservation_id]
+    )).rows[0];
+    assert.ok(reservation.status === 'released' || reservation.status === 'committed');
+    assert.notEqual(reservation.status, 'reserved');
+    assert.equal(reservation.status, 'released');
   });
 }

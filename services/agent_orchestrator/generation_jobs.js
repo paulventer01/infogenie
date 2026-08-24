@@ -7,7 +7,9 @@ const { insertAudit } = require('./runner');
 const { approvalContentHash } = require('./creative_validate');
 const credits = require('./credits');
 const outbox = require('./outbox');
-const { preflight, releaseInflight } = require('./limits');
+const {
+  preflight, releaseInflight, acquireGenerationInflight, heartbeatInflight, generationInflightId,
+} = require('./limits');
 const { DEFAULT_REQUEST_MICROS, PLACEHOLDER_PROVIDER, PLACEHOLDER_MODEL } = require('./pricing');
 const { toBigInt, microsToJson } = require('./money');
 const { logger } = require('../infra/logger');
@@ -18,6 +20,7 @@ const _runtimeFlags = require('../runtime_flags');
 
 const ESTIMATE = DEFAULT_REQUEST_MICROS;
 const MAX_APPROVAL_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const INFLIGHT_HEARTBEAT_MS = 10_000;
 const RETRYABLE = new Set(['provider_timeout', 'provider_transient']);
 const nid = (p) => `${p}_${crypto.randomBytes(8).toString('hex')}`;
 const reserveKey = (k) => `staticimg:${k}:reserve`;
@@ -159,11 +162,30 @@ async function settle(client, { tenantId, job, commit }) {
 
 async function completeOutboxForCancel(client, { tenantId, outboxId }) {
   if (!outboxId) return;
+  const row = await one(client, `SELECT state FROM orchestrator_outbox WHERE tenant_id=$1 AND id=$2`, [tenantId, outboxId]);
+  if (!row || row.state === 'completed' || row.state === 'dead_letter') return;
   try {
     await outbox.complete(client, { tenantId, id: outboxId });
   } catch (_) {
     try { await outbox.fail(client, { tenantId, id: outboxId, errorCode: 'cancelled' }); } catch (__) { /* ignore */ }
   }
+}
+
+async function releaseJobInflight(client, { tenantId, jobId }) {
+  if (!jobId) return;
+  try {
+    await releaseInflight(client, { tenantId, inflightId: generationInflightId(jobId) });
+  } catch (_) { /* ignore */ }
+}
+
+async function parkOutboxPending(client, { tenantId, id }) {
+  if (!id) return;
+  await client.query(
+    `UPDATE orchestrator_outbox SET state='pending', claimed_by=NULL, claimed_until=NULL,
+            next_attempt_at=now(), updated_at=now()
+      WHERE tenant_id=$1 AND id=$2 AND state='processing'`,
+    [tenantId, id]
+  );
 }
 
 async function loadWorkflowStop(client, tenantId, workflowId, { forUpdate = false } = {}) {
@@ -175,16 +197,17 @@ async function loadWorkflowStop(client, tenantId, workflowId, { forUpdate = fals
   return null;
 }
 
-async function abortLockedJob(client, { tenantId, job, outboxId, jobStatus, errorCode }) {
+async function abortLockedJob(client, { tenantId, job, outboxId, jobStatus, errorCode, settleOutbox = true }) {
   const status = jobStatus === 'failed' ? 'failed' : 'cancelled';
   const code = sanitizeCode(errorCode || (status === 'failed' ? 'workflow_paused' : 'cancelled'));
   if (!job) {
-    await completeOutboxForCancel(client, { tenantId, outboxId });
+    if (settleOutbox) await completeOutboxForCancel(client, { tenantId, outboxId });
     return null;
   }
   if (['succeeded', 'cancelled', 'failed'].includes(job.status)) {
     await settleReleaseSafe(client, { tenantId, job });
-    await completeOutboxForCancel(client, { tenantId, outboxId: outboxId || job.outbox_id });
+    if (settleOutbox) await completeOutboxForCancel(client, { tenantId, outboxId: outboxId || job.outbox_id });
+    await releaseJobInflight(client, { tenantId, jobId: job.id });
     return job;
   }
   const row = (await client.query(
@@ -194,7 +217,8 @@ async function abortLockedJob(client, { tenantId, job, outboxId, jobStatus, erro
     [tenantId, job.id, status, code]
   )).rows[0] || job;
   await settleReleaseSafe(client, { tenantId, job: row });
-  await completeOutboxForCancel(client, { tenantId, outboxId: outboxId || row.outbox_id });
+  if (settleOutbox) await completeOutboxForCancel(client, { tenantId, outboxId: outboxId || row.outbox_id });
+  await releaseJobInflight(client, { tenantId, jobId: row.id });
   await note(client, {
     tenantId, workflowId: row.workflow_id,
     event: status === 'failed' ? 'static_image_failed' : 'static_image_cancelled',
@@ -335,6 +359,7 @@ async function cancelStaticImageJob(pool, tenantId, id) {
     if (queued) {
       await settle(client, { tenantId, job: queued, commit: false });
       await completeOutboxForCancel(client, { tenantId, outboxId: queued.outbox_id });
+      await releaseJobInflight(client, { tenantId, jobId: queued.id });
       await note(client, { tenantId, workflowId: queued.workflow_id, event: 'static_image_cancelled', jobId: queued.id, state: 'cancelled' });
       return queued;
     }
@@ -345,6 +370,7 @@ async function cancelStaticImageJob(pool, tenantId, id) {
       [tenantId, id]
     )).rows[0];
     if (running) {
+      await releaseJobInflight(client, { tenantId, jobId: running.id });
       await note(client, { tenantId, workflowId: running.workflow_id, event: 'static_image_cancelled', jobId: running.id, state: 'cancelled' });
       return running;
     }
@@ -364,10 +390,12 @@ async function finishSuccess(pool, { tenantId, job, outboxId, generated, storage
     if (locked.status !== 'running') {
       if (locked.status === 'succeeded') {
         await outbox.complete(client, { tenantId, id: outboxId });
+        await releaseJobInflight(client, { tenantId, jobId: locked.id });
         return locked;
       }
       await settleReleaseSafe(client, { tenantId, job: locked });
       await completeOutboxForCancel(client, { tenantId, outboxId: outboxId || locked.outbox_id });
+      await releaseJobInflight(client, { tenantId, jobId: locked.id });
       return locked;
     }
     const reservation = locked.reservation_id
@@ -419,6 +447,7 @@ async function finishSuccess(pool, { tenantId, job, outboxId, generated, storage
     if (!row) throw new Error('static_image_job_not_running');
     await settle(client, { tenantId, job: locked, commit: true });
     await outbox.complete(client, { tenantId, id: outboxId });
+    await releaseJobInflight(client, { tenantId, jobId: locked.id });
     await note(client, {
       tenantId, workflowId: locked.workflow_id, event: 'static_image_succeeded', jobId: locked.id,
       reservationId: locked.reservation_id, state: 'succeeded',
@@ -442,6 +471,7 @@ async function finishFail(pool, { tenantId, job, outboxId, code }) {
       } else if (locked && locked.status === 'failed') {
         await outbox.fail(client, { tenantId, id: outboxId, errorCode: errCode });
       }
+      if (locked) await releaseJobInflight(client, { tenantId, jobId: locked.id });
       return locked;
     }
     const retry = RETRYABLE.has(errCode) && (Number(locked.attempt_count) || 0) < (Number(locked.max_attempts) || 3);
@@ -451,6 +481,7 @@ async function finishFail(pool, { tenantId, job, outboxId, code }) {
         [tenantId, locked.id]
       );
       await outbox.fail(client, { tenantId, id: outboxId, errorCode: errCode });
+      await releaseJobInflight(client, { tenantId, jobId: locked.id });
       logger.info('static_image_retry', { tenant_id: tenantId, workflow_id: locked.workflow_id, job_id: locked.id, error_code: errCode });
       return locked;
     }
@@ -462,6 +493,7 @@ async function finishFail(pool, { tenantId, job, outboxId, code }) {
     )).rows[0];
     await settle(client, { tenantId, job: locked, commit: false });
     await outbox.fail(client, { tenantId, id: outboxId, errorCode: errCode });
+    await releaseJobInflight(client, { tenantId, jobId: locked.id });
     await note(client, {
       tenantId, workflowId: locked.workflow_id, event: 'static_image_failed', jobId: locked.id, state: 'failed', errorCode: errCode,
     });
@@ -506,18 +538,39 @@ async function claimAndStart(pool, { tenantId, workerId }) {
     }
     if (job.status === 'failed') {
       await outbox.fail(client, { tenantId, id: ob.id, errorCode: job.error_code || 'outbox_failed' });
+      await releaseJobInflight(client, { tenantId, jobId: job.id });
       return { skip: true, job };
     }
     const now = Date.now();
     const live = job.lease_expires_at && new Date(job.lease_expires_at).getTime() > now;
     if (job.status === 'running' && live && job.lease_holder && job.lease_holder !== workerId) return { skip: true, job };
+    const attempts = Number(job.attempt_count) || 0;
+    const maxAttempts = Number(job.max_attempts) || 3;
+    if (attempts >= maxAttempts) {
+      await abortLockedJob(client, {
+        tenantId, job, outboxId: ob.id, jobStatus: 'failed', errorCode: job.error_code || 'outbox_failed',
+      });
+      return { skip: true, job };
+    }
+    const slot = await acquireGenerationInflight(client, {
+      tenantId, workflowId: job.workflow_id, provider: job.provider, model: job.model, jobId: job.id,
+    });
+    if (!slot.acquired) {
+      await parkOutboxPending(client, { tenantId, id: ob.id });
+      return { skip: true, defer: true, job };
+    }
     const started = (await client.query(
       `UPDATE orchestrator_static_image_jobs SET status='running', state_version=state_version+1, attempt_count=attempt_count+1,
               lease_holder=$3, lease_expires_at=$4, started_at=COALESCE(started_at, now()), updated_at=now()
-        WHERE tenant_id=$1 AND id=$2 AND status IN ('queued','running') RETURNING *`,
+        WHERE tenant_id=$1 AND id=$2 AND status IN ('queued','running') AND attempt_count < max_attempts RETURNING *`,
       [tenantId, job.id, workerId, new Date(now + 30_000)]
     )).rows[0];
-    if (!started) return { skip: true, job };
+    if (!started) {
+      await abortLockedJob(client, {
+        tenantId, job, outboxId: ob.id, jobStatus: 'failed', errorCode: job.error_code || 'outbox_failed',
+      });
+      return { skip: true, job };
+    }
     // Resolve the brief through the job's own approval, not by re-scanning the
     // proposal: the bytes must come from the exact artifact version a human
     // approved, otherwise a later revision would be rendered under an older
@@ -533,22 +586,59 @@ async function claimAndStart(pool, { tenantId, workerId }) {
   });
 }
 
+async function resetStaleStaticImageOutbox(pool, tenantId) {
+  return withTx(pool, async (client) => {
+    const stale = await client.query(
+      `SELECT * FROM orchestrator_outbox
+        WHERE tenant_id=$1 AND operation='static_image_generate' AND state='processing'
+          AND (claimed_until IS NULL OR claimed_until < now())
+        FOR UPDATE SKIP LOCKED`,
+      [tenantId]
+    );
+    for (const row of stale.rows) {
+      const attempts = Number(row.attempt_count) + 1;
+      const max = Number(row.max_attempts) || 8;
+      const dead = attempts >= max;
+      await client.query(
+        `UPDATE orchestrator_outbox
+            SET attempt_count=$3, last_error_code='lease_expired', state=$4,
+                next_attempt_at=now(), claimed_by=NULL, claimed_until=NULL, updated_at=now()
+          WHERE tenant_id=$1 AND id=$2`,
+        [tenantId, row.id, attempts, dead ? 'dead_letter' : 'failed']
+      );
+      logger.info(dead ? 'outbox_dead_letter' : 'outbox_failed', {
+        tenant_id: tenantId, workflow_id: row.workflow_id || null, error_code: 'lease_expired',
+      });
+      if (!dead) continue;
+      const job = await one(client,
+        `SELECT * FROM orchestrator_static_image_jobs WHERE tenant_id=$1 AND outbox_id=$2 FOR UPDATE`,
+        [tenantId, row.id]);
+      if (job && !['succeeded', 'cancelled', 'failed'].includes(job.status)) {
+        await abortLockedJob(client, {
+          tenantId, job, outboxId: row.id, jobStatus: 'failed', errorCode: 'lease_expired', settleOutbox: false,
+        });
+      } else if (job) {
+        await settleReleaseSafe(client, { tenantId, job });
+        await releaseJobInflight(client, { tenantId, jobId: job.id });
+      }
+    }
+  });
+}
+
 async function processStaticImageJobs(pool, { tenantId, workerId, runtime } = {}) {
   const worker = String(workerId || `sij:${process.pid}`);
-  await pool.query(
-    `UPDATE orchestrator_outbox SET state='failed', claimed_by=NULL, claimed_until=NULL, updated_at=now()
-      WHERE tenant_id=$1 AND operation='static_image_generate' AND state='processing'
-        AND (claimed_until IS NULL OR claimed_until < now())`,
-    [tenantId]
-  );
+  await resetStaleStaticImageOutbox(pool, tenantId);
   let n = 0;
   for (;;) {
     const claimed = await claimAndStart(pool, { tenantId, workerId: worker });
     if (!claimed) break;
     n += 1;
+    if (claimed.defer) break;
     if (claimed.skip) { if (n >= 20) break; continue; }
     const { job, brief } = claimed;
     const outboxId = claimed.outbox.id;
+    const inflightId = generationInflightId(job.id);
+    let hb = null;
     try {
       if (await abortIfStopped(pool, { tenantId, job, outboxId })) { if (n >= 20) break; continue; }
       if (!brief) fail('approval_scope_mismatch');
@@ -564,11 +654,18 @@ async function processStaticImageJobs(pool, { tenantId, workerId, runtime } = {}
           },
         });
       } else {
+        hb = setInterval(() => {
+          heartbeatInflight(pool, { tenantId, inflightId }).catch(() => {});
+        }, INFLIGHT_HEARTBEAT_MS);
+        if (typeof hb.unref === 'function') hb.unref();
         const generated = await generateStaticImage({ job, brief, runtime: jobRt });
         await finishSuccess(pool, { tenantId, job, outboxId, generated });
       }
     } catch (err) {
       await finishFail(pool, { tenantId, job, outboxId, code: (err instanceof OrchError && err.code) || (err && err.code) || 'provider_malformed' });
+    } finally {
+      if (hb) clearInterval(hb);
+      try { await releaseInflight(pool, { tenantId, inflightId }); } catch (_) { /* ignore */ }
     }
     if (n >= 20) break;
   }
@@ -576,23 +673,33 @@ async function processStaticImageJobs(pool, { tenantId, workerId, runtime } = {}
 }
 
 const WORKER_MS = 2_000;
+let tickActive = false;
 
-async function tickStaticImageWorker() {
-  if (!_db.hasDb()) return;
-  const pool = _db.getPool();
-  const due = await pool.query(
-    `SELECT DISTINCT tenant_id FROM orchestrator_outbox
-      WHERE destination='internal' AND operation='static_image_generate'
-        AND state IN ('pending','failed') AND next_attempt_at <= now()`
-  );
-  for (const row of due.rows) {
-    try {
-      await processStaticImageJobs(pool, { tenantId: row.tenant_id });
-    } catch (err) {
-      logger.info('static_image_worker_failed', {
-        tenant_id: row.tenant_id, error_code: sanitizeCode(err && err.code),
-      });
+async function tickStaticImageWorker(opts = {}) {
+  if (tickActive) return;
+  tickActive = true;
+  try {
+    if (!_db.hasDb()) return;
+    const pool = _db.getPool();
+    const due = await pool.query(
+      `SELECT DISTINCT tenant_id FROM orchestrator_outbox
+        WHERE destination='internal' AND operation='static_image_generate'
+          AND (
+            (state IN ('pending','failed') AND next_attempt_at <= now())
+            OR (state='processing' AND (claimed_until IS NULL OR claimed_until < now()))
+          )`
+    );
+    for (const row of due.rows) {
+      try {
+        await processStaticImageJobs(pool, { tenantId: row.tenant_id, runtime: opts.runtime, workerId: opts.workerId });
+      } catch (err) {
+        logger.info('static_image_worker_failed', {
+          tenant_id: row.tenant_id, error_code: sanitizeCode(err && err.code),
+        });
+      }
     }
+  } finally {
+    tickActive = false;
   }
 }
 
@@ -611,5 +718,5 @@ startStaticImageWorker();
 
 module.exports = {
   enqueueStaticImageJob, getStaticImageJob, cancelStaticImageJob, processStaticImageJobs,
-  publicJob, generationRequestHash, MAX_APPROVAL_AGE_MS, reserveKey, startStaticImageWorker,
+  tickStaticImageWorker, publicJob, generationRequestHash, MAX_APPROVAL_AGE_MS, reserveKey, startStaticImageWorker,
 };

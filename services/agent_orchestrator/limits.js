@@ -160,6 +160,64 @@ async function releaseInflight(client, { tenantId, inflightId }) {
   );
 }
 
+function generationInflightId(jobId) {
+  return `inf_${String(jobId || '')}`;
+}
+
+async function heartbeatInflight(client, { tenantId, inflightId }) {
+  if (!inflightId) return null;
+  const expires = new Date(Date.now() + INFLIGHT_TTL_MS);
+  const row = (await client.query(
+    `UPDATE orchestrator_ai_inflight SET lease_expires_at=$3
+      WHERE id=$1 AND tenant_id=$2 RETURNING *`,
+    [inflightId, tenantId, expires]
+  )).rows[0] || null;
+  return row;
+}
+
+// Acquire a generation slot without inserting a rate tick. Callers must already
+// be inside a tenant-scoped transaction; this locks tenant limits so two workers
+// cannot both observe count < max_concurrent_ai and insert.
+async function acquireGenerationInflight(client, {
+  tenantId, workflowId, provider, model, jobId,
+}) {
+  const inflightId = generationInflightId(jobId);
+  await ensureLimits(client, tenantId);
+  await client.query(
+    `SELECT tenant_id FROM orchestrator_tenant_limits WHERE tenant_id=$1 FOR UPDATE`,
+    [tenantId]
+  );
+  await expireInflight(client, tenantId);
+  const limitsRow = (await client.query(
+    `SELECT * FROM orchestrator_tenant_limits WHERE tenant_id=$1`,
+    [tenantId]
+  )).rows[0];
+  const maxConc = Number(limitsRow && limitsRow.max_concurrent_ai) || 0;
+  const existing = (await client.query(
+    `SELECT * FROM orchestrator_ai_inflight WHERE id=$1 AND tenant_id=$2`,
+    [inflightId, tenantId]
+  )).rows[0] || null;
+  const live = await countInflight(client, tenantId);
+  const selfLive = existing ? 1 : 0;
+  if (maxConc <= 0 || live - selfLive >= maxConc) {
+    if (existing) await releaseInflight(client, { tenantId, inflightId });
+    return { acquired: false, inflightId };
+  }
+  const expires = new Date(Date.now() + INFLIGHT_TTL_MS);
+  if (existing) {
+    const row = await heartbeatInflight(client, { tenantId, inflightId });
+    return { acquired: true, inflight: row, inflightId };
+  }
+  const row = (await client.query(
+    `INSERT INTO orchestrator_ai_inflight
+       (id, tenant_id, workflow_id, provider, model_or_service, lease_expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     RETURNING *`,
+    [inflightId, tenantId, workflowId || null, String(provider || ''), String(model || ''), expires]
+  )).rows[0];
+  return { acquired: true, inflight: row, inflightId };
+}
+
 async function preflight(client, {
   tenantId,
   workflowId,
@@ -347,6 +405,9 @@ module.exports = {
   insertTickAndInflight,
   releaseInflight,
   expireInflight,
+  generationInflightId,
+  heartbeatInflight,
+  acquireGenerationInflight,
   updateLimits,
   loadWorkflowOr404,
   utcDayStart,
