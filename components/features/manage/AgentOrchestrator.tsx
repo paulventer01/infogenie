@@ -167,15 +167,40 @@ interface CreativeProposal {
   id: string;
   status: string;
   version: number;
+  content_hash?: string;
   provider?: string;
   model?: string;
   prompt_template_version?: string;
   error_code?: string | null;
   artifacts?: Array<{
+    id?: string;
+    artifact_id?: string;
     kind: string;
     status: string;
+    version?: number;
+    format?: string;
+    approval_id?: number | null;
+    approval_hash?: string | null;
+    content_hash?: string;
     citations?: Array<{ evidence_id?: string }>;
   }>;
+}
+
+interface StaticImageJob {
+  id: string;
+  status: string;
+  proposal_version?: number;
+  honesty_class?: string;
+  estimated_cost_micros?: number | string;
+  error_code?: string | null;
+  asset?: {
+    storage_ref: string;
+    mime_type: string;
+    width_px: number;
+    height_px: number;
+    honesty_class?: string;
+    provenance?: string;
+  } | null;
 }
 
 type LoadStatus = "loading" | "error" | "ready";
@@ -355,6 +380,16 @@ async function orchMutate<T extends { ok: boolean; error?: string }>(
   });
 }
 
+function imageBriefOf(p: CreativeProposal | null | undefined) {
+  return (p?.artifacts || []).find((a) => a.kind === "creative_brief" && a.format === "image");
+}
+
+function isNonLiveStaticAsset(job: StaticImageJob | null, asset: StaticImageJob["asset"]) {
+  if (!asset) return false;
+  const hc = asset.honesty_class || job?.honesty_class || "";
+  return ["fixture", "synthetic", "demo", "test", "mock"].includes(hc) || asset.provenance === "fixture";
+}
+
 export default function AgentOrchestrator() {
   const router = useRouter();
   const [modules, setModules] = useState<Mod[]>([]);
@@ -463,6 +498,11 @@ export default function AgentOrchestrator() {
   const [proposalBusy, setProposalBusy] = useState("");
   const [proposalMsg, setProposalMsg] = useState("");
   const [proposalMsgIsError, setProposalMsgIsError] = useState(false);
+  const [staticImageJob, setStaticImageJob] = useState<StaticImageJob | null>(null);
+  const [staticGenConfirm, setStaticGenConfirm] = useState(false);
+  const [staticGenBusy, setStaticGenBusy] = useState("");
+  const [staticGenMsg, setStaticGenMsg] = useState("");
+  const [staticGenMsgIsError, setStaticGenMsgIsError] = useState(false);
 
   const can = useCallback(
     (key: string) => isPlatformAdmin || permissions.includes(key),
@@ -649,6 +689,11 @@ export default function AgentOrchestrator() {
     setOrchRun(null);
     setOrchMsg("");
     setOrchMsgIsError(false);
+    setStaticImageJob(null);
+    setStaticGenConfirm(false);
+    setStaticGenBusy("");
+    setStaticGenMsg("");
+    setStaticGenMsgIsError(false);
   }, [selectedId]);
 
   useEffect(() => {
@@ -714,6 +759,22 @@ export default function AgentOrchestrator() {
     const iv = setInterval(poll, 2500);
     return () => { cancelled = true; clearInterval(iv); };
   }, [orchRun?.id, orchRun?.state]);
+
+  useEffect(() => {
+    if (!staticImageJob?.id || !["queued", "running"].includes(staticImageJob.status)) return;
+    const jobId = staticImageJob.id;
+    let cancelled = false;
+    const poll = async () => {
+      const r = await apiGet<{ ok: boolean; job?: StaticImageJob; error?: string }>(
+        `/api/agent-orchestrator/static-images/${jobId}`,
+      );
+      if (cancelled || r.ok === false || !r.job) return;
+      setStaticImageJob(r.job);
+    };
+    poll();
+    const iv = setInterval(poll, 2000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [staticImageJob?.id, staticImageJob?.status]);
 
   const actionsLocked = status === "loading" || !!busy;
   const wfActionsLocked = wfStatus === "loading" || !!wfBusy || detailLoading;
@@ -1284,6 +1345,59 @@ export default function AgentOrchestrator() {
     if (r.ok && r.generation) setCreativeProposal(r.generation);
   }
 
+  async function approveImageBrief() {
+    const brief = imageBriefOf(creativeProposal);
+    if (!creativeProposal?.id || !brief || brief.status !== "draft" || !can("orchestrator.workflows.approve.creative_generation")) return;
+    setStaticGenBusy("approve");
+    setStaticGenMsg("");
+    const r = await orchMutate<{ ok: boolean; error?: string }>(
+      "/api/agent-orchestrator/static-images/approve-brief",
+      "POST",
+      { proposal_id: creativeProposal.id, artifact_id: brief.artifact_id || brief.id },
+    );
+    setStaticGenBusy("");
+    if (r.ok === false) {
+      setStaticGenMsgIsError(true);
+      setStaticGenMsg(r.error || "Brief approval failed");
+      return;
+    }
+    await refreshCreativeProposal();
+    setStaticGenMsgIsError(false);
+    setStaticGenMsg("Image brief approved.");
+  }
+
+  async function submitStaticImage() {
+    const brief = imageBriefOf(creativeProposal);
+    if (!selected || !creativeProposal?.content_hash || !brief?.approval_id || !brief.approval_hash || !staticGenConfirm) return;
+    if (!can("orchestrator.workflows.edit") && !can("orchestrator.workflows.approve.creative_generation")) return;
+    setStaticGenBusy("generate");
+    setStaticGenMsg("");
+    const r = await orchMutate<{ ok: boolean; job?: StaticImageJob; error?: string }>(
+      "/api/agent-orchestrator/static-images",
+      "POST",
+      {
+        workflow_id: selected.id,
+        proposal_id: creativeProposal.id,
+        proposal_version: creativeProposal.version,
+        proposal_content_hash: creativeProposal.content_hash,
+        approval_id: brief.approval_id,
+        approval_hash: brief.approval_hash,
+        estimated_max_cost_micros: 10000,
+        confirm: true,
+        mode: "fixture",
+      },
+    );
+    setStaticGenBusy("");
+    if (r.ok === false) {
+      setStaticGenMsgIsError(true);
+      setStaticGenMsg(r.error || "Generation failed");
+      return;
+    }
+    if (r.job) setStaticImageJob(r.job);
+    setStaticGenMsgIsError(false);
+    setStaticGenMsg("Static image job queued.");
+  }
+
   async function submitLimits() {
     if (!can("orchestrator.credits.limits.edit")) return;
     setCreditsBusy("limits");
@@ -1369,6 +1483,8 @@ export default function AgentOrchestrator() {
   const orchResearchLocked = !!orchBusy || detailLoading;
   const orchHonestyLabel = orchestratedHonestyLabel(orchRun);
   const orchProgressLine = platformProgressLine(orchRun, selected);
+  const imgBrief = imageBriefOf(creativeProposal);
+  const imgBriefApproved = !!(imgBrief?.status === "approved" && imgBrief.approval_id && imgBrief.approval_hash);
   const showCancelOrchResearch = orchRun
     && ACTIVE_RESEARCH_STATES.has(orchRun.state)
     && can("orchestrator.workflows.cancel");
@@ -2663,6 +2779,46 @@ export default function AgentOrchestrator() {
                       </div>
                     )}
                   </div>
+
+                  {creativeProposal && (
+                    <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 14, marginBottom: 16, background: "#F9FAFB" }}>
+                      <h5 style={{ margin: "0 0 10px", fontSize: "0.85rem" }}>Static image generation</h5>
+                      <p style={{ margin: "0 0 10px", fontSize: "0.72rem", color: "#6B7280" }}>
+                        Render a static advertisement image from an approved image brief. This stage does not publish, does not activate campaigns, and does not generate video.
+                      </p>
+                      {imgBrief?.status === "draft" && can("orchestrator.workflows.approve.creative_generation") && (
+                        <button type="button" disabled={!!staticGenBusy} onClick={approveImageBrief} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", marginBottom: 10, opacity: staticGenBusy ? 0.6 : 1 }}>
+                          {staticGenBusy === "approve" ? "Approving…" : "Approve image brief"}
+                        </button>
+                      )}
+                      {imgBriefApproved && (
+                        <div style={{ fontSize: "0.78rem", color: "#374151", marginBottom: 10 }}>
+                          <div>Exact proposal version: v{creativeProposal.version}</div>
+                          <div>Estimated maximum cost: 10000 micros ($0.01 catalog request unit)</div>
+                          <label style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "flex-start" }}>
+                            <input type="checkbox" checked={staticGenConfirm} onChange={(e) => setStaticGenConfirm(e.target.checked)} />
+                            <span>I confirm generation of this exact approved proposal version</span>
+                          </label>
+                          {(can("orchestrator.workflows.edit") || can("orchestrator.workflows.approve.creative_generation")) && (
+                            <button type="button" disabled={!!staticGenBusy || !staticGenConfirm} onClick={submitStaticImage} style={{ ...btnPrimary, fontSize: "0.75rem", padding: "8px 12px", marginTop: 8, opacity: staticGenBusy || !staticGenConfirm ? 0.6 : 1 }}>
+                              {staticGenBusy === "generate" ? "Generating…" : "Generate static image"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {staticGenMsg && <p style={{ fontSize: "0.78rem", color: staticGenMsgIsError ? "#B91C1C" : "#3730A3", margin: "0 0 8px" }}>{staticGenMsg}</p>}
+                      {staticImageJob && <div style={{ fontSize: "0.78rem", color: "#374151" }}>Job {staticImageJob.id} · {staticImageJob.status}{staticImageJob.error_code ? ` · ${staticImageJob.error_code}` : ""}</div>}
+                      {staticImageJob?.asset && (
+                        <div style={{ marginTop: 8 }}>
+                          {isNonLiveStaticAsset(staticImageJob, staticImageJob.asset) && (
+                            <p style={{ fontSize: "0.72rem", color: "#B45309", margin: "0 0 8px" }}>Fixture / synthetic output — not live-provider generated.</p>
+                          )}
+                          <img src={staticImageJob.asset.storage_ref} alt="Generated static advertisement" style={{ maxWidth: "100%", borderRadius: 8, border: "1px solid #E5E7EB" }} />
+                          <div style={{ fontSize: "0.72rem", color: "#6B7280", marginTop: 4 }}>{staticImageJob.asset.mime_type} · {staticImageJob.asset.width_px}×{staticImageJob.asset.height_px}px</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div style={{ marginBottom: 14 }}>
                     <h5 style={{ margin: "0 0 8px", fontSize: "0.85rem" }}>Approval history</h5>

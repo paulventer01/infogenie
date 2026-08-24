@@ -40,6 +40,19 @@ const {
 const HAS_DB = hasDb();
 const COST = Number(DEFAULT_REQUEST_MICROS);
 const ik = (t) => `ik-${t}-${crypto.randomBytes(6).toString('hex')}`;
+const SRC_PANEL = fs.readFileSync(
+  path.join(__dirname, '../components/features/manage/AgentOrchestrator.tsx'), 'utf8'
+);
+
+test('PR5A UI static image generation with fixture honesty', () => {
+  assert.match(SRC_PANEL, /\/api\/agent-orchestrator\/static-images/);
+  assert.match(SRC_PANEL, /Generate static image/);
+  assert.match(SRC_PANEL, /Fixture \/ synthetic/);
+  assert.match(SRC_PANEL, /does not generate video/);
+  assert.match(SRC_PANEL, /does not publish/);
+  assert.match(SRC_PANEL, /does not draft or activate campaigns/);
+  assert.doesNotMatch(SRC_PANEL, /\/api\/.*publish|activateCampaign/);
+});
 
 test('enforcement flags stay on', () => {
   assert.equal(process.env.PERMISSION_ENFORCEMENT, 'on');
