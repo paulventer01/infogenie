@@ -748,314 +748,48 @@ function callHttpsGeneric(hostname, path, method, body, headers, timeoutMs = 150
 require('./services/platform_status/routes')(app, { _credentialsVault, callHttpsGeneric });
 
 // ── Google Ads campaign launch ────────────────────────────────────────────────
+// Hard-disabled: refuse before credential lookup, vault access, or network I/O.
 app.post('/api/launch/google-ads', async (req, res) => {
-  const { campaignName, budget, startDate, objective = 'performance', campaignType: campaignTypeRaw } = req.body;
-  const isAwareness = String(objective).toLowerCase().includes('awareness') || String(objective).toLowerCase().includes('brand');
-
-  // Map UI campaignType → Google Ads advertisingChannelType + bidding strategy.
-  // Accepts: 'search' | 'display' | 'video' | 'shopping' | 'pmax' | 'demand_gen'.
-  // Falls back to awareness-driven SEARCH/DISPLAY split for older callers that
-  // only sent `objective`.
-  const ctRaw = String(campaignTypeRaw || '').toLowerCase().replace(/[\s_-]/g, '');
-  const CT_MAP = {
-    search:       { channel: 'SEARCH',          bid: { manualCpc: { enhancedCpcEnabled: false } } },
-    display:      { channel: 'DISPLAY',         bid: { targetCpm: {} } },
-    video:        { channel: 'VIDEO',           bid: { targetCpm: {} } },
-    youtube:      { channel: 'VIDEO',           bid: { targetCpm: {} } },
-    shopping:     { channel: 'SHOPPING',        bid: { manualCpc: { enhancedCpcEnabled: true } }, needsMerchant: true },
-    pmax:         { channel: 'PERFORMANCE_MAX', bid: { maximizeConversions: {} } },
-    performancemax:{ channel: 'PERFORMANCE_MAX', bid: { maximizeConversions: {} } },
-    demandgen:    { channel: 'DEMAND_GEN',      bid: { maximizeConversions: {} } },
-  };
-  const ct = CT_MAP[ctRaw] || (isAwareness
-    ? { channel: 'DISPLAY', bid: { targetCpm: {} } }
-    : { channel: 'SEARCH',  bid: { manualCpc: { enhancedCpcEnabled: false } } });
-  const merchantId = process.env.GOOGLE_MERCHANT_CENTER_ID;
-  if (ct.needsMerchant && !merchantId) {
-    return res.json({ success: false, error: 'Shopping campaigns require a Google Merchant Center account. Add GOOGLE_MERCHANT_CENTER_ID in Settings and verify your product feed at merchants.google.com.' });
-  }
-  const _gaResolved = await _credentialsVault.resolveGoogleAdsCredentials(req.user && req.user.id ? req.user.id : null);
-  if (!_gaResolved.ok)
-    return res.json({ success: false, error: _gaResolved.error });
-  const { devToken, clientId, clientSecret, refreshToken, customerId, loginCustomerId } = _gaResolved.creds;
-
-  try {
-    // 1. Exchange refresh token for access token
-    const tokenBody = `client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&refresh_token=${encodeURIComponent(refreshToken)}&grant_type=refresh_token`;
-    const tokenRaw = await callHttpsGeneric('oauth2.googleapis.com', '/token', 'POST', tokenBody, { 'Content-Type': 'application/x-www-form-urlencoded' });
-    const tokenData = JSON.parse(tokenRaw);
-    if (!tokenData.access_token) throw new Error('OAuth token refresh failed: ' + (tokenData.error_description || tokenData.error || 'unknown'));
-    const accessToken = tokenData.access_token;
-
-    const cleanId = String(customerId).replace(/-/g, '');
-    const authHeaders = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'developer-token': devToken };
-    if (loginCustomerId) authHeaders['login-customer-id'] = String(loginCustomerId).replace(/-/g, '');
-
-    // 2. Create campaign budget
-    const dailyMicros = String(Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) * 1e6 / 30));
-    const budgetRaw = await callHttpsGeneric('googleads.googleapis.com',
-      `/v16/customers/${cleanId}/campaignBudgets:mutate`, 'POST',
-      JSON.stringify({ operations: [{ create: { name: campaignName + ' Budget', amountMicros: dailyMicros, deliveryMethod: 'STANDARD' } }] }),
-      authHeaders);
-    const budgetData = JSON.parse(budgetRaw);
-    if (!budgetData.results) throw new Error('Budget creation failed: ' + JSON.stringify(budgetData.partialFailureError || budgetData));
-
-    // 3. Create campaign
-    const sd = startDate ? startDate.replace(/-/g, '') : new Date().toISOString().split('T')[0].replace(/-/g, '');
-    const campRaw = await callHttpsGeneric('googleads.googleapis.com',
-      `/v16/customers/${cleanId}/campaigns:mutate`, 'POST',
-      JSON.stringify({ operations: [{ create: Object.assign({
-        name: campaignName, status: 'PAUSED',
-        advertisingChannelType: ct.channel,
-        campaignBudget: budgetData.results[0].resourceName, startDate: sd,
-      }, ct.bid, ct.needsMerchant ? { shoppingSetting: { merchantId: String(merchantId), salesCountry: 'US' } } : {}
-      ) }] }), authHeaders);
-    const campData = JSON.parse(campRaw);
-    if (!campData.results) throw new Error('Campaign creation failed: ' + JSON.stringify(campData));
-    const campaignId = campData.results[0].resourceName.split('/').pop();
-
-    // Register with optimizer (best-effort)
-    let optimizerEnabled = true;
-    try {
-      const dailyBud = (parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30;
-      const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:google' });
-      await _db.getPool().query(`
-        INSERT INTO ad_campaigns (tenant_id, platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
-        VALUES ($4, 'google', $1, $2, $3, 'paused', TRUE)
-        ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
-      `, [String(campaignId), campaignName, dailyBud, _tid]);
-    } catch (_e) {
-      optimizerEnabled = false;
-      console.error('[Google Ads launch] optimizer registration failed:', _e.message);
-    }
-    try { const { ingestMemoryNode } = require('./services/knowledge_graph/api'); ingestMemoryNode({ tenant_id: _tid, node_type: 'campaign_result', summary: `Campaign "${campaignName}" launched on Google Ads (ID: ${campaignId}). Budget: $${dailyBud}/day.`, detail: { platform: 'google', campaignId, budget: dailyBud, status: 'paused' }, source_ref: `campaign:google:${campaignId}`, importance: 0.7 }).catch(() => {}); } catch (_) {}
-    res.json({
-      success: true, platform: 'Google Ads', campaignId, status: 'PAUSED',
-      optimizerEnabled,
-      optimizerWarning: optimizerEnabled ? null : 'Campaign was created on Google Ads, but it could not be added to the AI Optimizer, so automatic optimization is not running. Retry the launch or check your workspace, then re-launch to enable it.',
-      message: `Campaign "${campaignName}" created in Google Ads (ID: ${campaignId}). It's paused — activate it in your Google Ads dashboard.`
-        + (optimizerEnabled ? '' : ' ⚠️ Automatic optimization could not be enabled — this campaign won\'t be auto-managed by the AI Optimizer.'),
-      dashboardUrl: `https://ads.google.com/aw/campaigns?campaignId=${campaignId}`
-    });
-  } catch(e) {
-    console.error('[Google Ads launch]', e.message);
-    // Map common OAuth/API errors to actionable messages
-    let friendlyError = e.message;
-    if (e.message.includes('client was not found') || e.message.includes('invalid_client')) {
-      friendlyError = 'Google Ads OAuth client not found — your Client ID or Client Secret is incorrect. Update them in Settings → Google Ads.';
-    } else if (e.message.includes('invalid_grant') || e.message.includes('Token has been expired')) {
-      friendlyError = 'Google Ads refresh token expired — re-authorise your account in Settings → Google Ads.';
-    } else if (e.message.includes('PERMISSION_DENIED') || e.message.includes('not authorized')) {
-      friendlyError = 'Google Ads permission denied — ensure your developer token and customer ID are correct in Settings.';
-    }
-    res.json({ success: false, error: friendlyError });
-  }
+  const { denyAdvertisingProviderMutation } = require('./services/security/advertising_provider_mutations');
+  return res.status(403).json(denyAdvertisingProviderMutation({
+    route: '/api/launch/google-ads',
+    platform: 'google',
+  }));
 });
+
 
 // ── Meta Marketing API campaign launch ───────────────────────────────────────
+// Hard-disabled: refuse before credential lookup, vault access, or network I/O.
 app.post('/api/launch/meta', async (req, res) => {
-  const { campaignName, budget, objective: objectiveOpt = 'performance' } = req.body;
-  const metaObjective = (String(objectiveOpt).toLowerCase().includes('awareness') ||
-                         String(objectiveOpt).toLowerCase().includes('brand'))
-    ? 'OUTCOME_AWARENESS'   // optimised for reach + CPM + video-completion
-    : 'OUTCOME_TRAFFIC';    // default — clicks → conversions
-  const _metaResolved = await _credentialsVault.resolveMetaAdsCredentials(req.user && req.user.id ? req.user.id : null);
-  if (!_metaResolved.ok)
-    return res.json({ success: false, error: _metaResolved.error });
-  const { accessToken, adAccountId } = _metaResolved.creds;
-
-  try {
-    const cleanToken  = String(accessToken).trim();
-    const cleanAccId  = String(adAccountId).trim().replace(/\s/g, '');
-    const dailyCents  = String(Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) * 100 / 30));
-    const accountId   = cleanAccId.startsWith('act_') ? cleanAccId : 'act_' + cleanAccId;
-    const params      = new URLSearchParams({
-      name: campaignName, objective: metaObjective, status: 'PAUSED',
-      daily_budget: dailyCents, special_ad_categories: '[]', access_token: cleanToken
-    });
-    const campRaw  = await callHttpsGeneric('graph.facebook.com', `/v19.0/${accountId}/campaigns`, 'POST', params.toString(), { 'Content-Type': 'application/x-www-form-urlencoded' });
-    const campData = JSON.parse(campRaw);
-    if (campData.error) throw new Error(campData.error.message || 'Meta API error');
-    if (!campData.id)   throw new Error('No campaign ID returned from Meta');
-
-    let optimizerEnabled = true;
-    try {
-      const dailyBud = (parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30;
-      const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:meta' });
-      await _db.getPool().query(`
-        INSERT INTO ad_campaigns (tenant_id, platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
-        VALUES ($4, 'meta', $1, $2, $3, 'paused', TRUE)
-        ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
-      `, [String(campData.id), campaignName, dailyBud, _tid]);
-    } catch (_e) {
-      optimizerEnabled = false;
-      console.error('[Meta launch] optimizer registration failed:', _e.message);
-    }
-    try { const { ingestMemoryNode } = require('./services/knowledge_graph/api'); ingestMemoryNode({ tenant_id: _tid, node_type: 'campaign_result', summary: `Campaign "${campaignName}" launched on Meta Ads (ID: ${campData.id}). Budget: $${dailyBud}/day.`, detail: { platform: 'meta', campaignId: campData.id, budget: dailyBud, status: 'paused' }, source_ref: `campaign:meta:${campData.id}`, importance: 0.7 }).catch(() => {}); } catch (_) {}
-    res.json({
-      success: true, platform: 'Meta Ads', campaignId: campData.id, status: 'PAUSED',
-      optimizerEnabled,
-      optimizerWarning: optimizerEnabled ? null : 'Campaign was created on Meta Ads, but it could not be added to the AI Optimizer, so automatic optimization is not running. Retry the launch or check your workspace, then re-launch to enable it.',
-      message: `Campaign "${campaignName}" created in Meta Ads Manager (ID: ${campData.id}). Add an Ad Set and Ads in Business Manager to go live.`
-        + (optimizerEnabled ? '' : ' ⚠️ Automatic optimization could not be enabled — this campaign won\'t be auto-managed by the AI Optimizer.'),
-      dashboardUrl: `https://business.facebook.com/adsmanager/manage/campaigns?act=${adAccountId}&selected_campaign_ids=${campData.id}`
-    });
-  } catch(e) {
-    console.error('[Meta launch]', e.message);
-    let friendlyError = e.message;
-    if (e.message.includes('OAuthException') || e.message.includes('Invalid OAuth') || e.message.includes('access token')) {
-      friendlyError = 'Meta access token invalid or expired — update it in Settings → Meta Ads Manager.';
-    } else if (e.message.includes('permission') || e.message.includes('#200')) {
-      friendlyError = 'Meta API permission denied — ensure your access token has ads_management permission.';
-    }
-    res.json({ success: false, error: friendlyError });
-  }
+  const { denyAdvertisingProviderMutation } = require('./services/security/advertising_provider_mutations');
+  return res.status(403).json(denyAdvertisingProviderMutation({
+    route: '/api/launch/meta',
+    platform: 'meta',
+  }));
 });
+
 
 // ── Microsoft Ads (Bing) campaign launch ─────────────────────────────────────
-// Mirrors the Google/Meta/TikTok launch shape. Accepts an optional `objective`
-// of 'performance' (default — sales/leads) or 'brand-awareness' (reach/CPM).
+// Hard-disabled: refuse before credential lookup, vault access, or network I/O.
 app.post('/api/launch/microsoft-ads', async (req, res) => {
-  const { campaignName, budget, objective = 'performance' } = req.body || {};
-  const need = ['MICROSOFT_ADS_DEVELOPER_TOKEN','MICROSOFT_ADS_CLIENT_ID','MICROSOFT_ADS_CLIENT_SECRET',
-                'MICROSOFT_ADS_REFRESH_TOKEN','MICROSOFT_ADS_CUSTOMER_ID','MICROSOFT_ADS_ACCOUNT_ID'];
-  for (const k of need) if (!process.env[k]) return res.json({ success:false, error:`Microsoft Ads credentials not configured — set ${k} in Settings → Microsoft Ads.` });
-
-  try {
-    const tokRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-      method:'POST', headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: process.env.MICROSOFT_ADS_CLIENT_ID,
-        client_secret: process.env.MICROSOFT_ADS_CLIENT_SECRET,
-        refresh_token: process.env.MICROSOFT_ADS_REFRESH_TOKEN,
-        grant_type:'refresh_token',
-        scope:'https://ads.microsoft.com/msads.manage offline_access',
-      }).toString(),
-    });
-    const tj = await tokRes.json();
-    if (!tj.access_token) throw new Error('Microsoft Ads OAuth failed: ' + (tj.error_description || tj.error || 'unknown'));
-
-    // Bing's Campaign Management API is SOAP-only. We use the JSON endpoint
-    // exposed via the bingads-server bridge — same hostname, REST flavour.
-    const dailyBud = Math.max(5, Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30));
-    const headers = {
-      'Authorization':     `Bearer ${tj.access_token}`,
-      'DeveloperToken':    process.env.MICROSOFT_ADS_DEVELOPER_TOKEN,
-      'CustomerId':        process.env.MICROSOFT_ADS_CUSTOMER_ID,
-      'CustomerAccountId': process.env.MICROSOFT_ADS_ACCOUNT_ID,
-      'Content-Type':      'application/json',
-    };
-    const isAwareness = String(objective).toLowerCase().includes('awareness') || String(objective).toLowerCase().includes('brand');
-    const campPayload = {
-      Campaigns: [{
-        Name: campaignName,
-        DailyBudget: dailyBud,
-        BudgetType: 'DailyBudgetStandard',
-        Status: 'Paused',
-        TimeZone: 'PacificTimeUSCanadaTijuana',
-        CampaignType: 'Search',
-        // Brand awareness → TargetImpressionShare (Bing's reach-style scheme,
-        // bids for top-of-page placement). Performance → MaxConversions
-        // (Bing's standard Smart Bidding for sales/leads).
-        BiddingScheme: isAwareness
-          ? { Type: 'TargetImpressionShare', TargetImpressionShare: 65, TargetAdPosition: 'TopOfPage', MaxCpc: { Amount: 5 } }
-          : { Type: 'MaxConversions' },
-        Settings: [],
-      }],
-    };
-    const campRes = await fetch('https://campaign.api.bingads.microsoft.com/CampaignManagement/v13/Campaigns', {
-      method:'POST', headers, body: JSON.stringify(campPayload),
-    });
-    const cj = await campRes.json().catch(() => ({}));
-    const newId = cj?.CampaignIds?.[0] || cj?.Campaigns?.[0]?.Id;
-    if (!newId) {
-      const errMsg = cj?.PartialErrors?.[0]?.Message || cj?.error?.message || `Bing Ads error (${campRes.status})`;
-      throw new Error(errMsg);
-    }
-
-    let optimizerEnabled = true;
-    try {
-      const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:microsoft' });
-      await _db.getPool().query(`
-        INSERT INTO ad_campaigns (tenant_id, platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
-        VALUES ($4, 'microsoft', $1, $2, $3, 'paused', TRUE)
-        ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
-      `, [String(newId), campaignName, dailyBud, _tid]);
-    } catch (_e) {
-      optimizerEnabled = false;
-      console.error('[Microsoft Ads launch] optimizer registration failed:', _e.message);
-    }
-
-    try { const { ingestMemoryNode } = require('./services/knowledge_graph/api'); ingestMemoryNode({ tenant_id: _tid, node_type: 'campaign_result', summary: `Campaign "${campaignName}" launched on Microsoft Ads (ID: ${newId}). Budget: $${dailyBud}/day.`, detail: { platform: 'microsoft', campaignId: newId, budget: dailyBud, status: 'paused' }, source_ref: `campaign:microsoft:${newId}`, importance: 0.7 }).catch(() => {}); } catch (_) {}
-    res.json({
-      success: true, platform: 'Microsoft Ads', campaignId: newId, status: 'PAUSED',
-      optimizerEnabled,
-      optimizerWarning: optimizerEnabled ? null : 'Campaign was created on Microsoft Ads, but it could not be added to the AI Optimizer, so automatic optimization is not running. Retry the launch or check your workspace, then re-launch to enable it.',
-      message: `Campaign "${campaignName}" created in Microsoft Advertising (ID: ${newId}). It's paused — open the dashboard to add ad groups, ads and keywords, then activate.`
-        + (optimizerEnabled ? '' : ' ⚠️ Automatic optimization could not be enabled — this campaign won\'t be auto-managed by the AI Optimizer.'),
-      dashboardUrl: `https://ui.ads.microsoft.com/campaign/vnext/campaigns?customerId=${process.env.MICROSOFT_ADS_CUSTOMER_ID}&aid=${process.env.MICROSOFT_ADS_ACCOUNT_ID}`,
-    });
-  } catch (e) {
-    console.error('[Microsoft Ads launch]', e.message);
-    let friendlyError = e.message;
-    if (/oauth|invalid_grant|refresh/i.test(e.message)) friendlyError = 'Microsoft Ads OAuth failed — your refresh token has expired. Re-authorise in Settings → Microsoft Ads.';
-    else if (/developer\s*token|forbidden/i.test(e.message)) friendlyError = 'Microsoft Ads developer token missing or unapproved — apply at developers.ads.microsoft.com/Account.';
-    res.json({ success: false, error: friendlyError });
-  }
+  const { denyAdvertisingProviderMutation } = require('./services/security/advertising_provider_mutations');
+  return res.status(403).json(denyAdvertisingProviderMutation({
+    route: '/api/launch/microsoft-ads',
+    platform: 'microsoft',
+  }));
 });
+
 
 // ── TikTok Ads campaign launch ────────────────────────────────────────────────
+// Hard-disabled: refuse before credential lookup, vault access, or network I/O.
 app.post('/api/launch/tiktok', async (req, res) => {
-  const { campaignName, budget } = req.body;
-  const cleanAdvertiserId = _tiktokAdvertiserId();
-  const accessToken  = _cleanSecret(process.env.TIKTOK_ACCESS_TOKEN || '');
-
-  if (!cleanAdvertiserId || !accessToken)
-    return res.json({ success: false, error: 'TikTok credentials not configured — connect them in Settings → TikTok Ads.' });
-
-  try {
-    const dailyBudget = Math.max(Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30), 50);
-    const payload = JSON.stringify({
-      advertiser_id: cleanAdvertiserId, campaign_name: campaignName,
-      objective_type: 'TRAFFIC', budget_mode: 'BUDGET_MODE_DAY',
-      budget: dailyBudget, operation_status: 'DISABLE'
-    });
-    const campRaw  = await callHttpsGeneric('business-api.tiktok.com', '/open_api/v1.3/campaign/create/', 'POST', payload, { 'Content-Type': 'application/json', 'Access-Token': accessToken });
-    const campData = JSON.parse(campRaw);
-    if (campData.code !== 0) throw new Error(campData.message || 'TikTok error code ' + campData.code);
-    const campaignId = campData.data && campData.data.campaign_id;
-
-    let optimizerEnabled = true;
-    try {
-      const dailyBud = Math.max((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30, 50);
-      const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:tiktok' });
-      await _db.getPool().query(`
-        INSERT INTO ad_campaigns (tenant_id, platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
-        VALUES ($4, 'tiktok', $1, $2, $3, 'paused', TRUE)
-        ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
-      `, [String(campaignId), campaignName, dailyBud, _tid]);
-    } catch (_e) {
-      optimizerEnabled = false;
-      console.error('[TikTok launch] optimizer registration failed:', _e.message);
-    }
-    try { const { ingestMemoryNode } = require('./services/knowledge_graph/api'); ingestMemoryNode({ tenant_id: _tid, node_type: 'campaign_result', summary: `Campaign "${campaignName}" launched on TikTok Ads (ID: ${campaignId}). Budget: $${dailyBud}/day.`, detail: { platform: 'tiktok', campaignId, budget: dailyBud, status: 'paused' }, source_ref: `campaign:tiktok:${campaignId}`, importance: 0.7 }).catch(() => {}); } catch (_) {}
-    res.json({
-      success: true, platform: 'TikTok Ads', campaignId, status: 'DISABLED',
-      optimizerEnabled,
-      optimizerWarning: optimizerEnabled ? null : 'Campaign was created on TikTok Ads, but it could not be added to the AI Optimizer, so automatic optimization is not running. Retry the launch or check your workspace, then re-launch to enable it.',
-      message: `Campaign "${campaignName}" created in TikTok Ads Manager (ID: ${campaignId}). Enable it and add an Ad Group in TikTok Business Center.`
-        + (optimizerEnabled ? '' : ' ⚠️ Automatic optimization could not be enabled — this campaign won\'t be auto-managed by the AI Optimizer.'),
-      dashboardUrl: `https://ads.tiktok.com/i18n/perf/campaign?aadvid=${cleanAdvertiserId}`
-    });
-  } catch(e) {
-    console.error('[TikTok launch]', e.message);
-    let friendlyError = e.message;
-    if (e.message.includes('access_token') || e.message.includes('Unauthorized') || e.message.includes('40001')) {
-      friendlyError = 'TikTok access token invalid or expired — update it in Settings → TikTok Ads.';
-    }
-    res.json({ success: false, error: friendlyError });
-  }
+  const { denyAdvertisingProviderMutation } = require('./services/security/advertising_provider_mutations');
+  return res.status(403).json(denyAdvertisingProviderMutation({
+    route: '/api/launch/tiktok',
+    platform: 'tiktok',
+  }));
 });
+
 
 // ── AI 90-Day Revenue Forecast ────────────────────────────────────────────────
 // ── /api/ai-quick — tiny single-shot prompt → text (used by AI Suggest buttons across the UI)

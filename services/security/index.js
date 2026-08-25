@@ -10,6 +10,13 @@ const { validate, authSchemas } = require('./validate');
 const {
   assertSafeHttpsUrl, assertSafeRedirect, assertPinnedAddresses, isBlockedIp,
 } = require('./safe_url');
+const {
+  CODE: ADVERTISING_PROVIDER_MUTATION_DISABLED,
+  MESSAGE: ADVERTISING_PROVIDER_MUTATION_MESSAGE,
+  isAdvertisingProviderMutationAllowed,
+  assertAdvertisingProviderMutationAllowed,
+  denyAdvertisingProviderMutation,
+} = require('./advertising_provider_mutations');
 
 module.exports = {
   securityHeaders,
@@ -28,4 +35,9 @@ module.exports = {
   assertSafeRedirect,
   assertPinnedAddresses,
   isBlockedIp,
+  ADVERTISING_PROVIDER_MUTATION_DISABLED,
+  ADVERTISING_PROVIDER_MUTATION_MESSAGE,
+  isAdvertisingProviderMutationAllowed,
+  assertAdvertisingProviderMutationAllowed,
+  denyAdvertisingProviderMutation,
 };

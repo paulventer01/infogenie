@@ -20,6 +20,10 @@ const _db = require('../../db');
 const { makeSettingsCache } = require('./schema');
 const { _betaSample } = require('./bandit');  // reuse Marsaglia-Tsang sampler
 const { resolveGoogleAdsCredentials } = require('../credentials/vault');
+const {
+  assertAdvertisingProviderMutationAllowed,
+  denyAdvertisingProviderMutation,
+} = require('../security/advertising_provider_mutations');
 
 const MIN_EXPLORE_SHARE = 0.10;
 const MAX_ARM_SHARE     = 0.60;
@@ -136,6 +140,11 @@ async function fetchAdGroupsGoogle(platformCampId, days = 7) {
 
 // ── Apply CPC bid change to an ad group ─────────────────────────────────────
 async function _applyAdGroupBid(auth, adGroupId, newBidUsd) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'google', op: 'applyAdGroupBid', adGroupId });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'google', op: 'applyAdGroupBid' });
+  }
   const micros = Math.max(Math.round(newBidUsd * 1e6), Math.round(MIN_BID_USD * 1e6));
   const body = {
     operations: [{
@@ -310,8 +319,7 @@ async function _runUnsafe(opts = {}) {
       const enabled = await readSetting(camp.tenant_id, 'bandit_enabled', { v: false });
       if (!enabled.v) continue; // this tenant has the bandit turned off
     }
-    const dryRun = opts.dryRun !== undefined ? !!opts.dryRun
-      : !!(await readSetting(camp.tenant_id, 'bandit_dry_run', { v: true })).v;
+    const dryRun = true; // provider writes hard-disabled — analysis/log only
     const r = await _runOneCampaign({ camp, dryRun, runId, perRunLeft });
     totalApplied += (r.applied || 0);
     totalErrors  += (r.errors  || 0);
@@ -327,11 +335,14 @@ async function _runUnsafe(opts = {}) {
   };
 }
 
-async function runGoogleBanditOnce(opts = {}) {
-  if (_running) return { ok: false, error: 'a Google bandit run is already in flight — try again shortly' };
-  _running = true;
-  try { return await _runUnsafe(opts); }
-  finally { _running = false; }
+// Provider-write kill switch. Denies at immediate entry — before the run mutex,
+// DB/credential preparation, OAuth, provider reads, or any network I/O — and
+// takes no arguments, so no caller option (force, dryRun, tenant, API key,
+// injected deps) can reopen it. `_runUnsafe` stays in place, unreachable, for a
+// future reviewed delivery path; the read-only helpers exported below are
+// unaffected.
+async function runGoogleBanditOnce() {
+  return denyAdvertisingProviderMutation({ platform: 'google', op: 'runGoogleBanditOnce' });
 }
 
 module.exports = { runGoogleBanditOnce, fetchAdGroupsGoogle, _computeBidAllocation };

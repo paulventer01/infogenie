@@ -395,56 +395,14 @@ Return strict JSON: {"suggestions":[{"name":"...","description":"...","rationale
 
 // ── Ad Audience Sync ──────────────────────────────────────────────────────
 // Syncs a segment's member list to Meta Custom Audiences or Google Customer Match.
+// Provider writes are hard-disabled before credential lookup or network I/O.
 router.post('/:id/sync-ads', async (req, res) => {
   try {
-    const id = _validId(req.params.id);
-    if (!id) return _err(res, 400, 'invalid id');
-    const tid = await _tid(req, 'audiences:sync-ads');
-    const seg = await _audienceForTenant(id, tid);
-    if (!seg) return _err(res, 404, 'not found');
-    const { platform } = req.body || {}; // 'meta' | 'google'
-    if (!['meta', 'google'].includes(platform)) return _err(res, 400, 'platform must be meta or google');
-    const p = _db.getPool();
-    const members = await p.query(
-      `SELECT contact_email FROM audience_segment_members WHERE segment_id=$1 AND left_at IS NULL AND contact_email IS NOT NULL`,
-      [id]
-    );
-    const emails = members.rows.map(r => r.contact_email).filter(Boolean);
-    if (!emails.length) return res.json({ ok: false, error: 'No members with email addresses in this segment' });
-
-    let syncResult = null;
-    if (platform === 'meta') {
-      const token = process.env.META_ACCESS_TOKEN;
-      const adAccountId = process.env.META_AD_ACCOUNT_ID;
-      if (!token || !adAccountId) return _err(res, 400, 'META_ACCESS_TOKEN and META_AD_ACCOUNT_ID not configured');
-      try {
-        const crypto = require('crypto');
-        const hashedEmails = emails.map(e => crypto.createHash('sha256').update(e.toLowerCase().trim()).digest('hex'));
-        const audienceName = `InfoGenie — ${seg.name}`;
-        const createResp = await fetch(
-          `https://graph.facebook.com/v19.0/act_${adAccountId}/customaudiences`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ name: audienceName, subtype: 'CUSTOM', description: seg.description || '', customer_file_source: 'USER_PROVIDED_ONLY' }) }
-        );
-        const audience = await createResp.json();
-        if (audience.error) return _err(res, 400, audience.error.message);
-        const addResp = await fetch(
-          `https://graph.facebook.com/v19.0/${audience.id}/users`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ payload: { schema: ['EMAIL_SHA256'], data: hashedEmails.map(h=>[h]) } }) }
-        );
-        const addResult = await addResp.json();
-        syncResult = { platform: 'meta', audience_id: audience.id, audience_name: audienceName, uploaded: emails.length, meta_response: addResult };
-      } catch(e2) { return _err(res, 500, 'Meta sync failed: ' + e2.message); }
-    } else {
-      syncResult = {
-        platform: 'google',
-        note: 'Google Customer Match upload requires the Google Ads API OAuth credential. Emails are ready.',
-        emails_count: emails.length,
-        instructions: 'Connect your Google Ads account in Settings → Credentials → Google Ads to enable automatic Customer Match upload.'
-      };
-    }
-    res.json({ ok: true, synced: emails.length, ...syncResult });
+    const { denyAdvertisingProviderMutation } = require('../security/advertising_provider_mutations');
+    return res.status(403).json(denyAdvertisingProviderMutation({
+      route: '/api/audiences/:id/sync-ads',
+      platform: (req.body && req.body.platform) || null,
+    }));
   } catch(err) { _err(res, 500, err.message); }
 });
 

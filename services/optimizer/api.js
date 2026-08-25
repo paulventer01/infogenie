@@ -161,6 +161,14 @@ router.post('/dry-run', express.json(), async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:dry-run' });
   if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
   const v = !!(req.body && req.body.dryRun);
+  if (v === false) {
+    const { denyAdvertisingProviderMutation } = require('../security/advertising_provider_mutations');
+    return res.status(403).json(denyAdvertisingProviderMutation({
+      route: '/api/optimizer/dry-run',
+      setting: 'dry_run',
+      attempted: 'live',
+    }));
+  }
   await setSetting(tid, 'dry_run', { v });
   res.json({ ok: true, dryRun: v });
 });
@@ -205,6 +213,14 @@ router.post('/creative-refresh/dry-run', express.json(), async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:creative-refresh:dry-run' });
   if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
   const v = !!(req.body && req.body.dryRun);
+  if (v === false) {
+    const { denyAdvertisingProviderMutation } = require('../security/advertising_provider_mutations');
+    return res.status(403).json(denyAdvertisingProviderMutation({
+      route: '/api/optimizer/creative-refresh/dry-run',
+      setting: 'creative_refresh_dry_run',
+      attempted: 'live',
+    }));
+  }
   await setSetting(tid, 'creative_refresh_dry_run', { v });
   res.json({ ok: true, dryRun: v });
 });
@@ -265,6 +281,14 @@ router.post('/bandit/toggle', express.json(), async (req, res) => {
 router.post('/bandit/dry-run', express.json(), async (req, res) => {
   const raw = req.body && req.body.dryRun;
   if (raw !== true && raw !== false) return res.status(400).json({ ok: false, error: 'dryRun must be boolean true or false' });
+  if (raw === false) {
+    const { denyAdvertisingProviderMutation } = require('../security/advertising_provider_mutations');
+    return res.status(403).json(denyAdvertisingProviderMutation({
+      route: '/api/optimizer/bandit/dry-run',
+      setting: 'bandit_dry_run',
+      attempted: 'live',
+    }));
+  }
   const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:bandit:dry-run' });
   if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
   await setSetting(tid, 'bandit_dry_run', { v: raw });

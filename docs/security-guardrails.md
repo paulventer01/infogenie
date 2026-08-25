@@ -2724,9 +2724,47 @@ secret-prefix denylist, and no secret disclosure in response/outbox/audit), plus
 matrix and CSRF/production defaults this route inherits. The prose in this
 section is not itself pinned by a test.
 
+## Advertising provider-write bypass closure
+
+Legacy live provider writes are hard-disabled. The centralized default-deny
+guard lives at `services/security/advertising_provider_mutations.js` and is
+re-exported from `services/security/index.js`. Every lowest-level mutation
+helper (platform apply, bandit budget/bid mutate, creative refresh Meta/Google
+mutates, Meta custom-audience create/upload) must call
+`assertAdvertisingProviderMutationAllowed` / `denyAdvertisingProviderMutation`
+**before** credential lookup, vault access, or network I/O. There is no env
+escape hatch.
+
+Hard-disabled HTTP surfaces (403, no vault, no outbound):
+
+- `POST /api/launch/google-ads`
+- `POST /api/launch/meta`
+- `POST /api/launch/microsoft-ads`
+- `POST /api/launch/tiktok`
+- `POST /api/audiences/:id/sync-ads` (provider-writing branch)
+- `POST /api/pixel-manager/capi/meta`
+- `POST /api/pixel-manager/capi/linkedin`
+- `POST /api/pixel-manager/capi/tiktok`
+- Optimizer live-mode flips (`dryRun: false` on dry-run settings routes)
+
+Lowest-level mutation helpers (including `sendMetaCapi`, `sendLinkedInCapi`,
+`sendTikTokCapi`) call `assertAdvertisingProviderMutationAllowed` before any
+credential use or `_httpsPost`. Local pixel configuration, status, reporting,
+and other read-only pixel-manager routes stay available.
+
+Preserved (not provider mutations): read-only ad insights/analysis, campaign
+drafting and human approval, creative generation, guarded publishing requests,
+PR 6C delivery intents (`published: false`, `external_action_taken: false`),
+and request-only guarantees.
+
+Coverage: `test/advertising-provider-write-bypass.test.js` (authenticated
+session, `INFOGENIE_API_KEY`, manual HTTP routes, scheduled job/timer entry
+points, and direct module import/call — all zero-network).
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
 - Static allow-list: `services/static_guard/`
 - Permission matrix: `services/tenants/permission_enforce.js`
 - Credential vault: `services/credentials/vault.js`
+- Advertising provider mutation guard: `services/security/advertising_provider_mutations.js`

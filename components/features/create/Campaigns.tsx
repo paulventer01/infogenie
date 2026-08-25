@@ -63,22 +63,9 @@ export default function Campaigns() {
   }, []);
 
   function onLaunch() {
-    const w = window as unknown as CampaignsWindow;
-    if (
-      typeof w._igLaunch === "function" &&
-      w._lastCampRecs &&
-      w._lastCampRecs.length
-    ) {
-      w._igLaunch(0);
-      return;
-    }
-    const modal = document.getElementById("launchModal");
-    if (modal) {
-      const title = modal.querySelector(".modal-title");
-      if (title) title.textContent = "Launch Campaign";
-      modal.classList.remove("hidden");
-      (modal as HTMLElement).style.display = "flex";
-    }
+    // Legacy provider-write launch is closed — drafting / approval / guarded
+    // publishing requests remain the supported path.
+    return;
   }
 
   return (
@@ -102,9 +89,14 @@ export default function Campaigns() {
               <button
                 className="btn-primary"
                 id="launchCampaignBtn"
+                type="button"
+                disabled
+                title="Provider launch is disabled. Use campaign drafting and approval."
+                aria-disabled="true"
                 onClick={onLaunch}
+                style={{ opacity: 0.55, cursor: "not-allowed" }}
               >
-                🚀 Launch Campaign
+                Launch disabled
               </button>
             </div>
           </div>

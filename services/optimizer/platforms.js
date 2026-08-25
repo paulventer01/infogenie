@@ -7,6 +7,10 @@
 
 const https = require('https');
 const { resolveGoogleAdsCredentials, resolveMetaAdsCredentials } = require('../credentials/vault');
+const {
+  assertAdvertisingProviderMutationAllowed,
+  denyAdvertisingProviderMutation,
+} = require('../security/advertising_provider_mutations');
 
 function _httpsJson(host, path, method, body, headers = {}, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
@@ -65,6 +69,11 @@ async function fetchMeta(platformCampId, hours = 168, userId = null) {
 
 // ── Meta: apply update (pause / set daily budget) ────────────────────────────
 async function applyMeta(platformCampId, change, userId = null) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'meta', op: 'applyMeta', platformCampId });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'meta', op: 'applyMeta' });
+  }
   const _r = await resolveMetaAdsCredentials(userId);
   if (!_r.ok) return { ok: false, error: _r.error };
   const token = _r.creds.accessToken;
@@ -118,7 +127,11 @@ async function fetchGoogleAds(platformCampId, hours = 168, userId = null) {
 }
 
 async function applyGoogleAds(platformCampId, change) {
-  // Placeholder until full mutate wired — log only.
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'google', op: 'applyGoogleAds', platformCampId });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'google', op: 'applyGoogleAds' });
+  }
   return { ok: false, error: 'Google Ads apply not yet implemented (read-only this phase)' };
 }
 
@@ -155,6 +168,11 @@ async function fetchTikTok(platformCampId, hours = 168) {
 }
 
 async function applyTikTok(_platformCampId, _change) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'tiktok', op: 'applyTikTok' });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'tiktok', op: 'applyTikTok' });
+  }
   return { ok: false, error: 'TikTok apply not yet implemented (read-only this phase)' };
 }
 
@@ -169,6 +187,11 @@ async function fetchPerf(platform, platformCampId, hours = 168) {
 }
 
 async function applyChange(platform, platformCampId, change) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform, op: 'applyChange', platformCampId });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform, op: 'applyChange' });
+  }
   const p = String(platform || '').toLowerCase();
   if (p.includes('meta') || p.includes('facebook')) return applyMeta(platformCampId, change);
   if (p.includes('google'))                          return applyGoogleAds(platformCampId, change);
@@ -211,6 +234,11 @@ async function fetchMicrosoft(_platformCampId, hours = 168) {
   return { ok:true, rows: [] };
 }
 async function applyMicrosoft(_platformCampId, _change) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'microsoft', op: 'applyMicrosoft' });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'microsoft', op: 'applyMicrosoft' });
+  }
   return { ok:false, error:'Microsoft Ads apply not yet implemented (read-only this phase)' };
 }
 

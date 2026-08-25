@@ -13,6 +13,10 @@ const https = require('https');
 const _db = require('../../db');
 const { makeSettingsCache } = require('./schema');
 const { resolveGoogleAdsCredentials } = require('../credentials/vault');
+const {
+  assertAdvertisingProviderMutationAllowed,
+  denyAdvertisingProviderMutation,
+} = require('../security/advertising_provider_mutations');
 
 const STALE_AGE_HOURS = 72;
 const CTR_FLOOR       = 0.005;
@@ -175,6 +179,11 @@ async function _generateRSACopy({ campaignName, oldHeadlines, oldDescriptions, b
 
 // ── Mutate: create new PAUSED RSA in the same ad group ──────────────────────
 async function _createRSA(auth, adGroupId, { headlines, descriptions, finalUrl }) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'google', op: 'createRSA', adGroupId });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'google', op: 'createRSA' });
+  }
   const body = {
     operations: [{
       create: {
@@ -202,6 +211,11 @@ async function _createRSA(auth, adGroupId, { headlines, descriptions, finalUrl }
 
 // ── Mutate: pause the old RSA ───────────────────────────────────────────────
 async function _pauseRSA(auth, adGroupId, adId) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'google', op: 'pauseRSA', adId });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'google', op: 'pauseRSA' });
+  }
   const body = {
     operations: [{
       update: {
@@ -316,14 +330,13 @@ async function _runUnsafe(opts = {}) {
   let refreshed = 0, scanned = 0, skipped = 0, errors = 0;
   // Declared at function scope so the summary return below can reference it even
   // when there are no campaigns to iterate (otherwise: "dryRun is not defined").
-  let dryRun = opts.dryRun !== undefined ? !!opts.dryRun : true;
+  let dryRun = true; // provider writes hard-disabled — analysis/log only
   outer: for (const camp of camps.rows) {
     if (!opts.force) {
       const enabled = await readSetting(camp.tenant_id, 'creative_refresh_enabled', { v: true });
       if (!enabled.v) continue; // this tenant has creative refresh turned off
     }
-    dryRun = opts.dryRun !== undefined ? !!opts.dryRun
-      : !!(await readSetting(camp.tenant_id, 'creative_refresh_dry_run', { v: true })).v;
+    dryRun = true;
     const adsR = await fetchActiveRSAsGoogle(camp.platform_camp_id);
     if (!adsR.ok) { errors++; continue; }
     for (const ad of adsR.ads) {
@@ -343,11 +356,14 @@ async function _runUnsafe(opts = {}) {
            ranAt: new Date().toISOString() };
 }
 
-async function runGoogleCreativeRefreshOnce(opts = {}) {
-  if (_running) return { ok: false, error: 'a Google creative-refresh run is already in flight — try again shortly' };
-  _running = true;
-  try { return await _runUnsafe(opts); }
-  finally { _running = false; }
+// Provider-write kill switch. Denies at immediate entry — before the run mutex,
+// DB/credential preparation, OAuth, AI creative generation, provider reads, or
+// any network I/O — and takes no arguments, so no caller option (force, dryRun,
+// tenant, API key, injected deps) can reopen it. `_runUnsafe` stays in place,
+// unreachable, for a future reviewed delivery path; the read-only helpers
+// exported below are unaffected.
+async function runGoogleCreativeRefreshOnce() {
+  return denyAdvertisingProviderMutation({ platform: 'google', op: 'runGoogleCreativeRefreshOnce' });
 }
 
 module.exports = { runGoogleCreativeRefreshOnce, fetchActiveRSAsGoogle };

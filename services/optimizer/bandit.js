@@ -20,6 +20,10 @@ const https = require('https');
 const _db = require('../../db');
 const { makeSettingsCache } = require('./schema');
 const { resolveMetaAdsCredentials } = require('../credentials/vault');
+const {
+  assertAdvertisingProviderMutationAllowed,
+  denyAdvertisingProviderMutation,
+} = require('../security/advertising_provider_mutations');
 
 const MIN_EXPLORE_SHARE = 0.10;   // each arm gets at least 10% of budget
 const MAX_ARM_SHARE     = 0.60;   // no single arm gets more than 60%
@@ -128,6 +132,11 @@ async function fetchAdSetsMeta(metaCampId, days = 7, userId = null) {
 
 // ── Apply daily-budget change to a single Meta ad set ───────────────────────
 async function _applyAdSetBudget(adsetId, newBudgetUsd, userId = null) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'meta', op: 'applyAdSetBudget', adsetId });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'meta', op: 'applyAdSetBudget' });
+  }
   const _r = await resolveMetaAdsCredentials(userId);
   if (!_r.ok) return { ok: false, error: _r.error };
   const token = _r.creds.accessToken;
@@ -311,8 +320,7 @@ async function _runUnsafe(opts = {}) {
       const enabled = await readSetting(camp.tenant_id, 'bandit_enabled', { v: false });
       if (!enabled.v) continue; // this tenant has the bandit turned off
     }
-    const dryRun = opts.dryRun !== undefined ? !!opts.dryRun
-      : !!(await readSetting(camp.tenant_id, 'bandit_dry_run', { v: true })).v;
+    const dryRun = true; // provider writes hard-disabled — analysis/log only
     const r = await _runOneCampaign({ camp, dryRun, runId, perRunLeft });
     totalApplied += (r.applied || 0);
     totalErrors  += (r.errors  || 0);
@@ -328,11 +336,13 @@ async function _runUnsafe(opts = {}) {
   };
 }
 
-async function runBanditOnce(opts = {}) {
-  if (_running) return { ok: false, error: 'a bandit run is already in flight — try again shortly' };
-  _running = true;
-  try { return await _runUnsafe(opts); }
-  finally { _running = false; }
+// Provider-write kill switch. Denies at immediate entry — before the run mutex,
+// DB/credential preparation, provider reads, or any network I/O — and takes no
+// arguments, so no caller option (force, dryRun, tenant, API key, injected deps)
+// can reopen it. `_runUnsafe` stays in place, unreachable, for a future reviewed
+// delivery path; the read-only helpers exported below are unaffected.
+async function runBanditOnce() {
+  return denyAdvertisingProviderMutation({ platform: 'meta', op: 'runBanditOnce' });
 }
 
 async function _safeRun() {
