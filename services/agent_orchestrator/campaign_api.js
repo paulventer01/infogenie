@@ -11,6 +11,7 @@ const { actorId } = require('./runner');
 const { extractIdempotencyKey, requestHashFrom, endpointOf, runIdempotent } = require('./idempotency');
 const { capPayload } = require('./payload_cap');
 const drafts = require('./campaign_drafts');
+const publishRequests = require('./campaign_publish_requests');
 
 function guardPerm(req, res, key) {
   let allowed = false;
@@ -144,6 +145,27 @@ router.post('/:id/approve', capPayload, wrap(GATE_PERMISSION.campaign_publishing
     };
   }
   return { status: run.status, body: run.body };
+}, { rejectApiKey: true }));
+
+router.post('/:id/publishing-requests', capPayload, wrap(GATE_PERMISSION.campaign_publishing, async (req, tid, userId, pool) => {
+  const body = bodyOf(req);
+  tenantMismatch(body, tid);
+  const key = String(body.idempotency_key || extractIdempotencyKey(req) || '').trim();
+  if (!key) fail('validation_failed', { field: 'idempotency_key' });
+  const { row, replay } = await publishRequests.createPublishRequest(pool, {
+    tenantId: tid, userId, draftId: String(req.params.id || ''),
+    idempotencyKey: key, body, bodyTenantId: body.tenant_id,
+  });
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      replay: !!replay,
+      published: false,
+      external_action_taken: false,
+      request: publishRequests.publicRequest(row),
+    },
+  };
 }, { rejectApiKey: true }));
 
 router.post('/:id/revoke', capPayload, wrap(GATE_PERMISSION.campaign_publishing, async (req, tid, userId, pool) => {
