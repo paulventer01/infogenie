@@ -138,7 +138,9 @@ async function seedBoundGraph(p, tenantId, host, userId, opts = {}) {
   });
   const outboxId = opts.outboxId || nid('obx');
   await insertOutbox(p, tenantId, host, outboxId, opts);
-  const intent = await insertIntent(p, tenantId, host, draftId, pubId, reqId, { ...opts, outboxId });
+  const intent = await insertIntent(p, tenantId, host, draftId, pubId, reqId, {
+    requestedBy: userId, ...opts, outboxId,
+  });
   const intentRow = (await p.query(
     `SELECT * FROM orchestrator_campaign_delivery_intents WHERE tenant_id=$1 AND id=$2`,
     [tenantId, intent.id]
@@ -308,26 +310,26 @@ if (!HAS_DB) {
     const p = db.getPool();
     const graphA = await seedBoundGraph(p, tenantA, hostA, userId);
     const graphB = await seedBoundGraph(p, tenantB, hostB, userId);
-    await withTx(p, async (c) => {
-      await assert.rejects(
-        () => attempts.insertStartedAttempt(c, {
-          tenantId: tenantA,
-          intentId: graphB.intentId,
-          outboxId: graphA.outboxId,
-          draftId: graphA.draftId,
-          publishingRequestId: graphA.reqId,
-          attemptNumber: 1,
-          generation: 1,
-          leaseHolder: 'w-x',
-          leaseExpiresAt: new Date(Date.now() + D.LEASE_MS),
-          platform: 'meta',
-          intentHash: graphA.intent.intent_hash,
-        }),
-        /foreign key|violates/i
-      );
-      const nB = await attempts.nextAttemptNumber(c, { tenantId: tenantB, outboxId: graphA.outboxId });
-      assert.equal(nB, 1);
-    });
+    await assert.rejects(
+      () => withTx(p, (c) => attempts.insertStartedAttempt(c, {
+        tenantId: tenantA,
+        intentId: graphB.intentId,
+        outboxId: graphA.outboxId,
+        draftId: graphA.draftId,
+        publishingRequestId: graphA.reqId,
+        attemptNumber: 1,
+        generation: 1,
+        leaseHolder: 'w-x',
+        leaseExpiresAt: new Date(Date.now() + D.LEASE_MS),
+        platform: 'meta',
+        intentHash: graphA.intent.intent_hash,
+      })),
+      /foreign key|violates/i
+    );
+    const nB = await withTx(p, (c) => attempts.nextAttemptNumber(c, {
+      tenantId: tenantB, outboxId: graphA.outboxId,
+    }));
+    assert.equal(nB, 1);
     await withTx(p, async (c) => {
       await startAttempt(c, tenantA, graphA, 1);
     });

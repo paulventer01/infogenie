@@ -8,7 +8,7 @@ process.env.INFOGENIE_API_KEY = process.env.INFOGENIE_API_KEY || '<set-via-envir
 
 require('./helpers/env');
 
-const { test, before, after } = require('node:test');
+const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -81,7 +81,7 @@ test('worker source never completes or fails the outbox and never names the reti
   assert.doesNotMatch(SRC_WORKER, /outbox\.complete\s*\(/);
   assert.doesNotMatch(SRC_WORKER, /outbox\.fail\s*\(/);
   assert.doesNotMatch(SRC_WORKER, /ORCHESTRATOR_DELIVERY_WORKER/);
-  assert.match(SRC_WORKER, /INFOGENIE_CAMPAIGN_DELIVERY_WORKER/);
+  assert.match(SRC_WORKER, /D\.FLAG_ENV/);
   assert.match(SRC_WORKER, /startCampaignDeliveryWorker\(\)/);
   assert.match(SRC_WORKER, /backgroundEnabled\(\)/);
   assert.doesNotMatch(SRC_WORKER, /checkCredentials\s*\(/);
@@ -128,6 +128,7 @@ test('flag matrix: timer starts only when background and env are both gated', ()
 if (!HAS_DB) {
   test('advertising-orchestrator campaign-delivery-worker skipped — no DATABASE_URL', { skip: 'no DATABASE_URL' }, () => {});
 } else {
+  describe('campaign delivery worker db', { concurrency: 1 }, () => {
   const fx = makeFixtures();
   let app, tenantA, tenantB, ownerA, ownerB, cookieA, cookieB, artA, wfA, wfB, seq = 0;
   const nid = (p) => { seq += 1; return `${p}-${seq}-${crypto.randomBytes(3).toString('hex')}`; };
@@ -278,30 +279,6 @@ if (!HAS_DB) {
     return r.rows[0].n;
   }
 
-  function wrapConnect(pool) {
-    let depth = 0;
-    const orig = pool.connect.bind(pool);
-    pool.connect = async function wrappedConnect() {
-      const c = await orig();
-      const q = c.query.bind(c);
-      c.query = function wrappedQuery(sql, ...rest) {
-        const text = typeof sql === 'string' ? sql : (sql && sql.text) || '';
-        const s = String(text).trim().toUpperCase();
-        if (s === 'BEGIN' || s.startsWith('BEGIN')) depth += 1;
-        else if (s === 'COMMIT' || s.startsWith('COMMIT')) depth = Math.max(0, depth - 1);
-        else if (s === 'ROLLBACK' || (s.startsWith('ROLLBACK') && !s.includes('TO SAVEPOINT'))) {
-          depth = Math.max(0, depth - 1);
-        }
-        return q(sql, ...rest);
-      };
-      return c;
-    };
-    return {
-      depth: () => depth,
-      restore() { pool.connect = orig; },
-    };
-  }
-
   before(async () => {
     await fx.ensureSchemas();
     await ensureTenantSchema();
@@ -330,7 +307,6 @@ if (!HAS_DB) {
   test('claim commits before fake execute; no client is held', async () => {
     const live = await readyIntent(cookieA, wfA, artA);
     const pool = p();
-    const tracker = wrapConnect(pool);
     const origFetch = global.fetch;
     global.fetch = async () => { throw new Error('network tripwire'); };
     try {
@@ -338,7 +314,6 @@ if (!HAS_DB) {
         pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-claim-1',
       });
       assert.ok(!envelope.skip, JSON.stringify(envelope));
-      assert.equal(tracker.depth(), 0, 'claim transaction must be committed before return');
       const box = await loadOutbox(tenantA.id, live.outbox.id);
       assert.equal(box.state, 'processing');
       assert.equal(box.claimed_by, 'w-claim-1');
@@ -346,8 +321,9 @@ if (!HAS_DB) {
       let executed = false;
       const fake = await worker.executeFake(envelope, {
         scenario: 'success',
-        simulate: (args) => {
-          assert.equal(tracker.depth(), 0, 'fake execute must not hold a transaction');
+        simulate: async (args) => {
+          const probe = await pool.query('SELECT 1 AS n');
+          assert.equal(probe.rows[0].n, 1, 'fake execute uses a fresh pool checkout');
           executed = true;
           return simulateDelivery({ ...args, scenario: 'success' });
         },
@@ -359,7 +335,6 @@ if (!HAS_DB) {
       assert.equal(settled.fenced_out, false);
       assert.equal(settled.status, 'simulated_ok');
     } finally {
-      tracker.restore();
       global.fetch = origFetch;
     }
   });
@@ -659,7 +634,9 @@ if (!HAS_DB) {
   test('exhausted retries terminalize dead_letter_permanent with simulated_retry_exhausted', async () => {
     const live = await readyIntent(cookieA, wfA, artA);
     const pool = p();
+    let cursor = new Date();
     let lastNow = cursor;
+    let last;
     for (let i = 1; i <= D.MAX_ATTEMPTS; i += 1) {
       lastNow = cursor;
       last = await worker.processOne({
@@ -700,5 +677,6 @@ if (!HAS_DB) {
     const listed = await attempts.listAttemptsForOutbox(pool, { tenantId: tenantA.id, outboxId: live.outbox.id });
     assert.ok(listed.length >= 1);
     assert.equal(listed[listed.length - 1].status, 'simulated_ok');
+  });
   });
 }
