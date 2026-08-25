@@ -20,12 +20,10 @@ const PER_TENANT_CAP = 20;
 const PARK_SET = new Set(D.TERMINAL_PARK_STATUSES);
 const ERROR_CODE_RE = /^[a-z0-9_]{1,40}$/;
 const AUDIT_DETAIL_KEYS = Object.freeze([
-  'action', 'from', 'to', 'state', 'gate', 'version',
-  'intent_id', 'request_id', 'draft_id', 'outbox_id',
   'attempt_id', 'attempt_number', 'generation',
-  'status', 'scenario', 'error_code', 'retryable',
-  'platform', 'connector', 'simulated', 'published', 'external_action_taken',
-  'contract_version', 'operation', 'parked',
+  'intent_id', 'outbox_id', 'draft_id', 'request_id',
+  'platform', 'status', 'scenario', 'retryable', 'error_code',
+  'simulated', 'published', 'external_action_taken', 'lease_holder',
 ]);
 
 let tickActive = false;
@@ -478,31 +476,22 @@ async function settleCampaignDeliveryAttempt(envelope, fakeResult, opts = {}) {
       workflowId,
       actorUserId,
       detail: {
-        action: 'simulate',
-        from: 'started',
-        to: mapped.status,
-        state: box.state,
-        gate: D.GATE,
-        version: 1,
-        intent_id: attempt.intent_id,
-        request_id: attempt.publishing_request_id,
-        draft_id: attempt.draft_id,
-        outbox_id: attempt.outbox_id,
         attempt_id: attempt.id,
         attempt_number: Number(attempt.attempt_number),
         generation: Number(attempt.generation),
+        intent_id: attempt.intent_id,
+        outbox_id: attempt.outbox_id,
+        draft_id: attempt.draft_id,
+        request_id: attempt.publishing_request_id,
+        platform: attempt.platform,
         status: mapped.status,
         scenario: mapped.scenario,
-        error_code: mapped.errorCode,
         retryable: mapped.retryable,
-        platform: attempt.platform,
-        connector: D.CONNECTOR,
+        error_code: mapped.errorCode,
         simulated: true,
         published: false,
         external_action_taken: false,
-        contract_version: D.CONTRACT_VERSION,
-        operation: D.OPERATION,
-        parked: mapped.park === true,
+        lease_holder: attempt.lease_holder,
       },
     });
     await c.query('COMMIT');

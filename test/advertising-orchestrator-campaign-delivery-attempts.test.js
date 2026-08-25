@@ -264,6 +264,7 @@ if (!HAS_DB) {
       assert.equal(abandoned.status, 'abandoned_lease');
       assert.equal(abandoned.error_code, 'simulated_lease_expired');
       assert.equal(abandoned.retryable, true);
+      assert.strictEqual(abandoned.scenario, null);
       assert.ok(abandoned.settled_at);
       assert.equal(abandoned.claim_token, first.claim_token);
       const n2 = await attempts.nextAttemptNumber(c, { tenantId: tenantA, outboxId: graph.outboxId });

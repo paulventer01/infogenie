@@ -105,7 +105,7 @@ async function abandonExpiredLease(client, o) {
     tenantId: o.tenantId,
     attemptId: o.attemptId,
     status: 'abandoned_lease',
-    scenario: o.scenario == null ? 'lease' : o.scenario,
+    scenario: o.scenario == null ? null : o.scenario,
     errorCode: 'simulated_lease_expired',
     retryable: true,
     settledAt: o.settledAt || new Date(),
