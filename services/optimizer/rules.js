@@ -3,7 +3,6 @@
 // are crossed. Every decision is logged to optimizer_actions.
 const _db = require('../../db');
 const { applyChange, platformConnected } = require('./platforms');
-const { makeSettingsCache } = require('./schema');
 
 async function _windowStats(campaignId, days = 7) {
   const r = await _db.getPool().query(`
@@ -90,12 +89,9 @@ async function runOptimizerOnce(opts = {}) {
   const runId  = `run_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
   const camps  = await _db.getPool().query(`SELECT * FROM ad_campaigns WHERE optimizer_enabled = true AND status != 'archived'`);
   const results = [];
-  // dry_run is a per-tenant setting now — read it per campaign's tenant (cached).
-  const readSetting = makeSettingsCache();
   for (const c of camps.rows) {
     try {
-      const dryRun = opts.dryRun !== undefined ? !!opts.dryRun
-        : !!(await readSetting(c.tenant_id, 'dry_run', { v: true })).v;
+      const dryRun = true; // provider writes hard-disabled — analysis/log only
       results.push({ id: c.id, name: c.name, ...(await evaluateCampaign(c, runId, dryRun)) });
     }
     catch (e) { results.push({ id: c.id, name: c.name, decision: 'error', error: e.message }); }

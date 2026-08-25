@@ -17,6 +17,10 @@ const https = require('https');
 const _db = require('../../db');
 const { makeSettingsCache } = require('./schema');
 const { resolveMetaAdsCredentials } = require('../credentials/vault');
+const {
+  assertAdvertisingProviderMutationAllowed,
+  denyAdvertisingProviderMutation,
+} = require('../security/advertising_provider_mutations');
 
 const STALE_AGE_HOURS = 72;
 const CTR_FLOOR       = 0.005;   // 0.5% — below this an ad with spend > floor is stale
@@ -127,6 +131,11 @@ async function _generateImage({ headline, body }) {
 
 // ── Upload base64 image to Meta /adimages, return image_hash ───────────────
 async function _uploadImageToMeta(adAccountId, b64, userId = null) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'meta', op: 'uploadImageToMeta' });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'meta', op: 'uploadImageToMeta' });
+  }
   const _r = await resolveMetaAdsCredentials(userId);
   if (!_r.ok) return { ok: false, error: _r.error };
   const token = _r.creds.accessToken;
@@ -144,6 +153,11 @@ async function _uploadImageToMeta(adAccountId, b64, userId = null) {
 
 // ── Create ad creative on Meta, return creative_id ─────────────────────────
 async function _createMetaCreative(adAccountId, pageId, { headline, body, cta, link_url, image_hash }, userId = null) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'meta', op: 'createMetaCreative' });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'meta', op: 'createMetaCreative' });
+  }
   const _r = await resolveMetaAdsCredentials(userId);
   if (!_r.ok) return { ok: false, error: _r.error };
   const token = _r.creds.accessToken;
@@ -172,6 +186,11 @@ async function _createMetaCreative(adAccountId, pageId, { headline, body, cta, l
 
 // ── Create the new (PAUSED) ad on Meta ─────────────────────────────────────
 async function _createMetaAd(adAccountId, adsetId, creativeId, name, userId = null) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'meta', op: 'createMetaAd' });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'meta', op: 'createMetaAd' });
+  }
   const _r = await resolveMetaAdsCredentials(userId);
   if (!_r.ok) return { ok: false, error: _r.error };
   const token = _r.creds.accessToken;
@@ -191,6 +210,11 @@ async function _createMetaAd(adAccountId, adsetId, creativeId, name, userId = nu
 
 // ── Pause the old underperforming Meta ad ──────────────────────────────────
 async function _pauseMetaAd(adId, userId = null) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'meta', op: 'pauseMetaAd', adId });
+  } catch (e) {
+    return denyAdvertisingProviderMutation({ platform: 'meta', op: 'pauseMetaAd' });
+  }
   const _r = await resolveMetaAdsCredentials(userId);
   if (!_r.ok) return { ok: false, error: _r.error };
   const token = _r.creds.accessToken;
@@ -335,14 +359,13 @@ async function _runUnsafe(opts = {}) {
   let refreshed = 0, scanned = 0, skipped = 0, errors = 0;
   // Declared at function scope so the summary return below can reference it even
   // when there are no campaigns to iterate (otherwise: "dryRun is not defined").
-  let dryRun = opts.dryRun !== undefined ? !!opts.dryRun : true;
+  let dryRun = true; // provider writes hard-disabled — analysis/log only
   outer: for (const camp of camps.rows) {
     if (!opts.force) {
       const enabled = await readSetting(camp.tenant_id, 'creative_refresh_enabled', { v: true });
       if (!enabled.v) continue; // this tenant has creative refresh turned off
     }
-    dryRun = opts.dryRun !== undefined ? !!opts.dryRun
-      : !!(await readSetting(camp.tenant_id, 'creative_refresh_dry_run', { v: true })).v;
+    dryRun = true;
     const adsR = await fetchActiveAdsMeta(camp.platform_camp_id);
     if (!adsR.ok) { errors++; continue; }
     for (const ad of adsR.ads) {

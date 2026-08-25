@@ -1660,70 +1660,18 @@ function buildLaunchModal(camp, idx) {
     //   that's idempotent via ON CONFLICT (platform, platform_camp_id).)
     const _localCampId = 'local_' + Date.now();
 
-    // ── Call real ad platform API in the background ───────────────────────────
+    // ── Provider launch hard-disabled (legacy write bypass closed) ───────────
+    // Do not call /api/launch/* — those routes refuse before vault/network.
+    // Campaign remains tracked locally when credentials are present.
     if (isPlatformConnected) {
-      const _objEl = document.getElementById('lm-objective');
-      const _finalObjective = _objEl ? _objEl.value : 'performance';
-      const apiBody = JSON.stringify({ campaignName: finalName, budget: finalBudgetNum, startDate: finalDate, endDate: finalEndDate, objective: _finalObjective });
-      const apiUrl  = platformKey.includes('google') ? '/api/launch/google-ads'
-                    : (platformKey.includes('meta') || platformKey.includes('facebook')) ? '/api/launch/meta'
-                    : (platformKey.includes('microsoft') || platformKey.includes('bing')) ? '/api/launch/microsoft-ads'
-                    : '/api/launch/tiktok';
-      fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: apiBody })
-        .then(r => r.json())
-        .then(apiResult => {
-          // Register with whichever id is real-or-fallback. Single row only.
-          if (apiResult && apiResult.success && apiResult.campaignId) {
-            _registerTracked(apiResult.campaignId);
-          } else {
-            _registerTracked(_localCampId);
-          }
-          const statusEl = document.getElementById(apiStatusId);
-          if (!statusEl) return; // user navigated away — that's fine
-          if (apiResult.success) {
-            launchRecord.status = 'active';
-            launchRecord._platformCampaignId = apiResult.campaignId;
-            statusEl.innerHTML = `<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px 16px;font-size:0.8rem;color:#065F46;line-height:1.7">
-              <div style="font-weight:700;margin-bottom:4px">✅ Pushed live to ${apiResult.platform}</div>
-              <div>${apiResult.message}</div>
-              ${apiResult.dashboardUrl ? `<a href="${apiResult.dashboardUrl}" target="_blank" style="color:#059669;font-weight:600;font-size:0.78rem">Open in ${apiResult.platform} dashboard →</a>` : ''}
-            </div>
-            ${apiResult.optimizerEnabled === false ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px 16px;font-size:0.8rem;color:#92400E;line-height:1.7;margin-top:8px">
-              <div style="font-weight:700;margin-bottom:4px">⚠️ Automatic optimization not enabled</div>
-              <div>${apiResult.optimizerWarning || 'This campaign could not be added to the AI Optimizer, so it won\'t be auto-managed. Retry the launch or check your workspace.'}</div>
-            </div>` : ''}`;
-            // Update emoji to rocket
-            const emojiEl = statusEl.closest('[style*="padding:36px"]')?.querySelector('[style*="font-size:3rem"]');
-            if (emojiEl) emojiEl.textContent = '🚀';
-            showToast(`🚀 Campaign pushed live to ${apiResult.platform}!`);
-          } else {
-            // Determine if it's a credentials/auth issue or a real error
-            const errMsg  = apiResult.error || '';
-            const isAuth  = errMsg.toLowerCase().includes('oauth') || errMsg.toLowerCase().includes('credentials') ||
-                            errMsg.toLowerCase().includes('not found') || errMsg.toLowerCase().includes('unauthor') ||
-                            errMsg.toLowerCase().includes('not configured') || errMsg.toLowerCase().includes('token');
-            if (isAuth) {
-              // Soft info note — campaign is safely tracked, this is just a credentials gap
-              statusEl.innerHTML = `<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:12px 16px;font-size:0.8rem;color:#0C4A6E;line-height:1.7">
-                <div style="font-weight:700;margin-bottom:4px">📊 Campaign tracked in InfoGenie</div>
-                <div style="margin-bottom:6px">Your ${finalPlatform} ad account credentials need connecting to push campaigns live automatically.</div>
-                <a href="#" onclick="closeCampLaunchRichModal();navigateTo('settings');return false;" style="color:#0369A1;font-weight:600;font-size:0.78rem">Connect ${finalPlatform} in Settings →</a>
-              </div>`;
-            } else {
-              // Actual API error — show detail but still reassure
-              statusEl.innerHTML = `<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:12px 16px;font-size:0.8rem;color:#0C4A6E;line-height:1.7">
-                <div style="font-weight:700;margin-bottom:4px">📊 Campaign saved — platform sync pending</div>
-                <div style="font-size:0.75rem;color:#64748B;margin-bottom:6px">${errMsg.substring(0, 120)}</div>
-                <a href="#" onclick="closeCampLaunchRichModal();navigateTo('settings');return false;" style="color:#0369A1;font-weight:600;font-size:0.78rem">Review credentials in Settings →</a>
-              </div>`;
-            }
-          }
-        })
-        .catch(() => {
-          // Network error reaching our own /api/launch/* endpoint — still
-          // register the local placeholder so the user sees the campaign.
-          _registerTracked(_localCampId);
-        });
+      _registerTracked(_localCampId);
+      const statusEl = document.getElementById(apiStatusId);
+      if (statusEl) {
+        statusEl.innerHTML = `<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:12px 16px;font-size:0.8rem;color:#9A3412;line-height:1.7">
+          <div style="font-weight:700;margin-bottom:4px">Provider launch disabled</div>
+          <div>Live pushes to Google / Meta / Microsoft / TikTok are closed. Save a draft and use human approval + guarded publishing requests instead.</div>
+        </div>`;
+      }
     } else {
       // No platform credentials configured — register a local placeholder so
       // the campaign appears under Tracked Campaigns regardless.
@@ -6572,20 +6520,18 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   
-  // Launch campaign button (header; absent when the campaigns view is rendered by React)
+  // Launch campaign button — provider write path closed
   const launchCampaignBtn = document.getElementById('launchCampaignBtn');
-  if (launchCampaignBtn) launchCampaignBtn.addEventListener('click', () => {
-    if (typeof window._igLaunch === 'function' && window._lastCampRecs && window._lastCampRecs.length) {
-      window._igLaunch(0);
-      return;
-    }
-    const modal = document.getElementById('launchModal');
-    if (modal) {
-      modal.querySelector('.modal-title').textContent = 'Launch Campaign';
-      modal.classList.remove('hidden');
-      modal.style.display = 'flex';
-    }
-  });
+  if (launchCampaignBtn) {
+    launchCampaignBtn.disabled = true;
+    launchCampaignBtn.setAttribute('aria-disabled', 'true');
+    launchCampaignBtn.title = 'Provider launch is disabled. Use campaign drafting and approval.';
+    launchCampaignBtn.textContent = 'Launch disabled';
+    launchCampaignBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  }
   
   // Auto-target audience (absent when the audience view is rendered by React)
   const autoTargetBtn = document.getElementById('autoTargetBtn');
