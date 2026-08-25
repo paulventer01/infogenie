@@ -180,6 +180,15 @@ async function insertPublishRequestAudit(c, { tenantId, workflowId, actorUserId,
   );
 }
 
+function lockPublishRequest(c, tenantId, draftId, requestId) {
+  if (!draftId || !requestId) return Promise.resolve(null);
+  return one(c,
+    `SELECT * FROM orchestrator_campaign_publish_requests
+      WHERE tenant_id=$1 AND draft_id=$2 AND id=$3
+      FOR UPDATE`,
+    [tenantId, draftId, requestId]);
+}
+
 async function loadByKey(c, tenantId, key) {
   return one(c,
     `SELECT * FROM orchestrator_campaign_publish_requests WHERE tenant_id=$1 AND idempotency_key=$2`,
@@ -339,4 +348,5 @@ module.exports = {
   createPublishRequest,
   publicRequest,
   requestHashOf,
+  lockPublishRequest,
 };

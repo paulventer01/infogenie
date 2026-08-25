@@ -106,6 +106,56 @@ async function enqueue(client, {
   return existing.rows[0];
 }
 
+const DELIVERY_V1_KEYS = new Set(['id', 'tenantId', 'workflowId', 'credentialRef', 'idempotencyKey']);
+
+async function enqueueCampaignDeliveryV1(client, input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input) || Buffer.isBuffer(input)) {
+    fail('validation_failed');
+  }
+  for (const k of Object.keys(input)) {
+    if (!DELIVERY_V1_KEYS.has(k)) fail('validation_failed', { field: k });
+  }
+  const id = String(input.id || '');
+  const tenantId = input.tenantId;
+  const workflowId = input.workflowId;
+  const credentialRef = input.credentialRef;
+  const hashedKey = input.idempotencyKey;
+  if (!id || id.length > 128) fail('validation_failed', { field: 'id' });
+  if (tenantId == null) fail('validation_failed');
+  if (!workflowId) fail('validation_failed');
+  if (typeof hashedKey !== 'string' || !/^cdv1:[0-9a-f]{64}$/.test(hashedKey)) {
+    fail('validation_failed', { field: 'idempotency_key' });
+  }
+  if (credentialRef != null && credentialRef !== '' && normalizeCredentialRef(credentialRef) == null) {
+    fail('validation_failed');
+  }
+  const wf = await client.query(
+    `SELECT id FROM orchestrator_workflows WHERE id=$1 AND tenant_id=$2`,
+    [workflowId, tenantId]
+  );
+  if (!wf.rowCount) fail('not_found');
+  const safe = sanitizePayload({
+    workflowId,
+    operation: 'create_provider_draft',
+    credentialRef,
+  });
+  const ref = safe.credential_ref;
+  const inserted = await client.query(
+    `INSERT INTO orchestrator_outbox
+       (id, tenant_id, workflow_id, destination, operation, payload, credential_ref,
+        state, max_attempts, idempotency_key)
+     VALUES ($1,$2,$3,'internal','create_provider_draft',$4::jsonb,$5,'pending',$6,$7)
+     RETURNING *`,
+    [
+      id, tenantId, workflowId,
+      JSON.stringify(safe), ref,
+      MAX_ATTEMPTS_DEFAULT,
+      hashedKey,
+    ]
+  );
+  return inserted.rows[0];
+}
+
 async function claim(client, {
   tenantId, workerId, limit = 1, operation,
 } = {}) {
@@ -217,6 +267,7 @@ async function processOnce(pool, { tenantId, workerId, failCode } = {}) {
 
 module.exports = {
   enqueue,
+  enqueueCampaignDeliveryV1,
   claim,
   complete,
   fail: failRow,
