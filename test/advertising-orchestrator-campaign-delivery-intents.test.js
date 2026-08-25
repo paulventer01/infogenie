@@ -4,7 +4,7 @@ process.env.PERMISSION_ENFORCEMENT = 'on';
 process.env.MULTITENANT_ENFORCEMENT = 'on';
 process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/infogenie';
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
-process.env.INFOGENIE_API_KEY = process.env.INFOGENIE_API_KEY || 'dev-infogenie-api-key';
+process.env.INFOGENIE_API_KEY = process.env.INFOGENIE_API_KEY || '<set-via-environment>';
 
 require('./helpers/env');
 

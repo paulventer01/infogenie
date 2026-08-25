@@ -78,7 +78,7 @@ sudo pg_ctlcluster 16 main start
 export DATABASE_URL="postgres://postgres:postgres@localhost:5432/infogenie"
 export CREDENTIAL_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 export SESSION_SECRET="dev-session-secret"
-export INFOGENIE_API_KEY="dev-infogenie-api-key"
+export INFOGENIE_API_KEY="<set-via-environment>"
 npm run dev
 ```
 
