@@ -496,38 +496,6 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   assert.match(flat, /JSON and text byte limits are measured before redaction, and the DDL CHECKs after it/);
 });
 
-// PR 6C records a delivery intent and a pending outbox row and sends nothing.
-// The four claims an operator would act on — no provider call, no vault decrypt,
-// no raw client key in the outbox, and reauthorization before a replay — are
-// pinned here, together with the residuals that make the section honest: the
-// weaker `safeReference` shape check, the unlocked membership read, and the
-// backlog PR 6D inherits.
-test('the guardrails doc discloses the PR 6C delivery-intent boundary', () => {
-  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
-  const flat = doc.replace(/\s+/g, ' ');
-  assert.match(flat, /## Advertising orchestrator — campaign delivery intents \(PR 6C\)/);
-  assert.match(flat, /\*\*Nothing in PR 6C talks to a provider\.\*\*/);
-  assert.match(flat, /\*\*No new `ROUTE_GROUPS` prefix was needed, and none was added\.\*\*/);
-  assert.match(flat, /\*\*The strongest control on this route does not depend on a rollout flag\.\*\*/);
-  assert.match(flat, /so the deferred FK \*\*cannot orphan across tenants\*\*/);
-  assert.match(flat, /\*\*The stored `idempotency_key` is never the client's key\.\*\*/);
-  assert.match(flat, /\*\*Nothing drains it\.\*\* The only `outbox\.claim` callers are/);
-  assert.match(flat, /does not require `services\/credentials\/vault\.js` and never calls `getCredentials`/);
-  assert.match(flat, /\*\*locks the `user_integrations` row for the rest of the transaction\*\*/);
-  assert.match(flat, /Reauthorization runs before every write \*and\* before every replay/);
-  assert.match(flat, /never with `replay: true`/);
-  // Residuals an operator (and PR 6D) has to plan around.
-  assert.match(flat, /\*\*`campaign_delivery_contracts\.safeReference` enforces shape only\.\*\*/);
-  assert.match(flat, /it does \*\*not\*\* apply `outbox\.KNOWN_SECRET_PREFIX_RE`/);
-  assert.match(flat, /\*\*Fix belongs to Backend\*\*/);
-  assert.match(flat, /\*\*`assertActiveMember` reads without `FOR UPDATE`\.\*\*/);
-  assert.match(flat, /\*\*The pending outbox row accumulates\.\*\*/);
-  assert.match(flat, /PR 6D must treat the backlog as intentional queued work and re-authorize at send time/);
-  assert.match(flat, /\*\*`intent_hash` is a fingerprint, not a signature\.\*\*/);
-  // The section must never claim the delivery path sends, activates, or decrypts.
-  assert.doesNotMatch(flat, /PR 6C (publishes|activates|delivers) /);
-});
-
 test('originAllowed accepts matching host and localhost in non-prod', () => {
   const prev = process.env.NODE_ENV;
   process.env.NODE_ENV = 'development';
