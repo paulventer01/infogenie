@@ -152,6 +152,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/agent-orchestrator/proposals', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
   { prefix: '/api/agent-orchestrator/static-images', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
   { prefix: '/api/agent-orchestrator/video-jobs', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
+  { prefix: '/api/agent-orchestrator/campaign-drafts', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
   { prefix: '/api/ai-governance',             view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
   { prefix: '/api/ai-traces',                 view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
   { prefix: '/api/ai-feedback',               view: 'grow.campaigns.view',     write: 'grow.campaigns.view' },

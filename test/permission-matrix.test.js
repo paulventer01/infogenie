@@ -328,6 +328,22 @@ test('orchestrator: the workflows route group is prefix-anchored', () => {
     matrix.requiredPermissionForRequest('/api/agent-orchestrator/video-jobs', 'POST').permission,
     'orchestrator.workflows.view'
   );
+  assert.equal(
+    matrix.requiredPermissionForRequest('/api/agent-orchestrator/campaign-drafts', 'GET').permission,
+    'orchestrator.workflows.view'
+  );
+  assert.equal(
+    matrix.requiredPermissionForRequest('/api/agent-orchestrator/campaign-drafts', 'POST').permission,
+    'orchestrator.workflows.view'
+  );
+  assert.equal(
+    matrix.requiredPermissionForRequest('/api/agent-orchestrator/campaign-drafts/x', 'GET').permission,
+    'orchestrator.workflows.view'
+  );
+  assert.equal(
+    matrix.requiredPermissionForRequest('/api/agent-orchestrator/campaign-drafts/x/approve', 'POST').permission,
+    'orchestrator.workflows.view'
+  );
 });
 
 test('orchestrator: read-only and restricted roles gain no write authority', () => {

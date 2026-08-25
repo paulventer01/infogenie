@@ -64,7 +64,7 @@ async function latestApproval(pool, tenantId, workflowId, gate) {
 const AUDIT_DETAIL_KEYS = Object.freeze([
   'from', 'to', 'state', 'gate', 'phase', 'version', 'action',
   'error_code', 'retry_class', 'step_id', 'lease_cleared', 'expired', 'stub',
-  'reservation_id', 'block_reason', 'amount_micros', 'cost_status',
+  'reservation_id', 'block_reason', 'amount_micros', 'cost_status', 'revoke_reason',
 ]);
 const AUDIT_VALUE_MAX = 120;
 

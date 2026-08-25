@@ -198,6 +198,8 @@ test('audit detail is an allowlist: brief material cannot reach the trail', () =
   assert.ok(!JSON.stringify(safe).includes('SECRET_BRIEF_CANARY'));
   assert.ok(!JSON.stringify(safe).includes('sk-live'));
   assert.strictEqual(safeAuditDetail({ state: 'x'.repeat(500) }).state.length, 120);
+  const revoke = safeAuditDetail({ revoke_reason: 'r'.repeat(500), reason: 'must-not-pass' });
+  assert.deepStrictEqual(revoke, { revoke_reason: 'r'.repeat(120) });
 });
 
 test('transition table: approve/resume from draft is invalid_transition', () => {
