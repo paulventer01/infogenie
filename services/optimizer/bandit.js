@@ -336,11 +336,13 @@ async function _runUnsafe(opts = {}) {
   };
 }
 
-async function runBanditOnce(opts = {}) {
-  if (_running) return { ok: false, error: 'a bandit run is already in flight — try again shortly' };
-  _running = true;
-  try { return await _runUnsafe(opts); }
-  finally { _running = false; }
+// Provider-write kill switch. Denies at immediate entry — before the run mutex,
+// DB/credential preparation, provider reads, or any network I/O — and takes no
+// arguments, so no caller option (force, dryRun, tenant, API key, injected deps)
+// can reopen it. `_runUnsafe` stays in place, unreachable, for a future reviewed
+// delivery path; the read-only helpers exported below are unaffected.
+async function runBanditOnce() {
+  return denyAdvertisingProviderMutation({ platform: 'meta', op: 'runBanditOnce' });
 }
 
 async function _safeRun() {

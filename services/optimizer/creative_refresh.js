@@ -387,13 +387,15 @@ async function _runUnsafe(opts = {}) {
            ranAt: new Date().toISOString() };
 }
 
-// Single mutex-guarded entry point used by BOTH the cron and the HTTP /run-now
-// endpoint, so they cannot run concurrently and double-spend on OpenAI/Meta.
-async function runCreativeRefreshOnce(opts = {}) {
-  if (_running) return { ok: false, error: 'a creative-refresh run is already in flight — try again shortly' };
-  _running = true;
-  try { return await _runUnsafe(opts); }
-  finally { _running = false; }
+// Single entry point used by BOTH the cron and the HTTP /run-now endpoint.
+// Provider-write kill switch: denies at immediate entry — before the run mutex,
+// DB/credential preparation, AI creative generation, provider reads, or any
+// network I/O — and takes no arguments, so no caller option (force, dryRun,
+// tenant, API key, injected deps) can reopen it. `_runUnsafe` stays in place,
+// unreachable, for a future reviewed delivery path; the read-only helpers
+// exported below are unaffected.
+async function runCreativeRefreshOnce() {
+  return denyAdvertisingProviderMutation({ platform: 'meta', op: 'runCreativeRefreshOnce' });
 }
 
 async function _safeRun() {
