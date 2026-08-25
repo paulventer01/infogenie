@@ -35,10 +35,20 @@ function assertAdvertisingProviderMutationAllowed(context = {}) {
 
 /**
  * Non-throwing deny payload for HTTP handlers and soft call sites.
+ * Mandatory deny fields always win over caller extras.
  * @param {object} [extra]
  */
 function denyAdvertisingProviderMutation(extra = {}) {
+  const safeExtra = (extra && typeof extra === 'object') ? { ...extra } : {};
+  delete safeExtra.ok;
+  delete safeExtra.success;
+  delete safeExtra.blocked;
+  delete safeExtra.code;
+  delete safeExtra.error;
+  delete safeExtra.published;
+  delete safeExtra.external_action_taken;
   return {
+    ...safeExtra,
     ok: false,
     success: false,
     blocked: true,
@@ -46,7 +56,6 @@ function denyAdvertisingProviderMutation(extra = {}) {
     error: MESSAGE,
     published: false,
     external_action_taken: false,
-    ...extra,
   };
 }
 

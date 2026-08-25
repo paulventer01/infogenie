@@ -102,6 +102,18 @@ test('guard: default-deny with no escape hatch', () => {
   assertDenied(d, 'deny payload');
   assert.equal(d.route, 'unit');
   assert.equal(MESSAGE.includes('disabled'), true);
+  // Extras must not override mandatory deny fields (Security finding).
+  const hijack = denyAdvertisingProviderMutation({
+    published: true,
+    blocked: false,
+    ok: true,
+    code: 'open',
+    error: 'nope',
+    external_action_taken: true,
+    route: 'hijack',
+  });
+  assertDenied(hijack, 'hijack deny');
+  assert.equal(hijack.route, 'hijack');
 });
 
 test('direct import: platforms.applyChange / applyMeta never touch network', async () => {
