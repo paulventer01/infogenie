@@ -26,6 +26,7 @@ const {
 } = require('../services/security/advertising_provider_mutations');
 const security = require('../services/security');
 const platforms = require('../services/optimizer/platforms');
+const pixelManager = require('../services/pixel_manager/api');
 
 const { bootApp, request, login, makeFixtures, hasDb } = require('./helpers');
 
@@ -37,6 +38,11 @@ const LAUNCH_ROUTES = [
   '/api/launch/meta',
   '/api/launch/microsoft-ads',
   '/api/launch/tiktok',
+];
+const CAPI_ROUTES = [
+  '/api/pixel-manager/capi/meta',
+  '/api/pixel-manager/capi/linkedin',
+  '/api/pixel-manager/capi/tiktok',
 ];
 
 let networkHits = 0;
@@ -140,6 +146,7 @@ test('source: lowest-level mutation helpers call the guard before vault/network'
     'services/optimizer/creative_refresh.js',
     'services/optimizer/google_creative_refresh.js',
     'services/audiences/api.js',
+    'services/pixel_manager/api.js',
     'server.js',
   ];
   for (const rel of files) {
@@ -156,6 +163,19 @@ test('source: lowest-level mutation helpers call the guard before vault/network'
   const googleFn = serverSrc.slice(googleIdx, googleEnd);
   assert.match(googleFn, /denyAdvertisingProviderMutation/);
   assert.doesNotMatch(googleFn, /resolveGoogleAdsCredentials|callHttpsGeneric|oauth2\.googleapis/);
+
+  const pixelSrc = fs.readFileSync(path.join(ROOT, 'services/pixel_manager/api.js'), 'utf8');
+  for (const fn of ['sendMetaCapi', 'sendLinkedInCapi', 'sendTikTokCapi']) {
+    assert.match(pixelSrc, new RegExp(`function ${fn}[\\s\\S]*?assertAdvertisingProviderMutationAllowed`));
+  }
+  for (const route of ['/capi/meta', '/capi/linkedin', '/capi/tiktok']) {
+    const idx = pixelSrc.indexOf(`router.post('${route}'`);
+    assert.ok(idx >= 0, route + ' exists');
+    const end = pixelSrc.indexOf('});', idx);
+    const body = pixelSrc.slice(idx, end);
+    assert.match(body, /denyAdvertisingProviderMutation/);
+    assert.doesNotMatch(body, /access_token|getPool|_httpsPost|buildMetaCapiPayload/);
+  }
 });
 
 test('frontend: Campaigns launch action disabled', () => {
@@ -302,4 +322,60 @@ test('direct module call: applyChange with force-like payload stays denied', asy
   } finally {
     restoreNetwork();
   }
+});
+
+test('direct function: sendMetaCapi / sendLinkedInCapi / sendTikTokCapi deny before network', async () => {
+  installNetworkTripwire();
+  try {
+    assert.equal(typeof pixelManager.sendMetaCapi, 'function');
+    assert.equal(typeof pixelManager.sendLinkedInCapi, 'function');
+    assert.equal(typeof pixelManager.sendTikTokCapi, 'function');
+
+    const meta = await pixelManager.sendMetaCapi('pix_1', 'tok_secret', { data: [] });
+    assertDenied(meta, 'sendMetaCapi');
+    const li = await pixelManager.sendLinkedInCapi('tok_secret', { conversion: 'urn:x' });
+    assertDenied(li, 'sendLinkedInCapi');
+    const tt = await pixelManager.sendTikTokCapi('tok_secret', { event: 'Purchase' });
+    assertDenied(tt, 'sendTikTokCapi');
+    assert.equal(networkHits, 0);
+  } finally {
+    restoreNetwork();
+  }
+});
+
+test('session: POST /api/pixel-manager/capi/* refuse with 403 and zero network', { skip: skipDb }, async () => {
+  const beforeHits = networkHits;
+  for (const route of CAPI_ROUTES) {
+    const res = await request(appHandle.baseUrl, 'POST', route, {
+      cookie,
+      body: { event_name: 'Purchase', event_data: { email: 'probe@example.com', value: 10 } },
+    });
+    assert.equal(res.status, 403, route + ' status');
+    assertDenied(res.json, route);
+  }
+  assert.equal(networkHits, beforeHits, 'no outbound network from CAPI routes');
+});
+
+test('INFOGENIE_API_KEY: POST /api/pixel-manager/capi/* refuse with 403 and zero network', { skip: skipDb }, async () => {
+  const beforeHits = networkHits;
+  for (const route of CAPI_ROUTES) {
+    const res = await request(appHandle.baseUrl, 'POST', route, {
+      apiKey: true,
+      body: { event_name: 'Lead', event_data: { value: 1 } },
+    });
+    assert.equal(res.status, 403, route + ' api-key status');
+    assertDenied(res.json, route + ' api-key');
+  }
+  assert.equal(networkHits, beforeHits);
+});
+
+test('pixel-manager read paths remain available (configs / capi-log)', { skip: skipDb }, async () => {
+  const configs = await request(appHandle.baseUrl, 'GET', '/api/pixel-manager/configs', { cookie });
+  assert.equal(configs.status, 200, configs.text);
+  assert.equal(configs.json.ok, true);
+  assert.ok(Array.isArray(configs.json.configs));
+  const log = await request(appHandle.baseUrl, 'GET', '/api/pixel-manager/capi-log', { cookie });
+  assert.equal(log.status, 200, log.text);
+  assert.equal(log.json.ok, true);
+  assert.ok(Array.isArray(log.json.events));
 });

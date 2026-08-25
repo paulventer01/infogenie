@@ -3,6 +3,10 @@ const https  = require('https');
 const crypto = require('crypto');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const {
+  assertAdvertisingProviderMutationAllowed,
+  denyAdvertisingProviderMutation,
+} = require('../security/advertising_provider_mutations');
 
 const router = express.Router();
 
@@ -94,127 +98,33 @@ router.post('/test/:platform', async (req, res) => {
 });
 
 // POST /api/pixel-manager/capi/meta — Meta Conversions API (server-side event)
+// Hard-disabled: refuse before credential lookup, payload prep, or network I/O.
 router.post('/capi/meta', async (req, res) => {
-  const tid = await _tid(req, 'pixel:capi-meta');
-  if (!tid) return _err(res, 400, 'no_tenant');
-  const { event_name, event_data } = req.body || {};
-  if (!event_name) return _err(res, 400, 'event_name required');
-  try {
-    const p = _db.getPool();
-    const { rows } = await p.query(
-      'SELECT * FROM pixel_configs WHERE tenant_id=$1 AND platform=$2 AND enabled=true',
-      [tid, 'meta']
-    );
-    if (!rows.length) return _err(res, 404, 'no_meta_pixel_configured');
-    const cfg = rows[0];
-    if (!cfg.access_token) return _err(res, 400, 'access_token_required_for_capi');
-
-    const payload = buildMetaCapiPayload(event_name, event_data || {}, req);
-    const capiRes = await sendMetaCapi(cfg.pixel_id, cfg.access_token, payload);
-
-    await p.query(
-      `INSERT INTO capi_event_log (tenant_id,platform,event_name,payload,status,response)
-       VALUES ($1,'meta',$2,$3,$4,$5)`,
-      [tid, event_name, JSON.stringify(payload), capiRes.ok ? 'sent' : 'failed', JSON.stringify(capiRes)]
-    );
-
-    res.json({ ok: capiRes.ok, capi_response: capiRes });
-  } catch (e) { _err(res, 500, e.message); }
+  return res.status(403).json(denyAdvertisingProviderMutation({
+    route: '/api/pixel-manager/capi/meta',
+    platform: 'meta',
+    op: 'capi',
+  }));
 });
 
 // POST /api/pixel-manager/capi/linkedin — LinkedIn Conversions API
+// Hard-disabled: refuse before credential lookup, payload prep, or network I/O.
 router.post('/capi/linkedin', async (req, res) => {
-  const tid = await _tid(req, 'pixel:capi-linkedin');
-  if (!tid) return _err(res, 400, 'no_tenant');
-  const { event_name, event_data } = req.body || {};
-  if (!event_name) return _err(res, 400, 'event_name required');
-  try {
-    const p = _db.getPool();
-    const { rows } = await p.query(
-      'SELECT * FROM pixel_configs WHERE tenant_id=$1 AND platform=$2 AND enabled=true',
-      [tid, 'linkedin']
-    );
-    if (!rows.length) return _err(res, 404, 'no_linkedin_pixel_configured');
-    const cfg = rows[0];
-    if (!cfg.access_token) return _err(res, 400, 'access_token_required_for_linkedin_capi');
-
-    const data = event_data || {};
-    const emailHash = data.email
-      ? crypto.createHash('sha256').update(data.email.toLowerCase().trim()).digest('hex')
-      : null;
-
-    // LinkedIn Conversions API payload
-    const payload = {
-      conversion: `urn:lla:llaPartnerConversion:${cfg.pixel_id}`,
-      conversionHappenedAt: Date.now(),
-      conversionValue: data.value ? { currencyCode: data.currency || 'USD', amount: String(data.value) } : undefined,
-      user: {
-        userIds: emailHash ? [{ idType: 'SHA256_EMAIL', idValue: emailHash }] : [],
-        userInfo: data.url ? { linkedInFirstPartyAdsTrackingUUID: '' } : undefined,
-      },
-    };
-
-    const capiRes = await sendLinkedInCapi(cfg.access_token, payload);
-
-    await p.query(
-      `INSERT INTO capi_event_log (tenant_id,platform,event_name,payload,status,response)
-       VALUES ($1,'linkedin',$2,$3,$4,$5)`,
-      [tid, event_name, JSON.stringify(payload), capiRes.ok ? 'sent' : 'failed', JSON.stringify(capiRes)]
-    );
-
-    res.json({ ok: capiRes.ok, capi_response: capiRes });
-  } catch (e) { _err(res, 500, e.message); }
+  return res.status(403).json(denyAdvertisingProviderMutation({
+    route: '/api/pixel-manager/capi/linkedin',
+    platform: 'linkedin',
+    op: 'capi',
+  }));
 });
 
 // POST /api/pixel-manager/capi/tiktok — TikTok Events API
+// Hard-disabled: refuse before credential lookup, payload prep, or network I/O.
 router.post('/capi/tiktok', async (req, res) => {
-  const tid = await _tid(req, 'pixel:capi-tiktok');
-  if (!tid) return _err(res, 400, 'no_tenant');
-  const { event_name, event_data } = req.body || {};
-  if (!event_name) return _err(res, 400, 'event_name required');
-  try {
-    const p = _db.getPool();
-    const { rows } = await p.query(
-      'SELECT * FROM pixel_configs WHERE tenant_id=$1 AND platform=$2 AND enabled=true',
-      [tid, 'tiktok']
-    );
-    if (!rows.length) return _err(res, 404, 'no_tiktok_pixel_configured');
-    const cfg = rows[0];
-    if (!cfg.access_token) return _err(res, 400, 'access_token_required_for_tiktok_capi');
-
-    const data = event_data || {};
-    const emailHash = data.email
-      ? crypto.createHash('sha256').update(data.email.toLowerCase().trim()).digest('hex')
-      : null;
-    const phoneHash = data.phone
-      ? crypto.createHash('sha256').update(data.phone.replace(/\D/g, '')).digest('hex')
-      : null;
-
-    // TikTok Events API payload
-    const payload = {
-      pixel_code: cfg.pixel_id,
-      event: event_name,
-      event_time: Math.floor(Date.now() / 1000),
-      user: {
-        ...(emailHash  && { email: emailHash }),
-        ...(phoneHash  && { phone_number: phoneHash }),
-        ip: req.socket?.remoteAddress || '0.0.0.0',
-        user_agent: req.headers['user-agent'] || '',
-      },
-      page: { url: data.url || '' },
-      properties: data.custom_data || {},
-    };
-
-    const capiRes = await sendTikTokCapi(cfg.access_token, payload);
-
-    await p.query(
-      `INSERT INTO capi_event_log (tenant_id,platform,event_name,payload,status,response)
-       VALUES ($1,'tiktok',$2,$3,$4,$5)`,
-      [tid, event_name, JSON.stringify(payload), capiRes.ok ? 'sent' : 'failed', JSON.stringify(capiRes)]
-    );
-
-    res.json({ ok: capiRes.ok, capi_response: capiRes });
-  } catch (e) { _err(res, 500, e.message); }
+  return res.status(403).json(denyAdvertisingProviderMutation({
+    route: '/api/pixel-manager/capi/tiktok',
+    platform: 'tiktok',
+    op: 'capi',
+  }));
 });
 
 // GET /api/pixel-manager/capi-log — recent CAPI events
@@ -276,6 +186,11 @@ function _httpsPost(hostname, path, body, headers) {
 }
 
 function sendMetaCapi(pixelId, accessToken, payload) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'meta', op: 'sendMetaCapi' });
+  } catch (e) {
+    return Promise.resolve(denyAdvertisingProviderMutation({ platform: 'meta', op: 'sendMetaCapi' }));
+  }
   return _httpsPost(
     'graph.facebook.com',
     `/v18.0/${pixelId}/events?access_token=${encodeURIComponent(accessToken)}`,
@@ -284,6 +199,11 @@ function sendMetaCapi(pixelId, accessToken, payload) {
 }
 
 function sendLinkedInCapi(accessToken, payload) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'linkedin', op: 'sendLinkedInCapi' });
+  } catch (e) {
+    return Promise.resolve(denyAdvertisingProviderMutation({ platform: 'linkedin', op: 'sendLinkedInCapi' }));
+  }
   return _httpsPost(
     'api.linkedin.com',
     '/rest/conversionEvents',
@@ -297,6 +217,11 @@ function sendLinkedInCapi(accessToken, payload) {
 }
 
 function sendTikTokCapi(accessToken, payload) {
+  try {
+    assertAdvertisingProviderMutationAllowed({ platform: 'tiktok', op: 'sendTikTokCapi' });
+  } catch (e) {
+    return Promise.resolve(denyAdvertisingProviderMutation({ platform: 'tiktok', op: 'sendTikTokCapi' }));
+  }
   return _httpsPost(
     'business-api.tiktok.com',
     '/open_api/v1.3/event/track/',
@@ -330,4 +255,8 @@ function testMetaPixel(pixelId, accessToken) {
   });
 }
 
-module.exports = router;
+module.exports = Object.assign(router, {
+  sendMetaCapi,
+  sendLinkedInCapi,
+  sendTikTokCapi,
+});

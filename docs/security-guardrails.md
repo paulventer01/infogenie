@@ -2742,7 +2742,15 @@ Hard-disabled HTTP surfaces (403, no vault, no outbound):
 - `POST /api/launch/microsoft-ads`
 - `POST /api/launch/tiktok`
 - `POST /api/audiences/:id/sync-ads` (provider-writing branch)
+- `POST /api/pixel-manager/capi/meta`
+- `POST /api/pixel-manager/capi/linkedin`
+- `POST /api/pixel-manager/capi/tiktok`
 - Optimizer live-mode flips (`dryRun: false` on dry-run settings routes)
+
+Lowest-level mutation helpers (including `sendMetaCapi`, `sendLinkedInCapi`,
+`sendTikTokCapi`) call `assertAdvertisingProviderMutationAllowed` before any
+credential use or `_httpsPost`. Local pixel configuration, status, reporting,
+and other read-only pixel-manager routes stay available.
 
 Preserved (not provider mutations): read-only ad insights/analysis, campaign
 drafting and human approval, creative generation, guarded publishing requests,

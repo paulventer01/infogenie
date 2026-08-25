@@ -1,7 +1,8 @@
 // Default-deny guard for advertising-provider mutations.
 // Lowest-level gate: every provider write (campaign create/update/pause,
-// budget mutate, creative upload, audience create/upload/sync) must call
-// assert/deny here BEFORE credential lookup, vault access, or network I/O.
+// budget mutate, creative upload, audience create/upload/sync, CAPI event
+// send) must call assert/deny here BEFORE credential lookup, vault access,
+// or network I/O.
 // There is no env escape hatch — provider mutations stay closed until a
 // future, reviewed delivery path re-opens them deliberately.
 'use strict';
