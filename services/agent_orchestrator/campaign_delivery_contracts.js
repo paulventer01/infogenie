@@ -107,8 +107,68 @@ function intentHashOf(envelope) {
   return sha256Hex(out);
 }
 
+const CONNECTOR = 'fake';
+const FLAG_ENV = 'INFOGENIE_CAMPAIGN_DELIVERY_WORKER';
+const AUDIT_EVENT_SIMULATED = 'campaign_delivery_attempt_simulated';
+const MAX_ATTEMPTS = 8;
+const LEASE_MS = 30000;
+const PARK_INTERVAL_DAYS = 36500;
+const WORKER_INTERVAL_MS = 2000;
+
+const ATTEMPT_STATUSES = Object.freeze([
+  'started', 'simulated_ok', 'simulated_duplicate',
+  'retry_transient', 'retry_rate_limit', 'retry_timeout',
+  'dead_letter_permanent', 'dead_letter_malformed', 'dead_letter_blocked',
+  'authorization_rejected', 'abandoned_lease',
+]);
+
+const SCENARIOS = Object.freeze([
+  'success', 'duplicate', 'transient', 'rate_limit', 'timeout',
+  'permanent', 'malformed', 'blocked',
+]);
+
+const SCENARIO_MAP = Object.freeze({
+  success: Object.freeze({
+    outcome: 'ok', retryable: false, errorCode: null, status: 'simulated_ok',
+  }),
+  duplicate: Object.freeze({
+    outcome: 'duplicate', retryable: false, errorCode: null, status: 'simulated_duplicate',
+  }),
+  transient: Object.freeze({
+    outcome: 'error', retryable: true, errorCode: 'simulated_transient', status: 'retry_transient',
+  }),
+  rate_limit: Object.freeze({
+    outcome: 'error', retryable: true, errorCode: 'simulated_rate_limited', status: 'retry_rate_limit',
+  }),
+  timeout: Object.freeze({
+    outcome: 'error', retryable: true, errorCode: 'simulated_timeout', status: 'retry_timeout',
+  }),
+  permanent: Object.freeze({
+    outcome: 'error', retryable: false, errorCode: 'simulated_permanent', status: 'dead_letter_permanent',
+  }),
+  malformed: Object.freeze({
+    outcome: 'error', retryable: false, errorCode: 'simulated_malformed', status: 'dead_letter_malformed',
+  }),
+  blocked: Object.freeze({
+    outcome: 'error', retryable: false, errorCode: 'simulated_blocked', status: 'dead_letter_blocked',
+  }),
+});
+
+const TERMINAL_PARK_STATUSES = Object.freeze([
+  'simulated_ok', 'simulated_duplicate',
+  'dead_letter_permanent', 'dead_letter_malformed', 'dead_letter_blocked',
+  'authorization_rejected',
+]);
+
+function delaySeconds(attemptNumber) {
+  return Math.min(300, 2 ** Math.min(attemptNumber, 8));
+}
+
 module.exports = {
   CONTRACT_VERSION, OPERATION, STATUS, DESTINATION, OBJECT_KIND, AUDIT_EVENT, GATE,
   KEYS, FORBIDDEN, INTENT_HASH_KEYS, OUTBOX_PAYLOAD_KEYS,
   parseDeliveryBody, safeReference, intentHashOf,
+  CONNECTOR, FLAG_ENV, AUDIT_EVENT_SIMULATED, MAX_ATTEMPTS, LEASE_MS,
+  PARK_INTERVAL_DAYS, WORKER_INTERVAL_MS, ATTEMPT_STATUSES, SCENARIOS,
+  SCENARIO_MAP, TERMINAL_PARK_STATUSES, delaySeconds,
 };

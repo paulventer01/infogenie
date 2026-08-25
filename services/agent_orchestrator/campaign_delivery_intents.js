@@ -395,4 +395,9 @@ module.exports = {
   createDeliveryIntent,
   publicIntent,
   publicOutbox,
+  assertActiveMember,
+  assertRequestMatchesAuthorized,
+  boundActorId,
+  platformAccount,
+  CONFIRMATION_VERSION,
 };

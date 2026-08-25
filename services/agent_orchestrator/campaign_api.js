@@ -13,6 +13,7 @@ const { capPayload } = require('./payload_cap');
 const drafts = require('./campaign_drafts');
 const publishRequests = require('./campaign_publish_requests');
 const deliveryIntents = require('./campaign_delivery_intents');
+require('./campaign_delivery_worker');
 
 function guardPerm(req, res, key) {
   let allowed = false;
