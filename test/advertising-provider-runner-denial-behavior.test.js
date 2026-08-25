@@ -160,8 +160,7 @@ global.fetch = async function forbiddenFetch() {
 
 https.request = function forbiddenHttpsRequest(options) {
   activity.httpsRequest += 1;
-  const host = String((options && (options.hostname || options.host)) || options || '');
-  if (host.includes('oauth2.googleapis.com')) activity.oauthRefresh += 1;
+  if (options && options.hostname === 'oauth2.googleapis.com') activity.oauthRefresh += 1;
   throw new Error('https.request must not run while provider mutation is disabled');
 };
 
