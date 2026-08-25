@@ -153,6 +153,7 @@ test('source: session gate, exact lock, dedicated enqueue, no external side effe
   assert.match(SRC_CONTRACTS, /function parseDeliveryBody/);
   assert.match(SRC_CONTRACTS, /function intentHashOf/);
   assert.match(SRC_CONTRACTS, /function safeReference/);
+  assert.match(SRC_CONTRACTS, /normalizeCredentialRef/);
   assert.doesNotMatch(SRC_CONTRACTS, /fetch\s*\(/);
   assert.doesNotMatch(SRC_CONTRACTS, /connectors\//);
 
@@ -238,6 +239,62 @@ test('parseDeliveryBody allowlists constants and one platform', () => {
       () => D.parseDeliveryBody(body),
       (e) => e && e.code === 'validation_failed' && (!e.extra || !e.extra.field || e.extra.field === field || e.extra.field === field.replace(/s$/, '') || true),
       field
+    );
+  }
+});
+
+test('safeReference uses canonical outbox normalizeCredentialRef and fails closed on secret prefixes', () => {
+  const opaque = D.safeReference({ platform: 'meta', credentialRef: 'user_integrations' });
+  assert.deepStrictEqual(opaque, {
+    contract_version: 'campaign_delivery_v1',
+    operation: 'create_provider_draft',
+    platform: 'meta',
+    credential_ref: 'user_integrations',
+  });
+  assert.equal(
+    D.safeReference({ platform: 'google', credentialRef: 'user_integrations:4821' }).credential_ref,
+    'user_integrations:4821'
+  );
+
+  const secretLike = [
+    'sk-live-AbCdEf0123456789',
+    'sk_test_1234567890abcdef',
+    'xoxb-1234567890123-token',
+    'xoxp-1-2-3-abcd',
+    'xapp-1-A-B-C',
+    'ghp_abcdefghijklmnopqrstuvwxyz012345',
+    'github_pat_abcdefghijklmnopqrstuv',
+    'glpat-abcdefghijklmnopqrst',
+    'shpat_abcdefghijklmnopqrstuv',
+    'npm_abcdefghijklmnopqrstuv',
+    'dop_v1_abcdefghijklmnopqrstuv',
+    'AKIAIOSFODNN7EXAMPLE',
+    'ASIAABCDEFGHIJKLMNOP',
+    'AIzaSyDummyKeyMaterial01',
+  ];
+  for (const ref of secretLike) {
+    assert.throws(
+      () => D.safeReference({ platform: 'meta', credentialRef: ref }),
+      (e) => e && e.code === 'validation_failed',
+      ref
+    );
+  }
+
+  const malformed = [
+    'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln',
+    'Bearer abc123',
+    'https://hooks.example.com/t/AAA/BBB/ccc',
+    'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A=',
+    `x${'y'.repeat(200)}`,
+    '',
+    null,
+    undefined,
+  ];
+  for (const ref of malformed) {
+    assert.throws(
+      () => D.safeReference({ platform: 'meta', credentialRef: ref }),
+      (e) => e && e.code === 'validation_failed',
+      String(ref)
     );
   }
 });

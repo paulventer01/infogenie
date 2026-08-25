@@ -5,6 +5,7 @@ const C = require('./campaign_contracts');
 const { fail } = require('./errors');
 const { sha256Hex } = require('./hash');
 const { normalizeKey } = require('./research_validate');
+const { normalizeCredentialRef } = require('./outbox');
 
 const CONTRACT_VERSION = 'campaign_delivery_v1';
 const OPERATION = 'create_provider_draft';
@@ -79,14 +80,13 @@ function safeReference({ platform, credentialRef }) {
   if (typeof platform !== 'string' || !C.PLATFORMS.includes(platform)) {
     fail('validation_failed', { field: 'platform' });
   }
-  if (typeof credentialRef !== 'string' || !C.CREDENTIAL_REF_RE.test(credentialRef)) {
-    fail('validation_failed', { field: 'credential_ref' });
-  }
+  const opaque = normalizeCredentialRef(credentialRef);
+  if (!opaque) fail('validation_failed', { field: 'credential_ref' });
   return Object.freeze({
     contract_version: CONTRACT_VERSION,
     operation: OPERATION,
     platform,
-    credential_ref: credentialRef,
+    credential_ref: opaque,
   });
 }
 
