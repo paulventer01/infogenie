@@ -2580,6 +2580,22 @@ neither the response body, the intent row, the outbox row nor any audit detail.
 Disconnecting or deleting the integration fails the create *and* the replay
 closed with `missing_credentials`.
 
+Every layer that touches a `credential_ref` on this path screens it with the same
+canonical rule. `campaign_delivery_contracts.safeReference` delegates to
+`outbox.normalizeCredentialRef` and returns only the value that helper accepts,
+so shape (`CREDENTIAL_REF_RE`), emptiness and the known-secret-prefix denylist
+(`KNOWN_SECRET_PREFIX_RE`) all fail closed in one place rather than being
+duplicated and drifting. A `sk-`/`sk_`, `xox[abps]-`, `xapp-`, `gh[posur]_`,
+`github_pat_`, `glpat-`, `shpat_`/`shpss_`, `npm_`, `dop_v1_`, `AKIA`, `ASIA` or
+`AIza` value is `validation_failed` at `field: credential_ref` in either casing;
+a JWT, a `Bearer …` string, a URL, base64 padding, an embedded newline or tab and
+a value over 128 characters are refused on shape. The canonical opaque handles
+the platform actually issues — `user_integrations` and
+`user_integrations:<callerId>` — are returned byte-for-byte, so `intentHashOf`,
+the stored `intent_hash` and the outbox `credential_ref` are unchanged and
+already-persisted intents still replay-match. Verified by comparing every
+`safeReference` result and `intentHashOf` output across the change: identical.
+
 ### Outbox hygiene
 
 `enqueueCampaignDeliveryV1` is a narrow helper, not a second general `enqueue`:
@@ -2641,18 +2657,19 @@ everything else. `idempotency_key` is deliberately absent from that allowlist;
 
 ### Accepted residuals (PR 6C)
 
-- **`campaign_delivery_contracts.safeReference` enforces shape only.** It checks
-  `CREDENTIAL_REF_RE` and rejects a JWT, a URL, whitespace and an over-long
-  value, but it does **not** apply `outbox.KNOWN_SECRET_PREFIX_RE`, so
-  `sk-live-…`, `ghp_…`, `AKIA…` and `xoxb-…` pass it. This is not reachable in PR
-  6C: the only caller is `platformAccount`, which normalizes through
-  `outbox.normalizeCredentialRef` first and fails closed, `ownedCredentialUserId`
-  already screened the ref when the contract was approved, and
-  `enqueueCampaignDeliveryV1` normalizes a third time before the insert. The name
-  nevertheless promises more than the function delivers, and a PR 6D caller that
-  reaches for `safeReference` alone would lose the denylist. **Fix belongs to
-  Backend**: route `safeReference` through `normalizeCredentialRef` (or drop the
-  duplicate shape check and take the normalized value only).
+- **`safeReference` takes any value `normalizeCredentialRef` accepts, including a
+  coercible non-string.** The helper no longer type-checks its argument itself;
+  it forwards to `normalizeCredentialRef`, which does `String(credentialRef)`
+  before matching. `123` therefore yields `'123'` and `['user_integrations']`
+  yields `'user_integrations'`, where the previous explicit
+  `typeof … !== 'string'` check refused both. This is not a disclosure route —
+  coercion happens *before* the denylist, so a secret-shaped non-string
+  (`['sk-live-…']`, an object whose `toString` returns `AKIA…`) is still
+  `validation_failed` — and it is unreachable on this path, because
+  `platformAccount` normalizes the approved contract's ref first and passes only
+  the resulting string on, while `ownedCredentialUserId` already refused a
+  non-string when the contract was approved. Worth knowing if a PR 6D caller
+  hands `safeReference` unparsed input.
 - **`assertActiveMember` reads without `FOR UPDATE`.** Membership is checked on a
   plain `SELECT`, so a suspension committing between that check and the
   transaction's commit is not serialized against this write. Inherited verbatim
@@ -2687,9 +2704,11 @@ gate, API-key refusal, permission gate, cross-tenant `not_found`, cross-draft
 `not_found`, actor binding, strict body allowlist, platform-against-approval,
 revoked/expired/stale/tampered fail-closed, credential and membership
 re-checks on create and on replay, replay and conflict behaviour, same-request
-concurrency, `FOR UPDATE` hold, immutability, and no secret disclosure in
-response/outbox/audit), plus `test/permission-matrix.test.js` and
-`test/security-guardrails.test.js`.
+concurrency, `FOR UPDATE` hold, immutability, the `safeReference` shape and
+secret-prefix denylist, and no secret disclosure in response/outbox/audit), plus
+`test/permission-matrix.test.js` and `test/security-guardrails.test.js` for the
+matrix and CSRF/production defaults this route inherits. The prose in this
+section is not itself pinned by a test.
 
 ## Related existing systems
 
