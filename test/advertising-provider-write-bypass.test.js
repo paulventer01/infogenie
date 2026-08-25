@@ -4,7 +4,7 @@
 // helpers, and cron/timer entry points refuse BEFORE credential/vault/network.
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
-process.env.INFOGENIE_API_KEY = process.env.INFOGENIE_API_KEY || 'dev-infogenie-api-key';
+process.env.INFOGENIE_API_KEY = process.env.INFOGENIE_API_KEY || '<set-via-environment>';
 process.env.PERMISSION_ENFORCEMENT = process.env.PERMISSION_ENFORCEMENT || 'on';
 process.env.MULTITENANT_ENFORCEMENT = process.env.MULTITENANT_ENFORCEMENT || 'on';
 
@@ -155,7 +155,7 @@ test('source: lowest-level mutation helpers call the guard before vault/network'
   }
   const serverSrc = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   for (const route of LAUNCH_ROUTES) {
-    assert.match(serverSrc, new RegExp(route.replace(/\//g, '\\/')));
+    assert.ok(serverSrc.includes(route), route);
   }
   // Launch handlers must deny before resolve*Credentials / callHttpsGeneric.
   const googleIdx = serverSrc.indexOf("app.post('/api/launch/google-ads'");
