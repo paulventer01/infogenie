@@ -73,11 +73,9 @@ function parseIdempotencyKey(raw) {
 }
 
 function approvalIdMatches(echoed, pub) {
-  const raw = echoed == null ? '' : String(echoed);
-  if (!raw) return false;
-  if (raw === String(pub.id)) return true;
-  const n = Number(raw);
-  return Number.isInteger(n) && n > 0 && n === Number(pub.workflow_approval_id);
+  if (echoed == null || pub == null || pub.id == null) return false;
+  if (typeof echoed === 'number') return false;
+  return String(echoed) === String(pub.id);
 }
 
 function boundActorId(pub) {

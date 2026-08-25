@@ -32,6 +32,9 @@ const ROOT = path.join(__dirname, '..');
 const SRC_DRAFTS = fs.readFileSync(path.join(ROOT, 'services/agent_orchestrator/campaign_drafts.js'), 'utf8');
 const SRC_API = fs.readFileSync(path.join(ROOT, 'services/agent_orchestrator/campaign_api.js'), 'utf8');
 const SRC_REQ = fs.readFileSync(path.join(ROOT, 'services/agent_orchestrator/campaign_publish_requests.js'), 'utf8');
+const SRC_VALIDATE = fs.readFileSync(path.join(ROOT, 'services/agent_orchestrator/campaign_validate.js'), 'utf8');
+const SRC_VAULT = fs.readFileSync(path.join(ROOT, 'services/credentials/vault.js'), 'utf8');
+const { hasCredentials } = require('../services/credentials/vault');
 const TABLE = 'orchestrator_campaign_publish_requests';
 const FORBIDDEN_SURFACE = /credential|vault_payload|access_token|refresh_token|confirmation_phrase|snapshot_json|provider_data|external_campaign/i;
 
@@ -103,7 +106,20 @@ test('source: client-scoped authorize helper, no nested pool tx, no publish side
   assert.match(SRC_REQ, /INSERT INTO orchestrator_campaign_publish_requests/);
   assert.match(SRC_REQ, /SAVEPOINT /);
   assert.match(SRC_REQ, /checkCredentials\(/);
+  assert.match(SRC_REQ, /function approvalIdMatches\([\s\S]*String\(echoed\) === String\(pub\.id\)/);
+  assert.doesNotMatch(SRC_REQ, /n === Number\(pub\.workflow_approval_id\)/);
   assert.doesNotMatch(SRC_REQ, /hasCredentials\s*\(/);
+  assert.match(SRC_VALIDATE, /vault\.hasCredentials\(ownerId, vaultKey, client/);
+  assert.match(SRC_VALIDATE, /client, tenantId/);
+  assert.match(SRC_VAULT, /async function hasCredentials\(userId, platform, opts\)/);
+  assert.match(SRC_VAULT, /FOR UPDATE OF ui|LIMIT 1 FOR UPDATE/);
+  assert.match(SRC_VAULT, /const q = client \|\| _db\.getPool\(\)/);
+  const vaultHasFn = SRC_VAULT.slice(
+    SRC_VAULT.indexOf('async function hasCredentials'),
+    SRC_VAULT.indexOf('function assertBootRequirements')
+  );
+  assert.doesNotMatch(vaultHasFn, /\bBEGIN\b|\bCOMMIT\b|SAVEPOINT/);
+  assert.doesNotMatch(vaultHasFn, /ciphertext|_decrypt|decryptString|JSON\.parse/);
   assert.doesNotMatch(SRC_REQ, /getCredentials\s*\(/);
   assert.doesNotMatch(SRC_REQ, /require\('\.\.\/credentials\/vault'\)/);
   assert.doesNotMatch(SRC_REQ, /runIdempotent/);
@@ -365,6 +381,43 @@ if (!HAS_DB) {
     });
     assert.equal(missing.status, 400, missing.text);
     assert.equal(missing.json.error, 'validation_failed');
+  });
+
+  test('approval_id accepts only the exact publishing-approval id', async () => {
+    const liveA = await readyApproved(cookieA, wfA, artA);
+    const liveB = await readyApproved(cookieB, wfB, await seedBrief(tenantB.id, ownerB.id, wfB));
+    const beforeReq = (await p().query(
+      `SELECT COUNT(*)::int AS n FROM ${TABLE} WHERE tenant_id=$1 AND draft_id=$2`,
+      [tenantA.id, liveA.draft.id]
+    )).rows[0].n;
+    const beforeAudit = (await p().query(
+      `SELECT COUNT(*)::int AS n FROM orchestrator_audit_events
+        WHERE tenant_id=$1 AND workflow_id=$2 AND event='campaign_publishing_requested'`,
+      [tenantA.id, wfA]
+    )).rows[0].n;
+    const aliases = [
+      ['workflow approval id', { approval_id: liveA.draft.approval_id }],
+      ['numeric workflow approval id', { approval_id: Number(liveA.approval.workflow_approval_id || liveA.draft.approval_id) }],
+      ['stale other draft approval', { approval_id: liveB.approval.id }],
+    ];
+    for (const [label, extra] of aliases) {
+      const res = await requestPublishing(cookieA, liveA.draft, liveA.approval, extra);
+      assert.equal(res.status, 409, `${label}: ${res.text}`);
+      assert.equal(res.json.error, 'approval_stale', label);
+      assert.notEqual(res.json.ok, true, label);
+      assert.notEqual(res.json.replay, true, label);
+    }
+    const afterReq = (await p().query(
+      `SELECT COUNT(*)::int AS n FROM ${TABLE} WHERE tenant_id=$1 AND draft_id=$2`,
+      [tenantA.id, liveA.draft.id]
+    )).rows[0].n;
+    const afterAudit = (await p().query(
+      `SELECT COUNT(*)::int AS n FROM orchestrator_audit_events
+        WHERE tenant_id=$1 AND workflow_id=$2 AND event='campaign_publishing_requested'`,
+      [tenantA.id, wfA]
+    )).rows[0].n;
+    assert.equal(afterReq, beforeReq);
+    assert.equal(afterAudit, beforeAudit);
   });
 
   test('strict confirmation phrase is exact and never stored', async () => {
@@ -746,13 +799,58 @@ if (!HAS_DB) {
       requestPublishing(cookieA, liveCred.draft, liveCred.approval, { idempotency_key: ik('c-cred') }),
       p().query(`DELETE FROM user_integrations WHERE user_id=$1`, [ownerA.id]),
     ]);
-    assert.ok(creds.rowCount >= 0);
-    assert.ok([200, 400, 409].includes(reqCred.status), reqCred.text);
-    if (reqCred.status === 200) assertHonest(reqCred.json);
-    else {
+    const remaining = (await p().query(
+      `SELECT COUNT(*)::int AS n FROM ${TABLE} WHERE tenant_id=$1 AND draft_id=$2`,
+      [tenantA.id, liveCred.draft.id]
+    )).rows[0].n;
+    if (reqCred.status === 200) {
+      assertHonest(reqCred.json);
+      assert.equal(remaining, 1);
+    } else {
+      assert.ok(creds.rowCount >= 1, 'losing request must observe a completed credential delete');
       assert.notEqual(reqCred.json.replay, true);
       assert.ok(['validation_failed', 'missing_credentials'].includes(reqCred.json.error), reqCred.text);
+      assert.equal(remaining, 0);
     }
+    await seedCreds(ownerA.id);
+  });
+
+  test('client-scoped hasCredentials locks the credential row through commit', async () => {
+    await seedCreds(ownerA.id);
+    const poolPresent = await hasCredentials(ownerA.id, 'meta_ads');
+    assert.equal(poolPresent, true);
+    const holder = await p().connect();
+    try {
+      await holder.query('BEGIN');
+      const locked = await hasCredentials(ownerA.id, 'meta_ads', {
+        client: holder, tenantId: tenantA.id,
+      });
+      assert.equal(locked, true);
+      const deleter = await p().connect();
+      try {
+        await deleter.query('BEGIN');
+        await deleter.query(`SET LOCAL lock_timeout = '400ms'`);
+        await assert.rejects(
+          () => deleter.query(
+            `DELETE FROM user_integrations WHERE user_id=$1 AND platform=$2`,
+            [ownerA.id, 'meta_ads']
+          ),
+          /lock timeout|canceling statement/i
+        );
+        await deleter.query('ROLLBACK');
+      } finally {
+        deleter.release();
+      }
+      await holder.query('COMMIT');
+    } finally {
+      holder.release();
+    }
+    const after = await p().query(
+      `DELETE FROM user_integrations WHERE user_id=$1 AND platform=$2 RETURNING user_id, platform, status`,
+      [ownerA.id, 'meta_ads']
+    );
+    assert.equal(after.rowCount, 1);
+    assert.deepStrictEqual(Object.keys(after.rows[0]).sort(), ['platform', 'status', 'user_id']);
     await seedCreds(ownerA.id);
   });
 
