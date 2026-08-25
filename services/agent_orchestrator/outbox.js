@@ -106,6 +106,83 @@ async function enqueue(client, {
   return existing.rows[0];
 }
 
+const DELIVERY_V1_KEYS = new Set([
+  'id', 'tenantId', 'workflowId', 'draftId', 'publishingRequestId',
+  'intentId', 'platform', 'credentialRef', 'idempotencyKey',
+]);
+const DELIVERY_PLATFORMS = new Set(['meta', 'google', 'tiktok']);
+
+async function lockByTenantAndId(client, { tenantId, id }) {
+  if (tenantId == null || id == null || id === '') return null;
+  const r = await client.query(
+    `SELECT * FROM orchestrator_outbox WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+    [tenantId, id]
+  );
+  if (r.rowCount !== 1) return null;
+  return r.rows[0];
+}
+
+async function enqueueCampaignDeliveryV1(client, input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input) || Buffer.isBuffer(input)) {
+    fail('validation_failed');
+  }
+  for (const k of Object.keys(input)) {
+    if (!DELIVERY_V1_KEYS.has(k)) fail('validation_failed', { field: k });
+  }
+  const id = String(input.id || '');
+  const tenantId = input.tenantId;
+  const workflowId = input.workflowId;
+  const draftId = String(input.draftId || '');
+  const publishingRequestId = String(input.publishingRequestId || '');
+  const intentId = String(input.intentId || '');
+  const platform = String(input.platform || '');
+  const credentialRef = input.credentialRef;
+  const hashedKey = input.idempotencyKey;
+  if (!id || id.length > 128) fail('validation_failed', { field: 'id' });
+  if (tenantId == null) fail('validation_failed');
+  if (!workflowId) fail('validation_failed');
+  if (!draftId || draftId.length > 128) fail('validation_failed', { field: 'draft_id' });
+  if (!publishingRequestId || publishingRequestId.length > 128) {
+    fail('validation_failed', { field: 'publishing_request_id' });
+  }
+  if (!intentId || intentId.length > 128) fail('validation_failed', { field: 'intent_id' });
+  if (!DELIVERY_PLATFORMS.has(platform)) fail('validation_failed', { field: 'platform' });
+  if (typeof hashedKey !== 'string' || !/^cdv1:[0-9a-f]{64}$/.test(hashedKey)) {
+    fail('validation_failed', { field: 'idempotency_key' });
+  }
+  const ref = normalizeCredentialRef(credentialRef);
+  if (!ref) fail('validation_failed');
+  const wf = await client.query(
+    `SELECT id FROM orchestrator_workflows WHERE id=$1 AND tenant_id=$2`,
+    [workflowId, tenantId]
+  );
+  if (!wf.rowCount) fail('not_found');
+  const payload = {
+    contract_version: 'campaign_delivery_v1',
+    credential_ref: ref,
+    draft_id: draftId,
+    intent_id: intentId,
+    operation: 'create_provider_draft',
+    platform,
+    publishing_request_id: publishingRequestId,
+    workflow_id: String(workflowId),
+  };
+  const inserted = await client.query(
+    `INSERT INTO orchestrator_outbox
+       (id, tenant_id, workflow_id, destination, operation, payload, credential_ref,
+        state, max_attempts, idempotency_key)
+     VALUES ($1,$2,$3,'internal','create_provider_draft',$4::jsonb,$5,'pending',$6,$7)
+     RETURNING *`,
+    [
+      id, tenantId, workflowId,
+      JSON.stringify(payload), ref,
+      MAX_ATTEMPTS_DEFAULT,
+      hashedKey,
+    ]
+  );
+  return inserted.rows[0];
+}
+
 async function claim(client, {
   tenantId, workerId, limit = 1, operation,
 } = {}) {
@@ -217,6 +294,8 @@ async function processOnce(pool, { tenantId, workerId, failCode } = {}) {
 
 module.exports = {
   enqueue,
+  enqueueCampaignDeliveryV1,
+  lockByTenantAndId,
   claim,
   complete,
   fail: failRow,

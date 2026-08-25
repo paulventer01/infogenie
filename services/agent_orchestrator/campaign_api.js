@@ -12,6 +12,7 @@ const { extractIdempotencyKey, requestHashFrom, endpointOf, runIdempotent } = re
 const { capPayload } = require('./payload_cap');
 const drafts = require('./campaign_drafts');
 const publishRequests = require('./campaign_publish_requests');
+const deliveryIntents = require('./campaign_delivery_intents');
 
 function guardPerm(req, res, key) {
   let allowed = false;
@@ -164,6 +165,30 @@ router.post('/:id/publishing-requests', capPayload, wrap(GATE_PERMISSION.campaig
       published: false,
       external_action_taken: false,
       request: publishRequests.publicRequest(row),
+    },
+  };
+}, { rejectApiKey: true }));
+
+router.post('/:id/publishing-requests/:publishingRequestId/delivery-intents', capPayload, wrap(GATE_PERMISSION.campaign_publishing, async (req, tid, userId, pool) => {
+  const body = bodyOf(req);
+  tenantMismatch(body, tid);
+  const key = String(body.idempotency_key || extractIdempotencyKey(req) || '').trim();
+  if (!key) fail('validation_failed', { field: 'idempotency_key' });
+  const { row, outbox, replay } = await deliveryIntents.createDeliveryIntent(pool, {
+    tenantId: tid, userId,
+    draftId: String(req.params.id || ''),
+    publishingRequestId: String(req.params.publishingRequestId || ''),
+    idempotencyKey: key, body, bodyTenantId: body.tenant_id,
+  });
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      replay: !!replay,
+      published: false,
+      external_action_taken: false,
+      intent: deliveryIntents.publicIntent(row),
+      outbox: deliveryIntents.publicOutbox(outbox),
     },
   };
 }, { rejectApiKey: true }));

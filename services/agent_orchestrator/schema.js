@@ -84,6 +84,7 @@ const ADVERTISING_ORCH_TABLES = [
   // PR 6B — guarded internal publishing request bound to an approved snapshot.
   // Does not publish, activate, pause, or store provider/campaign side effects.
   'orchestrator_campaign_publish_requests',
+  'orchestrator_campaign_delivery_intents',
 ];
 
 const RESEARCH_RETENTION_EXPIRY_SQL =
@@ -3665,6 +3666,143 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE UPDATE OR DELETE ON orchestrator_campaign_publish_requests
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_campaign_publish_requests_immutable();
+  `);
+
+  // PR 6C — tenant-scoped immutable campaign delivery intent.
+  // Binds 1:1 to a publish request (and its draft / publishing approval /
+  // workflow approval) and to exactly one pregenerated outbox id via a
+  // DEFERRABLE INITIALLY DEFERRED composite FK so intent+outbox can be
+  // inserted in either order inside one transaction. Frozen at
+  // campaign_delivery_v1 / create_provider_draft / pending.
+  // Does not store credentials, vault payloads, tokens, headers, provider
+  // data, external campaign IDs, or raw payloads. Does not send/activate.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_delivery_intents (
+      id TEXT NOT NULL, tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      publishing_request_id TEXT NOT NULL, draft_id TEXT NOT NULL, publish_approval_id TEXT NOT NULL,
+      workflow_approval_id INTEGER NOT NULL, outbox_id TEXT NOT NULL, revision INTEGER NOT NULL,
+      contract_hash TEXT NOT NULL, snapshot_hash TEXT NOT NULL, intent_hash TEXT NOT NULL,
+      contract_version TEXT NOT NULL DEFAULT 'campaign_delivery_v1',
+      operation TEXT NOT NULL DEFAULT 'create_provider_draft',
+      status TEXT NOT NULL DEFAULT 'pending', idempotency_key TEXT NOT NULL,
+      requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_campaign_delivery_intents_tenant_unique_pub_req
+        UNIQUE (tenant_id, publishing_request_id),
+      CONSTRAINT orchestrator_campaign_delivery_intents_tenant_unique_outbox
+        UNIQUE (tenant_id, outbox_id),
+      CONSTRAINT orchestrator_campaign_delivery_intents_tenant_unique_idemp
+        UNIQUE (tenant_id, idempotency_key),
+      CONSTRAINT orchestrator_campaign_delivery_intents_contract_ver_check
+        CHECK (contract_version = 'campaign_delivery_v1'),
+      CONSTRAINT orchestrator_campaign_delivery_intents_operation_check
+        CHECK (operation = 'create_provider_draft'),
+      CONSTRAINT orchestrator_campaign_delivery_intents_status_check CHECK (status = 'pending'),
+      CONSTRAINT orchestrator_campaign_delivery_intents_revision_check CHECK (revision >= 1),
+      CONSTRAINT orchestrator_campaign_delivery_intents_len_check CHECK (
+        char_length(id) BETWEEN 1 AND 128
+        AND char_length(publishing_request_id) BETWEEN 1 AND 128
+        AND char_length(draft_id) BETWEEN 1 AND 128
+        AND char_length(publish_approval_id) BETWEEN 1 AND 128
+        AND char_length(outbox_id) BETWEEN 1 AND 128
+        AND char_length(idempotency_key) BETWEEN 1 AND 256),
+      CONSTRAINT orchestrator_campaign_delivery_intents_contract_hash_check CHECK (
+        char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_campaign_delivery_intents_snapshot_hash_check CHECK (
+        char_length(snapshot_hash)=64 AND snapshot_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_campaign_delivery_intents_intent_hash_check CHECK (
+        char_length(intent_hash)=64 AND intent_hash ~ '^[0-9a-f]{64}$')
+    );
+  `);
+  await p.query(`ALTER TABLE orchestrator_campaign_delivery_intents
+    ADD COLUMN IF NOT EXISTS publishing_request_id TEXT,
+    ADD COLUMN IF NOT EXISTS draft_id TEXT,
+    ADD COLUMN IF NOT EXISTS publish_approval_id TEXT,
+    ADD COLUMN IF NOT EXISTS workflow_approval_id INTEGER,
+    ADD COLUMN IF NOT EXISTS outbox_id TEXT,
+    ADD COLUMN IF NOT EXISTS revision INTEGER,
+    ADD COLUMN IF NOT EXISTS contract_hash TEXT,
+    ADD COLUMN IF NOT EXISTS snapshot_hash TEXT,
+    ADD COLUMN IF NOT EXISTS intent_hash TEXT,
+    ADD COLUMN IF NOT EXISTS contract_version TEXT,
+    ADD COLUMN IF NOT EXISTS operation TEXT,
+    ADD COLUMN IF NOT EXISTS status TEXT,
+    ADD COLUMN IF NOT EXISTS idempotency_key TEXT,
+    ADD COLUMN IF NOT EXISTS requested_by INTEGER,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ`);
+  await _ensureNamedUnique(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_tenant_unique_pub_req',
+    'tenant_id, publishing_request_id');
+  await _ensureNamedUnique(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_tenant_unique_outbox',
+    'tenant_id, outbox_id');
+  await _ensureNamedUnique(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_tenant_unique_idemp',
+    'tenant_id, idempotency_key');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_tenant_pub_req_fkey',
+    'tenant_id, publishing_request_id', 'orchestrator_campaign_publish_requests', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_tenant_draft_fkey',
+    'tenant_id, draft_id', 'orchestrator_campaign_drafts', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_tenant_pub_appr_fkey',
+    'tenant_id, publish_approval_id', 'orchestrator_campaign_publish_approvals', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_tenant_wf_appr_fkey',
+    'tenant_id, workflow_approval_id', 'orchestrator_approvals', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_tenant_outbox_fkey',
+    'tenant_id, outbox_id', 'orchestrator_outbox', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_contract_ver_check',
+    `contract_version = 'campaign_delivery_v1'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_operation_check',
+    `operation = 'create_provider_draft'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_status_check', `status = 'pending'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_revision_check', `revision >= 1`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_contract_hash_check',
+    `char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_snapshot_hash_check',
+    `char_length(snapshot_hash)=64 AND snapshot_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_intent_hash_check',
+    `char_length(intent_hash)=64 AND intent_hash ~ '^[0-9a-f]{64}$'`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_campaign_delivery_intents_tenant_draft
+    ON orchestrator_campaign_delivery_intents (tenant_id, draft_id)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_campaign_delivery_intents_tenant_pub_appr
+    ON orchestrator_campaign_delivery_intents (tenant_id, publish_approval_id)`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_campaign_delivery_intents_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_campaign_delivery_intents_immutable';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_campaign_delivery_intents_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_campaign_delivery_intents_immutable ON orchestrator_campaign_delivery_intents;
+    CREATE TRIGGER orchestrator_campaign_delivery_intents_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_campaign_delivery_intents
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_campaign_delivery_intents_immutable();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {
