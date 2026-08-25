@@ -2,7 +2,7 @@
 
 const { fail } = require('./errors');
 const { newId, insertAudit } = require('./runner');
-const { canonicalize } = require('./hash');
+const { canonicalize, sha256Hex } = require('./hash');
 const { toBigInt } = require('./money');
 const C = require('./campaign_contracts');
 const {
@@ -353,8 +353,8 @@ async function approveDraft(pool, o) {
     if (existing) {
       if (existing.revoked_at) fail('idempotency_conflict', { field: 'idempotency_key' });
       if (String(existing.draft_id) !== String(row.id)) fail('idempotency_conflict', { field: 'idempotency_key' });
-      assertReplayMatchesDraft(row, existing, existing);
       const rev = await loadRev(c, o.tenantId, row.id, row.current_revision);
+      assertReplayMatchesDraft(row, existing, existing, rev);
       return { draft: publicDraft(row, rev), approval: existing, replay: true };
     }
     const rev = await loadRev(c, o.tenantId, row.id, row.current_revision);
@@ -548,6 +548,27 @@ async function historyDraft(pool, tenantId, draftId, { includeAudit }) {
   return { object_kind: 'campaign_draft', revisions, approvals, audit };
 }
 
+function instantMs(v) {
+  if (v == null || v === '') return NaN;
+  const t = v instanceof Date ? v.getTime() : Date.parse(v);
+  return Number.isFinite(t) ? t : NaN;
+}
+
+function snapshotPayload(cached) {
+  if (!cached || typeof cached !== 'object') return null;
+  if (cached.snapshot != null) return cached.snapshot;
+  if (cached.snapshot_json != null) return cached.snapshot_json;
+  return null;
+}
+
+function snapshotContract(snap) {
+  const out = {};
+  for (const k of C.KEYS) {
+    if (Object.prototype.hasOwnProperty.call(snap, k) && snap[k] !== undefined) out[k] = snap[k];
+  }
+  return out;
+}
+
 function assertCurrentApproval(row, pub) {
   if (row.status === 'approval_expired') fail('approval_expired');
   if (row.status === 'cancelled') fail('invalid_transition');
@@ -557,7 +578,7 @@ function assertCurrentApproval(row, pub) {
     fail('approval_required');
   }
   if (pub.revoked_at) fail('approval_revoked');
-  if (new Date(pub.expires_at).getTime() <= Date.now()) fail('approval_expired');
+  if (instantMs(pub.expires_at) <= Date.now()) fail('approval_expired');
   if (String(pub.contract_hash) !== String(row.contract_hash) || Number(pub.revision) !== Number(row.current_revision)) {
     fail('approval_stale');
   }
@@ -566,22 +587,53 @@ function assertCurrentApproval(row, pub) {
   }
 }
 
-function assertReplayMatchesDraft(row, pub, cached) {
-  assertCurrentApproval(row, pub);
-  if (cached) {
-    if (cached.contract_hash != null && String(cached.contract_hash) !== String(row.contract_hash)) {
-      fail('approval_stale');
-    }
-    if (cached.revision != null && Number(cached.revision) !== Number(row.current_revision)) {
-      fail('approval_stale');
-    }
-    const snap = pub.snapshot_json || {};
-    const cachedSnap = cached.snapshot;
-    if (cachedSnap && cachedSnap.contract_hash != null
-        && String(cachedSnap.contract_hash) !== String(snap.contract_hash || pub.contract_hash)) {
-      fail('approval_stale');
-    }
+function assertAuthoritativeSnapshot(row, pub, rev) {
+  const snap = pub && pub.snapshot_json;
+  if (!isPlain(snap) || snap.object_kind !== 'campaign_draft') fail('approval_stale');
+  if (snap.revision == null || !Number.isInteger(Number(snap.revision))) fail('approval_stale');
+  if (Number(snap.revision) !== Number(pub.revision)) fail('approval_stale');
+  if (Number(snap.revision) !== Number(row.current_revision)) fail('approval_stale');
+  if (typeof snap.contract_hash !== 'string' || !C.HEX64.test(snap.contract_hash)) fail('approval_stale');
+  if (String(snap.contract_hash) !== String(pub.contract_hash)) fail('approval_stale');
+  if (String(snap.contract_hash) !== String(row.contract_hash)) fail('approval_stale');
+  const snapExp = instantMs(snap.expires_at);
+  const pubExp = instantMs(pub.expires_at);
+  if (!Number.isFinite(snapExp) || !Number.isFinite(pubExp) || snapExp !== pubExp) fail('approval_stale');
+  if (snapExp <= Date.now()) fail('approval_expired');
+  const fromSnap = snapshotContract(snap);
+  const fromRev = rev && rev.contract_json;
+  if (!isPlain(fromRev) || !isPlain(fromSnap) || !Object.keys(fromSnap).length) fail('approval_stale');
+  if (sha256Hex(fromSnap) !== sha256Hex(fromRev)) fail('approval_stale');
+  if (sha256Hex(fromSnap) !== String(row.contract_hash) || contractHash(fromRev) !== String(row.contract_hash)) {
+    fail('approval_stale');
   }
+}
+
+function assertCachedApprovalSnapshot(cached, row, pub) {
+  if (!cached || cached.id == null) fail('idempotency_conflict', { field: 'idempotency_key' });
+  if (String(cached.id) !== String(pub.id)) fail('idempotency_conflict', { field: 'idempotency_key' });
+  const cachedSnap = snapshotPayload(cached);
+  if (!isPlain(cachedSnap)) fail('approval_stale');
+  if (cachedSnap.revision == null || !Number.isInteger(Number(cachedSnap.revision))) fail('approval_stale');
+  if (Number(cachedSnap.revision) !== Number(pub.revision)) fail('approval_stale');
+  if (Number(cachedSnap.revision) !== Number(row.current_revision)) fail('approval_stale');
+  if (typeof cachedSnap.contract_hash !== 'string' || !C.HEX64.test(cachedSnap.contract_hash)) fail('approval_stale');
+  if (String(cachedSnap.contract_hash) !== String(pub.contract_hash)) fail('approval_stale');
+  if (String(cachedSnap.contract_hash) !== String(row.contract_hash)) fail('approval_stale');
+  const cachedExp = instantMs(cachedSnap.expires_at);
+  const pubExp = instantMs(pub.expires_at);
+  if (!Number.isFinite(cachedExp) || cachedExp !== pubExp) fail('approval_stale');
+  if (cachedExp <= Date.now()) fail('approval_expired');
+  if (sha256Hex(cachedSnap) !== sha256Hex(pub.snapshot_json)) fail('approval_stale');
+  if (cached.revision != null && Number(cached.revision) !== Number(pub.revision)) fail('approval_stale');
+  if (cached.contract_hash != null && String(cached.contract_hash) !== String(pub.contract_hash)) fail('approval_stale');
+  if (cached.expires_at != null && instantMs(cached.expires_at) !== pubExp) fail('approval_stale');
+}
+
+function assertReplayMatchesDraft(row, pub, cached, rev) {
+  assertCurrentApproval(row, pub);
+  assertAuthoritativeSnapshot(row, pub, rev);
+  assertCachedApprovalSnapshot(cached, row, pub);
 }
 
 async function assertPublishAuthorized(pool, tenantId, draftId) {
@@ -617,7 +669,8 @@ async function assertApproveReplay(pool, tenantId, draftId, cachedApproval) {
         || String(pub.contract_hash) !== String(row.contract_hash)) {
       fail('approval_stale');
     }
-    assertReplayMatchesDraft(row, pub, cachedApproval);
+    const rev = await loadRev(c, tenantId, row.id, row.current_revision);
+    assertReplayMatchesDraft(row, pub, cachedApproval, rev);
     return { ok: true, draft: row, approval: pub };
   });
 }

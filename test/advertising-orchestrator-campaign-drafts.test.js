@@ -21,6 +21,7 @@ const { ensureAgentOrchestratorSchema } = require('../services/agent_orchestrato
 const { parseContract, vaultPlatformKey, ownedCredentialUserId } = require('../services/agent_orchestrator/campaign_validate');
 const { assertPublishAuthorized } = require('../services/agent_orchestrator/campaign_drafts');
 const { approvalContentHash } = require('../services/agent_orchestrator/creative_validate');
+const dnsPromises = require('node:dns').promises;
 
 const HAS_DB = hasDb();
 const ik = (t) => `ik-${t}-${crypto.randomBytes(6).toString('hex')}`;
@@ -28,6 +29,23 @@ const HEX = () => crypto.randomBytes(32).toString('hex');
 const SRC_DRAFTS = fs.readFileSync(path.join(__dirname, '../services/agent_orchestrator/campaign_drafts.js'), 'utf8');
 const SRC_API = fs.readFileSync(path.join(__dirname, '../services/agent_orchestrator/campaign_api.js'), 'utf8');
 const SRC_VALIDATE = fs.readFileSync(path.join(__dirname, '../services/agent_orchestrator/campaign_validate.js'), 'utf8');
+
+const _origDnsLookup = dnsPromises.lookup;
+function installCampaignDraftDnsStub() {
+  dnsPromises.lookup = async (hostname, options) => {
+    if (String(hostname).toLowerCase().replace(/\.$/, '') !== 'example.com') {
+      throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+    }
+    const recs = [{ address: '93.184.216.34', family: 4 }];
+    if (options && options.all) return recs;
+    return recs[0];
+  };
+}
+function restoreCampaignDraftDnsStub() {
+  dnsPromises.lookup = _origDnsLookup;
+}
+installCampaignDraftDnsStub();
+after(() => { restoreCampaignDraftDnsStub(); });
 
 function validContract(wfId, art, extra = {}) {
   return {
@@ -63,7 +81,9 @@ test('source: no connectors, outbox, or live platform fetch', () => {
   assert.match(SRC_VALIDATE, /hasCredentials\s*\(/);
   assert.match(SRC_VALIDATE, /VAULT_PLATFORM/);
   assert.match(SRC_API, /assertApproveReplay/);
-  assert.match(SRC_DRAFTS, /FOR UPDATE/);
+  assert.match(SRC_DRAFTS, /assertAuthoritativeSnapshot/);
+  assert.match(SRC_DRAFTS, /assertCachedApprovalSnapshot/);
+  assert.match(SRC_DRAFTS, /sha256Hex/);
 });
 
 test('contract platforms map to OAuth vault keys and fail closed otherwise', () => {
@@ -740,5 +760,111 @@ if (!HAS_DB) {
       await clearCreds(ownerA.id);
       await seedCreds(ownerA.id, 'meta_ads');
     }
+  });
+
+  test('hotfix: cached and authoritative snapshot mismatches fail closed', async () => {
+    async function setupApproved() {
+      const d0 = await createOk(cookieA, wfA, artA);
+      const ready = await validateOk(cookieA, d0.id);
+      const key = ik('snap');
+      const first = await api('POST', `/${ready.id}/approve`, {
+        cookie: cookieA, body: approveBody(ready, { idempotency_key: key }),
+      });
+      assert.equal(first.status, 200, first.text);
+      return { ready, key, first };
+    }
+    async function replay(ready, key) {
+      return api('POST', `/${ready.id}/approve`, {
+        cookie: cookieA, body: approveBody(ready, { idempotency_key: key }),
+      });
+    }
+    async function mutateCache(key, fn) {
+      const row = (await p().query(
+        `SELECT response_body FROM orchestrator_idempotency_keys WHERE tenant_id=$1 AND key=$2`,
+        [tenantA.id, key]
+      )).rows[0];
+      const body = JSON.parse(JSON.stringify(row.response_body));
+      fn(body);
+      await p().query(
+        `UPDATE orchestrator_idempotency_keys SET response_body=$3::jsonb WHERE tenant_id=$1 AND key=$2`,
+        [tenantA.id, key, JSON.stringify(body)]
+      );
+    }
+    async function mutatePubSnap(approvalId, fn) {
+      const row = (await p().query(
+        `SELECT snapshot_json FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, approvalId]
+      )).rows[0];
+      const snap = JSON.parse(JSON.stringify(row.snapshot_json));
+      fn(snap);
+      await p().query(`ALTER TABLE orchestrator_campaign_publish_approvals DISABLE TRIGGER orchestrator_campaign_publish_approvals_immutable`);
+      try {
+        await p().query(
+          `UPDATE orchestrator_campaign_publish_approvals SET snapshot_json=$3::jsonb WHERE tenant_id=$1 AND id=$2`,
+          [tenantA.id, approvalId, JSON.stringify(snap)]
+        );
+      } finally {
+        await p().query(`ALTER TABLE orchestrator_campaign_publish_approvals ENABLE TRIGGER orchestrator_campaign_publish_approvals_immutable`);
+      }
+    }
+
+    const cacheCases = [
+      ['cached snapshot revision', (body) => { body.approval.snapshot.revision = Number(body.approval.snapshot.revision) + 9; }],
+      ['cached snapshot contract_hash', (body) => { body.approval.snapshot.contract_hash = 'c'.repeat(64); }],
+      ['cached snapshot contract content', (body) => { body.approval.snapshot.objective = 'sales'; }],
+      ['missing cached snapshot', (body) => { delete body.approval.snapshot; }],
+      ['missing cached snapshot contract_hash', (body) => { delete body.approval.snapshot.contract_hash; }],
+      ['cached snapshot expiry', (body) => {
+        body.approval.snapshot.expires_at = new Date(Date.now() + 2 * 864e5).toISOString();
+      }],
+    ];
+    for (const [label, mut] of cacheCases) {
+      const { ready, key } = await setupApproved();
+      await mutateCache(key, mut);
+      const res = await replay(ready, key);
+      assert.ok(res.status >= 400, `${label}: ${res.status} ${res.text}`);
+      assert.notEqual(res.json.replay, true, label);
+      assertStaleReplayRejected(res);
+    }
+
+    const authCases = [
+      ['authoritative snapshot revision', (snap) => { snap.revision = Number(snap.revision) + 4; }],
+      ['authoritative snapshot contract_hash', (snap) => { snap.contract_hash = 'd'.repeat(64); }],
+      ['authoritative snapshot contract content', (snap) => { snap.objective = 'leads'; }],
+      ['authoritative snapshot expiry', (snap) => {
+        snap.expires_at = new Date(Date.now() + 3 * 864e5).toISOString();
+      }],
+    ];
+    for (const [label, mut] of authCases) {
+      const { ready, key, first } = await setupApproved();
+      await mutatePubSnap(first.json.approval.id, mut);
+      const res = await replay(ready, key);
+      assert.ok(res.status >= 400, `${label}: ${res.status} ${res.text}`);
+      assert.notEqual(res.json.replay, true, label);
+      assertStaleReplayRejected(res);
+    }
+
+    const { ready, key } = await setupApproved();
+    await p().query(`ALTER TABLE orchestrator_campaign_drafts DISABLE TRIGGER orchestrator_campaign_drafts_immutable`);
+    try {
+      await p().query(
+        `UPDATE orchestrator_campaign_drafts SET approval_id=NULL WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, ready.id]
+      );
+    } finally {
+      await p().query(`ALTER TABLE orchestrator_campaign_drafts ENABLE TRIGGER orchestrator_campaign_drafts_immutable`);
+    }
+    const unlinked = await replay(ready, key);
+    assert.ok(unlinked.status >= 400, unlinked.text);
+    assert.notEqual(unlinked.json.replay, true);
+    assertStaleReplayRejected(unlinked);
+
+    const live = await setupApproved();
+    const okReplay = await replay(live.ready, live.key);
+    assert.equal(okReplay.status, 200, okReplay.text);
+    assert.equal(okReplay.json.ok, true);
+    assert.equal(okReplay.json.replay, true);
+    assert.equal(okReplay.json.draft.status, 'approved_for_publish');
+    assert.equal(okReplay.json.approval.id, live.first.json.approval.id);
   });
 }
