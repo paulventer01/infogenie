@@ -283,7 +283,9 @@ async function checkCredentials(userId, contract, opts) {
       errors.push({ code: 'missing_credentials', field: 'accounts.credential_ref' });
       continue;
     }
-    const ok = await vault.hasCredentials(ownerId, vaultKey);
+    const ok = await vault.hasCredentials(ownerId, vaultKey, client
+      ? { client, tenantId }
+      : undefined);
     if (!ok) errors.push({ code: 'missing_credentials', field: `accounts.${a.platform}` });
   }
   return errors;

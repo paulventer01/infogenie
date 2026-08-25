@@ -81,6 +81,9 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_campaign_draft_revisions',
   'orchestrator_campaign_draft_creatives',
   'orchestrator_campaign_publish_approvals',
+  // PR 6B — guarded internal publishing request bound to an approved snapshot.
+  // Does not publish, activate, pause, or store provider/campaign side effects.
+  'orchestrator_campaign_publish_requests',
 ];
 
 const RESEARCH_RETENTION_EXPIRY_SQL =
@@ -3547,6 +3550,121 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE UPDATE OR DELETE ON orchestrator_campaign_publish_approvals
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_campaign_publish_approvals_immutable();
+  `);
+
+  // PR 6B — tenant-scoped guarded internal publishing request.
+  // Binds to an exact approved snapshot (draft + publishing approval +
+  // workflow approval + revision/contract_hash/snapshot_hash). Status is
+  // frozen at requested; confirmation_version is frozen at 1.
+  // Does not store credentials, vault payloads, tokens, headers, provider
+  // data, external campaign IDs, arbitrary bodies, confirmation phrases, or
+  // a duplicate of snapshot_json. Does not publish/activate/pause.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_publish_requests (
+      id TEXT NOT NULL, tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      draft_id TEXT NOT NULL, publish_approval_id TEXT NOT NULL, workflow_approval_id INTEGER NOT NULL,
+      revision INTEGER NOT NULL, contract_hash TEXT NOT NULL, snapshot_hash TEXT NOT NULL,
+      requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'requested', confirmation_version INTEGER NOT NULL DEFAULT 1,
+      idempotency_key TEXT NOT NULL, request_hash TEXT NOT NULL,
+      requested_at TIMESTAMPTZ NOT NULL DEFAULT now(), created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_campaign_publish_requests_tenant_unique_idemp
+        UNIQUE (tenant_id, idempotency_key),
+      CONSTRAINT orchestrator_campaign_publish_requests_tenant_unique_snapshot
+        UNIQUE (tenant_id, draft_id, revision, contract_hash, snapshot_hash),
+      CONSTRAINT orchestrator_campaign_publish_requests_status_check CHECK (status = 'requested'),
+      CONSTRAINT orchestrator_campaign_publish_requests_confirm_ver_check
+        CHECK (confirmation_version = 1),
+      CONSTRAINT orchestrator_campaign_publish_requests_revision_check CHECK (revision >= 1),
+      CONSTRAINT orchestrator_campaign_publish_requests_len_check CHECK (
+        char_length(id) BETWEEN 1 AND 128
+        AND char_length(draft_id) BETWEEN 1 AND 128
+        AND char_length(publish_approval_id) BETWEEN 1 AND 128
+        AND char_length(idempotency_key) BETWEEN 1 AND 256),
+      CONSTRAINT orchestrator_campaign_publish_requests_contract_hash_check CHECK (
+        char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_campaign_publish_requests_snapshot_hash_check CHECK (
+        char_length(snapshot_hash)=64 AND snapshot_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_campaign_publish_requests_request_hash_check CHECK (
+        char_length(request_hash)=64 AND request_hash ~ '^[0-9a-f]{64}$')
+    );
+  `);
+  await p.query(`ALTER TABLE orchestrator_campaign_publish_requests
+    ADD COLUMN IF NOT EXISTS draft_id TEXT,
+    ADD COLUMN IF NOT EXISTS publish_approval_id TEXT,
+    ADD COLUMN IF NOT EXISTS workflow_approval_id INTEGER,
+    ADD COLUMN IF NOT EXISTS revision INTEGER,
+    ADD COLUMN IF NOT EXISTS contract_hash TEXT,
+    ADD COLUMN IF NOT EXISTS snapshot_hash TEXT,
+    ADD COLUMN IF NOT EXISTS requested_by INTEGER,
+    ADD COLUMN IF NOT EXISTS status TEXT,
+    ADD COLUMN IF NOT EXISTS confirmation_version INTEGER,
+    ADD COLUMN IF NOT EXISTS idempotency_key TEXT,
+    ADD COLUMN IF NOT EXISTS request_hash TEXT,
+    ADD COLUMN IF NOT EXISTS requested_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ`);
+  await _ensureNamedUnique(p, 'orchestrator_campaign_publish_requests',
+    'orchestrator_campaign_publish_requests_tenant_unique_idemp', 'tenant_id, idempotency_key');
+  await _ensureNamedUnique(p, 'orchestrator_campaign_publish_requests',
+    'orchestrator_campaign_publish_requests_tenant_unique_snapshot',
+    'tenant_id, draft_id, revision, contract_hash, snapshot_hash');
+  await p.query(`ALTER TABLE orchestrator_campaign_publish_requests
+    DROP CONSTRAINT IF EXISTS orchestrator_campaign_publish_requests_tenant_publish_approval_,
+    DROP CONSTRAINT IF EXISTS orchestrator_campaign_publish_requests_tenant_workflow_approval,
+    DROP CONSTRAINT IF EXISTS orchestrator_campaign_publish_requests_confirmation_version_che`);
+  await p.query(`DROP INDEX IF EXISTS idx_orchestrator_campaign_publish_requests_tenant_publish_appro`);
+  await _ensureNamedFk(p, 'orchestrator_campaign_publish_requests',
+    'orchestrator_campaign_publish_requests_tenant_draft_fkey',
+    'tenant_id, draft_id', 'orchestrator_campaign_drafts', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_publish_requests',
+    'orchestrator_campaign_publish_requests_tenant_pub_appr_fkey',
+    'tenant_id, publish_approval_id', 'orchestrator_campaign_publish_approvals', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_publish_requests',
+    'orchestrator_campaign_publish_requests_tenant_wf_appr_fkey',
+    'tenant_id, workflow_approval_id', 'orchestrator_approvals', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedCheck(p, 'orchestrator_campaign_publish_requests',
+    'orchestrator_campaign_publish_requests_status_check', `status = 'requested'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_publish_requests',
+    'orchestrator_campaign_publish_requests_confirm_ver_check', `confirmation_version = 1`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_publish_requests',
+    'orchestrator_campaign_publish_requests_revision_check', `revision >= 1`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_publish_requests',
+    'orchestrator_campaign_publish_requests_contract_hash_check',
+    `char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_publish_requests',
+    'orchestrator_campaign_publish_requests_snapshot_hash_check',
+    `char_length(snapshot_hash)=64 AND snapshot_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_publish_requests',
+    'orchestrator_campaign_publish_requests_request_hash_check',
+    `char_length(request_hash)=64 AND request_hash ~ '^[0-9a-f]{64}$'`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_campaign_publish_requests_tenant_draft
+    ON orchestrator_campaign_publish_requests (tenant_id, draft_id)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_orchestrator_campaign_publish_requests_tenant_pub_appr
+    ON orchestrator_campaign_publish_requests (tenant_id, publish_approval_id)`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_campaign_publish_requests_immutable()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        RAISE EXCEPTION 'orchestrator_campaign_publish_requests_immutable';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_campaign_publish_requests_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_campaign_publish_requests_immutable ON orchestrator_campaign_publish_requests;
+    CREATE TRIGGER orchestrator_campaign_publish_requests_immutable
+      BEFORE UPDATE OR DELETE ON orchestrator_campaign_publish_requests
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_campaign_publish_requests_immutable();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {

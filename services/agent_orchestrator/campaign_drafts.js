@@ -636,22 +636,24 @@ function assertReplayMatchesDraft(row, pub, cached, rev) {
   assertCachedApprovalSnapshot(cached, row, pub);
 }
 
+async function assertPublishAuthorizedOnClient(c, tenantId, draftId) {
+  let row = await lockDraft(c, tenantId, draftId);
+  if (!row) fail('not_found');
+  row = await maybeExpire(c, row);
+  const pub = row.approval_id
+    ? await one(c,
+      `SELECT * FROM orchestrator_campaign_publish_approvals
+         WHERE tenant_id=$1 AND draft_id=$2 AND workflow_approval_id=$3 AND revoked_at IS NULL`,
+      [tenantId, draftId, row.approval_id])
+    : null;
+  const rev = await loadRev(c, tenantId, row.id, row.current_revision);
+  assertCurrentApproval(row, pub);
+  assertAuthoritativeSnapshot(row, pub, rev);
+  return { ok: true, draft: row, approval: pub, revision: rev };
+}
+
 async function assertPublishAuthorized(pool, tenantId, draftId) {
-  return withTx(pool, async (c) => {
-    let row = await lockDraft(c, tenantId, draftId);
-    if (!row) fail('not_found');
-    row = await maybeExpire(c, row);
-    const pub = row.approval_id
-      ? await one(c,
-        `SELECT * FROM orchestrator_campaign_publish_approvals
-           WHERE tenant_id=$1 AND draft_id=$2 AND workflow_approval_id=$3 AND revoked_at IS NULL`,
-        [tenantId, draftId, row.approval_id])
-      : null;
-    const rev = await loadRev(c, tenantId, row.id, row.current_revision);
-    assertCurrentApproval(row, pub);
-    assertAuthoritativeSnapshot(row, pub, rev);
-    return { ok: true, draft: row, approval: pub };
-  });
+  return withTx(pool, (c) => assertPublishAuthorizedOnClient(c, tenantId, draftId));
 }
 
 async function assertApproveReplay(pool, tenantId, draftId, cachedApproval) {
@@ -680,5 +682,5 @@ async function assertApproveReplay(pool, tenantId, draftId, cachedApproval) {
 module.exports = {
   createDraft, editDraft, validateDraft, approveDraft, revokeDraft, cancelDraft,
   getDraft, listDrafts, snapshotDraft, historyDraft,
-  assertPublishAuthorized, assertApproveReplay, publicDraft,
+  assertPublishAuthorized, assertPublishAuthorizedOnClient, assertApproveReplay, publicDraft,
 };

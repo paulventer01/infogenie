@@ -63,18 +63,48 @@ function hasKey() { try { return !!_loadKey(); } catch { return false; } }
 
 // True iff the given user has an active (status != 'disconnected') credential
 // row for the platform. This is the correct per-user check for status UIs.
-async function hasCredentials(userId, platform) {
+// Public callers use the pool and must not pass a client. A publishing-request
+// transaction may pass `{ client, tenantId }` to lock the matching
+// actor/platform row on that existing connection until COMMIT/ROLLBACK.
+// Presence only: never SELECT ciphertext/iv/tag or decrypt.
+async function hasCredentials(userId, platform, opts) {
   const uid = _normUserId(userId);
   if (!uid || !_db.hasDb()) return false;
+  const client = opts && opts.client && typeof opts.client.query === 'function'
+    ? opts.client
+    : null;
+  const tenantId = opts && opts.tenantId != null ? Number(opts.tenantId) : NaN;
+  const scopedTenant = Number.isInteger(tenantId) && tenantId > 0;
   try {
-    await ensureCredentialsSchema();
-    const r = await _db.getPool().query(
-      `SELECT 1 FROM user_integrations
-       WHERE user_id=$1 AND platform=$2 AND status <> 'disconnected' LIMIT 1`,
-      [uid, platform]
-    );
+    if (!client) await ensureCredentialsSchema();
+    const q = client || _db.getPool();
+    let sql;
+    let params;
+    if (client && scopedTenant) {
+      sql = `SELECT 1 FROM user_integrations ui
+              JOIN tenant_users tu
+                ON tu.user_id = ui.user_id AND tu.tenant_id = $3 AND tu.status = 'active'
+             WHERE ui.user_id=$1 AND ui.platform=$2 AND ui.status <> 'disconnected'
+             LIMIT 1
+             FOR UPDATE OF ui`;
+      params = [uid, platform, tenantId];
+    } else if (client) {
+      sql = `SELECT 1 FROM user_integrations
+              WHERE user_id=$1 AND platform=$2 AND status <> 'disconnected'
+              LIMIT 1 FOR UPDATE`;
+      params = [uid, platform];
+    } else {
+      sql = `SELECT 1 FROM user_integrations
+              WHERE user_id=$1 AND platform=$2 AND status <> 'disconnected'
+              LIMIT 1`;
+      params = [uid, platform];
+    }
+    const r = await q.query(sql, params);
     return r.rows.length > 0;
-  } catch { return false; }
+  } catch (err) {
+    if (client) throw err;
+    return false;
+  }
 }
 
 function assertBootRequirements() {
