@@ -2387,6 +2387,310 @@ confirmation phrase, digest-only storage, tenant scoping),
 scanning, normalized forbidden keys, locator schemes, detachment, no
 route/connector/fetch).
 
+## Advertising orchestrator — campaign delivery intents (PR 6C)
+
+PR 6C adds one tenant-scoped table
+(`orchestrator_campaign_delivery_intents`), one HTTP route
+(`POST /api/agent-orchestrator/campaign-drafts/:id/publishing-requests/:publishingRequestId/delivery-intents`),
+two modules (`campaign_delivery_contracts.js`, `campaign_delivery_intents.js`),
+one dedicated outbox helper (`outbox.enqueueCampaignDeliveryV1`) and one
+read-and-lock helper (`campaign_publish_requests.lockPublishRequest`).
+
+**Nothing in PR 6C talks to a provider.** There is no connector module, no
+`fetch`, no `setInterval`/cron, no worker drain and no vault read of secret
+material. The route's success body is pinned to `delivered: false` and
+`external_action_taken: false`, and the draft and publish-request statuses are
+untouched (`approved_for_publish` and `requested` respectively, verified after a
+successful create). Provider work is PR 6D and does not exist yet.
+
+### Auth, permission and CSRF
+
+- **Session only.** The route is wrapped with `{ rejectApiKey: true }`, so an
+  `INFOGENIE_API_KEY` caller gets `403 permission_denied` before any tenant or
+  permission work. Anonymous callers get `401 auth_required`.
+- **`GATE_PERMISSION.campaign_publishing`** (`orchestrator.workflows.approve.campaign_publishing`)
+  is required in the handler, matching `/approve`, `/publishing-requests` and
+  `/revoke`. A Marketer is refused.
+- **No new `ROUTE_GROUPS` prefix was needed, and none was added.**
+  `_matchGroup` sorts longest-prefix-first, so the nested path resolves to the
+  existing `/api/agent-orchestrator/campaign-drafts` row
+  (`orchestrator.workflows.view` for both read and write) rather than to the
+  broader `/api/agent-orchestrator` row. The matrix row is the outer boundary;
+  the in-handler gate is the real control. `permission_matrix.js` is unchanged
+  by this PR and a test asserts it contains no `delivery-intents` string.
+- **CSRF covers this route.** `services/security/csrf.js` has no path allowlist,
+  so a cookie-authenticated `POST` with a missing or mismatched
+  `Origin`/`Referer` is refused with `403 csrf_rejected` when `SECURITY_CSRF` is
+  `on` — the production default — and no intent row is written. The module's
+  API-key exemption is not a way in here, because `rejectApiKey` already closed
+  that door.
+- **The tenant is never caller-supplied.** `resolveTenantId(req, { label:
+  'orch-campaign-drafts' })` returns `req.tenant.id` or null; there is no
+  `allowFallback`. `req.tenant` is set only from `req.session.activeTenantId`
+  validated against the caller's active memberships, so no header, query or body
+  value selects a tenant. A body `tenant_id` is compared against the resolved id
+  and then rejected outright as an unknown field (see below), so even a *correct*
+  `tenant_id` fails the request.
+
+**The strongest control on this route does not depend on a rollout flag.** Both
+the matrix enforcer and the in-handler `requirePermission` are inert when
+`PERMISSION_ENFORCEMENT` is `shadow` (the dev default; production defaults to
+`on`). The actor binding is not: `createDeliveryIntent` unconditionally refuses
+unless the caller is the same user recorded as `actor_user_id` on **both** the
+publish approval row and its snapshot, *and* is the `requested_by` of the publish
+request, *and* holds an `active` `tenant_users` row. A shadow-mode deployment
+therefore still cannot let a second tenant member create a delivery intent
+against someone else's approval.
+
+### Tenant isolation of the PR 6C schema
+
+Reviewed as landed, and probed against real Postgres rather than read only.
+
+- `PRIMARY KEY (tenant_id, id)` and `tenant_id INTEGER NOT NULL REFERENCES
+  tenants(id) ON DELETE CASCADE`, so an intent id is only resolvable inside one
+  tenant.
+- **Every parent reference is a composite FK on `(tenant_id, …)`**: publish
+  request, draft and publish approval → `(tenant_id, id)` `ON DELETE CASCADE`;
+  workflow approval and outbox → `(tenant_id, id)` `NO ACTION DEFERRABLE
+  INITIALLY DEFERRED`. Every target carries a matching `PRIMARY KEY (tenant_id,
+  id)` or `orchestrator_approvals_tenant_unique_id`. Binding an intent in tenant
+  A to an outbox row in tenant B is refused with `23503` on
+  `orchestrator_campaign_delivery_intents_tenant_outbox_fkey`, so the deferred FK
+  **cannot orphan across tenants**.
+- **The deferred outbox FK cannot orphan within a tenant either.** The intent row
+  is written first with a pregenerated `outbox_id`, then the outbox row, inside
+  one transaction; an intent that reaches `COMMIT` with no matching outbox row is
+  refused with `23503`. The reverse is closed too: deleting the bound outbox row
+  while the intent lives is refused by the same FK (`NO ACTION`), so the pending
+  row cannot be dropped out from under the intent.
+- Every unique key leads with `tenant_id` — `(tenant_id,
+  publishing_request_id)`, `(tenant_id, outbox_id)`, `(tenant_id,
+  idempotency_key)`. Two tenants may use the same client idempotency key and
+  neither can see or collide with the other's intent. There are no bare
+  natural-key uniques.
+- **No credential, token, header, provider, external-id, snapshot-body or
+  raw-payload column exists on the table.** Only ids, `revision`, three hex-64
+  hashes, the frozen `contract_version`/`operation`/`status`, the client
+  idempotency key, `requested_by` and `created_at`.
+- `contract_version`, `operation` and `status` are pinned by CHECK to
+  `campaign_delivery_v1` / `create_provider_draft` / `pending`; the three hash
+  columns are CHECKed `^[0-9a-f]{64}$`, so an uppercase digest is refused with
+  `23514`.
+
+### Immutability and tenant cascade
+
+`orchestrator_campaign_delivery_intents_immutable` fires `BEFORE UPDATE OR
+DELETE`: every `UPDATE` raises, and a `DELETE` is allowed only once the owning
+`tenants` row is already gone. Probed:
+
+- `UPDATE … SET status='enqueued'` and re-pointing `outbox_id` both raise
+  `orchestrator_campaign_delivery_intents_immutable`.
+- `DELETE FROM tenants` cascades the intents away cleanly (0 rows remain).
+- Deleting the parent publish request while the tenant still exists is refused —
+  by `orchestrator_campaign_publish_requests_immutable` on the parent, before the
+  intent's `ON DELETE CASCADE` is reached. The cascade is a tenant-teardown path,
+  not a way to retract a recorded intent.
+- Deleting the requesting `users` row is likewise refused. The declared
+  `requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL` is
+  self-contradictory (a `SET NULL` into a `NOT NULL` column), but the immutability
+  trigger raises first, so the observable behaviour is a refusal rather than a
+  silent null. This is a residual, not a new one — see below.
+
+### Request body: strict allowlist, no caller-supplied identity or content
+
+`parseDeliveryBody` accepts exactly four keys — `contract_version`, `operation`,
+`platform`, `idempotency_key` — and nothing else. Everything that identifies,
+authorizes or describes the delivery comes from the database, not the caller.
+
+- `contract_version` must equal `campaign_delivery_v1` and `operation` must equal
+  `create_provider_draft`; both are constants, so the client cannot select a
+  different contract or a stronger operation such as `activate_campaign`.
+- `platform` must be exactly one of `meta`/`google`/`tiktok` **and** must appear
+  on the authoritative approved revision's `platforms`, with exactly one matching
+  `accounts` entry. A platform the approval never covered is refused and no row
+  is written.
+- Forbidden keys are the shared `FORBIDDEN_KEYS` + `POLLUTION_KEYS` lists plus a
+  PR 6C list covering `credentials`, `access_token`, `refresh_token`,
+  `authorization`, `api_key`, `credential_ref`, `provider*`,
+  `external_campaign_id`, `snapshot*`, `confirmation*`, `approval_id`,
+  `draft_id`, `publishing_request_id`, `outbox_id` and `payload`/`raw_body`.
+  Matching is on `normalizeKey` (lowercase, non-alphanumerics stripped), so
+  `Access-Token`, `ACCESS_TOKEN` and `refreshToken` all fail, and the walk
+  recurses, so a forbidden key nested inside an accepted key still fails.
+- `__proto__` and `constructor` are refused rather than merged, and
+  `Object.prototype` is unmodified afterwards.
+- Non-objects, arrays, `Buffer`s, an empty key and a key over 256 characters are
+  all `validation_failed`. `capPayload` still caps the byte size upstream.
+- The route accepts an `Idempotency-Key` header when the body omits the key. The
+  header value is treated as the client key like any other — it is stored on the
+  intent row, and it does **not** reach the outbox, the audit detail or the
+  response body.
+
+### Reauthorization runs before every write *and* before every replay
+
+The transaction does the full authorization pass before it looks for an existing
+row, so a replay is not a shortcut past a revoked approval:
+
+1. `assertPublishAuthorizedOnClient` — locks the draft `FOR UPDATE`, expires it
+   if due, and re-derives the current unrevoked publish approval, re-checking
+   that the snapshot, the revision and the stored `contract_hash` all agree with
+   the authoritative revision.
+2. `draft.status` must be `approved_for_publish`.
+3. `lockPublishRequest` — `SELECT … WHERE tenant_id AND draft_id AND id FOR
+   UPDATE`. Presence, tenant and draft ownership are all part of the predicate,
+   so a request id from another tenant or another draft is `not_found`, not a
+   permission error, and the row is held to `COMMIT`. Verified with a competing
+   `FOR UPDATE` under `lock_timeout`.
+4. `assertRequestMatchesAuthorized` — status `requested`, `confirmation_version`
+   1, and exact equality of `draft_id`, `publish_approval_id`,
+   `workflow_approval_id` (against both the approval and the draft), `revision`
+   (against both), `contract_hash` (against both) and `snapshot_hash` against
+   `sha256Hex(pub.snapshot_json)` recomputed now.
+5. Actor: `snapshot.actor_user_id` must equal `pub.actor_user_id`, the caller
+   must equal it, and `reqRow.requested_by` must equal the caller.
+6. `assertActiveMember` — an `active` `tenant_users` row for this tenant.
+7. `checkCredentials` on the transaction client.
+
+Only then is `intent_hash` computed and the idempotency lookup done. Revocation,
+expiry, a draft edit, a tampered `snapshot_json` and credential removal each
+fail a *replay* closed with `approval_required`/`approval_revoked`,
+`approval_expired`, `approval_stale` or `validation_failed` — never with
+`replay: true`.
+
+### Credentials: presence and ownership only, never a decrypt
+
+`campaign_delivery_intents.js` does not require `services/credentials/vault.js`
+and never calls `getCredentials`. It calls `checkCredentials(userId, contract,
+{ tenantId, client })`, which:
+
+- re-checks active tenant membership for the actor before looking at any
+  credential;
+- resolves `credential_ref` through `ownedCredentialUserId`, which accepts only
+  `user_integrations` or `user_integrations:<callerId>` — a ref naming another
+  user's plane is refused, so one member cannot spend another's connection;
+- calls `vault.hasCredentials(ownerId, vaultKey, { client, tenantId })`, which on
+  a transaction client with a tenant runs `SELECT 1 … JOIN tenant_users … WHERE
+  status <> 'disconnected' LIMIT 1 FOR UPDATE OF ui`. That is an existence probe
+  that **locks the `user_integrations` row for the rest of the transaction**, so
+  a concurrent disconnect or delete cannot land between the check and the
+  commit. No ciphertext, IV or tag is read into the process.
+
+Probed with a marker written into `ciphertext`/`iv`/`tag`: the marker appears in
+neither the response body, the intent row, the outbox row nor any audit detail.
+Disconnecting or deleting the integration fails the create *and* the replay
+closed with `missing_credentials`.
+
+### Outbox hygiene
+
+`enqueueCampaignDeliveryV1` is a narrow helper, not a second general `enqueue`:
+
+- Its input is allowlisted to five keys. A caller-supplied `payload`,
+  `destination` or `operation` is `validation_failed`, so the client cannot
+  choose a provider destination or smuggle arbitrary JSON into an
+  operator-readable row.
+- `destination` and `operation` are literals in the SQL (`'internal'`,
+  `'create_provider_draft'`), and `state` is `'pending'`.
+- **The stored `idempotency_key` is never the client's key.** It must match
+  `^cdv1:[0-9a-f]{64}$`, and the caller derives it as `cdv1:` +
+  `sha256Hex({ kind, tenant_id, publishing_request_id, operation, intent_hash })`.
+  A raw client key is refused by the helper's own regex, so the client key cannot
+  leak into the outbox by mistake later.
+- The payload is built by the shared `sanitizePayload` and is exactly three keys
+  — `workflow_id`, `operation`, `credential_ref`. `credential_ref` goes through
+  `normalizeCredentialRef` (opaque shape plus the known-secret-prefix denylist),
+  and a non-conforming value is **refused rather than dropped**, so a caller that
+  meant to pass a handle and passed a secret sees the write fail instead of an
+  enqueue with no credential.
+- The workflow is verified to exist *in this tenant* before the insert.
+- **Nothing drains it.** The only `outbox.claim` callers are
+  `generation_jobs.js` (`static_image_generate`) and `video_jobs.js`
+  (`video_generate`); both pass an `operation` filter and re-check
+  `ob.operation` before touching the row, and both park a mismatch back to
+  `pending`. `services/jobs/scheduler.js` works the unrelated `jobs` table.
+  `outbox.processOnce` is test-only.
+
+### Atomicity and bounded concurrency
+
+Intent row, outbox row and audit event are written inside one `SAVEPOINT
+sp_campaign_delivery_intent` within a single transaction. On a unique violation
+(`23505`) the savepoint is rolled back and the existing row is re-resolved and
+re-validated; any other error propagates to a full `ROLLBACK`. There is no path
+that leaves an intent without its outbox row, an outbox row without its intent,
+or an audit event without either — this is tighter than PR 6B, whose audit insert
+sits outside the savepoint.
+
+Two concurrent creates against one publish request converge on **one** intent and
+**one** pending outbox row; the loser gets `200` with `replay: true` or `409
+idempotency_conflict`, never a second row. Reusing a key with different content,
+or against a different publish request, is `409 idempotency_conflict`.
+
+### Response and audit hygiene
+
+The response body is exactly `ok`, `replay`, `delivered`,
+`external_action_taken`, `intent`, and `intent` is exactly the 17 keys of
+`publicIntent` — ids, `revision`, the three hashes, the frozen
+version/operation/status, `requested_by` and `created_at`. It carries no
+snapshot body, no contract, no `credential_ref`, no confirmation phrase, no
+client idempotency key and no `platform`.
+
+Audit rows go to `orchestrator_audit_events` with `tenant_id`, `workflow_id`,
+`event = 'campaign_delivery_requested'` and `actor_user_id`, and `detail` is
+built by a 21-key allowlist that truncates strings to 120 characters and drops
+everything else. `idempotency_key` is deliberately absent from that allowlist;
+`platform` is present and is a three-value enum, not caller content.
+
+### Accepted residuals (PR 6C)
+
+- **`campaign_delivery_contracts.safeReference` enforces shape only.** It checks
+  `CREDENTIAL_REF_RE` and rejects a JWT, a URL, whitespace and an over-long
+  value, but it does **not** apply `outbox.KNOWN_SECRET_PREFIX_RE`, so
+  `sk-live-…`, `ghp_…`, `AKIA…` and `xoxb-…` pass it. This is not reachable in PR
+  6C: the only caller is `platformAccount`, which normalizes through
+  `outbox.normalizeCredentialRef` first and fails closed, `ownedCredentialUserId`
+  already screened the ref when the contract was approved, and
+  `enqueueCampaignDeliveryV1` normalizes a third time before the insert. The name
+  nevertheless promises more than the function delivers, and a PR 6D caller that
+  reaches for `safeReference` alone would lose the denylist. **Fix belongs to
+  Backend**: route `safeReference` through `normalizeCredentialRef` (or drop the
+  duplicate shape check and take the normalized value only).
+- **`assertActiveMember` reads without `FOR UPDATE`.** Membership is checked on a
+  plain `SELECT`, so a suspension committing between that check and the
+  transaction's commit is not serialized against this write. Inherited verbatim
+  from PR 6B's publish-request path; the credential row *is* locked, so the
+  practical window is a member who is suspended in the same instant they submit.
+- **`requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL`** is
+  contradictory as declared, and identical to PR 6B's publish-request column.
+  Account erasure for a user who has created a delivery intent (or a publish
+  request) is refused while the tenant lives, and the error an operator sees is
+  an immutability trigger name rather than a referential message. Deleting the
+  tenant is the supported teardown.
+- **The pending outbox row accumulates.** Nothing claims
+  `create_provider_draft`, so every accepted intent leaves one `pending` row with
+  `attempt_count = 0` forever until PR 6D ships a consumer. `next_attempt_at` is
+  `now()`, so those rows will be immediately due the moment a consumer exists —
+  PR 6D must treat the backlog as intentional queued work and re-authorize at
+  send time rather than trusting the row's age.
+- **`intent_hash` is a fingerprint, not a signature.** It is an unkeyed SHA-256
+  over an eleven-field envelope. It detects a changed platform, revision,
+  contract or snapshot on replay; it does not attest that the intent was created
+  by a particular actor, and it is not an authenticity proof. `requested_by` and
+  the audit row are the actor record.
+- **`credential_ref` reaches an operator-readable row.** That is the existing
+  outbox design (an opaque vault handle, screened by shape and by the
+  known-secret denylist), not a change made here. The row still resolves to a
+  secret at send time, so PR 6D's resolution step is where the vault boundary
+  gets re-reviewed.
+
+Coverage: `test/advertising-orchestrator-campaign-delivery-intent-schema.test.js`
+and `test/advertising-orchestrator-campaign-delivery-intents.test.js` (session
+gate, API-key refusal, permission gate, cross-tenant `not_found`, cross-draft
+`not_found`, actor binding, strict body allowlist, platform-against-approval,
+revoked/expired/stale/tampered fail-closed, credential and membership
+re-checks on create and on replay, replay and conflict behaviour, same-request
+concurrency, `FOR UPDATE` hold, immutability, and no secret disclosure in
+response/outbox/audit), plus `test/permission-matrix.test.js` and
+`test/security-guardrails.test.js`.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
