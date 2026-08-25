@@ -74,17 +74,45 @@ function validContract(wfId, art, extra = {}) {
   };
 }
 
+const OUTBOX_PAYLOAD_KEYS = Object.freeze([
+  'contract_version', 'credential_ref', 'draft_id', 'intent_id',
+  'operation', 'platform', 'publishing_request_id', 'workflow_id',
+]);
+const PUBLIC_RESPONSE_KEYS = Object.freeze([
+  'external_action_taken', 'intent', 'ok', 'outbox', 'published', 'replay',
+]);
+const PUBLIC_INTENT_KEYS = Object.freeze([
+  'contract_version', 'created_at', 'draft_id', 'id', 'object_kind', 'operation',
+  'outbox_id', 'publish_approval_id', 'publishing_request_id', 'requested_by',
+  'revision', 'status', 'tenant_id', 'workflow_approval_id',
+]);
+const RESPONSE_FORBIDDEN = /credential|vault_payload|access_token|refresh_token|confirmation_phrase|snapshot_json|provider_data|external_campaign|contract_hash|snapshot_hash|intent_hash|idempotency_key|"payload"/i;
+
 function assertHonest(json, label) {
   assert.equal(json.ok, true, label);
-  assert.equal(json.delivered, false, label);
+  assert.equal(json.published, false, label);
   assert.equal(json.external_action_taken, false, label);
-  assert.notEqual(json.delivered, true, label);
+  assert.strictEqual(json.delivered, undefined, label);
   assert.notEqual(json.published, true, label);
   assert.ok(json.intent, label);
+  assert.ok(json.intent.id, label);
   assert.equal(json.intent.status, 'pending', label);
   assert.equal(json.intent.object_kind, 'campaign_delivery_intent', label);
   assert.equal(json.intent.contract_version, 'campaign_delivery_v1', label);
   assert.equal(json.intent.operation, 'create_provider_draft', label);
+  assert.ok(json.outbox, label);
+  assert.ok(json.outbox.id, label);
+  assert.equal(json.outbox.state, 'pending', label);
+  assert.equal(json.outbox.id, json.intent.outbox_id, label);
+  assert.deepStrictEqual(Object.keys(json).sort(), [...PUBLIC_RESPONSE_KEYS]);
+  assert.deepStrictEqual(Object.keys(json.intent).sort(), [...PUBLIC_INTENT_KEYS]);
+  assert.deepStrictEqual(Object.keys(json.outbox).sort(), ['id', 'state']);
+  assert.strictEqual(json.intent.contract_hash, undefined, label);
+  assert.strictEqual(json.intent.snapshot_hash, undefined, label);
+  assert.strictEqual(json.intent.intent_hash, undefined, label);
+  assert.strictEqual(json.intent.platform, undefined, label);
+  assert.strictEqual(json.intent.credential_ref, undefined, label);
+  assert.doesNotMatch(JSON.stringify(json), RESPONSE_FORBIDDEN);
 }
 
 function assertNoSecrets(text, marker) {
@@ -104,8 +132,10 @@ test('source: session gate, exact lock, dedicated enqueue, no external side effe
   assert.match(SRC_API, /\/:id\/publishing-requests\/:publishingRequestId\/delivery-intents/);
   assert.match(SRC_API, /rejectApiKey:\s*true/);
   assert.match(SRC_API, /GATE_PERMISSION\.campaign_publishing/);
-  assert.match(SRC_API, /delivered:\s*false/);
+  assert.match(SRC_API, /published:\s*false/);
   assert.match(SRC_API, /external_action_taken:\s*false/);
+  assert.doesNotMatch(SRC_API, /delivered:\s*false/);
+  assert.match(SRC_API, /outbox:\s*deliveryIntents\.publicOutbox/);
   assert.doesNotMatch(SRC_API, /outbox\.(enqueue|insert)/);
   assert.doesNotMatch(SRC_API, /connectors\//);
   assert.doesNotMatch(SRC_API, /fetch\s*\(/);
@@ -113,14 +143,21 @@ test('source: session gate, exact lock, dedicated enqueue, no external side effe
   const intentRouteEnd = SRC_API.indexOf("router.post('/:id/revoke'");
   assert.ok(intentRouteStart >= 0 && intentRouteEnd > intentRouteStart);
   assert.doesNotMatch(SRC_API.slice(intentRouteStart, intentRouteEnd), /runIdempotent/);
+  assert.match(SRC_API.slice(intentRouteStart, intentRouteEnd), /published:\s*false/);
+  assert.match(SRC_API.slice(intentRouteStart, intentRouteEnd), /external_action_taken:\s*false/);
 
+  assert.equal(D.AUDIT_EVENT, 'campaign_delivery_intent_created');
+  assert.deepStrictEqual([...D.OUTBOX_PAYLOAD_KEYS].sort(), [...OUTBOX_PAYLOAD_KEYS]);
   assert.match(SRC_INTENTS, /assertPublishAuthorizedOnClient\(/);
   assert.match(SRC_INTENTS, /lockPublishRequest\(/);
   assert.match(SRC_INTENTS, /checkCredentials\(/);
   assert.match(SRC_INTENTS, /enqueueCampaignDeliveryV1\(/);
+  assert.match(SRC_INTENTS, /lockByTenantAndId\(/);
+  assert.match(SRC_INTENTS, /D\.safeReference\(/);
+  assert.match(SRC_INTENTS, /D\.AUDIT_EVENT/);
   assert.match(SRC_INTENTS, /SAVEPOINT /);
   assert.match(SRC_INTENTS, /INSERT INTO orchestrator_campaign_delivery_intents/);
-  assert.match(SRC_INTENTS, /campaign_delivery_requested/);
+  assert.doesNotMatch(SRC_INTENTS, /campaign_delivery_requested/);
   assert.doesNotMatch(SRC_INTENTS, /assertPublishAuthorized\(\s*pool/);
   assert.doesNotMatch(SRC_INTENTS, /runIdempotent/);
   assert.doesNotMatch(SRC_INTENTS, /getCredentials\s*\(/);
@@ -131,6 +168,24 @@ test('source: session gate, exact lock, dedicated enqueue, no external side effe
   assert.doesNotMatch(SRC_INTENTS, /UPDATE orchestrator_campaign_drafts/);
   assert.doesNotMatch(SRC_INTENTS, /UPDATE orchestrator_campaign_publish_requests/);
   assert.doesNotMatch(SRC_INTENTS, /processOnce|outbox\.claim|outbox\.enqueue\(/);
+
+  const createFn = SRC_INTENTS.slice(SRC_INTENTS.indexOf('async function createDeliveryIntent'));
+  const lockIdx = createFn.indexOf('lockPublishRequest(');
+  const authIdx = createFn.indexOf('assertPublishAuthorizedOnClient(');
+  const credIdx = createFn.indexOf('checkCredentials(');
+  const platIdx = createFn.indexOf('platformAccount(');
+  const safeIdx = createFn.indexOf('D.safeReference(');
+  const loadIdx = createFn.indexOf('loadByKey(');
+  assert.ok(lockIdx >= 0 && authIdx >= 0 && lockIdx < authIdx, 'request FOR UPDATE before draft reauth');
+  assert.ok(credIdx >= 0 && platIdx >= 0 && credIdx < platIdx, 'reauth/credentials before platform derivation');
+  assert.ok(platIdx >= 0 && safeIdx >= 0 && loadIdx >= 0 && platIdx < loadIdx && safeIdx < loadIdx,
+    'authoritative platform/credential_ref before replay lookup');
+  assert.match(SRC_INTENTS, /function assertBoundOutbox|async function assertBoundOutbox/);
+  assert.match(SRC_INTENTS, /payload\.contract_version/);
+  assert.match(SRC_INTENTS, /payload\.platform/);
+  assert.match(SRC_INTENTS, /payload\.credential_ref/);
+  assert.match(SRC_INTENTS, /box\.destination/);
+  assert.match(SRC_INTENTS, /box\.state/);
 
   assert.match(SRC_REQ, /async function lockPublishRequest\(|function lockPublishRequest\(/);
   assert.match(SRC_REQ, /FOR UPDATE/);
@@ -143,8 +198,16 @@ test('source: session gate, exact lock, dedicated enqueue, no external side effe
   const deliveryFn = SRC_OUTBOX.slice(fnStart, fnEnd);
   assert.match(deliveryFn, /destination.*internal|['"]internal['"]/);
   assert.match(deliveryFn, /create_provider_draft/);
+  assert.match(deliveryFn, /campaign_delivery_v1/);
   assert.match(deliveryFn, /cdv1:/);
+  assert.match(deliveryFn, /contract_version/);
+  assert.match(deliveryFn, /draft_id/);
+  assert.match(deliveryFn, /publishing_request_id/);
+  assert.match(deliveryFn, /intent_id/);
   assert.doesNotMatch(deliveryFn, /opts\.payload|opts\.destination|opts\.operation/);
+  assert.doesNotMatch(deliveryFn, /sanitizePayload\(/);
+  assert.doesNotMatch(deliveryFn, /input\.payload|input\.destination|input\.operation/);
+  assert.match(SRC_OUTBOX, /async function lockByTenantAndId\(/);
   assert.match(SRC_OUTBOX, /async function enqueue\(/);
   assert.match(SRC_OUTBOX, /function sanitizePayload/);
 
@@ -494,16 +557,33 @@ if (!HAS_DB) {
         }),
         (e) => e && e.code === 'validation_failed'
       );
+      await assert.rejects(
+        () => enqueueCampaignDeliveryV1(client, {
+          id: nid('obx'), tenantId: tenantA.id, workflowId: wfA,
+          credentialRef: 'user_integrations',
+          idempotencyKey: `cdv1:${'e'.repeat(64)}`,
+        }),
+        (e) => e && e.code === 'validation_failed'
+      );
       const ok = await enqueueCampaignDeliveryV1(client, {
         id: nid('obx'), tenantId: tenantA.id, workflowId: wfA,
+        draftId: 'cd_unit', publishingRequestId: 'cpr_unit', intentId: 'cdi_unit',
+        platform: 'meta',
         credentialRef: 'user_integrations',
         idempotencyKey: `cdv1:${'d'.repeat(64)}`,
       });
       assert.equal(ok.destination, 'internal');
       assert.equal(ok.operation, 'create_provider_draft');
       assert.equal(ok.state, 'pending');
-      assert.deepStrictEqual(Object.keys(ok.payload).sort(), ['credential_ref', 'operation', 'workflow_id']);
+      assert.deepStrictEqual(Object.keys(ok.payload).sort(), [...OUTBOX_PAYLOAD_KEYS]);
+      assert.equal(ok.payload.contract_version, 'campaign_delivery_v1');
+      assert.equal(ok.payload.operation, 'create_provider_draft');
+      assert.equal(ok.payload.platform, 'meta');
       assert.equal(ok.payload.credential_ref, 'user_integrations');
+      assert.equal(ok.payload.workflow_id, wfA);
+      assert.equal(ok.payload.draft_id, 'cd_unit');
+      assert.equal(ok.payload.publishing_request_id, 'cpr_unit');
+      assert.equal(ok.payload.intent_id, 'cdi_unit');
       assert.match(ok.idempotency_key, /^cdv1:[0-9a-f]{64}$/);
       const generic = await enqueue(client, {
         tenantId: tenantA.id, workflowId: wfA, destination: 'internal',
@@ -516,7 +596,7 @@ if (!HAS_DB) {
     }
   });
 
-  test('valid delivery intent binds one pending internal outbox and stays undelivered', async () => {
+  test('valid delivery intent binds one pending internal outbox and stays unpublished', async () => {
     const live = await readyRequested(cookieA, wfA, artA);
     const res = await createIntent(cookieA, live.draft, live.request);
     assert.equal(res.status, 200, res.text);
@@ -527,10 +607,10 @@ if (!HAS_DB) {
     assert.equal(res.json.intent.publish_approval_id, live.approval.id);
     assert.equal(Number(res.json.intent.workflow_approval_id), Number(live.request.workflow_approval_id));
     assert.equal(res.json.intent.revision, live.draft.current_revision);
-    assert.equal(res.json.intent.contract_hash, live.draft.contract_hash);
-    assert.equal(res.json.intent.snapshot_hash, sha256Hex(live.approval.snapshot));
     assert.equal(Number(res.json.intent.requested_by), Number(ownerA.id));
+    assert.equal(res.json.outbox.state, 'pending');
     assert.doesNotMatch(res.text, FORBIDDEN_SURFACE);
+    assert.doesNotMatch(res.text, RESPONSE_FORBIDDEN);
     assert.doesNotMatch(JSON.stringify(res.json), /CONFIRM INTERNAL PUBLISHING REQUEST/);
 
     const row = (await p().query(
@@ -539,7 +619,10 @@ if (!HAS_DB) {
     )).rows[0];
     assert.equal(row.status, 'pending');
     assert.match(row.intent_hash, /^[0-9a-f]{64}$/);
+    assert.equal(row.contract_hash, live.draft.contract_hash);
+    assert.equal(row.snapshot_hash, sha256Hex(live.approval.snapshot));
     assert.equal(row.outbox_id, res.json.intent.outbox_id);
+    assert.equal(row.outbox_id, res.json.outbox.id);
 
     const outbox = (await p().query(
       `SELECT * FROM orchestrator_outbox WHERE tenant_id=$1 AND id=$2`,
@@ -551,8 +634,15 @@ if (!HAS_DB) {
     assert.equal(outbox.operation, 'create_provider_draft');
     assert.match(outbox.idempotency_key, /^cdv1:[0-9a-f]{64}$/);
     assert.doesNotMatch(outbox.idempotency_key, /^ik-/);
-    assert.deepStrictEqual(Object.keys(outbox.payload).sort(), ['credential_ref', 'operation', 'workflow_id']);
+    assert.deepStrictEqual(Object.keys(outbox.payload).sort(), [...OUTBOX_PAYLOAD_KEYS]);
+    assert.equal(outbox.payload.contract_version, 'campaign_delivery_v1');
+    assert.equal(outbox.payload.operation, 'create_provider_draft');
+    assert.equal(outbox.payload.platform, 'meta');
     assert.equal(outbox.payload.credential_ref, 'user_integrations');
+    assert.equal(outbox.payload.workflow_id, wfA);
+    assert.equal(outbox.payload.draft_id, live.draft.id);
+    assert.equal(outbox.payload.publishing_request_id, live.request.id);
+    assert.equal(outbox.payload.intent_id, row.id);
     assert.equal(outbox.credential_ref, 'user_integrations');
 
     const extraOutbox = (await p().query(
@@ -575,7 +665,7 @@ if (!HAS_DB) {
 
     const audit = (await p().query(
       `SELECT event, actor_user_id, detail FROM orchestrator_audit_events
-        WHERE tenant_id=$1 AND workflow_id=$2 AND event='campaign_delivery_requested'
+        WHERE tenant_id=$1 AND workflow_id=$2 AND event='campaign_delivery_intent_created'
         ORDER BY id DESC LIMIT 1`,
       [tenantA.id, wfA]
     )).rows[0];
@@ -817,6 +907,8 @@ if (!HAS_DB) {
     assert.equal(replay.json.replay, true);
     assert.equal(replay.json.intent.id, first.json.intent.id);
     assertHonest(replay.json);
+    assert.equal(replay.json.outbox.id, first.json.outbox.id);
+    assert.equal(replay.json.outbox.state, 'pending');
     const outboxes = (await p().query(
       `SELECT COUNT(*)::int AS n FROM orchestrator_outbox
         WHERE tenant_id=$1 AND id=$2`,
@@ -827,13 +919,45 @@ if (!HAS_DB) {
     const conflict = await createIntent(cookieA, live.draft, live.request, {
       idempotency_key: key, platform: 'google',
     });
-    assert.equal(conflict.status, 409, conflict.text);
-    assert.equal(conflict.json.error, 'idempotency_conflict');
+    assert.equal(conflict.status, 400, conflict.text);
+    assert.equal(conflict.json.error, 'validation_failed');
+    assert.notEqual(conflict.json.replay, true);
 
     const other = await readyRequested(cookieA, wfA, artA);
     const crossReq = await createIntent(cookieA, other.draft, other.request, { idempotency_key: key });
     assert.equal(crossReq.status, 409, crossReq.text);
     assert.equal(crossReq.json.error, 'idempotency_conflict');
+  });
+
+  test('replay fails closed when bound outbox payload or pending state diverges', async () => {
+    const live = await readyRequested(cookieA, wfA, artA);
+    const key = ik('stale-box');
+    const first = await createIntent(cookieA, live.draft, live.request, { idempotency_key: key });
+    assert.equal(first.status, 200, first.text);
+    assertHonest(first.json);
+
+    const payload = (await p().query(
+      `SELECT payload FROM orchestrator_outbox WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, first.json.outbox.id]
+    )).rows[0].payload;
+    const tampered = { ...payload, platform: 'google' };
+    await p().query(
+      `UPDATE orchestrator_outbox SET payload=$3::jsonb WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, first.json.outbox.id, JSON.stringify(tampered)]
+    );
+    const stalePayload = await createIntent(cookieA, live.draft, live.request, { idempotency_key: key });
+    assert.ok(stalePayload.status >= 400, stalePayload.text);
+    assert.notEqual(stalePayload.json.replay, true);
+    assert.ok(['idempotency_conflict', 'invalid_transition', 'conflict'].includes(stalePayload.json.error), stalePayload.text);
+
+    await p().query(
+      `UPDATE orchestrator_outbox SET payload=$3::jsonb, state='failed' WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, first.json.outbox.id, JSON.stringify(payload)]
+    );
+    const staleState = await createIntent(cookieA, live.draft, live.request, { idempotency_key: key });
+    assert.ok(staleState.status >= 400, staleState.text);
+    assert.notEqual(staleState.json.replay, true);
+    assert.ok(['idempotency_conflict', 'invalid_transition', 'conflict'].includes(staleState.json.error), staleState.text);
   });
 
   test('same request with different keys converges or bounded-conflicts to one intent', async () => {

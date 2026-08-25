@@ -2398,7 +2398,7 @@ read-and-lock helper (`campaign_publish_requests.lockPublishRequest`).
 
 **Nothing in PR 6C talks to a provider.** There is no connector module, no
 `fetch`, no `setInterval`/cron, no worker drain and no vault read of secret
-material. The route's success body is pinned to `delivered: false` and
+material. The route's success body is pinned to `published: false` and
 `external_action_taken: false`, and the draft and publish-request statuses are
 untouched (`approved_for_publish` and `requested` respectively, verified after a
 successful create). Provider work is PR 6D and does not exist yet.
@@ -2531,16 +2531,16 @@ authorizes or describes the delivery comes from the database, not the caller.
 The transaction does the full authorization pass before it looks for an existing
 row, so a replay is not a shortcut past a revoked approval:
 
-1. `assertPublishAuthorizedOnClient` — locks the draft `FOR UPDATE`, expires it
-   if due, and re-derives the current unrevoked publish approval, re-checking
-   that the snapshot, the revision and the stored `contract_hash` all agree with
-   the authoritative revision.
-2. `draft.status` must be `approved_for_publish`.
-3. `lockPublishRequest` — `SELECT … WHERE tenant_id AND draft_id AND id FOR
+1. `lockPublishRequest` — `SELECT … WHERE tenant_id AND draft_id AND id FOR
    UPDATE`. Presence, tenant and draft ownership are all part of the predicate,
    so a request id from another tenant or another draft is `not_found`, not a
    permission error, and the row is held to `COMMIT`. Verified with a competing
    `FOR UPDATE` under `lock_timeout`.
+2. `assertPublishAuthorizedOnClient` — locks the draft `FOR UPDATE`, expires it
+   if due, and re-derives the current unrevoked publish approval, re-checking
+   that the snapshot, the revision and the stored `contract_hash` all agree with
+   the authoritative revision.
+3. `draft.status` must be `approved_for_publish`.
 4. `assertRequestMatchesAuthorized` — status `requested`, `confirmation_version`
    1, and exact equality of `draft_id`, `publish_approval_id`,
    `workflow_approval_id` (against both the approval and the draft), `revision`
@@ -2551,9 +2551,17 @@ row, so a replay is not a shortcut past a revoked approval:
 6. `assertActiveMember` — an `active` `tenant_users` row for this tenant.
 7. `checkCredentials` on the transaction client.
 
-Only then is `intent_hash` computed and the idempotency lookup done. Revocation,
-expiry, a draft edit, a tampered `snapshot_json` and credential removal each
-fail a *replay* closed with `approval_required`/`approval_revoked`,
+Then, before every idempotency lookup *and* every replay, `platform` and the
+opaque `credential_ref` are derived from the authoritative revision contract
+(`platformAccount` + the `safeReference` return). Replay locks the bound tenant
+outbox (`tenant_id` + `outbox_id` `FOR UPDATE`) and compares the stored payload
+`contract_version`/`operation`/`platform`/`credential_ref` plus the row
+`destination`/`operation`/`state`/`id`; missing, stale, conflicting or
+ambiguous values fail closed. A matching replay returns that pending outbox
+state.
+
+Revocation, expiry, a draft edit, a tampered `snapshot_json` and credential
+removal each fail a *replay* closed with `approval_required`/`approval_revoked`,
 `approval_expired`, `approval_stale` or `validation_failed` — never with
 `replay: true`.
 
@@ -2600,10 +2608,11 @@ already-persisted intents still replay-match. Verified by comparing every
 
 `enqueueCampaignDeliveryV1` is a narrow helper, not a second general `enqueue`:
 
-- Its input is allowlisted to five keys. A caller-supplied `payload`,
-  `destination` or `operation` is `validation_failed`, so the client cannot
-  choose a provider destination or smuggle arbitrary JSON into an
-  operator-readable row.
+- Its input is allowlisted to nine keys (`id`, `tenantId`, `workflowId`,
+  `draftId`, `publishingRequestId`, `intentId`, `platform`, `credentialRef`,
+  `idempotencyKey`). A caller-supplied `payload`, `destination` or `operation`
+  is `validation_failed`, so the client cannot choose a provider destination or
+  smuggle arbitrary JSON into an operator-readable row.
 - `destination` and `operation` are literals in the SQL (`'internal'`,
   `'create_provider_draft'`), and `state` is `'pending'`.
 - **The stored `idempotency_key` is never the client's key.** It must match
@@ -2611,12 +2620,16 @@ already-persisted intents still replay-match. Verified by comparing every
   `sha256Hex({ kind, tenant_id, publishing_request_id, operation, intent_hash })`.
   A raw client key is refused by the helper's own regex, so the client key cannot
   leak into the outbox by mistake later.
-- The payload is built by the shared `sanitizePayload` and is exactly three keys
-  — `workflow_id`, `operation`, `credential_ref`. `credential_ref` goes through
-  `normalizeCredentialRef` (opaque shape plus the known-secret-prefix denylist),
-  and a non-conforming value is **refused rather than dropped**, so a caller that
-  meant to pass a handle and passed a secret sees the write fail instead of an
-  enqueue with no credential.
+- The helper constructs a strict allowlisted `campaign_delivery_v1` payload
+  itself (no caller JSON, and not via generic `sanitizePayload`). The payload
+  keys are exactly `contract_version`, `operation`, `platform`,
+  `credential_ref`, `workflow_id`, `draft_id`, `publishing_request_id` and
+  `intent_id`. `credential_ref` goes through `normalizeCredentialRef` (opaque
+  shape plus the known-secret-prefix denylist), and a non-conforming value is
+  **refused rather than dropped**, so a caller that meant to pass a handle and
+  passed a secret sees the write fail instead of an enqueue with no credential.
+  The payload carries no raw caller idempotency key, content, secrets, provider
+  ids or URLs.
 - The workflow is verified to exist *in this tenant* before the insert.
 - **Nothing drains it.** The only `outbox.claim` callers are
   `generation_jobs.js` (`static_image_generate`) and `video_jobs.js`
@@ -2642,15 +2655,16 @@ or against a different publish request, is `409 idempotency_conflict`.
 
 ### Response and audit hygiene
 
-The response body is exactly `ok`, `replay`, `delivered`,
-`external_action_taken`, `intent`, and `intent` is exactly the 17 keys of
-`publicIntent` — ids, `revision`, the three hashes, the frozen
-version/operation/status, `requested_by` and `created_at`. It carries no
-snapshot body, no contract, no `credential_ref`, no confirmation phrase, no
-client idempotency key and no `platform`.
+The response body is exactly `ok`, `replay`, `published`,
+`external_action_taken`, `intent`, and `outbox`. `intent` is the public
+immutable refs — ids, `revision`, the frozen version/operation/status,
+`requested_by` and `created_at` — and `outbox` is exactly `{ id, state }` with
+`state` always `pending` on create and on a verified replay. It carries no
+snapshot body, no contract, no hashes, no `credential_ref`, no confirmation
+phrase, no client idempotency key, no payload and no `platform`.
 
 Audit rows go to `orchestrator_audit_events` with `tenant_id`, `workflow_id`,
-`event = 'campaign_delivery_requested'` and `actor_user_id`, and `detail` is
+`event = 'campaign_delivery_intent_created'` and `actor_user_id`, and `detail` is
 built by a 21-key allowlist that truncates strings to 120 characters and drops
 everything else. `idempotency_key` is deliberately absent from that allowlist;
 `platform` is present and is a three-value enum, not caller content.

@@ -6,7 +6,7 @@ const { sha256Hex } = require('./hash');
 const { checkCredentials } = require('./campaign_validate');
 const { assertPublishAuthorizedOnClient } = require('./campaign_drafts');
 const { lockPublishRequest } = require('./campaign_publish_requests');
-const { enqueueCampaignDeliveryV1, normalizeCredentialRef } = require('./outbox');
+const { enqueueCampaignDeliveryV1, normalizeCredentialRef, lockByTenantAndId } = require('./outbox');
 const C = require('./campaign_contracts');
 const D = require('./campaign_delivery_contracts');
 
@@ -65,15 +65,18 @@ function publicIntent(row) {
     workflow_approval_id: row.workflow_approval_id,
     outbox_id: row.outbox_id,
     revision: Number(row.revision),
-    contract_hash: row.contract_hash,
-    snapshot_hash: row.snapshot_hash,
-    intent_hash: row.intent_hash,
     contract_version: row.contract_version,
     operation: row.operation,
     status: row.status,
     requested_by: row.requested_by,
     created_at: row.created_at,
   };
+}
+
+function publicOutbox(row) {
+  if (!row || row.id == null || String(row.id) === '') fail('invalid_transition');
+  if (row.state !== D.STATUS) fail('invalid_transition');
+  return { id: String(row.id), state: String(row.state) };
 }
 
 function sanitizeAuditDetail(detail) {
@@ -150,12 +153,54 @@ function assertExistingSafe(existing, ctx) {
   if (existing.operation !== D.OPERATION) fail('validation_failed');
 }
 
-function replayOf(existing, ctx) {
+function parsePlainObject(value) {
+  let v = value;
+  if (typeof v === 'string') {
+    try { v = JSON.parse(v); } catch (_) { return null; }
+  }
+  if (v == null || typeof v !== 'object' || Array.isArray(v) || Buffer.isBuffer(v)) return null;
+  return v;
+}
+
+async function assertBoundOutbox(c, existing, ctx) {
+  if (!existing || existing.outbox_id == null || String(existing.outbox_id) === '') {
+    fail('idempotency_conflict');
+  }
+  const box = await lockByTenantAndId(c, { tenantId: ctx.tenantId, id: existing.outbox_id });
+  if (!box) fail('idempotency_conflict');
+  if (String(box.id) !== String(existing.outbox_id)) fail('idempotency_conflict');
+  if (box.destination !== D.DESTINATION) fail('idempotency_conflict');
+  if (box.operation !== D.OPERATION) fail('idempotency_conflict');
+  if (box.state !== D.STATUS) fail('invalid_transition');
+  if (String(box.workflow_id) !== String(ctx.draft.workflow_id)) fail('idempotency_conflict');
+  if (box.credential_ref !== ctx.credentialRef) fail('idempotency_conflict');
+  const payload = parsePlainObject(box.payload);
+  if (!payload) fail('idempotency_conflict');
+  const keys = Object.keys(payload).sort();
+  const expected = [...D.OUTBOX_PAYLOAD_KEYS].sort();
+  if (keys.length !== expected.length || keys.some((k, i) => k !== expected[i])) {
+    fail('idempotency_conflict');
+  }
+  if (payload.contract_version !== D.CONTRACT_VERSION) fail('idempotency_conflict');
+  if (payload.operation !== D.OPERATION) fail('idempotency_conflict');
+  if (payload.platform !== ctx.platform) fail('idempotency_conflict');
+  if (payload.credential_ref !== ctx.credentialRef) fail('idempotency_conflict');
+  if (String(payload.draft_id) !== String(existing.draft_id)) fail('idempotency_conflict');
+  if (String(payload.publishing_request_id) !== String(existing.publishing_request_id)) {
+    fail('idempotency_conflict');
+  }
+  if (String(payload.intent_id) !== String(existing.id)) fail('idempotency_conflict');
+  if (String(payload.workflow_id) !== String(ctx.draft.workflow_id)) fail('idempotency_conflict');
+  return box;
+}
+
+async function replayBound(c, existing, ctx) {
   assertExistingSafe(existing, ctx);
   if (String(existing.intent_hash) !== String(ctx.intentHash)) {
     fail('idempotency_conflict', { field: 'idempotency_key' });
   }
-  return { row: existing, replay: true };
+  const outbox = await assertBoundOutbox(c, existing, ctx);
+  return { row: existing, outbox, replay: true };
 }
 
 async function loadByKey(c, tenantId, key) {
@@ -177,10 +222,10 @@ async function resolveExisting(c, ctx) {
     if (String(byKey.intent_hash) !== String(ctx.intentHash)) {
       fail('idempotency_conflict', { field: 'idempotency_key' });
     }
-    return replayOf(byKey, ctx);
+    return replayBound(c, byKey, ctx);
   }
   const byReq = await loadByRequest(c, ctx.tenantId, ctx.request.id);
-  if (byReq) return replayOf(byReq, ctx);
+  if (byReq) return replayBound(c, byReq, ctx);
   return null;
 }
 
@@ -228,8 +273,8 @@ async function insertIntentAudit(c, { tenantId, workflowId, actorUserId, row, pl
   await c.query(
     `INSERT INTO orchestrator_audit_events
        (tenant_id, workflow_id, event, actor_user_id, detail)
-     VALUES ($1,$2,'campaign_delivery_requested',$3,$4::jsonb)`,
-    [tenantId, workflowId, actorUserId || null, JSON.stringify(detail)]
+     VALUES ($1,$2,$3,$4,$5::jsonb)`,
+    [tenantId, workflowId, D.AUDIT_EVENT, actorUserId || null, JSON.stringify(detail)]
   );
 }
 
@@ -237,13 +282,18 @@ async function insertOrReplay(c, ctx) {
   const existing = await resolveExisting(c, ctx);
   if (existing) return existing;
   let row;
+  let box;
   try {
     await c.query(`SAVEPOINT ${SAVEPOINT}`);
     row = await insertIntentRow(c, ctx);
-    await enqueueCampaignDeliveryV1(c, {
+    box = await enqueueCampaignDeliveryV1(c, {
       id: ctx.outboxId,
       tenantId: ctx.tenantId,
       workflowId: ctx.draft.workflow_id,
+      draftId: ctx.draft.id,
+      publishingRequestId: ctx.request.id,
+      intentId: row.id,
+      platform: ctx.platform,
       credentialRef: ctx.credentialRef,
       idempotencyKey: ctx.outboxIdempotencyKey,
     });
@@ -259,7 +309,8 @@ async function insertOrReplay(c, ctx) {
     if (raced) return raced;
     fail('idempotency_conflict', { field: 'idempotency_key' });
   }
-  return { row, replay: false };
+  if (!box || box.state !== D.STATUS) fail('invalid_transition');
+  return { row, outbox: box, replay: false };
 }
 
 async function createDeliveryIntent(pool, o) {
@@ -270,14 +321,14 @@ async function createDeliveryIntent(pool, o) {
   if (!draftId || !publishingRequestId) fail('not_found');
 
   return withTx(pool, async (c) => {
+    const reqRow = await lockPublishRequest(c, o.tenantId, draftId, publishingRequestId);
+    if (!reqRow) fail('not_found');
+
     const authorized = await assertPublishAuthorizedOnClient(c, o.tenantId, draftId);
     const draft = authorized.draft;
     const pub = authorized.approval;
     const rev = authorized.revision;
     if (draft.status !== 'approved_for_publish') fail('approval_required');
-
-    const reqRow = await lockPublishRequest(c, o.tenantId, draftId, publishingRequestId);
-    if (!reqRow) fail('not_found');
 
     const snapshotHash = sha256Hex(pub.snapshot_json);
     assertRequestMatchesAuthorized(reqRow, draft, pub, snapshotHash);
@@ -291,6 +342,7 @@ async function createDeliveryIntent(pool, o) {
     const credErrors = await checkCredentials(o.userId, contract, { tenantId: o.tenantId, client: c });
     if (credErrors.length) fail('validation_failed', { errors: credErrors });
 
+    const bound = D.safeReference(platformAccount(contract, parsed.platform));
     const intentHash = D.intentHashOf({
       tenant_id: Number(o.tenantId),
       publishing_request_id: String(reqRow.id),
@@ -302,7 +354,7 @@ async function createDeliveryIntent(pool, o) {
       snapshot_hash: snapshotHash,
       contract_version: D.CONTRACT_VERSION,
       operation: D.OPERATION,
-      platform: parsed.platform,
+      platform: bound.platform,
     });
 
     const ctx = {
@@ -314,8 +366,8 @@ async function createDeliveryIntent(pool, o) {
       request: reqRow,
       snapshotHash,
       intentHash,
-      platform: parsed.platform,
-      credentialRef: null,
+      platform: bound.platform,
+      credentialRef: bound.credential_ref,
       outboxId: null,
       outboxIdempotencyKey: null,
     };
@@ -325,13 +377,9 @@ async function createDeliveryIntent(pool, o) {
       if (String(byKey.intent_hash) !== String(intentHash)) {
         fail('idempotency_conflict', { field: 'idempotency_key' });
       }
-      return replayOf(byKey, ctx);
+      return replayBound(c, byKey, ctx);
     }
 
-    const { platform, credentialRef } = platformAccount(contract, parsed.platform);
-    D.safeReference({ platform, credentialRef });
-    ctx.platform = platform;
-    ctx.credentialRef = credentialRef;
     ctx.outboxId = newId('obx');
     ctx.outboxIdempotencyKey = outboxIdempotencyKeyOf({
       tenantId: o.tenantId,
@@ -346,4 +394,5 @@ async function createDeliveryIntent(pool, o) {
 module.exports = {
   createDeliveryIntent,
   publicIntent,
+  publicOutbox,
 };

@@ -174,7 +174,7 @@ router.post('/:id/publishing-requests/:publishingRequestId/delivery-intents', ca
   tenantMismatch(body, tid);
   const key = String(body.idempotency_key || extractIdempotencyKey(req) || '').trim();
   if (!key) fail('validation_failed', { field: 'idempotency_key' });
-  const { row, replay } = await deliveryIntents.createDeliveryIntent(pool, {
+  const { row, outbox, replay } = await deliveryIntents.createDeliveryIntent(pool, {
     tenantId: tid, userId,
     draftId: String(req.params.id || ''),
     publishingRequestId: String(req.params.publishingRequestId || ''),
@@ -185,9 +185,10 @@ router.post('/:id/publishing-requests/:publishingRequestId/delivery-intents', ca
     body: {
       ok: true,
       replay: !!replay,
-      delivered: false,
+      published: false,
       external_action_taken: false,
       intent: deliveryIntents.publicIntent(row),
+      outbox: deliveryIntents.publicOutbox(outbox),
     },
   };
 }, { rejectApiKey: true }));

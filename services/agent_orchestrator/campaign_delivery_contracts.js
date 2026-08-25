@@ -12,8 +12,13 @@ const OPERATION = 'create_provider_draft';
 const STATUS = 'pending';
 const DESTINATION = 'internal';
 const OBJECT_KIND = 'campaign_delivery_intent';
-const AUDIT_EVENT = 'campaign_delivery_requested';
+const AUDIT_EVENT = 'campaign_delivery_intent_created';
 const GATE = 'campaign_publishing';
+
+const OUTBOX_PAYLOAD_KEYS = Object.freeze([
+  'contract_version', 'credential_ref', 'draft_id', 'intent_id',
+  'operation', 'platform', 'publishing_request_id', 'workflow_id',
+]);
 
 const KEYS = Object.freeze([
   'contract_version', 'operation', 'platform', 'idempotency_key',
@@ -104,6 +109,6 @@ function intentHashOf(envelope) {
 
 module.exports = {
   CONTRACT_VERSION, OPERATION, STATUS, DESTINATION, OBJECT_KIND, AUDIT_EVENT, GATE,
-  KEYS, FORBIDDEN, INTENT_HASH_KEYS,
+  KEYS, FORBIDDEN, INTENT_HASH_KEYS, OUTBOX_PAYLOAD_KEYS,
   parseDeliveryBody, safeReference, intentHashOf,
 };
