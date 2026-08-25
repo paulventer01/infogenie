@@ -123,16 +123,25 @@ router.post('/:id/approve', capPayload, wrap(GATE_PERMISSION.campaign_publishing
     },
   });
   if (run.replay) {
-    const apprId = run.body && run.body.approval && run.body.approval.id;
-    if (apprId) {
-      const pub = (await pool.query(
-        `SELECT revoked_at FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND id=$2`,
-        [tid, apprId]
-      )).rows[0];
-      if (pub && pub.revoked_at) fail('idempotency_conflict', { field: 'idempotency_key' });
-    }
-    const bodyOut = run.body && typeof run.body === 'object' ? { ...run.body, replay: true } : run.body;
-    return { status: 200, body: bodyOut };
+    const cached = run.body && run.body.approval;
+    const authorized = await drafts.assertApproveReplay(pool, tid, draftId, cached);
+    const draft = await drafts.getDraft(pool, tid, draftId);
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        replay: true,
+        draft,
+        approval: {
+          id: authorized.approval.id,
+          revision: authorized.approval.revision,
+          contract_hash: authorized.approval.contract_hash,
+          expires_at: authorized.approval.expires_at,
+          snapshot: authorized.approval.snapshot_json,
+          revoked_at: authorized.approval.revoked_at || null,
+        },
+      },
+    };
   }
   return { status: run.status, body: run.body };
 }, { rejectApiKey: true }));

@@ -5,6 +5,13 @@ const { FORBIDDEN_KEYS } = require('./research_contracts');
 const CONTRACT_VERSION = 'campaign_draft_v1';
 const OBJECTIVES = Object.freeze(['awareness', 'traffic', 'leads', 'sales', 'app']);
 const PLATFORMS = Object.freeze(['meta', 'google', 'tiktok']);
+// Contract platform → user_integrations.platform (OAuth vault keys).
+// Unknown contract platforms must not fall through as vault keys.
+const VAULT_PLATFORM = Object.freeze({
+  meta: 'meta_ads',
+  google: 'google_ads',
+  tiktok: 'tiktok_ads',
+});
 const CURRENCIES = Object.freeze(['USD', 'EUR', 'GBP', 'AUD', 'CAD']);
 const CREATIVE_KINDS = Object.freeze(['static_image', 'video', 'creative_brief']);
 const CREDENTIAL_REF_RE = /^[A-Za-z0-9_:-]{1,128}$/;
@@ -39,7 +46,7 @@ const EXTENSION = Object.freeze(['optimization_goal', 'placement']);
 const NON_MATERIAL = Object.freeze(['label', 'notes']);
 
 module.exports = {
-  CONTRACT_VERSION, OBJECTIVES, PLATFORMS, CURRENCIES, CREATIVE_KINDS,
+  CONTRACT_VERSION, OBJECTIVES, PLATFORMS, VAULT_PLATFORM, CURRENCIES, CREATIVE_KINDS,
   CREDENTIAL_REF_RE, HEX64, ISO2, ASSET_ID_RE, MAX_JSON, MAX_CREATIVES, MAX_COUNTRIES,
   FORBIDDEN, KEYS, ACCOUNT, DESTINATION, BUDGET, SCHEDULE, GEO, AUDIENCE, PLACEMENT,
   CREATIVE, TRACKING, PROVENANCE, EXTENSION, NON_MATERIAL,

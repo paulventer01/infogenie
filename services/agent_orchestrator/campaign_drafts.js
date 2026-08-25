@@ -257,7 +257,7 @@ async function validateDraft(pool, o) {
     catch (e) { errors.push({ code: e.code || 'validation_failed', field: (e.extra && e.extra.field) || 'contract' }); }
     if (!errors.length) {
       errors.push(...await checkCreatives(c, o.tenantId, contract.creatives));
-      errors.push(...await checkCredentials(o.userId, contract));
+      errors.push(...await checkCredentials(o.userId, contract, { tenantId: o.tenantId, client: c }));
     }
     const passed = errors.length === 0;
     const vjson = { errors };
@@ -353,12 +353,8 @@ async function approveDraft(pool, o) {
     if (existing) {
       if (existing.revoked_at) fail('idempotency_conflict', { field: 'idempotency_key' });
       if (String(existing.draft_id) !== String(row.id)) fail('idempotency_conflict', { field: 'idempotency_key' });
-      if (Number(existing.revision) !== Number(row.current_revision)
-          || String(existing.contract_hash) !== String(row.contract_hash)) {
-        fail('idempotency_conflict', { field: 'idempotency_key' });
-      }
+      assertReplayMatchesDraft(row, existing, existing);
       const rev = await loadRev(c, o.tenantId, row.id, row.current_revision);
-      row = await ensureApprovedDraft(c, row, existing, existing.expires_at);
       return { draft: publicDraft(row, rev), approval: existing, replay: true };
     }
     const rev = await loadRev(c, o.tenantId, row.id, row.current_revision);
@@ -370,7 +366,7 @@ async function approveDraft(pool, o) {
     if (!approveMatches(contract, body, row.current_revision, row.contract_hash)) fail('approval_stale');
     const preErrors = [];
     preErrors.push(...await checkCreatives(c, o.tenantId, contract.creatives || []));
-    preErrors.push(...await checkCredentials(o.userId, contract));
+    preErrors.push(...await checkCredentials(o.userId, contract, { tenantId: o.tenantId, client: c }));
     if (preErrors.length) fail('validation_failed', { errors: preErrors });
     const same = await one(c,
       `SELECT * FROM orchestrator_campaign_publish_approvals
@@ -552,32 +548,82 @@ async function historyDraft(pool, tenantId, draftId, { includeAudit }) {
   return { object_kind: 'campaign_draft', revisions, approvals, audit };
 }
 
+function assertCurrentApproval(row, pub) {
+  if (row.status === 'approval_expired') fail('approval_expired');
+  if (row.status === 'cancelled') fail('invalid_transition');
+  if (row.status !== 'approved_for_publish') fail('approval_required');
+  if (!pub) {
+    if (row.approval_id) fail('approval_revoked');
+    fail('approval_required');
+  }
+  if (pub.revoked_at) fail('approval_revoked');
+  if (new Date(pub.expires_at).getTime() <= Date.now()) fail('approval_expired');
+  if (String(pub.contract_hash) !== String(row.contract_hash) || Number(pub.revision) !== Number(row.current_revision)) {
+    fail('approval_stale');
+  }
+  if (!row.approval_id || Number(row.approval_id) !== Number(pub.workflow_approval_id)) {
+    fail('approval_required');
+  }
+}
+
+function assertReplayMatchesDraft(row, pub, cached) {
+  assertCurrentApproval(row, pub);
+  if (cached) {
+    if (cached.contract_hash != null && String(cached.contract_hash) !== String(row.contract_hash)) {
+      fail('approval_stale');
+    }
+    if (cached.revision != null && Number(cached.revision) !== Number(row.current_revision)) {
+      fail('approval_stale');
+    }
+    const snap = pub.snapshot_json || {};
+    const cachedSnap = cached.snapshot;
+    if (cachedSnap && cachedSnap.contract_hash != null
+        && String(cachedSnap.contract_hash) !== String(snap.contract_hash || pub.contract_hash)) {
+      fail('approval_stale');
+    }
+  }
+}
+
 async function assertPublishAuthorized(pool, tenantId, draftId) {
   return withTx(pool, async (c) => {
     let row = await lockDraft(c, tenantId, draftId);
     if (!row) fail('not_found');
     row = await maybeExpire(c, row);
-    if (row.status === 'approval_expired') fail('approval_expired');
-    if (row.status !== 'approved_for_publish') fail('approval_required');
     const pub = row.approval_id
       ? await one(c,
         `SELECT * FROM orchestrator_campaign_publish_approvals
            WHERE tenant_id=$1 AND draft_id=$2 AND workflow_approval_id=$3 AND revoked_at IS NULL`,
         [tenantId, draftId, row.approval_id])
       : null;
-    if (!pub) {
-      if (row.approval_id) fail('approval_revoked');
-      fail('approval_required');
-    }
-    if (new Date(pub.expires_at).getTime() <= Date.now()) fail('approval_expired');
-    if (String(pub.contract_hash) !== String(row.contract_hash) || Number(pub.revision) !== Number(row.current_revision)) {
+    assertCurrentApproval(row, pub);
+    return { ok: true, draft: row, approval: pub };
+  });
+}
+
+async function assertApproveReplay(pool, tenantId, draftId, cachedApproval) {
+  if (!cachedApproval || cachedApproval.id == null) fail('idempotency_conflict', { field: 'idempotency_key' });
+  return withTx(pool, async (c) => {
+    const pub = await one(c,
+      `SELECT * FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, cachedApproval.id]);
+    if (!pub || String(pub.draft_id) !== String(draftId)) fail('idempotency_conflict', { field: 'idempotency_key' });
+    if (pub.revoked_at) fail('idempotency_conflict', { field: 'idempotency_key' });
+    let row = await lockDraft(c, tenantId, draftId);
+    if (!row) fail('not_found');
+    row = await maybeExpire(c, row);
+    if (row.status === 'approval_expired') fail('approval_expired');
+    if (row.status === 'cancelled') fail('invalid_transition');
+    if (Number(pub.revision) !== Number(row.current_revision)
+        || String(pub.contract_hash) !== String(row.contract_hash)) {
       fail('approval_stale');
     }
+    assertReplayMatchesDraft(row, pub, cachedApproval);
     return { ok: true, draft: row, approval: pub };
   });
 }
 
 module.exports = {
   createDraft, editDraft, validateDraft, approveDraft, revokeDraft, cancelDraft,
-  getDraft, listDrafts, snapshotDraft, historyDraft, assertPublishAuthorized, publicDraft,
+  getDraft, listDrafts, snapshotDraft, historyDraft,
+  assertPublishAuthorized, assertApproveReplay, publicDraft,
 };
