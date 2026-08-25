@@ -5,7 +5,11 @@ const { sha256Hex, canonicalize } = require('./hash');
 const { normalizeKey } = require('./research_validate');
 const { toBigInt, requirePositiveMicros, JSON_MICROS_MAX, microsToJson } = require('./money');
 const { assertSafeHttpsUrl } = require('../security/safe_url');
+const { containsCredentialMaterial } = require('./research_errors');
 const C = require('./campaign_contracts');
+
+const SELF_CREDENTIAL_REF = 'user_integrations';
+const OWNED_CREDENTIAL_REF = /^user_integrations:([1-9][0-9]{0,15})$/;
 
 const FORBIDDEN = new Set(C.FORBIDDEN.map(normalizeKey));
 const ALLOW = {
@@ -224,24 +228,68 @@ async function checkCreatives(client, tenantId, creatives) {
   return errors;
 }
 
-async function checkCredentials(userId, contract) {
+function vaultPlatformKey(platform) {
+  if (typeof platform !== 'string' || !Object.prototype.hasOwnProperty.call(C.VAULT_PLATFORM, platform)) {
+    return null;
+  }
+  const key = C.VAULT_PLATFORM[platform];
+  return typeof key === 'string' && key ? key : null;
+}
+
+function ownedCredentialUserId(credentialRef, userId) {
+  if (typeof credentialRef !== 'string' || !C.CREDENTIAL_REF_RE.test(credentialRef)) return null;
+  if (containsCredentialMaterial(credentialRef)) return null;
+  if (!Number.isInteger(userId) || userId < 1) return null;
+  if (credentialRef === SELF_CREDENTIAL_REF) return userId;
+  const owned = OWNED_CREDENTIAL_REF.exec(credentialRef);
+  if (!owned) return null;
+  const owner = Number(owned[1]);
+  if (owner !== userId) return null;
+  return userId;
+}
+
+async function actorInTenant(client, tenantId, userId) {
+  if (!client || tenantId == null || !Number.isInteger(userId) || userId < 1) return false;
+  const r = await client.query(
+    `SELECT 1 FROM tenant_users WHERE tenant_id=$1 AND user_id=$2 AND status='active' LIMIT 1`,
+    [tenantId, userId]
+  );
+  return r.rows.length > 0;
+}
+
+async function checkCredentials(userId, contract, opts) {
   const vault = require('../credentials/vault');
   const errors = [];
-  const have = new Set(contract.accounts.map((a) => a.platform));
-  for (const p of contract.platforms) {
-    if (!have.has(p)) errors.push({ code: 'missing_credentials', field: `accounts.${p}` });
+  const tenantId = opts && opts.tenantId;
+  const client = opts && opts.client;
+  if (!(await actorInTenant(client, tenantId, userId))) {
+    errors.push({ code: 'missing_credentials', field: 'accounts' });
+    return errors;
   }
-  for (const a of contract.accounts) {
-    if (!a.credential_ref || !C.CREDENTIAL_REF_RE.test(a.credential_ref)) {
+  const have = new Set((contract.accounts || []).map((a) => a.platform));
+  for (const p of contract.platforms || []) {
+    if (!have.has(p) || !vaultPlatformKey(p)) {
+      errors.push({ code: 'missing_credentials', field: `accounts.${p}` });
+    }
+  }
+  for (const a of contract.accounts || []) {
+    const vaultKey = vaultPlatformKey(a.platform);
+    if (!vaultKey) {
+      errors.push({ code: 'missing_credentials', field: `accounts.${a.platform}` });
+      continue;
+    }
+    const ownerId = ownedCredentialUserId(a.credential_ref, userId);
+    if (!ownerId) {
       errors.push({ code: 'missing_credentials', field: 'accounts.credential_ref' });
       continue;
     }
-    const ok = await vault.hasCredentials(userId, a.platform);
+    const ok = await vault.hasCredentials(ownerId, vaultKey);
     if (!ok) errors.push({ code: 'missing_credentials', field: `accounts.${a.platform}` });
   }
   return errors;
 }
 
 module.exports = {
-  parseContract, contractHash, checkCreatives, checkCredentials, optTxt, txt, vf,
+  parseContract, contractHash, checkCreatives, checkCredentials,
+  vaultPlatformKey, ownedCredentialUserId, optTxt, txt, vf,
 };
