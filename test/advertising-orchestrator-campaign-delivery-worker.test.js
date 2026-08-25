@@ -678,5 +678,51 @@ if (!HAS_DB) {
     assert.ok(listed.length >= 1);
     assert.equal(listed[listed.length - 1].status, 'simulated_ok');
   });
+
+  test('the settled audit row leaks no claim token, credential ref, or intent hash', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    const envelope = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-audit-1',
+    });
+    assert.ok(!envelope.skip, JSON.stringify(envelope));
+    const fake = await worker.executeFake(envelope, { scenario: 'success' });
+    const settled = await worker.settleCampaignDeliveryAttempt(envelope, fake, { pool });
+    assert.equal(settled.status, 'simulated_ok');
+
+    const rows = (await pool.query(
+      `SELECT actor_user_id, detail FROM orchestrator_audit_events
+        WHERE tenant_id=$1 AND event=$2 AND detail->>'outbox_id'=$3`,
+      [tenantA.id, D.AUDIT_EVENT_SIMULATED, live.outbox.id]
+    )).rows;
+    assert.equal(rows.length, 1);
+    assert.equal(Number(rows[0].actor_user_id), ownerA.id);
+
+    const detail = rows[0].detail;
+    const flat = JSON.stringify(detail);
+    const attemptRow = await loadAttempt(tenantA.id, envelope.attemptId);
+    assert.ok(attemptRow.claim_token && attemptRow.intent_hash);
+    assert.ok(!flat.includes(attemptRow.claim_token), 'claim token must not reach the audit row');
+    assert.ok(!flat.includes(attemptRow.intent_hash), 'intent hash must not reach the audit row');
+    assert.ok(!flat.includes('user_integrations'), 'credential_ref must not reach the audit row');
+    for (const k of ['claim_token', 'credential_ref', 'intent_hash', 'payload', 'snapshot', 'snapshot_json', 'confirmation']) {
+      assert.strictEqual(detail[k], undefined, k);
+    }
+    assert.equal(detail.simulated, true);
+    assert.equal(detail.published, false);
+    assert.equal(detail.external_action_taken, false);
+    assert.equal(detail.status, 'simulated_ok');
+    assert.equal(detail.lease_holder, 'w-audit-1');
+
+    await assert.rejects(
+      pool.query(
+        `UPDATE orchestrator_campaign_delivery_attempts SET published=TRUE
+          WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, envelope.attemptId]
+      ),
+      /immutable|violates check constraint/i,
+      'a settled attempt must not be able to flip published'
+    );
+  });
   });
 }

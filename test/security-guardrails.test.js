@@ -496,6 +496,85 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
   assert.match(flat, /JSON and text byte limits are measured before redaction, and the DDL CHECKs after it/);
 });
 
+// PR 6D ships a worker that claims real queued rows. The properties that make
+// that safe are invisible from the outside — there is no route to probe — so
+// they are pinned here as source facts rather than trusted to review memory.
+test('the PR 6D delivery worker has no provider, credential or network sink', () => {
+  const root = path.join(__dirname, '..');
+  const modules = [
+    'services/agent_orchestrator/campaign_delivery_worker.js',
+    'services/agent_orchestrator/campaign_delivery_attempts.js',
+    'services/agent_orchestrator/campaign_delivery_fake_connector.js',
+  ];
+  for (const rel of modules) {
+    const src = fs.readFileSync(path.join(root, rel), 'utf8');
+    assert.doesNotMatch(src, /credentials\/vault/, rel);
+    assert.doesNotMatch(src, /\b(checkCredentials|getCredentials|hasCredentials|resolveCredential)\s*\(/, rel);
+    assert.doesNotMatch(src, /\bfetch\s*\(/, rel);
+    assert.doesNotMatch(src, /require\(['"](https?|axios|node-fetch|undici|googleapis|facebook-nodejs-business-sdk)['"]\)/, rel);
+    // The outbox is pending-only for create_provider_draft: no terminal state.
+    assert.doesNotMatch(src, /state\s*=\s*'(completed|failed|dead_letter)'/, rel);
+    assert.doesNotMatch(src, /outbox\.(complete|fail|failRow)\s*\(/, rel);
+  }
+
+  const worker = fs.readFileSync(path.join(root, modules[0]), 'utf8');
+  // Dual startup gate. Both halves must be present and the env compare exact.
+  assert.match(worker, /if \(!_runtimeFlags\.backgroundEnabled\(\)\) return null;/);
+  assert.match(worker, /if \(process\.env\[D\.FLAG_ENV\] !== '1'\) return null;/);
+  // Audit detail is an allowlist, and the fencing secret is not on it.
+  assert.match(worker, /const AUDIT_DETAIL_KEYS = Object\.freeze\(\[/);
+  const allowlist = worker.slice(worker.indexOf('AUDIT_DETAIL_KEYS'));
+  const keys = allowlist.slice(0, allowlist.indexOf(']')).match(/'[a-z_]+'/g) || [];
+  assert.ok(keys.length >= 10, 'audit allowlist should be explicit');
+  for (const banned of ["'claim_token'", "'credential_ref'", "'intent_hash'", "'payload'", "'snapshot'"]) {
+    assert.ok(!keys.includes(banned), `${banned} must not be audit-loggable`);
+  }
+
+  const connector = fs.readFileSync(path.join(root, modules[2]), 'utf8');
+  assert.match(connector, /published:\s*false/);
+  assert.match(connector, /external_action_taken:\s*false/);
+  assert.match(connector, /simulated:\s*true/);
+
+  // PR #99's kill switch is what keeps a real mutation denied until PR 6E.
+  const killSwitch = fs.readFileSync(
+    path.join(root, 'services/security/advertising_provider_mutations.js'), 'utf8'
+  );
+  assert.match(killSwitch, /assertAdvertisingProviderMutationAllowed/);
+  assert.doesNotMatch(killSwitch, /process\.env\.[A-Z_]*ALLOW[A-Z_]*/);
+});
+
+test('the guardrails doc discloses the PR 6D fake delivery worker boundary', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.match(flat, /## Advertising orchestrator — fake campaign delivery worker \(PR 6D\)/);
+  // Fake-only, and no HTTP way to reach it.
+  assert.match(flat, /\*\*The worker simulates\. It does not deliver\.\*\*/);
+  assert.match(flat, /There is \*\*no new route, no drain endpoint, no `ROUTE_GROUPS` entry and no `permission_matrix\.js` change\*\*/);
+  // Dual startup gate, exact flag.
+  assert.match(flat, /`process\.env\.INFOGENIE_CAMPAIGN_DELIVERY_WORKER === '1'` — an exact string compare/);
+  assert.match(flat, /Neither gate alone starts the timer/);
+  // The transaction must not span the simulation.
+  assert.match(flat, /\*\*no transaction and no pooled client held\*\*/);
+  // Append-only ledger and the two flags that can never flip.
+  assert.match(flat, /Retries therefore \*\*append\*\*; they never edit/);
+  assert.match(flat, /\*\*`published` and `external_action_taken` cannot become true\.\*\*/);
+  // Revalidation happens, and happens without credentials.
+  assert.match(flat, /\*\*None of this reads a secret\.\*\* The module calls no `checkCredentials`, `getCredentials` or `hasCredentials`/);
+  assert.match(flat, /`credential_ref` is compared as an opaque string and is never dereferenced/);
+  // Outbox stays pending-only.
+  assert.match(flat, /\*\*cannot reach `completed`, `failed` or `dead_letter`\*\*/);
+  // Audit hygiene.
+  assert.match(flat, /`claim_token`, `credential_ref`, `intent_hash`, the approval snapshot and the outbox payload are all absent from it/);
+  // PR 6E boundary, including the PAUSED framing.
+  assert.match(flat, /including creating a campaign in `PAUSED` state[\s\S]*?is PR 6E and remains hard-denied today/);
+  assert.match(flat, /is byte-identical to `7cd6028a`, has no env escape hatch/);
+  // Residuals an operator has to plan around.
+  assert.match(flat, /\*\*Treat the flag as test\/staging-only until PR 6E supplies a real outcome source\.\*\*/);
+  assert.match(flat, /\*\*The park interval is a date, not a state\.\*\*/);
+  // PR 6C's forward reference was wrong once PR 6D landed; it must not survive.
+  assert.doesNotMatch(flat, /so PR 6D's resolution step is where the vault boundary gets re-reviewed/);
+});
+
 test('originAllowed accepts matching host and localhost in non-prod', () => {
   const prev = process.env.NODE_ENV;
   process.env.NODE_ENV = 'development';
