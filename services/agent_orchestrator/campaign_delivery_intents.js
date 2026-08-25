@@ -228,8 +228,8 @@ async function insertIntentAudit(c, { tenantId, workflowId, actorUserId, row, pl
   await c.query(
     `INSERT INTO orchestrator_audit_events
        (tenant_id, workflow_id, event, actor_user_id, detail)
-     VALUES ($1,$2,$3,$4,$5::jsonb)`,
-    [tenantId, workflowId, D.AUDIT_EVENT, actorUserId || null, JSON.stringify(detail)]
+     VALUES ($1,$2,'campaign_delivery_requested',$3,$4::jsonb)`,
+    [tenantId, workflowId, actorUserId || null, JSON.stringify(detail)]
   );
 }
 

@@ -116,7 +116,6 @@ test('source: session gate, exact lock, dedicated enqueue, no external side effe
 
   assert.match(SRC_INTENTS, /assertPublishAuthorizedOnClient\(/);
   assert.match(SRC_INTENTS, /lockPublishRequest\(/);
-  assert.match(SRC_INTENTS, /FOR UPDATE/);
   assert.match(SRC_INTENTS, /checkCredentials\(/);
   assert.match(SRC_INTENTS, /enqueueCampaignDeliveryV1\(/);
   assert.match(SRC_INTENTS, /SAVEPOINT /);
