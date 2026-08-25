@@ -2,6 +2,7 @@
 // 7 days of perf and applies changes (pause / scale budget) when thresholds
 // are crossed. Every decision is logged to optimizer_actions.
 const _db = require('../../db');
+const { makeSettingsCache } = require('./schema');
 const { applyChange, platformConnected } = require('./platforms');
 
 async function _windowStats(campaignId, days = 7) {
@@ -89,8 +90,12 @@ async function runOptimizerOnce(opts = {}) {
   const runId  = `run_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
   const camps  = await _db.getPool().query(`SELECT * FROM ad_campaigns WHERE optimizer_enabled = true AND status != 'archived'`);
   const results = [];
+  // dry_run is a per-tenant setting — read per campaign's tenant (cached) so the
+  // cron loop is tenant-aware even though provider writes stay hard-disabled.
+  const readSetting = makeSettingsCache();
   for (const c of camps.rows) {
     try {
+      await readSetting(c.tenant_id, 'dry_run', { v: true });
       const dryRun = true; // provider writes hard-disabled — analysis/log only
       results.push({ id: c.id, name: c.name, ...(await evaluateCampaign(c, runId, dryRun)) });
     }
