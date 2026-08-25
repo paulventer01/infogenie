@@ -647,7 +647,9 @@ async function assertPublishAuthorized(pool, tenantId, draftId) {
            WHERE tenant_id=$1 AND draft_id=$2 AND workflow_approval_id=$3 AND revoked_at IS NULL`,
         [tenantId, draftId, row.approval_id])
       : null;
+    const rev = await loadRev(c, tenantId, row.id, row.current_revision);
     assertCurrentApproval(row, pub);
+    assertAuthoritativeSnapshot(row, pub, rev);
     return { ok: true, draft: row, approval: pub };
   });
 }

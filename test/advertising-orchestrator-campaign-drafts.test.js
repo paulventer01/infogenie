@@ -84,6 +84,7 @@ test('source: no connectors, outbox, or live platform fetch', () => {
   assert.match(SRC_DRAFTS, /assertAuthoritativeSnapshot/);
   assert.match(SRC_DRAFTS, /assertCachedApprovalSnapshot/);
   assert.match(SRC_DRAFTS, /sha256Hex/);
+  assert.match(SRC_DRAFTS, /async function assertPublishAuthorized[\s\S]*assertAuthoritativeSnapshot\(/);
 });
 
 test('contract platforms map to OAuth vault keys and fail closed otherwise', () => {
@@ -866,5 +867,182 @@ if (!HAS_DB) {
     assert.equal(okReplay.json.replay, true);
     assert.equal(okReplay.json.draft.status, 'approved_for_publish');
     assert.equal(okReplay.json.approval.id, live.first.json.approval.id);
+  });
+
+  test('hotfix: assertPublishAuthorized rejects invalid snapshots and authorises a valid one', async () => {
+    function assertAuthFailed(err, label) {
+      assert.ok(err && err.code, label);
+      assert.notEqual(err.ok, true, label);
+      assert.notEqual(err.approved_for_publish, true, label);
+      return true;
+    }
+    async function setupApproved() {
+      const d0 = await createOk(cookieA, wfA, artA);
+      const ready = await validateOk(cookieA, d0.id);
+      const first = await api('POST', `/${ready.id}/approve`, {
+        cookie: cookieA, body: approveBody(ready, { idempotency_key: ik('authz') }),
+      });
+      assert.equal(first.status, 200, first.text);
+      return { ready, first };
+    }
+    async function withPubTriggerOff(fn) {
+      await p().query(`ALTER TABLE orchestrator_campaign_publish_approvals DISABLE TRIGGER orchestrator_campaign_publish_approvals_immutable`);
+      try { return await fn(); }
+      finally {
+        await p().query(`ALTER TABLE orchestrator_campaign_publish_approvals ENABLE TRIGGER orchestrator_campaign_publish_approvals_immutable`);
+      }
+    }
+    async function mutatePubSnap(approvalId, fn) {
+      const row = (await p().query(
+        `SELECT snapshot_json FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, approvalId]
+      )).rows[0];
+      const snap = JSON.parse(JSON.stringify(row.snapshot_json));
+      fn(snap);
+      await withPubTriggerOff(async () => {
+        await p().query(
+          `UPDATE orchestrator_campaign_publish_approvals SET snapshot_json=$3::jsonb WHERE tenant_id=$1 AND id=$2`,
+          [tenantA.id, approvalId, JSON.stringify(snap)]
+        );
+      });
+    }
+
+    const live = await setupApproved();
+    const authorized = await assertPublishAuthorized(p(), tenantA.id, live.ready.id);
+    assert.equal(authorized.ok, true);
+    assert.equal(authorized.draft.status, 'approved_for_publish');
+    assert.equal(authorized.approval.id, live.first.json.approval.id);
+    assert.notEqual(authorized.approved_for_publish, true);
+
+    const missing = await setupApproved();
+    const origMissing = (await p().query(
+      `SELECT snapshot_json FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, missing.first.json.approval.id]
+    )).rows[0].snapshot_json;
+    await withPubTriggerOff(async () => {
+      await p().query(`ALTER TABLE orchestrator_campaign_publish_approvals DROP CONSTRAINT IF EXISTS orchestrator_campaign_publish_approvals_snapshot_json_check`);
+      await p().query(`ALTER TABLE orchestrator_campaign_publish_approvals ALTER COLUMN snapshot_json DROP NOT NULL`);
+      try {
+        await p().query(
+          `UPDATE orchestrator_campaign_publish_approvals SET snapshot_json=NULL WHERE tenant_id=$1 AND id=$2`,
+          [tenantA.id, missing.first.json.approval.id]
+        );
+        await assert.rejects(
+          () => assertPublishAuthorized(p(), tenantA.id, missing.ready.id),
+          (e) => assertAuthFailed(e, 'missing snapshot')
+        );
+      } finally {
+        await p().query(
+          `UPDATE orchestrator_campaign_publish_approvals SET snapshot_json=$3::jsonb WHERE tenant_id=$1 AND id=$2`,
+          [tenantA.id, missing.first.json.approval.id, JSON.stringify(origMissing)]
+        );
+        await p().query(`ALTER TABLE orchestrator_campaign_publish_approvals ALTER COLUMN snapshot_json SET NOT NULL`);
+        await p().query(`ALTER TABLE orchestrator_campaign_publish_approvals DROP CONSTRAINT IF EXISTS orchestrator_campaign_publish_approvals_snapshot_json_check`);
+        await p().query(`ALTER TABLE orchestrator_campaign_publish_approvals ADD CONSTRAINT orchestrator_campaign_publish_approvals_snapshot_json_check CHECK (jsonb_typeof(snapshot_json)='object' AND octet_length(snapshot_json::text) BETWEEN 2 AND 16384)`);
+      }
+    });
+
+    const kind = await setupApproved();
+    await mutatePubSnap(kind.first.json.approval.id, (snap) => { snap.object_kind = 'workflow'; });
+    await assert.rejects(
+      () => assertPublishAuthorized(p(), tenantA.id, kind.ready.id),
+      (e) => assertAuthFailed(e, 'wrong object kind')
+    );
+
+    const malformed = await setupApproved();
+    await withPubTriggerOff(async () => {
+      await p().query(
+        `UPDATE orchestrator_campaign_publish_approvals SET snapshot_json='{}'::jsonb WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, malformed.first.json.approval.id]
+      );
+    });
+    await assert.rejects(
+      () => assertPublishAuthorized(p(), tenantA.id, malformed.ready.id),
+      (e) => assertAuthFailed(e, 'malformed snapshot')
+    );
+
+    const revMis = await setupApproved();
+    await mutatePubSnap(revMis.first.json.approval.id, (snap) => { snap.revision = Number(snap.revision) + 5; });
+    await assert.rejects(
+      () => assertPublishAuthorized(p(), tenantA.id, revMis.ready.id),
+      (e) => assertAuthFailed(e, 'revision mismatch')
+    );
+
+    const hashMis = await setupApproved();
+    await mutatePubSnap(hashMis.first.json.approval.id, (snap) => { snap.contract_hash = 'e'.repeat(64); });
+    await assert.rejects(
+      () => assertPublishAuthorized(p(), tenantA.id, hashMis.ready.id),
+      (e) => assertAuthFailed(e, 'contract_hash mismatch')
+    );
+
+    const contentMis = await setupApproved();
+    await mutatePubSnap(contentMis.first.json.approval.id, (snap) => { snap.objective = 'sales'; });
+    await assert.rejects(
+      () => assertPublishAuthorized(p(), tenantA.id, contentMis.ready.id),
+      (e) => assertAuthFailed(e, 'contract content mismatch')
+    );
+
+    const expired = await setupApproved();
+    await p().query(`ALTER TABLE orchestrator_campaign_drafts DISABLE TRIGGER orchestrator_campaign_drafts_immutable`);
+    try {
+      await p().query(
+        `UPDATE orchestrator_campaign_drafts SET approval_expires_at=now() - interval '1 hour' WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, expired.ready.id]
+      );
+    } finally {
+      await p().query(`ALTER TABLE orchestrator_campaign_drafts ENABLE TRIGGER orchestrator_campaign_drafts_immutable`);
+    }
+    await assert.rejects(
+      () => assertPublishAuthorized(p(), tenantA.id, expired.ready.id),
+      (e) => assertAuthFailed(e, 'expired') && e.code === 'approval_expired'
+    );
+
+    const revoked = await setupApproved();
+    await revokeOk(cookieA, revoked.ready.id, 'Withdraw publishing consent for authorisation tests');
+    await assert.rejects(
+      () => assertPublishAuthorized(p(), tenantA.id, revoked.ready.id),
+      (e) => assertAuthFailed(e, 'revoked') && (e.code === 'approval_required' || e.code === 'approval_revoked')
+    );
+
+    const superseded = await setupApproved();
+    await revokeOk(cookieA, superseded.ready.id, 'Supersede the first approval');
+    const second = await api('POST', `/${superseded.ready.id}/approve`, {
+      cookie: cookieA, body: approveBody(superseded.ready, { idempotency_key: ik('authz-new') }),
+    });
+    assert.equal(second.status, 200, second.text);
+    await withPubTriggerOff(async () => {
+      await p().query(
+        `UPDATE orchestrator_campaign_publish_approvals SET revoked_at=now(), revoke_reason='inactive for authorisation test' WHERE tenant_id=$1 AND id=$2 AND revoked_at IS NULL`,
+        [tenantA.id, second.json.approval.id]
+      );
+    });
+    await assert.rejects(
+      () => assertPublishAuthorized(p(), tenantA.id, superseded.ready.id),
+      (e) => assertAuthFailed(e, 'inactive/superseded')
+    );
+
+    const unlinked = await setupApproved();
+    await p().query(`ALTER TABLE orchestrator_campaign_drafts DISABLE TRIGGER orchestrator_campaign_drafts_immutable`);
+    try {
+      await p().query(
+        `UPDATE orchestrator_campaign_drafts SET approval_id=NULL WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, unlinked.ready.id]
+      );
+    } finally {
+      await p().query(`ALTER TABLE orchestrator_campaign_drafts ENABLE TRIGGER orchestrator_campaign_drafts_immutable`);
+    }
+    await assert.rejects(
+      () => assertPublishAuthorized(p(), tenantA.id, unlinked.ready.id),
+      (e) => assertAuthFailed(e, 'unreferenced') && (e.code === 'approval_required' || e.code === 'approval_revoked')
+    );
+
+    const cross = await setupApproved();
+    await assert.rejects(
+      () => assertPublishAuthorized(p(), tenantB.id, cross.ready.id),
+      (e) => assertAuthFailed(e, 'cross-tenant') && e.code === 'not_found'
+    );
+    const stillOk = await assertPublishAuthorized(p(), tenantA.id, cross.ready.id);
+    assert.equal(stillOk.ok, true);
+    assert.equal(stillOk.draft.status, 'approved_for_publish');
   });
 }
