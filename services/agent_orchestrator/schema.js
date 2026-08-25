@@ -85,6 +85,7 @@ const ADVERTISING_ORCH_TABLES = [
   // Does not publish, activate, pause, or store provider/campaign side effects.
   'orchestrator_campaign_publish_requests',
   'orchestrator_campaign_delivery_intents',
+  'orchestrator_campaign_delivery_attempts',
 ];
 
 const RESEARCH_RETENTION_EXPIRY_SQL =
@@ -3803,6 +3804,243 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE UPDATE OR DELETE ON orchestrator_campaign_delivery_intents
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_campaign_delivery_intents_immutable();
+  `);
+
+  // PR 6D — tenant-scoped campaign delivery attempt ledger.
+  // Append-only history of simulated create_provider_draft attempts bound to
+  // an intent + outbox. Multiple historical attempts may share the same
+  // (tenant_id, outbox_id) and (tenant_id, intent_id); uniqueness is
+  // (outbox_id, attempt_number), (outbox_id, generation), and claim_token.
+  // A started row may terminalize once; identity/claim/lease fields stay
+  // frozen. Does not store credentials, vault payloads, provider campaign
+  // IDs, or live publish/activate side effects. simulated stays TRUE;
+  // published and external_action_taken stay FALSE.
+  // Brief unique suffix tenant_unique_generation is 64 chars; use
+  // _tenant_unique_gen so the identifier stays within Postgres' 63-char limit.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_delivery_attempts (
+      id TEXT NOT NULL,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      intent_id TEXT NOT NULL,
+      outbox_id TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      attempt_number INTEGER NOT NULL,
+      generation INTEGER NOT NULL,
+      claim_token TEXT NOT NULL,
+      lease_holder TEXT NOT NULL,
+      lease_expires_at TIMESTAMPTZ NOT NULL,
+      platform TEXT NOT NULL,
+      intent_hash TEXT NOT NULL,
+      contract_version TEXT NOT NULL DEFAULT 'campaign_delivery_v1',
+      operation TEXT NOT NULL DEFAULT 'create_provider_draft',
+      connector TEXT NOT NULL DEFAULT 'fake',
+      status TEXT NOT NULL DEFAULT 'started',
+      scenario TEXT NULL,
+      error_code TEXT NULL,
+      retryable BOOLEAN NULL,
+      simulated BOOLEAN NOT NULL DEFAULT TRUE,
+      published BOOLEAN NOT NULL DEFAULT FALSE,
+      external_action_taken BOOLEAN NOT NULL DEFAULT FALSE,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      settled_at TIMESTAMPTZ NULL,
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_tenant_unique_number
+        UNIQUE (tenant_id, outbox_id, attempt_number),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_tenant_unique_gen
+        UNIQUE (tenant_id, outbox_id, generation),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_tenant_unique_claim
+        UNIQUE (tenant_id, claim_token),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_status_check CHECK (
+        status IN (
+          'started','simulated_ok','simulated_duplicate',
+          'retry_transient','retry_rate_limit','retry_timeout',
+          'dead_letter_permanent','dead_letter_malformed','dead_letter_blocked',
+          'authorization_rejected','abandoned_lease'
+        )
+      ),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_frozen_check CHECK (
+        contract_version = 'campaign_delivery_v1'
+        AND operation = 'create_provider_draft'
+        AND connector = 'fake'
+      ),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_platform_check
+        CHECK (platform IN ('meta','google','tiktok')),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_sim_check CHECK (
+        simulated = TRUE AND published = FALSE AND external_action_taken = FALSE
+      ),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_number_check CHECK (
+        attempt_number >= 1 AND generation >= 1 AND generation = attempt_number
+      ),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_error_code_check CHECK (
+        error_code IS NULL OR error_code ~ '^[a-z0-9_]{1,40}$'
+      ),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_intent_hash_check CHECK (
+        char_length(intent_hash)=64 AND intent_hash ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_terminal_check CHECK (
+        (status = 'started' AND settled_at IS NULL AND scenario IS NULL
+          AND error_code IS NULL AND retryable IS NULL)
+        OR (status <> 'started' AND settled_at IS NOT NULL AND retryable IS NOT NULL)
+      ),
+      CONSTRAINT orchestrator_campaign_delivery_attempts_len_check CHECK (
+        char_length(id) BETWEEN 1 AND 128
+        AND char_length(intent_id) BETWEEN 1 AND 128
+        AND char_length(outbox_id) BETWEEN 1 AND 128
+        AND char_length(draft_id) BETWEEN 1 AND 128
+        AND char_length(publishing_request_id) BETWEEN 1 AND 128
+        AND char_length(claim_token) BETWEEN 8 AND 128
+        AND char_length(lease_holder) BETWEEN 1 AND 128
+        AND (scenario IS NULL OR char_length(scenario) BETWEEN 1 AND 128)
+      )
+    );
+  `);
+  await p.query(`ALTER TABLE orchestrator_campaign_delivery_attempts
+    ADD COLUMN IF NOT EXISTS id TEXT,
+    ADD COLUMN IF NOT EXISTS tenant_id INTEGER,
+    ADD COLUMN IF NOT EXISTS intent_id TEXT,
+    ADD COLUMN IF NOT EXISTS outbox_id TEXT,
+    ADD COLUMN IF NOT EXISTS draft_id TEXT,
+    ADD COLUMN IF NOT EXISTS publishing_request_id TEXT,
+    ADD COLUMN IF NOT EXISTS attempt_number INTEGER,
+    ADD COLUMN IF NOT EXISTS generation INTEGER,
+    ADD COLUMN IF NOT EXISTS claim_token TEXT,
+    ADD COLUMN IF NOT EXISTS lease_holder TEXT,
+    ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS platform TEXT,
+    ADD COLUMN IF NOT EXISTS intent_hash TEXT,
+    ADD COLUMN IF NOT EXISTS contract_version TEXT,
+    ADD COLUMN IF NOT EXISTS operation TEXT,
+    ADD COLUMN IF NOT EXISTS connector TEXT,
+    ADD COLUMN IF NOT EXISTS status TEXT,
+    ADD COLUMN IF NOT EXISTS scenario TEXT,
+    ADD COLUMN IF NOT EXISTS error_code TEXT,
+    ADD COLUMN IF NOT EXISTS retryable BOOLEAN,
+    ADD COLUMN IF NOT EXISTS simulated BOOLEAN,
+    ADD COLUMN IF NOT EXISTS published BOOLEAN,
+    ADD COLUMN IF NOT EXISTS external_action_taken BOOLEAN,
+    ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS settled_at TIMESTAMPTZ`);
+  await _ensureNamedUnique(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_tenant_unique_number',
+    'tenant_id, outbox_id, attempt_number');
+  await _ensureNamedUnique(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_tenant_unique_gen',
+    'tenant_id, outbox_id, generation');
+  await _ensureNamedUnique(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_tenant_unique_claim',
+    'tenant_id, claim_token');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_cda_tenant_intent_fkey',
+    'tenant_id, intent_id', 'orchestrator_campaign_delivery_intents', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_cda_tenant_outbox_fkey',
+    'tenant_id, outbox_id', 'orchestrator_outbox', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_cda_tenant_draft_fkey',
+    'tenant_id, draft_id', 'orchestrator_campaign_drafts', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_cda_tenant_pub_req_fkey',
+    'tenant_id, publishing_request_id', 'orchestrator_campaign_publish_requests', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_status_check',
+    `status IN (
+      'started','simulated_ok','simulated_duplicate',
+      'retry_transient','retry_rate_limit','retry_timeout',
+      'dead_letter_permanent','dead_letter_malformed','dead_letter_blocked',
+      'authorization_rejected','abandoned_lease'
+    )`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_frozen_check',
+    `contract_version = 'campaign_delivery_v1'
+     AND operation = 'create_provider_draft'
+     AND connector = 'fake'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_platform_check',
+    `platform IN ('meta','google','tiktok')`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_sim_check',
+    `simulated = TRUE AND published = FALSE AND external_action_taken = FALSE`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_number_check',
+    `attempt_number >= 1 AND generation >= 1 AND generation = attempt_number`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_error_code_check',
+    `error_code IS NULL OR error_code ~ '^[a-z0-9_]{1,40}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_intent_hash_check',
+    `char_length(intent_hash)=64 AND intent_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_terminal_check',
+    `(status = 'started' AND settled_at IS NULL AND scenario IS NULL
+      AND error_code IS NULL AND retryable IS NULL)
+     OR (status <> 'started' AND settled_at IS NOT NULL AND retryable IS NOT NULL)`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_campaign_delivery_attempts_len_check',
+    `char_length(id) BETWEEN 1 AND 128
+     AND char_length(intent_id) BETWEEN 1 AND 128
+     AND char_length(outbox_id) BETWEEN 1 AND 128
+     AND char_length(draft_id) BETWEEN 1 AND 128
+     AND char_length(publishing_request_id) BETWEEN 1 AND 128
+     AND char_length(claim_token) BETWEEN 8 AND 128
+     AND char_length(lease_holder) BETWEEN 1 AND 128
+     AND (scenario IS NULL OR char_length(scenario) BETWEEN 1 AND 128)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_cda_outbox_history
+    ON orchestrator_campaign_delivery_attempts (tenant_id, outbox_id, attempt_number DESC)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_cda_active_lease
+    ON orchestrator_campaign_delivery_attempts (tenant_id, outbox_id, lease_expires_at)
+    WHERE status = 'started'`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_cda_intent_history
+    ON orchestrator_campaign_delivery_attempts (tenant_id, intent_id, attempt_number DESC)`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_campaign_delivery_attempts_guard()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        IF OLD.status IS DISTINCT FROM 'started'
+           OR NEW.status IS NOT DISTINCT FROM 'started'
+           OR NEW.id IS DISTINCT FROM OLD.id
+           OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+           OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+           OR NEW.outbox_id IS DISTINCT FROM OLD.outbox_id
+           OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
+           OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+           OR NEW.attempt_number IS DISTINCT FROM OLD.attempt_number
+           OR NEW.generation IS DISTINCT FROM OLD.generation
+           OR NEW.claim_token IS DISTINCT FROM OLD.claim_token
+           OR NEW.lease_holder IS DISTINCT FROM OLD.lease_holder
+           OR NEW.lease_expires_at IS DISTINCT FROM OLD.lease_expires_at
+           OR NEW.platform IS DISTINCT FROM OLD.platform
+           OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+           OR NEW.contract_version IS DISTINCT FROM OLD.contract_version
+           OR NEW.operation IS DISTINCT FROM OLD.operation
+           OR NEW.connector IS DISTINCT FROM OLD.connector
+           OR NEW.started_at IS DISTINCT FROM OLD.started_at
+           OR NEW.simulated IS DISTINCT FROM TRUE
+           OR NEW.published IS DISTINCT FROM FALSE
+           OR NEW.external_action_taken IS DISTINCT FROM FALSE
+        THEN
+          RAISE EXCEPTION 'orchestrator_campaign_delivery_attempts_immutable';
+        END IF;
+        RETURN NEW;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_campaign_delivery_attempts_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_campaign_delivery_attempts_guard ON orchestrator_campaign_delivery_attempts;
+    CREATE TRIGGER orchestrator_campaign_delivery_attempts_guard
+      BEFORE UPDATE OR DELETE ON orchestrator_campaign_delivery_attempts
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_campaign_delivery_attempts_guard();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {
