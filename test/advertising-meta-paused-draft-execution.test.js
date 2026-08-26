@@ -30,6 +30,7 @@ const HAS_DB = hasDb();
 const ik = (t) => `ik-${t}-${crypto.randomBytes(6).toString('hex')}`;
 const HEX = () => crypto.randomBytes(32).toString('hex');
 const FORBIDDEN = /access_token|refresh_token|vault_payload|phrase_digest|phrase_salt|claim_token|account_fingerprint|ad_account_id/i;
+const META_PAGE_ID = '9876543210123';
 
 const _origDnsLookup = dnsPromises.lookup;
 function installCampaignDraftDnsStub() {
@@ -195,9 +196,9 @@ if (!HAS_DB) {
     const id = nid('mcr');
     await p().query(
       `INSERT INTO orchestrator_tenant_meta_credential_refs
-         (id, tenant_id, platform, environment, status, account_fingerprint, version, owner_user_id)
-       VALUES ($1,$2,'meta','sandbox','active',$3,1,$4)`,
-      [id, tenantId, fingerprint, userId]
+         (id, tenant_id, platform, environment, status, account_fingerprint, page_id, version, owner_user_id)
+       VALUES ($1,$2,'meta','sandbox','active',$3,$4,1,$5)`,
+      [id, tenantId, fingerprint, META_PAGE_ID, userId]
     );
     return id;
   }
@@ -307,6 +308,7 @@ if (!HAS_DB) {
     await vault.saveCredentials(ownerA.id, 'meta_ads', {
       accessToken: `test-token-${ownerA.id}`,
       adAccountId: 'act_123456789',
+      pageId: META_PAGE_ID,
     });
     wfA = await seedWf(tenantA.id);
     wfB = await seedWf(tenantB.id);
@@ -462,7 +464,7 @@ if (!HAS_DB) {
     await assert.rejects(
       () => metaPausedDraft.createPausedDraftGraph({
         capability: forgedCapability(),
-        credentials: { accessToken: 'tok', adAccountId: 'act_123456789' },
+        credentials: { accessToken: 'tok', adAccountId: 'act_123456789', pageId: META_PAGE_ID },
         snapshot: { objective: 'traffic', label: 'Forged' },
         inject,
       }),

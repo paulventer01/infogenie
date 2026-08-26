@@ -4258,6 +4258,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       environment TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'active',
       account_fingerprint TEXT NOT NULL,
+      page_id TEXT NOT NULL,
       version INTEGER NOT NULL DEFAULT 1,
       owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
       revoked_at TIMESTAMPTZ NULL,
@@ -4289,6 +4290,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     ADD COLUMN IF NOT EXISTS environment TEXT,
     ADD COLUMN IF NOT EXISTS status TEXT,
     ADD COLUMN IF NOT EXISTS account_fingerprint TEXT,
+    ADD COLUMN IF NOT EXISTS page_id TEXT,
     ADD COLUMN IF NOT EXISTS version INTEGER,
     ADD COLUMN IF NOT EXISTS owner_user_id INTEGER,
     ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ,
@@ -4312,6 +4314,9 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedCheck(p, 'orchestrator_tenant_meta_credential_refs',
     'orchestrator_tmcr_fingerprint_check',
     `char_length(account_fingerprint)=64 AND account_fingerprint ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_tenant_meta_credential_refs',
+    'orchestrator_tmcr_page_id_check',
+    `page_id ~ '^[0-9]{1,32}$'`);
   await _ensureNamedCheck(p, 'orchestrator_tenant_meta_credential_refs',
     'orchestrator_tmcr_len_check', `char_length(id) BETWEEN 1 AND 128`);
   await p.query(`

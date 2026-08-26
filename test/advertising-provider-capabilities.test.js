@@ -123,6 +123,7 @@ function credentialRefRow(over) {
     environment: 'sandbox',
     status: 'active',
     account_fingerprint: FINGERPRINT,
+    page_id: '1122334455667',
     version: 1,
     owner_user_id: 12,
     revoked_at: null,

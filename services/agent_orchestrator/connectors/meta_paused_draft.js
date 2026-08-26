@@ -5,18 +5,26 @@ const { fail } = require('../errors');
 const {
   assertMetaCreateProviderDraftMutationAllowed,
 } = require('../../security/advertising_provider_mutations');
+const { metaGraphVersion } = require('./meta_graph_version');
+const {
+  validateApprovedSnapshotForMetaDraft,
+  buildMetaPausedDraftRequests,
+} = require('./meta_paused_draft_snapshot');
 
 const GRAPH = 'graph.facebook.com';
-const GRAPH_VERSION = 'v19.0';
 const OBJECT_SEQUENCE = Object.freeze(['campaign', 'adset', 'creative', 'ad']);
 const PAUSED = 'PAUSED';
+
+function graphVersionPath(path) {
+  return `/${metaGraphVersion()}${path}`;
+}
 
 function postForm(path, params) {
   const body = params.toString();
   return new Promise((resolve, reject) => {
     const req = https.request({
       hostname: GRAPH,
-      path: `/${GRAPH_VERSION}${path}`,
+      path: graphVersionPath(path),
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -44,7 +52,7 @@ function deleteObject(objectId, token) {
   return new Promise((resolve, reject) => {
     const req = https.request({
       hostname: GRAPH,
-      path: `/${GRAPH_VERSION}/${encodeURIComponent(objectId)}?${params}`,
+      path: `${graphVersionPath(`/${encodeURIComponent(objectId)}`)}?${params}`,
       method: 'DELETE',
       headers: { 'User-Agent': 'InfoGenie-MetaPausedDraft/1.0' },
     }, (res) => {
@@ -62,72 +70,16 @@ function deleteObject(objectId, token) {
   });
 }
 
-function snapshotCampaignName(snapshot) {
-  const label = snapshot && typeof snapshot.label === 'string' ? snapshot.label.trim() : '';
-  if (label) return label.slice(0, 120);
-  const objective = snapshot && snapshot.objective ? String(snapshot.objective) : 'draft';
-  return `InfoGenie paused draft (${objective})`.slice(0, 120);
-}
-
-function buildCreateSteps(snapshot, accountId) {
-  const act = String(accountId).replace(/^act_/, '');
-  const name = snapshotCampaignName(snapshot);
-  return [
-    {
-      kind: 'campaign',
-      create: () => {
-        const params = new URLSearchParams();
-        params.set('name', name);
-        params.set('objective', 'OUTCOME_TRAFFIC');
-        params.set('status', PAUSED);
-        params.set('special_ad_categories', '[]');
-        params.set('is_adset_budget_sharing_enabled', 'false');
-        return { path: `/act_${encodeURIComponent(act)}/campaigns`, params };
-      },
-    },
-    {
-      kind: 'adset',
-      create: (ctx) => {
-        const params = new URLSearchParams();
-        params.set('name', `${name} ad set`);
-        params.set('campaign_id', ctx.campaign_id);
-        params.set('status', PAUSED);
-        params.set('billing_event', 'IMPRESSIONS');
-        params.set('optimization_goal', 'LINK_CLICKS');
-        params.set('bid_strategy', 'LOWEST_COST_WITHOUT_CAP');
-        params.set('daily_budget', '100');
-        params.set('targeting', JSON.stringify({ geo_locations: { countries: ['US'] } }));
-        return { path: `/act_${encodeURIComponent(act)}/adsets`, params };
-      },
-    },
-    {
-      kind: 'creative',
-      create: () => {
-        const params = new URLSearchParams();
-        params.set('name', `${name} creative`);
-        params.set('object_story_spec', JSON.stringify({
-          page_id: '0',
-          link_data: {
-            message: 'Paused draft creative — not delivering',
-            link: 'https://example.test/paused-draft',
-            name: name.slice(0, 40),
-          },
-        }));
-        return { path: `/act_${encodeURIComponent(act)}/adcreatives`, params };
-      },
-    },
-    {
-      kind: 'ad',
-      create: (ctx) => {
-        const params = new URLSearchParams();
-        params.set('name', `${name} ad`);
-        params.set('adset_id', ctx.adset_id);
-        params.set('creative', JSON.stringify({ creative_id: ctx.creative_id }));
-        params.set('status', PAUSED);
-        return { path: `/act_${encodeURIComponent(act)}/ads`, params };
-      },
-    },
-  ];
+function materializeStep(step, ctx) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(step.params)) {
+    let resolved = value;
+    if (resolved === '$campaign_id') resolved = ctx.campaign_id;
+    if (resolved === '$adset_id') resolved = ctx.adset_id;
+    if (resolved === '$creative_id') resolved = ctx.creative_id;
+    params.set(key, String(resolved));
+  }
+  return { path: step.path, params };
 }
 
 async function compensateCreated(created, token) {
@@ -161,14 +113,15 @@ async function createPausedDraftGraph(input) {
   if (!creds || !creds.accessToken || !creds.adAccountId) fail('missing_credentials');
   if (!snapshot || typeof snapshot !== 'object') fail('validation_failed', { field: 'snapshot' });
 
+  validateApprovedSnapshotForMetaDraft(snapshot, creds);
+  const steps = buildMetaPausedDraftRequests(snapshot, creds);
   const token = String(creds.accessToken);
-  const steps = buildCreateSteps(snapshot, creds.adAccountId);
   const ctx = Object.create(null);
   const created = [];
 
   for (let i = 0; i < steps.length; i += 1) {
     const step = steps[i];
-    const spec = step.create(ctx);
+    const spec = materializeStep(step, ctx);
     spec.params.set('access_token', token);
     let response;
     try {
@@ -238,4 +191,5 @@ module.exports = {
   PAUSED,
   createPausedDraftGraph,
   compensateCreated,
+  metaGraphVersion,
 };

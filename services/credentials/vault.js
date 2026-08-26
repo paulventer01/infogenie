@@ -420,7 +420,7 @@ const META_PROVIDER_DRAFT_REFERENCE_KIND = 'meta_provider_draft_credential_refer
 // appearing here would be a review failure.
 const META_PROVIDER_DRAFT_REF_COLUMNS = Object.freeze([
   'id', 'tenant_id', 'platform', 'environment', 'status',
-  'account_fingerprint', 'version', 'owner_user_id', 'revoked_at',
+  'account_fingerprint', 'page_id', 'version', 'owner_user_id', 'revoked_at',
 ]);
 
 const _REFERENCE_BRAND = Symbol.for('infogenie.meta_provider_draft_credential_reference');
@@ -529,6 +529,7 @@ async function _lockCredentialRefRow(client, { tenantId, credentialRefId, ownerU
   if (typeof row.account_fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(row.account_fingerprint)) {
     throw _credError('validation_failed', 'credential reference account fingerprint is invalid');
   }
+  _pageIdOf(row);
   return row;
 }
 
@@ -628,6 +629,14 @@ function _accountFingerprintOf(adAccountId) {
   return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
 
+function _pageIdOf(row) {
+  const raw = row && row.page_id != null ? String(row.page_id).trim() : '';
+  if (!/^[0-9]{1,32}$/.test(raw)) {
+    throw _credError('validation_failed', 'tenant-owned Meta credential reference is missing a bound page id');
+  }
+  return raw;
+}
+
 async function _buildProviderDraftExecutionSecretHandle(client, capability) {
   if (!_capabilities.isAdvertisingProviderCapability(capability)) {
     throw _credError(_capabilities.CODES.INVALID, 'a minted provider-draft capability is required');
@@ -675,6 +684,10 @@ async function _buildProviderDraftExecutionSecretHandle(client, capability) {
   if (!fingerprint || !_sameString(fingerprint, String(capability.account_fingerprint))) {
     throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'Meta ad account does not match the capability binding');
   }
+  const pageId = _pageIdOf(row);
+  if (blob.pageId != null && !_sameString(String(blob.pageId), pageId)) {
+    throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'Meta page id does not match the credential reference binding');
+  }
 
   const handle = Object.create(null);
   Object.defineProperty(handle, 'accessToken', {
@@ -684,6 +697,10 @@ async function _buildProviderDraftExecutionSecretHandle(client, capability) {
   Object.defineProperty(handle, 'adAccountId', {
     enumerable: true, configurable: false, writable: false,
     value: String(blob.adAccountId),
+  });
+  Object.defineProperty(handle, 'pageId', {
+    enumerable: true, configurable: false, writable: false,
+    value: pageId,
   });
   Object.defineProperty(handle, 'environment', {
     enumerable: true, configurable: false, writable: false,
