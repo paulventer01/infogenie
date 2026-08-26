@@ -583,6 +583,134 @@ test('the guardrails doc discloses the PR 6D fake delivery worker and PR 6E sand
   assert.doesNotMatch(flat, /so PR 6D's resolution step is where the vault boundary gets re-reviewed/);
 });
 
+// PR 6F-0 ships contracts only. The properties that keep it contract-only are
+// invisible from the outside (there is no execution path to probe), so they are
+// pinned here as source facts.
+test('the PR 6F-0 capability boundary has no mint site, provider call or secret read', () => {
+  const root = path.join(__dirname, '..');
+  const capSrc = fs.readFileSync(
+    path.join(root, 'services/security/advertising_provider_capabilities.js'), 'utf8');
+
+  // Unforgeable, transaction-scoped, single-use, short-lived, non-serializable.
+  assert.match(capSrc, /const MINTED = new WeakSet\(\)/);
+  assert.match(capSrc, /const LIVE_TX = new WeakSet\(\)/);
+  assert.match(capSrc, /LIVE_TX\.delete\(handle\)/, 'the execution handle is revoked with its scope');
+  assert.match(capSrc, /SAVEPOINT \$\{TX_PROBE_SAVEPOINT\}/, 'in-transaction probe');
+  assert.match(capSrc, /state\.consumed = true/, 'single use is spent on assert');
+  assert.match(capSrc, /CAPABILITY_TTL_MS = 60 \* 1000/);
+  assert.match(capSrc, /hidden\('toJSON', throwOnSerialize\)/);
+  assert.match(capSrc, /Object\.freeze\(cap\)/);
+  assert.match(capSrc, /crypto\.timingSafeEqual/);
+  // No env, no network, no provider SDK, no vault, no secret vocabulary.
+  assert.doesNotMatch(capSrc, /process\.env/);
+  assert.doesNotMatch(capSrc, /\bfetch\s*\(/);
+  assert.doesNotMatch(capSrc, /credentials\/vault/);
+  assert.doesNotMatch(capSrc, /require\(['"](https?|axios|node-fetch|undici|googleapis|facebook-nodejs-business-sdk|pg)['"]\)/);
+  assert.doesNotMatch(capSrc, /access_token|refresh_token|decrypt/i);
+
+  // The broad index must not carry the mint path.
+  const indexSrc = fs.readFileSync(path.join(root, 'services/security/index.js'), 'utf8');
+  const indexExports = indexSrc.slice(indexSrc.lastIndexOf('module.exports'));
+  assert.doesNotMatch(indexExports, /mintMetaCreateProviderDraftCapability/);
+  assert.doesNotMatch(indexExports, /withAdvertisingProviderExecutionTransaction/);
+  assert.doesNotMatch(indexExports, /assertMetaCreateProviderDraftCapability/);
+
+  // No mint site in the orchestrator, the worker or any provider-write path.
+  for (const rel of [
+    'server.js',
+    'services/optimizer/platforms.js',
+    'services/audiences/api.js',
+    'services/pixel_manager/api.js',
+    'services/agent_orchestrator/campaign_api.js',
+    'services/agent_orchestrator/campaign_provider_confirmations.js',
+    'services/agent_orchestrator/campaign_delivery_worker.js',
+    'services/agent_orchestrator/campaign_delivery_contracts.js',
+  ]) {
+    const src = fs.readFileSync(path.join(root, rel), 'utf8');
+    assert.doesNotMatch(src, /advertising_provider_capabilities/, rel);
+    assert.doesNotMatch(src, /mintMetaCreateProviderDraftCapability/, rel);
+  }
+
+  // The kill switch is unchanged in substance and strips capability values.
+  const killSwitch = fs.readFileSync(
+    path.join(root, 'services/security/advertising_provider_mutations.js'), 'utf8');
+  assert.doesNotMatch(killSwitch, /process\.env/);
+  assert.match(killSwitch, /infogenie\.advertising_provider_capability/);
+  assert.match(killSwitch, /_safeDetail\(extra\)/);
+
+  // The vault addition is a reference boundary, not a secret boundary.
+  const vaultSrc = fs.readFileSync(path.join(root, 'services/credentials/vault.js'), 'utf8');
+  const start = vaultSrc.indexOf('Meta provider-draft credential REFERENCE boundary');
+  const end = vaultSrc.indexOf('Simple API-key vault', start);
+  assert.ok(start > 0 && end > start, 'the reference boundary section is delimited');
+  const boundary = vaultSrc.slice(start, end)
+    .split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n');
+  for (const banned of ['_decrypt(', '_encrypt(', 'getCredentials(', 'resolveMetaAdsCredentials(',
+    'user_integrations', 'platform_api_keys', 'kvGet', 'kvSet', 'access_token', 'refresh_token']) {
+    assert.equal(boundary.includes(banned), false, `${banned} must not appear in the reference boundary`);
+  }
+  assert.match(boundary, /environment = ANY\(\$4::text\[\]\)/);
+  assert.match(boundary, /FOR UPDATE/);
+  assert.match(boundary, /_assertActiveTenantMember/);
+  assert.match(boundary, /has_secret_access', false/);
+});
+
+test('the guardrails doc discloses the PR 6F-0 provider-draft capability boundary', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.match(flat, /## Advertising orchestrator — Meta provider-draft capability \(PR 6F-0\)/);
+  // Contracts only, and the PR #99 gate is still shut.
+  assert.match(flat, /PR 6F-0 adds \*\*contracts only\*\*/);
+  assert.match(flat, /`isAdvertisingProviderMutationAllowed\(\)` still returns `false`/);
+  // The six capability properties.
+  assert.match(flat, /\*\*Unforgeable\.\*\* Identity is a module-private `WeakSet`/);
+  assert.match(flat, /\*\*Single-use\.\*\*/);
+  assert.match(flat, /A \*\*failed\*\* assertion does not spend it/);
+  assert.match(flat, /\*\*Short-lived\.\*\* `CAPABILITY_TTL_MS = 60_000`/);
+  assert.match(flat, /\*\*no missing and no extra keys\*\*/);
+  assert.match(flat, /\*\*Non-serializable\.\*\*/);
+  // Mint is transaction-scoped and absent from PR 6F-0.
+  assert.match(flat, /Postgres raises `25P01` for a `SAVEPOINT` outside a transaction block/);
+  assert.match(flat, /\*\*revoked when `fn` settles\*\*/);
+  assert.match(flat, /\*\*PR 6F-0 has no mint site at all\.\*\*/);
+  assert.match(flat, /Neither is re-exported from `services\/security\/index\.js`/);
+  assert.match(flat, /\*\*strips capability-branded values\*\*/);
+  // The vault boundary reads no secret and no production account.
+  assert.match(flat, /\*\*production ad accounts are unreachable through this boundary\*\*/);
+  assert.match(flat, /\*\*No secret is read, decrypted, returned, transmitted or logged\.\*\*/);
+  assert.match(flat, /The capability's single use is \*\*not\*\* spent here/);
+  // Least privilege and exact matrix coverage.
+  assert.match(flat, /\*\*Marketer does not\.\*\*/);
+  assert.match(flat, /\*\*The matrix matches by prefix only, and that constrains the endpoint shape\.\*\*/);
+  assert.match(flat, /Security deliberately did \*\*not\*\* add a regex\/pattern stage to the matrix/);
+  // Audit hygiene.
+  assert.match(flat, /\*\*Credential reference id and version, account fingerprint, claim-token hash, intent\/snapshot\/contract\/request hashes, the confirmation phrase and its salt\/digest, and any payload or snapshot are all absent from it\.\*\*/);
+  // The three stacked gates, and the consequence of relaxing the narrowest.
+  assert.match(flat, /\*\*narrowest is the legacy owner gate\*\*/);
+  assert.match(flat, /would make the matrix row and the handler key the \*\*sole\*\* gate/);
+  // The request surface and the server-derived bindings are documented.
+  assert.match(flat, /### What the caller may name, and what the server derives/);
+  assert.match(flat, /latestAttemptForOutbox\(tenant, outbox\)` under `FOR UPDATE`/);
+  assert.match(flat, /judged on the database clock\*\* \(`SELECT now\(\)`\), not the app's/);
+  assert.match(flat, /from `vault\.resolveTenantMetaCredentialRefForProviderDraft`, never a local `SELECT`/);
+  assert.match(flat, /re-derived from the bound approval \(`boundActorId`\)/);
+  // No stale claim that the caller still supplies an attempt id.
+  assert.doesNotMatch(flat, /client-supplied `attemptId`/);
+  assert.doesNotMatch(flat, /attempts\/:attemptId/);
+  assert.doesNotMatch(flat, /Open items owed by other specialists/);
+  // No live-mutation claim.
+  assert.doesNotMatch(flat, /PR 6F-0 creates a provider draft/);
+});
+
+test('the integrations reference does not claim a live Meta provider mutation for PR 6F-0', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/integrations-reference.md'), 'utf8');
+  const flat = doc.replace(/\s+/g, ' ');
+  assert.match(flat, /#### Meta provider-draft credential reference \(PR 6F-0\) — reference only/);
+  assert.match(flat, /\*\*This is not a live provider mutation\.\*\*/);
+  assert.match(flat, /no Meta Graph call, no SDK, no OAuth refresh, no token read and no vault decrypt/);
+  assert.match(flat, /Production ad accounts are unreachable through it/);
+});
+
 test('originAllowed accepts matching host and localhost in non-prod', () => {
   const prev = process.env.NODE_ENV;
   process.env.NODE_ENV = 'development';

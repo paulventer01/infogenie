@@ -123,6 +123,12 @@ Competitor-ad research over the official Meta Ad Library Graph `ads_archive` end
 
 Do not request demographic targeting, bylines, emails, phones, profiles, or comments. Creatives are not downloaded (`assets` stays empty). Source URLs are syntactic Ad Library links (`https://www.facebook.com/ads/library/?id=…`) and are not fetched.
 
+#### Meta provider-draft credential reference (PR 6F-0) — reference only
+
+PR 6F-0 adds a tenant-owned Meta credential **reference** boundary in `services/credentials/vault.js` (`resolveTenantMetaCredentialRefForProviderDraft`, `withTenantMetaCredentialForProviderDraft`) alongside a frozen, single-use, short-lived `create_provider_draft` capability in `services/security/advertising_provider_capabilities.js`.
+
+**This is not a live provider mutation.** There is no Meta Graph call, no SDK, no OAuth refresh, no token read and no vault decrypt in PR 6F-0. `isAdvertisingProviderMutationAllowed()` still returns `false`, so every provider write — including creating a paused campaign — remains hard-denied. The boundary reads `orchestrator_tenant_meta_credential_refs`, which stores metadata only (platform, `environment IN ('test','sandbox')`, status, 64-hex account fingerprint, version, owner) and holds no ciphertext, token or ad-account id. Production ad accounts are unreachable through it. The reference handed to callers carries `has_secret_access: false` and refuses serialization. Details and open items: `docs/security-guardrails.md` → “Advertising orchestrator — Meta provider-draft capability (PR 6F-0)”.
+
 ### 4.2 Google research connector (`google_research`)
 
 Competitor-ad research over DataForSEO’s documented Google Ads Transparency APIs. Google has no official commercial Ads Transparency Center API — this connector does **not** call `adstransparency.google.com`, scrape HTML, or use browser automation. Used by Advertising Orchestrator research runs (`/api/agent-orchestrator/research`) — not a new API prefix.

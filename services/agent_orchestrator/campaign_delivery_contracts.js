@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const { FORBIDDEN_KEYS, POLLUTION_KEYS } = require('./research_contracts');
 const C = require('./campaign_contracts');
 const { fail } = require('./errors');
@@ -205,6 +206,128 @@ function delaySeconds(attemptNumber) {
   return Math.min(300, 2 ** Math.min(attemptNumber, 8));
 }
 
+// PR6F-0 confirmation shapes. Do not unfreeze OUTBOX_PAYLOAD_KEYS / KEYS or
+// invent a provider object ledger — these are additive constants only.
+const CONFIRM_PHRASE = 'CONFIRM CREATE PROVIDER DRAFT';
+const PERMISSION_PROVIDER_DRAFTS_CREATE = 'advertising.provider_drafts.create';
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const CONFIRMATION_TTL_MS = 2 * 60 * 1000;
+const CHALLENGE_STATUS = 'open';
+const CONFIRMATION_STATUS = 'confirmed';
+const OBJECT_KIND_CHALLENGE = 'campaign_provider_challenge';
+const OBJECT_KIND_CONFIRMATION = 'campaign_provider_confirmation';
+const AUDIT_EVENT_CHALLENGE = 'campaign_provider_challenge_created';
+const AUDIT_EVENT_CONFIRMATION = 'campaign_provider_draft_confirmed';
+const PLATFORM_META = 'meta';
+
+const CHALLENGE_KEYS = Object.freeze([
+  'contract_version', 'operation', 'platform', 'idempotency_key',
+]);
+const CONFIRM_KEYS = Object.freeze([
+  'contract_version', 'operation', 'platform', 'idempotency_key',
+  'confirmation_challenge_id', 'confirmation_phrase',
+]);
+const CHALLENGE_ALLOW = new Set(CHALLENGE_KEYS);
+const CONFIRM_ALLOW = new Set(CONFIRM_KEYS);
+
+const CONFIRM_AUDIT_DETAIL_KEYS = Object.freeze([
+  'action', 'from', 'to', 'state', 'status', 'gate', 'operation',
+  'contract_version', 'platform', 'challenge_id', 'confirmation_id',
+  'draft_id', 'intent_id', 'attempt_id', 'publishing_request_id',
+  'revision', 'generation', 'requested_by', 'replay',
+]);
+
+function walkForbiddenAllowlisted(value, allow) {
+  if (value == null || typeof value !== 'object') return;
+  if (Buffer.isBuffer(value)) fail('validation_failed', { field: 'value' });
+  if (Array.isArray(value)) { value.forEach((item) => walkForbiddenAllowlisted(item, allow)); return; }
+  for (const k of Object.keys(value)) {
+    if (!allow.has(k) && FORBIDDEN_SET.has(normalizeKey(k))) fail('validation_failed', { field: k });
+    if (!allow.has(k)) fail('validation_failed', { field: k });
+    walkForbiddenAllowlisted(value[k], new Set());
+  }
+}
+
+function parseExactBody(body, allow, opts) {
+  const raw = isPlain(body) ? { ...body } : null;
+  if (!raw) fail('validation_failed');
+  if ((!raw.idempotency_key || !String(raw.idempotency_key).trim()) && opts && opts.idempotencyKey) {
+    raw.idempotency_key = opts.idempotencyKey;
+  }
+  walkForbiddenAllowlisted(raw, allow);
+  for (const k of Object.keys(raw)) {
+    if (!allow.has(k)) fail('validation_failed', { field: k });
+  }
+  if (raw.contract_version !== CONTRACT_VERSION) fail('validation_failed', { field: 'contract_version' });
+  if (raw.operation !== OPERATION) fail('validation_failed', { field: 'operation' });
+  if (typeof raw.platform !== 'string' || raw.platform !== PLATFORM_META) {
+    fail('validation_failed', { field: 'platform' });
+  }
+  const key = String(raw.idempotency_key || '').trim();
+  if (!key || key.length > 256) fail('validation_failed', { field: 'idempotency_key' });
+  return { raw, key };
+}
+
+function parseChallengeBody(body, opts) {
+  const { key } = parseExactBody(body, CHALLENGE_ALLOW, opts);
+  return {
+    contract_version: CONTRACT_VERSION,
+    operation: OPERATION,
+    platform: PLATFORM_META,
+    idempotency_key: key,
+  };
+}
+
+function parseConfirmBody(body, opts) {
+  const { raw, key } = parseExactBody(body, CONFIRM_ALLOW, opts);
+  const challengeId = String(raw.confirmation_challenge_id || '').trim();
+  if (!challengeId || challengeId.length > 128) {
+    fail('validation_failed', { field: 'confirmation_challenge_id' });
+  }
+  if (raw.confirmation_phrase !== CONFIRM_PHRASE) {
+    fail('validation_failed', { field: 'confirmation_phrase' });
+  }
+  return {
+    contract_version: CONTRACT_VERSION,
+    operation: OPERATION,
+    platform: PLATFORM_META,
+    idempotency_key: key,
+    confirmation_challenge_id: challengeId,
+    confirmation_phrase: CONFIRM_PHRASE,
+  };
+}
+
+function newPhraseSalt() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function phraseDigestOf(salt, phrase) {
+  if (typeof salt !== 'string' || !/^[0-9a-f]{64}$/.test(salt)) {
+    fail('validation_failed', { field: 'phrase_salt' });
+  }
+  if (typeof phrase !== 'string' || phrase !== CONFIRM_PHRASE) {
+    fail('validation_failed', { field: 'confirmation_phrase' });
+  }
+  return crypto.createHmac('sha256', Buffer.from(salt, 'hex')).update(phrase, 'utf8').digest('hex');
+}
+
+function claimTokenHashOf(token) {
+  if (typeof token !== 'string' || !token) fail('validation_failed', { field: 'claim_token' });
+  return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+function sanitizeConfirmAuditDetail(detail) {
+  const out = {};
+  if (!detail || typeof detail !== 'object') return out;
+  for (const k of CONFIRM_AUDIT_DETAIL_KEYS) {
+    const v = detail[k];
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'boolean' || typeof v === 'number') { out[k] = v; continue; }
+    if (typeof v === 'string') { out[k] = v.slice(0, 120); continue; }
+  }
+  return out;
+}
+
 module.exports = {
   CONTRACT_VERSION, OPERATION, STATUS, DESTINATION, OBJECT_KIND, AUDIT_EVENT, GATE,
   KEYS, FORBIDDEN, INTENT_HASH_KEYS, OUTBOX_PAYLOAD_KEYS,
@@ -217,4 +340,12 @@ module.exports = {
   MAX_ATTEMPTS, LEASE_MS,
   PARK_INTERVAL_DAYS, WORKER_INTERVAL_MS, ATTEMPT_STATUSES, SCENARIOS,
   SCENARIO_MAP, TERMINAL_PARK_STATUSES, delaySeconds,
+  CONFIRM_PHRASE, PERMISSION_PROVIDER_DRAFTS_CREATE,
+  CHALLENGE_TTL_MS, CONFIRMATION_TTL_MS,
+  CHALLENGE_STATUS, CONFIRMATION_STATUS,
+  OBJECT_KIND_CHALLENGE, OBJECT_KIND_CONFIRMATION,
+  AUDIT_EVENT_CHALLENGE, AUDIT_EVENT_CONFIRMATION, PLATFORM_META,
+  CHALLENGE_KEYS, CONFIRM_KEYS, CONFIRM_AUDIT_DETAIL_KEYS,
+  parseChallengeBody, parseConfirmBody,
+  newPhraseSalt, phraseDigestOf, claimTokenHashOf, sanitizeConfirmAuditDetail,
 };

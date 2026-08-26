@@ -122,6 +122,69 @@ test('guard: default-deny with no escape hatch', () => {
   assert.equal(hijack.route, 'hijack');
 });
 
+// PR 6F-0 added a narrow Meta create_provider_draft capability. It must not
+// widen this closure: the generic gate stays shut, the mint path stays off the
+// broad security index, and a capability cannot be laundered into a denial.
+test('guard: the PR 6F-0 capability is not a bypass of the default-deny gate', async () => {
+  const caps = require('../services/security/advertising_provider_capabilities');
+
+  assert.equal(isAdvertisingProviderMutationAllowed(), false, 'gate still closed');
+  for (const banned of [
+    'mintMetaCreateProviderDraftCapability',
+    'withAdvertisingProviderExecutionTransaction',
+    'assertMetaCreateProviderDraftCapability',
+  ]) {
+    assert.equal(banned in security, false, `services/security must not export ${banned}`);
+  }
+
+  // No mint site anywhere in product code, so nothing can obtain one today.
+  for (const rel of [
+    'server.js',
+    'services/optimizer/platforms.js',
+    'services/audiences/api.js',
+    'services/pixel_manager/api.js',
+    'services/agent_orchestrator/campaign_api.js',
+    'services/agent_orchestrator/campaign_provider_confirmations.js',
+    'services/agent_orchestrator/campaign_delivery_worker.js',
+  ]) {
+    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    assert.doesNotMatch(src, /mintMetaCreateProviderDraftCapability/, rel + ' mints no capability');
+    assert.doesNotMatch(src, /advertising_provider_capabilities/, rel + ' does not reach the capability module');
+  }
+
+  // A real capability cannot be forged, and a plain look-alike is refused.
+  const client = {
+    async query() { return { rows: [], rowCount: 0 }; },
+  };
+  const now = 1_700_000_000_000;
+  const binding = {
+    tenant_id: 7, revision: 1, workflow_approval_id: 2, generation: 1,
+    credential_ref_version: 1, requested_by: 3,
+    draft_id: 'cd_1', publish_approval_id: 'cpa_1', publishing_request_id: 'cpr_1',
+    intent_id: 'cdi_1', outbox_id: 'ob_1', attempt_id: 'cda_1',
+    challenge_id: 'cpc_1', confirmation_id: 'cpcf_1', credential_ref_id: 'tmcr_1',
+    claim_token_hash: 'a'.repeat(64), intent_hash: 'b'.repeat(64),
+    snapshot_hash: 'c'.repeat(64), contract_hash: 'd'.repeat(64),
+    request_hash: 'e'.repeat(64), phrase_digest: 'f'.repeat(64),
+    account_fingerprint: '1'.repeat(64),
+    issued_at_ms: now, expires_at_ms: now + 30_000,
+  };
+  const cap = await caps.withAdvertisingProviderExecutionTransaction(client, (tx) =>
+    caps.mintMetaCreateProviderDraftCapability(tx, binding));
+  assert.equal(caps.isAdvertisingProviderCapability({ ...binding }), false, 'clone is not a capability');
+
+  // Holding a capability does not open the generic gate.
+  assert.equal(isAdvertisingProviderMutationAllowed(), false, 'gate still closed with a capability in hand');
+  assert.throws(() => assertAdvertisingProviderMutationAllowed({ op: 'launch', capability: cap }),
+    (err) => err && err.code === CODE && err.blocked === true);
+
+  // And a denial cannot serialize it.
+  const denied = denyAdvertisingProviderMutation({ platform: 'meta', capability: cap });
+  assertDenied(denied, 'capability deny');
+  assert.equal('capability' in denied, false, 'capability stripped from the deny payload');
+  assert.doesNotThrow(() => JSON.stringify(denied));
+});
+
 test('direct import: platforms.applyChange / applyMeta never touch network', async () => {
   installNetworkTripwire();
   try {
