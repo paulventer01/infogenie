@@ -85,6 +85,20 @@ function isExpired(row, nowMs) {
   return new Date(row.expires_at).getTime() <= nowMs;
 }
 
+async function currentDbTimeMs(c) {
+  const row = await one(c, 'SELECT clock_timestamp() AS now');
+  const value = row && row.now ? new Date(row.now).getTime() : NaN;
+  if (!Number.isFinite(value)) fail('internal_error');
+  return value;
+}
+
+function assertAttemptLeaseLiveAt(attempt, nowMs) {
+  const leaseMs = attempt && attempt.lease_expires_at
+    ? new Date(attempt.lease_expires_at).getTime()
+    : NaN;
+  if (!Number.isFinite(leaseMs) || leaseMs <= nowMs) fail('lease_conflict');
+}
+
 async function resolveBoundCredentialRef(c, tenantId, userId) {
   let resolved;
   try {
@@ -147,15 +161,6 @@ async function loadAuthoritativeGraph(c, o) {
   if (attempt.connector !== D.CONNECTOR) fail('invalid_transition');
   if (attempt.published === true || attempt.external_action_taken === true) fail('invalid_transition');
 
-  const nowRow = await one(c, 'SELECT now() AS now');
-  const dbNow = nowRow && nowRow.now ? new Date(nowRow.now) : null;
-  const lease = attempt.lease_expires_at ? new Date(attempt.lease_expires_at) : null;
-  if (!dbNow || Number.isNaN(dbNow.getTime())
-      || !lease || Number.isNaN(lease.getTime())
-      || lease.getTime() <= dbNow.getTime()) {
-    fail('lease_conflict');
-  }
-
   const reqRow = await lockPublishRequest(c, o.tenantId, draftId, publishingRequestId);
   if (!reqRow) fail('not_found');
 
@@ -179,6 +184,7 @@ async function loadAuthoritativeGraph(c, o) {
 
   const cred = await resolveBoundCredentialRef(c, o.tenantId, o.userId);
   const claimTokenHash = D.claimTokenHashOf(attempt.claim_token);
+  assertAttemptLeaseLiveAt(attempt, await currentDbTimeMs(c));
 
   return {
     draft,
@@ -410,7 +416,6 @@ function replayConfirm(existing, challenge, graph, userId, digest) {
 async function createChallenge(pool, o) {
   if (o.bodyTenantId != null && Number(o.bodyTenantId) !== Number(o.tenantId)) fail('validation_failed');
   const parsed = D.parseChallengeBody(o.body, { idempotencyKey: o.idempotencyKey });
-  const nowMs = Date.now();
 
   return withTx(pool, async (c) => {
     const graph = await loadAuthoritativeGraph(c, o);
@@ -419,6 +424,8 @@ async function createChallenge(pool, o) {
       if (String(byKey.attempt_id) !== String(graph.attempt.id)) {
         fail('idempotency_conflict', { field: 'idempotency_key' });
       }
+      const nowMs = await currentDbTimeMs(c);
+      assertAttemptLeaseLiveAt(graph.attempt, nowMs);
       return replayChallenge(byKey, graph, o.userId, nowMs);
     }
     const byAttempt = await loadChallengeByAttempt(c, o.tenantId, graph.attempt.id);
@@ -426,11 +433,14 @@ async function createChallenge(pool, o) {
       if (String(byAttempt.idempotency_key) !== parsed.idempotency_key) {
         fail('idempotency_conflict', { field: 'idempotency_key' });
       }
+      const nowMs = await currentDbTimeMs(c);
+      assertAttemptLeaseLiveAt(graph.attempt, nowMs);
       return replayChallenge(byAttempt, graph, o.userId, nowMs);
     }
 
     let row;
     try {
+      assertAttemptLeaseLiveAt(graph.attempt, await currentDbTimeMs(c));
       await c.query(`SAVEPOINT ${CHALLENGE_SAVEPOINT}`);
       row = await insertChallengeRow(c, graph, o.userId, parsed.idempotency_key);
       await insertChallengeAudit(c, {
@@ -442,7 +452,11 @@ async function createChallenge(pool, o) {
       if (!err || err.code !== UNIQUE_VIOLATION) throw err;
       const raced = await loadChallengeByKey(c, o.tenantId, parsed.idempotency_key)
         || await loadChallengeByAttempt(c, o.tenantId, graph.attempt.id);
-      if (raced) return replayChallenge(raced, graph, o.userId, nowMs);
+      if (raced) {
+        const nowMs = await currentDbTimeMs(c);
+        assertAttemptLeaseLiveAt(graph.attempt, nowMs);
+        return replayChallenge(raced, graph, o.userId, nowMs);
+      }
       fail('idempotency_conflict', { field: 'idempotency_key' });
     }
     return { row, replay: false };
@@ -452,7 +466,6 @@ async function createChallenge(pool, o) {
 async function confirmProviderDraft(pool, o) {
   if (o.bodyTenantId != null && Number(o.bodyTenantId) !== Number(o.tenantId)) fail('validation_failed');
   const parsed = D.parseConfirmBody(o.body, { idempotencyKey: o.idempotencyKey });
-  const nowMs = Date.now();
 
   return withTx(pool, async (c) => {
     const graph = await loadAuthoritativeGraph(c, o);
@@ -479,6 +492,8 @@ async function confirmProviderDraft(pool, o) {
 
     if (challenge.status !== D.CHALLENGE_STATUS) fail('invalid_transition');
     if (challenge.consumed_at || challenge.consumed_confirmation_id) fail('invalid_transition');
+    const nowMs = await currentDbTimeMs(c);
+    assertAttemptLeaseLiveAt(graph.attempt, nowMs);
     if (isExpired(challenge, nowMs)) fail('approval_expired');
 
     const byChallenge = await loadConfirmByChallenge(c, o.tenantId, challenge.id);
@@ -491,6 +506,9 @@ async function confirmProviderDraft(pool, o) {
 
     let row;
     try {
+      const finalNowMs = await currentDbTimeMs(c);
+      assertAttemptLeaseLiveAt(graph.attempt, finalNowMs);
+      if (isExpired(challenge, finalNowMs)) fail('approval_expired');
       await c.query(`SAVEPOINT ${CONFIRM_SAVEPOINT}`);
       row = await insertConfirmRow(c, challenge, o.userId, parsed.idempotency_key, digest);
       await consumeChallenge(c, challenge, row);

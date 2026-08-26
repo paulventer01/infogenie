@@ -3086,9 +3086,10 @@ autocommit connection, and therefore any HTTP handler that never opened a
 transaction, cannot obtain a handle. The handle is registered in a module-private
 `WeakMap` and **revoked when `fn` settles**, so a handle that escapes the scope
 mints nothing. Minting and verification each repeat the authoritative
-`SAVEPOINT` round-trip against the originating client. If callback code issues
-`COMMIT` or `ROLLBACK`, a subsequent mint or use fails closed even while the
-in-memory callback scope is still active.
+`SAVEPOINT` round-trip and compare `pg_current_xact_id()` against the transaction
+identity captured when the scope opened. If callback code issues `COMMIT` or
+`ROLLBACK`—even followed by a fresh `BEGIN` on the same client—a subsequent mint
+or use fails closed while the in-memory callback scope is still active.
 
 **PR 6F-0 has no mint site at all.** There is no execution worker and no provider
 call, so `mintMetaCreateProviderDraftCapability` and
@@ -3234,7 +3235,8 @@ graph, so the confirming human cannot choose it:
   intent, and against `intent.outbox_id` / `intent.intent_hash`.
 - **Attempt liveness** — the attempt must be `started`, not published, and its
   `lease_expires_at` must be in the future **judged on the database clock**
-  (`SELECT now()`), not the app's. A settled or lease-lapsed attempt fails
+  (`SELECT clock_timestamp()` after the authoritative locks), not the app's or
+  the transaction-start timestamp. A settled or lease-lapsed attempt fails
   `lease_conflict`. This is what stops a confirmation attaching to an attempt a
   worker has logically abandoned but `abandonExpiredLease` has not yet settled —
   which matters because nothing enforces a single `started` attempt per outbox

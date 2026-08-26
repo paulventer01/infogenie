@@ -711,6 +711,51 @@ if (!HAS_DB) {
     assert.notEqual(res.json.ok, true);
   });
 
+  test('confirmation rechecks expiry after an authoritative lock wait', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    await seedAttempt(live);
+    const chal = await api('POST', challengePath(live), {
+      cookie: cookieA, body: challengeBody(),
+    });
+    assert.equal(chal.status, 200, chal.text);
+
+    await p().query(`ALTER TABLE orchestrator_campaign_provider_challenges DISABLE TRIGGER orchestrator_cpc_guard`);
+    try {
+      await p().query(
+        `UPDATE orchestrator_campaign_provider_challenges
+            SET created_at=clock_timestamp() - interval '1 second',
+                expires_at=clock_timestamp() + interval '1 second'
+          WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, chal.json.challenge.id]
+      );
+    } finally {
+      await p().query(`ALTER TABLE orchestrator_campaign_provider_challenges ENABLE TRIGGER orchestrator_cpc_guard`);
+    }
+
+    const blocker = await p().connect();
+    let pending;
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query(
+        `SELECT id FROM orchestrator_campaign_delivery_intents
+          WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
+        [tenantA.id, live.intent.id]
+      );
+      pending = api('POST', confirmPath(live), {
+        cookie: cookieA, body: confirmBody(chal.json.challenge.id),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await blocker.query('COMMIT');
+    } finally {
+      await blocker.query('ROLLBACK').catch(() => {});
+      blocker.release();
+    }
+    const res = await pending;
+    assert.equal(res.status, 409, res.text);
+    assert.equal(res.json.error, 'approval_expired');
+    assert.notEqual(res.json.ok, true);
+  });
+
   test('tenant isolation hides foreign draft/attempt as not_found', async () => {
     const live = await readyIntent(cookieA, wfA, artA);
     await seedAttempt(live);

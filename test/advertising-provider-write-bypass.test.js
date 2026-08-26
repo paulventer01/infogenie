@@ -154,7 +154,12 @@ test('guard: the PR 6F-0 capability is not a bypass of the default-deny gate', a
 
   // A real capability cannot be forged, and a plain look-alike is refused.
   const client = {
-    async query() { return { rows: [], rowCount: 0 }; },
+    async query(sql) {
+      if (/pg_current_xact_id\(\)/i.test(String(sql))) {
+        return { rows: [{ transaction_id: 'tx-write-bypass' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    },
   };
   const now = 1_700_000_000_000;
   const binding = {

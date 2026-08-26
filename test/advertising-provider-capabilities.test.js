@@ -76,6 +76,7 @@ function fakeTxClient(opts) {
   const o = opts || {};
   const calls = [];
   let inTransaction = !o.notInTransaction;
+  let transactionNumber = 1;
   return {
     calls,
     async query(sql, params) {
@@ -83,6 +84,11 @@ function fakeTxClient(opts) {
       const text = String(sql).trim();
       if (/^(?:COMMIT|ROLLBACK)\s*;?$/i.test(text)) {
         inTransaction = false;
+        return { rows: [], rowCount: 0 };
+      }
+      if (/^BEGIN\s*;?$/i.test(text)) {
+        transactionNumber += 1;
+        inTransaction = true;
         return { rows: [], rowCount: 0 };
       }
       if (/^SAVEPOINT/i.test(text)) {
@@ -94,6 +100,9 @@ function fakeTxClient(opts) {
         return { rows: [], rowCount: 0 };
       }
       if (/^RELEASE SAVEPOINT/i.test(text)) return { rows: [], rowCount: 0 };
+      if (/pg_current_xact_id\(\)/i.test(text)) {
+        return { rows: [{ transaction_id: `tx-${transactionNumber}` }], rowCount: 1 };
+      }
       if (/FROM tenant_users/.test(text)) {
         return o.member === false ? { rows: [], rowCount: 0 } : { rows: [{ '1': 1 }], rowCount: 1 };
       }
@@ -187,6 +196,7 @@ test('capability: the execution scope refuses a client outside a transaction', a
   await caps.withAdvertisingProviderExecutionTransaction(client, () => null);
   assert.match(client.calls[0].sql, /^SAVEPOINT /);
   assert.match(client.calls[1].sql, /^RELEASE SAVEPOINT /);
+  assert.match(client.calls[2].sql, /pg_current_xact_id\(\)/);
 });
 
 test('capability: COMMIT or ROLLBACK closes mint and use authority', {
@@ -211,6 +221,7 @@ test('capability: COMMIT or ROLLBACK closes mint and use authority', {
     await caps.withAdvertisingProviderExecutionTransaction(client, async (tx) => {
       const cap = await caps.mintMetaCreateProviderDraftCapability(tx, binding);
       await client.query('COMMIT');
+      await client.query('BEGIN');
       await rejectsWithCode(
         () => caps.verifyMetaCreateProviderDraftCapability(
           cap,
@@ -218,9 +229,21 @@ test('capability: COMMIT or ROLLBACK closes mint and use authority', {
           { now: NOW }
         ),
         caps.CODES.INVALID,
-        'COMMIT before use while callback scope remains live'
+        'replacement transaction before use while callback scope remains live'
       );
     });
+
+    await client.query('ROLLBACK');
+    await client.query('BEGIN');
+    await rejectsWithCode(
+      () => caps.withAdvertisingProviderExecutionTransaction(client, async (tx) => {
+        await client.query('COMMIT');
+        await client.query('BEGIN');
+        return caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture());
+      }),
+      caps.CODES.MINT_DENIED,
+      'replacement transaction before mint'
+    );
   } finally {
     await client.query('ROLLBACK').catch(() => {});
     client.release();
@@ -386,6 +409,21 @@ test('capability: one use only, and short-lived', async () => {
   assert.equal(await caps.verifyMetaCreateProviderDraftCapability(kept, keptLocked, { now: NOW }), true);
   assert.equal(await caps.verifyMetaCreateProviderDraftCapability(kept, keptLocked, { now: NOW }), true);
   assert.equal((await caps.assertMetaCreateProviderDraftCapability(kept, keptLocked, { now: NOW })).tenant_id, 7);
+});
+
+test('capability: concurrent assertions spend exactly once', async () => {
+  const { cap, binding } = await mintFixture();
+  const locked = lockedContextFrom(binding);
+  const results = await Promise.allSettled([
+    caps.assertMetaCreateProviderDraftCapability(cap, locked, { now: NOW }),
+    caps.assertMetaCreateProviderDraftCapability(cap, locked, { now: NOW }),
+  ]);
+  const fulfilled = results.filter((result) => result.status === 'fulfilled');
+  const rejected = results.filter((result) => result.status === 'rejected');
+  assert.equal(fulfilled.length, 1);
+  assert.equal(fulfilled[0].value.operation, 'create_provider_draft');
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].reason && rejected[0].reason.code, caps.CODES.SPENT);
 });
 
 // ── Audit hygiene ───────────────────────────────────────────────────────────
@@ -913,10 +951,11 @@ test('confirmations: outbox, attempt and credential reference are all server-der
 
   // The lease must be live, judged on the DATABASE clock rather than the app's,
   // so a settled or abandoned attempt cannot be confirmed.
-  assert.match(graph, /SELECT now\(\) AS now/);
+  assert.match(src, /SELECT clock_timestamp\(\) AS now/);
+  assert.doesNotMatch(src, /const nowMs = Date\.now\(\)/);
   assert.match(graph, /attempt\.lease_expires_at/);
-  assert.match(graph, /lease\.getTime\(\)\s*<=\s*dbNow\.getTime\(\)/);
-  assert.match(graph, /fail\('lease_conflict'\)/);
+  assert.match(src, /leaseMs <= nowMs/);
+  assert.match(src, /fail\('lease_conflict'\)/);
 
   // The credential reference comes through the vault boundary, not a local
   // SELECT, so revocation/environment/version policy cannot drift.

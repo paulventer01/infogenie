@@ -113,6 +113,7 @@ const STATE = new WeakMap();
 const LIVE_TX = new WeakMap();
 
 const TX_PROBE_SAVEPOINT = 'sp_advertising_provider_capability_tx_probe';
+const TX_ID_SQL = 'SELECT pg_current_xact_id()::text AS transaction_id';
 
 function denied(code, message, detail) {
   const err = new Error(message);
@@ -125,10 +126,18 @@ function denied(code, message, detail) {
   return err;
 }
 
-async function requireOpenTransaction(client, code, message) {
+async function requireOpenTransaction(client, expectedTransactionId, code, message) {
   try {
     await client.query(`SAVEPOINT ${TX_PROBE_SAVEPOINT}`);
     await client.query(`RELEASE SAVEPOINT ${TX_PROBE_SAVEPOINT}`);
+    const result = await client.query(TX_ID_SQL);
+    const transactionId = result && result.rows && result.rows[0]
+      ? String(result.rows[0].transaction_id || '')
+      : '';
+    if (!transactionId || (expectedTransactionId && transactionId !== expectedTransactionId)) {
+      throw new Error('execution transaction identity changed');
+    }
+    return transactionId;
   } catch (_err) {
     throw denied(code, message);
   }
@@ -235,14 +244,15 @@ async function withAdvertisingProviderExecutionTransaction(client, fn) {
   // Postgres raises 25P01 for a SAVEPOINT outside a transaction block, so an
   // autocommit connection cannot get past this probe. Fail closed on any error,
   // including a failed RELEASE, rather than surfacing a raw driver error.
-  await requireOpenTransaction(
+  const transactionId = await requireOpenTransaction(
     client,
+    null,
     CODE_MINT_DENIED,
     'capability minting requires an open execution transaction'
   );
 
   const handle = Object.freeze(Object.create(null));
-  LIVE_TX.set(handle, client);
+  LIVE_TX.set(handle, { client, transactionId });
   try {
     return await fn(handle);
   } finally {
@@ -255,22 +265,29 @@ async function withAdvertisingProviderExecutionTransaction(client, fn) {
  * Only reachable with a live handle from the function above.
  */
 async function mintMetaCreateProviderDraftCapability(txHandle, binding) {
-  const client = txHandle && typeof txHandle === 'object' ? LIVE_TX.get(txHandle) : null;
-  if (!client) {
+  const scope = txHandle && typeof txHandle === 'object' ? LIVE_TX.get(txHandle) : null;
+  if (!scope) {
     throw denied(CODE_MINT_DENIED, 'capability minting requires a live execution transaction scope');
   }
   await requireOpenTransaction(
-    client,
+    scope.client,
+    scope.transactionId,
     CODE_MINT_DENIED,
     'capability minting requires an open execution transaction'
   );
-  if (LIVE_TX.get(txHandle) !== client) {
+  if (LIVE_TX.get(txHandle) !== scope) {
     throw denied(CODE_MINT_DENIED, 'capability minting requires a live execution transaction scope');
   }
   const normalized = normalizedBinding(binding);
   const cap = buildCapability(normalized);
   MINTED.add(cap);
-  STATE.set(cap, { consumed: false, binding: normalized, client });
+  STATE.set(cap, {
+    consumed: false,
+    asserting: false,
+    binding: normalized,
+    client: scope.client,
+    transactionId: scope.transactionId,
+  });
   return cap;
 }
 
@@ -307,6 +324,7 @@ async function verifyCapability(capability, lockedContext, opts) {
   if (state.consumed) throw denied(CODE_SPENT, 'this provider-draft capability has already been used');
   await requireOpenTransaction(
     state.client,
+    state.transactionId,
     CODE_INVALID,
     'the capability execution transaction is no longer open'
   );
@@ -336,9 +354,21 @@ async function verifyMetaCreateProviderDraftCapability(capability, lockedContext
  * There is no env, options or generic bypass: a mismatch throws.
  */
 async function assertMetaCreateProviderDraftCapability(capability, lockedContext, opts) {
-  const state = await verifyCapability(capability, lockedContext, opts);
-  state.consumed = true;
-  return auditDetailForCapability(capability);
+  const state = STATE.get(capability);
+  if (!state || !isAdvertisingProviderCapability(capability)) {
+    throw denied(CODE_INVALID, 'a minted provider-draft capability is required');
+  }
+  if (state.consumed || state.asserting) {
+    throw denied(CODE_SPENT, 'this provider-draft capability has already been used');
+  }
+  state.asserting = true;
+  try {
+    await verifyCapability(capability, lockedContext, opts);
+    state.consumed = true;
+    return auditDetailForCapability(capability);
+  } finally {
+    state.asserting = false;
+  }
 }
 
 /** Audit-safe projection — never includes secrets, hashes or account material. */
