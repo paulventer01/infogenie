@@ -243,18 +243,18 @@ if (!HAS_DB) {
 
   test('credential refs are Meta/test-or-sandbox only and revoke monotonically', async () => {
     const p = db.getPool();
-    for (const q of [
-      p.query(`INSERT INTO ${h.CRED} (id,tenant_id,platform,environment,status,account_fingerprint,version,owner_user_id) VALUES ($1,$2,'google','sandbox','active',$3,1,$4)`, [nid('mcr'), tenantA, hx(), userId]),
-      p.query(`INSERT INTO ${h.CRED} (id,tenant_id,platform,environment,status,account_fingerprint,version,owner_user_id) VALUES ($1,$2,'meta','production','active',$3,1,$4)`, [nid('mcr'), tenantA, hx(), userId]),
-      p.query(`INSERT INTO ${h.CRED} (id,tenant_id,platform,environment,status,account_fingerprint,version,owner_user_id,revoked_at) VALUES ($1,$2,'meta','test','revoked',$3,1,$4,now())`, [nid('mcr'), tenantA, hx(), userId]),
-    ]) await assert.rejects(q, /platform_check|environment_check|tmcr_immutable|immutable|check/i);
+    for (const fn of [
+      () => p.query(`INSERT INTO ${h.CRED} (id,tenant_id,platform,environment,status,account_fingerprint,version,owner_user_id) VALUES ($1,$2,'google','sandbox','active',$3,1,$4)`, [nid('mcr'), tenantA, hx(), userId]),
+      () => p.query(`INSERT INTO ${h.CRED} (id,tenant_id,platform,environment,status,account_fingerprint,version,owner_user_id) VALUES ($1,$2,'meta','production','active',$3,1,$4)`, [nid('mcr'), tenantA, hx(), userId]),
+      () => p.query(`INSERT INTO ${h.CRED} (id,tenant_id,platform,environment,status,account_fingerprint,version,owner_user_id,revoked_at) VALUES ($1,$2,'meta','test','revoked',$3,1,$4,now())`, [nid('mcr'), tenantA, hx(), userId]),
+    ]) await assert.rejects(fn, /platform_check|environment_check|tmcr_immutable|immutable|check/i);
 
     const credId = await h.credRef(p, tenantA, userId, nid, hx, { environment: 'test' });
-    await assert.rejects(p.query(`UPDATE ${h.CRED} SET platform='google' WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]), /tmcr_immutable|immutable/i);
-    await assert.rejects(p.query(`UPDATE ${h.CRED} SET version=2 WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]), /tmcr_immutable|immutable/i);
+    await assert.rejects(() => p.query(`UPDATE ${h.CRED} SET platform='google' WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]), /tmcr_immutable|immutable/i);
+    await assert.rejects(() => p.query(`UPDATE ${h.CRED} SET version=2 WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]), /tmcr_immutable|immutable/i);
     await p.query(`UPDATE ${h.CRED} SET status='revoked',revoked_at=now(),updated_at=now() WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]);
-    await assert.rejects(p.query(`UPDATE ${h.CRED} SET status='active',revoked_at=NULL WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]), /tmcr_immutable|immutable/i);
-    await assert.rejects(p.query(`DELETE FROM ${h.CRED} WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]), /tmcr_immutable|immutable/i);
+    await assert.rejects(() => p.query(`UPDATE ${h.CRED} SET status='active',revoked_at=NULL WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]), /tmcr_immutable|immutable/i);
+    await assert.rejects(() => p.query(`DELETE FROM ${h.CRED} WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]), /tmcr_immutable|immutable/i);
   });
 
   test('challenges consume once; confirmations spend once; identity stays frozen', async () => {
