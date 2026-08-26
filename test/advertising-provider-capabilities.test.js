@@ -953,7 +953,7 @@ test('confirmations: outbox, attempt and credential reference are all server-der
   // so a settled or abandoned attempt cannot be confirmed.
   assert.match(src, /SELECT clock_timestamp\(\) AS now/);
   assert.doesNotMatch(src, /const nowMs = Date\.now\(\)/);
-  assert.match(graph, /attempt\.lease_expires_at/);
+  assert.match(src, /attempt\.lease_expires_at/);
   assert.match(src, /leaseMs <= nowMs/);
   assert.match(src, /fail\('lease_conflict'\)/);
 
