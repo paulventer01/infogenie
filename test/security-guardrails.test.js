@@ -695,7 +695,7 @@ test('the guardrails doc discloses the PR 6F-0 provider-draft capability boundar
   // The request surface and the server-derived bindings are documented.
   assert.match(flat, /### What the caller may name, and what the server derives/);
   assert.match(flat, /latestAttemptForOutbox\(tenant, outbox\)` under `FOR UPDATE`/);
-  assert.match(flat, /judged on the database clock\*\* \(`SELECT now\(\)`\), not the app's/);
+  assert.match(flat, /judged on the database clock\*\* \(`SELECT clock_timestamp\(\)` after the authoritative locks\), not the app's or the transaction-start timestamp/);
   assert.match(flat, /from `vault\.resolveTenantMetaCredentialRefForProviderDraft`, never a local `SELECT`/);
   assert.match(flat, /re-derived from the bound approval \(`boundActorId`\)/);
   // No stale claim that the caller still supplies an attempt id.
