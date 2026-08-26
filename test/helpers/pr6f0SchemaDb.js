@@ -72,6 +72,21 @@ function fnBody(s, name) {
   const end = s.indexOf('$fn$ LANGUAGE plpgsql', m + 4);
   return s.slice(start, end);
 }
+function installSqlBlobs(s) {
+  const out = [];
+  const re = /_installInTransaction\(p, `/g;
+  let m;
+  while ((m = re.exec(s))) {
+    const from = m.index + m[0].length;
+    const to = s.indexOf('`', from);
+    if (to < 0) throw new Error('unclosed _installInTransaction');
+    out.push(s.slice(from, to));
+  }
+  return out;
+}
+function triggerOn(sql, table) {
+  return new RegExp(`(?:DROP|CREATE)\\s+TRIGGER[\\s\\S]*?\\bON\\s+${table}\\b`).test(sql);
+}
 
 async function pkUniq(t) {
   return (await db.getPool().query(
@@ -253,6 +268,6 @@ async function credRef(p, tenant, user, nid, hx, o = {}) {
 
 module.exports = {
   HEX, CRED, CHAL, CONF, TABLES, FORBIDDEN_SECRET_RE, FORBIDDEN_COLUMNS, SHAPES, CHAL_FKS,
-  ids, src, createTable, fnBody, pkUniq, chkDef, fks, cols, assertShape, assertFk,
+  ids, src, createTable, fnBody, installSqlBlobs, triggerOn, pkUniq, chkDef, fks, cols, assertShape, assertFk,
   host, graph, challenge, confirm, credRef,
 };

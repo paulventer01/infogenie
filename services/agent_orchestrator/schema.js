@@ -4900,7 +4900,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_provider_challenges
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_cpc_guard();
-
+  `);
+  // Per-table transactions: never hold AccessExclusiveLock on
+  // orchestrator_campaign_provider_challenges and
+  // orchestrator_campaign_provider_confirmations together.
+  await _installInTransaction(p, `
     CREATE OR REPLACE FUNCTION orchestrator_cpcf_guard()
     RETURNS trigger AS $fn$
     BEGIN

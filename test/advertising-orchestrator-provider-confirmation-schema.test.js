@@ -112,6 +112,29 @@ test('PR6F-0 CREATE TABLE is tenant-leading, digest-only, TTL-capped, and omits 
   assert.doesNotMatch(src, /provider_object_ledger/);
 });
 
+test('PR6F-0 challenge and confirmation trigger DDL never share one _installInTransaction', () => {
+  const src = h.src();
+  const blobs = h.installSqlBlobs(src);
+  const iCpc = blobs.findIndex((s) => /CREATE\s+TRIGGER\s+orchestrator_cpc_guard\b/.test(s));
+  const iCpcf = blobs.findIndex((s) => /CREATE\s+TRIGGER\s+orchestrator_cpcf_guard\b/.test(s));
+  assert.ok(iCpc >= 0 && iCpcf >= 0 && iCpc < iCpcf);
+  assert.notStrictEqual(iCpc, iCpcf);
+  assert.ok(h.triggerOn(blobs[iCpc], h.CHAL));
+  assert.ok(h.triggerOn(blobs[iCpcf], h.CONF));
+  assert.ok(!h.triggerOn(blobs[iCpc], h.CONF));
+  assert.ok(!h.triggerOn(blobs[iCpcf], h.CHAL));
+  assert.match(blobs[iCpc], /DROP TRIGGER IF EXISTS orchestrator_cpc_guard ON orchestrator_campaign_provider_challenges/);
+  assert.match(blobs[iCpc], /CREATE TRIGGER orchestrator_cpc_guard[\s\S]*ON orchestrator_campaign_provider_challenges/);
+  assert.match(blobs[iCpcf], /DROP TRIGGER IF EXISTS orchestrator_cpcf_guard ON orchestrator_campaign_provider_confirmations/);
+  assert.match(blobs[iCpcf], /CREATE TRIGGER orchestrator_cpcf_guard[\s\S]*ON orchestrator_campaign_provider_confirmations/);
+  for (const sql of blobs) {
+    assert.ok(
+      !(h.triggerOn(sql, h.CHAL) && h.triggerOn(sql, h.CONF)),
+      'challenge and confirmation trigger DDL must not share one _installInTransaction'
+    );
+  }
+});
+
 if (!HAS_DB) {
   test('advertising-orchestrator provider-confirmation schema skipped — no DATABASE_URL', { skip: 'no DATABASE_URL' }, () => {});
 } else {
@@ -317,5 +340,45 @@ if (!HAS_DB) {
     assert.equal((await p.query('SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name = ANY($2)', ['public', h.TABLES])).rowCount, 3);
     const g = await h.graph(p, tenantA, hostA, userId, nid, hx);
     await h.confirm(p, tenantA, hostA, g, await h.challenge(p, tenantA, hostA, g, userId, nid), userId, nid, hx);
+  });
+
+  test('concurrent ensureAgentOrchestratorSchema and confirmation DML produce zero 40P01', async () => {
+    const ROUNDS = 40;
+    const dml = await db.getPool().connect();
+    const deadlocks = [];
+    const other = [];
+    const note = (side, err) => {
+      const rec = { side, code: err && err.code, message: err && err.message };
+      if (err && err.code === '40P01') deadlocks.push(rec);
+      else other.push(rec);
+    };
+    let stop = false;
+    let dmlCount = 0;
+    const dmlLoop = (async () => {
+      while (!stop) {
+        try {
+          const g = await h.graph(dml, tenantA, hostA, userId, nid, hx);
+          const ch = await h.challenge(dml, tenantA, hostA, g, userId, nid);
+          await h.confirm(dml, tenantA, hostA, g, ch, userId, nid, hx);
+          dmlCount += 1;
+        } catch (err) {
+          note('confirm', err);
+          if (!(err && err.code === '40P01')) stop = true;
+        }
+      }
+    })();
+    try {
+      for (let i = 0; i < ROUNDS; i++) {
+        try { await ensureAgentOrchestratorSchema(); }
+        catch (err) { note('ensure', err); }
+      }
+    } finally {
+      stop = true;
+      await dmlLoop;
+      dml.release();
+    }
+    assert.deepStrictEqual(other, [], `unexpected errors under concurrent ensure vs confirmation DML:\n${other.map((d) => `${d.side} ${d.code}: ${d.message}`).join('\n')}`);
+    assert.ok(dmlCount >= ROUNDS, `expected >=${ROUNDS} confirmation inserts overlapping ensure, got ${dmlCount}`);
+    assert.deepStrictEqual(deadlocks, [], `40P01 under concurrent ensure vs confirmation DML:\n${deadlocks.map((d) => `${d.side} ${d.code}: ${d.message}`).join('\n')}`);
   });
 }
