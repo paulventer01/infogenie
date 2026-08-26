@@ -593,9 +593,11 @@ test('the PR 6F-0 capability boundary has no mint site, provider call or secret 
 
   // Unforgeable, transaction-scoped, single-use, short-lived, non-serializable.
   assert.match(capSrc, /const MINTED = new WeakSet\(\)/);
-  assert.match(capSrc, /const LIVE_TX = new WeakSet\(\)/);
+  assert.match(capSrc, /const LIVE_TX = new WeakMap\(\)/);
   assert.match(capSrc, /LIVE_TX\.delete\(handle\)/, 'the execution handle is revoked with its scope');
   assert.match(capSrc, /SAVEPOINT \$\{TX_PROBE_SAVEPOINT\}/, 'in-transaction probe');
+  assert.match(capSrc, /STATE\.set\(cap, \{ consumed: false, binding: normalized, client \}\)/,
+    'capability use remains bound to the originating transaction client');
   assert.match(capSrc, /state\.consumed = true/, 'single use is spent on assert');
   assert.match(capSrc, /CAPABILITY_TTL_MS = 60 \* 1000/);
   assert.match(capSrc, /hidden\('toJSON', throwOnSerialize\)/);
