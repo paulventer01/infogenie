@@ -86,6 +86,9 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_campaign_publish_requests',
   'orchestrator_campaign_delivery_intents',
   'orchestrator_campaign_delivery_attempts',
+  // PR 6E — tenant-scoped append-only/consume-once sandbox outcome rows for
+  // the fake delivery worker (no HTTP, no vault, no provider IDs).
+  'orchestrator_campaign_delivery_sandbox_outcomes',
 ];
 
 const RESEARCH_RETENTION_EXPIRY_SQL =
@@ -3741,6 +3744,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedUnique(p, 'orchestrator_campaign_delivery_intents',
     'orchestrator_campaign_delivery_intents_tenant_unique_idemp',
     'tenant_id, idempotency_key');
+  // Parent unique for sandbox-outcome composite binding FK
+  // (tenant_id, outbox_id, intent_id) → intents(tenant_id, outbox_id, id).
+  await _ensureNamedUnique(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_tenant_unique_outbox_id',
+    'tenant_id, outbox_id, id');
   await _ensureNamedFk(p, 'orchestrator_campaign_delivery_intents',
     'orchestrator_campaign_delivery_intents_tenant_pub_req_fkey',
     'tenant_id, publishing_request_id', 'orchestrator_campaign_publish_requests', 'tenant_id, id',
@@ -4041,6 +4049,168 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE UPDATE OR DELETE ON orchestrator_campaign_delivery_attempts
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_campaign_delivery_attempts_guard();
+  `);
+
+  // PR 6E — governed sandbox outcome source for the fake delivery worker.
+  // Append-only until a single consume transition (consumed_at /
+  // consumed_attempt_id). No secrets, vault payloads, provider IDs, or
+  // credential_ref. Unique unconsumed row per (tenant_id, outbox_id).
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_delivery_sandbox_outcomes (
+      id TEXT NOT NULL,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      outbox_id TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      scenario TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'sandbox',
+      simulated BOOLEAN NOT NULL DEFAULT TRUE,
+      published BOOLEAN NOT NULL DEFAULT FALSE,
+      external_action_taken BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      consumed_at TIMESTAMPTZ NULL,
+      consumed_attempt_id TEXT NULL,
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_cdso_source_check CHECK (source = 'sandbox'),
+      CONSTRAINT orchestrator_cdso_scenario_check CHECK (
+        scenario IN (
+          'success','duplicate','transient','rate_limit','timeout',
+          'permanent','malformed','blocked'
+        )
+      ),
+      CONSTRAINT orchestrator_cdso_sim_check CHECK (
+        simulated = TRUE AND published = FALSE AND external_action_taken = FALSE
+      ),
+      CONSTRAINT orchestrator_cdso_consume_check CHECK (
+        (consumed_at IS NULL AND consumed_attempt_id IS NULL)
+        OR (consumed_at IS NOT NULL AND consumed_attempt_id IS NOT NULL)
+      ),
+      CONSTRAINT orchestrator_cdso_len_check CHECK (
+        char_length(id) BETWEEN 1 AND 128
+        AND char_length(outbox_id) BETWEEN 1 AND 128
+        AND char_length(intent_id) BETWEEN 1 AND 128
+        AND char_length(scenario) BETWEEN 1 AND 128
+        AND (consumed_attempt_id IS NULL OR char_length(consumed_attempt_id) BETWEEN 1 AND 128)
+      )
+    );
+  `);
+  await p.query(`ALTER TABLE orchestrator_campaign_delivery_sandbox_outcomes
+    ADD COLUMN IF NOT EXISTS id TEXT,
+    ADD COLUMN IF NOT EXISTS tenant_id INTEGER,
+    ADD COLUMN IF NOT EXISTS outbox_id TEXT,
+    ADD COLUMN IF NOT EXISTS intent_id TEXT,
+    ADD COLUMN IF NOT EXISTS scenario TEXT,
+    ADD COLUMN IF NOT EXISTS source TEXT,
+    ADD COLUMN IF NOT EXISTS simulated BOOLEAN,
+    ADD COLUMN IF NOT EXISTS published BOOLEAN,
+    ADD COLUMN IF NOT EXISTS external_action_taken BOOLEAN,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS consumed_attempt_id TEXT`);
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
+    'orchestrator_cdso_tenant_outbox_fkey',
+    'tenant_id, outbox_id', 'orchestrator_outbox', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
+    'orchestrator_cdso_tenant_intent_fkey',
+    'tenant_id, intent_id', 'orchestrator_campaign_delivery_intents', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
+    'orchestrator_cdso_tenant_outbox_intent_fkey',
+    'tenant_id, outbox_id, intent_id',
+    'orchestrator_campaign_delivery_intents', 'tenant_id, outbox_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
+    'orchestrator_cdso_tenant_consumed_attempt_fkey',
+    'tenant_id, consumed_attempt_id',
+    'orchestrator_campaign_delivery_attempts', 'tenant_id, id',
+    'ON DELETE NO ACTION');
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
+    'orchestrator_cdso_source_check',
+    `source = 'sandbox'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
+    'orchestrator_cdso_scenario_check',
+    `scenario IN (
+      'success','duplicate','transient','rate_limit','timeout',
+      'permanent','malformed','blocked'
+    )`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
+    'orchestrator_cdso_sim_check',
+    `simulated = TRUE AND published = FALSE AND external_action_taken = FALSE`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
+    'orchestrator_cdso_consume_check',
+    `(consumed_at IS NULL AND consumed_attempt_id IS NULL)
+     OR (consumed_at IS NOT NULL AND consumed_attempt_id IS NOT NULL)`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
+    'orchestrator_cdso_len_check',
+    `char_length(id) BETWEEN 1 AND 128
+     AND char_length(outbox_id) BETWEEN 1 AND 128
+     AND char_length(intent_id) BETWEEN 1 AND 128
+     AND char_length(scenario) BETWEEN 1 AND 128
+     AND (consumed_attempt_id IS NULL OR char_length(consumed_attempt_id) BETWEEN 1 AND 128)`);
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_cdso_tenant_unique_unconsumed
+      ON orchestrator_campaign_delivery_sandbox_outcomes (tenant_id, outbox_id)
+      WHERE consumed_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_cdso_tenant_outbox_created
+      ON orchestrator_campaign_delivery_sandbox_outcomes (tenant_id, outbox_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_cdso_tenant_unconsumed
+      ON orchestrator_campaign_delivery_sandbox_outcomes (tenant_id, outbox_id)
+      WHERE consumed_at IS NULL;
+  `);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_cdso_guard()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'INSERT' THEN
+        -- Outcomes must be born unconsumed; consume is UPDATE-only.
+        IF NEW.consumed_at IS NOT NULL OR NEW.consumed_attempt_id IS NOT NULL THEN
+          RAISE EXCEPTION 'orchestrator_cdso_immutable';
+        END IF;
+        RETURN NEW;
+      END IF;
+      IF TG_OP = 'UPDATE' THEN
+        IF OLD.consumed_at IS NOT NULL
+           OR NEW.id IS DISTINCT FROM OLD.id
+           OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+           OR NEW.outbox_id IS DISTINCT FROM OLD.outbox_id
+           OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+           OR NEW.scenario IS DISTINCT FROM OLD.scenario
+           OR NEW.source IS DISTINCT FROM OLD.source
+           OR NEW.source IS DISTINCT FROM 'sandbox'
+           OR NEW.simulated IS DISTINCT FROM TRUE
+           OR NEW.published IS DISTINCT FROM FALSE
+           OR NEW.external_action_taken IS DISTINCT FROM FALSE
+           OR NEW.created_at IS DISTINCT FROM OLD.created_at
+           OR NEW.consumed_at IS NULL
+           OR NEW.consumed_attempt_id IS NULL
+           OR OLD.consumed_attempt_id IS NOT NULL
+        THEN
+          RAISE EXCEPTION 'orchestrator_cdso_immutable';
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM orchestrator_campaign_delivery_attempts a
+           WHERE a.tenant_id = NEW.tenant_id
+             AND a.id = NEW.consumed_attempt_id
+             AND a.outbox_id = NEW.outbox_id
+             AND a.intent_id = NEW.intent_id
+        ) THEN
+          RAISE EXCEPTION 'orchestrator_cdso_consume_binding';
+        END IF;
+        RETURN NEW;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_cdso_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_cdso_guard ON orchestrator_campaign_delivery_sandbox_outcomes;
+    CREATE TRIGGER orchestrator_cdso_guard
+      BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_delivery_sandbox_outcomes
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_cdso_guard();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {

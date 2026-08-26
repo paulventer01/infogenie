@@ -5,14 +5,16 @@ const D = require('./campaign_delivery_contracts');
 
 function simulateDelivery(input) {
   const scenario = input && input.scenario;
-  const spec = scenario != null ? D.SCENARIO_MAP[scenario] : null;
+  const spec = D.scenarioSpecOf(scenario);
   if (!spec) fail('validation_failed');
+  const source = D.assertAllowedOutcomeSource(input && input.source, { allowEmptyDefault: true });
   return Object.freeze({
     scenario,
     outcome: spec.outcome,
     retryable: spec.retryable,
     errorCode: spec.errorCode,
     status: spec.status,
+    source,
     simulated: true,
     published: false,
     external_action_taken: false,

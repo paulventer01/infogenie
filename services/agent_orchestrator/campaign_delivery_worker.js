@@ -15,6 +15,7 @@ const {
 } = require('./campaign_delivery_intents');
 const { simulateDelivery } = require('./campaign_delivery_fake_connector');
 const attempts = require('./campaign_delivery_attempts');
+const sandboxOutcomes = require('./campaign_delivery_sandbox_outcomes');
 
 const PER_TENANT_CAP = 20;
 const PARK_SET = new Set(D.TERMINAL_PARK_STATUSES);
@@ -24,9 +25,11 @@ const AUDIT_DETAIL_KEYS = Object.freeze([
   'intent_id', 'outbox_id', 'draft_id', 'request_id',
   'platform', 'status', 'scenario', 'retryable', 'error_code',
   'simulated', 'published', 'external_action_taken', 'lease_holder',
+  'source',
 ]);
 
 let tickActive = false;
+let workerTimer = null;
 
 function sanitizeCode(c) {
   return ERROR_CODE_RE.test(String(c || '')) ? String(c) : 'internal_error';
@@ -137,6 +140,8 @@ function freezeEnvelope(row) {
     leaseHolder: String(row.leaseHolder),
     leaseExpiresAt: row.leaseExpiresAt,
     platform: String(row.platform),
+    scenario: String(row.scenario),
+    outcomeSource: String(row.outcomeSource),
   });
 }
 
@@ -182,6 +187,29 @@ function intentMatchesOutbox(intent, outbox, payload) {
   return true;
 }
 
+async function resolveOutcomeSource(c, { tenantId, outboxId, intentId, opts }) {
+  if (opts && D.isKnownScenario(opts.scenario)) {
+    return {
+      scenario: opts.scenario,
+      source: D.OUTCOME_SOURCE_TEST_OPTS,
+      sandboxRow: null,
+    };
+  }
+  const row = await sandboxOutcomes.lockUnconsumedOutcome(c, { tenantId, outboxId });
+  if (!row) return null;
+  if (String(row.intent_id) !== String(intentId)) return { corrupt: true };
+  if (!D.isKnownScenario(row.scenario)) return { corrupt: true };
+  return {
+    scenario: row.scenario,
+    source: D.OUTCOME_SOURCE_SANDBOX,
+    sandboxRow: row,
+  };
+}
+
+function isTestOptsScenario(opts) {
+  return !!(opts && D.isKnownScenario(opts.scenario));
+}
+
 async function claimCampaignDeliveryAttempt(opts = {}) {
   const pool = opts.pool || (_db.hasDb() ? _db.getPool() : null);
   if (!pool || opts.tenantId == null) return { skip: true };
@@ -197,6 +225,21 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
     if (opts.outboxId) {
       vals.push(String(opts.outboxId));
       extra = `AND id=$${vals.length}`;
+    }
+    if (Array.isArray(opts.excludeOutboxIds) && opts.excludeOutboxIds.length) {
+      vals.push(opts.excludeOutboxIds.map(String));
+      extra += ` AND NOT (id = ANY($${vals.length}::text[]))`;
+    }
+    // Production / no opts.scenario: only claim outboxes that already have an
+    // unconsumed sandbox outcome so older no-source rows cannot starve later
+    // seeded work. Explicit outboxId keeps the no_outcome_source path.
+    if (!opts.outboxId && !isTestOptsScenario(opts)) {
+      extra += ` AND EXISTS (
+        SELECT 1 FROM orchestrator_campaign_delivery_sandbox_outcomes so
+         WHERE so.tenant_id = orchestrator_outbox.tenant_id
+           AND so.outbox_id = orchestrator_outbox.id
+           AND so.consumed_at IS NULL
+      )`;
     }
     const picked = await c.query(
       `SELECT * FROM orchestrator_outbox
@@ -218,6 +261,21 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
       return { skip: true };
     }
     const outbox = picked.rows[0];
+
+    // After locking the outbox, terminalize any expired started lease before
+    // payload / intent / outcome validation parks — so every corruption exit
+    // leaves no live started attempt. Live leases still short-circuit.
+    const latest = await attempts.latestAttemptForOutbox(c, { tenantId, outboxId: outbox.id });
+    if (latest && latest.status === 'started') {
+      if (tsMs(latest.lease_expires_at) > tsMs(now)) {
+        await c.query('COMMIT');
+        return { skip: true, reason: 'leased' };
+      }
+      await attempts.abandonExpiredLease(c, {
+        tenantId, attemptId: latest.id, settledAt: now,
+      });
+    }
+
     const payload = payloadExact(outbox.payload);
     if (!payload) {
       await restorePending(c, {
@@ -234,7 +292,6 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
       await c.query('COMMIT');
       return { skip: true, reason: 'parked' };
     }
-    const latest = await attempts.latestAttemptForOutbox(c, { tenantId, outboxId: outbox.id });
     if (latest && PARK_SET.has(latest.status)) {
       await restorePending(c, {
         tenantId, outboxId: outbox.id, now, days: D.PARK_INTERVAL_DAYS,
@@ -242,15 +299,23 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
       await c.query('COMMIT');
       return { skip: true, reason: 'parked' };
     }
-    if (latest && latest.status === 'started') {
-      if (tsMs(latest.lease_expires_at) > tsMs(now)) {
-        await c.query('COMMIT');
-        return { skip: true, reason: 'leased' };
-      }
-      await attempts.abandonExpiredLease(c, {
-        tenantId, attemptId: latest.id, settledAt: now,
+
+    const resolved = await resolveOutcomeSource(c, {
+      tenantId, outboxId: outbox.id, intentId: intent.id, opts,
+    });
+    if (resolved && resolved.corrupt) {
+      await restorePending(c, {
+        tenantId, outboxId: outbox.id, now, days: D.PARK_INTERVAL_DAYS,
       });
+      await c.query('COMMIT');
+      return { skip: true, reason: 'parked' };
     }
+
+    if (!resolved) {
+      await c.query('COMMIT');
+      return { skip: true, reason: D.SKIP_REASON_NO_OUTCOME, outboxId: String(outbox.id) };
+    }
+
     const attemptNumber = await attempts.nextAttemptNumber(c, { tenantId, outboxId: outbox.id });
     const generation = attemptNumber;
     const leaseExpiresAt = new Date(now.getTime() + D.LEASE_MS);
@@ -274,6 +339,18 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
         WHERE tenant_id=$1 AND id=$2`,
       [tenantId, outbox.id, workerId, leaseExpiresAt]
     );
+    if (resolved.sandboxRow) {
+      const consumed = await sandboxOutcomes.consumeOutcome(c, {
+        tenantId,
+        outcomeId: resolved.sandboxRow.id,
+        attemptId: started.id,
+        consumedAt: now,
+      });
+      if (!consumed) {
+        await c.query('ROLLBACK');
+        return { skip: true, reason: D.SKIP_REASON_NO_OUTCOME };
+      }
+    }
     await c.query('COMMIT');
     return freezeEnvelope({
       tenantId,
@@ -286,6 +363,8 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
       leaseHolder: workerId,
       leaseExpiresAt: started.lease_expires_at,
       platform: payload.platform,
+      scenario: resolved.scenario,
+      outcomeSource: resolved.source,
     });
   } catch (err) {
     try { await c.query('ROLLBACK'); } catch (_) { /* ignore */ }
@@ -297,8 +376,11 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
 
 async function executeFake(envelope, opts = {}) {
   const fn = typeof opts.simulate === 'function' ? opts.simulate : simulateDelivery;
+  const scenario = opts.scenario != null ? opts.scenario : (envelope && envelope.scenario);
+  const source = (envelope && envelope.outcomeSource) || D.OUTCOME_SOURCE_SANDBOX;
   return fn({
-    scenario: opts.scenario,
+    scenario,
+    source,
     platform: envelope.platform,
     intentId: envelope.intentId,
     outboxId: envelope.outboxId,
@@ -310,6 +392,7 @@ async function executeFake(envelope, opts = {}) {
 
 function fenceOk(envelope, attempt, outbox, now) {
   if (!envelope || !attempt || !outbox) return false;
+  if (!D.isAllowedOutcomeSource(envelope.outcomeSource)) return false;
   if (Number(attempt.tenant_id) !== Number(envelope.tenantId)) return false;
   if (String(attempt.id) !== String(envelope.attemptId)) return false;
   if (String(attempt.outbox_id) !== String(envelope.outboxId)) return false;
@@ -381,7 +464,7 @@ async function revalidateOnClient(c, { tenantId, attempt, outbox, now }) {
 
 function mapFakeResult(fakeResult, attemptNumber) {
   const scenario = fakeResult && fakeResult.scenario;
-  const spec = scenario != null ? D.SCENARIO_MAP[scenario] : null;
+  const spec = D.scenarioSpecOf(scenario);
   if (!spec) {
     return {
       status: 'dead_letter_malformed',
@@ -492,6 +575,7 @@ async function settleCampaignDeliveryAttempt(envelope, fakeResult, opts = {}) {
         published: false,
         external_action_taken: false,
         lease_holder: attempt.lease_holder,
+        source: D.assertAllowedOutcomeSource(envelope.outcomeSource),
       },
     });
     await c.query('COMMIT');
@@ -520,12 +604,20 @@ async function processOne(opts = {}) {
 
 async function processTenant(pool, tenantId, opts = {}) {
   let n = 0;
+  const excludeOutboxIds = [];
   for (;;) {
     if (n >= PER_TENANT_CAP) break;
-    const claimed = await claimCampaignDeliveryAttempt({ ...opts, pool, tenantId });
+    const claimed = await claimCampaignDeliveryAttempt({
+      ...opts, pool, tenantId, excludeOutboxIds,
+    });
     n += 1;
     if (!claimed || claimed.skip) {
       if (!claimed || !claimed.reason) break;
+      if (claimed.reason === D.SKIP_REASON_NO_OUTCOME) {
+        if (claimed.outboxId) excludeOutboxIds.push(claimed.outboxId);
+        if (opts.outboxId) break;
+        continue;
+      }
       continue;
     }
     try {
@@ -553,16 +645,28 @@ async function tickCampaignDeliveryWorker(opts = {}) {
       }
       return;
     }
-    const due = await pool.query(
-      `SELECT DISTINCT tenant_id FROM orchestrator_outbox
-        WHERE operation='create_provider_draft'
-          AND destination='internal'
-          AND (
-            (state='pending' AND next_attempt_at <= $1::timestamptz)
-            OR (state='processing' AND (claimed_until IS NULL OR claimed_until < $1::timestamptz))
-          )`,
-      [now.toISOString()]
-    );
+    const dueSql = isTestOptsScenario(opts)
+      ? `SELECT DISTINCT tenant_id FROM orchestrator_outbox
+          WHERE operation='create_provider_draft'
+            AND destination='internal'
+            AND (
+              (state='pending' AND next_attempt_at <= $1::timestamptz)
+              OR (state='processing' AND (claimed_until IS NULL OR claimed_until < $1::timestamptz))
+            )`
+      : `SELECT DISTINCT o.tenant_id FROM orchestrator_outbox o
+          WHERE o.operation='create_provider_draft'
+            AND o.destination='internal'
+            AND (
+              (o.state='pending' AND o.next_attempt_at <= $1::timestamptz)
+              OR (o.state='processing' AND (o.claimed_until IS NULL OR o.claimed_until < $1::timestamptz))
+            )
+            AND EXISTS (
+              SELECT 1 FROM orchestrator_campaign_delivery_sandbox_outcomes so
+               WHERE so.tenant_id = o.tenant_id
+                 AND so.outbox_id = o.id
+                 AND so.consumed_at IS NULL
+            )`;
+    const due = await pool.query(dueSql, [now.toISOString()]);
     for (const row of due.rows) {
       try {
         await processTenant(pool, row.tenant_id, { ...opts, now });
@@ -578,17 +682,26 @@ async function tickCampaignDeliveryWorker(opts = {}) {
 function startCampaignDeliveryWorker() {
   if (!_runtimeFlags.backgroundEnabled()) return null;
   if (process.env[D.FLAG_ENV] !== '1') return null;
-  return setInterval(() => {
+  if (workerTimer) return workerTimer;
+  workerTimer = setInterval(() => {
     tickCampaignDeliveryWorker().catch((err) => {
       logWorkerFail(null, err);
     });
   }, D.WORKER_INTERVAL_MS);
+  return workerTimer;
+}
+
+function stopCampaignDeliveryWorker() {
+  if (!workerTimer) return;
+  clearInterval(workerTimer);
+  workerTimer = null;
 }
 
 startCampaignDeliveryWorker();
 
 module.exports = {
   startCampaignDeliveryWorker,
+  stopCampaignDeliveryWorker,
   tickCampaignDeliveryWorker,
   claimCampaignDeliveryAttempt,
   settleCampaignDeliveryAttempt,
