@@ -3084,8 +3084,11 @@ the connection is inside an explicit transaction with a `SAVEPOINT` probe —
 Postgres raises `25P01` for a `SAVEPOINT` outside a transaction block, so an
 autocommit connection, and therefore any HTTP handler that never opened a
 transaction, cannot obtain a handle. The handle is registered in a module-private
-`WeakSet` and **revoked when `fn` settles**, so a handle that escapes the scope
-mints nothing.
+`WeakMap` and **revoked when `fn` settles**, so a handle that escapes the scope
+mints nothing. Minting and verification each repeat the authoritative
+`SAVEPOINT` round-trip against the originating client. If callback code issues
+`COMMIT` or `ROLLBACK`, a subsequent mint or use fails closed even while the
+in-memory callback scope is still active.
 
 **PR 6F-0 has no mint site at all.** There is no execution worker and no provider
 call, so `mintMetaCreateProviderDraftCapability` and

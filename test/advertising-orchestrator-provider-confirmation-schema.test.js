@@ -671,7 +671,7 @@ if (!HAS_DB) {
     const p = db.getPool();
     const id = nid('mcr');
     await assert.rejects(
-      p.query(
+      () => p.query(
         `INSERT INTO ${CRED_TABLE}
            (id, tenant_id, platform, environment, status, account_fingerprint, version, owner_user_id)
          VALUES ($1,$2,'google','sandbox','active',$3,1,$4)`,
@@ -680,7 +680,7 @@ if (!HAS_DB) {
       /platform_check|check/i
     );
     await assert.rejects(
-      p.query(
+      () => p.query(
         `INSERT INTO ${CRED_TABLE}
            (id, tenant_id, platform, environment, status, account_fingerprint, version, owner_user_id)
          VALUES ($1,$2,'meta','production','active',$3,1,$4)`,
@@ -689,7 +689,7 @@ if (!HAS_DB) {
       /environment_check|check/i
     );
     await assert.rejects(
-      p.query(
+      () => p.query(
         `INSERT INTO ${CRED_TABLE}
            (id, tenant_id, platform, environment, status, account_fingerprint, version, owner_user_id, revoked_at)
          VALUES ($1,$2,'meta','test','revoked',$3,1,$4,now())`,
@@ -699,11 +699,11 @@ if (!HAS_DB) {
     );
     const credId = await insertCredRef(p, tenantA, userId, { environment: 'test' });
     await assert.rejects(
-      p.query(`UPDATE ${CRED_TABLE} SET platform='google' WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]),
+      () => p.query(`UPDATE ${CRED_TABLE} SET platform='google' WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]),
       /tmcr_immutable|immutable/i
     );
     await assert.rejects(
-      p.query(`UPDATE ${CRED_TABLE} SET version=2 WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]),
+      () => p.query(`UPDATE ${CRED_TABLE} SET version=2 WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]),
       /tmcr_immutable|immutable/i
     );
     await p.query(
@@ -711,14 +711,14 @@ if (!HAS_DB) {
       [tenantA, credId]
     );
     await assert.rejects(
-      p.query(
+      () => p.query(
         `UPDATE ${CRED_TABLE} SET status='active', revoked_at=NULL WHERE tenant_id=$1 AND id=$2`,
         [tenantA, credId]
       ),
       /tmcr_immutable|immutable/i
     );
     await assert.rejects(
-      p.query(`DELETE FROM ${CRED_TABLE} WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]),
+      () => p.query(`DELETE FROM ${CRED_TABLE} WHERE tenant_id=$1 AND id=$2`, [tenantA, credId]),
       /tmcr_immutable|immutable/i
     );
   });
@@ -728,11 +728,11 @@ if (!HAS_DB) {
     const graph = await seedGraph(p, tenantA, hostA, userId);
     const chalId = await insertChallenge(p, tenantA, hostA, graph, userId);
     await assert.rejects(
-      p.query(`UPDATE ${CHALLENGE_TABLE} SET status='consumed' WHERE tenant_id=$1 AND id=$2`, [tenantA, chalId]),
+      () => p.query(`UPDATE ${CHALLENGE_TABLE} SET status='consumed' WHERE tenant_id=$1 AND id=$2`, [tenantA, chalId]),
       /cpc_immutable|immutable/i
     );
     await assert.rejects(
-      p.query(`UPDATE ${CHALLENGE_TABLE} SET phrase_salt=$3 WHERE tenant_id=$1 AND id=$2`, [tenantA, chalId, nextHex()]),
+      () => p.query(`UPDATE ${CHALLENGE_TABLE} SET phrase_salt=$3 WHERE tenant_id=$1 AND id=$2`, [tenantA, chalId, nextHex()]),
       /cpc_immutable|immutable/i
     );
     const confId = await insertConfirmation(p, tenantA, hostA, graph, chalId, userId);
@@ -743,14 +743,14 @@ if (!HAS_DB) {
       [tenantA, chalId, confId]
     );
     await assert.rejects(
-      p.query(
+      () => p.query(
         `UPDATE ${CHALLENGE_TABLE} SET consumed_confirmation_id=$3 WHERE tenant_id=$1 AND id=$2`,
         [tenantA, chalId, nid('other')]
       ),
       /cpc_immutable|immutable/i
     );
     await assert.rejects(
-      p.query(`UPDATE ${CONFIRM_TABLE} SET phrase_digest=$3 WHERE tenant_id=$1 AND id=$2`, [tenantA, confId, nextHex()]),
+      () => p.query(`UPDATE ${CONFIRM_TABLE} SET phrase_digest=$3 WHERE tenant_id=$1 AND id=$2`, [tenantA, confId, nextHex()]),
       /cpcf_immutable|immutable/i
     );
     await p.query(
@@ -758,18 +758,18 @@ if (!HAS_DB) {
       [tenantA, confId]
     );
     await assert.rejects(
-      p.query(
+      () => p.query(
         `UPDATE ${CONFIRM_TABLE} SET status='confirmed', spent_at=NULL WHERE tenant_id=$1 AND id=$2`,
         [tenantA, confId]
       ),
       /cpcf_immutable|immutable/i
     );
     await assert.rejects(
-      p.query(`DELETE FROM ${CONFIRM_TABLE} WHERE tenant_id=$1 AND id=$2`, [tenantA, confId]),
+      () => p.query(`DELETE FROM ${CONFIRM_TABLE} WHERE tenant_id=$1 AND id=$2`, [tenantA, confId]),
       /cpcf_immutable|immutable/i
     );
     await assert.rejects(
-      p.query(`DELETE FROM ${CHALLENGE_TABLE} WHERE tenant_id=$1 AND id=$2`, [tenantA, chalId]),
+      () => p.query(`DELETE FROM ${CHALLENGE_TABLE} WHERE tenant_id=$1 AND id=$2`, [tenantA, chalId]),
       /cpc_immutable|immutable/i
     );
   });

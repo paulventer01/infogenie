@@ -11,6 +11,8 @@
 //   • frozen — null-prototype, non-extensible, no writable field;
 //   • single-use — the first successful consume() marks it spent forever;
 //   • short-lived — CAPABILITY_TTL_MS, validated against a caller-supplied now;
+//   • transaction-live — mint and use each perform an authoritative Postgres
+//     SAVEPOINT probe, so COMMIT/ROLLBACK immediately closes the capability path;
 //   • exact-bound — every field in BINDING_FIELDS must match the locked
 //     execution context with no missing and no extra keys;
 //   • non-serializable — toJSON() throws and inspection is redacted, so a
@@ -108,7 +110,7 @@ const SAFE_ID = /^[A-Za-z0-9_.:-]{1,128}$/;
 // what makes a capability unforgeable rather than merely well-shaped.
 const MINTED = new WeakSet();
 const STATE = new WeakMap();
-const LIVE_TX = new WeakSet();
+const LIVE_TX = new WeakMap();
 
 const TX_PROBE_SAVEPOINT = 'sp_advertising_provider_capability_tx_probe';
 
@@ -121,6 +123,15 @@ function denied(code, message, detail) {
   // Only non-sensitive field names travel on the error.
   if (detail && typeof detail === 'string') err.field = detail;
   return err;
+}
+
+async function requireOpenTransaction(client, code, message) {
+  try {
+    await client.query(`SAVEPOINT ${TX_PROBE_SAVEPOINT}`);
+    await client.query(`RELEASE SAVEPOINT ${TX_PROBE_SAVEPOINT}`);
+  } catch (_err) {
+    throw denied(code, message);
+  }
 }
 
 function isPlainRecord(value) {
@@ -224,15 +235,14 @@ async function withAdvertisingProviderExecutionTransaction(client, fn) {
   // Postgres raises 25P01 for a SAVEPOINT outside a transaction block, so an
   // autocommit connection cannot get past this probe. Fail closed on any error,
   // including a failed RELEASE, rather than surfacing a raw driver error.
-  try {
-    await client.query(`SAVEPOINT ${TX_PROBE_SAVEPOINT}`);
-    await client.query(`RELEASE SAVEPOINT ${TX_PROBE_SAVEPOINT}`);
-  } catch (_err) {
-    throw denied(CODE_MINT_DENIED, 'capability minting requires an open execution transaction');
-  }
+  await requireOpenTransaction(
+    client,
+    CODE_MINT_DENIED,
+    'capability minting requires an open execution transaction'
+  );
 
   const handle = Object.freeze(Object.create(null));
-  LIVE_TX.add(handle);
+  LIVE_TX.set(handle, client);
   try {
     return await fn(handle);
   } finally {
@@ -244,14 +254,23 @@ async function withAdvertisingProviderExecutionTransaction(client, fn) {
  * Mint the single-use Meta create_provider_draft capability.
  * Only reachable with a live handle from the function above.
  */
-function mintMetaCreateProviderDraftCapability(txHandle, binding) {
-  if (!txHandle || typeof txHandle !== 'object' || !LIVE_TX.has(txHandle)) {
+async function mintMetaCreateProviderDraftCapability(txHandle, binding) {
+  const client = txHandle && typeof txHandle === 'object' ? LIVE_TX.get(txHandle) : null;
+  if (!client) {
+    throw denied(CODE_MINT_DENIED, 'capability minting requires a live execution transaction scope');
+  }
+  await requireOpenTransaction(
+    client,
+    CODE_MINT_DENIED,
+    'capability minting requires an open execution transaction'
+  );
+  if (LIVE_TX.get(txHandle) !== client) {
     throw denied(CODE_MINT_DENIED, 'capability minting requires a live execution transaction scope');
   }
   const normalized = normalizedBinding(binding);
   const cap = buildCapability(normalized);
   MINTED.add(cap);
-  STATE.set(cap, { consumed: false, binding: normalized });
+  STATE.set(cap, { consumed: false, binding: normalized, client });
   return cap;
 }
 
@@ -279,13 +298,18 @@ function lockedContextMismatch(cap, lockedContext) {
   return null;
 }
 
-function verifyCapability(capability, lockedContext, opts) {
+async function verifyCapability(capability, lockedContext, opts) {
   if (!isAdvertisingProviderCapability(capability)) {
     throw denied(CODE_INVALID, 'a minted provider-draft capability is required');
   }
   const state = STATE.get(capability);
   if (!state) throw denied(CODE_INVALID, 'a minted provider-draft capability is required');
   if (state.consumed) throw denied(CODE_SPENT, 'this provider-draft capability has already been used');
+  await requireOpenTransaction(
+    state.client,
+    CODE_INVALID,
+    'the capability execution transaction is no longer open'
+  );
 
   const now = opts && Number.isSafeInteger(opts.now) ? opts.now : Date.now();
   if (!(capability.expires_at_ms > now)) {
@@ -301,8 +325,8 @@ function verifyCapability(capability, lockedContext, opts) {
  * capability before doing narrow work (e.g. the vault credential-reference
  * boundary) without spending the single use.
  */
-function verifyMetaCreateProviderDraftCapability(capability, lockedContext, opts) {
-  verifyCapability(capability, lockedContext, opts);
+async function verifyMetaCreateProviderDraftCapability(capability, lockedContext, opts) {
+  await verifyCapability(capability, lockedContext, opts);
   return true;
 }
 
@@ -311,8 +335,8 @@ function verifyMetaCreateProviderDraftCapability(capability, lockedContext, opts
  * execution path must pass immediately before a provider draft create.
  * There is no env, options or generic bypass: a mismatch throws.
  */
-function assertMetaCreateProviderDraftCapability(capability, lockedContext, opts) {
-  const state = verifyCapability(capability, lockedContext, opts);
+async function assertMetaCreateProviderDraftCapability(capability, lockedContext, opts) {
+  const state = await verifyCapability(capability, lockedContext, opts);
   state.consumed = true;
   return auditDetailForCapability(capability);
 }

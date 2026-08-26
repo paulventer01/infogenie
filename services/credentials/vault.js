@@ -583,7 +583,11 @@ async function withTenantMetaCredentialForProviderDraft(client, opts, fn) {
     throw _credError(_capabilities.CODES.INVALID, 'a minted provider-draft capability is required');
   }
   // Exact binding check first — before any credential-reference read.
-  _capabilities.verifyMetaCreateProviderDraftCapability(capability, o.lockedContext, { now: o.now });
+  await _capabilities.verifyMetaCreateProviderDraftCapability(
+    capability,
+    o.lockedContext,
+    { now: o.now }
+  );
 
   if (capability.platform !== META_PROVIDER_DRAFT_PLATFORM
       || capability.operation !== _capabilities.CAPABILITY_OPERATION) {

@@ -2,8 +2,8 @@
 // test/advertising-provider-capabilities.test.js — PR 6F-0 Meta
 // create_provider_draft capability boundary.
 //
-// Zero network, zero DB. Everything asserted here is a property of the security
-// boundary itself:
+// Zero network. Everything asserted here is a property of the security boundary
+// itself; the transaction-liveness regression uses local Postgres when present:
 //   • a capability cannot be forged, cloned, serialized, replayed or stretched;
 //   • a capability can only be minted inside an open execution transaction, and
 //     PR 6F-0 has no mint site in product code at all;
@@ -25,6 +25,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const util = require('node:util');
 
+const db = require('../db');
 const caps = require('../services/security/advertising_provider_capabilities');
 const security = require('../services/security');
 const guard = require('../services/security/advertising_provider_mutations');
@@ -74,13 +75,18 @@ function bindingFixture(over) {
 function fakeTxClient(opts) {
   const o = opts || {};
   const calls = [];
+  let inTransaction = !o.notInTransaction;
   return {
     calls,
     async query(sql, params) {
       calls.push({ sql: String(sql), params });
-      const text = String(sql);
+      const text = String(sql).trim();
+      if (/^(?:COMMIT|ROLLBACK)\s*;?$/i.test(text)) {
+        inTransaction = false;
+        return { rows: [], rowCount: 0 };
+      }
       if (/^SAVEPOINT/i.test(text)) {
-        if (o.notInTransaction) {
+        if (!inTransaction) {
           const err = new Error('SAVEPOINT can only be used in transaction blocks');
           err.code = '25P01';
           throw err;
@@ -148,18 +154,18 @@ function throwsWithCode(fn, code, label) {
 test('capability: minting requires a live execution-transaction scope', async () => {
   const binding = bindingFixture();
   // No handle at all.
-  throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(null, binding),
+  await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(null, binding),
     caps.CODES.MINT_DENIED, 'null handle');
   // A hand-rolled object that merely looks like a handle.
-  throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability({}, binding),
+  await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability({}, binding),
     caps.CODES.MINT_DENIED, 'plain object handle');
-  throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(Object.create(null), binding),
+  await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(Object.create(null), binding),
     caps.CODES.MINT_DENIED, 'null-prototype handle');
   // An escaped handle is revoked the moment the scope returns.
   let escaped = null;
   await caps.withAdvertisingProviderExecutionTransaction(fakeTxClient(), (tx) => { escaped = tx; });
   assert.ok(escaped, 'scope produced a handle');
-  throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(escaped, binding),
+  await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(escaped, binding),
     caps.CODES.MINT_DENIED, 'escaped handle');
 });
 
@@ -183,37 +189,75 @@ test('capability: the execution scope refuses a client outside a transaction', a
   assert.match(client.calls[1].sql, /^RELEASE SAVEPOINT /);
 });
 
+test('capability: COMMIT or ROLLBACK closes mint and use authority', {
+  skip: !db.hasDb(),
+}, async () => {
+  const client = await db.getPool().connect();
+  try {
+    for (const ending of ['COMMIT', 'ROLLBACK']) {
+      await client.query('BEGIN');
+      await rejectsWithCode(
+        () => caps.withAdvertisingProviderExecutionTransaction(client, async (tx) => {
+          await client.query(ending);
+          return caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture());
+        }),
+        caps.CODES.MINT_DENIED,
+        `${ending} before mint`
+      );
+    }
+
+    await client.query('BEGIN');
+    const binding = bindingFixture();
+    await caps.withAdvertisingProviderExecutionTransaction(client, async (tx) => {
+      const cap = await caps.mintMetaCreateProviderDraftCapability(tx, binding);
+      await client.query('COMMIT');
+      await rejectsWithCode(
+        () => caps.verifyMetaCreateProviderDraftCapability(
+          cap,
+          lockedContextFrom(binding),
+          { now: NOW }
+        ),
+        caps.CODES.INVALID,
+        'COMMIT before use while callback scope remains live'
+      );
+    });
+  } finally {
+    await client.query('ROLLBACK').catch(() => {});
+    client.release();
+  }
+});
+
 test('capability: mint rejects malformed, over-long and unknown bindings', async () => {
   const client = fakeTxClient();
-  await caps.withAdvertisingProviderExecutionTransaction(client, (tx) => {
-    throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, null),
+  await caps.withAdvertisingProviderExecutionTransaction(client, async (tx) => {
+    await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, null),
       caps.CODES.MINT_DENIED, 'null binding');
-    throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture({ tenant_id: 0 })),
+    await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture({ tenant_id: 0 })),
       caps.CODES.MINT_DENIED, 'non-positive tenant');
-    throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture({ tenant_id: '7' })),
+    await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture({ tenant_id: '7' })),
       caps.CODES.MINT_DENIED, 'string tenant');
-    throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture({ claim_token_hash: 'nope' })),
+    await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture({ claim_token_hash: 'nope' })),
       caps.CODES.MINT_DENIED, 'bad hash');
-    throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture({ draft_id: 'a'.repeat(129) })),
+    await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture({ draft_id: 'a'.repeat(129) })),
       caps.CODES.MINT_DENIED, 'over-long id');
-    throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture({ draft_id: 'bad id/../x' })),
+    await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, bindingFixture({ draft_id: 'bad id/../x' })),
       caps.CODES.MINT_DENIED, 'unsafe id');
     // TTL cannot be stretched past the module ceiling, and cannot be inverted.
-    throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx,
+    await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx,
       bindingFixture({ expires_at_ms: NOW + caps.CAPABILITY_TTL_MS + 1 })),
     caps.CODES.MINT_DENIED, 'ttl too long');
-    throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx,
+    await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx,
       bindingFixture({ expires_at_ms: NOW })),
     caps.CODES.MINT_DENIED, 'zero ttl');
     // Extra keys are refused rather than ignored, so an options bag cannot ride along.
     const withExtra = bindingFixture();
     withExtra.allow_provider_write = true;
-    throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, withExtra),
+    await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, withExtra),
       caps.CODES.MINT_DENIED, 'extra binding key');
     // A missing field is a denial, not a default.
     const missing = bindingFixture();
     delete missing.attempt_id;
-    throwsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, missing),
+    await rejectsWithCode(() => caps.mintMetaCreateProviderDraftCapability(tx, missing),
       caps.CODES.MINT_DENIED, 'missing binding key');
   });
   assert.ok(caps.CAPABILITY_TTL_MS <= 5 * 60 * 1000, 'capability must stay short-lived');
@@ -252,12 +296,12 @@ test('capability: plain objects, clones and proxies are not capabilities', async
     operation: 'create_provider_draft', contract_version: 'campaign_delivery_v1',
     capability_version: caps.CAPABILITY_VERSION };
   assert.equal(caps.isAdvertisingProviderCapability(clone), false, 'structural clone');
-  throwsWithCode(() => caps.assertMetaCreateProviderDraftCapability(clone, locked, { now: NOW }),
+  await rejectsWithCode(() => caps.assertMetaCreateProviderDraftCapability(clone, locked, { now: NOW }),
     caps.CODES.INVALID, 'structural clone assert');
 
   const proxy = new Proxy(clone, {});
   assert.equal(caps.isAdvertisingProviderCapability(proxy), false, 'proxy of clone');
-  throwsWithCode(() => caps.assertMetaCreateProviderDraftCapability(proxy, locked, { now: NOW }),
+  await rejectsWithCode(() => caps.assertMetaCreateProviderDraftCapability(proxy, locked, { now: NOW }),
     caps.CODES.INVALID, 'proxy assert');
 
   // A proxy WRAPPING a real capability is a different object identity, so it is
@@ -274,9 +318,9 @@ test('capability: plain objects, clones and proxies are not capabilities', async
     assert.equal(caps.isAdvertisingProviderCapability(junk), false, label);
   }
   // Environment, request-shaped and option-shaped inputs are all rejected.
-  throwsWithCode(() => caps.assertMetaCreateProviderDraftCapability(
+  await rejectsWithCode(() => caps.assertMetaCreateProviderDraftCapability(
     { ...process.env }, locked, { now: NOW }), caps.CODES.INVALID, 'env object');
-  throwsWithCode(() => caps.assertMetaCreateProviderDraftCapability(
+  await rejectsWithCode(() => caps.assertMetaCreateProviderDraftCapability(
     { body: {}, headers: {}, query: {} }, locked, { now: NOW }), caps.CODES.INVALID, 'request-shaped');
 });
 
@@ -293,10 +337,10 @@ test('capability: assertion requires an exact locked execution context', async (
     if (typeof tampered[field] === 'number') tampered[field] = tampered[field] + 1;
     else if (/_hash$|_digest$|fingerprint$/.test(field)) tampered[field] = '9'.repeat(64);
     else tampered[field] = tampered[field] + '_x';
-    throwsWithCode(() => caps.assertMetaCreateProviderDraftCapability(cap, tampered, { now: NOW }),
+    await rejectsWithCode(() => caps.assertMetaCreateProviderDraftCapability(cap, tampered, { now: NOW }),
       caps.CODES.CONTEXT_MISMATCH, `tampered ${field}`);
     // The failed assertion must NOT have spent the single use.
-    assert.equal(caps.assertMetaCreateProviderDraftCapability(cap, locked, { now: NOW }).tenant_id, 7,
+    assert.equal((await caps.assertMetaCreateProviderDraftCapability(cap, locked, { now: NOW })).tenant_id, 7,
       `capability still usable after a rejected context (${field})`);
   }
 
@@ -306,42 +350,42 @@ test('capability: assertion requires an exact locked execution context', async (
   const extra = { ...locked, allow_provider_write: true };
   for (const [label, ctx] of [['missing key', short], ['extra key', extra], ['not an object', 'nope'], ['array', []]]) {
     const { cap } = await mintFixture();
-    throwsWithCode(() => caps.assertMetaCreateProviderDraftCapability(cap, ctx, { now: NOW }),
+    await rejectsWithCode(() => caps.assertMetaCreateProviderDraftCapability(cap, ctx, { now: NOW }),
       caps.CODES.CONTEXT_MISMATCH, label);
   }
   // The capability is not its own locked context.
   const { cap: selfCap } = await mintFixture();
-  throwsWithCode(() => caps.assertMetaCreateProviderDraftCapability(selfCap, selfCap, { now: NOW }),
+  await rejectsWithCode(() => caps.assertMetaCreateProviderDraftCapability(selfCap, selfCap, { now: NOW }),
     caps.CODES.CONTEXT_MISMATCH, 'capability as its own context');
 });
 
 test('capability: one use only, and short-lived', async () => {
   const { cap, binding } = await mintFixture();
   const locked = lockedContextFrom(binding);
-  const detail = caps.assertMetaCreateProviderDraftCapability(cap, locked, { now: NOW });
+  const detail = await caps.assertMetaCreateProviderDraftCapability(cap, locked, { now: NOW });
   assert.equal(detail.operation, 'create_provider_draft');
-  throwsWithCode(() => caps.assertMetaCreateProviderDraftCapability(cap, locked, { now: NOW }),
+  await rejectsWithCode(() => caps.assertMetaCreateProviderDraftCapability(cap, locked, { now: NOW }),
     caps.CODES.SPENT, 'replay');
   // A spent capability cannot be revived through the non-consuming verifier.
-  throwsWithCode(() => caps.verifyMetaCreateProviderDraftCapability(cap, locked, { now: NOW }),
+  await rejectsWithCode(() => caps.verifyMetaCreateProviderDraftCapability(cap, locked, { now: NOW }),
     caps.CODES.SPENT, 'verify after spend');
 
   const { cap: aged, binding: agedBinding } = await mintFixture();
   const agedLocked = lockedContextFrom(agedBinding);
-  throwsWithCode(() => caps.assertMetaCreateProviderDraftCapability(aged, agedLocked,
+  await rejectsWithCode(() => caps.assertMetaCreateProviderDraftCapability(aged, agedLocked,
     { now: agedBinding.expires_at_ms }), caps.CODES.EXPIRED, 'already expired AT expires_at_ms');
-  throwsWithCode(() => caps.assertMetaCreateProviderDraftCapability(aged, agedLocked,
+  await rejectsWithCode(() => caps.assertMetaCreateProviderDraftCapability(aged, agedLocked,
     { now: agedBinding.expires_at_ms + 1 }), caps.CODES.EXPIRED, 'expired');
   // Expiry did not spend the capability, but time cannot be argued backwards
   // through an options bag either — `now` is only ever a timestamp.
-  assert.equal(caps.verifyMetaCreateProviderDraftCapability(aged, agedLocked, { now: NOW }), true);
+  assert.equal(await caps.verifyMetaCreateProviderDraftCapability(aged, agedLocked, { now: NOW }), true);
 
   // The non-consuming verifier really does not consume.
   const { cap: kept, binding: keptBinding } = await mintFixture();
   const keptLocked = lockedContextFrom(keptBinding);
-  assert.equal(caps.verifyMetaCreateProviderDraftCapability(kept, keptLocked, { now: NOW }), true);
-  assert.equal(caps.verifyMetaCreateProviderDraftCapability(kept, keptLocked, { now: NOW }), true);
-  assert.equal(caps.assertMetaCreateProviderDraftCapability(kept, keptLocked, { now: NOW }).tenant_id, 7);
+  assert.equal(await caps.verifyMetaCreateProviderDraftCapability(kept, keptLocked, { now: NOW }), true);
+  assert.equal(await caps.verifyMetaCreateProviderDraftCapability(kept, keptLocked, { now: NOW }), true);
+  assert.equal((await caps.assertMetaCreateProviderDraftCapability(kept, keptLocked, { now: NOW })).tenant_id, 7);
 });
 
 // ── Audit hygiene ───────────────────────────────────────────────────────────
@@ -457,7 +501,7 @@ test('capability: the module has no network, env, vault or provider sink', () =>
   assert.doesNotMatch(src, /require\(['"]\.\.\/\.\.\/db['"]\)/);
   // Registries must stay module-private.
   assert.match(src, /const MINTED = new WeakSet\(\)/);
-  assert.match(src, /const LIVE_TX = new WeakSet\(\)/);
+  assert.match(src, /const LIVE_TX = new WeakMap\(\)/);
   const exportBlock = src.slice(src.lastIndexOf('module.exports'));
   for (const banned of ['MINTED', 'STATE', 'LIVE_TX']) {
     assert.doesNotMatch(exportBlock, new RegExp(`\\b${banned}\\b`), `${banned} must stay private`);
@@ -581,7 +625,11 @@ test('vault: the boundary validates status, revocation, environment, version, ac
   const keepLocked = lockedContextFrom(keep.binding);
   await vault.withTenantMetaCredentialForProviderDraft(fakeTxClient(),
     { capability: keep.cap, lockedContext: keepLocked, now: NOW }, fn);
-  assert.equal(caps.assertMetaCreateProviderDraftCapability(keep.cap, keepLocked, { now: NOW }).tenant_id, 7);
+  assert.equal((await caps.assertMetaCreateProviderDraftCapability(
+    keep.cap,
+    keepLocked,
+    { now: NOW }
+  )).tenant_id, 7);
 });
 
 test('vault: the confirmation-time resolver binds a reference without a capability or a secret', async () => {
