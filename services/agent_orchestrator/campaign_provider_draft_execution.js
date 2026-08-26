@@ -391,10 +391,23 @@ function mapProviderResult(result) {
   };
 }
 
-async function executeProviderDraft(pool, o) {
-  if (o.bodyTenantId != null && Number(o.bodyTenantId) !== Number(o.tenantId)) {
-    fail('validation_failed');
-  }
+function assertExecutionReplayAllowed(execution, o, parsed) {
+  assertSame(execution.draft_id, o.draftId, 'not_found');
+  assertSame(execution.publishing_request_id, o.publishingRequestId, 'not_found');
+  assertSame(execution.intent_id, o.intentId, 'not_found');
+  assertSame(execution.confirmation_id, parsed.confirmation_id, 'not_found');
+  assertSameNum(execution.requested_by, o.userId, 'permission_denied');
+}
+
+async function loadExecutionObjects(c, execution) {
+  return (await c.query(
+    `SELECT object_kind, provider_status, sequence_number, compensated
+       FROM ${OBJECT_TABLE} WHERE tenant_id=$1 AND execution_id=$2 ORDER BY sequence_number`,
+    [execution.tenant_id, execution.id]
+  )).rows;
+}
+
+async function reserveProviderDraftExecution(pool, o) {
   const parsed = D.parseExecuteBody(o.body, { idempotencyKey: o.idempotencyKey });
 
   return withTx(pool, async (c) => {
@@ -403,12 +416,9 @@ async function executeProviderDraft(pool, o) {
       if (String(byKey.confirmation_id) !== parsed.confirmation_id) {
         fail('idempotency_conflict', { field: 'idempotency_key' });
       }
-      const objects = (await c.query(
-        `SELECT object_kind, provider_status, sequence_number, compensated
-           FROM ${OBJECT_TABLE} WHERE tenant_id=$1 AND execution_id=$2 ORDER BY sequence_number`,
-        [byKey.tenant_id, byKey.id]
-      )).rows;
-      return { row: byKey, objects, replay: true };
+      assertExecutionReplayAllowed(byKey, o, parsed);
+      const objects = await loadExecutionObjects(c, byKey);
+      return { replay: true, row: byKey, objects };
     }
 
     const confirmation = await lockConfirmation(c, o.tenantId, parsed.confirmation_id);
@@ -424,79 +434,123 @@ async function executeProviderDraft(pool, o) {
       if (String(raced.idempotency_key) !== parsed.idempotency_key) {
         fail('idempotency_conflict', { field: 'confirmation_id' });
       }
-      const objects = (await c.query(
-        `SELECT object_kind, provider_status, sequence_number, compensated
-           FROM ${OBJECT_TABLE} WHERE tenant_id=$1 AND execution_id=$2 ORDER BY sequence_number`,
-        [raced.tenant_id, raced.id]
-      )).rows;
-      return { row: raced, objects, replay: true };
+      assertExecutionReplayAllowed(raced, o, parsed);
+      const objects = await loadExecutionObjects(c, raced);
+      return { replay: true, row: raced, objects };
     }
 
     const graph = await loadAuthoritativeGraph(c, o, confirmation);
     const binding = bindingFromGraph(graph, confirmation);
+    let capability;
     let execution;
-    let providerObjects = [];
-    let outcome;
 
     await caps.withAdvertisingProviderExecutionTransaction(c, async (txHandle) => {
-      const capability = await caps.mintMetaCreateProviderDraftCapability(txHandle, binding);
+      capability = await caps.mintMetaCreateProviderDraftCapability(txHandle, binding);
       await spendConfirmation(c, confirmation);
       await caps.assertMetaCreateProviderDraftCapability(capability, binding, { now: graph.nowMs });
-
       execution = await insertExecutionRow(c, graph, confirmation, o.userId, parsed.idempotency_key);
+    });
 
-      outcome = await vault.withTenantMetaCredentialSecretForProviderDraftExecution(c, {
-        capability,
-      }, async (credentials) => createPausedDraftGraph({
-        capability,
-        credentials,
-        snapshot: graph.pub.snapshot_json,
-        inject: o.inject,
-      }));
+    return {
+      replay: false,
+      row: execution,
+      objects: [],
+      graph,
+      confirmation,
+      capability,
+    };
+  });
+}
 
-      providerObjects = outcome.objects || [];
-      if (providerObjects.length) {
-        await appendProviderObjects(c, execution, providerObjects);
-        await markObjectsCompensated(c, execution.tenant_id, execution.id, providerObjects);
-      }
+function transportFailureOutcome() {
+  return Object.freeze({
+    ok: false,
+    partial: false,
+    objects: Object.freeze([]),
+    objects_created: 0,
+    objects_compensated: 0,
+    error_code: 'provider_transport_failed',
+    published: false,
+    external_action_taken: false,
+    activated: false,
+  });
+}
 
-      const mapped = mapProviderResult(outcome);
-      execution = await settleExecution(c, execution, mapped);
-      await terminalizeAttempt(c, graph.attempt, mapped);
-      await parkOutbox(c, graph.outbox.tenant_id, graph.outbox.id);
-      await insertExecutionAudit(c, {
-        tenantId: o.tenantId,
-        workflowId: graph.workflowId,
-        actorUserId: o.userId,
-        detail: {
-          action: 'execute',
-          state: mapped.status,
-          status: mapped.status,
-          outcome: mapped.outcome,
-          gate: D.GATE,
-          operation: D.OPERATION,
-          contract_version: D.CONTRACT_VERSION,
-          platform: D.PLATFORM_META,
-          confirmation_id: confirmation.id,
-          execution_id: execution.id,
-          draft_id: graph.draft.id,
-          intent_id: graph.intent.id,
-          attempt_id: graph.attempt.id,
-          publishing_request_id: graph.request.id,
-          revision: Number(graph.pub.revision),
-          generation: Number(graph.attempt.generation),
-          requested_by: Number(o.userId),
-          objects_created: mapped.objects_created,
-          objects_compensated: mapped.objects_compensated,
-          published: false,
-          external_action_taken: mapped.external_action_taken,
-          replay: false,
-        },
-      });
+async function invokeProviderDraftGraph(pool, reserve, o) {
+  try {
+    return await vault.withTenantMetaCredentialSecretForConsumedProviderDraft(pool, {
+      capability: reserve.capability,
+    }, async (credentials) => createPausedDraftGraph({
+      capability: reserve.capability,
+      credentials,
+      snapshot: reserve.graph.pub.snapshot_json,
+      inject: o.inject,
+    }));
+  } catch (_err) {
+    return transportFailureOutcome();
+  }
+}
+
+async function finalizeProviderDraftExecution(pool, reserve, providerOutcome, userId) {
+  const mapped = mapProviderResult(providerOutcome);
+  return withTx(pool, async (c) => {
+    let execution = reserve.row;
+    const providerObjects = mapped.objects || [];
+
+    if (providerObjects.length) {
+      await appendProviderObjects(c, execution, providerObjects);
+      await markObjectsCompensated(c, execution.tenant_id, execution.id, providerObjects);
+    }
+
+    execution = await settleExecution(c, execution, mapped);
+    await terminalizeAttempt(c, reserve.graph.attempt, mapped);
+    await parkOutbox(c, reserve.graph.outbox.tenant_id, reserve.graph.outbox.id);
+    await insertExecutionAudit(c, {
+      tenantId: reserve.graph.intent.tenant_id,
+      workflowId: reserve.graph.workflowId,
+      actorUserId: userId,
+      detail: {
+        action: 'execute',
+        state: mapped.status,
+        status: mapped.status,
+        outcome: mapped.outcome,
+        gate: D.GATE,
+        operation: D.OPERATION,
+        contract_version: D.CONTRACT_VERSION,
+        platform: D.PLATFORM_META,
+        confirmation_id: reserve.confirmation.id,
+        execution_id: execution.id,
+        draft_id: reserve.graph.draft.id,
+        intent_id: reserve.graph.intent.id,
+        attempt_id: reserve.graph.attempt.id,
+        publishing_request_id: reserve.graph.request.id,
+        revision: Number(reserve.graph.pub.revision),
+        generation: Number(reserve.graph.attempt.generation),
+        requested_by: Number(userId),
+        objects_created: mapped.objects_created,
+        objects_compensated: mapped.objects_compensated,
+        published: false,
+        external_action_taken: mapped.external_action_taken,
+        replay: false,
+      },
     });
 
     return { row: execution, objects: providerObjects, replay: false };
   });
+}
+
+async function executeProviderDraft(pool, o) {
+  if (o.bodyTenantId != null && Number(o.bodyTenantId) !== Number(o.tenantId)) {
+    fail('validation_failed');
+  }
+
+  const reserve = await reserveProviderDraftExecution(pool, o);
+  if (reserve.replay) {
+    return { row: reserve.row, objects: reserve.objects, replay: true };
+  }
+
+  const providerOutcome = await invokeProviderDraftGraph(pool, reserve, o);
+  return finalizeProviderDraftExecution(pool, reserve, providerOutcome, o.userId);
 }
 
 module.exports = {

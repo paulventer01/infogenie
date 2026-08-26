@@ -645,7 +645,7 @@ test('the PR 6F-0 capability boundary has no mint site, provider call or secret 
   // The vault addition is a reference boundary, not a secret boundary.
   const vaultSrc = fs.readFileSync(path.join(root, 'services/credentials/vault.js'), 'utf8');
   const start = vaultSrc.indexOf('Meta provider-draft credential REFERENCE boundary');
-  const end = vaultSrc.indexOf('Simple API-key vault', start);
+  const end = vaultSrc.indexOf('// ── End PR 6F-0 reference boundary', start);
   assert.ok(start > 0 && end > start, 'the reference boundary section is delimited');
   const boundary = vaultSrc.slice(start, end)
     .split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n');
@@ -657,6 +657,32 @@ test('the PR 6F-0 capability boundary has no mint site, provider call or secret 
   assert.match(boundary, /FOR UPDATE/);
   assert.match(boundary, /_assertActiveTenantMember/);
   assert.match(boundary, /has_secret_access', false/);
+});
+
+test('the PR 6F-1 execution secret boundary is fenced and requires a consumed capability', () => {
+  const root = path.join(__dirname, '..');
+  const vaultSrc = fs.readFileSync(path.join(root, 'services/credentials/vault.js'), 'utf8');
+  const start = vaultSrc.indexOf('// ── End PR 6F-0 reference boundary');
+  const end = vaultSrc.indexOf('// ── Simple API-key vault', start);
+  assert.ok(start > 0 && end > start, 'the execution secret boundary section is delimited');
+  const boundary = vaultSrc.slice(start, end)
+    .split('\n').filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)).join('\n');
+  assert.match(boundary, /withTenantMetaCredentialSecretForConsumedProviderDraft/);
+  assert.match(boundary, /isConsumedProviderDraftCapability/);
+  assert.match(boundary, /getCredentials\(/);
+  assert.match(boundary, /has_secret_access[\s\S]*value:\s*true/);
+  assert.match(boundary, /await client\.query\('COMMIT'\)/,
+    'credential lock must commit before provider I/O');
+  assert.doesNotMatch(boundary, /resolveMetaAdsCredentials\(/);
+
+  const killSwitch = fs.readFileSync(
+    path.join(root, 'services/security/advertising_provider_mutations.js'), 'utf8');
+  assert.match(killSwitch, /isAdvertisingProviderCapability\(capability\)/);
+  assert.match(killSwitch, /isConsumedProviderDraftCapability\(capability\)/);
+
+  const connector = fs.readFileSync(
+    path.join(root, 'services/agent_orchestrator/connectors/meta_paused_draft.js'), 'utf8');
+  assert.match(connector, /assertMetaCreateProviderDraftMutationAllowed\(capability\)/);
 });
 
 test('the guardrails doc discloses the PR 6F-0 provider-draft capability boundary', () => {

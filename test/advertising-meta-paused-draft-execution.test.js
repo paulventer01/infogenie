@@ -86,6 +86,27 @@ function partialInject() {
   };
 }
 
+function transportThrowAfterPartialInject() {
+  let calls = 0;
+  return {
+    create: async (kind) => {
+      calls += 1;
+      if (calls === 3) throw new Error('ECONNRESET transport');
+      return { status: 200, body: { id: `${kind}_${calls}` } };
+    },
+  };
+}
+
+function forgedCapability() {
+  const cap = Object.create(null);
+  Object.defineProperty(cap, Symbol.for('infogenie.advertising_provider_capability'), {
+    value: true, enumerable: false, writable: false, configurable: false,
+  });
+  cap.platform = 'meta';
+  cap.operation = 'create_provider_draft';
+  return cap;
+}
+
 if (!HAS_DB) {
   test('advertising meta paused draft execution skipped — no DATABASE_URL', { skip: 'no DATABASE_URL' }, () => {});
 } else {
@@ -372,6 +393,83 @@ if (!HAS_DB) {
     assert.equal(res.row.outcome, 'partial');
     assert.equal(res.row.published, false);
     assert.notEqual(res.row.status, 'complete');
+  });
+
+  test('transport failure after partial Meta success keeps durable spend and terminal outcome', async () => {
+    const live = await readyConfirmed(cookieA, wfA, artA);
+    const key = ik('transport-partial');
+    const res = await executeModule(live, key, transportThrowAfterPartialInject());
+    assert.equal(res.replay, false);
+    assert.equal(res.row.status, 'partial');
+    assert.equal(res.row.outcome, 'partial');
+    assert.equal(res.row.external_action_taken, true);
+    assert.equal(res.objects.length, 2);
+
+    const confirmation = (await p().query(
+      `SELECT status, spent_at FROM orchestrator_campaign_provider_confirmations
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, live.confirmation.id]
+    )).rows[0];
+    assert.equal(confirmation.status, 'spent');
+    assert.ok(confirmation.spent_at);
+
+    const auditCount = (await p().query(
+      `SELECT COUNT(*)::int AS n FROM orchestrator_audit_events
+        WHERE tenant_id=$1 AND event=$2 AND detail->>'execution_id'=$3`,
+      [tenantA.id, D.AUDIT_EVENT_EXECUTION, res.row.id]
+    )).rows[0].n;
+    assert.equal(auditCount, 1);
+
+    await assert.rejects(
+      () => executeModule(live, ik('second-graph'), successInject()),
+      (err) => err && (err.code === 'idempotency_conflict' || err.code === 'invalid_transition')
+    );
+  });
+
+  test('idempotency replay rejects wrong route graph for same tenant owner', async () => {
+    const live = await readyConfirmed(cookieA, wfA, artA);
+    const key = ik('route-replay');
+    await executeModule(live, key, successInject());
+
+    await assert.rejects(
+      () => draftExecution.executeProviderDraft(p(), {
+        tenantId: tenantA.id,
+        userId: ownerA.id,
+        draftId: 'cd_wrong_route',
+        publishingRequestId: live.request.id,
+        intentId: live.intent.id,
+        idempotencyKey: key,
+        body: {
+          contract_version: 'campaign_delivery_v1', operation: 'create_provider_draft', platform: 'meta',
+          idempotency_key: key, confirmation_id: live.confirmation.id,
+        },
+        inject: successInject(),
+      }),
+      (err) => err && err.code === 'not_found'
+    );
+  });
+
+  test('forged Symbol.for capability performs zero provider writes at the sink', async () => {
+    const metaPausedDraft = require('../services/agent_orchestrator/connectors/meta_paused_draft');
+    const guard = require('../services/security/advertising_provider_mutations');
+    let writes = 0;
+    const inject = {
+      create: async () => {
+        writes += 1;
+        return { status: 200, body: { id: 'forged_should_never_run' } };
+      },
+    };
+    await assert.rejects(
+      () => metaPausedDraft.createPausedDraftGraph({
+        capability: forgedCapability(),
+        credentials: { accessToken: 'tok', adAccountId: 'act_123456789' },
+        snapshot: { objective: 'traffic', label: 'Forged' },
+        inject,
+      }),
+      (err) => err && err.code === guard.CODE && err.blocked === true
+    );
+    assert.equal(writes, 0);
+    assert.equal(guard.isAdvertisingProviderMutationAllowed(), false);
   });
 
   test('already-spent confirmation fails closed on replay with new idempotency key', async () => {

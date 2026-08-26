@@ -371,6 +371,13 @@ async function assertMetaCreateProviderDraftCapability(capability, lockedContext
   }
 }
 
+/** True only for a minted capability that has completed its single-use spend. */
+function isConsumedProviderDraftCapability(capability) {
+  if (!isAdvertisingProviderCapability(capability)) return false;
+  const state = STATE.get(capability);
+  return !!(state && state.consumed);
+}
+
 /** Audit-safe projection — never includes secrets, hashes or account material. */
 function auditDetailForCapability(capability) {
   if (!isAdvertisingProviderCapability(capability)) {
@@ -399,6 +406,7 @@ module.exports = {
   mintMetaCreateProviderDraftCapability,
   verifyMetaCreateProviderDraftCapability,
   assertMetaCreateProviderDraftCapability,
+  isConsumedProviderDraftCapability,
   auditDetailForCapability,
   isAdvertisingProviderCapability,
 };

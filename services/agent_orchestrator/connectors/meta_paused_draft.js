@@ -171,10 +171,25 @@ async function createPausedDraftGraph(input) {
     const spec = step.create(ctx);
     spec.params.set('access_token', token);
     let response;
-    if (inject && typeof inject.create === 'function') {
-      response = await inject.create(step.kind, spec, ctx, created);
-    } else {
-      response = await postForm(spec.path, spec.params);
+    try {
+      if (inject && typeof inject.create === 'function') {
+        response = await inject.create(step.kind, spec, ctx, created);
+      } else {
+        response = await postForm(spec.path, spec.params);
+      }
+    } catch (_transportErr) {
+      const compensated = await compensateCreated(created, token);
+      return Object.freeze({
+        ok: false,
+        partial: created.length > 0,
+        objects: Object.freeze(created.slice()),
+        objects_created: created.length,
+        objects_compensated: compensated,
+        error_code: 'provider_transport_failed',
+        published: false,
+        external_action_taken: created.length > 0,
+        activated: false,
+      });
     }
     if (!response || response.status < 200 || response.status >= 300 || !response.body || !response.body.id) {
       const code = response && response.body && response.body.error && response.body.error.code;

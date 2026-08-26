@@ -628,21 +628,12 @@ function _accountFingerprintOf(adAccountId) {
   return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
 
-/**
- * PR 6F-1 execution-time secret boundary. Requires a minted capability whose
- * single use has already been consumed by assertMetaCreateProviderDraftCapability.
- * Decrypts the tenant-owned Meta Ads integration only inside `fn`, verifies the
- * account fingerprint binding, and never logs, persists or returns the secret.
- */
-async function withTenantMetaCredentialSecretForProviderDraftExecution(client, opts, fn) {
-  const c = _requireTxClient(client);
-  const o = opts || {};
-  if (typeof fn !== 'function') {
-    throw _credError('validation_failed', 'a credential execution scope callback is required');
-  }
-  const capability = o.capability;
+async function _buildProviderDraftExecutionSecretHandle(client, capability) {
   if (!_capabilities.isAdvertisingProviderCapability(capability)) {
     throw _credError(_capabilities.CODES.INVALID, 'a minted provider-draft capability is required');
+  }
+  if (!_capabilities.isConsumedProviderDraftCapability(capability)) {
+    throw _credError(_capabilities.CODES.SPENT, 'provider-draft capability must be consumed before secret access');
   }
   if (capability.platform !== META_PROVIDER_DRAFT_PLATFORM
       || capability.operation !== _capabilities.CAPABILITY_OPERATION) {
@@ -654,8 +645,8 @@ async function withTenantMetaCredentialSecretForProviderDraftExecution(client, o
   if (!tenantId || !ownerUserId) {
     throw _credError('validation_failed', 'capability tenant/owner binding is invalid');
   }
-  await _assertActiveTenantMember(c, tenantId, ownerUserId);
-  const row = await _lockCredentialRefRow(c, {
+  await _assertActiveTenantMember(client, tenantId, ownerUserId);
+  const row = await _lockCredentialRefRow(client, {
     tenantId, ownerUserId, credentialRefId: capability.credential_ref_id,
   });
   if (!_sameString(String(row.id), String(capability.credential_ref_id))) {
@@ -710,7 +701,50 @@ async function withTenantMetaCredentialSecretForProviderDraftExecution(client, o
     configurable: false,
     value: () => { throw _credError('validation_failed', 'credential handle is not serializable'); },
   });
-  return fn(Object.freeze(handle));
+  return Object.freeze(handle);
+}
+
+/**
+ * PR 6F-1 execution-time secret boundary. Requires a minted capability whose
+ * single use has already been consumed by assertMetaCreateProviderDraftCapability.
+ * Decrypts the tenant-owned Meta Ads integration only inside `fn`, verifies the
+ * account fingerprint binding, and never logs, persists or returns the secret.
+ */
+async function withTenantMetaCredentialSecretForProviderDraftExecution(client, opts, fn) {
+  const c = _requireTxClient(client);
+  const o = opts || {};
+  if (typeof fn !== 'function') {
+    throw _credError('validation_failed', 'a credential execution scope callback is required');
+  }
+  const handle = await _buildProviderDraftExecutionSecretHandle(c, o.capability);
+  return fn(handle);
+}
+
+/**
+ * Same secret boundary as above, but opens a short transaction to lock the
+ * credential reference, commits before `fn`, and never holds FOR UPDATE across
+ * provider I/O.
+ */
+async function withTenantMetaCredentialSecretForConsumedProviderDraft(pool, opts, fn) {
+  if (!pool || typeof pool.connect !== 'function') {
+    throw _credError('validation_failed', 'a database pool is required for provider-draft secret access');
+  }
+  if (typeof fn !== 'function') {
+    throw _credError('validation_failed', 'a credential execution scope callback is required');
+  }
+  const client = await pool.connect();
+  let handle;
+  try {
+    await client.query('BEGIN');
+    handle = await _buildProviderDraftExecutionSecretHandle(client, (opts || {}).capability);
+    await client.query('COMMIT');
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_e) { /* ignore */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+  return fn(handle);
 }
 
 // ── Simple API-key vault (tenant-scoped, kv_store, AES-256-GCM) ──────────
@@ -787,5 +821,6 @@ module.exports = {
   resolveTenantMetaCredentialRefForProviderDraft,
   withTenantMetaCredentialForProviderDraft,
   withTenantMetaCredentialSecretForProviderDraftExecution,
+  withTenantMetaCredentialSecretForConsumedProviderDraft,
   accountFingerprintOfMetaAdAccount: _accountFingerprintOf,
 };
