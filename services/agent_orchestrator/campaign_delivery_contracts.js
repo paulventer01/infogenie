@@ -237,6 +237,23 @@ const CONFIRM_AUDIT_DETAIL_KEYS = Object.freeze([
   'revision', 'generation', 'requested_by', 'replay',
 ]);
 
+const EXEC_KEYS = Object.freeze([
+  'contract_version', 'operation', 'platform', 'idempotency_key',
+  'confirmation_id',
+]);
+const EXEC_ALLOW = new Set(EXEC_KEYS);
+const EXEC_CONNECTOR = 'meta';
+const OBJECT_KIND_EXECUTION = 'campaign_provider_draft_execution';
+const OBJECT_KIND_PROVIDER_OBJECT = 'campaign_provider_object';
+const AUDIT_EVENT_EXECUTION = 'campaign_provider_draft_executed';
+const EXEC_AUDIT_DETAIL_KEYS = Object.freeze([
+  'action', 'state', 'status', 'outcome', 'gate', 'operation',
+  'contract_version', 'platform', 'confirmation_id', 'execution_id',
+  'draft_id', 'intent_id', 'attempt_id', 'publishing_request_id',
+  'revision', 'generation', 'requested_by', 'objects_created',
+  'objects_compensated', 'published', 'external_action_taken', 'replay',
+]);
+
 function walkForbiddenAllowlisted(value, allow) {
   if (value == null || typeof value !== 'object') return;
   if (Buffer.isBuffer(value)) fail('validation_failed', { field: 'value' });
@@ -297,6 +314,33 @@ function parseConfirmBody(body, opts) {
   };
 }
 
+function parseExecuteBody(body, opts) {
+  const { raw, key } = parseExactBody(body, EXEC_ALLOW, opts);
+  const confirmationId = String(raw.confirmation_id || '').trim();
+  if (!confirmationId || confirmationId.length > 128) {
+    fail('validation_failed', { field: 'confirmation_id' });
+  }
+  return {
+    contract_version: CONTRACT_VERSION,
+    operation: OPERATION,
+    platform: PLATFORM_META,
+    idempotency_key: key,
+    confirmation_id: confirmationId,
+  };
+}
+
+function sanitizeExecAuditDetail(detail) {
+  const out = {};
+  if (!detail || typeof detail !== 'object') return out;
+  for (const k of EXEC_AUDIT_DETAIL_KEYS) {
+    const v = detail[k];
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'boolean' || typeof v === 'number') { out[k] = v; continue; }
+    if (typeof v === 'string') { out[k] = v.slice(0, 120); continue; }
+  }
+  return out;
+}
+
 function newPhraseSalt() {
   return crypto.randomBytes(32).toString('hex');
 }
@@ -346,6 +390,9 @@ module.exports = {
   OBJECT_KIND_CHALLENGE, OBJECT_KIND_CONFIRMATION,
   AUDIT_EVENT_CHALLENGE, AUDIT_EVENT_CONFIRMATION, PLATFORM_META,
   CHALLENGE_KEYS, CONFIRM_KEYS, CONFIRM_AUDIT_DETAIL_KEYS,
-  parseChallengeBody, parseConfirmBody,
-  newPhraseSalt, phraseDigestOf, claimTokenHashOf, sanitizeConfirmAuditDetail,
+  EXEC_KEYS, EXEC_CONNECTOR, OBJECT_KIND_EXECUTION, OBJECT_KIND_PROVIDER_OBJECT,
+  AUDIT_EVENT_EXECUTION, EXEC_AUDIT_DETAIL_KEYS,
+  parseChallengeBody, parseConfirmBody, parseExecuteBody,
+  newPhraseSalt, phraseDigestOf, claimTokenHashOf,
+  sanitizeConfirmAuditDetail, sanitizeExecAuditDetail,
 };

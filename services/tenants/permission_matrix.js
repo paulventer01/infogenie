@@ -173,6 +173,7 @@ const ROUTE_GROUPS = [
   // prefix of its own. See docs/security-guardrails.md (PR 6F-0).
   { prefix: '/api/agent-orchestrator/campaign-drafts/provider-draft-confirmation-challenge', view: 'advertising.provider_drafts.create', write: 'advertising.provider_drafts.create' },
   { prefix: '/api/agent-orchestrator/campaign-drafts/confirm-provider-draft', view: 'advertising.provider_drafts.create', write: 'advertising.provider_drafts.create' },
+  { prefix: '/api/agent-orchestrator/campaign-drafts/execute-provider-draft', view: 'advertising.provider_drafts.create', write: 'advertising.provider_drafts.create' },
   { prefix: '/api/ai-governance',             view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
   { prefix: '/api/ai-traces',                 view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
   { prefix: '/api/ai-feedback',               view: 'grow.campaigns.view',     write: 'grow.campaigns.view' },

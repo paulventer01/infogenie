@@ -14,6 +14,7 @@ const drafts = require('./campaign_drafts');
 const publishRequests = require('./campaign_publish_requests');
 const deliveryIntents = require('./campaign_delivery_intents');
 const confirmations = require('./campaign_provider_confirmations');
+const draftExecution = require('./campaign_provider_draft_execution');
 const D = require('./campaign_delivery_contracts');
 require('./campaign_delivery_worker');
 
@@ -245,6 +246,35 @@ router.post(
         published: false,
         external_action_taken: false,
         confirmation: confirmations.publicConfirmation(row),
+      },
+    };
+  }, { rejectApiKey: true })
+);
+
+router.post(
+  '/execute-provider-draft/:draftId/publishing-requests/:publishingRequestId/delivery-intents/:intentId',
+  capPayload,
+  wrap(D.PERMISSION_PROVIDER_DRAFTS_CREATE, async (req, tid, userId, pool) => {
+    const body = bodyOf(req);
+    tenantMismatch(body, tid);
+    const key = String(body.idempotency_key || extractIdempotencyKey(req) || '').trim();
+    if (!key) fail('validation_failed', { field: 'idempotency_key' });
+    const { row, objects, replay } = await draftExecution.executeProviderDraft(pool, {
+      tenantId: tid, userId,
+      draftId: String(req.params.draftId || ''),
+      publishingRequestId: String(req.params.publishingRequestId || ''),
+      intentId: String(req.params.intentId || ''),
+      idempotencyKey: key, body, bodyTenantId: body.tenant_id,
+    });
+    return {
+      status: row.status === 'complete' ? 200 : 202,
+      body: {
+        ok: row.status !== 'failed',
+        replay: !!replay,
+        published: false,
+        external_action_taken: row.external_action_taken === true,
+        complete: row.status === 'complete',
+        execution: draftExecution.publicExecution(row, objects),
       },
     };
   }, { rejectApiKey: true })

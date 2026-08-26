@@ -10,9 +10,12 @@
 // single-use Meta create_provider_draft capability. That capability is NOT a
 // bypass of this gate — it is asserted separately, inside an execution
 // transaction that PR 6F-0 never opens, and it must never travel through this
-// module. Capability-branded values are therefore stripped out of the deny
-// payload and the guard context below, so a capability can never be serialized
-// into an HTTP body, an outbox payload or a log line via a denial.
+// module. PR 6F-1 adds assertMetaCreateProviderDraftMutationAllowed(), which is
+// the ONLY narrow bypass: it succeeds only for a minted, unspent capability
+// immediately before the bounded Meta paused-draft graph create. Capability-
+// branded values are therefore stripped out of the deny payload and the guard
+// context below, so a capability can never be serialized into an HTTP body, an
+// outbox payload or a log line via a denial.
 'use strict';
 
 const CODE = 'advertising_provider_mutation_disabled';
@@ -21,6 +24,10 @@ const MESSAGE =
 
 // Read via Symbol.for so this lowest-level gate keeps zero imports.
 const CAPABILITY_BRAND = Symbol.for('infogenie.advertising_provider_capability');
+const CAPABILITY_CODES = Object.freeze({
+  INVALID: 'advertising_provider_capability_invalid',
+  SPENT: 'advertising_provider_capability_spent',
+});
 
 function _isCapabilityLike(value) {
   if (!value || (typeof value !== 'object' && typeof value !== 'function')) return false;
@@ -91,10 +98,35 @@ function denyAdvertisingProviderMutation(extra = {}) {
   };
 }
 
+/**
+ * PR 6F-1 — the only narrow bypass of the default-deny gate. Call immediately
+ * before the bounded Meta paused-draft graph create, after
+ * assertMetaCreateProviderDraftCapability has consumed the single use.
+ * @param {object} capability minted Meta create_provider_draft capability
+ */
+function assertMetaCreateProviderDraftMutationAllowed(capability) {
+  if (!capability || typeof capability !== 'object') {
+    assertAdvertisingProviderMutationAllowed({ reason: 'capability_required' });
+  }
+  try {
+    if (capability[CAPABILITY_BRAND] !== true) {
+      assertAdvertisingProviderMutationAllowed({ reason: 'capability_invalid' });
+    }
+  } catch (_e) {
+    assertAdvertisingProviderMutationAllowed({ reason: 'capability_invalid' });
+  }
+  if (capability.platform !== 'meta' || capability.operation !== 'create_provider_draft') {
+    assertAdvertisingProviderMutationAllowed({ reason: 'capability_mismatch' });
+  }
+  return true;
+}
+
 module.exports = {
   CODE,
   MESSAGE,
+  CAPABILITY_CODES,
   isAdvertisingProviderMutationAllowed,
   assertAdvertisingProviderMutationAllowed,
+  assertMetaCreateProviderDraftMutationAllowed,
   denyAdvertisingProviderMutation,
 };

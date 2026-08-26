@@ -475,6 +475,7 @@ test('capability: nothing in product code can mint or open the execution scope',
   // no shippable code path can reach it.
   const allowed = new Set([
     'services/security/advertising_provider_capabilities.js',
+    'services/agent_orchestrator/campaign_provider_draft_execution.js',
     'docs/security-guardrails.md',
   ]);
   const offenders = { mint: [], scope: [] };
@@ -501,10 +502,9 @@ test('capability: nothing in product code can mint or open the execution scope',
   };
   walk(ROOT);
   assert.deepEqual(offenders.mint, [],
-    'PR 6F-0 has no execution worker and no provider call: minting a capability outside ' +
-    'services/security/advertising_provider_capabilities.js would be a premature mint surface');
+    'capability minting is confined to the security module and the PR 6F-1 execution path');
   assert.deepEqual(offenders.scope, [],
-    'the execution-transaction scope must not be opened anywhere in PR 6F-0');
+    'execution-transaction scope is confined to the PR 6F-1 execution path');
 });
 
 test('capability: the broad security index does not export the mint path', () => {
@@ -546,13 +546,15 @@ test('capability: the module has no network, env, vault or provider sink', () =>
   }
 });
 
-test('capability: no capability is reachable from the orchestrator outbox or HTTP surface', () => {
+test('capability: only the PR 6F-1 execution module may reach the capability module', () => {
+  const allowed = new Set(['campaign_provider_draft_execution.js']);
   const dir = path.join(ROOT, 'services/agent_orchestrator');
   for (const name of fs.readdirSync(dir)) {
     if (!name.endsWith('.js')) continue;
+    if (allowed.has(name)) continue;
     const src = fs.readFileSync(path.join(dir, name), 'utf8');
     assert.doesNotMatch(src, /advertising_provider_capabilities/,
-      `${name} must not reach the capability module in PR 6F-0`);
+      `${name} must not reach the capability module`);
   }
 });
 
@@ -704,7 +706,7 @@ test('vault: the confirmation-time resolver binds a reference without a capabili
 test('vault: the provider-draft boundary source reads no secret material', () => {
   const src = fs.readFileSync(path.join(ROOT, 'services/credentials/vault.js'), 'utf8');
   const start = src.indexOf('Meta provider-draft credential REFERENCE boundary');
-  const end = src.indexOf('Simple API-key vault', start);
+  const end = src.indexOf('End PR 6F-0 reference boundary', start);
   assert.ok(start > 0 && end > start, 'boundary section is delimited');
   // Strip comment lines — the section's own prose names what it must never do.
   const section = src.slice(start, end)
@@ -750,6 +752,7 @@ test('matrix: every mounted confirm surface resolves to the provider-draft key e
   const CONFIRM_PREFIXES = [
     '/api/agent-orchestrator/campaign-drafts/provider-draft-confirmation-challenge',
     '/api/agent-orchestrator/campaign-drafts/confirm-provider-draft',
+    '/api/agent-orchestrator/campaign-drafts/execute-provider-draft',
   ];
 
   // EVERY verb on the confirm surface — at the prefix itself and at any depth
@@ -832,8 +835,8 @@ test('matrix: no provider-draft route hides its action segment behind a variable
 
   const ACTIONS = /(provider-draft|provider-challenge)/;
   const matched = registrations.filter((r) => ACTIONS.test(r));
-  assert.equal(matched.length, 2,
-    `expected exactly the challenge and confirm routes, got: ${matched.join(', ')}`);
+  assert.equal(matched.length, 3,
+    `expected exactly the challenge, confirm and execute routes, got: ${matched.join(', ')}`);
 
   for (const route of matched) {
     const segments = route.split('/').filter(Boolean);

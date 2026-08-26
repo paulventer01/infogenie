@@ -441,8 +441,8 @@ test('PR6F-0 CREATE TABLE is tenant-leading, digest-only, TTL-capped, and omits 
   assert.match(src, /orchestrator_cpc_tenant_attempt_bind_fkey/);
   assert.match(src, /orchestrator_cpc_tenant_cred_ref_fkey/);
   assert.match(src, /orchestrator_cda_tenant_unique_id_bind/);
-  assert.doesNotMatch(src, /CREATE TABLE IF NOT EXISTS orchestrator_campaign_provider_objects/);
-  assert.doesNotMatch(src, /provider_object_ledger/);
+  assert.match(src, /CREATE TABLE IF NOT EXISTS orchestrator_campaign_provider_draft_executions/);
+  assert.match(src, /CREATE TABLE IF NOT EXISTS orchestrator_campaign_provider_objects/);
 });
 
 if (!HAS_DB) {
