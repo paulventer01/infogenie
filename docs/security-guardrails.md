@@ -2924,16 +2924,17 @@ tenant id and an error code re-matched against `^[a-z0-9_]{1,40}$` — anything
 else becomes `internal_error` — so a driver or provider message cannot reach the
 log. `error_code` is CHECKed against the same pattern in the DDL.
 
-### PR 6E boundary — real mutation is still hard-denied
+### PR 6E / PR 6F boundary — real mutation is still hard-denied
 
-PR 6D creates no provider object. **A real provider mutation — including creating
-a campaign in `PAUSED` state, which is the obvious "harmless" first step — is PR
-6E and remains hard-denied today.**
+PR 6D creates no provider object. **PR 6E operationalizes the fake worker with a
+governed sandbox outcome source; it still does not deliver.** A real provider
+mutation — including creating a campaign in `PAUSED` state, which is the obvious
+"harmless" first step — is **PR 6F** and remains hard-denied today.
 `services/security/advertising_provider_mutations.js` is byte-identical to
-`7cd6028a`, has no env escape hatch, and PR 6D neither calls it nor routes around
-it, because it performs no mutation to guard.
+`7cd6028a`, has no env escape hatch, and neither PR 6D nor PR 6E calls it or
+routes around it, because they perform no mutation to guard.
 
-When PR 6E replaces the fake connector it must:
+When PR 6F replaces the fake connector it must:
 
 - call `assertAdvertisingProviderMutationAllowed` **before** credential lookup,
   vault access or network I/O, exactly as every other lowest-level mutation
@@ -2941,7 +2942,7 @@ When PR 6E replaces the fake connector it must:
 - resolve `credential_ref` through `services/credentials/vault.js` at send time,
   and never persist, return or log the resolved secret;
 - keep `revalidateOnClient` **and** add the credential presence/ownership check
-  that PR 6D deliberately omits, since an approval can outlive a disconnected
+  that PR 6D/6E deliberately omit, since an approval can outlive a disconnected
   integration;
 - treat `published` and `external_action_taken` as needing a new DDL story —
   today's CHECK and trigger refuse `TRUE` outright — and re-derive an
@@ -2950,19 +2951,14 @@ When PR 6E replaces the fake connector it must:
 - keep the outbox pending-only contract or replace it deliberately; a real send
   makes "restore to `pending`" a retry of a possibly-completed external action.
 
-### Accepted residuals (PR 6D)
+### Accepted residuals (PR 6D, partially closed by PR 6E)
 
-- **The production worker has no outcome source, so it does no useful work.**
-  `scenario` is an `opts` field with no env var, column or payload source, and
-  `startCampaignDeliveryWorker` ticks with no options. A process started with
-  `INFOGENIE_CAMPAIGN_DELIVERY_WORKER=1` therefore claims a row,
-  `simulateDelivery` raises `validation_failed`, the throw is caught and logged,
-  and the attempt is left `started` until its 30s lease expires and is recycled
-  as `abandoned_lease`. This is fail-closed — nothing is published, nothing
-  settles, no secret moves — but it is a claim-and-abandon loop against the
-  PR 6C backlog, and `abandoned_lease` is not subject to `MAX_ATTEMPTS`, so
-  `attempt_number` grows while the flag is on. **Treat the flag as
-  test/staging-only until PR 6E supplies a real outcome source.**
+- **PR 6E supplies the governed outcome source.** Production ticks no longer
+  claim-and-abandon when no sandbox row (or test `opts.scenario`) is present:
+  claim returns `{ skip: true, reason: 'no_outcome_source' }` without appending
+  an attempt. `abandoned_lease` is reserved for true expired-lease crash
+  recovery. Treat `INFOGENIE_CAMPAIGN_DELIVERY_WORKER=1` as test/staging-only
+  until operators intentionally seed sandbox outcomes.
 - **`assertActiveMember` still reads without `FOR UPDATE`.** Inherited verbatim
   from PR 6B/6C and now also on the settle path: a suspension committing between
   the check and the commit is not serialized against this write.
@@ -2973,6 +2969,8 @@ When PR 6E replaces the fake connector it must:
   re-claim, which re-parks without appending an attempt.
 - **`setInterval` is not `unref`'d.** While the flag is on, the timer keeps the
   Express event loop alive. Same as the existing generation and video workers.
+  PR 6E makes start idempotent (single module-level handle) and exports
+  `stopCampaignDeliveryWorker()`.
 - **`publicOutbox` runs after `COMMIT`** in settle. If it ever threw, the caller
   would see an exception for a row that is already committed and correctly
   `pending`; no state would be wrong, only the return value lost.
@@ -2988,11 +2986,51 @@ idempotent re-ensure), `test/advertising-orchestrator-campaign-delivery-attempts
 `credential_ref` / `intent_hash`, append-only history),
 `test/advertising-orchestrator-campaign-delivery-fake-connector.test.js`,
 `test/advertising-orchestrator-campaign-delivery-worker.test.js` (flag matrix,
-claim-commits-before-execute with a network tripwire, crash and stale-settle
-fencing, revalidation refusals, cross-tenant claim and settle, retry/park
-scheduling, retry exhaustion, tick overlap, and the audit secret-hygiene check),
+idempotent start/stop, claim-commits-before-execute with a network tripwire,
+crash and stale-settle fencing, no-outcome skip, sandbox consume-once,
+revalidation refusals, cross-tenant claim and settle, retry/park scheduling,
+retry exhaustion, tick overlap, zero-network, corruption, and the audit
+secret-hygiene check),
+`test/advertising-orchestrator-campaign-delivery-sandbox-outcomes.test.js`,
 and `test/security-guardrails.test.js` for the no-provider-sink source scan and
 the claims in this section.
+
+## Advertising orchestrator — sandbox delivery ops (PR 6E)
+
+PR 6E keeps the worker **fake/sandbox-only**. It adds
+`orchestrator_campaign_delivery_sandbox_outcomes` (tenant-scoped,
+append-once / consume-once), `campaign_delivery_sandbox_outcomes.js`, idempotent
+`startCampaignDeliveryWorker` / `stopCampaignDeliveryWorker`, and pre-claim
+outcome resolution so production ticks do not recycle as `abandoned_lease`.
+
+**Still no HTTP surface.** No drain/claim/settle/sandbox route, no
+`ROUTE_GROUPS` entry, no `permission_matrix.js` change, no vault read, no
+provider SDK, no network I/O. Dual gate unchanged
+(`backgroundEnabled()` **and** `INFOGENIE_CAMPAIGN_DELIVERY_WORKER === '1'`).
+Default with the flag unset remains **no worker**.
+
+### Governed outcome source
+
+Before a `started` attempt is inserted, claim resolves an outcome:
+
+1. test `opts.scenario` (in-process override), else
+2. an unconsumed sandbox row for `(tenant_id, outbox_id)` locked
+   `FOR UPDATE SKIP LOCKED`.
+
+If neither exists: `{ skip: true, reason: 'no_outcome_source' }`, outbox
+unchanged, **zero** attempt rows. Sandbox consume
+(`consumed_at` + `consumed_attempt_id`) happens in the **same claim
+transaction** after the attempt insert. Consumed rows are never reused.
+`abandoned_lease` remains only for expired-lease crash recovery; a recovery
+claim inserts a new `started` row only when a **new** unconsumed outcome (or
+test scenario) is present.
+
+Honesty: every sandbox row, fake-connector result, attempt ledger CHECK, and
+audit detail keeps `source: 'sandbox'` (or `test_opts` for overrides),
+`simulated: true`, `published: false`, `external_action_taken: false`,
+`connector: 'fake'`. Audit event remains `campaign_delivery_attempt_simulated`.
+
+Real provider mutation stays **PR 6F** and hard-denied.
 
 ## Advertising provider-write bypass closure
 
@@ -3024,7 +3062,7 @@ and other read-only pixel-manager routes stay available.
 
 Preserved (not provider mutations): read-only ad insights/analysis, campaign
 drafting and human approval, creative generation, guarded publishing requests,
-PR 6C delivery intents and the PR 6D fake delivery worker (both
+PR 6C delivery intents and the PR 6D/6E fake delivery worker (both
 `published: false`, `external_action_taken: false`, no vault read and no
 outbound I/O), and request-only guarantees.
 

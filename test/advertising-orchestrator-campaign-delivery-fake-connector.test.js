@@ -16,6 +16,7 @@ const NEW_MODULES = [
   'services/agent_orchestrator/campaign_delivery_attempts.js',
   'services/agent_orchestrator/campaign_delivery_worker.js',
   'services/agent_orchestrator/campaign_delivery_fake_connector.js',
+  'services/agent_orchestrator/campaign_delivery_sandbox_outcomes.js',
 ];
 
 function stripComments(src) {
@@ -65,6 +66,7 @@ test('eight scenarios map exactly; unknown fails closed; honesty flags frozen', 
     assert.equal(r.published, false, scenario);
     assert.equal(r.external_action_taken, false, scenario);
     assert.equal(r.connector, 'fake', scenario);
+    assert.equal(r.source, D.OUTCOME_SOURCE_SANDBOX, scenario);
     assert.equal(r.scenario, scenario);
     assert.ok(Object.isFrozen(r), scenario);
     assert.deepStrictEqual(D.SCENARIO_MAP[scenario], {
@@ -86,6 +88,33 @@ test('eight scenarios map exactly; unknown fails closed; honesty flags frozen', 
   );
 });
 
+test('honesty source accepts only sandbox or test_opts; arbitrary/live/provider fail closed', () => {
+  const base = {
+    scenario: 'success', platform: 'meta', intentId: 'cdi_1', outboxId: 'obx_1',
+    attemptId: 'cda_1', attemptNumber: 1, generation: 1,
+  };
+  assert.equal(simulateDelivery(base).source, D.OUTCOME_SOURCE_SANDBOX);
+  assert.equal(
+    simulateDelivery({ ...base, source: D.OUTCOME_SOURCE_SANDBOX }).source,
+    D.OUTCOME_SOURCE_SANDBOX
+  );
+  assert.equal(
+    simulateDelivery({ ...base, source: D.OUTCOME_SOURCE_TEST_OPTS }).source,
+    D.OUTCOME_SOURCE_TEST_OPTS
+  );
+
+  for (const source of [
+    'live', 'provider', 'meta', 'production', 'real', 'published',
+    'LIVE', 'Sandbox', 'test', 'opts', 'campaign_delivery_v1',
+  ]) {
+    assert.throws(
+      () => simulateDelivery({ ...base, source }),
+      (e) => e && e.code === 'validation_failed',
+      source
+    );
+  }
+});
+
 test('additive contract constants and backoff; parseDeliveryBody unchanged', () => {
   assert.equal(D.CONNECTOR, 'fake');
   assert.equal(D.AUDIT_EVENT_SIMULATED, 'campaign_delivery_attempt_simulated');
@@ -94,6 +123,9 @@ test('additive contract constants and backoff; parseDeliveryBody unchanged', () 
   assert.equal(D.PARK_INTERVAL_DAYS, 36500);
   assert.equal(D.WORKER_INTERVAL_MS, 2000);
   assert.equal(D.FLAG_ENV, 'INFOGENIE_CAMPAIGN_DELIVERY_WORKER');
+  assert.equal(D.OUTCOME_SOURCE_SANDBOX, 'sandbox');
+  assert.equal(D.OUTCOME_SOURCE_TEST_OPTS, 'test_opts');
+  assert.equal(D.SKIP_REASON_NO_OUTCOME, 'no_outcome_source');
   assert.equal(D.delaySeconds(1), 2);
   assert.equal(D.delaySeconds(8), 256);
   assert.equal(D.delaySeconds(9), 256);

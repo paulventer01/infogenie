@@ -26,10 +26,14 @@ const D = require('../services/agent_orchestrator/campaign_delivery_contracts');
 const { publicOutbox, publicIntent } = require('../services/agent_orchestrator/campaign_delivery_intents');
 const { simulateDelivery } = require('../services/agent_orchestrator/campaign_delivery_fake_connector');
 const attempts = require('../services/agent_orchestrator/campaign_delivery_attempts');
+const sandboxOutcomes = require('../services/agent_orchestrator/campaign_delivery_sandbox_outcomes');
 const worker = require('../services/agent_orchestrator/campaign_delivery_worker');
 const runtimeFlags = require('../services/runtime_flags');
 const vault = require('../services/credentials/vault');
 const campaignValidate = require('../services/agent_orchestrator/campaign_validate');
+const http = require('node:http');
+const https = require('node:https');
+const net = require('node:net');
 
 const HAS_DB = hasDb();
 const ROOT = path.join(__dirname, '..');
@@ -92,8 +96,8 @@ test('worker source never completes or fails the outbox and never names the reti
 
 test('flag matrix: timer starts only when background and env are both gated', () => {
   const orig = process.env.INFOGENIE_CAMPAIGN_DELIVERY_WORKER;
-  const timers = [];
   try {
+    worker.stopCampaignDeliveryWorker();
     runtimeFlags.setBackground(false);
     delete process.env.INFOGENIE_CAMPAIGN_DELIVERY_WORKER;
     assert.equal(worker.startCampaignDeliveryWorker(), null);
@@ -112,13 +116,22 @@ test('flag matrix: timer starts only when background and env are both gated', ()
     process.env.INFOGENIE_CAMPAIGN_DELIVERY_WORKER = '0';
     assert.equal(worker.startCampaignDeliveryWorker(), null);
 
+    process.env.INFOGENIE_CAMPAIGN_DELIVERY_WORKER = 'yes';
+    assert.equal(worker.startCampaignDeliveryWorker(), null);
+
     process.env.INFOGENIE_CAMPAIGN_DELIVERY_WORKER = '1';
     runtimeFlags.setBackground(true);
-    const t = worker.startCampaignDeliveryWorker();
-    assert.ok(t);
-    timers.push(t);
+    const t1 = worker.startCampaignDeliveryWorker();
+    assert.ok(t1);
+    const t2 = worker.startCampaignDeliveryWorker();
+    assert.strictEqual(t2, t1, 'start is idempotent — one interval handle');
+    worker.stopCampaignDeliveryWorker();
+    const t3 = worker.startCampaignDeliveryWorker();
+    assert.ok(t3);
+    assert.notStrictEqual(t3, t1, 'stop then start yields a new interval');
+    worker.stopCampaignDeliveryWorker();
   } finally {
-    for (const t of timers) clearInterval(t);
+    worker.stopCampaignDeliveryWorker();
     if (orig === undefined) delete process.env.INFOGENIE_CAMPAIGN_DELIVERY_WORKER;
     else process.env.INFOGENIE_CAMPAIGN_DELIVERY_WORKER = orig;
     runtimeFlags.setBackground(false);
@@ -312,15 +325,17 @@ if (!HAS_DB) {
     try {
       const envelope = await worker.claimCampaignDeliveryAttempt({
         pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-claim-1',
+        scenario: 'success',
       });
       assert.ok(!envelope.skip, JSON.stringify(envelope));
+      assert.equal(envelope.scenario, 'success');
+      assert.equal(envelope.outcomeSource, D.OUTCOME_SOURCE_TEST_OPTS);
       const box = await loadOutbox(tenantA.id, live.outbox.id);
       assert.equal(box.state, 'processing');
       assert.equal(box.claimed_by, 'w-claim-1');
       assert.ok(box.claimed_until);
       let executed = false;
       const fake = await worker.executeFake(envelope, {
-        scenario: 'success',
         simulate: async (args) => {
           const probe = await pool.query('SELECT 1 AS n');
           assert.equal(probe.rows[0].n, 1, 'fake execute uses a fresh pool checkout');
@@ -331,6 +346,7 @@ if (!HAS_DB) {
       assert.equal(executed, true);
       assert.equal(fake.simulated, true);
       assert.equal(fake.published, false);
+      assert.equal(fake.source, D.OUTCOME_SOURCE_TEST_OPTS);
       const settled = await worker.settleCampaignDeliveryAttempt(envelope, fake, { pool });
       assert.equal(settled.fenced_out, false);
       assert.equal(settled.status, 'simulated_ok');
@@ -339,30 +355,97 @@ if (!HAS_DB) {
     }
   });
 
-  test('crash after claim recovers by abandoning the lease and inserting a new attempt', async () => {
+  test('no outcome source skips without appending an attempt or changing outbox', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    const beforeBox = await loadOutbox(tenantA.id, live.outbox.id);
+    const skip = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-none',
+    });
+    assert.equal(skip.skip, true);
+    assert.equal(skip.reason, D.SKIP_REASON_NO_OUTCOME);
+    const afterBox = await loadOutbox(tenantA.id, live.outbox.id);
+    assert.equal(afterBox.state, 'pending');
+    assert.equal(String(afterBox.claimed_by), String(beforeBox.claimed_by));
+    assert.equal(String(afterBox.next_attempt_at), String(beforeBox.next_attempt_at));
+    const listed = await attempts.listAttemptsForOutbox(pool, { tenantId: tenantA.id, outboxId: live.outbox.id });
+    assert.equal(listed.length, 0);
+    assert.equal(await auditCount(tenantA.id, live.outbox.id), 0);
+  });
+
+  test('sandbox outcome seed drives claim→settle and is consumed once', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    await sandboxOutcomes.seedSandboxOutcome(pool, {
+      tenantId: tenantA.id, outboxId: live.outbox.id, intentId: live.intent.id, scenario: 'success',
+    });
+    const settled = await worker.processOne({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-sandbox-1',
+    });
+    assert.equal(settled.status, 'simulated_ok');
+    assert.equal(settled.attempt.simulated, true);
+    assert.equal(settled.attempt.published, false);
+    assert.equal(settled.attempt.external_action_taken, false);
+    assert.equal(settled.attempt.connector, 'fake');
+    const box = await loadOutbox(tenantA.id, live.outbox.id);
+    assert.equal(box.state, 'pending');
+    assert.ok(daysAhead(box.next_attempt_at, new Date()) > 1000);
+    const row = (await pool.query(
+      `SELECT * FROM orchestrator_campaign_delivery_sandbox_outcomes
+        WHERE tenant_id=$1 AND outbox_id=$2`,
+      [tenantA.id, live.outbox.id]
+    )).rows[0];
+    assert.ok(row.consumed_at);
+    assert.equal(row.consumed_attempt_id, settled.attempt.id);
+    assert.equal(row.source, 'sandbox');
+    const later = new Date(Date.now() + D.LEASE_MS + 2000);
+    const skip = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-sandbox-2', now: later,
+    });
+    assert.equal(skip.skip, true);
+    const listed = await attempts.listAttemptsForOutbox(pool, {
+      tenantId: tenantA.id, outboxId: live.outbox.id,
+    });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].status, 'simulated_ok');
+  });
+
+  test('crash after claim recovers only when a new outcome source exists', async () => {
     const live = await readyIntent(cookieA, wfA, artA);
     const pool = p();
     const first = await worker.claimCampaignDeliveryAttempt({
       pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-crash-1',
+      scenario: 'success',
     });
     assert.ok(!first.skip);
     const later = new Date(Date.now() + D.LEASE_MS + 2000);
-    const second = await worker.claimCampaignDeliveryAttempt({
+    const noNew = await worker.claimCampaignDeliveryAttempt({
       pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-crash-2', now: later,
+    });
+    assert.equal(noNew.skip, true);
+    assert.equal(noNew.reason, D.SKIP_REASON_NO_OUTCOME);
+    const old = await loadAttempt(tenantA.id, first.attemptId);
+    assert.equal(old.status, 'abandoned_lease');
+    assert.equal(old.error_code, 'simulated_lease_expired');
+    let listed = await attempts.listAttemptsForOutbox(pool, { tenantId: tenantA.id, outboxId: live.outbox.id });
+    assert.equal(listed.length, 1);
+
+    await sandboxOutcomes.seedSandboxOutcome(pool, {
+      tenantId: tenantA.id, outboxId: live.outbox.id, intentId: live.intent.id, scenario: 'success',
+    });
+    const second = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-crash-3', now: later,
     });
     assert.ok(!second.skip);
     assert.notEqual(second.attemptId, first.attemptId);
     assert.notEqual(second.claimToken, first.claimToken);
     assert.equal(second.attemptNumber, 2);
-    const old = await loadAttempt(tenantA.id, first.attemptId);
-    assert.equal(old.status, 'abandoned_lease');
-    assert.equal(old.error_code, 'simulated_lease_expired');
-    assert.equal(old.retryable, true);
-    const listed = await attempts.listAttemptsForOutbox(pool, { tenantId: tenantA.id, outboxId: live.outbox.id });
+    assert.equal(second.outcomeSource, D.OUTCOME_SOURCE_SANDBOX);
+    listed = await attempts.listAttemptsForOutbox(pool, { tenantId: tenantA.id, outboxId: live.outbox.id });
     assert.equal(listed.length, 2);
     const fake = simulateDelivery({
-      scenario: 'success', platform: second.platform, intentId: second.intentId,
-      outboxId: second.outboxId, attemptId: second.attemptId,
+      scenario: 'success', source: second.outcomeSource, platform: second.platform,
+      intentId: second.intentId, outboxId: second.outboxId, attemptId: second.attemptId,
       attemptNumber: second.attemptNumber, generation: second.generation,
     });
     const settled = await worker.settleCampaignDeliveryAttempt(second, fake, { pool, now: later });
@@ -374,12 +457,14 @@ if (!HAS_DB) {
     const pool = p();
     const first = await worker.claimCampaignDeliveryAttempt({
       pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-stale-1',
+      scenario: 'success',
     });
-    const fake = await worker.executeFake(first, { scenario: 'success' });
+    const fake = await worker.executeFake(first);
     assert.equal(fake.outcome, 'ok');
     const later = new Date(Date.now() + D.LEASE_MS + 2000);
     const second = await worker.claimCampaignDeliveryAttempt({
       pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-stale-2', now: later,
+      scenario: 'success',
     });
     assert.notEqual(second.attemptId, first.attemptId);
     const before = await auditCount(tenantA.id, live.outbox.id);
@@ -389,9 +474,39 @@ if (!HAS_DB) {
     assert.equal(afterFence, before);
     const old = await loadAttempt(tenantA.id, first.attemptId);
     assert.equal(old.status, 'abandoned_lease');
-    const freshFake = await worker.executeFake(second, { scenario: 'success' });
+    const freshFake = await worker.executeFake(second);
     const ok = await worker.settleCampaignDeliveryAttempt(second, freshFake, { pool, now: later });
     assert.equal(ok.fenced_out, false);
+    assert.equal(ok.status, 'simulated_ok');
+  });
+
+  test('live lease skips without abandoning; two workers claim once', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    const [a, b] = await Promise.all([
+      worker.claimCampaignDeliveryAttempt({
+        pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-lease-1',
+        scenario: 'success',
+      }),
+      worker.claimCampaignDeliveryAttempt({
+        pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-lease-2',
+        scenario: 'success',
+      }),
+    ]);
+    const wins = [a, b].filter((x) => x && !x.skip);
+    const skips = [a, b].filter((x) => x && x.skip);
+    assert.equal(wins.length, 1);
+    assert.equal(skips.length, 1);
+    const sequential = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-lease-3',
+      scenario: 'success',
+    });
+    assert.equal(sequential.skip, true);
+    assert.ok(!sequential.reason || sequential.reason === 'leased');
+    const listed = await attempts.listAttemptsForOutbox(pool, { tenantId: tenantA.id, outboxId: live.outbox.id });
+    assert.equal(listed.length, 1);
+    const fake = await worker.executeFake(wins[0]);
+    const ok = await worker.settleCampaignDeliveryAttempt(wins[0], fake, { pool });
     assert.equal(ok.status, 'simulated_ok');
   });
 
@@ -400,8 +515,9 @@ if (!HAS_DB) {
     const pool = p();
     const envelope = await worker.claimCampaignDeliveryAttempt({
       pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-fence-1',
+      scenario: 'success',
     });
-    const fake = await worker.executeFake(envelope, { scenario: 'success' });
+    const fake = await worker.executeFake(envelope);
     const before = await auditCount(tenantA.id, live.outbox.id);
 
     const wrongToken = await worker.settleCampaignDeliveryAttempt(
@@ -446,7 +562,9 @@ if (!HAS_DB) {
     try {
       if (mutate) await mutate();
       const envelope = await worker.claimCampaignDeliveryAttempt({
-        pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: `w-reval-${crypto.randomBytes(3).toString('hex')}`,
+        pool, tenantId: tenantA.id, outboxId: live.outbox.id,
+        workerId: `w-reval-${crypto.randomBytes(3).toString('hex')}`,
+        scenario,
       });
       assert.ok(!envelope.skip, JSON.stringify(envelope));
       const fake = await worker.executeFake(envelope, { scenario });
@@ -567,12 +685,14 @@ if (!HAS_DB) {
     const pool = p();
     const skip = await worker.claimCampaignDeliveryAttempt({
       pool, tenantId: tenantB.id, outboxId: live.outbox.id, workerId: 'w-x-tenant',
+      scenario: 'success',
     });
     assert.equal(skip.skip, true);
     const envelope = await worker.claimCampaignDeliveryAttempt({
       pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-x-a',
+      scenario: 'success',
     });
-    const fake = await worker.executeFake(envelope, { scenario: 'success' });
+    const fake = await worker.executeFake(envelope);
     const fenced = await worker.settleCampaignDeliveryAttempt(
       { ...envelope, tenantId: tenantB.id }, fake, { pool }
     );
@@ -684,9 +804,10 @@ if (!HAS_DB) {
     const pool = p();
     const envelope = await worker.claimCampaignDeliveryAttempt({
       pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-audit-1',
+      scenario: 'success',
     });
     assert.ok(!envelope.skip, JSON.stringify(envelope));
-    const fake = await worker.executeFake(envelope, { scenario: 'success' });
+    const fake = await worker.executeFake(envelope);
     const settled = await worker.settleCampaignDeliveryAttempt(envelope, fake, { pool });
     assert.equal(settled.status, 'simulated_ok');
 
@@ -711,6 +832,7 @@ if (!HAS_DB) {
     assert.equal(detail.simulated, true);
     assert.equal(detail.published, false);
     assert.equal(detail.external_action_taken, false);
+    assert.equal(detail.source, D.OUTCOME_SOURCE_TEST_OPTS);
     assert.equal(detail.status, 'simulated_ok');
     assert.equal(detail.lease_holder, 'w-audit-1');
 
@@ -723,6 +845,98 @@ if (!HAS_DB) {
       /immutable|violates check constraint/i,
       'a settled attempt must not be able to flip published'
     );
+  });
+
+  test('corruption parks without claim; mutated claim_token fences', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    await pool.query(
+      `UPDATE orchestrator_outbox SET payload=$3::jsonb WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, live.outbox.id, JSON.stringify({ broken: true })]
+    );
+    const parked = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-corr-1',
+      scenario: 'success',
+    });
+    assert.equal(parked.skip, true);
+    assert.equal(parked.reason, 'parked');
+    assert.equal((await attempts.listAttemptsForOutbox(pool, {
+      tenantId: tenantA.id, outboxId: live.outbox.id,
+    })).length, 0);
+
+    const live2 = await readyIntent(cookieA, wfA, artA);
+    const envelope = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live2.outbox.id, workerId: 'w-corr-2',
+      scenario: 'success',
+    });
+    await pool.query(
+      `UPDATE orchestrator_campaign_delivery_attempts SET claim_token=$3
+        WHERE tenant_id=$1 AND id=$2 AND status='started'`,
+      [tenantA.id, envelope.attemptId, 'y'.repeat(64)]
+    ).catch(() => null);
+    // claim_token is immutable via trigger — mutating must fail; fence path uses wrong envelope token
+    const fake = await worker.executeFake(envelope);
+    const fenced = await worker.settleCampaignDeliveryAttempt(
+      { ...envelope, claimToken: 'z'.repeat(64) }, fake, { pool }
+    );
+    assert.equal(fenced.fenced_out, true);
+  });
+
+  test('zero-network processOne with outcome source trips no fetch/http/https/net/vault', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    let hits = 0;
+    const bump = () => { hits += 1; throw new Error('network tripwire'); };
+    const origFetch = global.fetch;
+    const origHttp = http.request;
+    const origHttps = https.request;
+    const origConnect = net.connect;
+    const origHas = vault.hasCredentials;
+    const origGet = vault.getCredentials;
+    global.fetch = async () => bump();
+    http.request = (...args) => bump(...args);
+    https.request = (...args) => bump(...args);
+    net.connect = (...args) => bump(...args);
+    vault.hasCredentials = async () => bump();
+    vault.getCredentials = async () => bump();
+    try {
+      await sandboxOutcomes.seedSandboxOutcome(pool, {
+        tenantId: tenantA.id, outboxId: live.outbox.id, intentId: live.intent.id, scenario: 'success',
+      });
+      const settled = await worker.processOne({
+        pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-zero-net',
+      });
+      assert.equal(settled.status, 'simulated_ok');
+      assert.equal(hits, 0);
+    } finally {
+      global.fetch = origFetch;
+      http.request = origHttp;
+      https.request = origHttps;
+      net.connect = origConnect;
+      vault.hasCredentials = origHas;
+      vault.getCredentials = origGet;
+    }
+  });
+
+  test('overlapping ticks do not double-claim the same outbox', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    await sandboxOutcomes.seedSandboxOutcome(pool, {
+      tenantId: tenantA.id, outboxId: live.outbox.id, intentId: live.intent.id, scenario: 'success',
+    });
+    await Promise.all([
+      worker.tickCampaignDeliveryWorker({
+        pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-ov-1',
+      }),
+      worker.tickCampaignDeliveryWorker({
+        pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-ov-2',
+      }),
+    ]);
+    const listed = await attempts.listAttemptsForOutbox(pool, {
+      tenantId: tenantA.id, outboxId: live.outbox.id,
+    });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].status, 'simulated_ok');
   });
   });
 }

@@ -499,12 +499,13 @@ test('the guardrails doc discloses the PR 3A research evidence boundary', () => 
 // PR 6D ships a worker that claims real queued rows. The properties that make
 // that safe are invisible from the outside — there is no route to probe — so
 // they are pinned here as source facts rather than trusted to review memory.
-test('the PR 6D delivery worker has no provider, credential or network sink', () => {
+test('the PR 6D/6E delivery worker has no provider, credential or network sink', () => {
   const root = path.join(__dirname, '..');
   const modules = [
     'services/agent_orchestrator/campaign_delivery_worker.js',
     'services/agent_orchestrator/campaign_delivery_attempts.js',
     'services/agent_orchestrator/campaign_delivery_fake_connector.js',
+    'services/agent_orchestrator/campaign_delivery_sandbox_outcomes.js',
   ];
   for (const rel of modules) {
     const src = fs.readFileSync(path.join(root, rel), 'utf8');
@@ -521,11 +522,15 @@ test('the PR 6D delivery worker has no provider, credential or network sink', ()
   // Dual startup gate. Both halves must be present and the env compare exact.
   assert.match(worker, /if \(!_runtimeFlags\.backgroundEnabled\(\)\) return null;/);
   assert.match(worker, /if \(process\.env\[D\.FLAG_ENV\] !== '1'\) return null;/);
+  assert.match(worker, /if \(workerTimer\) return workerTimer;/);
+  assert.match(worker, /function stopCampaignDeliveryWorker\(/);
+  assert.match(worker, /SKIP_REASON_NO_OUTCOME/);
   // Audit detail is an allowlist, and the fencing secret is not on it.
   assert.match(worker, /const AUDIT_DETAIL_KEYS = Object\.freeze\(\[/);
   const allowlist = worker.slice(worker.indexOf('AUDIT_DETAIL_KEYS'));
   const keys = allowlist.slice(0, allowlist.indexOf(']')).match(/'[a-z_]+'/g) || [];
   assert.ok(keys.length >= 10, 'audit allowlist should be explicit');
+  assert.ok(keys.includes("'source'"), 'audit allowlist records honesty source');
   for (const banned of ["'claim_token'", "'credential_ref'", "'intent_hash'", "'payload'", "'snapshot'"]) {
     assert.ok(!keys.includes(banned), `${banned} must not be audit-loggable`);
   }
@@ -534,8 +539,9 @@ test('the PR 6D delivery worker has no provider, credential or network sink', ()
   assert.match(connector, /published:\s*false/);
   assert.match(connector, /external_action_taken:\s*false/);
   assert.match(connector, /simulated:\s*true/);
+  assert.match(connector, /source/);
 
-  // PR #99's kill switch is what keeps a real mutation denied until PR 6E.
+  // PR #99's kill switch is what keeps a real mutation denied until PR 6F.
   const killSwitch = fs.readFileSync(
     path.join(root, 'services/security/advertising_provider_mutations.js'), 'utf8'
   );
@@ -543,10 +549,11 @@ test('the PR 6D delivery worker has no provider, credential or network sink', ()
   assert.doesNotMatch(killSwitch, /process\.env\.[A-Z_]*ALLOW[A-Z_]*/);
 });
 
-test('the guardrails doc discloses the PR 6D fake delivery worker boundary', () => {
+test('the guardrails doc discloses the PR 6D fake delivery worker and PR 6E sandbox boundary', () => {
   const doc = fs.readFileSync(path.join(__dirname, '../docs/security-guardrails.md'), 'utf8');
   const flat = doc.replace(/\s+/g, ' ');
   assert.match(flat, /## Advertising orchestrator — fake campaign delivery worker \(PR 6D\)/);
+  assert.match(flat, /## Advertising orchestrator — sandbox delivery ops \(PR 6E\)/);
   // Fake-only, and no HTTP way to reach it.
   assert.match(flat, /\*\*The worker simulates\. It does not deliver\.\*\*/);
   assert.match(flat, /There is \*\*no new route, no drain endpoint, no `ROUTE_GROUPS` entry and no `permission_matrix\.js` change\*\*/);
@@ -565,11 +572,12 @@ test('the guardrails doc discloses the PR 6D fake delivery worker boundary', () 
   assert.match(flat, /\*\*cannot reach `completed`, `failed` or `dead_letter`\*\*/);
   // Audit hygiene.
   assert.match(flat, /`claim_token`, `credential_ref`, `intent_hash`, the approval snapshot and the outbox payload are all absent from it/);
-  // PR 6E boundary, including the PAUSED framing.
-  assert.match(flat, /including creating a campaign in `PAUSED` state[\s\S]*?is PR 6E and remains hard-denied today/);
+  // Real mutation deferred to PR 6F; PR 6E is sandbox ops.
+  assert.match(flat, /including creating a campaign in `PAUSED` state[\s\S]*?is \*\*PR 6F\*\* and remains hard-denied today/);
   assert.match(flat, /is byte-identical to `7cd6028a`, has no env escape hatch/);
-  // Residuals an operator has to plan around.
-  assert.match(flat, /\*\*Treat the flag as test\/staging-only until PR 6E supplies a real outcome source\.\*\*/);
+  assert.match(flat, /PR 6E supplies the governed outcome source/);
+  assert.match(flat, /no_outcome_source/);
+  assert.match(flat, /stopCampaignDeliveryWorker\(\)/);
   assert.match(flat, /\*\*The park interval is a date, not a state\.\*\*/);
   // PR 6C's forward reference was wrong once PR 6D landed; it must not survive.
   assert.doesNotMatch(flat, /so PR 6D's resolution step is where the vault boundary gets re-reviewed/);
