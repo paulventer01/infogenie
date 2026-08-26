@@ -207,7 +207,9 @@ test('PR6E sandbox-outcome CREATE TABLE is tenant-leading, consume-once, and ide
   }
 
   const fn = extractFunctionSource(src, 'orchestrator_cdso_guard');
+  assert.match(fn, /TG_OP = 'INSERT'/);
   assert.match(fn, /TG_OP = 'UPDATE'/);
+  assert.match(fn, /NEW\.consumed_at IS NOT NULL OR NEW\.consumed_attempt_id IS NOT NULL/);
   assert.match(fn, /OLD\.consumed_at IS NOT NULL/);
   assert.match(fn, /NEW\.scenario IS DISTINCT FROM OLD\.scenario/);
   assert.match(fn, /NEW\.source IS DISTINCT FROM 'sandbox'/);
@@ -215,7 +217,7 @@ test('PR6E sandbox-outcome CREATE TABLE is tenant-leading, consume-once, and ide
   assert.match(fn, /RAISE EXCEPTION 'orchestrator_cdso_immutable'/);
   assert.match(fn, /RAISE EXCEPTION 'orchestrator_cdso_consume_binding'/);
   assert.match(fn, /FROM tenants t WHERE t\.id = OLD\.tenant_id/);
-  assert.match(src, /BEFORE UPDATE OR DELETE ON orchestrator_campaign_delivery_sandbox_outcomes/);
+  assert.match(src, /BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_delivery_sandbox_outcomes/);
   assert.match(src, /orchestrator_cdso_tenant_outbox_intent_fkey/);
   assert.match(src, /orchestrator_cdso_tenant_consumed_attempt_fkey/);
   assert.match(src, /orchestrator_campaign_delivery_intents_tenant_unique_outbox_id/);
@@ -315,6 +317,72 @@ if (!HAS_DB) {
     assert.ok(attemptFk);
     assert.strictEqual(attemptFk.cols, 'tenant_id,consumed_attempt_id');
     assert.strictEqual(attemptFk.ref_table, 'orchestrator_campaign_delivery_attempts');
+
+    const trigEvents = (await p.query(
+      `SELECT event_manipulation
+         FROM information_schema.triggers
+        WHERE event_object_schema='public'
+          AND event_object_table=$1
+          AND trigger_name='orchestrator_cdso_guard'
+        ORDER BY event_manipulation`,
+      [TABLE]
+    )).rows.map((r) => r.event_manipulation);
+    assert.deepStrictEqual(trigEvents, ['DELETE', 'INSERT', 'UPDATE']);
+  });
+
+  test('direct INSERT cannot birth a consumed outcome; helper remains unconsumed', async () => {
+    const p = db.getPool();
+    const draftId = await insertDraft(p, tenantA, hostA);
+    const pubId = await insertPublishApproval(p, tenantA, hostA, draftId, { actorUserId: userId });
+    const reqId = await insertRequest(p, tenantA, hostA, draftId, pubId, { requestedBy: userId });
+    const bound = await insertBoundIntent(p, tenantA, hostA, draftId, pubId, reqId, { requestedBy: userId });
+
+    const intentRow = (await p.query(
+      `SELECT * FROM orchestrator_campaign_delivery_intents WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, bound.id]
+    )).rows[0];
+    const started = await attempts.insertStartedAttempt(p, {
+      tenantId: tenantA,
+      intentId: bound.id,
+      outboxId: bound.outboxId,
+      draftId: intentRow.draft_id,
+      publishingRequestId: intentRow.publishing_request_id,
+      attemptNumber: 1,
+      generation: 1,
+      leaseHolder: 'born-consumed',
+      leaseExpiresAt: new Date(Date.now() + D.LEASE_MS),
+      platform: 'meta',
+      intentHash: intentRow.intent_hash,
+    });
+
+    await assert.rejects(
+      p.query(
+        `INSERT INTO ${TABLE}
+           (id, tenant_id, outbox_id, intent_id, scenario, source,
+            simulated, published, external_action_taken, consumed_at, consumed_attempt_id)
+         VALUES ($1,$2,$3,$4,'success','sandbox', TRUE, FALSE, FALSE, now(), $5)`,
+        [nid('cdso-born'), tenantA, bound.outboxId, bound.id, started.id]
+      ),
+      /immutable/i,
+      'born-consumed INSERT must be rejected by guard'
+    );
+    await assert.rejects(
+      p.query(
+        `INSERT INTO ${TABLE}
+           (id, tenant_id, outbox_id, intent_id, scenario, source,
+            simulated, published, external_action_taken, consumed_at)
+         VALUES ($1,$2,$3,$4,'success','sandbox', TRUE, FALSE, FALSE, now())`,
+        [nid('cdso-half'), tenantA, bound.outboxId, bound.id]
+      ),
+      /immutable|consume_check|check constraint/i,
+      'partial consumed INSERT must be refused'
+    );
+
+    const seeded = await sandbox.seedSandboxOutcome(p, {
+      tenantId: tenantA, outboxId: bound.outboxId, intentId: bound.id, scenario: 'success',
+    });
+    assert.equal(seeded.consumed_at, null);
+    assert.equal(seeded.consumed_attempt_id, null);
   });
 
   test('seed + consume-once; second unconsumed seed refused; identity frozen; cross-tenant FK refused', async () => {

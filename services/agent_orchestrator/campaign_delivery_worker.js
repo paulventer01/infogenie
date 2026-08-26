@@ -261,6 +261,21 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
       return { skip: true };
     }
     const outbox = picked.rows[0];
+
+    // After locking the outbox, terminalize any expired started lease before
+    // payload / intent / outcome validation parks — so every corruption exit
+    // leaves no live started attempt. Live leases still short-circuit.
+    const latest = await attempts.latestAttemptForOutbox(c, { tenantId, outboxId: outbox.id });
+    if (latest && latest.status === 'started') {
+      if (tsMs(latest.lease_expires_at) > tsMs(now)) {
+        await c.query('COMMIT');
+        return { skip: true, reason: 'leased' };
+      }
+      await attempts.abandonExpiredLease(c, {
+        tenantId, attemptId: latest.id, settledAt: now,
+      });
+    }
+
     const payload = payloadExact(outbox.payload);
     if (!payload) {
       await restorePending(c, {
@@ -277,25 +292,12 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
       await c.query('COMMIT');
       return { skip: true, reason: 'parked' };
     }
-    const latest = await attempts.latestAttemptForOutbox(c, { tenantId, outboxId: outbox.id });
     if (latest && PARK_SET.has(latest.status)) {
       await restorePending(c, {
         tenantId, outboxId: outbox.id, now, days: D.PARK_INTERVAL_DAYS,
       });
       await c.query('COMMIT');
       return { skip: true, reason: 'parked' };
-    }
-
-    // Abandon an expired started attempt before parking corrupt outcomes so
-    // no started attempt remains after a corrupt park.
-    if (latest && latest.status === 'started') {
-      if (tsMs(latest.lease_expires_at) > tsMs(now)) {
-        await c.query('COMMIT');
-        return { skip: true, reason: 'leased' };
-      }
-      await attempts.abandonExpiredLease(c, {
-        tenantId, attemptId: latest.id, settledAt: now,
-      });
     }
 
     const resolved = await resolveOutcomeSource(c, {

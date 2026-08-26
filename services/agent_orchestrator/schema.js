@@ -4162,6 +4162,13 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE OR REPLACE FUNCTION orchestrator_cdso_guard()
     RETURNS trigger AS $fn$
     BEGIN
+      IF TG_OP = 'INSERT' THEN
+        -- Outcomes must be born unconsumed; consume is UPDATE-only.
+        IF NEW.consumed_at IS NOT NULL OR NEW.consumed_attempt_id IS NOT NULL THEN
+          RAISE EXCEPTION 'orchestrator_cdso_immutable';
+        END IF;
+        RETURN NEW;
+      END IF;
       IF TG_OP = 'UPDATE' THEN
         IF OLD.consumed_at IS NOT NULL
            OR NEW.id IS DISTINCT FROM OLD.id
@@ -4201,7 +4208,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
 
     DROP TRIGGER IF EXISTS orchestrator_cdso_guard ON orchestrator_campaign_delivery_sandbox_outcomes;
     CREATE TRIGGER orchestrator_cdso_guard
-      BEFORE UPDATE OR DELETE ON orchestrator_campaign_delivery_sandbox_outcomes
+      BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_delivery_sandbox_outcomes
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_cdso_guard();
   `);

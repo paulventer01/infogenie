@@ -882,6 +882,67 @@ if (!HAS_DB) {
     assert.equal(fenced.fenced_out, true);
   });
 
+  test('expired started attempt is abandoned before malformed-payload park', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    const t0 = new Date();
+    const first = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-mal-lease-1',
+      scenario: 'success', now: t0,
+    });
+    assert.ok(!first.skip, JSON.stringify(first));
+    await pool.query(
+      `UPDATE orchestrator_outbox SET payload=$3::jsonb WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, live.outbox.id, JSON.stringify({ broken: true })]
+    );
+    const later = new Date(t0.getTime() + D.LEASE_MS + 1000);
+    const parked = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-mal-lease-2',
+      now: later,
+    });
+    assert.equal(parked.skip, true);
+    assert.equal(parked.reason, 'parked');
+    const listed = await attempts.listAttemptsForOutbox(pool, {
+      tenantId: tenantA.id, outboxId: live.outbox.id,
+    });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].id, first.attemptId);
+    assert.equal(listed[0].status, 'abandoned_lease');
+    assert.notEqual(listed[0].status, 'started');
+  });
+
+  test('expired started attempt is abandoned before intent/outbox mismatch park', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    const t0 = new Date();
+    const first = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-intent-lease-1',
+      scenario: 'success', now: t0,
+    });
+    assert.ok(!first.skip, JSON.stringify(first));
+    const row = await loadOutbox(tenantA.id, live.outbox.id);
+    const payload = typeof row.payload === 'string' ? JSON.parse(row.payload) : { ...row.payload };
+    payload.intent_id = `mismatch-${Date.now()}`;
+    await pool.query(
+      `UPDATE orchestrator_outbox SET payload=$3::jsonb WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, live.outbox.id, JSON.stringify(payload)]
+    );
+    const later = new Date(t0.getTime() + D.LEASE_MS + 1000);
+    const parked = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-intent-lease-2',
+      now: later,
+    });
+    assert.equal(parked.skip, true);
+    assert.equal(parked.reason, 'parked');
+    const listed = await attempts.listAttemptsForOutbox(pool, {
+      tenantId: tenantA.id, outboxId: live.outbox.id,
+    });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].id, first.attemptId);
+    assert.equal(listed[0].status, 'abandoned_lease');
+    assert.notEqual(listed[0].status, 'started');
+  });
+
   test('>20 older no-outcome rows do not starve a later seeded outbox', async () => {
     const pool = p();
     const older = [];
