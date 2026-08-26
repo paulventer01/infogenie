@@ -2709,8 +2709,10 @@ everything else. `idempotency_key` is deliberately absent from that allowlist;
 - **`credential_ref` reaches an operator-readable row.** That is the existing
   outbox design (an opaque vault handle, screened by shape and by the
   known-secret denylist), not a change made here. The row still resolves to a
-  secret at send time, so PR 6D's resolution step is where the vault boundary
-  gets re-reviewed.
+  secret at send time. PR 6D turned out not to add a resolution step — it
+  compares the handle as an opaque string and never dereferences it — so the
+  vault boundary gets re-reviewed in PR 6E, not PR 6D. See the PR 6D section
+  below.
 
 Coverage: `test/advertising-orchestrator-campaign-delivery-intent-schema.test.js`
 and `test/advertising-orchestrator-campaign-delivery-intents.test.js` (session
@@ -2723,6 +2725,274 @@ secret-prefix denylist, and no secret disclosure in response/outbox/audit), plus
 `test/permission-matrix.test.js` and `test/security-guardrails.test.js` for the
 matrix and CSRF/production defaults this route inherits. The prose in this
 section is not itself pinned by a test.
+
+## Advertising orchestrator — fake campaign delivery worker (PR 6D)
+
+PR 6D adds the consumer that PR 6C deliberately left absent: one tenant-scoped
+append-only table (`orchestrator_campaign_delivery_attempts`) and three modules
+(`campaign_delivery_worker.js`, `campaign_delivery_attempts.js`,
+`campaign_delivery_fake_connector.js`), plus worker constants appended to
+`campaign_delivery_contracts.js`. `campaign_api.js` gains exactly one line — a
+bare `require('./campaign_delivery_worker')` — and `campaign_delivery_intents.js`
+only widens its `module.exports` so the worker can reuse the PR 6C
+authorization helpers; neither file changes behaviour.
+
+**The worker simulates. It does not deliver.** There is no connector to a
+provider, no `fetch`, no HTTP or SDK client, no vault read and no credential
+resolution anywhere on this path. `create_provider_draft` names the *intent*
+recorded in PR 6C, not an effect: nothing outside Postgres is contacted, and
+every attempt row is written `simulated = TRUE`, `published = FALSE`,
+`external_action_taken = FALSE`.
+
+### No HTTP surface and no matrix change
+
+There is **no new route, no drain endpoint, no `ROUTE_GROUPS` entry and no
+`permission_matrix.js` change**. The worker is reachable only from its own
+`setInterval` and from direct module imports in tests; nothing in `campaign_api.js`
+or `server.js` exposes claim, execute or settle to a caller. Because there is no
+request, there is no caller-supplied tenant: the tenant is read off the outbox
+row the worker itself selected.
+
+### Dual startup gate, default off
+
+`startCampaignDeliveryWorker()` runs at require time and returns `null` — no
+timer, no work — unless **both** conditions hold:
+
+1. `services/runtime_flags.backgroundEnabled()` is true. That is set once, at
+   `server.js:75`, to `require.main === module`, so it is true only in the real
+   Express process and false for every `buildApp()`/`bootApp()` consumer, for the
+   Next front door, and for any module that merely imports the router.
+2. `process.env.INFOGENIE_CAMPAIGN_DELIVERY_WORKER === '1'` — an exact string
+   compare. Unset, `'0'`, `'true'` and `'yes'` all leave the worker off.
+
+Neither gate alone starts the timer, and the require in `campaign_api.js` happens
+well after `setBackground`, so the ordering is not accidental. The default
+production posture with the variable unset is **no worker at all**.
+
+### Claim, execute, settle are three separate boundaries
+
+The transaction never spans the simulation.
+
+- **Claim** opens one transaction, selects a due `create_provider_draft` /
+  `internal` outbox row `FOR UPDATE SKIP LOCKED`, appends a `started` attempt,
+  flips the outbox to `processing` with `claimed_by`/`claimed_until`, and
+  `COMMIT`s. It returns a frozen envelope (tenant, outbox, intent, attempt,
+  attempt number, generation, `claim_token`, lease holder, lease expiry,
+  platform).
+- **Execute** runs `simulateDelivery` with **no transaction and no pooled client
+  held**. The connector is a pure function over `SCENARIO_MAP` that returns a
+  frozen result; it imports nothing but `errors` and the contracts module.
+- **Settle** opens a second transaction, re-locks the attempt and the outbox, and
+  fences before it writes anything.
+
+`fenceOk` requires the tenant id, attempt id, outbox id, attempt number,
+generation, `claim_token` and `lease_holder` from the envelope to match the
+locked rows; the attempt to still be `started`; the outbox to still be
+`processing` with `claimed_by` equal to the attempt's lease holder and
+`claimed_until` equal to `lease_expires_at` to the millisecond; and the lease to
+be unexpired. Any mismatch is `ROLLBACK` plus `{ fenced_out: true }` — no
+terminalization, no outbox write, no audit row. `terminalizeAttempt` then
+compare-and-swaps on `status = 'started'` as a second fence, so two workers
+racing the same attempt cannot both settle it.
+
+`claim_token` is 32 bytes from `crypto.randomBytes`, unique per
+`(tenant_id, claim_token)`. It is the fencing secret: `publicAttempt` omits it,
+the audit allowlist omits it, and no log line carries it.
+
+A worker that dies after claiming leaves an attempt `started`; the next claim
+sees the expired lease, terminalizes it `abandoned_lease` /
+`simulated_lease_expired`, and appends a fresh attempt. The dead worker's late
+settle is then fenced out on `claim_token`.
+
+### Append-only attempt ledger
+
+`PRIMARY KEY (tenant_id, id)`; uniques `(tenant_id, outbox_id, attempt_number)`,
+`(tenant_id, outbox_id, generation)` and `(tenant_id, claim_token)`; every parent
+reference is a composite `(tenant_id, …)` FK to the intent, outbox, draft and
+publish request, so an attempt in tenant A cannot bind to a row in tenant B.
+
+`orchestrator_campaign_delivery_attempts_guard` fires `BEFORE UPDATE OR DELETE`:
+
+- An `UPDATE` is permitted **only** as `started` → non-`started`, and only when
+  `id`, `tenant_id`, `intent_id`, `outbox_id`, `draft_id`,
+  `publishing_request_id`, `attempt_number`, `generation`, `claim_token`,
+  `lease_holder`, `lease_expires_at`, `platform`, `intent_hash`,
+  `contract_version`, `operation`, `connector` and `started_at` are all
+  unchanged. Re-opening a terminal row, re-terminalizing it, or rewriting its
+  identity raises.
+- A `DELETE` raises unless the owning `tenants` row is already gone, so history
+  is prunable only by tenant teardown.
+
+Retries therefore **append**; they never edit. `connector` is CHECKed to `'fake'`
+and `contract_version`/`operation` to `campaign_delivery_v1` /
+`create_provider_draft`, so a row produced by some future real connector cannot
+be stored under this table's guarantees without a DDL change.
+
+**`published` and `external_action_taken` cannot become true.** A row-level CHECK
+asserts `simulated = TRUE AND published = FALSE AND external_action_taken =
+FALSE` on insert, and the trigger re-asserts all three on update. A direct `psql`
+`UPDATE … SET published = TRUE` is refused.
+
+### Settlement re-authorizes from the database — without touching credentials
+
+PR 6C warned that a queued row must be re-authorized at send time rather than
+trusted for its age. `revalidateOnClient` does that inside the settle
+transaction, under `FOR UPDATE`, before the fake result is mapped:
+
+- the outbox payload must still parse to the exact eight-key shape with the
+  pinned contract version, operation and an enum platform;
+- the intent is locked and must still match the outbox, draft, publish request
+  and `intent_hash`, and must still be `pending` / `create_provider_draft`;
+- the publish request is locked via `lockPublishRequest` and checked against the
+  authoritative approval by `assertRequestMatchesAuthorized`;
+- `assertPublishAuthorizedOnClient` re-runs the PR 6B/6C approval check — the
+  draft must still be `approved_for_publish`, the approval unrevoked and
+  unexpired, the snapshot authoritative;
+- the actor is re-derived by `boundActorId` from the approval **and** its
+  snapshot, must equal both `reqRow.requested_by` and `intent.requested_by`, and
+  must still hold an `active` `tenant_users` row;
+- the platform and `credential_ref` binding is re-derived from the approved
+  revision's contract and must equal both the outbox column and the payload;
+- the eleven-field `intent_hash` is recomputed and must equal the intent's and
+  the attempt's.
+
+**None of this reads a secret.** The module calls no `checkCredentials`,
+`getCredentials` or `hasCredentials`, and does not require
+`services/credentials/vault`. `credential_ref` is compared as an opaque string
+and is never dereferenced. Any failure is an `OrchError`, and the attempt
+terminalizes `authorization_rejected` with the sanitized code and parks — so a
+connector that reports success cannot overturn an approval that was revoked,
+expired or edited after the row was queued.
+
+### The outbox only ever returns to `pending`
+
+The worker writes exactly two outbox states: `processing` on claim, and
+`pending` on every exit path. It does not import `outbox.complete` or
+`outbox.fail`, so a `create_provider_draft` row **cannot reach `completed`,
+`failed` or `dead_letter`**, and `attempt_count`, `last_error_code` and
+`completed_at` are never touched.
+
+- A retryable outcome restores `pending` with `next_attempt_at = now +
+  min(300, 2^n)` seconds.
+- A terminal outcome restores `pending` with `now + 36500 days`, parking the row
+  beyond any operational horizon rather than inventing a terminal state.
+- A malformed payload, an intent that no longer matches its outbox, or a latest
+  attempt already in `TERMINAL_PARK_STATUSES` parks the same way **without**
+  appending an attempt.
+- `publicOutbox` still refuses any state other than `pending`, so the settle
+  return value is a second check on this property.
+
+The dead-letter concept lives on the attempt row (`dead_letter_permanent`,
+`dead_letter_malformed`, `dead_letter_blocked`), not on the shared outbox.
+`MAX_ATTEMPTS = 8` converts the eighth retryable outcome to
+`dead_letter_permanent` / `simulated_retry_exhausted`. `PER_TENANT_CAP = 20`
+bounds one tick per tenant and a module-level `tickActive` latch prevents
+overlapping ticks in a process.
+
+Nothing else can drain these rows: `outbox.claim`'s only callers remain
+`generation_jobs.js` (`static_image_generate`) and `video_jobs.js`
+(`video_generate`), both of which pass an `operation` filter and park a mismatch
+back to `pending`.
+
+### Tenant isolation
+
+Every statement in `campaign_delivery_worker.js` and
+`campaign_delivery_attempts.js` carries `WHERE tenant_id = $1`, and the tenant is
+taken from the selected outbox row rather than from any caller. The single
+exception is the tick's `SELECT DISTINCT tenant_id FROM orchestrator_outbox …`
+discovery query, which returns tenant ids and no tenant data, and matches the
+pattern already used by `generation_jobs.js` and `video_jobs.js`; each id is then
+worked in its own tenant-scoped pass. A claim envelope from tenant A cannot
+settle a row in tenant B — `lockAttempt` and `lockOutbox` are tenant-scoped and
+`fenceOk` re-compares `tenant_id`. The tenant read, write and schema audits pass
+with **no new allowlist entry**.
+
+### Audit and log hygiene
+
+One `orchestrator_audit_events` row is written per settled attempt, with
+`tenant_id`, the outbox row's `workflow_id`, `event =
+'campaign_delivery_attempt_simulated'`, and `actor_user_id` from the revalidated
+approval (null when revalidation failed). `detail` is built by a **16-key
+allowlist** that truncates strings to 120 characters and drops everything else:
+`claim_token`, `credential_ref`, `intent_hash`, the approval snapshot and the
+outbox payload are all absent from it. Every row records `simulated: true`,
+`published: false`, `external_action_taken: false`. A fenced-out settle writes no
+audit row at all.
+
+The worker emits exactly one log line, `campaign_delivery_worker_failed`, with a
+tenant id and an error code re-matched against `^[a-z0-9_]{1,40}$` — anything
+else becomes `internal_error` — so a driver or provider message cannot reach the
+log. `error_code` is CHECKed against the same pattern in the DDL.
+
+### PR 6E boundary — real mutation is still hard-denied
+
+PR 6D creates no provider object. **A real provider mutation — including creating
+a campaign in `PAUSED` state, which is the obvious "harmless" first step — is PR
+6E and remains hard-denied today.**
+`services/security/advertising_provider_mutations.js` is byte-identical to
+`7cd6028a`, has no env escape hatch, and PR 6D neither calls it nor routes around
+it, because it performs no mutation to guard.
+
+When PR 6E replaces the fake connector it must:
+
+- call `assertAdvertisingProviderMutationAllowed` **before** credential lookup,
+  vault access or network I/O, exactly as every other lowest-level mutation
+  helper does;
+- resolve `credential_ref` through `services/credentials/vault.js` at send time,
+  and never persist, return or log the resolved secret;
+- keep `revalidateOnClient` **and** add the credential presence/ownership check
+  that PR 6D deliberately omits, since an approval can outlive a disconnected
+  integration;
+- treat `published` and `external_action_taken` as needing a new DDL story —
+  today's CHECK and trigger refuse `TRUE` outright — and re-derive an
+  external-id/idempotency story, because the attempt table stores no provider or
+  external id;
+- keep the outbox pending-only contract or replace it deliberately; a real send
+  makes "restore to `pending`" a retry of a possibly-completed external action.
+
+### Accepted residuals (PR 6D)
+
+- **The production worker has no outcome source, so it does no useful work.**
+  `scenario` is an `opts` field with no env var, column or payload source, and
+  `startCampaignDeliveryWorker` ticks with no options. A process started with
+  `INFOGENIE_CAMPAIGN_DELIVERY_WORKER=1` therefore claims a row,
+  `simulateDelivery` raises `validation_failed`, the throw is caught and logged,
+  and the attempt is left `started` until its 30s lease expires and is recycled
+  as `abandoned_lease`. This is fail-closed — nothing is published, nothing
+  settles, no secret moves — but it is a claim-and-abandon loop against the
+  PR 6C backlog, and `abandoned_lease` is not subject to `MAX_ATTEMPTS`, so
+  `attempt_number` grows while the flag is on. **Treat the flag as
+  test/staging-only until PR 6E supplies a real outcome source.**
+- **`assertActiveMember` still reads without `FOR UPDATE`.** Inherited verbatim
+  from PR 6B/6C and now also on the settle path: a suspension committing between
+  the check and the commit is not serialized against this write.
+- **The park interval is a date, not a state.** A terminal attempt leaves the
+  outbox `pending` roughly 100 years out. Any future operator tool that re-drives
+  outbox rows by resetting `next_attempt_at` would un-park a dead-lettered
+  delivery; the compensating control is the `TERMINAL_PARK_STATUSES` check on
+  re-claim, which re-parks without appending an attempt.
+- **`setInterval` is not `unref`'d.** While the flag is on, the timer keeps the
+  Express event loop alive. Same as the existing generation and video workers.
+- **`publicOutbox` runs after `COMMIT`** in settle. If it ever threw, the caller
+  would see an exception for a row that is already committed and correctly
+  `pending`; no state would be wrong, only the return value lost.
+- **`intent_hash` is still a fingerprint, not a signature** (PR 6C residual,
+  unchanged). The attempt row copies it and the settle path compares it; that
+  detects drift, it does not attest authorship.
+
+Coverage: `test/advertising-orchestrator-campaign-delivery-attempt-schema.test.js`
+(tenant-leading PK, composite FKs, cross-tenant FK refusal, the
+published/external CHECK, single terminalization, immutability, tenant cascade,
+idempotent re-ensure), `test/advertising-orchestrator-campaign-delivery-attempts.test.js`
+(claim-token entropy and uniqueness, `publicAttempt` stripping `claim_token` /
+`credential_ref` / `intent_hash`, append-only history),
+`test/advertising-orchestrator-campaign-delivery-fake-connector.test.js`,
+`test/advertising-orchestrator-campaign-delivery-worker.test.js` (flag matrix,
+claim-commits-before-execute with a network tripwire, crash and stale-settle
+fencing, revalidation refusals, cross-tenant claim and settle, retry/park
+scheduling, retry exhaustion, tick overlap, and the audit secret-hygiene check),
+and `test/security-guardrails.test.js` for the no-provider-sink source scan and
+the claims in this section.
 
 ## Advertising provider-write bypass closure
 
@@ -2754,8 +3024,9 @@ and other read-only pixel-manager routes stay available.
 
 Preserved (not provider mutations): read-only ad insights/analysis, campaign
 drafting and human approval, creative generation, guarded publishing requests,
-PR 6C delivery intents (`published: false`, `external_action_taken: false`),
-and request-only guarantees.
+PR 6C delivery intents and the PR 6D fake delivery worker (both
+`published: false`, `external_action_taken: false`, no vault read and no
+outbound I/O), and request-only guarantees.
 
 Coverage: `test/advertising-provider-write-bypass.test.js` (authenticated
 session, `INFOGENIE_API_KEY`, manual HTTP routes, scheduled job/timer entry
