@@ -162,7 +162,8 @@ test('source: session-human routes, exact permission, no provider/network/vault/
 
   assert.match(SRC_CONF, /assertActiveMember/);
   assert.match(SRC_CONF, /latestAttemptForOutbox/);
-  assert.match(SRC_CONF, /SELECT now\(\) AS now/);
+  assert.match(SRC_CONF, /SELECT clock_timestamp\(\) AS now/);
+  assert.doesNotMatch(SRC_CONF, /const nowMs = Date\.now\(\)/);
   assert.match(SRC_CONF, /lease_expires_at/);
   assert.match(SRC_CONF, /lease_conflict/);
   assert.match(SRC_CONF, /lockPublishRequest/);
