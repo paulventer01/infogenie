@@ -399,6 +399,7 @@ test('PR6F-0 CREATE TABLE is tenant-leading, digest-only, TTL-capped, and omits 
   assert.doesNotMatch(chalCreate, /phrase_digest/);
   assert.doesNotMatch(chalCreate, /\bconfirmation_phrase\b/);
   assert.doesNotMatch(chalCreate, /\bprovider_id\b/);
+  assert.doesNotMatch(chalCreate, /\bpage_id\b/i, `${CHALLENGE_TABLE} must not declare page_id`);
   assert.doesNotMatch(chalCreate, FORBIDDEN_SECRET_RE);
   for (const col of FORBIDDEN_COLUMNS) {
     assert.doesNotMatch(chalCreate, new RegExp(`\\b${col}\\b`, 'i'), `${CHALLENGE_TABLE} must not declare ${col}`);
@@ -414,6 +415,7 @@ test('PR6F-0 CREATE TABLE is tenant-leading, digest-only, TTL-capped, and omits 
   assert.match(confCreate, /phrase_salt TEXT NOT NULL/);
   assert.match(confCreate, /phrase_digest TEXT NOT NULL/);
   assert.doesNotMatch(confCreate, /\bconfirmation_phrase\b/);
+  assert.doesNotMatch(confCreate, /\bpage_id\b/i, `${CONFIRM_TABLE} must not declare page_id`);
   assert.doesNotMatch(confCreate, FORBIDDEN_SECRET_RE);
   for (const col of FORBIDDEN_COLUMNS) {
     assert.doesNotMatch(confCreate, new RegExp(`\\b${col}\\b`, 'i'), `${CONFIRM_TABLE} must not declare ${col}`);
