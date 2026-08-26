@@ -470,3 +470,30 @@ test('advertising optimizer runners deny before all DB/provider/AI preparation',
     assertNoPreparationSince(before, 'Google scheduled callbacks');
   });
 });
+
+// PR 6F-0 introduced the narrow provider-draft capability. A cron/timer runner
+// must not be able to acquire one, and none of these runners even knows the
+// module exists — so the denial they hit is still the unconditional one.
+test('advertising runners cannot acquire a PR 6F-0 provider-draft capability', () => {
+  const fs = require('node:fs');
+  const files = [
+    'services/optimizer/bandit.js',
+    'services/optimizer/google_bandit.js',
+    'services/optimizer/creative_refresh.js',
+    'services/optimizer/google_creative_refresh.js',
+    'services/optimizer/platforms.js',
+    'services/optimizer/rules.js',
+    'services/agent_orchestrator/campaign_delivery_worker.js',
+  ];
+  for (const rel of files) {
+    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    assert.doesNotMatch(src, /advertising_provider_capabilities/, rel + ' does not import the capability module');
+    assert.doesNotMatch(src, /mintMetaCreateProviderDraftCapability/, rel + ' mints no capability');
+    assert.doesNotMatch(src, /withAdvertisingProviderExecutionTransaction/, rel + ' opens no execution scope');
+  }
+  // The kill switch these runners call is still unconditional and env-free.
+  assert.equal(realGuard.isAdvertisingProviderMutationAllowed(), false);
+  const guardSrc = fs.readFileSync(
+    path.join(ROOT, 'services/security/advertising_provider_mutations.js'), 'utf8');
+  assert.doesNotMatch(guardSrc, /process\.env/);
+});

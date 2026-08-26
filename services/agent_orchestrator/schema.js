@@ -89,6 +89,11 @@ const ADVERTISING_ORCH_TABLES = [
   // PR 6E — tenant-scoped append-only/consume-once sandbox outcome rows for
   // the fake delivery worker (no HTTP, no vault, no provider IDs).
   'orchestrator_campaign_delivery_sandbox_outcomes',
+  // PR 6F-0 — tenant-owned Meta credential-reference metadata + provider
+  // challenge/confirmation (no object ledger, no secrets, no provider IDs).
+  'orchestrator_tenant_meta_credential_refs',
+  'orchestrator_campaign_provider_challenges',
+  'orchestrator_campaign_provider_confirmations',
 ];
 
 const RESEARCH_RETENTION_EXPIRY_SQL =
@@ -4211,6 +4216,777 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_delivery_sandbox_outcomes
       FOR EACH ROW
       EXECUTE FUNCTION orchestrator_cdso_guard();
+  `);
+
+  // PR 6F-0 — tenant-owned Meta credential-reference metadata and
+  // provider challenge / execution confirmation. Reference metadata
+  // only: no secret material, provider IDs, access tokens, or object
+  // ledger. Challenge TTL is capped at 5 minutes; confirmation TTL at
+  // 2 minutes. Confirmation phrases are salted digests only.
+  await _ensureNamedUnique(p, 'orchestrator_campaign_delivery_attempts',
+    'orchestrator_cda_tenant_unique_id_bind',
+    'tenant_id, id, outbox_id, intent_id');
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_tenant_meta_credential_refs (
+      id TEXT NOT NULL,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      platform TEXT NOT NULL DEFAULT 'meta',
+      environment TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      account_fingerprint TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+      revoked_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_tmcr_tenant_unique_fp_ver
+        UNIQUE (tenant_id, account_fingerprint, version),
+      CONSTRAINT orchestrator_tmcr_platform_check CHECK (platform = 'meta'),
+      CONSTRAINT orchestrator_tmcr_environment_check CHECK (environment IN ('test','sandbox')),
+      CONSTRAINT orchestrator_tmcr_status_check CHECK (status IN ('active','revoked')),
+      CONSTRAINT orchestrator_tmcr_revoke_check CHECK (
+        (status = 'active' AND revoked_at IS NULL)
+        OR (status = 'revoked' AND revoked_at IS NOT NULL AND revoked_at >= created_at)
+      ),
+      CONSTRAINT orchestrator_tmcr_version_check CHECK (version >= 1),
+      CONSTRAINT orchestrator_tmcr_fingerprint_check CHECK (
+        char_length(account_fingerprint)=64 AND account_fingerprint ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_tmcr_len_check CHECK (
+        char_length(id) BETWEEN 1 AND 128
+      )
+    );
+  `);
+  await p.query(`ALTER TABLE orchestrator_tenant_meta_credential_refs
+    ADD COLUMN IF NOT EXISTS id TEXT,
+    ADD COLUMN IF NOT EXISTS tenant_id INTEGER,
+    ADD COLUMN IF NOT EXISTS platform TEXT,
+    ADD COLUMN IF NOT EXISTS environment TEXT,
+    ADD COLUMN IF NOT EXISTS status TEXT,
+    ADD COLUMN IF NOT EXISTS account_fingerprint TEXT,
+    ADD COLUMN IF NOT EXISTS version INTEGER,
+    ADD COLUMN IF NOT EXISTS owner_user_id INTEGER,
+    ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ`);
+  await _ensureNamedUnique(p, 'orchestrator_tenant_meta_credential_refs',
+    'orchestrator_tmcr_tenant_unique_fp_ver',
+    'tenant_id, account_fingerprint, version');
+  await _ensureNamedCheck(p, 'orchestrator_tenant_meta_credential_refs',
+    'orchestrator_tmcr_platform_check', `platform = 'meta'`);
+  await _ensureNamedCheck(p, 'orchestrator_tenant_meta_credential_refs',
+    'orchestrator_tmcr_environment_check', `environment IN ('test','sandbox')`);
+  await _ensureNamedCheck(p, 'orchestrator_tenant_meta_credential_refs',
+    'orchestrator_tmcr_status_check', `status IN ('active','revoked')`);
+  await _ensureNamedCheck(p, 'orchestrator_tenant_meta_credential_refs',
+    'orchestrator_tmcr_revoke_check',
+    `(status = 'active' AND revoked_at IS NULL)
+     OR (status = 'revoked' AND revoked_at IS NOT NULL AND revoked_at >= created_at)`);
+  await _ensureNamedCheck(p, 'orchestrator_tenant_meta_credential_refs',
+    'orchestrator_tmcr_version_check', `version >= 1`);
+  await _ensureNamedCheck(p, 'orchestrator_tenant_meta_credential_refs',
+    'orchestrator_tmcr_fingerprint_check',
+    `char_length(account_fingerprint)=64 AND account_fingerprint ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_tenant_meta_credential_refs',
+    'orchestrator_tmcr_len_check', `char_length(id) BETWEEN 1 AND 128`);
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_tmcr_tenant_unique_active_fp
+      ON orchestrator_tenant_meta_credential_refs (tenant_id, account_fingerprint)
+      WHERE status = 'active';
+    CREATE INDEX IF NOT EXISTS idx_tmcr_tenant_owner
+      ON orchestrator_tenant_meta_credential_refs (tenant_id, owner_user_id);
+  `);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_tmcr_guard()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'INSERT' THEN
+        IF NEW.status IS DISTINCT FROM 'active' OR NEW.revoked_at IS NOT NULL THEN
+          RAISE EXCEPTION 'orchestrator_tmcr_immutable';
+        END IF;
+        RETURN NEW;
+      END IF;
+      IF TG_OP = 'UPDATE' THEN
+        IF OLD.status IS DISTINCT FROM 'active'
+           OR NEW.status IS DISTINCT FROM 'revoked'
+           OR NEW.revoked_at IS NULL
+           OR NEW.id IS DISTINCT FROM OLD.id
+           OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+           OR NEW.platform IS DISTINCT FROM OLD.platform
+           OR NEW.platform IS DISTINCT FROM 'meta'
+           OR NEW.environment IS DISTINCT FROM OLD.environment
+           OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+           OR NEW.version IS DISTINCT FROM OLD.version
+           OR NEW.owner_user_id IS DISTINCT FROM OLD.owner_user_id
+           OR NEW.created_at IS DISTINCT FROM OLD.created_at
+           OR OLD.revoked_at IS NOT NULL
+        THEN
+          RAISE EXCEPTION 'orchestrator_tmcr_immutable';
+        END IF;
+        RETURN NEW;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_tmcr_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_tmcr_guard ON orchestrator_tenant_meta_credential_refs;
+    CREATE TRIGGER orchestrator_tmcr_guard
+      BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_tenant_meta_credential_refs
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_tmcr_guard();
+  `);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_provider_challenges (
+      id TEXT NOT NULL,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      draft_id TEXT NOT NULL,
+      revision INTEGER NOT NULL,
+      publish_approval_id TEXT NOT NULL,
+      workflow_approval_id INTEGER NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      outbox_id TEXT NOT NULL,
+      attempt_id TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL,
+      generation INTEGER NOT NULL,
+      contract_hash TEXT NOT NULL,
+      snapshot_hash TEXT NOT NULL,
+      intent_hash TEXT NOT NULL,
+      request_hash TEXT NOT NULL,
+      claim_token_hash TEXT NOT NULL,
+      contract_version TEXT NOT NULL DEFAULT 'campaign_delivery_v1',
+      operation TEXT NOT NULL DEFAULT 'create_provider_draft',
+      platform TEXT NOT NULL DEFAULT 'meta',
+      phrase_salt TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      idempotency_key TEXT NOT NULL,
+      requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      consumed_at TIMESTAMPTZ NULL,
+      consumed_confirmation_id TEXT NULL,
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_cpc_tenant_unique_idemp
+        UNIQUE (tenant_id, idempotency_key),
+      CONSTRAINT orchestrator_cpc_tenant_unique_attempt
+        UNIQUE (tenant_id, attempt_id),
+      CONSTRAINT orchestrator_cpc_status_check CHECK (status IN ('open','consumed')),
+      CONSTRAINT orchestrator_cpc_consume_check CHECK (
+        (status = 'open' AND consumed_at IS NULL AND consumed_confirmation_id IS NULL)
+        OR (status = 'consumed' AND consumed_at IS NOT NULL AND consumed_confirmation_id IS NOT NULL
+            AND consumed_at >= created_at)
+      ),
+      CONSTRAINT orchestrator_cpc_ttl_check CHECK (
+        expires_at > created_at AND expires_at <= created_at + INTERVAL '5 minutes'
+      ),
+      CONSTRAINT orchestrator_cpc_frozen_check CHECK (
+        contract_version = 'campaign_delivery_v1'
+        AND operation = 'create_provider_draft'
+        AND platform = 'meta'
+      ),
+      CONSTRAINT orchestrator_cpc_revision_check CHECK (revision >= 1),
+      CONSTRAINT orchestrator_cpc_generation_check CHECK (generation >= 1),
+      CONSTRAINT orchestrator_cpc_salt_check CHECK (
+        char_length(phrase_salt)=64 AND phrase_salt ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpc_contract_hash_check CHECK (
+        char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpc_snapshot_hash_check CHECK (
+        char_length(snapshot_hash)=64 AND snapshot_hash ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpc_intent_hash_check CHECK (
+        char_length(intent_hash)=64 AND intent_hash ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpc_request_hash_check CHECK (
+        char_length(request_hash)=64 AND request_hash ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpc_claim_hash_check CHECK (
+        char_length(claim_token_hash)=64 AND claim_token_hash ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpc_len_check CHECK (
+        char_length(id) BETWEEN 1 AND 128
+        AND char_length(draft_id) BETWEEN 1 AND 128
+        AND char_length(publish_approval_id) BETWEEN 1 AND 128
+        AND char_length(publishing_request_id) BETWEEN 1 AND 128
+        AND char_length(intent_id) BETWEEN 1 AND 128
+        AND char_length(outbox_id) BETWEEN 1 AND 128
+        AND char_length(attempt_id) BETWEEN 1 AND 128
+        AND char_length(credential_ref_id) BETWEEN 1 AND 128
+        AND char_length(idempotency_key) BETWEEN 1 AND 256
+        AND (consumed_confirmation_id IS NULL
+             OR char_length(consumed_confirmation_id) BETWEEN 1 AND 128)
+      )
+    );
+  `);
+  await p.query(`ALTER TABLE orchestrator_campaign_provider_challenges
+    ADD COLUMN IF NOT EXISTS id TEXT,
+    ADD COLUMN IF NOT EXISTS tenant_id INTEGER,
+    ADD COLUMN IF NOT EXISTS draft_id TEXT,
+    ADD COLUMN IF NOT EXISTS revision INTEGER,
+    ADD COLUMN IF NOT EXISTS publish_approval_id TEXT,
+    ADD COLUMN IF NOT EXISTS workflow_approval_id INTEGER,
+    ADD COLUMN IF NOT EXISTS publishing_request_id TEXT,
+    ADD COLUMN IF NOT EXISTS intent_id TEXT,
+    ADD COLUMN IF NOT EXISTS outbox_id TEXT,
+    ADD COLUMN IF NOT EXISTS attempt_id TEXT,
+    ADD COLUMN IF NOT EXISTS credential_ref_id TEXT,
+    ADD COLUMN IF NOT EXISTS generation INTEGER,
+    ADD COLUMN IF NOT EXISTS contract_hash TEXT,
+    ADD COLUMN IF NOT EXISTS snapshot_hash TEXT,
+    ADD COLUMN IF NOT EXISTS intent_hash TEXT,
+    ADD COLUMN IF NOT EXISTS request_hash TEXT,
+    ADD COLUMN IF NOT EXISTS claim_token_hash TEXT,
+    ADD COLUMN IF NOT EXISTS contract_version TEXT,
+    ADD COLUMN IF NOT EXISTS operation TEXT,
+    ADD COLUMN IF NOT EXISTS platform TEXT,
+    ADD COLUMN IF NOT EXISTS phrase_salt TEXT,
+    ADD COLUMN IF NOT EXISTS status TEXT,
+    ADD COLUMN IF NOT EXISTS idempotency_key TEXT,
+    ADD COLUMN IF NOT EXISTS requested_by INTEGER,
+    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS consumed_confirmation_id TEXT`);
+  await _ensureNamedUnique(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_unique_idemp', 'tenant_id, idempotency_key');
+  await _ensureNamedUnique(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_unique_attempt', 'tenant_id, attempt_id');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_draft_fkey',
+    'tenant_id, draft_id', 'orchestrator_campaign_drafts', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_rev_fkey',
+    'tenant_id, draft_id, revision', 'orchestrator_campaign_draft_revisions',
+    'tenant_id, draft_id, revision',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_pub_appr_fkey',
+    'tenant_id, publish_approval_id', 'orchestrator_campaign_publish_approvals',
+    'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_wf_appr_fkey',
+    'tenant_id, workflow_approval_id', 'orchestrator_approvals', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_pub_req_fkey',
+    'tenant_id, publishing_request_id', 'orchestrator_campaign_publish_requests',
+    'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_intent_fkey',
+    'tenant_id, intent_id', 'orchestrator_campaign_delivery_intents', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_outbox_fkey',
+    'tenant_id, outbox_id', 'orchestrator_outbox', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_outbox_intent_fkey',
+    'tenant_id, outbox_id, intent_id',
+    'orchestrator_campaign_delivery_intents', 'tenant_id, outbox_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_attempt_fkey',
+    'tenant_id, attempt_id', 'orchestrator_campaign_delivery_attempts', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_attempt_bind_fkey',
+    'tenant_id, attempt_id, outbox_id, intent_id',
+    'orchestrator_campaign_delivery_attempts', 'tenant_id, id, outbox_id, intent_id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_cred_ref_fkey',
+    'tenant_id, credential_ref_id', 'orchestrator_tenant_meta_credential_refs',
+    'tenant_id, id',
+    'ON DELETE NO ACTION');
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_status_check', `status IN ('open','consumed')`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_consume_check',
+    `(status = 'open' AND consumed_at IS NULL AND consumed_confirmation_id IS NULL)
+     OR (status = 'consumed' AND consumed_at IS NOT NULL AND consumed_confirmation_id IS NOT NULL
+         AND consumed_at >= created_at)`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_ttl_check',
+    `expires_at > created_at AND expires_at <= created_at + INTERVAL '5 minutes'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_frozen_check',
+    `contract_version = 'campaign_delivery_v1'
+     AND operation = 'create_provider_draft'
+     AND platform = 'meta'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_revision_check', `revision >= 1`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_generation_check', `generation >= 1`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_salt_check',
+    `char_length(phrase_salt)=64 AND phrase_salt ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_contract_hash_check',
+    `char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_snapshot_hash_check',
+    `char_length(snapshot_hash)=64 AND snapshot_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_intent_hash_check',
+    `char_length(intent_hash)=64 AND intent_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_request_hash_check',
+    `char_length(request_hash)=64 AND request_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_claim_hash_check',
+    `char_length(claim_token_hash)=64 AND claim_token_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_len_check',
+    `char_length(id) BETWEEN 1 AND 128
+     AND char_length(draft_id) BETWEEN 1 AND 128
+     AND char_length(publish_approval_id) BETWEEN 1 AND 128
+     AND char_length(publishing_request_id) BETWEEN 1 AND 128
+     AND char_length(intent_id) BETWEEN 1 AND 128
+     AND char_length(outbox_id) BETWEEN 1 AND 128
+     AND char_length(attempt_id) BETWEEN 1 AND 128
+     AND char_length(credential_ref_id) BETWEEN 1 AND 128
+     AND char_length(idempotency_key) BETWEEN 1 AND 256
+     AND (consumed_confirmation_id IS NULL
+          OR char_length(consumed_confirmation_id) BETWEEN 1 AND 128)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_cpc_tenant_attempt
+    ON orchestrator_campaign_provider_challenges (tenant_id, attempt_id)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_cpc_tenant_open
+    ON orchestrator_campaign_provider_challenges (tenant_id, attempt_id)
+    WHERE consumed_at IS NULL`);
+
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_provider_confirmations (
+      id TEXT NOT NULL,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      challenge_id TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      revision INTEGER NOT NULL,
+      publish_approval_id TEXT NOT NULL,
+      workflow_approval_id INTEGER NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      outbox_id TEXT NOT NULL,
+      attempt_id TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL,
+      generation INTEGER NOT NULL,
+      contract_hash TEXT NOT NULL,
+      snapshot_hash TEXT NOT NULL,
+      intent_hash TEXT NOT NULL,
+      request_hash TEXT NOT NULL,
+      claim_token_hash TEXT NOT NULL,
+      contract_version TEXT NOT NULL DEFAULT 'campaign_delivery_v1',
+      operation TEXT NOT NULL DEFAULT 'create_provider_draft',
+      platform TEXT NOT NULL DEFAULT 'meta',
+      phrase_salt TEXT NOT NULL,
+      phrase_digest TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'confirmed',
+      idempotency_key TEXT NOT NULL,
+      requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      spent_at TIMESTAMPTZ NULL,
+      PRIMARY KEY (tenant_id, id),
+      CONSTRAINT orchestrator_cpcf_tenant_unique_idemp
+        UNIQUE (tenant_id, idempotency_key),
+      CONSTRAINT orchestrator_cpcf_tenant_unique_challenge
+        UNIQUE (tenant_id, challenge_id),
+      CONSTRAINT orchestrator_cpcf_tenant_unique_attempt
+        UNIQUE (tenant_id, attempt_id),
+      CONSTRAINT orchestrator_cpcf_status_check CHECK (status IN ('confirmed','spent')),
+      CONSTRAINT orchestrator_cpcf_spend_check CHECK (
+        (status = 'confirmed' AND spent_at IS NULL)
+        OR (status = 'spent' AND spent_at IS NOT NULL AND spent_at >= created_at)
+      ),
+      CONSTRAINT orchestrator_cpcf_ttl_check CHECK (
+        expires_at > created_at AND expires_at <= created_at + INTERVAL '2 minutes'
+      ),
+      CONSTRAINT orchestrator_cpcf_frozen_check CHECK (
+        contract_version = 'campaign_delivery_v1'
+        AND operation = 'create_provider_draft'
+        AND platform = 'meta'
+      ),
+      CONSTRAINT orchestrator_cpcf_revision_check CHECK (revision >= 1),
+      CONSTRAINT orchestrator_cpcf_generation_check CHECK (generation >= 1),
+      CONSTRAINT orchestrator_cpcf_salt_check CHECK (
+        char_length(phrase_salt)=64 AND phrase_salt ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpcf_digest_check CHECK (
+        char_length(phrase_digest)=64 AND phrase_digest ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpcf_contract_hash_check CHECK (
+        char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpcf_snapshot_hash_check CHECK (
+        char_length(snapshot_hash)=64 AND snapshot_hash ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpcf_intent_hash_check CHECK (
+        char_length(intent_hash)=64 AND intent_hash ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpcf_request_hash_check CHECK (
+        char_length(request_hash)=64 AND request_hash ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpcf_claim_hash_check CHECK (
+        char_length(claim_token_hash)=64 AND claim_token_hash ~ '^[0-9a-f]{64}$'
+      ),
+      CONSTRAINT orchestrator_cpcf_len_check CHECK (
+        char_length(id) BETWEEN 1 AND 128
+        AND char_length(challenge_id) BETWEEN 1 AND 128
+        AND char_length(draft_id) BETWEEN 1 AND 128
+        AND char_length(publish_approval_id) BETWEEN 1 AND 128
+        AND char_length(publishing_request_id) BETWEEN 1 AND 128
+        AND char_length(intent_id) BETWEEN 1 AND 128
+        AND char_length(outbox_id) BETWEEN 1 AND 128
+        AND char_length(attempt_id) BETWEEN 1 AND 128
+        AND char_length(credential_ref_id) BETWEEN 1 AND 128
+        AND char_length(idempotency_key) BETWEEN 1 AND 256
+      )
+    );
+  `);
+  await p.query(`ALTER TABLE orchestrator_campaign_provider_confirmations
+    ADD COLUMN IF NOT EXISTS id TEXT,
+    ADD COLUMN IF NOT EXISTS tenant_id INTEGER,
+    ADD COLUMN IF NOT EXISTS challenge_id TEXT,
+    ADD COLUMN IF NOT EXISTS draft_id TEXT,
+    ADD COLUMN IF NOT EXISTS revision INTEGER,
+    ADD COLUMN IF NOT EXISTS publish_approval_id TEXT,
+    ADD COLUMN IF NOT EXISTS workflow_approval_id INTEGER,
+    ADD COLUMN IF NOT EXISTS publishing_request_id TEXT,
+    ADD COLUMN IF NOT EXISTS intent_id TEXT,
+    ADD COLUMN IF NOT EXISTS outbox_id TEXT,
+    ADD COLUMN IF NOT EXISTS attempt_id TEXT,
+    ADD COLUMN IF NOT EXISTS credential_ref_id TEXT,
+    ADD COLUMN IF NOT EXISTS generation INTEGER,
+    ADD COLUMN IF NOT EXISTS contract_hash TEXT,
+    ADD COLUMN IF NOT EXISTS snapshot_hash TEXT,
+    ADD COLUMN IF NOT EXISTS intent_hash TEXT,
+    ADD COLUMN IF NOT EXISTS request_hash TEXT,
+    ADD COLUMN IF NOT EXISTS claim_token_hash TEXT,
+    ADD COLUMN IF NOT EXISTS contract_version TEXT,
+    ADD COLUMN IF NOT EXISTS operation TEXT,
+    ADD COLUMN IF NOT EXISTS platform TEXT,
+    ADD COLUMN IF NOT EXISTS phrase_salt TEXT,
+    ADD COLUMN IF NOT EXISTS phrase_digest TEXT,
+    ADD COLUMN IF NOT EXISTS status TEXT,
+    ADD COLUMN IF NOT EXISTS idempotency_key TEXT,
+    ADD COLUMN IF NOT EXISTS requested_by INTEGER,
+    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS spent_at TIMESTAMPTZ`);
+  await _ensureNamedUnique(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_unique_idemp', 'tenant_id, idempotency_key');
+  await _ensureNamedUnique(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_unique_challenge', 'tenant_id, challenge_id');
+  await _ensureNamedUnique(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_unique_attempt', 'tenant_id, attempt_id');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_challenge_fkey',
+    'tenant_id, challenge_id', 'orchestrator_campaign_provider_challenges',
+    'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_draft_fkey',
+    'tenant_id, draft_id', 'orchestrator_campaign_drafts', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_rev_fkey',
+    'tenant_id, draft_id, revision', 'orchestrator_campaign_draft_revisions',
+    'tenant_id, draft_id, revision',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_pub_appr_fkey',
+    'tenant_id, publish_approval_id', 'orchestrator_campaign_publish_approvals',
+    'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_wf_appr_fkey',
+    'tenant_id, workflow_approval_id', 'orchestrator_approvals', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_pub_req_fkey',
+    'tenant_id, publishing_request_id', 'orchestrator_campaign_publish_requests',
+    'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_intent_fkey',
+    'tenant_id, intent_id', 'orchestrator_campaign_delivery_intents', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_outbox_fkey',
+    'tenant_id, outbox_id', 'orchestrator_outbox', 'tenant_id, id',
+    'ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_outbox_intent_fkey',
+    'tenant_id, outbox_id, intent_id',
+    'orchestrator_campaign_delivery_intents', 'tenant_id, outbox_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_attempt_fkey',
+    'tenant_id, attempt_id', 'orchestrator_campaign_delivery_attempts', 'tenant_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_attempt_bind_fkey',
+    'tenant_id, attempt_id, outbox_id, intent_id',
+    'orchestrator_campaign_delivery_attempts', 'tenant_id, id, outbox_id, intent_id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_tenant_cred_ref_fkey',
+    'tenant_id, credential_ref_id', 'orchestrator_tenant_meta_credential_refs',
+    'tenant_id, id',
+    'ON DELETE NO ACTION');
+  await _ensureNamedFk(p, 'orchestrator_campaign_provider_challenges',
+    'orchestrator_cpc_tenant_consumed_conf_fkey',
+    'tenant_id, consumed_confirmation_id',
+    'orchestrator_campaign_provider_confirmations', 'tenant_id, id',
+    'ON DELETE NO ACTION');
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_status_check', `status IN ('confirmed','spent')`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_spend_check',
+    `(status = 'confirmed' AND spent_at IS NULL)
+     OR (status = 'spent' AND spent_at IS NOT NULL AND spent_at >= created_at)`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_ttl_check',
+    `expires_at > created_at AND expires_at <= created_at + INTERVAL '2 minutes'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_frozen_check',
+    `contract_version = 'campaign_delivery_v1'
+     AND operation = 'create_provider_draft'
+     AND platform = 'meta'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_revision_check', `revision >= 1`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_generation_check', `generation >= 1`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_salt_check',
+    `char_length(phrase_salt)=64 AND phrase_salt ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_digest_check',
+    `char_length(phrase_digest)=64 AND phrase_digest ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_contract_hash_check',
+    `char_length(contract_hash)=64 AND contract_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_snapshot_hash_check',
+    `char_length(snapshot_hash)=64 AND snapshot_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_intent_hash_check',
+    `char_length(intent_hash)=64 AND intent_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_request_hash_check',
+    `char_length(request_hash)=64 AND request_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_claim_hash_check',
+    `char_length(claim_token_hash)=64 AND claim_token_hash ~ '^[0-9a-f]{64}$'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_provider_confirmations',
+    'orchestrator_cpcf_len_check',
+    `char_length(id) BETWEEN 1 AND 128
+     AND char_length(challenge_id) BETWEEN 1 AND 128
+     AND char_length(draft_id) BETWEEN 1 AND 128
+     AND char_length(publish_approval_id) BETWEEN 1 AND 128
+     AND char_length(publishing_request_id) BETWEEN 1 AND 128
+     AND char_length(intent_id) BETWEEN 1 AND 128
+     AND char_length(outbox_id) BETWEEN 1 AND 128
+     AND char_length(attempt_id) BETWEEN 1 AND 128
+     AND char_length(credential_ref_id) BETWEEN 1 AND 128
+     AND char_length(idempotency_key) BETWEEN 1 AND 256`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_cpcf_tenant_challenge
+    ON orchestrator_campaign_provider_confirmations (tenant_id, challenge_id)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_cpcf_tenant_unspent
+    ON orchestrator_campaign_provider_confirmations (tenant_id, attempt_id)
+    WHERE spent_at IS NULL`);
+
+  await _installInTransaction(p, `
+    CREATE OR REPLACE FUNCTION orchestrator_cpc_guard()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'INSERT' THEN
+        IF NEW.status IS DISTINCT FROM 'open'
+           OR NEW.consumed_at IS NOT NULL
+           OR NEW.consumed_confirmation_id IS NOT NULL THEN
+          RAISE EXCEPTION 'orchestrator_cpc_immutable';
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM orchestrator_campaign_delivery_attempts a
+           WHERE a.tenant_id = NEW.tenant_id
+             AND a.id = NEW.attempt_id
+             AND a.outbox_id = NEW.outbox_id
+             AND a.intent_id = NEW.intent_id
+             AND a.draft_id = NEW.draft_id
+             AND a.publishing_request_id = NEW.publishing_request_id
+             AND a.generation = NEW.generation
+             AND a.platform = NEW.platform
+        ) THEN
+          RAISE EXCEPTION 'orchestrator_cpc_binding';
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM orchestrator_tenant_meta_credential_refs r
+           WHERE r.tenant_id = NEW.tenant_id
+             AND r.id = NEW.credential_ref_id
+             AND r.status = 'active'
+             AND r.revoked_at IS NULL
+             AND r.platform = 'meta'
+        ) THEN
+          RAISE EXCEPTION 'orchestrator_cpc_binding';
+        END IF;
+        RETURN NEW;
+      END IF;
+      IF TG_OP = 'UPDATE' THEN
+        IF OLD.consumed_at IS NOT NULL
+           OR NEW.id IS DISTINCT FROM OLD.id
+           OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+           OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
+           OR NEW.revision IS DISTINCT FROM OLD.revision
+           OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id
+           OR NEW.workflow_approval_id IS DISTINCT FROM OLD.workflow_approval_id
+           OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+           OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+           OR NEW.outbox_id IS DISTINCT FROM OLD.outbox_id
+           OR NEW.attempt_id IS DISTINCT FROM OLD.attempt_id
+           OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+           OR NEW.generation IS DISTINCT FROM OLD.generation
+           OR NEW.contract_hash IS DISTINCT FROM OLD.contract_hash
+           OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
+           OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+           OR NEW.request_hash IS DISTINCT FROM OLD.request_hash
+           OR NEW.claim_token_hash IS DISTINCT FROM OLD.claim_token_hash
+           OR NEW.contract_version IS DISTINCT FROM OLD.contract_version
+           OR NEW.operation IS DISTINCT FROM OLD.operation
+           OR NEW.platform IS DISTINCT FROM OLD.platform
+           OR NEW.phrase_salt IS DISTINCT FROM OLD.phrase_salt
+           OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
+           OR NEW.requested_by IS DISTINCT FROM OLD.requested_by
+           OR NEW.expires_at IS DISTINCT FROM OLD.expires_at
+           OR NEW.created_at IS DISTINCT FROM OLD.created_at
+           OR NEW.status IS DISTINCT FROM 'consumed'
+           OR NEW.consumed_at IS NULL
+           OR NEW.consumed_confirmation_id IS NULL
+           OR OLD.consumed_confirmation_id IS NOT NULL
+        THEN
+          RAISE EXCEPTION 'orchestrator_cpc_immutable';
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM orchestrator_campaign_provider_confirmations f
+           WHERE f.tenant_id = NEW.tenant_id
+             AND f.id = NEW.consumed_confirmation_id
+             AND f.challenge_id = NEW.id
+             AND f.attempt_id = NEW.attempt_id
+             AND f.outbox_id = NEW.outbox_id
+             AND f.intent_id = NEW.intent_id
+        ) THEN
+          RAISE EXCEPTION 'orchestrator_cpc_consume_binding';
+        END IF;
+        RETURN NEW;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_cpc_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_cpc_guard ON orchestrator_campaign_provider_challenges;
+    CREATE TRIGGER orchestrator_cpc_guard
+      BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_provider_challenges
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_cpc_guard();
+
+    CREATE OR REPLACE FUNCTION orchestrator_cpcf_guard()
+    RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP = 'INSERT' THEN
+        IF NEW.status IS DISTINCT FROM 'confirmed' OR NEW.spent_at IS NOT NULL THEN
+          RAISE EXCEPTION 'orchestrator_cpcf_immutable';
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM orchestrator_campaign_provider_challenges c
+           WHERE c.tenant_id = NEW.tenant_id
+             AND c.id = NEW.challenge_id
+             AND c.status = 'open'
+             AND c.consumed_at IS NULL
+             AND c.draft_id = NEW.draft_id
+             AND c.revision = NEW.revision
+             AND c.publish_approval_id = NEW.publish_approval_id
+             AND c.workflow_approval_id = NEW.workflow_approval_id
+             AND c.publishing_request_id = NEW.publishing_request_id
+             AND c.intent_id = NEW.intent_id
+             AND c.outbox_id = NEW.outbox_id
+             AND c.attempt_id = NEW.attempt_id
+             AND c.credential_ref_id = NEW.credential_ref_id
+             AND c.generation = NEW.generation
+             AND c.contract_hash = NEW.contract_hash
+             AND c.snapshot_hash = NEW.snapshot_hash
+             AND c.intent_hash = NEW.intent_hash
+             AND c.request_hash = NEW.request_hash
+             AND c.claim_token_hash = NEW.claim_token_hash
+             AND c.contract_version = NEW.contract_version
+             AND c.operation = NEW.operation
+             AND c.platform = NEW.platform
+             AND c.phrase_salt = NEW.phrase_salt
+        ) THEN
+          RAISE EXCEPTION 'orchestrator_cpcf_binding';
+        END IF;
+        RETURN NEW;
+      END IF;
+      IF TG_OP = 'UPDATE' THEN
+        IF OLD.status IS DISTINCT FROM 'confirmed'
+           OR NEW.status IS DISTINCT FROM 'spent'
+           OR NEW.spent_at IS NULL
+           OR NEW.id IS DISTINCT FROM OLD.id
+           OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+           OR NEW.challenge_id IS DISTINCT FROM OLD.challenge_id
+           OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
+           OR NEW.revision IS DISTINCT FROM OLD.revision
+           OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id
+           OR NEW.workflow_approval_id IS DISTINCT FROM OLD.workflow_approval_id
+           OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+           OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+           OR NEW.outbox_id IS DISTINCT FROM OLD.outbox_id
+           OR NEW.attempt_id IS DISTINCT FROM OLD.attempt_id
+           OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+           OR NEW.generation IS DISTINCT FROM OLD.generation
+           OR NEW.contract_hash IS DISTINCT FROM OLD.contract_hash
+           OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
+           OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+           OR NEW.request_hash IS DISTINCT FROM OLD.request_hash
+           OR NEW.claim_token_hash IS DISTINCT FROM OLD.claim_token_hash
+           OR NEW.contract_version IS DISTINCT FROM OLD.contract_version
+           OR NEW.operation IS DISTINCT FROM OLD.operation
+           OR NEW.platform IS DISTINCT FROM OLD.platform
+           OR NEW.phrase_salt IS DISTINCT FROM OLD.phrase_salt
+           OR NEW.phrase_digest IS DISTINCT FROM OLD.phrase_digest
+           OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
+           OR NEW.requested_by IS DISTINCT FROM OLD.requested_by
+           OR NEW.expires_at IS DISTINCT FROM OLD.expires_at
+           OR NEW.created_at IS DISTINCT FROM OLD.created_at
+           OR OLD.spent_at IS NOT NULL
+        THEN
+          RAISE EXCEPTION 'orchestrator_cpcf_immutable';
+        END IF;
+        RETURN NEW;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+        RETURN OLD;
+      END IF;
+      RAISE EXCEPTION 'orchestrator_cpcf_immutable';
+    END;
+    $fn$ LANGUAGE plpgsql;
+
+    DROP TRIGGER IF EXISTS orchestrator_cpcf_guard ON orchestrator_campaign_provider_confirmations;
+    CREATE TRIGGER orchestrator_cpcf_guard
+      BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_provider_confirmations
+      FOR EACH ROW
+      EXECUTE FUNCTION orchestrator_cpcf_guard();
   `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {

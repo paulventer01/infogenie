@@ -3032,6 +3032,242 @@ audit detail keeps `source: 'sandbox'` (or `test_opts` for overrides),
 
 Real provider mutation stays **PR 6F** and hard-denied.
 
+## Advertising orchestrator — Meta provider-draft capability (PR 6F-0)
+
+PR 6F-0 adds **contracts only**. It does not create a provider draft, call Meta,
+read a token, refresh an OAuth grant, decrypt a vault row, enable a worker or
+open a network socket. `isAdvertisingProviderMutationAllowed()` still returns
+`false` and `assertAdvertisingProviderMutationAllowed` still denies every
+provider write, with **no env escape hatch**. The PR #99 closure below is intact.
+
+### The capability object
+
+`services/security/advertising_provider_capabilities.js` defines the single
+narrow exception path that a future execution worker will have to pass. The
+capability is **not** a flag and **not** a payload — it is an object with six
+properties that are all enforced in code:
+
+1. **Unforgeable.** Identity is a module-private `WeakSet`. A structurally
+   identical plain object, a JSON round-trip, an `Object.create(null)` look-alike,
+   a `Proxy` wrapper and a spread of `process.env` are all rejected with
+   `advertising_provider_capability_invalid`. There is no shape check that a
+   caller can satisfy by construction.
+2. **Frozen.** Null prototype, non-extensible, every field non-writable and
+   non-configurable. `platform`, `operation`, `contract_version`, `object_kind`
+   and `capability_version` are module constants, never caller-chosen.
+3. **Single-use.** The first successful `assertMetaCreateProviderDraftCapability`
+   marks the capability spent forever; a replay fails
+   `advertising_provider_capability_spent`. A **failed** assertion does not spend
+   it, so a mismatch cannot be used to burn a legitimate capability.
+4. **Short-lived.** `CAPABILITY_TTL_MS = 60_000`, validated at mint (a longer or
+   inverted lifetime is refused) and again at assert against a caller-supplied
+   `now`. The boundary is closed: a capability is already expired at exactly
+   `expires_at_ms`, not one millisecond after it.
+5. **Exact-bound.** Every field in `BINDING_FIELDS` must match the locked
+   execution context, with **no missing and no extra keys**: tenant, draft,
+   revision, publish approval, workflow approval, publishing request, intent,
+   outbox, attempt, generation, challenge, confirmation, credential reference id
+   and version, account fingerprint, claim-token hash, intent hash, snapshot
+   hash, contract hash, request hash, confirmation phrase digest, the confirming
+   actor, and the issue/expiry timestamps. String comparison is timing-safe. An
+   options bag cannot ride along, because an unknown key is a refusal rather than
+   an ignored extra.
+6. **Non-serializable.** `toJSON()` and `Symbol.toPrimitive` throw and inspection
+   is redacted, so a capability **cannot** be written into the outbox payload, an
+   audit row, a log line or an HTTP response even by accident.
+
+### Where a capability can come from
+
+Minting requires a live handle from
+`withAdvertisingProviderExecutionTransaction(client, fn)`. That function proves
+the connection is inside an explicit transaction with a `SAVEPOINT` probe —
+Postgres raises `25P01` for a `SAVEPOINT` outside a transaction block, so an
+autocommit connection, and therefore any HTTP handler that never opened a
+transaction, cannot obtain a handle. The handle is registered in a module-private
+`WeakMap` and **revoked when `fn` settles**, so a handle that escapes the scope
+mints nothing. Minting and verification each repeat the authoritative
+`SAVEPOINT` round-trip and compare `pg_current_xact_id()` against the transaction
+identity captured when the scope opened. If callback code issues `COMMIT` or
+`ROLLBACK`—even followed by a fresh `BEGIN` on the same client—a subsequent mint
+or use fails closed while the in-memory callback scope is still active.
+
+**PR 6F-0 has no mint site at all.** There is no execution worker and no provider
+call, so `mintMetaCreateProviderDraftCapability` and
+`withAdvertisingProviderExecutionTransaction` appear nowhere in product code —
+`test/advertising-provider-capabilities.test.js` walks the repository and fails
+if either name shows up outside the module, its test and this document. Neither
+is re-exported from `services/security/index.js`; the broad index carries only
+the read-only half (`isAdvertisingProviderCapability`, the error codes and the
+platform/operation constants), so no `require('../security')` consumer gains the
+mint path. `services/agent_orchestrator/*` does not reference the capability
+module at all.
+
+The lowest-level kill switch also **strips capability-branded values** out of
+`denyAdvertisingProviderMutation` extras and the
+`assertAdvertisingProviderMutationAllowed` context (via
+`Symbol.for('infogenie.advertising_provider_capability')`, so the guard keeps
+zero imports). A denial can therefore never serialize a capability into a 403
+body or an error log.
+
+### Tenant-owned Meta credential-reference boundary
+
+`services/credentials/vault.js` gains a **reference** boundary, not a secret
+boundary:
+
+- `resolveTenantMetaCredentialRefForProviderDraft(client, { tenantId, ownerUserId })`
+  is the confirmation-time binding: it locks the tenant-owned row `FOR UPDATE`
+  and returns which reference a confirmation is bound to.
+- `withTenantMetaCredentialForProviderDraft(client, { capability, lockedContext, now }, fn)`
+  is the execution-time boundary. It verifies the capability **before** reading
+  anything, then re-locks the row and matches the capability's credential
+  binding.
+
+Both validate the same predicates: `platform = 'meta'`, `status = 'active'`,
+`revoked_at IS NULL`, `environment IN ('test','sandbox')` — **production ad
+accounts are unreachable through this boundary** — a 64-hex account fingerprint,
+a positive version, and an **active `tenant_users` membership** for the owning
+user. More than one matching row is a denial (`validation_failed`), never a
+"pick the first". The capability's single use is **not** spent here; spending
+belongs to the execution assertion immediately before the provider call, which
+PR 6F-0 does not have.
+
+**No secret is read, decrypted, returned, transmitted or logged.** The boundary
+reads `orchestrator_tenant_meta_credential_refs`, a metadata table with no
+ciphertext, iv, tag, token or account-id column; it never touches
+`user_integrations`, `platform_api_keys` or `kv_store`; and it never calls
+`_decrypt`, `getCredentials` or `resolveMetaAdsCredentials`. The object it hands
+`fn` carries `has_secret_access: false`, no account fingerprint and no token, and
+refuses serialization for the same reason a capability does.
+
+### Permission and matrix
+
+`advertising.provider_drafts.create` is a new tenant-scope catalog key. It is
+deliberately **not** an `orchestrator.workflows.*` key and **not** a `.view` key:
+
+- Tenant Owner, Tenant Admin, Platform Owner and Platform Admin hold it.
+- **Marketer does not.** Authoring and driving a workflow must never imply the
+  authority to touch the ad account, the same separation-of-duty rule that keeps
+  every `approve.*` gate away from Marketer.
+- Analyst, Content Creator and Client Viewer never inherit it.
+
+Two `ROUTE_GROUPS` rows carry it, one per mounted surface:
+
+- `/api/agent-orchestrator/campaign-drafts/provider-draft-confirmation-challenge`
+- `/api/agent-orchestrator/campaign-drafts/confirm-provider-draft`
+
+Both rows set **`view` and `write` to the same key**, so every verb at the prefix
+and at any depth beneath it requires `advertising.provider_drafts.create`.
+Longest-prefix-wins means they shadow the coarse
+`/api/agent-orchestrator/campaign-drafts` row rather than being shadowed by it.
+Both surfaces are POST-only today, so `view` is unreachable; pinning it to the
+same key means a GET added under either prefix later is denied to a Marketer by
+default instead of silently inheriting the coarse workflow key. Relaxing `view`
+is a deliberate review, not a default.
+
+The handlers agree with the matrix: both `wrap()` on
+`D.PERMISSION_PROVIDER_DRAFTS_CREATE`, so the middleware gate and the
+handler gate name the same key and cannot drift apart.
+
+Three gates therefore stack on this surface, and today the **narrowest is the
+legacy owner gate**: `/api/agent-orchestrator/campaign-drafts` is deliberately
+**not** in `_OWNER_GATE_ALLOW` in `server.js`, unlike `/workflows` and
+`/credits`, so every non-owner is refused `owner_only` before the matrix is even
+consulted. That is why a Marketer denial legitimately answers `owner_only`
+rather than `permission_denied`.
+
+Adding `/campaign-drafts` to `_OWNER_GATE_ALLOW` — for example to let a Tenant
+Admin confirm without being the deployment owner — would make the matrix row and
+the handler key the **sole** gate on a provider-touching action. That is a
+security-relevant change to the enforcement stack, not a routing tweak, so
+`test/advertising-provider-capabilities.test.js` asserts the exemption is absent
+and will fail until the change is reviewed here.
+
+**The matrix matches by prefix only, and that constrains the endpoint shape.**
+An action segment placed *behind* a path parameter — for example
+`…/campaign-drafts/<draftId>/publishing-requests/<id>/delivery-intents/<id>/confirm-provider-draft`
+— matches no row of its own and silently falls back to the coarse
+campaign-drafts row, i.e. `orchestrator.workflows.view`, which a Marketer holds.
+That is a privilege regression, not a gap that a reviewer would notice in a
+diff. So any provider-draft confirmation surface must either keep its action
+segment **ahead** of the variable ids (as the two rows above do) or take a mount
+prefix of its own.
+
+Security deliberately did **not** add a regex/pattern stage to the matrix to
+paper over this. A stage that runs ahead of prefix matching on every request is
+new enforcement-path surface, it can be used to *widen* as easily as to narrow,
+and it breaks the single "longest prefix wins" invariant that PR 6E's
+`test/advertising-orchestrator-campaign-delivery-intents.test.js` locks. The
+shape constraint is enforced instead:
+`test/advertising-provider-capabilities.test.js` parses the route registrations
+in `campaign_api.js` and fails if any provider-draft route hides its action
+behind a path parameter, or if the literal prefix it does expose is not gated on
+`advertising.provider_drafts.create`.
+
+### Audit hygiene
+
+`auditDetailForCapability` is an allowlist projection: object kind, capability
+version, platform, operation, contract version, tenant, draft, publishing
+request, intent, attempt, challenge, confirmation, revision, generation and the
+confirming actor. **Credential reference id and version, account fingerprint,
+claim-token hash, intent/snapshot/contract/request hashes, the confirmation
+phrase and its salt/digest, and any payload or snapshot are all absent from it.**
+The backend confirmation allowlist (`CONFIRM_AUDIT_DETAIL_KEYS`) is held to the
+same list by test.
+
+### What the caller may name, and what the server derives
+
+The request surface names the human-visible chain **only**:
+
+```
+POST /api/agent-orchestrator/campaign-drafts/
+       {provider-draft-confirmation-challenge,confirm-provider-draft}/
+       :draftId/publishing-requests/:publishingRequestId/delivery-intents/:intentId
+```
+
+Everything the confirmation is bound to below that is derived inside the locked
+graph, so the confirming human cannot choose it:
+
+- **Outbox** — from `intent.outbox_id`, then locked.
+- **Attempt** — from `latestAttemptForOutbox(tenant, outbox)` under `FOR UPDATE`,
+  which takes the highest `attempt_number`. Nothing keyed on a caller-named
+  attempt id survives; there is no `lockAttempt` call on this path. The derived
+  attempt is still cross-checked against the named draft, publishing request and
+  intent, and against `intent.outbox_id` / `intent.intent_hash`.
+- **Attempt liveness** — the attempt must be `started`, not published, and its
+  `lease_expires_at` must be in the future **judged on the database clock**
+  (`SELECT clock_timestamp()` after the authoritative locks), not the app's or
+  the transaction-start timestamp. A settled or lease-lapsed attempt fails
+  `lease_conflict`. This is what stops a confirmation attaching to an attempt a
+  worker has logically abandoned but `abandonExpiredLease` has not yet settled —
+  which matters because nothing enforces a single `started` attempt per outbox
+  (`idx_cda_active_lease` is not unique).
+- **Credential reference** — from
+  `vault.resolveTenantMetaCredentialRefForProviderDraft`, never a local
+  `SELECT`. The confirmation path does not name
+  `orchestrator_tenant_meta_credential_refs` at all, so revocation, ambiguity,
+  environment, version, fingerprint and membership policy cannot drift away from
+  the reviewed boundary above.
+- **Actor** — re-derived from the bound approval (`boundActorId`) and re-checked
+  for active membership; the request cannot assert who is confirming.
+
+`challenge_id` is the one internal-looking id the caller does name, on the
+confirm step. That is intended: the challenge is a short-lived artifact issued to
+that same actor, and `confirmMatchesChallenge` binds it to the locked graph, so
+naming it grants nothing.
+
+Coverage: `test/advertising-provider-capabilities.test.js` (mint scope,
+transaction probe, binding validation, freeze/serialization refusal,
+forgery/clone/proxy refusal, per-field exact binding, single use, expiry, audit
+projection, no-mint-site repository scan, index export surface, no
+network/env/vault sink, the vault reference boundary and its refusal matrix, the
+least-privilege permission, the exact matrix coverage on every verb, the
+route-shape constraint, the exact set of accepted path parameters, the absence of
+client-supplied capability/outbox/attempt/credential/account identifiers, and the
+server-derivation and lease-liveness checks),
+`test/advertising-provider-write-bypass.test.js`,
+`test/advertising-provider-runner-denial-behavior.test.js`, and
+`test/security-guardrails.test.js` for the claims in this section.
+
 ## Advertising provider-write bypass closure
 
 Legacy live provider writes are hard-disabled. The centralized default-deny
@@ -3077,3 +3313,4 @@ points, and direct module import/call — all zero-network).
 - Permission matrix: `services/tenants/permission_enforce.js`
 - Credential vault: `services/credentials/vault.js`
 - Advertising provider mutation guard: `services/security/advertising_provider_mutations.js`
+- Advertising provider-draft capability: `services/security/advertising_provider_capabilities.js`

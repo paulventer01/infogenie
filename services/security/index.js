@@ -17,6 +17,17 @@ const {
   assertAdvertisingProviderMutationAllowed,
   denyAdvertisingProviderMutation,
 } = require('./advertising_provider_mutations');
+// PR 6F-0: only the read-only half of the provider-draft capability surface is
+// re-exported here. Minting, the execution-transaction scope opener and the
+// exact assertion are deliberately NOT on this index — a caller that needs them
+// must require ./advertising_provider_capabilities directly, which keeps the
+// mint path out of every `require('../security')` consumer.
+const {
+  CAPABILITY_OPERATION: ADVERTISING_PROVIDER_CAPABILITY_OPERATION,
+  CAPABILITY_PLATFORM: ADVERTISING_PROVIDER_CAPABILITY_PLATFORM,
+  CODES: ADVERTISING_PROVIDER_CAPABILITY_CODES,
+  isAdvertisingProviderCapability,
+} = require('./advertising_provider_capabilities');
 
 module.exports = {
   securityHeaders,
@@ -40,4 +51,8 @@ module.exports = {
   isAdvertisingProviderMutationAllowed,
   assertAdvertisingProviderMutationAllowed,
   denyAdvertisingProviderMutation,
+  ADVERTISING_PROVIDER_CAPABILITY_OPERATION,
+  ADVERTISING_PROVIDER_CAPABILITY_PLATFORM,
+  ADVERTISING_PROVIDER_CAPABILITY_CODES,
+  isAdvertisingProviderCapability,
 };

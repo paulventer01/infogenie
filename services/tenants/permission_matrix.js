@@ -153,6 +153,26 @@ const ROUTE_GROUPS = [
   { prefix: '/api/agent-orchestrator/static-images', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
   { prefix: '/api/agent-orchestrator/video-jobs', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
   { prefix: '/api/agent-orchestrator/campaign-drafts', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
+  // PR 6F-0 provider-draft challenge/confirm routes mounted under campaign_api.
+  // Both require the least-privilege advertising.provider_drafts.create key,
+  // which no read-only role and no Marketer holds. Do NOT relax either key back
+  // to a workflow key — that would let a workflow author authorise touching the
+  // ad account.
+  //
+  // `view` carries the same key on purpose. Both prefixes are POST-only today,
+  // so `view` is unreachable; pinning it here means a GET added under either
+  // prefix later is denied to a Marketer by default instead of being exposed by
+  // the fallback. Relaxing `view` is a deliberate review, not a default.
+  //
+  // These rows only bite because the action name sits ahead of the variable
+  // draft id. This matrix matches by prefix only, so an action nested *behind*
+  // a variable id (…/campaign-drafts/<id>/…/confirm-provider-draft) is
+  // unreachable by any row and would silently fall back to the coarse
+  // /api/agent-orchestrator/campaign-drafts row above. Any future confirm
+  // surface must keep its action segment ahead of the ids, or take a mount
+  // prefix of its own. See docs/security-guardrails.md (PR 6F-0).
+  { prefix: '/api/agent-orchestrator/campaign-drafts/provider-draft-confirmation-challenge', view: 'advertising.provider_drafts.create', write: 'advertising.provider_drafts.create' },
+  { prefix: '/api/agent-orchestrator/campaign-drafts/confirm-provider-draft', view: 'advertising.provider_drafts.create', write: 'advertising.provider_drafts.create' },
   { prefix: '/api/ai-governance',             view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
   { prefix: '/api/ai-traces',                 view: 'grow.campaigns.view',     write: 'tenant.integrations.manage' },
   { prefix: '/api/ai-feedback',               view: 'grow.campaigns.view',     write: 'grow.campaigns.view' },

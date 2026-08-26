@@ -108,6 +108,16 @@ const PERMISSIONS = [
   { key:'orchestrator.credits.limits.view', scope:'tenant', area:'Orchestrator', label:'View tenant AI rate/cost limits & credit ceiling' },
   { key:'orchestrator.credits.limits.edit', scope:'tenant', area:'Orchestrator', label:'Change tenant AI limits & credit ceiling (admin)' },
 
+  // ── Advertising provider drafts (PR 6F-0) ────────────────────────────────
+  // Least-privilege key for the human confirmation that a paused provider draft
+  // may later be created on the ad platform. It is separate from
+  // `orchestrator.workflows.*` and from every `approve.*` gate on purpose: the
+  // gate approval releases the campaign internally, this key names the person
+  // who authorised touching the provider account. Marketer does NOT hold it —
+  // authoring and approving a workflow must never imply provider authority —
+  // and it is not a `.view` key, so read-only roles never inherit it.
+  { key:'advertising.provider_drafts.create', scope:'tenant', area:'Advertising', label:'Confirm creation of a paused provider draft on a connected ad account' },
+
   // ── Reach section ─────────────────────────────────────────────────────────
   { key:'reach.audiences.view',      scope:'tenant',   area:'Reach',     label:'View dynamic audiences & segments' },
   { key:'reach.audiences.edit',      scope:'tenant',   area:'Reach',     label:'Build / edit audiences' },

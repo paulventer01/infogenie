@@ -392,6 +392,234 @@ async function resolveGoogleAdsCredentials(userId) {
   };
 }
 
+// ── Meta provider-draft credential REFERENCE boundary (PR 6F-0) ────────────
+//
+// This is the tenant-owned Meta credential-reference validation boundary. It is
+// deliberately reference-only:
+//
+//   • it reads `orchestrator_tenant_meta_credential_refs`, a metadata table with
+//     no ciphertext, iv, tag, token or account-id column at all;
+//   • it never touches `user_integrations`, `platform_api_keys` or `kv_store`;
+//   • it never calls _decrypt / getCredentials / resolveMetaAdsCredentials, and
+//     therefore cannot produce, log or transmit secret material;
+//   • the object it hands back carries no secret and refuses serialization, so a
+//     reference cannot leak into an HTTP body, an outbox payload or an audit row.
+//
+// Nothing here weakens the default-deny gate in
+// services/security/advertising_provider_mutations.js. PR 6F-0 grants a
+// credential *reference* boundary and no provider access whatsoever.
+const _capabilities = require('../security/advertising_provider_capabilities');
+
+const META_PROVIDER_DRAFT_PLATFORM = 'meta';
+const META_PROVIDER_DRAFT_TABLE = 'orchestrator_tenant_meta_credential_refs';
+// Test/sandbox only. A production ad account is out of scope for PR 6F-0 and
+// must not be reachable through this boundary.
+const META_PROVIDER_DRAFT_ENVIRONMENTS = Object.freeze(['test', 'sandbox']);
+const META_PROVIDER_DRAFT_REFERENCE_KIND = 'meta_provider_draft_credential_reference';
+// Columns this boundary is allowed to read. Any secret-bearing column name
+// appearing here would be a review failure.
+const META_PROVIDER_DRAFT_REF_COLUMNS = Object.freeze([
+  'id', 'tenant_id', 'platform', 'environment', 'status',
+  'account_fingerprint', 'version', 'owner_user_id', 'revoked_at',
+]);
+
+const _REFERENCE_BRAND = Symbol.for('infogenie.meta_provider_draft_credential_reference');
+
+function _credError(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  err.blocked = true;
+  err.published = false;
+  err.external_action_taken = false;
+  return err;
+}
+
+function _requireTxClient(client) {
+  if (!client || typeof client.query !== 'function') {
+    throw _credError('validation_failed', 'a transaction client is required for the credential-reference boundary');
+  }
+  return client;
+}
+
+function _positiveInt(value) {
+  const n = typeof value === 'number' ? value : parseInt(value, 10);
+  if (!Number.isSafeInteger(n) || n <= 0) return null;
+  return n;
+}
+
+function _sameString(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ba = Buffer.from(a, 'utf8');
+  const bb = Buffer.from(b, 'utf8');
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
+
+function _refuseSerialize() {
+  throw _credError('validation_failed', 'a Meta credential reference is not serializable');
+}
+
+// Frozen, non-serializable reference. Carries no secret and no account id: the
+// account fingerprint stays inside the boundary and is only ever compared.
+function _buildReference(row) {
+  const ref = Object.create(null);
+  const define = (key, value) => Object.defineProperty(ref, key, {
+    value, enumerable: true, writable: false, configurable: false,
+  });
+  define('object_kind', META_PROVIDER_DRAFT_REFERENCE_KIND);
+  define('credential_ref_id', String(row.id));
+  define('tenant_id', Number(row.tenant_id));
+  define('platform', META_PROVIDER_DRAFT_PLATFORM);
+  define('environment', String(row.environment));
+  define('version', Number(row.version));
+  define('has_secret_access', false);
+  const hidden = (key, value) => Object.defineProperty(ref, key, {
+    value, enumerable: false, writable: false, configurable: false,
+  });
+  hidden(_REFERENCE_BRAND, true);
+  hidden('toJSON', _refuseSerialize);
+  hidden(Symbol.for('nodejs.util.inspect.custom'), () => '[MetaProviderDraftCredentialReference redacted]');
+  return Object.freeze(ref);
+}
+
+function isMetaProviderDraftCredentialReference(value) {
+  if (!value || typeof value !== 'object') return false;
+  try { return value[_REFERENCE_BRAND] === true; } catch (_e) { return false; }
+}
+
+async function _assertActiveTenantMember(client, tenantId, userId) {
+  const r = await client.query(
+    `SELECT 1 FROM tenant_users WHERE tenant_id=$1 AND user_id=$2 AND status='active' LIMIT 1`,
+    [tenantId, userId]
+  );
+  if (!r.rowCount) throw _credError('permission_denied', 'credential owner is not an active member of this tenant');
+}
+
+async function _lockCredentialRefRow(client, { tenantId, credentialRefId, ownerUserId }) {
+  const cols = META_PROVIDER_DRAFT_REF_COLUMNS.join(', ');
+  const params = [tenantId, META_PROVIDER_DRAFT_PLATFORM, ownerUserId];
+  let where = `tenant_id=$1 AND platform=$2 AND owner_user_id=$3
+                 AND status='active' AND revoked_at IS NULL
+                 AND environment = ANY($4::text[])`;
+  params.push(META_PROVIDER_DRAFT_ENVIRONMENTS.slice());
+  if (credentialRefId != null) {
+    params.push(String(credentialRefId));
+    where += ` AND id=$${params.length}`;
+  }
+  const r = await client.query(
+    `SELECT ${cols} FROM ${META_PROVIDER_DRAFT_TABLE} WHERE ${where} FOR UPDATE`,
+    params
+  );
+  if (!r.rowCount) throw _credError('missing_credentials', 'no active tenant-owned Meta credential reference');
+  // Ambiguity is a denial, never a "pick the first row".
+  if (r.rowCount !== 1) throw _credError('validation_failed', 'tenant-owned Meta credential reference is ambiguous');
+  const row = r.rows[0];
+  if (row.status !== 'active' || row.revoked_at != null) {
+    throw _credError('missing_credentials', 'tenant-owned Meta credential reference is revoked');
+  }
+  if (row.platform !== META_PROVIDER_DRAFT_PLATFORM) {
+    throw _credError('validation_failed', 'credential reference platform mismatch');
+  }
+  if (!META_PROVIDER_DRAFT_ENVIRONMENTS.includes(String(row.environment))) {
+    throw _credError('validation_failed', 'credential reference environment is not test or sandbox');
+  }
+  if (_positiveInt(row.version) === null) {
+    throw _credError('validation_failed', 'credential reference version is invalid');
+  }
+  if (typeof row.account_fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(row.account_fingerprint)) {
+    throw _credError('validation_failed', 'credential reference account fingerprint is invalid');
+  }
+  return row;
+}
+
+/**
+ * Confirmation-time reference resolution: no capability exists yet, so this
+ * establishes only WHICH tenant-owned reference a confirmation is bound to.
+ * Returns the frozen, non-serializable reference plus the fingerprint/version
+ * the later execution capability must be minted against.
+ *
+ * Grants no provider access and reads no secret.
+ */
+async function resolveTenantMetaCredentialRefForProviderDraft(client, opts) {
+  const c = _requireTxClient(client);
+  const o = opts || {};
+  const tenantId = _positiveInt(o.tenantId);
+  const ownerUserId = _positiveInt(o.ownerUserId);
+  if (!tenantId || !ownerUserId) {
+    throw _credError('validation_failed', 'tenantId and ownerUserId are required');
+  }
+  await _assertActiveTenantMember(c, tenantId, ownerUserId);
+  const row = await _lockCredentialRefRow(c, {
+    tenantId, ownerUserId, credentialRefId: o.credentialRefId != null ? o.credentialRefId : null,
+  });
+  return Object.freeze({
+    reference: _buildReference(row),
+    credential_ref_id: String(row.id),
+    credential_ref_version: Number(row.version),
+    account_fingerprint: String(row.account_fingerprint),
+    environment: String(row.environment),
+  });
+}
+
+/**
+ * Execution-time reference boundary. Requires a minted, unexpired, unspent
+ * capability whose binding matches the locked execution context exactly, then
+ * re-validates the tenant-owned reference row under FOR UPDATE and matches the
+ * capability's credential binding (id, version, account fingerprint, owner)
+ * before invoking `fn(reference)`.
+ *
+ * The capability's single use is NOT spent here — spending belongs to the
+ * execution assertion immediately before the provider call, which PR 6F-0 does
+ * not have. No secret is read, decrypted, returned or logged.
+ */
+async function withTenantMetaCredentialForProviderDraft(client, opts, fn) {
+  const c = _requireTxClient(client);
+  const o = opts || {};
+  if (typeof fn !== 'function') {
+    throw _credError('validation_failed', 'a credential-reference scope callback is required');
+  }
+  const capability = o.capability;
+  if (!_capabilities.isAdvertisingProviderCapability(capability)) {
+    throw _credError(_capabilities.CODES.INVALID, 'a minted provider-draft capability is required');
+  }
+  // Exact binding check first — before any credential-reference read.
+  await _capabilities.verifyMetaCreateProviderDraftCapability(
+    capability,
+    o.lockedContext,
+    { now: o.now }
+  );
+
+  if (capability.platform !== META_PROVIDER_DRAFT_PLATFORM
+      || capability.operation !== _capabilities.CAPABILITY_OPERATION) {
+    throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'capability is not a Meta create_provider_draft capability');
+  }
+
+  const tenantId = _positiveInt(capability.tenant_id);
+  const ownerUserId = _positiveInt(capability.requested_by);
+  if (!tenantId || !ownerUserId) {
+    throw _credError('validation_failed', 'capability tenant/owner binding is invalid');
+  }
+  await _assertActiveTenantMember(c, tenantId, ownerUserId);
+  const row = await _lockCredentialRefRow(c, {
+    tenantId, ownerUserId, credentialRefId: capability.credential_ref_id,
+  });
+
+  if (!_sameString(String(row.id), String(capability.credential_ref_id))) {
+    throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'credential reference id does not match the capability');
+  }
+  if (Number(row.version) !== Number(capability.credential_ref_version)) {
+    throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'credential reference version does not match the capability');
+  }
+  if (!_sameString(String(row.account_fingerprint), String(capability.account_fingerprint))) {
+    throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'credential reference account does not match the capability');
+  }
+  if (Number(row.owner_user_id) !== ownerUserId) {
+    throw _credError('permission_denied', 'credential reference owner does not match the capability actor');
+  }
+
+  return fn(_buildReference(row));
+}
+
 // ── Simple API-key vault (tenant-scoped, kv_store, AES-256-GCM) ──────────
 // Unlike getCredentials/saveCredentials (per-user, user_integrations table),
 // these are platform-wide per-tenant keys (e.g. Apify, Firecrawl).
@@ -456,4 +684,13 @@ module.exports = {
   // Platform-specific resolvers
   resolveGoogleAdsCredentials,
   resolveMetaAdsCredentials,
+  // PR 6F-0 — tenant-owned Meta credential REFERENCE boundary (no secret access)
+  META_PROVIDER_DRAFT_PLATFORM,
+  META_PROVIDER_DRAFT_TABLE,
+  META_PROVIDER_DRAFT_ENVIRONMENTS,
+  META_PROVIDER_DRAFT_REFERENCE_KIND,
+  META_PROVIDER_DRAFT_REF_COLUMNS,
+  isMetaProviderDraftCredentialReference,
+  resolveTenantMetaCredentialRefForProviderDraft,
+  withTenantMetaCredentialForProviderDraft,
 };
