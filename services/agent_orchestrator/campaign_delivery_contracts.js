@@ -112,11 +112,32 @@ const FLAG_ENV = 'INFOGENIE_CAMPAIGN_DELIVERY_WORKER';
 const AUDIT_EVENT_SIMULATED = 'campaign_delivery_attempt_simulated';
 const OUTCOME_SOURCE_SANDBOX = 'sandbox';
 const OUTCOME_SOURCE_TEST_OPTS = 'test_opts';
+const ALLOWED_OUTCOME_SOURCES = Object.freeze([
+  OUTCOME_SOURCE_SANDBOX,
+  OUTCOME_SOURCE_TEST_OPTS,
+]);
+const ALLOWED_OUTCOME_SOURCE_SET = new Set(ALLOWED_OUTCOME_SOURCES);
 const SKIP_REASON_NO_OUTCOME = 'no_outcome_source';
 const MAX_ATTEMPTS = 8;
 const LEASE_MS = 30000;
 const PARK_INTERVAL_DAYS = 36500;
 const WORKER_INTERVAL_MS = 2000;
+
+function isAllowedOutcomeSource(raw) {
+  return ALLOWED_OUTCOME_SOURCE_SET.has(String(raw));
+}
+
+/** Exact allowlist: sandbox | test_opts. Fail closed on anything else. */
+function assertAllowedOutcomeSource(raw, opts = {}) {
+  if ((raw == null || raw === '') && opts.allowEmptyDefault) {
+    return OUTCOME_SOURCE_SANDBOX;
+  }
+  const source = String(raw);
+  if (!ALLOWED_OUTCOME_SOURCE_SET.has(source)) {
+    fail('validation_failed', { field: 'source' });
+  }
+  return source;
+}
 
 const ATTEMPT_STATUSES = Object.freeze([
   'started', 'simulated_ok', 'simulated_duplicate',
@@ -157,6 +178,23 @@ const SCENARIO_MAP = Object.freeze({
   }),
 });
 
+const KNOWN_SCENARIO_SET = new Set(SCENARIOS);
+
+/** Exact own-key allowlist of the eight SCENARIOS — never truthy prototype lookups. */
+function isKnownScenario(raw) {
+  return typeof raw === 'string' && KNOWN_SCENARIO_SET.has(raw);
+}
+
+function scenarioSpecOf(raw) {
+  if (!isKnownScenario(raw)) return null;
+  return SCENARIO_MAP[raw];
+}
+
+function assertKnownScenario(raw) {
+  if (!isKnownScenario(raw)) fail('validation_failed', { field: 'scenario' });
+  return raw;
+}
+
 const TERMINAL_PARK_STATUSES = Object.freeze([
   'simulated_ok', 'simulated_duplicate',
   'dead_letter_permanent', 'dead_letter_malformed', 'dead_letter_blocked',
@@ -172,7 +210,10 @@ module.exports = {
   KEYS, FORBIDDEN, INTENT_HASH_KEYS, OUTBOX_PAYLOAD_KEYS,
   parseDeliveryBody, safeReference, intentHashOf,
   CONNECTOR, FLAG_ENV, AUDIT_EVENT_SIMULATED,
-  OUTCOME_SOURCE_SANDBOX, OUTCOME_SOURCE_TEST_OPTS, SKIP_REASON_NO_OUTCOME,
+  OUTCOME_SOURCE_SANDBOX, OUTCOME_SOURCE_TEST_OPTS, ALLOWED_OUTCOME_SOURCES,
+  SKIP_REASON_NO_OUTCOME,
+  isAllowedOutcomeSource, assertAllowedOutcomeSource,
+  isKnownScenario, scenarioSpecOf, assertKnownScenario,
   MAX_ATTEMPTS, LEASE_MS,
   PARK_INTERVAL_DAYS, WORKER_INTERVAL_MS, ATTEMPT_STATUSES, SCENARIOS,
   SCENARIO_MAP, TERMINAL_PARK_STATUSES, delaySeconds,

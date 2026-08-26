@@ -2,7 +2,6 @@
 
 const { newId } = require('./runner');
 const D = require('./campaign_delivery_contracts');
-const { fail } = require('./errors');
 
 const OBJECT_KIND = 'campaign_delivery_sandbox_outcome';
 
@@ -28,10 +27,7 @@ function publicSandboxOutcome(row) {
 }
 
 function assertValidScenario(scenario) {
-  if (typeof scenario !== 'string' || !D.SCENARIO_MAP[scenario]) {
-    fail('validation_failed', { field: 'scenario' });
-  }
-  return scenario;
+  return D.assertKnownScenario(scenario);
 }
 
 async function seedSandboxOutcome(client, o) {
@@ -64,9 +60,16 @@ async function lockUnconsumedOutcome(client, { tenantId, outboxId }) {
 async function consumeOutcome(client, o) {
   const consumedAt = o.consumedAt || new Date();
   return one(client,
-    `UPDATE orchestrator_campaign_delivery_sandbox_outcomes
+    `UPDATE orchestrator_campaign_delivery_sandbox_outcomes AS o
         SET consumed_at=$3, consumed_attempt_id=$4
-      WHERE tenant_id=$1 AND id=$2 AND consumed_at IS NULL
+      WHERE o.tenant_id=$1 AND o.id=$2 AND o.consumed_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM orchestrator_campaign_delivery_attempts a
+           WHERE a.tenant_id = o.tenant_id
+             AND a.id = $4
+             AND a.outbox_id = o.outbox_id
+             AND a.intent_id = o.intent_id
+        )
       RETURNING *`,
     [o.tenantId, o.outcomeId, consumedAt, o.attemptId]);
 }

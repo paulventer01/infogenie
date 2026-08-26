@@ -188,7 +188,7 @@ function intentMatchesOutbox(intent, outbox, payload) {
 }
 
 async function resolveOutcomeSource(c, { tenantId, outboxId, intentId, opts }) {
-  if (opts && opts.scenario != null && D.SCENARIO_MAP[opts.scenario]) {
+  if (opts && D.isKnownScenario(opts.scenario)) {
     return {
       scenario: opts.scenario,
       source: D.OUTCOME_SOURCE_TEST_OPTS,
@@ -198,12 +198,16 @@ async function resolveOutcomeSource(c, { tenantId, outboxId, intentId, opts }) {
   const row = await sandboxOutcomes.lockUnconsumedOutcome(c, { tenantId, outboxId });
   if (!row) return null;
   if (String(row.intent_id) !== String(intentId)) return { corrupt: true };
-  if (!D.SCENARIO_MAP[row.scenario]) return { corrupt: true };
+  if (!D.isKnownScenario(row.scenario)) return { corrupt: true };
   return {
     scenario: row.scenario,
     source: D.OUTCOME_SOURCE_SANDBOX,
     sandboxRow: row,
   };
+}
+
+function isTestOptsScenario(opts) {
+  return !!(opts && D.isKnownScenario(opts.scenario));
 }
 
 async function claimCampaignDeliveryAttempt(opts = {}) {
@@ -225,6 +229,17 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
     if (Array.isArray(opts.excludeOutboxIds) && opts.excludeOutboxIds.length) {
       vals.push(opts.excludeOutboxIds.map(String));
       extra += ` AND NOT (id = ANY($${vals.length}::text[]))`;
+    }
+    // Production / no opts.scenario: only claim outboxes that already have an
+    // unconsumed sandbox outcome so older no-source rows cannot starve later
+    // seeded work. Explicit outboxId keeps the no_outcome_source path.
+    if (!opts.outboxId && !isTestOptsScenario(opts)) {
+      extra += ` AND EXISTS (
+        SELECT 1 FROM orchestrator_campaign_delivery_sandbox_outcomes so
+         WHERE so.tenant_id = orchestrator_outbox.tenant_id
+           AND so.outbox_id = orchestrator_outbox.id
+           AND so.consumed_at IS NULL
+      )`;
     }
     const picked = await c.query(
       `SELECT * FROM orchestrator_outbox
@@ -271,6 +286,18 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
       return { skip: true, reason: 'parked' };
     }
 
+    // Abandon an expired started attempt before parking corrupt outcomes so
+    // no started attempt remains after a corrupt park.
+    if (latest && latest.status === 'started') {
+      if (tsMs(latest.lease_expires_at) > tsMs(now)) {
+        await c.query('COMMIT');
+        return { skip: true, reason: 'leased' };
+      }
+      await attempts.abandonExpiredLease(c, {
+        tenantId, attemptId: latest.id, settledAt: now,
+      });
+    }
+
     const resolved = await resolveOutcomeSource(c, {
       tenantId, outboxId: outbox.id, intentId: intent.id, opts,
     });
@@ -280,16 +307,6 @@ async function claimCampaignDeliveryAttempt(opts = {}) {
       });
       await c.query('COMMIT');
       return { skip: true, reason: 'parked' };
-    }
-
-    if (latest && latest.status === 'started') {
-      if (tsMs(latest.lease_expires_at) > tsMs(now)) {
-        await c.query('COMMIT');
-        return { skip: true, reason: 'leased' };
-      }
-      await attempts.abandonExpiredLease(c, {
-        tenantId, attemptId: latest.id, settledAt: now,
-      });
     }
 
     if (!resolved) {
@@ -373,6 +390,7 @@ async function executeFake(envelope, opts = {}) {
 
 function fenceOk(envelope, attempt, outbox, now) {
   if (!envelope || !attempt || !outbox) return false;
+  if (!D.isAllowedOutcomeSource(envelope.outcomeSource)) return false;
   if (Number(attempt.tenant_id) !== Number(envelope.tenantId)) return false;
   if (String(attempt.id) !== String(envelope.attemptId)) return false;
   if (String(attempt.outbox_id) !== String(envelope.outboxId)) return false;
@@ -444,7 +462,7 @@ async function revalidateOnClient(c, { tenantId, attempt, outbox, now }) {
 
 function mapFakeResult(fakeResult, attemptNumber) {
   const scenario = fakeResult && fakeResult.scenario;
-  const spec = scenario != null ? D.SCENARIO_MAP[scenario] : null;
+  const spec = D.scenarioSpecOf(scenario);
   if (!spec) {
     return {
       status: 'dead_letter_malformed',
@@ -555,7 +573,7 @@ async function settleCampaignDeliveryAttempt(envelope, fakeResult, opts = {}) {
         published: false,
         external_action_taken: false,
         lease_holder: attempt.lease_holder,
-        source: (envelope && envelope.outcomeSource) || (fakeResult && fakeResult.source) || D.OUTCOME_SOURCE_SANDBOX,
+        source: D.assertAllowedOutcomeSource(envelope.outcomeSource),
       },
     });
     await c.query('COMMIT');
@@ -625,16 +643,28 @@ async function tickCampaignDeliveryWorker(opts = {}) {
       }
       return;
     }
-    const due = await pool.query(
-      `SELECT DISTINCT tenant_id FROM orchestrator_outbox
-        WHERE operation='create_provider_draft'
-          AND destination='internal'
-          AND (
-            (state='pending' AND next_attempt_at <= $1::timestamptz)
-            OR (state='processing' AND (claimed_until IS NULL OR claimed_until < $1::timestamptz))
-          )`,
-      [now.toISOString()]
-    );
+    const dueSql = isTestOptsScenario(opts)
+      ? `SELECT DISTINCT tenant_id FROM orchestrator_outbox
+          WHERE operation='create_provider_draft'
+            AND destination='internal'
+            AND (
+              (state='pending' AND next_attempt_at <= $1::timestamptz)
+              OR (state='processing' AND (claimed_until IS NULL OR claimed_until < $1::timestamptz))
+            )`
+      : `SELECT DISTINCT o.tenant_id FROM orchestrator_outbox o
+          WHERE o.operation='create_provider_draft'
+            AND o.destination='internal'
+            AND (
+              (o.state='pending' AND o.next_attempt_at <= $1::timestamptz)
+              OR (o.state='processing' AND (o.claimed_until IS NULL OR o.claimed_until < $1::timestamptz))
+            )
+            AND EXISTS (
+              SELECT 1 FROM orchestrator_campaign_delivery_sandbox_outcomes so
+               WHERE so.tenant_id = o.tenant_id
+                 AND so.outbox_id = o.id
+                 AND so.consumed_at IS NULL
+            )`;
+    const due = await pool.query(dueSql, [now.toISOString()]);
     for (const row of due.rows) {
       try {
         await processTenant(pool, row.tenant_id, { ...opts, now });

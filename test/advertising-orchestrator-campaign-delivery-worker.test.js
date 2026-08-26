@@ -882,6 +882,132 @@ if (!HAS_DB) {
     assert.equal(fenced.fenced_out, true);
   });
 
+  test('>20 older no-outcome rows do not starve a later seeded outbox', async () => {
+    const pool = p();
+    const older = [];
+    for (let i = 0; i < 21; i += 1) {
+      older.push(await readyIntent(cookieA, wfA, artA));
+    }
+    const seeded = await readyIntent(cookieA, wfA, artA);
+    const base = new Date('2020-01-01T00:00:00.000Z');
+    for (let i = 0; i < older.length; i += 1) {
+      await pool.query(
+        `UPDATE orchestrator_outbox
+            SET next_attempt_at=$3::timestamptz, state='pending', claimed_by=NULL, claimed_until=NULL
+          WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, older[i].outbox.id, new Date(base.getTime() + i * 1000).toISOString()]
+      );
+    }
+    await pool.query(
+      `UPDATE orchestrator_outbox
+          SET next_attempt_at=$3::timestamptz, state='pending', claimed_by=NULL, claimed_until=NULL
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, seeded.outbox.id, new Date(base.getTime() + 60_000).toISOString()]
+    );
+    await sandboxOutcomes.seedSandboxOutcome(pool, {
+      tenantId: tenantA.id, outboxId: seeded.outbox.id, intentId: seeded.intent.id, scenario: 'success',
+    });
+
+    const explicitSkip = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: older[0].outbox.id, workerId: 'w-starve-explicit',
+    });
+    assert.equal(explicitSkip.skip, true);
+    assert.equal(explicitSkip.reason, D.SKIP_REASON_NO_OUTCOME);
+
+    await worker.processTenant(pool, tenantA.id, {
+      workerId: 'w-starve', now: new Date(base.getTime() + 120_000),
+    });
+    const listed = await attempts.listAttemptsForOutbox(pool, {
+      tenantId: tenantA.id, outboxId: seeded.outbox.id,
+    });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].status, 'simulated_ok');
+    for (const row of older) {
+      assert.equal((await attempts.listAttemptsForOutbox(pool, {
+        tenantId: tenantA.id, outboxId: row.outbox.id,
+      })).length, 0);
+    }
+  });
+
+  test('expired started attempt is abandoned before no-outcome skip', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    const t0 = new Date();
+    await pool.query(
+      `UPDATE orchestrator_outbox
+          SET next_attempt_at=$3::timestamptz, state='pending', claimed_by=NULL, claimed_until=NULL
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, live.outbox.id, t0.toISOString()]
+    );
+    const envelope = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-abandon-1',
+      scenario: 'success', now: t0,
+    });
+    assert.ok(!envelope.skip, JSON.stringify(envelope));
+    const later = new Date(t0.getTime() + D.LEASE_MS + 1000);
+    const skipped = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-abandon-2',
+      now: later,
+    });
+    assert.equal(skipped.skip, true);
+    assert.equal(skipped.reason, D.SKIP_REASON_NO_OUTCOME);
+    const listed = await attempts.listAttemptsForOutbox(pool, {
+      tenantId: tenantA.id, outboxId: live.outbox.id,
+    });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].status, 'abandoned_lease');
+    assert.notEqual(listed[0].status, 'started');
+  });
+
+  test('prototype-chain and case-variant scenarios never make rows outcome-ready via test opts', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    for (const scenario of ['constructor', '__proto__', 'toString', 'SUCCESS', 'Success', ' prototype ']) {
+      const skipped = await worker.claimCampaignDeliveryAttempt({
+        pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: `w-proto-${scenario}`,
+        scenario,
+      });
+      assert.equal(skipped.skip, true, scenario);
+      assert.equal(skipped.reason, D.SKIP_REASON_NO_OUTCOME, scenario);
+      assert.equal((await attempts.listAttemptsForOutbox(pool, {
+        tenantId: tenantA.id, outboxId: live.outbox.id,
+      })).length, 0, scenario);
+    }
+  });
+
+  test('settlement fences arbitrary/sensitive outcomeSource and never audits live/secret', async () => {
+    const live = await readyIntent(cookieA, wfA, artA);
+    const pool = p();
+    const envelope = await worker.claimCampaignDeliveryAttempt({
+      pool, tenantId: tenantA.id, outboxId: live.outbox.id, workerId: 'w-src',
+      scenario: 'success',
+    });
+    assert.ok(!envelope.skip);
+    const fake = await worker.executeFake(envelope);
+    for (const bad of ['live', 'secret', 'provider', 'vault_token']) {
+      const cloned = { ...envelope, outcomeSource: bad };
+      const fenced = await worker.settleCampaignDeliveryAttempt(cloned, fake, { pool });
+      assert.equal(fenced.fenced_out, true, bad);
+      const rows = (await pool.query(
+        `SELECT detail FROM orchestrator_audit_events
+          WHERE tenant_id=$1 AND event=$2 AND detail->>'outbox_id'=$3`,
+        [tenantA.id, D.AUDIT_EVENT_SIMULATED, live.outbox.id]
+      )).rows;
+      assert.equal(rows.length, 0, bad);
+      assert.ok(!JSON.stringify(rows).includes(bad), bad);
+    }
+    const ok = await worker.settleCampaignDeliveryAttempt(envelope, fake, { pool });
+    assert.equal(ok.fenced_out, false);
+    assert.equal(ok.status, 'simulated_ok');
+    const audited = (await pool.query(
+      `SELECT detail->>'source' AS source FROM orchestrator_audit_events
+        WHERE tenant_id=$1 AND event=$2 AND detail->>'outbox_id'=$3`,
+      [tenantA.id, D.AUDIT_EVENT_SIMULATED, live.outbox.id]
+    )).rows;
+    assert.equal(audited.length, 1);
+    assert.equal(audited[0].source, D.OUTCOME_SOURCE_TEST_OPTS);
+  });
+
   test('zero-network processOne with outcome source trips no fetch/http/https/net/vault', async () => {
     const live = await readyIntent(cookieA, wfA, artA);
     const pool = p();

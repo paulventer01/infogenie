@@ -3744,6 +3744,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedUnique(p, 'orchestrator_campaign_delivery_intents',
     'orchestrator_campaign_delivery_intents_tenant_unique_idemp',
     'tenant_id, idempotency_key');
+  // Parent unique for sandbox-outcome composite binding FK
+  // (tenant_id, outbox_id, intent_id) → intents(tenant_id, outbox_id, id).
+  await _ensureNamedUnique(p, 'orchestrator_campaign_delivery_intents',
+    'orchestrator_campaign_delivery_intents_tenant_unique_outbox_id',
+    'tenant_id, outbox_id, id');
   await _ensureNamedFk(p, 'orchestrator_campaign_delivery_intents',
     'orchestrator_campaign_delivery_intents_tenant_pub_req_fkey',
     'tenant_id, publishing_request_id', 'orchestrator_campaign_publish_requests', 'tenant_id, id',
@@ -4109,6 +4114,16 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'orchestrator_cdso_tenant_intent_fkey',
     'tenant_id, intent_id', 'orchestrator_campaign_delivery_intents', 'tenant_id, id',
     'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
+    'orchestrator_cdso_tenant_outbox_intent_fkey',
+    'tenant_id, outbox_id, intent_id',
+    'orchestrator_campaign_delivery_intents', 'tenant_id, outbox_id, id',
+    'ON DELETE CASCADE');
+  await _ensureNamedFk(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
+    'orchestrator_cdso_tenant_consumed_attempt_fkey',
+    'tenant_id, consumed_attempt_id',
+    'orchestrator_campaign_delivery_attempts', 'tenant_id, id',
+    'ON DELETE NO ACTION');
   await _ensureNamedCheck(p, 'orchestrator_campaign_delivery_sandbox_outcomes',
     'orchestrator_cdso_source_check',
     `source = 'sandbox'`);
@@ -4165,6 +4180,15 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
            OR OLD.consumed_attempt_id IS NOT NULL
         THEN
           RAISE EXCEPTION 'orchestrator_cdso_immutable';
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM orchestrator_campaign_delivery_attempts a
+           WHERE a.tenant_id = NEW.tenant_id
+             AND a.id = NEW.consumed_attempt_id
+             AND a.outbox_id = NEW.outbox_id
+             AND a.intent_id = NEW.intent_id
+        ) THEN
+          RAISE EXCEPTION 'orchestrator_cdso_consume_binding';
         END IF;
         RETURN NEW;
       END IF;

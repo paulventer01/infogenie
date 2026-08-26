@@ -3,23 +3,11 @@
 const { fail } = require('./errors');
 const D = require('./campaign_delivery_contracts');
 
-const ALLOWED_SOURCES = new Set([
-  D.OUTCOME_SOURCE_SANDBOX,
-  D.OUTCOME_SOURCE_TEST_OPTS,
-]);
-
-function resolveHonestySource(raw) {
-  if (raw == null || raw === '') return D.OUTCOME_SOURCE_SANDBOX;
-  const source = String(raw);
-  if (!ALLOWED_SOURCES.has(source)) fail('validation_failed', { field: 'source' });
-  return source;
-}
-
 function simulateDelivery(input) {
   const scenario = input && input.scenario;
-  const spec = scenario != null ? D.SCENARIO_MAP[scenario] : null;
+  const spec = D.scenarioSpecOf(scenario);
   if (!spec) fail('validation_failed');
-  const source = resolveHonestySource(input && input.source);
+  const source = D.assertAllowedOutcomeSource(input && input.source, { allowEmptyDefault: true });
   return Object.freeze({
     scenario,
     outcome: spec.outcome,

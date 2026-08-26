@@ -13,6 +13,8 @@ const { ensureAgentOrchestratorSchema } = require('../services/agent_orchestrato
 const { ensureTenantSchema } = require('../services/tenants/schema');
 const { ensureAuthSchema } = require('../services/auth/schema');
 const sandbox = require('../services/agent_orchestrator/campaign_delivery_sandbox_outcomes');
+const attempts = require('../services/agent_orchestrator/campaign_delivery_attempts');
+const D = require('../services/agent_orchestrator/campaign_delivery_contracts');
 
 const HAS_DB = db.hasDb();
 const TABLE = 'orchestrator_campaign_delivery_sandbox_outcomes';
@@ -211,8 +213,14 @@ test('PR6E sandbox-outcome CREATE TABLE is tenant-leading, consume-once, and ide
   assert.match(fn, /NEW\.source IS DISTINCT FROM 'sandbox'/);
   assert.match(fn, /NEW\.simulated IS DISTINCT FROM TRUE/);
   assert.match(fn, /RAISE EXCEPTION 'orchestrator_cdso_immutable'/);
+  assert.match(fn, /RAISE EXCEPTION 'orchestrator_cdso_consume_binding'/);
   assert.match(fn, /FROM tenants t WHERE t\.id = OLD\.tenant_id/);
   assert.match(src, /BEFORE UPDATE OR DELETE ON orchestrator_campaign_delivery_sandbox_outcomes/);
+  assert.match(src, /orchestrator_cdso_tenant_outbox_intent_fkey/);
+  assert.match(src, /orchestrator_cdso_tenant_consumed_attempt_fkey/);
+  assert.match(src, /orchestrator_campaign_delivery_intents_tenant_unique_outbox_id/);
+  assert.doesNotMatch(src, /DISABLE TRIGGER orchestrator_cdso_guard/);
+  assert.doesNotMatch(src, /DELETE FROM orchestrator_campaign_delivery_sandbox_outcomes o\s+WHERE NOT EXISTS/);
 });
 
 if (!HAS_DB) {
@@ -298,6 +306,15 @@ if (!HAS_DB) {
     assert.strictEqual(intentFk.cols, 'tenant_id,intent_id');
     assert.strictEqual(intentFk.ref_table, 'orchestrator_campaign_delivery_intents');
     assert.strictEqual(intentFk.deltype, 'c');
+    const bindFk = fks.find((f) => f.conname === 'orchestrator_cdso_tenant_outbox_intent_fkey');
+    assert.ok(bindFk);
+    assert.strictEqual(bindFk.cols, 'tenant_id,outbox_id,intent_id');
+    assert.strictEqual(bindFk.ref_table, 'orchestrator_campaign_delivery_intents');
+    assert.strictEqual(bindFk.deltype, 'c');
+    const attemptFk = fks.find((f) => f.conname === 'orchestrator_cdso_tenant_consumed_attempt_fkey');
+    assert.ok(attemptFk);
+    assert.strictEqual(attemptFk.cols, 'tenant_id,consumed_attempt_id');
+    assert.strictEqual(attemptFk.ref_table, 'orchestrator_campaign_delivery_attempts');
   });
 
   test('seed + consume-once; second unconsumed seed refused; identity frozen; cross-tenant FK refused', async () => {
@@ -306,6 +323,26 @@ if (!HAS_DB) {
     const pubId = await insertPublishApproval(p, tenantA, hostA, draftId, { actorUserId: userId });
     const reqId = await insertRequest(p, tenantA, hostA, draftId, pubId, { requestedBy: userId });
     const bound = await insertBoundIntent(p, tenantA, hostA, draftId, pubId, reqId, { requestedBy: userId });
+
+    await assert.rejects(
+      () => sandbox.seedSandboxOutcome(p, {
+        tenantId: tenantA, outboxId: bound.outboxId, intentId: bound.id, scenario: 'constructor',
+      }),
+      (e) => e && e.code === 'validation_failed',
+      'prototype scenario must fail closed at seed'
+    );
+    await assert.rejects(
+      () => sandbox.seedSandboxOutcome(p, {
+        tenantId: tenantA, outboxId: bound.outboxId, intentId: bound.id, scenario: '__proto__',
+      }),
+      (e) => e && e.code === 'validation_failed'
+    );
+    await assert.rejects(
+      () => sandbox.seedSandboxOutcome(p, {
+        tenantId: tenantA, outboxId: bound.outboxId, intentId: bound.id, scenario: 'SUCCESS',
+      }),
+      (e) => e && e.code === 'validation_failed'
+    );
 
     const seeded = await sandbox.seedSandboxOutcome(p, {
       tenantId: tenantA, outboxId: bound.outboxId, intentId: bound.id, scenario: 'success',
@@ -330,15 +367,32 @@ if (!HAS_DB) {
     assert.ok(locked);
     assert.equal(locked.id, seeded.id);
 
-    const attemptId = nid('cda');
+    const intentRow = (await p.query(
+      `SELECT * FROM orchestrator_campaign_delivery_intents WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, bound.id]
+    )).rows[0];
+    const started = await attempts.insertStartedAttempt(p, {
+      tenantId: tenantA,
+      intentId: bound.id,
+      outboxId: bound.outboxId,
+      draftId: intentRow.draft_id,
+      publishingRequestId: intentRow.publishing_request_id,
+      attemptNumber: 1,
+      generation: 1,
+      leaseHolder: 'sandbox-test',
+      leaseExpiresAt: new Date(Date.now() + D.LEASE_MS),
+      platform: 'meta',
+      intentHash: intentRow.intent_hash,
+    });
+
     const consumed = await sandbox.consumeOutcome(p, {
-      tenantId: tenantA, outcomeId: locked.id, attemptId, consumedAt: new Date(),
+      tenantId: tenantA, outcomeId: locked.id, attemptId: started.id, consumedAt: new Date(),
     });
     assert.ok(consumed.consumed_at);
-    assert.equal(consumed.consumed_attempt_id, attemptId);
+    assert.equal(consumed.consumed_attempt_id, started.id);
 
     const again = await sandbox.consumeOutcome(p, {
-      tenantId: tenantA, outcomeId: locked.id, attemptId: nid('cda2'), consumedAt: new Date(),
+      tenantId: tenantA, outcomeId: locked.id, attemptId: started.id, consumedAt: new Date(),
     });
     assert.equal(again, null, 'consume is once');
 
@@ -368,6 +422,92 @@ if (!HAS_DB) {
     assert.equal(pub.published, false);
     assert.equal(pub.external_action_taken, false);
     assert.strictEqual(pub.credential_ref, undefined);
+  });
+
+  test('mismatched same-tenant outbox/intent binding is rejected; consume rejects nonexistent/cross-bound attempt', async () => {
+    const p = db.getPool();
+    const draftA = await insertDraft(p, tenantA, hostA);
+    const pubA = await insertPublishApproval(p, tenantA, hostA, draftA, { actorUserId: userId });
+    const reqA = await insertRequest(p, tenantA, hostA, draftA, pubA, { requestedBy: userId });
+    const boundA = await insertBoundIntent(p, tenantA, hostA, draftA, pubA, reqA, { requestedBy: userId });
+
+    const draftB = await insertDraft(p, tenantA, hostA);
+    const pubB = await insertPublishApproval(p, tenantA, hostA, draftB, { actorUserId: userId });
+    const reqB = await insertRequest(p, tenantA, hostA, draftB, pubB, { requestedBy: userId });
+    const boundB = await insertBoundIntent(p, tenantA, hostA, draftB, pubB, reqB, { requestedBy: userId });
+
+    await assert.rejects(
+      () => sandbox.seedSandboxOutcome(p, {
+        tenantId: tenantA, outboxId: boundA.outboxId, intentId: boundB.id, scenario: 'success',
+      }),
+      /foreign key|violates/i,
+      'seed must refuse mismatched outbox/intent binding'
+    );
+    await assert.rejects(
+      p.query(
+        `INSERT INTO ${TABLE}
+           (id, tenant_id, outbox_id, intent_id, scenario, source,
+            simulated, published, external_action_taken)
+         VALUES ($1,$2,$3,$4,'success','sandbox', TRUE, FALSE, FALSE)`,
+        [nid('cdso'), tenantA, boundA.outboxId, boundB.id]
+      ),
+      /foreign key|violates/i,
+      'direct INSERT must refuse mismatched binding'
+    );
+
+    const seeded = await sandbox.seedSandboxOutcome(p, {
+      tenantId: tenantA, outboxId: boundA.outboxId, intentId: boundA.id, scenario: 'success',
+    });
+    const intentA = (await p.query(
+      `SELECT * FROM orchestrator_campaign_delivery_intents WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, boundA.id]
+    )).rows[0];
+    const intentB = (await p.query(
+      `SELECT * FROM orchestrator_campaign_delivery_intents WHERE tenant_id=$1 AND id=$2`,
+      [tenantA, boundB.id]
+    )).rows[0];
+    const matching = await attempts.insertStartedAttempt(p, {
+      tenantId: tenantA,
+      intentId: boundA.id,
+      outboxId: boundA.outboxId,
+      draftId: intentA.draft_id,
+      publishingRequestId: intentA.publishing_request_id,
+      attemptNumber: 1,
+      generation: 1,
+      leaseHolder: 'bind-ok',
+      leaseExpiresAt: new Date(Date.now() + D.LEASE_MS),
+      platform: 'meta',
+      intentHash: intentA.intent_hash,
+    });
+    const cross = await attempts.insertStartedAttempt(p, {
+      tenantId: tenantA,
+      intentId: boundB.id,
+      outboxId: boundB.outboxId,
+      draftId: intentB.draft_id,
+      publishingRequestId: intentB.publishing_request_id,
+      attemptNumber: 1,
+      generation: 1,
+      leaseHolder: 'bind-cross',
+      leaseExpiresAt: new Date(Date.now() + D.LEASE_MS),
+      platform: 'meta',
+      intentHash: intentB.intent_hash,
+    });
+
+    const missing = await sandbox.consumeOutcome(p, {
+      tenantId: tenantA, outcomeId: seeded.id, attemptId: nid('missing-cda'), consumedAt: new Date(),
+    });
+    assert.equal(missing, null, 'nonexistent attempt must not consume');
+
+    const wrong = await sandbox.consumeOutcome(p, {
+      tenantId: tenantA, outcomeId: seeded.id, attemptId: cross.id, consumedAt: new Date(),
+    });
+    assert.equal(wrong, null, 'cross-bound attempt must not consume');
+
+    const ok = await sandbox.consumeOutcome(p, {
+      tenantId: tenantA, outcomeId: seeded.id, attemptId: matching.id, consumedAt: new Date(),
+    });
+    assert.ok(ok);
+    assert.equal(ok.consumed_attempt_id, matching.id);
   });
 
   test('ensureAgentOrchestratorSchema is idempotent for sandbox outcomes', async () => {
