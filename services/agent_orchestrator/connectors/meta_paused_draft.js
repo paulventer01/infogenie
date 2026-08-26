@@ -82,14 +82,24 @@ function materializeStep(step, ctx) {
   return { path: step.path, params };
 }
 
-async function compensateCreated(created, token) {
+function freezeProviderObjects(list) {
+  return Object.freeze(list.map((row) => Object.freeze({ ...row })));
+}
+
+async function compensateCreated(created, token, inject) {
   let compensated = 0;
   for (let i = created.length - 1; i >= 0; i -= 1) {
     const row = created[i];
     if (!row || !row.provider_object_id) continue;
     try {
-      const res = await deleteObject(row.provider_object_id, token);
-      if (res.status >= 200 && res.status < 300 && res.body && res.body.success === true) {
+      let ok = false;
+      if (inject && typeof inject.delete === 'function') {
+        ok = (await inject.delete(row.object_kind, row.provider_object_id, row, i, created)) === true;
+      } else {
+        const res = await deleteObject(row.provider_object_id, token);
+        ok = res.status >= 200 && res.status < 300 && res.body && res.body.success === true;
+      }
+      if (ok) {
         compensated += 1;
         row.compensated = true;
       }
@@ -131,11 +141,11 @@ async function createPausedDraftGraph(input) {
         response = await postForm(spec.path, spec.params);
       }
     } catch (_transportErr) {
-      const compensated = await compensateCreated(created, token);
+      const compensated = await compensateCreated(created, token, inject);
       return Object.freeze({
         ok: false,
         partial: created.length > 0,
-        objects: Object.freeze(created.slice()),
+        objects: freezeProviderObjects(created),
         objects_created: created.length,
         objects_compensated: compensated,
         error_code: 'provider_transport_failed',
@@ -146,11 +156,11 @@ async function createPausedDraftGraph(input) {
     }
     if (!response || response.status < 200 || response.status >= 300 || !response.body || !response.body.id) {
       const code = response && response.body && response.body.error && response.body.error.code;
-      const compensated = await compensateCreated(created, token);
+      const compensated = await compensateCreated(created, token, inject);
       return Object.freeze({
         ok: false,
         partial: created.length > 0,
-        objects: Object.freeze(created.slice()),
+        objects: freezeProviderObjects(created),
         objects_created: created.length,
         objects_compensated: compensated,
         error_code: code === 190 ? 'provider_auth_failed' : 'provider_create_failed',
@@ -161,13 +171,13 @@ async function createPausedDraftGraph(input) {
     }
     const id = String(response.body.id);
     ctx[`${step.kind}_id`] = id;
-    created.push(Object.freeze({
+    created.push({
       object_kind: step.kind,
       provider_object_id: id,
       provider_status: PAUSED,
       sequence_number: i + 1,
       compensated: false,
-    }));
+    });
     for (const obj of created) {
       if (obj.provider_status !== PAUSED) fail('validation_failed', { field: 'provider_status' });
     }
@@ -176,7 +186,7 @@ async function createPausedDraftGraph(input) {
   return Object.freeze({
     ok: true,
     partial: false,
-    objects: Object.freeze(created.slice()),
+    objects: freezeProviderObjects(created),
     objects_created: created.length,
     objects_compensated: 0,
     error_code: null,

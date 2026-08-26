@@ -78,22 +78,34 @@ function successInject() {
 
 function partialInject() {
   let calls = 0;
+  const deletes = [];
   return {
+    deletes,
     create: async (kind) => {
       calls += 1;
       if (calls === 3) return { status: 400, body: { error: { code: 100 } } };
       return { status: 200, body: { id: `${kind}_${calls}` } };
+    },
+    delete: async (kind, objectId) => {
+      deletes.push({ kind, objectId });
+      return true;
     },
   };
 }
 
 function transportThrowAfterPartialInject() {
   let calls = 0;
+  const deletes = [];
   return {
+    deletes,
     create: async (kind) => {
       calls += 1;
       if (calls === 3) throw new Error('ECONNRESET transport');
       return { status: 200, body: { id: `${kind}_${calls}` } };
+    },
+    delete: async (kind, objectId) => {
+      deletes.push({ kind, objectId });
+      return true;
     },
   };
 }
@@ -390,22 +402,41 @@ if (!HAS_DB) {
 
   test('partial provider failure settles partial without claiming complete', async () => {
     const live = await readyConfirmed(cookieA, wfA, artA);
-    const res = await executeModule(live, ik('partial'), partialInject());
+    const inject = partialInject();
+    const res = await executeModule(live, ik('partial'), inject);
     assert.equal(res.row.status, 'partial');
     assert.equal(res.row.outcome, 'partial');
     assert.equal(res.row.published, false);
     assert.notEqual(res.row.status, 'complete');
+    assert.equal(res.row.objects_compensated, 2);
+    assert.equal(inject.deletes.length, 2);
+    assert.deepEqual(inject.deletes.map((d) => d.kind), ['adset', 'campaign']);
+    for (const obj of res.objects) assert.equal(obj.compensated, true);
+    const rows = (await p().query(
+      `SELECT sequence_number, object_kind, compensated, provider_status
+         FROM orchestrator_campaign_provider_objects
+        WHERE tenant_id=$1 AND execution_id=$2 ORDER BY sequence_number`,
+      [tenantA.id, res.row.id]
+    )).rows;
+    assert.equal(rows.length, 2);
+    assert.equal(rows.filter((r) => r.compensated === true).length, 2);
+    for (const row of rows) assert.equal(row.provider_status, 'PAUSED');
   });
 
   test('transport failure after partial Meta success keeps durable spend and terminal outcome', async () => {
     const live = await readyConfirmed(cookieA, wfA, artA);
     const key = ik('transport-partial');
-    const res = await executeModule(live, key, transportThrowAfterPartialInject());
+    const inject = transportThrowAfterPartialInject();
+    const res = await executeModule(live, key, inject);
     assert.equal(res.replay, false);
     assert.equal(res.row.status, 'partial');
     assert.equal(res.row.outcome, 'partial');
     assert.equal(res.row.external_action_taken, true);
     assert.equal(res.objects.length, 2);
+    assert.equal(res.row.objects_compensated, 2);
+    assert.equal(inject.deletes.length, 2);
+    assert.deepEqual(inject.deletes.map((d) => d.kind), ['adset', 'campaign']);
+    for (const obj of res.objects) assert.equal(obj.compensated, true);
 
     const confirmation = (await p().query(
       `SELECT status, spent_at FROM orchestrator_campaign_provider_confirmations

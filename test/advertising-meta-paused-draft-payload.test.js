@@ -153,6 +153,71 @@ test('createPausedDraftGraph uses current graph version prefix on outbound paths
   assert.equal(metaGraphVersion(), 'v26.0');
 });
 
+test('compensateCreated uses inject.delete in reverse order without live network', async () => {
+  const https = require('node:https');
+  const { compensateCreated } = require('../services/agent_orchestrator/connectors/meta_paused_draft');
+  let networkDeletes = 0;
+  const origRequest = https.request;
+  https.request = function (...args) {
+    networkDeletes += 1;
+    throw new Error('NETWORK_FORBIDDEN');
+  };
+  const deletes = [];
+  const created = [
+    { object_kind: 'campaign', provider_object_id: 'c1', sequence_number: 1, compensated: false },
+    { object_kind: 'adset', provider_object_id: 'a1', sequence_number: 2, compensated: false },
+  ];
+  try {
+    const count = await compensateCreated(created, 'secret-token', {
+      delete: async (kind, objectId) => {
+        deletes.push({ kind, objectId });
+        return true;
+      },
+    });
+    assert.equal(count, 2);
+    assert.equal(networkDeletes, 0);
+    assert.deepEqual(deletes, [
+      { kind: 'adset', objectId: 'a1' },
+      { kind: 'campaign', objectId: 'c1' },
+    ]);
+    assert.equal(created[0].compensated, true);
+    assert.equal(created[1].compensated, true);
+  } finally {
+    https.request = origRequest;
+  }
+});
+
+test('partial create outcome marks objects compensated consistently', async () => {
+  let calls = 0;
+  const deletes = [];
+  const result = await metaPausedDraft.createPausedDraftGraph({
+    capability: await mintConsumedCapability(),
+    credentials: CREDS,
+    snapshot: approvedSnapshot(),
+    inject: {
+      create: async (kind) => {
+        calls += 1;
+        if (calls === 3) return { status: 400, body: { error: { code: 100 } } };
+        return { status: 200, body: { id: `${kind}_${calls}` } };
+      },
+      delete: async (kind, objectId) => {
+        deletes.push({ kind, objectId });
+        return true;
+      },
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.partial, true);
+  assert.equal(result.objects_created, 2);
+  assert.equal(result.objects_compensated, 2);
+  assert.equal(deletes.length, 2);
+  assert.deepEqual(deletes.map((d) => d.kind), ['adset', 'campaign']);
+  for (const obj of result.objects) {
+    assert.equal(obj.provider_status, 'PAUSED');
+    assert.equal(obj.compensated, true);
+  }
+});
+
 async function mintConsumedCapability() {
   const now = Date.now();
   const binding = {

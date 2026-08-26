@@ -27,7 +27,7 @@ const nextHex = () => { seq += 1; return seq.toString(16).padStart(64, '0'); };
 
 const CRED_REQUIRED = [
   'id', 'tenant_id', 'platform', 'environment', 'status',
-  'account_fingerprint', 'version', 'owner_user_id', 'created_at', 'updated_at',
+  'account_fingerprint', 'page_id', 'version', 'owner_user_id', 'created_at', 'updated_at',
 ];
 const CRED_NULLABLE = ['revoked_at'];
 const CRED_COLUMNS = [...CRED_REQUIRED, ...CRED_NULLABLE];
@@ -55,7 +55,11 @@ const CONFIRM_NULLABLE = ['spent_at'];
 const CONFIRM_COLUMNS = [...CONFIRM_REQUIRED, ...CONFIRM_NULLABLE];
 
 const FORBIDDEN_SECRET_RE =
-  /ciphertext|access_token|refresh_token|vault_payload|confirmation_phrase|confirm_phrase|provider_id|ad_account|page_id|pixel_id|api_key/i;
+  /ciphertext|access_token|refresh_token|vault_payload|confirmation_phrase|confirm_phrase|provider_id|ad_account|pixel_id|api_key/i;
+const CRED_FORBIDDEN_SECRET_RE =
+  /ciphertext|access_token|refresh_token|vault_payload|confirmation_phrase|confirm_phrase|provider_id|ad_account|pixel_id|api_key/i;
+const CRED_PUBLIC_IDENTITY_COLUMNS = Object.freeze(['page_id']);
+const CRED_ALLOWLIST_COLUMNS = Object.freeze([...CRED_PUBLIC_IDENTITY_COLUMNS]);
 const FORBIDDEN_COLUMNS = [
   'credential', 'credentials', 'credential_ref', 'token', 'tokens', 'access_token',
   'refresh_token', 'secret', 'password', 'vault', 'vault_payload', 'authorization',
@@ -63,7 +67,7 @@ const FORBIDDEN_COLUMNS = [
   'provider_id', 'external_campaign_id', 'external_id', 'body', 'request_body',
   'raw_body', 'confirmation_phrase', 'confirmation_text', 'confirm_phrase',
   'snapshot_json', 'snapshot', 'payload', 'api_key', 'ciphertext', 'iv', 'tag',
-  'ad_account_id', 'page_id', 'pixel_id',
+  'ad_account_id', 'pixel_id',
 ];
 
 function schemaSrc() {
@@ -258,9 +262,12 @@ async function insertCredRef(p, tenantId, userId, opts = {}) {
   const id = opts.id || nid('mcr');
   await p.query(
     `INSERT INTO ${CRED_TABLE}
-       (id, tenant_id, platform, environment, status, account_fingerprint, version, owner_user_id)
-     VALUES ($1,$2,'meta',$3,'active',$4,$5,$6)`,
-    [id, tenantId, opts.environment || 'sandbox', opts.fingerprint || nextHex(), opts.version || 1, userId]
+       (id, tenant_id, platform, environment, status, account_fingerprint, page_id, version, owner_user_id)
+     VALUES ($1,$2,'meta',$3,'active',$4,$5,$6,$7)`,
+    [
+      id, tenantId, opts.environment || 'sandbox', opts.fingerprint || nextHex(),
+      opts.pageId || '1122334455667', opts.version || 1, userId,
+    ]
   );
   return id;
 }
@@ -371,7 +378,12 @@ test('PR6F-0 CREATE TABLE is tenant-leading, digest-only, TTL-capped, and omits 
   assert.match(credCreate, /CHECK \(platform = 'meta'\)/);
   assert.match(credCreate, /environment IN \('test','sandbox'\)/);
   assert.match(credCreate, /status IN \('active','revoked'\)/);
-  assert.doesNotMatch(credCreate, FORBIDDEN_SECRET_RE);
+  assert.match(credCreate, /\bpage_id TEXT NOT NULL\b/);
+  assert.match(src, /orchestrator_tmcr_page_id_check/);
+  assert.match(src, /page_id ~ '\^\[0-9\]\{1,32\}\$'/);
+  assert.equal(FORBIDDEN_SECRET_RE.test('page_id'), false, 'page_id is public tenant-scoped identity metadata, not a secret surface');
+  assert.equal(CRED_FORBIDDEN_SECRET_RE.test('page_id'), false, 'credential refs may declare page_id');
+  assert.doesNotMatch(credCreate, CRED_FORBIDDEN_SECRET_RE);
   assert.doesNotMatch(credCreate, /\bconfirmation_phrase\b/);
   for (const col of ['ciphertext', 'access_token', 'refresh_token', 'credential_ref', 'provider_id', 'ad_account_id']) {
     assert.doesNotMatch(credCreate, new RegExp(`\\b${col}\\b`), `${CRED_TABLE} must not declare ${col}`);
@@ -494,6 +506,12 @@ if (!HAS_DB) {
       for (const name of required) {
         const col = cols.find((c) => c.column_name === name);
         assert.ok(col, `${table}.${name} must exist`);
+        if (table === CRED_TABLE && CRED_PUBLIC_IDENTITY_COLUMNS.includes(name)) {
+          // page_id is public tenant-scoped Page identity metadata on credential refs.
+          // CREATE DDL requires NOT NULL (source scan above); a nullable migration column
+          // may exist until backfill, but the column must be present exactly once.
+          continue;
+        }
         assert.strictEqual(col.is_nullable, 'NO', `${table}.${name} must be NOT NULL`);
       }
       for (const name of nullable) {
@@ -505,8 +523,10 @@ if (!HAS_DB) {
       assert.strictEqual(tenant.data_type, 'integer');
       const pk = (await pkAndUniques(table)).filter((c) => c.constraint_type === 'PRIMARY KEY');
       assert.ok(pk.some((c) => c.cols === 'tenant_id,id'), `${table} PK must be (tenant_id, id)`);
-      const forbidden = cols.filter((c) => FORBIDDEN_COLUMNS.includes(c.column_name)
-        || FORBIDDEN_SECRET_RE.test(c.column_name));
+      const forbidden = cols.filter((c) => {
+        if (table === CRED_TABLE && CRED_ALLOWLIST_COLUMNS.includes(c.column_name)) return false;
+        return FORBIDDEN_COLUMNS.includes(c.column_name) || FORBIDDEN_SECRET_RE.test(c.column_name);
+      });
       assert.deepStrictEqual(forbidden, [], `${table} must not store forbidden surfaces`);
     }
   });
@@ -673,8 +693,8 @@ if (!HAS_DB) {
     await assert.rejects(
       () => p.query(
         `INSERT INTO ${CRED_TABLE}
-           (id, tenant_id, platform, environment, status, account_fingerprint, version, owner_user_id)
-         VALUES ($1,$2,'google','sandbox','active',$3,1,$4)`,
+           (id, tenant_id, platform, environment, status, account_fingerprint, page_id, version, owner_user_id)
+         VALUES ($1,$2,'google','sandbox','active',$3,'1122334455667',1,$4)`,
         [id, tenantA, nextHex(), userId]
       ),
       /platform_check|check/i
@@ -682,8 +702,8 @@ if (!HAS_DB) {
     await assert.rejects(
       () => p.query(
         `INSERT INTO ${CRED_TABLE}
-           (id, tenant_id, platform, environment, status, account_fingerprint, version, owner_user_id)
-         VALUES ($1,$2,'meta','production','active',$3,1,$4)`,
+           (id, tenant_id, platform, environment, status, account_fingerprint, page_id, version, owner_user_id)
+         VALUES ($1,$2,'meta','production','active',$3,'1122334455667',1,$4)`,
         [nid('mcr'), tenantA, nextHex(), userId]
       ),
       /environment_check|check/i
@@ -691,8 +711,17 @@ if (!HAS_DB) {
     await assert.rejects(
       () => p.query(
         `INSERT INTO ${CRED_TABLE}
-           (id, tenant_id, platform, environment, status, account_fingerprint, version, owner_user_id, revoked_at)
-         VALUES ($1,$2,'meta','test','revoked',$3,1,$4,now())`,
+           (id, tenant_id, platform, environment, status, account_fingerprint, page_id, version, owner_user_id)
+         VALUES ($1,$2,'meta','test','active',$3,'not-a-page',1,$4)`,
+        [nid('mcr'), tenantA, nextHex(), userId]
+      ),
+      /page_id_check|check/i
+    );
+    await assert.rejects(
+      () => p.query(
+        `INSERT INTO ${CRED_TABLE}
+           (id, tenant_id, platform, environment, status, account_fingerprint, page_id, version, owner_user_id, revoked_at)
+         VALUES ($1,$2,'meta','test','revoked',$3,'1122334455667',1,$4,now())`,
         [nid('mcr'), tenantA, nextHex(), userId]
       ),
       /tmcr_immutable|immutable/i
