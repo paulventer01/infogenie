@@ -245,6 +245,477 @@ async function _columnExists(p, table, column) {
   return r.rowCount > 0;
 }
 
+// Catalog lookup only — no BEGIN/COMMIT. Used inside an already-open
+// transaction so a failed ADD cannot commit earlier DDL.
+async function _constraintExistsOn(p, table, name) {
+  const r = await p.query(
+    `SELECT 1 FROM pg_constraint WHERE conname = $1 AND conrelid = $2::regclass`,
+    [name, `public.${table}`]
+  );
+  return r.rowCount > 0;
+}
+
+async function _addCheckIfAbsent(p, table, name, checkBody, opts = {}) {
+  if (await _constraintExistsOn(p, table, name)) return;
+  const suffix = opts && opts.notValid ? ' NOT VALID' : '';
+  await p.query(`ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${checkBody})${suffix}`);
+}
+
+async function _addUniqueIfAbsent(p, table, name, cols) {
+  if (await _constraintExistsOn(p, table, name)) return;
+  await p.query(`ALTER TABLE ${table} ADD CONSTRAINT ${name} UNIQUE (${cols})`);
+}
+
+async function _addFkIfAbsent(p, table, name, cols, refTable, refCols, fkSuffix) {
+  if (await _constraintExistsOn(p, table, name)) return;
+  await p.query(
+    `ALTER TABLE ${table} ADD CONSTRAINT ${name} FOREIGN KEY (${cols}) REFERENCES ${refTable} (${refCols}) ${fkSuffix}`
+  );
+}
+
+// PR 6F-1R — upgrade an existing PR6F-1 ledger (or no-op a fresh 1R CREATE)
+// in ONE transaction on the ensure client. Advisory lock is already held by
+// `_runEnsureAgentOrchestratorSchema`. Other sessions keep seeing the old
+// immutability triggers until COMMIT (PostgreSQL transactional DDL). A throw
+// (including unbound-execution fail-closed) ROLLBACKs dropped triggers and
+// nullable lineage columns so boot/settlement cannot observe a partial schema.
+// Do not call `_ensureNamedCheck` / `_ensureNamedFk` / `_ensureNamedUnique` /
+// `_installInTransaction` here — those helpers COMMIT.
+async function _upgradePr6f1rProviderLineage(p) {
+  await p.query('BEGIN');
+  try {
+    await p.query(`DROP TRIGGER IF EXISTS orchestrator_cpdex_guard ON orchestrator_campaign_provider_draft_executions`);
+    await p.query(`DROP TRIGGER IF EXISTS orchestrator_cpo_guard ON orchestrator_campaign_provider_objects`);
+
+    await p.query(`
+      ALTER TABLE orchestrator_campaign_provider_draft_executions
+        ADD COLUMN IF NOT EXISTS credential_ref_version INTEGER,
+        ADD COLUMN IF NOT EXISTS account_fingerprint TEXT
+    `);
+    await p.query(`
+      ALTER TABLE orchestrator_campaign_provider_objects
+        ADD COLUMN IF NOT EXISTS publishing_request_id TEXT,
+        ADD COLUMN IF NOT EXISTS intent_id TEXT,
+        ADD COLUMN IF NOT EXISTS snapshot_hash TEXT,
+        ADD COLUMN IF NOT EXISTS account_fingerprint TEXT,
+        ADD COLUMN IF NOT EXISTS provider_object_id_digest TEXT,
+        ADD COLUMN IF NOT EXISTS display_ref TEXT,
+        ADD COLUMN IF NOT EXISTS parent_campaign_digest TEXT,
+        ADD COLUMN IF NOT EXISTS parent_adset_digest TEXT,
+        ADD COLUMN IF NOT EXISTS parent_creative_digest TEXT
+    `);
+
+    await p.query(`
+      UPDATE orchestrator_campaign_provider_draft_executions e
+         SET credential_ref_version = r.version,
+             account_fingerprint = r.account_fingerprint
+        FROM orchestrator_tenant_meta_credential_refs r
+       WHERE e.tenant_id = r.tenant_id
+         AND e.credential_ref_id = r.id
+         AND (e.credential_ref_version IS NULL OR e.account_fingerprint IS NULL)
+    `);
+    const unboundExec = await p.query(`
+      SELECT 1 FROM orchestrator_campaign_provider_draft_executions
+       WHERE account_fingerprint IS NULL OR credential_ref_version IS NULL LIMIT 1
+    `);
+    if (unboundExec.rowCount) {
+      const err = new Error('pr6f1r_lineage_backfill_unbound_execution');
+      err.code = 'pr6f1r_lineage_backfill_unbound_execution';
+      throw err;
+    }
+
+    await p.query(`
+      UPDATE orchestrator_campaign_provider_objects o
+         SET publishing_request_id = e.publishing_request_id,
+             intent_id = e.intent_id,
+             snapshot_hash = e.snapshot_hash,
+             account_fingerprint = e.account_fingerprint,
+             provider_object_id_digest = encode(sha256(convert_to(o.provider_object_id, 'UTF8')), 'hex'),
+             display_ref = substr(encode(sha256(convert_to(o.provider_object_id, 'UTF8')), 'hex'), 1, 12)
+        FROM orchestrator_campaign_provider_draft_executions e
+       WHERE o.tenant_id = e.tenant_id
+         AND o.execution_id = e.id
+         AND o.provider_object_id_digest IS NULL
+    `);
+    await p.query(`
+      UPDATE orchestrator_campaign_provider_objects o
+         SET parent_campaign_digest = c.provider_object_id_digest
+        FROM orchestrator_campaign_provider_objects c
+       WHERE o.tenant_id = c.tenant_id
+         AND o.execution_id = c.execution_id
+         AND c.object_kind = 'campaign'
+         AND o.object_kind IN ('adset','creative','ad')
+         AND o.parent_campaign_digest IS NULL
+    `);
+    await p.query(`
+      UPDATE orchestrator_campaign_provider_objects o
+         SET parent_adset_digest = a.provider_object_id_digest
+        FROM orchestrator_campaign_provider_objects a
+       WHERE o.tenant_id = a.tenant_id
+         AND o.execution_id = a.execution_id
+         AND a.object_kind = 'adset'
+         AND o.object_kind = 'ad'
+         AND o.parent_adset_digest IS NULL
+    `);
+    await p.query(`
+      UPDATE orchestrator_campaign_provider_objects o
+         SET parent_creative_digest = cr.provider_object_id_digest
+        FROM orchestrator_campaign_provider_objects cr
+       WHERE o.tenant_id = cr.tenant_id
+         AND o.execution_id = cr.execution_id
+         AND cr.object_kind = 'creative'
+         AND o.object_kind = 'ad'
+         AND o.parent_creative_digest IS NULL
+    `);
+
+    await p.query(`
+      ALTER TABLE orchestrator_campaign_provider_draft_executions
+        ALTER COLUMN credential_ref_version SET NOT NULL,
+        ALTER COLUMN account_fingerprint SET NOT NULL
+    `);
+    await p.query(`
+      ALTER TABLE orchestrator_campaign_provider_objects
+        ALTER COLUMN publishing_request_id SET NOT NULL,
+        ALTER COLUMN intent_id SET NOT NULL,
+        ALTER COLUMN snapshot_hash SET NOT NULL,
+        ALTER COLUMN account_fingerprint SET NOT NULL,
+        ALTER COLUMN provider_object_id_digest SET NOT NULL,
+        ALTER COLUMN display_ref SET NOT NULL
+    `);
+
+    await _addCheckIfAbsent(p, 'orchestrator_campaign_provider_draft_executions',
+      'orchestrator_cpdex_complete_cardinality_check',
+      `status <> 'complete'
+       OR (outcome = 'complete' AND objects_created = 4 AND objects_compensated = 0)`,
+      { notValid: true });
+    await _addCheckIfAbsent(p, 'orchestrator_campaign_provider_draft_executions',
+      'orchestrator_cpdex_cred_ver_check', `credential_ref_version >= 1`, { notValid: true });
+    await _addCheckIfAbsent(p, 'orchestrator_campaign_provider_draft_executions',
+      'orchestrator_cpdex_account_fp_check',
+      `char_length(account_fingerprint)=64 AND account_fingerprint ~ '^[0-9a-f]{64}$'`,
+      { notValid: true });
+    await _addUniqueIfAbsent(p, 'orchestrator_campaign_provider_draft_executions',
+      'orchestrator_cpdex_tenant_unique_id_fp', 'tenant_id, id, account_fingerprint');
+    await _addUniqueIfAbsent(p, 'orchestrator_campaign_provider_draft_executions',
+      'orchestrator_cpdex_tenant_unique_id_snap', 'tenant_id, id, snapshot_hash');
+    await _addUniqueIfAbsent(p, 'orchestrator_campaign_provider_draft_executions',
+      'orchestrator_cpdex_tenant_unique_id_pubreq', 'tenant_id, id, publishing_request_id');
+    await _addUniqueIfAbsent(p, 'orchestrator_campaign_provider_draft_executions',
+      'orchestrator_cpdex_tenant_unique_id_intent', 'tenant_id, id, intent_id');
+
+    await _addUniqueIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_tenant_execution_kind', 'tenant_id, execution_id, object_kind');
+    await _addUniqueIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_tenant_execution_digest', 'tenant_id, execution_id, provider_object_id_digest');
+    await _addUniqueIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_tenant_account_digest', 'tenant_id, account_fingerprint, provider_object_id_digest');
+    await _addCheckIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_digest_check',
+      `char_length(provider_object_id_digest)=64
+       AND provider_object_id_digest ~ '^[0-9a-f]{64}$'
+       AND char_length(display_ref)=12
+       AND display_ref = substr(provider_object_id_digest, 1, 12)`,
+      { notValid: true });
+    await _addCheckIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_account_fp_check',
+      `char_length(account_fingerprint)=64 AND account_fingerprint ~ '^[0-9a-f]{64}$'`,
+      { notValid: true });
+    await _addCheckIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_snapshot_hash_check',
+      `char_length(snapshot_hash)=64 AND snapshot_hash ~ '^[0-9a-f]{64}$'`,
+      { notValid: true });
+    await _addCheckIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_parent_lineage_check',
+      `(object_kind = 'campaign'
+         AND parent_campaign_digest IS NULL
+         AND parent_adset_digest IS NULL
+         AND parent_creative_digest IS NULL)
+       OR (object_kind = 'adset'
+         AND parent_campaign_digest IS NOT NULL
+         AND parent_adset_digest IS NULL
+         AND parent_creative_digest IS NULL
+         AND char_length(parent_campaign_digest)=64
+         AND parent_campaign_digest ~ '^[0-9a-f]{64}$')
+       OR (object_kind = 'creative'
+         AND parent_campaign_digest IS NOT NULL
+         AND parent_adset_digest IS NULL
+         AND parent_creative_digest IS NULL
+         AND char_length(parent_campaign_digest)=64
+         AND parent_campaign_digest ~ '^[0-9a-f]{64}$')
+       OR (object_kind = 'ad'
+         AND parent_campaign_digest IS NOT NULL
+         AND parent_adset_digest IS NOT NULL
+         AND parent_creative_digest IS NOT NULL
+         AND char_length(parent_campaign_digest)=64
+         AND char_length(parent_adset_digest)=64
+         AND char_length(parent_creative_digest)=64
+         AND parent_campaign_digest ~ '^[0-9a-f]{64}$'
+         AND parent_adset_digest ~ '^[0-9a-f]{64}$'
+         AND parent_creative_digest ~ '^[0-9a-f]{64}$')`,
+      { notValid: true });
+    await _addFkIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_tenant_pub_req_fkey',
+      'tenant_id, publishing_request_id', 'orchestrator_campaign_publish_requests',
+      'tenant_id, id', 'ON DELETE CASCADE');
+    await _addFkIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_tenant_intent_fkey',
+      'tenant_id, intent_id', 'orchestrator_campaign_delivery_intents',
+      'tenant_id, id', 'ON DELETE CASCADE');
+    await _addFkIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_tenant_exec_fp_fkey',
+      'tenant_id, execution_id, account_fingerprint',
+      'orchestrator_campaign_provider_draft_executions',
+      'tenant_id, id, account_fingerprint', 'ON DELETE CASCADE');
+    await _addFkIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_tenant_exec_snap_fkey',
+      'tenant_id, execution_id, snapshot_hash',
+      'orchestrator_campaign_provider_draft_executions',
+      'tenant_id, id, snapshot_hash', 'ON DELETE CASCADE');
+    await _addFkIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_tenant_exec_pubreq_fkey',
+      'tenant_id, execution_id, publishing_request_id',
+      'orchestrator_campaign_provider_draft_executions',
+      'tenant_id, id, publishing_request_id', 'ON DELETE CASCADE');
+    await _addFkIfAbsent(p, 'orchestrator_campaign_provider_objects',
+      'orchestrator_cpo_tenant_exec_intent_fkey',
+      'tenant_id, execution_id, intent_id',
+      'orchestrator_campaign_provider_draft_executions',
+      'tenant_id, id, intent_id', 'ON DELETE CASCADE');
+
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS orchestrator_campaign_provider_object_events (
+        id TEXT NOT NULL,
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        object_id TEXT NOT NULL,
+        execution_id TEXT NOT NULL,
+        event_kind TEXT NOT NULL,
+        sequence_number INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (tenant_id, id),
+        CONSTRAINT orchestrator_cpoe_tenant_object_kind
+          UNIQUE (tenant_id, object_id, event_kind),
+        CONSTRAINT orchestrator_cpoe_kind_check CHECK (
+          event_kind IN ('created','compensated')
+        ),
+        CONSTRAINT orchestrator_cpoe_seq_check CHECK (
+          sequence_number >= 1 AND sequence_number <= 2
+        ),
+        CONSTRAINT orchestrator_cpoe_len_check CHECK (
+          char_length(id) BETWEEN 1 AND 128
+          AND char_length(object_id) BETWEEN 1 AND 128
+          AND char_length(execution_id) BETWEEN 1 AND 128
+        )
+      )
+    `);
+    await _addFkIfAbsent(p, 'orchestrator_campaign_provider_object_events',
+      'orchestrator_cpoe_tenant_object_fkey',
+      'tenant_id, object_id', 'orchestrator_campaign_provider_objects',
+      'tenant_id, id', 'ON DELETE CASCADE');
+    await _addFkIfAbsent(p, 'orchestrator_campaign_provider_object_events',
+      'orchestrator_cpoe_tenant_execution_fkey',
+      'tenant_id, execution_id', 'orchestrator_campaign_provider_draft_executions',
+      'tenant_id, id', 'ON DELETE CASCADE');
+    await p.query(`
+      INSERT INTO orchestrator_campaign_provider_object_events
+        (id, tenant_id, object_id, execution_id, event_kind, sequence_number, created_at)
+      SELECT 'cpoe_created_' || o.id, o.tenant_id, o.id, o.execution_id, 'created', 1, o.created_at
+        FROM orchestrator_campaign_provider_objects o
+       WHERE NOT EXISTS (
+         SELECT 1 FROM orchestrator_campaign_provider_object_events e
+          WHERE e.tenant_id = o.tenant_id AND e.object_id = o.id AND e.event_kind = 'created'
+       )
+    `);
+    await p.query(`
+      INSERT INTO orchestrator_campaign_provider_object_events
+        (id, tenant_id, object_id, execution_id, event_kind, sequence_number, created_at)
+      SELECT 'cpoe_comp_' || o.id, o.tenant_id, o.id, o.execution_id, 'compensated', 2,
+             COALESCE(o.compensated_at, o.created_at)
+        FROM orchestrator_campaign_provider_objects o
+       WHERE o.compensated = TRUE
+         AND NOT EXISTS (
+           SELECT 1 FROM orchestrator_campaign_provider_object_events e
+            WHERE e.tenant_id = o.tenant_id AND e.object_id = o.id AND e.event_kind = 'compensated'
+         )
+    `);
+
+    await p.query(`
+      CREATE OR REPLACE FUNCTION orchestrator_cpdex_guard()
+      RETURNS trigger AS $fn$
+      BEGIN
+        IF TG_OP = 'INSERT' THEN
+          IF NEW.status IS DISTINCT FROM 'started'
+             OR NEW.settled_at IS NOT NULL
+             OR NEW.outcome IS NOT NULL
+             OR NEW.error_code IS NOT NULL THEN
+            RAISE EXCEPTION 'orchestrator_cpdex_immutable';
+          END IF;
+          RETURN NEW;
+        END IF;
+        IF TG_OP = 'UPDATE' THEN
+          IF OLD.status IS DISTINCT FROM 'started'
+             OR NEW.status IS NOT DISTINCT FROM 'started'
+             OR NEW.id IS DISTINCT FROM OLD.id
+             OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+             OR NEW.confirmation_id IS DISTINCT FROM OLD.confirmation_id
+             OR NEW.challenge_id IS DISTINCT FROM OLD.challenge_id
+             OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
+             OR NEW.revision IS DISTINCT FROM OLD.revision
+             OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id
+             OR NEW.workflow_approval_id IS DISTINCT FROM OLD.workflow_approval_id
+             OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+             OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+             OR NEW.outbox_id IS DISTINCT FROM OLD.outbox_id
+             OR NEW.attempt_id IS DISTINCT FROM OLD.attempt_id
+             OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+             OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+             OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+             OR NEW.generation IS DISTINCT FROM OLD.generation
+             OR NEW.contract_hash IS DISTINCT FROM OLD.contract_hash
+             OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
+             OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+             OR NEW.request_hash IS DISTINCT FROM OLD.request_hash
+             OR NEW.claim_token_hash IS DISTINCT FROM OLD.claim_token_hash
+             OR NEW.contract_version IS DISTINCT FROM OLD.contract_version
+             OR NEW.operation IS DISTINCT FROM OLD.operation
+             OR NEW.platform IS DISTINCT FROM OLD.platform
+             OR NEW.connector IS DISTINCT FROM OLD.connector
+             OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
+             OR NEW.requested_by IS DISTINCT FROM OLD.requested_by
+             OR NEW.started_at IS DISTINCT FROM OLD.started_at
+             OR NEW.simulated IS DISTINCT FROM FALSE
+             OR NEW.published IS DISTINCT FROM FALSE
+          THEN
+            RAISE EXCEPTION 'orchestrator_cpdex_immutable';
+          END IF;
+          IF NEW.status = 'complete' THEN
+            IF NEW.objects_created IS DISTINCT FROM 4 OR NEW.objects_compensated IS DISTINCT FROM 0 THEN
+              RAISE EXCEPTION 'orchestrator_cpdex_cardinality';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1
+                FROM orchestrator_campaign_provider_objects camp
+                JOIN orchestrator_campaign_provider_objects aset
+                  ON aset.tenant_id = camp.tenant_id
+                 AND aset.execution_id = camp.execution_id
+                 AND aset.object_kind = 'adset'
+                 AND aset.parent_campaign_digest = camp.provider_object_id_digest
+                JOIN orchestrator_campaign_provider_objects cr
+                  ON cr.tenant_id = camp.tenant_id
+                 AND cr.execution_id = camp.execution_id
+                 AND cr.object_kind = 'creative'
+                 AND cr.parent_campaign_digest = camp.provider_object_id_digest
+                JOIN orchestrator_campaign_provider_objects ad
+                  ON ad.tenant_id = camp.tenant_id
+                 AND ad.execution_id = camp.execution_id
+                 AND ad.object_kind = 'ad'
+                 AND ad.parent_campaign_digest = camp.provider_object_id_digest
+                 AND ad.parent_adset_digest = aset.provider_object_id_digest
+                 AND ad.parent_creative_digest = cr.provider_object_id_digest
+               WHERE camp.tenant_id = NEW.tenant_id
+                 AND camp.execution_id = NEW.id
+                 AND camp.object_kind = 'campaign'
+                 AND camp.account_fingerprint = NEW.account_fingerprint
+                 AND aset.account_fingerprint = NEW.account_fingerprint
+                 AND cr.account_fingerprint = NEW.account_fingerprint
+                 AND ad.account_fingerprint = NEW.account_fingerprint
+            ) THEN
+              RAISE EXCEPTION 'orchestrator_cpdex_cardinality';
+            END IF;
+            IF (
+              SELECT COUNT(*) FROM orchestrator_campaign_provider_objects o
+               WHERE o.tenant_id = NEW.tenant_id AND o.execution_id = NEW.id
+            ) <> 4 THEN
+              RAISE EXCEPTION 'orchestrator_cpdex_cardinality';
+            END IF;
+          END IF;
+          RETURN NEW;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+          RETURN OLD;
+        END IF;
+        RAISE EXCEPTION 'orchestrator_cpdex_immutable';
+      END;
+      $fn$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS orchestrator_cpdex_guard ON orchestrator_campaign_provider_draft_executions;
+      CREATE TRIGGER orchestrator_cpdex_guard
+        BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_provider_draft_executions
+        FOR EACH ROW
+        EXECUTE FUNCTION orchestrator_cpdex_guard();
+
+      CREATE OR REPLACE FUNCTION orchestrator_cpo_guard()
+      RETURNS trigger AS $fn$
+      BEGIN
+        IF TG_OP = 'INSERT' THEN
+          IF NEW.compensated IS DISTINCT FROM FALSE OR NEW.compensated_at IS NOT NULL THEN
+            RAISE EXCEPTION 'orchestrator_cpo_immutable';
+          END IF;
+          RETURN NEW;
+        END IF;
+        IF TG_OP = 'UPDATE' THEN
+          RAISE EXCEPTION 'orchestrator_cpo_immutable';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+          RETURN OLD;
+        END IF;
+        RAISE EXCEPTION 'orchestrator_cpo_immutable';
+      END;
+      $fn$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS orchestrator_cpo_guard ON orchestrator_campaign_provider_objects;
+      CREATE TRIGGER orchestrator_cpo_guard
+        BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_provider_objects
+        FOR EACH ROW
+        EXECUTE FUNCTION orchestrator_cpo_guard();
+
+      CREATE OR REPLACE FUNCTION orchestrator_cpo_after_insert()
+      RETURNS trigger AS $fn$
+      BEGIN
+        INSERT INTO orchestrator_campaign_provider_object_events
+          (id, tenant_id, object_id, execution_id, event_kind, sequence_number)
+        VALUES (
+          'cpoe_created_' || NEW.id,
+          NEW.tenant_id, NEW.id, NEW.execution_id, 'created', 1
+        );
+        RETURN NEW;
+      END;
+      $fn$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS orchestrator_cpo_after_insert ON orchestrator_campaign_provider_objects;
+      CREATE TRIGGER orchestrator_cpo_after_insert
+        AFTER INSERT ON orchestrator_campaign_provider_objects
+        FOR EACH ROW
+        EXECUTE FUNCTION orchestrator_cpo_after_insert();
+
+      CREATE OR REPLACE FUNCTION orchestrator_cpoe_guard()
+      RETURNS trigger AS $fn$
+      BEGIN
+        IF TG_OP = 'UPDATE' THEN
+          RAISE EXCEPTION 'orchestrator_cpoe_immutable';
+        END IF;
+        IF TG_OP = 'DELETE' THEN
+          IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
+            RETURN OLD;
+          END IF;
+          RAISE EXCEPTION 'orchestrator_cpoe_immutable';
+        END IF;
+        RETURN NEW;
+      END;
+      $fn$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS orchestrator_cpoe_guard ON orchestrator_campaign_provider_object_events;
+      CREATE TRIGGER orchestrator_cpoe_guard
+        BEFORE UPDATE OR DELETE ON orchestrator_campaign_provider_object_events
+        FOR EACH ROW
+        EXECUTE FUNCTION orchestrator_cpoe_guard();
+    `);
+    await p.query('COMMIT');
+  } catch (e) {
+    try { await p.query('ROLLBACK'); } catch (_) { /* already aborted */ }
+    throw e;
+  }
+}
+
 // Deduplication fingerprint, not authenticity/provenance proof. Idempotent
 // rename from the original evidence_hash column; drop stale CHECKs/indexes.
 async function _ensureContentFingerprintColumn(p) {
@@ -5237,44 +5708,12 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await p.query(`CREATE INDEX IF NOT EXISTS idx_cpo_tenant_execution
     ON orchestrator_campaign_provider_objects (tenant_id, execution_id, sequence_number)`);
 
-  // PR 6F-1R — additive lineage columns + append-only compensation events.
-  // CREATE TABLE IF NOT EXISTS above covers fresh installs; ALTER/backfill
-  // upgrades an existing PR6F-1 database without rewriting object history.
-  // Drop the pre-6F-1R immutability guards BEFORE lineage UPDATEs: the old
-  // execution guard rejects updates to settled rows, and the old object guard
-  // only permits a compensation flip. Replacement guards are installed after
-  // backfill.
-  await p.query(`DROP TRIGGER IF EXISTS orchestrator_cpdex_guard ON orchestrator_campaign_provider_draft_executions`);
-  await p.query(`DROP TRIGGER IF EXISTS orchestrator_cpo_guard ON orchestrator_campaign_provider_objects`);
+  // PR 6F-1R — one-transaction upgrade (DROP old guards → ADD/backfill/SET NOT
+  // NULL → constraints if absent → events → new guards). Other sessions keep
+  // the old triggers until COMMIT. Post-upgrade helpers below re-ensure
+  // idempotently in their own transactions and must not run inside the TX.
+  await _upgradePr6f1rProviderLineage(p);
 
-  await p.query(`
-    ALTER TABLE orchestrator_campaign_provider_draft_executions
-      ADD COLUMN IF NOT EXISTS credential_ref_version INTEGER,
-      ADD COLUMN IF NOT EXISTS account_fingerprint TEXT
-  `);
-  await p.query(`
-    UPDATE orchestrator_campaign_provider_draft_executions e
-       SET credential_ref_version = r.version,
-           account_fingerprint = r.account_fingerprint
-      FROM orchestrator_tenant_meta_credential_refs r
-     WHERE e.tenant_id = r.tenant_id
-       AND e.credential_ref_id = r.id
-       AND (e.credential_ref_version IS NULL OR e.account_fingerprint IS NULL)
-  `);
-  const unboundExec = await p.query(`
-    SELECT 1 FROM orchestrator_campaign_provider_draft_executions
-     WHERE account_fingerprint IS NULL OR credential_ref_version IS NULL LIMIT 1
-  `);
-  if (unboundExec.rowCount) {
-    const err = new Error('pr6f1r_lineage_backfill_unbound_execution');
-    err.code = 'pr6f1r_lineage_backfill_unbound_execution';
-    throw err;
-  }
-  await p.query(`
-    ALTER TABLE orchestrator_campaign_provider_draft_executions
-      ALTER COLUMN credential_ref_version SET NOT NULL,
-      ALTER COLUMN account_fingerprint SET NOT NULL
-  `);
   await _ensureNamedCheck(p, 'orchestrator_campaign_provider_draft_executions',
     'orchestrator_cpdex_complete_cardinality_check',
     `status <> 'complete'
@@ -5295,70 +5734,6 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_draft_executions',
     'orchestrator_cpdex_tenant_unique_id_intent', 'tenant_id, id, intent_id');
 
-  await p.query(`
-    ALTER TABLE orchestrator_campaign_provider_objects
-      ADD COLUMN IF NOT EXISTS publishing_request_id TEXT,
-      ADD COLUMN IF NOT EXISTS intent_id TEXT,
-      ADD COLUMN IF NOT EXISTS snapshot_hash TEXT,
-      ADD COLUMN IF NOT EXISTS account_fingerprint TEXT,
-      ADD COLUMN IF NOT EXISTS provider_object_id_digest TEXT,
-      ADD COLUMN IF NOT EXISTS display_ref TEXT,
-      ADD COLUMN IF NOT EXISTS parent_campaign_digest TEXT,
-      ADD COLUMN IF NOT EXISTS parent_adset_digest TEXT,
-      ADD COLUMN IF NOT EXISTS parent_creative_digest TEXT
-  `);
-  await p.query(`
-    UPDATE orchestrator_campaign_provider_objects o
-       SET publishing_request_id = e.publishing_request_id,
-           intent_id = e.intent_id,
-           snapshot_hash = e.snapshot_hash,
-           account_fingerprint = e.account_fingerprint,
-           provider_object_id_digest = encode(sha256(convert_to(o.provider_object_id, 'UTF8')), 'hex'),
-           display_ref = substr(encode(sha256(convert_to(o.provider_object_id, 'UTF8')), 'hex'), 1, 12)
-      FROM orchestrator_campaign_provider_draft_executions e
-     WHERE o.tenant_id = e.tenant_id
-       AND o.execution_id = e.id
-       AND o.provider_object_id_digest IS NULL
-  `);
-  await p.query(`
-    UPDATE orchestrator_campaign_provider_objects o
-       SET parent_campaign_digest = c.provider_object_id_digest
-      FROM orchestrator_campaign_provider_objects c
-     WHERE o.tenant_id = c.tenant_id
-       AND o.execution_id = c.execution_id
-       AND c.object_kind = 'campaign'
-       AND o.object_kind IN ('adset','creative','ad')
-       AND o.parent_campaign_digest IS NULL
-  `);
-  await p.query(`
-    UPDATE orchestrator_campaign_provider_objects o
-       SET parent_adset_digest = a.provider_object_id_digest
-      FROM orchestrator_campaign_provider_objects a
-     WHERE o.tenant_id = a.tenant_id
-       AND o.execution_id = a.execution_id
-       AND a.object_kind = 'adset'
-       AND o.object_kind = 'ad'
-       AND o.parent_adset_digest IS NULL
-  `);
-  await p.query(`
-    UPDATE orchestrator_campaign_provider_objects o
-       SET parent_creative_digest = cr.provider_object_id_digest
-      FROM orchestrator_campaign_provider_objects cr
-     WHERE o.tenant_id = cr.tenant_id
-       AND o.execution_id = cr.execution_id
-       AND cr.object_kind = 'creative'
-       AND o.object_kind = 'ad'
-       AND o.parent_creative_digest IS NULL
-  `);
-  await p.query(`
-    ALTER TABLE orchestrator_campaign_provider_objects
-      ALTER COLUMN publishing_request_id SET NOT NULL,
-      ALTER COLUMN intent_id SET NOT NULL,
-      ALTER COLUMN snapshot_hash SET NOT NULL,
-      ALTER COLUMN account_fingerprint SET NOT NULL,
-      ALTER COLUMN provider_object_id_digest SET NOT NULL,
-      ALTER COLUMN display_ref SET NOT NULL
-  `);
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_tenant_execution_kind', 'tenant_id, execution_id, object_kind');
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
@@ -5438,31 +5813,6 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'orchestrator_campaign_provider_draft_executions',
     'tenant_id, id, intent_id', 'ON DELETE CASCADE');
 
-  await p.query(`
-    CREATE TABLE IF NOT EXISTS orchestrator_campaign_provider_object_events (
-      id TEXT NOT NULL,
-      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-      object_id TEXT NOT NULL,
-      execution_id TEXT NOT NULL,
-      event_kind TEXT NOT NULL,
-      sequence_number INTEGER NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      PRIMARY KEY (tenant_id, id),
-      CONSTRAINT orchestrator_cpoe_tenant_object_kind
-        UNIQUE (tenant_id, object_id, event_kind),
-      CONSTRAINT orchestrator_cpoe_kind_check CHECK (
-        event_kind IN ('created','compensated')
-      ),
-      CONSTRAINT orchestrator_cpoe_seq_check CHECK (
-        sequence_number >= 1 AND sequence_number <= 2
-      ),
-      CONSTRAINT orchestrator_cpoe_len_check CHECK (
-        char_length(id) BETWEEN 1 AND 128
-        AND char_length(object_id) BETWEEN 1 AND 128
-        AND char_length(execution_id) BETWEEN 1 AND 128
-      )
-    )
-  `);
   await _ensureNamedFk(p, 'orchestrator_campaign_provider_object_events',
     'orchestrator_cpoe_tenant_object_fkey',
     'tenant_id, object_id', 'orchestrator_campaign_provider_objects',
@@ -5471,200 +5821,6 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'orchestrator_cpoe_tenant_execution_fkey',
     'tenant_id, execution_id', 'orchestrator_campaign_provider_draft_executions',
     'tenant_id, id', 'ON DELETE CASCADE');
-  await p.query(`
-    INSERT INTO orchestrator_campaign_provider_object_events
-      (id, tenant_id, object_id, execution_id, event_kind, sequence_number, created_at)
-    SELECT 'cpoe_created_' || o.id, o.tenant_id, o.id, o.execution_id, 'created', 1, o.created_at
-      FROM orchestrator_campaign_provider_objects o
-     WHERE NOT EXISTS (
-       SELECT 1 FROM orchestrator_campaign_provider_object_events e
-        WHERE e.tenant_id = o.tenant_id AND e.object_id = o.id AND e.event_kind = 'created'
-     )
-  `);
-  await p.query(`
-    INSERT INTO orchestrator_campaign_provider_object_events
-      (id, tenant_id, object_id, execution_id, event_kind, sequence_number, created_at)
-    SELECT 'cpoe_comp_' || o.id, o.tenant_id, o.id, o.execution_id, 'compensated', 2,
-           COALESCE(o.compensated_at, o.created_at)
-      FROM orchestrator_campaign_provider_objects o
-     WHERE o.compensated = TRUE
-       AND NOT EXISTS (
-         SELECT 1 FROM orchestrator_campaign_provider_object_events e
-          WHERE e.tenant_id = o.tenant_id AND e.object_id = o.id AND e.event_kind = 'compensated'
-       )
-  `);
-
-  await _installInTransaction(p, `
-    CREATE OR REPLACE FUNCTION orchestrator_cpdex_guard()
-    RETURNS trigger AS $fn$
-    BEGIN
-      IF TG_OP = 'INSERT' THEN
-        IF NEW.status IS DISTINCT FROM 'started'
-           OR NEW.settled_at IS NOT NULL
-           OR NEW.outcome IS NOT NULL
-           OR NEW.error_code IS NOT NULL THEN
-          RAISE EXCEPTION 'orchestrator_cpdex_immutable';
-        END IF;
-        RETURN NEW;
-      END IF;
-      IF TG_OP = 'UPDATE' THEN
-        IF OLD.status IS DISTINCT FROM 'started'
-           OR NEW.status IS NOT DISTINCT FROM 'started'
-           OR NEW.id IS DISTINCT FROM OLD.id
-           OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
-           OR NEW.confirmation_id IS DISTINCT FROM OLD.confirmation_id
-           OR NEW.challenge_id IS DISTINCT FROM OLD.challenge_id
-           OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
-           OR NEW.revision IS DISTINCT FROM OLD.revision
-           OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id
-           OR NEW.workflow_approval_id IS DISTINCT FROM OLD.workflow_approval_id
-           OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
-           OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
-           OR NEW.outbox_id IS DISTINCT FROM OLD.outbox_id
-           OR NEW.attempt_id IS DISTINCT FROM OLD.attempt_id
-           OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
-           OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
-           OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
-           OR NEW.generation IS DISTINCT FROM OLD.generation
-           OR NEW.contract_hash IS DISTINCT FROM OLD.contract_hash
-           OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
-           OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
-           OR NEW.request_hash IS DISTINCT FROM OLD.request_hash
-           OR NEW.claim_token_hash IS DISTINCT FROM OLD.claim_token_hash
-           OR NEW.contract_version IS DISTINCT FROM OLD.contract_version
-           OR NEW.operation IS DISTINCT FROM OLD.operation
-           OR NEW.platform IS DISTINCT FROM OLD.platform
-           OR NEW.connector IS DISTINCT FROM OLD.connector
-           OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
-           OR NEW.requested_by IS DISTINCT FROM OLD.requested_by
-           OR NEW.started_at IS DISTINCT FROM OLD.started_at
-           OR NEW.simulated IS DISTINCT FROM FALSE
-           OR NEW.published IS DISTINCT FROM FALSE
-        THEN
-          RAISE EXCEPTION 'orchestrator_cpdex_immutable';
-        END IF;
-        IF NEW.status = 'complete' THEN
-          IF NEW.objects_created IS DISTINCT FROM 4 OR NEW.objects_compensated IS DISTINCT FROM 0 THEN
-            RAISE EXCEPTION 'orchestrator_cpdex_cardinality';
-          END IF;
-          IF NOT EXISTS (
-            SELECT 1
-              FROM orchestrator_campaign_provider_objects camp
-              JOIN orchestrator_campaign_provider_objects aset
-                ON aset.tenant_id = camp.tenant_id
-               AND aset.execution_id = camp.execution_id
-               AND aset.object_kind = 'adset'
-               AND aset.parent_campaign_digest = camp.provider_object_id_digest
-              JOIN orchestrator_campaign_provider_objects cr
-                ON cr.tenant_id = camp.tenant_id
-               AND cr.execution_id = camp.execution_id
-               AND cr.object_kind = 'creative'
-               AND cr.parent_campaign_digest = camp.provider_object_id_digest
-              JOIN orchestrator_campaign_provider_objects ad
-                ON ad.tenant_id = camp.tenant_id
-               AND ad.execution_id = camp.execution_id
-               AND ad.object_kind = 'ad'
-               AND ad.parent_campaign_digest = camp.provider_object_id_digest
-               AND ad.parent_adset_digest = aset.provider_object_id_digest
-               AND ad.parent_creative_digest = cr.provider_object_id_digest
-             WHERE camp.tenant_id = NEW.tenant_id
-               AND camp.execution_id = NEW.id
-               AND camp.object_kind = 'campaign'
-               AND camp.account_fingerprint = NEW.account_fingerprint
-               AND aset.account_fingerprint = NEW.account_fingerprint
-               AND cr.account_fingerprint = NEW.account_fingerprint
-               AND ad.account_fingerprint = NEW.account_fingerprint
-          ) THEN
-            RAISE EXCEPTION 'orchestrator_cpdex_cardinality';
-          END IF;
-          IF (
-            SELECT COUNT(*) FROM orchestrator_campaign_provider_objects o
-             WHERE o.tenant_id = NEW.tenant_id AND o.execution_id = NEW.id
-          ) <> 4 THEN
-            RAISE EXCEPTION 'orchestrator_cpdex_cardinality';
-          END IF;
-        END IF;
-        RETURN NEW;
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
-        RETURN OLD;
-      END IF;
-      RAISE EXCEPTION 'orchestrator_cpdex_immutable';
-    END;
-    $fn$ LANGUAGE plpgsql;
-
-    DROP TRIGGER IF EXISTS orchestrator_cpdex_guard ON orchestrator_campaign_provider_draft_executions;
-    CREATE TRIGGER orchestrator_cpdex_guard
-      BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_provider_draft_executions
-      FOR EACH ROW
-      EXECUTE FUNCTION orchestrator_cpdex_guard();
-
-    CREATE OR REPLACE FUNCTION orchestrator_cpo_guard()
-    RETURNS trigger AS $fn$
-    BEGIN
-      IF TG_OP = 'INSERT' THEN
-        IF NEW.compensated IS DISTINCT FROM FALSE OR NEW.compensated_at IS NOT NULL THEN
-          RAISE EXCEPTION 'orchestrator_cpo_immutable';
-        END IF;
-        RETURN NEW;
-      END IF;
-      IF TG_OP = 'UPDATE' THEN
-        RAISE EXCEPTION 'orchestrator_cpo_immutable';
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
-        RETURN OLD;
-      END IF;
-      RAISE EXCEPTION 'orchestrator_cpo_immutable';
-    END;
-    $fn$ LANGUAGE plpgsql;
-
-    DROP TRIGGER IF EXISTS orchestrator_cpo_guard ON orchestrator_campaign_provider_objects;
-    CREATE TRIGGER orchestrator_cpo_guard
-      BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_provider_objects
-      FOR EACH ROW
-      EXECUTE FUNCTION orchestrator_cpo_guard();
-
-    CREATE OR REPLACE FUNCTION orchestrator_cpo_after_insert()
-    RETURNS trigger AS $fn$
-    BEGIN
-      INSERT INTO orchestrator_campaign_provider_object_events
-        (id, tenant_id, object_id, execution_id, event_kind, sequence_number)
-      VALUES (
-        'cpoe_created_' || NEW.id,
-        NEW.tenant_id, NEW.id, NEW.execution_id, 'created', 1
-      );
-      RETURN NEW;
-    END;
-    $fn$ LANGUAGE plpgsql;
-
-    DROP TRIGGER IF EXISTS orchestrator_cpo_after_insert ON orchestrator_campaign_provider_objects;
-    CREATE TRIGGER orchestrator_cpo_after_insert
-      AFTER INSERT ON orchestrator_campaign_provider_objects
-      FOR EACH ROW
-      EXECUTE FUNCTION orchestrator_cpo_after_insert();
-
-    CREATE OR REPLACE FUNCTION orchestrator_cpoe_guard()
-    RETURNS trigger AS $fn$
-    BEGIN
-      IF TG_OP = 'UPDATE' THEN
-        RAISE EXCEPTION 'orchestrator_cpoe_immutable';
-      END IF;
-      IF TG_OP = 'DELETE' THEN
-        IF NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = OLD.tenant_id) THEN
-          RETURN OLD;
-        END IF;
-        RAISE EXCEPTION 'orchestrator_cpoe_immutable';
-      END IF;
-      RETURN NEW;
-    END;
-    $fn$ LANGUAGE plpgsql;
-
-    DROP TRIGGER IF EXISTS orchestrator_cpoe_guard ON orchestrator_campaign_provider_object_events;
-    CREATE TRIGGER orchestrator_cpoe_guard
-      BEFORE UPDATE OR DELETE ON orchestrator_campaign_provider_object_events
-      FOR EACH ROW
-      EXECUTE FUNCTION orchestrator_cpoe_guard();
-  `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {
     try { await addTenantIdColumn(t); } catch (_) { /* idempotent */ }
