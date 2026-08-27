@@ -430,9 +430,9 @@ if (!HAS_DB) {
     const id = nid('mcr');
     await p().query(
       `INSERT INTO orchestrator_tenant_meta_credential_refs
-         (id, tenant_id, platform, environment, status, account_fingerprint, version, owner_user_id)
-       VALUES ($1,$2,'meta','sandbox','active',$3,1,$4)`,
-      [id, tenantId, HEX(), userId]
+         (id, tenant_id, platform, environment, status, account_fingerprint, page_id, version, owner_user_id)
+       VALUES ($1,$2,'meta','sandbox','active',$3,$4,1,$5)`,
+      [id, tenantId, HEX(), '1122334455667', userId]
     );
     return id;
   }

@@ -8,19 +8,30 @@
 //
 // PR 6F-0 note: ./advertising_provider_capabilities.js mints a narrow, frozen,
 // single-use Meta create_provider_draft capability. That capability is NOT a
-// bypass of this gate — it is asserted separately, inside an execution
-// transaction that PR 6F-0 never opens, and it must never travel through this
-// module. Capability-branded values are therefore stripped out of the deny
-// payload and the guard context below, so a capability can never be serialized
-// into an HTTP body, an outbox payload or a log line via a denial.
+// bypass of this gate — it is asserted separately during reservation, and it
+// must never travel through this module. PR 6F-1 adds
+// assertMetaCreateProviderDraftMutationAllowed(), which is the ONLY narrow
+// bypass: it succeeds only for a minted, consumed create_provider_draft
+// capability immediately before the bounded Meta paused-draft graph create.
+// Capability-
+// branded values are therefore stripped out of the deny payload and the guard
+// context below, so a capability can never be serialized into an HTTP body, an
+// outbox payload or a log line via a denial.
 'use strict';
+
+const caps = require('./advertising_provider_capabilities');
 
 const CODE = 'advertising_provider_mutation_disabled';
 const MESSAGE =
   'Advertising provider mutations are disabled. Use campaign drafting, human approval, and guarded publishing requests.';
 
-// Read via Symbol.for so this lowest-level gate keeps zero imports.
+// Capability brand is also checked via caps.isAdvertisingProviderCapability() at the
+// provider-write sink; Symbol.for alone is not sufficient.
 const CAPABILITY_BRAND = Symbol.for('infogenie.advertising_provider_capability');
+const CAPABILITY_CODES = Object.freeze({
+  INVALID: 'advertising_provider_capability_invalid',
+  SPENT: 'advertising_provider_capability_spent',
+});
 
 function _isCapabilityLike(value) {
   if (!value || (typeof value !== 'object' && typeof value !== 'function')) return false;
@@ -91,10 +102,32 @@ function denyAdvertisingProviderMutation(extra = {}) {
   };
 }
 
+/**
+ * PR 6F-1 — the only narrow bypass of the default-deny gate. Call immediately
+ * before the bounded Meta paused-draft graph create. Requires a minted,
+ * consumed create_provider_draft capability — a Symbol-branded forgery is not
+ * sufficient.
+ * @param {object} capability minted Meta create_provider_draft capability
+ */
+function assertMetaCreateProviderDraftMutationAllowed(capability) {
+  if (!caps.isAdvertisingProviderCapability(capability)) {
+    assertAdvertisingProviderMutationAllowed({ reason: 'capability_invalid' });
+  }
+  if (!caps.isConsumedProviderDraftCapability(capability)) {
+    assertAdvertisingProviderMutationAllowed({ reason: 'capability_unspent' });
+  }
+  if (capability.platform !== 'meta' || capability.operation !== 'create_provider_draft') {
+    assertAdvertisingProviderMutationAllowed({ reason: 'capability_mismatch' });
+  }
+  return true;
+}
+
 module.exports = {
   CODE,
   MESSAGE,
+  CAPABILITY_CODES,
   isAdvertisingProviderMutationAllowed,
   assertAdvertisingProviderMutationAllowed,
+  assertMetaCreateProviderDraftMutationAllowed,
   denyAdvertisingProviderMutation,
 };

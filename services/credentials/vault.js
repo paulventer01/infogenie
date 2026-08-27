@@ -420,7 +420,7 @@ const META_PROVIDER_DRAFT_REFERENCE_KIND = 'meta_provider_draft_credential_refer
 // appearing here would be a review failure.
 const META_PROVIDER_DRAFT_REF_COLUMNS = Object.freeze([
   'id', 'tenant_id', 'platform', 'environment', 'status',
-  'account_fingerprint', 'version', 'owner_user_id', 'revoked_at',
+  'account_fingerprint', 'page_id', 'version', 'owner_user_id', 'revoked_at',
 ]);
 
 const _REFERENCE_BRAND = Symbol.for('infogenie.meta_provider_draft_credential_reference');
@@ -529,6 +529,7 @@ async function _lockCredentialRefRow(client, { tenantId, credentialRefId, ownerU
   if (typeof row.account_fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(row.account_fingerprint)) {
     throw _credError('validation_failed', 'credential reference account fingerprint is invalid');
   }
+  _pageIdOf(row);
   return row;
 }
 
@@ -620,6 +621,149 @@ async function withTenantMetaCredentialForProviderDraft(client, opts, fn) {
   return fn(_buildReference(row));
 }
 
+// ── End PR 6F-0 reference boundary ───────────────────────────────────────────
+
+function _accountFingerprintOf(adAccountId) {
+  const normalized = String(adAccountId || '').replace(/^act_/, '').trim();
+  if (!normalized) return null;
+  return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
+}
+
+function _pageIdOf(row) {
+  const raw = row && row.page_id != null ? String(row.page_id).trim() : '';
+  if (!/^[0-9]{1,32}$/.test(raw)) {
+    throw _credError('validation_failed', 'tenant-owned Meta credential reference is missing a bound page id');
+  }
+  return raw;
+}
+
+async function _buildProviderDraftExecutionSecretHandle(client, capability) {
+  if (!_capabilities.isAdvertisingProviderCapability(capability)) {
+    throw _credError(_capabilities.CODES.INVALID, 'a minted provider-draft capability is required');
+  }
+  if (!_capabilities.isConsumedProviderDraftCapability(capability)) {
+    throw _credError(_capabilities.CODES.SPENT, 'provider-draft capability must be consumed before secret access');
+  }
+  if (capability.platform !== META_PROVIDER_DRAFT_PLATFORM
+      || capability.operation !== _capabilities.CAPABILITY_OPERATION) {
+    throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'capability is not a Meta create_provider_draft capability');
+  }
+
+  const tenantId = _positiveInt(capability.tenant_id);
+  const ownerUserId = _positiveInt(capability.requested_by);
+  if (!tenantId || !ownerUserId) {
+    throw _credError('validation_failed', 'capability tenant/owner binding is invalid');
+  }
+  await _assertActiveTenantMember(client, tenantId, ownerUserId);
+  const row = await _lockCredentialRefRow(client, {
+    tenantId, ownerUserId, credentialRefId: capability.credential_ref_id,
+  });
+  if (!_sameString(String(row.id), String(capability.credential_ref_id))) {
+    throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'credential reference id does not match the capability');
+  }
+  if (Number(row.version) !== Number(capability.credential_ref_version)) {
+    throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'credential reference version does not match the capability');
+  }
+  if (!_sameString(String(row.account_fingerprint), String(capability.account_fingerprint))) {
+    throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'credential reference account does not match the capability');
+  }
+  if (!META_PROVIDER_DRAFT_ENVIRONMENTS.includes(String(row.environment))) {
+    throw _credError('validation_failed', 'credential reference environment is out of scope');
+  }
+
+  let blob;
+  try {
+    blob = await getCredentials(ownerUserId, 'meta_ads');
+  } catch (_e) {
+    throw _credError('missing_credentials', 'Meta Ads credentials are not connected for this actor');
+  }
+  if (!_metaCredsLooksValid(blob)) {
+    throw _credError('missing_credentials', 'Meta Ads credentials are not connected for this actor');
+  }
+  const fingerprint = _accountFingerprintOf(blob.adAccountId);
+  if (!fingerprint || !_sameString(fingerprint, String(capability.account_fingerprint))) {
+    throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'Meta ad account does not match the capability binding');
+  }
+  const pageId = _pageIdOf(row);
+  if (blob.pageId != null && !_sameString(String(blob.pageId), pageId)) {
+    throw _credError(_capabilities.CODES.CONTEXT_MISMATCH, 'Meta page id does not match the credential reference binding');
+  }
+
+  const handle = Object.create(null);
+  Object.defineProperty(handle, 'accessToken', {
+    enumerable: true, configurable: false, writable: false,
+    value: String(blob.accessToken),
+  });
+  Object.defineProperty(handle, 'adAccountId', {
+    enumerable: true, configurable: false, writable: false,
+    value: String(blob.adAccountId),
+  });
+  Object.defineProperty(handle, 'pageId', {
+    enumerable: true, configurable: false, writable: false,
+    value: pageId,
+  });
+  Object.defineProperty(handle, 'environment', {
+    enumerable: true, configurable: false, writable: false,
+    value: String(row.environment),
+  });
+  Object.defineProperty(handle, 'has_secret_access', {
+    enumerable: true, configurable: false, writable: false,
+    value: true,
+  });
+  Object.defineProperty(handle, Symbol.for('nodejs.util.inspect.custom'), {
+    configurable: false,
+    value: () => '[MetaProviderDraftExecutionSecret redacted]',
+  });
+  Object.defineProperty(handle, 'toJSON', {
+    configurable: false,
+    value: () => { throw _credError('validation_failed', 'credential handle is not serializable'); },
+  });
+  return Object.freeze(handle);
+}
+
+/**
+ * PR 6F-1 execution-time secret boundary. Requires a minted capability whose
+ * single use has already been consumed by assertMetaCreateProviderDraftCapability.
+ * Decrypts the tenant-owned Meta Ads integration only inside `fn`, verifies the
+ * account fingerprint binding, and never logs, persists or returns the secret.
+ */
+async function withTenantMetaCredentialSecretForProviderDraftExecution(client, opts, fn) {
+  const c = _requireTxClient(client);
+  const o = opts || {};
+  if (typeof fn !== 'function') {
+    throw _credError('validation_failed', 'a credential execution scope callback is required');
+  }
+  const handle = await _buildProviderDraftExecutionSecretHandle(c, o.capability);
+  return fn(handle);
+}
+
+/**
+ * Same secret boundary as above, but opens a short transaction to lock the
+ * credential reference, commits before `fn`, and never holds FOR UPDATE across
+ * provider I/O.
+ */
+async function withTenantMetaCredentialSecretForConsumedProviderDraft(pool, opts, fn) {
+  if (!pool || typeof pool.connect !== 'function') {
+    throw _credError('validation_failed', 'a database pool is required for provider-draft secret access');
+  }
+  if (typeof fn !== 'function') {
+    throw _credError('validation_failed', 'a credential execution scope callback is required');
+  }
+  const client = await pool.connect();
+  let handle;
+  try {
+    await client.query('BEGIN');
+    handle = await _buildProviderDraftExecutionSecretHandle(client, (opts || {}).capability);
+    await client.query('COMMIT');
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_e) { /* ignore */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+  return fn(handle);
+}
+
 // ── Simple API-key vault (tenant-scoped, kv_store, AES-256-GCM) ──────────
 // Unlike getCredentials/saveCredentials (per-user, user_integrations table),
 // these are platform-wide per-tenant keys (e.g. Apify, Firecrawl).
@@ -693,4 +837,7 @@ module.exports = {
   isMetaProviderDraftCredentialReference,
   resolveTenantMetaCredentialRefForProviderDraft,
   withTenantMetaCredentialForProviderDraft,
+  withTenantMetaCredentialSecretForProviderDraftExecution,
+  withTenantMetaCredentialSecretForConsumedProviderDraft,
+  accountFingerprintOfMetaAdAccount: _accountFingerprintOf,
 };
