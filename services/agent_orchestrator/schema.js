@@ -102,6 +102,9 @@ const ADVERTISING_ORCH_TABLES = [
   // reconciliation observation. Contains no provider ids or credential material.
   'orchestrator_campaign_reconciliation_read_authorizations',
   'orchestrator_campaign_reconciliation_runs',
+  // PR 6F-3 — authoritative human review case plus append-only decisions.
+  'orchestrator_campaign_reconciliation_review_cases',
+  'orchestrator_campaign_reconciliation_review_events',
   // PR 6F-1R — append-only provider-object outcome events (no mutable compensation).
   'orchestrator_campaign_provider_object_events',
 ];
@@ -5974,6 +5977,114 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
            AND observation_deadline > observing_at AND completed_at IS NOT NULL)) NOT VALID`);
     await p.query('COMMIT');
   } catch (e) { try { await p.query('ROLLBACK'); } catch (_) {} throw e; }
+
+  // PR 6F-3. Sensitive lineage is retained for integrity but is never selected
+  // by the public projection. The reconciliation row remains immutable.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_reconciliation_review_cases (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL,
+      reconciliation_run_id TEXT NOT NULL,
+      authorization_id TEXT NOT NULL,
+      workflow_id TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      snapshot_hash TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      intent_hash TEXT NOT NULL,
+      execution_id TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL,
+      credential_ref_version INTEGER NOT NULL,
+      account_fingerprint TEXT NOT NULL,
+      ledger_root_hash TEXT NOT NULL,
+      original_state TEXT NOT NULL,
+      original_classifications TEXT[] NOT NULL,
+      original_requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      original_created_at TIMESTAMPTZ NOT NULL,
+      original_completed_at TIMESTAMPTZ NOT NULL,
+      state TEXT NOT NULL DEFAULT 'open',
+      classification TEXT NULL,
+      assigned_reviewer_id INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT,
+      note TEXT NULL,
+      note_digest TEXT NULL,
+      created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      acknowledged_at TIMESTAMPTZ NULL,
+      escalated_at TIMESTAMPTZ NULL,
+      closed_at TIMESTAMPTZ NULL,
+      audit_ref TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (tenant_id,id),
+      UNIQUE (tenant_id,reconciliation_run_id),
+      UNIQUE (tenant_id,audit_ref),
+      FOREIGN KEY (tenant_id,reconciliation_run_id)
+        REFERENCES orchestrator_campaign_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      CHECK (original_state IN ('discrepancy_detected','failed')),
+      CHECK (state IN ('open','acknowledged','escalated','closed')),
+      CHECK (classification IS NULL OR classification IN
+        ('provider_investigation_required','external_remediation_required','unexpected_activation','object_missing',
+         'relationship_mismatch','account_mismatch','observation_failure','accepted_risk','false_positive','closed_unresolved')),
+      CHECK (version >= 0), CHECK (note IS NULL OR char_length(note) BETWEEN 1 AND 1000),
+      CHECK (note_digest IS NULL OR note_digest ~ '^[0-9a-f]{64}$'),
+      CHECK ((state='open' AND acknowledged_at IS NULL AND escalated_at IS NULL AND closed_at IS NULL)
+        OR (state='acknowledged' AND acknowledged_at IS NOT NULL AND escalated_at IS NULL AND closed_at IS NULL)
+        OR (state='escalated' AND escalated_at IS NOT NULL AND closed_at IS NULL)
+        OR (state='closed' AND closed_at IS NOT NULL))
+    );
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_reconciliation_review_events (
+      tenant_id INTEGER NOT NULL,
+      id BIGSERIAL,
+      case_id TEXT NOT NULL,
+      decision_id TEXT NOT NULL,
+      from_state TEXT NULL,
+      to_state TEXT NOT NULL,
+      classification TEXT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      note TEXT NULL,
+      note_digest TEXT NULL,
+      audit_ref TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id,id), UNIQUE (tenant_id,case_id,decision_id), UNIQUE (tenant_id,audit_ref),
+      FOREIGN KEY (tenant_id,case_id)
+        REFERENCES orchestrator_campaign_reconciliation_review_cases(tenant_id,id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS orchestrator_crrc_tenant_created
+      ON orchestrator_campaign_reconciliation_review_cases(tenant_id,created_at DESC,id DESC);
+    CREATE OR REPLACE FUNCTION orchestrator_crrc_guard() RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_crrc_delete_prohibited'; END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.reconciliation_run_id IS DISTINCT FROM OLD.reconciliation_run_id
+        OR NEW.authorization_id IS DISTINCT FROM OLD.authorization_id OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id
+        OR NEW.draft_id IS DISTINCT FROM OLD.draft_id OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+        OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+        OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+        OR NEW.execution_id IS DISTINCT FROM OLD.execution_id OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash
+        OR NEW.original_state IS DISTINCT FROM OLD.original_state
+        OR NEW.original_classifications IS DISTINCT FROM OLD.original_classifications
+        OR NEW.original_requested_by IS DISTINCT FROM OLD.original_requested_by
+        OR NEW.original_created_at IS DISTINCT FROM OLD.original_created_at
+        OR NEW.original_completed_at IS DISTINCT FROM OLD.original_completed_at
+        OR NEW.created_by IS DISTINCT FROM OLD.created_by OR NEW.created_at IS DISTINCT FROM OLD.created_at
+        OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref OR NEW.version <> OLD.version + 1
+        THEN RAISE EXCEPTION 'orchestrator_crrc_immutable_binding'; END IF;
+      IF OLD.state='closed' OR NOT ((OLD.state='open' AND NEW.state IN ('acknowledged','escalated'))
+        OR (OLD.state='acknowledged' AND NEW.state IN ('escalated','closed'))
+        OR (OLD.state='escalated' AND NEW.state='closed'))
+        THEN RAISE EXCEPTION 'orchestrator_crrc_invalid_transition'; END IF;
+      RETURN NEW;
+    END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_crrc_guard ON orchestrator_campaign_reconciliation_review_cases;
+    CREATE TRIGGER orchestrator_crrc_guard BEFORE UPDATE OR DELETE
+      ON orchestrator_campaign_reconciliation_review_cases FOR EACH ROW EXECUTE FUNCTION orchestrator_crrc_guard();
+    CREATE OR REPLACE FUNCTION orchestrator_crre_guard() RETURNS trigger AS $fn$
+    BEGIN RAISE EXCEPTION 'orchestrator_crre_append_only'; END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_crre_guard ON orchestrator_campaign_reconciliation_review_events;
+    CREATE TRIGGER orchestrator_crre_guard BEFORE UPDATE OR DELETE
+      ON orchestrator_campaign_reconciliation_review_events FOR EACH ROW EXECUTE FUNCTION orchestrator_crre_guard();
+  `);
 
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_tenant_execution_kind', 'tenant_id, execution_id, object_kind');
