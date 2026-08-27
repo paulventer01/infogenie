@@ -5911,6 +5911,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       audit_ref TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       observing_at TIMESTAMPTZ NULL,
+      observation_deadline TIMESTAMPTZ NULL,
       completed_at TIMESTAMPTZ NULL,
       PRIMARY KEY (tenant_id,id),
       UNIQUE (tenant_id,authorization_id),
@@ -5927,9 +5928,10 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       CONSTRAINT orchestrator_crr_observations_check CHECK
         (jsonb_typeof(observations)='array' AND jsonb_array_length(observations) <= 4),
       CONSTRAINT orchestrator_crr_lifecycle_check CHECK
-        ((state='pending' AND observing_at IS NULL AND completed_at IS NULL)
-         OR (state='observing' AND observing_at IS NOT NULL AND completed_at IS NULL)
-         OR (state IN ('verified','discrepancy_detected','failed') AND observing_at IS NOT NULL AND completed_at IS NOT NULL))
+        ((state='pending' AND observing_at IS NULL AND observation_deadline IS NULL AND completed_at IS NULL)
+         OR (state='observing' AND observing_at IS NOT NULL AND observation_deadline > observing_at AND completed_at IS NULL)
+         OR (state IN ('verified','discrepancy_detected','failed') AND observing_at IS NOT NULL
+             AND observation_deadline > observing_at AND completed_at IS NOT NULL))
     );
 
     CREATE OR REPLACE FUNCTION orchestrator_crr_guard() RETURNS trigger AS $fn$
@@ -5946,6 +5948,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
         OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
         OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+        OR NEW.observation_deadline IS DISTINCT FROM OLD.observation_deadline
         OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN RAISE EXCEPTION 'orchestrator_crr_immutable_binding';
       END IF;
       IF NOT ((OLD.state='pending' AND NEW.state IN ('observing','discrepancy_detected','failed'))
@@ -5957,6 +5960,20 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE TRIGGER orchestrator_crr_guard BEFORE UPDATE OR DELETE ON orchestrator_campaign_reconciliation_runs
       FOR EACH ROW EXECUTE FUNCTION orchestrator_crr_guard();
   `);
+  await p.query(`ALTER TABLE orchestrator_campaign_reconciliation_runs
+    ADD COLUMN IF NOT EXISTS observation_deadline TIMESTAMPTZ NULL`);
+  await p.query('BEGIN');
+  try {
+    await p.query(`ALTER TABLE orchestrator_campaign_reconciliation_runs
+      DROP CONSTRAINT IF EXISTS orchestrator_crr_lifecycle_check`);
+    await p.query(`ALTER TABLE orchestrator_campaign_reconciliation_runs
+      ADD CONSTRAINT orchestrator_crr_lifecycle_check CHECK
+      ((state='pending' AND observing_at IS NULL AND observation_deadline IS NULL AND completed_at IS NULL)
+       OR (state='observing' AND observing_at IS NOT NULL AND observation_deadline > observing_at AND completed_at IS NULL)
+       OR (state IN ('verified','discrepancy_detected','failed') AND observing_at IS NOT NULL
+           AND observation_deadline > observing_at AND completed_at IS NOT NULL)) NOT VALID`);
+    await p.query('COMMIT');
+  } catch (e) { try { await p.query('ROLLBACK'); } catch (_) {} throw e; }
 
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_tenant_execution_kind', 'tenant_id, execution_id, object_kind');
