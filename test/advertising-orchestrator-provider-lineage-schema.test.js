@@ -29,6 +29,11 @@ test('PR6F-1R schema source keeps adset kind and append-only compensation events
   assert.match(SCHEMA_SRC, /credential_ref_version INTEGER NOT NULL/);
   assert.match(SCHEMA_SRC, /provider_object_id_digest TEXT NOT NULL/);
   assert.doesNotMatch(SCHEMA_SRC, /SET compensated=TRUE/);
+  const dropIdx = SCHEMA_SRC.indexOf('DROP TRIGGER IF EXISTS orchestrator_cpdex_guard ON orchestrator_campaign_provider_draft_executions');
+  const backfillIdx = SCHEMA_SRC.indexOf('SET credential_ref_version = r.version');
+  assert.ok(dropIdx > 0 && dropIdx < backfillIdx, 'immutability guards must drop before lineage backfill');
+  assert.match(SCHEMA_SRC, /encode\(sha256\(convert_to/);
+  assert.doesNotMatch(SCHEMA_SRC, /digest\(convert_to/);
 });
 
 if (!HAS_DB) {
@@ -127,5 +132,51 @@ if (!HAS_DB) {
       ),
       (err) => err && /orchestrator_cpoe_immutable/.test(String(err.message))
     );
+  });
+
+  test('ensureAgentOrchestratorSchema upgrades past pre-1R immutability guards', async () => {
+    const p = db.getPool();
+    await p.query(`
+      CREATE OR REPLACE FUNCTION orchestrator_cpdex_guard()
+      RETURNS trigger AS $fn$
+      BEGIN
+        IF TG_OP = 'UPDATE' THEN
+          RAISE EXCEPTION 'orchestrator_cpdex_immutable';
+        END IF;
+        RETURN COALESCE(NEW, OLD);
+      END;
+      $fn$ LANGUAGE plpgsql;
+    `);
+    await p.query(`
+      DROP TRIGGER IF EXISTS orchestrator_cpdex_guard ON orchestrator_campaign_provider_draft_executions;
+      CREATE TRIGGER orchestrator_cpdex_guard
+        BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_provider_draft_executions
+        FOR EACH ROW EXECUTE FUNCTION orchestrator_cpdex_guard();
+    `);
+    await p.query(`
+      CREATE OR REPLACE FUNCTION orchestrator_cpo_guard()
+      RETURNS trigger AS $fn$
+      BEGIN
+        IF TG_OP = 'UPDATE' THEN
+          RAISE EXCEPTION 'orchestrator_cpo_immutable';
+        END IF;
+        RETURN COALESCE(NEW, OLD);
+      END;
+      $fn$ LANGUAGE plpgsql;
+    `);
+    await p.query(`
+      DROP TRIGGER IF EXISTS orchestrator_cpo_guard ON orchestrator_campaign_provider_objects;
+      CREATE TRIGGER orchestrator_cpo_guard
+        BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_provider_objects
+        FOR EACH ROW EXECUTE FUNCTION orchestrator_cpo_guard();
+    `);
+    await ensureAgentOrchestratorSchema();
+    await ensureAgentOrchestratorSchema();
+    const trig = await p.query(`
+      SELECT tgname FROM pg_trigger
+       WHERE tgrelid = 'orchestrator_campaign_provider_objects'::regclass
+         AND tgname = 'orchestrator_cpo_guard' AND NOT tgisinternal
+    `);
+    assert.equal(trig.rowCount, 1);
   });
 }

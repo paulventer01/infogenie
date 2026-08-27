@@ -5240,7 +5240,12 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   // PR 6F-1R — additive lineage columns + append-only compensation events.
   // CREATE TABLE IF NOT EXISTS above covers fresh installs; ALTER/backfill
   // upgrades an existing PR6F-1 database without rewriting object history.
-  try { await p.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`); } catch (_) { /* optional */ }
+  // Drop the pre-6F-1R immutability guards BEFORE lineage UPDATEs: the old
+  // execution guard rejects updates to settled rows, and the old object guard
+  // only permits a compensation flip. Replacement guards are installed after
+  // backfill.
+  await p.query(`DROP TRIGGER IF EXISTS orchestrator_cpdex_guard ON orchestrator_campaign_provider_draft_executions`);
+  await p.query(`DROP TRIGGER IF EXISTS orchestrator_cpo_guard ON orchestrator_campaign_provider_objects`);
 
   await p.query(`
     ALTER TABLE orchestrator_campaign_provider_draft_executions
@@ -5256,16 +5261,15 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
        AND e.credential_ref_id = r.id
        AND (e.credential_ref_version IS NULL OR e.account_fingerprint IS NULL)
   `);
-  await p.query(`
-    UPDATE orchestrator_campaign_provider_draft_executions
-       SET credential_ref_version = 1
-     WHERE credential_ref_version IS NULL
+  const unboundExec = await p.query(`
+    SELECT 1 FROM orchestrator_campaign_provider_draft_executions
+     WHERE account_fingerprint IS NULL OR credential_ref_version IS NULL LIMIT 1
   `);
-  await p.query(`
-    UPDATE orchestrator_campaign_provider_draft_executions
-       SET account_fingerprint = encode(digest(convert_to(tenant_id::text || ':' || id, 'UTF8'), 'sha256'), 'hex')
-     WHERE account_fingerprint IS NULL
-  `);
+  if (unboundExec.rowCount) {
+    const err = new Error('pr6f1r_lineage_backfill_unbound_execution');
+    err.code = 'pr6f1r_lineage_backfill_unbound_execution';
+    throw err;
+  }
   await p.query(`
     ALTER TABLE orchestrator_campaign_provider_draft_executions
       ALTER COLUMN credential_ref_version SET NOT NULL,
@@ -5274,12 +5278,14 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedCheck(p, 'orchestrator_campaign_provider_draft_executions',
     'orchestrator_cpdex_complete_cardinality_check',
     `status <> 'complete'
-     OR (outcome = 'complete' AND objects_created = 4 AND objects_compensated = 0)`);
+     OR (outcome = 'complete' AND objects_created = 4 AND objects_compensated = 0)`,
+    { notValid: true });
   await _ensureNamedCheck(p, 'orchestrator_campaign_provider_draft_executions',
-    'orchestrator_cpdex_cred_ver_check', `credential_ref_version >= 1`);
+    'orchestrator_cpdex_cred_ver_check', `credential_ref_version >= 1`, { notValid: true });
   await _ensureNamedCheck(p, 'orchestrator_campaign_provider_draft_executions',
     'orchestrator_cpdex_account_fp_check',
-    `char_length(account_fingerprint)=64 AND account_fingerprint ~ '^[0-9a-f]{64}$'`);
+    `char_length(account_fingerprint)=64 AND account_fingerprint ~ '^[0-9a-f]{64}$'`,
+    { notValid: true });
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_draft_executions',
     'orchestrator_cpdex_tenant_unique_id_fp', 'tenant_id, id, account_fingerprint');
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_draft_executions',
@@ -5307,8 +5313,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
            intent_id = e.intent_id,
            snapshot_hash = e.snapshot_hash,
            account_fingerprint = e.account_fingerprint,
-           provider_object_id_digest = encode(digest(convert_to(o.provider_object_id, 'UTF8'), 'sha256'), 'hex'),
-           display_ref = substr(encode(digest(convert_to(o.provider_object_id, 'UTF8'), 'sha256'), 'hex'), 1, 12)
+           provider_object_id_digest = encode(sha256(convert_to(o.provider_object_id, 'UTF8')), 'hex'),
+           display_ref = substr(encode(sha256(convert_to(o.provider_object_id, 'UTF8')), 'hex'), 1, 12)
       FROM orchestrator_campaign_provider_draft_executions e
      WHERE o.tenant_id = e.tenant_id
        AND o.execution_id = e.id
@@ -5364,13 +5370,16 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     `char_length(provider_object_id_digest)=64
      AND provider_object_id_digest ~ '^[0-9a-f]{64}$'
      AND char_length(display_ref)=12
-     AND display_ref = substr(provider_object_id_digest, 1, 12)`);
+     AND display_ref = substr(provider_object_id_digest, 1, 12)`,
+    { notValid: true });
   await _ensureNamedCheck(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_account_fp_check',
-    `char_length(account_fingerprint)=64 AND account_fingerprint ~ '^[0-9a-f]{64}$'`);
+    `char_length(account_fingerprint)=64 AND account_fingerprint ~ '^[0-9a-f]{64}$'`,
+    { notValid: true });
   await _ensureNamedCheck(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_snapshot_hash_check',
-    `char_length(snapshot_hash)=64 AND snapshot_hash ~ '^[0-9a-f]{64}$'`);
+    `char_length(snapshot_hash)=64 AND snapshot_hash ~ '^[0-9a-f]{64}$'`,
+    { notValid: true });
   await _ensureNamedCheck(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_parent_lineage_check',
     `(object_kind = 'campaign'
@@ -5398,7 +5407,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
        AND char_length(parent_creative_digest)=64
        AND parent_campaign_digest ~ '^[0-9a-f]{64}$'
        AND parent_adset_digest ~ '^[0-9a-f]{64}$'
-       AND parent_creative_digest ~ '^[0-9a-f]{64}$')`);
+       AND parent_creative_digest ~ '^[0-9a-f]{64}$')`,
+    { notValid: true });
   await _ensureNamedFk(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_tenant_pub_req_fkey',
     'tenant_id, publishing_request_id', 'orchestrator_campaign_publish_requests',

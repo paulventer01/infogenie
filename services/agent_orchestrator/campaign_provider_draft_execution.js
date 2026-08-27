@@ -261,7 +261,11 @@ async function insertExecutionRow(c, graph, confirmation, userId, idempotencyKey
 }
 
 function digestOfProviderId(id) {
-  return D.providerObjectIdDigest(id);
+  try {
+    return D.providerObjectIdDigest(id);
+  } catch (_e) {
+    return null;
+  }
 }
 
 function lineageParents(kind, byKind) {
@@ -290,6 +294,7 @@ function assertAuthoritativeGraph(objects) {
     if (!D.PROVIDER_OBJECT_KINDS.includes(kind)) return false;
     if (byKind[kind]) return false;
     const digest = digestOfProviderId(obj.provider_object_id);
+    if (!digest) return false;
     byKind[kind] = digest;
   }
   if (!byKind.campaign || !byKind.adset || !byKind.creative || !byKind.ad) return false;
