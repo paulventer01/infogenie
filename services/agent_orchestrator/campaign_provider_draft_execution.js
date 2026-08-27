@@ -21,6 +21,7 @@ const EXEC_SAVEPOINT = 'sp_campaign_provider_draft_execute';
 const CONFIRM_TABLE = 'orchestrator_campaign_provider_confirmations';
 const EXEC_TABLE = 'orchestrator_campaign_provider_draft_executions';
 const OBJECT_TABLE = 'orchestrator_campaign_provider_objects';
+const OBJECT_EVENT_TABLE = 'orchestrator_campaign_provider_object_events';
 const PARK_DAYS = D.PARK_INTERVAL_DAYS;
 
 function one(c, sql, p) { return c.query(sql, p).then((r) => r.rows[0] || null); }
@@ -237,18 +238,20 @@ async function insertExecutionRow(c, graph, confirmation, userId, idempotencyKey
     `INSERT INTO ${EXEC_TABLE}
        (id, tenant_id, confirmation_id, challenge_id, draft_id, revision,
         publish_approval_id, workflow_approval_id, publishing_request_id,
-        intent_id, outbox_id, attempt_id, credential_ref_id, generation,
+        intent_id, outbox_id, attempt_id, credential_ref_id, credential_ref_version,
+        account_fingerprint, generation,
         contract_hash, snapshot_hash, intent_hash, request_hash, claim_token_hash,
         contract_version, operation, platform, connector, status, idempotency_key,
         requested_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-             $20,$21,$22,$23,'started',$24,$25)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
+             $22,$23,$24,$25,'started',$26,$27)
      RETURNING *`,
     [
       id, graph.intent.tenant_id, confirmation.id, confirmation.challenge_id,
       graph.draft.id, Number(graph.pub.revision), graph.pub.id, graph.pub.workflow_approval_id,
       graph.request.id, graph.intent.id, graph.outbox.id, graph.attempt.id,
-      graph.credRef.credential_ref_id, Number(graph.attempt.generation),
+      graph.credRef.credential_ref_id, Number(graph.credRef.credential_ref_version),
+      graph.credRef.account_fingerprint, Number(graph.attempt.generation),
       graph.pub.contract_hash, graph.snapshotHash, graph.intent.intent_hash,
       graph.request.request_hash, confirmation.claim_token_hash,
       D.CONTRACT_VERSION, D.OPERATION, D.PLATFORM_META, D.EXEC_CONNECTOR,
@@ -257,22 +260,71 @@ async function insertExecutionRow(c, graph, confirmation, userId, idempotencyKey
   )).rows[0];
 }
 
+function digestOfProviderId(id) {
+  return D.providerObjectIdDigest(id);
+}
+
+function lineageParents(kind, byKind) {
+  if (kind === 'campaign') {
+    return { parent_campaign_digest: null, parent_adset_digest: null, parent_creative_digest: null };
+  }
+  if (kind === 'adset' || kind === 'creative') {
+    return {
+      parent_campaign_digest: byKind.campaign || null,
+      parent_adset_digest: null,
+      parent_creative_digest: null,
+    };
+  }
+  return {
+    parent_campaign_digest: byKind.campaign || null,
+    parent_adset_digest: byKind.adset || null,
+    parent_creative_digest: byKind.creative || null,
+  };
+}
+
+function assertAuthoritativeGraph(objects) {
+  if (!Array.isArray(objects) || objects.length !== 4) return false;
+  const byKind = Object.create(null);
+  for (const obj of objects) {
+    const kind = String(obj.object_kind || '');
+    if (!D.PROVIDER_OBJECT_KINDS.includes(kind)) return false;
+    if (byKind[kind]) return false;
+    const digest = digestOfProviderId(obj.provider_object_id);
+    byKind[kind] = digest;
+  }
+  if (!byKind.campaign || !byKind.adset || !byKind.creative || !byKind.ad) return false;
+  const unique = new Set(Object.values(byKind));
+  if (unique.size !== 4) return false;
+  return true;
+}
+
 async function appendProviderObjects(c, execution, objects) {
   const rows = [];
+  const byKind = Object.create(null);
   for (const obj of objects) {
+    const kind = String(obj.object_kind || '');
+    const digest = digestOfProviderId(obj.provider_object_id);
+    const parents = lineageParents(kind, byKind);
     const id = newId('cpo');
     const row = (await c.query(
       `INSERT INTO ${OBJECT_TABLE}
          (id, tenant_id, execution_id, confirmation_id, attempt_id,
-          object_kind, provider_object_id, provider_status, sequence_number)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          publishing_request_id, intent_id, snapshot_hash, account_fingerprint,
+          object_kind, provider_object_id, provider_object_id_digest, display_ref,
+          parent_campaign_digest, parent_adset_digest, parent_creative_digest,
+          provider_status, sequence_number)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        RETURNING *`,
       [
         id, execution.tenant_id, execution.id, execution.confirmation_id,
-        execution.attempt_id, obj.object_kind, obj.provider_object_id,
+        execution.attempt_id, execution.publishing_request_id, execution.intent_id,
+        execution.snapshot_hash, execution.account_fingerprint,
+        kind, obj.provider_object_id, digest, D.providerObjectDisplayRef(digest),
+        parents.parent_campaign_digest, parents.parent_adset_digest, parents.parent_creative_digest,
         obj.provider_status, obj.sequence_number,
       ]
     )).rows[0];
+    byKind[kind] = digest;
     rows.push(row);
   }
   return rows;
@@ -282,12 +334,19 @@ async function markObjectsCompensated(c, tenantId, executionId, objects) {
   let count = 0;
   for (const obj of objects) {
     if (!obj.compensated) continue;
+    const digest = digestOfProviderId(obj.provider_object_id);
+    const row = (await c.query(
+      `SELECT id FROM ${OBJECT_TABLE}
+        WHERE tenant_id=$1 AND execution_id=$2 AND provider_object_id_digest=$3`,
+      [tenantId, executionId, digest]
+    )).rows[0];
+    if (!row) continue;
     await c.query(
-      `UPDATE ${OBJECT_TABLE}
-          SET compensated=TRUE, compensated_at=now()
-        WHERE tenant_id=$1 AND execution_id=$2 AND sequence_number=$3
-          AND compensated=FALSE`,
-      [tenantId, executionId, obj.sequence_number]
+      `INSERT INTO ${OBJECT_EVENT_TABLE}
+         (id, tenant_id, object_id, execution_id, event_kind, sequence_number)
+       VALUES ($1,$2,$3,$4,$5,2)
+       ON CONFLICT (tenant_id, object_id, event_kind) DO NOTHING`,
+      [newId('cpoe'), tenantId, row.id, executionId, D.OBJECT_EVENT_COMPENSATED]
     );
     count += 1;
   }
@@ -373,6 +432,7 @@ function publicExecution(row, objects) {
       provider_object_kind: o.object_kind,
       provider_status: o.provider_status,
       compensated: o.compensated === true,
+      display_ref: o.display_ref || null,
     })),
   };
 }
@@ -401,8 +461,15 @@ function assertExecutionReplayAllowed(execution, o, parsed) {
 
 async function loadExecutionObjects(c, execution) {
   return (await c.query(
-    `SELECT object_kind, provider_status, sequence_number, compensated
-       FROM ${OBJECT_TABLE} WHERE tenant_id=$1 AND execution_id=$2 ORDER BY sequence_number`,
+    `SELECT o.object_kind, o.provider_status, o.sequence_number, o.display_ref,
+            (o.compensated OR EXISTS (
+               SELECT 1 FROM ${OBJECT_EVENT_TABLE} e
+                WHERE e.tenant_id=o.tenant_id AND e.object_id=o.id
+                  AND e.event_kind='compensated'
+             )) AS compensated
+       FROM ${OBJECT_TABLE} o
+      WHERE o.tenant_id=$1 AND o.execution_id=$2
+      ORDER BY o.sequence_number`,
     [execution.tenant_id, execution.id]
   )).rows;
 }
@@ -493,6 +560,11 @@ async function invokeProviderDraftGraph(pool, reserve, o) {
 
 async function finalizeProviderDraftExecution(pool, reserve, providerOutcome, userId) {
   const mapped = mapProviderResult(providerOutcome);
+  if (mapped.status === 'complete' && !assertAuthoritativeGraph(mapped.objects || [])) {
+    mapped.status = 'failed';
+    mapped.outcome = 'failed';
+    mapped.error_code = 'lineage_incomplete';
+  }
   return withTx(pool, async (c) => {
     let execution = reserve.row;
     const providerObjects = mapped.objects || [];
@@ -535,7 +607,8 @@ async function finalizeProviderDraftExecution(pool, reserve, providerOutcome, us
       },
     });
 
-    return { row: execution, objects: providerObjects, replay: false };
+    const persisted = await loadExecutionObjects(c, execution);
+    return { row: execution, objects: persisted, replay: false };
   });
 }
 

@@ -245,7 +245,11 @@ const EXEC_ALLOW = new Set(EXEC_KEYS);
 const EXEC_CONNECTOR = 'meta';
 const OBJECT_KIND_EXECUTION = 'campaign_provider_draft_execution';
 const OBJECT_KIND_PROVIDER_OBJECT = 'campaign_provider_object';
+const OBJECT_KIND_PROVIDER_OBJECT_EVENT = 'campaign_provider_object_event';
 const AUDIT_EVENT_EXECUTION = 'campaign_provider_draft_executed';
+const PROVIDER_OBJECT_KINDS = Object.freeze(['campaign', 'adset', 'creative', 'ad']);
+const OBJECT_EVENT_CREATED = 'created';
+const OBJECT_EVENT_COMPENSATED = 'compensated';
 const EXEC_AUDIT_DETAIL_KEYS = Object.freeze([
   'action', 'state', 'status', 'outcome', 'gate', 'operation',
   'contract_version', 'platform', 'confirmation_id', 'execution_id',
@@ -360,6 +364,19 @@ function claimTokenHashOf(token) {
   return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
+function providerObjectIdDigest(providerObjectId) {
+  const id = typeof providerObjectId === 'string' ? providerObjectId : String(providerObjectId || '');
+  if (!id || id.length > 128) fail('validation_failed', { field: 'provider_object_id' });
+  return crypto.createHash('sha256').update(id, 'utf8').digest('hex');
+}
+
+function providerObjectDisplayRef(digest) {
+  if (typeof digest !== 'string' || !/^[0-9a-f]{64}$/.test(digest)) {
+    fail('validation_failed', { field: 'provider_object_id_digest' });
+  }
+  return digest.slice(0, 12);
+}
+
 function sanitizeConfirmAuditDetail(detail) {
   const out = {};
   if (!detail || typeof detail !== 'object') return out;
@@ -391,8 +408,10 @@ module.exports = {
   AUDIT_EVENT_CHALLENGE, AUDIT_EVENT_CONFIRMATION, PLATFORM_META,
   CHALLENGE_KEYS, CONFIRM_KEYS, CONFIRM_AUDIT_DETAIL_KEYS,
   EXEC_KEYS, EXEC_CONNECTOR, OBJECT_KIND_EXECUTION, OBJECT_KIND_PROVIDER_OBJECT,
-  AUDIT_EVENT_EXECUTION, EXEC_AUDIT_DETAIL_KEYS,
+  OBJECT_KIND_PROVIDER_OBJECT_EVENT, AUDIT_EVENT_EXECUTION, EXEC_AUDIT_DETAIL_KEYS,
+  PROVIDER_OBJECT_KINDS, OBJECT_EVENT_CREATED, OBJECT_EVENT_COMPENSATED,
   parseChallengeBody, parseConfirmBody, parseExecuteBody,
   newPhraseSalt, phraseDigestOf, claimTokenHashOf,
+  providerObjectIdDigest, providerObjectDisplayRef,
   sanitizeConfirmAuditDetail, sanitizeExecAuditDetail,
 };
