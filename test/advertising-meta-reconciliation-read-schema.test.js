@@ -14,7 +14,7 @@ const hex = (c) => c.repeat(64);
 if (!db.hasDb()) {
   test('Meta reconciliation-read schema skipped — no DATABASE_URL', { skip: 'no DATABASE_URL' }, () => {});
 } else {
-  let tenantId; let userId; let workflowId;
+  let tenantId; let userId; let workflowId; let draftId;
   const ids = [`mra-a-${suffix}`, `mra-b-${suffix}`];
   const insertAuthorization = async (p, id) => {
     // Only the authorization row is synthetic. Replica mode bypasses lineage
@@ -27,7 +27,7 @@ if (!db.hasDb()) {
          credential_ref_version,account_fingerprint,ledger_root_hash,expires_at)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,1,$13,$14,now()+interval '5 minutes')`,
       [tenantId,id,hex(id === ids[0] ? '1' : '2'),userId,workflowId,
-        `draft-${suffix}`,`request-${suffix}`,`execution-${suffix}-${id}`,hex('3'),
+        draftId,`request-${suffix}`,`execution-${suffix}-${id}`,hex('3'),
         `intent-${suffix}`,hex('4'),`cred-${suffix}`,hex('5'),hex('6')]);
     } finally { await p.query(`SET session_replication_role = origin`); }
   };
@@ -42,6 +42,10 @@ if (!db.hasDb()) {
       [`crra-${suffix}@example.test`])).rows[0].id;
     workflowId = `wf-${suffix}`;
     await p.query(`INSERT INTO orchestrator_workflows(id,tenant_id,name) VALUES($1,$2,$1)`, [workflowId,tenantId]);
+    draftId = `draft-${suffix}`;
+    await p.query(`INSERT INTO orchestrator_campaign_drafts
+      (id,tenant_id,workflow_id,contract_hash,idempotency_key)
+      VALUES($1,$2,$3,$4,$5)`,[draftId,tenantId,workflowId,hex('9'),`draft-idemp-${suffix}`]);
   });
 
   after(async () => {
@@ -61,9 +65,12 @@ if (!db.hasDb()) {
     const pk=(await db.getPool().query(`SELECT pg_get_constraintdef(oid) def FROM pg_constraint
       WHERE conrelid=$1::regclass AND contype='p'`,[TABLE])).rows[0].def;
     assert.match(pk,/PRIMARY KEY \(tenant_id, id\)/);
-    const fks=(await db.getPool().query(`SELECT pg_get_constraintdef(oid) def FROM pg_constraint
-      WHERE conrelid=$1::regclass AND contype='f'`,[TABLE])).rows.map(r=>r.def);
-    assert.ok(fks.every(x=>x.startsWith('FOREIGN KEY (tenant_id,')), fks.join('\n'));
+    const fks=(await db.getPool().query(`SELECT conname,pg_get_constraintdef(oid) def FROM pg_constraint
+      WHERE conrelid=$1::regclass AND contype='f'`,[TABLE])).rows;
+    const lineage=fks.filter(({conname})=>conname.startsWith('orchestrator_crra_'));
+    assert.equal(lineage.length,8,lineage.map(x=>`${x.conname}: ${x.def}`).join('\n'));
+    assert.ok(lineage.every(({def})=>/^FOREIGN KEY \(tenant_id, /.test(def)),
+      lineage.map(x=>`${x.conname}: ${x.def}`).join('\n'));
   });
 
   test('immutable bindings and terminal lifecycle are database-enforced', async () => {
