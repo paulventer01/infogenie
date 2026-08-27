@@ -117,7 +117,7 @@ async function issue(client, opts = {}) {
 
 // Must run in the caller's transaction. The row lock and issued-only UPDATE
 // make reservation+consumption a single atomic, replay-proof operation.
-async function consume(client, opts = {}) {
+async function prepareConsumption(client, opts = {}) {
   const tenantId = positiveInt(opts.tenantId); const actor = checkActor(opts);
   const id = String(opts.authorizationId || ''); const invocationHash = hash(opts.invocationId || '');
   if (!tenantId || !SAFE_ID.test(id) || !SAFE_ID.test(String(opts.invocationId || ''))) throw deny('validation_failed');
@@ -141,6 +141,10 @@ async function consume(client, opts = {}) {
   try { graph = await authoritativeGraph(client, tenantId, row.execution_id); }
   catch (e) { if (e && e.blocked) return reject(e.code); throw e; }
   if (!same(graph.ledgerRoot,row.ledger_root_hash)) return reject('authorization_lineage_mismatch');
+  return { client,tenantId,actor,id,invocationHash,now,row,graph };
+}
+async function markConsumed(prepared) {
+  const {client,tenantId,actor,id,invocationHash,now,row,graph}=prepared;
   await client.query(`UPDATE orchestrator_campaign_reconciliation_read_authorizations
     SET status='reserved', invocation_id_hash=$3, reserved_at=$4 WHERE tenant_id=$1 AND id=$2`, [tenantId,id,invocationHash,now]);
   await audit(client,tenantId,actor,row.workflow_id,'meta_reconciliation_read_authorization_reserved',id);
@@ -153,6 +157,28 @@ async function consume(client, opts = {}) {
     credential_ref_id:row.credential_ref_id, credential_ref_version:Number(row.credential_ref_version),
     account_fingerprint:row.account_fingerprint, ledger_root_hash:row.ledger_root_hash,
     ledger_objects:Object.freeze(graph.objects.map((o)=>Object.freeze({...o}))) });
+}
+async function consume(client, opts = {}) { return markConsumed(await prepareConsumption(client,opts)); }
+
+// Narrow PR6F-2 primitive: it creates only the tenant-leading reconciliation
+// row from the locked authorization's frozen bindings, then consumes that
+// authorization. It neither resolves credentials nor accepts provider inputs.
+async function consumeIntoReconciliationRun(client, opts = {}, run = {}) {
+  const prepared=await prepareConsumption(client,opts);
+  const {tenantId,id:authorizationId,invocationHash,row}=prepared;
+  if (!SAFE_ID.test(String(run.id||'')) || !SAFE_ID.test(String(run.auditRef||''))
+    || !(run.observingAt instanceof Date) || !(run.observationDeadline instanceof Date)
+    || !(run.observationDeadline>run.observingAt)) throw deny('validation_failed');
+  const inserted=await client.query(`INSERT INTO orchestrator_campaign_reconciliation_runs
+    (tenant_id,id,authorization_id,invocation_id_hash,requested_by,workflow_id,draft_id,publishing_request_id,
+     execution_id,snapshot_hash,intent_id,intent_hash,credential_ref_id,credential_ref_version,account_fingerprint,
+     ledger_root_hash,state,audit_ref,observing_at,observation_deadline) VALUES
+    ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'observing',$17,$18,$19) RETURNING *`,
+  [tenantId,run.id,authorizationId,invocationHash,prepared.actor,row.workflow_id,row.draft_id,row.publishing_request_id,
+    row.execution_id,row.snapshot_hash,row.intent_id,row.intent_hash,row.credential_ref_id,row.credential_ref_version,
+    row.account_fingerprint,row.ledger_root_hash,run.auditRef,run.observingAt,run.observationDeadline]);
+  const consumed=await markConsumed(prepared);
+  return { consumed,row:inserted.rows[0] };
 }
 
 // Owns the transaction boundary: reservation and consumption are committed
@@ -238,4 +264,5 @@ async function observeWithConsumedCredential(client, consumed, options = {}, get
   });
 }
 
-module.exports={ PERMISSION,KINDS,DEFAULT_TTL_MS,MAX_TTL_MS,ledgerRoot,validateLineage,issue,consume,consumeAtomic,consumeAndObserve,revoke,observeWithConsumedCredential };
+module.exports={ PERMISSION,KINDS,DEFAULT_TTL_MS,MAX_TTL_MS,ledgerRoot,validateLineage,issue,consume,
+  consumeIntoReconciliationRun,consumeAtomic,consumeAndObserve,revoke,observeWithConsumedCredential };
