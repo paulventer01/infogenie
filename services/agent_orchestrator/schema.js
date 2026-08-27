@@ -101,6 +101,7 @@ const ADVERTISING_ORCH_TABLES = [
   // PR 6F-1R2 — consume-once authorization metadata for one bounded GET-only
   // reconciliation observation. Contains no provider ids or credential material.
   'orchestrator_campaign_reconciliation_read_authorizations',
+  'orchestrator_campaign_reconciliation_runs',
   // PR 6F-1R — append-only provider-object outcome events (no mutable compensation).
   'orchestrator_campaign_provider_object_events',
 ];
@@ -5883,6 +5884,79 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     try { await p.query('ROLLBACK'); } catch (_) { /* already aborted */ }
     throw e;
   }
+
+  // PR 6F-2 — sanitized outcome of exactly one consume-once reconciliation.
+  // Provider IDs and raw provider responses never enter this table.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_reconciliation_runs (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      id TEXT NOT NULL,
+      authorization_id TEXT NOT NULL,
+      invocation_id_hash TEXT NOT NULL,
+      requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      workflow_id TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      execution_id TEXT NOT NULL,
+      snapshot_hash TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      intent_hash TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL,
+      credential_ref_version INTEGER NOT NULL,
+      account_fingerprint TEXT NOT NULL,
+      ledger_root_hash TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'pending',
+      observations JSONB NOT NULL DEFAULT '[]'::jsonb,
+      classifications TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      audit_ref TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      observing_at TIMESTAMPTZ NULL,
+      completed_at TIMESTAMPTZ NULL,
+      PRIMARY KEY (tenant_id,id),
+      UNIQUE (tenant_id,authorization_id),
+      UNIQUE (tenant_id,invocation_id_hash),
+      UNIQUE (tenant_id,audit_ref),
+      FOREIGN KEY (tenant_id,authorization_id)
+        REFERENCES orchestrator_campaign_reconciliation_read_authorizations(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_crr_state_check CHECK
+        (state IN ('pending','observing','verified','discrepancy_detected','failed')),
+      CONSTRAINT orchestrator_crr_hash_check CHECK
+        (invocation_id_hash ~ '^[0-9a-f]{64}$' AND snapshot_hash ~ '^[0-9a-f]{64}$'
+         AND intent_hash ~ '^[0-9a-f]{64}$' AND account_fingerprint ~ '^[0-9a-f]{64}$'
+         AND ledger_root_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_crr_observations_check CHECK
+        (jsonb_typeof(observations)='array' AND jsonb_array_length(observations) <= 4),
+      CONSTRAINT orchestrator_crr_lifecycle_check CHECK
+        ((state='pending' AND observing_at IS NULL AND completed_at IS NULL)
+         OR (state='observing' AND observing_at IS NOT NULL AND completed_at IS NULL)
+         OR (state IN ('verified','discrepancy_detected','failed') AND observing_at IS NOT NULL AND completed_at IS NOT NULL))
+    );
+
+    CREATE OR REPLACE FUNCTION orchestrator_crr_guard() RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_crr_immutable'; END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.authorization_id IS DISTINCT FROM OLD.authorization_id
+        OR NEW.invocation_id_hash IS DISTINCT FROM OLD.invocation_id_hash
+        OR NEW.requested_by IS DISTINCT FROM OLD.requested_by OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id
+        OR NEW.draft_id IS DISTINCT FROM OLD.draft_id OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+        OR NEW.execution_id IS DISTINCT FROM OLD.execution_id OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
+        OR NEW.intent_id IS DISTINCT FROM OLD.intent_id OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+        OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+        OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+        OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN RAISE EXCEPTION 'orchestrator_crr_immutable_binding';
+      END IF;
+      IF NOT ((OLD.state='pending' AND NEW.state IN ('observing','discrepancy_detected','failed'))
+        OR (OLD.state='observing' AND NEW.state IN ('verified','discrepancy_detected','failed')))
+        THEN RAISE EXCEPTION 'orchestrator_crr_invalid_transition'; END IF;
+      RETURN NEW;
+    END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_crr_guard ON orchestrator_campaign_reconciliation_runs;
+    CREATE TRIGGER orchestrator_crr_guard BEFORE UPDATE OR DELETE ON orchestrator_campaign_reconciliation_runs
+      FOR EACH ROW EXECUTE FUNCTION orchestrator_crr_guard();
+  `);
 
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_tenant_execution_kind', 'tenant_id, execution_id, object_kind');
