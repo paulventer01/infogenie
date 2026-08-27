@@ -92,10 +92,10 @@ if (!db.hasDb()) {
       approvalId,requestId,intentId,outboxId,attemptId,credentialRefId,hex('5'),hex('9'),hex('3'),hex('4'),
       hex('8'),hex('7'),`execution-idemp-${tag}`,userId]);
   };
-  const insertAuthorization = async (p, id) => {
+  const insertAuthorization = async (p, id, { bypassLineage = true } = {}) => {
     // Only the authorization row is synthetic. Replica mode bypasses lineage
     // FKs for this trigger-focused test; production issuance never does this.
-    await p.query(`SET session_replication_role = replica`);
+    if (bypassLineage) await p.query(`SET session_replication_role = replica`);
     try {
       await p.query(`INSERT INTO ${TABLE}
         (tenant_id,id,nonce_hash,requested_by,workflow_id,draft_id,publishing_request_id,
@@ -105,7 +105,7 @@ if (!db.hasDb()) {
       [tenantId,id,hex(id === ids[0] ? '1' : '2'),userId,workflowId,
         draftId,`request-${suffix}`,`execution-${suffix}-${id}`,hex('3'),
         `intent-${suffix}`,hex('4'),`cred-${suffix}`,hex('5'),hex('6')]);
-    } finally { await p.query(`SET session_replication_role = origin`); }
+    } finally { if (bypassLineage) await p.query(`SET session_replication_role = origin`); }
   };
 
   before(async () => {
@@ -158,7 +158,8 @@ if (!db.hasDb()) {
   });
 
   test('row lock serializes concurrent consumption and exposes consumed state to loser', async () => {
-    const pool=db.getPool(); await seedExecutionParent(pool,ids[1]); await insertAuthorization(pool,ids[1]);
+    const pool=db.getPool(); await seedExecutionParent(pool,ids[1]);
+    await insertAuthorization(pool,ids[1],{bypassLineage:false});
     const a=await pool.connect(); const b=await pool.connect();
     try {
       await a.query('BEGIN'); await b.query('BEGIN');
