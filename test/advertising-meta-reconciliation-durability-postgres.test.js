@@ -2,13 +2,15 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('crypto');
 const db = require('../db');
 const R = require('../services/agent_orchestrator/meta_paused_draft_reconciliation');
 const A = require('../services/agent_orchestrator/meta_reconciliation_read_authorizations');
 
 const suffix=`${Date.now()}_${Math.random().toString(36).slice(2)}`.replace(/[^a-z0-9_]/gi,'');
 const schema=`recon_dur_${suffix}`;
-const invocationHash='e'.repeat(64);
+const invocationId='invocation';
+const invocationHash=crypto.createHash('sha256').update(String(invocationId)).digest('hex');
 const now=new Date('2026-08-27T00:00:00.000Z');
 const later=new Date(now.getTime()+R.OBSERVATION_LEASE_MS+1);
 
@@ -141,7 +143,7 @@ if (!db.hasDb()) {
     let providerCalls=0; let finishProvider;
     A.consumeIntoReconciliationRun=concurrentConsume;
     A.observeWithConsumedCredential=async()=>{providerCalls+=1;await new Promise(r=>{finishProvider=r;});return {attempted_observations:0,completed_observations:0,observations:[]};};
-    const opts={tenantId:1,requestedBy:1,authorizationId:'mra_test',invocationId:'invocation',hasPermission:()=>true,now};
+    const opts={tenantId:1,requestedBy:1,authorizationId:'mra_test',invocationId,hasPermission:()=>true,now};
     try {
       const first=R.reconcile(pool,opts); const second=R.reconcile(pool,opts);
       await bothEntered; releaseFirst(); const loser=await second;
