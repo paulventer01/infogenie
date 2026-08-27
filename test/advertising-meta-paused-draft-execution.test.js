@@ -64,14 +64,18 @@ function assertNoSecrets(text, label) {
   assert.doesNotMatch(String(text || ''), FORBIDDEN, label || 'leaked secret surface');
 }
 
+function uniqueProviderId(kind) {
+  return `${kind}_${crypto.randomBytes(8).toString('hex')}`;
+}
+
 function successInject() {
-  let seq = 0;
   const kinds = ['campaign', 'adset', 'creative', 'ad'];
+  let seq = 0;
   return {
     create: async (kind) => {
       seq += 1;
       assert.equal(kind, kinds[seq - 1]);
-      return { status: 200, body: { id: `meta_${kind}_${seq}` } };
+      return { status: 200, body: { id: uniqueProviderId(kind) } };
     },
   };
 }
@@ -84,7 +88,7 @@ function partialInject() {
     create: async (kind) => {
       calls += 1;
       if (calls === 3) return { status: 400, body: { error: { code: 100 } } };
-      return { status: 200, body: { id: `${kind}_${calls}` } };
+      return { status: 200, body: { id: uniqueProviderId(kind) } };
     },
     delete: async (kind, objectId) => {
       deletes.push({ kind, objectId });
@@ -101,7 +105,7 @@ function transportThrowAfterPartialInject() {
     create: async (kind) => {
       calls += 1;
       if (calls === 3) throw new Error('ECONNRESET transport');
-      return { status: 200, body: { id: `${kind}_${calls}` } };
+      return { status: 200, body: { id: uniqueProviderId(kind) } };
     },
     delete: async (kind, objectId) => {
       deletes.push({ kind, objectId });
@@ -357,7 +361,42 @@ if (!HAS_DB) {
     assert.equal(attempt.connector, 'meta');
     assert.equal(attempt.simulated, false);
     assert.equal(attempt.published, false);
-    assertNoSecrets(JSON.stringify(draftExecution.publicExecution(res.row, res.objects)));
+    const execRow = (await p().query(
+      `SELECT credential_ref_version, account_fingerprint, snapshot_hash, contract_hash
+         FROM orchestrator_campaign_provider_draft_executions
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantA.id, res.row.id]
+    )).rows[0];
+    assert.equal(Number(execRow.credential_ref_version) >= 1, true);
+    assert.match(execRow.account_fingerprint, /^[0-9a-f]{64}$/);
+    const objs = (await p().query(
+      `SELECT object_kind, provider_object_id, provider_object_id_digest, display_ref,
+              parent_campaign_digest, parent_adset_digest, parent_creative_digest,
+              account_fingerprint, publishing_request_id, intent_id, snapshot_hash
+         FROM orchestrator_campaign_provider_objects
+        WHERE tenant_id=$1 AND execution_id=$2 ORDER BY sequence_number`,
+      [tenantA.id, res.row.id]
+    )).rows;
+    assert.equal(objs.length, 4);
+    assert.deepEqual(objs.map((o) => o.object_kind), ['campaign', 'adset', 'creative', 'ad']);
+    const byKind = Object.fromEntries(objs.map((o) => [o.object_kind, o]));
+    assert.equal(byKind.campaign.parent_campaign_digest, null);
+    assert.equal(byKind.adset.parent_campaign_digest, byKind.campaign.provider_object_id_digest);
+    assert.equal(byKind.creative.parent_campaign_digest, byKind.campaign.provider_object_id_digest);
+    assert.equal(byKind.ad.parent_adset_digest, byKind.adset.provider_object_id_digest);
+    assert.equal(byKind.ad.parent_creative_digest, byKind.creative.provider_object_id_digest);
+    for (const o of objs) {
+      assert.equal(o.account_fingerprint, execRow.account_fingerprint);
+      assert.equal(o.publishing_request_id, live.request.id);
+      assert.equal(o.intent_id, live.intent.id);
+      assert.equal(o.snapshot_hash, execRow.snapshot_hash);
+      const digest = crypto.createHash('sha256').update(o.provider_object_id, 'utf8').digest('hex');
+      assert.equal(o.provider_object_id_digest, digest);
+      assert.equal(o.display_ref, digest.slice(0, 12));
+    }
+    const pub = draftExecution.publicExecution(res.row, res.objects);
+    assertNoSecrets(JSON.stringify(pub));
+    assert.equal(pub.provider_objects.every((o) => !!o.display_ref && !o.provider_object_id), true);
   });
 
   test('HTTP execute route idempotent replay with sanitized body', async () => {
@@ -413,14 +452,26 @@ if (!HAS_DB) {
     assert.deepEqual(inject.deletes.map((d) => d.kind), ['adset', 'campaign']);
     for (const obj of res.objects) assert.equal(obj.compensated, true);
     const rows = (await p().query(
-      `SELECT sequence_number, object_kind, compensated, provider_status
+      `SELECT sequence_number, object_kind, compensated, provider_status,
+              provider_object_id_digest, display_ref, parent_campaign_digest
          FROM orchestrator_campaign_provider_objects
         WHERE tenant_id=$1 AND execution_id=$2 ORDER BY sequence_number`,
       [tenantA.id, res.row.id]
     )).rows;
     assert.equal(rows.length, 2);
-    assert.equal(rows.filter((r) => r.compensated === true).length, 2);
-    for (const row of rows) assert.equal(row.provider_status, 'PAUSED');
+    assert.equal(rows.filter((r) => r.compensated === true).length, 0);
+    for (const row of rows) {
+      assert.equal(row.provider_status, 'PAUSED');
+      assert.match(row.provider_object_id_digest, /^[0-9a-f]{64}$/);
+      assert.equal(row.display_ref, row.provider_object_id_digest.slice(0, 12));
+    }
+    const events = (await p().query(
+      `SELECT event_kind FROM orchestrator_campaign_provider_object_events
+        WHERE tenant_id=$1 AND execution_id=$2 ORDER BY sequence_number, event_kind`,
+      [tenantA.id, res.row.id]
+    )).rows.map((r) => r.event_kind);
+    assert.equal(events.filter((k) => k === 'created').length, 2);
+    assert.equal(events.filter((k) => k === 'compensated').length, 2);
   });
 
   test('transport failure after partial Meta success keeps durable spend and terminal outcome', async () => {
@@ -517,5 +568,93 @@ if (!HAS_DB) {
   test('PR #99 default-deny remains for generic provider mutation', async () => {
     const guard = require('../services/security/advertising_provider_mutations');
     assert.equal(guard.isAdvertisingProviderMutationAllowed(), false);
+  });
+
+  test('append-only objects reject mutation; compensation is event-sourced', async () => {
+    const live = await readyConfirmed(cookieA, wfA, artA);
+    const res = await executeModule(live, ik('immut'), successInject());
+    await assert.rejects(
+      () => p().query(
+        `UPDATE orchestrator_campaign_provider_objects SET provider_status='PAUSED'
+          WHERE tenant_id=$1 AND execution_id=$2`,
+        [tenantA.id, res.row.id]
+      ),
+      (err) => err && /orchestrator_cpo_immutable/.test(String(err.message))
+    );
+    await assert.rejects(
+      () => p().query(
+        `UPDATE orchestrator_campaign_provider_draft_executions
+            SET account_fingerprint=$3
+          WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, res.row.id, 'b'.repeat(64)]
+      ),
+      (err) => err && /orchestrator_cpdex_immutable/.test(String(err.message))
+    );
+    const created = (await p().query(
+      `SELECT COUNT(*)::int AS n FROM orchestrator_campaign_provider_object_events
+        WHERE tenant_id=$1 AND execution_id=$2 AND event_kind='created'`,
+      [tenantA.id, res.row.id]
+    )).rows[0].n;
+    assert.equal(created, 4);
+  });
+
+  test('complete settlement is rejected when objects are missing or lineage is wrong', async () => {
+    const live = await readyConfirmed(cookieA, wfA, artA);
+    const res = await executeModule(live, ik('partial-card'), partialInject());
+    assert.equal(res.row.status, 'partial');
+    await assert.rejects(
+      () => p().query(
+        `UPDATE orchestrator_campaign_provider_draft_executions
+            SET status='complete', outcome='complete', objects_created=4,
+                objects_compensated=0, settled_at=now()
+          WHERE tenant_id=$1 AND id=$2`,
+        [tenantA.id, res.row.id]
+      ),
+      (err) => err && /orchestrator_cpdex_immutable|orchestrator_cpdex_cardinality/.test(String(err.message))
+    );
+  });
+
+  test('duplicate kind and wrong-account objects fail closed', async () => {
+    const live = await readyConfirmed(cookieA, wfA, artA);
+    const res = await executeModule(live, ik('uniq'), successInject());
+    const campaign = (await p().query(
+      `SELECT * FROM orchestrator_campaign_provider_objects
+        WHERE tenant_id=$1 AND execution_id=$2 AND object_kind='campaign'`,
+      [tenantA.id, res.row.id]
+    )).rows[0];
+    await assert.rejects(
+      () => p().query(
+        `INSERT INTO orchestrator_campaign_provider_objects
+           (id, tenant_id, execution_id, confirmation_id, attempt_id,
+            publishing_request_id, intent_id, snapshot_hash, account_fingerprint,
+            object_kind, provider_object_id, provider_object_id_digest, display_ref,
+            provider_status, sequence_number)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'campaign',$10,$11,$12,'PAUSED',1)`,
+        [
+          nid('cpo'), tenantA.id, res.row.id, campaign.confirmation_id, campaign.attempt_id,
+          campaign.publishing_request_id, campaign.intent_id, campaign.snapshot_hash,
+          campaign.account_fingerprint, uniqueProviderId('campaign'),
+          'c'.repeat(64), 'c'.repeat(12),
+        ]
+      ),
+      (err) => err && (err.code === '23505' || /unique|kind/i.test(String(err.message)))
+    );
+    await assert.rejects(
+      () => p().query(
+        `INSERT INTO orchestrator_campaign_provider_objects
+           (id, tenant_id, execution_id, confirmation_id, attempt_id,
+            publishing_request_id, intent_id, snapshot_hash, account_fingerprint,
+            object_kind, provider_object_id, provider_object_id_digest, display_ref,
+            provider_status, sequence_number)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'campaign',$10,$11,$12,'PAUSED',5)`,
+        [
+          nid('cpo'), tenantA.id, res.row.id, campaign.confirmation_id, campaign.attempt_id,
+          campaign.publishing_request_id, campaign.intent_id, campaign.snapshot_hash,
+          'd'.repeat(64), uniqueProviderId('campaign2'),
+          'd'.repeat(64), 'd'.repeat(12),
+        ]
+      ),
+      (err) => err && (err.code === '23503' || err.code === '23514' || err.code === '23505')
+    );
   });
 }
