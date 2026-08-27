@@ -117,6 +117,7 @@ const PERMISSIONS = [
   // authoring and approving a workflow must never imply provider authority —
   // and it is not a `.view` key, so read-only roles never inherit it.
   { key:'advertising.provider_drafts.create', scope:'tenant', area:'Advertising', label:'Confirm creation of a paused provider draft on a connected ad account' },
+  { key:'advertising.reconciliation.read', scope:'tenant', area:'Advertising', label:'Authorize one bounded read of a completed provider-draft ledger' },
 
   // ── Reach section ─────────────────────────────────────────────────────────
   { key:'reach.audiences.view',      scope:'tenant',   area:'Reach',     label:'View dynamic audiences & segments' },
