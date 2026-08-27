@@ -1,0 +1,84 @@
+name: Meta reconciliation PostgreSQL
+
+on:
+  pull_request:
+    paths:
+      - 'services/agent_orchestrator/**'
+      - 'services/credentials/vault.js'
+      - 'services/tenants/permissions.js'
+      - 'test/advertising-meta-reconciliation-*.test.js'
+      - '.github/workflows/meta-reconciliation-postgres.yml'
+
+jobs:
+  reconciliation-postgres:
+    name: PostgreSQL reconciliation tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/infogenie_reconciliation_test
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Enable TLS on disposable PostgreSQL service
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          PGPASSWORD: postgres
+        run: |
+          docker exec --user root "$POSTGRES_CONTAINER" sh -ec '
+            openssl req -new -x509 -days 1 -nodes -text \
+              -out /var/lib/postgresql/server.crt \
+              -keyout /var/lib/postgresql/server.key \
+              -subj "/CN=localhost"
+            chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key
+            chmod 600 /var/lib/postgresql/server.key
+          '
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER SYSTEM SET ssl = 'on'" -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt'" -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key'"
+          docker restart "$POSTGRES_CONTAINER"
+          for attempt in {1..30}; do
+            pg_isready -h localhost -U postgres -d postgres && break
+            if [ "$attempt" -eq 30 ]; then exit 1; fi
+            sleep 1
+          done
+
+      - name: Create disposable test database
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres infogenie_reconciliation_test
+
+      - name: Configure disposable test encryption key
+        run: echo "CREDENTIAL_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - name: Run Meta reconciliation PostgreSQL suite with zero skips
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test --test-force-exit \
+            test/advertising-meta-reconciliation-read-schema.test.js \
+            test/advertising-meta-reconciliation-read-security.test.js \
+            test/advertising-meta-reconciliation-observer.test.js | tee meta-reconciliation.tap
+          grep -Eq '^# fail 0$' meta-reconciliation.tap
+          grep -Eq '^# skipped 0$' meta-reconciliation.tap
