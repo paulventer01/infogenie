@@ -1,6 +1,7 @@
 'use strict';
 const test=require('node:test'); const assert=require('node:assert/strict'); const fs=require('fs');
 const R=require('../services/agent_orchestrator/meta_reconciliation_human_review');
+const reviewApi=require('../services/agent_orchestrator/reconciliation_review_api');
 const {listPermissions}=require('../services/tenants/permissions');
 const opts=(x={})=>({tenantId:1,actorUserId:7,actorType:'human',hasPermission:(p)=>p===R.PERMISSION,...x});
 
@@ -9,6 +10,15 @@ test('exact dedicated permission and authenticated human actor are required',asy
   const dead={query:async()=>{throw Error('db reached')}};
   for(const x of [{actorUserId:null},{actorType:'agent'},{hasPermission:()=>false},{hasPermission:(p)=>p==='advertising.reconciliation.read'}])
     await assert.rejects(R.getCase(dead,{...opts(),...x,caseId:'x'}),{code:x.hasPermission?'permission_denied':'authentication_required'});
+});
+
+test('review API rejects API-key and non-session principals as non-human',()=>{
+  const human={user:{id:7},session:{userId:7}};
+  assert.equal(reviewApi._isHumanSessionRequest(human),true);
+  assert.equal(reviewApi._isHumanSessionRequest({...human,viaApiKey:true}),false);
+  assert.equal(reviewApi._isHumanSessionRequest({user:{id:7,viaApiKey:true},session:{userId:7}}),false);
+  assert.equal(reviewApi._isHumanSessionRequest({user:{id:7}}),false);
+  assert.equal(reviewApi._isHumanSessionRequest({user:{id:7},session:{userId:8}}),false);
 });
 
 test('classification and note policy is bounded and sanitized',()=>{
