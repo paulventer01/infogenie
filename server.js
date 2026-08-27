@@ -648,6 +648,11 @@ const _OWNER_GATE_ALLOW = [
   // requirePermission. The trailing (\/|$) keeps /suggest, /apply, /history and
   // a look-alike such as /credits-export owner-gated.
   /^\/api\/agent-orchestrator\/credits(?:\/|$)/,
+  // Human reconciliation review is tenant-scoped and self-gates on a matching
+  // session plus the exact active-tenant review grant. Exempt only this anchored
+  // prefix from the legacy global-data owner gate; its router does not inherit
+  // the shared owner/admin permission bypass.
+  /^\/api\/agent-orchestrator\/reconciliation-reviews(?:\/|$)/,
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();

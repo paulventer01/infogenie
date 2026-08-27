@@ -43,6 +43,14 @@ test('review API requires an explicit tenant grant without owner or platform byp
   }
 });
 
+test('review routes bypass only the legacy owner gate and are explicitly rate-limited',()=>{
+  const api=fs.readFileSync(require.resolve('../services/agent_orchestrator/reconciliation_review_api'),'utf8');
+  const server=fs.readFileSync(require.resolve('../server'),'utf8');
+  assert.match(server,/\^\\\/api\\\/agent-orchestrator\\\/reconciliation-reviews\(\?:\\\/\|\$\)\//);
+  assert.equal((api.match(/router\.(?:get|post)\([^\n]+reviewLimiter/g)||[]).length,4);
+  assert.match(api,/createRateLimiter\(\{[\s\S]*name:'reconciliation-review'[\s\S]*failClosed:true/);
+});
+
 test('classification and note policy is bounded and sanitized',()=>{
   for(const c of R.CLASSIFICATIONS) assert.equal(R._test.classification(c),c);
   for(const c of ['verified','anything','']) assert.throws(()=>R._test.classification(c),{code:'invalid_classification'});
