@@ -15,10 +15,32 @@ test('exact dedicated permission and authenticated human actor are required',asy
 test('review API rejects API-key and non-session principals as non-human',()=>{
   const human={user:{id:7},session:{userId:7}};
   assert.equal(reviewApi._isHumanSessionRequest(human),true);
-  assert.equal(reviewApi._isHumanSessionRequest({...human,viaApiKey:true}),false);
-  assert.equal(reviewApi._isHumanSessionRequest({user:{id:7,viaApiKey:true},session:{userId:7}}),false);
-  assert.equal(reviewApi._isHumanSessionRequest({user:{id:7}}),false);
-  assert.equal(reviewApi._isHumanSessionRequest({user:{id:7},session:{userId:8}}),false);
+  for(const req of [{...human,viaApiKey:true},{user:{id:7,viaApiKey:true},session:{userId:7}},
+    {user:{id:7}},{user:{id:7},session:{userId:8}}]) {
+    assert.equal(reviewApi._isHumanSessionRequest(req),false);
+    assert.equal(reviewApi._reviewAuthorizationError(req),'human_session_required');
+  }
+});
+
+test('review API requires an explicit tenant grant without owner or platform bypass',()=>{
+  const permission=R.PERMISSION;
+  const request=(overrides={})=>({
+    user:{id:7},session:{userId:7},tenant:{id:1},
+    tenantRole:{permissions:[]},platformRole:null,...overrides,
+  });
+  assert.equal(reviewApi._reviewAuthorizationError(request({tenantRole:{permissions:[permission]}})),null,
+    'ordinary session user with explicit tenant grant succeeds');
+  assert.equal(reviewApi._reviewAuthorizationError(request()),'permission_denied',
+    'ordinary session user without tenant grant fails');
+  assert.equal(reviewApi._reviewAuthorizationError(request({user:{id:7,isOwner:true}})),'permission_denied',
+    'isOwner without tenant grant fails');
+  for(const key of ['platform_owner','platform_admin']) {
+    assert.equal(reviewApi._reviewAuthorizationError(request({platformRole:{key,permissions:[permission]}})),'permission_denied',
+      `${key} platform grant is not a tenant grant`);
+    assert.equal(reviewApi._reviewAuthorizationError(request({
+      user:{id:7,isOwner:key==='platform_owner'},platformRole:{key,permissions:[]},tenantRole:{permissions:[permission]},
+    })),null,`${key} with an explicit tenant grant succeeds`);
+  }
 });
 
 test('classification and note policy is bounded and sanitized',()=>{

@@ -3,7 +3,6 @@
 const express=require('express');
 const db=require('../../db');
 const tenantCtx=require('../tenants/context');
-const permissions=require('../tenants/permission_enforce');
 const review=require('./meta_reconciliation_human_review');
 const router=express.Router();
 
@@ -15,10 +14,20 @@ function isHumanSessionRequest(req){
     &&req.viaApiKey!==true&&req.user.viaApiKey!==true&&req.session
     &&Number(req.session.userId)===req.user.id);
 }
+function hasExplicitTenantReviewGrant(req){
+  return !!(req&&req.tenant&&req.tenantRole&&Array.isArray(req.tenantRole.permissions)
+    &&req.tenantRole.permissions.includes(review.PERMISSION));
+}
+function reviewAuthorizationError(req){
+  if(!isHumanSessionRequest(req)) return 'human_session_required';
+  if(!hasExplicitTenantReviewGrant(req)) return 'permission_denied';
+  return null;
+}
 function route(label,fn){return async(req,res)=>{try{
-  if(!isHumanSessionRequest(req)) return res.status(401).json({ok:false,error:'human_session_required'});
+  const authError=reviewAuthorizationError(req);
+  if(authError) return res.status(authError==='human_session_required'?401:403).json({ok:false,error:authError});
   const tenantId=await tenantCtx.resolveTenantId(req,{label:`reconciliation-review:${label}`});
-  const common={tenantId,actorUserId:req.user.id,actorType:'human',hasPermission:(key)=>permissions.hasPermission(req,key)};
+  const common={tenantId,actorUserId:req.user.id,actorType:'human',hasPermission:(key)=>key===review.PERMISSION&&hasExplicitTenantReviewGrant(req)};
   const result=await fn(common,req); return res.json({ok:true,...result});
 }catch(e){return res.status(status(e.code)).json({ok:false,error:e.code||'review_request_failed'});}};}
 
@@ -34,3 +43,5 @@ for(const [action,method] of [['acknowledge','acknowledge'],['escalate','escalat
 }
 module.exports=router;
 module.exports._isHumanSessionRequest=isHumanSessionRequest;
+module.exports._hasExplicitTenantReviewGrant=hasExplicitTenantReviewGrant;
+module.exports._reviewAuthorizationError=reviewAuthorizationError;
