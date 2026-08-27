@@ -181,9 +181,12 @@ async function ensureCredentialsSchema() {
                        CHECK (status IN ('connected','disconnected','error')),
         connected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+        credential_version INTEGER NOT NULL DEFAULT 1 CHECK (credential_version >= 1),
         PRIMARY KEY (user_id, platform)
       );
     `);
+    await p.query(`ALTER TABLE user_integrations
+      ADD COLUMN IF NOT EXISTS credential_version INTEGER NOT NULL DEFAULT 1`);
     // Backfill CHECK constraint on existing deployments (idempotent).
     try {
       await p.query(`
@@ -225,6 +228,28 @@ async function getCredentials(userId, platform) {
   }
 }
 
+// Read a credential only when the mutable vault row is still the exact version
+// frozen into a provider authorization. Rotation increments the vault version,
+// so an old authorization fails closed rather than silently receiving a newer
+// token for the same user/account.
+async function getCredentialsAtVersion(userId, platform, expectedVersion) {
+  const uid = _normUserId(userId);
+  const version = _positiveInt(expectedVersion);
+  if (!uid || !version || !_db.hasDb() || !hasKey()) return null;
+  await ensureCredentialsSchema();
+  const r = await _db.getPool().query(
+    `SELECT ciphertext, iv, tag, status FROM user_integrations
+      WHERE user_id=$1 AND platform=$2 AND credential_version=$3`,
+    [uid, platform, version]
+  );
+  if (r.rowCount !== 1 || r.rows[0].status === 'disconnected') return null;
+  try {
+    return JSON.parse(_decrypt(r.rows[0].ciphertext, r.rows[0].iv, r.rows[0].tag));
+  } catch (_e) {
+    return null;
+  }
+}
+
 async function saveCredentials(userId, platform, blob) {
   const uid = _normUserId(userId);
   if (!uid) throw new Error('saveCredentials: invalid userId');
@@ -240,6 +265,7 @@ async function saveCredentials(userId, platform, blob) {
                   iv         = EXCLUDED.iv,
                   tag        = EXCLUDED.tag,
                   status     = 'connected',
+                  credential_version = user_integrations.credential_version + 1,
                   updated_at = now()
   `, [uid, platform, ciphertext, iv, tag]);
   return { ok: true };
@@ -818,6 +844,7 @@ module.exports = {
   decryptString: _decrypt,
   hasCredentials,
   getCredentials,
+  getCredentialsAtVersion,
   saveCredentials,
   deleteCredentials,
   getStatus,

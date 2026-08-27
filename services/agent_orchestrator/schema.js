@@ -98,6 +98,9 @@ const ADVERTISING_ORCH_TABLES = [
   // object rows (no secrets, no activation, no retry worker).
   'orchestrator_campaign_provider_draft_executions',
   'orchestrator_campaign_provider_objects',
+  // PR 6F-1R2 — consume-once authorization metadata for one bounded GET-only
+  // reconciliation observation. Contains no provider ids or credential material.
+  'orchestrator_campaign_reconciliation_read_authorizations',
   // PR 6F-1R — append-only provider-object outcome events (no mutable compensation).
   'orchestrator_campaign_provider_object_events',
 ];
@@ -5733,6 +5736,153 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'orchestrator_cpdex_tenant_unique_id_pubreq', 'tenant_id, id, publishing_request_id');
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_draft_executions',
     'orchestrator_cpdex_tenant_unique_id_intent', 'tenant_id, id, intent_id');
+  await _ensureNamedUnique(p, 'orchestrator_campaign_drafts',
+    'orchestrator_campaign_drafts_tenant_unique_id_workflow',
+    'tenant_id, id, workflow_id');
+
+  // PR 6F-1R2 — immutable, tenant-leading authorization for exactly one
+  // invocation over a complete PR 6F-1R execution graph. Issuance validates
+  // the four-object lineage in the service; row locking makes reservation and
+  // consumption atomic before either vault access or provider egress.
+  await p.query('BEGIN');
+  try {
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS orchestrator_campaign_reconciliation_read_authorizations (
+        tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        id TEXT NOT NULL,
+        nonce_hash TEXT NOT NULL,
+        requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+        workflow_id TEXT NOT NULL,
+        draft_id TEXT NOT NULL,
+        publishing_request_id TEXT NOT NULL,
+        execution_id TEXT NOT NULL,
+        snapshot_hash TEXT NOT NULL,
+        intent_id TEXT NOT NULL,
+        intent_hash TEXT NOT NULL,
+        credential_ref_id TEXT NOT NULL,
+        credential_ref_version INTEGER NOT NULL,
+        account_fingerprint TEXT NOT NULL,
+        ledger_root_hash TEXT NOT NULL,
+        expected_object_kinds TEXT[] NOT NULL
+          DEFAULT ARRAY['campaign','adset','creative','ad']::TEXT[],
+        status TEXT NOT NULL DEFAULT 'issued',
+        invocation_id_hash TEXT NULL,
+        issued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        expires_at TIMESTAMPTZ NOT NULL,
+        reserved_at TIMESTAMPTZ NULL,
+        consumed_at TIMESTAMPTZ NULL,
+        revoked_at TIMESTAMPTZ NULL,
+        PRIMARY KEY (tenant_id, id),
+        UNIQUE (tenant_id, nonce_hash),
+        UNIQUE (tenant_id, execution_id, ledger_root_hash),
+        CONSTRAINT orchestrator_crra_workflow_fkey
+          FOREIGN KEY (tenant_id, workflow_id)
+          REFERENCES orchestrator_workflows (tenant_id, id)
+          ON DELETE CASCADE,
+        CONSTRAINT orchestrator_crra_draft_workflow_fkey
+          FOREIGN KEY (tenant_id, draft_id, workflow_id)
+          REFERENCES orchestrator_campaign_drafts (tenant_id, id, workflow_id)
+          ON DELETE CASCADE,
+        CONSTRAINT orchestrator_crra_execution_account_fkey
+          FOREIGN KEY (tenant_id, execution_id, account_fingerprint)
+          REFERENCES orchestrator_campaign_provider_draft_executions
+            (tenant_id, id, account_fingerprint)
+          ON DELETE CASCADE,
+        CONSTRAINT orchestrator_crra_execution_snapshot_fkey
+          FOREIGN KEY (tenant_id, execution_id, snapshot_hash)
+          REFERENCES orchestrator_campaign_provider_draft_executions
+            (tenant_id, id, snapshot_hash)
+          ON DELETE CASCADE,
+        CONSTRAINT orchestrator_crra_execution_request_fkey
+          FOREIGN KEY (tenant_id, execution_id, publishing_request_id)
+          REFERENCES orchestrator_campaign_provider_draft_executions
+            (tenant_id, id, publishing_request_id)
+          ON DELETE CASCADE,
+        CONSTRAINT orchestrator_crra_execution_intent_fkey
+          FOREIGN KEY (tenant_id, execution_id, intent_id)
+          REFERENCES orchestrator_campaign_provider_draft_executions
+            (tenant_id, id, intent_id)
+          ON DELETE CASCADE,
+        CONSTRAINT orchestrator_crra_request_fkey
+          FOREIGN KEY (tenant_id, publishing_request_id)
+          REFERENCES orchestrator_campaign_publish_requests(tenant_id, id)
+          ON DELETE CASCADE,
+        CONSTRAINT orchestrator_crra_intent_fkey
+          FOREIGN KEY (tenant_id, intent_id)
+          REFERENCES orchestrator_campaign_delivery_intents(tenant_id, id)
+          ON DELETE CASCADE,
+        CONSTRAINT orchestrator_crra_status_check
+          CHECK (status IN ('issued','reserved','consumed','revoked','expired')),
+        CONSTRAINT orchestrator_crra_kinds_check CHECK (
+          expected_object_kinds = ARRAY['campaign','adset','creative','ad']::TEXT[]),
+        CONSTRAINT orchestrator_crra_hashes_check CHECK (
+          nonce_hash ~ '^[0-9a-f]{64}$'
+          AND snapshot_hash ~ '^[0-9a-f]{64}$'
+          AND intent_hash ~ '^[0-9a-f]{64}$'
+          AND account_fingerprint ~ '^[0-9a-f]{64}$'
+          AND ledger_root_hash ~ '^[0-9a-f]{64}$'),
+        CONSTRAINT orchestrator_crra_lifecycle_check CHECK (
+          expires_at > issued_at
+          AND ((status = 'issued' AND invocation_id_hash IS NULL
+                AND reserved_at IS NULL AND consumed_at IS NULL
+                AND revoked_at IS NULL)
+            OR (status = 'reserved' AND invocation_id_hash ~ '^[0-9a-f]{64}$'
+                AND reserved_at IS NOT NULL AND consumed_at IS NULL
+                AND revoked_at IS NULL)
+            OR (status = 'consumed' AND invocation_id_hash ~ '^[0-9a-f]{64}$'
+                AND reserved_at IS NOT NULL AND consumed_at IS NOT NULL
+                AND revoked_at IS NULL)
+            OR (status = 'revoked' AND consumed_at IS NULL
+                AND revoked_at IS NOT NULL)
+            OR (status = 'expired' AND consumed_at IS NULL
+                AND revoked_at IS NULL)))
+      );
+
+      CREATE OR REPLACE FUNCTION orchestrator_crra_guard() RETURNS trigger AS $fn$
+      BEGIN
+        IF TG_OP = 'DELETE' THEN
+          RAISE EXCEPTION 'orchestrator_crra_immutable';
+        END IF;
+        IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+           OR NEW.id IS DISTINCT FROM OLD.id
+           OR NEW.nonce_hash IS DISTINCT FROM OLD.nonce_hash
+           OR NEW.requested_by IS DISTINCT FROM OLD.requested_by
+           OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id
+           OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
+           OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+           OR NEW.execution_id IS DISTINCT FROM OLD.execution_id
+           OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
+           OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+           OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+           OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+           OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+           OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+           OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash
+           OR NEW.expected_object_kinds IS DISTINCT FROM OLD.expected_object_kinds
+           OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
+           OR NEW.expires_at IS DISTINCT FROM OLD.expires_at THEN
+          RAISE EXCEPTION 'orchestrator_crra_immutable_binding';
+        END IF;
+        IF NOT ((OLD.status = 'issued' AND NEW.status IN ('reserved','revoked','expired'))
+             OR (OLD.status = 'reserved' AND NEW.status IN ('consumed','revoked','expired'))) THEN
+          RAISE EXCEPTION 'orchestrator_crra_invalid_transition';
+        END IF;
+        RETURN NEW;
+      END;
+      $fn$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS orchestrator_crra_guard
+        ON orchestrator_campaign_reconciliation_read_authorizations;
+      CREATE TRIGGER orchestrator_crra_guard
+        BEFORE UPDATE OR DELETE
+        ON orchestrator_campaign_reconciliation_read_authorizations
+        FOR EACH ROW EXECUTE FUNCTION orchestrator_crra_guard();
+    `);
+    await p.query('COMMIT');
+  } catch (e) {
+    try { await p.query('ROLLBACK'); } catch (_) { /* already aborted */ }
+    throw e;
+  }
 
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_tenant_execution_kind', 'tenant_id, execution_id, object_kind');
