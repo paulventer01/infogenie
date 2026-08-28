@@ -62,9 +62,13 @@ if (!db.hasDb()) {
     `);
     assert.equal(trigger.rowCount, 1);
     assert.match(trigger.rows[0].definition, /BEFORE (?:DELETE OR UPDATE|UPDATE OR DELETE)/);
-    assert.match(trigger.rows[0].fn, /orchestrator_cmr_terminal_immutable/);
-    assert.match(trigger.rows[0].fn, /orchestrator_cmr_immutable_binding/);
-    assert.match(trigger.rows[0].fn, /OLD\.state = 'observing'.*NEW\.state = ANY/s);
+    const guard = trigger.rows[0].fn.replace(/\s+/g, ' ').toLowerCase();
+    assert.match(guard, /tg_op\s*=\s*'delete'.*orchestrator_cmr_delete_prohibited/);
+    assert.match(guard, /old\.state.*verified_active.*delivery_pending.*discrepancy_detected.*failed.*orchestrator_cmr_terminal_immutable/);
+    assert.match(guard, /if not.*old\.state\s*=\s*'pending'.*new\.state\s*=\s*'observing'/);
+    assert.match(guard, /old\.state\s*=\s*'observing'.*verified_active.*delivery_pending.*discrepancy_detected.*failed/);
+    assert.match(guard, /orchestrator_cmr_immutable_binding/);
+    assert.match(guard, /orchestrator_cmr_invalid_transition/);
   });
 
   test('PR7C monitoring rows support explicit PostgreSQL row locking', async () => {
