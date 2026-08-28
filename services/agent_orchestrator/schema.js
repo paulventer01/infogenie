@@ -107,6 +107,9 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_campaign_reconciliation_review_events',
   // PR 6F-4 — immutable closed-review to fresh authorization/run provenance.
   'orchestrator_campaign_reconciliation_rereconciliation_attempts',
+  // PR 7A — consume-once human Meta activation capability. This is only an
+  // authorization record; it cannot call a provider or change object status.
+  'orchestrator_campaign_activation_capabilities',
   // PR 6F-1R — append-only provider-object outcome events (no mutable compensation).
   'orchestrator_campaign_provider_object_events',
 ];
@@ -6228,6 +6231,117 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   await _ensureNamedFk(p, 'orchestrator_campaign_reconciliation_read_authorizations',
     'orchestrator_crra_closure_event_fkey', 'tenant_id, closure_event_id',
     'orchestrator_campaign_reconciliation_review_events', 'tenant_id, id', 'ON DELETE RESTRICT');
+
+  // PR 7A — immutable, tenant-leading authority for one future invocation.
+  // Provider/account identifiers are represented only by one-way digests. The
+  // lifecycle columns are the sole mutable portion and are guarded below so a
+  // reservation cannot be stolen, reset, or consumed twice.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_activation_capabilities (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      session_id_hash TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      draft_revision INTEGER NOT NULL,
+      snapshot_hash TEXT NOT NULL,
+      publish_approval_id TEXT NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      execution_id TEXT NOT NULL,
+      reconciliation_run_id TEXT NOT NULL,
+      advertising_account_id_hash TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL,
+      credential_ref_version INTEGER NOT NULL,
+      account_fingerprint TEXT NOT NULL,
+      ledger_root_hash TEXT NOT NULL,
+      final_confirmation_hash TEXT NOT NULL,
+      confirmed_at TIMESTAMPTZ NOT NULL,
+      issued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      status TEXT NOT NULL DEFAULT 'issued',
+      reservation_id_hash TEXT NULL,
+      reserved_at TIMESTAMPTZ NULL,
+      revoked_at TIMESTAMPTZ NULL,
+      revoked_by INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT,
+      consumed_at TIMESTAMPTZ NULL,
+      invocation_id_hash TEXT NULL,
+      audit_ref TEXT NOT NULL,
+      PRIMARY KEY (tenant_id,id),
+      UNIQUE (tenant_id,final_confirmation_hash),
+      UNIQUE (tenant_id,audit_ref),
+      FOREIGN KEY (tenant_id,execution_id)
+        REFERENCES orchestrator_campaign_provider_draft_executions(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,reconciliation_run_id)
+        REFERENCES orchestrator_campaign_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_cac_status_check CHECK
+        (status IN ('issued','reserved','consumed','revoked','expired')),
+      CONSTRAINT orchestrator_cac_version_check CHECK
+        (draft_revision >= 1 AND credential_ref_version >= 1),
+      CONSTRAINT orchestrator_cac_hash_check CHECK
+        (session_id_hash ~ '^[0-9a-f]{64}$' AND snapshot_hash ~ '^[0-9a-f]{64}$'
+         AND advertising_account_id_hash ~ '^[0-9a-f]{64}$'
+         AND account_fingerprint ~ '^[0-9a-f]{64}$' AND ledger_root_hash ~ '^[0-9a-f]{64}$'
+         AND final_confirmation_hash ~ '^[0-9a-f]{64}$'
+         AND (reservation_id_hash IS NULL OR reservation_id_hash ~ '^[0-9a-f]{64}$')
+         AND (invocation_id_hash IS NULL OR invocation_id_hash ~ '^[0-9a-f]{64}$')),
+      CONSTRAINT orchestrator_cac_expiry_check CHECK
+        (confirmed_at <= issued_at AND expires_at > issued_at),
+      CONSTRAINT orchestrator_cac_lifecycle_check CHECK
+        ((status='issued' AND reservation_id_hash IS NULL AND reserved_at IS NULL
+           AND revoked_at IS NULL AND revoked_by IS NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL)
+         OR (status='reserved' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL
+           AND revoked_at IS NULL AND revoked_by IS NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL)
+         OR (status='consumed' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL
+           AND revoked_at IS NULL AND revoked_by IS NULL AND consumed_at IS NOT NULL AND invocation_id_hash IS NOT NULL)
+         OR (status='revoked' AND revoked_at IS NOT NULL AND revoked_by IS NOT NULL
+           AND consumed_at IS NULL AND invocation_id_hash IS NULL)
+         OR (status='expired' AND revoked_at IS NULL AND revoked_by IS NULL
+           AND consumed_at IS NULL AND invocation_id_hash IS NULL))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_cac_tenant_invocation_unique
+      ON orchestrator_campaign_activation_capabilities(tenant_id,invocation_id_hash)
+      WHERE invocation_id_hash IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_cac_tenant_reservation_unique
+      ON orchestrator_campaign_activation_capabilities(tenant_id,reservation_id_hash)
+      WHERE reservation_id_hash IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS orchestrator_cac_tenant_expiry
+      ON orchestrator_campaign_activation_capabilities(tenant_id,expires_at,id);
+
+    CREATE OR REPLACE FUNCTION orchestrator_cac_guard() RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_cac_delete_prohibited'; END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id
+        OR NEW.session_id_hash IS DISTINCT FROM OLD.session_id_hash
+        OR NEW.draft_id IS DISTINCT FROM OLD.draft_id OR NEW.draft_revision IS DISTINCT FROM OLD.draft_revision
+        OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
+        OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id
+        OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+        OR NEW.intent_id IS DISTINCT FROM OLD.intent_id OR NEW.execution_id IS DISTINCT FROM OLD.execution_id
+        OR NEW.reconciliation_run_id IS DISTINCT FROM OLD.reconciliation_run_id
+        OR NEW.advertising_account_id_hash IS DISTINCT FROM OLD.advertising_account_id_hash
+        OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+        OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash
+        OR NEW.final_confirmation_hash IS DISTINCT FROM OLD.final_confirmation_hash
+        OR NEW.confirmed_at IS DISTINCT FROM OLD.confirmed_at OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
+        OR NEW.expires_at IS DISTINCT FROM OLD.expires_at OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+      THEN RAISE EXCEPTION 'orchestrator_cac_immutable_binding'; END IF;
+      IF NOT ((OLD.status='issued' AND NEW.status IN ('reserved','revoked','expired'))
+        OR (OLD.status='reserved' AND NEW.status IN ('consumed','revoked','expired')))
+      THEN RAISE EXCEPTION 'orchestrator_cac_invalid_transition'; END IF;
+      IF OLD.status='reserved' AND NEW.reservation_id_hash IS DISTINCT FROM OLD.reservation_id_hash
+        THEN RAISE EXCEPTION 'orchestrator_cac_reservation_mismatch'; END IF;
+      IF OLD.status='reserved' AND NEW.reserved_at IS DISTINCT FROM OLD.reserved_at
+        THEN RAISE EXCEPTION 'orchestrator_cac_reservation_mismatch'; END IF;
+      RETURN NEW;
+    END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_cac_guard ON orchestrator_campaign_activation_capabilities;
+    CREATE TRIGGER orchestrator_cac_guard BEFORE UPDATE OR DELETE
+      ON orchestrator_campaign_activation_capabilities FOR EACH ROW EXECUTE FUNCTION orchestrator_cac_guard();
+  `);
 
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_tenant_execution_kind', 'tenant_id, execution_id, object_kind');
