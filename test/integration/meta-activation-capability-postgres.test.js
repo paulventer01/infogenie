@@ -91,15 +91,19 @@ test('PostgreSQL capability lifecycle locks, rolls back, and permits only one co
       `outbox-${suffix}`,`attempt-${suffix}`,`credential-${suffix}`,ACCOUNT_FP,H,`execution-${suffix}`,user.id]);
     await seed.query(`INSERT INTO orchestrator_tenant_meta_credential_refs
       (id,tenant_id,environment,status,account_fingerprint,page_id,version,owner_user_id)
-      VALUES ($1,$2,'test','active',$3,'page',2,$4)`,[`credential-${suffix}`,tenant.id,ACCOUNT_FP,user.id]);
+      VALUES ($1,$2,'test','active',$3,'1122334455667',2,$4)`,[`credential-${suffix}`,tenant.id,ACCOUNT_FP,user.id]);
+    const providerIds=Object.fromEntries(['campaign','adset','creative','ad'].map((kind)=>[kind,`${kind}_${suffix}`]));
+    const providerDigests=Object.fromEntries(Object.entries(providerIds).map(([kind,id])=>[kind,crypto.createHash('sha256').update(id).digest('hex')]));
     for (const [index,kind] of ['campaign','adset','creative','ad'].entries()) {
-      const providerId=`${kind}_${suffix}`, digest=crypto.createHash('sha256').update(providerId).digest('hex');
+      const providerId=providerIds[kind], digest=providerDigests[kind];
       await seed.query(`INSERT INTO orchestrator_campaign_provider_objects
         (id,tenant_id,execution_id,confirmation_id,attempt_id,publishing_request_id,intent_id,snapshot_hash,
-         account_fingerprint,object_kind,provider_object_id,provider_object_id_digest,display_ref,sequence_number)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+         account_fingerprint,object_kind,provider_object_id,provider_object_id_digest,display_ref,sequence_number,
+         parent_campaign_digest,parent_adset_digest,parent_creative_digest)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
       [`object-${kind}-${suffix}`,tenant.id,ids.execution,ids.confirmation,`attempt-${suffix}`,ids.request,ids.intent,H,
-        ACCOUNT_FP,kind,providerId,digest,digest.slice(0,12),index+1]);
+        ACCOUNT_FP,kind,providerId,digest,digest.slice(0,12),index+1,kind==='campaign'?null:providerDigests.campaign,
+        kind==='ad'?providerDigests.adset:null,kind==='ad'?providerDigests.creative:null]);
     }
     await seed.query(`INSERT INTO orchestrator_campaign_reconciliation_runs
       (tenant_id,id,authorization_id,invocation_id_hash,requested_by,workflow_id,draft_id,publishing_request_id,execution_id,snapshot_hash,intent_id,intent_hash,credential_ref_id,credential_ref_version,account_fingerprint,ledger_root_hash,audit_ref,state,observing_at,observation_deadline,completed_at)
