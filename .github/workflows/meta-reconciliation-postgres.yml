@@ -4,9 +4,14 @@ on:
   pull_request:
     paths:
       - 'services/agent_orchestrator/**'
+      - 'services/agent_orchestrator/connectors/meta_activation.js'
+      - 'services/agent_orchestrator/meta_activation_capabilities_api.js'
+      - 'services/agent_orchestrator/meta_campaign_activation.js'
+      - 'services/agent_orchestrator/schema.js'
       - 'services/credentials/vault.js'
       - 'services/tenants/permissions.js'
       - 'test/advertising-meta-reconciliation-*.test.js'
+      - 'test/integration/meta-activation-capability-postgres.test.js'
       - '.github/workflows/meta-reconciliation-postgres.yml'
 
 jobs:
@@ -83,6 +88,7 @@ jobs:
             test/advertising-meta-reconciliation-durability-postgres.test.js \
             test/advertising-meta-paused-draft-reconciliation.test.js \
             test/advertising-meta-reconciliation-review.test.js \
-            test/advertising-meta-reconciliation-review-postgres.test.js | tee meta-reconciliation.tap
+            test/advertising-meta-reconciliation-review-postgres.test.js \
+            test/integration/meta-activation-capability-postgres.test.js | tee meta-reconciliation.tap
           grep -Eq '^# fail 0$' meta-reconciliation.tap
           grep -Eq '^# skipped 0$' meta-reconciliation.tap
