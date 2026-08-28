@@ -291,4 +291,7 @@ router.use('/video-jobs', videoApi);
 const campaignApi = require('./campaign_api');
 router.use('/campaign-drafts', campaignApi);
 
+const reconciliationReviewApi = require('./reconciliation_review_api');
+router.use('/reconciliation-reviews', reconciliationReviewApi);
+
 module.exports = router;

@@ -153,6 +153,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/agent-orchestrator/static-images', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
   { prefix: '/api/agent-orchestrator/video-jobs', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
   { prefix: '/api/agent-orchestrator/campaign-drafts', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
+  { prefix: '/api/agent-orchestrator/reconciliation-reviews', view: 'advertising.reconciliation.review', write: 'advertising.reconciliation.review' },
   // PR 6F-0 provider-draft challenge/confirm routes mounted under campaign_api.
   // Both require the least-privilege advertising.provider_drafts.create key,
   // which no read-only role and no Marketer holds. Do NOT relax either key back
