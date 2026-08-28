@@ -55,14 +55,22 @@ const permitted = () => true;
 const actor = (fixture, extra = {}) => ({ tenantId: fixture.tenant, actorUserId: fixture.user,
   actorType: 'human', principalType: 'user', sessionId: `session-${fixture.tag}`,
   hasExplicitTenantPermission: permitted, pool: db.getPool(), ...extra });
+const sourceSnapshot = async (f) => (await db.getPool().query(
+  `SELECT row_to_json(m)::text value FROM orchestrator_campaign_monitoring_runs m WHERE tenant_id=$1 AND id=$2`,
+  [f.tenant,f.run])).rows[0].value;
+const caseEvidence = async (f,id) => (await db.getPool().query(`SELECT c.state,c.version,
+  (SELECT count(*)::int FROM orchestrator_campaign_delivery_discrepancy_events e WHERE e.tenant_id=c.tenant_id AND e.case_id=c.id) events,
+  (SELECT count(*)::int FROM orchestrator_audit_events a WHERE a.tenant_id=c.tenant_id AND a.detail->>'discrepancy_case_id'=c.id) audits,
+  (to_jsonb(c)-ARRAY['state','version','classification','note','updated_at','resolved_at'])::text lineage
+  FROM orchestrator_campaign_delivery_discrepancy_cases c WHERE tenant_id=$1 AND id=$2`,[f.tenant,id])).rows[0];
 
 // Build the complete production PR6 -> PR7C graph.  In particular, the ledger
 // root, reconciliation, capability and activation rows are produced/advanced
 // through the production contracts rather than through surrogate test tables.
-async function seedMonitoring(state, label) {
-  const p=db.getPool(), tag=`pr7d-${label}-${crypto.randomUUID()}`,snapshotHash=sha256Hex({}),intentHash=hex('4');
-  const tenant=(await p.query(`INSERT INTO tenants(name,slug,status) VALUES($1,$2,'active') RETURNING id`,[tag,tag])).rows[0].id;
-  const user=(await p.query(`INSERT INTO users(email,password_hash,name) VALUES($1,'x','operator') RETURNING id`,[`${tag}@test.invalid`])).rows[0].id;
+async function seedMonitoring(state, label, sharedTag) {
+  const p=db.getPool(),fixtureTag=`pr7d-${label}-${crypto.randomUUID()}`,tag=sharedTag||fixtureTag,snapshotHash=sha256Hex({}),intentHash=hex('4');
+  const tenant=(await p.query(`INSERT INTO tenants(name,slug,status) VALUES($1,$2,'active') RETURNING id`,[fixtureTag,fixtureTag])).rows[0].id;
+  const user=(await p.query(`INSERT INTO users(email,password_hash,name) VALUES($1,'x','operator') RETURNING id`,[`${fixtureTag}@test.invalid`])).rows[0].id;
   const workflow=`wf-${tag}`,draft=`draft-${tag}`,request=`request-${tag}`,intent=`intent-${tag}`,execution=`execution-${tag}`;
   await p.query(`INSERT INTO orchestrator_workflows(id,tenant_id,name,created_by_user_id) VALUES($1,$2,$1,$3)`,[workflow,tenant,user]);
   await p.query(`INSERT INTO orchestrator_campaign_drafts(id,tenant_id,workflow_id,contract_hash,idempotency_key) VALUES($1,$2,$3,$4,$5)`,[draft,tenant,workflow,hex('9'),`draft-${tag}`]);
@@ -229,37 +237,57 @@ if (!db.hasDb()) {
   });
 
   test('real DML enforces lifecycle, versioning, replay, collisions and tenant isolation', async () => {
-    const f=await seedMonitoring('failed','lifecycle'), created=await discrepancy.createOrGet(actor(f,{monitoringRunId:f.run}));
+    const f=await seedMonitoring('failed','lifecycle'),source=await sourceSnapshot(f),created=await discrepancy.createOrGet(actor(f,{monitoringRunId:f.run}));
+    let evidence=await caseEvidence(f,created.discrepancy_case_id),lineage=evidence.lineage;
+    assert.deepEqual([evidence.state,evidence.version,evidence.events,evidence.audits],['open',1,1,1]);assert.equal(await sourceSnapshot(f),source);
     const acknowledged=await discrepancy.transition(actor(f,{caseId:created.discrepancy_case_id,action:'acknowledge',decisionId:'ack',expectedVersion:1,note:'  Human   operator note  '}));
     assert.equal(acknowledged.case_version,2);assert.equal(acknowledged.note,'Human operator note');
+    evidence=await caseEvidence(f,created.discrepancy_case_id);assert.deepEqual([evidence.state,evidence.version,evidence.events,evidence.audits,evidence.lineage],['acknowledged',2,2,2,lineage]);assert.equal(await sourceSnapshot(f),source);
     const replay=await discrepancy.transition(actor(f,{caseId:created.discrepancy_case_id,action:'acknowledge',decisionId:'ack',expectedVersion:1,note:'  Human   operator note  '}));
-    assert.equal(replay.case_version,2);assert.equal(replay.event_history.length,2);
+    assert.equal(replay.case_version,2);assert.equal(replay.event_history.length,2);assert.deepEqual(await caseEvidence(f,created.discrepancy_case_id),evidence);assert.equal(await sourceSnapshot(f),source);
     await assert.rejects(discrepancy.transition(actor(f,{caseId:created.discrepancy_case_id,action:'escalate',decisionId:'ack',expectedVersion:2,classification:'provider_delay_accepted'})),{code:'decision_id_conflict'});
+    assert.deepEqual(await caseEvidence(f,created.discrepancy_case_id),evidence);assert.equal(await sourceSnapshot(f),source);
     await assert.rejects(discrepancy.transition(actor(f,{caseId:created.discrepancy_case_id,action:'resolve',decisionId:'stale',expectedVersion:1,classification:'false_positive'})),{code:'version_conflict'});
-    const resolved=await discrepancy.transition(actor(f,{caseId:created.discrepancy_case_id,action:'resolve',decisionId:'resolve',expectedVersion:2,classification:'false_positive'}));
-    assert.equal(resolved.case_version,3);assert.equal(resolved.case_state,'resolved');
-    await assert.rejects(discrepancy.transition(actor(f,{caseId:created.discrepancy_case_id,action:'resolve',decisionId:'again',expectedVersion:3,classification:'false_positive'})),{code:'invalid_transition'});
-    await assert.rejects(discrepancy.transition(actor(f,{caseId:created.discrepancy_case_id,action:'escalate',decisionId:'secret',expectedVersion:3,classification:'provider_delay_accepted',note:'Authorization: bearer token'})),{code:'unsafe_note'});
-    const other=await seedMonitoring('failed','other-tenant');
+    assert.deepEqual(await caseEvidence(f,created.discrepancy_case_id),evidence);assert.equal(await sourceSnapshot(f),source);
+    const escalated=await discrepancy.transition(actor(f,{caseId:created.discrepancy_case_id,action:'escalate',decisionId:'escalate',expectedVersion:2,classification:'provider_delay_accepted'}));
+    assert.deepEqual([escalated.case_state,escalated.case_version],['escalated',3]);evidence=await caseEvidence(f,created.discrepancy_case_id);assert.deepEqual([evidence.events,evidence.audits,evidence.lineage],[3,3,lineage]);assert.equal(await sourceSnapshot(f),source);
+    const resolved=await discrepancy.transition(actor(f,{caseId:created.discrepancy_case_id,action:'resolve',decisionId:'resolve',expectedVersion:3,classification:'false_positive'}));
+    assert.deepEqual([resolved.case_state,resolved.case_version],['resolved',4]);evidence=await caseEvidence(f,created.discrepancy_case_id);assert.deepEqual([evidence.events,evidence.audits,evidence.lineage],[4,4,lineage]);assert.equal(await sourceSnapshot(f),source);
+    await assert.rejects(discrepancy.transition(actor(f,{caseId:created.discrepancy_case_id,action:'resolve',decisionId:'again',expectedVersion:4,classification:'false_positive'})),{code:'invalid_transition'});assert.equal(await sourceSnapshot(f),source);
+    await assert.rejects(discrepancy.transition(actor(f,{caseId:created.discrepancy_case_id,action:'escalate',decisionId:'secret',expectedVersion:4,classification:'provider_delay_accepted',note:'Authorization: bearer token'})),{code:'unsafe_note'});assert.equal(await sourceSnapshot(f),source);
+    const other=await seedMonitoring('failed','other-tenant',f.tag),otherSource=await sourceSnapshot(other);
+    const otherCreated=await discrepancy.createOrGet(actor(other,{monitoringRunId:other.run}));
+    await discrepancy.transition(actor(other,{caseId:otherCreated.discrepancy_case_id,action:'acknowledge',decisionId:'ack',expectedVersion:1}));
+    assert.equal((await discrepancy.list(actor(other))).items[0].discrepancy_case_id,otherCreated.discrepancy_case_id);
     await assert.rejects(discrepancy.get(actor(other,{caseId:created.discrepancy_case_id})),{code:'case_not_found'});
     await assert.rejects(discrepancy.transition(actor(other,{caseId:created.discrepancy_case_id,action:'acknowledge',decisionId:'cross',expectedVersion:1})),{code:'case_not_found'});
+    assert.equal(await sourceSnapshot(f),source);assert.equal(await sourceSnapshot(other),otherSource);
+    assert.equal((await db.getPool().query(`SELECT count(DISTINCT tenant_id)::int tenants FROM orchestrator_campaign_provider_objects WHERE provider_object_id='campaign-1' AND tenant_id IN ($1,$2)`,[f.tenant,other.tenant])).rows[0].tenants,2);
+    assert.equal((await db.getPool().query(`SELECT count(DISTINCT tenant_id)::int tenants FROM orchestrator_campaign_monitoring_runs WHERE id=$3 AND tenant_id IN ($1,$2)`,[f.tenant,other.tenant,f.run])).rows[0].tenants,2);
+    assert.equal((await db.getPool().query(`SELECT count(DISTINCT tenant_id)::int tenants FROM orchestrator_campaign_delivery_discrepancy_events WHERE decision_id='ack' AND tenant_id IN ($1,$2)`,[f.tenant,other.tenant])).rows[0].tenants,2);
   });
 
   test('separate PostgreSQL connections serialize identical and competing decisions', async () => {
-    const f=await seedMonitoring('discrepancy_detected','concurrent'), created=await discrepancy.createOrGet(actor(f,{monitoringRunId:f.run}));
+    const f=await seedMonitoring('discrepancy_detected','concurrent'),source=await sourceSnapshot(f),created=await discrepancy.createOrGet(actor(f,{monitoringRunId:f.run}));
     const input=actor(f,{caseId:created.discrepancy_case_id,action:'escalate',decisionId:'same',expectedVersion:1,classification:'provider_configuration_required'});
     const [one,two]=await Promise.all([discrepancy.transition(input),discrepancy.transition(input)]);
     assert.equal(one.case_version,2);assert.equal(two.case_version,2);
-    assert.equal((await db.getPool().query(`SELECT count(*)::int n FROM orchestrator_campaign_delivery_discrepancy_events WHERE tenant_id=$1 AND case_id=$2 AND decision_id='same'`,[f.tenant,created.discrepancy_case_id])).rows[0].n,1);
+    let counts=(await db.getPool().query(`SELECT
+      (SELECT count(*)::int FROM orchestrator_campaign_delivery_discrepancy_events WHERE tenant_id=$1 AND case_id=$2 AND decision_id='same') events,
+      (SELECT count(*)::int FROM orchestrator_audit_events WHERE tenant_id=$1 AND event='delivery_discrepancy_escalate' AND detail->>'discrepancy_case_id'=$2) audits`,[f.tenant,created.discrepancy_case_id])).rows[0];
+    assert.deepEqual(counts,{events:1,audits:1});assert.equal((await discrepancy.transition(input)).case_version,2);assert.equal(await sourceSnapshot(f),source);
     const a=actor(f,{caseId:created.discrepancy_case_id,action:'resolve',decisionId:'winner-a',expectedVersion:2,classification:'false_positive'});
     const b=actor(f,{caseId:created.discrepancy_case_id,action:'resolve',decisionId:'winner-b',expectedVersion:2,classification:'provider_delay_accepted'});
     const settled=await Promise.allSettled([discrepancy.transition(a),discrepancy.transition(b)]);
     assert.equal(settled.filter(x=>x.status==='fulfilled').length,1);assert.equal(settled.filter(x=>x.status==='rejected').length,1);
-    assert.equal((await db.getPool().query(`SELECT count(*)::int n FROM orchestrator_campaign_delivery_discrepancy_events WHERE tenant_id=$1 AND case_id=$2`,[f.tenant,created.discrepancy_case_id])).rows[0].n,3);
+    counts=(await db.getPool().query(`SELECT
+      (SELECT count(*)::int FROM orchestrator_campaign_delivery_discrepancy_events WHERE tenant_id=$1 AND case_id=$2 AND decision_id IN ('winner-a','winner-b')) events,
+      (SELECT count(*)::int FROM orchestrator_audit_events WHERE tenant_id=$1 AND event='delivery_discrepancy_resolve' AND detail->>'discrepancy_case_id'=$2) audits`,[f.tenant,created.discrepancy_case_id])).rows[0];
+    assert.deepEqual(counts,{events:1,audits:1});assert.equal((await caseEvidence(f,created.discrepancy_case_id)).events,3);assert.equal(await sourceSnapshot(f),source);
   });
 
   test('real event and audit insertion failures roll back the complete transition', async () => {
-    const p=db.getPool(),f=await seedMonitoring('failed','rollback'),created=await discrepancy.createOrGet(actor(f,{monitoringRunId:f.run}));
+    const p=db.getPool(),f=await seedMonitoring('failed','rollback'),source=await sourceSnapshot(f),created=await discrepancy.createOrGet(actor(f,{monitoringRunId:f.run}));
     const input={caseId:created.discrepancy_case_id,action:'escalate',expectedVersion:1,classification:'monitoring_failure_accepted'};
     const snapshot=async()=> (await p.query(`SELECT c.state,c.version,
       (SELECT count(*)::int FROM orchestrator_campaign_delivery_discrepancy_events e WHERE e.tenant_id=c.tenant_id AND e.case_id=c.id) events,
@@ -273,13 +301,13 @@ if (!db.hasDb()) {
       FOR EACH ROW EXECUTE FUNCTION ${eventFn}()`);
     try { await assert.rejects(discrepancy.transition(actor(f,{...input,decisionId:'fail-event'})),/injected_event_failure/); }
     finally { await p.query(`DROP TRIGGER IF EXISTS ${eventFn} ON orchestrator_campaign_delivery_discrepancy_events`);await p.query(`DROP FUNCTION IF EXISTS ${eventFn}()`); }
-    assert.deepEqual(await snapshot(),before);
+    assert.deepEqual(await snapshot(),before);assert.equal(await sourceSnapshot(f),source);
 
     await p.query(`CREATE FUNCTION ${auditFn}() RETURNS trigger LANGUAGE plpgsql AS
       $$BEGIN IF NEW.event='delivery_discrepancy_escalate' THEN RAISE EXCEPTION 'injected_audit_failure'; END IF; RETURN NEW; END$$`);
     await p.query(`CREATE TRIGGER ${auditFn} BEFORE INSERT ON orchestrator_audit_events FOR EACH ROW EXECUTE FUNCTION ${auditFn}()`);
     try { await assert.rejects(discrepancy.transition(actor(f,{...input,decisionId:'fail-audit'})),/injected_audit_failure/); }
     finally { await p.query(`DROP TRIGGER IF EXISTS ${auditFn} ON orchestrator_audit_events`);await p.query(`DROP FUNCTION IF EXISTS ${auditFn}()`); }
-    assert.deepEqual(await snapshot(),before);
+    assert.deepEqual(await snapshot(),before);assert.equal(await sourceSnapshot(f),source);
   });
 }

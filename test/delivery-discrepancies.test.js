@@ -35,6 +35,16 @@ test('implementation has no provider, credential, monitoring retry, activation, 
   assert.doesNotMatch(source,/UPDATE\s+orchestrator_campaign_monitoring_runs/i);
   assert.match(source,/FOR UPDATE OF m,a,c,pr,pa,di,ex,rr,ref/);
 });
+test('complete PR7D lineage dependency graph remains metadata-only',()=>{
+  const roots=['../services/agent_orchestrator/delivery_discrepancies','../services/agent_orchestrator/delivery_discrepancy_lineage'];
+  const seen=new Set(),files=[],edges=[];
+  function visit(spec,parent=__filename){const file=require.resolve(spec,{paths:[require('path').dirname(parent)]});if(seen.has(file)||!file.startsWith(require('path').resolve(__dirname,'..')))return;
+    seen.add(file);const text=fs.readFileSync(file,'utf8');files.push([file,text]);for(const m of text.matchAll(/require\(['"]([^'"]+)['"]\)/g)){edges.push(m[1]);if(m[1].startsWith('.'))visit(m[1],file);}}
+  roots.forEach(root=>visit(root));
+  assert.doesNotMatch(edges.join('\n'),/meta_reconciliation_read_authorizations|connectors?\/|credentials\/vault|credential_resolv|observer|transport/i);
+  const serviceSource=files.find(([file])=>file.endsWith('delivery_discrepancies.js'))[1];
+  assert.doesNotMatch(serviceSource,/SELECT[^;]*provider_object_id(?:\s|,)/is);
+});
 test('only eligible source states and bounded operational classifications are exported',()=>{
   assert.deepEqual([...service.ELIGIBLE].sort(),['delivery_pending','discrepancy_detected','failed']);
   for(const forbidden of ['verified','verified_active','activated','fixed','remediated_automatically'])assert.equal(service.CLASSIFICATIONS.has(forbidden),false);

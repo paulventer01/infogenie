@@ -2,7 +2,7 @@
 
 const crypto=require('crypto');
 const db=require('../../db');
-const reconciliation=require('./meta_reconciliation_read_authorizations');
+const lineage=require('./delivery_discrepancy_lineage');
 const PERMISSION='advertising.campaign.delivery.resolve';
 const SAFE_ID=/^[A-Za-z0-9_.:-]{1,128}$/;
 const STATES=new Set(['open','acknowledged','escalated','resolved']);
@@ -82,10 +82,10 @@ async function source(client,tenantId,id){const q=await client.query(`SELECT m.*
   WHERE m.tenant_id=$1 AND m.id=$2 FOR UPDATE OF m,a,c,pr,pa,di,ex,rr,ref`,[tenantId,id]);
   if(q.rowCount!==1)throw deny('monitoring_run_not_found');const row=q.rows[0];
   if(!ELIGIBLE.has(row.state)||!row.completed_at)throw deny('source_ineligible');if(!consistent(row))throw deny('authoritative_binding_mismatch');
-  const objects=await client.query(`SELECT object_kind,provider_object_id,provider_object_id_digest,
+  const objects=await client.query(`SELECT object_kind,provider_object_id_digest,
     parent_campaign_digest,parent_adset_digest,parent_creative_digest,account_fingerprint,snapshot_hash,compensated
     FROM orchestrator_campaign_provider_objects WHERE tenant_id=$1 AND execution_id=$2 FOR UPDATE`,[tenantId,row.execution_id]);
-  try { const root=reconciliation.validateLineage(objects.rows,{account_fingerprint:row.account_fingerprint,snapshot_hash:row.snapshot_hash});
+  try { const root=lineage.validate(objects.rows,{account_fingerprint:row.account_fingerprint,snapshot_hash:row.snapshot_hash});
     if(root!==row.ledger_root_hash)throw deny('authoritative_binding_mismatch');
   } catch (_) { throw deny('authoritative_binding_mismatch'); } return row;}
 async function createOrGet(o={}){authorize(o);const tenantId=Number(o.tenantId),runId=String(o.monitoringRunId||'');if(!Number.isSafeInteger(tenantId)||tenantId<1||!SAFE_ID.test(runId))throw deny('validation_failed');
