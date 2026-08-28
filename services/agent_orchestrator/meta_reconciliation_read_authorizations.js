@@ -5,6 +5,7 @@ const { getCredentialsAtVersion, accountFingerprintOfMetaAdAccount } = require('
 const metaObserver = require('./connectors/meta_reconciliation_observer');
 
 const PERMISSION = 'advertising.reconciliation.read';
+const POST_REVIEW_PERMISSION = 'advertising.reconciliation.review';
 const KINDS = Object.freeze(['campaign', 'adset', 'creative', 'ad']);
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const MAX_TTL_MS = 10 * 60 * 1000;
@@ -47,13 +48,13 @@ function validateLineage(rows, execution) {
     || !same(by.ad.parent_creative_digest, by.creative.provider_object_id_digest)) throw deny('invalid_ledger_lineage');
   return ledgerRoot(rows);
 }
-function checkActor(opts) {
+function checkActor(opts, permission = PERMISSION) {
   const actor = positiveInt(opts && opts.requestedBy);
   if (!actor) throw deny('authentication_required');
   // The caller supplies the request-bound permission evaluator installed by
   // permission_enforce; accepting a permission-name string would let an
   // untrusted options object self-assert authority.
-  if (!opts || typeof opts.hasPermission !== 'function' || opts.hasPermission(PERMISSION) !== true) throw deny('permission_denied');
+  if (!opts || typeof opts.hasPermission !== 'function' || opts.hasPermission(permission) !== true) throw deny('permission_denied');
   return actor;
 }
 async function audit(c, tenantId, actor, workflowId, event, authorizationId) {
@@ -87,12 +88,42 @@ async function authoritativeGraph(c, tenantId, executionId) {
   return { execution, objects: objects.rows, ledgerRoot: root };
 }
 
+// Metadata-only credential boundary for callers that must prove frozen
+// credential lineage before issuing an authorization.  The row lock is held by
+// the caller's transaction; secret material is deliberately not resolved here.
+async function assertCredentialMetadata(client, binding = {}) {
+  const tenantId=positiveInt(binding.tenantId);
+  const ownerUserId=positiveInt(binding.credentialOwnerUserId);
+  if(!tenantId||!ownerUserId||!SAFE_ID.test(String(binding.credentialRefId||''))
+    ||!positiveInt(Number(binding.credentialRefVersion))||!HEX64.test(String(binding.accountFingerprint||''))) {
+    throw deny('credential_boundary_mismatch');
+  }
+  const ref=await client.query(`SELECT tenant_id,id,platform,version,status,revoked_at,owner_user_id,account_fingerprint
+    FROM orchestrator_tenant_meta_credential_refs
+    WHERE tenant_id=$1 AND id=$2 AND platform='meta' FOR UPDATE`,[tenantId,String(binding.credentialRefId)]);
+  if(ref.rowCount!==1)throw deny('credential_boundary_mismatch');
+  const row=ref.rows[0];
+  if(Number(row.tenant_id)!==tenantId||!same(row.id,String(binding.credentialRefId))||row.platform!=='meta'
+    ||Number(row.version)!==Number(binding.credentialRefVersion)
+    ||row.status!=='active'||row.revoked_at
+    ||Number(row.owner_user_id)!==ownerUserId
+    ||!same(row.account_fingerprint,String(binding.accountFingerprint))) throw deny('credential_boundary_mismatch');
+  return Object.freeze({tenant_id:tenantId,credential_ref_id:row.id,credential_ref_version:Number(row.version),
+    credential_owner_user_id:Number(row.owner_user_id),account_fingerprint:row.account_fingerprint});
+}
+
 async function issue(client, opts = {}) {
-  const tenantId = positiveInt(opts.tenantId); const actor = checkActor(opts);
+  const purpose=opts.purpose || 'initial';
+  if (!['initial','post_review'].includes(purpose)) throw deny('validation_failed');
+  const tenantId = positiveInt(opts.tenantId); const actor = checkActor(opts,purpose==='post_review'?POST_REVIEW_PERMISSION:PERMISSION);
   if (!tenantId || !SAFE_ID.test(String(opts.executionId || ''))) throw deny('validation_failed');
   const graph = await authoritativeGraph(client, tenantId, String(opts.executionId));
   const e = graph.execution;
-  const matches = Number(e.requested_by) === actor
+  const credentialOwner=purpose==='post_review'?positiveInt(opts.credentialOwnerUserId):actor;
+  const reviewBindings=purpose==='initial'
+    ? opts.reviewCaseId==null&&opts.reviewVersion==null&&opts.closureEventId==null
+    : SAFE_ID.test(String(opts.reviewCaseId||''))&&positiveInt(opts.reviewVersion)&&positiveInt(opts.closureEventId);
+  const matches = Number(e.requested_by) === credentialOwner && reviewBindings
     && same(e.publishing_request_id, opts.publishingRequestId)
     && same(e.snapshot_hash, opts.snapshotHash) && same(e.intent_id, opts.intentId)
     && same(e.intent_hash, opts.intentHash) && same(e.credential_ref_id, opts.credentialRefId)
@@ -107,10 +138,11 @@ async function issue(client, opts = {}) {
   await client.query(`INSERT INTO orchestrator_campaign_reconciliation_read_authorizations
     (tenant_id,id,nonce_hash,requested_by,workflow_id,draft_id,publishing_request_id,execution_id,snapshot_hash,
      intent_id,intent_hash,credential_ref_id,credential_ref_version,account_fingerprint,
-     ledger_root_hash,issued_at,expires_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+     ledger_root_hash,purpose,review_case_id,review_version,closure_event_id,credential_owner_user_id,issued_at,expires_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
   [tenantId,id,nonceHash,actor,e.workflow_id,e.draft_id,e.publishing_request_id,e.id,e.snapshot_hash,e.intent_id,e.intent_hash,
-    e.credential_ref_id,e.credential_ref_version,e.account_fingerprint,graph.ledgerRoot,now,new Date(now.getTime()+ttl)]);
+    e.credential_ref_id,e.credential_ref_version,e.account_fingerprint,graph.ledgerRoot,purpose,opts.reviewCaseId||null,
+    opts.reviewVersion||null,opts.closureEventId||null,credentialOwner,now,new Date(now.getTime()+ttl)]);
   await audit(client, tenantId, actor, e.workflow_id, 'meta_reconciliation_read_authorization_issued', id);
   return Object.freeze({ authorization_id: id, expires_at: new Date(now.getTime()+ttl).toISOString() });
 }
@@ -118,7 +150,9 @@ async function issue(client, opts = {}) {
 // Must run in the caller's transaction. The row lock and issued-only UPDATE
 // make reservation+consumption a single atomic, replay-proof operation.
 async function prepareConsumption(client, opts = {}) {
-  const tenantId = positiveInt(opts.tenantId); const actor = checkActor(opts);
+  const declaredPurpose=opts.authorizationPurpose || 'initial';
+  if(!['initial','post_review'].includes(declaredPurpose)) throw deny('validation_failed');
+  const tenantId = positiveInt(opts.tenantId); const actor = checkActor(opts,declaredPurpose==='post_review'?POST_REVIEW_PERMISSION:PERMISSION);
   const id = String(opts.authorizationId || ''); const invocationHash = hash(opts.invocationId || '');
   if (!tenantId || !SAFE_ID.test(id) || !SAFE_ID.test(String(opts.invocationId || ''))) throw deny('validation_failed');
   const r = await client.query(`SELECT * FROM orchestrator_campaign_reconciliation_read_authorizations
@@ -131,7 +165,7 @@ async function prepareConsumption(client, opts = {}) {
     await audit(client,tenantId,actor,row.workflow_id,'meta_reconciliation_read_authorization_rejected',id);
     throw deny(code);
   };
-  if (row.status !== 'issued' || Number(row.requested_by) !== actor) return reject('authorization_rejected');
+  if (row.status !== 'issued' || Number(row.requested_by) !== actor || (row.purpose||'initial')!==declaredPurpose) return reject('authorization_rejected');
   const now = opts.now instanceof Date ? opts.now : new Date();
   if (!(new Date(row.expires_at) > now)) {
     await client.query(`UPDATE orchestrator_campaign_reconciliation_read_authorizations SET status='expired' WHERE tenant_id=$1 AND id=$2`, [tenantId,id]);
@@ -152,7 +186,7 @@ async function markConsumed(prepared) {
     SET status='consumed', consumed_at=$3 WHERE tenant_id=$1 AND id=$2`, [tenantId,id,now]);
   await audit(client,tenantId,actor,row.workflow_id,'meta_reconciliation_read_authorization_consumed',id);
   return Object.freeze({ authorization_id:id, invocation_id_hash:invocationHash, tenant_id:tenantId,
-    requested_by:actor, workflow_id:row.workflow_id, draft_id:row.draft_id, execution_id:row.execution_id, publishing_request_id:row.publishing_request_id,
+    requested_by:actor, credential_owner_user_id:Number(row.credential_owner_user_id||row.requested_by), workflow_id:row.workflow_id, draft_id:row.draft_id, execution_id:row.execution_id, publishing_request_id:row.publishing_request_id,
     snapshot_hash:row.snapshot_hash, intent_id:row.intent_id, intent_hash:row.intent_hash,
     credential_ref_id:row.credential_ref_id, credential_ref_version:Number(row.credential_ref_version),
     account_fingerprint:row.account_fingerprint, ledger_root_hash:row.ledger_root_hash,
@@ -226,7 +260,7 @@ async function revoke(client, opts = {}) {
 // the caller, even as a non-enumerable handle.
 async function observeWithConsumedCredential(client, consumed, options = {}, getCredentialsImpl = getCredentialsAtVersion) {
   if (!client || typeof client.query !== 'function' || !consumed || typeof consumed !== 'object') throw deny('validation_failed');
-  const r=await client.query(`SELECT status,invocation_id_hash,workflow_id,draft_id,credential_ref_id,credential_ref_version,
+  const r=await client.query(`SELECT status,invocation_id_hash,workflow_id,draft_id,credential_ref_id,credential_ref_version,credential_owner_user_id,
       account_fingerprint,requested_by,publishing_request_id,snapshot_hash,intent_id,intent_hash,ledger_root_hash
       FROM orchestrator_campaign_reconciliation_read_authorizations
     WHERE tenant_id=$1 AND id=$2 AND execution_id=$3`,[consumed.tenant_id,consumed.authorization_id,consumed.execution_id]);
@@ -237,6 +271,7 @@ async function observeWithConsumedCredential(client, consumed, options = {}, get
     || Number(r.rows[0].credential_ref_version)!==consumed.credential_ref_version
     || !same(r.rows[0].account_fingerprint,consumed.account_fingerprint)
     || Number(r.rows[0].requested_by)!==consumed.requested_by
+    || Number(r.rows[0].credential_owner_user_id||r.rows[0].requested_by)!==consumed.credential_owner_user_id
     || !same(r.rows[0].publishing_request_id,consumed.publishing_request_id)
     || !same(r.rows[0].snapshot_hash,consumed.snapshot_hash)
     || !same(r.rows[0].intent_id,consumed.intent_id)
@@ -248,9 +283,9 @@ async function observeWithConsumedCredential(client, consumed, options = {}, get
     WHERE tenant_id=$1 AND id=$2 AND platform='meta'`,[consumed.tenant_id,consumed.credential_ref_id]);
   if (ref.rowCount!==1 || ref.rows[0].status!=='active' || ref.rows[0].revoked_at
     || Number(ref.rows[0].version)!==consumed.credential_ref_version
-    || Number(ref.rows[0].owner_user_id)!==consumed.requested_by
+    || Number(ref.rows[0].owner_user_id)!==consumed.credential_owner_user_id
     || !same(ref.rows[0].account_fingerprint,consumed.account_fingerprint)) throw deny('credential_boundary_mismatch');
-  const secret=await getCredentialsImpl(consumed.requested_by,'meta_ads',consumed.credential_ref_version);
+  const secret=await getCredentialsImpl(consumed.credential_owner_user_id,'meta_ads',consumed.credential_ref_version);
   if (!secret || typeof secret.accessToken!=='string'
     || !same(accountFingerprintOfMetaAdAccount(secret.adAccountId),consumed.account_fingerprint)) throw deny('credential_boundary_mismatch');
   return metaObserver.observeMetaLedger({
@@ -264,5 +299,5 @@ async function observeWithConsumedCredential(client, consumed, options = {}, get
   });
 }
 
-module.exports={ PERMISSION,KINDS,DEFAULT_TTL_MS,MAX_TTL_MS,ledgerRoot,validateLineage,issue,consume,
+module.exports={ PERMISSION,KINDS,DEFAULT_TTL_MS,MAX_TTL_MS,ledgerRoot,validateLineage,assertCredentialMetadata,issue,consume,
   consumeIntoReconciliationRun,consumeAtomic,consumeAndObserve,revoke,observeWithConsumedCredential };
