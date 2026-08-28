@@ -71,7 +71,9 @@ async function seedMonitoring(state, label, sharedTag) {
   const p=db.getPool(),fixtureTag=`pr7d-${label}-${crypto.randomUUID()}`,tag=sharedTag||fixtureTag,snapshotHash=sha256Hex({}),intentHash=hex('4');
   const tenant=(await p.query(`INSERT INTO tenants(name,slug,status) VALUES($1,$2,'active') RETURNING id`,[fixtureTag,fixtureTag])).rows[0].id;
   const user=(await p.query(`INSERT INTO users(email,password_hash,name) VALUES($1,'x','operator') RETURNING id`,[`${fixtureTag}@test.invalid`])).rows[0].id;
-  const workflow=`wf-${tag}`,draft=`draft-${tag}`,request=`request-${tag}`,intent=`intent-${tag}`,execution=`execution-${tag}`;
+  // orchestrator_workflows.id is globally keyed; the remaining lineage IDs
+  // below are tenant-leading and may intentionally match across tenants.
+  const workflow=`wf-${fixtureTag}`,draft=`draft-${tag}`,request=`request-${tag}`,intent=`intent-${tag}`,execution=`execution-${tag}`;
   await p.query(`INSERT INTO orchestrator_workflows(id,tenant_id,name,created_by_user_id) VALUES($1,$2,$1,$3)`,[workflow,tenant,user]);
   await p.query(`INSERT INTO orchestrator_campaign_drafts(id,tenant_id,workflow_id,contract_hash,idempotency_key) VALUES($1,$2,$3,$4,$5)`,[draft,tenant,workflow,hex('9'),`draft-${tag}`]);
   const approval=(await p.query(`INSERT INTO orchestrator_approvals(tenant_id,workflow_id,gate,content_hash,decision,object_version,approved_platforms)
@@ -262,9 +264,13 @@ if (!db.hasDb()) {
     await assert.rejects(discrepancy.get(actor(other,{caseId:created.discrepancy_case_id})),{code:'case_not_found'});
     await assert.rejects(discrepancy.transition(actor(other,{caseId:created.discrepancy_case_id,action:'acknowledge',decisionId:'cross',expectedVersion:1})),{code:'case_not_found'});
     assert.equal(await sourceSnapshot(f),source);assert.equal(await sourceSnapshot(other),otherSource);
+    assert.notEqual(f.workflow,other.workflow);assert.equal(f.run,other.run);assert.equal(f.execution,other.execution);
     assert.equal((await db.getPool().query(`SELECT count(DISTINCT tenant_id)::int tenants FROM orchestrator_campaign_provider_objects WHERE provider_object_id='campaign-1' AND tenant_id IN ($1,$2)`,[f.tenant,other.tenant])).rows[0].tenants,2);
     assert.equal((await db.getPool().query(`SELECT count(DISTINCT tenant_id)::int tenants FROM orchestrator_campaign_monitoring_runs WHERE id=$3 AND tenant_id IN ($1,$2)`,[f.tenant,other.tenant,f.run])).rows[0].tenants,2);
+    assert.equal((await db.getPool().query(`SELECT count(DISTINCT tenant_id)::int tenants FROM orchestrator_campaign_provider_draft_executions WHERE id=$3 AND tenant_id IN ($1,$2)`,[f.tenant,other.tenant,f.execution])).rows[0].tenants,2);
     assert.equal((await db.getPool().query(`SELECT count(DISTINCT tenant_id)::int tenants FROM orchestrator_campaign_delivery_discrepancy_events WHERE decision_id='ack' AND tenant_id IN ($1,$2)`,[f.tenant,other.tenant])).rows[0].tenants,2);
+    assert.equal((await db.getPool().query(`SELECT count(DISTINCT tenant_id)::int tenants FROM orchestrator_audit_events WHERE event='delivery_discrepancy_acknowledge' AND tenant_id IN ($1,$2)`,[f.tenant,other.tenant])).rows[0].tenants,2);
+    assert.deepEqual([await caseEvidence(f,created.discrepancy_case_id),await caseEvidence(other,otherCreated.discrepancy_case_id)].map(x=>x.state),['resolved','acknowledged']);
   });
 
   test('separate PostgreSQL connections serialize identical and competing decisions', async () => {
