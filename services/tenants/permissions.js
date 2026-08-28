@@ -120,6 +120,7 @@ const PERMISSIONS = [
   { key:'advertising.reconciliation.read', scope:'tenant', area:'Advertising', label:'Authorize one bounded read of a completed provider-draft ledger' },
   { key:'advertising.reconciliation.review', scope:'tenant', area:'Advertising', label:'Human review of a reconciliation discrepancy or observation failure' },
   { key:'advertising.campaign.activate', scope:'tenant', area:'Advertising', label:'Authorize one activation attempt for a verified Meta campaign graph' },
+  { key:'advertising.campaign.monitor', scope:'tenant', area:'Advertising', label:'Authorize one bounded post-activation Meta campaign observation' },
 
   // ── Reach section ─────────────────────────────────────────────────────────
   { key:'reach.audiences.view',      scope:'tenant',   area:'Reach',     label:'View dynamic audiences & segments' },
@@ -174,9 +175,11 @@ const ALL_TENANT_PERMISSION_KEYS = PERMISSIONS.filter(p => p.scope === 'tenant')
 
 // All view-only keys ending in `.view` (Analyst default grant)
 const ALL_VIEW_PERMISSION_KEYS = PERMISSIONS.filter(p => p.scope === 'tenant' && /\.view$/.test(p.key)).map(p => p.key);
-// Spend-starting activation is never inherited merely by being an owner or
-// administrator. It must be placed on the active tenant role deliberately.
-const DEFAULT_ROLE_PERMISSION_KEYS = ALL_TENANT_PERMISSION_KEYS.filter(k => k !== 'advertising.campaign.activate');
+// Spend-starting activation and post-activation monitoring are never inherited
+// merely by being an owner or administrator. Each must be placed on the active
+// tenant role deliberately.
+const DEFAULT_ROLE_PERMISSION_KEYS = ALL_TENANT_PERMISSION_KEYS.filter(k =>
+  k !== 'advertising.campaign.activate' && k !== 'advertising.campaign.monitor');
 
 // ── System role definitions ─────────────────────────────────────────────────
 // These are seeded into the `roles` table with tenant_id=NULL (system-wide).
@@ -187,7 +190,8 @@ const SYSTEM_ROLES = [
     scope: 'platform',
     name: 'Platform Owner',
     description: 'Full control of the entire InfoGenie platform. Can manage all tenants, users, billing, and system settings. Implicitly has all tenant-level permissions when impersonating.',
-    permissions: ALL_PERMISSION_KEYS.filter(k => k !== 'advertising.campaign.activate'),
+    permissions: ALL_PERMISSION_KEYS.filter(k =>
+      k !== 'advertising.campaign.activate' && k !== 'advertising.campaign.monitor'),
   },
   {
     key: 'platform_admin',

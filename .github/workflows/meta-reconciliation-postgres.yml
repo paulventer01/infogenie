@@ -11,6 +11,7 @@ on:
       - 'services/credentials/vault.js'
       - 'services/tenants/permissions.js'
       - 'test/advertising-meta-reconciliation-*.test.js'
+      - 'test/advertising-meta-monitoring-postgres.test.js'
       - 'test/integration/meta-activation-capability-postgres.test.js'
       - '.github/workflows/meta-reconciliation-postgres.yml'
 
@@ -89,6 +90,7 @@ jobs:
             test/advertising-meta-paused-draft-reconciliation.test.js \
             test/advertising-meta-reconciliation-review.test.js \
             test/advertising-meta-reconciliation-review-postgres.test.js \
+            test/advertising-meta-monitoring-postgres.test.js \
             test/integration/meta-activation-capability-postgres.test.js | tee meta-reconciliation.tap
           grep -Eq '^# fail 0$' meta-reconciliation.tap
           grep -Eq '^# skipped 0$' meta-reconciliation.tap

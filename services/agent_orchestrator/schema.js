@@ -112,6 +112,8 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_campaign_activation_capabilities',
   'orchestrator_campaign_activation_attempts',
   'orchestrator_campaign_activation_events',
+  // PR 7C — bounded, GET-only post-activation observations.
+  'orchestrator_campaign_monitoring_runs',
   // PR 6F-1R — append-only provider-object outcome events (no mutable compensation).
   'orchestrator_campaign_provider_object_events',
 ];
@@ -6401,6 +6403,84 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     BEGIN RAISE EXCEPTION 'orchestrator_cae_append_only'; END; $fn$ LANGUAGE plpgsql;
     DROP TRIGGER IF EXISTS orchestrator_cae_guard ON orchestrator_campaign_activation_events;
     CREATE TRIGGER orchestrator_cae_guard BEFORE UPDATE OR DELETE ON orchestrator_campaign_activation_events FOR EACH ROW EXECUTE FUNCTION orchestrator_cae_guard();
+  `);
+
+  // PR 7C — one durable monitoring result for one successfully activated graph.
+  // Provider identifiers and raw provider responses are deliberately excluded.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_monitoring_runs (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL, activation_attempt_id TEXT NOT NULL,
+      invocation_id_hash TEXT NOT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      session_id_hash TEXT NOT NULL, capability_id TEXT NOT NULL,
+      publishing_request_id TEXT NOT NULL, snapshot_hash TEXT NOT NULL,
+      intent_id TEXT NOT NULL, execution_id TEXT NOT NULL,
+      reconciliation_run_id TEXT NOT NULL, credential_ref_id TEXT NOT NULL,
+      credential_ref_version INTEGER NOT NULL, account_fingerprint TEXT NOT NULL,
+      ledger_root_hash TEXT NOT NULL, workflow_id TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'pending', observations JSONB NOT NULL DEFAULT '[]'::jsonb,
+      classifications TEXT[] NOT NULL DEFAULT '{}'::text[],
+      failure_classifications TEXT[] NOT NULL DEFAULT '{}'::text[],
+      audit_ref TEXT NOT NULL, started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      observation_deadline TIMESTAMPTZ NOT NULL, completed_at TIMESTAMPTZ NULL,
+      PRIMARY KEY (tenant_id,id), UNIQUE (tenant_id,activation_attempt_id),
+      UNIQUE (tenant_id,invocation_id_hash), UNIQUE (tenant_id,audit_ref),
+      FOREIGN KEY (tenant_id,activation_attempt_id)
+        REFERENCES orchestrator_campaign_activation_attempts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,capability_id)
+        REFERENCES orchestrator_campaign_activation_capabilities(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,execution_id)
+        REFERENCES orchestrator_campaign_provider_draft_executions(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,reconciliation_run_id)
+        REFERENCES orchestrator_campaign_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_cmr_state_check CHECK (state IN
+        ('pending','observing','verified_active','delivery_pending','discrepancy_detected','failed')),
+      CONSTRAINT orchestrator_cmr_hash_check CHECK
+        (invocation_id_hash ~ '^[0-9a-f]{64}$' AND session_id_hash ~ '^[0-9a-f]{64}$'
+         AND snapshot_hash ~ '^[0-9a-f]{64}$' AND account_fingerprint ~ '^[0-9a-f]{64}$'
+         AND ledger_root_hash ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_cmr_time_check CHECK
+        (observation_deadline > started_at AND
+         ((state IN ('pending','observing') AND completed_at IS NULL)
+          OR (state IN ('verified_active','delivery_pending','discrepancy_detected','failed')
+              AND completed_at IS NOT NULL AND completed_at >= started_at))),
+      CONSTRAINT orchestrator_cmr_observations_check CHECK (jsonb_typeof(observations)='array')
+    );
+    CREATE INDEX IF NOT EXISTS orchestrator_cmr_tenant_state_deadline
+      ON orchestrator_campaign_monitoring_runs(tenant_id,state,observation_deadline,id);
+    CREATE OR REPLACE FUNCTION orchestrator_cmr_guard() RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_cmr_delete_prohibited'; END IF;
+      IF OLD.state IN ('verified_active','delivery_pending','discrepancy_detected','failed')
+        THEN RAISE EXCEPTION 'orchestrator_cmr_terminal_immutable'; END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.activation_attempt_id IS DISTINCT FROM OLD.activation_attempt_id
+        OR NEW.invocation_id_hash IS DISTINCT FROM OLD.invocation_id_hash
+        OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id
+        OR NEW.session_id_hash IS DISTINCT FROM OLD.session_id_hash
+        OR NEW.capability_id IS DISTINCT FROM OLD.capability_id
+        OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+        OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
+        OR NEW.intent_id IS DISTINCT FROM OLD.intent_id OR NEW.execution_id IS DISTINCT FROM OLD.execution_id
+        OR NEW.reconciliation_run_id IS DISTINCT FROM OLD.reconciliation_run_id
+        OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+        OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash
+        OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+        OR NEW.started_at IS DISTINCT FROM OLD.started_at
+        OR NEW.observation_deadline IS DISTINCT FROM OLD.observation_deadline
+      THEN RAISE EXCEPTION 'orchestrator_cmr_immutable_binding'; END IF;
+      IF NOT ((OLD.state='pending' AND NEW.state='observing')
+        OR (OLD.state='observing' AND NEW.state IN
+          ('verified_active','delivery_pending','discrepancy_detected','failed')))
+      THEN RAISE EXCEPTION 'orchestrator_cmr_invalid_transition'; END IF;
+      RETURN NEW;
+    END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_cmr_guard ON orchestrator_campaign_monitoring_runs;
+    CREATE TRIGGER orchestrator_cmr_guard BEFORE UPDATE OR DELETE
+      ON orchestrator_campaign_monitoring_runs FOR EACH ROW EXECUTE FUNCTION orchestrator_cmr_guard();
   `);
 
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
