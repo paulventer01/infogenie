@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const db = require('../../db');
 const vault = require('../credentials/vault');
 const monitor = require('./connectors/meta_delivery_monitor');
+const reconciliation = require('./meta_reconciliation_read_authorizations');
 
 const PERMISSION = 'advertising.campaign.monitor';
 const KINDS = Object.freeze(['campaign','adset','creative','ad']);
@@ -28,6 +29,11 @@ function safeObservation(value={}) { return {
   creative_relationship_matches:value.creative_relationship_matches==='not_applicable'?'not_applicable':value.creative_relationship_matches===true,
   observed_at:value.observed_at||null,
 }; }
+function authoritativeLedger(rows,lineage){
+  const root=reconciliation.validateLineage(rows,{account_fingerprint:lineage.account_fingerprint,snapshot_hash:lineage.snapshot_hash});
+  if(root!==lineage.ledger_root_hash)throw deny('authoritative_binding_mismatch');
+  return rows;
+}
 function publicRun(row){ const observations=Array.isArray(row.observations)?row.observations:[]; return {
   monitoring_run_id:row.id,activation_attempt_reference:row.activation_attempt_id,state:row.state,object_kinds:KINDS,
   observations:observations.map(safeObservation),discrepancy_classifications:row.state==='discrepancy_detected'?(row.classifications||[]):[],
@@ -51,20 +57,24 @@ async function existing(pool,tenantId,attemptId,invocationHash,now){ const clien
 
 async function reserve(pool,opts,now,invocationHash){ const client=await pool.connect(); try{await client.query('BEGIN');
   const lineage=(await client.query(`SELECT a.*,r.workflow_id,ref.owner_user_id,ref.status credential_status,ref.revoked_at,
+    e.platform provider_platform,e.account_fingerprint execution_account_fingerprint,e.snapshot_hash execution_snapshot_hash,
     ref.version current_credential_version,ref.account_fingerprint current_account_fingerprint,c.status capability_state,r.state reconciliation_state
     FROM orchestrator_campaign_activation_attempts a
     JOIN orchestrator_campaign_activation_capabilities c ON c.tenant_id=a.tenant_id AND c.id=a.capability_id
     JOIN orchestrator_campaign_reconciliation_runs r ON r.tenant_id=a.tenant_id AND r.id=a.reconciliation_run_id
-    JOIN orchestrator_tenant_meta_credential_refs ref ON ref.tenant_id=a.tenant_id AND ref.id=a.credential_ref_id
-    WHERE a.tenant_id=$1 AND a.id=$2 FOR UPDATE OF a,c,r,ref`,[opts.tenantId,opts.activationAttemptId])).rows[0];
+    JOIN orchestrator_campaign_provider_draft_executions e ON e.tenant_id=a.tenant_id AND e.id=a.execution_id
+    JOIN orchestrator_tenant_meta_credential_refs ref ON ref.tenant_id=a.tenant_id AND ref.id=a.credential_ref_id AND ref.platform='meta'
+    WHERE a.tenant_id=$1 AND a.id=$2 FOR UPDATE OF a,c,r,e,ref`,[opts.tenantId,opts.activationAttemptId])).rows[0];
   if(!lineage)throw deny('activation_attempt_not_found');
   if(lineage.state!=='activated')throw deny('activation_attempt_ineligible');
-  if(lineage.capability_state!=='consumed'||lineage.reconciliation_state!=='verified'||lineage.credential_status!=='active'||lineage.revoked_at
+  if(lineage.provider_platform!=='meta'||lineage.execution_account_fingerprint!==lineage.account_fingerprint
+    ||lineage.execution_snapshot_hash!==lineage.snapshot_hash||lineage.capability_state!=='consumed'
+    ||lineage.reconciliation_state!=='verified'||lineage.credential_status!=='active'||lineage.revoked_at
     ||Number(lineage.current_credential_version)!==Number(lineage.credential_ref_version)
     ||lineage.current_account_fingerprint!==lineage.account_fingerprint)throw deny('authoritative_binding_mismatch');
-  const objects=(await client.query(`SELECT object_kind,provider_object_id,provider_object_id_digest,parent_campaign_digest,parent_adset_digest,parent_creative_digest
-    FROM orchestrator_campaign_provider_objects WHERE tenant_id=$1 AND execution_id=$2 ORDER BY sequence_number FOR KEY SHARE`,[opts.tenantId,lineage.execution_id])).rows;
-  if(objects.length!==4||KINDS.some((kind,i)=>objects[i].object_kind!==kind))throw deny('authoritative_binding_mismatch');
+  const objects=authoritativeLedger((await client.query(`SELECT object_kind,provider_object_id,provider_object_id_digest,
+    parent_campaign_digest,parent_adset_digest,parent_creative_digest,account_fingerprint,snapshot_hash,compensated
+    FROM orchestrator_campaign_provider_objects WHERE tenant_id=$1 AND execution_id=$2 ORDER BY sequence_number FOR UPDATE`,[opts.tenantId,lineage.execution_id])).rows,lineage);
   const id=`mmr_${crypto.randomUUID()}`,auditRef=`mmr-audit:${hash(id).slice(0,20)}`;
   const row=(await client.query(`INSERT INTO orchestrator_campaign_monitoring_runs
     (tenant_id,id,activation_attempt_id,invocation_id_hash,actor_user_id,session_id_hash,capability_id,publishing_request_id,snapshot_hash,intent_id,execution_id,reconciliation_run_id,credential_ref_id,credential_ref_version,account_fingerprint,ledger_root_hash,workflow_id,state,audit_ref,started_at,observation_deadline)
@@ -103,4 +113,4 @@ async function observe(opts={}){authorize(opts);const tenantId=Number(opts.tenan
   return settle(pool,started.row,outcome,opts.now instanceof Date?opts.now:new Date());}
 async function getRun(opts={}){authorize(opts);const id=String(opts.runId||'');if(!SAFE_ID.test(id))throw deny('validation_failed');const r=await (opts.pool||db.getPool()).query(`SELECT * FROM orchestrator_campaign_monitoring_runs WHERE tenant_id=$1 AND id=$2`,[opts.tenantId,id]);if(r.rowCount!==1)throw deny('monitoring_run_not_found');return publicRun(r.rows[0]);}
 
-module.exports={PERMISSION,KINDS,LEASE_MS,observe,getRun,evaluate,publicRun,_test:{existing,reserve,settle}};
+module.exports={PERMISSION,KINDS,LEASE_MS,observe,getRun,evaluate,publicRun,_test:{authoritativeLedger,existing,reserve,settle}};

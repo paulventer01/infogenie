@@ -41,8 +41,12 @@ function validateLineage(rows, execution) {
       || !same(r.account_fingerprint, execution.account_fingerprint)
       || !same(r.snapshot_hash, execution.snapshot_hash)) throw deny('invalid_ledger_lineage');
   }
-  if (!same(by.adset.parent_campaign_digest, by.campaign.provider_object_id_digest)
+  if (by.campaign.parent_campaign_digest !== null || by.campaign.parent_adset_digest !== null
+    || by.campaign.parent_creative_digest !== null
+    || !same(by.adset.parent_campaign_digest, by.campaign.provider_object_id_digest)
+    || by.adset.parent_adset_digest !== null || by.adset.parent_creative_digest !== null
     || !same(by.creative.parent_campaign_digest, by.campaign.provider_object_id_digest)
+    || by.creative.parent_adset_digest !== null || by.creative.parent_creative_digest !== null
     || !same(by.ad.parent_campaign_digest, by.campaign.provider_object_id_digest)
     || !same(by.ad.parent_adset_digest, by.adset.provider_object_id_digest)
     || !same(by.ad.parent_creative_digest, by.creative.provider_object_id_digest)) throw deny('invalid_ledger_lineage');
