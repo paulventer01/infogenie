@@ -61,7 +61,7 @@ if (!db.hasDb()) {
          AND t.tgname='orchestrator_cmr_guard' AND NOT t.tgisinternal
     `);
     assert.equal(trigger.rowCount, 1);
-    assert.match(trigger.rows[0].definition, /BEFORE UPDATE OR DELETE/);
+    assert.match(trigger.rows[0].definition, /BEFORE (?:DELETE OR UPDATE|UPDATE OR DELETE)/);
     assert.match(trigger.rows[0].fn, /orchestrator_cmr_terminal_immutable/);
     assert.match(trigger.rows[0].fn, /orchestrator_cmr_immutable_binding/);
     assert.match(trigger.rows[0].fn, /OLD\.state = 'observing'.*NEW\.state = ANY/s);
