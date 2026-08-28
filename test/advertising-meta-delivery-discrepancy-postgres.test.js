@@ -13,6 +13,41 @@ const capability = require('../services/security/meta_activation_capabilities');
 const discrepancy = require('../services/agent_orchestrator/delivery_discrepancies');
 
 const TEST_DDL_ADVISORY_LOCK = 87231402;
+let schemaBootstrap;
+
+function bootstrapSchemasOnce() {
+  if (schemaBootstrap) return schemaBootstrap;
+  schemaBootstrap = (async () => {
+    const root = db.getPool();
+    const client = await root.connect();
+    const originalGetPool = db.getPool;
+    let poolReplaced = false;
+    let lockHeld = false;
+    try {
+      await client.query('SELECT pg_advisory_lock($1)', [TEST_DDL_ADVISORY_LOCK]);
+      lockHeld = true;
+      const lockedPool = {
+        query: client.query.bind(client),
+        connect: async () => ({ query: client.query.bind(client), release() {} }),
+      };
+      db.getPool = () => lockedPool;
+      poolReplaced = true;
+      await ensureAuthSchema();
+      await ensureTenantSchema();
+      await ensureCredentialsSchema();
+      await ensureAgentOrchestratorSchema();
+    } finally {
+      if (poolReplaced) db.getPool = originalGetPool;
+      try {
+        if (lockHeld) await client.query('SELECT pg_advisory_unlock($1)', [TEST_DDL_ADVISORY_LOCK]);
+      } finally {
+        client.release();
+      }
+    }
+  })();
+  return schemaBootstrap;
+}
+
 const hash = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
 const hex = (character) => character.repeat(64);
 const permitted = () => true;
@@ -73,30 +108,7 @@ if (!db.hasDb()) {
   test('PostgreSQL delivery-discrepancy schema skipped — no DATABASE_URL',
     { skip: 'no DATABASE_URL' }, () => {});
 } else {
-  before(async () => {
-    const root = db.getPool();
-    const client = await root.connect();
-    const originalGetPool = db.getPool;
-    const lockedPool = {
-      query: client.query.bind(client),
-      connect: async () => ({ query: client.query.bind(client), release() {} }),
-    };
-    await client.query('SELECT pg_advisory_lock($1)', [TEST_DDL_ADVISORY_LOCK]);
-    try {
-      db.getPool = () => lockedPool;
-      await ensureAuthSchema();
-      await ensureTenantSchema();
-      await ensureCredentialsSchema();
-      await ensureAgentOrchestratorSchema();
-    } finally {
-      db.getPool = originalGetPool;
-      try {
-        await client.query('SELECT pg_advisory_unlock($1)', [TEST_DDL_ADVISORY_LOCK]);
-      } finally {
-        client.release();
-      }
-    }
-  });
+  before(() => bootstrapSchemasOnce());
 
   test('PR7D persistence uses tenant-leading identities, lineage, and idempotency', async () => {
     const p = db.getPool();
