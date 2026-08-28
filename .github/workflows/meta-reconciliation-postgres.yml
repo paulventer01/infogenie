@@ -92,7 +92,11 @@ jobs:
             test/advertising-meta-reconciliation-review.test.js \
             test/advertising-meta-reconciliation-review-postgres.test.js \
             test/advertising-meta-monitoring-postgres.test.js \
-            test/advertising-meta-delivery-discrepancy-postgres.test.js \
             test/integration/meta-activation-capability-postgres.test.js | tee meta-reconciliation.tap
           grep -Eq '^# fail 0$' meta-reconciliation.tap
           grep -Eq '^# skipped 0$' meta-reconciliation.tap
+          node --test --test-force-exit \
+            test/advertising-meta-delivery-discrepancy-postgres.test.js \
+            | tee pr7d-delivery-discrepancy.tap
+          grep -Eq '^# fail 0$' pr7d-delivery-discrepancy.tap
+          grep -Eq '^# skipped 0$' pr7d-delivery-discrepancy.tap
