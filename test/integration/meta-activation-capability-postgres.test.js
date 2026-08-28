@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const db = require('../../db');
 const schema = require('../../services/agent_orchestrator/schema');
 const capability = require('../../services/security/meta_activation_capabilities');
+const activation = require('../../services/agent_orchestrator/meta_campaign_activation');
 const { makeFixtures } = require('../helpers');
 
 const H = crypto.createHash('sha256').update('{}').digest('hex');
@@ -41,15 +42,19 @@ test('PostgreSQL capability lifecycle locks, rolls back, and permits only one co
     try {
       await cleanup.query("SET session_replication_role='replica'");
       await cleanup.query('DELETE FROM orchestrator_audit_events WHERE workflow_id=$1',[ids.workflow]);
+      await cleanup.query('DELETE FROM orchestrator_campaign_activation_events WHERE tenant_id=$1',[tenant.id]);
+      await cleanup.query('DELETE FROM orchestrator_campaign_activation_attempts WHERE tenant_id=$1',[tenant.id]);
       await cleanup.query('DELETE FROM orchestrator_campaign_activation_capabilities WHERE tenant_id=$1',[tenant.id]);
       await cleanup.query('DELETE FROM orchestrator_campaign_reconciliation_rereconciliation_attempts WHERE tenant_id=$1',[tenant.id]);
       await cleanup.query('DELETE FROM orchestrator_campaign_reconciliation_review_cases WHERE tenant_id=$1',[tenant.id]);
+      await cleanup.query('DELETE FROM orchestrator_campaign_provider_objects WHERE tenant_id=$1 AND execution_id=$2',[tenant.id,ids.execution]);
       for (const [table,id] of [['orchestrator_campaign_reconciliation_runs',ids.reconciliation],
         ['orchestrator_campaign_provider_draft_executions',ids.execution],['orchestrator_campaign_delivery_intents',ids.intent],
         ['orchestrator_campaign_publish_requests',ids.request],['orchestrator_campaign_drafts',ids.draft]]) {
         await cleanup.query(`DELETE FROM ${table} WHERE tenant_id=$1 AND id=$2`,[tenant.id,id]);
       }
       await cleanup.query('DELETE FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1',[tenant.id]);
+      await cleanup.query('DELETE FROM orchestrator_tenant_meta_credential_refs WHERE tenant_id=$1',[tenant.id]);
       await cleanup.query('DELETE FROM orchestrator_workflows WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.workflow]);
       await cleanup.query('DELETE FROM tenant_users WHERE tenant_id=$1',[tenant.id]);
       await cleanup.query('DELETE FROM users WHERE id=$1',[user.id]);
@@ -84,6 +89,22 @@ test('PostgreSQL capability lifecycle locks, rolls back, and permits only one co
       VALUES ($1,$2,$3,$4,$5,1,$6,1,$7,$8,$9,$10,$11,2,$12,1,$13,$13,$13,$13,$13,$14,$15,'meta','meta','complete','complete',now(),4,0,false,true)`,
     [ids.execution,tenant.id,ids.confirmation,`challenge-${suffix}`,ids.draft,ids.approval,ids.request,ids.intent,
       `outbox-${suffix}`,`attempt-${suffix}`,`credential-${suffix}`,ACCOUNT_FP,H,`execution-${suffix}`,user.id]);
+    await seed.query(`INSERT INTO orchestrator_tenant_meta_credential_refs
+      (id,tenant_id,environment,status,account_fingerprint,page_id,version,owner_user_id)
+      VALUES ($1,$2,'test','active',$3,'1122334455667',2,$4)`,[`credential-${suffix}`,tenant.id,ACCOUNT_FP,user.id]);
+    const providerIds=Object.fromEntries(['campaign','adset','creative','ad'].map((kind)=>[kind,`${kind}_${suffix}`]));
+    const providerDigests=Object.fromEntries(Object.entries(providerIds).map(([kind,id])=>[kind,crypto.createHash('sha256').update(id).digest('hex')]));
+    for (const [index,kind] of ['campaign','adset','creative','ad'].entries()) {
+      const providerId=providerIds[kind], digest=providerDigests[kind];
+      await seed.query(`INSERT INTO orchestrator_campaign_provider_objects
+        (id,tenant_id,execution_id,confirmation_id,attempt_id,publishing_request_id,intent_id,snapshot_hash,
+         account_fingerprint,object_kind,provider_object_id,provider_object_id_digest,display_ref,sequence_number,
+         parent_campaign_digest,parent_adset_digest,parent_creative_digest)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      [`object-${kind}-${suffix}`,tenant.id,ids.execution,ids.confirmation,`attempt-${suffix}`,ids.request,ids.intent,H,
+        ACCOUNT_FP,kind,providerId,digest,digest.slice(0,12),index+1,kind==='campaign'?null:providerDigests.campaign,
+        kind==='ad'?providerDigests.adset:null,kind==='ad'?providerDigests.creative:null]);
+    }
     await seed.query(`INSERT INTO orchestrator_campaign_reconciliation_runs
       (tenant_id,id,authorization_id,invocation_id_hash,requested_by,workflow_id,draft_id,publishing_request_id,execution_id,snapshot_hash,intent_id,intent_hash,credential_ref_id,credential_ref_version,account_fingerprint,ledger_root_hash,audit_ref,state,observing_at,observation_deadline,completed_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$10,$12,2,$15,$13,$14,'verified',now()-interval '2 minutes',now()-interval '1 minute',now())`,
@@ -133,6 +154,40 @@ test('PostgreSQL capability lifecycle locks, rolls back, and permits only one co
   await assert.rejects(db.getPool().query('UPDATE orchestrator_campaign_activation_capabilities SET snapshot_hash=$3 WHERE tenant_id=$1 AND id=$2',[tenant.id,issued.capability_id,'d'.repeat(64)]),/immutable_binding/);
   const audit=await db.getPool().query("SELECT detail FROM orchestrator_audit_events WHERE tenant_id=$1 AND event='meta_activation_capability_issued' AND workflow_id=$2",[tenant.id,ids.workflow]);
   assert.deepEqual(Object.keys(audit.rows.at(-1).detail),['capability_id']);
+
+  const activationCap=await tx((client)=>capability.issue(client,{...base,finalConfirmationId:`activate-${suffix}`,confirmedAt:new Date()}));
+  let calls=0;
+  const activated=await activation.activate({...base,capabilityId:activationCap.capability_id,invocationId:`activate-invocation-${suffix}`,
+    getCredentials:async()=>({accessToken:'test-token',adAccountId:ACCOUNT}),
+    transport:async(request)=>{
+      calls++;
+      if(calls===1){
+        const committed=await db.getPool().query(`SELECT c.status,a.state FROM orchestrator_campaign_activation_capabilities c
+          JOIN orchestrator_campaign_activation_attempts a ON a.tenant_id=c.tenant_id AND a.capability_id=c.id
+          WHERE c.tenant_id=$1 AND c.id=$2`,[tenant.id,activationCap.capability_id]);
+        assert.deepEqual(committed.rows[0],{status:'consumed',state:'started'});
+      }
+      if(request.method==='GET')return {status:200,json:{id:`creative_${suffix}`,account_id:ACCOUNT,status:'PAUSED'}};
+      return {status:200,json:{success:true}};
+    }});
+  assert.equal(activated.state,'activated'); assert.equal(calls,4); assert.equal(activated.object_outcomes.length,4);
+  const durable=await db.getPool().query(`SELECT a.state,a.settled_at,count(e.*)::int AS events
+    FROM orchestrator_campaign_activation_attempts a JOIN orchestrator_campaign_activation_events e
+      ON e.tenant_id=a.tenant_id AND e.attempt_id=a.id WHERE a.tenant_id=$1 AND a.id=$2 GROUP BY a.tenant_id,a.id`,
+  [tenant.id,activated.activation_attempt_id]);
+  assert.equal(durable.rows[0].state,'activated'); assert.ok(durable.rows[0].settled_at); assert.equal(durable.rows[0].events,8);
+  const terminalAudit=await db.getPool().query("SELECT detail FROM orchestrator_audit_events WHERE tenant_id=$1 AND event='meta_activation_activated' AND detail->>'activation_attempt_id'=$2",[tenant.id,activated.activation_attempt_id]);
+  assert.equal(terminalAudit.rowCount,1);
+  await assert.rejects(activation.activate({...base,capabilityId:activationCap.capability_id,invocationId:`replay-${suffix}`,
+    getCredentials:async()=>({accessToken:'never',adAccountId:ACCOUNT}),transport:async()=>assert.fail('replay egress')}),denial('capability_rejected'));
+
+  const ambiguousCap=await tx((client)=>capability.issue(client,{...base,finalConfirmationId:`ambiguous-${suffix}`,confirmedAt:new Date()}));
+  const ambiguous=await activation.activate({...base,capabilityId:ambiguousCap.capability_id,invocationId:`ambiguous-invocation-${suffix}`,
+    getCredentials:async()=>({accessToken:'test-token',adAccountId:ACCOUNT}),
+    transport:async()=>({transportError:'timeout',mayHaveActed:true})});
+  assert.equal(ambiguous.state,'outcome_unknown'); assert.equal(ambiguous.object_outcomes[0].outcome,'outcome_unknown');
+  const unknown=await db.getPool().query('SELECT state FROM orchestrator_campaign_activation_attempts WHERE tenant_id=$1 AND id=$2',[tenant.id,ambiguous.activation_attempt_id]);
+  assert.equal(unknown.rows[0].state,'outcome_unknown');
 
   await db.getPool().query("UPDATE orchestrator_campaign_publish_approvals SET revoked_at=now(),revoke_reason='operator revoked' WHERE tenant_id=$1 AND id=$2",[tenant.id,ids.approval]);
   await assert.rejects(tx((client)=>capability.reserve(client,{...base,capabilityId:issued.capability_id,reservationId:'revoked-approval'})),denial('authoritative_binding_mismatch'));

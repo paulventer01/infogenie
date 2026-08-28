@@ -60,8 +60,8 @@ test('transaction commits success and rolls back failures', async () => {
   } finally { require('../db').getPool = original; }
 });
 
-test('public router exposes issue and revoke only, never reserve, consume or activation', () => {
+test('public router exposes issue, revoke and bounded activation, never reserve or consume', () => {
   const paths = api.stack.filter((layer) => layer.route).map((layer) => layer.route.path);
-  assert.deepEqual(paths, ['/', '/:capabilityId/revoke']);
+  assert.deepEqual(paths, ['/', '/:capabilityId/revoke', '/:capabilityId/activate']);
   assert.ok(api.stack.filter((layer) => layer.route).every((layer) => layer.route.methods.post));
 });

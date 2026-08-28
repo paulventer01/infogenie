@@ -6,6 +6,7 @@ const express = require('express');
 const db = require('../../db');
 const tenantCtx = require('../tenants/context');
 const capability = require('../security/meta_activation_capabilities');
+const activation = require('./meta_campaign_activation');
 
 const router = express.Router();
 
@@ -112,6 +113,16 @@ router.post('/:capabilityId/revoke', express.json(), route('revoke', async (req,
   // Convert its post-commit sentinel into the public error response here.
   if (result.expired === true) throw capability._deny('capability_expired');
   return { capability_id: result.capability_id, status: 'revoked' };
+}));
+
+router.post('/:capabilityId/activate', express.json({limit:'2kb'}), route('activate', async (req, tenantId) => {
+  const body=req.body||{};
+  if(Object.keys(body).length!==1 || !Object.prototype.hasOwnProperty.call(body,'invocation_id')) {
+    throw capability._deny('capability_rejected');
+  }
+  return activation.activate({
+    ...common(req,tenantId), capabilityId:req.params.capabilityId, invocationId:body.invocation_id,
+  });
 }));
 
 module.exports = router;
