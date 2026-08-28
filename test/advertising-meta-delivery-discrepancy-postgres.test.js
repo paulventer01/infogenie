@@ -5,16 +5,38 @@ const assert = require('node:assert/strict');
 const db = require('../db');
 const { ensureAuthSchema } = require('../services/auth/schema');
 const { ensureTenantSchema } = require('../services/tenants/schema');
+const { ensureCredentialsSchema } = require('../services/credentials/vault');
 const { ensureAgentOrchestratorSchema } = require('../services/agent_orchestrator/schema');
+
+const TEST_DDL_ADVISORY_LOCK = 87231402;
 
 if (!db.hasDb()) {
   test('PostgreSQL delivery-discrepancy schema skipped — no DATABASE_URL',
     { skip: 'no DATABASE_URL' }, () => {});
 } else {
   before(async () => {
-    await ensureAuthSchema();
-    await ensureTenantSchema();
-    await ensureAgentOrchestratorSchema();
+    const root = db.getPool();
+    const client = await root.connect();
+    const originalGetPool = db.getPool;
+    const lockedPool = {
+      query: client.query.bind(client),
+      connect: async () => ({ query: client.query.bind(client), release() {} }),
+    };
+    await client.query('SELECT pg_advisory_lock($1)', [TEST_DDL_ADVISORY_LOCK]);
+    try {
+      db.getPool = () => lockedPool;
+      await ensureAuthSchema();
+      await ensureTenantSchema();
+      await ensureCredentialsSchema();
+      await ensureAgentOrchestratorSchema();
+    } finally {
+      db.getPool = originalGetPool;
+      try {
+        await client.query('SELECT pg_advisory_unlock($1)', [TEST_DDL_ADVISORY_LOCK]);
+      } finally {
+        client.release();
+      }
+    }
   });
 
   test('PR7D persistence uses tenant-leading identities, lineage, and idempotency', async () => {
