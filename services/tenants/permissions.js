@@ -119,6 +119,7 @@ const PERMISSIONS = [
   { key:'advertising.provider_drafts.create', scope:'tenant', area:'Advertising', label:'Confirm creation of a paused provider draft on a connected ad account' },
   { key:'advertising.reconciliation.read', scope:'tenant', area:'Advertising', label:'Authorize one bounded read of a completed provider-draft ledger' },
   { key:'advertising.reconciliation.review', scope:'tenant', area:'Advertising', label:'Human review of a reconciliation discrepancy or observation failure' },
+  { key:'advertising.campaign.activate', scope:'tenant', area:'Advertising', label:'Authorize one activation attempt for a verified Meta campaign graph' },
 
   // ── Reach section ─────────────────────────────────────────────────────────
   { key:'reach.audiences.view',      scope:'tenant',   area:'Reach',     label:'View dynamic audiences & segments' },
@@ -173,6 +174,9 @@ const ALL_TENANT_PERMISSION_KEYS = PERMISSIONS.filter(p => p.scope === 'tenant')
 
 // All view-only keys ending in `.view` (Analyst default grant)
 const ALL_VIEW_PERMISSION_KEYS = PERMISSIONS.filter(p => p.scope === 'tenant' && /\.view$/.test(p.key)).map(p => p.key);
+// Spend-starting activation is never inherited merely by being an owner or
+// administrator. It must be placed on the active tenant role deliberately.
+const DEFAULT_ROLE_PERMISSION_KEYS = ALL_TENANT_PERMISSION_KEYS.filter(k => k !== 'advertising.campaign.activate');
 
 // ── System role definitions ─────────────────────────────────────────────────
 // These are seeded into the `roles` table with tenant_id=NULL (system-wide).
@@ -183,7 +187,7 @@ const SYSTEM_ROLES = [
     scope: 'platform',
     name: 'Platform Owner',
     description: 'Full control of the entire InfoGenie platform. Can manage all tenants, users, billing, and system settings. Implicitly has all tenant-level permissions when impersonating.',
-    permissions: ALL_PERMISSION_KEYS,
+    permissions: ALL_PERMISSION_KEYS.filter(k => k !== 'advertising.campaign.activate'),
   },
   {
     key: 'platform_admin',
@@ -193,7 +197,7 @@ const SYSTEM_ROLES = [
     permissions: [
       'platform.tenants.manage', 'platform.users.manage', 'platform.impersonate',
       'platform.audit.view', 'platform.roles.manage',
-      ...ALL_TENANT_PERMISSION_KEYS,
+      ...DEFAULT_ROLE_PERMISSION_KEYS,
     ],
   },
   {
@@ -201,14 +205,14 @@ const SYSTEM_ROLES = [
     scope: 'tenant',
     name: 'Tenant Owner',
     description: 'Full control of this tenant. Manages users, billing, settings, and can delete the tenant.',
-    permissions: ALL_TENANT_PERMISSION_KEYS,
+    permissions: DEFAULT_ROLE_PERMISSION_KEYS,
   },
   {
     key: 'tenant_admin',
     scope: 'tenant',
     name: 'Tenant Admin',
     description: 'Manages most tenant settings and users. Cannot delete the tenant or change billing.',
-    permissions: ALL_TENANT_PERMISSION_KEYS.filter(k => k !== 'tenant.delete' && k !== 'tenant.billing.manage'),
+    permissions: DEFAULT_ROLE_PERMISSION_KEYS.filter(k => k !== 'tenant.delete' && k !== 'tenant.billing.manage'),
   },
   {
     key: 'marketer',

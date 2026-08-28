@@ -5,6 +5,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
+const metaActivationCapabilitiesApi = require('./meta_activation_capabilities_api');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 
@@ -70,6 +71,8 @@ const MODULES = [
     },
   },
 ];
+
+router.use('/meta-activation-capabilities', metaActivationCapabilitiesApi);
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _route(fn) {
