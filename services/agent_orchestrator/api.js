@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const metaActivationCapabilitiesApi = require('./meta_activation_capabilities_api');
 const metaPostActivationMonitoringApi = require('./meta_post_activation_monitoring_api');
+const deliveryDiscrepanciesApi = require('./delivery_discrepancies_api');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 
@@ -75,6 +76,7 @@ const MODULES = [
 
 router.use('/meta-activation-capabilities', metaActivationCapabilitiesApi);
 router.use('/meta-delivery-monitoring', metaPostActivationMonitoringApi);
+router.use('/delivery-discrepancies', deliveryDiscrepanciesApi);
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _route(fn) {

@@ -657,6 +657,7 @@ const _OWNER_GATE_ALLOW = [
   // session plus an explicit active-tenant grant. Keep this exemption narrowly
   // anchored so similarly named orchestrator routes remain owner-gated.
   /^\/api\/agent-orchestrator\/meta-delivery-monitoring(?:\/|$)/,
+  /^\/api\/agent-orchestrator\/delivery-discrepancies(?:\/|$)/,
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
