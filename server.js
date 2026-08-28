@@ -653,6 +653,10 @@ const _OWNER_GATE_ALLOW = [
   // prefix from the legacy global-data owner gate; its router does not inherit
   // the shared owner/admin permission bypass.
   /^\/api\/agent-orchestrator\/reconciliation-reviews(?:\/|$)/,
+  // Post-activation monitoring is tenant-scoped and requires a matching human
+  // session plus an explicit active-tenant grant. Keep this exemption narrowly
+  // anchored so similarly named orchestrator routes remain owner-gated.
+  /^\/api\/agent-orchestrator\/meta-delivery-monitoring(?:\/|$)/,
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
