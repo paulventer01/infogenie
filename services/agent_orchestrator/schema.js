@@ -114,6 +114,9 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_campaign_activation_events',
   // PR 7C — bounded, GET-only post-activation observations.
   'orchestrator_campaign_monitoring_runs',
+  // PR 7D — human operational disposition of eligible terminal monitoring.
+  'orchestrator_campaign_delivery_discrepancy_cases',
+  'orchestrator_campaign_delivery_discrepancy_events',
   // PR 6F-1R — append-only provider-object outcome events (no mutable compensation).
   'orchestrator_campaign_provider_object_events',
 ];
@@ -6481,6 +6484,203 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     DROP TRIGGER IF EXISTS orchestrator_cmr_guard ON orchestrator_campaign_monitoring_runs;
     CREATE TRIGGER orchestrator_cmr_guard BEFORE UPDATE OR DELETE
       ON orchestrator_campaign_monitoring_runs FOR EACH ROW EXECUTE FUNCTION orchestrator_cmr_guard();
+  `);
+
+  // PR 7D — durable human-only operational cases. Frozen source evidence and
+  // lineage are copied by the service from locked authoritative rows. These
+  // tables contain no provider identifiers, secrets, or raw observations.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_delivery_discrepancy_cases (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL,
+      monitoring_run_id TEXT NOT NULL,
+      source_state TEXT NOT NULL,
+      source_classifications TEXT[] NOT NULL DEFAULT '{}'::text[],
+      source_failure_classifications TEXT[] NOT NULL DEFAULT '{}'::text[],
+      source_audit_ref TEXT NOT NULL,
+      activation_attempt_id TEXT NOT NULL,
+      capability_id TEXT NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      publish_approval_id TEXT NOT NULL,
+      workflow_approval_id INTEGER NOT NULL,
+      workflow_id TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      draft_revision INTEGER NOT NULL,
+      snapshot_hash TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      intent_hash TEXT NOT NULL,
+      execution_id TEXT NOT NULL,
+      reconciliation_run_id TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL,
+      credential_ref_version INTEGER NOT NULL,
+      account_fingerprint TEXT NOT NULL,
+      ledger_root_hash TEXT NOT NULL,
+      source_actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      source_started_at TIMESTAMPTZ NOT NULL,
+      source_completed_at TIMESTAMPTZ NOT NULL,
+      creation_actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      state TEXT NOT NULL DEFAULT 'open',
+      version INTEGER NOT NULL DEFAULT 1,
+      classification TEXT NULL,
+      note TEXT NULL,
+      audit_ref TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      resolved_at TIMESTAMPTZ NULL,
+      PRIMARY KEY (tenant_id,id),
+      UNIQUE (tenant_id,monitoring_run_id),
+      UNIQUE (tenant_id,audit_ref),
+      FOREIGN KEY (tenant_id,monitoring_run_id)
+        REFERENCES orchestrator_campaign_monitoring_runs(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,activation_attempt_id)
+        REFERENCES orchestrator_campaign_activation_attempts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,capability_id)
+        REFERENCES orchestrator_campaign_activation_capabilities(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,publishing_request_id)
+        REFERENCES orchestrator_campaign_publish_requests(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,publish_approval_id)
+        REFERENCES orchestrator_campaign_publish_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,workflow_approval_id)
+        REFERENCES orchestrator_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,draft_id)
+        REFERENCES orchestrator_campaign_drafts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,intent_id)
+        REFERENCES orchestrator_campaign_delivery_intents(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,execution_id)
+        REFERENCES orchestrator_campaign_provider_draft_executions(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,reconciliation_run_id)
+        REFERENCES orchestrator_campaign_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,credential_ref_id)
+        REFERENCES orchestrator_tenant_meta_credential_refs(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_cddc_source_state_check CHECK
+        (source_state IN ('delivery_pending','discrepancy_detected','failed')),
+      CONSTRAINT orchestrator_cddc_state_check CHECK
+        (state IN ('open','acknowledged','escalated','resolved')),
+      CONSTRAINT orchestrator_cddc_classification_check CHECK (classification IS NULL OR classification IN
+        ('delivery_confirmed_externally','provider_delay_accepted','provider_configuration_required',
+         'credential_remediation_required','campaign_remediation_required','monitoring_failure_accepted',
+         'false_positive','other_documented_resolution')),
+      CONSTRAINT orchestrator_cddc_shape_check CHECK
+        (version >= 1 AND draft_revision >= 1 AND credential_ref_version >= 1
+         AND (note IS NULL OR char_length(note) BETWEEN 1 AND 1000)
+         AND source_completed_at >= source_started_at AND updated_at >= created_at
+         AND ((state='resolved' AND resolved_at IS NOT NULL AND classification IS NOT NULL)
+           OR (state<>'resolved' AND resolved_at IS NULL)))
+    );
+    CREATE INDEX IF NOT EXISTS orchestrator_cddc_tenant_list
+      ON orchestrator_campaign_delivery_discrepancy_cases(tenant_id,created_at DESC,id DESC);
+
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_delivery_discrepancy_events (
+      tenant_id INTEGER NOT NULL,
+      id BIGSERIAL,
+      case_id TEXT NOT NULL,
+      case_version INTEGER NOT NULL,
+      previous_state TEXT NULL,
+      new_state TEXT NOT NULL,
+      classification TEXT NULL,
+      note TEXT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      decision_id TEXT NULL,
+      input_hash TEXT NULL,
+      audit_ref TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id,id),
+      UNIQUE (tenant_id,case_id,case_version),
+      UNIQUE (tenant_id,audit_ref),
+      FOREIGN KEY (tenant_id,case_id)
+        REFERENCES orchestrator_campaign_delivery_discrepancy_cases(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_cdde_version_check CHECK (case_version >= 1),
+      CONSTRAINT orchestrator_cdde_state_check CHECK
+        (new_state IN ('open','acknowledged','escalated','resolved') AND
+         (previous_state IS NULL OR previous_state IN ('open','acknowledged','escalated'))),
+      CONSTRAINT orchestrator_cdde_classification_check CHECK (classification IS NULL OR classification IN
+        ('delivery_confirmed_externally','provider_delay_accepted','provider_configuration_required',
+         'credential_remediation_required','campaign_remediation_required','monitoring_failure_accepted',
+         'false_positive','other_documented_resolution')),
+      CONSTRAINT orchestrator_cdde_safe_check CHECK
+        ((note IS NULL OR char_length(note) BETWEEN 1 AND 1000)
+         AND ((decision_id IS NULL AND input_hash IS NULL AND case_version=1
+               AND previous_state IS NULL AND new_state='open')
+           OR (decision_id ~ '^[A-Za-z0-9._:-]{1,100}$' AND input_hash ~ '^[0-9a-f]{64}$')))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_cdde_tenant_decision_unique
+      ON orchestrator_campaign_delivery_discrepancy_events(tenant_id,decision_id)
+      WHERE decision_id IS NOT NULL;
+
+    CREATE OR REPLACE FUNCTION orchestrator_cddc_guard() RETURNS trigger AS $fn$
+    BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_cddc_delete_prohibited'; END IF;
+      IF OLD.state='resolved' THEN RAISE EXCEPTION 'orchestrator_cddc_terminal_immutable'; END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.monitoring_run_id IS DISTINCT FROM OLD.monitoring_run_id
+        OR NEW.source_state IS DISTINCT FROM OLD.source_state
+        OR NEW.source_classifications IS DISTINCT FROM OLD.source_classifications
+        OR NEW.source_failure_classifications IS DISTINCT FROM OLD.source_failure_classifications
+        OR NEW.source_audit_ref IS DISTINCT FROM OLD.source_audit_ref
+        OR NEW.activation_attempt_id IS DISTINCT FROM OLD.activation_attempt_id
+        OR NEW.capability_id IS DISTINCT FROM OLD.capability_id
+        OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+        OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id
+        OR NEW.workflow_approval_id IS DISTINCT FROM OLD.workflow_approval_id
+        OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
+        OR NEW.draft_revision IS DISTINCT FROM OLD.draft_revision OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
+        OR NEW.intent_id IS DISTINCT FROM OLD.intent_id OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+        OR NEW.execution_id IS DISTINCT FROM OLD.execution_id OR NEW.reconciliation_run_id IS DISTINCT FROM OLD.reconciliation_run_id
+        OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+        OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash
+        OR NEW.source_actor_user_id IS DISTINCT FROM OLD.source_actor_user_id
+        OR NEW.source_started_at IS DISTINCT FROM OLD.source_started_at
+        OR NEW.source_completed_at IS DISTINCT FROM OLD.source_completed_at
+        OR NEW.creation_actor_user_id IS DISTINCT FROM OLD.creation_actor_user_id
+        OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref OR NEW.created_at IS DISTINCT FROM OLD.created_at
+      THEN RAISE EXCEPTION 'orchestrator_cddc_immutable_lineage'; END IF;
+      IF NEW.version <> OLD.version + 1 THEN RAISE EXCEPTION 'orchestrator_cddc_invalid_version'; END IF;
+      IF NOT ((OLD.state='open' AND NEW.state IN ('acknowledged','escalated'))
+        OR (OLD.state='acknowledged' AND NEW.state IN ('escalated','resolved'))
+        OR (OLD.state='escalated' AND NEW.state='resolved'))
+      THEN RAISE EXCEPTION 'orchestrator_cddc_invalid_transition'; END IF;
+      RETURN NEW;
+    END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_cddc_guard ON orchestrator_campaign_delivery_discrepancy_cases;
+    CREATE TRIGGER orchestrator_cddc_guard BEFORE UPDATE OR DELETE
+      ON orchestrator_campaign_delivery_discrepancy_cases FOR EACH ROW EXECUTE FUNCTION orchestrator_cddc_guard();
+
+    CREATE OR REPLACE FUNCTION orchestrator_cdde_guard() RETURNS trigger AS $fn$
+    DECLARE c orchestrator_campaign_delivery_discrepancy_cases%ROWTYPE;
+    BEGIN
+      IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'orchestrator_cdde_append_only'; END IF;
+      SELECT * INTO c FROM orchestrator_campaign_delivery_discrepancy_cases
+        WHERE tenant_id=NEW.tenant_id AND id=NEW.case_id;
+      IF NOT FOUND OR c.version<>NEW.case_version OR c.state<>NEW.new_state
+        OR c.classification IS DISTINCT FROM NEW.classification OR c.note IS DISTINCT FROM NEW.note
+      THEN RAISE EXCEPTION 'orchestrator_cdde_case_mismatch'; END IF;
+      IF NEW.case_version>1 AND NOT EXISTS (
+        SELECT 1 FROM orchestrator_campaign_delivery_discrepancy_events
+         WHERE tenant_id=NEW.tenant_id AND case_id=NEW.case_id
+           AND case_version=NEW.case_version-1 AND new_state=NEW.previous_state)
+      THEN RAISE EXCEPTION 'orchestrator_cdde_nonmonotonic'; END IF;
+      RETURN NEW;
+    END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_cdde_guard ON orchestrator_campaign_delivery_discrepancy_events;
+    CREATE TRIGGER orchestrator_cdde_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_campaign_delivery_discrepancy_events FOR EACH ROW EXECUTE FUNCTION orchestrator_cdde_guard();
+
+    CREATE OR REPLACE FUNCTION orchestrator_cddc_event_consistency() RETURNS trigger AS $fn$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM orchestrator_campaign_delivery_discrepancy_events
+        WHERE tenant_id=NEW.tenant_id AND case_id=NEW.id AND case_version=NEW.version
+          AND new_state=NEW.state AND classification IS NOT DISTINCT FROM NEW.classification
+          AND note IS NOT DISTINCT FROM NEW.note)
+      THEN RAISE EXCEPTION 'orchestrator_cddc_event_required'; END IF;
+      RETURN NULL;
+    END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_cddc_event_consistency
+      ON orchestrator_campaign_delivery_discrepancy_cases;
+    CREATE CONSTRAINT TRIGGER orchestrator_cddc_event_consistency
+      AFTER INSERT OR UPDATE ON orchestrator_campaign_delivery_discrepancy_cases
+      DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION orchestrator_cddc_event_consistency();
   `);
 
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
