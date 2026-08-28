@@ -105,6 +105,8 @@ const ADVERTISING_ORCH_TABLES = [
   // PR 6F-3 — authoritative human review case plus append-only decisions.
   'orchestrator_campaign_reconciliation_review_cases',
   'orchestrator_campaign_reconciliation_review_events',
+  // PR 6F-4 — immutable closed-review to fresh authorization/run provenance.
+  'orchestrator_campaign_reconciliation_rereconciliation_attempts',
   // PR 6F-1R — append-only provider-object outcome events (no mutable compensation).
   'orchestrator_campaign_provider_object_events',
 ];
@@ -5767,6 +5769,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         credential_ref_version INTEGER NOT NULL,
         account_fingerprint TEXT NOT NULL,
         ledger_root_hash TEXT NOT NULL,
+        credential_owner_user_id INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT,
+        purpose TEXT NOT NULL DEFAULT 'initial',
+        review_case_id TEXT NULL,
+        review_version INTEGER NULL,
+        closure_event_id BIGINT NULL,
         expected_object_kinds TEXT[] NOT NULL
           DEFAULT ARRAY['campaign','adset','creative','ad']::TEXT[],
         status TEXT NOT NULL DEFAULT 'issued',
@@ -5778,7 +5785,6 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         revoked_at TIMESTAMPTZ NULL,
         PRIMARY KEY (tenant_id, id),
         UNIQUE (tenant_id, nonce_hash),
-        UNIQUE (tenant_id, execution_id, ledger_root_hash),
         CONSTRAINT orchestrator_crra_workflow_fkey
           FOREIGN KEY (tenant_id, workflow_id)
           REFERENCES orchestrator_workflows (tenant_id, id)
@@ -5817,6 +5823,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
           ON DELETE CASCADE,
         CONSTRAINT orchestrator_crra_status_check
           CHECK (status IN ('issued','reserved','consumed','revoked','expired')),
+        CONSTRAINT orchestrator_crra_purpose_check CHECK (
+          (purpose = 'initial' AND review_case_id IS NULL AND review_version IS NULL
+            AND closure_event_id IS NULL)
+          OR (purpose = 'post_review' AND review_case_id IS NOT NULL AND review_version >= 1
+            AND closure_event_id IS NOT NULL AND credential_owner_user_id IS NOT NULL)),
         CONSTRAINT orchestrator_crra_kinds_check CHECK (
           expected_object_kinds = ARRAY['campaign','adset','creative','ad']::TEXT[]),
         CONSTRAINT orchestrator_crra_hashes_check CHECK (
@@ -5844,6 +5855,12 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
 
       CREATE OR REPLACE FUNCTION orchestrator_crra_guard() RETURNS trigger AS $fn$
       BEGIN
+        IF TG_OP = 'INSERT' THEN
+          IF NEW.credential_owner_user_id IS NULL AND NEW.purpose = 'initial' THEN
+            NEW.credential_owner_user_id := NEW.requested_by;
+          END IF;
+          RETURN NEW;
+        END IF;
         IF TG_OP = 'DELETE' THEN
           RAISE EXCEPTION 'orchestrator_crra_immutable';
         END IF;
@@ -5862,6 +5879,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
            OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
            OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
            OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash
+           OR NEW.credential_owner_user_id IS DISTINCT FROM OLD.credential_owner_user_id
+           OR NEW.purpose IS DISTINCT FROM OLD.purpose
+           OR NEW.review_case_id IS DISTINCT FROM OLD.review_case_id
+           OR NEW.review_version IS DISTINCT FROM OLD.review_version
+           OR NEW.closure_event_id IS DISTINCT FROM OLD.closure_event_id
            OR NEW.expected_object_kinds IS DISTINCT FROM OLD.expected_object_kinds
            OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
            OR NEW.expires_at IS DISTINCT FROM OLD.expires_at THEN
@@ -5878,7 +5900,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       DROP TRIGGER IF EXISTS orchestrator_crra_guard
         ON orchestrator_campaign_reconciliation_read_authorizations;
       CREATE TRIGGER orchestrator_crra_guard
-        BEFORE UPDATE OR DELETE
+        BEFORE INSERT OR UPDATE OR DELETE
         ON orchestrator_campaign_reconciliation_read_authorizations
         FOR EACH ROW EXECUTE FUNCTION orchestrator_crra_guard();
     `);
@@ -5887,6 +5909,41 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     try { await p.query('ROLLBACK'); } catch (_) { /* already aborted */ }
     throw e;
   }
+
+  // Existing installations predate authorization purposes. Additive columns
+  // preserve every original row as an initial authorization.
+  await p.query(`ALTER TABLE orchestrator_campaign_reconciliation_read_authorizations
+    ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'initial',
+    ADD COLUMN IF NOT EXISTS review_case_id TEXT NULL,
+    ADD COLUMN IF NOT EXISTS review_version INTEGER NULL,
+    ADD COLUMN IF NOT EXISTS closure_event_id BIGINT NULL,
+    ADD COLUMN IF NOT EXISTS credential_owner_user_id INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT`);
+  // Legacy initial-authorization fixtures and rows may omit the derived owner;
+  // the post-review purpose check requires it and new issuance always writes it.
+  await p.query(`ALTER TABLE orchestrator_campaign_reconciliation_read_authorizations
+    ALTER COLUMN credential_owner_user_id DROP NOT NULL`);
+  // PR 6F-1R2 allowed one authorization for an execution/ledger forever. PR
+  // 6F-4 narrows that invariant to initial issuance so one fresh post-review
+  // authorization can be issued without resetting or reusing the consumed row.
+  await p.query(`DO $do$ DECLARE c RECORD; BEGIN
+    FOR c IN SELECT conname FROM pg_constraint
+      WHERE conrelid='orchestrator_campaign_reconciliation_read_authorizations'::regclass
+        AND contype='u'
+        AND pg_get_constraintdef(oid) = 'UNIQUE (tenant_id, execution_id, ledger_root_hash)'
+    LOOP EXECUTE format('ALTER TABLE orchestrator_campaign_reconciliation_read_authorizations DROP CONSTRAINT %I', c.conname); END LOOP;
+  END $do$`);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_crra_initial_execution_ledger_unique
+    ON orchestrator_campaign_reconciliation_read_authorizations(tenant_id,execution_id,ledger_root_hash)
+    WHERE purpose='initial'`);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_crra_post_review_case_version_unique
+    ON orchestrator_campaign_reconciliation_read_authorizations(tenant_id,review_case_id,review_version)
+    WHERE purpose='post_review'`);
+  await _ensureNamedCheck(p, 'orchestrator_campaign_reconciliation_read_authorizations',
+    'orchestrator_crra_purpose_check',
+    `((purpose = 'initial' AND review_case_id IS NULL AND review_version IS NULL
+        AND closure_event_id IS NULL)
+      OR (purpose = 'post_review' AND review_case_id IS NOT NULL AND review_version >= 1
+        AND closure_event_id IS NOT NULL AND credential_owner_user_id IS NOT NULL))`, { notValid: true });
 
   // PR 6F-2 — sanitized outcome of exactly one consume-once reconciliation.
   // Provider IDs and raw provider responses never enter this table.
@@ -6085,6 +6142,92 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE TRIGGER orchestrator_crre_guard BEFORE UPDATE OR DELETE
       ON orchestrator_campaign_reconciliation_review_events FOR EACH ROW EXECUTE FUNCTION orchestrator_crre_guard();
   `);
+
+  // PR 6F-4 — one immutable re-reconciliation per exact closed review
+  // version. This is provenance only: it cannot alter either the original run
+  // or closed review, and every edge is tenant-leading and deletion-restricted.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_reconciliation_rereconciliation_attempts (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL,
+      review_case_id TEXT NOT NULL,
+      review_version INTEGER NOT NULL,
+      closure_event_id BIGINT NOT NULL,
+      original_reconciliation_run_id TEXT NOT NULL,
+      original_authorization_id TEXT NOT NULL,
+      new_authorization_id TEXT NOT NULL,
+      new_reconciliation_run_id TEXT NOT NULL,
+      invocation_id_hash TEXT NOT NULL,
+      initiated_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      audit_ref TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id,id),
+      UNIQUE (tenant_id,review_case_id,review_version),
+      UNIQUE (tenant_id,new_authorization_id),
+      UNIQUE (tenant_id,new_reconciliation_run_id),
+      UNIQUE (tenant_id,invocation_id_hash),
+      UNIQUE (tenant_id,audit_ref),
+      FOREIGN KEY (tenant_id,review_case_id)
+        REFERENCES orchestrator_campaign_reconciliation_review_cases(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,closure_event_id)
+        REFERENCES orchestrator_campaign_reconciliation_review_events(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,original_reconciliation_run_id)
+        REFERENCES orchestrator_campaign_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,original_authorization_id)
+        REFERENCES orchestrator_campaign_reconciliation_read_authorizations(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,new_authorization_id)
+        REFERENCES orchestrator_campaign_reconciliation_read_authorizations(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY (tenant_id,new_reconciliation_run_id)
+        REFERENCES orchestrator_campaign_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      CHECK (review_version >= 1),
+      CHECK (original_authorization_id <> new_authorization_id),
+      CHECK (original_reconciliation_run_id <> new_reconciliation_run_id),
+      CHECK (invocation_id_hash ~ '^[0-9a-f]{64}$')
+    );
+    CREATE INDEX IF NOT EXISTS orchestrator_crrra_tenant_created
+      ON orchestrator_campaign_reconciliation_rereconciliation_attempts(tenant_id,created_at DESC,id DESC);
+
+    CREATE OR REPLACE FUNCTION orchestrator_crrra_guard() RETURNS trigger AS $fn$
+    DECLARE rc RECORD; ce RECORD; na RECORD; nr RECORD;
+    BEGIN
+      IF TG_OP <> 'INSERT' THEN RAISE EXCEPTION 'orchestrator_crrra_immutable'; END IF;
+      SELECT * INTO rc FROM orchestrator_campaign_reconciliation_review_cases
+        WHERE tenant_id=NEW.tenant_id AND id=NEW.review_case_id FOR KEY SHARE;
+      SELECT * INTO ce FROM orchestrator_campaign_reconciliation_review_events
+        WHERE tenant_id=NEW.tenant_id AND id=NEW.closure_event_id;
+      SELECT * INTO na FROM orchestrator_campaign_reconciliation_read_authorizations
+        WHERE tenant_id=NEW.tenant_id AND id=NEW.new_authorization_id;
+      SELECT * INTO nr FROM orchestrator_campaign_reconciliation_runs
+        WHERE tenant_id=NEW.tenant_id AND id=NEW.new_reconciliation_run_id;
+      IF rc.state <> 'closed' OR rc.version <> NEW.review_version
+        OR rc.reconciliation_run_id <> NEW.original_reconciliation_run_id
+        OR rc.authorization_id <> NEW.original_authorization_id
+        OR ce.case_id <> NEW.review_case_id OR ce.to_state <> 'closed'
+        OR ce.classification <> 'external_remediation_required'
+        OR na.purpose <> 'post_review' OR na.review_case_id <> NEW.review_case_id
+        OR na.review_version <> NEW.review_version OR na.closure_event_id <> NEW.closure_event_id
+        OR nr.authorization_id <> NEW.new_authorization_id
+        OR na.workflow_id <> rc.workflow_id OR na.draft_id <> rc.draft_id
+        OR na.publishing_request_id <> rc.publishing_request_id OR na.execution_id <> rc.execution_id
+        OR na.snapshot_hash <> rc.snapshot_hash OR na.intent_id <> rc.intent_id OR na.intent_hash <> rc.intent_hash
+        OR na.credential_ref_id <> rc.credential_ref_id OR na.credential_ref_version <> rc.credential_ref_version
+        OR na.account_fingerprint <> rc.account_fingerprint OR na.ledger_root_hash <> rc.ledger_root_hash
+      THEN RAISE EXCEPTION 'orchestrator_crrra_invalid_provenance'; END IF;
+      RETURN NEW;
+    END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_crrra_guard
+      ON orchestrator_campaign_reconciliation_rereconciliation_attempts;
+    CREATE TRIGGER orchestrator_crrra_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_campaign_reconciliation_rereconciliation_attempts
+      FOR EACH ROW EXECUTE FUNCTION orchestrator_crrra_guard();
+  `);
+
+  await _ensureNamedFk(p, 'orchestrator_campaign_reconciliation_read_authorizations',
+    'orchestrator_crra_review_case_fkey', 'tenant_id, review_case_id',
+    'orchestrator_campaign_reconciliation_review_cases', 'tenant_id, id', 'ON DELETE RESTRICT');
+  await _ensureNamedFk(p, 'orchestrator_campaign_reconciliation_read_authorizations',
+    'orchestrator_crra_closure_event_fkey', 'tenant_id, closure_event_id',
+    'orchestrator_campaign_reconciliation_review_events', 'tenant_id, id', 'ON DELETE RESTRICT');
 
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_tenant_execution_kind', 'tenant_id, execution_id, object_kind');

@@ -144,7 +144,7 @@ if (!db.hasDb()) {
     const fks=(await db.getPool().query(`SELECT conname,pg_get_constraintdef(oid) def FROM pg_constraint
       WHERE conrelid=$1::regclass AND contype='f'`,[TABLE])).rows;
     const lineage=fks.filter(({conname})=>conname.startsWith('orchestrator_crra_'));
-    assert.equal(lineage.length,8,lineage.map(x=>`${x.conname}: ${x.def}`).join('\n'));
+    assert.equal(lineage.length,10,lineage.map(x=>`${x.conname}: ${x.def}`).join('\n'));
     assert.ok(lineage.every(({def})=>/^FOREIGN KEY \(tenant_id, /.test(def)),
       lineage.map(x=>`${x.conname}: ${x.def}`).join('\n'));
   });
