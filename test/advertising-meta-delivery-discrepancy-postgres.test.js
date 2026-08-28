@@ -83,14 +83,19 @@ if (!db.hasDb()) {
         'orchestrator_campaign_delivery_discrepancy_events'::regclass)
         AND NOT t.tgisinternal`)).rows;
     const caseGuard = triggerFns.find((r) => r.tgname === 'orchestrator_cddc_guard').fn
-      .replace(/\s+/g, ' ').toLowerCase();
-    assert.match(caseGuard, /delete_prohibited/);
-    assert.match(caseGuard, /terminal_immutable/);
-    assert.match(caseGuard, /new\.version <> old\.version \+ 1/);
-    assert.match(caseGuard, /old\.state = 'open'.*acknowledged.*escalated/);
-    assert.match(caseGuard, /old\.state = 'acknowledged'.*escalated.*resolved/);
-    assert.match(caseGuard, /old\.state = 'escalated'.*resolved/);
-    assert.match(caseGuard, /immutable_lineage/);
+      .toLowerCase().replace(/\s+/g, ' ');
+    assert.match(caseGuard, /orchestrator_cddc_delete_prohibited/);
+    assert.match(caseGuard, /orchestrator_cddc_terminal_immutable/);
+    assert.match(caseGuard, /orchestrator_cddc_immutable_lineage/);
+    assert.match(caseGuard,
+      /new\.version\s*<>\s*old\.version\s*\+\s*1.*orchestrator_cddc_invalid_version/);
+    assert.match(caseGuard,
+      /old\.state\s*=\s*'open'\s+and\s+new\.state\s+in\s*\(\s*'acknowledged'\s*,\s*'escalated'\s*\)/);
+    assert.match(caseGuard,
+      /old\.state\s*=\s*'acknowledged'\s+and\s+new\.state\s+in\s*\(\s*'escalated'\s*,\s*'resolved'\s*\)/);
+    assert.match(caseGuard,
+      /old\.state\s*=\s*'escalated'\s+and\s+new\.state\s*=\s*'resolved'/);
+    assert.match(caseGuard, /orchestrator_cddc_invalid_transition/);
     const eventGuard = triggerFns.find((r) => r.tgname === 'orchestrator_cdde_guard').fn
       .replace(/\s+/g, ' ').toLowerCase();
     assert.match(eventGuard, /append_only/);
