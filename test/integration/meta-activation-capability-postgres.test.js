@@ -209,10 +209,13 @@ test('PostgreSQL capability lifecycle locks, rolls back, and permits only one co
   try {
     await c1.query('BEGIN'); await c2.query('BEGIN');
     await capability.consume(c1,{...base,capabilityId:issued.capability_id,reservationId:'reservation',invocationId:'invocation-one'});
-    const loser=capability.consume(c2,{...base,capabilityId:issued.capability_id,reservationId:'reservation',invocationId:'invocation-two'});
+    const loser=capability.consume(c2,{...base,capabilityId:issued.capability_id,reservationId:'reservation',invocationId:'invocation-two'})
+      .then((value)=>({status:'fulfilled',value}),(reason)=>({status:'rejected',reason}));
     await new Promise((resolve)=>setTimeout(resolve,50));
     await c1.query('COMMIT');
-    await assert.rejects(loser,(error)=>error.code==='capability_rejected');
+    const loserResult=await loser;
+    assert.equal(loserResult.status,'rejected');
+    assert.equal(loserResult.reason.code,'capability_rejected');
     await c2.query('ROLLBACK');
   } finally { c1.release(); c2.release(); }
   const final = await db.getPool().query('SELECT status,invocation_id_hash FROM orchestrator_campaign_activation_capabilities WHERE tenant_id=$1 AND id=$2',[tenant.id,issued.capability_id]);
