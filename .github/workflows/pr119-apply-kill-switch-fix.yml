@@ -1,0 +1,92 @@
+name: PR119 apply kill-switch fix
+
+on:
+  push:
+    branches:
+      - codex/implement-pr8c-guarded-execution
+    paths:
+      - .github/workflows/pr119-apply-kill-switch-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify expected PR head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "de63dcbc70200559956a0283f0cd3d6a5406df92"
+
+      - name: Apply exact verified schema correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('services/agent_orchestrator/schema.js')
+          text = path.read_text()
+
+          replacements = [
+              (
+                  "      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, switch_key TEXT NOT NULL,",
+                  "      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, switch_key TEXT NOT NULL,",
+              ),
+              (
+                  "      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_delete_prohibited';END IF;",
+                  "      IF TG_OP='DELETE' THEN IF TG_TABLE_NAME='orchestrator_advertising_global_kill_switches' OR pg_trigger_depth()=1 THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_delete_prohibited';END IF;RETURN OLD;END IF;",
+              ),
+              (
+                  "    DROP TRIGGER IF EXISTS orchestrator_atks_guard ON orchestrator_advertising_tenant_kill_switches;\n"
+                  "    CREATE TRIGGER orchestrator_atks_guard BEFORE UPDATE OR DELETE ON orchestrator_advertising_tenant_kill_switches FOR EACH ROW EXECUTE FUNCTION orchestrator_advertising_kill_switch_guard();",
+                  "    DROP TRIGGER IF EXISTS orchestrator_atks_guard ON orchestrator_advertising_tenant_kill_switches;\n"
+                  "    CREATE TRIGGER orchestrator_atks_guard BEFORE UPDATE OR DELETE ON orchestrator_advertising_tenant_kill_switches FOR EACH ROW EXECUTE FUNCTION orchestrator_advertising_kill_switch_guard();\n"
+                  "    DO $migration$ BEGIN\n"
+                  "      IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='orchestrator_advertising_tenant_kill_switches'::regclass AND conname='orchestrator_advertising_tenant_kill_switches_tenant_id_fkey' AND confdeltype='c') THEN\n"
+                  "        ALTER TABLE orchestrator_advertising_tenant_kill_switches DROP CONSTRAINT IF EXISTS orchestrator_advertising_tenant_kill_switches_tenant_id_fkey;\n"
+                  "        ALTER TABLE orchestrator_advertising_tenant_kill_switches ADD CONSTRAINT orchestrator_advertising_tenant_kill_switches_tenant_id_fkey FOREIGN KEY(tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;\n"
+                  "      END IF;\n"
+                  "    END $migration$;",
+              ),
+              (
+                  "    INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active) SELECT id,'optimization_execution',false FROM tenants ON CONFLICT(tenant_id,switch_key) DO NOTHING;",
+                  "    DO $backfill$ DECLARE tenant_row RECORD; BEGIN\n"
+                  "      FOR tenant_row IN SELECT id FROM tenants LOOP\n"
+                  "        BEGIN\n"
+                  "          INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active) VALUES(tenant_row.id,'optimization_execution',false) ON CONFLICT(tenant_id,switch_key) DO NOTHING;\n"
+                  "        EXCEPTION WHEN foreign_key_violation THEN NULL;\n"
+                  "        END;\n"
+                  "      END LOOP;\n"
+                  "    END $backfill$;",
+              ),
+          ]
+
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'expected exactly one source occurrence; found {text.count(old)}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+
+          git diff --check
+          test "$(git diff --numstat -- services/agent_orchestrator/schema.js)" = $'16\t3\tservices/agent_orchestrator/schema.js'
+
+      - name: Commit correction and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/pr119-apply-kill-switch-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/agent_orchestrator/schema.js .github/workflows/pr119-apply-kill-switch-fix.yml
+          git diff --cached --check
+          git commit -m "Allow tenant kill-switch cascade cleanup"
+          git push origin HEAD:codex/implement-pr8c-guarded-execution
