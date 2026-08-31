@@ -14,6 +14,7 @@
     "test": "node --test --test-force-exit test/",
     "test:core": "node scripts/run-core-tests.js",
     "test:integration": "node --test --test-force-exit test/integration/",
+    "test:advertising-certification": "node scripts/run-advertising-certification.js",
     "lint:fabrication": "node scripts/check-fabrication-markers.js",
     "lint:script-tags": "node scripts/check-script-tags.js",
     "lint:duplicate-globals": "node scripts/check-duplicate-globals.js",

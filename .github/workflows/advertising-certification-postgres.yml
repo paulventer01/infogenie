@@ -1,0 +1,71 @@
+name: Advertising safety certification
+
+on:
+  pull_request:
+    paths:
+      - 'services/agent_orchestrator/**'
+      - 'services/credentials/**'
+      - 'services/tenants/**'
+      - 'test/advertising-*.test.js'
+      - 'test/integration/meta-activation-capability-postgres.test.js'
+      - 'scripts/run-advertising-certification.js'
+      - 'package.json'
+      - '.github/workflows/advertising-certification-postgres.yml'
+
+jobs:
+  certification:
+    name: PostgreSQL advertising certification (zero skips)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/infogenie_advertising_certification
+      NODE_ENV: test
+      SESSION_SECRET: certification-session-secret
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Enable TLS on disposable PostgreSQL service
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          PGPASSWORD: postgres
+        run: |
+          docker exec --user root "$POSTGRES_CONTAINER" sh -ec '
+            openssl req -new -x509 -days 1 -nodes -out /var/lib/postgresql/server.crt \
+              -keyout /var/lib/postgresql/server.key -subj "/CN=localhost"
+            chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key
+            chmod 600 /var/lib/postgresql/server.key
+          '
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET ssl = 'on'" \
+            -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt'" \
+            -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key'"
+          docker restart "$POSTGRES_CONTAINER"
+          for attempt in {1..30}; do
+            pg_isready -h localhost -U postgres -d postgres && break
+            test "$attempt" -lt 30 || exit 1
+            sleep 1
+          done
+      - name: Create isolated database and encryption key
+        env:
+          PGPASSWORD: postgres
+        run: |
+          createdb -h localhost -U postgres infogenie_advertising_certification
+          echo "CREDENTIAL_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+      - run: npm run test:advertising-certification
