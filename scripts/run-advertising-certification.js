@@ -13,6 +13,7 @@ const files = [
   'test/advertising-optimization-execution-postgres.test.js',
   'test/advertising-optimization-execution-run-postgres.test.js',
   'test/advertising-optimization-execution-recovery-postgres.test.js',
+  'test/advertising-optimization-execution-stress-postgres.test.js',
 ];
 
 if (!process.env.DATABASE_URL) {
