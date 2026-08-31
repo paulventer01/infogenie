@@ -6904,7 +6904,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       CONSTRAINT orchestrator_agks_version CHECK(version>0)
     );
     CREATE TABLE IF NOT EXISTS orchestrator_advertising_tenant_kill_switches(
-      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, switch_key TEXT NOT NULL,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, switch_key TEXT NOT NULL,
       active BOOLEAN NOT NULL DEFAULT false, version INTEGER NOT NULL DEFAULT 1,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY(tenant_id,switch_key),
@@ -6912,15 +6912,28 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       CONSTRAINT orchestrator_atks_version CHECK(version>0)
     );
     CREATE OR REPLACE FUNCTION orchestrator_advertising_kill_switch_guard() RETURNS trigger AS $fn$ BEGIN
-      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_delete_prohibited';END IF;
+      IF TG_OP='DELETE' THEN IF TG_TABLE_NAME='orchestrator_advertising_global_kill_switches' OR pg_trigger_depth()=1 THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_delete_prohibited';END IF;RETURN OLD;END IF;
       IF NEW.switch_key IS DISTINCT FROM OLD.switch_key OR (TG_TABLE_NAME='orchestrator_advertising_tenant_kill_switches' AND NEW.tenant_id IS DISTINCT FROM OLD.tenant_id) OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_identity_immutable';END IF;
       IF NEW.version<>OLD.version+1 OR NEW.updated_at<=OLD.updated_at THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_invalid_version';END IF;RETURN NEW;END;$fn$ LANGUAGE plpgsql;
     DROP TRIGGER IF EXISTS orchestrator_agks_guard ON orchestrator_advertising_global_kill_switches;
     CREATE TRIGGER orchestrator_agks_guard BEFORE UPDATE OR DELETE ON orchestrator_advertising_global_kill_switches FOR EACH ROW EXECUTE FUNCTION orchestrator_advertising_kill_switch_guard();
     DROP TRIGGER IF EXISTS orchestrator_atks_guard ON orchestrator_advertising_tenant_kill_switches;
     CREATE TRIGGER orchestrator_atks_guard BEFORE UPDATE OR DELETE ON orchestrator_advertising_tenant_kill_switches FOR EACH ROW EXECUTE FUNCTION orchestrator_advertising_kill_switch_guard();
+    DO $migration$ BEGIN
+      IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='orchestrator_advertising_tenant_kill_switches'::regclass AND conname='orchestrator_advertising_tenant_kill_switches_tenant_id_fkey' AND confdeltype='c') THEN
+        ALTER TABLE orchestrator_advertising_tenant_kill_switches DROP CONSTRAINT IF EXISTS orchestrator_advertising_tenant_kill_switches_tenant_id_fkey;
+        ALTER TABLE orchestrator_advertising_tenant_kill_switches ADD CONSTRAINT orchestrator_advertising_tenant_kill_switches_tenant_id_fkey FOREIGN KEY(tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+      END IF;
+    END $migration$;
     INSERT INTO orchestrator_advertising_global_kill_switches(switch_key,active) VALUES('optimization_execution',false) ON CONFLICT(switch_key) DO NOTHING;
-    INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active) SELECT id,'optimization_execution',false FROM tenants ON CONFLICT(tenant_id,switch_key) DO NOTHING;
+    DO $backfill$ DECLARE tenant_row RECORD; BEGIN
+      FOR tenant_row IN SELECT id FROM tenants LOOP
+        BEGIN
+          INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active) VALUES(tenant_row.id,'optimization_execution',false) ON CONFLICT(tenant_id,switch_key) DO NOTHING;
+        EXCEPTION WHEN foreign_key_violation THEN NULL;
+        END;
+      END LOOP;
+    END $backfill$;
     CREATE OR REPLACE FUNCTION orchestrator_seed_advertising_kill_switch() RETURNS trigger AS $fn$ BEGIN INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active) VALUES(NEW.id,'optimization_execution',false);RETURN NEW;END;$fn$ LANGUAGE plpgsql;
     DROP TRIGGER IF EXISTS orchestrator_seed_advertising_kill_switch ON tenants;
     CREATE TRIGGER orchestrator_seed_advertising_kill_switch AFTER INSERT ON tenants FOR EACH ROW EXECUTE FUNCTION orchestrator_seed_advertising_kill_switch();
