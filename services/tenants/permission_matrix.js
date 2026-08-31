@@ -159,6 +159,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/agent-orchestrator/delivery-discrepancies', view: 'advertising.campaign.delivery.resolve', write: 'advertising.campaign.delivery.resolve' },
   { prefix: '/api/agent-orchestrator/optimization-recommendations', view: 'advertising.campaign.optimization.review', write: 'advertising.campaign.optimization.review' },
   { prefix: '/api/advertising/optimization-executions', view: 'advertising.campaign.optimization.execute', write: 'advertising.campaign.optimization.execute' },
+  { prefix: '/api/advertising/optimization-execution-runs', view: 'advertising.campaign.optimization.execute.approved', write: 'advertising.campaign.optimization.execute.approved' },
   // PR 6F-0 provider-draft challenge/confirm routes mounted under campaign_api.
   // Both require the least-privilege advertising.provider_drafts.create key,
   // which no read-only role and no Marketer holds. Do NOT relax either key back

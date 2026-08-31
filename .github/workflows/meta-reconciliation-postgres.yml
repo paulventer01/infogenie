@@ -14,6 +14,7 @@ on:
       - 'test/advertising-meta-monitoring-postgres.test.js'
       - 'test/advertising-meta-delivery-discrepancy-postgres.test.js'
       - 'test/advertising-optimization-execution-postgres.test.js'
+      - 'test/advertising-optimization-execution-run-postgres.test.js'
       - 'test/integration/meta-activation-capability-postgres.test.js'
       - '.github/workflows/meta-reconciliation-postgres.yml'
 
@@ -109,3 +110,7 @@ jobs:
             | tee pr8b-optimization-execution.tap
           grep -Eq '^# fail 0$' pr8b-optimization-execution.tap
           grep -Eq '^# skipped 0$' pr8b-optimization-execution.tap
+          node --test --test-force-exit test/advertising-optimization-execution-run-postgres.test.js \
+            | tee pr8c-optimization-execution-run.tap
+          grep -Eq '^# fail 0$' pr8c-optimization-execution-run.tap
+          grep -Eq '^# skipped 0$' pr8c-optimization-execution-run.tap

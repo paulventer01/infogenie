@@ -120,6 +120,12 @@ const ADVERTISING_ORCH_TABLES = [
   // PR 8B — human-controlled, internal-only optimization execution plans.
   'orchestrator_optimization_execution_requests',
   'orchestrator_optimization_execution_events',
+  // PR 8C admission controls. These do not authorize provider mutation.
+  'orchestrator_advertising_global_kill_switches',
+  'orchestrator_advertising_tenant_kill_switches',
+  // PR 8C — synchronous internal-simulation runs and their distinct lifecycle.
+  'orchestrator_optimization_executions',
+  'orchestrator_optimization_execution_run_events',
   // PR 6F-1R — append-only provider-object outcome events (no mutable compensation).
   'orchestrator_campaign_provider_object_events',
 ];
@@ -6886,6 +6892,130 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       IF NOT EXISTS(SELECT 1 FROM orchestrator_optimization_execution_events WHERE tenant_id=NEW.tenant_id AND request_id=NEW.id AND request_version=NEW.version AND new_state=NEW.state) THEN RAISE EXCEPTION 'orchestrator_oer_event_required';END IF;RETURN NULL;END;$fn$ LANGUAGE plpgsql;
     DROP TRIGGER IF EXISTS orchestrator_oer_event_consistency ON orchestrator_optimization_execution_requests;
     CREATE CONSTRAINT TRIGGER orchestrator_oer_event_consistency AFTER INSERT OR UPDATE ON orchestrator_optimization_execution_requests DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION orchestrator_oer_event_consistency();
+  `);
+
+  // PR 8C — consumes one approved PR8B request without changing it. No provider
+  // identifiers, credential references, source hashes, payloads, or errors are stored.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_advertising_global_kill_switches(
+      switch_key TEXT PRIMARY KEY, active BOOLEAN NOT NULL DEFAULT false, version INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CONSTRAINT orchestrator_agks_key CHECK(switch_key='optimization_execution'),
+      CONSTRAINT orchestrator_agks_version CHECK(version>0)
+    );
+    CREATE TABLE IF NOT EXISTS orchestrator_advertising_tenant_kill_switches(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, switch_key TEXT NOT NULL,
+      active BOOLEAN NOT NULL DEFAULT false, version INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY(tenant_id,switch_key),
+      CONSTRAINT orchestrator_atks_key CHECK(switch_key='optimization_execution'),
+      CONSTRAINT orchestrator_atks_version CHECK(version>0)
+    );
+    CREATE OR REPLACE FUNCTION orchestrator_advertising_kill_switch_guard() RETURNS trigger AS $fn$ BEGIN
+      IF TG_OP='DELETE' THEN IF TG_TABLE_NAME='orchestrator_advertising_global_kill_switches' OR pg_trigger_depth()=1 THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_delete_prohibited';END IF;RETURN OLD;END IF;
+      IF NEW.switch_key IS DISTINCT FROM OLD.switch_key OR (TG_TABLE_NAME='orchestrator_advertising_tenant_kill_switches' AND NEW.tenant_id IS DISTINCT FROM OLD.tenant_id) OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_identity_immutable';END IF;
+      IF NEW.version<>OLD.version+1 OR NEW.updated_at<=OLD.updated_at THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_invalid_version';END IF;RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_agks_guard ON orchestrator_advertising_global_kill_switches;
+    CREATE TRIGGER orchestrator_agks_guard BEFORE UPDATE OR DELETE ON orchestrator_advertising_global_kill_switches FOR EACH ROW EXECUTE FUNCTION orchestrator_advertising_kill_switch_guard();
+    DROP TRIGGER IF EXISTS orchestrator_atks_guard ON orchestrator_advertising_tenant_kill_switches;
+    CREATE TRIGGER orchestrator_atks_guard BEFORE UPDATE OR DELETE ON orchestrator_advertising_tenant_kill_switches FOR EACH ROW EXECUTE FUNCTION orchestrator_advertising_kill_switch_guard();
+    DO $migration$ BEGIN
+      IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='orchestrator_advertising_tenant_kill_switches'::regclass AND conname='orchestrator_advertising_tenant_kill_switches_tenant_id_fkey' AND confdeltype='c') THEN
+        ALTER TABLE orchestrator_advertising_tenant_kill_switches DROP CONSTRAINT IF EXISTS orchestrator_advertising_tenant_kill_switches_tenant_id_fkey;
+        ALTER TABLE orchestrator_advertising_tenant_kill_switches ADD CONSTRAINT orchestrator_advertising_tenant_kill_switches_tenant_id_fkey FOREIGN KEY(tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+      END IF;
+    END $migration$;
+    INSERT INTO orchestrator_advertising_global_kill_switches(switch_key,active) VALUES('optimization_execution',false) ON CONFLICT(switch_key) DO NOTHING;
+    DO $backfill$ DECLARE tenant_row RECORD; BEGIN
+      FOR tenant_row IN SELECT id FROM tenants LOOP
+        BEGIN
+          INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active) VALUES(tenant_row.id,'optimization_execution',false) ON CONFLICT(tenant_id,switch_key) DO NOTHING;
+        EXCEPTION WHEN foreign_key_violation THEN NULL;
+        END;
+      END LOOP;
+    END $backfill$;
+    CREATE OR REPLACE FUNCTION orchestrator_seed_advertising_kill_switch() RETURNS trigger AS $fn$ BEGIN INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active) VALUES(NEW.id,'optimization_execution',false);RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_seed_advertising_kill_switch ON tenants;
+    CREATE TRIGGER orchestrator_seed_advertising_kill_switch AFTER INSERT ON tenants FOR EACH ROW EXECUTE FUNCTION orchestrator_seed_advertising_kill_switch();
+
+    CREATE TABLE IF NOT EXISTS orchestrator_optimization_executions(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL, request_id TEXT NOT NULL, request_version INTEGER NOT NULL,
+      recommendation_set_id TEXT NOT NULL, recommendation_id TEXT NOT NULL, monitoring_run_id TEXT NOT NULL,
+      case_id TEXT NULL, case_version INTEGER NULL, case_resolution_event_id TEXT NULL,
+      activation_attempt_id TEXT NOT NULL, capability_id TEXT NOT NULL, workflow_id TEXT NOT NULL,
+      draft_id TEXT NOT NULL, draft_revision INTEGER NOT NULL, publishing_request_id TEXT NOT NULL,
+      publish_approval_id TEXT NOT NULL, delivery_intent_id TEXT NOT NULL,
+      provider_execution_metadata_id TEXT NOT NULL, reconciliation_run_id TEXT NOT NULL,
+      approved_action TEXT NOT NULL, execution_mode TEXT NOT NULL DEFAULT 'internal_simulation',
+      invocation_id TEXT NOT NULL, invocation_hash TEXT NOT NULL, invocation_input_hash TEXT NOT NULL,
+      reservation_hash TEXT NOT NULL, attempt_id TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'reserved', version INTEGER NOT NULL DEFAULT 1,
+      invoking_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      approved_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      reserved_at TIMESTAMPTZ NOT NULL DEFAULT now(), started_at TIMESTAMPTZ NULL,
+      completed_at TIMESTAMPTZ NULL, failed_at TIMESTAMPTZ NULL,
+      result_code TEXT NULL, provider_contacted BOOLEAN NOT NULL DEFAULT false,
+      provider_mutation_performed BOOLEAN NOT NULL DEFAULT false,
+      audit_ref TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,request_id), UNIQUE(tenant_id,invocation_hash),
+      UNIQUE(tenant_id,attempt_id), UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,request_id) REFERENCES orchestrator_optimization_execution_requests(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,recommendation_set_id) REFERENCES orchestrator_campaign_optimization_recommendation_sets(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,recommendation_id) REFERENCES orchestrator_campaign_optimization_recommendations(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,monitoring_run_id) REFERENCES orchestrator_campaign_monitoring_runs(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,case_id) REFERENCES orchestrator_campaign_delivery_discrepancy_cases(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,activation_attempt_id) REFERENCES orchestrator_campaign_activation_attempts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,capability_id) REFERENCES orchestrator_campaign_activation_capabilities(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,workflow_id) REFERENCES orchestrator_workflows(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,draft_id) REFERENCES orchestrator_campaign_drafts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publishing_request_id) REFERENCES orchestrator_campaign_publish_requests(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publish_approval_id) REFERENCES orchestrator_campaign_publish_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,delivery_intent_id) REFERENCES orchestrator_campaign_delivery_intents(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,provider_execution_metadata_id) REFERENCES orchestrator_campaign_provider_draft_executions(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,reconciliation_run_id) REFERENCES orchestrator_campaign_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_oxe_state CHECK(state IN('reserved','running','succeeded','failed','indeterminate','cancelled')),
+      CONSTRAINT orchestrator_oxe_action CHECK(approved_action IN('review_delivery_configuration','review_campaign_configuration','review_credential_configuration','prepare_campaign_remediation')),
+      CONSTRAINT orchestrator_oxe_mode CHECK(execution_mode='internal_simulation' AND provider_contacted=false AND provider_mutation_performed=false),
+      CONSTRAINT orchestrator_oxe_result CHECK(result_code IS NULL OR result_code IN('internal_review_recorded','remediation_plan_prepared','internal_execution_failed','internal_outcome_indeterminate')),
+      CONSTRAINT orchestrator_oxe_shape CHECK(version>=1 AND request_version>=1 AND draft_revision>=1
+        AND invocation_id~'^[A-Za-z0-9_.:-]{1,100}$' AND invocation_hash~'^[0-9a-f]{64}$'
+        AND invocation_input_hash~'^[0-9a-f]{64}$' AND reservation_hash~'^[0-9a-f]{64}$'
+        AND attempt_id~'^attempt_[0-9a-f-]{36}$' AND invoking_user_id>0 AND approved_by_user_id>0
+        AND ((case_id IS NULL AND case_version IS NULL AND case_resolution_event_id IS NULL) OR (case_id IS NOT NULL AND case_version>=1 AND case_resolution_event_id IS NOT NULL))
+        AND ((state='reserved' AND version=1 AND started_at IS NULL AND completed_at IS NULL AND failed_at IS NULL AND result_code IS NULL)
+          OR (state='running' AND version=2 AND started_at IS NOT NULL AND completed_at IS NULL AND failed_at IS NULL AND result_code IS NULL)
+          OR (state='succeeded' AND version=3 AND started_at IS NOT NULL AND completed_at IS NOT NULL AND failed_at IS NULL AND result_code IN('internal_review_recorded','remediation_plan_prepared'))
+          OR (state IN('failed','indeterminate') AND version=3 AND started_at IS NOT NULL AND completed_at IS NULL AND failed_at IS NOT NULL AND result_code IN('internal_execution_failed','internal_outcome_indeterminate'))
+          OR (state='cancelled' AND version=2 AND started_at IS NULL AND completed_at IS NULL AND failed_at IS NULL AND result_code IS NULL)))
+    );
+    CREATE INDEX IF NOT EXISTS orchestrator_oxe_list ON orchestrator_optimization_executions(tenant_id,id DESC);
+    CREATE TABLE IF NOT EXISTS orchestrator_optimization_execution_run_events(
+      tenant_id INTEGER NOT NULL, id BIGSERIAL, execution_id TEXT NOT NULL, execution_version INTEGER NOT NULL,
+      previous_state TEXT NULL, new_state TEXT NOT NULL, event_type TEXT NOT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT, audit_ref TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(tenant_id,id),
+      UNIQUE(tenant_id,execution_id,execution_version), UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,execution_id) REFERENCES orchestrator_optimization_executions(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_oxee_state CHECK(new_state IN('reserved','running','succeeded','failed','indeterminate','cancelled') AND event_type=new_state),
+      CONSTRAINT orchestrator_oxee_shape CHECK(execution_version BETWEEN 1 AND 3 AND actor_user_id>0 AND
+        ((execution_version=1 AND previous_state IS NULL AND new_state='reserved')
+          OR (execution_version=2 AND previous_state='reserved' AND new_state IN('running','cancelled'))
+          OR (execution_version=3 AND previous_state='running' AND new_state IN('succeeded','failed','indeterminate'))))
+    );
+    CREATE OR REPLACE FUNCTION orchestrator_oxe_guard() RETURNS trigger AS $fn$ BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_oxe_delete_prohibited';END IF;
+      IF OLD.state IN('succeeded','failed','indeterminate','cancelled') THEN RAISE EXCEPTION 'orchestrator_oxe_terminal_immutable';END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id OR NEW.request_id IS DISTINCT FROM OLD.request_id OR NEW.request_version IS DISTINCT FROM OLD.request_version OR NEW.recommendation_set_id IS DISTINCT FROM OLD.recommendation_set_id OR NEW.recommendation_id IS DISTINCT FROM OLD.recommendation_id OR NEW.monitoring_run_id IS DISTINCT FROM OLD.monitoring_run_id OR NEW.case_id IS DISTINCT FROM OLD.case_id OR NEW.case_version IS DISTINCT FROM OLD.case_version OR NEW.case_resolution_event_id IS DISTINCT FROM OLD.case_resolution_event_id OR NEW.activation_attempt_id IS DISTINCT FROM OLD.activation_attempt_id OR NEW.capability_id IS DISTINCT FROM OLD.capability_id OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id OR NEW.draft_id IS DISTINCT FROM OLD.draft_id OR NEW.draft_revision IS DISTINCT FROM OLD.draft_revision OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id OR NEW.delivery_intent_id IS DISTINCT FROM OLD.delivery_intent_id OR NEW.provider_execution_metadata_id IS DISTINCT FROM OLD.provider_execution_metadata_id OR NEW.reconciliation_run_id IS DISTINCT FROM OLD.reconciliation_run_id OR NEW.approved_action IS DISTINCT FROM OLD.approved_action OR NEW.execution_mode IS DISTINCT FROM OLD.execution_mode OR NEW.invocation_id IS DISTINCT FROM OLD.invocation_id OR NEW.invocation_hash IS DISTINCT FROM OLD.invocation_hash OR NEW.invocation_input_hash IS DISTINCT FROM OLD.invocation_input_hash OR NEW.reservation_hash IS DISTINCT FROM OLD.reservation_hash OR NEW.attempt_id IS DISTINCT FROM OLD.attempt_id OR NEW.invoking_user_id IS DISTINCT FROM OLD.invoking_user_id OR NEW.approved_by_user_id IS DISTINCT FROM OLD.approved_by_user_id OR NEW.provider_contacted IS DISTINCT FROM OLD.provider_contacted OR NEW.provider_mutation_performed IS DISTINCT FROM OLD.provider_mutation_performed OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref OR NEW.reserved_at IS DISTINCT FROM OLD.reserved_at OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN RAISE EXCEPTION 'orchestrator_oxe_immutable_lineage';END IF;
+      IF NEW.version<>OLD.version+1 OR NOT ((OLD.state='reserved' AND NEW.state IN('running','cancelled')) OR (OLD.state='running' AND NEW.state IN('succeeded','failed','indeterminate'))) THEN RAISE EXCEPTION 'orchestrator_oxe_invalid_transition';END IF;RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_oxe_guard ON orchestrator_optimization_executions;
+    CREATE TRIGGER orchestrator_oxe_guard BEFORE UPDATE OR DELETE ON orchestrator_optimization_executions FOR EACH ROW EXECUTE FUNCTION orchestrator_oxe_guard();
+    CREATE OR REPLACE FUNCTION orchestrator_oxee_guard() RETURNS trigger AS $fn$ DECLARE r orchestrator_optimization_executions%ROWTYPE;BEGIN IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'orchestrator_oxee_append_only';END IF;SELECT * INTO r FROM orchestrator_optimization_executions WHERE tenant_id=NEW.tenant_id AND id=NEW.execution_id;IF NOT FOUND OR r.version<>NEW.execution_version OR r.state<>NEW.new_state THEN RAISE EXCEPTION 'orchestrator_oxee_execution_mismatch';END IF;IF NEW.execution_version>1 AND NOT EXISTS(SELECT 1 FROM orchestrator_optimization_execution_run_events WHERE tenant_id=NEW.tenant_id AND execution_id=NEW.execution_id AND execution_version=NEW.execution_version-1 AND new_state=NEW.previous_state) THEN RAISE EXCEPTION 'orchestrator_oxee_nonmonotonic';END IF;RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_oxee_guard ON orchestrator_optimization_execution_run_events;
+    CREATE TRIGGER orchestrator_oxee_guard BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_optimization_execution_run_events FOR EACH ROW EXECUTE FUNCTION orchestrator_oxee_guard();
+    CREATE OR REPLACE FUNCTION orchestrator_oxe_event_consistency() RETURNS trigger AS $fn$ BEGIN IF NOT EXISTS(SELECT 1 FROM orchestrator_optimization_execution_run_events WHERE tenant_id=NEW.tenant_id AND execution_id=NEW.id AND execution_version=NEW.version AND new_state=NEW.state) THEN RAISE EXCEPTION 'orchestrator_oxe_event_required';END IF;RETURN NULL;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_oxe_event_consistency ON orchestrator_optimization_executions;
+    CREATE CONSTRAINT TRIGGER orchestrator_oxe_event_consistency AFTER INSERT OR UPDATE ON orchestrator_optimization_executions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION orchestrator_oxe_event_consistency();
   `);
 
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
