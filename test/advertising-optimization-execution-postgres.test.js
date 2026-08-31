@@ -4,12 +4,13 @@ const fixture=require('./advertising-meta-delivery-discrepancy-postgres.test');
 const R=require('../services/agent_orchestrator/optimization_recommendations'),E=require('../services/agent_orchestrator/optimization_execution');
 const permit=()=>true;
 const actor=(f,user=f.user,x={})=>({tenantId:f.tenant,actorUserId:user,actorType:'human',principalType:'human',sessionId:`human-${f.tag}-${user}`,hasExplicitTenantPermission:permit,pool:db.getPool(),...x});
-async function approved(tag,state='verified_active'){
- const f=await fixture.seedMonitoring(state,tag);let s=await R.createOrGet(actor(f,f.user,{monitoringRunId:f.run,invocationId:'recommend'}));
+async function approved(tag){
+ const f=await fixture.seedMonitoring('discrepancy_detected',tag);let s=await R.createOrGet(actor(f,f.user,{monitoringRunId:f.run,invocationId:'recommend'}));
  s=await R.transition(actor(f,f.user,{setId:s.recommendation_set_id,action:'submit',expectedVersion:1,decisionId:'submit-rec'}));
  s=await R.transition(actor(f,f.user,{setId:s.recommendation_set_id,action:'approve',expectedVersion:2,decisionId:'approve-rec'}));
  const user=(await db.getPool().query(`INSERT INTO users(email,password_hash,name) VALUES($1,'x','approver') RETURNING id`,[`${tag}-${crypto.randomUUID()}@test.invalid`])).rows[0].id;
- return {...f,set:s.recommendation_set_id,rec:s.recommendations.find(r=>['review_delivery_configuration','review_budget_allocation','review_bid_strategy','review_audience_targeting','review_placements','review_schedule','review_creative_performance'].includes(r.category)).recommendation_id,approver:user};
+ const rec=await db.getPool().query(`SELECT id FROM orchestrator_campaign_optimization_recommendations WHERE tenant_id=$1 AND set_id=$2 AND category='review_delivery_configuration'`,[f.tenant,s.recommendation_set_id]);assert.equal(rec.rowCount,1);
+ return {...f,set:s.recommendation_set_id,rec:rec.rows[0].id,approver:user};
 }
 const create=(f,inv='create',x={})=>E.createOrGet(actor(f,f.user,{recommendationSetId:f.set,recommendationId:f.rec,invocationId:inv,...x}));
 const move=(f,r,user,action,decision,x={})=>E.transition(actor(f,user,{requestId:r.request_id,action,decisionId:decision,expectedVersion:r.version,...x}));
@@ -41,7 +42,7 @@ if(!db.hasDb())test('PR8B PostgreSQL requires DATABASE_URL',{skip:'no DATABASE_U
   const g=await approved(`pr8b-compete-${Date.now()}`);let x=await create(g);x=await move(g,x,g.user,'submit','submit');const competed=await Promise.allSettled([move(g,x,g.approver,'approve','yes'),move(g,x,g.approver,'reject','no')]);assert.equal(competed.filter(v=>v.status==='fulfilled').length,1);assert.equal(competed.filter(v=>v.status==='rejected').length,1);
  });
  test('source revocation transactionally invalidates and append-only/lineage guards remain effective',async()=>{
-  const f=await approved(`pr8b-invalidate-${Date.now()}`);let r=await create(f);await db.getPool().query(`UPDATE orchestrator_tenant_meta_credential_refs SET revoked_at=now(),status='revoked' WHERE tenant_id=$1 AND id=$2`,[f.tenant,f.credential]);await assert.rejects(move(f,r,f.user,'submit','submit'),{code:'source_ineligible'});assert.equal((await row(f,r.request_id)).state,'invalidated');
+  const f=await approved(`pr8b-invalidate-${Date.now()}`);let r=await create(f);await db.getPool().query(`UPDATE orchestrator_tenant_meta_credential_refs SET revoked_at=now(),status='revoked' WHERE tenant_id=$1 AND id=$2`,[f.tenant,f.credential]);await assert.rejects(move(f,r,f.user,'submit','d'.repeat(100)),{code:'source_ineligible'});assert.equal((await row(f,r.request_id)).state,'invalidated');
   await assert.rejects(db.getPool().query(`UPDATE orchestrator_optimization_execution_requests SET recommendation_id='changed' WHERE tenant_id=$1 AND id=$2`,[f.tenant,r.request_id]),/immutable|lineage/i);
   await assert.rejects(db.getPool().query(`DELETE FROM orchestrator_optimization_execution_events WHERE tenant_id=$1 AND request_id=$2`,[f.tenant,r.request_id]),/append.only/i);
  });
