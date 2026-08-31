@@ -6683,6 +6683,96 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION orchestrator_cddc_event_consistency();
   `);
 
+  // PR 8A — advisory-only optimization recommendations. Sensitive lineage is
+  // frozen internally; the API exposes only bounded operational evidence.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_optimization_recommendation_sets (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, id TEXT NOT NULL,
+      monitoring_run_id TEXT NOT NULL, case_id TEXT NULL, case_version INTEGER NULL,
+      case_event_ref TEXT NULL, case_classification TEXT NULL,
+      case_resolver_user_id INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT, case_resolved_at TIMESTAMPTZ NULL,
+      activation_attempt_id TEXT NOT NULL, capability_id TEXT NOT NULL, publishing_request_id TEXT NOT NULL,
+      publish_approval_id TEXT NOT NULL, workflow_approval_id INTEGER NOT NULL, workflow_id TEXT NOT NULL,
+      draft_id TEXT NOT NULL, draft_revision INTEGER NOT NULL, snapshot_hash TEXT NOT NULL,
+      intent_id TEXT NOT NULL, intent_hash TEXT NOT NULL, execution_id TEXT NOT NULL,
+      reconciliation_run_id TEXT NOT NULL, credential_ref_id TEXT NOT NULL, credential_ref_version INTEGER NOT NULL,
+      account_fingerprint TEXT NOT NULL, ledger_root_hash TEXT NOT NULL,
+      source_state TEXT NOT NULL, source_classifications TEXT[] NOT NULL DEFAULT '{}',
+      source_failure_classifications TEXT[] NOT NULL DEFAULT '{}', source_actor_user_id INTEGER NOT NULL REFERENCES users(id),
+      source_started_at TIMESTAMPTZ NOT NULL, source_completed_at TIMESTAMPTZ NOT NULL,
+      creation_actor_user_id INTEGER NOT NULL REFERENCES users(id), creation_session_hash TEXT NOT NULL,
+      invocation_hash TEXT NOT NULL, engine_version TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'draft',
+      version INTEGER NOT NULL DEFAULT 1, audit_ref TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), submitted_at TIMESTAMPTZ NULL, approved_at TIMESTAMPTZ NULL,
+      rejected_at TIMESTAMPTZ NULL, superseded_at TIMESTAMPTZ NULL,
+      PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,monitoring_run_id), UNIQUE(tenant_id,invocation_hash), UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,monitoring_run_id) REFERENCES orchestrator_campaign_monitoring_runs(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,case_id) REFERENCES orchestrator_campaign_delivery_discrepancy_cases(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,activation_attempt_id) REFERENCES orchestrator_campaign_activation_attempts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,capability_id) REFERENCES orchestrator_campaign_activation_capabilities(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publishing_request_id) REFERENCES orchestrator_campaign_publish_requests(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publish_approval_id) REFERENCES orchestrator_campaign_publish_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,workflow_approval_id) REFERENCES orchestrator_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,draft_id) REFERENCES orchestrator_campaign_drafts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,intent_id) REFERENCES orchestrator_campaign_delivery_intents(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,execution_id) REFERENCES orchestrator_campaign_provider_draft_executions(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,reconciliation_run_id) REFERENCES orchestrator_campaign_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,credential_ref_id) REFERENCES orchestrator_tenant_meta_credential_refs(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_cors_state CHECK(state IN('draft','submitted','approved','rejected','superseded')),
+      CONSTRAINT orchestrator_cors_source CHECK(source_state IN('verified_active','delivery_pending','discrepancy_detected','failed')),
+      CONSTRAINT orchestrator_cors_case CHECK((case_id IS NULL AND case_version IS NULL AND case_event_ref IS NULL AND case_classification IS NULL AND case_resolver_user_id IS NULL AND case_resolved_at IS NULL) OR
+        (case_id IS NOT NULL AND case_version>=1 AND case_event_ref IS NOT NULL AND case_classification IN('delivery_confirmed_externally','provider_delay_accepted','monitoring_failure_accepted','false_positive','other_documented_resolution') AND case_resolver_user_id IS NOT NULL AND case_resolved_at IS NOT NULL)),
+      CONSTRAINT orchestrator_cors_shape CHECK(version>=1 AND draft_revision>=1 AND credential_ref_version>=1 AND source_completed_at>=source_started_at AND
+        snapshot_hash~'^[0-9a-f]{64}$' AND intent_hash~'^[0-9a-f]{64}$' AND account_fingerprint~'^[0-9a-f]{64}$' AND ledger_root_hash~'^[0-9a-f]{64}$' AND creation_session_hash~'^[0-9a-f]{64}$' AND invocation_hash~'^[0-9a-f]{64}$' AND
+        ((state='draft' AND submitted_at IS NULL AND approved_at IS NULL AND rejected_at IS NULL AND superseded_at IS NULL) OR
+         (state='submitted' AND submitted_at IS NOT NULL AND approved_at IS NULL AND rejected_at IS NULL AND superseded_at IS NULL) OR
+         (state='approved' AND submitted_at IS NOT NULL AND approved_at IS NOT NULL AND rejected_at IS NULL AND superseded_at IS NULL) OR
+         (state='rejected' AND submitted_at IS NOT NULL AND rejected_at IS NOT NULL AND approved_at IS NULL AND superseded_at IS NULL) OR
+         (state='superseded' AND approved_at IS NOT NULL AND superseded_at IS NOT NULL)))
+    );
+    CREATE INDEX IF NOT EXISTS orchestrator_cors_list ON orchestrator_campaign_optimization_recommendation_sets(tenant_id,created_at DESC,id DESC);
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_optimization_recommendations(
+      tenant_id INTEGER NOT NULL,id TEXT NOT NULL,set_id TEXT NOT NULL,ordinal INTEGER NOT NULL,
+      category TEXT NOT NULL,rationale TEXT NOT NULL,evidence_refs TEXT[] NOT NULL,confidence TEXT NOT NULL,
+      priority TEXT NOT NULL,proposed_action TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY(tenant_id,id),UNIQUE(tenant_id,set_id,ordinal),
+      FOREIGN KEY(tenant_id,set_id) REFERENCES orchestrator_campaign_optimization_recommendation_sets(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_cor_category CHECK(category IN('monitor_longer','review_budget_allocation','review_bid_strategy','review_audience_targeting','review_placements','review_schedule','review_creative_performance','review_delivery_configuration','no_change_recommended')),
+      CONSTRAINT orchestrator_cor_confidence CHECK(confidence IN('low','medium','high')),
+      CONSTRAINT orchestrator_cor_priority CHECK(priority IN('low','medium','high')),
+      CONSTRAINT orchestrator_cor_shape CHECK(ordinal BETWEEN 1 AND 9 AND char_length(rationale) BETWEEN 1 AND 1000 AND char_length(proposed_action) BETWEEN 1 AND 1000 AND cardinality(evidence_refs) BETWEEN 1 AND 8)
+    );
+    CREATE TABLE IF NOT EXISTS orchestrator_campaign_optimization_review_events(
+      tenant_id INTEGER NOT NULL,id BIGSERIAL,set_id TEXT NOT NULL,set_version INTEGER NOT NULL,
+      previous_state TEXT NULL,new_state TEXT NOT NULL,note TEXT NULL,actor_user_id INTEGER NOT NULL REFERENCES users(id),
+      decision_id TEXT NULL,input_hash TEXT NULL,audit_ref TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY(tenant_id,id),UNIQUE(tenant_id,set_id,set_version),UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,set_id) REFERENCES orchestrator_campaign_optimization_recommendation_sets(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_core_state CHECK(new_state IN('draft','submitted','approved','rejected','superseded') AND (previous_state IS NULL OR previous_state IN('draft','submitted','approved'))),
+      CONSTRAINT orchestrator_core_shape CHECK(set_version>=1 AND (note IS NULL OR char_length(note) BETWEEN 1 AND 1000) AND ((set_version=1 AND previous_state IS NULL AND new_state='draft' AND decision_id IS NULL AND input_hash IS NULL) OR (decision_id~'^[A-Za-z0-9._:-]{1,100}$' AND input_hash~'^[0-9a-f]{64}$')))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_core_decision ON orchestrator_campaign_optimization_review_events(tenant_id,decision_id) WHERE decision_id IS NOT NULL;
+    CREATE OR REPLACE FUNCTION orchestrator_cors_guard() RETURNS trigger AS $fn$ BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_cors_delete_prohibited';END IF;
+      IF OLD.state IN('rejected','superseded') THEN RAISE EXCEPTION 'orchestrator_cors_terminal_immutable';END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id OR NEW.monitoring_run_id IS DISTINCT FROM OLD.monitoring_run_id OR NEW.case_id IS DISTINCT FROM OLD.case_id OR NEW.case_version IS DISTINCT FROM OLD.case_version OR NEW.case_event_ref IS DISTINCT FROM OLD.case_event_ref OR NEW.case_classification IS DISTINCT FROM OLD.case_classification OR NEW.case_resolver_user_id IS DISTINCT FROM OLD.case_resolver_user_id OR NEW.case_resolved_at IS DISTINCT FROM OLD.case_resolved_at OR
+       NEW.activation_attempt_id IS DISTINCT FROM OLD.activation_attempt_id OR NEW.capability_id IS DISTINCT FROM OLD.capability_id OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id OR NEW.workflow_approval_id IS DISTINCT FROM OLD.workflow_approval_id OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id OR NEW.draft_id IS DISTINCT FROM OLD.draft_id OR NEW.draft_revision IS DISTINCT FROM OLD.draft_revision OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash OR NEW.intent_id IS DISTINCT FROM OLD.intent_id OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash OR NEW.execution_id IS DISTINCT FROM OLD.execution_id OR NEW.reconciliation_run_id IS DISTINCT FROM OLD.reconciliation_run_id OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash OR NEW.source_state IS DISTINCT FROM OLD.source_state OR NEW.source_classifications IS DISTINCT FROM OLD.source_classifications OR NEW.source_failure_classifications IS DISTINCT FROM OLD.source_failure_classifications OR NEW.source_actor_user_id IS DISTINCT FROM OLD.source_actor_user_id OR NEW.source_started_at IS DISTINCT FROM OLD.source_started_at OR NEW.source_completed_at IS DISTINCT FROM OLD.source_completed_at OR NEW.creation_actor_user_id IS DISTINCT FROM OLD.creation_actor_user_id OR NEW.creation_session_hash IS DISTINCT FROM OLD.creation_session_hash OR NEW.invocation_hash IS DISTINCT FROM OLD.invocation_hash OR NEW.engine_version IS DISTINCT FROM OLD.engine_version OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref OR NEW.created_at IS DISTINCT FROM OLD.created_at
+      THEN RAISE EXCEPTION 'orchestrator_cors_immutable_lineage';END IF;
+      IF NEW.version<>OLD.version+1 THEN RAISE EXCEPTION 'orchestrator_cors_invalid_version';END IF;
+      IF NOT ((OLD.state='draft' AND NEW.state='submitted') OR (OLD.state='submitted' AND NEW.state IN('approved','rejected')) OR (OLD.state='approved' AND NEW.state='superseded')) THEN RAISE EXCEPTION 'orchestrator_cors_invalid_transition';END IF;RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_cors_guard ON orchestrator_campaign_optimization_recommendation_sets;
+    CREATE TRIGGER orchestrator_cors_guard BEFORE UPDATE OR DELETE ON orchestrator_campaign_optimization_recommendation_sets FOR EACH ROW EXECUTE FUNCTION orchestrator_cors_guard();
+    CREATE OR REPLACE FUNCTION orchestrator_cor_guard() RETURNS trigger AS $fn$ DECLARE s TEXT;BEGIN IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'orchestrator_cor_immutable';END IF;SELECT state INTO s FROM orchestrator_campaign_optimization_recommendation_sets WHERE tenant_id=NEW.tenant_id AND id=NEW.set_id;IF s<>'draft' THEN RAISE EXCEPTION 'orchestrator_cor_set_frozen';END IF;RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_cor_guard ON orchestrator_campaign_optimization_recommendations;
+    CREATE TRIGGER orchestrator_cor_guard BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_optimization_recommendations FOR EACH ROW EXECUTE FUNCTION orchestrator_cor_guard();
+    CREATE OR REPLACE FUNCTION orchestrator_core_guard() RETURNS trigger AS $fn$ DECLARE s orchestrator_campaign_optimization_recommendation_sets%ROWTYPE;BEGIN IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'orchestrator_core_append_only';END IF;SELECT * INTO s FROM orchestrator_campaign_optimization_recommendation_sets WHERE tenant_id=NEW.tenant_id AND id=NEW.set_id;IF NOT FOUND OR s.version<>NEW.set_version OR s.state<>NEW.new_state THEN RAISE EXCEPTION 'orchestrator_core_set_mismatch';END IF;IF NEW.set_version>1 AND NOT EXISTS(SELECT 1 FROM orchestrator_campaign_optimization_review_events WHERE tenant_id=NEW.tenant_id AND set_id=NEW.set_id AND set_version=NEW.set_version-1 AND new_state=NEW.previous_state) THEN RAISE EXCEPTION 'orchestrator_core_nonmonotonic';END IF;RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_core_guard ON orchestrator_campaign_optimization_review_events;
+    CREATE TRIGGER orchestrator_core_guard BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_campaign_optimization_review_events FOR EACH ROW EXECUTE FUNCTION orchestrator_core_guard();
+    CREATE OR REPLACE FUNCTION orchestrator_cors_event_consistency() RETURNS trigger AS $fn$ BEGIN IF NOT EXISTS(SELECT 1 FROM orchestrator_campaign_optimization_review_events WHERE tenant_id=NEW.tenant_id AND set_id=NEW.id AND set_version=NEW.version AND new_state=NEW.state) THEN RAISE EXCEPTION 'orchestrator_cors_event_required';END IF;RETURN NULL;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_cors_event_consistency ON orchestrator_campaign_optimization_recommendation_sets;
+    CREATE CONSTRAINT TRIGGER orchestrator_cors_event_consistency AFTER INSERT OR UPDATE ON orchestrator_campaign_optimization_recommendation_sets DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION orchestrator_cors_event_consistency();
+  `);
+
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
     'orchestrator_cpo_tenant_execution_kind', 'tenant_id, execution_id, object_kind');
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',

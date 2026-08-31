@@ -301,4 +301,7 @@ router.use('/campaign-drafts', campaignApi);
 const reconciliationReviewApi = require('./reconciliation_review_api');
 router.use('/reconciliation-reviews', reconciliationReviewApi);
 
+const optimizationRecommendationsApi = require('./optimization_recommendations_api');
+router.use('/optimization-recommendations', optimizationRecommendationsApi);
+
 module.exports = router;

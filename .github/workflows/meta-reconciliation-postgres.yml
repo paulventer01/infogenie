@@ -100,3 +100,7 @@ jobs:
             | tee pr7d-delivery-discrepancy.tap
           grep -Eq '^# fail 0$' pr7d-delivery-discrepancy.tap
           grep -Eq '^# skipped 0$' pr7d-delivery-discrepancy.tap
+          node --test --test-force-exit test/advertising-optimization-recommendations-postgres.test.js \
+            | tee pr8a-optimization-recommendations.tap
+          grep -Eq '^# fail 0$' pr8a-optimization-recommendations.tap
+          grep -Eq '^# skipped 0$' pr8a-optimization-recommendations.tap
