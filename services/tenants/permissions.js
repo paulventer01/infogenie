@@ -124,6 +124,7 @@ const PERMISSIONS = [
   { key:'advertising.campaign.delivery.resolve', scope:'tenant', area:'Advertising', label:'Record a human operational disposition for a monitored delivery discrepancy' },
   { key:'advertising.campaign.optimization.review', scope:'tenant', area:'Advertising', label:'Create and review evidence-backed campaign optimization recommendations' },
   { key:'advertising.campaign.optimization.execute', scope:'tenant', area:'Advertising', label:'Approve an internal optimization execution plan' },
+  { key:'advertising.campaign.optimization.execute.approved', scope:'tenant', area:'Advertising', label:'Execute an approved internal optimization action' },
 
   // ── Reach section ─────────────────────────────────────────────────────────
   { key:'reach.audiences.view',      scope:'tenant',   area:'Reach',     label:'View dynamic audiences & segments' },
@@ -184,7 +185,8 @@ const ALL_VIEW_PERMISSION_KEYS = PERMISSIONS.filter(p => p.scope === 'tenant' &&
 const DEFAULT_ROLE_PERMISSION_KEYS = ALL_TENANT_PERMISSION_KEYS.filter(k =>
   k !== 'advertising.campaign.activate' && k !== 'advertising.campaign.monitor'
   && k !== 'advertising.campaign.delivery.resolve' && k !== 'advertising.campaign.optimization.review'
-  && k !== 'advertising.campaign.optimization.execute');
+  && k !== 'advertising.campaign.optimization.execute'
+  && k !== 'advertising.campaign.optimization.execute.approved');
 
 // ── System role definitions ─────────────────────────────────────────────────
 // These are seeded into the `roles` table with tenant_id=NULL (system-wide).
@@ -198,7 +200,8 @@ const SYSTEM_ROLES = [
     permissions: ALL_PERMISSION_KEYS.filter(k =>
       k !== 'advertising.campaign.activate' && k !== 'advertising.campaign.monitor'
       && k !== 'advertising.campaign.delivery.resolve' && k !== 'advertising.campaign.optimization.review'
-      && k !== 'advertising.campaign.optimization.execute'),
+      && k !== 'advertising.campaign.optimization.execute'
+      && k !== 'advertising.campaign.optimization.execute.approved'),
   },
   {
     key: 'platform_admin',
