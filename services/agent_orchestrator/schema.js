@@ -117,6 +117,9 @@ const ADVERTISING_ORCH_TABLES = [
   // PR 7D — human operational disposition of eligible terminal monitoring.
   'orchestrator_campaign_delivery_discrepancy_cases',
   'orchestrator_campaign_delivery_discrepancy_events',
+  // PR 8B — human-controlled, internal-only optimization execution plans.
+  'orchestrator_optimization_execution_requests',
+  'orchestrator_optimization_execution_events',
   // PR 6F-1R — append-only provider-object outcome events (no mutable compensation).
   'orchestrator_campaign_provider_object_events',
 ];
@@ -6780,6 +6783,109 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE OR REPLACE FUNCTION orchestrator_cors_event_consistency() RETURNS trigger AS $fn$ BEGIN IF NOT EXISTS(SELECT 1 FROM orchestrator_campaign_optimization_review_events WHERE tenant_id=NEW.tenant_id AND set_id=NEW.id AND set_version=NEW.version AND new_state=NEW.state) THEN RAISE EXCEPTION 'orchestrator_cors_event_required';END IF;RETURN NULL;END;$fn$ LANGUAGE plpgsql;
     DROP TRIGGER IF EXISTS orchestrator_cors_event_consistency ON orchestrator_campaign_optimization_recommendation_sets;
     CREATE CONSTRAINT TRIGGER orchestrator_cors_event_consistency AFTER INSERT OR UPDATE ON orchestrator_campaign_optimization_recommendation_sets DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION orchestrator_cors_event_consistency();
+  `);
+
+  // PR 8B — a frozen internal plan only. These rows contain digest metadata,
+  // never provider identifiers, credentials, payloads, or an execution result.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_optimization_execution_requests(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL, invocation_hash TEXT NOT NULL, input_hash TEXT NOT NULL,
+      recommendation_set_id TEXT NOT NULL, recommendation_id TEXT NOT NULL,
+      recommendation_set_generation INTEGER NOT NULL, recommendation_set_version INTEGER NOT NULL,
+      monitoring_run_id TEXT NOT NULL, case_id TEXT NULL, case_version INTEGER NULL, case_resolution_event_id TEXT NULL,
+      activation_attempt_id TEXT NOT NULL, capability_id TEXT NOT NULL, workflow_id TEXT NOT NULL,
+      draft_id TEXT NOT NULL, draft_revision INTEGER NOT NULL,
+      publishing_request_id TEXT NOT NULL, publish_approval_id TEXT NOT NULL,
+      snapshot_hash TEXT NOT NULL, intent_id TEXT NOT NULL, intent_hash TEXT NOT NULL,
+      execution_id TEXT NOT NULL, reconciliation_run_id TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL, credential_ref_version INTEGER NOT NULL,
+      account_fingerprint TEXT NOT NULL, ledger_root_hash TEXT NOT NULL,
+      proposed_action TEXT NOT NULL, rationale TEXT NOT NULL, evidence_refs TEXT[] NOT NULL,
+      creator_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      state TEXT NOT NULL DEFAULT 'draft', version INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(), submitted_at TIMESTAMPTZ NULL, decided_at TIMESTAMPTZ NULL,
+      decision_id TEXT NULL, decision_hash TEXT NULL,
+      deciding_user_id INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT,
+      creation_session_hash TEXT NOT NULL, note TEXT NULL, audit_ref TEXT NOT NULL,
+      PRIMARY KEY(tenant_id,id),
+      UNIQUE(tenant_id,invocation_hash), UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,recommendation_set_id) REFERENCES orchestrator_campaign_optimization_recommendation_sets(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,recommendation_id) REFERENCES orchestrator_campaign_optimization_recommendations(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,monitoring_run_id) REFERENCES orchestrator_campaign_monitoring_runs(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,case_id) REFERENCES orchestrator_campaign_delivery_discrepancy_cases(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,activation_attempt_id) REFERENCES orchestrator_campaign_activation_attempts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,capability_id) REFERENCES orchestrator_campaign_activation_capabilities(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,workflow_id) REFERENCES orchestrator_workflows(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,draft_id) REFERENCES orchestrator_campaign_drafts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publishing_request_id) REFERENCES orchestrator_campaign_publish_requests(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publish_approval_id) REFERENCES orchestrator_campaign_publish_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,intent_id) REFERENCES orchestrator_campaign_delivery_intents(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,execution_id) REFERENCES orchestrator_campaign_provider_draft_executions(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,reconciliation_run_id) REFERENCES orchestrator_campaign_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,credential_ref_id) REFERENCES orchestrator_tenant_meta_credential_refs(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_oer_state CHECK(state IN('draft','submitted','approved','rejected','invalidated')),
+      CONSTRAINT orchestrator_oer_action CHECK(proposed_action IN('review_delivery_configuration','review_campaign_configuration','review_credential_configuration','prepare_campaign_remediation')),
+      CONSTRAINT orchestrator_oer_shape CHECK(
+        version>=1 AND recommendation_set_generation>=1 AND recommendation_set_version>=1 AND draft_revision>=1 AND credential_ref_version>=1
+        AND invocation_hash~'^[0-9a-f]{64}$' AND input_hash~'^[0-9a-f]{64}$' AND creation_session_hash~'^[0-9a-f]{64}$'
+        AND snapshot_hash~'^[0-9a-f]{64}$' AND intent_hash~'^[0-9a-f]{64}$'
+        AND account_fingerprint~'^[0-9a-f]{64}$' AND ledger_root_hash~'^[0-9a-f]{64}$'
+        AND char_length(rationale) BETWEEN 1 AND 1000 AND cardinality(evidence_refs) BETWEEN 1 AND 8
+        AND (note IS NULL OR char_length(note) BETWEEN 1 AND 1000)
+        AND ((case_id IS NULL AND case_version IS NULL AND case_resolution_event_id IS NULL) OR (case_id IS NOT NULL AND case_version>=1 AND case_resolution_event_id IS NOT NULL))
+        AND ((state='draft' AND submitted_at IS NULL AND decided_at IS NULL AND decision_id IS NULL AND decision_hash IS NULL AND deciding_user_id IS NULL)
+          OR (state='submitted' AND submitted_at IS NOT NULL AND decided_at IS NULL AND decision_id IS NULL AND decision_hash IS NULL AND deciding_user_id IS NULL)
+          OR (state IN('approved','rejected') AND submitted_at IS NOT NULL AND decided_at IS NOT NULL AND decision_id IS NOT NULL AND decision_hash~'^[0-9a-f]{64}$' AND deciding_user_id IS NOT NULL)
+          OR (state='invalidated' AND decided_at IS NOT NULL))
+        AND (state<>'approved' OR creator_user_id<>deciding_user_id)
+      )
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_oer_one_active ON orchestrator_optimization_execution_requests(tenant_id,recommendation_set_id,recommendation_id) WHERE state IN('draft','submitted');
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_oer_decision_id ON orchestrator_optimization_execution_requests(tenant_id,decision_id) WHERE decision_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS orchestrator_oer_list ON orchestrator_optimization_execution_requests(tenant_id,created_at DESC,id DESC);
+
+    CREATE TABLE IF NOT EXISTS orchestrator_optimization_execution_events(
+      tenant_id INTEGER NOT NULL, id BIGSERIAL, request_id TEXT NOT NULL, request_version INTEGER NOT NULL,
+      previous_state TEXT NULL, new_state TEXT NOT NULL, actor_user_id INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT,
+      decision_id TEXT NULL, input_hash TEXT NULL, audit_ref TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,request_id,request_version), UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,request_id) REFERENCES orchestrator_optimization_execution_requests(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_oee_state CHECK(new_state IN('draft','submitted','approved','rejected','invalidated') AND (previous_state IS NULL OR previous_state IN('draft','submitted'))),
+      CONSTRAINT orchestrator_oee_shape CHECK(request_version>=1 AND ((request_version=1 AND previous_state IS NULL AND new_state='draft' AND decision_id IS NULL AND input_hash IS NULL)
+          OR (request_version>1 AND decision_id~'^[A-Za-z0-9._:-]{1,100}$' AND input_hash~'^[0-9a-f]{64}$')))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_oee_decision ON orchestrator_optimization_execution_events(tenant_id,decision_id) WHERE decision_id IS NOT NULL;
+
+    CREATE OR REPLACE FUNCTION orchestrator_oer_guard() RETURNS trigger AS $fn$ BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_oer_delete_prohibited';END IF;
+      IF OLD.state IN('approved','rejected','invalidated') THEN RAISE EXCEPTION 'orchestrator_oer_terminal_immutable';END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id OR NEW.invocation_hash IS DISTINCT FROM OLD.invocation_hash
+        OR NEW.recommendation_set_id IS DISTINCT FROM OLD.recommendation_set_id OR NEW.recommendation_id IS DISTINCT FROM OLD.recommendation_id OR NEW.recommendation_set_generation IS DISTINCT FROM OLD.recommendation_set_generation OR NEW.recommendation_set_version IS DISTINCT FROM OLD.recommendation_set_version
+        OR NEW.monitoring_run_id IS DISTINCT FROM OLD.monitoring_run_id OR NEW.case_id IS DISTINCT FROM OLD.case_id OR NEW.case_version IS DISTINCT FROM OLD.case_version OR NEW.case_resolution_event_id IS DISTINCT FROM OLD.case_resolution_event_id
+        OR NEW.activation_attempt_id IS DISTINCT FROM OLD.activation_attempt_id OR NEW.capability_id IS DISTINCT FROM OLD.capability_id OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id OR NEW.draft_id IS DISTINCT FROM OLD.draft_id OR NEW.draft_revision IS DISTINCT FROM OLD.draft_revision
+        OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash OR NEW.intent_id IS DISTINCT FROM OLD.intent_id OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+        OR NEW.execution_id IS DISTINCT FROM OLD.execution_id OR NEW.reconciliation_run_id IS DISTINCT FROM OLD.reconciliation_run_id OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash
+        OR NEW.proposed_action IS DISTINCT FROM OLD.proposed_action OR NEW.rationale IS DISTINCT FROM OLD.rationale OR NEW.evidence_refs IS DISTINCT FROM OLD.evidence_refs OR NEW.creator_user_id IS DISTINCT FROM OLD.creator_user_id OR NEW.creation_session_hash IS DISTINCT FROM OLD.creation_session_hash OR NEW.input_hash IS DISTINCT FROM OLD.input_hash OR NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+      THEN RAISE EXCEPTION 'orchestrator_oer_immutable_lineage';END IF;
+      IF NEW.version<>OLD.version+1 THEN RAISE EXCEPTION 'orchestrator_oer_invalid_version';END IF;
+      IF NOT ((OLD.state='draft' AND NEW.state IN('submitted','invalidated')) OR (OLD.state='submitted' AND NEW.state IN('approved','rejected','invalidated'))) THEN RAISE EXCEPTION 'orchestrator_oer_invalid_transition';END IF;
+      RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_oer_guard ON orchestrator_optimization_execution_requests;
+    CREATE TRIGGER orchestrator_oer_guard BEFORE UPDATE OR DELETE ON orchestrator_optimization_execution_requests FOR EACH ROW EXECUTE FUNCTION orchestrator_oer_guard();
+    CREATE OR REPLACE FUNCTION orchestrator_oee_guard() RETURNS trigger AS $fn$ DECLARE r orchestrator_optimization_execution_requests%ROWTYPE;BEGIN
+      IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'orchestrator_oee_append_only';END IF;
+      SELECT * INTO r FROM orchestrator_optimization_execution_requests WHERE tenant_id=NEW.tenant_id AND id=NEW.request_id;
+      IF NOT FOUND OR r.version<>NEW.request_version OR r.state<>NEW.new_state THEN RAISE EXCEPTION 'orchestrator_oee_request_mismatch';END IF;
+      IF NEW.request_version>1 AND NOT EXISTS(SELECT 1 FROM orchestrator_optimization_execution_events WHERE tenant_id=NEW.tenant_id AND request_id=NEW.request_id AND request_version=NEW.request_version-1 AND new_state=NEW.previous_state) THEN RAISE EXCEPTION 'orchestrator_oee_nonmonotonic';END IF;
+      RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_oee_guard ON orchestrator_optimization_execution_events;
+    CREATE TRIGGER orchestrator_oee_guard BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_optimization_execution_events FOR EACH ROW EXECUTE FUNCTION orchestrator_oee_guard();
+    CREATE OR REPLACE FUNCTION orchestrator_oer_event_consistency() RETURNS trigger AS $fn$ BEGIN
+      IF NOT EXISTS(SELECT 1 FROM orchestrator_optimization_execution_events WHERE tenant_id=NEW.tenant_id AND request_id=NEW.id AND request_version=NEW.version AND new_state=NEW.state) THEN RAISE EXCEPTION 'orchestrator_oer_event_required';END IF;RETURN NULL;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_oer_event_consistency ON orchestrator_optimization_execution_requests;
+    CREATE CONSTRAINT TRIGGER orchestrator_oer_event_consistency AFTER INSERT OR UPDATE ON orchestrator_optimization_execution_requests DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION orchestrator_oer_event_consistency();
   `);
 
   await _ensureNamedUnique(p, 'orchestrator_campaign_provider_objects',
