@@ -128,6 +128,7 @@ function _publicUser(u) {
   if (!u) return null;
   return {
     id: u.id, email: u.email, name: u.name || '',
+    principalType: 'human',
     isOwner: !!u.is_owner,
     emailVerified: !!u.email_verified_at,
     createdAt: u.created_at,

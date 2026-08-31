@@ -658,6 +658,7 @@ const _OWNER_GATE_ALLOW = [
   // anchored so similarly named orchestrator routes remain owner-gated.
   /^\/api\/agent-orchestrator\/meta-delivery-monitoring(?:\/|$)/,
   /^\/api\/agent-orchestrator\/delivery-discrepancies(?:\/|$)/,
+  /^\/api\/agent-orchestrator\/optimization-recommendations(?:\/|$)/,
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
