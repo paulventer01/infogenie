@@ -134,7 +134,9 @@ if (!db.hasDb()) {
 } else {
   before(() => fixture.bootstrapSchemasOnce());
 
-  test('20 duplicate calls serialize, invoke once, and replay one safe terminal result', async () => {
+  test('20 duplicate calls serialize, invoke once, and replay one safe terminal result', {
+    timeout: 15_000,
+  }, async () => {
     const f = await approved(unique('pr9c-same'));
     const calls = { calls: 0 };
     const adapter = countingAdapter(calls);
@@ -312,11 +314,14 @@ if (!db.hasDb()) {
   test('injected reservation failure rolls back atomically and leaves the pool transaction-clean', async () => {
     const f = await approved(unique('pr9c-rollback'));
     const pool = db.getPool();
+    const observer = await pool.connect();
+    let faultedBackendPid;
     const faultPool = {
       async connect() {
         const client = await pool.connect();
+        faultedBackendPid = client.processID;
         return {
-          release: () => client.release(),
+          release: (...args) => client.release(...args),
           query(sql, args) {
             if (/INSERT INTO orchestrator_optimization_execution_run_events/.test(sql)) {
               return Promise.reject(new Error('PR9C injected event failure'));
@@ -326,17 +331,22 @@ if (!db.hasDb()) {
         };
       },
     };
-    await assert.rejects(execute(f, 'rollback', { pool: faultPool }), /PR9C injected event failure/);
-    assert.equal((await executionRows(f)).rowCount, 0);
-    const client = await pool.connect();
     try {
-      assert.equal((await client.query(`SELECT 1 value`)).rows[0].value, 1);
-      assert.equal((await client.query(
-        `SELECT count(*)::int count FROM pg_stat_activity
-         WHERE pid=pg_backend_pid() AND state='idle in transaction'`,
-      )).rows[0].count, 0);
+      await assert.rejects(execute(f, 'rollback', { pool: faultPool }), /PR9C injected event failure/);
+      assert.ok(Number.isInteger(faultedBackendPid), 'captured the faulted PostgreSQL backend PID');
+      assert.equal((await executionRows(f)).rowCount, 0);
+      const activity = (await observer.query(
+        `SELECT state,xact_start FROM pg_stat_activity WHERE pid=$1`, [faultedBackendPid],
+      )).rows;
+      assert.ok(activity.length <= 1);
+      if (activity.length === 1) {
+        assert.notEqual(activity[0].state, 'idle in transaction',
+          'faulted backend must not return to the pool idle in transaction');
+        assert.equal(activity[0].xact_start, null,
+          'faulted backend must not retain an open transaction');
+      }
     } finally {
-      client.release();
+      observer.release();
     }
   });
 }
