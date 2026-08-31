@@ -659,6 +659,7 @@ const _OWNER_GATE_ALLOW = [
   /^\/api\/agent-orchestrator\/meta-delivery-monitoring(?:\/|$)/,
   /^\/api\/agent-orchestrator\/delivery-discrepancies(?:\/|$)/,
   /^\/api\/agent-orchestrator\/optimization-recommendations(?:\/|$)/,
+  /^\/api\/advertising\/optimization-executions(?:\/|$)/,
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
@@ -3824,6 +3825,7 @@ const _marketingSpineSchema = require('./services/marketing_spine/schema');
 const _marketingSpineRouter = require('./services/marketing_spine/api');
 const _agentOrchSchema = require('./services/agent_orchestrator/schema');
 const _agentOrchRouter = require('./services/agent_orchestrator/api');
+const _optimizationExecutionRouter = require('./services/agent_orchestrator/optimization_execution_api');
 const _channelStudiosRouter = require('./services/channel_studios/api');
 const _executionHubRouter = require('./services/execution_hub/api');
 const _segmentSchema = require('./services/segment_connector/schema');
@@ -3832,6 +3834,7 @@ const _aiGovSchema = require('./services/ai_governance/schema');
 const _aiGovRouter = require('./services/ai_governance/api');
 app.use('/api/marketing-spine', _marketingSpineRouter);
 app.use('/api/agent-orchestrator', _agentOrchRouter);
+app.use('/api/advertising/optimization-executions', _optimizationExecutionRouter);
 app.use('/api/channel-studios', _channelStudiosRouter);
 app.use('/api/execution-hub', _executionHubRouter);
 app.use('/api/segment', _segmentRouter);
