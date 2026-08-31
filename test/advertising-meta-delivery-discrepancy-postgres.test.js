@@ -317,3 +317,5 @@ if (!db.hasDb()) {
     assert.deepEqual(await snapshot(),before);assert.equal(await sourceSnapshot(f),source);
   });
 }
+
+module.exports = { bootstrapSchemasOnce, seedMonitoring };
