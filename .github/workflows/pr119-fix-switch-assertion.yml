@@ -1,0 +1,59 @@
+name: PR119 fix stale switch assertion
+
+on:
+  push:
+    branches:
+      - codex/implement-pr8c-guarded-execution
+    paths:
+      - .github/workflows/pr119-fix-switch-assertion.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify expected PR head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "ee94c14a7a2a2da6af0770ea44c13b9f9f65cc64"
+
+      - name: Replace stale cardinality assertion only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('test/advertising-optimization-execution-run-postgres.test.js')
+          text = path.read_text()
+
+          old = "const p=db.getPool(),seeded=await p.query(`SELECT count(*)::int n FROM orchestrator_advertising_tenant_kill_switches`),tenants=await p.query(`SELECT count(*)::int n FROM tenants`);assert.equal(seeded.rows[0].n,tenants.rows[0].n);"
+          new = "const p=db.getPool(),missing=await p.query(`SELECT count(*)::int n FROM tenants t WHERE NOT EXISTS (SELECT 1 FROM orchestrator_advertising_tenant_kill_switches s WHERE s.tenant_id=t.id AND s.switch_key='optimization_execution')`);assert.equal(missing.rows[0].n,0);"
+
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one stale assertion; found {text.count(old)}')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+          git diff --check
+          test "$(git diff --numstat -- test/advertising-optimization-execution-run-postgres.test.js)" = $'1\t1\ttest/advertising-optimization-execution-run-postgres.test.js'
+
+      - name: Commit test-only correction and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/pr119-fix-switch-assertion.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add test/advertising-optimization-execution-run-postgres.test.js .github/workflows/pr119-fix-switch-assertion.yml
+          git diff --cached --check
+          git commit -m "Fix tenant kill-switch backfill assertion"
+          git push origin HEAD:codex/implement-pr8c-guarded-execution
