@@ -120,6 +120,9 @@ const ADVERTISING_ORCH_TABLES = [
   // PR 8B — human-controlled, internal-only optimization execution plans.
   'orchestrator_optimization_execution_requests',
   'orchestrator_optimization_execution_events',
+  // PR 8C admission controls. These do not authorize provider mutation.
+  'orchestrator_advertising_global_kill_switches',
+  'orchestrator_advertising_tenant_kill_switches',
   // PR 8C — synchronous internal-simulation runs and their distinct lifecycle.
   'orchestrator_optimization_executions',
   'orchestrator_optimization_execution_run_events',
@@ -6894,6 +6897,34 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   // PR 8C — consumes one approved PR8B request without changing it. No provider
   // identifiers, credential references, source hashes, payloads, or errors are stored.
   await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_advertising_global_kill_switches(
+      switch_key TEXT PRIMARY KEY, active BOOLEAN NOT NULL DEFAULT false, version INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CONSTRAINT orchestrator_agks_key CHECK(switch_key='optimization_execution'),
+      CONSTRAINT orchestrator_agks_version CHECK(version>0)
+    );
+    CREATE TABLE IF NOT EXISTS orchestrator_advertising_tenant_kill_switches(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT, switch_key TEXT NOT NULL,
+      active BOOLEAN NOT NULL DEFAULT false, version INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY(tenant_id,switch_key),
+      CONSTRAINT orchestrator_atks_key CHECK(switch_key='optimization_execution'),
+      CONSTRAINT orchestrator_atks_version CHECK(version>0)
+    );
+    CREATE OR REPLACE FUNCTION orchestrator_advertising_kill_switch_guard() RETURNS trigger AS $fn$ BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_delete_prohibited';END IF;
+      IF NEW.switch_key IS DISTINCT FROM OLD.switch_key OR (TG_TABLE_NAME='orchestrator_advertising_tenant_kill_switches' AND NEW.tenant_id IS DISTINCT FROM OLD.tenant_id) OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_identity_immutable';END IF;
+      IF NEW.version<>OLD.version+1 OR NEW.updated_at<=OLD.updated_at THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_invalid_version';END IF;RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_agks_guard ON orchestrator_advertising_global_kill_switches;
+    CREATE TRIGGER orchestrator_agks_guard BEFORE UPDATE OR DELETE ON orchestrator_advertising_global_kill_switches FOR EACH ROW EXECUTE FUNCTION orchestrator_advertising_kill_switch_guard();
+    DROP TRIGGER IF EXISTS orchestrator_atks_guard ON orchestrator_advertising_tenant_kill_switches;
+    CREATE TRIGGER orchestrator_atks_guard BEFORE UPDATE OR DELETE ON orchestrator_advertising_tenant_kill_switches FOR EACH ROW EXECUTE FUNCTION orchestrator_advertising_kill_switch_guard();
+    INSERT INTO orchestrator_advertising_global_kill_switches(switch_key,active) VALUES('optimization_execution',false) ON CONFLICT(switch_key) DO NOTHING;
+    INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active) SELECT id,'optimization_execution',false FROM tenants ON CONFLICT(tenant_id,switch_key) DO NOTHING;
+    CREATE OR REPLACE FUNCTION orchestrator_seed_advertising_kill_switch() RETURNS trigger AS $fn$ BEGIN INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active) VALUES(NEW.id,'optimization_execution',false);RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_seed_advertising_kill_switch ON tenants;
+    CREATE TRIGGER orchestrator_seed_advertising_kill_switch AFTER INSERT ON tenants FOR EACH ROW EXECUTE FUNCTION orchestrator_seed_advertising_kill_switch();
+
     CREATE TABLE IF NOT EXISTS orchestrator_optimization_executions(
       tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
       id TEXT NOT NULL, request_id TEXT NOT NULL, request_version INTEGER NOT NULL,
