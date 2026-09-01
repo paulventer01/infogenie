@@ -1,0 +1,99 @@
+name: PR10A P1 fix v2
+
+on:
+  push:
+    branches:
+      - codex/add-google-ads-provider-draft-authority
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/add-google-ads-provider-draft-authority
+          fetch-depth: 2
+
+      - name: Verify expected parent
+        run: test "$(git rev-parse HEAD^)" = "07895cd895d872a7138c788634ead36222a48567"
+
+      - name: Apply reviewed P1 fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def rep(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              n = s.count(old)
+              if n != 1:
+                  raise SystemExit(f'{path}: expected 1 match, got {n}')
+              p.write_text(s.replace(old, new, 1))
+
+          rep(
+              'services/security/google_ads_provider_draft_capabilities.js',
+              "const r=await c.query(`SELECT t.status AS tenant_status,d.workflow_id,d.id AS draft_id,d.current_revision,d.contract_hash,\n",
+              "const r=await c.query(`SELECT t.status AS tenant_status,d.status AS draft_status,d.workflow_id,d.id AS draft_id,d.current_revision,d.contract_hash,\n",
+          )
+          rep(
+              'services/security/google_ads_provider_draft_capabilities.js',
+              "  if(x.tenant_status!=='active'||x.explicit_permission!==true||x.global_disabled||x.tenant_disabled\n",
+              "  if(x.tenant_status!=='active'||x.draft_status!=='approved_for_publish'||x.explicit_permission!==true||x.global_disabled||x.tenant_disabled\n",
+          )
+          rep(
+              'server.js',
+              "  /^\\/api\\/agent-orchestrator\\/meta-delivery-monitoring(?:\\/|$)/,\n  /^\\/api\\/agent-orchestrator\\/delivery-discrepancies(?:\\/|$)/,\n",
+              "  /^\\/api\\/agent-orchestrator\\/meta-delivery-monitoring(?:\\/|$)/,\n  // Google Ads provider-draft authority is tenant-scoped and self-gates on a\n  // matching human session plus the exact explicit tenant permission. Keep the\n  // exemption path-anchored so lookalike orchestrator routes remain owner-gated.\n  /^\\/api\\/agent-orchestrator\\/google-ads-provider-draft-capabilities(?:\\/|$)/,\n  /^\\/api\\/agent-orchestrator\\/delivery-discrepancies(?:\\/|$)/,\n",
+          )
+
+          p = Path('test/google-ads-provider-draft-capabilities-security.test.js')
+          s = p.read_text()
+          marker = "test('authoritative approval revocation is selected under the validated alias',()=>{\n  const source=fs.readFileSync(require.resolve('../services/security/google_ads_provider_draft_capabilities'),'utf8');\n  assert.match(source,/pa\\.revoked_at AS approval_revoked_at/);\n  assert.match(source,/x\\.approval_revoked_at/);\n});\n"
+          extra = marker + "test('draft status and owner-gate authority remain fail-closed and narrowly scoped',()=>{\n  const source=fs.readFileSync(require.resolve('../services/security/google_ads_provider_draft_capabilities'),'utf8');\n  assert.match(source,/d\\.status AS draft_status/);\n  assert.match(source,/x\\.draft_status!==\\'approved_for_publish\\'/);\n  const server=fs.readFileSync(require.resolve('../server'),'utf8');\n  assert.equal(server.includes('google-ads-provider-draft-capabilities(?:\\\\/|$)'),true);\n  assert.equal(server.includes('google-ads-provider-draft-capabilities-export'),false);\n});\n"
+          if s.count(marker) != 1:
+              raise SystemExit('security test marker mismatch')
+          p.write_text(s.replace(marker, extra, 1))
+
+          p = Path('test/integration/google-ads-provider-draft-authority-postgres.test.js')
+          s = p.read_text()
+          a = "  await assert.rejects(issue({ hasExplicitTenantPermission:()=>false }), denied('permission_denied'));\n\n  const raced = await Promise.allSettled([issue(), issue()]);\n"
+          b = "  await assert.rejects(issue({ hasExplicitTenantPermission:()=>false }), denied('permission_denied'));\n\n  for (const status of ['cancelled','approval_expired','ready_for_approval']) {\n    await replica('UPDATE orchestrator_campaign_drafts SET status=$3 WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.draft,status]);\n    await assert.rejects(issue({finalConfirmationId:id(`issue-${status}`),confirmedAt:new Date()}),denied('authoritative_binding_mismatch'));\n  }\n  await replica(\"UPDATE orchestrator_campaign_drafts SET status='approved_for_publish' WHERE tenant_id=$1 AND id=$2\",[tenant.id,ids.draft]);\n\n  const raced = await Promise.allSettled([issue(), issue()]);\n"
+          if s.count(a) != 1: raise SystemExit('issue test marker mismatch')
+          s = s.replace(a,b,1)
+
+          a = "  await assert.rejects(action('reserve',{reservationId:id('wrong-session')},{sessionId:id('other-session')}),denied('capability_rejected'));\n\n  await replica('UPDATE orchestrator_campaign_drafts SET current_revision=2 WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.draft]);\n"
+          b = "  await assert.rejects(action('reserve',{reservationId:id('wrong-session')},{sessionId:id('other-session')}),denied('capability_rejected'));\n\n  for (const status of ['cancelled','approval_expired','ready_for_approval']) {\n    await replica('UPDATE orchestrator_campaign_drafts SET status=$3 WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.draft,status]);\n    await assert.rejects(action('reserve',{reservationId:id(`reserve-${status}`)}),denied('authoritative_binding_mismatch'));\n  }\n  await replica(\"UPDATE orchestrator_campaign_drafts SET status='approved_for_publish' WHERE tenant_id=$1 AND id=$2\",[tenant.id,ids.draft]);\n\n  await replica('UPDATE orchestrator_campaign_drafts SET current_revision=2 WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.draft]);\n"
+          if s.count(a) != 1: raise SystemExit('reserve test marker mismatch')
+          s = s.replace(a,b,1)
+
+          a = "  const reservation = [1,2].map((n)=>id(`reservation-${n}`)).find((value)=>crypto.createHash('sha256').update(value).digest('hex')===stored.reservation_id_hash);\n  const consumes = await Promise.allSettled([1,2].map((n)=>action('consume',{reservationId:reservation,invocationId:id(`invocation-${n}`)})));\n"
+          b = "  const reservation = [1,2].map((n)=>id(`reservation-${n}`)).find((value)=>crypto.createHash('sha256').update(value).digest('hex')===stored.reservation_id_hash);\n  for (const status of ['cancelled','approval_expired','ready_for_approval']) {\n    await replica('UPDATE orchestrator_campaign_drafts SET status=$3 WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.draft,status]);\n    await assert.rejects(action('consume',{reservationId:reservation,invocationId:id(`consume-${status}`)}),denied('authoritative_binding_mismatch'));\n  }\n  await replica(\"UPDATE orchestrator_campaign_drafts SET status='approved_for_publish' WHERE tenant_id=$1 AND id=$2\",[tenant.id,ids.draft]);\n  const consumes = await Promise.allSettled([1,2].map((n)=>action('consume',{reservationId:reservation,invocationId:id(`invocation-${n}`)})));\n"
+          if s.count(a) != 1: raise SystemExit('consume test marker mismatch')
+          p.write_text(s.replace(a,b,1))
+          PY
+
+      - name: Verify focused gates
+        run: |
+          node --test test/google-ads-provider-draft-authority-schema.test.js test/google-ads-provider-draft-capabilities-security.test.js
+          npm run test:core
+          node --check server.js
+          node --check services/security/google_ads_provider_draft_capabilities.js
+          node --check test/google-ads-provider-draft-capabilities-security.test.js
+          node --check test/integration/google-ads-provider-draft-authority-postgres.test.js
+          git diff --check
+
+      - name: Commit fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pr10a-p1-fix.yml .github/workflows/pr10a-p1-fix-v2.yml
+          git add server.js services/security/google_ads_provider_draft_capabilities.js test/google-ads-provider-draft-capabilities-security.test.js test/integration/google-ads-provider-draft-authority-postgres.test.js
+          git commit -m "PR10A: address Codex P1 review findings"
+          git push origin HEAD:codex/add-google-ads-provider-draft-authority
