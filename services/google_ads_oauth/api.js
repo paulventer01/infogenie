@@ -28,6 +28,7 @@ const _https  = require('https');
 const vault   = require('../credentials/vault');
 const _tenantCtx = require('../tenants/context');
 const _db = require('../../db');
+const { createRateLimiter } = require('../security/rate_limit');
 
 const router = express.Router();
 
@@ -55,21 +56,20 @@ function _publicOrigin(req) {
 }
 
 function _redirectUri(req) { return `${_publicOrigin(req)}${CALLBACK_PATH}`; }
-function _signState(value, secret) { return crypto.createHmac('sha256', secret).update(value).digest('base64url'); }
-function _oauthState(userId, tenantId, secret) {
-  const payload = `${crypto.randomBytes(24).toString('hex')}.${userId}.${tenantId}`;
-  return `${payload}.${_signState(payload, secret)}`;
-}
-function _stateTenant(state, userId, secret) {
-  if (!secret) return null;
-  const parts = String(state || '').split('.');
-  if (parts.length !== 4) return null;
-  const payload = parts.slice(0, 3).join('.');
-  const expected = Buffer.from(_signState(payload, secret));
-  const supplied = Buffer.from(parts[3]);
-  if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)
-      || Number(parts[1]) !== Number(userId)) return null;
-  const tenantId = Number(parts[2]);
+function _oauthState() { return crypto.randomBytes(48).toString('base64url'); }
+function _consumeOauthState(req, returnedState) {
+  const stored = req.session && req.session.gaOauthState;
+  if (req.session) delete req.session.gaOauthState;
+  if (!stored || typeof stored.value !== 'string') return null;
+
+  const expected = Buffer.from(stored.value);
+  const supplied = Buffer.from(String(returnedState || ''));
+  const normalized = Buffer.alloc(expected.length);
+  supplied.copy(normalized, 0, 0, expected.length);
+  const equalBytes = crypto.timingSafeEqual(expected, normalized);
+  const matches = equalBytes && supplied.length === expected.length;
+  if (!matches || Number(stored.userId) !== Number(req.user && req.user.id)) return null;
+  const tenantId = Number(stored.tenantId);
   return Number.isSafeInteger(tenantId) && tenantId > 0 ? tenantId : null;
 }
 async function _activeMember(userId, tenantId) {
@@ -79,6 +79,21 @@ async function _activeMember(userId, tenantId) {
     WHERE t.id=$1 AND t.status='active'`, [tenantId, userId]);
   return result.rowCount === 1;
 }
+
+function _requestIp(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+    || req.socket?.remoteAddress || 'unknown';
+}
+function _oauthRateKey(req) {
+  const stored = req.session && req.session.gaOauthState;
+  const userId = req.user && req.user.id;
+  const tenantId = (stored && stored.tenantId) || (req.tenant && req.tenant.id);
+  return userId && tenantId ? `google-ads-oauth|${tenantId}|${userId}|${_requestIp(req)}` : null;
+}
+const oauthAuthorizationLimiter = createRateLimiter({
+  name: 'google-ads-oauth-authorization', windowMs: 10 * 60_000, max: 20,
+  failClosed: true, keyFn: _oauthRateKey,
+});
 
 function _backToSettings(res, q) {
   const params = new URLSearchParams(q || {});
@@ -124,7 +139,7 @@ function _getJson(hostname, path, headers = {}) {
 }
 
 // ── 1. Start: redirect to Google's consent screen ─────────────────────────
-router.get('/oauth/start', async (req, res) => {
+router.get('/oauth/start', oauthAuthorizationLimiter, async (req, res) => {
   if (!req.user || !req.user.id) {
     return _backToSettings(res, { ga_error: 'not_signed_in' });
   }
@@ -136,10 +151,8 @@ router.get('/oauth/start', async (req, res) => {
   if (!tenantId || !clientSecret || !(await _activeMember(req.user.id, tenantId))) {
     return _backToSettings(res, { ga_error: 'no_tenant' });
   }
-  const state = _oauthState(req.user.id, tenantId, clientSecret);
-  req.session.gaOauthState = state;
-  req.session.gaOauthUserId = req.user.id;
-  req.session.gaOauthTenantId = tenantId;
+  const state = _oauthState();
+  req.session.gaOauthState = { value: state, userId: req.user.id, tenantId };
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -155,26 +168,18 @@ router.get('/oauth/start', async (req, res) => {
 });
 
 // ── 2. Callback: exchange code → tokens, list accessible customers ────────
-router.get('/oauth/callback', async (req, res) => {
+router.get('/oauth/callback', oauthAuthorizationLimiter, async (req, res) => {
   const { code, state, error } = req.query;
-  if (error) {
-    return _backToSettings(res, { ga_error: String(error) });
-  }
   if (!req.user || !req.user.id) {
     return _backToSettings(res, { ga_error: 'not_signed_in' });
   }
   const { clientId, clientSecret, devToken } = _clientCreds();
-  const initiatingTenantId = _stateTenant(state, req.user.id, clientSecret);
-  if (!code || !initiatingTenantId || !req.session || state !== req.session.gaOauthState ||
-      req.session.gaOauthUserId !== req.user.id ||
-      Number(req.session.gaOauthTenantId) !== initiatingTenantId ||
-      !(await _activeMember(req.user.id, initiatingTenantId))) {
+  const initiatingTenantId = _consumeOauthState(req, state);
+  if (!initiatingTenantId || !(await _activeMember(req.user.id, initiatingTenantId))) {
     return _backToSettings(res, { ga_error: 'state_mismatch' });
   }
-  // Consume state immediately
-  delete req.session.gaOauthState;
-  delete req.session.gaOauthUserId;
-  delete req.session.gaOauthTenantId;
+  if (error) return _backToSettings(res, { ga_error: String(error) });
+  if (!code) return _backToSettings(res, { ga_error: 'state_mismatch' });
 
   if (!clientId || !clientSecret) return _backToSettings(res, { ga_error: 'operator_oauth_client_missing' });
   if (!devToken)                  return _backToSettings(res, { ga_error: 'operator_developer_token_missing' });
@@ -319,4 +324,6 @@ router.get('/summary', async (req, res) => {
 
 module.exports = router;
 module.exports._oauthState = _oauthState;
-module.exports._stateTenant = _stateTenant;
+module.exports._consumeOauthState = _consumeOauthState;
+module.exports._activeMember = _activeMember;
+module.exports._oauthAuthorizationLimiter = oauthAuthorizationLimiter;

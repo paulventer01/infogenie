@@ -1,5 +1,6 @@
 'use strict';
 const test=require('node:test');const assert=require('node:assert/strict');const fs=require('fs');
+const express=require('express');
 const service=require('../services/security/google_ads_provider_draft_capabilities');
 const api=require('../services/agent_orchestrator/google_ads_provider_draft_capabilities_api');
 const oauth=require('../services/google_ads_oauth/api');
@@ -84,7 +85,7 @@ test('Google Ads credential synchronization remains metadata-only',()=>{
   const authoritySource=fs.readFileSync(require.resolve('../services/security/google_ads_provider_draft_capabilities'),'utf8');
   assert.match(authoritySource,/const peek=.*capabilities/);
   assert.match(authoritySource,/const row=revalidate\?await authoritative[\s\S]*SELECT \* FROM orchestrator_google_ads_provider_draft_capabilities[\s\S]*FOR UPDATE/);
-  assert.match(api,/gaOauthTenantId/);
+  assert.match(api,/gaOauthState = \{ value: state, userId: req\.user\.id, tenantId \}/);
   assert.match(api,/gaPending = \{[\s\S]*tenantId: initiatingTenantId/);
 });
 test('approval expiry is carried through authoritative locks and checked at transition time',()=>{
@@ -92,14 +93,60 @@ test('approval expiry is carried through authoritative locks and checked at tran
   assert.match(source,/pa\.expires_at AS approval_expires_at/);
   assert.match(source,/new Date\(x\.row\.approval_expires_at\)>transitionNow/);
 });
-test('Google Ads OAuth state cryptographically pins the initiating user and tenant',()=>{
-  const secret='test-oauth-secret';
-  const state=oauth._oauthState(7,101,secret);
-  assert.equal(oauth._stateTenant(state,7,secret),101);
-  assert.equal(oauth._stateTenant(state,8,secret),null);
-  assert.equal(oauth._stateTenant(state.replace('.101.','.202.'),7,secret),null);
+test('Google Ads OAuth state is opaque, tenant-pinned, single-use, and constant-time checked',()=>{
+  const state=oauth._oauthState();
+  assert.match(state,/^[A-Za-z0-9_-]{64}$/);
+  const req={user:{id:7},session:{gaOauthState:{value:state,userId:7,tenantId:101}},tenant:{id:202}};
+  assert.equal(oauth._consumeOauthState(req,state),101); // active tenant switching cannot redirect ownership
+  assert.equal(oauth._consumeOauthState(req,state),null); // replay
+  const mismatch={user:{id:7},session:{gaOauthState:{value:state,userId:7,tenantId:101}}};
+  assert.equal(oauth._consumeOauthState(mismatch,oauth._oauthState()),null);
+  assert.equal(mismatch.session.gaOauthState,undefined);
   const source=fs.readFileSync(require.resolve('../services/google_ads_oauth/api'),'utf8');
   assert.match(source,/tenantId: initiatingTenantId/);
   assert.match(source,/saveCredentials[\s\S]*tenantId: initiatingTenantId/);
+  assert.match(source,/equalBytes = crypto\.timingSafeEqual\(expected, normalized\)/);
+  assert.match(source,/await _activeMember\(req\.user\.id, initiatingTenantId\)/);
+  assert.doesNotMatch(source,/createHmac|_signState/);
+  assert.doesNotMatch(source,/_oauthState\([^)]*(clientSecret|secret)/);
   assert.doesNotMatch(source,/google-ads-oauth:bind-customer/);
+});
+test('Google Ads OAuth membership is authoritatively revalidated for the stored tenant',async()=>{
+  const db=require('../db');
+  const originalHasDb=db.hasDb,originalGetPool=db.getPool;
+  let active=true;
+  db.hasDb=()=>true;
+  db.getPool=()=>({query:async(sql,args)=>{
+    assert.match(sql,/tu\.status='active'/);assert.deepEqual(args,[101,7]);
+    return {rowCount:active?1:0};
+  }});
+  try {
+    assert.equal(await oauth._activeMember(7,101),true);
+    active=false;
+    assert.equal(await oauth._activeMember(7,101),false);
+  } finally { db.hasDb=originalHasDb;db.getPool=originalGetPool; }
+});
+test('Google Ads OAuth authorization routes use the bounded tenant/user/IP limiter',()=>{
+  const source=fs.readFileSync(require.resolve('../services/google_ads_oauth/api'),'utf8');
+  assert.match(source,/createRateLimiter\(\{[\s\S]*name: 'google-ads-oauth-authorization'[\s\S]*max: 20/);
+  assert.match(source,/`google-ads-oauth\|\$\{tenantId\}\|\$\{userId\}\|\$\{_requestIp\(req\)\}`/);
+  assert.match(source,/router\.get\('\/oauth\/start', oauthAuthorizationLimiter,/);
+  assert.match(source,/router\.get\('\/oauth\/callback', oauthAuthorizationLimiter,/);
+});
+test('Google Ads OAuth limiter permits one normal completion and enforces its bound',async t=>{
+  oauth._oauthAuthorizationLimiter.reset();
+  const app=express();
+  app.use((req,res,next)=>{req.user={id:7};req.tenant={id:101};req.session={};next();});
+  app.get('/start',oauth._oauthAuthorizationLimiter,(req,res)=>res.json({ok:true}));
+  app.get('/callback',oauth._oauthAuthorizationLimiter,(req,res)=>res.json({ok:true}));
+  const server=app.listen(0);t.after(()=>server.close());
+  await new Promise(resolve=>server.once('listening',resolve));
+  const origin=`http://127.0.0.1:${server.address().port}`;
+  assert.equal((await fetch(`${origin}/start`)).status,200);
+  assert.equal((await fetch(`${origin}/callback`)).status,200);
+  for(let i=0;i<18;i++) assert.equal((await fetch(`${origin}/callback`)).status,200);
+  const limited=await fetch(`${origin}/callback`);
+  assert.equal(limited.status,429);
+  assert.deepEqual(await limited.json(),{ok:false,error:'rate_limited',retryAfterSec:600});
+  oauth._oauthAuthorizationLimiter.reset();
 });
