@@ -236,14 +236,16 @@ router.post('/bind-customer', express.json(), async (req, res) => {
   const { clientId, clientSecret, devToken } = _clientCreds();
   const tenantId = await _tenantCtx.resolveTenantId(req, { label: 'google-ads-oauth:bind-customer' });
   if (!tenantId) return res.status(400).json({ ok: false, error: 'no_tenant' });
-  await vault.saveCredentials(req.user.id, 'google_ads', {
+  const saved = await vault.saveCredentials(req.user.id, 'google_ads', {
     devToken, clientId, clientSecret,
     refreshToken: p.refreshToken,
     customerId: picked, loginCustomerId: '',
     email: p.email || null,
   }, { tenantId });
   delete req.session.gaPending;
-  res.json({ ok: true });
+  res.json({ ok: true, credentialReference: {
+    id: saved.referenceId, version: saved.version,
+  } });
 });
 
 // ── 5. Disconnect — wipe vault row for this user ──────────────────────────
@@ -256,24 +258,30 @@ router.post('/disconnect', async (req, res) => {
 });
 
 // ── 6. Connection summary — for the connected-state card ──────────────────
-// Returns the non-secret bits of the vault row (email, customerId) plus the
+// Returns the non-secret email plus the metadata-only credential handle and
 // operator-readiness flag (does the deployment have OAuth client + dev token?)
 router.get('/summary', async (req, res) => {
   if (!req.user || !req.user.id) return res.status(401).json({ ok: false, error: 'not_signed_in' });
   const { clientId, clientSecret, devToken } = _clientCreds();
   const operatorReady = !!(clientId && clientSecret && devToken);
-  let connected = false, email = null, customerId = null, status = 'disconnected';
+  let connected = false, email = null, status = 'disconnected', credentialReference = null;
   try {
     const blob = await vault.getCredentials(req.user.id, 'google_ads');
     if (blob) {
       connected  = true;
       email      = blob.email || null;
-      customerId = blob.customerId || null;
     }
     const s = await vault.getStatus(req.user.id, 'google_ads');
     status = s.status || 'disconnected';
+    if (connected) {
+      const tenantId = await _tenantCtx.resolveTenantId(req, { label: 'google-ads-oauth:summary' });
+      const ref = tenantId && await vault.getGoogleAdsCredentialReference(req.user.id, tenantId);
+      if (ref) credentialReference = { id: ref.referenceId, version: ref.version };
+    }
   } catch (_) {}
-  res.json({ ok: true, operatorReady, connected, email, customerId, status });
+  // Customer/account identifiers and all credential contents stay private; the
+  // opaque metadata handle is the only authority input returned here.
+  res.json({ ok: true, operatorReady, connected, email, status, credentialReference });
 });
 
 module.exports = router;

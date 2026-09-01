@@ -55,14 +55,16 @@ test('draft status and owner-gate authority remain fail-closed and narrowly scop
   assert.match(server,/google-ads-provider-draft-capabilities\(\?:\\\/\|\$\)/);
   assert.doesNotMatch(server,/google-ads-provider-draft-capabilities-export/);
 });
-test('authoritative actor lineage and post-lock issuance timing fail closed',()=>{
+test('authoritative actor lineage and server confirmation timing fail closed',()=>{
   const source=fs.readFileSync(require.resolve('../services/security/google_ads_provider_draft_capabilities'),'utf8');
   assert.match(source,/pa\.actor_user_id AS approval_actor_user_id/);
   assert.match(source,/pr\.requested_by AS request_actor_user_id/);
   assert.match(source,/di\.requested_by AS intent_actor_user_id/);
   assert.match(source,/Number\(x\.approval_actor_user_id\)!==Number\(ids\.actorUserId\)/);
   assert.match(source,/SELECT clock_timestamp\(\) AS now/);
-  assert.match(source,/confirmed>freshNow\|\|freshNow-confirmed>MAX_CONFIRMATION_AGE_MS/);
+  assert.match(source,/orchestrator_google_ads_provider_draft_confirmations[\s\S]*FOR UPDATE/);
+  assert.match(source,/confirmation\.consumed_at/);
+  assert.match(source,/session_id_hash,hash\(o\.sessionId\)/);
   assert.match(source,/issued_at:freshNow/);
 });
 test('Google Ads credential synchronization remains metadata-only',()=>{
@@ -70,4 +72,13 @@ test('Google Ads credential synchronization remains metadata-only',()=>{
   assert.match(source,/INSERT INTO orchestrator_tenant_google_ads_credential_refs/);
   assert.match(source,/account_fingerprint,version,owner_user_id/);
   assert.match(source,/SET status='revoked',revoked_at=clock_timestamp\(\)/);
+  assert.match(source,/return \{ ok: true, version, \.\.\.\(referenceId \? \{ referenceId \} : \{\}\) \}/);
+  const api=fs.readFileSync(require.resolve('../services/google_ads_oauth/api'),'utf8');
+  assert.match(api,/credentialReference: \{\s*id: saved\.referenceId, version: saved\.version/);
+  assert.doesNotMatch(api,/credentialReference[^\n]*(customerId|token|secret|fingerprint)/i);
+});
+test('approval expiry is carried through authoritative locks and checked at transition time',()=>{
+  const source=fs.readFileSync(require.resolve('../services/security/google_ads_provider_draft_capabilities'),'utf8');
+  assert.match(source,/pa\.expires_at AS approval_expires_at/);
+  assert.match(source,/new Date\(x\.row\.approval_expires_at\)>transitionNow/);
 });

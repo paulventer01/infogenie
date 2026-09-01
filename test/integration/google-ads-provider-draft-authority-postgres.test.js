@@ -61,6 +61,7 @@ if (!db.hasDb()) {
   t.after(async () => replica(`
     DELETE FROM orchestrator_audit_events WHERE tenant_id IN ($1,$2);
     DELETE FROM orchestrator_google_ads_provider_draft_capabilities WHERE tenant_id IN ($1,$2);
+    DELETE FROM orchestrator_google_ads_provider_draft_confirmations WHERE tenant_id IN ($1,$2);
     DELETE FROM orchestrator_campaign_delivery_intents WHERE tenant_id IN ($1,$2);
     DELETE FROM orchestrator_campaign_publish_requests WHERE tenant_id IN ($1,$2);
     DELETE FROM orchestrator_campaign_publish_approvals WHERE tenant_id IN ($1,$2);
@@ -105,9 +106,15 @@ if (!db.hasDb()) {
     sessionId:id('session'), hasExplicitTenantPermission:permit, draftId:ids.draft, draftRevision:1,
     publishingRequestId:ids.request, publishApprovalId:ids.approval, intentId:ids.intent,
     credentialRefId:ids.credential, credentialRefVersion:1, googleAdsCustomerId:CUSTOMER,
-    finalConfirmationId:id('confirmation'), finalConfirmation:authority.CONFIRMATION,
-    confirmedAt:new Date(), ttlMs:300000 };
-  const issue = (overrides = {}) => tx((c) => authority.issue(c, { ...base, ...overrides }));
+    ttlMs:300000 };
+  const issue = async (overrides = {}) => tx(async (c) => {
+    const input={...base,...overrides};
+    if(!input.finalConfirmationId) {
+      const confirmation=await authority.confirm(c,{...input,finalConfirmation:authority.CONFIRMATION});
+      input.finalConfirmationId=confirmation.confirmation_id;
+    }
+    return authority.issue(c,input);
+  });
 
   await assert.rejects(issue({ tenantId:otherTenant.id }), denied('authority_not_found'));
   await assert.rejects(issue({ actorUserId:user.id + 99999 }), denied('authority_not_found'));
@@ -185,12 +192,31 @@ if (!db.hasDb()) {
   assert.equal(consumes.filter((r)=>r.status==='fulfilled').length,1);
   assert.equal(consumes.find((r)=>r.status==='fulfilled').value.external_action_taken,false);
   await assert.rejects(action('consume',{reservationId:reservation,invocationId:id('replay')}),denied('capability_rejected'));
+  const replayConfirmation=await tx((c)=>authority.confirm(c,{...base,finalConfirmation:authority.CONFIRMATION}));
+  const confirmationRace=await Promise.allSettled([1,2].map(()=>issue({finalConfirmationId:replayConfirmation.confirmation_id})));
+  assert.equal(confirmationRace.filter((result)=>result.status==='fulfilled').length,1);
+  assert.equal(confirmationRace.filter((result)=>result.status==='rejected'&&result.reason?.code==='fresh_confirmation_required').length,1);
+  const replayed=confirmationRace.find((result)=>result.status==='fulfilled').value;
+  await tx((c)=>authority.revoke(c,{...base,capabilityId:replayed.capability_id}));
+  await assert.rejects(issue({finalConfirmationId:replayConfirmation.confirmation_id}),denied('fresh_confirmation_required'));
+
+  const approvalClockCap=await issue();
+  await db.getPool().query("UPDATE orchestrator_campaign_publish_approvals SET expires_at=clock_timestamp()+interval '200 milliseconds' WHERE tenant_id=$1 AND id=$2",[tenant.id,ids.approval]);
+  const blocker=await db.getPool().connect();
+  await blocker.query('BEGIN');
+  await blocker.query('SELECT 1 FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[tenant.id,ids.approval]);
+  const waitingReserve=tx((c)=>authority.reserve(c,{...base,capabilityId:approvalClockCap.capability_id,reservationId:id('approval-expiry-wait')}));
+  await new Promise((resolve)=>setTimeout(resolve,300));
+  await blocker.query('COMMIT');blocker.release();
+  const approvalExpired=await waitingReserve;
+  assert.deepEqual(approvalExpired,{expired:true,capability_id:approvalClockCap.capability_id,error:'capability_expired',external_action_taken:false});
+  await db.getPool().query("UPDATE orchestrator_campaign_publish_approvals SET expires_at=clock_timestamp()+interval '1 hour' WHERE tenant_id=$1 AND id=$2",[tenant.id,ids.approval]);
   await assert.rejects(db.getPool().query("UPDATE orchestrator_google_ads_provider_draft_capabilities SET status='issued' WHERE tenant_id=$1 AND id=$2",[tenant.id,cap.capability_id]),/orchestrator_gapdc_immutable/);
 
-  const revoked = await issue({finalConfirmationId:id('revoke-confirm'),confirmedAt:new Date()});
+  const revoked = await issue();
   await action('revoke',{}, {capabilityId:revoked.capability_id});
   await assert.rejects(action('consume',{reservationId:id('none'),invocationId:id('revoked')},{capabilityId:revoked.capability_id}),denied('capability_rejected'));
-  const expiring = await issue({finalConfirmationId:id('expire-confirm'),confirmedAt:new Date(),ttlMs:1});
+  const expiring = await issue({ttlMs:1});
   await new Promise((resolve)=>setTimeout(resolve,5));
   const expired = await action('reserve',{reservationId:id('expired')},{capabilityId:expiring.capability_id});
   assert.deepEqual(expired,{expired:true,capability_id:expiring.capability_id,
@@ -198,11 +224,11 @@ if (!db.hasDb()) {
   assert.equal(Object.hasOwn(expired,'cap'),false);
   await assert.rejects(action('reserve',{reservationId:id('revive')},{capabilityId:expiring.capability_id}),denied('capability_rejected'));
 
-  const elapsed = await issue({finalConfirmationId:id('elapsed-confirm'),confirmedAt:new Date(),ttlMs:1});
+  const elapsed = await issue({ttlMs:1});
   await new Promise((resolve)=>setTimeout(resolve,5));
   const elapsedView = await action('get',{}, {capabilityId:elapsed.capability_id});
   assert.equal(elapsedView.status,'expired');
-  const replacement = await issue({finalConfirmationId:id('replacement-confirm'),confirmedAt:new Date()});
+  const replacement = await issue();
   assert.equal(replacement.status,'issued');
 
   const audits = await db.getPool().query('SELECT event,detail::text FROM orchestrator_audit_events WHERE tenant_id=$1 AND workflow_id=$2',[tenant.id,ids.workflow]);

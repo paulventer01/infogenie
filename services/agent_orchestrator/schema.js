@@ -6928,6 +6928,38 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_tgacr_one_active_account
       ON orchestrator_tenant_google_ads_credential_refs(tenant_id,account_fingerprint)
       WHERE status='active';
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_tgacr_tenant_id_version
+      ON orchestrator_tenant_google_ads_credential_refs(tenant_id,id,version);
+
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_provider_draft_confirmations(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      session_id_hash TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      draft_revision INTEGER NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      publish_approval_id TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL,
+      credential_ref_version INTEGER NOT NULL,
+      phrase_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ NULL,
+      capability_id TEXT NULL,
+      PRIMARY KEY(tenant_id,id),
+      CHECK(session_id_hash~'^[0-9a-f]{64}$' AND phrase_hash~'^[0-9a-f]{64}$'),
+      CHECK(expires_at>created_at AND expires_at<=created_at+INTERVAL '2 minutes'),
+      CHECK((consumed_at IS NULL AND capability_id IS NULL) OR
+        (consumed_at IS NOT NULL AND consumed_at>=created_at AND capability_id IS NOT NULL)),
+      FOREIGN KEY(tenant_id,draft_id) REFERENCES orchestrator_campaign_drafts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publishing_request_id) REFERENCES orchestrator_campaign_publish_requests(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publish_approval_id) REFERENCES orchestrator_campaign_publish_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,intent_id) REFERENCES orchestrator_campaign_delivery_intents(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,credential_ref_id,credential_ref_version)
+        REFERENCES orchestrator_tenant_google_ads_credential_refs(tenant_id,id,version) ON DELETE RESTRICT
+    );
 
     CREATE TABLE IF NOT EXISTS orchestrator_google_ads_provider_draft_capabilities(
       tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
@@ -7007,7 +7039,9 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         REFERENCES orchestrator_campaign_delivery_intents(tenant_id,id) ON DELETE RESTRICT,
       FOREIGN KEY(tenant_id,credential_ref_id,credential_ref_version,account_fingerprint)
         REFERENCES orchestrator_tenant_google_ads_credential_refs(tenant_id,id,version,account_fingerprint)
-        ON DELETE RESTRICT
+        ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,final_confirmation_id)
+        REFERENCES orchestrator_google_ads_provider_draft_confirmations(tenant_id,id) ON DELETE RESTRICT
     );
     CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gapdc_one_live_authority
       ON orchestrator_google_ads_provider_draft_capabilities
@@ -7037,6 +7071,23 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     DROP TRIGGER IF EXISTS orchestrator_tgacr_guard ON orchestrator_tenant_google_ads_credential_refs;
     CREATE TRIGGER orchestrator_tgacr_guard BEFORE INSERT OR UPDATE OR DELETE
       ON orchestrator_tenant_google_ads_credential_refs FOR EACH ROW EXECUTE FUNCTION orchestrator_tgacr_guard();
+
+    CREATE OR REPLACE FUNCTION orchestrator_gapdcf_guard() RETURNS trigger AS $fn$ BEGIN
+      IF TG_OP='INSERT' THEN RETURN NEW;END IF;
+      IF TG_OP='DELETE' OR OLD.consumed_at IS NOT NULL OR NEW.consumed_at IS NULL OR NEW.capability_id IS NULL
+        OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.session_id_hash IS DISTINCT FROM OLD.session_id_hash
+        OR NEW.draft_id IS DISTINCT FROM OLD.draft_id OR NEW.draft_revision IS DISTINCT FROM OLD.draft_revision
+        OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+        OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+        OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.phrase_hash IS DISTINCT FROM OLD.phrase_hash OR NEW.created_at IS DISTINCT FROM OLD.created_at
+        OR NEW.expires_at IS DISTINCT FROM OLD.expires_at THEN RAISE EXCEPTION 'orchestrator_gapdcf_immutable';END IF;
+      RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gapdcf_guard ON orchestrator_google_ads_provider_draft_confirmations;
+    CREATE TRIGGER orchestrator_gapdcf_guard BEFORE UPDATE OR DELETE
+      ON orchestrator_google_ads_provider_draft_confirmations FOR EACH ROW EXECUTE FUNCTION orchestrator_gapdcf_guard();
 
     CREATE OR REPLACE FUNCTION orchestrator_gapdc_guard() RETURNS trigger AS $fn$ BEGIN
       IF TG_OP='INSERT' THEN

@@ -263,6 +263,7 @@ async function saveCredentials(userId, platform, blob, opts = {}) {
   const client = await _db.getPool().connect();
   try {
     await client.query('BEGIN');
+    let referenceId = null;
     if (platform === 'google_ads') {
       const membership = await client.query(`SELECT 1 FROM tenant_users
         WHERE tenant_id=$1 AND user_id=$2 AND status='active' FOR UPDATE`, [tenantId, uid]);
@@ -285,18 +286,32 @@ async function saveCredentials(userId, platform, blob, opts = {}) {
       await client.query(`UPDATE orchestrator_tenant_google_ads_credential_refs
         SET status='revoked',revoked_at=clock_timestamp(),updated_at=clock_timestamp()
         WHERE owner_user_id=$1 AND status='active'`, [uid]);
-      const referenceId = `google_ads_${uid}_${version}`;
+      referenceId = `google_ads_${uid}_${version}`;
       await client.query(`INSERT INTO orchestrator_tenant_google_ads_credential_refs
         (tenant_id,id,platform,status,account_fingerprint,version,owner_user_id)
         VALUES($1,$2,'google_ads','active',$3,$4,$5)`,
       [tenantId, referenceId, fingerprint, version, uid]);
     }
     await client.query('COMMIT');
-    return { ok: true, version };
+    return { ok: true, version, ...(referenceId ? { referenceId } : {}) };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   } finally { client.release(); }
+}
+
+async function getGoogleAdsCredentialReference(userId, tenantId) {
+  const uid = _normUserId(userId);
+  const tid = _positiveInt(tenantId);
+  if (!uid || !tid || !_db.hasDb()) return null;
+  await ensureCredentialsSchema();
+  const result = await _db.getPool().query(`SELECT id,version
+    FROM orchestrator_tenant_google_ads_credential_refs
+    WHERE tenant_id=$1 AND owner_user_id=$2 AND platform='google_ads'
+      AND status='active' AND revoked_at IS NULL
+    ORDER BY version DESC LIMIT 1`, [tid, uid]);
+  if (result.rowCount !== 1) return null;
+  return Object.freeze({ referenceId: result.rows[0].id, version: Number(result.rows[0].version) });
 }
 
 async function deleteCredentials(userId, platform, opts = {}) {
@@ -901,6 +916,7 @@ module.exports = {
   getCredentials,
   getCredentialsAtVersion,
   saveCredentials,
+  getGoogleAdsCredentialReference,
   deleteCredentials,
   getStatus,
   setStatus,
