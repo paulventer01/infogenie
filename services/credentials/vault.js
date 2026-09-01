@@ -655,6 +655,15 @@ function _accountFingerprintOf(adAccountId) {
   return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
 
+// Metadata-only Google Ads account binding for guarded authority records.
+// The normalized customer id is used only as hash input and is never returned,
+// persisted, logged, or used to resolve credential secret material.
+function _accountFingerprintOfGoogleAdsCustomerId(customerId) {
+  const normalized = String(customerId || '').replace(/[\s-]/g, '');
+  if (!/^[0-9]{10}$/.test(normalized)) return null;
+  return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
+}
+
 function _pageIdOf(row) {
   const raw = row && row.page_id != null ? String(row.page_id).trim() : '';
   if (!/^[0-9]{1,32}$/.test(raw)) {
@@ -867,4 +876,5 @@ module.exports = {
   withTenantMetaCredentialSecretForProviderDraftExecution,
   withTenantMetaCredentialSecretForConsumedProviderDraft,
   accountFingerprintOfMetaAdAccount: _accountFingerprintOf,
+  accountFingerprintOfGoogleAdsCustomerId: _accountFingerprintOfGoogleAdsCustomerId,
 };
