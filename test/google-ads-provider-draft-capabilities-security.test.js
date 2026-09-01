@@ -127,6 +127,40 @@ test('Google Ads OAuth membership is authoritatively revalidated for the stored 
     assert.equal(await oauth._activeMember(7,101),false);
   } finally { db.hasDb=originalHasDb;db.getPool=originalGetPool; }
 });
+test('Google Ads OAuth persistence revalidates integration permission in the initiating tenant',async()=>{
+  const db=require('../db');
+  const originalHasDb=db.hasDb,originalGetPool=db.getPool;
+  const credentialVault=require('../services/credentials/vault');
+  const originalSave=credentialVault.saveCredentials;
+  const persisted=[];
+  db.hasDb=()=>true;
+  db.getPool=()=>({query:async(sql,args)=>{
+    assert.match(sql,/r\.tenant_id=t\.id/);
+    assert.match(sql,/r\.permissions \? \$3/);
+    assert.equal(args[1],7);
+    assert.equal(args[2],'tenant.integrations.manage');
+    // Tenant A's permission was revoked while tenant B's remains granted.
+    return {rowCount:args[0]===202?1:0,rows:[]};
+  }});
+  try {
+    const session={activeTenantId:202,tenantRole:{permissions:['tenant.integrations.manage']}};
+    assert.equal(await oauth._canManageTenantIntegrations(7,session.activeTenantId),true);
+    credentialVault.saveCredentials=async(...args)=>persisted.push(args);
+    const callbackSaved=await oauth._saveCredentialsForTenant(7,101,{customerId:'111'});
+    const bindSaved=await oauth._saveCredentialsForTenant(7,101,{customerId:'222'});
+    assert.equal(session.activeTenantId,202);
+    assert.equal(callbackSaved,null);
+    assert.equal(bindSaved,null);
+    assert.deepEqual(persisted,[]);
+
+    const source=fs.readFileSync(require.resolve('../services/google_ads_oauth/api'),'utf8');
+    assert.match(source,/customerIds\.length === 1[\s\S]*_saveCredentialsForTenant\(req\.user\.id, initiatingTenantId/);
+    assert.match(source,/router\.post\('\/bind-customer'[\s\S]*_saveCredentialsForTenant\(req\.user\.id, p\.tenantId/);
+  } finally {
+    credentialVault.saveCredentials=originalSave;
+    db.hasDb=originalHasDb;db.getPool=originalGetPool;
+  }
+});
 test('Google Ads OAuth authorization routes use the bounded tenant/user/IP limiter',()=>{
   const source=fs.readFileSync(require.resolve('../services/google_ads_oauth/api'),'utf8');
   assert.match(source,/createRateLimiter\(\{[\s\S]*name: 'google-ads-oauth-authorization'[\s\S]*max: 20/);

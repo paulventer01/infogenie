@@ -38,6 +38,7 @@ const router = express.Router();
 const GOOGLE_ADS_SCOPE   = 'https://www.googleapis.com/auth/adwords openid email';
 const CALLBACK_PATH      = '/api/integrations/google-ads/oauth/callback';
 const SETTINGS_RETURN    = '/?settings=integrations';
+const INTEGRATIONS_PERMISSION = 'tenant.integrations.manage';
 
 function _clientCreds() {
   const clientId =
@@ -78,6 +79,19 @@ async function _activeMember(userId, tenantId) {
     JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$2 AND tu.status='active'
     WHERE t.id=$1 AND t.status='active'`, [tenantId, userId]);
   return result.rowCount === 1;
+}
+async function _canManageTenantIntegrations(userId, tenantId) {
+  if (!_db.hasDb()) return false;
+  const result = await _db.getPool().query(`SELECT 1 FROM tenants t
+    JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$2 AND tu.status='active'
+    JOIN roles r ON r.id=tu.role_id AND r.tenant_id=t.id
+    WHERE t.id=$1 AND t.status='active' AND r.permissions ? $3`,
+  [tenantId, userId, INTEGRATIONS_PERMISSION]);
+  return result.rowCount === 1;
+}
+async function _saveCredentialsForTenant(userId, tenantId, credentials) {
+  if (!(await _canManageTenantIntegrations(userId, tenantId))) return null;
+  return vault.saveCredentials(userId, 'google_ads', credentials, { tenantId });
 }
 
 function _requestIp(req) {
@@ -235,11 +249,11 @@ router.get('/oauth/callback', oauthAuthorizationLimiter, async (req, res) => {
   // 2d. Auto-bind if exactly one customer; otherwise stash and prompt user
   if (customerIds.length === 1) {
     const customerId = customerIds[0];
-    if (!(await _activeMember(req.user.id, initiatingTenantId))) return _backToSettings(res, { ga_error: 'no_tenant' });
-    await vault.saveCredentials(req.user.id, 'google_ads', {
+    const saved = await _saveCredentialsForTenant(req.user.id, initiatingTenantId, {
       devToken, clientId, clientSecret, refreshToken,
       customerId, loginCustomerId: '', email,
-    }, { tenantId: initiatingTenantId });
+    });
+    if (!saved) return _backToSettings(res, { ga_error: 'permission_denied' });
     return _backToSettings(res, { ga_connected: '1' });
   }
 
@@ -274,12 +288,13 @@ router.post('/bind-customer', express.json(), async (req, res) => {
     return res.status(400).json({ ok: false, error: 'invalid_customer_id' });
   }
   const { clientId, clientSecret, devToken } = _clientCreds();
-  const saved = await vault.saveCredentials(req.user.id, 'google_ads', {
+  const saved = await _saveCredentialsForTenant(req.user.id, p.tenantId, {
     devToken, clientId, clientSecret,
     refreshToken: p.refreshToken,
     customerId: picked, loginCustomerId: '',
     email: p.email || null,
-  }, { tenantId: p.tenantId });
+  });
+  if (!saved) return res.status(403).json({ ok: false, error: 'permission_denied' });
   delete req.session.gaPending;
   res.json({ ok: true, credentialReference: {
     id: saved.referenceId, version: saved.version,
@@ -326,4 +341,6 @@ module.exports = router;
 module.exports._oauthState = _oauthState;
 module.exports._consumeOauthState = _consumeOauthState;
 module.exports._activeMember = _activeMember;
+module.exports._canManageTenantIntegrations = _canManageTenantIntegrations;
+module.exports._saveCredentialsForTenant = _saveCredentialsForTenant;
 module.exports._oauthAuthorizationLimiter = oauthAuthorizationLimiter;
