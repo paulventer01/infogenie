@@ -7,7 +7,7 @@ const { accountFingerprintOfGoogleAdsCustomerId } = require('../credentials/vaul
 
 const PERMISSION = 'advertising.provider_drafts.create';
 const CONFIRMATION = 'AUTHORIZE GOOGLE ADS PAUSED DRAFT';
-const MAX_CONFIRMIRMATION_AGE_MS = 5 * 60 * 1000;
+const MAX_CONFIRMATION_AGE_MS = 5 * 60 * 1000;
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const MAX_TTL_MS = 10 * 60 * 1000;
 const SAFE_ID = /^[A-Za-z0-9_.:-]{1,128}$/;
@@ -68,7 +68,7 @@ function capIds(cap,actorUserId) { return {actorUserId,draftId:cap.draft_id,draf
 async function issue(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o),now=o.now instanceof Date?o.now:new Date();
   const confirmed=o.confirmedAt instanceof Date?o.confirmedAt:new Date(o.confirmedAt),ttl=int(o.ttlMs||DEFAULT_TTL_MS);
   if(!tenantId||![o.draftId,o.publishingRequestId,o.publishApprovalId,o.intentId,o.credentialRefId,o.finalConfirmationId].every(valid)
-    ||o.finalConfirmation!==CONFIRMATION||!Number.isFinite(confirmed.getTime())||confirmed>now||now-confirmed>MAX_CONFIRMIRMATION_AGE_MS||!ttl||ttl>MAX_TTL_MS)throw deny('fresh_confirmation_required');
+    ||o.finalConfirmation!==CONFIRMATION||!Number.isFinite(confirmed.getTime())||confirmed>now||now-confirmed>MAX_CONFIRMATION_AGE_MS||!ttl||ttl>MAX_TTL_MS)throw deny('fresh_confirmation_required');
   const row=await authoritative(c,tenantId,{...o,actorUserId:actorId});
   const fp=accountFingerprintOfGoogleAdsCustomerId(o.googleAdsCustomerId);if(!HEX64.test(fp)||!same(fp,row.account_fingerprint))throw deny('authoritative_binding_mismatch');
   const id=`gac_${crypto.randomUUID()}`,expires=new Date(now.getTime()+ttl);
@@ -111,4 +111,4 @@ async function get(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o);if(
     WHERE cap.tenant_id=$1 AND cap.id=$2 AND cap.actor_user_id=$3 AND cap.session_id_hash=$4
       AND role.permissions ? $5 FOR UPDATE OF cap,t,tu,role`,[tenantId,o.capabilityId,actorId,hash(o.sessionId),PERMISSION]);
   if(r.rowCount!==1)throw deny('capability_rejected');return project(r.rows[0]); }
-module.exports={PERMISSION,CONFIRMATION,MAX_CONFIRMIRMATION_AGE_MS,MAX_TTL_MS,issue,reserve,consume,revoke,get,_authoritative:authoritative,_deny:deny};
+module.exports={PERMISSION,CONFIRMATION,MAX_CONFIRMATION_AGE_MS,MAX_TTL_MS,issue,reserve,consume,revoke,get,_authoritative:authoritative,_deny:deny};
