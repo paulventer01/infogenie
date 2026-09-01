@@ -51,6 +51,7 @@ if (!db.hasDb()) {
   const tenant = await fx.seedTenant();
   const otherTenant = await fx.seedTenant();
   const user = await fx.seedUser({ tenantId: tenant.id, owner: false });
+  const otherUser = await fx.seedUser({ tenantId: tenant.id, owner: false });
   const tag = crypto.randomUUID();
   const workflowApprovalId = 100000000 + parseInt(tag.slice(0, 7), 16);
   const id = (kind) => `${kind}-${tag}`;
@@ -69,8 +70,8 @@ if (!db.hasDb()) {
     DELETE FROM orchestrator_approvals WHERE tenant_id IN ($1,$2);
     DELETE FROM orchestrator_workflows WHERE tenant_id IN ($1,$2);
     DELETE FROM tenant_users WHERE tenant_id IN ($1,$2);
-    DELETE FROM users WHERE id=$3;
-    DELETE FROM tenants WHERE id IN ($1,$2)`, [tenant.id, otherTenant.id, user.id]));
+    DELETE FROM users WHERE id IN ($3,$4);
+    DELETE FROM tenants WHERE id IN ($1,$2)`, [tenant.id, otherTenant.id, user.id, otherUser.id]));
 
   await replica(`
     INSERT INTO roles(tenant_id,key,name,permissions)
@@ -112,6 +113,18 @@ if (!db.hasDb()) {
   await assert.rejects(issue({ actorUserId:user.id + 99999 }), denied('authority_not_found'));
   await assert.rejects(issue({ sessionId:id('wrong'), principalType:'worker' }), denied('human_session_required'));
   await assert.rejects(issue({ hasExplicitTenantPermission:()=>false }), denied('permission_denied'));
+
+  for (const [table,column] of [
+    ['orchestrator_campaign_publish_approvals','actor_user_id'],
+    ['orchestrator_campaign_publish_requests','requested_by'],
+    ['orchestrator_campaign_delivery_intents','requested_by'],
+  ]) {
+    await replica(`UPDATE ${table} SET ${column}=$3 WHERE tenant_id=$1 AND ${table.endsWith('approvals')?'id=$2':table.endsWith('requests')?'id=$2':'id=$2'}`,
+      [tenant.id, table.endsWith('approvals')?ids.approval:table.endsWith('requests')?ids.request:ids.intent, otherUser.id]);
+    await assert.rejects(issue({finalConfirmationId:id(`lineage-${column}`),confirmedAt:new Date()}),denied('authoritative_binding_mismatch'));
+    await replica(`UPDATE ${table} SET ${column}=$3 WHERE tenant_id=$1 AND id=$2`,
+      [tenant.id, table.endsWith('approvals')?ids.approval:table.endsWith('requests')?ids.request:ids.intent, user.id]);
+  }
 
   for (const status of ['cancelled','approval_expired','ready_for_approval']) {
     await replica('UPDATE orchestrator_campaign_drafts SET status=$3 WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.draft,status]);
@@ -184,6 +197,13 @@ if (!db.hasDb()) {
     error:'capability_expired',external_action_taken:false});
   assert.equal(Object.hasOwn(expired,'cap'),false);
   await assert.rejects(action('reserve',{reservationId:id('revive')},{capabilityId:expiring.capability_id}),denied('capability_rejected'));
+
+  const elapsed = await issue({finalConfirmationId:id('elapsed-confirm'),confirmedAt:new Date(),ttlMs:1});
+  await new Promise((resolve)=>setTimeout(resolve,5));
+  const elapsedView = await action('get',{}, {capabilityId:elapsed.capability_id});
+  assert.equal(elapsedView.status,'expired');
+  const replacement = await issue({finalConfirmationId:id('replacement-confirm'),confirmedAt:new Date()});
+  assert.equal(replacement.status,'issued');
 
   const audits = await db.getPool().query('SELECT event,detail::text FROM orchestrator_audit_events WHERE tenant_id=$1 AND workflow_id=$2',[tenant.id,ids.workflow]);
   assert.ok(audits.rowCount>=7);for(const row of audits.rows){assert.deepEqual(Object.keys(JSON.parse(row.detail)),['capability_id']);assert.doesNotMatch(row.detail,/123-?456|credential|token|googleapis|https?:/i);}

@@ -25,12 +25,12 @@ async function audit(c,t,a,w,event,id) { await c.query(`INSERT INTO orchestrator
 
 async function authoritative(c,tenantId,ids) {
   const r=await c.query(`SELECT t.status AS tenant_status,d.status AS draft_status,d.workflow_id,d.id AS draft_id,d.current_revision,d.contract_hash,
-    pr.id AS publishing_request_id,pr.draft_id AS request_draft_id,pr.publish_approval_id,pr.workflow_approval_id,pr.revision AS request_revision,
+    pr.id AS publishing_request_id,pr.draft_id AS request_draft_id,pr.publish_approval_id,pr.workflow_approval_id,pr.revision AS request_revision,pr.requested_by AS request_actor_user_id,
     pr.contract_hash AS request_contract_hash,pr.snapshot_hash,pa.draft_id AS approval_draft_id,
-    pa.revision AS approval_revision,pa.contract_hash AS approval_contract_hash,pa.snapshot_json,
+    pa.revision AS approval_revision,pa.contract_hash AS approval_contract_hash,pa.snapshot_json,pa.actor_user_id AS approval_actor_user_id,
     pa.workflow_approval_id AS approval_workflow_approval_id,pa.revoked_at AS approval_revoked_at,(pa.expires_at>clock_timestamp()) AS approval_active,
     di.id AS intent_id,di.draft_id AS intent_draft_id,di.publishing_request_id AS intent_request_id,di.intent_hash,di.revision AS intent_revision,di.contract_hash AS intent_contract_hash,
-    di.snapshot_hash AS intent_snapshot_hash,di.publish_approval_id AS intent_approval_id,
+    di.snapshot_hash AS intent_snapshot_hash,di.publish_approval_id AS intent_approval_id,di.requested_by AS intent_actor_user_id,
     cr.id AS credential_ref_id,cr.version AS credential_ref_version,cr.account_fingerprint,
     cr.status AS credential_status,cr.revoked_at AS credential_revoked,cr.owner_user_id AS credential_owner_user_id,
     wa.workflow_id AS authority_workflow_id,wa.gate AS authority_gate,wa.decision AS authority_decision,
@@ -51,6 +51,8 @@ async function authoritative(c,tenantId,ids) {
   if(r.rowCount!==1)throw deny('authority_not_found');const x=r.rows[0];
   if(x.tenant_status!=='active'||x.draft_status!=='approved_for_publish'||x.explicit_permission!==true||x.global_disabled||x.tenant_disabled
     ||x.credential_status!=='active'||x.credential_revoked||Number(x.credential_owner_user_id)!==Number(ids.actorUserId)
+    ||Number(x.approval_actor_user_id)!==Number(ids.actorUserId)||Number(x.request_actor_user_id)!==Number(ids.actorUserId)
+    ||Number(x.intent_actor_user_id)!==Number(ids.actorUserId)
     ||x.authority_decision!=='approved'||x.authority_gate!=='campaign_publishing'||!same(x.authority_workflow_id,x.workflow_id)
     ||x.approval_revoked_at||x.approval_active!==true
     ||!same(x.draft_id,x.approval_draft_id)||!same(x.draft_id,x.request_draft_id)||!same(x.draft_id,x.intent_draft_id)||!same(x.draft_id,ids.draftId)
@@ -70,8 +72,14 @@ async function issue(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o),n
   if(!tenantId||![o.draftId,o.publishingRequestId,o.publishApprovalId,o.intentId,o.credentialRefId,o.finalConfirmationId].every(valid)
     ||o.finalConfirmation!==CONFIRMATION||!Number.isFinite(confirmed.getTime())||confirmed>now||now-confirmed>MAX_CONFIRMATION_AGE_MS||!ttl||ttl>MAX_TTL_MS)throw deny('fresh_confirmation_required');
   const row=await authoritative(c,tenantId,{...o,actorUserId:actorId});
+  const clock=(await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now,freshNow=new Date(clock);
+  if(!Number.isFinite(freshNow.getTime())||confirmed>freshNow||freshNow-confirmed>MAX_CONFIRMATION_AGE_MS)throw deny('fresh_confirmation_required');
   const fp=accountFingerprintOfGoogleAdsCustomerId(o.googleAdsCustomerId);if(!HEX64.test(fp)||!same(fp,row.account_fingerprint))throw deny('authoritative_binding_mismatch');
-  const id=`gac_${crypto.randomUUID()}`,expires=new Date(now.getTime()+ttl);
+  await c.query(`UPDATE orchestrator_google_ads_provider_draft_capabilities SET status='expired'
+    WHERE tenant_id=$1 AND draft_id=$2 AND publishing_request_id=$3 AND publish_approval_id=$4 AND intent_id=$5
+      AND status IN ('issued','reserved') AND expires_at<=clock_timestamp()`,
+  [tenantId,row.draft_id,row.publishing_request_id,row.publish_approval_id,row.intent_id]);
+  const id=`gac_${crypto.randomUUID()}`,expires=new Date(freshNow.getTime()+ttl);
   const confirmationHash=hash(`${tenantId}|${actorId}|${o.sessionId}|${o.finalConfirmationId}|${CONFIRMATION}|${confirmed.toISOString()}|${row.draft_id}|${row.account_fingerprint}`);
   try { await c.query(`INSERT INTO orchestrator_google_ads_provider_draft_capabilities
    (tenant_id,id,actor_user_id,session_id_hash,workflow_id,draft_id,draft_revision,contract_hash,publishing_request_id,publish_approval_id,
@@ -79,9 +87,9 @@ async function issue(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o),n
     final_confirmation_hash,confirmed_at,issued_at,expires_at,audit_ref) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
   [tenantId,id,actorId,hash(o.sessionId),row.workflow_id,row.draft_id,row.current_revision,row.contract_hash,row.publishing_request_id,
     row.publish_approval_id,row.workflow_approval_id,row.snapshot_hash,row.intent_id,row.intent_hash,row.credential_ref_id,row.credential_ref_version,
-    row.account_fingerprint,o.finalConfirmationId,confirmationHash,confirmed,now,expires,`gac-audit-${crypto.randomUUID()}`]); }
+    row.account_fingerprint,o.finalConfirmationId,confirmationHash,confirmed,freshNow,expires,`gac-audit-${crypto.randomUUID()}`]); }
   catch(e) { if(e?.code==='23505')throw deny('capability_conflict');throw e; }
-  await audit(c,tenantId,actorId,row.workflow_id,'google_ads_provider_draft_capability_issued',id);return project({id,status:'issued',issued_at:now,expires_at:expires}); }
+  await audit(c,tenantId,actorId,row.workflow_id,'google_ads_provider_draft_capability_issued',id);return project({id,status:'issued',issued_at:freshNow,expires_at:expires}); }
 async function lock(c,o,allowed,revalidate=true) { const tenantId=int(o.tenantId),actorId=human(o);if(!tenantId||!valid(o.capabilityId))throw deny('capability_rejected');
   const q=await c.query('SELECT * FROM orchestrator_google_ads_provider_draft_capabilities WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[tenantId,o.capabilityId]);
   if(q.rowCount!==1)throw deny('capability_rejected');const cap=q.rows[0],now=o.now instanceof Date?o.now:new Date();
@@ -104,7 +112,9 @@ const consume=(c,o={})=>transition(c,o,'consumed','invocation_id_hash',o.invocat
 async function revoke(c,o={}) { const x=await lock(c,o,['issued','reserved'],false);if(x.expired)return x;await c.query("UPDATE orchestrator_google_ads_provider_draft_capabilities SET status='revoked',revoked_at=$3,revoked_by=$4 WHERE tenant_id=$1 AND id=$2",[x.tenantId,x.cap.id,x.now,x.actorId]);await audit(c,x.tenantId,x.actorId,x.cap.workflow_id,'google_ads_provider_draft_capability_revoked',x.cap.id);return project({...x.cap,status:'revoked',revoked_at:x.now}); }
 function project(x){const iso=k=>x[k]?new Date(x[k]).toISOString():null;return Object.freeze({capability_id:x.id,status:x.status,expires_at:iso('expires_at'),issued_at:iso('issued_at'),reserved_at:iso('reserved_at'),consumed_at:iso('consumed_at'),revoked_at:iso('revoked_at'),external_action_taken:false});}
 async function get(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o);if(!tenantId||!valid(o.capabilityId))throw deny('capability_rejected');
-  const r=await c.query(`SELECT cap.* FROM orchestrator_google_ads_provider_draft_capabilities cap
+  const r=await c.query(`SELECT cap.*,
+      CASE WHEN cap.status IN ('issued','reserved') AND cap.expires_at<=clock_timestamp() THEN 'expired' ELSE cap.status END AS status
+    FROM orchestrator_google_ads_provider_draft_capabilities cap
     JOIN tenants t ON t.id=cap.tenant_id AND t.status='active'
     JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$3 AND tu.status='active'
     JOIN roles role ON role.id=tu.role_id AND (role.tenant_id=t.id OR role.tenant_id IS NULL)

@@ -26,6 +26,7 @@ const express = require('express');
 const crypto  = require('crypto');
 const _https  = require('https');
 const vault   = require('../credentials/vault');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 
@@ -195,10 +196,12 @@ router.get('/oauth/callback', async (req, res) => {
   // 2d. Auto-bind if exactly one customer; otherwise stash and prompt user
   if (customerIds.length === 1) {
     const customerId = customerIds[0];
+    const tenantId = await _tenantCtx.resolveTenantId(req, { label: 'google-ads-oauth:callback' });
+    if (!tenantId) return _backToSettings(res, { ga_error: 'no_tenant' });
     await vault.saveCredentials(req.user.id, 'google_ads', {
       devToken, clientId, clientSecret, refreshToken,
       customerId, loginCustomerId: '', email,
-    });
+    }, { tenantId });
     return _backToSettings(res, { ga_connected: '1' });
   }
 
@@ -231,12 +234,14 @@ router.post('/bind-customer', express.json(), async (req, res) => {
     return res.status(400).json({ ok: false, error: 'invalid_customer_id' });
   }
   const { clientId, clientSecret, devToken } = _clientCreds();
+  const tenantId = await _tenantCtx.resolveTenantId(req, { label: 'google-ads-oauth:bind-customer' });
+  if (!tenantId) return res.status(400).json({ ok: false, error: 'no_tenant' });
   await vault.saveCredentials(req.user.id, 'google_ads', {
     devToken, clientId, clientSecret,
     refreshToken: p.refreshToken,
     customerId: picked, loginCustomerId: '',
     email: p.email || null,
-  });
+  }, { tenantId });
   delete req.session.gaPending;
   res.json({ ok: true });
 });
@@ -244,7 +249,9 @@ router.post('/bind-customer', express.json(), async (req, res) => {
 // ── 5. Disconnect — wipe vault row for this user ──────────────────────────
 router.post('/disconnect', async (req, res) => {
   if (!req.user || !req.user.id) return res.status(401).json({ ok: false, error: 'not_signed_in' });
-  await vault.deleteCredentials(req.user.id, 'google_ads');
+  const tenantId = await _tenantCtx.resolveTenantId(req, { label: 'google-ads-oauth:disconnect' });
+  if (!tenantId) return res.status(400).json({ ok: false, error: 'no_tenant' });
+  await vault.deleteCredentials(req.user.id, 'google_ads', { tenantId });
   res.json({ ok: true });
 });
 
