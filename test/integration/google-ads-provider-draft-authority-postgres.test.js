@@ -200,17 +200,37 @@ if (!db.hasDb()) {
   await tx((c)=>authority.revoke(c,{...base,capabilityId:replayed.capability_id}));
   await assert.rejects(issue({finalConfirmationId:replayConfirmation.confirmation_id}),denied('fresh_confirmation_required'));
 
-  const approvalClockCap=await issue();
-  await db.getPool().query("UPDATE orchestrator_campaign_publish_approvals SET expires_at=clock_timestamp()+interval '200 milliseconds' WHERE tenant_id=$1 AND id=$2",[tenant.id,ids.approval]);
+  const expiryIds={draft:id('expiry-draft'),approval:id('expiry-approval'),request:id('expiry-request'),intent:id('expiry-intent')};
+  await replica(`
+    INSERT INTO orchestrator_campaign_drafts
+      (id,tenant_id,workflow_id,status,current_revision,contract_hash,idempotency_key)
+      VALUES($1,$2,$3,'approved_for_publish',1,$4,$5);
+    INSERT INTO orchestrator_campaign_draft_revisions
+      (id,tenant_id,draft_id,revision,contract_json,contract_hash,validation_status)
+      VALUES($6,$2,$1,1,'{}',$4,'passed');
+    INSERT INTO orchestrator_campaign_publish_approvals
+      (id,tenant_id,draft_id,revision,contract_hash,snapshot_json,workflow_approval_id,actor_user_id,idempotency_key,expires_at)
+      VALUES($7,$2,$1,1,$4,'{}',${workflowApprovalId},$8,$9,clock_timestamp()+interval '2 seconds');
+    INSERT INTO orchestrator_campaign_publish_requests
+      (id,tenant_id,draft_id,publish_approval_id,workflow_approval_id,revision,contract_hash,snapshot_hash,requested_by,idempotency_key,request_hash)
+      VALUES($10,$2,$1,$7,${workflowApprovalId},1,$4,$4,$8,$11,$4);
+    INSERT INTO orchestrator_campaign_delivery_intents
+      (id,tenant_id,publishing_request_id,draft_id,publish_approval_id,workflow_approval_id,outbox_id,revision,contract_hash,snapshot_hash,intent_hash,idempotency_key,requested_by)
+      VALUES($12,$2,$10,$1,$7,${workflowApprovalId},$13,1,$4,$4,$4,$14,$8)`,
+  [expiryIds.draft,tenant.id,ids.workflow,H,id('expiry-draft-key'),id('expiry-revision'),expiryIds.approval,
+    user.id,id('expiry-approval-key'),expiryIds.request,id('expiry-request-key'),expiryIds.intent,
+    id('expiry-outbox'),id('expiry-intent-key')]);
+  const expiryBase={...base,draftId:expiryIds.draft,publishApprovalId:expiryIds.approval,
+    publishingRequestId:expiryIds.request,intentId:expiryIds.intent};
+  const approvalClockCap=await issue(expiryBase);
   const blocker=await db.getPool().connect();
   await blocker.query('BEGIN');
-  await blocker.query('SELECT 1 FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[tenant.id,ids.approval]);
-  const waitingReserve=tx((c)=>authority.reserve(c,{...base,capabilityId:approvalClockCap.capability_id,reservationId:id('approval-expiry-wait')}));
-  await new Promise((resolve)=>setTimeout(resolve,300));
+  await blocker.query('SELECT 1 FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[tenant.id,expiryIds.approval]);
+  const waitingReserve=tx((c)=>authority.reserve(c,{...expiryBase,capabilityId:approvalClockCap.capability_id,reservationId:id('approval-expiry-wait')}));
+  await new Promise((resolve)=>setTimeout(resolve,2100));
   await blocker.query('COMMIT');blocker.release();
   const approvalExpired=await waitingReserve;
   assert.deepEqual(approvalExpired,{expired:true,capability_id:approvalClockCap.capability_id,error:'capability_expired',external_action_taken:false});
-  await db.getPool().query("UPDATE orchestrator_campaign_publish_approvals SET expires_at=clock_timestamp()+interval '1 hour' WHERE tenant_id=$1 AND id=$2",[tenant.id,ids.approval]);
   await assert.rejects(db.getPool().query("UPDATE orchestrator_google_ads_provider_draft_capabilities SET status='issued' WHERE tenant_id=$1 AND id=$2",[tenant.id,cap.capability_id]),/orchestrator_gapdc_immutable/);
 
   const revoked = await issue();
