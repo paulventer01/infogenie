@@ -113,6 +113,12 @@ if (!db.hasDb()) {
   await assert.rejects(issue({ sessionId:id('wrong'), principalType:'worker' }), denied('human_session_required'));
   await assert.rejects(issue({ hasExplicitTenantPermission:()=>false }), denied('permission_denied'));
 
+  for (const status of ['cancelled','approval_expired','ready_for_approval']) {
+    await replica('UPDATE orchestrator_campaign_drafts SET status=$3 WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.draft,status]);
+    await assert.rejects(issue({finalConfirmationId:id(`issue-${status}`),confirmedAt:new Date()}),denied('authoritative_binding_mismatch'));
+  }
+  await replica("UPDATE orchestrator_campaign_drafts SET status='approved_for_publish' WHERE tenant_id=$1 AND id=$2",[tenant.id,ids.draft]);
+
   const raced = await Promise.allSettled([issue(), issue()]);
   assert.equal(raced.filter((r) => r.status === 'fulfilled').length, 1,
     raced.map((r) => r.reason && `${r.reason.code}:${r.reason.message}`).join(','));
@@ -126,6 +132,12 @@ if (!db.hasDb()) {
     { ...base, capabilityId:cap.capability_id, ...common, ...extra }));
   await assert.rejects(action('reserve',{reservationId:id('wrong-tenant')},{tenantId:otherTenant.id}),denied('capability_rejected'));
   await assert.rejects(action('reserve',{reservationId:id('wrong-session')},{sessionId:id('other-session')}),denied('capability_rejected'));
+
+  for (const status of ['cancelled','approval_expired','ready_for_approval']) {
+    await replica('UPDATE orchestrator_campaign_drafts SET status=$3 WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.draft,status]);
+    await assert.rejects(action('reserve',{reservationId:id(`reserve-${status}`)}),denied('authoritative_binding_mismatch'));
+  }
+  await replica("UPDATE orchestrator_campaign_drafts SET status='approved_for_publish' WHERE tenant_id=$1 AND id=$2",[tenant.id,ids.draft]);
 
   await replica('UPDATE orchestrator_campaign_drafts SET current_revision=2 WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.draft]);
   await assert.rejects(action('reserve',{reservationId:id('stale-draft')}),denied('authoritative_binding_mismatch'));
@@ -151,6 +163,11 @@ if (!db.hasDb()) {
   assert.equal(winner.external_action_taken,false);
   const stored = (await db.getPool().query('SELECT reservation_id_hash FROM orchestrator_google_ads_provider_draft_capabilities WHERE tenant_id=$1 AND id=$2',[tenant.id,cap.capability_id])).rows[0];
   const reservation = [1,2].map((n)=>id(`reservation-${n}`)).find((value)=>crypto.createHash('sha256').update(value).digest('hex')===stored.reservation_id_hash);
+  for (const status of ['cancelled','approval_expired','ready_for_approval']) {
+    await replica('UPDATE orchestrator_campaign_drafts SET status=$3 WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.draft,status]);
+    await assert.rejects(action('consume',{reservationId:reservation,invocationId:id(`consume-${status}`)}),denied('authoritative_binding_mismatch'));
+  }
+  await replica("UPDATE orchestrator_campaign_drafts SET status='approved_for_publish' WHERE tenant_id=$1 AND id=$2",[tenant.id,ids.draft]);
   const consumes = await Promise.allSettled([1,2].map((n)=>action('consume',{reservationId:reservation,invocationId:id(`invocation-${n}`)})));
   assert.equal(consumes.filter((r)=>r.status==='fulfilled').length,1);
   assert.equal(consumes.find((r)=>r.status==='fulfilled').value.external_action_taken,false);

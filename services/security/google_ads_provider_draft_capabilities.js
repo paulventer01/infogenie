@@ -24,7 +24,7 @@ async function audit(c,t,a,w,event,id) { await c.query(`INSERT INTO orchestrator
   (tenant_id,workflow_id,event,actor_user_id,detail) VALUES($1,$2,$3,$4,$5::jsonb)`,[t,w,event,a,JSON.stringify({capability_id:id})]); }
 
 async function authoritative(c,tenantId,ids) {
-  const r=await c.query(`SELECT t.status AS tenant_status,d.workflow_id,d.id AS draft_id,d.current_revision,d.contract_hash,
+  const r=await c.query(`SELECT t.status AS tenant_status,d.status AS draft_status,d.workflow_id,d.id AS draft_id,d.current_revision,d.contract_hash,
     pr.id AS publishing_request_id,pr.draft_id AS request_draft_id,pr.publish_approval_id,pr.workflow_approval_id,pr.revision AS request_revision,
     pr.contract_hash AS request_contract_hash,pr.snapshot_hash,pa.draft_id AS approval_draft_id,
     pa.revision AS approval_revision,pa.contract_hash AS approval_contract_hash,pa.snapshot_json,
@@ -49,7 +49,7 @@ async function authoritative(c,tenantId,ids) {
    WHERE t.id=$1 AND pr.publish_approval_id=$7 FOR UPDATE OF t,tu,r,d,pr,pa,wa,di,cr,g,k`,
   [tenantId,ids.actorUserId,ids.draftId,ids.publishingRequestId,ids.intentId,ids.credentialRefId,ids.publishApprovalId,PERMISSION]);
   if(r.rowCount!==1)throw deny('authority_not_found');const x=r.rows[0];
-  if(x.tenant_status!=='active'||x.explicit_permission!==true||x.global_disabled||x.tenant_disabled
+  if(x.tenant_status!=='active'||x.draft_status!=='approved_for_publish'||x.explicit_permission!==true||x.global_disabled||x.tenant_disabled
     ||x.credential_status!=='active'||x.credential_revoked||Number(x.credential_owner_user_id)!==Number(ids.actorUserId)
     ||x.authority_decision!=='approved'||x.authority_gate!=='campaign_publishing'||!same(x.authority_workflow_id,x.workflow_id)
     ||x.approval_revoked_at||x.approval_active!==true

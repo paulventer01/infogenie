@@ -47,3 +47,11 @@ test('authoritative approval revocation is selected under the validated alias',(
   assert.match(source,/pa\.revoked_at AS approval_revoked_at/);
   assert.match(source,/x\.approval_revoked_at/);
 });
+test('draft status and owner-gate authority remain fail-closed and narrowly scoped',()=>{
+  const source=fs.readFileSync(require.resolve('../services/security/google_ads_provider_draft_capabilities'),'utf8');
+  assert.match(source,/d\.status AS draft_status/);
+  assert.match(source,/x\.draft_status!==\'approved_for_publish\'/);
+  const server=fs.readFileSync(require.resolve('../server'),'utf8');
+  assert.match(server,/google-ads-provider-draft-capabilities\(\?:\\\/\|\$\)/);
+  assert.doesNotMatch(server,/google-ads-provider-draft-capabilities-export/);
+});
