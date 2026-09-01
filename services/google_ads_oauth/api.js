@@ -84,7 +84,7 @@ async function _canManageTenantIntegrations(userId, tenantId) {
   if (!_db.hasDb()) return false;
   const result = await _db.getPool().query(`SELECT 1 FROM tenants t
     JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$2 AND tu.status='active'
-    JOIN roles r ON r.id=tu.role_id AND r.tenant_id=t.id
+    JOIN roles r ON r.id=tu.role_id AND (r.tenant_id=t.id OR r.tenant_id IS NULL)
     WHERE t.id=$1 AND t.status='active' AND r.permissions ? $3`,
   [tenantId, userId, INTEGRATIONS_PERMISSION]);
   return result.rowCount === 1;
