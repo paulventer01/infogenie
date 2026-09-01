@@ -6,10 +6,10 @@ const crypto = require('crypto');
 const db = require('../../db');
 const schema = require('../../services/agent_orchestrator/schema');
 const authority = require('../../services/security/google_ads_provider_draft_capabilities');
+const vault = require('../../services/credentials/vault');
 const { makeFixtures } = require('../helpers');
 
 const H = crypto.createHash('sha256').update('{}').digest('hex');
-const CUSTOMER = '123-456-7890';
 const FP = crypto.createHash('sha256').update('1234567890').digest('hex');
 const permit = (key) => key === authority.PERMISSION;
 const denied = (code) => (error) => error && error.code === code;
@@ -52,6 +52,7 @@ if (!db.hasDb()) {
   const otherTenant = await fx.seedTenant();
   const user = await fx.seedUser({ tenantId: tenant.id, owner: false });
   const otherUser = await fx.seedUser({ tenantId: tenant.id, owner: false });
+  const legacyUser = await fx.seedUser({ tenantId: tenant.id, owner: false });
   const tag = crypto.randomUUID();
   const workflowApprovalId = 100000000 + parseInt(tag.slice(0, 7), 16);
   const id = (kind) => `${kind}-${tag}`;
@@ -70,9 +71,10 @@ if (!db.hasDb()) {
     DELETE FROM orchestrator_tenant_google_ads_credential_refs WHERE tenant_id IN ($1,$2);
     DELETE FROM orchestrator_approvals WHERE tenant_id IN ($1,$2);
     DELETE FROM orchestrator_workflows WHERE tenant_id IN ($1,$2);
+    DELETE FROM user_integrations WHERE user_id IN ($3,$4,$5);
     DELETE FROM tenant_users WHERE tenant_id IN ($1,$2);
-    DELETE FROM users WHERE id IN ($3,$4);
-    DELETE FROM tenants WHERE id IN ($1,$2)`, [tenant.id, otherTenant.id, user.id, otherUser.id]));
+    DELETE FROM users WHERE id IN ($3,$4,$5);
+    DELETE FROM tenants WHERE id IN ($1,$2)`, [tenant.id, otherTenant.id, user.id, otherUser.id, legacyUser.id]));
 
   await replica(`
     INSERT INTO roles(tenant_id,key,name,permissions)
@@ -105,7 +107,7 @@ if (!db.hasDb()) {
   const base = { tenantId:tenant.id, actorUserId:user.id, actorType:'human', principalType:'user',
     sessionId:id('session'), hasExplicitTenantPermission:permit, draftId:ids.draft, draftRevision:1,
     publishingRequestId:ids.request, publishApprovalId:ids.approval, intentId:ids.intent,
-    credentialRefId:ids.credential, credentialRefVersion:1, googleAdsCustomerId:CUSTOMER,
+    credentialRefId:ids.credential, credentialRefVersion:1,
     ttlMs:300000 };
   const issue = async (overrides = {}) => tx(async (c) => {
     const input={...base,...overrides};
@@ -200,6 +202,25 @@ if (!db.hasDb()) {
   await tx((c)=>authority.revoke(c,{...base,capabilityId:replayed.capability_id}));
   await assert.rejects(issue({finalConfirmationId:replayConfirmation.confirmation_id}),denied('fresh_confirmation_required'));
 
+  const expiringConfirmation={confirmation_id:id('expiring-confirmation')};
+  await replica(`INSERT INTO orchestrator_google_ads_provider_draft_confirmations
+    (tenant_id,id,actor_user_id,session_id_hash,draft_id,draft_revision,publishing_request_id,publish_approval_id,
+     intent_id,credential_ref_id,credential_ref_version,phrase_hash,created_at,expires_at)
+    VALUES($1,$2,$3,$4,$5,1,$6,$7,$8,$9,1,$10,clock_timestamp(),clock_timestamp()+interval '1 second')`,
+  [tenant.id,expiringConfirmation.confirmation_id,user.id,
+    crypto.createHash('sha256').update(base.sessionId).digest('hex'),ids.draft,ids.request,ids.approval,ids.intent,
+    ids.credential,crypto.createHash('sha256').update(authority.CONFIRMATION).digest('hex')]);
+  const confirmationBlocker=await db.getPool().connect();
+  await confirmationBlocker.query('BEGIN');
+  await confirmationBlocker.query(`SELECT 1 FROM orchestrator_google_ads_provider_draft_confirmations
+    WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenant.id,expiringConfirmation.confirmation_id]);
+  const waitingIssue=issue({finalConfirmationId:expiringConfirmation.confirmation_id});
+  await new Promise((resolve)=>setTimeout(resolve,1100));
+  await confirmationBlocker.query('COMMIT');confirmationBlocker.release();
+  await assert.rejects(waitingIssue,denied('fresh_confirmation_required'));
+  assert.equal((await db.getPool().query(`SELECT consumed_at FROM orchestrator_google_ads_provider_draft_confirmations
+    WHERE tenant_id=$1 AND id=$2`,[tenant.id,expiringConfirmation.confirmation_id])).rows[0].consumed_at,null);
+
   const expiryIds={draft:id('expiry-draft'),approval:id('expiry-approval'),request:id('expiry-request'),intent:id('expiry-intent')};
   await replica(`
     INSERT INTO orchestrator_campaign_drafts
@@ -248,8 +269,37 @@ if (!db.hasDb()) {
   await new Promise((resolve)=>setTimeout(resolve,5));
   const elapsedView = await action('get',{}, {capabilityId:elapsed.capability_id});
   assert.equal(elapsedView.status,'expired');
-  const replacement = await issue();
-  assert.equal(replacement.status,'issued');
+  const replacementRace=await Promise.allSettled([
+    action('reserve',{reservationId:id('elapsed-race')},{capabilityId:elapsed.capability_id}), issue(),
+  ]);
+  assert.equal(replacementRace.some((result)=>result.reason?.code==='40P01'),false);
+  const replacement=replacementRace.find((result)=>result.status==='fulfilled'&&result.value?.status==='issued')?.value;
+  assert.equal(replacement?.status,'issued');
+  const live=await db.getPool().query(`SELECT count(*)::int AS count FROM orchestrator_google_ads_provider_draft_capabilities
+    WHERE tenant_id=$1 AND draft_id=$2 AND status IN ('issued','reserved')`,[tenant.id,ids.draft]);
+  assert.equal(live.rows[0].count,1);
+
+  const legacyEncrypted=vault.encryptString(JSON.stringify({customerId:'987-654-3210',refreshToken:'never-returned'}));
+  await replica(`INSERT INTO tenant_users(tenant_id,user_id,role_id,status)
+    SELECT $1,$2,role_id,'active' FROM tenant_users WHERE tenant_id=$3 AND user_id=$2`,
+  [otherTenant.id,otherUser.id,tenant.id]);
+  await db.getPool().query(`INSERT INTO user_integrations
+    (user_id,platform,ciphertext,iv,tag,status,credential_version) VALUES($1,'google_ads',$2,$3,$4,'connected',1)
+    ON CONFLICT(user_id,platform) DO UPDATE SET ciphertext=$2,iv=$3,tag=$4,status='connected',credential_version=1`,
+  [otherUser.id,legacyEncrypted.ciphertext,legacyEncrypted.iv,legacyEncrypted.tag]);
+  assert.equal(await vault.getGoogleAdsCredentialReference(otherUser.id,tenant.id),null);
+  assert.equal(await vault.getGoogleAdsCredentialReference(otherUser.id,otherTenant.id),null);
+  await db.getPool().query(`INSERT INTO user_integrations
+    (user_id,platform,ciphertext,iv,tag,status,credential_version) VALUES($1,'google_ads',$2,$3,$4,'connected',1)`,
+  [legacyUser.id,legacyEncrypted.ciphertext,legacyEncrypted.iv,legacyEncrypted.tag]);
+  const upgraded=await vault.getGoogleAdsCredentialReference(legacyUser.id,tenant.id);
+  assert.deepEqual(upgraded,{referenceId:`google_ads_${legacyUser.id}_1`,version:1});
+  assert.deepEqual(await vault.getGoogleAdsCredentialReference(legacyUser.id,tenant.id),upgraded);
+  await db.getPool().query(`UPDATE user_integrations SET credential_version=2 WHERE user_id=$1 AND platform='google_ads'`,[legacyUser.id]);
+  const rotated=await vault.getGoogleAdsCredentialReference(legacyUser.id,tenant.id);
+  assert.equal(rotated.version,2);
+  await db.getPool().query(`UPDATE user_integrations SET credential_version=1 WHERE user_id=$1 AND platform='google_ads'`,[legacyUser.id]);
+  assert.equal(await vault.getGoogleAdsCredentialReference(legacyUser.id,tenant.id),null);
 
   const audits = await db.getPool().query('SELECT event,detail::text FROM orchestrator_audit_events WHERE tenant_id=$1 AND workflow_id=$2',[tenant.id,ids.workflow]);
   assert.ok(audits.rowCount>=7);for(const row of audits.rows){assert.deepEqual(Object.keys(JSON.parse(row.detail)),['capability_id']);assert.doesNotMatch(row.detail,/123-?456|credential|token|googleapis|https?:/i);}

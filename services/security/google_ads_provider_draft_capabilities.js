@@ -3,7 +3,6 @@
 // Authority-only boundary: no Google client, secret resolver, connector or provider payload.
 const crypto = require('crypto');
 const { sha256Hex } = require('../agent_orchestrator/hash');
-const { accountFingerprintOfGoogleAdsCustomerId } = require('../credentials/vault');
 
 const PERMISSION = 'advertising.provider_drafts.create';
 const CONFIRMATION = 'AUTHORIZE GOOGLE ADS PAUSED DRAFT';
@@ -11,7 +10,6 @@ const MAX_CONFIRMATION_AGE_MS = 5 * 60 * 1000;
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const MAX_TTL_MS = 10 * 60 * 1000;
 const SAFE_ID = /^[A-Za-z0-9_.:-]{1,128}$/;
-const HEX64 = /^[0-9a-f]{64}$/;
 function hash(v) { return crypto.createHash('sha256').update(String(v)).digest('hex'); }
 function same(a,b) { if(typeof a!=='string'||typeof b!=='string')return false;const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&crypto.timingSafeEqual(x,y); }
 function int(v) { const n=Number(v);return Number.isSafeInteger(n)&&n>0?n:null; }
@@ -71,7 +69,6 @@ async function confirm(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o)
   if(!tenantId||![o.draftId,o.publishingRequestId,o.publishApprovalId,o.intentId,o.credentialRefId].every(valid)
     ||o.finalConfirmation!==CONFIRMATION)throw deny('fresh_confirmation_required');
   const row=await authoritative(c,tenantId,{...o,actorUserId:actorId});
-  const fp=accountFingerprintOfGoogleAdsCustomerId(o.googleAdsCustomerId);if(!HEX64.test(fp)||!same(fp,row.account_fingerprint))throw deny('authoritative_binding_mismatch');
   const created=new Date((await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now),id=`gacf_${crypto.randomUUID()}`;
   await c.query(`INSERT INTO orchestrator_google_ads_provider_draft_confirmations
     (tenant_id,id,actor_user_id,session_id_hash,draft_id,draft_revision,publishing_request_id,publish_approval_id,intent_id,
@@ -84,17 +81,16 @@ async function issue(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o),t
   if(!tenantId||![o.draftId,o.publishingRequestId,o.publishApprovalId,o.intentId,o.credentialRefId,o.finalConfirmationId].every(valid)
     ||!ttl||ttl>MAX_TTL_MS)throw deny('fresh_confirmation_required');
   const row=await authoritative(c,tenantId,{...o,actorUserId:actorId});
-  const clock=(await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now,freshNow=new Date(clock);
-  if(!Number.isFinite(freshNow.getTime()))throw deny('fresh_confirmation_required');
   const confirmation=(await c.query(`SELECT * FROM orchestrator_google_ads_provider_draft_confirmations
     WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,o.finalConfirmationId])).rows[0];
+  const clock=(await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now,freshNow=new Date(clock);
+  if(!Number.isFinite(freshNow.getTime()))throw deny('fresh_confirmation_required');
   if(!confirmation||confirmation.consumed_at||!(new Date(confirmation.expires_at)>freshNow)
     ||Number(confirmation.actor_user_id)!==actorId||!same(confirmation.session_id_hash,hash(o.sessionId))
     ||!same(confirmation.draft_id,row.draft_id)||Number(confirmation.draft_revision)!==Number(row.current_revision)
     ||!same(confirmation.publishing_request_id,row.publishing_request_id)||!same(confirmation.publish_approval_id,row.publish_approval_id)
     ||!same(confirmation.intent_id,row.intent_id)||!same(confirmation.credential_ref_id,row.credential_ref_id)
     ||Number(confirmation.credential_ref_version)!==Number(row.credential_ref_version)||!same(confirmation.phrase_hash,hash(CONFIRMATION)))throw deny('fresh_confirmation_required');
-  const fp=accountFingerprintOfGoogleAdsCustomerId(o.googleAdsCustomerId);if(!HEX64.test(fp)||!same(fp,row.account_fingerprint))throw deny('authoritative_binding_mismatch');
   await c.query(`UPDATE orchestrator_google_ads_provider_draft_capabilities SET status='expired'
     WHERE tenant_id=$1 AND draft_id=$2 AND publishing_request_id=$3 AND publish_approval_id=$4 AND intent_id=$5
       AND status IN ('issued','reserved') AND expires_at<=clock_timestamp()`,
@@ -113,15 +109,18 @@ async function issue(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o),t
   catch(e) { if(e?.code==='23505')throw deny('capability_conflict');throw e; }
   await audit(c,tenantId,actorId,row.workflow_id,'google_ads_provider_draft_capability_issued',id);return project({id,status:'issued',issued_at:freshNow,expires_at:expires}); }
 async function lock(c,o,allowed,revalidate=true) { const tenantId=int(o.tenantId),actorId=human(o);if(!tenantId||!valid(o.capabilityId))throw deny('capability_rejected');
+  const peek=await c.query('SELECT * FROM orchestrator_google_ads_provider_draft_capabilities WHERE tenant_id=$1 AND id=$2',[tenantId,o.capabilityId]);
+  if(peek.rowCount!==1)throw deny('capability_rejected');
+  const row=revalidate?await authoritative(c,tenantId,capIds(peek.rows[0],actorId)):null;
+  if(!revalidate){const grant=await c.query(`SELECT 1 FROM tenants t JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$2 AND tu.status='active'
+    JOIN roles r ON r.id=tu.role_id AND (r.tenant_id=t.id OR r.tenant_id IS NULL)
+    WHERE t.id=$1 AND t.status='active' AND r.permissions ? $3 FOR UPDATE OF t,tu,r`,[tenantId,actorId,PERMISSION]);if(grant.rowCount!==1)throw deny('permission_denied');}
   const q=await c.query('SELECT * FROM orchestrator_google_ads_provider_draft_capabilities WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[tenantId,o.capabilityId]);
   if(q.rowCount!==1)throw deny('capability_rejected');const cap=q.rows[0],now=o.now instanceof Date?o.now:new Date();
   if(!allowed.includes(cap.status)||Number(cap.actor_user_id)!==actorId||!same(cap.session_id_hash,hash(o.sessionId)))throw deny('capability_rejected');
-  const grant=await c.query(`SELECT 1 FROM tenants t JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$2 AND tu.status='active'
-    JOIN roles r ON r.id=tu.role_id AND (r.tenant_id=t.id OR r.tenant_id IS NULL)
-    WHERE t.id=$1 AND t.status='active' AND r.permissions ? $3 FOR UPDATE OF t,tu,r`,[tenantId,actorId,PERMISSION]);
-  if(grant.rowCount!==1)throw deny('permission_denied');
+  if(revalidate&&(!same(cap.draft_id,peek.rows[0].draft_id)||!same(cap.publishing_request_id,peek.rows[0].publishing_request_id)
+    ||!same(cap.publish_approval_id,peek.rows[0].publish_approval_id)||!same(cap.intent_id,peek.rows[0].intent_id)))throw deny('capability_rejected');
   if(!(new Date(cap.expires_at)>now)){await c.query("UPDATE orchestrator_google_ads_provider_draft_capabilities SET status='expired' WHERE tenant_id=$1 AND id=$2",[tenantId,cap.id]);await audit(c,tenantId,actorId,cap.workflow_id,'google_ads_provider_draft_capability_expired',cap.id);return Object.freeze({expired:true,capability_id:cap.id,error:'capability_expired',external_action_taken:false});}
-  const row=revalidate?await authoritative(c,tenantId,capIds(cap,actorId)):null;
   if(row&&(!same(row.contract_hash,cap.contract_hash)||!same(row.snapshot_hash,cap.snapshot_hash)||!same(row.intent_hash,cap.intent_hash)||!same(row.account_fingerprint,cap.account_fingerprint)))throw deny('authoritative_binding_mismatch');
   return {tenantId,actorId,cap,row,now}; }
 async function transition(c,o,status,idField,idValue,timeField,event) { if(!valid(idValue))throw deny('capability_rejected');const x=await lock(c,o,status==='reserved'?['issued']:['reserved']);if(x.expired)return x;

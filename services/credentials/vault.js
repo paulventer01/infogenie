@@ -303,15 +303,54 @@ async function saveCredentials(userId, platform, blob, opts = {}) {
 async function getGoogleAdsCredentialReference(userId, tenantId) {
   const uid = _normUserId(userId);
   const tid = _positiveInt(tenantId);
-  if (!uid || !tid || !_db.hasDb()) return null;
+  if (!uid || !tid || !_db.hasDb() || !hasKey()) return null;
   await ensureCredentialsSchema();
-  const result = await _db.getPool().query(`SELECT id,version
-    FROM orchestrator_tenant_google_ads_credential_refs
-    WHERE tenant_id=$1 AND owner_user_id=$2 AND platform='google_ads'
-      AND status='active' AND revoked_at IS NULL
-    ORDER BY version DESC LIMIT 1`, [tid, uid]);
-  if (result.rowCount !== 1) return null;
-  return Object.freeze({ referenceId: result.rows[0].id, version: Number(result.rows[0].version) });
+  const client = await _db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const memberships = await client.query(`SELECT tu.tenant_id FROM tenant_users tu
+      JOIN tenants t ON t.id=tu.tenant_id AND t.status='active'
+      WHERE tu.user_id=$1 AND tu.status='active' ORDER BY tu.tenant_id FOR UPDATE OF tu,t`, [uid]);
+    if (!memberships.rows.some((row) => Number(row.tenant_id) === tid)) { await client.query('ROLLBACK'); return null; }
+    const integration = await client.query(`SELECT ciphertext,iv,tag,status,credential_version
+      FROM user_integrations WHERE user_id=$1 AND platform='google_ads' FOR UPDATE`, [uid]);
+    if (integration.rowCount !== 1 || integration.rows[0].status !== 'connected') {
+      await client.query('ROLLBACK'); return null;
+    }
+    const version = Number(integration.rows[0].credential_version);
+    let customerId;
+    try {
+      const blob = JSON.parse(_decrypt(integration.rows[0].ciphertext, integration.rows[0].iv, integration.rows[0].tag));
+      customerId = String(blob?.customerId || '').replace(/[^0-9]/g, '');
+    } catch (_error) { await client.query('ROLLBACK'); return null; }
+    if (!customerId || !Number.isSafeInteger(version) || version < 1) { await client.query('ROLLBACK'); return null; }
+    const fingerprint = _accountFingerprintOfGoogleAdsCustomerId(customerId);
+    const refs = await client.query(`SELECT tenant_id,id,version,status,revoked_at,account_fingerprint
+      FROM orchestrator_tenant_google_ads_credential_refs WHERE owner_user_id=$1 FOR UPDATE`, [uid]);
+    const exact = refs.rows.find((row) => Number(row.tenant_id) === tid && Number(row.version) === version
+      && row.status === 'active' && !row.revoked_at && row.account_fingerprint === fingerprint);
+    if (exact) { await client.query('COMMIT'); return Object.freeze({ referenceId: exact.id, version }); }
+    // A legacy per-user credential may be claimed only once. Never redirect an
+    // established tenant reference merely because the session tenant changed.
+    if ((refs.rows.length === 0 && memberships.rowCount !== 1)
+      || refs.rows.some((row) => row.status === 'active' && !row.revoked_at && Number(row.tenant_id) !== tid)
+      || refs.rows.some((row) => Number(row.tenant_id) === tid && Number(row.version) >= version)) {
+      await client.query('ROLLBACK'); return null;
+    }
+    await client.query(`UPDATE orchestrator_tenant_google_ads_credential_refs
+      SET status='revoked',revoked_at=clock_timestamp(),updated_at=clock_timestamp()
+      WHERE tenant_id=$1 AND owner_user_id=$2 AND status='active' AND version<$3`, [tid, uid, version]);
+    const referenceId = `google_ads_${uid}_${version}`;
+    await client.query(`INSERT INTO orchestrator_tenant_google_ads_credential_refs
+      (tenant_id,id,platform,status,account_fingerprint,version,owner_user_id)
+      VALUES($1,$2,'google_ads','active',$3,$4,$5)`, [tid, referenceId, fingerprint, version, uid]);
+    await client.query('COMMIT');
+    return Object.freeze({ referenceId, version });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if (error?.code === '23505') return null;
+    throw error;
+  } finally { client.release(); }
 }
 
 async function deleteCredentials(userId, platform, opts = {}) {
