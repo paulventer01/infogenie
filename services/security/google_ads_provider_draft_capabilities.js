@@ -7,7 +7,7 @@ const { accountFingerprintOfGoogleAdsCustomerId } = require('../credentials/vaul
 
 const PERMISSION = 'advertising.provider_drafts.create';
 const CONFIRMATION = 'AUTHORIZE GOOGLE ADS PAUSED DRAFT';
-const MAX_CONFIRMATION_AGE_MS = 5 * 60 * 1000;
+const MAX_CONFIRMIRMATION_AGE_MS = 5 * 60 * 1000;
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const MAX_TTL_MS = 10 * 60 * 1000;
 const SAFE_ID = /^[A-Za-z0-9_.:-]{1,128}$/;
@@ -28,7 +28,7 @@ async function authoritative(c,tenantId,ids) {
     pr.id AS publishing_request_id,pr.draft_id AS request_draft_id,pr.publish_approval_id,pr.workflow_approval_id,pr.revision AS request_revision,
     pr.contract_hash AS request_contract_hash,pr.snapshot_hash,pa.draft_id AS approval_draft_id,
     pa.revision AS approval_revision,pa.contract_hash AS approval_contract_hash,pa.snapshot_json,
-    pa.workflow_approval_id AS approval_workflow_approval_id,pa.revoked_at AS approval_revoked_at,(pa.expires_at>now()) AS approval_active,
+    pa.workflow_approval_id AS approval_workflow_approval_id,pa.revoked_at AS approval_revoked_at,(pa.expires_at>clock_timestamp()) AS approval_active,
     di.id AS intent_id,di.draft_id AS intent_draft_id,di.publishing_request_id AS intent_request_id,di.intent_hash,di.revision AS intent_revision,di.contract_hash AS intent_contract_hash,
     di.snapshot_hash AS intent_snapshot_hash,di.publish_approval_id AS intent_approval_id,
     cr.id AS credential_ref_id,cr.version AS credential_ref_version,cr.account_fingerprint,
@@ -68,7 +68,7 @@ function capIds(cap,actorUserId) { return {actorUserId,draftId:cap.draft_id,draf
 async function issue(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o),now=o.now instanceof Date?o.now:new Date();
   const confirmed=o.confirmedAt instanceof Date?o.confirmedAt:new Date(o.confirmedAt),ttl=int(o.ttlMs||DEFAULT_TTL_MS);
   if(!tenantId||![o.draftId,o.publishingRequestId,o.publishApprovalId,o.intentId,o.credentialRefId,o.finalConfirmationId].every(valid)
-    ||o.finalConfirmation!==CONFIRMATION||!Number.isFinite(confirmed.getTime())||confirmed>now||now-confirmed>MAX_CONFIRMATION_AGE_MS||!ttl||ttl>MAX_TTL_MS)throw deny('fresh_confirmation_required');
+    ||o.finalConfirmation!==CONFIRMATION||!Number.isFinite(confirmed.getTime())||confirmed>now||now-confirmed>MAX_CONFIRMIRMATION_AGE_MS||!ttl||ttl>MAX_TTL_MS)throw deny('fresh_confirmation_required');
   const row=await authoritative(c,tenantId,{...o,actorUserId:actorId});
   const fp=accountFingerprintOfGoogleAdsCustomerId(o.googleAdsCustomerId);if(!HEX64.test(fp)||!same(fp,row.account_fingerprint))throw deny('authoritative_binding_mismatch');
   const id=`gac_${crypto.randomUUID()}`,expires=new Date(now.getTime()+ttl);
@@ -96,7 +96,9 @@ async function lock(c,o,allowed,revalidate=true) { const tenantId=int(o.tenantId
   return {tenantId,actorId,cap,row,now}; }
 async function transition(c,o,status,idField,idValue,timeField,event) { if(!valid(idValue))throw deny('capability_rejected');const x=await lock(c,o,status==='reserved'?['issued']:['reserved']);if(x.expired)return x;
   if(status==='consumed'&&!same(x.cap.reservation_id_hash,hash(o.reservationId)))throw deny('capability_rejected');
-  await c.query(`UPDATE orchestrator_google_ads_provider_draft_capabilities SET status=$3,${idField}=$4,${timeField}=$5 WHERE tenant_id=$1 AND id=$2`,[x.tenantId,x.cap.id,status,hash(idValue),x.now]);await audit(c,x.tenantId,x.actorId,x.cap.workflow_id,event,x.cap.id);return project({...x.cap,status,[timeField]:x.now}); }
+  const fresh=(await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now,transitionNow=new Date(fresh);
+  if(!Number.isFinite(transitionNow.getTime())||!(new Date(x.cap.expires_at)>transitionNow)){await c.query("UPDATE orchestrator_google_ads_provider_draft_capabilities SET status='expired' WHERE tenant_id=$1 AND id=$2",[x.tenantId,x.cap.id]);await audit(c,x.tenantId,x.actorId,x.cap.workflow_id,'google_ads_provider_draft_capability_expired',x.cap.id);return Object.freeze({expired:true,capability_id:x.cap.id,error:'capability_expired',external_action_taken:false});}
+  await c.query(`UPDATE orchestrator_google_ads_provider_draft_capabilities SET status=$3,${idField}=$4,${timeField}=$5 WHERE tenant_id=$1 AND id=$2`,[x.tenantId,x.cap.id,status,hash(idValue),transitionNow]);await audit(c,x.tenantId,x.actorId,x.cap.workflow_id,event,x.cap.id);return project({...x.cap,status,[timeField]:transitionNow}); }
 const reserve=(c,o={})=>transition(c,o,'reserved','reservation_id_hash',o.reservationId,'reserved_at','google_ads_provider_draft_capability_reserved');
 const consume=(c,o={})=>transition(c,o,'consumed','invocation_id_hash',o.invocationId,'consumed_at','google_ads_provider_draft_capability_consumed');
 async function revoke(c,o={}) { const x=await lock(c,o,['issued','reserved'],false);if(x.expired)return x;await c.query("UPDATE orchestrator_google_ads_provider_draft_capabilities SET status='revoked',revoked_at=$3,revoked_by=$4 WHERE tenant_id=$1 AND id=$2",[x.tenantId,x.cap.id,x.now,x.actorId]);await audit(c,x.tenantId,x.actorId,x.cap.workflow_id,'google_ads_provider_draft_capability_revoked',x.cap.id);return project({...x.cap,status:'revoked',revoked_at:x.now}); }
@@ -109,4 +111,4 @@ async function get(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o);if(
     WHERE cap.tenant_id=$1 AND cap.id=$2 AND cap.actor_user_id=$3 AND cap.session_id_hash=$4
       AND role.permissions ? $5 FOR UPDATE OF cap,t,tu,role`,[tenantId,o.capabilityId,actorId,hash(o.sessionId),PERMISSION]);
   if(r.rowCount!==1)throw deny('capability_rejected');return project(r.rows[0]); }
-module.exports={PERMISSION,CONFIRMATION,MAX_CONFIRMATION_AGE_MS,MAX_TTL_MS,issue,reserve,consume,revoke,get,_authoritative:authoritative,_deny:deny};
+module.exports={PERMISSION,CONFIRMATION,MAX_CONFIRMIRMATION_AGE_MS,MAX_TTL_MS,issue,reserve,consume,revoke,get,_authoritative:authoritative,_deny:deny};
