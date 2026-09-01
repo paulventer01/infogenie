@@ -38,7 +38,6 @@ const router = express.Router();
 const GOOGLE_ADS_SCOPE   = 'https://www.googleapis.com/auth/adwords openid email';
 const CALLBACK_PATH      = '/api/integrations/google-ads/oauth/callback';
 const SETTINGS_RETURN    = '/?settings=integrations';
-const INTEGRATIONS_PERMISSION = 'tenant.integrations.manage';
 
 function _clientCreds() {
   const clientId =
@@ -80,18 +79,14 @@ async function _activeMember(userId, tenantId) {
     WHERE t.id=$1 AND t.status='active'`, [tenantId, userId]);
   return result.rowCount === 1;
 }
-async function _canManageTenantIntegrations(userId, tenantId) {
-  if (!_db.hasDb()) return false;
-  const result = await _db.getPool().query(`SELECT 1 FROM tenants t
-    JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$2 AND tu.status='active'
-    JOIN roles r ON r.id=tu.role_id AND (r.tenant_id=t.id OR r.tenant_id IS NULL)
-    WHERE t.id=$1 AND t.status='active' AND r.permissions ? $3`,
-  [tenantId, userId, INTEGRATIONS_PERMISSION]);
-  return result.rowCount === 1;
-}
 async function _saveCredentialsForTenant(userId, tenantId, credentials) {
-  if (!(await _canManageTenantIntegrations(userId, tenantId))) return null;
-  return vault.saveCredentials(userId, 'google_ads', credentials, { tenantId });
+  try {
+    return await vault.saveCredentials(userId, 'google_ads', credentials, { tenantId });
+  } catch (error) {
+    const msg = error && error.message ? String(error.message) : '';
+    if (msg.includes('tenant.integrations.manage required')) return null;
+    throw error;
+  }
 }
 
 function _requestIp(req) {
@@ -341,6 +336,5 @@ module.exports = router;
 module.exports._oauthState = _oauthState;
 module.exports._consumeOauthState = _consumeOauthState;
 module.exports._activeMember = _activeMember;
-module.exports._canManageTenantIntegrations = _canManageTenantIntegrations;
 module.exports._saveCredentialsForTenant = _saveCredentialsForTenant;
 module.exports._oauthAuthorizationLimiter = oauthAuthorizationLimiter;

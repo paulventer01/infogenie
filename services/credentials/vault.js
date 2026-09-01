@@ -250,6 +250,29 @@ async function getCredentialsAtVersion(userId, platform, expectedVersion) {
   }
 }
 
+// Google Ads persistence is authorized against the tenant PINNED at the start
+// of the OAuth flow — never the session's current tenant and never the global
+// permission matrix. The tenant, the membership and the applicable role (either
+// a tenant-local role or a system role) are locked here, inside the same
+// transaction that writes user_integrations and the credential reference, so a
+// revocation racing the write either commits first (and this fails closed) or
+// waits behind COMMIT/ROLLBACK.
+const GOOGLE_ADS_INTEGRATIONS_PERMISSION = 'tenant.integrations.manage';
+
+async function _lockGoogleAdsTenantAuthority(client, tenantId, userId) {
+  const authorized = await client.query(`SELECT 1
+      FROM tenants t
+      JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$2 AND tu.status='active'
+      JOIN roles r ON r.id=tu.role_id AND (r.tenant_id=t.id OR r.tenant_id IS NULL)
+     WHERE t.id=$1 AND t.status='active' AND r.permissions ? $3
+     FOR UPDATE OF t, tu, r`,
+  [tenantId, userId, GOOGLE_ADS_INTEGRATIONS_PERMISSION]);
+  // Exactly one authorized row, or nothing is written. Ambiguity is a denial.
+  if (authorized.rowCount !== 1) {
+    throw new Error('saveCredentials: active tenant membership with tenant.integrations.manage required');
+  }
+}
+
 async function saveCredentials(userId, platform, blob, opts = {}) {
   const uid = _normUserId(userId);
   if (!uid) throw new Error('saveCredentials: invalid userId');
@@ -265,9 +288,7 @@ async function saveCredentials(userId, platform, blob, opts = {}) {
     await client.query('BEGIN');
     let referenceId = null;
     if (platform === 'google_ads') {
-      const membership = await client.query(`SELECT 1 FROM tenant_users
-        WHERE tenant_id=$1 AND user_id=$2 AND status='active' FOR UPDATE`, [tenantId, uid]);
-      if (membership.rowCount !== 1) throw new Error('saveCredentials: active tenant membership required');
+      await _lockGoogleAdsTenantAuthority(client, tenantId, uid);
     }
     const saved = await client.query(`
       INSERT INTO user_integrations (user_id, platform, ciphertext, iv, tag, status, connected_at, updated_at)

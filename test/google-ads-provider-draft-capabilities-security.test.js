@@ -1,4 +1,5 @@
 'use strict';
+require('./helpers/env'); // vault key must exist before the vault caches it
 const test=require('node:test');const assert=require('node:assert/strict');const fs=require('fs');
 const express=require('express');
 const service=require('../services/security/google_ads_provider_draft_capabilities');
@@ -127,78 +128,37 @@ test('Google Ads OAuth membership is authoritatively revalidated for the stored 
     assert.equal(await oauth._activeMember(7,101),false);
   } finally { db.hasDb=originalHasDb;db.getPool=originalGetPool; }
 });
-test('Google Ads OAuth persistence revalidates integration permission in the initiating tenant',async()=>{
-  const db=require('../db');
-  const originalHasDb=db.hasDb,originalGetPool=db.getPool;
+test('Google Ads OAuth persistence delegates authority to vault for the pinned initiating tenant',async()=>{
   const credentialVault=require('../services/credentials/vault');
   const originalSave=credentialVault.saveCredentials;
   const persisted=[];
-  db.hasDb=()=>true;
-  db.getPool=()=>({query:async(sql,args)=>{
-    assert.match(sql,/\(r\.tenant_id=t\.id OR r\.tenant_id IS NULL\)/);
-    assert.match(sql,/r\.permissions \? \$3/);
-    assert.equal(args[1],7);
-    assert.equal(args[2],'tenant.integrations.manage');
-    // Tenant A's permission was revoked while tenant B's remains granted.
-    return {rowCount:args[0]===202?1:0,rows:[]};
-  }});
   try {
-    const session={activeTenantId:202,tenantRole:{permissions:['tenant.integrations.manage']}};
-    assert.equal(await oauth._canManageTenantIntegrations(7,session.activeTenantId),true);
-    credentialVault.saveCredentials=async(...args)=>persisted.push(args);
-    const callbackSaved=await oauth._saveCredentialsForTenant(7,101,{customerId:'111'});
-    const bindSaved=await oauth._saveCredentialsForTenant(7,101,{customerId:'222'});
-    assert.equal(session.activeTenantId,202);
-    assert.equal(callbackSaved,null);
-    assert.equal(bindSaved,null);
-    assert.deepEqual(persisted,[]);
+    credentialVault.saveCredentials=async(userId,platform,credentials,opts)=>{
+      persisted.push({userId,platform,credentials,opts});
+      if(opts.tenantId===101) throw new Error('saveCredentials: active tenant membership with tenant.integrations.manage required');
+      return {ok:true,version:2,referenceId:'google_ads_7_2'};
+    };
+    const denied=await oauth._saveCredentialsForTenant(7,101,{customerId:'111'});
+    const saved=await oauth._saveCredentialsForTenant(7,202,{customerId:'222'});
+    assert.equal(denied,null);
+    assert.deepEqual(saved,{ok:true,version:2,referenceId:'google_ads_7_2'});
+    assert.equal(persisted.length,2);
+    assert.equal(persisted[0].opts.tenantId,101);
+    assert.equal(persisted[1].opts.tenantId,202);
 
     const source=fs.readFileSync(require.resolve('../services/google_ads_oauth/api'),'utf8');
+    assert.doesNotMatch(source,/async function _canManageTenantIntegrations/);
     assert.match(source,/customerIds\.length === 1[\s\S]*_saveCredentialsForTenant\(req\.user\.id, initiatingTenantId/);
     assert.match(source,/router\.post\('\/bind-customer'[\s\S]*_saveCredentialsForTenant\(req\.user\.id, p\.tenantId/);
-  } finally {
-    credentialVault.saveCredentials=originalSave;
-    db.hasDb=originalHasDb;db.getPool=originalGetPool;
-  }
+  } finally { credentialVault.saveCredentials=originalSave; }
 });
-test('pinned-tenant OAuth persistence admits authorized local and system roles only',async()=>{
-  const db=require('../db');
+test('Google Ads OAuth persistence does not swallow unexpected vault errors',async()=>{
   const credentialVault=require('../services/credentials/vault');
-  const originalHasDb=db.hasDb,originalGetPool=db.getPool,originalSave=credentialVault.saveCredentials;
-  const scenarios=[
-    ['tenant_owner',null,'active',101,['tenant.integrations.manage'],true],
-    ['tenant_admin',null,'active',101,['tenant.integrations.manage'],true],
-    ['custom_integrations_manager',101,'active',101,['tenant.integrations.manage'],true],
-    ['revoked tenant owner',null,'revoked',101,['tenant.integrations.manage'],false],
-    ['inactive tenant admin',null,'inactive',101,['tenant.integrations.manage'],false],
-    ['unauthorized custom role',101,'active',101,[],false],
-    ['wrong-tenant custom role',202,'active',101,['tenant.integrations.manage'],false],
-    ['unrelated system role',null,'active',101,['advertising.provider_drafts.create'],false],
-  ];
+  const originalSave=credentialVault.saveCredentials;
   try {
-    db.hasDb=()=>true;
-    for(const [name,roleTenantId,status,pinnedTenantId,permissions,allowed] of scenarios){
-      const persisted=[];
-      db.getPool=()=>({query:async(sql,args)=>{
-        assert.match(sql,/tu\.status='active'/);
-        assert.match(sql,/\(r\.tenant_id=t\.id OR r\.tenant_id IS NULL\)/);
-        assert.match(sql,/r\.permissions \? \$3/);
-        const roleMatches=roleTenantId===null||roleTenantId===args[0];
-        const admitted=status==='active'&&roleMatches&&permissions.includes(args[2]);
-        return {rowCount:admitted?1:0,rows:[]};
-      }});
-      credentialVault.saveCredentials=async(...args)=>{persisted.push(args);return {ok:true};};
-      for(const flow of ['callback','bind-customer']){
-        const result=await oauth._saveCredentialsForTenant(7,pinnedTenantId,{flow});
-        assert.equal(Boolean(result),allowed,`${name} ${flow}`);
-      }
-      assert.equal(persisted.length,allowed?2:0,`${name} persistence`);
-      assert.ok(persisted.every(([, , , options])=>options.tenantId===pinnedTenantId),`${name} pinned tenant`);
-    }
-  } finally {
-    credentialVault.saveCredentials=originalSave;
-    db.hasDb=originalHasDb;db.getPool=originalGetPool;
-  }
+    credentialVault.saveCredentials=async()=>{ throw new Error('saveCredentials: no DATABASE_URL'); };
+    await assert.rejects(oauth._saveCredentialsForTenant(7,101,{customerId:'111'}),/no DATABASE_URL/);
+  } finally { credentialVault.saveCredentials=originalSave; }
 });
 test('Google Ads OAuth authorization routes use the bounded tenant/user/IP limiter',()=>{
   const source=fs.readFileSync(require.resolve('../services/google_ads_oauth/api'),'utf8');
@@ -223,4 +183,87 @@ test('Google Ads OAuth limiter permits one normal completion and enforces its bo
   assert.equal(limited.status,429);
   assert.deepEqual(await limited.json(),{ok:false,error:'rate_limited',retryAfterSec:600});
   oauth._oauthAuthorizationLimiter.reset();
+});
+test('Google Ads credential persistence locks the pinned tenant authority inside one transaction',()=>{
+  const source=fs.readFileSync(require.resolve('../services/credentials/vault'),'utf8');
+  assert.match(source,/GOOGLE_ADS_INTEGRATIONS_PERMISSION = 'tenant\.integrations\.manage'/);
+  assert.match(source,/FROM tenants t[\s\S]*tu\.status='active'[\s\S]*\(r\.tenant_id=t\.id OR r\.tenant_id IS NULL\)[\s\S]*t\.status='active' AND r\.permissions \? \$3[\s\S]*FOR UPDATE OF t, tu, r/);
+  const body=source.slice(source.indexOf('async function saveCredentials'),
+    source.indexOf('async function getGoogleAdsCredentialReference'));
+  // One transaction, one connection, one encryption — the authority lock rides
+  // the existing write, it does not open a second one.
+  assert.equal((body.match(/BEGIN/g)||[]).length,1);
+  assert.equal((body.match(/connect\(\)/g)||[]).length,1);
+  assert.equal((body.match(/_encrypt\(/g)||[]).length,1);
+  assert.match(body,/_lockGoogleAdsTenantAuthority\(client, tenantId, uid\)[\s\S]*INSERT INTO user_integrations/);
+  assert.match(body,/_lockGoogleAdsTenantAuthority\(client, tenantId, uid\)[\s\S]*INSERT INTO orchestrator_tenant_google_ads_credential_refs/);
+  // The pinned tenant is the only authority input: no session tenant, no global matrix.
+  assert.doesNotMatch(body,/session|activeTenantId|permission_matrix|permission_enforce|ROUTE_GROUPS/i);
+});
+test('Google Ads credential persistence fails closed on tenant, membership and permission revocation',async()=>{
+  const db=require('../db');
+  const credentialVault=require('../services/credentials/vault');
+  const originalHasDb=db.hasDb,originalGetPool=db.getPool;
+  const PINNED=101,OTHER=202;
+  const scenarios=[
+    ['tenant_owner system role','active','active',null,['tenant.integrations.manage'],true],
+    ['tenant_admin system role','active','active',null,['tenant.integrations.manage','tenant.audit.view'],true],
+    ['custom tenant-local role','active','active',PINNED,['tenant.integrations.manage'],true],
+    ['inactive membership','active','invited',null,['tenant.integrations.manage'],false],
+    ['revoked membership','active','suspended',null,['tenant.integrations.manage'],false],
+    ['wrong-tenant custom role','active','active',OTHER,['tenant.integrations.manage'],false],
+    ['permission denied','active','active',PINNED,['advertising.provider_drafts.create'],false],
+    ['suspended tenant','suspended','active',null,['tenant.integrations.manage'],false],
+  ];
+  try {
+    db.hasDb=()=>true;
+    for(const [name,tenantStatus,membershipStatus,roleTenantId,permissions,allowed] of scenarios){
+      const log=[];let connects=0;
+      const client={
+        query:async(sql,args=[])=>{
+          const text=String(sql);log.push({text,args});
+          if(/FROM tenants t/.test(text)){
+            assert.match(text,/FOR UPDATE OF t, tu, r/,name);
+            assert.match(text,/t\.status='active'/,name);
+            assert.match(text,/tu\.status='active'/,name);
+            assert.match(text,/\(r\.tenant_id=t\.id OR r\.tenant_id IS NULL\)/,name);
+            assert.match(text,/r\.permissions \? \$3/,name);
+            assert.equal(args[0],PINNED,name);
+            assert.equal(args[2],'tenant.integrations.manage',name);
+            const roleApplies=roleTenantId===null||roleTenantId===args[0];
+            const admitted=tenantStatus==='active'&&membershipStatus==='active'
+              &&roleApplies&&permissions.includes(args[2]);
+            return {rowCount:admitted?1:0,rows:admitted?[{}]:[]};
+          }
+          if(/INSERT INTO user_integrations/.test(text)) return {rowCount:1,rows:[{credential_version:3}]};
+          return {rowCount:0,rows:[]};
+        },
+        release(){},
+      };
+      db.getPool=()=>({
+        connect:async()=>{connects++;return client;},
+        // schema ensure runs on the pool, never inside the credential transaction
+        query:async()=>({rowCount:0,rows:[]}),
+      });
+      const save=credentialVault.saveCredentials(7,'google_ads',{customerId:'1234567890'},{tenantId:PINNED});
+      const at=(re)=>log.findIndex(entry=>re.test(entry.text));
+      if(allowed){
+        assert.deepEqual(await save,{ok:true,version:3,referenceId:'google_ads_7_3'},name);
+        assert.equal(connects,1,`${name} single connection`);
+        assert.ok(at(/^BEGIN$/)>=0&&at(/FROM tenants t/)>at(/^BEGIN$/),`${name} locks inside the transaction`);
+        assert.ok(at(/FROM tenants t/)<at(/INSERT INTO user_integrations/),`${name} locks before the credential`);
+        assert.ok(at(/FROM tenants t/)<at(/INSERT INTO orchestrator_tenant_google_ads_credential_refs/),
+          `${name} locks before the reference`);
+        assert.equal(log.filter(entry=>/^COMMIT$/.test(entry.text)).length,1,`${name} one commit`);
+        assert.equal(log.filter(entry=>/^ROLLBACK$/.test(entry.text)).length,0,`${name} no rollback`);
+      } else {
+        await assert.rejects(save,/tenant\.integrations\.manage required/,name);
+        assert.equal(connects,1,`${name} single connection`);
+        assert.equal(log.filter(entry=>/^ROLLBACK$/.test(entry.text)).length,1,`${name} rolled back`);
+        assert.equal(log.filter(entry=>/^COMMIT$/.test(entry.text)).length,0,`${name} never committed`);
+        assert.equal(at(/user_integrations/),-1,`${name} wrote no credential`);
+        assert.equal(at(/orchestrator_tenant_google_ads_credential_refs/),-1,`${name} wrote no reference`);
+      }
+    }
+  } finally { db.hasDb=originalHasDb;db.getPool=originalGetPool; }
 });
