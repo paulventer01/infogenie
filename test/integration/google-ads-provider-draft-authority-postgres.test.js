@@ -221,6 +221,40 @@ if (!db.hasDb()) {
   assert.equal((await db.getPool().query(`SELECT consumed_at FROM orchestrator_google_ads_provider_draft_confirmations
     WHERE tenant_id=$1 AND id=$2`,[tenant.id,expiringConfirmation.confirmation_id])).rows[0].consumed_at,null);
 
+  const issueExpiryIds={draft:id('issue-expiry-draft'),approval:id('issue-expiry-approval'),request:id('issue-expiry-request'),intent:id('issue-expiry-intent')};
+  await replica(`
+    INSERT INTO orchestrator_campaign_drafts
+      (id,tenant_id,workflow_id,status,current_revision,contract_hash,idempotency_key)
+      VALUES($1,$2,$3,'approved_for_publish',1,$4,$5);
+    INSERT INTO orchestrator_campaign_draft_revisions
+      (id,tenant_id,draft_id,revision,contract_json,contract_hash,validation_status)
+      VALUES($6,$2,$1,1,'{}',$4,'passed');
+    INSERT INTO orchestrator_campaign_publish_approvals
+      (id,tenant_id,draft_id,revision,contract_hash,snapshot_json,workflow_approval_id,actor_user_id,idempotency_key,expires_at)
+      VALUES($7,$2,$1,1,$4,'{}',${workflowApprovalId},$8,$9,clock_timestamp()+interval '2 seconds');
+    INSERT INTO orchestrator_campaign_publish_requests
+      (id,tenant_id,draft_id,publish_approval_id,workflow_approval_id,revision,contract_hash,snapshot_hash,requested_by,idempotency_key,request_hash)
+      VALUES($10,$2,$1,$7,${workflowApprovalId},1,$4,$4,$8,$11,$4);
+    INSERT INTO orchestrator_campaign_delivery_intents
+      (id,tenant_id,publishing_request_id,draft_id,publish_approval_id,workflow_approval_id,outbox_id,revision,contract_hash,snapshot_hash,intent_hash,idempotency_key,requested_by)
+      VALUES($12,$2,$10,$1,$7,${workflowApprovalId},$13,1,$4,$4,$4,$14,$8)`,
+  [issueExpiryIds.draft,tenant.id,ids.workflow,H,id('issue-expiry-draft-key'),id('issue-expiry-revision'),issueExpiryIds.approval,
+    user.id,id('issue-expiry-approval-key'),issueExpiryIds.request,id('issue-expiry-request-key'),issueExpiryIds.intent,
+    id('issue-expiry-outbox'),id('issue-expiry-intent-key')]);
+  const issueExpiryBase={...base,draftId:issueExpiryIds.draft,publishApprovalId:issueExpiryIds.approval,
+    publishingRequestId:issueExpiryIds.request,intentId:issueExpiryIds.intent};
+  const approvalExpiryConfirmation=await tx((c)=>authority.confirm(c,{...issueExpiryBase,finalConfirmation:authority.CONFIRMATION}));
+  const approvalExpiryBlocker=await db.getPool().connect();
+  await approvalExpiryBlocker.query('BEGIN');
+  await approvalExpiryBlocker.query(`SELECT 1 FROM orchestrator_google_ads_provider_draft_confirmations
+    WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenant.id,approvalExpiryConfirmation.confirmation_id]);
+  const approvalExpiryIssue=issue({...issueExpiryBase,finalConfirmationId:approvalExpiryConfirmation.confirmation_id});
+  await new Promise((resolve)=>setTimeout(resolve,2100));
+  await approvalExpiryBlocker.query('COMMIT');approvalExpiryBlocker.release();
+  await assert.rejects(approvalExpiryIssue,denied('fresh_confirmation_required'));
+  assert.equal((await db.getPool().query(`SELECT consumed_at FROM orchestrator_google_ads_provider_draft_confirmations
+    WHERE tenant_id=$1 AND id=$2`,[tenant.id,approvalExpiryConfirmation.confirmation_id])).rows[0].consumed_at,null);
+
   const expiryIds={draft:id('expiry-draft'),approval:id('expiry-approval'),request:id('expiry-request'),intent:id('expiry-intent')};
   await replica(`
     INSERT INTO orchestrator_campaign_drafts

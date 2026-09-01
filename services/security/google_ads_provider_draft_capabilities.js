@@ -86,6 +86,7 @@ async function issue(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o),t
   const clock=(await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now,freshNow=new Date(clock);
   if(!Number.isFinite(freshNow.getTime()))throw deny('fresh_confirmation_required');
   if(!confirmation||confirmation.consumed_at||!(new Date(confirmation.expires_at)>freshNow)
+    ||!(new Date(row.approval_expires_at)>freshNow)
     ||Number(confirmation.actor_user_id)!==actorId||!same(confirmation.session_id_hash,hash(o.sessionId))
     ||!same(confirmation.draft_id,row.draft_id)||Number(confirmation.draft_revision)!==Number(row.current_revision)
     ||!same(confirmation.publishing_request_id,row.publishing_request_id)||!same(confirmation.publish_approval_id,row.publish_approval_id)

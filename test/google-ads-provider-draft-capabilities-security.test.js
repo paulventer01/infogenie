@@ -92,6 +92,7 @@ test('approval expiry is carried through authoritative locks and checked at tran
   const source=fs.readFileSync(require.resolve('../services/security/google_ads_provider_draft_capabilities'),'utf8');
   assert.match(source,/pa\.expires_at AS approval_expires_at/);
   assert.match(source,/new Date\(x\.row\.approval_expires_at\)>transitionNow/);
+  assert.match(source,/new Date\(row\.approval_expires_at\)>freshNow/);
 });
 test('Google Ads OAuth state is opaque, tenant-pinned, single-use, and constant-time checked',()=>{
   const state=oauth._oauthState();
