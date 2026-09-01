@@ -76,7 +76,7 @@ async function confirm(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o)
   await c.query(`INSERT INTO orchestrator_google_ads_provider_draft_confirmations
     (tenant_id,id,actor_user_id,session_id_hash,draft_id,draft_revision,publishing_request_id,publish_approval_id,intent_id,
      credential_ref_id,credential_ref_version,phrase_hash,created_at,expires_at)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13+INTERVAL '2 minutes')`,
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::timestamptz,$13::timestamptz+INTERVAL '2 minutes')`,
   [tenantId,id,actorId,hash(o.sessionId),row.draft_id,row.current_revision,row.publishing_request_id,row.publish_approval_id,
     row.intent_id,row.credential_ref_id,row.credential_ref_version,hash(CONFIRMATION),created]);
   return Object.freeze({confirmation_id:id,expires_at:new Date(created.getTime()+120000).toISOString(),external_action_taken:false}); }
