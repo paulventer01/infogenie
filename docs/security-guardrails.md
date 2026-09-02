@@ -3338,6 +3338,36 @@ Coverage: `test/advertising-provider-write-bypass.test.js` (authenticated
 session, `INFOGENIE_API_KEY`, manual HTTP routes, scheduled job/timer entry
 points, and direct module import/call — all zero-network).
 
+## Advertising orchestrator — Google Ads provider-operation ledger (PR10B.1)
+
+`services/security/google_ads_provider_draft_operations.js` funds and settles a
+metadata-only ledger row for one consumed PR10A Google Ads capability. It is a
+substrate, not a delivery path: no Google SDK, no network client, no secret
+resolution, no connector, no HTTP route, and no permission-matrix change.
+
+- **Permission and session.** Reuses the PR10A `advertising.provider_drafts.create`
+  grant and the same exact-human-session rule (no API key, worker, service or
+  agent principal).
+- **Authority.** `fund` spends the capability through PR10A `reserve` + `consume`,
+  so tenant status, draft status and revision, approval revocation and expiry,
+  actor lineage, credential version, account fingerprint, and both kill switches
+  are revalidated inside the caller's transaction. The module never issues
+  `BEGIN`/`COMMIT`; a savepoint keeps a duplicate-key race recoverable.
+- **Credentials.** `vault.assertGoogleAdsProviderDraftCredentialRefMetadata` locks
+  the tenant-owned reference row `FOR UPDATE` and matches tenant, owner, id,
+  version and fingerprint. It reads no `user_integrations` row, decrypts nothing,
+  and returns no customer id.
+- **No mutation.** Rows are `published=FALSE`, `activated=FALSE`,
+  `external_action_taken=FALSE` (database CHECK), and this PR may settle only
+  `failed` / `unknown`. Claiming provider success is deferred to PR10B.2.
+- **Hygiene.** The public projection carries no credential, account or session
+  material; audit details are exactly `{operation_id, capability_id, status}`.
+
+Coverage: `test/google-ads-provider-draft-operation-schema.test.js`,
+`test/google-ads-provider-draft-operations-security.test.js`, and
+`test/integration/google-ads-provider-draft-operations-postgres.test.js`
+(registered in `scripts/run-advertising-certification.js`).
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`

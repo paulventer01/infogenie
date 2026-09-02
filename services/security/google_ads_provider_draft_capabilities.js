@@ -143,4 +143,4 @@ async function get(c,o={}) { const tenantId=int(o.tenantId),actorId=human(o);if(
     WHERE cap.tenant_id=$1 AND cap.id=$2 AND cap.actor_user_id=$3 AND cap.session_id_hash=$4
       AND role.permissions ? $5 FOR UPDATE OF cap,t,tu,role`,[tenantId,o.capabilityId,actorId,hash(o.sessionId),PERMISSION]);
   if(r.rowCount!==1)throw deny('capability_rejected');return project(r.rows[0]); }
-module.exports={PERMISSION,CONFIRMATION,MAX_CONFIRMATION_AGE_MS,MAX_TTL_MS,confirm,issue,reserve,consume,revoke,get,_authoritative:authoritative,_deny:deny};
+module.exports={PERMISSION,CONFIRMATION,MAX_CONFIRMATION_AGE_MS,MAX_TTL_MS,confirm,issue,reserve,consume,revoke,get,_authoritative:authoritative,_deny:deny,_human:human};
