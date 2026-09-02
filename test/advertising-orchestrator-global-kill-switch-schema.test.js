@@ -47,9 +47,11 @@ function extractCreateTable(src, table) {
 function extractListBlock(src, decl) {
   const start = src.indexOf(decl);
   assert.ok(start >= 0, `${decl} must exist`);
-  const end = src.indexOf('];', start);
+  const arrayEnd = src.indexOf('];', start);
+  const setEnd = src.indexOf(']);', start);
+  const end = arrayEnd >= 0 && (setEnd < 0 || arrayEnd <= setEnd) ? arrayEnd : setEnd;
   assert.ok(end > start, `${decl} must close`);
-  return src.slice(start, end + 2);
+  return src.slice(start, end + (end === setEnd ? 3 : 2));
 }
 
 test('global advertising kill-switch is excluded from ADVERTISING_ORCH_TABLES and CREATE TABLE has no tenant_id', () => {
@@ -165,38 +167,28 @@ if (!HAS_DB) {
     );
     assert.equal(pk.rows[0] && pk.rows[0].cols, 'switch_key');
 
-    const suffix = `agks-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const tid = (await p.query(
-      `INSERT INTO tenants (name, slug, status) VALUES ($1,$2,'active') RETURNING id`,
-      [`AGKS ${suffix}`, `agks-${suffix}`]
-    )).rows[0].id;
-    try {
-      await p.query(
-        `ALTER TABLE ${GLOBAL_TABLE} ADD COLUMN tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE`
-      );
-      await p.query(`UPDATE ${GLOBAL_TABLE} SET tenant_id=$1`, [tid]);
-      await p.query(`CREATE INDEX ${TENANT_IDX} ON ${GLOBAL_TABLE} (tenant_id)`);
-      assert.ok(await tenantIdColumn(GLOBAL_TABLE), 'precondition: injected tenant_id');
-      assert.equal(await indexExists(TENANT_IDX), true, 'precondition: injected tenant index');
+    await p.query(
+      `ALTER TABLE ${GLOBAL_TABLE} ADD COLUMN tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE`
+    );
+    await p.query(`CREATE INDEX ${TENANT_IDX} ON ${GLOBAL_TABLE} (tenant_id)`);
+    assert.ok(await tenantIdColumn(GLOBAL_TABLE), 'precondition: injected tenant_id');
+    assert.equal(await indexExists(TENANT_IDX), true, 'precondition: injected tenant index');
 
-      await ensureAgentOrchestratorSchema();
+    await ensureAgentOrchestratorSchema();
 
-      assert.equal(await tenantIdColumn(GLOBAL_TABLE), null,
-        'ensure must drop the accidental tenant_id');
-      assert.equal(await indexExists(TENANT_IDX), false,
-        'ensure must drop the accidental tenant index');
-      tenantCol = await tenantIdColumn(TENANT_TABLE);
-      assert.ok(tenantCol);
-      assert.equal(tenantCol.is_nullable, 'NO');
-      const keys = await p.query(
-        `SELECT switch_key FROM ${GLOBAL_TABLE} ORDER BY switch_key`
-      );
-      assert.deepStrictEqual(
-        keys.rows.map((r) => r.switch_key),
-        ['google_ads_provider_draft', 'optimization_execution']
-      );
-    } finally {
-      await p.query(`DELETE FROM tenants WHERE id=$1`, [tid]);
-    }
+    assert.equal(await tenantIdColumn(GLOBAL_TABLE), null,
+      'ensure must drop the accidental tenant_id');
+    assert.equal(await indexExists(TENANT_IDX), false,
+      'ensure must drop the accidental tenant index');
+    tenantCol = await tenantIdColumn(TENANT_TABLE);
+    assert.ok(tenantCol);
+    assert.equal(tenantCol.is_nullable, 'NO');
+    const keys = await p.query(
+      `SELECT switch_key FROM ${GLOBAL_TABLE} ORDER BY switch_key`
+    );
+    assert.deepStrictEqual(
+      keys.rows.map((r) => r.switch_key),
+      ['google_ads_provider_draft', 'optimization_execution']
+    );
   });
 }
