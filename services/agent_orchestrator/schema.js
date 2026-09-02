@@ -132,6 +132,8 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_google_ads_provider_draft_capabilities',
   // PR10B.1 — metadata-only Google Ads provider-operation ledger (no mutation).
   'orchestrator_google_ads_provider_draft_operations',
+  // PR10B.2a — append-only PAUSED provider-object evidence for those operations.
+  'orchestrator_google_ads_provider_draft_objects',
   // PR 8C — synchronous internal-simulation runs and their distinct lifecycle.
   'orchestrator_optimization_executions',
   'orchestrator_optimization_execution_run_events',
@@ -7269,6 +7271,72 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       ) NOT VALID`);
     await p.query('COMMIT');
   } catch (e) { try { await p.query('ROLLBACK'); } catch (_) {} throw e; }
+
+  // PR10B.2a — append-only evidence of the PAUSED, non-serving objects one
+  // provider-draft operation actually created. Tenant-leading and linked to the
+  // funded operation. Stores no OAuth material, no raw account identifier, no
+  // request payload and no provider response body: only object lineage and the
+  // reconciliation posture needed to prove what exists at the provider.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_provider_draft_objects(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL,
+      operation_id TEXT NOT NULL,
+      capability_id TEXT NOT NULL,
+      account_fingerprint TEXT NOT NULL,
+      object_kind TEXT NOT NULL,
+      sequence_number INTEGER NOT NULL,
+      provider_object_id TEXT NOT NULL,
+      provider_object_id_digest TEXT NOT NULL,
+      provider_status TEXT NOT NULL,
+      result_code TEXT NOT NULL,
+      published BOOLEAN NOT NULL DEFAULT FALSE, activated BOOLEAN NOT NULL DEFAULT FALSE,
+      serving BOOLEAN NOT NULL DEFAULT FALSE,
+      requires_reconciliation BOOLEAN NOT NULL DEFAULT FALSE,
+      reconciliation_state TEXT NOT NULL DEFAULT 'not_required',
+      recorded_at TIMESTAMPTZ NOT NULL,
+      audit_ref TEXT NOT NULL,
+      PRIMARY KEY(tenant_id,id),
+      CONSTRAINT orchestrator_gapdobj_tenant_unique_kind UNIQUE(tenant_id,operation_id,object_kind),
+      CONSTRAINT orchestrator_gapdobj_tenant_unique_sequence UNIQUE(tenant_id,operation_id,sequence_number),
+      CONSTRAINT orchestrator_gapdobj_tenant_unique_digest UNIQUE(tenant_id,provider_object_id_digest),
+      CONSTRAINT orchestrator_gapdobj_tenant_unique_audit UNIQUE(tenant_id,audit_ref),
+      CONSTRAINT orchestrator_gapdobj_kind_check CHECK(object_kind IN ('campaign_budget','campaign','ad_group')),
+      CONSTRAINT orchestrator_gapdobj_sequence_check CHECK(
+        sequence_number=CASE object_kind WHEN 'campaign_budget' THEN 1 WHEN 'campaign' THEN 2 ELSE 3 END),
+      CONSTRAINT orchestrator_gapdobj_paused_check CHECK(provider_status='PAUSED' AND serving=FALSE AND published=FALSE AND activated=FALSE),
+      CONSTRAINT orchestrator_gapdobj_result_check CHECK(result_code='provider_create_succeeded'),
+      CONSTRAINT orchestrator_gapdobj_reconciliation_check CHECK(
+        (requires_reconciliation=FALSE AND reconciliation_state='not_required')
+        OR (requires_reconciliation=TRUE AND reconciliation_state='pending')),
+      CONSTRAINT orchestrator_gapdobj_identifier_check CHECK(
+        provider_object_id~'^[0-9]{1,32}$' AND provider_object_id_digest~'^[0-9a-f]{64}$'
+        AND account_fingerprint~'^[0-9a-f]{64}$'
+        AND char_length(id) BETWEEN 1 AND 128 AND char_length(operation_id) BETWEEN 1 AND 128
+        AND char_length(capability_id) BETWEEN 1 AND 128 AND char_length(audit_ref) BETWEEN 1 AND 128),
+      FOREIGN KEY(tenant_id,operation_id)
+        REFERENCES orchestrator_google_ads_provider_draft_operations(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,capability_id)
+        REFERENCES orchestrator_google_ads_provider_draft_capabilities(tenant_id,id) ON DELETE RESTRICT
+    );
+    CREATE INDEX IF NOT EXISTS orchestrator_gapdobj_operation_idx
+      ON orchestrator_google_ads_provider_draft_objects(tenant_id,operation_id,sequence_number);
+
+    CREATE OR REPLACE FUNCTION orchestrator_gapdobj_guard() RETURNS trigger AS $fn$
+    DECLARE parent RECORD;BEGIN
+      IF TG_OP='UPDATE' THEN RAISE EXCEPTION 'orchestrator_gapdobj_immutable';END IF;
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_gapdobj_audit_evidence';END IF;
+      SELECT status,capability_id,account_fingerprint INTO parent FROM
+        orchestrator_google_ads_provider_draft_operations WHERE tenant_id=NEW.tenant_id AND id=NEW.operation_id;
+      IF NOT FOUND OR parent.status NOT IN ('in_progress','succeeded')
+        OR parent.capability_id IS DISTINCT FROM NEW.capability_id
+        OR parent.account_fingerprint IS DISTINCT FROM NEW.account_fingerprint
+      THEN RAISE EXCEPTION 'orchestrator_gapdobj_operation_lineage';END IF;
+      RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gapdobj_guard ON orchestrator_google_ads_provider_draft_objects;
+    CREATE TRIGGER orchestrator_gapdobj_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_google_ads_provider_draft_objects FOR EACH ROW EXECUTE FUNCTION orchestrator_gapdobj_guard();
+  `);
 
   // PR 8C — consumes one approved PR8B request without changing it. No provider
   // identifiers, credential references, source hashes, payloads, or errors are stored.

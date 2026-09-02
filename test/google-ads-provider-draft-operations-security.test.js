@@ -14,7 +14,9 @@ const refuse={query:async()=>{throw new Error('no database work expected');}};
 
 test('operation ledger reuses the narrow explicit provider-draft permission',()=>{
   assert.equal(operations.PERMISSION,'advertising.provider_drafts.create');
-  assert.deepEqual(Object.keys(operations.RESULT_CODES),['failed','unknown']);
+  assert.deepEqual(Object.keys(operations.RESULT_CODES).sort(),['failed','succeeded','unknown']);
+  assert.equal(operations.RESULT_CODES.succeeded,'provider_create_succeeded');
+  assert.deepEqual(operations.OBJECT_SEQUENCE,['campaign_budget','campaign','ad_group']);
 });
 
 test('operation ledger has no provider SDK, network, secret resolution or mutation reachability',()=>{
@@ -27,7 +29,7 @@ test('operation ledger has no provider SDK, network, secret resolution or mutati
   }
   assert.doesNotMatch(helper,/user_integrations/);
   assert.match(helper,/FROM orchestrator_tenant_google_ads_credential_refs[\s\S]*FOR UPDATE/);
-  assert.match(source,/published:false,activated:false,external_action_taken:false/);
+  assert.match(source,/published:false,activated:false,external_action_taken:x\.external_action_taken===true/);
 });
 
 test('the public projection is frozen and free of credential and account lineage',async()=>{
@@ -47,20 +49,52 @@ test('the public projection is frozen and free of credential and account lineage
   assert.equal(serialized.includes('bbbb'),false);
 });
 
-test('settlement refuses to claim provider success and admits only the matching result code',async()=>{
+test('settlement admits only the matching result code and refuses unevidenced success',async()=>{
+  const paused=(i)=>({object_kind:operations.OBJECT_SEQUENCE[i],provider_status:'PAUSED',
+    sequence_number:i+1,provider_object_id:String(1000+i)});
+  const proof={ok:true,result_code:'provider_create_succeeded',external_action_taken:true,
+    published:false,activated:false,serving:false,requires_reconciliation:false,retry:false,
+    objects_created:3,objects:[paused(0),paused(1),paused(2)],
+    provider_operation_key:'k',idempotency_key:'i'};
   const attempts=[
-    {status:'succeeded',resultCode:'provider_create_succeeded'},
     {status:'succeeded',resultCode:'provider_create_failed'},
     {status:'in_progress',resultCode:'ready_for_provider'},
     {status:'failed',resultCode:'provider_outcome_unknown'},
     {status:'unknown',resultCode:'provider_create_failed'},
     {status:'failed',resultCode:undefined},
+    // Success without any provider evidence never reaches the database.
+    {status:'succeeded',resultCode:'provider_create_succeeded'},
+    ...[{ok:false},{serving:true},{published:true},{activated:true},{retry:true},
+      {requires_reconciliation:true},{external_action_taken:false},
+      {objects:[paused(0),paused(1),{...paused(2),provider_status:'ENABLED'}]},
+      {objects:[paused(0),paused(1)],objects_created:2},
+      {objects:[paused(1),paused(0),paused(2)]},
+      {objects:[paused(0),paused(1),{...paused(2),provider_object_id:'not-numeric'}]},
+    ].map((over)=>({status:'succeeded',resultCode:'provider_create_succeeded',
+      providerResult:{...proof,...over}})),
   ];
   for(const attempt of attempts) {
     await assert.rejects(operations.settle(refuse,{...actor,operationId:'gapo_x',...attempt}),
       (error)=>error.code==='operation_rejected'&&error.blocked===true&&error.external_action_taken===false,
       JSON.stringify(attempt));
   }
+  // The confirmed shape itself is accepted, so the rejections above are about
+  // the missing/false evidence and not a permanently unreachable branch.
+  assert.deepEqual(operations._confirmed(proof).map((x)=>x.kind),operations.OBJECT_SEQUENCE.slice());
+});
+
+test('only a DB-backed grant may claim success; failed and unknown cannot strand a row',()=>{
+  // grant() runs for success only, and always before the status transition.
+  const success=source.indexOf('if(success) {');
+  const update=source.indexOf(`UPDATE ${''}\${TABLE} SET status=$3`);
+  assert.ok(success>0&&update>success);
+  assert.match(source,/await grant\(c,tenantId,actorId\);\s*\n\s*await record\(c,row,objects\);/);
+  assert.match(source,/WHERE t\.id=\$1 AND t\.status='active' AND role\.permissions \? \$3 FOR UPDATE OF t,tu,role/);
+  assert.match(source,/if\(r\.rowCount!==1\)throw deny\('permission_denied'\)/);
+  // Evidence is written before the flip, and only for this operation's keys.
+  assert.match(source,/INSERT INTO \$\{OBJECTS_TABLE\}/);
+  assert.match(source,/providerResult\.provider_operation_key[\s\S]{0,160}row\.provider_operation_key/);
+  assert.match(source,/row\.external_action_taken!==false\)throw deny\('operation_rejected'\)/);
 });
 
 test('non-human principals and missing grants are refused before any database work',async()=>{

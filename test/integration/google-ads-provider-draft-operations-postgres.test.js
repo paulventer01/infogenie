@@ -58,6 +58,7 @@ if (!db.hasDb()) {
 
   t.after(async () => replica(`
     DELETE FROM orchestrator_audit_events WHERE tenant_id IN ($1,$2);
+    DELETE FROM orchestrator_google_ads_provider_draft_objects WHERE tenant_id IN ($1,$2);
     DELETE FROM orchestrator_google_ads_provider_draft_operations WHERE tenant_id IN ($1,$2);
     DELETE FROM orchestrator_google_ads_provider_draft_capabilities WHERE tenant_id IN ($1,$2);
     DELETE FROM orchestrator_google_ads_provider_draft_confirmations WHERE tenant_id IN ($1,$2);
@@ -260,10 +261,107 @@ if (!db.hasDb()) {
   await replica('UPDATE orchestrator_tenant_google_ads_credential_refs SET status=$3,revoked_at=NULL WHERE tenant_id=$1 AND id=$2',[tenant.id,ids.credential,'active']);
   assert.deepEqual(await secretState(), secretBefore);
 
+  // ── PR10B.2a: the secret scope re-checks live authority against real rows ──
+  const full = vault.encryptString(JSON.stringify({ customerId:'1234567890', refreshToken:'rt',
+    clientId:'cid', clientSecret:'cs', devToken:'dt' }));
+  await replica(`UPDATE user_integrations SET ciphertext=$2,iv=$3,tag=$4
+    WHERE user_id=$1 AND platform='google_ads'`, [user.id, full.ciphertext, full.iv, full.tag]);
+  const scope = (o, fn) => tx((c) => vault.withGoogleAdsPausedDraftSecretScope(c, { tenantId:tenant.id,
+    ownerUserId:user.id, credentialRefId:ids.credential, credentialRefVersion:1, accountFingerprint:FP,
+    tokenTransport:async () => ({ access_token:'at', expires_in:600 }), ...o }, fn || (async () => 'ok')));
+  assert.equal(await scope({}, async (h) => `${h.accessToken}|${h.customerId}|${h.credential_ref_version}`),
+    'at|1234567890|1');
+  await assert.rejects(scope({ credentialRefVersion:2 }), (e) => e.code === 'context_mismatch');
+  await assert.rejects(scope({ accountFingerprint:'a'.repeat(64) }), (e) => e.code === 'context_mismatch');
+  await assert.rejects(scope({ ownerUserId:otherUser.id }), (e) => e.code === 'permission_denied');
+  await replica("UPDATE tenant_users SET status='suspended' WHERE tenant_id=$1 AND user_id=$2",[tenant.id,user.id]);
+  await assert.rejects(scope({}), (e) => e.code === 'permission_denied');
+  await replica("UPDATE tenant_users SET status='active' WHERE tenant_id=$1 AND user_id=$2",[tenant.id,user.id]);
+  await replica("UPDATE user_integrations SET credential_version=2 WHERE user_id=$1 AND platform='google_ads'",[user.id]);
+  await assert.rejects(scope({}), (e) => e.code === 'context_mismatch');
+  await replica("UPDATE user_integrations SET credential_version=1 WHERE user_id=$1 AND platform='google_ads'",[user.id]);
+  await replica("UPDATE orchestrator_tenant_google_ads_credential_refs SET status='revoked',revoked_at=now() WHERE tenant_id=$1 AND id=$2",[tenant.id,ids.credential]);
+  await assert.rejects(scope({}), (e) => e.code === 'missing_credentials');
+  await replica("UPDATE orchestrator_tenant_google_ads_credential_refs SET status='active',revoked_at=NULL WHERE tenant_id=$1 AND id=$2",[tenant.id,ids.credential]);
+
+  // ── PR10B.2a: only a confirmed paused creation with a live grant succeeds ──
+  await tx((c) => authority.revoke(c, { ...base, capabilityId:capabilityD }));
+  const capabilityE = await mint();
+  const spendE = { capabilityId:capabilityE, reservationId:id('r5'), invocationId:id('i5'), idempotencyKey:id('k5') };
+  const fundedE = await fund(spendE);
+  const opKey = sha(`${tenant.id}|${capabilityE}|${ids.draft}|1|${ids.intent}|${FP}`);
+  const proof = (over = {}) => ({ ok:true, result_code:'provider_create_succeeded', external_action_taken:true,
+    published:false, activated:false, serving:false, requires_reconciliation:false, retry:false, objects_created:3,
+    objects:['campaign_budget','campaign','ad_group'].map((kind, i) => ({ object_kind:kind,
+      provider_status:'PAUSED', sequence_number:i + 1, provider_object_id:String(7700 + i) })),
+    provider_operation_key:opKey, idempotency_key:spendE.idempotencyKey, ...over });
+  const claim = (over) => settle({ operationId:fundedE.operation_id, status:'succeeded',
+    resultCode:'provider_create_succeeded', providerResult:proof(over) });
+  const statusOf = async (operationId) => (await db.getPool().query(
+    `SELECT status,external_action_taken FROM orchestrator_google_ads_provider_draft_operations
+      WHERE tenant_id=$1 AND id=$2`, [tenant.id, operationId])).rows[0];
+  // Evidence echoing another operation's keys cannot authorize this claim.
+  await assert.rejects(claim({ provider_operation_key:sha('elsewhere') }), denied('operation_rejected'));
+  await assert.rejects(claim({ idempotency_key:id('elsewhere') }), denied('operation_rejected'));
+  const setGrant = (json) => replica('UPDATE roles SET permissions=$3::jsonb WHERE tenant_id=$1 AND key=$2',
+    [tenant.id, id('role'), json]);
+  // A revoked DB grant cannot claim success even though the session still says it may.
+  await setGrant('[]');
+  await assert.rejects(claim(), denied('permission_denied'));
+  assert.deepEqual(await statusOf(fundedE.operation_id), { status:'in_progress', external_action_taken:false });
+  assert.equal((await db.getPool().query(`SELECT count(*)::int AS count
+    FROM orchestrator_google_ads_provider_draft_objects WHERE tenant_id=$1`, [tenant.id])).rows[0].count, 0);
+  await setGrant('["advertising.provider_drafts.create"]');
+  const claimed = await settle({ operationId:fundedE.operation_id, status:'succeeded',
+    resultCode:'provider_create_succeeded', idempotencyKey:spendE.idempotencyKey, providerResult:proof() });
+  assert.deepEqual([claimed.external_action_taken, claimed.published, claimed.activated], [true, false, false]);
+  await assert.rejects(settle({ operationId:fundedE.operation_id, status:'failed',
+    resultCode:'provider_create_failed' }), denied('operation_rejected'));
+
+  // ── PR10B.2a: the object rows are truthful, paused and append-only ────────
+  const objects = await db.getPool().query(`SELECT * FROM orchestrator_google_ads_provider_draft_objects
+    WHERE tenant_id=$1 AND operation_id=$2 ORDER BY sequence_number`, [tenant.id, fundedE.operation_id]);
+  assert.deepEqual(objects.rows.map((r) => r.object_kind), ['campaign_budget','campaign','ad_group']);
+  for (const r of objects.rows) {
+    assert.deepEqual([r.provider_status, r.serving, r.published, r.activated, r.capability_id,
+      r.provider_object_id_digest, r.requires_reconciliation, r.reconciliation_state],
+    ['PAUSED', false, false, false, capabilityE, sha(r.provider_object_id), false, 'not_required']);
+  }
+  await assert.rejects(db.getPool().query(`UPDATE orchestrator_google_ads_provider_draft_objects
+    SET provider_status='ENABLED' WHERE tenant_id=$1 AND id=$2`, [tenant.id, objects.rows[0].id]),
+  /orchestrator_gapdobj_immutable/);
+  await assert.rejects(db.getPool().query(`DELETE FROM orchestrator_google_ads_provider_draft_objects
+    WHERE tenant_id=$1 AND id=$2`, [tenant.id, objects.rows[0].id]), /orchestrator_gapdobj_audit_evidence/);
+  const insertObject = (over) => db.getPool().query(`INSERT INTO orchestrator_google_ads_provider_draft_objects
+    (tenant_id,id,operation_id,capability_id,account_fingerprint,object_kind,sequence_number,provider_object_id,
+     provider_object_id_digest,provider_status,result_code,serving,recorded_at,audit_ref)
+    VALUES($1,$2,$3,$4,$5,'campaign',2,$6,$7,$8,'provider_create_succeeded',$9,now(),$2)`,
+  [tenant.id, id(`obj-${over.tag}`), over.operationId || fundedE.operation_id, over.capabilityId || capabilityE,
+    FP, over.objectId, sha(over.objectId), over.providerStatus || 'PAUSED', over.serving === true]);
+  await assert.rejects(insertObject({ tag:'serving', objectId:'8801', serving:true }),
+    /orchestrator_gapdobj_paused_check/);
+  await assert.rejects(insertObject({ tag:'enabled', objectId:'8802', providerStatus:'ENABLED' }),
+    /orchestrator_gapdobj_paused_check/);
+  await assert.rejects(insertObject({ tag:'lineage', objectId:'8803', capabilityId:capability }),
+    /orchestrator_gapdobj_operation_lineage/);
+
+  // ── PR10B.2a: a revoked grant must not strand an in_progress row ──────────
+  const capabilityG = await mint();
+  const fundedG = await fund({ capabilityId:capabilityG, reservationId:id('r6'),
+    invocationId:id('i6'), idempotencyKey:id('k6') });
+  await setGrant('[]');
+  await replica("UPDATE tenant_users SET status='suspended' WHERE tenant_id=$1 AND user_id=$2",[tenant.id,user.id]);
+  const stranded = await settle({ operationId:fundedG.operation_id, status:'unknown',
+    resultCode:'provider_outcome_unknown' });
+  assert.equal(stranded.status, 'unknown');
+  assert.equal(stranded.external_action_taken, false);
+  await replica("UPDATE tenant_users SET status='active' WHERE tenant_id=$1 AND user_id=$2",[tenant.id,user.id]);
+  await setGrant('["advertising.provider_drafts.create"]');
+
   // ── audits carry no secret, account or payload material ────────────────────
   const audits = await db.getPool().query(`SELECT event,detail::text FROM orchestrator_audit_events
     WHERE tenant_id=$1 AND event LIKE 'google_ads_provider_draft_operation_%'`, [tenant.id]);
-  assert.equal(audits.rowCount, 6);
+  assert.equal(audits.rowCount, 10);
   for (const audit of audits.rows) {
     assert.deepEqual(Object.keys(JSON.parse(audit.detail)).sort(), ['capability_id','operation_id','status']);
     assert.doesNotMatch(audit.detail, /123-?4567?890|token|fingerprint|googleapis|https?:/i);
@@ -274,7 +372,12 @@ if (!db.hasDb()) {
     FROM orchestrator_google_ads_provider_draft_operations
     WHERE tenant_id=$1 AND status IN ('pending','in_progress')`, [tenant.id]);
   assert.equal(live.rows[0].count, 0);
-  const succeeded = await db.getPool().query(`SELECT count(*)::int AS count
-    FROM orchestrator_google_ads_provider_draft_operations WHERE tenant_id=$1 AND status='succeeded'`, [tenant.id]);
-  assert.equal(succeeded.rows[0].count, 0);
+  // Exactly one operation ever claimed an external action, it is the confirmed
+  // paused creation, and it carries exactly three PAUSED objects.
+  const acted = await db.getPool().query(`SELECT id,status,result_code FROM
+    orchestrator_google_ads_provider_draft_operations WHERE tenant_id=$1 AND external_action_taken`, [tenant.id]);
+  assert.deepEqual(acted.rows, [{ id:fundedE.operation_id, status:'succeeded',
+    result_code:'provider_create_succeeded' }]);
+  assert.equal((await db.getPool().query(`SELECT count(*)::int AS count
+    FROM orchestrator_google_ads_provider_draft_objects WHERE tenant_id=$1`, [tenant.id])).rows[0].count, 3);
 });
