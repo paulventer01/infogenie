@@ -7145,9 +7145,25 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       CONSTRAINT orchestrator_atks_version CHECK(version>0)
     );
     CREATE OR REPLACE FUNCTION orchestrator_advertising_kill_switch_guard() RETURNS trigger AS $fn$ BEGIN
-      IF TG_OP='DELETE' THEN IF TG_TABLE_NAME='orchestrator_advertising_global_kill_switches' OR pg_trigger_depth()=1 THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_delete_prohibited';END IF;RETURN OLD;END IF;
-      IF NEW.switch_key IS DISTINCT FROM OLD.switch_key OR (TG_TABLE_NAME='orchestrator_advertising_tenant_kill_switches' AND NEW.tenant_id IS DISTINCT FROM OLD.tenant_id) OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_identity_immutable';END IF;
-      IF NEW.version<>OLD.version+1 OR NEW.updated_at<=OLD.updated_at THEN RAISE EXCEPTION 'orchestrator_advertising_kill_switch_invalid_version';END IF;RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+      IF TG_OP='DELETE' THEN
+        IF TG_TABLE_NAME='orchestrator_advertising_global_kill_switches' OR pg_trigger_depth()=1 THEN
+          RAISE EXCEPTION 'orchestrator_advertising_kill_switch_delete_prohibited';
+        END IF;
+        RETURN OLD;
+      END IF;
+      IF NEW.switch_key IS DISTINCT FROM OLD.switch_key OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+        RAISE EXCEPTION 'orchestrator_advertising_kill_switch_identity_immutable';
+      END IF;
+      IF TG_TABLE_NAME='orchestrator_advertising_tenant_kill_switches' THEN
+        IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id THEN
+          RAISE EXCEPTION 'orchestrator_advertising_kill_switch_identity_immutable';
+        END IF;
+      END IF;
+      IF NEW.version<>OLD.version+1 OR NEW.updated_at<=OLD.updated_at THEN
+        RAISE EXCEPTION 'orchestrator_advertising_kill_switch_invalid_version';
+      END IF;
+      RETURN NEW;
+    END;$fn$ LANGUAGE plpgsql;
     DROP TRIGGER IF EXISTS orchestrator_agks_guard ON orchestrator_advertising_global_kill_switches;
     CREATE TRIGGER orchestrator_agks_guard BEFORE UPDATE OR DELETE ON orchestrator_advertising_global_kill_switches FOR EACH ROW EXECUTE FUNCTION orchestrator_advertising_kill_switch_guard();
     DROP TRIGGER IF EXISTS orchestrator_atks_guard ON orchestrator_advertising_tenant_kill_switches;
@@ -7353,12 +7369,22 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'tenant_id, id', 'ON DELETE CASCADE');
 
   // Undo accidental addTenantIdColumn injection from a prior
-  // ADVERTISING_ORCH_TABLES listing. DROP COLUMN also removes the tenant FK.
+  // ADVERTISING_ORCH_TABLES listing. Catalog-check first: a converged boot
+  // must not issue no-op DROP/ALTER (those take ACCESS EXCLUSIVE).
   // Do not re-list this table in ADVERTISING_ORCH_TABLES or NULLABLE_OK.
-  await p.query(`
-    DROP INDEX IF EXISTS orchestrator_advertising_global_kill_switches_tenant_idx;
-    ALTER TABLE orchestrator_advertising_global_kill_switches DROP COLUMN IF EXISTS tenant_id;
-  `);
+  const globalKillTable = 'orchestrator_advertising_global_kill_switches';
+  const hasAccidentalTenantId = await _columnExists(p, globalKillTable, 'tenant_id');
+  const hasAccidentalTenantIdx = (await p.query(
+    `SELECT 1 FROM pg_indexes
+      WHERE schemaname='public' AND indexname=$1 LIMIT 1`,
+    ['orchestrator_advertising_global_kill_switches_tenant_idx']
+  )).rowCount > 0;
+  if (hasAccidentalTenantIdx) {
+    await p.query('DROP INDEX IF EXISTS orchestrator_advertising_global_kill_switches_tenant_idx');
+  }
+  if (hasAccidentalTenantId) {
+    await p.query('ALTER TABLE orchestrator_advertising_global_kill_switches DROP COLUMN IF EXISTS tenant_id');
+  }
 
   for (const t of ADVERTISING_ORCH_TABLES) {
     try { await addTenantIdColumn(t); } catch (_) { /* idempotent */ }
