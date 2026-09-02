@@ -130,6 +130,8 @@ const ADVERTISING_ORCH_TABLES = [
   // material, provider payload, raw customer id, or external side effect.
   'orchestrator_tenant_google_ads_credential_refs',
   'orchestrator_google_ads_provider_draft_capabilities',
+  // PR10B.1 — metadata-only Google Ads provider-operation ledger (no mutation).
+  'orchestrator_google_ads_provider_draft_operations',
   // PR 8C — synchronous internal-simulation runs and their distinct lifecycle.
   'orchestrator_optimization_executions',
   'orchestrator_optimization_execution_run_events',
@@ -7123,6 +7125,132 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     DROP TRIGGER IF EXISTS orchestrator_gapdc_guard ON orchestrator_google_ads_provider_draft_capabilities;
     CREATE TRIGGER orchestrator_gapdc_guard BEFORE INSERT OR UPDATE OR DELETE
       ON orchestrator_google_ads_provider_draft_capabilities FOR EACH ROW EXECUTE FUNCTION orchestrator_gapdc_guard();
+  `);
+
+  // PR10B.1 — tenant-leading Google Ads provider-operation ledger. Stores no
+  // provider mutation, secrets, tokens, raw account identifiers, or payloads.
+  // PR10B.2 may later migrate the published/activated/external_action_taken fence.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_provider_draft_operations(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      session_id_hash TEXT NOT NULL,
+      workflow_id TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      draft_revision INTEGER NOT NULL,
+      contract_hash TEXT NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      publish_approval_id TEXT NOT NULL,
+      workflow_approval_id INTEGER NOT NULL,
+      snapshot_hash TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      intent_hash TEXT NOT NULL,
+      capability_id TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL,
+      credential_ref_version INTEGER NOT NULL,
+      account_fingerprint TEXT NOT NULL,
+      reservation_id_hash TEXT NOT NULL,
+      invocation_id_hash TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      provider_operation_key TEXT NOT NULL,
+      requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL,
+      started_at TIMESTAMPTZ NULL,
+      settled_at TIMESTAMPTZ NULL,
+      result_code TEXT NULL,
+      published BOOLEAN NOT NULL DEFAULT FALSE,
+      activated BOOLEAN NOT NULL DEFAULT FALSE,
+      external_action_taken BOOLEAN NOT NULL DEFAULT FALSE,
+      audit_ref TEXT NOT NULL,
+      PRIMARY KEY(tenant_id,id),
+      CONSTRAINT orchestrator_gapdo_tenant_unique_idemp UNIQUE(tenant_id,idempotency_key),
+      CONSTRAINT orchestrator_gapdo_tenant_unique_capability UNIQUE(tenant_id,capability_id),
+      CONSTRAINT orchestrator_gapdo_tenant_unique_invocation UNIQUE(tenant_id,invocation_id_hash),
+      CONSTRAINT orchestrator_gapdo_tenant_unique_opkey UNIQUE(tenant_id,provider_operation_key),
+      CONSTRAINT orchestrator_gapdo_tenant_unique_audit UNIQUE(tenant_id,audit_ref),
+      CONSTRAINT orchestrator_gapdo_status_check
+        CHECK(status IN ('pending','in_progress','succeeded','failed','unknown')),
+      CONSTRAINT orchestrator_gapdo_no_mutation_check
+        CHECK(published=FALSE AND activated=FALSE AND external_action_taken=FALSE),
+      CONSTRAINT orchestrator_gapdo_lifecycle_check CHECK(
+        (status='pending' AND started_at IS NULL AND settled_at IS NULL AND result_code IS NULL) OR
+        (status='in_progress' AND started_at IS NOT NULL AND settled_at IS NULL AND result_code IS NULL) OR
+        (status IN ('succeeded','failed','unknown') AND started_at IS NOT NULL AND settled_at IS NOT NULL AND result_code IS NOT NULL)),
+      CONSTRAINT orchestrator_gapdo_result_check
+        CHECK(result_code IS NULL OR result_code IN ('ready_for_provider','provider_create_failed','provider_outcome_unknown','provider_create_succeeded')),
+      CONSTRAINT orchestrator_gapdo_actor_check CHECK(actor_user_id=requested_by),
+      CONSTRAINT orchestrator_gapdo_hashes_check CHECK(
+        session_id_hash~'^[0-9a-f]{64}$' AND contract_hash~'^[0-9a-f]{64}$'
+        AND snapshot_hash~'^[0-9a-f]{64}$' AND intent_hash~'^[0-9a-f]{64}$'
+        AND account_fingerprint~'^[0-9a-f]{64}$'
+        AND reservation_id_hash~'^[0-9a-f]{64}$' AND invocation_id_hash~'^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_gapdo_revision_check CHECK(draft_revision>=1 AND credential_ref_version>=1),
+      CONSTRAINT orchestrator_gapdo_ids_check CHECK(
+        char_length(id) BETWEEN 1 AND 128 AND char_length(workflow_id) BETWEEN 1 AND 128
+        AND char_length(draft_id) BETWEEN 1 AND 128 AND char_length(publishing_request_id) BETWEEN 1 AND 128
+        AND char_length(publish_approval_id) BETWEEN 1 AND 128 AND char_length(intent_id) BETWEEN 1 AND 128
+        AND char_length(capability_id) BETWEEN 1 AND 128 AND char_length(credential_ref_id) BETWEEN 1 AND 128
+        AND char_length(provider_operation_key) BETWEEN 1 AND 128 AND char_length(audit_ref) BETWEEN 1 AND 128
+        AND char_length(idempotency_key) BETWEEN 1 AND 256),
+      FOREIGN KEY(tenant_id,workflow_id) REFERENCES orchestrator_workflows(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,draft_id) REFERENCES orchestrator_campaign_drafts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,draft_id,draft_revision)
+        REFERENCES orchestrator_campaign_draft_revisions(tenant_id,draft_id,revision) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publishing_request_id)
+        REFERENCES orchestrator_campaign_publish_requests(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publish_approval_id)
+        REFERENCES orchestrator_campaign_publish_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,workflow_approval_id)
+        REFERENCES orchestrator_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,intent_id)
+        REFERENCES orchestrator_campaign_delivery_intents(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,capability_id)
+        REFERENCES orchestrator_google_ads_provider_draft_capabilities(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,credential_ref_id,credential_ref_version,account_fingerprint)
+        REFERENCES orchestrator_tenant_google_ads_credential_refs(tenant_id,id,version,account_fingerprint)
+        ON DELETE RESTRICT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gapdo_one_live_operation
+      ON orchestrator_google_ads_provider_draft_operations
+        (tenant_id,draft_id,draft_revision,publishing_request_id,publish_approval_id,intent_id,account_fingerprint)
+      WHERE status IN ('pending','in_progress');
+
+    CREATE OR REPLACE FUNCTION orchestrator_gapdo_guard() RETURNS trigger AS $fn$ BEGIN
+      IF TG_OP='INSERT' THEN
+        IF NEW.status<>'pending' THEN RAISE EXCEPTION 'orchestrator_gapdo_invalid_insert';END IF;
+        RETURN NEW;
+      END IF;
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_gapdo_audit_evidence';END IF;
+      IF OLD.status IN ('succeeded','failed','unknown')
+        OR NOT ((OLD.status='pending' AND NEW.status='in_progress')
+          OR (OLD.status='in_progress' AND NEW.status IN ('succeeded','failed','unknown')))
+        OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.requested_by IS DISTINCT FROM OLD.requested_by
+        OR NEW.session_id_hash IS DISTINCT FROM OLD.session_id_hash
+        OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
+        OR NEW.draft_revision IS DISTINCT FROM OLD.draft_revision OR NEW.contract_hash IS DISTINCT FROM OLD.contract_hash
+        OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+        OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id
+        OR NEW.workflow_approval_id IS DISTINCT FROM OLD.workflow_approval_id
+        OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+        OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash OR NEW.capability_id IS DISTINCT FROM OLD.capability_id
+        OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+        OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
+        OR NEW.provider_operation_key IS DISTINCT FROM OLD.provider_operation_key
+        OR NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+        OR NEW.published IS DISTINCT FROM OLD.published OR NEW.activated IS DISTINCT FROM OLD.activated
+        OR NEW.external_action_taken IS DISTINCT FROM OLD.external_action_taken
+        OR (OLD.reservation_id_hash IS NOT NULL AND NEW.reservation_id_hash IS DISTINCT FROM OLD.reservation_id_hash)
+        OR (OLD.invocation_id_hash IS NOT NULL AND NEW.invocation_id_hash IS DISTINCT FROM OLD.invocation_id_hash)
+      THEN RAISE EXCEPTION 'orchestrator_gapdo_immutable';END IF;
+      RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gapdo_guard ON orchestrator_google_ads_provider_draft_operations;
+    CREATE TRIGGER orchestrator_gapdo_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_google_ads_provider_draft_operations FOR EACH ROW EXECUTE FUNCTION orchestrator_gapdo_guard();
   `);
 
   // PR 8C — consumes one approved PR8B request without changing it. No provider
