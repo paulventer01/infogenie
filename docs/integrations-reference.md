@@ -1,6 +1,6 @@
 # InfoGenie — Integrations & Tools Reference
 
-> **Last updated:** September 2026  
+> **Last updated:** September 2026
 > Covers every API, LLM, OAuth flow, AI provider, data source, and third-party tool wired into InfoGenie, with status for each.
 
 ---
