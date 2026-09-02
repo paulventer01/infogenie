@@ -159,6 +159,30 @@ const ROUTE_GROUPS = [
   { prefix: '/api/agent-orchestrator/meta-delivery-monitoring', view: 'advertising.campaign.monitor', write: 'advertising.campaign.monitor' },
   { prefix: '/api/agent-orchestrator/delivery-discrepancies', view: 'advertising.campaign.delivery.resolve', write: 'advertising.campaign.delivery.resolve' },
   { prefix: '/api/agent-orchestrator/optimization-recommendations', view: 'advertising.campaign.optimization.review', write: 'advertising.campaign.optimization.review' },
+  // Parent row for the whole `/api/advertising` namespace. Nothing is mounted at
+  // the bare prefix today — every live router is one of the two longer child
+  // rows below — so this row exists to close the enforcer's unmapped-path
+  // fallback: without it, `/api/advertising/<anything-else>` matches no group and
+  // `enforceMatrix` allows it for every authenticated principal even under
+  // PERMISSION_ENFORCEMENT=on.
+  //
+  // Key choice: `advertising.campaign.optimization.review` is the narrowest
+  // EXISTING catalog key that describes this namespace (today it holds exactly
+  // the internal optimization pipeline whose upstream authority is that key at
+  // /api/agent-orchestrator/optimization-recommendations), and it is withheld
+  // from every system role — DEFAULT_ROLE_PERMISSION_KEYS excludes it and
+  // ALL_VIEW_PERMISSION_KEYS does not match `.review` — so a future child added
+  // without its own row is denied to owner, admin, Marketer, Analyst, Content
+  // Creator and Client Viewer by default instead of being silently exposed.
+  // Do NOT relax this to `dashboard.view` / `grow.campaigns.view` (read-only
+  // roles would reach a money-touching surface), and do NOT reuse either
+  // execute key here — they are dedicated to their own child prefix.
+  //
+  // `view` carries the same key on purpose so a GET added at the bare prefix is
+  // not exposed by the write→view fallback. Longest-prefix-wins keeps both child
+  // rows authoritative: this row cannot shadow them, and holding `review`
+  // therefore grants no execution authority.
+  { prefix: '/api/advertising', view: 'advertising.campaign.optimization.review', write: 'advertising.campaign.optimization.review' },
   { prefix: '/api/advertising/optimization-executions', view: 'advertising.campaign.optimization.execute', write: 'advertising.campaign.optimization.execute' },
   { prefix: '/api/advertising/optimization-execution-runs', view: 'advertising.campaign.optimization.execute.approved', write: 'advertising.campaign.optimization.execute.approved' },
   // PR 6F-0 provider-draft challenge/confirm routes mounted under campaign_api.
