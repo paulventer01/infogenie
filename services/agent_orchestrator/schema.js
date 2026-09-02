@@ -7129,7 +7129,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
 
   // PR10B.1 — tenant-leading Google Ads provider-operation ledger. Stores no
   // provider mutation, secrets, tokens, raw account identifiers, or payloads.
-  // PR10B.2 may later migrate the published/activated/external_action_taken fence.
+  // PR10B.2 — published/activated stay FALSE; external_action_taken may flip
+  // FALSE→TRUE only on in_progress→succeeded with provider_create_succeeded.
   await p.query(`
     CREATE TABLE IF NOT EXISTS orchestrator_google_ads_provider_draft_operations(
       tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
@@ -7173,7 +7174,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       CONSTRAINT orchestrator_gapdo_status_check
         CHECK(status IN ('pending','in_progress','succeeded','failed','unknown')),
       CONSTRAINT orchestrator_gapdo_no_mutation_check
-        CHECK(published=FALSE AND activated=FALSE AND external_action_taken=FALSE),
+        CHECK(published=FALSE AND activated=FALSE
+          AND external_action_taken=(status='succeeded' AND result_code='provider_create_succeeded')),
       CONSTRAINT orchestrator_gapdo_lifecycle_check CHECK(
         (status='pending' AND started_at IS NULL AND settled_at IS NULL AND result_code IS NULL) OR
         (status='in_progress' AND started_at IS NOT NULL AND settled_at IS NULL AND result_code IS NULL) OR
@@ -7243,7 +7245,10 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         OR NEW.provider_operation_key IS DISTINCT FROM OLD.provider_operation_key
         OR NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
         OR NEW.published IS DISTINCT FROM OLD.published OR NEW.activated IS DISTINCT FROM OLD.activated
-        OR NEW.external_action_taken IS DISTINCT FROM OLD.external_action_taken
+        OR (NEW.external_action_taken IS DISTINCT FROM OLD.external_action_taken
+          AND NOT (OLD.external_action_taken=FALSE AND NEW.external_action_taken=TRUE
+            AND OLD.status='in_progress' AND NEW.status='succeeded'
+            AND NEW.result_code='provider_create_succeeded'))
         OR (OLD.reservation_id_hash IS NOT NULL AND NEW.reservation_id_hash IS DISTINCT FROM OLD.reservation_id_hash)
         OR (OLD.invocation_id_hash IS NOT NULL AND NEW.invocation_id_hash IS DISTINCT FROM OLD.invocation_id_hash)
       THEN RAISE EXCEPTION 'orchestrator_gapdo_immutable';END IF;
@@ -7252,6 +7257,18 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE TRIGGER orchestrator_gapdo_guard BEFORE INSERT OR UPDATE OR DELETE
       ON orchestrator_google_ads_provider_draft_operations FOR EACH ROW EXECUTE FUNCTION orchestrator_gapdo_guard();
   `);
+  // PR10B.2 — idempotent fence migration for existing databases.
+  await p.query('BEGIN');
+  try {
+    await p.query(`ALTER TABLE orchestrator_google_ads_provider_draft_operations
+      DROP CONSTRAINT IF EXISTS orchestrator_gapdo_no_mutation_check`);
+    await p.query(`ALTER TABLE orchestrator_google_ads_provider_draft_operations
+      ADD CONSTRAINT orchestrator_gapdo_no_mutation_check CHECK(
+        published=FALSE AND activated=FALSE
+          AND external_action_taken=(status='succeeded' AND result_code='provider_create_succeeded')
+      ) NOT VALID`);
+    await p.query('COMMIT');
+  } catch (e) { try { await p.query('ROLLBACK'); } catch (_) {} throw e; }
 
   // PR 8C — consumes one approved PR8B request without changing it. No provider
   // identifiers, credential references, source hashes, payloads, or errors are stored.
