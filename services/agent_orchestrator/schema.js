@@ -121,7 +121,10 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_optimization_execution_requests',
   'orchestrator_optimization_execution_events',
   // PR 8C admission controls. These do not authorize provider mutation.
-  'orchestrator_advertising_global_kill_switches',
+  // orchestrator_advertising_global_kill_switches is a platform-wide GLOBAL
+  // singleton (PK switch_key, no tenant_id). Do not list it here — that would
+  // re-inject a nullable tenant_id via addTenantIdColumn. Companion
+  // orchestrator_advertising_tenant_kill_switches stays tenant-scoped.
   'orchestrator_advertising_tenant_kill_switches',
   // PR10A — metadata-only Google Ads authority. These rows contain no OAuth
   // material, provider payload, raw customer id, or external side effect.
@@ -7124,6 +7127,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
 
   // PR 8C — consumes one approved PR8B request without changing it. No provider
   // identifiers, credential references, source hashes, payloads, or errors are stored.
+  // orchestrator_advertising_global_kill_switches is a platform-wide GLOBAL
+  // singleton (PK switch_key). It must never receive tenant_id.
   await p.query(`
     CREATE TABLE IF NOT EXISTS orchestrator_advertising_global_kill_switches(
       switch_key TEXT PRIMARY KEY, active BOOLEAN NOT NULL DEFAULT false, version INTEGER NOT NULL DEFAULT 1,
@@ -7346,6 +7351,14 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'orchestrator_cpoe_tenant_execution_fkey',
     'tenant_id, execution_id', 'orchestrator_campaign_provider_draft_executions',
     'tenant_id, id', 'ON DELETE CASCADE');
+
+  // Undo accidental addTenantIdColumn injection from a prior
+  // ADVERTISING_ORCH_TABLES listing. DROP COLUMN also removes the tenant FK.
+  // Do not re-list this table in ADVERTISING_ORCH_TABLES or NULLABLE_OK.
+  await p.query(`
+    DROP INDEX IF EXISTS orchestrator_advertising_global_kill_switches_tenant_idx;
+    ALTER TABLE orchestrator_advertising_global_kill_switches DROP COLUMN IF EXISTS tenant_id;
+  `);
 
   for (const t of ADVERTISING_ORCH_TABLES) {
     try { await addTenantIdColumn(t); } catch (_) { /* idempotent */ }

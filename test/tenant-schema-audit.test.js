@@ -45,6 +45,12 @@ const KNOWN_GLOBAL = new Set([
   'simulation_templates', // seeded 24-template catalog; UNIQUE(label); shared library
   // cluster-wide one-shot latch for legacy_short_due identify; no tenant data; holds remain tenant-scoped in `orchestrator_research_legacy_holds`.
   'orchestrator_research_legacy_short_due_snapshot',
+  // Platform-wide advertising admission singleton. PK(switch_key); no tenant
+  // data. Companion orchestrator_advertising_tenant_kill_switches is
+  // tenant_id NOT NULL. A prior ADVERTISING_ORCH_TABLES listing let
+  // addTenantIdColumn inject a nullable tenant_id — that is the bug this
+  // exclusion documents. Do NOT add this table to NULLABLE_OK.
+  'orchestrator_advertising_global_kill_switches',
 ]);
 
 // ── Tables whose tenant_id is intentionally NULLABLE ─────────────────────────

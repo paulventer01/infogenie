@@ -32,6 +32,14 @@
 //     one-shot latch for legacy_short_due identify (id=1 only). No tenant
 //     data; holds remain tenant-scoped in orchestrator_research_legacy_holds.
 //     Not a PLAIN_TABLES default-tenant backfill.
+//   • orchestrator_advertising_global_kill_switches — GLOBAL platform-wide
+//     advertising admission singleton. PK on switch_key only; CHECK limits
+//     keys to the two platform switches. No tenant data. Companion
+//     orchestrator_advertising_tenant_kill_switches stays tenant_id NOT NULL.
+//     Accidentally listing this table in ADVERTISING_ORCH_TABLES caused
+//     addTenantIdColumn to inject a nullable tenant_id; do not re-add it
+//     to that list, to PLAIN_TABLES, or to PHASE2E_NULLABLE_OK / NULLABLE_OK.
+//     Not a default-tenant backfill.
 //
 // Tables that need UNIQUE-constraint rewrites (e.g. landing_pages.slug
 // becoming UNIQUE(tenant_id, slug)) are listed in REWRITE_UNIQUE below.
