@@ -637,7 +637,11 @@ are listed once, at the end, because the schema cannot enforce them.
 
 Nothing in this review loosens `MULTITENANT_ENFORCEMENT`, `PERMISSION_ENFORCEMENT`,
 `ROUTE_GROUPS`, or the assertions in `test/tenant-schema-audit.test.js`. No entry
-was added to `KNOWN_GLOBAL` or `NULLABLE_OK`.
+was added to `KNOWN_GLOBAL` or `NULLABLE_OK` for the tables reviewed here. Later
+`KNOWN_GLOBAL` additions are justified where they land —
+`orchestrator_research_legacy_short_due_snapshot` under the research-retention
+residuals, and `orchestrator_advertising_global_kill_switches` in the inventory
+below. Neither added anything to `NULLABLE_OK`.
 
 ### Global, no `tenant_id` — accepted
 
@@ -671,6 +675,34 @@ was added to `KNOWN_GLOBAL` or `NULLABLE_OK`.
   and never written by a request path. It is product content, not workspace data,
   so the read is a catalog read. Backfill rule: none — seeded, never migrated.
   Tenant-owned simulation *runs* live in separate scoped tables.
+- **`orchestrator_advertising_global_kill_switches`** — accepted. It is the
+  platform-wide advertising admission singleton, not workspace data:
+  `PRIMARY KEY (switch_key)` plus `CONSTRAINT orchestrator_agks_key
+  CHECK (switch_key IN ('optimization_execution','google_ads_provider_draft'))`
+  bind the table to exactly two operator-owned rows, seeded by
+  `INSERT … ON CONFLICT (switch_key) DO NOTHING` in
+  `services/agent_orchestrator/schema.js`. Both readers are deliberately
+  unscoped — `lockAdmission` in
+  `services/agent_orchestrator/optimization_execution_run.js` reads
+  `WHERE switch_key='optimization_execution' FOR SHARE`, and
+  `services/security/google_ads_provider_draft_capabilities.js` joins
+  `ON g.switch_key='google_ads_provider_draft'` — because one workspace must not
+  be able to opt itself out of a platform-wide stop. No request path writes the
+  table; toggling is operator SQL, so there is no tenant-reachable write to
+  scope. The per-workspace half is a **separate** table:
+  `orchestrator_advertising_tenant_kill_switches` keeps
+  `tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` with
+  `PRIMARY KEY (tenant_id, switch_key)`, is read as
+  `WHERE tenant_id=$1 AND switch_key=…`, and cascades on tenant deletion while
+  the platform rows survive. Backfill rule: none — seeded, never migrated. It is
+  `KNOWN_GLOBAL` and **not** `NULLABLE_OK`: a nullable `tenant_id` did briefly
+  reach the table because it was listed in `ADVERTISING_ORCH_TABLES` and
+  `addTenantIdColumn` injected the column, but `NULLABLE_OK` is for tables that
+  hold both global and per-workspace rows, and this one holds no per-workspace
+  rows at all. The shared `orchestrator_advertising_kill_switch_guard` trigger
+  therefore gates its `NEW.tenant_id` check behind `TG_TABLE_NAME`, so the
+  tenantless table stays updatable while `tenant_id` immutability is enforced
+  only on the scoped companion.
 
 ### Mixed / `NULLABLE_OK` — accepted as a shape, rejected as currently written
 
