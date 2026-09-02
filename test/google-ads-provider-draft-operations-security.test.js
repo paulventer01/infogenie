@@ -246,8 +246,8 @@ test('the provider call is fenced by a full reauthorization in the same transact
   const execution=source.slice(source.indexOf('// ── PR10B.2b guarded execution'));
   const at=(needle)=>{const i=execution.indexOf(needle);assert.ok(i>0,needle);return i;};
   // Claim the funded row, re-prove authority, only then decrypt, call, settle.
-  assert.ok(at('const row=await claim(')<at('await reauthorize(c,o,actorId,row);'));
-  assert.ok(at('await reauthorize(c,o,actorId,row);')<at('vault.withGoogleAdsPausedDraftSecretScope'));
+  assert.ok(at('const row=await claim(')<at('const fresh=await reauthorize(c,o,actorId,row);'));
+  assert.ok(at('const fresh=await reauthorize(c,o,actorId,row);')<at('vault.withGoogleAdsPausedDraftSecretScope'));
   assert.ok(at('vault.withGoogleAdsPausedDraftSecretScope')<at('connector.createPausedGoogleAdsDraft'));
   assert.ok(at('connector.createPausedGoogleAdsDraft')<at('await settle(c,{...o,operationId:row.id'));
   // Reauthorization re-reads the consumed capability and its TTL, the PR10A
@@ -262,6 +262,24 @@ test('the provider call is fenced by a full reauthorization in the same transact
   assert.match(execution,/new Date\(fresh\.approval_expires_at\)>now/);
   // The single request is labelled with the ledger's own stable keys.
   assert.match(execution,/provider_operation_key:row\.provider_operation_key,idempotency_key:row\.idempotency_key/);
+});
+
+test('the provider payload is the approved snapshot, never the caller draft',()=>{
+  const execution=source.slice(source.indexOf('// ── PR10B.2b guarded execution'));
+  // reauthorize hands back the row whose snapshot_json it just proved hashes to
+  // the approved snapshot_hash, and that is what the connector is given.
+  assert.match(source,/const fresh=await capability\._authoritative\(/);
+  assert.match(source,/same\(String\(fresh\.snapshot_hash\),String\(row\.snapshot_hash\)\)/);
+  assert.match(source,/\n {2}return fresh;\n\}/);
+  assert.match(execution,/const approved=pausedSnapshot\(fresh\.snapshot_json\);/);
+  assert.match(execution,/credentials:handle,snapshot:approved/);
+  assert.ok(execution.indexOf('const approved=pausedSnapshot(fresh.snapshot_json);')
+    <execution.indexOf('connector.createPausedGoogleAdsDraft'));
+  // The caller's draft is validated for shape and then dropped; it is never
+  // forwarded, stored in a variable the connector call can read, or sent.
+  assert.match(execution,/\n {2}pausedSnapshot\(o\.snapshot\);/);
+  assert.doesNotMatch(execution,/=\s*pausedSnapshot\(o\.snapshot\)/);
+  assert.doesNotMatch(execution,/snapshot:o\.snapshot|snapshot:snapshot\b/);
 });
 
 test('only a confirmed paused creation classifies as success; ambiguity is unknown, never retry',()=>{

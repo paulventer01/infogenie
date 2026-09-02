@@ -12,9 +12,15 @@ const schema = require('../../services/agent_orchestrator/schema');
 const authority = require('../../services/security/google_ads_provider_draft_capabilities');
 const operations = require('../../services/security/google_ads_provider_draft_operations');
 const connector = require('../../services/agent_orchestrator/connectors/google_ads_paused_draft');
+const { sha256Hex } = require('../../services/agent_orchestrator/hash');
 const { makeFixtures } = require('../helpers');
 
 const H = crypto.createHash('sha256').update('{}').digest('hex');
+// The approved, PAUSED snapshot the operator signed off on. Everything the
+// provider is asked to create must come from here, not from the request body.
+const APPROVED_SNAPSHOT = Object.freeze({ name:'approved paused draft',
+  budget: Object.freeze({ amount_micros: 2500000 }) });
+const APPROVED_SNAPSHOT_HASH = sha256Hex(APPROVED_SNAPSHOT);
 const CUSTOMER = '1234567890';
 const FP = crypto.createHash('sha256').update(CUSTOMER).digest('hex');
 const REFRESH_TOKEN = 'refresh-token-must-never-escape';
@@ -110,17 +116,25 @@ if (!db.hasDb()) {
       VALUES($7,$2,$4,1,'{}',$5,'passed');
     INSERT INTO orchestrator_campaign_publish_approvals
       (id,tenant_id,draft_id,revision,contract_hash,snapshot_json,workflow_approval_id,actor_user_id,idempotency_key,expires_at)
-      VALUES($8,$2,$4,1,$5,'{}',${workflowApprovalId},$3,$9,now()+interval '1 hour');
+      VALUES($8,$2,$4,1,$5,$18,${workflowApprovalId},$3,$9,now()+interval '1 hour');
     INSERT INTO orchestrator_campaign_publish_requests
       (id,tenant_id,draft_id,publish_approval_id,workflow_approval_id,revision,contract_hash,snapshot_hash,requested_by,idempotency_key,request_hash)
-      VALUES($10,$2,$4,$8,${workflowApprovalId},1,$5,$5,$3,$11,$5);
+      VALUES($10,$2,$4,$8,${workflowApprovalId},1,$5,$19,$3,$11,$5);
     INSERT INTO orchestrator_campaign_delivery_intents
       (id,tenant_id,publishing_request_id,draft_id,publish_approval_id,workflow_approval_id,outbox_id,revision,contract_hash,snapshot_hash,intent_hash,idempotency_key,requested_by)
-      VALUES($12,$2,$10,$4,$8,${workflowApprovalId},$13,1,$5,$5,$5,$14,$3);
+      VALUES($12,$2,$10,$4,$8,${workflowApprovalId},$13,1,$5,$19,$5,$14,$3);
     INSERT INTO orchestrator_tenant_google_ads_credential_refs
       (tenant_id,id,account_fingerprint,version,owner_user_id) VALUES($2,$15,$16,1,$3)`,
   [ids.workflow,tenant.id,user.id,ids.draft,H,id('draft-key'),id('revision'),ids.approval,
-    id('approval-key'),ids.request,id('request-key'),ids.intent,id('outbox'),id('intent-key'),ids.credential,FP,id('role')]);
+    id('approval-key'),ids.request,id('request-key'),ids.intent,id('outbox'),id('intent-key'),ids.credential,FP,
+    id('role'),JSON.stringify(APPROVED_SNAPSHOT),APPROVED_SNAPSHOT_HASH]);
+  // The authority binds the approved snapshot by hash, independently of the
+  // contract hash, and that snapshot is the only lawful provider payload.
+  const storedSnapshot = (await db.getPool().query(
+    `SELECT snapshot_json FROM orchestrator_campaign_publish_approvals WHERE tenant_id=$1 AND id=$2`,
+    [tenant.id, ids.approval])).rows[0].snapshot_json;
+  assert.equal(sha256Hex(storedSnapshot), APPROVED_SNAPSHOT_HASH);
+  assert.notEqual(APPROVED_SNAPSHOT_HASH, H);
 
   const vault = require('../../services/credentials/vault');
   const blob = vault.encryptString(JSON.stringify({ customerId: CUSTOMER, refreshToken: REFRESH_TOKEN,
@@ -146,7 +160,9 @@ if (!db.hasDb()) {
     sessionId:id('session'), hasExplicitTenantPermission:permit, draftId:ids.draft, draftRevision:1,
     publishingRequestId:ids.request, publishApprovalId:ids.approval, intentId:ids.intent,
     credentialRefId:ids.credential, credentialRefVersion:1, ttlMs:300000 };
-  const snapshot = { name:'PR10B.2b paused draft', budget:{ amount_micros:2500000 } };
+  // Deliberately not the approved figures: a caller may not choose what the
+  // provider is asked to create.
+  const snapshot = { name:'caller supplied draft', budget:{ amount_micros:987654321 } };
   const mint = async () => (await tx(async (c) => {
     const confirmation = await authority.confirm(c, { ...base, finalConfirmation:authority.CONFIRMATION });
     return authority.issue(c, { ...base, finalConfirmationId:confirmation.confirmation_id });
@@ -196,7 +212,12 @@ if (!db.hasDb()) {
   assert.equal(request.body.mutateOperations.length, 3);
   assert.equal(request.body.mutateOperations[1].campaignOperation.create.status, 'PAUSED');
   assert.equal(request.body.mutateOperations[2].adGroupOperation.create.status, 'PAUSED');
+  // The spend on the wire is the approved snapshot's, not the caller's.
+  assert.equal(request.body.mutateOperations[0].campaignBudgetOperation.create.amountMicros,
+    String(APPROVED_SNAPSHOT.budget.amount_micros));
   const wire = JSON.stringify(request);
+  assert.equal(wire.includes(String(snapshot.budget.amount_micros)), false,
+    'an unapproved caller budget never reaches Google');
   for (const secret of [REFRESH_TOKEN, CLIENT_SECRET, DEV_TOKEN, ACCESS_TOKEN]) {
     assert.equal(wire.includes(secret), false, 'no credential material on the wire body');
   }
@@ -247,7 +268,10 @@ if (!db.hasDb()) {
   // ── 4. provider rejection is determinate: failed, no evidence, no retry ────
   const spendC = await spendFor('c');
   response = { status:400, json:{ error:{ code:400, message:'INVALID_ARGUMENT' } } };
-  const failed = await run(spendC);
+  // A second, different caller budget is ignored just as firmly as the first.
+  const failed = await run({ ...spendC, snapshot:{ name:'other caller draft', budget:{ amount_micros:1 } } });
+  assert.equal(sent[1].body.mutateOperations[0].campaignBudgetOperation.create.amountMicros,
+    String(APPROVED_SNAPSHOT.budget.amount_micros));
   assert.equal(failed.status, 'failed');
   assert.equal(failed.result_code, 'provider_create_failed');
   assert.equal(failed.external_action_taken, false);

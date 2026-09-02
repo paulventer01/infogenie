@@ -3396,6 +3396,11 @@ scheduler or retry.
   the tenant and global kill switches are re-read through the PR10A
   authoritative path. Its `FOR UPDATE` locks are held across the invocation and
   the settlement, so nothing can drift underneath the call.
+- **The payload is the approved snapshot.** What the provider is asked to create
+  is derived from the approval's `snapshot_json`, whose sha256 the authoritative
+  path has just re-proved against this operation's `snapshot_hash`. A
+  caller-supplied draft is only an early serving-shape rejection: it is not
+  authority, and its name and budget never reach Google.
 - **Secrets.** The sealed vault handle is forwarded to the connector, never
   unpacked: no token, client secret or raw customer id is named, copied,
   serialized, logged or persisted by this module, and the handle stops answering

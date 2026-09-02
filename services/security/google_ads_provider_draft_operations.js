@@ -262,6 +262,8 @@ async function claim(c,tenantId,actorId,operationId,o) {
 // membership, the explicit permission grant, and both kill switches. The PR10A
 // authoritative path is reused verbatim, and the FOR UPDATE locks it takes are
 // held through the invocation and the settlement in the same transaction.
+// Returns the authoritative row, whose snapshot_json has just been proved to
+// hash to the approved snapshot_hash — it is the only lawful provider payload.
 async function reauthorize(c,o,actorId,row) {
   const cap=(await c.query(`SELECT * FROM orchestrator_google_ads_provider_draft_capabilities
     WHERE tenant_id=$1 AND id=$2 AND status='consumed' AND actor_user_id=$3 FOR UPDATE`,
@@ -289,6 +291,7 @@ async function reauthorize(c,o,actorId,row) {
   await vault.assertGoogleAdsProviderDraftCredentialRefMetadata(c,{tenantId:row.tenant_id,ownerUserId:actorId,
     credentialRefId:row.credential_ref_id,credentialRefVersion:row.credential_ref_version,
     accountFingerprint:row.account_fingerprint});
+  return fresh;
 }
 
 // Only a connector result that claims a confirmed paused creation is offered to
@@ -315,6 +318,9 @@ function classify(result) {
  * A replay of a settled — or still in-flight — operation returns stored
  * metadata and reacquires no authority, decrypts no secret, exchanges no token
  * and calls no provider. Live Google is opt-in twice over and off by default.
+ *
+ * The provider payload is derived from the approved snapshot, never from the
+ * caller: `o.snapshot` is only an early serving-shape rejection and is not sent.
  */
 async function execute(pool,o={}) {
   if(!pool||typeof pool.connect!=='function')throw deny('operation_rejected');
@@ -328,7 +334,9 @@ async function execute(pool,o={}) {
   if(live&&!(o.allowLive===true&&process.env[connector.LIVE_OPT_IN_ENV]==='1'))throw deny('live_google_ads_disabled');
   const deadline=o.providerTimeoutMs===undefined?PROVIDER_DEADLINE_MS:int(o.providerTimeoutMs);
   if(!deadline||deadline>PROVIDER_DEADLINE_MS)throw deny('operation_rejected');
-  const snapshot=pausedSnapshot(o.snapshot);
+  // Fail fast on a serving-shaped request. The result is deliberately dropped:
+  // the caller's draft is not authority and never reaches the provider.
+  pausedSnapshot(o.snapshot);
 
   const funded=await withTx(pool,(c)=>fund(c,o));
   if(funded.expired)return funded;
@@ -340,7 +348,10 @@ async function execute(pool,o={}) {
   try {
     return await withTx(pool,async(c)=>{
       const row=await claim(c,tenantId,actorId,funded.operation_id,o);
-      await reauthorize(c,o,actorId,row);
+      const fresh=await reauthorize(c,o,actorId,row);
+      // What Google is asked to create is the approved snapshot whose hash the
+      // authority just re-proved against this operation's own snapshot_hash.
+      const approved=pausedSnapshot(fresh.snapshot_json);
       const result=await vault.withGoogleAdsPausedDraftSecretScope(c,{tenantId,ownerUserId:actorId,
         credentialRefId:row.credential_ref_id,credentialRefVersion:row.credential_ref_version,
         accountFingerprint:row.account_fingerprint,tokenTransport:o.tokenTransport,
@@ -356,7 +367,7 @@ async function execute(pool,o={}) {
         // account identifier is named, copied, logged or persisted here.
         return bounded(deadline,()=>connector.createPausedGoogleAdsDraft({
           operation:{provider_operation_key:row.provider_operation_key,idempotency_key:row.idempotency_key},
-          credentials:handle,snapshot,...(live?{allowLive:true}:{inject:{mutate:once}})}));
+          credentials:handle,snapshot:approved,...(live?{allowLive:true}:{inject:{mutate:once}})}));
       });
       const status=classify(result);
       return outcome(await settle(c,{...o,operationId:row.id,status,resultCode:RESULT_CODES[status],
