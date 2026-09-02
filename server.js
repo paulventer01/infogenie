@@ -657,6 +657,10 @@ const _OWNER_GATE_ALLOW = [
   // session plus an explicit active-tenant grant. Keep this exemption narrowly
   // anchored so similarly named orchestrator routes remain owner-gated.
   /^\/api\/agent-orchestrator\/meta-delivery-monitoring(?:\/|$)/,
+  // Google Ads provider-draft authority is tenant-scoped and self-gates on a
+  // matching human session plus the exact explicit tenant permission. Keep the
+  // exemption path-anchored so lookalike orchestrator routes remain owner-gated.
+  /^\/api\/agent-orchestrator\/google-ads-provider-draft-capabilities(?:\/|$)/,
   /^\/api\/agent-orchestrator\/delivery-discrepancies(?:\/|$)/,
   /^\/api\/agent-orchestrator\/optimization-recommendations(?:\/|$)/,
   /^\/api\/advertising\/optimization-executions(?:\/|$)/,

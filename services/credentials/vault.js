@@ -250,36 +250,157 @@ async function getCredentialsAtVersion(userId, platform, expectedVersion) {
   }
 }
 
-async function saveCredentials(userId, platform, blob) {
+// Google Ads persistence is authorized against the tenant PINNED at the start
+// of the OAuth flow — never the session's current tenant and never the global
+// permission matrix. The tenant, the membership and the applicable role (either
+// a tenant-local role or a system role) are locked here, inside the same
+// transaction that writes user_integrations and the credential reference, so a
+// revocation racing the write either commits first (and this fails closed) or
+// waits behind COMMIT/ROLLBACK.
+const GOOGLE_ADS_INTEGRATIONS_PERMISSION = 'tenant.integrations.manage';
+
+async function _lockGoogleAdsTenantAuthority(client, tenantId, userId) {
+  const authorized = await client.query(`SELECT 1
+      FROM tenants t
+      JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$2 AND tu.status='active'
+      JOIN roles r ON r.id=tu.role_id AND (r.tenant_id=t.id OR r.tenant_id IS NULL)
+     WHERE t.id=$1 AND t.status='active' AND r.permissions ? $3
+     FOR UPDATE OF t, tu, r`,
+  [tenantId, userId, GOOGLE_ADS_INTEGRATIONS_PERMISSION]);
+  // Exactly one authorized row, or nothing is written. Ambiguity is a denial.
+  if (authorized.rowCount !== 1) {
+    throw new Error('saveCredentials: active tenant membership with tenant.integrations.manage required');
+  }
+}
+
+async function saveCredentials(userId, platform, blob, opts = {}) {
   const uid = _normUserId(userId);
   if (!uid) throw new Error('saveCredentials: invalid userId');
   if (!_db.hasDb()) throw new Error('saveCredentials: no DATABASE_URL');
   if (!hasKey()) throw new Error('saveCredentials: CREDENTIAL_ENCRYPTION_KEY not set');
   await ensureCredentialsSchema();
   const { ciphertext, iv, tag } = _encrypt(JSON.stringify(blob || {}));
-  await _db.getPool().query(`
-    INSERT INTO user_integrations (user_id, platform, ciphertext, iv, tag, status, connected_at, updated_at)
-    VALUES ($1,$2,$3,$4,$5,'connected', now(), now())
-    ON CONFLICT (user_id, platform)
-    DO UPDATE SET ciphertext = EXCLUDED.ciphertext,
-                  iv         = EXCLUDED.iv,
-                  tag        = EXCLUDED.tag,
-                  status     = 'connected',
-                  credential_version = user_integrations.credential_version + 1,
-                  updated_at = now()
-  `, [uid, platform, ciphertext, iv, tag]);
-  return { ok: true };
+  const tenantId = _positiveInt(opts.tenantId);
+  const customerId = platform === 'google_ads' ? String(blob?.customerId || '').replace(/[^0-9]/g, '') : '';
+  if (platform === 'google_ads' && (!tenantId || !customerId)) throw new Error('saveCredentials: Google Ads tenant and customer required');
+  const client = await _db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    let referenceId = null;
+    if (platform === 'google_ads') {
+      await _lockGoogleAdsTenantAuthority(client, tenantId, uid);
+    }
+    const saved = await client.query(`
+      INSERT INTO user_integrations (user_id, platform, ciphertext, iv, tag, status, connected_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,'connected', clock_timestamp(), clock_timestamp())
+      ON CONFLICT (user_id, platform)
+      DO UPDATE SET ciphertext = EXCLUDED.ciphertext,
+                    iv         = EXCLUDED.iv,
+                    tag        = EXCLUDED.tag,
+                    status     = 'connected',
+                    credential_version = user_integrations.credential_version + 1,
+                    updated_at = clock_timestamp()
+      RETURNING credential_version`, [uid, platform, ciphertext, iv, tag]);
+    const version = Number(saved.rows[0].credential_version);
+    if (platform === 'google_ads') {
+      const fingerprint = _accountFingerprintOfGoogleAdsCustomerId(customerId);
+      await client.query(`UPDATE orchestrator_tenant_google_ads_credential_refs
+        SET status='revoked',revoked_at=clock_timestamp(),updated_at=clock_timestamp()
+        WHERE owner_user_id=$1 AND status='active'`, [uid]);
+      referenceId = `google_ads_${uid}_${version}`;
+      await client.query(`INSERT INTO orchestrator_tenant_google_ads_credential_refs
+        (tenant_id,id,platform,status,account_fingerprint,version,owner_user_id)
+        VALUES($1,$2,'google_ads','active',$3,$4,$5)`,
+      [tenantId, referenceId, fingerprint, version, uid]);
+    }
+    await client.query('COMMIT');
+    return { ok: true, version, ...(referenceId ? { referenceId } : {}) };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
 }
 
-async function deleteCredentials(userId, platform) {
+async function getGoogleAdsCredentialReference(userId, tenantId) {
+  const uid = _normUserId(userId);
+  const tid = _positiveInt(tenantId);
+  if (!uid || !tid || !_db.hasDb() || !hasKey()) return null;
+  await ensureCredentialsSchema();
+  const client = await _db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    const memberships = await client.query(`SELECT tu.tenant_id FROM tenant_users tu
+      JOIN tenants t ON t.id=tu.tenant_id AND t.status='active'
+      WHERE tu.user_id=$1 AND tu.status='active' ORDER BY tu.tenant_id FOR UPDATE OF tu,t`, [uid]);
+    if (!memberships.rows.some((row) => Number(row.tenant_id) === tid)) { await client.query('ROLLBACK'); return null; }
+    const integration = await client.query(`SELECT ciphertext,iv,tag,status,credential_version
+      FROM user_integrations WHERE user_id=$1 AND platform='google_ads' FOR UPDATE`, [uid]);
+    if (integration.rowCount !== 1 || integration.rows[0].status !== 'connected') {
+      await client.query('ROLLBACK'); return null;
+    }
+    const version = Number(integration.rows[0].credential_version);
+    let customerId;
+    try {
+      const blob = JSON.parse(_decrypt(integration.rows[0].ciphertext, integration.rows[0].iv, integration.rows[0].tag));
+      customerId = String(blob?.customerId || '').replace(/[^0-9]/g, '');
+    } catch (_error) { await client.query('ROLLBACK'); return null; }
+    if (!customerId || !Number.isSafeInteger(version) || version < 1) { await client.query('ROLLBACK'); return null; }
+    const fingerprint = _accountFingerprintOfGoogleAdsCustomerId(customerId);
+    const refs = await client.query(`SELECT tenant_id,id,version,status,revoked_at,account_fingerprint
+      FROM orchestrator_tenant_google_ads_credential_refs WHERE owner_user_id=$1 FOR UPDATE`, [uid]);
+    const exact = refs.rows.find((row) => Number(row.tenant_id) === tid && Number(row.version) === version
+      && row.status === 'active' && !row.revoked_at && row.account_fingerprint === fingerprint);
+    if (exact) { await client.query('COMMIT'); return Object.freeze({ referenceId: exact.id, version }); }
+    // A legacy per-user credential may be claimed only once. Never redirect an
+    // established tenant reference merely because the session tenant changed.
+    if ((refs.rows.length === 0 && memberships.rowCount !== 1)
+      || refs.rows.some((row) => row.status === 'active' && !row.revoked_at && Number(row.tenant_id) !== tid)
+      || refs.rows.some((row) => Number(row.tenant_id) === tid && Number(row.version) >= version)) {
+      await client.query('ROLLBACK'); return null;
+    }
+    await client.query(`UPDATE orchestrator_tenant_google_ads_credential_refs
+      SET status='revoked',revoked_at=clock_timestamp(),updated_at=clock_timestamp()
+      WHERE tenant_id=$1 AND owner_user_id=$2 AND status='active' AND version<$3`, [tid, uid, version]);
+    const referenceId = `google_ads_${uid}_${version}`;
+    await client.query(`INSERT INTO orchestrator_tenant_google_ads_credential_refs
+      (tenant_id,id,platform,status,account_fingerprint,version,owner_user_id)
+      VALUES($1,$2,'google_ads','active',$3,$4,$5)`, [tid, referenceId, fingerprint, version, uid]);
+    await client.query('COMMIT');
+    return Object.freeze({ referenceId, version });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if (error?.code === '23505') return null;
+    throw error;
+  } finally { client.release(); }
+}
+
+async function deleteCredentials(userId, platform, opts = {}) {
   const uid = _normUserId(userId);
   if (!uid || !_db.hasDb()) return { ok: true };
   await ensureCredentialsSchema();
-  await _db.getPool().query(
-    'DELETE FROM user_integrations WHERE user_id=$1 AND platform=$2',
-    [uid, platform]
-  );
-  return { ok: true };
+  const tenantId = _positiveInt(opts.tenantId);
+  if (platform === 'google_ads' && !tenantId) throw new Error('deleteCredentials: Google Ads tenant required');
+  const erased = _encrypt('{}');
+  const client = await _db.getPool().connect();
+  try {
+    await client.query('BEGIN');
+    if (platform === 'google_ads') {
+      const membership = await client.query(`SELECT 1 FROM tenant_users
+        WHERE tenant_id=$1 AND user_id=$2 AND status='active' FOR UPDATE`, [tenantId, uid]);
+      if (membership.rowCount !== 1) throw new Error('deleteCredentials: active tenant membership required');
+      await client.query(`UPDATE orchestrator_tenant_google_ads_credential_refs
+        SET status='revoked',revoked_at=clock_timestamp(),updated_at=clock_timestamp()
+        WHERE owner_user_id=$1 AND status='active'`, [uid]);
+    }
+    await client.query(`UPDATE user_integrations
+      SET ciphertext=$3,iv=$4,tag=$5,status='disconnected',credential_version=credential_version+1,updated_at=clock_timestamp()
+      WHERE user_id=$1 AND platform=$2`, [uid, platform, erased.ciphertext, erased.iv, erased.tag]);
+    await client.query('COMMIT');
+    return { ok: true };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
 }
 
 const _ALLOWED_STATUS = new Set(['connected','disconnected','error']);
@@ -655,6 +776,15 @@ function _accountFingerprintOf(adAccountId) {
   return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
 
+// Metadata-only Google Ads account binding for guarded authority records.
+// The normalized customer id is used only as hash input and is never returned,
+// persisted, logged, or used to resolve credential secret material.
+function _accountFingerprintOfGoogleAdsCustomerId(customerId) {
+  const normalized = String(customerId || '').replace(/[\s-]/g, '');
+  if (!/^[0-9]{10}$/.test(normalized)) return null;
+  return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
+}
+
 function _pageIdOf(row) {
   const raw = row && row.page_id != null ? String(row.page_id).trim() : '';
   if (!/^[0-9]{1,32}$/.test(raw)) {
@@ -846,6 +976,7 @@ module.exports = {
   getCredentials,
   getCredentialsAtVersion,
   saveCredentials,
+  getGoogleAdsCredentialReference,
   deleteCredentials,
   getStatus,
   setStatus,
@@ -867,4 +998,5 @@ module.exports = {
   withTenantMetaCredentialSecretForProviderDraftExecution,
   withTenantMetaCredentialSecretForConsumedProviderDraft,
   accountFingerprintOfMetaAdAccount: _accountFingerprintOf,
+  accountFingerprintOfGoogleAdsCustomerId: _accountFingerprintOfGoogleAdsCustomerId,
 };

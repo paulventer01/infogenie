@@ -26,6 +26,9 @@ const express = require('express');
 const crypto  = require('crypto');
 const _https  = require('https');
 const vault   = require('../credentials/vault');
+const _tenantCtx = require('../tenants/context');
+const _db = require('../../db');
+const { createRateLimiter } = require('../security/rate_limit');
 
 const router = express.Router();
 
@@ -53,6 +56,53 @@ function _publicOrigin(req) {
 }
 
 function _redirectUri(req) { return `${_publicOrigin(req)}${CALLBACK_PATH}`; }
+function _oauthState() { return crypto.randomBytes(48).toString('base64url'); }
+function _consumeOauthState(req, returnedState) {
+  const stored = req.session && req.session.gaOauthState;
+  if (req.session) delete req.session.gaOauthState;
+  if (!stored || typeof stored.value !== 'string') return null;
+
+  const expected = Buffer.from(stored.value);
+  const supplied = Buffer.from(String(returnedState || ''));
+  const normalized = Buffer.alloc(expected.length);
+  supplied.copy(normalized, 0, 0, expected.length);
+  const equalBytes = crypto.timingSafeEqual(expected, normalized);
+  const matches = equalBytes && supplied.length === expected.length;
+  if (!matches || Number(stored.userId) !== Number(req.user && req.user.id)) return null;
+  const tenantId = Number(stored.tenantId);
+  return Number.isSafeInteger(tenantId) && tenantId > 0 ? tenantId : null;
+}
+async function _activeMember(userId, tenantId) {
+  if (!_db.hasDb()) return false;
+  const result = await _db.getPool().query(`SELECT 1 FROM tenants t
+    JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$2 AND tu.status='active'
+    WHERE t.id=$1 AND t.status='active'`, [tenantId, userId]);
+  return result.rowCount === 1;
+}
+async function _saveCredentialsForTenant(userId, tenantId, credentials) {
+  try {
+    return await vault.saveCredentials(userId, 'google_ads', credentials, { tenantId });
+  } catch (error) {
+    const msg = error && error.message ? String(error.message) : '';
+    if (msg.includes('tenant.integrations.manage required')) return null;
+    throw error;
+  }
+}
+
+function _requestIp(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+    || req.socket?.remoteAddress || 'unknown';
+}
+function _oauthRateKey(req) {
+  const stored = req.session && req.session.gaOauthState;
+  const userId = req.user && req.user.id;
+  const tenantId = (stored && stored.tenantId) || (req.tenant && req.tenant.id);
+  return userId && tenantId ? `google-ads-oauth|${tenantId}|${userId}|${_requestIp(req)}` : null;
+}
+const oauthAuthorizationLimiter = createRateLimiter({
+  name: 'google-ads-oauth-authorization', windowMs: 10 * 60_000, max: 20,
+  failClosed: true, keyFn: _oauthRateKey,
+});
 
 function _backToSettings(res, q) {
   const params = new URLSearchParams(q || {});
@@ -98,17 +148,20 @@ function _getJson(hostname, path, headers = {}) {
 }
 
 // ── 1. Start: redirect to Google's consent screen ─────────────────────────
-router.get('/oauth/start', (req, res) => {
+router.get('/oauth/start', oauthAuthorizationLimiter, async (req, res) => {
   if (!req.user || !req.user.id) {
     return _backToSettings(res, { ga_error: 'not_signed_in' });
   }
-  const { clientId, devToken } = _clientCreds();
+  const { clientId, clientSecret, devToken } = _clientCreds();
   if (!clientId)  return _backToSettings(res, { ga_error: 'operator_oauth_client_missing' });
   if (!devToken)  return _backToSettings(res, { ga_error: 'operator_developer_token_missing' });
 
-  const state = crypto.randomBytes(24).toString('hex');
-  req.session.gaOauthState = state;
-  req.session.gaOauthUserId = req.user.id;
+  const tenantId = await _tenantCtx.resolveTenantId(req, { label: 'google-ads-oauth:start' });
+  if (!tenantId || !clientSecret || !(await _activeMember(req.user.id, tenantId))) {
+    return _backToSettings(res, { ga_error: 'no_tenant' });
+  }
+  const state = _oauthState();
+  req.session.gaOauthState = { value: state, userId: req.user.id, tenantId };
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -124,23 +177,19 @@ router.get('/oauth/start', (req, res) => {
 });
 
 // ── 2. Callback: exchange code → tokens, list accessible customers ────────
-router.get('/oauth/callback', async (req, res) => {
+router.get('/oauth/callback', oauthAuthorizationLimiter, async (req, res) => {
   const { code, state, error } = req.query;
-  if (error) {
-    return _backToSettings(res, { ga_error: String(error) });
-  }
   if (!req.user || !req.user.id) {
     return _backToSettings(res, { ga_error: 'not_signed_in' });
   }
-  if (!code || !state || state !== req.session.gaOauthState ||
-      req.session.gaOauthUserId !== req.user.id) {
+  const { clientId, clientSecret, devToken } = _clientCreds();
+  const initiatingTenantId = _consumeOauthState(req, state);
+  if (!initiatingTenantId || !(await _activeMember(req.user.id, initiatingTenantId))) {
     return _backToSettings(res, { ga_error: 'state_mismatch' });
   }
-  // Consume state immediately
-  delete req.session.gaOauthState;
-  delete req.session.gaOauthUserId;
+  if (error) return _backToSettings(res, { ga_error: String(error) });
+  if (!code) return _backToSettings(res, { ga_error: 'state_mismatch' });
 
-  const { clientId, clientSecret, devToken } = _clientCreds();
   if (!clientId || !clientSecret) return _backToSettings(res, { ga_error: 'operator_oauth_client_missing' });
   if (!devToken)                  return _backToSettings(res, { ga_error: 'operator_developer_token_missing' });
 
@@ -195,25 +244,27 @@ router.get('/oauth/callback', async (req, res) => {
   // 2d. Auto-bind if exactly one customer; otherwise stash and prompt user
   if (customerIds.length === 1) {
     const customerId = customerIds[0];
-    await vault.saveCredentials(req.user.id, 'google_ads', {
+    const saved = await _saveCredentialsForTenant(req.user.id, initiatingTenantId, {
       devToken, clientId, clientSecret, refreshToken,
       customerId, loginCustomerId: '', email,
     });
+    if (!saved) return _backToSettings(res, { ga_error: 'permission_denied' });
     return _backToSettings(res, { ga_connected: '1' });
   }
 
   // Multiple — store pending payload in session, redirect to picker UI
   req.session.gaPending = {
-    refreshToken, email, customerIds,
+    refreshToken, email, customerIds, userId: req.user.id, tenantId: initiatingTenantId,
     expiresAt: Date.now() + 10 * 60 * 1000, // 10 min picker window
   };
   return _backToSettings(res, { ga_pick: '1' });
 });
 
 // ── 3. Picker — return the pending list for the UI ────────────────────────
-router.get('/pick-list', (req, res) => {
+router.get('/pick-list', async (req, res) => {
   const p = req.session && req.session.gaPending;
-  if (!p || !p.customerIds || Date.now() > p.expiresAt) {
+  if (!req.user || !p || !p.customerIds || Number(p.userId) !== Number(req.user.id)
+      || Date.now() > p.expiresAt || !(await _activeMember(req.user.id, p.tenantId))) {
     return res.status(404).json({ ok: false, error: 'no_pending_oauth' });
   }
   res.json({ ok: true, email: p.email || null, customerIds: p.customerIds });
@@ -223,7 +274,8 @@ router.get('/pick-list', (req, res) => {
 router.post('/bind-customer', express.json(), async (req, res) => {
   if (!req.user || !req.user.id) return res.status(401).json({ ok: false, error: 'not_signed_in' });
   const p = req.session && req.session.gaPending;
-  if (!p || !p.customerIds || Date.now() > p.expiresAt) {
+  if (!p || !p.customerIds || Number(p.userId) !== Number(req.user.id)
+      || Date.now() > p.expiresAt || !(await _activeMember(req.user.id, p.tenantId))) {
     return res.status(400).json({ ok: false, error: 'no_pending_oauth' });
   }
   const picked = String(req.body && req.body.customerId || '').replace(/[^0-9]/g, '');
@@ -231,42 +283,58 @@ router.post('/bind-customer', express.json(), async (req, res) => {
     return res.status(400).json({ ok: false, error: 'invalid_customer_id' });
   }
   const { clientId, clientSecret, devToken } = _clientCreds();
-  await vault.saveCredentials(req.user.id, 'google_ads', {
+  const saved = await _saveCredentialsForTenant(req.user.id, p.tenantId, {
     devToken, clientId, clientSecret,
     refreshToken: p.refreshToken,
     customerId: picked, loginCustomerId: '',
     email: p.email || null,
   });
+  if (!saved) return res.status(403).json({ ok: false, error: 'permission_denied' });
   delete req.session.gaPending;
-  res.json({ ok: true });
+  res.json({ ok: true, credentialReference: {
+    id: saved.referenceId, version: saved.version,
+  } });
 });
 
 // ── 5. Disconnect — wipe vault row for this user ──────────────────────────
 router.post('/disconnect', async (req, res) => {
   if (!req.user || !req.user.id) return res.status(401).json({ ok: false, error: 'not_signed_in' });
-  await vault.deleteCredentials(req.user.id, 'google_ads');
+  const tenantId = await _tenantCtx.resolveTenantId(req, { label: 'google-ads-oauth:disconnect' });
+  if (!tenantId) return res.status(400).json({ ok: false, error: 'no_tenant' });
+  await vault.deleteCredentials(req.user.id, 'google_ads', { tenantId });
   res.json({ ok: true });
 });
 
 // ── 6. Connection summary — for the connected-state card ──────────────────
-// Returns the non-secret bits of the vault row (email, customerId) plus the
+// Returns the non-secret email plus the metadata-only credential handle and
 // operator-readiness flag (does the deployment have OAuth client + dev token?)
 router.get('/summary', async (req, res) => {
   if (!req.user || !req.user.id) return res.status(401).json({ ok: false, error: 'not_signed_in' });
   const { clientId, clientSecret, devToken } = _clientCreds();
   const operatorReady = !!(clientId && clientSecret && devToken);
-  let connected = false, email = null, customerId = null, status = 'disconnected';
+  let connected = false, email = null, status = 'disconnected', credentialReference = null;
   try {
     const blob = await vault.getCredentials(req.user.id, 'google_ads');
     if (blob) {
       connected  = true;
       email      = blob.email || null;
-      customerId = blob.customerId || null;
     }
     const s = await vault.getStatus(req.user.id, 'google_ads');
     status = s.status || 'disconnected';
+    if (connected) {
+      const tenantId = await _tenantCtx.resolveTenantId(req, { label: 'google-ads-oauth:summary' });
+      const ref = tenantId && await vault.getGoogleAdsCredentialReference(req.user.id, tenantId);
+      if (ref) credentialReference = { id: ref.referenceId, version: ref.version };
+    }
   } catch (_) {}
-  res.json({ ok: true, operatorReady, connected, email, customerId, status });
+  // Customer/account identifiers and all credential contents stay private; the
+  // opaque metadata handle is the only authority input returned here.
+  res.json({ ok: true, operatorReady, connected, email, status, credentialReference });
 });
 
 module.exports = router;
+module.exports._oauthState = _oauthState;
+module.exports._consumeOauthState = _consumeOauthState;
+module.exports._activeMember = _activeMember;
+module.exports._saveCredentialsForTenant = _saveCredentialsForTenant;
+module.exports._oauthAuthorizationLimiter = oauthAuthorizationLimiter;

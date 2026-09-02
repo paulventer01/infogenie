@@ -123,6 +123,10 @@ const ADVERTISING_ORCH_TABLES = [
   // PR 8C admission controls. These do not authorize provider mutation.
   'orchestrator_advertising_global_kill_switches',
   'orchestrator_advertising_tenant_kill_switches',
+  // PR10A — metadata-only Google Ads authority. These rows contain no OAuth
+  // material, provider payload, raw customer id, or external side effect.
+  'orchestrator_tenant_google_ads_credential_refs',
+  'orchestrator_google_ads_provider_draft_capabilities',
   // PR 8C — synchronous internal-simulation runs and their distinct lifecycle.
   'orchestrator_optimization_executions',
   'orchestrator_optimization_execution_run_events',
@@ -6894,13 +6898,237 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE CONSTRAINT TRIGGER orchestrator_oer_event_consistency AFTER INSERT OR UPDATE ON orchestrator_optimization_execution_requests DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION orchestrator_oer_event_consistency();
   `);
 
+  // PR10A — metadata-only Google Ads credential reference plus a durable,
+  // human-session-bound single-use authority lifecycle. Nothing in these
+  // tables can resolve a credential or contact a provider.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_tenant_google_ads_credential_refs(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL,
+      platform TEXT NOT NULL DEFAULT 'google_ads',
+      status TEXT NOT NULL DEFAULT 'active',
+      account_fingerprint TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      revoked_at TIMESTAMPTZ NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY(tenant_id,id),
+      UNIQUE(tenant_id,id,version,account_fingerprint),
+      CONSTRAINT orchestrator_tgacr_platform_check CHECK(platform='google_ads'),
+      CONSTRAINT orchestrator_tgacr_status_check CHECK(status IN ('active','revoked')),
+      CONSTRAINT orchestrator_tgacr_lifecycle_check CHECK(
+        (status='active' AND revoked_at IS NULL) OR
+        (status='revoked' AND revoked_at IS NOT NULL AND revoked_at>=created_at)),
+      CONSTRAINT orchestrator_tgacr_version_check CHECK(version>=1),
+      CONSTRAINT orchestrator_tgacr_fingerprint_check CHECK(
+        char_length(account_fingerprint)=64 AND account_fingerprint~'^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_tgacr_id_check CHECK(char_length(id) BETWEEN 1 AND 128)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_tgacr_one_active_account
+      ON orchestrator_tenant_google_ads_credential_refs(tenant_id,account_fingerprint)
+      WHERE status='active';
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_tgacr_tenant_id_version
+      ON orchestrator_tenant_google_ads_credential_refs(tenant_id,id,version);
+
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_provider_draft_confirmations(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      session_id_hash TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      draft_revision INTEGER NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      publish_approval_id TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL,
+      credential_ref_version INTEGER NOT NULL,
+      phrase_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ NULL,
+      capability_id TEXT NULL,
+      PRIMARY KEY(tenant_id,id),
+      CHECK(session_id_hash~'^[0-9a-f]{64}$' AND phrase_hash~'^[0-9a-f]{64}$'),
+      CHECK(expires_at>created_at AND expires_at<=created_at+INTERVAL '2 minutes'),
+      CHECK((consumed_at IS NULL AND capability_id IS NULL) OR
+        (consumed_at IS NOT NULL AND consumed_at>=created_at AND capability_id IS NOT NULL)),
+      FOREIGN KEY(tenant_id,draft_id) REFERENCES orchestrator_campaign_drafts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publishing_request_id) REFERENCES orchestrator_campaign_publish_requests(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publish_approval_id) REFERENCES orchestrator_campaign_publish_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,intent_id) REFERENCES orchestrator_campaign_delivery_intents(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,credential_ref_id,credential_ref_version)
+        REFERENCES orchestrator_tenant_google_ads_credential_refs(tenant_id,id,version) ON DELETE RESTRICT
+    );
+
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_provider_draft_capabilities(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'issued',
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      session_id_hash TEXT NOT NULL,
+      workflow_id TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      draft_revision INTEGER NOT NULL,
+      contract_hash TEXT NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      publish_approval_id TEXT NOT NULL,
+      workflow_approval_id INTEGER NOT NULL,
+      snapshot_hash TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      intent_hash TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL,
+      credential_ref_version INTEGER NOT NULL,
+      account_fingerprint TEXT NOT NULL,
+      final_confirmation_id TEXT NOT NULL,
+      final_confirmation_hash TEXT NOT NULL,
+      confirmed_at TIMESTAMPTZ NOT NULL,
+      issued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      reservation_id_hash TEXT NULL,
+      reserved_at TIMESTAMPTZ NULL,
+      invocation_id_hash TEXT NULL,
+      consumed_at TIMESTAMPTZ NULL,
+      revoked_at TIMESTAMPTZ NULL,
+      revoked_by INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT,
+      audit_ref TEXT NOT NULL,
+      PRIMARY KEY(tenant_id,id),
+      CONSTRAINT orchestrator_gapdc_status_check
+        CHECK(status IN ('issued','reserved','consumed','revoked','expired')),
+      CONSTRAINT orchestrator_gapdc_lifecycle_check CHECK(
+        (status='issued' AND reservation_id_hash IS NULL AND reserved_at IS NULL
+          AND invocation_id_hash IS NULL AND consumed_at IS NULL AND revoked_at IS NULL AND revoked_by IS NULL) OR
+        (status='reserved' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL
+          AND invocation_id_hash IS NULL AND consumed_at IS NULL AND revoked_at IS NULL AND revoked_by IS NULL) OR
+        (status='consumed' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL
+          AND invocation_id_hash IS NOT NULL AND consumed_at IS NOT NULL AND revoked_at IS NULL AND revoked_by IS NULL) OR
+        (status='revoked' AND revoked_at IS NOT NULL AND revoked_by IS NOT NULL
+          AND invocation_id_hash IS NULL AND consumed_at IS NULL) OR
+        (status='expired' AND invocation_id_hash IS NULL AND consumed_at IS NULL
+          AND revoked_at IS NULL AND revoked_by IS NULL)),
+      CONSTRAINT orchestrator_gapdc_time_check CHECK(
+        confirmed_at<=issued_at AND expires_at>issued_at
+        AND expires_at<=issued_at+INTERVAL '10 minutes'
+        AND (reserved_at IS NULL OR reserved_at>=issued_at)
+        AND (consumed_at IS NULL OR consumed_at>=reserved_at)
+        AND (revoked_at IS NULL OR revoked_at>=issued_at)),
+      CONSTRAINT orchestrator_gapdc_revision_check CHECK(draft_revision>=1 AND credential_ref_version>=1),
+      CONSTRAINT orchestrator_gapdc_hashes_check CHECK(
+        session_id_hash~'^[0-9a-f]{64}$' AND contract_hash~'^[0-9a-f]{64}$'
+        AND snapshot_hash~'^[0-9a-f]{64}$' AND intent_hash~'^[0-9a-f]{64}$'
+        AND account_fingerprint~'^[0-9a-f]{64}$' AND final_confirmation_hash~'^[0-9a-f]{64}$'
+        AND (reservation_id_hash IS NULL OR reservation_id_hash~'^[0-9a-f]{64}$')
+        AND (invocation_id_hash IS NULL OR invocation_id_hash~'^[0-9a-f]{64}$')),
+      CONSTRAINT orchestrator_gapdc_ids_check CHECK(
+        char_length(id) BETWEEN 1 AND 128 AND char_length(workflow_id) BETWEEN 1 AND 128
+        AND char_length(draft_id) BETWEEN 1 AND 128 AND char_length(publishing_request_id) BETWEEN 1 AND 128
+        AND char_length(publish_approval_id) BETWEEN 1 AND 128 AND char_length(intent_id) BETWEEN 1 AND 128
+        AND char_length(credential_ref_id) BETWEEN 1 AND 128 AND char_length(final_confirmation_id) BETWEEN 1 AND 128
+        AND char_length(audit_ref) BETWEEN 1 AND 128),
+      FOREIGN KEY(tenant_id,workflow_id) REFERENCES orchestrator_workflows(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,draft_id) REFERENCES orchestrator_campaign_drafts(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,draft_id,draft_revision)
+        REFERENCES orchestrator_campaign_draft_revisions(tenant_id,draft_id,revision) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publishing_request_id)
+        REFERENCES orchestrator_campaign_publish_requests(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,publish_approval_id)
+        REFERENCES orchestrator_campaign_publish_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,workflow_approval_id)
+        REFERENCES orchestrator_approvals(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,intent_id)
+        REFERENCES orchestrator_campaign_delivery_intents(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,credential_ref_id,credential_ref_version,account_fingerprint)
+        REFERENCES orchestrator_tenant_google_ads_credential_refs(tenant_id,id,version,account_fingerprint)
+        ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,final_confirmation_id)
+        REFERENCES orchestrator_google_ads_provider_draft_confirmations(tenant_id,id) ON DELETE RESTRICT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gapdc_one_live_authority
+      ON orchestrator_google_ads_provider_draft_capabilities
+        (tenant_id,draft_id,draft_revision,publishing_request_id,publish_approval_id,intent_id,account_fingerprint)
+      WHERE status IN ('issued','reserved');
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gapdc_unique_reservation
+      ON orchestrator_google_ads_provider_draft_capabilities(tenant_id,reservation_id_hash)
+      WHERE reservation_id_hash IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gapdc_unique_invocation
+      ON orchestrator_google_ads_provider_draft_capabilities(tenant_id,invocation_id_hash)
+      WHERE invocation_id_hash IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gapdc_unique_confirmation
+      ON orchestrator_google_ads_provider_draft_capabilities(tenant_id,final_confirmation_hash);
+
+    CREATE OR REPLACE FUNCTION orchestrator_tgacr_guard() RETURNS trigger AS $fn$ BEGIN
+      IF TG_OP='INSERT' THEN
+        IF NEW.status<>'active' OR NEW.revoked_at IS NOT NULL THEN RAISE EXCEPTION 'orchestrator_tgacr_invalid_insert';END IF;
+        RETURN NEW;
+      END IF;
+      IF TG_OP='DELETE' OR OLD.status<>'active' OR NEW.status<>'revoked' OR NEW.revoked_at IS NULL
+        OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.platform IS DISTINCT FROM OLD.platform OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+        OR NEW.version IS DISTINCT FROM OLD.version OR NEW.owner_user_id IS DISTINCT FROM OLD.owner_user_id
+        OR NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.updated_at<=OLD.updated_at
+      THEN RAISE EXCEPTION 'orchestrator_tgacr_immutable';END IF;
+      RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_tgacr_guard ON orchestrator_tenant_google_ads_credential_refs;
+    CREATE TRIGGER orchestrator_tgacr_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_tenant_google_ads_credential_refs FOR EACH ROW EXECUTE FUNCTION orchestrator_tgacr_guard();
+
+    CREATE OR REPLACE FUNCTION orchestrator_gapdcf_guard() RETURNS trigger AS $fn$ BEGIN
+      IF TG_OP='INSERT' THEN RETURN NEW;END IF;
+      IF TG_OP='DELETE' OR OLD.consumed_at IS NOT NULL OR NEW.consumed_at IS NULL OR NEW.capability_id IS NULL
+        OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.session_id_hash IS DISTINCT FROM OLD.session_id_hash
+        OR NEW.draft_id IS DISTINCT FROM OLD.draft_id OR NEW.draft_revision IS DISTINCT FROM OLD.draft_revision
+        OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+        OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+        OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.phrase_hash IS DISTINCT FROM OLD.phrase_hash OR NEW.created_at IS DISTINCT FROM OLD.created_at
+        OR NEW.expires_at IS DISTINCT FROM OLD.expires_at THEN RAISE EXCEPTION 'orchestrator_gapdcf_immutable';END IF;
+      RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gapdcf_guard ON orchestrator_google_ads_provider_draft_confirmations;
+    CREATE TRIGGER orchestrator_gapdcf_guard BEFORE UPDATE OR DELETE
+      ON orchestrator_google_ads_provider_draft_confirmations FOR EACH ROW EXECUTE FUNCTION orchestrator_gapdcf_guard();
+
+    CREATE OR REPLACE FUNCTION orchestrator_gapdc_guard() RETURNS trigger AS $fn$ BEGIN
+      IF TG_OP='INSERT' THEN
+        IF NEW.status<>'issued' THEN RAISE EXCEPTION 'orchestrator_gapdc_invalid_insert';END IF;
+        RETURN NEW;
+      END IF;
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_gapdc_audit_evidence';END IF;
+      IF OLD.status IN ('consumed','revoked','expired')
+        OR NOT ((OLD.status='issued' AND NEW.status IN ('reserved','revoked','expired'))
+          OR (OLD.status='reserved' AND NEW.status IN ('consumed','revoked','expired')))
+        OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.session_id_hash IS DISTINCT FROM OLD.session_id_hash
+        OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
+        OR NEW.draft_revision IS DISTINCT FROM OLD.draft_revision OR NEW.contract_hash IS DISTINCT FROM OLD.contract_hash
+        OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+        OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id
+        OR NEW.workflow_approval_id IS DISTINCT FROM OLD.workflow_approval_id
+        OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+        OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+        OR NEW.final_confirmation_id IS DISTINCT FROM OLD.final_confirmation_id
+        OR NEW.final_confirmation_hash IS DISTINCT FROM OLD.final_confirmation_hash
+        OR NEW.confirmed_at IS DISTINCT FROM OLD.confirmed_at OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
+        OR NEW.expires_at IS DISTINCT FROM OLD.expires_at OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+        OR (OLD.reservation_id_hash IS NOT NULL AND NEW.reservation_id_hash IS DISTINCT FROM OLD.reservation_id_hash)
+        OR (OLD.reserved_at IS NOT NULL AND NEW.reserved_at IS DISTINCT FROM OLD.reserved_at)
+      THEN RAISE EXCEPTION 'orchestrator_gapdc_immutable';END IF;
+      RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gapdc_guard ON orchestrator_google_ads_provider_draft_capabilities;
+    CREATE TRIGGER orchestrator_gapdc_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_google_ads_provider_draft_capabilities FOR EACH ROW EXECUTE FUNCTION orchestrator_gapdc_guard();
+  `);
+
   // PR 8C — consumes one approved PR8B request without changing it. No provider
   // identifiers, credential references, source hashes, payloads, or errors are stored.
   await p.query(`
     CREATE TABLE IF NOT EXISTS orchestrator_advertising_global_kill_switches(
       switch_key TEXT PRIMARY KEY, active BOOLEAN NOT NULL DEFAULT false, version INTEGER NOT NULL DEFAULT 1,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      CONSTRAINT orchestrator_agks_key CHECK(switch_key='optimization_execution'),
+      CONSTRAINT orchestrator_agks_key CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft')),
       CONSTRAINT orchestrator_agks_version CHECK(version>0)
     );
     CREATE TABLE IF NOT EXISTS orchestrator_advertising_tenant_kill_switches(
@@ -6908,7 +7136,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       active BOOLEAN NOT NULL DEFAULT false, version INTEGER NOT NULL DEFAULT 1,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY(tenant_id,switch_key),
-      CONSTRAINT orchestrator_atks_key CHECK(switch_key='optimization_execution'),
+      CONSTRAINT orchestrator_atks_key CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft')),
       CONSTRAINT orchestrator_atks_version CHECK(version>0)
     );
     CREATE OR REPLACE FUNCTION orchestrator_advertising_kill_switch_guard() RETURNS trigger AS $fn$ BEGIN
@@ -6925,16 +7153,29 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         ALTER TABLE orchestrator_advertising_tenant_kill_switches ADD CONSTRAINT orchestrator_advertising_tenant_kill_switches_tenant_id_fkey FOREIGN KEY(tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
       END IF;
     END $migration$;
-    INSERT INTO orchestrator_advertising_global_kill_switches(switch_key,active) VALUES('optimization_execution',false) ON CONFLICT(switch_key) DO NOTHING;
+    ALTER TABLE orchestrator_advertising_global_kill_switches DROP CONSTRAINT IF EXISTS orchestrator_agks_key;
+    ALTER TABLE orchestrator_advertising_global_kill_switches ADD CONSTRAINT orchestrator_agks_key
+      CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft'));
+    ALTER TABLE orchestrator_advertising_tenant_kill_switches DROP CONSTRAINT IF EXISTS orchestrator_atks_key;
+    ALTER TABLE orchestrator_advertising_tenant_kill_switches ADD CONSTRAINT orchestrator_atks_key
+      CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft'));
+    INSERT INTO orchestrator_advertising_global_kill_switches(switch_key,active)
+      VALUES('optimization_execution',false),('google_ads_provider_draft',false)
+      ON CONFLICT(switch_key) DO NOTHING;
     DO $backfill$ DECLARE tenant_row RECORD; BEGIN
       FOR tenant_row IN SELECT id FROM tenants LOOP
         BEGIN
-          INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active) VALUES(tenant_row.id,'optimization_execution',false) ON CONFLICT(tenant_id,switch_key) DO NOTHING;
+          INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active)
+            VALUES(tenant_row.id,'optimization_execution',false),(tenant_row.id,'google_ads_provider_draft',false)
+            ON CONFLICT(tenant_id,switch_key) DO NOTHING;
         EXCEPTION WHEN foreign_key_violation THEN NULL;
         END;
       END LOOP;
     END $backfill$;
-    CREATE OR REPLACE FUNCTION orchestrator_seed_advertising_kill_switch() RETURNS trigger AS $fn$ BEGIN INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active) VALUES(NEW.id,'optimization_execution',false);RETURN NEW;END;$fn$ LANGUAGE plpgsql;
+    CREATE OR REPLACE FUNCTION orchestrator_seed_advertising_kill_switch() RETURNS trigger AS $fn$ BEGIN
+      INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active)
+        VALUES(NEW.id,'optimization_execution',false),(NEW.id,'google_ads_provider_draft',false);
+      RETURN NEW;END;$fn$ LANGUAGE plpgsql;
     DROP TRIGGER IF EXISTS orchestrator_seed_advertising_kill_switch ON tenants;
     CREATE TRIGGER orchestrator_seed_advertising_kill_switch AFTER INSERT ON tenants FOR EACH ROW EXECUTE FUNCTION orchestrator_seed_advertising_kill_switch();
 
