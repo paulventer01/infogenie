@@ -30,9 +30,12 @@ test('Google Ads provider-operation ledger is tenant-leading with bounded status
   assert.match(schemaSource, /orchestrator_gapdo_one_live_operation/);
 });
 
-test('Google Ads provider-operation ledger forces no mutation and names the guard trigger', () => {
+test('Google Ads provider-operation ledger enforces PR10B.2 mutation fence and names the guard trigger', () => {
   assert.match(schemaSource,
-    /published=FALSE AND activated=FALSE AND external_action_taken=FALSE/);
+    /published=FALSE AND activated=FALSE[\s\S]*external_action_taken=\(status='succeeded' AND result_code='provider_create_succeeded'\)/);
+  assert.match(schemaSource,
+    /OLD\.external_action_taken=FALSE AND NEW\.external_action_taken=TRUE[\s\S]*provider_create_succeeded/);
+  assert.match(schemaSource, /DROP CONSTRAINT IF EXISTS orchestrator_gapdo_no_mutation_check/);
   assert.match(schemaSource, /CREATE OR REPLACE FUNCTION orchestrator_gapdo_guard\(\)/);
   assert.match(schemaSource, /DROP TRIGGER IF EXISTS orchestrator_gapdo_guard ON orchestrator_google_ads_provider_draft_operations/);
   assert.match(schemaSource, /CREATE TRIGGER orchestrator_gapdo_guard BEFORE INSERT OR UPDATE OR DELETE/);

@@ -3368,6 +3368,14 @@ Coverage: `test/google-ads-provider-draft-operation-schema.test.js`,
 `test/integration/google-ads-provider-draft-operations-postgres.test.js`
 (registered in `scripts/run-advertising-certification.js`).
 
+## Advertising orchestrator — Google Ads paused-draft secret boundary (PR10B.2a)
+
+`vault.withGoogleAdsPausedDraftSecretScope` is the only place a Google Ads refresh token may be decrypted. It re-checks initiating-tenant membership, re-locks and re-matches the credential reference (tenant, owner, id, version, fingerprint, active, not revoked), locks `user_integrations` and requires the frozen `credential_version`, then decrypts immediately before the callback. The refresh-token→access-token exchange uses an **injected** transport against a boundary-pinned endpoint with a hard timeout and no retry, so the module has no network client of its own and never invokes the Ads provider. The customer id is verified by fingerprint only. Handles keep secrets non-enumerable, throw on serialization, redact inspection, memoize nothing, and stop answering once the scope closes.
+
+`google_ads_provider_draft_operations.settle` may now claim `succeeded` / `provider_create_succeeded`, but only against a confirmed paused provider result echoing the operation's own `provider_operation_key` / `idempotency_key`, and only with a live DB-backed `advertising.provider_drafts.create` grant in the initiating tenant re-read immediately before the transition. The created PAUSED objects are written to the append-only, operation-linked `orchestrator_google_ads_provider_draft_objects` table (no UPDATE, no DELETE, `provider_status='PAUSED'`, `serving`/`published`/`activated` FALSE) in the same transaction as the `external_action_taken` flip. `failed` / `unknown` deliberately skip the DB grant check so a revoked membership cannot strand an `in_progress` row. No connector call, no `execute()`, no route, worker, scheduler or retry.
+
+Coverage: `test/google-ads-paused-draft-secret-boundary.test.js` plus the PostgreSQL cases in `test/integration/google-ads-provider-draft-operations-postgres.test.js`.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`

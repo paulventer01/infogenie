@@ -5,29 +5,25 @@
 // unknown. It performs no provider call, resolves no secret, takes no external
 // action, and never claims provider success.
 //
-// PR10B.2 deferred interface — DOCUMENTED ONLY, deliberately not implemented here:
-//   createPausedGoogleAdsDraft({ operation, credentials })
-//   Preconditions: a persisted in_progress operation row, a consumed PR10A
-//   capability, a metadata-verified credential binding, and both the global and
-//   tenant kill switches still off.
-//   Obligations: create only PAUSED / non-serving objects; persist the provider
-//   operation and its result before returning success; fail closed on timeout or
-//   ambiguous outcome; never enable, activate, schedule, publish, launch, or
-//   increase spend.
-//   Only after the provider returns a certain paused-draft result may PR10B.2
-//   settle 'succeeded' with result code 'provider_create_succeeded'. Making
-//   external_action_taken true at that point requires a later CHECK migration.
+// PR10B.2a settlement authority. `settle` may now record 'succeeded' with
+// 'provider_create_succeeded', but only against a confirmed paused-draft
+// provider result that echoes this operation's own keys, and it writes the
+// created PAUSED objects as append-only evidence in the same transaction as the
+// external_action_taken flip. Nothing here calls the connector, resolves a
+// secret, or invokes a provider: the caller performs that step and hands the
+// result in. execute(), retry, scheduling and HTTP remain out of scope.
 
 const crypto = require('crypto');
 const capability = require('./google_ads_provider_draft_capabilities');
 const vault = require('../credentials/vault');
 
 const TABLE = 'orchestrator_google_ads_provider_draft_operations';
+const OBJECTS_TABLE = 'orchestrator_google_ads_provider_draft_objects';
 const PERMISSION = capability.PERMISSION;
 const OPERATION_STATUSES = Object.freeze(['pending', 'in_progress', 'succeeded', 'failed', 'unknown']);
-// PR10B.1 may only settle a non-success outcome. 'provider_create_succeeded' is
-// reserved for PR10B.2 and is intentionally unreachable from this module.
-const RESULT_CODES = Object.freeze({ failed: 'provider_create_failed', unknown: 'provider_outcome_unknown' });
+const RESULT_CODES = Object.freeze({ succeeded: 'provider_create_succeeded',
+  failed: 'provider_create_failed', unknown: 'provider_outcome_unknown' });
+const OBJECT_SEQUENCE = Object.freeze(['campaign_budget', 'campaign', 'ad_group']);
 const SAFE_ID = /^[A-Za-z0-9_.:-]{1,128}$/;
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,256}$/;
 const deny = capability._deny;
@@ -39,7 +35,7 @@ function valid(v) { return SAFE_ID.test(String(v||'')); }
 function project(x,replay) { const iso=k=>x[k]?new Date(x[k]).toISOString():null;
   return Object.freeze({operation_id:x.id,status:x.status,result_code:x.result_code||null,replay:!!replay,
     created_at:iso('created_at'),started_at:iso('started_at'),settled_at:iso('settled_at'),
-    published:false,activated:false,external_action_taken:false}); }
+    published:false,activated:false,external_action_taken:x.external_action_taken===true}); }
 // Audit detail carries no session, credential, account or payload material.
 async function audit(c,row,event) { await c.query(`INSERT INTO orchestrator_audit_events
   (tenant_id,workflow_id,event,actor_user_id,detail) VALUES($1,$2,$3,$4,$5::jsonb)`,
@@ -106,20 +102,69 @@ async function fund(c,o={}) {
   return project(started,false);
 }
 
-// Non-success settlement only. 'succeeded' is rejected before any query runs.
+// A confirmed paused creation is the only evidence that may flip
+// external_action_taken. Anything ambiguous, serving, retryable, or short of
+// the full PAUSED object set is rejected before any transition.
+function confirmed(r) {
+  if(!r||typeof r!=='object'||r.ok!==true||r.result_code!==RESULT_CODES.succeeded
+    ||r.external_action_taken!==true||r.published!==false||r.activated!==false||r.serving!==false
+    ||r.requires_reconciliation!==false||r.retry!==false||!Array.isArray(r.objects)
+    ||r.objects.length!==OBJECT_SEQUENCE.length
+    ||Number(r.objects_created)!==OBJECT_SEQUENCE.length)throw deny('operation_rejected');
+  return OBJECT_SEQUENCE.map((kind,i)=>{const x=r.objects[i];
+    if(!x||typeof x!=='object'||x.object_kind!==kind||x.provider_status!=='PAUSED'
+      ||Number(x.sequence_number)!==i+1
+      ||!/^[0-9]{1,32}$/.test(String(x.provider_object_id||'')))throw deny('operation_rejected');
+    return {kind,sequence:i+1,objectId:String(x.provider_object_id)};});
+}
+// Claiming success needs a live DB-backed grant in the initiating tenant, not
+// just the caller's in-memory claim. failed/unknown deliberately skip this: a
+// revoked membership or permission must never strand an in_progress row.
+async function grant(c,tenantId,actorId) {
+  const r=await c.query(`SELECT 1 FROM tenants t
+    JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$2 AND tu.status='active'
+    JOIN roles role ON role.id=tu.role_id AND (role.tenant_id=t.id OR role.tenant_id IS NULL)
+    WHERE t.id=$1 AND t.status='active' AND role.permissions ? $3 FOR UPDATE OF t,tu,role`,
+  [tenantId,actorId,PERMISSION]);
+  if(r.rowCount!==1)throw deny('permission_denied');
+}
+// Append-only provider evidence, written before the status flip so a
+// succeeded row can never exist without its PAUSED objects.
+async function record(c,row,objects) {
+  for(const x of objects) await c.query(`INSERT INTO ${OBJECTS_TABLE}
+    (tenant_id,id,operation_id,capability_id,account_fingerprint,object_kind,sequence_number,
+     provider_object_id,provider_object_id_digest,provider_status,result_code,recorded_at,audit_ref)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'PAUSED',$10,clock_timestamp(),$11)`,
+  [row.tenant_id,`gapdobj_${crypto.randomUUID()}`,row.id,row.capability_id,row.account_fingerprint,
+    x.kind,x.sequence,x.objectId,hash(x.objectId),RESULT_CODES.succeeded,
+    `gapdobj-audit-${crypto.randomUUID()}`]);
+}
+
 async function settle(c,o={}) {
   const tenantId=int(o.tenantId),actorId=human(o);
   const status=String(o.status||'');
   if(!tenantId||!valid(o.operationId)||!Object.hasOwn(RESULT_CODES,status)
     ||String(o.resultCode||'')!==RESULT_CODES[status])throw deny('operation_rejected');
+  const success=status==='succeeded';
+  const objects=success?confirmed(o.providerResult):null;
   const r=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,o.operationId]);
   if(r.rowCount!==1)throw deny('operation_rejected');
   const row=r.rows[0];
   if(Number(row.actor_user_id)!==actorId||!same(String(row.session_id_hash),hash(o.sessionId))
-    ||row.status!=='in_progress')throw deny('operation_rejected');
-  const settled=(await c.query(`UPDATE ${TABLE} SET status=$3,result_code=$4,settled_at=clock_timestamp()
+    ||row.status!=='in_progress'||row.external_action_taken!==false)throw deny('operation_rejected');
+  if(o.idempotencyKey!==undefined&&!same(String(o.idempotencyKey),String(row.idempotency_key)))throw deny('operation_rejected');
+  if(success) {
+    // The provider result must echo this operation's own keys, so evidence
+    // from another operation cannot authorize this external-action claim.
+    if(!same(String(o.providerResult.provider_operation_key||''),String(row.provider_operation_key))
+      ||!same(String(o.providerResult.idempotency_key||''),String(row.idempotency_key)))throw deny('operation_rejected');
+    await grant(c,tenantId,actorId);
+    await record(c,row,objects);
+  }
+  const settled=(await c.query(`UPDATE ${TABLE} SET status=$3,result_code=$4,
+    external_action_taken=$5,settled_at=clock_timestamp()
     WHERE tenant_id=$1 AND id=$2 AND status='in_progress' RETURNING *`,
-  [tenantId,o.operationId,status,RESULT_CODES[status]])).rows[0];
+  [tenantId,o.operationId,status,RESULT_CODES[status],success])).rows[0];
   if(!settled)throw deny('operation_rejected');
   await audit(c,settled,'google_ads_provider_draft_operation_settled');
   return project(settled,false);
@@ -139,4 +184,5 @@ async function get(c,o={}) {
   return project(r.rows[0],false);
 }
 
-module.exports={PERMISSION,OPERATION_STATUSES,RESULT_CODES,fund,settle,get,_project:project,_deny:deny};
+module.exports={PERMISSION,OPERATION_STATUSES,RESULT_CODES,OBJECT_SEQUENCE,OBJECTS_TABLE,
+  fund,settle,get,_project:project,_deny:deny,_confirmed:confirmed};

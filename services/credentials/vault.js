@@ -958,6 +958,176 @@ async function withTenantMetaCredentialSecretForConsumedProviderDraft(pool, opts
   return fn(handle);
 }
 
+// ── PR10B.2a Google Ads paused-draft SECRET boundary ─────────────────────
+//
+// Last-responsible-moment secret scope for one already-funded Google Ads
+// provider-draft operation. The PR10B.1 helper above stays secret-free; this is
+// the only place a Google Ads refresh token may be decrypted, and it exists
+// solely so a PAUSED, non-serving draft create can be authorized.
+//
+//   • membership in the initiating tenant is re-checked and the tenant-owned
+//     credential REFERENCE row is re-locked and re-matched (tenant, owner, id,
+//     version, fingerprint, active, not revoked) inside the caller's tx;
+//   • the mutable user_integrations row is locked and its credential_version
+//     must still equal the version frozen into the authority, so rotation drift
+//     fails closed instead of handing over a newer token;
+//   • decryption happens after every check, immediately before the callback;
+//   • the refresh-token→access-token exchange uses an INJECTED transport with a
+//     hard timeout. There is no default network client here, so this boundary
+//     cannot reach Google on its own and never invokes the Ads provider;
+//   • nothing is memoized, and secret fields are non-enumerable getters that
+//     refuse serialization, redact inspection and die once the scope closes.
+const GOOGLE_ADS_PROVIDER_DRAFT_PLATFORM = 'google_ads';
+// Pinned by this boundary, never caller-supplied: an injected transport must
+// not be able to redirect the refresh token at an attacker-chosen host.
+const GOOGLE_ADS_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_ADS_TOKEN_TIMEOUT_MS = 8000;
+const GOOGLE_ADS_MAX_TOKEN_TIMEOUT_MS = 15000;
+const GOOGLE_ADS_MAX_TOKEN_LIFETIME_S = 86400;
+const GOOGLE_ADS_SECRET_SCOPE_KIND = 'google_ads_paused_draft_secret_scope';
+const GOOGLE_ADS_TOKEN_REQUEST_KIND = 'google_ads_paused_draft_token_request';
+const _GA_SECRET_BRAND = Symbol.for('infogenie.google_ads_paused_draft_secret_scope');
+
+function _gaSecret(value, max) {
+  const s = typeof value === 'string' ? value : '';
+  if (!s || s.length > max || /\s/.test(s) || /^_DUMMY/i.test(s)) return null;
+  return s;
+}
+
+// Enumerable metadata is safe to log. Secret fields are non-enumerable, so
+// JSON.stringify, spread, Object.keys and inspection see nothing at all.
+function _gaSealed(kind, safe, secret, live) {
+  const obj = Object.create(null);
+  const def = (key, value, enumerable) => Object.defineProperty(obj, key, {
+    value, enumerable, writable: false, configurable: false,
+  });
+  def('object_kind', kind, true);
+  for (const [key, value] of Object.entries(safe)) def(key, value, true);
+  for (const [key, value] of Object.entries(secret)) {
+    if (value == null) continue;
+    Object.defineProperty(obj, key, {
+      enumerable: false,
+      configurable: false,
+      get() {
+        if (!live()) throw _credError('validation_failed', `${kind} has already closed`);
+        return value;
+      },
+    });
+  }
+  def(_GA_SECRET_BRAND, true, false);
+  def('toJSON', () => { throw _credError('validation_failed', `${kind} is not serializable`); }, false);
+  def(Symbol.for('nodejs.util.inspect.custom'), () => `[${kind} redacted]`, false);
+  return Object.freeze(obj);
+}
+
+function isGoogleAdsPausedDraftSecretScope(value) {
+  try { return !!value && typeof value === 'object' && value[_GA_SECRET_BRAND] === true; } catch (_e) { return false; }
+}
+
+// One exchange, hard deadline, no retry. Transport rejections are re-wrapped so
+// a third-party error string can never carry credential material outward, and
+// the result is validated before anything downstream may use it.
+async function _gaExchangeAccessToken(transport, timeoutMs, request) {
+  let timer = null;
+  let res;
+  const expired = () => _credError('token_exchange_failed', 'google ads token exchange failed');
+  try {
+    res = await Promise.race([
+      Promise.resolve().then(() => transport(request)),
+      // Deliberately not unref'd: a hanging transport must still be rejected
+      // even when nothing else keeps the loop alive. Always cleared below.
+      new Promise((_resolve, reject) => { timer = setTimeout(() => reject(expired()), timeoutMs); }),
+    ]);
+  } catch (_e) { throw expired(); } finally { if (timer) clearTimeout(timer); }
+  const accessToken = _gaSecret(res && res.access_token, 4096);
+  const expiresIn = _positiveInt(res && res.expires_in);
+  if (!accessToken || !expiresIn || expiresIn > GOOGLE_ADS_MAX_TOKEN_LIFETIME_S) throw expired();
+  return { accessToken, expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString() };
+}
+
+/**
+ * Open a Google Ads paused-draft secret scope for the authority binding in
+ * `opts` and run `fn(handle)` inside it. Fails closed on inactive membership,
+ * a revoked or drifted credential reference, vault version drift, an account
+ * fingerprint that no longer matches, or an unusable token exchange. Returns
+ * whatever `fn` returns; the boundary itself yields no token, customer id or
+ * fingerprint.
+ */
+async function withGoogleAdsPausedDraftSecretScope(client, opts, fn) {
+  const c = _requireTxClient(client);
+  const o = opts || {};
+  const timeoutMs = _positiveInt(o.tokenTimeoutMs) || GOOGLE_ADS_TOKEN_TIMEOUT_MS;
+  const tenantId = _positiveInt(o.tenantId);
+  const ownerUserId = _positiveInt(o.ownerUserId);
+  if (typeof fn !== 'function' || typeof o.tokenTransport !== 'function'
+      || !tenantId || !ownerUserId || timeoutMs > GOOGLE_ADS_MAX_TOKEN_TIMEOUT_MS) {
+    throw _credError('validation_failed', 'google ads secret scope binding is invalid');
+  }
+  if (!hasKey()) {
+    throw _credError('missing_credentials', 'CREDENTIAL_ENCRYPTION_KEY is required for provider-draft secret access');
+  }
+
+  await _assertActiveTenantMember(c, tenantId, ownerUserId);
+  const reference = await assertGoogleAdsProviderDraftCredentialRefMetadata(c, {
+    tenantId,
+    ownerUserId,
+    credentialRefId: o.credentialRefId,
+    credentialRefVersion: o.credentialRefVersion,
+    accountFingerprint: o.accountFingerprint,
+  });
+
+  const r = await c.query(
+    `SELECT ciphertext, iv, tag, status, credential_version FROM user_integrations
+      WHERE user_id=$1 AND platform=$2 FOR UPDATE`,
+    [ownerUserId, GOOGLE_ADS_PROVIDER_DRAFT_PLATFORM]
+  );
+  const row = r.rowCount === 1 ? r.rows[0] : null;
+  if (!row || row.status === 'disconnected') {
+    throw _credError('missing_credentials', 'Google Ads is not connected for this actor');
+  }
+  if (Number(row.credential_version) !== reference.credential_ref_version) {
+    throw _credError('context_mismatch', 'Google Ads credential version drifted from the authority');
+  }
+
+  let blob;
+  try { blob = JSON.parse(_decrypt(row.ciphertext, row.iv, row.tag)); } catch (_e) {
+    throw _credError('missing_credentials', 'Google Ads credentials could not be opened');
+  }
+  // The normalized customer id is compared as a hash and never returned out of
+  // the scope, logged, or persisted by this boundary.
+  const fingerprint = _accountFingerprintOfGoogleAdsCustomerId(blob && blob.customerId);
+  if (!fingerprint || !_sameString(fingerprint, String(o.accountFingerprint))) {
+    throw _credError('context_mismatch', 'Google Ads account does not match the authority binding');
+  }
+  const refreshToken = _gaSecret(blob.refreshToken, 4096);
+  const clientId = _gaSecret(blob.clientId, 512);
+  const clientSecret = _gaSecret(blob.clientSecret, 512);
+  const developerToken = _gaSecret(blob.devToken, 512);
+  const customerId = String(blob.customerId).replace(/[\s-]/g, '');
+  const loginCustomerId = blob.loginCustomerId ? String(blob.loginCustomerId).replace(/[\s-]/g, '') : null;
+  if (!refreshToken || !clientId || !clientSecret || !developerToken) {
+    throw _credError('missing_credentials', 'Google Ads OAuth material is incomplete');
+  }
+  if (loginCustomerId !== null && !/^[0-9]{10}$/.test(loginCustomerId)) {
+    throw _credError('validation_failed', 'Google Ads login customer binding is invalid');
+  }
+
+  let exchangeOpen = true; let scopeOpen = true;
+  const request = _gaSealed(GOOGLE_ADS_TOKEN_REQUEST_KIND, {
+    url: GOOGLE_ADS_OAUTH_TOKEN_URL, method: 'POST', grant_type: 'refresh_token', timeoutMs,
+  }, { clientId, clientSecret, refreshToken }, () => exchangeOpen);
+  let token;
+  try { token = await _gaExchangeAccessToken(o.tokenTransport, timeoutMs, request); } finally { exchangeOpen = false; }
+  const handle = _gaSealed(GOOGLE_ADS_SECRET_SCOPE_KIND, {
+    credential_ref_id: reference.credential_ref_id,
+    credential_ref_version: reference.credential_ref_version,
+    account_fingerprint_matches: true,
+    access_token_expires_at: token.expiresAt,
+    has_secret_access: true,
+  }, { accessToken: token.accessToken, developerToken, customerId, loginCustomerId }, () => scopeOpen);
+  try { return await fn(handle); } finally { scopeOpen = false; }
+}
+
 // ── Simple API-key vault (tenant-scoped, kv_store, AES-256-GCM) ──────────
 // Unlike getCredentials/saveCredentials (per-user, user_integrations table),
 // these are platform-wide per-tenant keys (e.g. Apify, Firecrawl).
@@ -1039,4 +1209,10 @@ module.exports = {
   accountFingerprintOfGoogleAdsCustomerId: _accountFingerprintOfGoogleAdsCustomerId,
   // PR10B.1 — metadata-only Google Ads reference assertion (no secret access)
   assertGoogleAdsProviderDraftCredentialRefMetadata,
+  // PR10B.2a — Google Ads paused-draft secret scope (injected transport only)
+  GOOGLE_ADS_OAUTH_TOKEN_URL,
+  GOOGLE_ADS_TOKEN_TIMEOUT_MS,
+  GOOGLE_ADS_MAX_TOKEN_TIMEOUT_MS,
+  isGoogleAdsPausedDraftSecretScope,
+  withGoogleAdsPausedDraftSecretScope,
 };

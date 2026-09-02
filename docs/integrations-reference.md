@@ -1,6 +1,6 @@
 # InfoGenie — Integrations & Tools Reference
 
-> **Last updated:** July 2026  
+> **Last updated:** September 2026
 > Covers every API, LLM, OAuth flow, AI provider, data source, and third-party tool wired into InfoGenie, with status for each.
 
 ---
@@ -170,6 +170,23 @@ Competitor-ad research over the official TikTok Commercial Content Library (Ad L
 | **Live smoke** | `INFOGENIE_LIVE_TIKTOK_RESEARCH=1` plus a non-dummy `INFOGENIE_LIVE_TIKTOK_RESEARCH_TOKEN` **or** `TIKTOK_RESEARCH_CLIENT_TOKEN`. Skips when unset. Never prints tokens |
 
 Do not request targeting, emails, phones, profiles, comments, follower counts, reach, or `ad_group.targeting_info`. Do not fetch `ad.videos` media, `image_urls`, or `download_url`. Live mode never falls back to fixtures on empty or error results.
+
+### 4.4 Google Ads paused-draft connector (`google_ads_paused_draft`)
+
+Narrow mutate-only connector for PAUSED, non-serving Google Ads draft objects. Used by the advertising orchestrator provider-operation path — not a new API prefix, vault read, or settle authority.
+
+| Item | Value |
+|------|--------|
+| **Module** | `services/agent_orchestrator/connectors/google_ads_paused_draft.js` |
+| **Host allowlist** | `googleads.googleapis.com` only |
+| **Path** | `POST /v17/customers/{id}/googleAds:mutate` |
+| **Shape** | One frozen create of campaign budget + SEARCH campaign + ad group. `status` is always `PAUSED`. No update/remove/promote, no `ENABLED`/`SERVING`, no start/end, no optimize, no budget increase |
+| **Idempotency** | Substrate `provider_operation_key` + `idempotency_key` stamped on the request and echoed on the result. Connector never retries |
+| **Auth** | Caller-supplied access + developer token for the live path only. Tokens, customer ids, and decrypted values are never logged or returned |
+| **Default** | Injected `mutate` client. Live Google requires `allowLive: true` **and** `INFOGENIE_LIVE_GOOGLE_ADS_PAUSED_DRAFT=1`. Default tests never set this |
+| **Errors** | Provider 4xx / explicit error → determinate `provider_create_failed`. Timeout / 5xx / transport / malformed success → `provider_outcome_unknown` requiring reconciliation. No blind retry |
+
+This connector does not settle `orchestrator_google_ads_provider_draft_operations`, resolve vault secrets, or mount HTTP.
 
 ---
 

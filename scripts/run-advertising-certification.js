@@ -10,6 +10,8 @@ const files = [
   'test/google-ads-provider-draft-operations-security.test.js',
   'test/integration/google-ads-provider-draft-operations-postgres.test.js',
   'test/integration/google-ads-credential-persistence-authority-postgres.test.js',
+  'test/advertising-google-ads-paused-draft-connector.test.js',
+  'test/google-ads-paused-draft-secret-boundary.test.js',
   'test/advertising-optimization-execution-run.test.js',
   'test/integration/meta-activation-capability-postgres.test.js',
   'test/advertising-meta-reconciliation-durability-postgres.test.js',
