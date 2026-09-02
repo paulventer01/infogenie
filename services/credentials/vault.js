@@ -785,6 +785,44 @@ function _accountFingerprintOfGoogleAdsCustomerId(customerId) {
   return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
 
+/**
+ * PR10B.1 metadata-only Google Ads binding check. Locks the tenant-owned
+ * credential REFERENCE row and asserts it still matches the capability binding
+ * (tenant, owner, id, version, account fingerprint). Reads no user_integrations
+ * row, decrypts nothing, and returns no customer id — secret resolution for the
+ * paused-draft provider call is deferred to PR10B.2.
+ */
+async function assertGoogleAdsProviderDraftCredentialRefMetadata(client, opts) {
+  const c = _requireTxClient(client);
+  const o = opts || {};
+  const tenantId = _positiveInt(o.tenantId);
+  const ownerUserId = _positiveInt(o.ownerUserId);
+  const version = _positiveInt(o.credentialRefVersion);
+  const refId = o.credentialRefId != null ? String(o.credentialRefId) : '';
+  const fingerprint = o.accountFingerprint != null ? String(o.accountFingerprint) : '';
+  if (!tenantId || !ownerUserId || !version || !refId || !/^[0-9a-f]{64}$/.test(fingerprint)) {
+    throw _credError('validation_failed', 'google ads credential reference binding is invalid');
+  }
+  const r = await c.query(`SELECT tenant_id,id,platform,status,revoked_at,version,owner_user_id,account_fingerprint
+      FROM orchestrator_tenant_google_ads_credential_refs
+     WHERE tenant_id=$1 AND id=$2 FOR UPDATE`, [tenantId, refId]);
+  if (r.rowCount !== 1) {
+    throw _credError('missing_credentials', 'no tenant-owned Google Ads credential reference');
+  }
+  const row = r.rows[0];
+  if (row.status !== 'active' || row.revoked_at != null || row.platform !== 'google_ads') {
+    throw _credError('missing_credentials', 'tenant-owned Google Ads credential reference is not active');
+  }
+  if (Number(row.tenant_id) !== tenantId || Number(row.owner_user_id) !== ownerUserId) {
+    throw _credError('permission_denied', 'credential reference owner does not match the capability actor');
+  }
+  if (Number(row.version) !== version
+      || !_sameString(String(row.account_fingerprint), fingerprint)) {
+    throw _credError('context_mismatch', 'credential reference binding does not match the capability');
+  }
+  return Object.freeze({ credential_ref_id: String(row.id), credential_ref_version: Number(row.version) });
+}
+
 function _pageIdOf(row) {
   const raw = row && row.page_id != null ? String(row.page_id).trim() : '';
   if (!/^[0-9]{1,32}$/.test(raw)) {
@@ -999,4 +1037,6 @@ module.exports = {
   withTenantMetaCredentialSecretForConsumedProviderDraft,
   accountFingerprintOfMetaAdAccount: _accountFingerprintOf,
   accountFingerprintOfGoogleAdsCustomerId: _accountFingerprintOfGoogleAdsCustomerId,
+  // PR10B.1 — metadata-only Google Ads reference assertion (no secret access)
+  assertGoogleAdsProviderDraftCredentialRefMetadata,
 };
