@@ -59,7 +59,7 @@ test('late terminal settlement reads the lease clock after locking and classifie
   const calls=[];
   const client={query:async(sql,params)=>{
     calls.push([sql,params]);
-    if(/^SELECT \\*/.test(sql.trim()))return {rowCount:1,rows:[row]};
+    if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
     if(/^SELECT clock_timestamp/.test(sql.trim()))return {rowCount:1,rows:[{now:lockedNow}]};
     if(/^UPDATE/.test(sql.trim()))return {rowCount:1,rows:[params.length===3
       ?{...row,state:'failed',classifications:['interrupted_observation'],completed_at:lockedNow}
@@ -74,7 +74,7 @@ test('late terminal settlement reads the lease clock after locking and classifie
   const result=await R._test.finishRun({connect:async()=>client},{},7,'run',
     {state:'verified',classifications:[],observations:[]},capturedBeforeLock,async(_c,_row,event)=>events.push(event));
   assert.deepEqual([result.state,result.failure_classifications],['failed',['interrupted_observation']]);
-  const lockIndex=calls.findIndex(([sql])=>/^SELECT \\*/.test(sql.trim()));
+  const lockIndex=calls.findIndex(([sql])=>/^SELECT \*/.test(sql.trim()));
   const clockIndex=calls.findIndex(([sql])=>/^SELECT clock_timestamp/.test(sql.trim()));
   assert.ok(clockIndex>lockIndex,'database clock is read only after the row lock');
   const update=calls.find(([sql])=>/^UPDATE/.test(sql.trim()));
