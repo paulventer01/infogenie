@@ -91,7 +91,7 @@ test('stale recovery reads the lease clock after locking and re-proof',async(t)=
   const calls=[];
   const client={query:async(sql,params)=>{
     calls.push([sql,params]);
-    if(/^SELECT \\*/.test(sql.trim()))return {rowCount:1,rows:[row]};
+    if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
     if(/^SELECT clock_timestamp/.test(sql.trim()))return {rowCount:1,rows:[{now:lockedNow}]};
     if(/^UPDATE/.test(sql.trim()))return {rowCount:1,rows:[
       {...row,state:'failed',classifications:['interrupted_observation'],completed_at:lockedNow}]};
@@ -105,7 +105,7 @@ test('stale recovery reads the lease clock after locking and re-proof',async(t)=
   const result=await R._test.existingOrRecover({connect:async()=>client},{},7,'auth','hash',
     capturedBeforeLock,async(_c,_row,event)=>events.push(event));
   assert.deepEqual([result.state,result.failure_classifications],['failed',['interrupted_observation']]);
-  const lockIndex=calls.findIndex(([sql])=>typeof sql==='string'&&/^SELECT \\*/.test(sql.trim()));
+  const lockIndex=calls.findIndex(([sql])=>typeof sql==='string'&&/^SELECT \*/.test(sql.trim()));
   const reproveIndex=calls.findIndex(([sql])=>sql==='reproved');
   const clockIndex=calls.findIndex(([sql])=>typeof sql==='string'&&/^SELECT clock_timestamp/.test(sql.trim()));
   assert.ok(clockIndex>lockIndex&&clockIndex>reproveIndex,'database clock is read after the row lock and re-proof');
