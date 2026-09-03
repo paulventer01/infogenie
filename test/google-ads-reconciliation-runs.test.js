@@ -59,8 +59,9 @@ test('late terminal settlement is atomically classified as interrupted',async(t)
   const client={query:async(sql,params)=>{
     calls.push([sql,params]);
     if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
-    if(/^UPDATE/.test(sql.trim()))return {rowCount:1,rows:[{...row,state:'failed',
-      classifications:['interrupted_observation'],completed_at:now}]};
+    if(/^UPDATE/.test(sql.trim()))return {rowCount:1,rows:[params.length===3
+      ?{...row,state:'failed',classifications:['interrupted_observation'],completed_at:now}
+      :{...row,state:params[2],observations:JSON.parse(params[3]),classifications:params[4],completed_at:params[5]}]};
     return {rowCount:0,rows:[]};
   },release:()=>{}};
   const original=authority.reproveMetadataAuthority;
@@ -71,7 +72,9 @@ test('late terminal settlement is atomically classified as interrupted',async(t)
   const result=await R._test.finishRun({connect:async()=>client},{},7,'run',
     {state:'verified',classifications:[],observations:[]},now,async(_c,_row,event)=>events.push(event));
   assert.deepEqual([result.state,result.failure_classifications],['failed',['interrupted_observation']]);
-  assert.equal(calls.some(([sql])=>/SET state='verified'/.test(sql)),false);
+  const update=calls.find(([sql])=>/^UPDATE/.test(sql.trim()));
+  assert.match(update[0],/interrupted_observation/);
+  assert.deepEqual(update[1],[7,'run',now]);
   assert.deepEqual(events,['google_ads_paused_draft_reconciliation_failed']);
 });
 
