@@ -18,7 +18,7 @@ const ERROR_CLASSES = Object.freeze(['not_found','provider_unauthorized','rate_l
 // Three sequential GAQL requests are bounded to eight seconds each.  This
 // deliberately generous lease also covers token exchange, credential and DB
 // overhead without making an ordinary slow request recoverable concurrently.
-const OBSERVATION_LEASE_MS = 180 * 1000;
+const OBSERVATION_LEASE_MS = authority.MAX_RECONCILIATION_LEASE_MS;
 
 function hash(value) { return crypto.createHash('sha256').update(String(value)).digest('hex'); }
 function fail(code) { const e=new Error(code);e.code=code;e.blocked=true;e.external_action_taken=false;return e; }
@@ -130,13 +130,13 @@ async function existingOrRecover(pool,opts,tenantId,authorizationId,invocationHa
   finally{client.release();}
 }
 
-async function createObservingRun(pool,opts,now,consumeImpl=authority.consumeIntoReconciliationRun,auditImpl=audit) {
+async function createObservingRun(pool,opts,_requestedAt,consumeImpl=authority.consumeIntoReconciliationRun,
+  auditImpl=audit,leaseMs=OBSERVATION_LEASE_MS) {
   const client=await pool.connect();
   try {
     await client.query('BEGIN');
     const id=`garrun_${crypto.randomUUID()}`;
-    const run={id,auditRef:`garrun-audit:${hash(id).slice(0,20)}`,observingAt:now,
-      observationDeadline:new Date(now.getTime()+OBSERVATION_LEASE_MS)};
+    const run={id,auditRef:`garrun-audit:${hash(id).slice(0,20)}`,observationLeaseMs:leaseMs};
     // The primitive consumes the authorization and inserts the observing run;
     // neither becomes visible unless the initial audit also succeeds.
     const started=await consumeImpl(client,opts,run);
