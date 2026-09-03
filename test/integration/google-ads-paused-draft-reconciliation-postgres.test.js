@@ -174,6 +174,11 @@ if (!db.hasDb()) {
   await assert.rejects(run({tokenTransport:undefined}),denied('validation_failed'));
   assert.deepEqual([exchanges.length,observed.length],[0,0],'no token exchange, no observation');
   assert.equal((await statusOf(issued.authorization_id)).status,'issued');
+  await setGrant('[]');
+  await assert.rejects(tx((c)=>authority.revoke(c,{...base,authorizationId:issued.authorization_id})),
+    denied('authorization_lineage_mismatch'),'revocation re-proves the live DB grant');
+  assert.equal((await statusOf(issued.authorization_id)).status,'issued');
+  await setGrant('["advertising.reconciliation.read"]');
   // ── 5. consume once, then observe the existing PAUSED objects with GAQL Search ─────
   const result=await run();
   assert.deepEqual([result.replay,result.status,result.serving,result.external_action_taken,
@@ -192,7 +197,11 @@ if (!db.hasDb()) {
   const consumed=await statusOf(issued.authorization_id);
   assert.deepEqual([consumed.status,consumed.invocation_id_hash],['consumed',sha(id('inv-1'))]);
   assert.ok(consumed.reserved_at&&consumed.consumed_at);
-  // ── 6. a replay reads stored metadata only: no scope, observer or network ──
+  // ── 6. replay re-proves DB authority, then returns metadata without provider work ──
+  await setGrant('[]');
+  await assert.rejects(run(),denied('authorization_lineage_mismatch'),'replay refuses a revoked DB grant');
+  assert.deepEqual([exchanges.length,observed.length],[1,3]);
+  await setGrant('["advertising.reconciliation.read"]');
   const replayed=await run();
   assert.deepEqual([replayed.replay,replayed.status,replayed.observations],[true,'consumed',undefined]);
   assert.deepEqual([exchanges.length,observed.length],[1,3],'a replay observes nothing');
