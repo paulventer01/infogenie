@@ -97,7 +97,7 @@ function assertProofBindings(row,proof) {
     ||String(row.operation_id)!==String(proof.operation_id))throw fail('authorization_lineage_mismatch');
 }
 
-async function existingOrRecover(pool,opts,tenantId,authorizationId,invocationHash,now=new Date(),auditImpl=audit) {
+async function existingOrRecover(pool,opts,tenantId,authorizationId,invocationHash,_requestedAt=new Date(),auditImpl=audit) {
   const client=await pool.connect();
   try {
     await client.query('BEGIN');
@@ -110,13 +110,20 @@ async function existingOrRecover(pool,opts,tenantId,authorizationId,invocationHa
     // Metadata access and recovery both re-prove current tenant, membership,
     // database grant, operation/ledger lineage and credential binding.
     assertProofBindings(row,await authority.reproveMetadataAuthority(client,opts));
-    if(row.state==='observing'&&new Date(row.observation_deadline)<=now) {
-      const recovered=await client.query(`UPDATE ${TABLE}
-        SET state='failed',classifications=ARRAY['interrupted_observation']::TEXT[],completed_at=$3
-        WHERE tenant_id=$1 AND id=$2 AND state='observing' RETURNING *`,[tenantId,row.id,now]);
-      if(recovered.rowCount!==1)throw fail('invalid_reconciliation_transition');
-      row=recovered.rows[0];
-      await auditImpl(client,row,'google_ads_paused_draft_reconciliation_failed');
+    if(row.state==='observing') {
+      // Recovery uses the database clock after the row lock and authority
+      // re-proof, so lock/re-proof delay cannot postpone an expired lease.
+      const clock=await client.query('SELECT clock_timestamp() AS now');
+      if(clock.rowCount!==1||!Number.isFinite(new Date(clock.rows[0].now).getTime()))throw fail('invalid_reconciliation_transition');
+      const recoveredAt=new Date(clock.rows[0].now);
+      if(new Date(row.observation_deadline)<=recoveredAt) {
+        const recovered=await client.query(`UPDATE ${TABLE}
+          SET state='failed',classifications=ARRAY['interrupted_observation']::TEXT[],completed_at=$3
+          WHERE tenant_id=$1 AND id=$2 AND state='observing' RETURNING *`,[tenantId,row.id,recoveredAt]);
+        if(recovered.rowCount!==1)throw fail('invalid_reconciliation_transition');
+        row=recovered.rows[0];
+        await auditImpl(client,row,'google_ads_paused_draft_reconciliation_failed');
+      }
     }
     await client.query('COMMIT');return publicRun(row);
   } catch(error){try{await client.query('ROLLBACK');}catch(_){}throw error;}
