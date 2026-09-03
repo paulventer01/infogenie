@@ -11,7 +11,6 @@ const TABLE = 'orchestrator_google_ads_reconciliation_read_authorizations';
 const META = 'orchestrator_campaign_reconciliation_read_authorizations';
 const sha = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
 const H = sha('{}');
-const FP = sha('1234567890');
 
 async function replica(sql, params = []) {
   const client = await db.getPool().connect();
@@ -65,11 +64,12 @@ if (!db.hasDb()) {
 
   async function seedGraph(tid, uid, suffix, objectKinds) {
     const wa = 400000000 + parseInt(suffix.replace(/-/g, '').slice(0, 7), 16);
+    const fp = sha(`fp-${tid}-${suffix}`);
     const ids = {
       workflow: id(`wf-${suffix}`), draft: id(`dr-${suffix}`), revision: id(`rv-${suffix}`),
       approval: id(`ap-${suffix}`), request: id(`rq-${suffix}`), intent: id(`in-${suffix}`),
       cred: id(`cr-${suffix}`), cap: id(`cp-${suffix}`), op: id(`op-${suffix}`),
-      session: sha(`session-${suffix}`), ledger: sha(`ledger-${suffix}`),
+      session: sha(`session-${suffix}`), ledger: sha(`ledger-${suffix}`), fp,
     };
     await replica(`
       INSERT INTO orchestrator_workflows(id,tenant_id,name) VALUES($1,$2,'garr');
@@ -108,7 +108,7 @@ if (!db.hasDb()) {
           now(),now(),now(),'provider_create_succeeded',TRUE,$27)`,
     [ids.workflow, tid, uid, ids.draft, H, id(`dk-${suffix}`), ids.revision, ids.approval,
       id(`ak-${suffix}`), ids.request, id(`rk-${suffix}`), ids.intent, id(`ob-${suffix}`),
-      id(`ik-${suffix}`), ids.cred, FP, ids.cap, ids.session, id(`cf-${suffix}`), sha(`cf-${suffix}`),
+      id(`ik-${suffix}`), ids.cred, fp, ids.cap, ids.session, id(`cf-${suffix}`), sha(`cf-${suffix}`),
       id(`ca-${suffix}`), ids.op, sha(`r-${suffix}`), sha(`i-${suffix}`), id(`k-${suffix}`),
       sha(`opk-${suffix}`), id(`oa-${suffix}`)]);
     const seq = { campaign_budget: 1, campaign: 2, ad_group: 3 };
@@ -118,7 +118,7 @@ if (!db.hasDb()) {
         (tenant_id,id,operation_id,capability_id,account_fingerprint,object_kind,sequence_number,
          provider_object_id,provider_object_id_digest,provider_status,result_code,recorded_at,audit_ref)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'PAUSED','provider_create_succeeded',now(),$2)`,
-      [tid, id(`obj-${suffix}-${kind}`), ids.op, ids.cap, FP, kind, seq[kind], oid, sha(oid)]);
+      [tid, id(`obj-${suffix}-${kind}`), ids.op, ids.cap, fp, kind, seq[kind], oid, sha(oid)]);
     }
     return ids;
   }
@@ -136,7 +136,7 @@ if (!db.hasDb()) {
     over.userId ?? user.id, over.session ?? graph.session, over.workflow ?? graph.workflow,
     over.draft ?? graph.draft, over.request ?? graph.request, over.intent ?? graph.intent,
     over.snapshot ?? H, over.intentHash ?? H, over.operationId ?? graph.op, over.capabilityId ?? graph.cap,
-    over.cred ?? graph.cred, over.fp ?? FP, over.ledger ?? graph.ledger, over.audit ?? id(over.tag || 'ok-audit'),
+    over.cred ?? graph.cred, over.fp ?? graph.fp, over.ledger ?? graph.ledger, over.audit ?? id(over.tag || 'ok-audit'),
     over.kinds || ['campaign_budget', 'campaign', 'ad_group'], over.status || 'issued']);
 
   const pk = (await db.getPool().query(
@@ -162,12 +162,12 @@ if (!db.hasDb()) {
     (tenant_id,id,operation_id,capability_id,account_fingerprint,object_kind,sequence_number,
      provider_object_id,provider_object_id_digest,provider_status,result_code,serving,recorded_at,audit_ref)
     VALUES($1,$2,$3,$4,$5,'ad_group',3,'9901',$6,'ENABLED','provider_create_succeeded',TRUE,now(),$2)`,
-  [tenant.id, id('obj-enabled'), incomplete.op, incomplete.cap, FP, sha('9901')]),
+  [tenant.id, id('obj-enabled'), incomplete.op, incomplete.cap, incomplete.fp, sha('9901')]),
   /orchestrator_gapdobj_paused_check/);
   await assert.rejects(insertAuth({ tag: 'missing', operationId: incomplete.op, capabilityId: incomplete.cap,
     workflow: incomplete.workflow, draft: incomplete.draft, request: incomplete.request,
     intent: incomplete.intent, cred: incomplete.cred, session: incomplete.session,
-    ledger: incomplete.ledger }), /orchestrator_garr_object_lineage/);
+    ledger: incomplete.ledger, fp: incomplete.fp }), /orchestrator_garr_object_lineage/);
   await assert.rejects(insertAuth({ tag: 'xtenant', operationId: otherGraph.op }),
     /orchestrator_garr_operation|foreign key/i);
   await assert.rejects(insertAuth({ tag: 'reserved-insert', status: 'reserved' }),
@@ -202,7 +202,7 @@ if (!db.hasDb()) {
      ledger_root_hash,expires_at)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,1,$13,$14,now()+interval '5 minutes')`,
   [tenant.id, `mra-${tag}`, sha('meta-nonce'), user.id, graph.workflow, graph.draft, graph.request,
-    `execution-${tag}`, H, graph.intent, H, graph.cred, FP, sha('meta-ledger')]);
+    `execution-${tag}`, H, graph.intent, H, graph.cred, graph.fp, sha('meta-ledger')]);
   assert.equal((await db.getPool().query(
     `SELECT status,expected_object_kinds FROM ${META} WHERE tenant_id=$1 AND id=$2`,
     [tenant.id, `mra-${tag}`])).rows[0].status, 'issued');
@@ -213,12 +213,12 @@ if (!db.hasDb()) {
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,1,$13,$14,now()+interval '5 minutes',
            ARRAY['campaign_budget','campaign','ad_group']::TEXT[])`,
   [tenant.id, `mra-bad-${tag}`, sha('meta-bad'), user.id, graph.workflow, graph.draft, graph.request,
-    `execution-bad-${tag}`, H, graph.intent, H, graph.cred, FP, sha('meta-bad-ledger')]),
+    `execution-bad-${tag}`, H, graph.intent, H, graph.cred, graph.fp, sha('meta-bad-ledger')]),
   /orchestrator_crra_kinds_check/);
   const metaKinds = (await db.getPool().query(
     `SELECT pg_get_constraintdef(oid) def FROM pg_constraint
       WHERE conrelid=$1::regclass AND conname='orchestrator_crra_kinds_check'`, [META])).rows[0].def;
-  assert.match(metaKinds, /campaign','adset','creative','ad'/);
+  assert.match(metaKinds, /campaign.*adset.*creative.*ad/);
   const metaFrozen = (await db.getPool().query(
     `SELECT pg_get_constraintdef(oid) def FROM pg_constraint
       WHERE conname='orchestrator_tmcr_platform_check'`)).rows[0].def;

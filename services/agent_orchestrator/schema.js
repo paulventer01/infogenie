@@ -7457,6 +7457,9 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     DECLARE n INTEGER; BEGIN
       IF TG_OP='INSERT' THEN
         IF NEW.status<>'issued' THEN RAISE EXCEPTION 'orchestrator_garr_invalid_insert'; END IF;
+        IF NOT EXISTS(SELECT 1 FROM orchestrator_google_ads_provider_draft_operations
+          WHERE tenant_id=NEW.tenant_id AND id=NEW.operation_id)
+        THEN RAISE EXCEPTION 'orchestrator_garr_operation_lineage'; END IF;
         SELECT count(*) INTO n FROM orchestrator_google_ads_provider_draft_objects
           WHERE tenant_id=NEW.tenant_id AND operation_id=NEW.operation_id
             AND object_kind=ANY(ARRAY['campaign_budget','campaign','ad_group']::TEXT[])

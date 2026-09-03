@@ -13,9 +13,10 @@ const SLICE_START = '// PR10C.1 — tenant-leading Google Ads reconciliation rea
 const SLICE_END = '// PR 8C — consumes one approved';
 
 function slice() {
-  const start = schemaSource.indexOf(SLICE_START);
+  const first = schemaSource.indexOf(SLICE_START);
+  const start = schemaSource.indexOf(SLICE_START, first + 1);
   const end = schemaSource.indexOf(SLICE_END, start);
-  assert.ok(start >= 0 && end > start, 'PR10C.1 DDL slice markers must exist');
+  assert.ok(first >= 0 && start > first && end > start, 'PR10C.1 DDL slice markers must exist');
   return schemaSource.slice(start, end);
 }
 
@@ -51,6 +52,7 @@ test('Google Ads reconciliation read-authorizations are tenant-leading with Goog
   assert.match(ddl, /orchestrator_garr_invalid_insert/);
   assert.match(ddl, /orchestrator_garr_immutable_binding/);
   assert.match(ddl, /orchestrator_garr_invalid_transition/);
+  assert.match(ddl, /orchestrator_garr_operation_lineage/);
   assert.match(ddl, /orchestrator_garr_object_lineage/);
   assert.match(ddl, /issued'\s+AND NEW\.status IN \('reserved','revoked','expired'\)/);
   assert.match(ddl, /reserved'\s+AND NEW\.status IN \('consumed','revoked','expired'\)/);
