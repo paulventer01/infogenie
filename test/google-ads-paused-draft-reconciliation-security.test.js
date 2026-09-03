@@ -62,7 +62,7 @@ test('the module is read-only: no provider write surface, no route, no worker',(
   assert.doesNotMatch(source,/getCredentials\b|_decrypt\(|decryptString|createDecipheriv/);
   // Create-side kill switches must not strand reconciliation of existing objects.
   assert.doesNotMatch(source,/kill_switches?|switch_key/);
-  // Exactly one provider surface — the GET-only observer — and one secret scope.
+  // Exactly one provider surface — the read-only GAQL Search observer — and one secret scope.
   assert.deepEqual(source.match(/require\('\.\.\/[^']*connectors\/[^']*'\)/g),
     ["require('../agent_orchestrator/connectors/google_ads_paused_draft_reconciliation_observer')"]);
   assert.equal((source.match(/observePausedGoogleAdsLedger\(/g)||[]).length,1);
@@ -181,7 +181,7 @@ test('the consume commits before any secret scope opens, and the handle never es
   assert.ok(at('const consumed=await consumeAtomic(pool,o);')<at('const out=await observeWithConsumedCredential(c,o);'));
   assert.ok(at("status='consumed',consumed_at=$3")<at('vault.withGoogleAdsPausedDraftSecretScope'));
   assert.ok(at('vault.withGoogleAdsPausedDraftSecretScope')<at('observer.observePausedGoogleAdsLedger'));
-  // Only the credential values the GET observer needs are copied out, and the
+  // Only the credential values the Search observer needs are copied out, and the
   // sealed handle itself is never returned, stored or serialized.
   assert.match(source,/credentials:\{accessToken:handle\.accessToken,developerToken:handle\.developerToken/);
   assert.doesNotMatch(source,/return handle|=\s*handle\s*;|handle\.toJSON/);
