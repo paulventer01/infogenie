@@ -154,6 +154,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/agent-orchestrator/video-jobs', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
   { prefix: '/api/agent-orchestrator/campaign-drafts', view: 'orchestrator.workflows.view', write: 'orchestrator.workflows.view' },
   { prefix: '/api/agent-orchestrator/reconciliation-reviews', view: 'advertising.reconciliation.review', write: 'advertising.reconciliation.review' },
+  { prefix: '/api/agent-orchestrator/google-ads-reconciliation-reviews', view: 'advertising.reconciliation.review', write: 'advertising.reconciliation.review' },
   { prefix: '/api/agent-orchestrator/meta-activation-capabilities', view: 'advertising.campaign.activate', write: 'advertising.campaign.activate' },
   { prefix: '/api/agent-orchestrator/google-ads-provider-draft-capabilities', view: 'advertising.provider_drafts.create', write: 'advertising.provider_drafts.create' },
   { prefix: '/api/agent-orchestrator/meta-delivery-monitoring', view: 'advertising.campaign.monitor', write: 'advertising.campaign.monitor' },

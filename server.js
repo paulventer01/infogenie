@@ -653,6 +653,7 @@ const _OWNER_GATE_ALLOW = [
   // prefix from the legacy global-data owner gate; its router does not inherit
   // the shared owner/admin permission bypass.
   /^\/api\/agent-orchestrator\/reconciliation-reviews(?:\/|$)/,
+  /^\/api\/agent-orchestrator\/google-ads-reconciliation-reviews(?:\/|$)/,
   // Post-activation monitoring is tenant-scoped and requires a matching human
   // session plus an explicit active-tenant grant. Keep this exemption narrowly
   // anchored so similarly named orchestrator routes remain owner-gated.
