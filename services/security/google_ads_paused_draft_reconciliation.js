@@ -213,7 +213,8 @@ async function revoke(c,o={}) {
   if(locked.rowCount!==1||Number(locked.rows[0].requested_by)!==actorId
     ||!same(String(locked.rows[0].session_id_hash),hash(o.sessionId))
     ||!['issued','reserved'].includes(locked.rows[0].status))throw deny('authorization_rejected');
-  await loadOperation(c,tenantId,actorId,locked.rows[0].operation_id);
+  const graph=await loadOperation(c,tenantId,actorId,locked.rows[0].operation_id);
+  if(!bound(graph,locked.rows[0]))throw deny('authorization_lineage_mismatch');
   const r=await c.query(`UPDATE ${TABLE} SET status='revoked',revoked_at=COALESCE($5,clock_timestamp())
     WHERE tenant_id=$1 AND id=$2 AND requested_by=$3 AND session_id_hash=$4
       AND status IN ('issued','reserved') RETURNING *`,
