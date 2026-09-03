@@ -256,10 +256,8 @@ if (!db.hasDb()) {
   // A real expired decision commits its own audit without creating a run.
   await replica(`DELETE FROM ${coordinator.TABLE} WHERE tenant_id=$1;DELETE FROM ${authority.TABLE} WHERE tenant_id=$1`,[tenant.id]);
   issued=await issue();
-  await replica(`UPDATE ${authority.TABLE} SET expires_at=now()-interval '1 second' WHERE tenant_id=$1 AND id=$2`,
-    [tenant.id,issued.authorization_id]);
   await assert.rejects(coordinator.reconcile(db.getPool(),{...durableArgs,authorizationId:issued.authorization_id,
-    invocationId:id('expired')}),denied('authorization_expired'));
+    invocationId:id('expired'),now:new Date(new Date(issued.expires_at).getTime()+1000)}),denied('authorization_expired'));
   assert.equal((await db.getPool().query(`SELECT count(*)::int c FROM ${coordinator.TABLE} WHERE tenant_id=$1`,[tenant.id])).rows[0].c,0);
   assert.equal((await statusOf(issued.authorization_id)).status,'expired');
 
