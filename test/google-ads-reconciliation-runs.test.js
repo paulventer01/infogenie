@@ -82,6 +82,38 @@ test('late terminal settlement reads the lease clock after locking and classifie
   assert.deepEqual(update[1],[7,'run',lockedNow]);
   assert.deepEqual(events,['google_ads_paused_draft_reconciliation_failed']);
 });
+test('stale recovery reads the lease clock after locking and re-proof',async(t)=>{
+  const capturedBeforeLock=new Date('2026-09-03T00:02:59.000Z');
+  const lockedNow=new Date('2026-09-03T00:04:00.000Z');
+  const row={tenant_id:7,id:'run',authorization_id:'auth',invocation_id_hash:'hash',requested_by:3,
+    workflow_id:'wf',operation_id:'op',state:'observing',observation_deadline:'2026-09-03T00:03:00.000Z',
+    observations:[],classifications:[],audit_ref:'audit',created_at:'2026-09-03T00:00:00.000Z'};
+  const calls=[];
+  const client={query:async(sql,params)=>{
+    calls.push([sql,params]);
+    if(/^SELECT \\*/.test(sql.trim()))return {rowCount:1,rows:[row]};
+    if(/^SELECT clock_timestamp/.test(sql.trim()))return {rowCount:1,rows:[{now:lockedNow}]};
+    if(/^UPDATE/.test(sql.trim()))return {rowCount:1,rows:[
+      {...row,state:'failed',classifications:['interrupted_observation'],completed_at:lockedNow}]};
+    return {rowCount:0,rows:[]};
+  },release:()=>{}};
+  const original=authority.reproveMetadataAuthority;
+  t.after(()=>{authority.reproveMetadataAuthority=original;});
+  authority.reproveMetadataAuthority=async()=>{calls.push(['reproved']);return {tenant_id:7,authorization_id:'auth',
+    invocation_id_hash:'hash',requested_by:3,workflow_id:'wf',operation_id:'op'};};
+  const events=[];
+  const result=await R._test.existingOrRecover({connect:async()=>client},{},7,'auth','hash',
+    capturedBeforeLock,async(_c,_row,event)=>events.push(event));
+  assert.deepEqual([result.state,result.failure_classifications],['failed',['interrupted_observation']]);
+  const lockIndex=calls.findIndex(([sql])=>typeof sql==='string'&&/^SELECT \\*/.test(sql.trim()));
+  const reproveIndex=calls.findIndex(([sql])=>sql==='reproved');
+  const clockIndex=calls.findIndex(([sql])=>typeof sql==='string'&&/^SELECT clock_timestamp/.test(sql.trim()));
+  assert.ok(clockIndex>lockIndex&&clockIndex>reproveIndex,'database clock is read after the row lock and re-proof');
+  const update=calls.find(([sql])=>typeof sql==='string'&&/^UPDATE/.test(sql.trim()));
+  assert.deepEqual(update[1],[7,'run',lockedNow]);
+  assert.deepEqual(events,['google_ads_paused_draft_reconciliation_failed']);
+});
+
 test('terminal replay is metadata-only, authority-gated and tenant/idempotency-bound',async(t)=>{
   const row={tenant_id:7,id:'run',authorization_id:'auth',invocation_id_hash:'hash',requested_by:3,
     workflow_id:'wf',operation_id:'op',state:'verified',observations:[],classifications:[],audit_ref:'audit',created_at:nowString()};
