@@ -2,7 +2,7 @@
 
 // PR10C.1 — consume-once Google Ads reconciliation READ authority. It may only
 // observe PAUSED provider objects that PR10B.2b already created: the sole provider
-// surface it can reach is the dedicated GET-only PR10C.1 observer, and it has no
+// surface it can reach is the dedicated read-only GAQL Search observer, and it has no
 // route, worker, scheduler, retry, runs table or review closure. The PR10B.2a
 // paused-draft secret scope is reused unchanged and opened at the last responsible
 // moment, strictly after the consume has committed, so a provider or transport
@@ -164,7 +164,7 @@ async function consumeAtomic(pool,o={}) {
 
 // Re-reads the consumed authorization, re-proves the ledger and credential
 // binding, then opens the PR10B.2a secret scope. The sealed handle never leaves
-// this function: only the credential values the GET observer needs are copied
+// this function: only the credential values the Search observer needs are copied
 // out of it, and nothing is logged or persisted.
 async function observeWithConsumedCredential(c,o={}) {
   if(!c||typeof c.query!=='function')throw deny('validation_failed');
@@ -194,7 +194,7 @@ async function observeWithConsumedCredential(c,o={}) {
     observations:Object.freeze(((observed&&observed.observations)||[]).map((x)=>Object.freeze({...x})))}); }
 
 // Consume exactly once, then observe the already-created PAUSED objects with
-// GET-only requests. The consume commits in its own transaction first, so an
+// read-only GAQL Search requests. The consume commits in its own transaction first, so an
 // observer, transport or provider failure leaves the authorization consumed —
 // exactly-once holds. A replay returns metadata alone: no scope, no decryption,
 // no token exchange, no network.
