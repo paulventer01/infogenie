@@ -3441,6 +3441,10 @@ both registered in `scripts/run-advertising-certification.js`.
 
 Coverage: `test/google-ads-paused-draft-reconciliation-security.test.js` and `test/integration/google-ads-paused-draft-reconciliation-postgres.test.js`, both registered in `scripts/run-advertising-certification.js`.
 
+## Advertising orchestrator — durable Google Ads reconciliation runs (PR10C.2)
+
+PR10C.2 persists one sanitized, tenant-scoped reconciliation run for a consumed PR10C.1 read authorization. Authorization consumption, initial `observing` state and audit evidence must commit atomically before credential scope or GAQL traffic; terminal state and terminal audit must also commit together. Replay is metadata-only, expired observation leases fail deterministically, and the slice adds no route, UI, worker, scheduler, retry, provider mutation or human-review flow.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
