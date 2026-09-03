@@ -1,5 +1,4 @@
 'use strict';
-
 // PR10C.1 — consume-once Google Ads reconciliation READ authority. It may only
 // observe PAUSED provider objects that PR10B.2b already created: the sole provider
 // surface it can reach is the dedicated read-only GAQL Search observer, and it has no
@@ -9,11 +8,9 @@
 // failure can never restore the one-shot authorization. The create-side kill
 // switches are deliberately not consulted: freezing new creations must not strand
 // reconciliation of objects that already exist.
-
 const crypto = require('crypto');
 const vault = require('../credentials/vault');
 const observer = require('../agent_orchestrator/connectors/google_ads_paused_draft_reconciliation_observer');
-
 const TABLE='orchestrator_google_ads_reconciliation_read_authorizations';
 const OPERATIONS='orchestrator_google_ads_provider_draft_operations';
 const OBJECTS='orchestrator_google_ads_provider_draft_objects';
@@ -34,7 +31,6 @@ const BINDINGS=Object.freeze([['workflowId','workflow_id'],['draftId','draft_id'
 const GRANTED=`JOIN tenants t ON t.id=$$.tenant_id AND t.status='active'
     JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$3 AND tu.status='active'
     JOIN roles role ON role.id=tu.role_id AND (role.tenant_id=t.id OR role.tenant_id IS NULL)`;
-
 function deny(code) { const e=new Error(code);e.code=code;e.blocked=true;e.external_action_taken=false;return e; }
 function hash(v) { return crypto.createHash('sha256').update(String(v)).digest('hex'); }
 function same(a,b) { if(typeof a!=='string'||typeof b!=='string')return false;const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&crypto.timingSafeEqual(x,y); }
@@ -53,7 +49,6 @@ function project(row,replay) { const iso=(k)=>row[k]?new Date(row[k]).toISOStrin
   return Object.freeze({authorization_id:row.id,operation_id:row.operation_id,status:row.status,replay:!!replay,
     issued_at:iso('issued_at'),expires_at:iso('expires_at'),reserved_at:iso('reserved_at'),
     consumed_at:iso('consumed_at'),revoked_at:iso('revoked_at'),external_action_taken:false}); }
-
 function ledgerRoot(rows) { return hash(KINDS.map((kind)=>`${kind}:${(Array.isArray(rows)
   ?rows.find((r)=>r&&r.object_kind===kind)||{}:{}).provider_object_id_digest}`).join('|')); }
 // Exactly the three PAUSED, non-serving objects of this operation, each digest
@@ -69,7 +64,6 @@ function validateLineage(rows,operation) {
       ||r.provider_status!=='PAUSED'||r.serving!==false||r.published!==false||r.activated!==false)throw deny('invalid_ledger_lineage');
     by[r.object_kind]=r; }
   if(KINDS.some((k)=>!by[k]))throw deny('invalid_ledger_lineage');return ledgerRoot(rows); }
-
 // The operation row is the only authority, and only one that actually acted may
 // be observed. A create freeze cannot strand this read.
 async function loadOperation(c,tenantId,actorId,operationId) {
@@ -81,7 +75,6 @@ async function loadOperation(c,tenantId,actorId,operationId) {
       provider_status,serving,published,activated FROM ${OBJECTS} WHERE tenant_id=$1 AND operation_id=$2
     ORDER BY sequence_number FOR SHARE`,[tenantId,operation.id]);
   return {operation,objects:objects.rows,ledgerRoot:validateLineage(objects.rows,operation)}; }
-
 // Caller owns the transaction. Every stored binding is copied from the locked
 // operation row; the caller's own options may only agree with it.
 async function issue(c,o={}) {
@@ -108,7 +101,6 @@ async function issue(c,o={}) {
   await audit(c,tenantId,actorId,op.workflow_id,EVENT('issued'),{authorization_id:id,operation_id:op.id,status:'issued'});
   return Object.freeze({authorization_id:id,operation_id:op.id,status:'issued',
     expires_at:expires.toISOString(),replay:false,external_action_taken:false}); }
-
 // Locks the authorization and re-proves actor, human session, expiry, ledger and
 // credential binding before any transition is offered.
 async function prepare(c,o) {
@@ -120,23 +112,21 @@ async function prepare(c,o) {
     {authorization_id:row.id,operation_id:row.operation_id,status:row.status});throw deny(code);};
   if(Number(row.requested_by)!==actorId||!same(String(row.session_id_hash),hash(o.sessionId))
     ||!['issued','consumed'].includes(row.status))return reject('authorization_rejected');
-  // A consumed authorization answers from stored metadata: no transition, no
-  // secret scope, no observer, no network.
-  if(row.status==='consumed')return {replay:true,row};
-  const now=o.now instanceof Date?o.now:new Date((await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now);
-  if(!(new Date(row.expires_at)>now)) {
+  const now=row.status==='issued'?(o.now instanceof Date?o.now:new Date((await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now)):null;
+  if(row.status==='issued'&&!(new Date(row.expires_at)>now)) {
     await c.query(`UPDATE ${TABLE} SET status='expired' WHERE tenant_id=$1 AND id=$2 AND status='issued'`,[tenantId,row.id]);
     return reject('authorization_expired'); }
   let g;
   try { g=await loadOperation(c,tenantId,actorId,row.operation_id); }
   catch(error) { if(error&&error.blocked)return reject(error.code);throw error; }
   if(!bound(g,row))return reject('authorization_lineage_mismatch');
+  // Replay is metadata-only, but still requires a live tenant, membership and DB role grant.
+  if(row.status==='consumed')return {replay:true,row};
   return {replay:false,row,tenantId,actorId,graph:g,now,invocationHash:hash(o.invocationId)}; }
 function bound(g,row) { return same(g.ledgerRoot,String(row.ledger_root_hash))
   &&same(String(g.operation.account_fingerprint),String(row.account_fingerprint))
   &&same(String(g.operation.credential_ref_id),String(row.credential_ref_id))
   &&Number(g.operation.credential_ref_version)===Number(row.credential_ref_version); }
-
 async function markConsumed(c,p) {
   const {tenantId,actorId,row,invocationHash,now}=p,detail=(status)=>({authorization_id:row.id,operation_id:row.operation_id,status});
   await c.query(`UPDATE ${TABLE} SET status='reserved',invocation_id_hash=$3,reserved_at=$4
@@ -148,7 +138,6 @@ async function markConsumed(c,p) {
   await audit(c,tenantId,actorId,row.workflow_id,EVENT('consumed'),detail('consumed'));return done.rows[0]; }
 async function consume(c,o={}) { const p=await prepare(c,o);
   return p.replay?project(p.row,true):project(await markConsumed(c,p),false); }
-
 // Owns the transaction boundary: the consume is committed before this returns, so
 // nothing downstream can read while the spend is still reversible. A blocked
 // decision commits its expiry/audit state; infrastructure errors roll back.
@@ -161,7 +150,6 @@ async function consumeAtomic(pool,o={}) {
     try { const out=await consume(c,o);await c.query('COMMIT');return out; }
     catch(error) { if(error&&error.blocked)await c.query('COMMIT');else await c.query('ROLLBACK');throw error; } }
   finally { c.release(); } }
-
 // Re-reads the consumed authorization, re-proves the ledger and credential
 // binding, then opens the PR10B.2a secret scope. The sealed handle never leaves
 // this function: only the credential values the Search observer needs are copied
@@ -192,7 +180,6 @@ async function observeWithConsumedCredential(c,o={}) {
     attempted_observations:Number(observed&&observed.attempted_observations)||0,
     completed_observations:Number(observed&&observed.completed_observations)||0,
     observations:Object.freeze(((observed&&observed.observations)||[]).map((x)=>Object.freeze({...x})))}); }
-
 // Consume exactly once, then observe the already-created PAUSED objects with
 // read-only GAQL Search requests. The consume commits in its own transaction first, so an
 // observer, transport or provider failure leaves the authorization consumed —
@@ -209,7 +196,6 @@ async function consumeAndObserve(pool,o={}) {
     try { const out=await observeWithConsumedCredential(c,o);await c.query('COMMIT');return out; }
     catch(error) { await c.query('ROLLBACK');throw error; } }
   finally { c.release(); } }
-
 async function get(c,o={}) {
   const tenantId=int(o.tenantId),actorId=human(o);
   if(!tenantId||!valid(o.authorizationId))throw deny('authorization_rejected');
@@ -220,10 +206,14 @@ async function get(c,o={}) {
       AND role.permissions ? $5`,[tenantId,String(o.authorizationId),actorId,hash(o.sessionId),PERMISSION]);
   if(r.rowCount!==1)throw deny('authorization_rejected');
   return project(r.rows[0],r.rows[0].status==='consumed'); }
-
 async function revoke(c,o={}) {
   const tenantId=int(o.tenantId),actorId=human(o);
   if(!tenantId||!valid(o.authorizationId))throw deny('authorization_rejected');
+  const locked=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,String(o.authorizationId)]);
+  if(locked.rowCount!==1||Number(locked.rows[0].requested_by)!==actorId
+    ||!same(String(locked.rows[0].session_id_hash),hash(o.sessionId))
+    ||!['issued','reserved'].includes(locked.rows[0].status))throw deny('authorization_rejected');
+  await loadOperation(c,tenantId,actorId,locked.rows[0].operation_id);
   const r=await c.query(`UPDATE ${TABLE} SET status='revoked',revoked_at=COALESCE($5,clock_timestamp())
     WHERE tenant_id=$1 AND id=$2 AND requested_by=$3 AND session_id_hash=$4
       AND status IN ('issued','reserved') RETURNING *`,
@@ -232,6 +222,5 @@ async function revoke(c,o={}) {
   await audit(c,tenantId,actorId,r.rows[0].workflow_id,EVENT('revoked'),
     {authorization_id:r.rows[0].id,operation_id:r.rows[0].operation_id,status:'revoked'});
   return project(r.rows[0],false); }
-
 module.exports={PERMISSION,KINDS,TABLE,DEFAULT_TTL_MS,MAX_TTL_MS,ledgerRoot,validateLineage,issue,consume,
   consumeAtomic,consumeAndObserve,observeWithConsumedCredential,get,revoke,_deny:deny,_human:human};
