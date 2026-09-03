@@ -266,7 +266,11 @@ if (!db.hasDb()) {
   issued=await issue();
   const crashArgs={...durableArgs,authorizationId:issued.authorization_id,invocationId:id('crash')};
   const started=await coordinator._test.createObservingRun(db.getPool(),crashArgs,new Date(Date.now()-coordinator.OBSERVATION_LEASE_MS-1000));
-  const recovered=await Promise.all([coordinator.reconcile(db.getPool(),crashArgs),coordinator.reconcile(db.getPool(),crashArgs)]);
+  const recovered=await Promise.all([
+    coordinator._test.finishRun(db.getPool(),crashArgs,tenant.id,started.row.id,
+      {state:'verified',classifications:[],observations:[]},new Date()),
+    coordinator.reconcile(db.getPool(),crashArgs),
+  ]);
   assert.deepEqual(recovered.map((x)=>x.state),['failed','failed']);
   assert.deepEqual(recovered[0].failure_classifications,['interrupted_observation']);
   assert.equal((await db.getPool().query(`SELECT count(*)::int c FROM orchestrator_audit_events
