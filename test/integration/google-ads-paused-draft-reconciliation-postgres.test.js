@@ -1,16 +1,13 @@
 'use strict';
-
 // PR10C.1 — the consume-once reconciliation READ authority against real
 // PostgreSQL with a mocked Google client. Both the OAuth token transport and the
 // GAQL Search observer transport is injected, so nothing here reaches Google and no
 // object is created, enabled, published or activated.
-
 const test=require('node:test');const assert=require('node:assert/strict');const crypto=require('crypto');
 const db=require('../../db');
 const schema=require('../../services/agent_orchestrator/schema');
 const authority=require('../../services/security/google_ads_paused_draft_reconciliation');
 const {makeFixtures}=require('../helpers');
-
 const CUSTOMER='1234567890';
 const REFRESH='refresh-token-must-never-escape';const CLIENT_SECRET='client-secret-must-never-escape';
 const DEV='dev-token-must-never-escape';const ACCESS='access-token-must-never-escape';
@@ -19,7 +16,6 @@ const FP=sha(CUSTOMER);const H=sha('{}');
 const permit=(key)=>key===authority.PERMISSION;
 const denied=(...codes)=>(e)=>e&&codes.includes(e.code)&&e.external_action_taken===false;
 const OBJECTS={campaign_budget:'7710001',campaign:'7710002',ad_group:'7710003'};
-
 async function replica(sql,params=[]) {
   const client=await db.getPool().connect();
   try {
@@ -37,7 +33,6 @@ async function tx(fn) {
   catch(error) { await client.query('ROLLBACK');throw error; }
   finally { client.release(); }
 }
-
 if (!db.hasDb()) {
   test('PR10C.1 PostgreSQL reconciliation read authority requires DATABASE_URL',{skip:'no DATABASE_URL'},()=>{});
 } else test('Google Ads reconciliation reads are tenant-bound, consume-once, read-only and leak no secret',async(t)=>{
@@ -51,7 +46,6 @@ if (!db.hasDb()) {
   const wa=500000000+parseInt(tag.slice(0,7),16);
   const ids={workflow:id('wf'),draft:id('dr'),approval:id('ap'),request:id('rq'),intent:id('in'),
     cred:id('cr'),cap:id('cp'),op:id('op')};
-
   t.after(async()=>replica(['orchestrator_audit_events',authority.TABLE,
     'orchestrator_google_ads_provider_draft_objects','orchestrator_google_ads_provider_draft_operations',
     'orchestrator_google_ads_provider_draft_capabilities','orchestrator_campaign_delivery_intents',
@@ -64,7 +58,6 @@ if (!db.hasDb()) {
     DELETE FROM roles WHERE tenant_id IN ($1,$2);
     DELETE FROM users WHERE id IN ($3,$4);
     DELETE FROM tenants WHERE id IN ($1,$2)`,[tenant.id,other.id,user.id,otherUser.id]));
-
   // The role carries the reconciliation READ grant only — never the create grant.
   await replica(`
     INSERT INTO roles(tenant_id,key,name,permissions)
@@ -121,7 +114,6 @@ if (!db.hasDb()) {
   await db.getPool().query(`INSERT INTO user_integrations
     (user_id,platform,ciphertext,iv,tag,status,credential_version) VALUES($1,'google_ads',$2,$3,$4,'connected',1)`,
   [user.id,blob.ciphertext,blob.iv,blob.tag]);
-
   // ── mocked OAuth token and read-only GAQL Search transports ───────────
   const exchanges=[],observed=[];
   const tokenTransport=async(request)=>{exchanges.push(request);return {access_token:ACCESS,expires_in:600};};
@@ -148,7 +140,6 @@ if (!db.hasDb()) {
   scope==='tenant'?[active,tenant.id]:[active]);
   const issue=(over={})=>tx((c)=>authority.issue(c,{...base,operationId:ids.op,...over}));
   const statusOf=async(aid)=>(await db.getPool().query(`SELECT * FROM ${authority.TABLE} WHERE tenant_id=$1 AND id=$2`,[tenant.id,aid])).rows[0];
-
   // ── 1. authority denials on issue: grant, membership, tenant, actor ────────
   await assert.rejects(issue({hasExplicitTenantPermission:()=>false}),denied('permission_denied'));
   await setGrant('["advertising.provider_drafts.create"]');
@@ -160,7 +151,6 @@ if (!db.hasDb()) {
   await assert.rejects(issue({tenantId:other.id}),denied('authorization_lineage_mismatch'),'cross-tenant');
   await assert.rejects(issue({actorUserId:otherUser.id}),denied('authorization_lineage_mismatch'),'wrong actor');
   assert.equal((await db.getPool().query(`SELECT count(*)::int AS c FROM ${authority.TABLE} WHERE tenant_id=$1`,[tenant.id])).rows[0].c,0);
-
   // ── 2. a create freeze must not strand reconciliation of existing objects ──
   await kill('tenant',true,1);await kill('global',true,1);
   let issued;
@@ -172,10 +162,8 @@ if (!db.hasDb()) {
   assert.deepEqual([stored.operation_id,stored.capability_id,stored.credential_ref_id,stored.account_fingerprint,
     stored.workflow_id,stored.draft_id,stored.intent_id,stored.status,stored.session_id_hash,stored.expected_object_kinds],
   [ids.op,ids.cap,ids.cred,FP,ids.workflow,ids.draft,ids.intent,'issued',sha(base.sessionId),authority.KINDS.slice()]);
-
   // ── 3. one authorization per operation ledger ──────────────────────────────
   await assert.rejects(issue(),denied('authorization_conflict'));
-
   // ── 4. a wrong actor, session or tenant cannot consume the grant ───────────
   const run=(over={})=>authority.consumeAndObserve(db.getPool(),{...base,authorizationId:issued.authorization_id,
     invocationId:id('inv-1'),tokenTransport,observerTransport,...over});
@@ -186,7 +174,6 @@ if (!db.hasDb()) {
   await assert.rejects(run({tokenTransport:undefined}),denied('validation_failed'));
   assert.deepEqual([exchanges.length,observed.length],[0,0],'no token exchange, no observation');
   assert.equal((await statusOf(issued.authorization_id)).status,'issued');
-
   // ── 5. consume once, then observe the existing PAUSED objects with GAQL Search ─────
   const result=await run();
   assert.deepEqual([result.replay,result.status,result.serving,result.external_action_taken,
@@ -205,7 +192,6 @@ if (!db.hasDb()) {
   const consumed=await statusOf(issued.authorization_id);
   assert.deepEqual([consumed.status,consumed.invocation_id_hash],['consumed',sha(id('inv-1'))]);
   assert.ok(consumed.reserved_at&&consumed.consumed_at);
-
   // ── 6. a replay reads stored metadata only: no scope, observer or network ──
   const replayed=await run();
   assert.deepEqual([replayed.replay,replayed.status,replayed.observations],[true,'consumed',undefined]);
@@ -215,7 +201,6 @@ if (!db.hasDb()) {
   await assert.rejects(tx((c)=>authority.revoke(c,{...base,authorizationId:issued.authorization_id})),
     denied('authorization_rejected'),'a consumed authorization cannot be revoked');
   assert.deepEqual([exchanges.length,observed.length],[1,3]);
-
   // ── 7. nothing changed on the provider side, and no secret was recorded ────
   const objects=await db.getPool().query(`SELECT provider_status,serving,published,activated
     FROM orchestrator_google_ads_provider_draft_objects WHERE tenant_id=$1`,[tenant.id]);
