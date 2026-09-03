@@ -267,7 +267,7 @@ if (!db.hasDb()) {
   const crashArgs={...durableArgs,authorizationId:issued.authorization_id,invocationId:id('crash')};
   const started=await coordinator._test.createObservingRun(db.getPool(),crashArgs,new Date(),
     undefined,undefined,1);
-  await new Promise((resolve)=>setTimeout(resolve,5));
+  await new Promise((resolve)=>setTimeout(resolve,25));
   const recovered=await Promise.all([
     coordinator._test.finishRun(db.getPool(),crashArgs,tenant.id,started.row.id,
       {state:'verified',classifications:[],observations:[]},new Date()),
