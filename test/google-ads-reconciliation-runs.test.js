@@ -32,8 +32,12 @@ test('observing creation commits before provider observation and rolls back an a
   const log=[];
   const client={query:async(sql)=>{log.push(sql);},release:()=>log.push('release')};
   const pool={connect:async()=>client};
-  await R._test.createObservingRun(pool,{},new Date(),async(_c,_o,run)=>({row:{id:run.id}}),async()=>{});
+  let createdRun;
+  await R._test.createObservingRun(pool,{},new Date('2099-01-01T00:00:00.000Z'),
+    async(_c,_o,run)=>{createdRun=run;return {row:{id:run.id}};},async()=>{});
   assert.deepEqual(log.slice(0,2),['BEGIN','COMMIT']);
+  assert.deepEqual([createdRun.observationLeaseMs,createdRun.observingAt,createdRun.observationDeadline],
+    [R.OBSERVATION_LEASE_MS,undefined,undefined],'application time cannot establish the lease');
   log.length=0;
   await assert.rejects(R._test.createObservingRun(pool,{},new Date(),async(_c,_o,run)=>({row:{id:run.id}}),
     async()=>{throw new Error('audit failed');}),/audit failed/);
@@ -46,8 +50,13 @@ test('observing creation commits before provider observation and rolls back an a
   assert.deepEqual(log.slice(0,3),['BEGIN','provider','COMMIT']);
 });
 
-test('lease exceeds the bounded three-request provider runtime',()=>{
+test('lease is bounded and established from one PostgreSQL clock read under the authority lock',()=>{
   assert.ok(R.OBSERVATION_LEASE_MS>3*8000);
+  assert.equal(R.OBSERVATION_LEASE_MS,authority.MAX_RECONCILIATION_LEASE_MS);
+  const fs=require('node:fs');
+  const source=fs.readFileSync(require.resolve('../services/security/google_ads_paused_draft_reconciliation'),'utf8');
+  assert.match(source,/WITH lease AS \(SELECT clock_timestamp\(\) AS now\)[\s\S]*lease\.now,lease\.now\+\(\$17/);
+  assert.match(source,/run\.observationLeaseMs<1\|\|run\.observationLeaseMs>MAX_RECONCILIATION_LEASE_MS/);
 });
 
 test('late terminal settlement reads the lease clock after locking and classifies as interrupted',async(t)=>{
