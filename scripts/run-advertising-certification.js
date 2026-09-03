@@ -14,6 +14,7 @@ const files = [
   'test/integration/google-ads-paused-draft-execution-postgres.test.js',
   'test/integration/google-ads-credential-persistence-authority-postgres.test.js',
   'test/advertising-google-ads-paused-draft-connector.test.js',
+  'test/advertising-google-ads-paused-draft-reconciliation-observer.test.js',
   'test/google-ads-paused-draft-secret-boundary.test.js',
   'test/advertising-optimization-execution-run.test.js',
   'test/integration/meta-activation-capability-postgres.test.js',
