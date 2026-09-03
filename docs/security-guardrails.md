@@ -3376,6 +3376,65 @@ Coverage: `test/google-ads-provider-draft-operation-schema.test.js`,
 
 Coverage: `test/google-ads-paused-draft-secret-boundary.test.js` plus the PostgreSQL cases in `test/integration/google-ads-provider-draft-operations-postgres.test.js`.
 
+## Advertising orchestrator — Google Ads paused-draft execution (PR10B.2b)
+
+`google_ads_provider_draft_operations.execute` is the one guarded path that may
+actually call the Google Ads paused-draft connector. It creates PAUSED,
+non-serving draft objects only; it never enables, activates, publishes,
+schedules, launches, optimizes or raises spend, and it has no route, worker,
+scheduler or retry.
+
+- **Ordering.** The PR10B.1 ledger row is funded and committed *before* anything
+  can act; authority is re-proved inside the transaction that performs the call;
+  the credential is decrypted only inside the PR10B.2a secret scope; the
+  connector is invoked once; provider evidence is persisted before the
+  settlement that may claim `external_action_taken`.
+- **Reauthorization immediately before the call.** Tenant, actor, human session,
+  draft revision, approval (including expiry), intent, account fingerprint,
+  credential ref and version, the consumed capability and its TTL, active
+  membership, the explicit `advertising.provider_drafts.create` grant, and both
+  the tenant and global kill switches are re-read through the PR10A
+  authoritative path. Its `FOR UPDATE` locks are held across the invocation and
+  the settlement, so nothing can drift underneath the call.
+- **The payload is the approved snapshot.** What the provider is asked to create
+  is derived from the approval's `snapshot_json`, whose sha256 the authoritative
+  path has just re-proved against this operation's `snapshot_hash`. A
+  caller-supplied draft is only an early serving-shape rejection: it is not
+  authority, and its name and budget never reach Google.
+- **Secrets.** The sealed vault handle is forwarded to the connector, never
+  unpacked: no token, client secret or raw customer id is named, copied,
+  serialized, logged or persisted by this module, and the handle stops answering
+  when the scope closes.
+- **Idempotency and replay.** The stable `idempotency_key` /
+  `provider_operation_key` label the single request. A duplicate delivery of a
+  settled — or still in-flight — operation returns stored metadata and
+  reacquires no authority, decrypts no secret, exchanges no token and calls no
+  provider. A lineage mismatch is `operation_conflict`.
+- **Outcomes.** Provider rejection settles `failed`. A timeout, an unparseable
+  or oversized response, a bounded-deadline breach, or a settlement that cannot
+  persist its evidence settles `unknown` with reconciliation required. Nothing
+  retries automatically, and `succeeded` / `external_action_taken` still require
+  a confirmed PAUSED creation plus a live DB-backed grant.
+- **Transactions.** `fund`, `settle` and `get` keep their caller-owned
+  transaction contract and now assert an open transaction (a savepoint probe)
+  before touching the database, so a forgotten `BEGIN` cannot autocommit past a
+  `FOR UPDATE` lock. Only `execute` opens transactions, and only because the
+  provider call sits between the funding commit and the settlement.
+- **Live Google is off by default.** Without an injected provider transport, the
+  call requires both an explicit caller opt-in and the connector's
+  `INFOGENIE_LIVE_GOOGLE_ADS_PAUSED_DRAFT=1` environment gate. The OAuth token
+  transport is always injected; this module has no network client.
+
+Coverage: `test/google-ads-provider-draft-operations-security.test.js` (mocked
+pool: replay, live-off default, serving-shaped input, transaction assertion) and
+`test/integration/google-ads-paused-draft-execution-postgres.test.js` (mocked
+Google client against real PostgreSQL: authorization, revoked permission,
+inactive membership, wrong tenant and actor, stale/expired capability, expired
+approval, lineage mismatch, credential drift, both kill switches, duplicate and
+in-flight requests, provider rejection, timeout, bounded deadline,
+persist-before-success, serving-state prevention, and secret-leakage checks),
+both registered in `scripts/run-advertising-certification.js`.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
