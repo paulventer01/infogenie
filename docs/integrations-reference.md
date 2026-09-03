@@ -188,6 +188,20 @@ Narrow mutate-only connector for PAUSED, non-serving Google Ads draft objects. U
 
 This connector does not settle `orchestrator_google_ads_provider_draft_operations`, resolve vault secrets, or mount HTTP.
 
+### 4.5 Google Ads paused-draft reconciliation observer
+
+Read-only ledger-bound GAQL Search observer for PAUSED Google Ads draft objects. Its separate host-allowlisted transport shares nothing with the write connector and can call Search only — never mutate or another provider RPC.
+
+| Item | Value |
+|------|--------|
+| **Module** | `services/agent_orchestrator/connectors/google_ads_paused_draft_reconciliation_observer.js` |
+| **Host allowlist** | `googleads.googleapis.com` only |
+| **Path** | `POST /v17/customers/{id}/googleAds:search` with internally generated, ledger-bound GAQL; fixed fields (`status`, `resource_name`, parent links) and `LIMIT 1` |
+| **Shape** | One Search per ledger kind (`campaign_budget`, `campaign`, `ad_group`). No retry. Sanitized observations; `serving` is always false. Does not evaluate `verified` |
+| **Auth** | Caller-supplied access + developer token (optional `login-customer-id`). Tokens, raw customer ids, and request URLs never appear in the result |
+| **Default** | Injected `transport`. Live Google requires `allowLive: true` **and** `INFOGENIE_LIVE_GOOGLE_ADS_RECONCILIATION=1`. Default tests never set this. Does not reuse `INFOGENIE_LIVE_GOOGLE_ADS_PAUSED_DRAFT` |
+| **Scope** | Not a new API prefix. Does not settle operations or read the vault |
+
 ---
 
 ## 5 · Data & Intelligence

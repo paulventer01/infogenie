@@ -3435,6 +3435,12 @@ in-flight requests, provider rejection, timeout, bounded deadline,
 persist-before-success, serving-state prevention, and secret-leakage checks),
 both registered in `scripts/run-advertising-certification.js`.
 
+## Advertising orchestrator — Google Ads reconciliation reads (PR10C.1)
+
+`services/security/google_ads_paused_draft_reconciliation.js` is read-only: it observes PAUSED objects PR10B.2b already created and never writes to the provider. One consume-once authorization binds one PR10B operation plus its three PAUSED objects; every stored binding is copied from the locked operation row, and the human session, active tenant, active membership and explicit `advertising.reconciliation.read` grant are re-proved from the database. `advertising.provider_drafts.create` is deliberately **not** required, and the create-side kill switches are deliberately **not** consulted — freezing new creations must not strand reconciliation of objects that already exist. Consumption commits in its own transaction before the PR10B.2a secret scope opens at the last responsible moment, so a provider or transport failure can never un-consume the grant; a replay of a consumed authorization returns metadata alone, with no secret scope, decryption, token exchange or network. The only reachable provider surface is the read-only GAQL Search observer (no mutate RPC, provider write, route, worker, scheduler, retry, runs table or review closure), the sealed vault handle never leaves the module, and audit details are exactly `{authorization_id, operation_id, status}`.
+
+Coverage: `test/google-ads-paused-draft-reconciliation-security.test.js` and `test/integration/google-ads-paused-draft-reconciliation-postgres.test.js`, both registered in `scripts/run-advertising-certification.js`.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
