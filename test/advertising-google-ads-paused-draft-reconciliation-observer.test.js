@@ -40,20 +40,24 @@ function leaked(value) {
     .test(typeof value === 'string' ? value : JSON.stringify(value));
 }
 
+const resultKey = { campaign_budget: 'campaignBudget', campaign: 'campaign', ad_group: 'adGroup' };
+function searchBody(kind, resource) { return { results: [{ [resultKey[kind]]: resource }] }; }
+
 async function observe(jsonMap) {
   let i = 0;
   return observer.observePausedGoogleAdsLedger(input(async (request) => {
     const kind = observer.OBJECT_KINDS[i++];
-    return { status: 200, json: jsonMap[kind], _req: request, _kind: kind };
+    return { status: 200, json: searchBody(kind, jsonMap[kind]), _req: request, _kind: kind };
   }));
 }
 
-test('GET-only allowlisted URLs; PAUSED binds; ENABLED is not paused; secrets stay out', async () => {
+test('read-only GAQL Search is allowlisted and ledger-bound; PAUSED binds; ENABLED is not paused', async () => {
   const calls = [];
   const json = bodies();
   const result = await observer.observePausedGoogleAdsLedger(input(async (request) => {
     calls.push(request);
-    return { status: 200, json: json[observer.OBJECT_KINDS[calls.length - 1]] };
+    const kind = observer.OBJECT_KINDS[calls.length - 1];
+    return { status: 200, json: searchBody(kind, json[kind]) };
   }));
   assert.equal(result.attempted_observations, 3);
   assert.equal(result.completed_observations, 3);
@@ -64,18 +68,18 @@ test('GET-only allowlisted URLs; PAUSED binds; ENABLED is not paused; secrets st
   assert.equal(result.observations[1].budget_parent_matches, true);
   assert.equal(result.observations[2].campaign_parent_matches, true);
   assert.equal(Object.isFrozen(result), true);
-  const expectedPath = {
-    campaign_budget: `/v17/customers/${CUSTOMER}/campaignBudgets/11`,
-    campaign: `/v17/customers/${CUSTOMER}/campaigns/22`,
-    ad_group: `/v17/customers/${CUSTOMER}/adGroups/33`,
-  };
   for (let i = 0; i < calls.length; i += 1) {
     const request = calls[i]; const url = new URL(request.url); const kind = observer.OBJECT_KINDS[i];
-    assert.equal(request.method, 'GET');
+    assert.equal(request.method, 'POST');
     assert.equal(url.origin, observer.API_ORIGIN);
-    assert.equal(url.pathname, expectedPath[kind]);
-    assert.deepEqual(url.searchParams.get('fields').split(','), observer.FIELDS[kind]);
-    assert.doesNotMatch(request.url, /mutate|:search|tok-secret-never|dev-secret-never|Bearer/i);
+    assert.equal(url.pathname, `/v17/customers/${CUSTOMER}/googleAds:search`);
+    assert.equal(url.search, '');
+    const body = JSON.parse(request.body);
+    assert.deepEqual(Object.keys(body), ['query']);
+    assert.match(body.query, new RegExp(`^SELECT .* FROM ${kind} WHERE ${kind}\\.resource_name = 'customers/${CUSTOMER}/`));
+    assert.match(body.query, / LIMIT 1$/);
+    assert.ok(observer.FIELDS[kind].every((field) => body.query.includes(field)));
+    assert.doesNotMatch(request.url + request.body, /googleAds:mutate|tok-secret-never|dev-secret-never|Bearer/i);
     assert.equal(request.timeoutMs, observer.TIMEOUT_MS);
     assert.equal(request.maxResponseBytes, observer.MAX_RESPONSE_BYTES);
   }
@@ -110,7 +114,7 @@ test('classifies 404/401/403/timeout/5xx/oversized/malformed/redirect without le
 test('rejects caller keys; live default off; transport called exactly 3 times', async () => {
   let calls = 0; const transport = async () => { calls += 1; return { status: 404 }; };
   for (const key of ['url', 'method', 'fields', 'customerId', 'customer_id', 'providerObjectId',
-    'provider_object_id', 'status', 'payload', 'body', 'mutateOperations', 'operations']) {
+    'provider_object_id', 'status', 'payload', 'body', 'query', 'mutateOperations', 'operations']) {
     await assert.rejects(observer.observePausedGoogleAdsLedger(input(transport, { [key]: 'x' })),
       { code: 'caller_provider_control_rejected' });
   }
@@ -134,6 +138,7 @@ test('rejects caller keys; live default off; transport called exactly 3 times', 
 
 test('observer source has no write-connector symbols', () => {
   const src = fs.readFileSync(SRC, 'utf8');
+  assert.match(src, /googleAds:search/);
   assert.doesNotMatch(src, /googleAds:mutate|createPausedGoogleAdsDraft/);
   assert.doesNotMatch(src, /google_ads_paused_draft\.js/);
 });
