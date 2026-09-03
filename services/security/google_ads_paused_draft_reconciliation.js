@@ -138,6 +138,50 @@ async function markConsumed(c,p) {
   await audit(c,tenantId,actorId,row.workflow_id,EVENT('consumed'),detail('consumed'));return done.rows[0]; }
 async function consume(c,o={}) { const p=await prepare(c,o);
   return p.replay?project(p.row,true):project(await markConsumed(c,p),false); }
+// Narrow PR10C.2 primitive. The caller owns the transaction so the locked
+// authorization, immutable observing run and initial audit can commit as one
+// unit. No provider material is accepted here and the account fingerprint is
+// deliberately not copied into the run table.
+async function consumeIntoReconciliationRun(c,o={},run={}) {
+  if(!c||typeof c.query!=='function')throw deny('validation_failed');
+  let p;
+  try { p=await prepare(c,o); }
+  catch(error) {
+    // prepare() may have durably classified an expired/rejected authority and
+    // written its audit evidence. Only those decisions may be committed by the
+    // transaction owner; validation, insert and infrastructure failures below
+    // must continue to roll the whole transaction back.
+    if(error&&error.blocked)error.commit_authority_decision=true;
+    throw error;
+  }
+  if(p.replay)throw deny('authorization_rejected');
+  if(!valid(run.id)||!valid(run.auditRef)||!(run.observingAt instanceof Date)
+    ||!(run.observationDeadline instanceof Date)||!(run.observationDeadline>run.observingAt))throw deny('validation_failed');
+  const row=p.row;
+  const inserted=await c.query(`INSERT INTO orchestrator_google_ads_reconciliation_runs
+    (tenant_id,id,authorization_id,invocation_id_hash,requested_by,workflow_id,draft_id,publishing_request_id,
+     operation_id,snapshot_hash,intent_id,intent_hash,credential_ref_id,credential_ref_version,ledger_root_hash,
+     state,audit_ref,observing_at,observation_deadline) VALUES
+    ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'observing',$16,$17,$18) RETURNING *`,
+  [p.tenantId,run.id,row.id,p.invocationHash,p.actorId,row.workflow_id,row.draft_id,row.publishing_request_id,
+    row.operation_id,row.snapshot_hash,row.intent_id,row.intent_hash,row.credential_ref_id,row.credential_ref_version,
+    row.ledger_root_hash,run.auditRef,run.observingAt,run.observationDeadline]);
+  if(inserted.rowCount!==1)throw deny('authorization_rejected');
+  const consumed=await markConsumed(c,p);
+  return Object.freeze({consumed:project(consumed,false),row:inserted.rows[0]});
+}
+// Metadata replay/get must remain subject to current human-session authority.
+// prepare() re-proves tenant, membership, DB grant, operation ledger and current
+// credential binding without opening the vault. Also bind the supplied replay
+// key to the invocation that originally consumed this authorization.
+async function reproveMetadataAuthority(c,o={}) {
+  if(!c||typeof c.query!=='function')throw deny('validation_failed');
+  const p=await prepare(c,o);
+  if(!p.replay||!same(String(p.row.invocation_id_hash||''),hash(o.invocationId)))throw deny('authorization_rejected');
+  return Object.freeze({tenant_id:int(o.tenantId),authorization_id:p.row.id,
+    invocation_id_hash:p.row.invocation_id_hash,requested_by:Number(p.row.requested_by),
+    workflow_id:p.row.workflow_id,operation_id:p.row.operation_id});
+}
 // Owns the transaction boundary: the consume is committed before this returns, so
 // nothing downstream can read while the spend is still reversible. A blocked
 // decision commits its expiry/audit state; infrastructure errors roll back.
@@ -224,4 +268,5 @@ async function revoke(c,o={}) {
     {authorization_id:r.rows[0].id,operation_id:r.rows[0].operation_id,status:'revoked'});
   return project(r.rows[0],false); }
 module.exports={PERMISSION,KINDS,TABLE,DEFAULT_TTL_MS,MAX_TTL_MS,ledgerRoot,validateLineage,issue,consume,
-  consumeAtomic,consumeAndObserve,observeWithConsumedCredential,get,revoke,_deny:deny,_human:human};
+  consumeIntoReconciliationRun,reproveMetadataAuthority,consumeAtomic,consumeAndObserve,
+  observeWithConsumedCredential,get,revoke,_deny:deny,_human:human};
