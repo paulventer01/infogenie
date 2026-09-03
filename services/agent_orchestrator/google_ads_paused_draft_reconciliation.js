@@ -153,6 +153,14 @@ async function finishRun(pool,opts,tenantId,id,evaluation,now=new Date(),auditIm
     assertProofBindings(locked.rows[0],await authority.reproveMetadataAuthority(client,opts));
     if(TERMINAL_STATES.includes(locked.rows[0].state)){await client.query('COMMIT');return publicRun(locked.rows[0]);}
     if(locked.rows[0].state!=='observing')throw fail('invalid_reconciliation_transition');
+    if(new Date(locked.rows[0].observation_deadline)<=now) {
+      const expired=await client.query(`UPDATE ${TABLE}
+        SET state='failed',classifications=ARRAY['interrupted_observation']::TEXT[],completed_at=$3
+        WHERE tenant_id=$1 AND id=$2 AND state='observing' RETURNING *`,[tenantId,id,now]);
+      if(expired.rowCount!==1)throw fail('invalid_reconciliation_transition');
+      await auditImpl(client,expired.rows[0],'google_ads_paused_draft_reconciliation_failed');
+      await client.query('COMMIT');return publicRun(expired.rows[0]);
+    }
     const done=await client.query(`UPDATE ${TABLE}
       SET state=$3,observations=$4::jsonb,classifications=$5,completed_at=$6
       WHERE tenant_id=$1 AND id=$2 AND state='observing' RETURNING *`,
