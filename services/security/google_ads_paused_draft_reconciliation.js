@@ -1,246 +1,203 @@
 'use strict';
 
-// PR10C.1 — consume-once Google Ads reconciliation READ authority.
-//
-// This module may only observe PAUSED provider objects that PR10B.2b already
-// created. It writes nothing to Google: the sole provider surface it can reach
-// is the dedicated GET-only PR10C.1 observer, and it has no route, worker,
-// scheduler, retry, runs table or review closure. Activation, publishing and
-// optimization stay out of scope entirely.
-//
-// The PR10B.2a paused-draft secret scope is reused unchanged and opened at the
-// last responsible moment, strictly after the consume has committed, so a
-// provider or transport failure can never restore the one-shot authorization.
-// The create-side kill switches are deliberately NOT consulted: stopping new
-// creations must not strand reconciliation of objects that already exist.
+// PR10C.1 — consume-once Google Ads reconciliation READ authority. It may only
+// observe PAUSED provider objects that PR10B.2b already created: the sole provider
+// surface it can reach is the dedicated GET-only PR10C.1 observer, and it has no
+// route, worker, scheduler, retry, runs table or review closure. The PR10B.2a
+// paused-draft secret scope is reused unchanged and opened at the last responsible
+// moment, strictly after the consume has committed, so a provider or transport
+// failure can never restore the one-shot authorization. The create-side kill
+// switches are deliberately not consulted: freezing new creations must not strand
+// reconciliation of objects that already exist.
 
 const crypto = require('crypto');
 const vault = require('../credentials/vault');
 const observer = require('../agent_orchestrator/connectors/google_ads_paused_draft_reconciliation_observer');
 
-const TABLE = 'orchestrator_google_ads_reconciliation_read_authorizations';
-const OPERATIONS = 'orchestrator_google_ads_provider_draft_operations';
-const OBJECTS = 'orchestrator_google_ads_provider_draft_objects';
-// Reuses the existing read permission. Creating drafts is a different authority
-// and is deliberately not required to reconcile what already exists.
-const PERMISSION = 'advertising.reconciliation.read';
-const KINDS = Object.freeze(['campaign_budget', 'campaign', 'ad_group']);
-const DEFAULT_TTL_MS = 5 * 60 * 1000;
-const MAX_TTL_MS = 10 * 60 * 1000;
-const SAFE_ID = /^[A-Za-z0-9_.:-]{1,128}$/;
-const HEX64 = /^[0-9a-f]{64}$/;
-// Optional caller bindings. They may only agree with the operation row; they can
-// never substitute for it.
-const BINDINGS = Object.freeze([['workflowId','workflow_id'],['draftId','draft_id'],
-  ['publishingRequestId','publishing_request_id'],['intentId','intent_id'],['snapshotHash','snapshot_hash'],
-  ['intentHash','intent_hash'],['capabilityId','capability_id'],['credentialRefId','credential_ref_id'],
-  ['accountFingerprint','account_fingerprint']]);
+const TABLE='orchestrator_google_ads_reconciliation_read_authorizations';
+const OPERATIONS='orchestrator_google_ads_provider_draft_operations';
+const OBJECTS='orchestrator_google_ads_provider_draft_objects';
+// The existing read permission. Creating drafts is a different authority and is
+// deliberately not required to reconcile what already exists.
+const PERMISSION='advertising.reconciliation.read';
+const KINDS=Object.freeze(['campaign_budget','campaign','ad_group']);
+const DEFAULT_TTL_MS=5*60*1000;
+const MAX_TTL_MS=10*60*1000;
+const SAFE_ID=/^[A-Za-z0-9_.:-]{1,128}$/;
+const HEX64=/^[0-9a-f]{64}$/;
+const EVENT=(phase)=>`google_ads_reconciliation_read_authorization_${phase}`;
+// Optional caller bindings: they may only agree with the operation row.
+const BINDINGS=Object.freeze([['workflowId','workflow_id'],['draftId','draft_id'],['intentId','intent_id'],
+  ['publishingRequestId','publishing_request_id'],['snapshotHash','snapshot_hash'],['intentHash','intent_hash'],
+  ['capabilityId','capability_id'],['credentialRefId','credential_ref_id'],['accountFingerprint','account_fingerprint']]);
+// Active tenant, active membership and a live DB-backed read grant. No kill switch.
+const GRANTED=`JOIN tenants t ON t.id=$$.tenant_id AND t.status='active'
+    JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$3 AND tu.status='active'
+    JOIN roles role ON role.id=tu.role_id AND (role.tenant_id=t.id OR role.tenant_id IS NULL)`;
 
 function deny(code) { const e=new Error(code);e.code=code;e.blocked=true;e.external_action_taken=false;return e; }
 function hash(v) { return crypto.createHash('sha256').update(String(v)).digest('hex'); }
 function same(a,b) { if(typeof a!=='string'||typeof b!=='string')return false;const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&crypto.timingSafeEqual(x,y); }
 function int(v) { const n=Number(v);return Number.isSafeInteger(n)&&n>0?n:null; }
 function valid(v) { return SAFE_ID.test(String(v||'')); }
-// PR10A human-session shape: no api_key, worker, service or agent principal may
-// hold a reconciliation read authorization.
+// PR10A human-session shape: no api_key, worker, service or agent principal may hold a read authorization.
 function human(o) { const id=int(o&&o.actorUserId);
-  if(!id||o.actorType!=='human'||!valid(o.sessionId)
-    ||['api_key','worker','service','service_account','automation','autonomous','agent'].includes(String(o.principalType||'').toLowerCase()))throw deny('human_session_required');
-  if(typeof o.hasExplicitTenantPermission!=='function'||o.hasExplicitTenantPermission(PERMISSION)!==true)throw deny('permission_denied');
-  return id; }
-// Audit detail is exactly {authorization_id, operation_id, status}: no session,
-// credential, token, customer id, fingerprint or provider object material.
-async function audit(c,tenantId,actorId,workflowId,event,detail) {
-  await c.query(`INSERT INTO orchestrator_audit_events
-    (tenant_id,workflow_id,event,actor_user_id,detail) VALUES($1,$2,$3,$4,$5::jsonb)`,
-  [tenantId,workflowId,event,actorId,JSON.stringify({authorization_id:detail.authorization_id,
-    operation_id:detail.operation_id,status:detail.status})]); }
+  if(!id||o.actorType!=='human'||!valid(o.sessionId)||['api_key','worker','service','service_account','automation','autonomous','agent'].includes(String(o.principalType||'').toLowerCase()))throw deny('human_session_required');
+  if(typeof o.hasExplicitTenantPermission!=='function'||o.hasExplicitTenantPermission(PERMISSION)!==true)throw deny('permission_denied');return id; }
+// Audit detail is exactly {authorization_id, operation_id, status}: no session, credential,
+// token, customer id, fingerprint or provider object material.
+async function audit(c,tenantId,actorId,workflowId,event,detail) { await c.query(`INSERT INTO orchestrator_audit_events
+  (tenant_id,workflow_id,event,actor_user_id,detail) VALUES($1,$2,$3,$4,$5::jsonb)`,[tenantId,workflowId,event,actorId,
+  JSON.stringify({authorization_id:detail.authorization_id,operation_id:detail.operation_id,status:detail.status})]); }
 function project(row,replay) { const iso=(k)=>row[k]?new Date(row[k]).toISOString():null;
-  return Object.freeze({authorization_id:row.id,operation_id:row.operation_id,status:row.status,
-    replay:!!replay,issued_at:iso('issued_at'),expires_at:iso('expires_at'),reserved_at:iso('reserved_at'),
+  return Object.freeze({authorization_id:row.id,operation_id:row.operation_id,status:row.status,replay:!!replay,
+    issued_at:iso('issued_at'),expires_at:iso('expires_at'),reserved_at:iso('reserved_at'),
     consumed_at:iso('consumed_at'),revoked_at:iso('revoked_at'),external_action_taken:false}); }
 
-function ledgerRoot(rows) {
-  return hash(KINDS.map((kind)=>`${kind}:${(Array.isArray(rows)
-    ?rows.find((r)=>r&&r.object_kind===kind)||{}:{}).provider_object_id_digest}`).join('|')); }
+function ledgerRoot(rows) { return hash(KINDS.map((kind)=>`${kind}:${(Array.isArray(rows)
+  ?rows.find((r)=>r&&r.object_kind===kind)||{}:{}).provider_object_id_digest}`).join('|')); }
 // Exactly the three PAUSED, non-serving objects of this operation, each digest
 // proving its own provider object id, all bound to the operation's account.
 function validateLineage(rows,operation) {
   if(!Array.isArray(rows)||rows.length!==KINDS.length)throw deny('invalid_ledger_lineage');
   const by=Object.create(null);
   for(const r of rows) {
-    if(!r||!KINDS.includes(r.object_kind)||by[r.object_kind]
-      ||typeof r.provider_object_id!=='string'||!HEX64.test(String(r.provider_object_id_digest||''))
+    if(!r||!KINDS.includes(r.object_kind)||by[r.object_kind]||typeof r.provider_object_id!=='string'
+      ||!HEX64.test(String(r.provider_object_id_digest||''))
       ||!same(hash(r.provider_object_id),String(r.provider_object_id_digest))
       ||!same(String(r.account_fingerprint||''),String(operation&&operation.account_fingerprint||''))
-      ||r.provider_status!=='PAUSED'||r.serving!==false||r.published!==false
-      ||r.activated!==false)throw deny('invalid_ledger_lineage');
-    by[r.object_kind]=r;
-  }
-  if(KINDS.some((k)=>!by[k]))throw deny('invalid_ledger_lineage');
-  return ledgerRoot(rows); }
+      ||r.provider_status!=='PAUSED'||r.serving!==false||r.published!==false||r.activated!==false)throw deny('invalid_ledger_lineage');
+    by[r.object_kind]=r; }
+  if(KINDS.some((k)=>!by[k]))throw deny('invalid_ledger_lineage');return ledgerRoot(rows); }
 
-// The operation row is the only authority. Active tenant, active membership and
-// a live DB-backed read grant are required; the create-side kill switches are
-// not, so a create freeze cannot strand reconciliation.
+// The operation row is the only authority, and only one that actually acted may
+// be observed. A create freeze cannot strand this read.
 async function loadOperation(c,tenantId,actorId,operationId) {
-  const r=await c.query(`SELECT op.* FROM ${OPERATIONS} op
-    JOIN tenants t ON t.id=op.tenant_id AND t.status='active'
-    JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$3 AND tu.status='active'
-    JOIN roles role ON role.id=tu.role_id AND (role.tenant_id=t.id OR role.tenant_id IS NULL)
+  const r=await c.query(`SELECT op.* FROM ${OPERATIONS} op ${GRANTED.replaceAll('$$','op')}
     WHERE op.tenant_id=$1 AND op.id=$2 AND op.external_action_taken=TRUE
       AND role.permissions ? $4 FOR SHARE OF op,t,tu,role`,[tenantId,operationId,actorId,PERMISSION]);
-  if(r.rowCount!==1)throw deny('authorization_lineage_mismatch');
-  const operation=r.rows[0];
-  const objects=await c.query(`SELECT object_kind,provider_object_id,provider_object_id_digest,
-      account_fingerprint,provider_status,serving,published,activated
-    FROM ${OBJECTS} WHERE tenant_id=$1 AND operation_id=$2 ORDER BY sequence_number FOR SHARE`,
-  [tenantId,operation.id]);
+  if(r.rowCount!==1)throw deny('authorization_lineage_mismatch');const operation=r.rows[0];
+  const objects=await c.query(`SELECT object_kind,provider_object_id,provider_object_id_digest,account_fingerprint,
+      provider_status,serving,published,activated FROM ${OBJECTS} WHERE tenant_id=$1 AND operation_id=$2
+    ORDER BY sequence_number FOR SHARE`,[tenantId,operation.id]);
   return {operation,objects:objects.rows,ledgerRoot:validateLineage(objects.rows,operation)}; }
 
 // Caller owns the transaction. Every stored binding is copied from the locked
-// operation row, never from the caller's options.
+// operation row; the caller's own options may only agree with it.
 async function issue(c,o={}) {
   const tenantId=int(o.tenantId),actorId=human(o),ttl=int(o.ttlMs||DEFAULT_TTL_MS);
   if(!tenantId||!valid(o.operationId)||!ttl||ttl>MAX_TTL_MS)throw deny('validation_failed');
   const g=await loadOperation(c,tenantId,actorId,String(o.operationId)),op=g.operation;
-  for(const [key,column] of BINDINGS) {
-    if(o[key]!==undefined&&!same(String(o[key]),String(op[column])))throw deny('authorization_lineage_mismatch');
-  }
-  if(o.credentialRefVersion!==undefined&&Number(o.credentialRefVersion)!==Number(op.credential_ref_version))throw deny('authorization_lineage_mismatch');
-  if(o.ledgerRootHash!==undefined&&!same(String(o.ledgerRootHash),g.ledgerRoot))throw deny('authorization_lineage_mismatch');
+  for(const [key,column] of BINDINGS) if(o[key]!==undefined&&!same(String(o[key]),String(op[column])))throw deny('authorization_lineage_mismatch');
   // The credential owner is the operation's actor, so only they may reconcile.
-  if(Number(op.actor_user_id)!==actorId)throw deny('authorization_lineage_mismatch');
+  if((o.credentialRefVersion!==undefined&&Number(o.credentialRefVersion)!==Number(op.credential_ref_version))
+    ||(o.ledgerRootHash!==undefined&&!same(String(o.ledgerRootHash),g.ledgerRoot))
+    ||Number(op.actor_user_id)!==actorId)throw deny('authorization_lineage_mismatch');
   const now=new Date((await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now);
   if(!Number.isFinite(now.getTime()))throw deny('validation_failed');
   const id=`garr_${crypto.randomUUID()}`,expires=new Date(now.getTime()+ttl);
-  try {
-    await c.query(`INSERT INTO ${TABLE}
-      (tenant_id,id,nonce_hash,requested_by,session_id_hash,workflow_id,draft_id,publishing_request_id,intent_id,
-       snapshot_hash,intent_hash,operation_id,capability_id,credential_ref_id,credential_ref_version,
-       account_fingerprint,ledger_root_hash,issued_at,expires_at,audit_ref)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-    [tenantId,id,hash(crypto.randomBytes(32)),actorId,hash(o.sessionId),op.workflow_id,op.draft_id,
-      op.publishing_request_id,op.intent_id,op.snapshot_hash,op.intent_hash,op.id,op.capability_id,
-      op.credential_ref_id,op.credential_ref_version,op.account_fingerprint,g.ledgerRoot,now,expires,
-      `garr-audit-${crypto.randomUUID()}`]);
-  } catch(error) { if(error?.code==='23505')throw deny('authorization_conflict');throw error; }
-  await audit(c,tenantId,actorId,op.workflow_id,'google_ads_reconciliation_read_authorization_issued',
-    {authorization_id:id,operation_id:op.id,status:'issued'});
+  try { await c.query(`INSERT INTO ${TABLE}
+    (tenant_id,id,nonce_hash,requested_by,session_id_hash,workflow_id,draft_id,publishing_request_id,intent_id,
+     snapshot_hash,intent_hash,operation_id,capability_id,credential_ref_id,credential_ref_version,
+     account_fingerprint,ledger_root_hash,issued_at,expires_at,audit_ref)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+  [tenantId,id,hash(crypto.randomBytes(32)),actorId,hash(o.sessionId),op.workflow_id,op.draft_id,
+    op.publishing_request_id,op.intent_id,op.snapshot_hash,op.intent_hash,op.id,op.capability_id,op.credential_ref_id,
+    op.credential_ref_version,op.account_fingerprint,g.ledgerRoot,now,expires,`garr-audit-${crypto.randomUUID()}`]); }
+  catch(error) { if(error?.code==='23505')throw deny('authorization_conflict');throw error; }
+  await audit(c,tenantId,actorId,op.workflow_id,EVENT('issued'),{authorization_id:id,operation_id:op.id,status:'issued'});
   return Object.freeze({authorization_id:id,operation_id:op.id,status:'issued',
     expires_at:expires.toISOString(),replay:false,external_action_taken:false}); }
 
-// Locks the authorization, re-proves actor, human session, expiry and the whole
-// ledger, then hands the caller an atomic issued→reserved→consumed transition.
+// Locks the authorization and re-proves actor, human session, expiry, ledger and
+// credential binding before any transition is offered.
 async function prepare(c,o) {
   const tenantId=int(o.tenantId),actorId=human(o);
   if(!tenantId||!valid(o.authorizationId)||!valid(o.invocationId))throw deny('validation_failed');
-  const r=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,
-    [tenantId,String(o.authorizationId)]);
-  if(r.rowCount!==1)throw deny('authorization_rejected');
-  const row=r.rows[0];
-  const reject=async(code)=>{await audit(c,tenantId,actorId,row.workflow_id,
-    'google_ads_reconciliation_read_authorization_rejected',
+  const r=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,String(o.authorizationId)]);
+  if(r.rowCount!==1)throw deny('authorization_rejected');const row=r.rows[0];
+  const reject=async(code)=>{await audit(c,tenantId,actorId,row.workflow_id,EVENT('rejected'),
     {authorization_id:row.id,operation_id:row.operation_id,status:row.status});throw deny(code);};
   if(Number(row.requested_by)!==actorId||!same(String(row.session_id_hash),hash(o.sessionId))
     ||!['issued','consumed'].includes(row.status))return reject('authorization_rejected');
-  // A consumed authorization answers from stored metadata only: no transition,
-  // no secret scope, no observer, no network.
+  // A consumed authorization answers from stored metadata: no transition, no
+  // secret scope, no observer, no network.
   if(row.status==='consumed')return {replay:true,row};
-  const now=o.now instanceof Date?o.now
-    :new Date((await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now);
+  const now=o.now instanceof Date?o.now:new Date((await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now);
   if(!(new Date(row.expires_at)>now)) {
-    await c.query(`UPDATE ${TABLE} SET status='expired' WHERE tenant_id=$1 AND id=$2 AND status='issued'`,
-      [tenantId,row.id]);
-    return reject('authorization_expired');
-  }
+    await c.query(`UPDATE ${TABLE} SET status='expired' WHERE tenant_id=$1 AND id=$2 AND status='issued'`,[tenantId,row.id]);
+    return reject('authorization_expired'); }
   let g;
   try { g=await loadOperation(c,tenantId,actorId,row.operation_id); }
   catch(error) { if(error&&error.blocked)return reject(error.code);throw error; }
-  if(!same(g.ledgerRoot,String(row.ledger_root_hash))
-    ||!same(String(g.operation.account_fingerprint),String(row.account_fingerprint))
-    ||!same(String(g.operation.credential_ref_id),String(row.credential_ref_id))
-    ||Number(g.operation.credential_ref_version)!==Number(row.credential_ref_version))return reject('authorization_lineage_mismatch');
+  if(!bound(g,row))return reject('authorization_lineage_mismatch');
   return {replay:false,row,tenantId,actorId,graph:g,now,invocationHash:hash(o.invocationId)}; }
+function bound(g,row) { return same(g.ledgerRoot,String(row.ledger_root_hash))
+  &&same(String(g.operation.account_fingerprint),String(row.account_fingerprint))
+  &&same(String(g.operation.credential_ref_id),String(row.credential_ref_id))
+  &&Number(g.operation.credential_ref_version)===Number(row.credential_ref_version); }
 
 async function markConsumed(c,p) {
-  const {tenantId,actorId,row,invocationHash,now}=p;
-  const detail=(status)=>({authorization_id:row.id,operation_id:row.operation_id,status});
+  const {tenantId,actorId,row,invocationHash,now}=p,detail=(status)=>({authorization_id:row.id,operation_id:row.operation_id,status});
   await c.query(`UPDATE ${TABLE} SET status='reserved',invocation_id_hash=$3,reserved_at=$4
     WHERE tenant_id=$1 AND id=$2 AND status='issued'`,[tenantId,row.id,invocationHash,now]);
-  await audit(c,tenantId,actorId,row.workflow_id,'google_ads_reconciliation_read_authorization_reserved',detail('reserved'));
+  await audit(c,tenantId,actorId,row.workflow_id,EVENT('reserved'),detail('reserved'));
   const done=await c.query(`UPDATE ${TABLE} SET status='consumed',consumed_at=$3
     WHERE tenant_id=$1 AND id=$2 AND status='reserved' RETURNING *`,[tenantId,row.id,now]);
   if(done.rowCount!==1)throw deny('authorization_rejected');
-  await audit(c,tenantId,actorId,row.workflow_id,'google_ads_reconciliation_read_authorization_consumed',detail('consumed'));
-  return done.rows[0]; }
-
-async function consume(c,o={}) {
-  const p=await prepare(c,o);
+  await audit(c,tenantId,actorId,row.workflow_id,EVENT('consumed'),detail('consumed'));return done.rows[0]; }
+async function consume(c,o={}) { const p=await prepare(c,o);
   return p.replay?project(p.row,true):project(await markConsumed(c,p),false); }
 
-// Owns the transaction boundary: the consume is committed before this returns,
-// so nothing downstream can read while the spend is still reversible. A blocked
+// Owns the transaction boundary: the consume is committed before this returns, so
+// nothing downstream can read while the spend is still reversible. A blocked
 // decision commits its expiry/audit state; infrastructure errors roll back.
 async function consumeAtomic(pool,o={}) {
   if(!pool||typeof pool.connect!=='function')throw deny('validation_failed');
   if(!int(o.tenantId)||!valid(o.authorizationId)||!valid(o.invocationId))throw deny('validation_failed');
   human(o);
   const c=await pool.connect();
-  try {
-    await c.query('BEGIN');
+  try { await c.query('BEGIN');
     try { const out=await consume(c,o);await c.query('COMMIT');return out; }
-    catch(error) { if(error&&error.blocked)await c.query('COMMIT');else await c.query('ROLLBACK');throw error; }
-  } finally { c.release(); } }
+    catch(error) { if(error&&error.blocked)await c.query('COMMIT');else await c.query('ROLLBACK');throw error; } }
+  finally { c.release(); } }
 
-// Re-reads the consumed authorization, re-proves the ledger and the credential
+// Re-reads the consumed authorization, re-proves the ledger and credential
 // binding, then opens the PR10B.2a secret scope. The sealed handle never leaves
-// this function: only the four credential values the GET observer needs are
-// copied out of it, and nothing is logged or persisted.
+// this function: only the credential values the GET observer needs are copied
+// out of it, and nothing is logged or persisted.
 async function observeWithConsumedCredential(c,o={}) {
   if(!c||typeof c.query!=='function')throw deny('validation_failed');
   const tenantId=int(o.tenantId),actorId=human(o);
-  if(!tenantId||!valid(o.authorizationId)||!valid(o.invocationId)
-    ||typeof o.tokenTransport!=='function'
+  if(!tenantId||!valid(o.authorizationId)||!valid(o.invocationId)||typeof o.tokenTransport!=='function'
     ||(o.observerTransport!==undefined&&typeof o.observerTransport!=='function'))throw deny('validation_failed');
   const r=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 AND status='consumed'
     AND requested_by=$3 AND session_id_hash=$4 AND invocation_id_hash=$5 FOR UPDATE`,
   [tenantId,String(o.authorizationId),actorId,hash(o.sessionId),hash(o.invocationId)]);
   if(r.rowCount!==1)throw deny('authorization_rejected');
   const row=r.rows[0],g=await loadOperation(c,tenantId,actorId,row.operation_id);
-  if(!same(g.ledgerRoot,String(row.ledger_root_hash))
-    ||!same(String(g.operation.account_fingerprint),String(row.account_fingerprint))
-    ||!same(String(g.operation.credential_ref_id),String(row.credential_ref_id))
-    ||Number(g.operation.credential_ref_version)!==Number(row.credential_ref_version))throw deny('credential_boundary_mismatch');
+  if(!bound(g,row))throw deny('credential_boundary_mismatch');
   // Kind plus provider object id only: the observer derives every URL itself.
-  const ledgerObjects=g.objects.map((x)=>Object.freeze({object_kind:x.object_kind,
-    provider_object_id:String(x.provider_object_id)}));
+  const ledgerObjects=g.objects.map((x)=>Object.freeze({object_kind:x.object_kind,provider_object_id:String(x.provider_object_id)}));
   const observed=await vault.withGoogleAdsPausedDraftSecretScope(c,{tenantId,ownerUserId:actorId,
     credentialRefId:row.credential_ref_id,credentialRefVersion:row.credential_ref_version,
     accountFingerprint:row.account_fingerprint,tokenTransport:o.tokenTransport,
     tokenTimeoutMs:o.tokenTimeoutMs},(handle)=>observer.observePausedGoogleAdsLedger({
-    credentials:{accessToken:handle.accessToken,developerToken:handle.developerToken,
-      customerId:handle.customerId,loginCustomerId:handle.loginCustomerId,
-      accountFingerprint:row.account_fingerprint},
+    credentials:{accessToken:handle.accessToken,developerToken:handle.developerToken,customerId:handle.customerId,
+      loginCustomerId:handle.loginCustomerId,accountFingerprint:row.account_fingerprint},
     ledgerObjects,authorizationId:row.id,ledgerReference:row.ledger_root_hash,
     transport:o.observerTransport,allowLive:o.allowLive===true}));
   return Object.freeze({authorization_id:row.id,operation_id:row.operation_id,status:'consumed',replay:false,
-    ledger_reference:row.ledger_root_hash,
+    ledger_reference:row.ledger_root_hash,serving:false,external_action_taken:false,
     attempted_observations:Number(observed&&observed.attempted_observations)||0,
     completed_observations:Number(observed&&observed.completed_observations)||0,
-    observations:Object.freeze(((observed&&observed.observations)||[]).map((x)=>Object.freeze({...x}))),
-    serving:false,external_action_taken:false}); }
+    observations:Object.freeze(((observed&&observed.observations)||[]).map((x)=>Object.freeze({...x})))}); }
 
-/**
- * Consume the authorization exactly once and then observe the already-created
- * PAUSED objects with a GET-only request.
- *
- * The consume commits first, in its own transaction. Only afterwards is a
- * second transaction opened for the secret scope, so an observer, transport or
- * provider failure leaves the authorization consumed — exactly-once holds. A
- * replay of an already-consumed authorization returns metadata alone and opens
- * no scope, decrypts nothing, exchanges no token and reaches no network.
- */
+// Consume exactly once, then observe the already-created PAUSED objects with
+// GET-only requests. The consume commits in its own transaction first, so an
+// observer, transport or provider failure leaves the authorization consumed —
+// exactly-once holds. A replay returns metadata alone: no scope, no decryption,
+// no token exchange, no network.
 async function consumeAndObserve(pool,o={}) {
   if(!pool||typeof pool.connect!=='function')throw deny('validation_failed');
   human(o);
@@ -248,21 +205,17 @@ async function consumeAndObserve(pool,o={}) {
   const consumed=await consumeAtomic(pool,o);
   if(consumed.replay)return consumed;
   const c=await pool.connect();
-  try {
-    await c.query('BEGIN');
+  try { await c.query('BEGIN');
     try { const out=await observeWithConsumedCredential(c,o);await c.query('COMMIT');return out; }
-    catch(error) { await c.query('ROLLBACK');throw error; }
-  } finally { c.release(); } }
+    catch(error) { await c.query('ROLLBACK');throw error; } }
+  finally { c.release(); } }
 
 async function get(c,o={}) {
   const tenantId=int(o.tenantId),actorId=human(o);
   if(!tenantId||!valid(o.authorizationId))throw deny('authorization_rejected');
   const r=await c.query(`SELECT a.*,CASE WHEN a.status IN ('issued','reserved')
       AND a.expires_at<=clock_timestamp() THEN 'expired' ELSE a.status END AS status
-    FROM ${TABLE} a
-    JOIN tenants t ON t.id=a.tenant_id AND t.status='active'
-    JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$3 AND tu.status='active'
-    JOIN roles role ON role.id=tu.role_id AND (role.tenant_id=t.id OR role.tenant_id IS NULL)
+    FROM ${TABLE} a ${GRANTED.replaceAll('$$','a')}
     WHERE a.tenant_id=$1 AND a.id=$2 AND a.requested_by=$3 AND a.session_id_hash=$4
       AND role.permissions ? $5`,[tenantId,String(o.authorizationId),actorId,hash(o.sessionId),PERMISSION]);
   if(r.rowCount!==1)throw deny('authorization_rejected');
@@ -276,7 +229,7 @@ async function revoke(c,o={}) {
       AND status IN ('issued','reserved') RETURNING *`,
   [tenantId,String(o.authorizationId),actorId,hash(o.sessionId),o.now instanceof Date?o.now:null]);
   if(r.rowCount!==1)throw deny('authorization_rejected');
-  await audit(c,tenantId,actorId,r.rows[0].workflow_id,'google_ads_reconciliation_read_authorization_revoked',
+  await audit(c,tenantId,actorId,r.rows[0].workflow_id,EVENT('revoked'),
     {authorization_id:r.rows[0].id,operation_id:r.rows[0].operation_id,status:'revoked'});
   return project(r.rows[0],false); }
 
