@@ -8,6 +8,7 @@ const schema = require('../../services/agent_orchestrator/schema');
 const { makeFixtures } = require('../helpers');
 
 const TABLE = 'orchestrator_google_ads_reconciliation_read_authorizations';
+const RUNS = 'orchestrator_google_ads_reconciliation_runs';
 const META = 'orchestrator_campaign_reconciliation_read_authorizations';
 const sha = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
 const H = sha('{}');
@@ -44,6 +45,7 @@ if (!db.hasDb()) {
   const id = (kind) => `${kind}-${tag}`;
 
   t.after(async () => replica(`
+    DELETE FROM ${RUNS} WHERE tenant_id IN ($1,$2);
     DELETE FROM ${TABLE} WHERE tenant_id IN ($1,$2);
     DELETE FROM ${META} WHERE tenant_id IN ($1,$2);
     DELETE FROM orchestrator_google_ads_provider_draft_objects WHERE tenant_id IN ($1,$2);
@@ -144,7 +146,7 @@ if (!db.hasDb()) {
     [TABLE])).rows[0].def;
   assert.match(pk, /PRIMARY KEY \(tenant_id, id\)/);
   assert.equal((await db.getPool().query(
-    `SELECT to_regclass('orchestrator_google_ads_reconciliation_runs') IS NULL AS missing`)).rows[0].missing, true);
+    `SELECT to_regclass('${RUNS}') IS NOT NULL AS present`)).rows[0].present, true);
   const cols = (await db.getPool().query(
     `SELECT column_name FROM information_schema.columns WHERE table_name=$1`, [TABLE]))
     .rows.map((r) => r.column_name);

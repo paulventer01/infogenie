@@ -7,6 +7,7 @@ const test=require('node:test');const assert=require('node:assert/strict');const
 const db=require('../../db');
 const schema=require('../../services/agent_orchestrator/schema');
 const authority=require('../../services/security/google_ads_paused_draft_reconciliation');
+const coordinator=require('../../services/agent_orchestrator/google_ads_paused_draft_reconciliation');
 const {makeFixtures}=require('../helpers');
 const CUSTOMER='1234567890';
 const REFRESH='refresh-token-must-never-escape';const CLIENT_SECRET='client-secret-must-never-escape';
@@ -46,7 +47,7 @@ if (!db.hasDb()) {
   const wa=500000000+parseInt(tag.slice(0,7),16);
   const ids={workflow:id('wf'),draft:id('dr'),approval:id('ap'),request:id('rq'),intent:id('in'),
     cred:id('cr'),cap:id('cp'),op:id('op')};
-  t.after(async()=>replica(['orchestrator_audit_events',authority.TABLE,
+  t.after(async()=>replica(['orchestrator_audit_events',coordinator.TABLE,authority.TABLE,
     'orchestrator_google_ads_provider_draft_objects','orchestrator_google_ads_provider_draft_operations',
     'orchestrator_google_ads_provider_draft_capabilities','orchestrator_campaign_delivery_intents',
     'orchestrator_campaign_publish_requests','orchestrator_campaign_publish_approvals',
@@ -224,4 +225,77 @@ if (!db.hasDb()) {
       assert.equal(text.includes(secret),false,'no credential or session material is recorded or returned');
     }
   }
+
+  // ── 8. PR10C.2 durable coordinator uses the real schema and authority ────
+  await replica(`DELETE FROM ${authority.TABLE} WHERE tenant_id=$1`,[tenant.id]);
+  issued=await issue();
+  const durableArgs={...base,authorizationId:issued.authorization_id,invocationId:id('durable-1'),
+    tokenTransport,observerTransport};
+  const beforeTraffic=[exchanges.length,observed.length];
+  const durable=await coordinator.reconcile(db.getPool(),durableArgs);
+  assert.deepEqual([durable.state,durable.object_kinds,durable.external_action_taken],
+    ['verified',authority.KINDS,false]);
+  const durableRow=(await db.getPool().query(`SELECT * FROM ${coordinator.TABLE} WHERE tenant_id=$1 AND id=$2`,
+    [tenant.id,durable.reconciliation_run_id])).rows[0];
+  assert.deepEqual([durableRow.authorization_id,durableRow.operation_id,durableRow.state,
+    durableRow.observations.length,durableRow.classifications],
+  [issued.authorization_id,ids.op,'verified',3,[]]);
+  assert.ok((await db.getPool().query(`SELECT count(*)::int c FROM orchestrator_audit_events
+    WHERE tenant_id=$1 AND detail->>'reconciliation_run_id'=$2`,[tenant.id,durable.reconciliation_run_id])).rows[0].c>=2);
+
+  // Replay is metadata-only and re-proves current DB authority first.
+  await setGrant('[]');
+  await assert.rejects(coordinator.reconcile(db.getPool(),durableArgs),denied('authorization_lineage_mismatch'));
+  assert.deepEqual([exchanges.length,observed.length],[beforeTraffic[0]+1,beforeTraffic[1]+3]);
+  await setGrant('["advertising.reconciliation.read"]');
+  assert.equal((await coordinator.reconcile(db.getPool(),durableArgs)).reconciliation_run_id,durable.reconciliation_run_id);
+  await assert.rejects(coordinator.reconcile(db.getPool(),{...durableArgs,tenantId:other.id}),
+    denied('authorization_rejected','reconciliation_not_found'));
+  assert.deepEqual([exchanges.length,observed.length],[beforeTraffic[0]+1,beforeTraffic[1]+3]);
+
+  // A real expired decision commits its own audit without creating a run.
+  await replica(`DELETE FROM ${coordinator.TABLE} WHERE tenant_id=$1;DELETE FROM ${authority.TABLE} WHERE tenant_id=$1`,[tenant.id]);
+  issued=await issue();
+  await assert.rejects(coordinator.reconcile(db.getPool(),{...durableArgs,authorizationId:issued.authorization_id,
+    invocationId:id('expired'),now:new Date(new Date(issued.expires_at).getTime()+1000)}),denied('authorization_expired'));
+  assert.equal((await db.getPool().query(`SELECT count(*)::int c FROM ${coordinator.TABLE} WHERE tenant_id=$1`,[tenant.id])).rows[0].c,0);
+  assert.equal((await statusOf(issued.authorization_id)).status,'expired');
+
+  // A committed observing run models a crash; concurrent recovery is one terminal transition/audit.
+  await replica(`DELETE FROM ${authority.TABLE} WHERE tenant_id=$1`,[tenant.id]);
+  issued=await issue();
+  const crashArgs={...durableArgs,authorizationId:issued.authorization_id,invocationId:id('crash')};
+  const started=await coordinator._test.createObservingRun(db.getPool(),crashArgs,new Date(),
+    undefined,undefined,1);
+  await new Promise((resolve)=>setTimeout(resolve,25));
+  const recovered=await Promise.all([
+    coordinator._test.finishRun(db.getPool(),crashArgs,tenant.id,started.row.id,
+      {state:'verified',classifications:[],observations:[]},new Date()),
+    coordinator.reconcile(db.getPool(),crashArgs),
+  ]);
+  assert.deepEqual(recovered.map((x)=>x.state),['failed','failed']);
+  assert.deepEqual(recovered[0].failure_classifications,['interrupted_observation']);
+  assert.equal((await db.getPool().query(`SELECT count(*)::int c FROM orchestrator_audit_events
+    WHERE tenant_id=$1 AND detail->>'reconciliation_run_id'=$2 AND event LIKE '%_failed'`,[tenant.id,started.row.id])).rows[0].c,1);
+
+  // Persist a sanitized discrepancy classification through the real trigger.
+  await replica(`DELETE FROM ${coordinator.TABLE} WHERE tenant_id=$1;DELETE FROM ${authority.TABLE} WHERE tenant_id=$1`,[tenant.id]);
+  issued=await issue();
+  const discrepancyArgs={...durableArgs,authorizationId:issued.authorization_id,invocationId:id('discrepancy')};
+  const pending=await coordinator._test.createObservingRun(db.getPool(),discrepancyArgs,new Date());
+  const discrepancy=coordinator.evaluate({attempted_observations:3,completed_observations:3,observations:
+    authority.KINDS.map((kind)=>({object_kind:kind,outcome:'observed',status_classification:kind==='campaign'?'active':'paused',
+      account_binding_matches:true,campaign_parent_matches:kind==='ad_group'?true:'not_applicable',
+      budget_parent_matches:kind==='campaign'?true:'not_applicable',provider_object_id:'must-not-persist'}))});
+  const settled=await coordinator._test.finishRun(db.getPool(),discrepancyArgs,tenant.id,pending.row.id,discrepancy);
+  assert.deepEqual([settled.state,settled.discrepancy_classifications],['discrepancy_detected',['campaign_active']]);
+  assert.doesNotMatch((await db.getPool().query(`SELECT to_jsonb(r)::text row FROM ${coordinator.TABLE} r
+    WHERE tenant_id=$1 AND id=$2`,[tenant.id,pending.row.id])).rows[0].row,/must-not-persist/);
+
+  const allStored=await db.getPool().query(`SELECT to_jsonb(r)::text row FROM ${coordinator.TABLE} r WHERE tenant_id=$1`,[tenant.id]);
+  for(const text of [...allStored.rows.map((r)=>r.row),JSON.stringify(durable)]) for(const secret of
+    [REFRESH,CLIENT_SECRET,DEV,ACCESS,CUSTOMER,base.sessionId]) assert.equal(text.includes(secret),false);
+  const unchanged=await db.getPool().query(`SELECT provider_status,serving,published,activated
+    FROM orchestrator_google_ads_provider_draft_objects WHERE tenant_id=$1`,[tenant.id]);
+  for(const row of unchanged.rows) assert.deepEqual([row.provider_status,row.serving,row.published,row.activated],['PAUSED',false,false,false]);
 });

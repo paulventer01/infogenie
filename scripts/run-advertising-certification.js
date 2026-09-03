@@ -18,6 +18,7 @@ const files = [
   'test/advertising-google-ads-paused-draft-connector.test.js',
   'test/advertising-google-ads-paused-draft-reconciliation-observer.test.js',
   'test/google-ads-paused-draft-secret-boundary.test.js',
+  'test/google-ads-reconciliation-runs.test.js',
   'test/advertising-optimization-execution-run.test.js',
   'test/integration/meta-activation-capability-postgres.test.js',
   'test/advertising-meta-reconciliation-durability-postgres.test.js',
@@ -38,13 +39,21 @@ if (!process.env.DATABASE_URL) {
 
 const result = spawnSync(process.execPath, [
   '--test', '--test-force-exit', '--test-concurrency=1', ...files,
-], { encoding: 'utf8', env: process.env });
+], { encoding: 'utf8', env: process.env, maxBuffer: 128 * 1024 * 1024 });
 
-process.stdout.write(result.stdout || '');
-process.stderr.write(result.stderr || '');
 const output = `${result.stdout || ''}\n${result.stderr || ''}`;
 if (result.error) throw result.error;
-if (result.status !== 0) process.exit(result.status || 1);
+if (result.status !== 0) {
+  const lines = output.split('\n');
+  const failures = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (/^not ok \d+ - /.test(lines[i])) failures.push(...lines.slice(i, i + 30));
+  }
+  process.stdout.write(`${(failures.length ? failures : lines.slice(-200)).join('\n')}\n`);
+  process.exit(result.status || 1);
+}
+process.stdout.write(result.stdout || '');
+process.stderr.write(result.stderr || '');
 if (!/^# fail 0$/m.test(output) || !/^# skipped 0$/m.test(output)) {
   console.error('Advertising certification did not report zero failures and zero skips.');
   process.exit(1);

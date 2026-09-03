@@ -9,6 +9,7 @@ const schemaSource = fs.readFileSync(
 );
 
 const TABLE = 'orchestrator_google_ads_reconciliation_read_authorizations';
+const RUNS = 'orchestrator_google_ads_reconciliation_runs';
 const SLICE_START = '// PR10C.1 — tenant-leading Google Ads reconciliation read-authorizations';
 const SLICE_END = '// PR 8C — consumes one approved';
 
@@ -32,7 +33,8 @@ test('ADVERTISING_ORCH_TABLES lists Google Ads reconciliation read-authorization
   assert.match(list, /'orchestrator_google_ads_provider_draft_objects'/);
   assert.match(list, new RegExp(`'${TABLE}'`));
   assert.ok(list.indexOf(`'${TABLE}'`) > list.indexOf("'orchestrator_google_ads_provider_draft_objects'"));
-  assert.doesNotMatch(list, /orchestrator_google_ads_reconciliation_runs/);
+  assert.match(list, new RegExp(`'${RUNS}'`));
+  assert.ok(list.indexOf(`'${RUNS}'`) > list.indexOf(`'${TABLE}'`));
   assert.doesNotMatch(list, /'orchestrator_advertising_global_kill_switches'/);
 });
 
@@ -57,7 +59,7 @@ test('Google Ads reconciliation read-authorizations are tenant-leading with Goog
   assert.match(ddl, /issued'\s+AND NEW\.status IN \('reserved','revoked','expired'\)/);
   assert.match(ddl, /reserved'\s+AND NEW\.status IN \('consumed','revoked','expired'\)/);
   assert.match(ddl, /OLD\.status IN \('consumed','revoked','expired'\)/);
-  assert.doesNotMatch(ddl, /CREATE TABLE IF NOT EXISTS orchestrator_google_ads_reconciliation_runs/);
+  assert.match(ddl, new RegExp(`CREATE TABLE IF NOT EXISTS ${RUNS}\\([\\s\\S]*?PRIMARY KEY\\(tenant_id,id\\)`));
   const create = ddl.slice(ddl.indexOf(`CREATE TABLE IF NOT EXISTS ${TABLE}`),
     ddl.indexOf('CREATE UNIQUE INDEX'));
   assert.doesNotMatch(create, /\bpurpose\b|\bpost_review\b|\breview_case_id\b|\bserving\b|\bENABLED\b/);
