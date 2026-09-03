@@ -20,6 +20,7 @@ const PERMISSION='advertising.reconciliation.read';
 const KINDS=Object.freeze(['campaign_budget','campaign','ad_group']);
 const DEFAULT_TTL_MS=5*60*1000;
 const MAX_TTL_MS=10*60*1000;
+const MAX_RECONCILIATION_LEASE_MS=180*1000;
 const SAFE_ID=/^[A-Za-z0-9_.:-]{1,128}$/;
 const HEX64=/^[0-9a-f]{64}$/;
 const EVENT=(phase)=>`google_ads_reconciliation_read_authorization_${phase}`;
@@ -155,17 +156,21 @@ async function consumeIntoReconciliationRun(c,o={},run={}) {
     throw error;
   }
   if(p.replay)throw deny('authorization_rejected');
-  if(!valid(run.id)||!valid(run.auditRef)||!(run.observingAt instanceof Date)
-    ||!(run.observationDeadline instanceof Date)||!(run.observationDeadline>run.observingAt))throw deny('validation_failed');
+  if(!valid(run.id)||!valid(run.auditRef)||!Number.isSafeInteger(run.observationLeaseMs)
+    ||run.observationLeaseMs<1||run.observationLeaseMs>MAX_RECONCILIATION_LEASE_MS)throw deny('validation_failed');
   const row=p.row;
-  const inserted=await c.query(`INSERT INTO orchestrator_google_ads_reconciliation_runs
+  // prepare() already holds the authorization row lock. Establish both lease
+  // timestamps from one PostgreSQL clock read inside the same transaction.
+  const inserted=await c.query(`WITH lease AS (SELECT clock_timestamp() AS now)
+    INSERT INTO orchestrator_google_ads_reconciliation_runs
     (tenant_id,id,authorization_id,invocation_id_hash,requested_by,workflow_id,draft_id,publishing_request_id,
      operation_id,snapshot_hash,intent_id,intent_hash,credential_ref_id,credential_ref_version,ledger_root_hash,
-     state,audit_ref,observing_at,observation_deadline) VALUES
-    ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'observing',$16,$17,$18) RETURNING *`,
+     state,audit_ref,observing_at,observation_deadline)
+    SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'observing',$16,
+      lease.now,lease.now+($17 * interval '1 millisecond') FROM lease RETURNING *`,
   [p.tenantId,run.id,row.id,p.invocationHash,p.actorId,row.workflow_id,row.draft_id,row.publishing_request_id,
     row.operation_id,row.snapshot_hash,row.intent_id,row.intent_hash,row.credential_ref_id,row.credential_ref_version,
-    row.ledger_root_hash,run.auditRef,run.observingAt,run.observationDeadline]);
+    row.ledger_root_hash,run.auditRef,run.observationLeaseMs]);
   if(inserted.rowCount!==1)throw deny('authorization_rejected');
   const consumed=await markConsumed(c,p);
   return Object.freeze({consumed:project(consumed,false),row:inserted.rows[0]});
@@ -267,6 +272,6 @@ async function revoke(c,o={}) {
   await audit(c,tenantId,actorId,r.rows[0].workflow_id,EVENT('revoked'),
     {authorization_id:r.rows[0].id,operation_id:r.rows[0].operation_id,status:'revoked'});
   return project(r.rows[0],false); }
-module.exports={PERMISSION,KINDS,TABLE,DEFAULT_TTL_MS,MAX_TTL_MS,ledgerRoot,validateLineage,issue,consume,
+module.exports={PERMISSION,KINDS,TABLE,DEFAULT_TTL_MS,MAX_TTL_MS,MAX_RECONCILIATION_LEASE_MS,ledgerRoot,validateLineage,issue,consume,
   consumeIntoReconciliationRun,reproveMetadataAuthority,consumeAtomic,consumeAndObserve,
   observeWithConsumedCredential,get,revoke,_deny:deny,_human:human};
