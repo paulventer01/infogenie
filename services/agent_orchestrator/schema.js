@@ -134,6 +134,8 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_google_ads_provider_draft_operations',
   // PR10B.2a — append-only PAUSED provider-object evidence for those operations.
   'orchestrator_google_ads_provider_draft_objects',
+  // PR10C.1 — tenant-leading Google Ads reconciliation read-authorizations.
+  'orchestrator_google_ads_reconciliation_read_authorizations',
   // PR 8C — synchronous internal-simulation runs and their distinct lifecycle.
   'orchestrator_optimization_executions',
   'orchestrator_optimization_execution_run_events',
@@ -7336,6 +7338,166 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     DROP TRIGGER IF EXISTS orchestrator_gapdobj_guard ON orchestrator_google_ads_provider_draft_objects;
     CREATE TRIGGER orchestrator_gapdobj_guard BEFORE INSERT OR UPDATE OR DELETE
       ON orchestrator_google_ads_provider_draft_objects FOR EACH ROW EXECUTE FUNCTION orchestrator_gapdobj_guard();
+  `);
+
+  // PR10C.1 — tenant-leading Google Ads reconciliation read-authorizations.
+  // Consume-once GET-only observation grant bound to one PR10B operation and
+  // its three PAUSED objects. First-issuance only; no review-closure columns,
+  // no runs table, no secrets or raw account identifiers.
+  await _ensureNamedUnique(p, 'orchestrator_google_ads_provider_draft_operations',
+    'orchestrator_gapdo_tenant_unique_id_fp', 'tenant_id, id, account_fingerprint');
+  await _ensureNamedUnique(p, 'orchestrator_google_ads_provider_draft_operations',
+    'orchestrator_gapdo_tenant_unique_id_snap', 'tenant_id, id, snapshot_hash');
+  await _ensureNamedUnique(p, 'orchestrator_google_ads_provider_draft_operations',
+    'orchestrator_gapdo_tenant_unique_id_cap', 'tenant_id, id, capability_id');
+  await _ensureNamedUnique(p, 'orchestrator_google_ads_provider_draft_operations',
+    'orchestrator_gapdo_tenant_unique_id_cred',
+    'tenant_id, id, credential_ref_id, credential_ref_version, account_fingerprint');
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_reconciliation_read_authorizations(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL,
+      nonce_hash TEXT NOT NULL,
+      requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      session_id_hash TEXT NOT NULL,
+      workflow_id TEXT NOT NULL,
+      draft_id TEXT NOT NULL,
+      publishing_request_id TEXT NOT NULL,
+      intent_id TEXT NOT NULL,
+      snapshot_hash TEXT NOT NULL,
+      intent_hash TEXT NOT NULL,
+      operation_id TEXT NOT NULL,
+      capability_id TEXT NOT NULL,
+      credential_ref_id TEXT NOT NULL,
+      credential_ref_version INTEGER NOT NULL,
+      account_fingerprint TEXT NOT NULL,
+      ledger_root_hash TEXT NOT NULL,
+      expected_object_kinds TEXT[] NOT NULL
+        DEFAULT ARRAY['campaign_budget','campaign','ad_group']::TEXT[],
+      status TEXT NOT NULL DEFAULT 'issued',
+      invocation_id_hash TEXT NULL,
+      issued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      reserved_at TIMESTAMPTZ NULL,
+      consumed_at TIMESTAMPTZ NULL,
+      revoked_at TIMESTAMPTZ NULL,
+      audit_ref TEXT NOT NULL,
+      PRIMARY KEY(tenant_id,id),
+      CONSTRAINT orchestrator_garr_tenant_unique_nonce UNIQUE(tenant_id,nonce_hash),
+      CONSTRAINT orchestrator_garr_tenant_unique_audit UNIQUE(tenant_id,audit_ref),
+      CONSTRAINT orchestrator_garr_tenant_unique_operation_ledger
+        UNIQUE(tenant_id,operation_id,ledger_root_hash),
+      CONSTRAINT orchestrator_garr_status_check
+        CHECK(status IN ('issued','reserved','consumed','revoked','expired')),
+      CONSTRAINT orchestrator_garr_kinds_check CHECK(
+        expected_object_kinds = ARRAY['campaign_budget','campaign','ad_group']::TEXT[]),
+      CONSTRAINT orchestrator_garr_hashes_check CHECK(
+        nonce_hash~'^[0-9a-f]{64}$' AND session_id_hash~'^[0-9a-f]{64}$'
+        AND snapshot_hash~'^[0-9a-f]{64}$' AND intent_hash~'^[0-9a-f]{64}$'
+        AND account_fingerprint~'^[0-9a-f]{64}$' AND ledger_root_hash~'^[0-9a-f]{64}$'
+        AND (invocation_id_hash IS NULL OR invocation_id_hash~'^[0-9a-f]{64}$')),
+      CONSTRAINT orchestrator_garr_ids_check CHECK(
+        char_length(id) BETWEEN 1 AND 128 AND id~'^garr_'
+        AND char_length(workflow_id) BETWEEN 1 AND 128 AND char_length(draft_id) BETWEEN 1 AND 128
+        AND char_length(publishing_request_id) BETWEEN 1 AND 128 AND char_length(intent_id) BETWEEN 1 AND 128
+        AND char_length(operation_id) BETWEEN 1 AND 128 AND char_length(capability_id) BETWEEN 1 AND 128
+        AND char_length(credential_ref_id) BETWEEN 1 AND 128 AND char_length(audit_ref) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_garr_cred_ver_check CHECK(credential_ref_version>=1),
+      CONSTRAINT orchestrator_garr_lifecycle_check CHECK(
+        expires_at>issued_at
+        AND ((status='issued' AND invocation_id_hash IS NULL
+              AND reserved_at IS NULL AND consumed_at IS NULL AND revoked_at IS NULL)
+          OR (status='reserved' AND invocation_id_hash~'^[0-9a-f]{64}$'
+              AND reserved_at IS NOT NULL AND consumed_at IS NULL AND revoked_at IS NULL)
+          OR (status='consumed' AND invocation_id_hash~'^[0-9a-f]{64}$'
+              AND reserved_at IS NOT NULL AND consumed_at IS NOT NULL AND revoked_at IS NULL)
+          OR (status='revoked' AND consumed_at IS NULL AND revoked_at IS NOT NULL)
+          OR (status='expired' AND consumed_at IS NULL AND revoked_at IS NULL))),
+      CONSTRAINT orchestrator_garr_workflow_fkey
+        FOREIGN KEY(tenant_id,workflow_id)
+        REFERENCES orchestrator_workflows(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_garr_draft_fkey
+        FOREIGN KEY(tenant_id,draft_id)
+        REFERENCES orchestrator_campaign_drafts(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_garr_request_fkey
+        FOREIGN KEY(tenant_id,publishing_request_id)
+        REFERENCES orchestrator_campaign_publish_requests(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_garr_intent_fkey
+        FOREIGN KEY(tenant_id,intent_id)
+        REFERENCES orchestrator_campaign_delivery_intents(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_garr_operation_fkey
+        FOREIGN KEY(tenant_id,operation_id)
+        REFERENCES orchestrator_google_ads_provider_draft_operations(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_garr_capability_fkey
+        FOREIGN KEY(tenant_id,capability_id)
+        REFERENCES orchestrator_google_ads_provider_draft_capabilities(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_garr_operation_account_fkey
+        FOREIGN KEY(tenant_id,operation_id,account_fingerprint)
+        REFERENCES orchestrator_google_ads_provider_draft_operations(tenant_id,id,account_fingerprint)
+        ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_garr_operation_snapshot_fkey
+        FOREIGN KEY(tenant_id,operation_id,snapshot_hash)
+        REFERENCES orchestrator_google_ads_provider_draft_operations(tenant_id,id,snapshot_hash)
+        ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_garr_operation_capability_fkey
+        FOREIGN KEY(tenant_id,operation_id,capability_id)
+        REFERENCES orchestrator_google_ads_provider_draft_operations(tenant_id,id,capability_id)
+        ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_garr_operation_cred_fkey
+        FOREIGN KEY(tenant_id,operation_id,credential_ref_id,credential_ref_version,account_fingerprint)
+        REFERENCES orchestrator_google_ads_provider_draft_operations
+          (tenant_id,id,credential_ref_id,credential_ref_version,account_fingerprint)
+        ON DELETE RESTRICT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_garr_unique_invocation
+      ON orchestrator_google_ads_reconciliation_read_authorizations(tenant_id,invocation_id_hash)
+      WHERE invocation_id_hash IS NOT NULL;
+
+    CREATE OR REPLACE FUNCTION orchestrator_garr_guard() RETURNS trigger AS $fn$
+    DECLARE n INTEGER; BEGIN
+      IF TG_OP='INSERT' THEN
+        IF NEW.status<>'issued' THEN RAISE EXCEPTION 'orchestrator_garr_invalid_insert'; END IF;
+        SELECT count(*) INTO n FROM orchestrator_google_ads_provider_draft_objects
+          WHERE tenant_id=NEW.tenant_id AND operation_id=NEW.operation_id
+            AND object_kind=ANY(ARRAY['campaign_budget','campaign','ad_group']::TEXT[])
+            AND provider_status='PAUSED' AND serving=FALSE
+            AND published=FALSE AND activated=FALSE;
+        IF n<>3 THEN RAISE EXCEPTION 'orchestrator_garr_object_lineage'; END IF;
+        RETURN NEW;
+      END IF;
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_garr_audit_evidence'; END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.nonce_hash IS DISTINCT FROM OLD.nonce_hash
+        OR NEW.requested_by IS DISTINCT FROM OLD.requested_by
+        OR NEW.session_id_hash IS DISTINCT FROM OLD.session_id_hash
+        OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id
+        OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
+        OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+        OR NEW.intent_id IS DISTINCT FROM OLD.intent_id
+        OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
+        OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+        OR NEW.operation_id IS DISTINCT FROM OLD.operation_id
+        OR NEW.capability_id IS DISTINCT FROM OLD.capability_id
+        OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+        OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash
+        OR NEW.expected_object_kinds IS DISTINCT FROM OLD.expected_object_kinds
+        OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
+        OR NEW.expires_at IS DISTINCT FROM OLD.expires_at
+        OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+      THEN RAISE EXCEPTION 'orchestrator_garr_immutable_binding'; END IF;
+      IF OLD.status IN ('consumed','revoked','expired')
+        OR NOT ((OLD.status='issued' AND NEW.status IN ('reserved','revoked','expired'))
+          OR (OLD.status='reserved' AND NEW.status IN ('consumed','revoked','expired')))
+      THEN RAISE EXCEPTION 'orchestrator_garr_invalid_transition'; END IF;
+      RETURN NEW;
+    END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_garr_guard
+      ON orchestrator_google_ads_reconciliation_read_authorizations;
+    CREATE TRIGGER orchestrator_garr_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_google_ads_reconciliation_read_authorizations
+      FOR EACH ROW EXECUTE FUNCTION orchestrator_garr_guard();
   `);
 
   // PR 8C — consumes one approved PR8B request without changing it. No provider

@@ -9,6 +9,8 @@ const files = [
   'test/google-ads-provider-draft-operation-schema.test.js',
   'test/google-ads-provider-draft-operations-security.test.js',
   'test/integration/google-ads-provider-draft-operations-postgres.test.js',
+  'test/google-ads-reconciliation-read-schema.test.js',
+  'test/integration/google-ads-reconciliation-read-schema-postgres.test.js',
   'test/integration/google-ads-paused-draft-execution-postgres.test.js',
   'test/integration/google-ads-credential-persistence-authority-postgres.test.js',
   'test/advertising-google-ads-paused-draft-connector.test.js',
