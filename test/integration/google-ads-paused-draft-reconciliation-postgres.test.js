@@ -2,7 +2,7 @@
 
 // PR10C.1 — the consume-once reconciliation READ authority against real
 // PostgreSQL with a mocked Google client. Both the OAuth token transport and the
-// GET observer transport are injected, so nothing here reaches Google and no
+// GAQL Search observer transport is injected, so nothing here reaches Google and no
 // object is created, enabled, published or activated.
 
 const test=require('node:test');const assert=require('node:assert/strict');const crypto=require('crypto');
@@ -40,7 +40,7 @@ async function tx(fn) {
 
 if (!db.hasDb()) {
   test('PR10C.1 PostgreSQL reconciliation read authority requires DATABASE_URL',{skip:'no DATABASE_URL'},()=>{});
-} else test('Google Ads reconciliation reads are tenant-bound, consume-once, GET-only and leak no secret',async(t)=>{
+} else test('Google Ads reconciliation reads are tenant-bound, consume-once, read-only and leak no secret',async(t)=>{
   const fx=makeFixtures();
   await fx.ensureSchemas();
   await schema.ensureAgentOrchestratorSchema();
@@ -122,16 +122,21 @@ if (!db.hasDb()) {
     (user_id,platform,ciphertext,iv,tag,status,credential_version) VALUES($1,'google_ads',$2,$3,$4,'connected',1)`,
   [user.id,blob.ciphertext,blob.iv,blob.tag]);
 
-  // ── mocked OAuth token transport and GET-only observer transport ───────────
+  // ── mocked OAuth token and read-only GAQL Search transports ───────────
   const exchanges=[],observed=[];
   const tokenTransport=async(request)=>{exchanges.push(request);return {access_token:ACCESS,expires_in:600};};
   const observerTransport=async(request)=>{
     observed.push(request);
-    const m=/customers\/(\d+)\/(campaignBudgets|campaigns|adGroups)\/(\d+)/.exec(request.url);
-    const json={status:'PAUSED',resourceName:`customers/${m[1]}/${m[2]}/${m[3]}`};
-    if(m[2]==='campaigns')json.campaignBudget=`customers/${m[1]}/campaignBudgets/${OBJECTS.campaign_budget}`;
-    if(m[2]==='adGroups')json.campaign=`customers/${m[1]}/campaigns/${OBJECTS.campaign}`;
-    return {status:200,json}; };
+    const query=JSON.parse(request.body).query;
+    const found=/ FROM (campaign_budget|campaign|ad_group) WHERE .*resource_name = 'customers\/(\d+)\/(campaignBudgets|campaigns|adGroups)\/(\d+)' LIMIT 1$/.exec(query);
+    assert.ok(found,'caller-independent ledger-bound GAQL');
+    const [,kind,customer,collection,objectId]=found;
+    assert.equal(objectId,OBJECTS[kind]);
+    const resource={status:'PAUSED',resourceName:`customers/${customer}/${collection}/${objectId}`};
+    if(kind==='campaign')resource.campaignBudget=`customers/${customer}/campaignBudgets/${OBJECTS.campaign_budget}`;
+    if(kind==='ad_group')resource.campaign=`customers/${customer}/campaigns/${OBJECTS.campaign}`;
+    const resultKey={campaign_budget:'campaignBudget',campaign:'campaign',ad_group:'adGroup'}[kind];
+    return {status:200,json:{results:[{[resultKey]:resource}]}}; };
   const base={tenantId:tenant.id,actorUserId:user.id,actorType:'human',principalType:'user',
     sessionId:id('read-session'),hasExplicitTenantPermission:permit};
   const setGrant=(json)=>replica('UPDATE roles SET permissions=$3::jsonb WHERE tenant_id=$1 AND key=$2',[tenant.id,id('role'),json]);
@@ -182,7 +187,7 @@ if (!db.hasDb()) {
   assert.deepEqual([exchanges.length,observed.length],[0,0],'no token exchange, no observation');
   assert.equal((await statusOf(issued.authorization_id)).status,'issued');
 
-  // ── 5. consume once, then observe the existing PAUSED objects with GET ─────
+  // ── 5. consume once, then observe the existing PAUSED objects with GAQL Search ─────
   const result=await run();
   assert.deepEqual([result.replay,result.status,result.serving,result.external_action_taken,
     result.attempted_observations,result.completed_observations,Object.isFrozen(result)],
@@ -190,9 +195,12 @@ if (!db.hasDb()) {
   assert.deepEqual(result.observations.map((o)=>o.object_kind),['campaign_budget','campaign','ad_group']);
   for(const o of result.observations) assert.deepEqual([o.outcome,o.status_classification,o.account_binding_matches],['observed','paused',true]);
   assert.deepEqual([result.observations[1].budget_parent_matches,result.observations[2].campaign_parent_matches,
-    exchanges.length,observed.length],[true,true,1,3],'one token exchange and exactly three GET reads');
+    exchanges.length,observed.length],[true,true,1,3],'one token exchange and exactly three Search reads');
   for(const request of observed) {
-    assert.deepEqual([request.method,request.body],['GET',undefined]);assert.match(request.url,/^https:\/\/googleads\.googleapis\.com\//);
+    assert.equal(request.method,'POST');
+    assert.match(request.url,/^https:\/\/googleads\.googleapis\.com\/v17\/customers\/\d{10}\/googleAds:search$/);
+    assert.doesNotMatch(request.url,/mutate/i);
+    assert.match(JSON.parse(request.body).query,/^SELECT .* FROM .* WHERE .*resource_name = 'customers\/.*' LIMIT 1$/);
   }
   const consumed=await statusOf(issued.authorization_id);
   assert.deepEqual([consumed.status,consumed.invocation_id_hash],['consumed',sha(id('inv-1'))]);
