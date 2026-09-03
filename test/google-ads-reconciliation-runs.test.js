@@ -50,6 +50,31 @@ test('lease exceeds the bounded three-request provider runtime',()=>{
   assert.ok(R.OBSERVATION_LEASE_MS>3*8000);
 });
 
+test('late terminal settlement is atomically classified as interrupted',async(t)=>{
+  const now=new Date('2026-09-03T00:04:00.000Z');
+  const row={tenant_id:7,id:'run',authorization_id:'auth',invocation_id_hash:'hash',requested_by:3,
+    workflow_id:'wf',operation_id:'op',state:'observing',observation_deadline:'2026-09-03T00:03:00.000Z',
+    observations:[],classifications:[],audit_ref:'audit',created_at:'2026-09-03T00:00:00.000Z'};
+  const calls=[];
+  const client={query:async(sql,params)=>{
+    calls.push([sql,params]);
+    if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
+    if(/^UPDATE/.test(sql.trim()))return {rowCount:1,rows:[{...row,state:'failed',
+      classifications:['interrupted_observation'],completed_at:now}]};
+    return {rowCount:0,rows:[]};
+  },release:()=>{}};
+  const original=authority.reproveMetadataAuthority;
+  t.after(()=>{authority.reproveMetadataAuthority=original;});
+  authority.reproveMetadataAuthority=async()=>({tenant_id:7,authorization_id:'auth',invocation_id_hash:'hash',
+    requested_by:3,workflow_id:'wf',operation_id:'op'});
+  const events=[];
+  const result=await R._test.finishRun({connect:async()=>client},{},7,'run',
+    {state:'verified',classifications:[],observations:[]},now,async(_c,_row,event)=>events.push(event));
+  assert.deepEqual([result.state,result.failure_classifications],['failed',['interrupted_observation']]);
+  assert.equal(calls.some(([sql])=>/SET state='verified'/.test(sql)),false);
+  assert.deepEqual(events,['google_ads_paused_draft_reconciliation_failed']);
+});
+
 test('terminal replay is metadata-only, authority-gated and tenant/idempotency-bound',async(t)=>{
   const row={tenant_id:7,id:'run',authorization_id:'auth',invocation_id_hash:'hash',requested_by:3,
     workflow_id:'wf',operation_id:'op',state:'verified',observations:[],classifications:[],audit_ref:'audit',created_at:nowString()};
