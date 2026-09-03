@@ -39,7 +39,7 @@ if (!process.env.DATABASE_URL) {
 
 const result = spawnSync(process.execPath, [
   '--test', '--test-force-exit', '--test-concurrency=1', ...files,
-], { encoding: 'utf8', env: process.env });
+], { encoding: 'utf8', env: process.env, maxBuffer: 16 * 1024 * 1024 });
 
 process.stdout.write(result.stdout || '');
 process.stderr.write(result.stderr || '');
