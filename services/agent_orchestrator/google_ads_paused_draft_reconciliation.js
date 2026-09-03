@@ -144,7 +144,7 @@ async function createObservingRun(pool,opts,now,consumeImpl=authority.consumeInt
   } finally{client.release();}
 }
 
-async function finishRun(pool,opts,tenantId,id,evaluation,now=new Date(),auditImpl=audit) {
+async function finishRun(pool,opts,tenantId,id,evaluation,_requestedAt=new Date(),auditImpl=audit) {
   const client=await pool.connect();
   try {
     await client.query('BEGIN');
@@ -153,10 +153,16 @@ async function finishRun(pool,opts,tenantId,id,evaluation,now=new Date(),auditIm
     assertProofBindings(locked.rows[0],await authority.reproveMetadataAuthority(client,opts));
     if(TERMINAL_STATES.includes(locked.rows[0].state)){await client.query('COMMIT');return publicRun(locked.rows[0]);}
     if(locked.rows[0].state!=='observing')throw fail('invalid_reconciliation_transition');
-    if(new Date(locked.rows[0].observation_deadline)<=now) {
+    // The lease decision uses the database clock after the run row is locked.
+    // A timestamp captured before lock acquisition cannot authorize a terminal
+    // observation that waited past its deadline.
+    const clock=await client.query('SELECT clock_timestamp() AS now');
+    if(clock.rowCount!==1||!Number.isFinite(new Date(clock.rows[0].now).getTime()))throw fail('invalid_reconciliation_transition');
+    const settledAt=new Date(clock.rows[0].now);
+    if(new Date(locked.rows[0].observation_deadline)<=settledAt) {
       const expired=await client.query(`UPDATE ${TABLE}
         SET state='failed',classifications=ARRAY['interrupted_observation']::TEXT[],completed_at=$3
-        WHERE tenant_id=$1 AND id=$2 AND state='observing' RETURNING *`,[tenantId,id,now]);
+        WHERE tenant_id=$1 AND id=$2 AND state='observing' RETURNING *`,[tenantId,id,settledAt]);
       if(expired.rowCount!==1)throw fail('invalid_reconciliation_transition');
       await auditImpl(client,expired.rows[0],'google_ads_paused_draft_reconciliation_failed');
       await client.query('COMMIT');return publicRun(expired.rows[0]);
@@ -164,7 +170,7 @@ async function finishRun(pool,opts,tenantId,id,evaluation,now=new Date(),auditIm
     const done=await client.query(`UPDATE ${TABLE}
       SET state=$3,observations=$4::jsonb,classifications=$5,completed_at=$6
       WHERE tenant_id=$1 AND id=$2 AND state='observing' RETURNING *`,
-    [tenantId,id,evaluation.state,JSON.stringify(evaluation.observations),evaluation.classifications,now]);
+    [tenantId,id,evaluation.state,JSON.stringify(evaluation.observations),evaluation.classifications,settledAt]);
     if(done.rowCount!==1)throw fail('invalid_reconciliation_transition');
     await auditImpl(client,done.rows[0],`google_ads_paused_draft_reconciliation_${evaluation.state}`);
     await client.query('COMMIT');return publicRun(done.rows[0]);
