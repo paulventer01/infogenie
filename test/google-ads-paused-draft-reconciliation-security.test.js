@@ -156,6 +156,8 @@ test('revoke re-proves live database authority before changing state',async()=>{
   const out=await authority.revoke(client,{...actor,authorizationId:'garr_x'});
   assert.equal(out.status,'revoked');
   assert.equal(seen.some((q)=>/JOIN tenants t .*JOIN tenant_users tu .*JOIN roles role/.test(q)),true);
+  await assert.rejects(authority.revoke(mockPool({authorization:authRow({ledger_root_hash:sha('stale')})}).client,
+    {...actor,authorizationId:'garr_x'}),(e)=>e.code==='authorization_lineage_mismatch');
 });
 test('a drifted credential or ledger binding fails closed before the secret scope',async()=>{
   for(const over of [{credential_ref_id:'other-cred'},{credential_ref_version:2},
