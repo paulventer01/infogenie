@@ -1,8 +1,6 @@
 'use strict';
-
 // Dedicated read-only GAQL Search surface for PR10C.1. Shares no transport with the write connector.
 const https = require('https');
-
 const API_ORIGIN = 'https://googleads.googleapis.com';
 const API_VERSION = 'v17';
 const OBJECT_KINDS = Object.freeze(['campaign_budget', 'campaign', 'ad_group']);
@@ -26,10 +24,8 @@ const FORBIDDEN_INPUTS = Object.freeze([
   'url', 'method', 'fields', 'customerId', 'customer_id', 'providerObjectId',
   'provider_object_id', 'status', 'payload', 'body', 'query', 'mutateOperations', 'operations',
 ]);
-
 function invalid(code) { const err = new Error(code); err.code = code; throw err; }
 function digits(value) { return String(value || '').replace(/[\s-]/g, ''); }
-
 function validateInput(input) {
   if (!input || typeof input !== 'object') invalid('invalid_observation_input');
   for (const key of FORBIDDEN_INPUTS) {
@@ -60,7 +56,6 @@ function validateInput(input) {
   return { byKind, customer_id, login_customer_id,
     access_token: credentials.accessToken, developer_token: credentials.developerToken };
 }
-
 function headers(bound) {
   const out = {
     Authorization: `Bearer ${bound.access_token}`,
@@ -71,7 +66,6 @@ function headers(bound) {
   if (bound.login_customer_id) out['login-customer-id'] = bound.login_customer_id;
   return out;
 }
-
 function defaultTransport(options) {
   const url = new URL(options.url);
   if (url.origin !== API_ORIGIN || options.method !== 'POST'
@@ -101,12 +95,10 @@ function defaultTransport(options) {
     req.end(options.body);
   });
 }
-
 function parseResource(name, collection) {
   const match = new RegExp(`^customers/(\\d+)/${collection}/(\\d+)$`).exec(String(name || ''));
   return match ? { customer: match[1], id: match[2] } : null;
 }
-
 function statusClass(value) {
   const v = String(value || '').toUpperCase();
   if (v === 'PAUSED') return 'paused';
@@ -115,7 +107,6 @@ function statusClass(value) {
   if (v === 'REMOVED' || v === 'DELETED' || v === 'ARCHIVED' || v === 'ENDED') return 'inactive';
   return 'unknown';
 }
-
 function baseObservation(kind, now) {
   return {
     object_kind: kind, outcome: 'malformed', status_classification: 'unknown',
@@ -125,7 +116,6 @@ function baseObservation(kind, now) {
     observed_at: now,
   };
 }
-
 function failure(kind, response, now) {
   const out = baseObservation(kind, now);
   if (response && response.status === 404) { out.outcome = 'missing'; out.error_classification = 'not_found'; }
@@ -141,7 +131,6 @@ function failure(kind, response, now) {
   } else { out.outcome = 'permanent_failure'; out.error_classification = 'provider_rejected'; }
   return Object.freeze(out);
 }
-
 function normalize(kind, body, bound, now) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || body.error
     || !Array.isArray(body.results)) return failure(kind, { malformed: true }, now);
@@ -175,7 +164,6 @@ function normalize(kind, body, bound, now) {
   }
   return Object.freeze(out);
 }
-
 async function observePausedGoogleAdsLedger(input) {
   const bound = validateInput(input);
   const transport = typeof input.transport === 'function' ? input.transport : null;
@@ -206,7 +194,6 @@ async function observePausedGoogleAdsLedger(input) {
     observations: Object.freeze(observations), serving: false,
   });
 }
-
 module.exports = {
   API_ORIGIN, API_VERSION, OBJECT_KINDS, FIELDS, TIMEOUT_MS, MAX_RESPONSE_BYTES,
   LIVE_OPT_IN_ENV, observePausedGoogleAdsLedger,
