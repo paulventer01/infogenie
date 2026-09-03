@@ -50,17 +50,19 @@ test('lease exceeds the bounded three-request provider runtime',()=>{
   assert.ok(R.OBSERVATION_LEASE_MS>3*8000);
 });
 
-test('late terminal settlement is atomically classified as interrupted',async(t)=>{
-  const now=new Date('2026-09-03T00:04:00.000Z');
+test('late terminal settlement reads the lease clock after locking and classifies as interrupted',async(t)=>{
+  const capturedBeforeLock=new Date('2026-09-03T00:02:59.000Z');
+  const lockedNow=new Date('2026-09-03T00:04:00.000Z');
   const row={tenant_id:7,id:'run',authorization_id:'auth',invocation_id_hash:'hash',requested_by:3,
     workflow_id:'wf',operation_id:'op',state:'observing',observation_deadline:'2026-09-03T00:03:00.000Z',
     observations:[],classifications:[],audit_ref:'audit',created_at:'2026-09-03T00:00:00.000Z'};
   const calls=[];
   const client={query:async(sql,params)=>{
     calls.push([sql,params]);
-    if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
+    if(/^SELECT \\*/.test(sql.trim()))return {rowCount:1,rows:[row]};
+    if(/^SELECT clock_timestamp/.test(sql.trim()))return {rowCount:1,rows:[{now:lockedNow}]};
     if(/^UPDATE/.test(sql.trim()))return {rowCount:1,rows:[params.length===3
-      ?{...row,state:'failed',classifications:['interrupted_observation'],completed_at:now}
+      ?{...row,state:'failed',classifications:['interrupted_observation'],completed_at:lockedNow}
       :{...row,state:params[2],observations:JSON.parse(params[3]),classifications:params[4],completed_at:params[5]}]};
     return {rowCount:0,rows:[]};
   },release:()=>{}};
@@ -70,14 +72,16 @@ test('late terminal settlement is atomically classified as interrupted',async(t)
     requested_by:3,workflow_id:'wf',operation_id:'op'});
   const events=[];
   const result=await R._test.finishRun({connect:async()=>client},{},7,'run',
-    {state:'verified',classifications:[],observations:[]},now,async(_c,_row,event)=>events.push(event));
+    {state:'verified',classifications:[],observations:[]},capturedBeforeLock,async(_c,_row,event)=>events.push(event));
   assert.deepEqual([result.state,result.failure_classifications],['failed',['interrupted_observation']]);
+  const lockIndex=calls.findIndex(([sql])=>/^SELECT \\*/.test(sql.trim()));
+  const clockIndex=calls.findIndex(([sql])=>/^SELECT clock_timestamp/.test(sql.trim()));
+  assert.ok(clockIndex>lockIndex,'database clock is read only after the row lock');
   const update=calls.find(([sql])=>/^UPDATE/.test(sql.trim()));
   assert.match(update[0],/interrupted_observation/);
-  assert.deepEqual(update[1],[7,'run',now]);
+  assert.deepEqual(update[1],[7,'run',lockedNow]);
   assert.deepEqual(events,['google_ads_paused_draft_reconciliation_failed']);
 });
-
 test('terminal replay is metadata-only, authority-gated and tenant/idempotency-bound',async(t)=>{
   const row={tenant_id:7,id:'run',authorization_id:'auth',invocation_id_hash:'hash',requested_by:3,
     workflow_id:'wf',operation_id:'op',state:'verified',observations:[],classifications:[],audit_ref:'audit',created_at:nowString()};
