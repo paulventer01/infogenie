@@ -24,6 +24,24 @@ test('public projection excludes credentials, provider IDs, fingerprints, tokens
   assert.doesNotMatch(JSON.stringify(out),/secret|credential|fingerprint|token|session|provider.object|customer.?id/i);
 });
 
+test('database start failures fail closed without an automatic second attempt',async()=>{
+  let connections=0;
+  const failure=Object.assign(new Error('serialization failure'),{code:'40001'});
+  const client={
+    query:async(sql)=>{
+      if(sql==='BEGIN')throw failure;
+      if(sql==='ROLLBACK')return {rows:[],rowCount:0};
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    release(){}
+  };
+  await assert.rejects(
+    R.rereconcile({connect:async()=>{connections++;return client;}},opts()),
+    (error)=>error===failure
+  );
+  assert.equal(connections,1);
+});
+
 test('coordinator reaches only the existing read observer and contains no provider-write or retry surface',()=>{
   const source=fs.readFileSync(require.resolve('../services/agent_orchestrator/google_ads_post_review_rereconciliation'),'utf8');
   assert.match(source,/reconciliation\._test\.observe/);assert.match(source,/consumeIntoReconciliationRun/);
