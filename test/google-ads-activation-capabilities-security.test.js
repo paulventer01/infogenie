@@ -22,6 +22,7 @@ test('service has no Google transport, vault, automatic behavior, provider write
  assert.match(source,/post_review_reconciliation_required/);
  assert.match(source,/SAVEPOINT google_ads_activation_issue/);
  assert.match(source,/ROLLBACK TO SAVEPOINT google_ads_activation_issue/);
+ assert.match(source,/pa\.revoked_at AS approval_revoked_at/);
 });
 test('uniqueness races replay only the identically bound durable winner',async()=>{
  const crypto=require('node:crypto'),sha=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
@@ -50,10 +51,41 @@ test('uniqueness races replay only the identically bound durable winner',async()
  winner.confirmation_hash=sha('conflicting-binding');
  await assert.rejects(service.issue(client,input),{code:'capability_conflict'});
 });
+test('issuance replay durably expires a stale winner and API reports expiry',async()=>{
+ const crypto=require('node:crypto'),sha=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
+ const x={tenant_id:1,id:'run_1',state:'verified',completed_at:new Date(),created_at:new Date(),external_action_taken:true,object_count:3,
+  workflow_id:'wf',draft_id:'draft',draft_revision:1,current_revision:1,draft_status:'approved_for_publish',contract_hash:'contract',publishing_request_id:'request',
+  request_revision:1,request_contract_hash:'contract',publish_approval_id:'approval',request_approval_id:'approval',workflow_approval_id:2,
+  request_workflow_approval_id:2,approval_revision:1,approval_contract_hash:'contract',approval_active:true,snapshot_hash:'snapshot',intent_id:'intent',
+  intent_hash:'intent-hash',current_intent_hash:'intent-hash',operation_id:'operation',authorization_id:'auth',credential_owner_user_id:7,owner_user_id:7,
+  credential_ref_id:'credential',credential_ref_version:1,current_credential_version:1,credential_status:'active',account_fingerprint:'fingerprint',ledger_root_hash:'ledger'};
+ const confirmationHash=sha(`1|7|real-session|confirm_1|${service.CONFIRMATION}`),cap={...x,id:'gaac_old',reconciliation_run_id:x.id,
+  source_authorization_id:x.authorization_id,actor_user_id:7,session_id_hash:sha('real-session'),confirmation_hash:confirmationHash,status:'issued',
+  issued_at:new Date(Date.now()-120000),expires_at:new Date(Date.now()-60000)};
+ const statements=[];const client={query:async sql=>{statements.push(sql);if(sql.startsWith('SELECT run.*'))return {rowCount:1,rows:[x]};
+  if(sql.startsWith('SELECT id,state,version')||sql.startsWith('SELECT 1 FROM orchestrator_google_ads_reconciliation_runs'))return {rowCount:0,rows:[]};
+  if(sql.startsWith('SELECT clock_timestamp()'))return {rows:[{now:new Date()}]};if(sql.includes('confirmation_hash=$2 FOR UPDATE'))return {rowCount:1,rows:[cap]};return {rowCount:0,rows:[]};}};
+ const out=await service.issue(client,{...opts(),reconciliationRunId:x.id,confirmationId:'confirm_1',confirmation:service.CONFIRMATION});
+ assert.equal(out.status,'expired');assert.equal(out.replay,true);assert.ok(statements.some(sql=>sql.includes("SET status='expired'")));
+ assert.throws(()=>api._requireUsable(out),{code:'capability_expired'});
+});
+test('revoked approval and transition lock ordering fail closed',async()=>{
+ const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');
+ const locked=source.slice(source.indexOf('async function locked'),source.indexOf('async function reserve'));
+ assert.ok(locked.indexOf('const authority=await authoritative')<locked.indexOf(`SELECT * FROM \${TABLE}`));
+ const revoked={id:'run',tenant_id:1,state:'verified',completed_at:new Date(),created_at:new Date(),external_action_taken:true,object_count:3,
+  draft_status:'approved_for_publish',current_revision:1,draft_revision:1,request_revision:1,approval_revision:1,contract_hash:'same',
+  request_contract_hash:'same',approval_contract_hash:'same',publish_approval_id:'approval',request_approval_id:'approval',workflow_approval_id:1,
+  request_workflow_approval_id:1,approval_revoked_at:new Date(),approval_active:true,intent_hash:'intent',current_intent_hash:'intent',
+  credential_status:'active',credential_ref_version:1,current_credential_version:1,credential_owner_user_id:7,owner_user_id:7};
+ const client={query:async sql=>{if(sql.startsWith('SELECT run.*'))return {rowCount:1,rows:[revoked]};
+  if(sql.startsWith('SELECT id,state,version')||sql.startsWith('SELECT 1 FROM orchestrator_google_ads_reconciliation_runs'))return {rowCount:0,rows:[]};throw new Error(sql);}};
+ await assert.rejects(service._authoritative(client,1,7,'run'),{code:'authoritative_binding_mismatch'});
+});
 test('terminal metadata replay still revalidates current database authority',async()=>{
  const row={tenant_id:1,id:'gaac_one',actor_user_id:7,session_id_hash:require('node:crypto').createHash('sha256').update('real-session').digest('hex'),
   workflow_id:'wf',reconciliation_run_id:'run',status:'consumed',issued_at:new Date(),expires_at:new Date(Date.now()+1000),consumed_at:new Date()};
- let calls=0;const client={query:async sql=>{calls++;if(/SELECT \* FROM orchestrator_google_ads_activation_capabilities/.test(sql))return {rowCount:1,rows:[row]};return {rowCount:0,rows:[]};}};
+ let calls=0;const client={query:async sql=>{calls++;if(/SELECT reconciliation_run_id FROM orchestrator_google_ads_activation_capabilities/.test(sql))return {rowCount:1,rows:[row]};return {rowCount:0,rows:[]};}};
  await assert.rejects(service.get(client,{...opts(),capabilityId:'gaac_one'}),{code:'authority_not_found'});
  assert.equal(calls,2);
 });

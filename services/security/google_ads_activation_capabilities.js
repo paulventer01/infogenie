@@ -31,7 +31,7 @@ async function authoritative(c,tenantId,actorId,runId){const r=await c.query(`SE
   op.publish_approval_id,op.workflow_approval_id,op.capability_id,op.external_action_taken,
   d.current_revision,d.status AS draft_status,pr.revision AS request_revision,pr.contract_hash AS request_contract_hash,
   pr.publish_approval_id AS request_approval_id,pr.workflow_approval_id AS request_workflow_approval_id,
-  pa.revision AS approval_revision,pa.contract_hash AS approval_contract_hash,pa.revoked_at,(pa.expires_at>clock_timestamp()) approval_active,
+  pa.revision AS approval_revision,pa.contract_hash AS approval_contract_hash,pa.revoked_at AS approval_revoked_at,(pa.expires_at>clock_timestamp()) approval_active,
   di.intent_hash AS current_intent_hash,cred.owner_user_id,cred.version AS current_credential_version,cred.status AS credential_status,
   ra.id AS rereconciliation_attempt_id,rc.state AS review_state,rc.version AS current_review_version,
   (SELECT count(*) FROM orchestrator_google_ads_provider_draft_objects ob WHERE ob.tenant_id=op.tenant_id AND ob.operation_id=op.id
@@ -74,8 +74,11 @@ async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),t
  const x=await authoritative(c,tenantId,actor,String(o.reconciliationRunId)),now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
  const confirmationHash=hash(`${tenantId}|${actor}|${o.sessionId}|${o.confirmationId}|${CONFIRMATION}`);
  const prior=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND confirmation_hash=$2 FOR UPDATE`,[tenantId,confirmationHash]);
- const replay=q=>{const cap=q.rows[0];if(q.rowCount===1&&same(cap.confirmation_hash,confirmationHash)&&Number(cap.actor_user_id)===actor
-   &&same(cap.session_id_hash,hash(o.sessionId))&&bound(cap,x))return project(cap,true);throw deny('capability_conflict');};
+ const replay=async q=>{const cap=q.rows[0];if(q.rowCount!==1||!same(cap.confirmation_hash,confirmationHash)||Number(cap.actor_user_id)!==actor
+   ||!same(cap.session_id_hash,hash(o.sessionId))||!bound(cap,x))throw deny('capability_conflict');
+  if(!TERMINAL.includes(cap.status)&&!(new Date(cap.expires_at)>now)){await c.query(`UPDATE ${TABLE} SET status='expired' WHERE tenant_id=$1 AND id=$2`,[tenantId,cap.id]);
+   cap.status='expired';await audit(c,cap,actor,'google_ads_activation_capability_expired','expired');}
+  return project(cap,true);};
  if(prior.rowCount)return replay(prior);
  const row={...x,tenant_id:tenantId,id:`gaac_${crypto.randomUUID()}`};
  await c.query('SAVEPOINT google_ads_activation_issue');
@@ -88,9 +91,11 @@ async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),t
  }
  row.status='issued';row.issued_at=now;row.expires_at=new Date(now.getTime()+ttl);row.reconciliation_run_id=x.id;await audit(c,row,actor,'google_ads_activation_capability_issued','issued');return project(row);}
 async function locked(c,o,states){const tenantId=integer(o.tenantId),actor=human(o);if(!tenantId||!valid(o.capabilityId))throw deny('capability_rejected');
+ const hint=await c.query(`SELECT reconciliation_run_id FROM ${TABLE} WHERE tenant_id=$1 AND id=$2`,[tenantId,String(o.capabilityId)]);if(hint.rowCount!==1)throw deny('capability_rejected');
+ const authority=await authoritative(c,tenantId,actor,hint.rows[0].reconciliation_run_id);
  const q=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,String(o.capabilityId)]);if(q.rowCount!==1)throw deny('capability_rejected');const cap=q.rows[0];
  if(Number(cap.actor_user_id)!==actor||!same(cap.session_id_hash,hash(o.sessionId)))throw deny('capability_rejected');
- const authority=await authoritative(c,tenantId,actor,cap.reconciliation_run_id);if(!bound(cap,authority))throw deny('authoritative_binding_mismatch');
+ if(!same(cap.reconciliation_run_id,hint.rows[0].reconciliation_run_id)||!bound(cap,authority))throw deny('authoritative_binding_mismatch');
  if(TERMINAL.includes(cap.status))return {terminal:true,cap,actor};if(!states.includes(cap.status))throw deny('capability_rejected');
  const now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);if(!(new Date(cap.expires_at)>now)){await c.query(`UPDATE ${TABLE} SET status='expired' WHERE tenant_id=$1 AND id=$2`,[tenantId,cap.id]);cap.status='expired';await audit(c,cap,actor,'google_ads_activation_capability_expired','expired');return {terminal:true,cap,actor};}
  return {tenantId,actor,cap,now};}
