@@ -106,5 +106,5 @@ test('PR10C.4 upgrade backfills credential ownership before restoring the immuta
 test('PR10C.3 decision-hash constraint preserves legacy rows while enforcing new writes', () => {
   const ddl = slice();
   assert.match(ddl,
-    /ADD CONSTRAINT orchestrator_garevent_payload_hash_check[\s\S]*?decision_payload_hash~'\^\[0-9a-f\]\{64\}\$'\)\) NOT VALID;/);
+    /ADD CONSTRAINT orchestrator_garevent_payload_hash_check[\s\S]*?from_state IS NOT NULL AND decision_payload_hash IS NOT NULL[\s\S]*?decision_payload_hash~'\^\[0-9a-f\]\{64\}\$'\)\) NOT VALID;/);
 });
