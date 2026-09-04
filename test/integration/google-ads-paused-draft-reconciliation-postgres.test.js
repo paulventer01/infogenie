@@ -318,6 +318,24 @@ if (!db.hasDb()) {
   await setGrant('[]');
   await assert.rejects(postReview.rereconcile(db.getPool(),postArgs),denied('authorization_lineage_mismatch'));
 
+  // Simulate a partially upgraded installation: the hardened trigger already
+  // exists while a legacy authorization still has no credential owner. Schema
+  // startup must backfill first and restore the immutable trigger atomically.
+  const legacyAuth=(await db.getPool().query(`SELECT id,requested_by FROM ${authority.TABLE}
+    WHERE tenant_id=$1 ORDER BY issued_at LIMIT 1`,[tenant.id])).rows[0];
+  await db.getPool().query(`DROP TRIGGER orchestrator_garr_guard ON ${authority.TABLE}`);
+  await db.getPool().query(`ALTER TABLE ${authority.TABLE} ALTER COLUMN credential_owner_user_id DROP NOT NULL`);
+  await replica(`UPDATE ${authority.TABLE} SET credential_owner_user_id=NULL WHERE tenant_id=$1 AND id=$2`,
+    [tenant.id,legacyAuth.id]);
+  await db.getPool().query(`CREATE TRIGGER orchestrator_garr_guard BEFORE INSERT OR UPDATE OR DELETE
+    ON ${authority.TABLE} FOR EACH ROW EXECUTE FUNCTION orchestrator_garr_guard()`);
+  await schema.ensureAgentOrchestratorSchema();
+  const upgradedAuth=(await db.getPool().query(`SELECT requested_by,credential_owner_user_id FROM ${authority.TABLE}
+    WHERE tenant_id=$1 AND id=$2`,[tenant.id,legacyAuth.id])).rows[0];
+  assert.equal(upgradedAuth.credential_owner_user_id,upgradedAuth.requested_by);
+  await assert.rejects(db.getPool().query(`UPDATE ${authority.TABLE} SET credential_owner_user_id=$3
+    WHERE tenant_id=$1 AND id=$2`,[tenant.id,legacyAuth.id,otherUser.id]),/orchestrator_garr_immutable_binding/);
+
   const allStored=await db.getPool().query(`SELECT to_jsonb(r)::text row FROM ${coordinator.TABLE} r WHERE tenant_id=$1`,[tenant.id]);
   for(const text of [...allStored.rows.map((r)=>r.row),JSON.stringify(durable)]) for(const secret of
     [REFRESH,CLIENT_SECRET,DEV,ACCESS,CUSTOMER,base.sessionId]) assert.equal(text.includes(secret),false);
