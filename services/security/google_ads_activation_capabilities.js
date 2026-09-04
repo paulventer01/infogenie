@@ -74,10 +74,18 @@ async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),t
  const x=await authoritative(c,tenantId,actor,String(o.reconciliationRunId)),now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
  const confirmationHash=hash(`${tenantId}|${actor}|${o.sessionId}|${o.confirmationId}|${CONFIRMATION}`);
  const prior=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND confirmation_hash=$2 FOR UPDATE`,[tenantId,confirmationHash]);
- if(prior.rowCount){if(Number(prior.rows[0].actor_user_id)===actor&&same(prior.rows[0].session_id_hash,hash(o.sessionId))&&bound(prior.rows[0],x))return project(prior.rows[0],true);throw deny('capability_conflict');}
+ const replay=q=>{const cap=q.rows[0];if(q.rowCount===1&&same(cap.confirmation_hash,confirmationHash)&&Number(cap.actor_user_id)===actor
+   &&same(cap.session_id_hash,hash(o.sessionId))&&bound(cap,x))return project(cap,true);throw deny('capability_conflict');};
+ if(prior.rowCount)return replay(prior);
  const row={...x,tenant_id:tenantId,id:`gaac_${crypto.randomUUID()}`};
- await c.query(`INSERT INTO ${TABLE}(tenant_id,id,actor_user_id,session_id_hash,workflow_id,draft_id,draft_revision,contract_hash,publishing_request_id,publish_approval_id,workflow_approval_id,snapshot_hash,intent_id,intent_hash,operation_id,source_authorization_id,reconciliation_run_id,review_case_id,review_version,closure_event_id,rereconciliation_attempt_id,credential_owner_user_id,credential_ref_id,credential_ref_version,account_fingerprint,ledger_root_hash,confirmation_hash,issued_at,expires_at,audit_ref)
+ await c.query('SAVEPOINT google_ads_activation_issue');
+ try{await c.query(`INSERT INTO ${TABLE}(tenant_id,id,actor_user_id,session_id_hash,workflow_id,draft_id,draft_revision,contract_hash,publishing_request_id,publish_approval_id,workflow_approval_id,snapshot_hash,intent_id,intent_hash,operation_id,source_authorization_id,reconciliation_run_id,review_case_id,review_version,closure_event_id,rereconciliation_attempt_id,credential_owner_user_id,credential_ref_id,credential_ref_version,account_fingerprint,ledger_root_hash,confirmation_hash,issued_at,expires_at,audit_ref)
  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,[tenantId,row.id,actor,hash(o.sessionId),x.workflow_id,x.draft_id,x.draft_revision,x.contract_hash,x.publishing_request_id,x.publish_approval_id,x.workflow_approval_id,x.snapshot_hash,x.intent_id,x.intent_hash,x.operation_id,x.authorization_id,x.id,x.review_case_id,x.review_version,x.closure_event_id,x.rereconciliation_attempt_id,x.credential_owner_user_id,x.credential_ref_id,x.credential_ref_version,x.account_fingerprint,x.ledger_root_hash,confirmationHash,now,new Date(now.getTime()+ttl),`gaac-audit-${crypto.randomUUID()}`]);
+ await c.query('RELEASE SAVEPOINT google_ads_activation_issue');}catch(e){if(e?.code!=='23505')throw e;
+  await c.query('ROLLBACK TO SAVEPOINT google_ads_activation_issue');
+  const winner=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND (confirmation_hash=$2 OR reconciliation_run_id=$3) FOR UPDATE`,[tenantId,confirmationHash,x.id]);
+  return replay(winner);
+ }
  row.status='issued';row.issued_at=now;row.expires_at=new Date(now.getTime()+ttl);row.reconciliation_run_id=x.id;await audit(c,row,actor,'google_ads_activation_capability_issued','issued');return project(row);}
 async function locked(c,o,states){const tenantId=integer(o.tenantId),actor=human(o);if(!tenantId||!valid(o.capabilityId))throw deny('capability_rejected');
  const q=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,String(o.capabilityId)]);if(q.rowCount!==1)throw deny('capability_rejected');const cap=q.rows[0];

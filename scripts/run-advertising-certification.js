@@ -18,6 +18,7 @@ const files = [
   'test/integration/google-ads-reconciliation-review-postgres.test.js',
   'test/advertising-google-ads-post-review-rereconciliation.test.js',
   'test/google-ads-activation-capabilities-security.test.js',
+  'test/google-ads-activation-capability-owner-gate.test.js',
   'test/google-ads-activation-capability-schema.test.js',
   'test/integration/google-ads-activation-capability-postgres.test.js',
   'test/integration/google-ads-credential-persistence-authority-postgres.test.js',
