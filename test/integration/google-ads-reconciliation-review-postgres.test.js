@@ -59,4 +59,27 @@ test('deferred consistency rejects review events without matching case version a
     await assert.rejects(c.query('COMMIT'),/garledger_inconsistent/);await c.query('ROLLBACK');
   }finally{c.release();}
 });
+
+test('schema startup preserves historical decisions without hashes and enforces hashes for new events',async()=>{const p=db.getPool();
+  const historical=(await p.query(`SELECT tenant_id,case_id,decision_id FROM orchestrator_google_ads_reconciliation_review_events
+    WHERE tenant_id=$1 AND from_state IS NOT NULL ORDER BY occurred_at LIMIT 1`,[tenant])).rows[0];
+  assert.ok(historical,'a prior decision event must exist');
+  await p.query(`ALTER TABLE orchestrator_google_ads_reconciliation_review_events
+    DROP CONSTRAINT orchestrator_garevent_payload_hash_check`);
+  await replica(`UPDATE orchestrator_google_ads_reconciliation_review_events SET decision_payload_hash=NULL
+    WHERE tenant_id=$1 AND case_id=$2 AND decision_id=$3`,[historical.tenant_id,historical.case_id,historical.decision_id]);
+  await ensureAgentOrchestratorSchema();
+  assert.equal((await p.query(`SELECT decision_payload_hash FROM orchestrator_google_ads_reconciliation_review_events
+    WHERE tenant_id=$1 AND case_id=$2 AND decision_id=$3`,
+    [historical.tenant_id,historical.case_id,historical.decision_id])).rows[0].decision_payload_hash,null);
+  const constraint=(await p.query(`SELECT convalidated FROM pg_constraint
+    WHERE conname='orchestrator_garevent_payload_hash_check'`)).rows[0];
+  assert.equal(constraint.convalidated,false);
+  await assert.rejects(p.query(`INSERT INTO orchestrator_google_ads_reconciliation_review_events
+    (tenant_id,case_id,decision_id,decision_payload_hash,from_state,to_state,classification,
+     actor_user_id,note,note_digest,audit_ref)
+    VALUES($1,$2,'upgrade-missing-hash',NULL,'open','acknowledged','observation_failure',
+      $3,'Safe upgrade test note',$4,'upgrade-missing-hash-audit')`,
+    [tenant,historical.case_id,user,h('Safe upgrade test note')]),/orchestrator_garevent_payload_hash_check/);
+});
 }
