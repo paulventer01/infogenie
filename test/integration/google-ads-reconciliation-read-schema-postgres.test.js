@@ -130,10 +130,10 @@ if (!db.hasDb()) {
   const incomplete = await seedGraph(tenant.id, user.id, 'c', ['campaign_budget', 'campaign']);
 
   const insertAuth = (over = {}) => db.getPool().query(`INSERT INTO ${TABLE}
-    (tenant_id,id,nonce_hash,requested_by,session_id_hash,workflow_id,draft_id,publishing_request_id,
+    (tenant_id,id,nonce_hash,requested_by,credential_owner_user_id,session_id_hash,workflow_id,draft_id,publishing_request_id,
      intent_id,snapshot_hash,intent_hash,operation_id,capability_id,credential_ref_id,credential_ref_version,
      account_fingerprint,ledger_root_hash,expires_at,audit_ref,expected_object_kinds,status)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,1,$15,$16,now()+interval '5 minutes',$17,$18,$19)`,
+    VALUES($1,$2,$3,$4,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,1,$15,$16,now()+interval '5 minutes',$17,$18,$19)`,
   [over.tenantId ?? tenant.id, over.id ?? `garr_${over.tag || 'ok'}`, over.nonce ?? sha(over.tag || 'ok'),
     over.userId ?? user.id, over.session ?? graph.session, over.workflow ?? graph.workflow,
     over.draft ?? graph.draft, over.request ?? graph.request, over.intent ?? graph.intent,
@@ -150,9 +150,11 @@ if (!db.hasDb()) {
   const cols = (await db.getPool().query(
     `SELECT column_name FROM information_schema.columns WHERE table_name=$1`, [TABLE]))
     .rows.map((r) => r.column_name);
-  for (const forbidden of ['access_token', 'customer_id', 'serving', 'purpose', 'review_case_id']) {
+  for (const forbidden of ['access_token', 'customer_id', 'serving']) {
     assert.equal(cols.includes(forbidden), false, forbidden);
   }
+  for (const safePostReviewMetadata of ['purpose','review_case_id','review_version','closure_event_id','credential_owner_user_id'])
+    assert.equal(cols.includes(safePostReviewMetadata),true,safePostReviewMetadata);
 
   await insertAuth({ tag: 'ok' });
   assert.equal((await db.getPool().query(

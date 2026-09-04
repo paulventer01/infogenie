@@ -39,7 +39,9 @@ test('copied lineage is complete, immutable, tenant-bound and events are append-
 test('one transition wins, replays are stable, version races and invalid transitions fail',async()=>{const p=db.getPool();let row=(await p.query(`SELECT * FROM orchestrator_google_ads_reconciliation_review_cases WHERE tenant_id=$1 AND reconciliation_run_id=$2`,[tenant,runs.failed])).rows[0];
   const decisions=await Promise.allSettled(['one','two'].map((decisionId)=>R.acknowledge(p,auth({caseId:row.id,decisionId,expectedVersion:0,classification:'observation_failure',note:'Human acknowledged this observation failure'}))));assert.equal(decisions.filter((x)=>x.status==='fulfilled').length,1);assert.equal(decisions.filter((x)=>x.status==='rejected').length,1);
   row=(await p.query(`SELECT * FROM orchestrator_google_ads_reconciliation_review_cases WHERE tenant_id=$1 AND id=$2`,[tenant,row.id])).rows[0];
-  const replay=await R.acknowledge(p,auth({caseId:row.id,decisionId:decisions[0].status==='fulfilled'?'one':'two',expectedVersion:0,classification:'observation_failure',note:'Replay may differ but cannot rewrite the decision'}));assert.equal(replay.version,1);
+  const winningId=decisions[0].status==='fulfilled'?'one':'two';
+  const replay=await R.acknowledge(p,auth({caseId:row.id,decisionId:winningId,expectedVersion:0,classification:'observation_failure',note:'Human acknowledged this observation failure'}));assert.equal(replay.version,1);
+  await assert.rejects(R.acknowledge(p,auth({caseId:row.id,decisionId:winningId,expectedVersion:0,classification:'observation_failure',note:'Conflicting replay payload'})),{code:'idempotency_conflict'});
   await assert.rejects(R.escalate(p,auth({caseId:row.id,decisionId:'race',expectedVersion:0,classification:'provider_investigation_required',note:'Human escalation decision'})),{code:'version_conflict'});
   await assert.rejects(p.query(`UPDATE orchestrator_google_ads_reconciliation_review_cases SET state='open',version=version+1 WHERE tenant_id=$1 AND id=$2`,[tenant,row.id]),/invalid_transition/);
 });
@@ -48,5 +50,13 @@ test('event and case update roll back when audit insertion fails',async()=>{cons
   const wrapped={connect:async()=>{const c=await p.connect();return {release:()=>c.release(),query:(sql,args)=>/INSERT INTO orchestrator_audit_events/.test(sql)?Promise.reject(Error('forced audit failure')):c.query(sql,args)};}};
   await assert.rejects(R.escalate(wrapped,auth({caseId:row.id,decisionId:'audit-fail',expectedVersion:0,classification:'provider_investigation_required',note:'Human requests external investigation'})),/forced audit failure/);
   const after=(await p.query(`SELECT state,version FROM orchestrator_google_ads_reconciliation_review_cases WHERE tenant_id=$1 AND id=$2`,[tenant,row.id])).rows[0];assert.deepEqual([after.state,after.version],['open',0]);assert.equal((await p.query(`SELECT count(*)::int c FROM orchestrator_google_ads_reconciliation_review_events WHERE tenant_id=$1 AND case_id=$2`,[tenant,row.id])).rows[0].c,before);
+});
+
+test('deferred consistency rejects review events without matching case version and audit evidence',async()=>{const p=db.getPool();const row=(await p.query(`SELECT * FROM orchestrator_google_ads_reconciliation_review_cases WHERE tenant_id=$1 AND reconciliation_run_id=$2`,[tenant,runs.discrepancy])).rows[0],c=await p.connect();
+  try{await c.query('BEGIN');await c.query(`INSERT INTO orchestrator_google_ads_reconciliation_review_events
+    (tenant_id,case_id,decision_id,decision_payload_hash,from_state,to_state,classification,actor_user_id,note,note_digest,audit_ref)
+    VALUES($1,$2,'orphan',$3,'open','acknowledged','observation_failure',$4,'Safe note',$3,'orphan-audit')`,[tenant,row.id,h('Safe note'),user]);
+    await assert.rejects(c.query('COMMIT'),/garledger_inconsistent/);await c.query('ROLLBACK');
+  }finally{c.release();}
 });
 }

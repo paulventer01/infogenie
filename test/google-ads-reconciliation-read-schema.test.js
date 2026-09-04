@@ -62,7 +62,7 @@ test('Google Ads reconciliation read-authorizations are tenant-leading with Goog
   assert.match(ddl, new RegExp(`CREATE TABLE IF NOT EXISTS ${RUNS}\\([\\s\\S]*?PRIMARY KEY\\(tenant_id,id\\)`));
   const create = ddl.slice(ddl.indexOf(`CREATE TABLE IF NOT EXISTS ${TABLE}`),
     ddl.indexOf('CREATE UNIQUE INDEX'));
-  assert.doesNotMatch(create, /\bpurpose\b|\bpost_review\b|\breview_case_id\b|\bserving\b|\bENABLED\b/);
+  assert.doesNotMatch(create, /\bserving\b|\bENABLED\b/);
 });
 
 test('Google Ads reconciliation read-authorizations store hashes, not secrets or raw account identifiers', () => {

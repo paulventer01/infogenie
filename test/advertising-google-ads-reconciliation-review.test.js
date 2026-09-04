@@ -33,7 +33,7 @@ function poolFor(state='open') {
       calls.push(sql.trim());
       if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rows:[],rowCount:0};
       if(/SELECT \* FROM orchestrator_google_ads_reconciliation_review_cases/.test(sql))return {rowCount:1,rows:[{...row}]};
-      if(/SELECT to_state FROM/.test(sql))return {rowCount:0,rows:[]};
+      if(/SELECT decision_payload_hash FROM/.test(sql))return {rowCount:0,rows:[]};
       if(/UPDATE orchestrator_google_ads_reconciliation_review_cases/.test(sql)){
         row.state=p[2];row.classification=p[3];row.assigned_reviewer_id=p[4];row.note=p[5];row.version++;
         return {rowCount:1,rows:[{...row}]};
@@ -48,16 +48,16 @@ for(const [from,to,method] of [['open','acknowledged','acknowledge'],['open','es
 for(const [from,method] of [['open','close'],['acknowledged','acknowledge'],['escalated','acknowledge'],['closed','close']])test(`${from} cannot ${method}`,async()=>assert.rejects(R[method](poolFor(from),opts({caseId:'case',decisionId:'decision',expectedVersion:0,classification:'closed_unresolved',note:'Human operational decision'})),{code:'invalid_review_transition'}));
 
 test('version races, idempotency conflicts and audit rollback fail closed',async()=>{
-  const version=poolFor();version.client.query=async(sql)=>{if(sql==='BEGIN'||sql==='ROLLBACK')return {rows:[]};if(/SELECT \*/.test(sql))return {rowCount:1,rows:[{tenant_id:1,id:'case',state:'open',version:2}]};if(/SELECT to_state/.test(sql))return {rowCount:0,rows:[]};throw Error('unexpected');};
+  const version=poolFor();version.client.query=async(sql)=>{if(sql==='BEGIN'||sql==='ROLLBACK')return {rows:[]};if(/SELECT \*/.test(sql))return {rowCount:1,rows:[{tenant_id:1,id:'case',state:'open',version:2}]};if(/SELECT decision_payload_hash/.test(sql))return {rowCount:0,rows:[]};throw Error('unexpected');};
   await assert.rejects(R.acknowledge(version,opts({caseId:'case',decisionId:'d',expectedVersion:1,classification:'observation_failure',note:'Human decision'})),{code:'version_conflict'});
-  const conflict=poolFor();conflict.client.query=async(sql)=>{if(sql==='BEGIN'||sql==='ROLLBACK')return {rows:[]};if(/SELECT \*/.test(sql))return {rowCount:1,rows:[{tenant_id:1,id:'case',state:'open',version:0}]};if(/SELECT to_state/.test(sql))return {rowCount:1,rows:[{to_state:'closed'}]};throw Error('unexpected');};
+  const conflict=poolFor();conflict.client.query=async(sql)=>{if(sql==='BEGIN'||sql==='ROLLBACK')return {rows:[]};if(/SELECT \*/.test(sql))return {rowCount:1,rows:[{tenant_id:1,id:'case',state:'open',version:0}]};if(/SELECT decision_payload_hash/.test(sql))return {rowCount:1,rows:[{decision_payload_hash:'conflicting'}]};throw Error('unexpected');};
   await assert.rejects(R.acknowledge(conflict,opts({caseId:'case',decisionId:'d',expectedVersion:0,classification:'observation_failure',note:'Human decision'})),{code:'idempotency_conflict'});
   const audit=poolFor(),base=audit.client.query.bind(audit.client);audit.client.query=async(sql,p)=>{if(/INSERT INTO orchestrator_audit_events/.test(sql))throw Error('audit failed');return base(sql,p);};
   await assert.rejects(R.acknowledge(audit,opts({caseId:'case',decisionId:'d',expectedVersion:0,classification:'observation_failure',note:'Human decision'})),/audit failed/);assert.ok(audit.calls.some((x)=>/^ROLLBACK/.test(x)));
 });
 
-test('notes are bounded and secret-like material is rejected; provider and Meta paths are unreachable',()=>{
-  for(const value of ['', 'x'.repeat(R.NOTE_MAX+1),'Bearer token','customer_id 123','https://example.test'])assert.throws(()=>R._test.note(value),{code:'invalid_note'});
+test('notes reject raw Google customer IDs and complete decision payloads bind replay',()=>{
+  for(const value of ['', 'x'.repeat(R.NOTE_MAX+1),'Bearer token','customer_id 123','https://example.test','1234567890','123-456-7890','123 456 7890','(123) 456-7890','123.456.7890'])assert.throws(()=>R._test.note(value),{code:'invalid_note'});
   const source=fs.readFileSync(require.resolve('../services/agent_orchestrator/google_ads_reconciliation_human_review'),'utf8');
   assert.doesNotMatch(source,/fetch\s*\(|https\.request|googleads\.googleapis|tokenTransport|getCredentials|vault|orchestrator_campaign_reconciliation_review_cases/);
   for(const key of Object.keys(R))assert.doesNotMatch(key,/retry|reconcile|provider|vault|delete|reopen/i);
