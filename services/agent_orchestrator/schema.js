@@ -7863,7 +7863,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       rereconciliation_attempt_id TEXT NULL, credential_owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
       credential_ref_id TEXT NOT NULL, credential_ref_version INTEGER NOT NULL,
       account_fingerprint TEXT NOT NULL, ledger_root_hash TEXT NOT NULL,
-      confirmation_hash TEXT NOT NULL, issued_at TIMESTAMPTZ NOT NULL,
+      confirmation_hash TEXT NOT NULL, confirmed_at TIMESTAMPTZ NOT NULL, issued_at TIMESTAMPTZ NOT NULL,
       expires_at TIMESTAMPTZ NOT NULL, status TEXT NOT NULL DEFAULT 'issued',
       reservation_id_hash TEXT NULL, reserved_at TIMESTAMPTZ NULL,
       invocation_id_hash TEXT NULL, consumed_at TIMESTAMPTZ NULL,
@@ -7883,7 +7883,10 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         AND (invocation_id_hash IS NULL OR invocation_id_hash~'^[0-9a-f]{64}$')),
       CONSTRAINT orchestrator_gaac_review CHECK((review_case_id IS NULL AND review_version IS NULL AND closure_event_id IS NULL AND rereconciliation_attempt_id IS NULL)
         OR (review_case_id IS NOT NULL AND review_version>=1 AND closure_event_id IS NOT NULL AND rereconciliation_attempt_id IS NOT NULL)),
-      CONSTRAINT orchestrator_gaac_lifecycle CHECK(expires_at>issued_at AND
+      CONSTRAINT orchestrator_gaac_lifecycle CHECK(confirmed_at<=issued_at AND expires_at>issued_at
+        AND expires_at<=issued_at+interval '10 minutes' AND
+        (reserved_at IS NULL OR reserved_at>=issued_at) AND (consumed_at IS NULL OR consumed_at>=reserved_at)
+        AND (revoked_at IS NULL OR revoked_at>=issued_at) AND
         ((status='issued' AND reservation_id_hash IS NULL AND reserved_at IS NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL)
         OR (status='reserved' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL)
         OR (status='consumed' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NOT NULL AND invocation_id_hash IS NOT NULL AND revoked_at IS NULL)
@@ -7908,7 +7911,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         OR NEW.credential_owner_user_id IS DISTINCT FROM OLD.credential_owner_user_id OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
         OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
         OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash OR NEW.confirmation_hash IS DISTINCT FROM OLD.confirmation_hash
-        OR NEW.issued_at IS DISTINCT FROM OLD.issued_at OR NEW.expires_at IS DISTINCT FROM OLD.expires_at OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+        OR NEW.confirmed_at IS DISTINCT FROM OLD.confirmed_at OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
+        OR NEW.expires_at IS DISTINCT FROM OLD.expires_at OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
         OR (OLD.reservation_id_hash IS NOT NULL AND NEW.reservation_id_hash IS DISTINCT FROM OLD.reservation_id_hash)
         OR (OLD.reserved_at IS NOT NULL AND NEW.reserved_at IS DISTINCT FROM OLD.reserved_at)
         OR OLD.status IN('consumed','revoked','expired')

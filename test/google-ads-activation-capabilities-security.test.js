@@ -33,23 +33,27 @@ test('uniqueness races replay only the identically bound durable winner',async()
   snapshot_hash:'snapshot',intent_id:'intent_1',intent_hash:'intent',current_intent_hash:'intent',operation_id:'operation_1',authorization_id:'auth_1',
   credential_owner_user_id:7,owner_user_id:7,credential_ref_id:'credential_1',credential_ref_version:4,current_credential_version:4,
   credential_status:'active',account_fingerprint:'fingerprint',ledger_root_hash:'ledger'};
- const confirmationHash=sha(`1|7|real-session|confirm_1|${service.CONFIRMATION}`);
+ const confirmedAt=new Date(),confirmationHash=sha(`1|7|real-session|confirm_1|${service.CONFIRMATION}|${confirmedAt.toISOString()}`);
  const winner={...x,id:'gaac_winner',reconciliation_run_id:x.id,source_authorization_id:x.authorization_id,actor_user_id:7,
   session_id_hash:sha('real-session'),confirmation_hash:confirmationHash,status:'issued',issued_at:new Date(),expires_at:new Date(Date.now()+60000)};
- const client={query:async sql=>{
+ let dbNow=new Date(confirmedAt);const client={query:async sql=>{
   if(sql.startsWith('SELECT run.*'))return {rowCount:1,rows:[x]};
   if(sql.startsWith('SELECT id,state,version'))return {rowCount:0,rows:[]};
   if(sql.startsWith('SELECT 1 FROM orchestrator_google_ads_reconciliation_runs'))return {rowCount:0,rows:[]};
-  if(sql.startsWith('SELECT clock_timestamp()'))return {rows:[{now:new Date()}]};
+  if(sql.startsWith('SELECT clock_timestamp()'))return {rows:[{now:dbNow}]};
   if(sql.includes('confirmation_hash=$2 FOR UPDATE'))return {rowCount:0,rows:[]};
   if(sql.startsWith('INSERT INTO')){const e=new Error('race');e.code='23505';throw e;}
   if(sql.includes('(confirmation_hash=$2 OR reconciliation_run_id=$3)'))return {rowCount:1,rows:[winner]};
   return {rowCount:0,rows:[]};
  }};
- const input={...opts(),reconciliationRunId:x.id,confirmationId:'confirm_1',confirmation:service.CONFIRMATION};
+ const input={...opts(),reconciliationRunId:x.id,confirmationId:'confirm_1',confirmation:service.CONFIRMATION,confirmedAt:confirmedAt.toISOString()};
  const replay=await service.issue(client,input);assert.equal(replay.capability_id,'gaac_winner');assert.equal(replay.replay,true);
  winner.confirmation_hash=sha('conflicting-binding');
  await assert.rejects(service.issue(client,input),{code:'capability_conflict'});
+ dbNow=new Date(confirmedAt.getTime()+service.MAX_CONFIRMATION_AGE_MS+1);
+ await assert.rejects(service.issue(client,input),{code:'fresh_confirmation_required'});
+ dbNow=new Date(confirmedAt.getTime()-1);
+ await assert.rejects(service.issue(client,input),{code:'fresh_confirmation_required'});
 });
 test('issuance replay durably expires a stale winner and API reports expiry',async()=>{
  const crypto=require('node:crypto'),sha=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
@@ -59,15 +63,26 @@ test('issuance replay durably expires a stale winner and API reports expiry',asy
   request_workflow_approval_id:2,approval_revision:1,approval_contract_hash:'contract',approval_active:true,snapshot_hash:'snapshot',intent_id:'intent',
   intent_hash:'intent-hash',current_intent_hash:'intent-hash',operation_id:'operation',authorization_id:'auth',credential_owner_user_id:7,owner_user_id:7,
   credential_ref_id:'credential',credential_ref_version:1,current_credential_version:1,credential_status:'active',account_fingerprint:'fingerprint',ledger_root_hash:'ledger'};
- const confirmationHash=sha(`1|7|real-session|confirm_1|${service.CONFIRMATION}`),cap={...x,id:'gaac_old',reconciliation_run_id:x.id,
+ const confirmedAt=new Date(),confirmationHash=sha(`1|7|real-session|confirm_1|${service.CONFIRMATION}|${confirmedAt.toISOString()}`),cap={...x,id:'gaac_old',reconciliation_run_id:x.id,
   source_authorization_id:x.authorization_id,actor_user_id:7,session_id_hash:sha('real-session'),confirmation_hash:confirmationHash,status:'issued',
   issued_at:new Date(Date.now()-120000),expires_at:new Date(Date.now()-60000)};
  const statements=[];const client={query:async sql=>{statements.push(sql);if(sql.startsWith('SELECT run.*'))return {rowCount:1,rows:[x]};
   if(sql.startsWith('SELECT id,state,version')||sql.startsWith('SELECT 1 FROM orchestrator_google_ads_reconciliation_runs'))return {rowCount:0,rows:[]};
   if(sql.startsWith('SELECT clock_timestamp()'))return {rows:[{now:new Date()}]};if(sql.includes('confirmation_hash=$2 FOR UPDATE'))return {rowCount:1,rows:[cap]};return {rowCount:0,rows:[]};}};
- const out=await service.issue(client,{...opts(),reconciliationRunId:x.id,confirmationId:'confirm_1',confirmation:service.CONFIRMATION});
+ const out=await service.issue(client,{...opts(),reconciliationRunId:x.id,confirmationId:'confirm_1',confirmation:service.CONFIRMATION,confirmedAt:confirmedAt.toISOString()});
  assert.equal(out.status,'expired');assert.equal(out.replay,true);assert.ok(statements.some(sql=>sql.includes("SET status='expired'")));
  assert.throws(()=>api._requireUsable(out),{code:'capability_expired'});
+});
+test('issuance requires a valid, timestamp-bound human confirmation',async()=>{
+ let authorityCalls=0;const client={query:async()=>{authorityCalls++;throw new Error('authority must not be queried');}};
+ const base={...opts(),reconciliationRunId:'run_1',confirmationId:'confirm_1',confirmation:service.CONFIRMATION};
+ await assert.rejects(service.issue(client,{...base,confirmedAt:'not-a-date'}),{code:'validation_failed'});
+ assert.equal(authorityCalls,0);
+ const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');
+ assert.match(source,/now-confirmedAt>MAX_CONFIRMATION_AGE_MS/);
+ assert.match(source,/confirmedAt>now/);
+ assert.match(source,/CONFIRMATION}\|\$\{confirmedAt\.toISOString\(\)}/);
+ assert.equal(service.MAX_CONFIRMATION_AGE_MS,5*60*1000);
 });
 test('revoked approval and transition lock ordering fail closed',async()=>{
  const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');

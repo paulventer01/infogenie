@@ -5,7 +5,7 @@ const crypto=require('crypto');
 const TABLE='orchestrator_google_ads_activation_capabilities';
 const PERMISSION='advertising.campaign.activate';
 const CONFIRMATION='AUTHORIZE ONE GOOGLE ADS ACTIVATION ATTEMPT';
-const DEFAULT_TTL_MS=5*60*1000,MAX_TTL_MS=10*60*1000;
+const DEFAULT_TTL_MS=5*60*1000,MAX_TTL_MS=10*60*1000,MAX_CONFIRMATION_AGE_MS=5*60*1000;
 const SAFE=/^[A-Za-z0-9_.:-]{1,128}$/;
 const TERMINAL=['consumed','revoked','expired'];
 const hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
@@ -69,10 +69,12 @@ function bound(cap,x){return [['workflow_id','workflow_id'],['draft_id','draft_i
  ['publish_approval_id','publish_approval_id'],['snapshot_hash','snapshot_hash'],['intent_id','intent_id'],['intent_hash','intent_hash'],['operation_id','operation_id'],
  ['source_authorization_id','authorization_id'],['reconciliation_run_id','id'],['credential_ref_id','credential_ref_id'],['account_fingerprint','account_fingerprint'],['ledger_root_hash','ledger_root_hash']]
  .every(([a,b])=>same(String(cap[a]),String(x[b])))&&Number(cap.draft_revision)===Number(x.draft_revision)&&Number(cap.credential_ref_version)===Number(x.credential_ref_version);}
-async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),ttl=integer(o.ttlMs||DEFAULT_TTL_MS);
- if(!tenantId||!valid(o.reconciliationRunId)||!valid(o.confirmationId)||o.confirmation!==CONFIRMATION||!ttl||ttl>MAX_TTL_MS)throw deny('validation_failed');
+async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),ttl=integer(o.ttlMs||DEFAULT_TTL_MS),confirmedAt=new Date(o.confirmedAt);
+ if(!tenantId||!valid(o.reconciliationRunId)||!valid(o.confirmationId)||o.confirmation!==CONFIRMATION||!ttl||ttl>MAX_TTL_MS
+   ||!Number.isFinite(confirmedAt.getTime()))throw deny('validation_failed');
  const x=await authoritative(c,tenantId,actor,String(o.reconciliationRunId)),now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
- const confirmationHash=hash(`${tenantId}|${actor}|${o.sessionId}|${o.confirmationId}|${CONFIRMATION}`);
+ if(confirmedAt>now||now-confirmedAt>MAX_CONFIRMATION_AGE_MS)throw deny('fresh_confirmation_required');
+ const confirmationHash=hash(`${tenantId}|${actor}|${o.sessionId}|${o.confirmationId}|${CONFIRMATION}|${confirmedAt.toISOString()}`);
  const prior=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND confirmation_hash=$2 FOR UPDATE`,[tenantId,confirmationHash]);
  const replay=async q=>{const cap=q.rows[0];if(q.rowCount!==1||!same(cap.confirmation_hash,confirmationHash)||Number(cap.actor_user_id)!==actor
    ||!same(cap.session_id_hash,hash(o.sessionId))||!bound(cap,x))throw deny('capability_conflict');
@@ -82,8 +84,8 @@ async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),t
  if(prior.rowCount)return replay(prior);
  const row={...x,tenant_id:tenantId,id:`gaac_${crypto.randomUUID()}`};
  await c.query('SAVEPOINT google_ads_activation_issue');
- try{await c.query(`INSERT INTO ${TABLE}(tenant_id,id,actor_user_id,session_id_hash,workflow_id,draft_id,draft_revision,contract_hash,publishing_request_id,publish_approval_id,workflow_approval_id,snapshot_hash,intent_id,intent_hash,operation_id,source_authorization_id,reconciliation_run_id,review_case_id,review_version,closure_event_id,rereconciliation_attempt_id,credential_owner_user_id,credential_ref_id,credential_ref_version,account_fingerprint,ledger_root_hash,confirmation_hash,issued_at,expires_at,audit_ref)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,[tenantId,row.id,actor,hash(o.sessionId),x.workflow_id,x.draft_id,x.draft_revision,x.contract_hash,x.publishing_request_id,x.publish_approval_id,x.workflow_approval_id,x.snapshot_hash,x.intent_id,x.intent_hash,x.operation_id,x.authorization_id,x.id,x.review_case_id,x.review_version,x.closure_event_id,x.rereconciliation_attempt_id,x.credential_owner_user_id,x.credential_ref_id,x.credential_ref_version,x.account_fingerprint,x.ledger_root_hash,confirmationHash,now,new Date(now.getTime()+ttl),`gaac-audit-${crypto.randomUUID()}`]);
+ try{await c.query(`INSERT INTO ${TABLE}(tenant_id,id,actor_user_id,session_id_hash,workflow_id,draft_id,draft_revision,contract_hash,publishing_request_id,publish_approval_id,workflow_approval_id,snapshot_hash,intent_id,intent_hash,operation_id,source_authorization_id,reconciliation_run_id,review_case_id,review_version,closure_event_id,rereconciliation_attempt_id,credential_owner_user_id,credential_ref_id,credential_ref_version,account_fingerprint,ledger_root_hash,confirmation_hash,confirmed_at,issued_at,expires_at,audit_ref)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)`,[tenantId,row.id,actor,hash(o.sessionId),x.workflow_id,x.draft_id,x.draft_revision,x.contract_hash,x.publishing_request_id,x.publish_approval_id,x.workflow_approval_id,x.snapshot_hash,x.intent_id,x.intent_hash,x.operation_id,x.authorization_id,x.id,x.review_case_id,x.review_version,x.closure_event_id,x.rereconciliation_attempt_id,x.credential_owner_user_id,x.credential_ref_id,x.credential_ref_version,x.account_fingerprint,x.ledger_root_hash,confirmationHash,confirmedAt,now,new Date(now.getTime()+ttl),`gaac-audit-${crypto.randomUUID()}`]);
  await c.query('RELEASE SAVEPOINT google_ads_activation_issue');}catch(e){if(e?.code!=='23505')throw e;
   await c.query('ROLLBACK TO SAVEPOINT google_ads_activation_issue');
   const winner=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND (confirmation_hash=$2 OR reconciliation_run_id=$3) FOR UPDATE`,[tenantId,confirmationHash,x.id]);
@@ -106,4 +108,4 @@ async function consume(c,o={}){if(!valid(o.reservationId)||!valid(o.invocationId
  if(!same(x.cap.reservation_id_hash,hash(o.reservationId)))throw deny('capability_rejected');await c.query(`UPDATE ${TABLE} SET status='consumed',invocation_id_hash=$3,consumed_at=$4 WHERE tenant_id=$1 AND id=$2`,[x.tenantId,x.cap.id,hash(o.invocationId),x.now]);x.cap.status='consumed';x.cap.consumed_at=x.now;await audit(c,x.cap,x.actor,'google_ads_activation_capability_consumed','consumed');return project(x.cap);}
 async function revoke(c,o={}){const x=await locked(c,o,['issued','reserved']);if(x.terminal)return project(x.cap,true);await c.query(`UPDATE ${TABLE} SET status='revoked',revoked_at=$3,revoked_by=$4 WHERE tenant_id=$1 AND id=$2`,[x.tenantId,x.cap.id,x.now,x.actor]);x.cap.status='revoked';x.cap.revoked_at=x.now;await audit(c,x.cap,x.actor,'google_ads_activation_capability_revoked','revoked');return project(x.cap);}
 async function get(c,o={}){const x=await locked(c,o,['issued','reserved']);return project(x.cap,true);}
-module.exports={PERMISSION,CONFIRMATION,MAX_TTL_MS,issue,reserve,consume,revoke,get,_authoritative:authoritative,_deny:deny,_human:human};
+module.exports={PERMISSION,CONFIRMATION,MAX_CONFIRMATION_AGE_MS,MAX_TTL_MS,issue,reserve,consume,revoke,get,_authoritative:authoritative,_deny:deny,_human:human};
