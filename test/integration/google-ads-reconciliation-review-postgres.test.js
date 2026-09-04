@@ -62,7 +62,7 @@ test('deferred consistency rejects review events without matching case version a
 
 test('schema startup preserves historical decisions without hashes and enforces hashes for new events',async()=>{const p=db.getPool();
   const historical=(await p.query(`SELECT tenant_id,case_id,decision_id FROM orchestrator_google_ads_reconciliation_review_events
-    WHERE tenant_id=$1 AND from_state IS NOT NULL ORDER BY occurred_at LIMIT 1`,[tenant])).rows[0];
+    WHERE tenant_id=$1 AND from_state IS NOT NULL ORDER BY created_at LIMIT 1`,[tenant])).rows[0];
   assert.ok(historical,'a prior decision event must exist');
   await p.query(`ALTER TABLE orchestrator_google_ads_reconciliation_review_events
     DROP CONSTRAINT orchestrator_garevent_payload_hash_check`);
