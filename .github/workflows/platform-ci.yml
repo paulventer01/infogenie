@@ -1,0 +1,80 @@
+name: platform-ci
+
+# Phase 0 engineering platform: static analysis, dependency scanning, secret
+# scanning, and the full Phase 0 gate suite (RLS isolation, audit rail, consent,
+# DSR) against a real PostgreSQL, on every change to the platform.
+
+on:
+  push:
+    paths: ["platform/**", ".github/workflows/platform-ci.yml"]
+  pull_request:
+    paths: ["platform/**", ".github/workflows/platform-ci.yml"]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: infogenie
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ADMIN_DATABASE_URL: postgres://postgres:postgres@localhost:5432/infogenie
+      DATABASE_URL: postgres://infogenie_app:app_local_dev_only@localhost:5432/infogenie
+      HASH_PEPPER: ci-pepper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: platform/package-lock.json
+      - run: npm ci
+      - name: Static analysis — types
+        run: npm run typecheck
+      - name: Static analysis — lint
+        run: npm run lint
+      - name: Apply migrations
+        run: npm run migrate
+      - name: Phase 0 gate suite
+        run: npm test
+      - name: Dependency scan
+        run: npm audit --audit-level=high
+
+  web-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: platform/web/package-lock.json
+      - run: npm ci
+      - name: Typecheck + lint + build the operator console
+        run: npm run build
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history — secrets must exist in NO commit
+      - name: Scan full history for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
