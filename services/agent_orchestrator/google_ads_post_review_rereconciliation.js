@@ -56,7 +56,7 @@ async function start(pool,o,now){const c=await pool.connect();try{await c.query(
     'google_ads_post_review_rereconciliation_started',$3,$4::jsonb)`,[o.tenantId,review.workflow_id,o.actorUserId,JSON.stringify({rereconciliation_attempt_id:id,review_case_id:review.id,audit_reference:auditRef})]);
   await c.query('COMMIT');return {started,attempt:{...attempt,closure_audit_ref:events.rows[0].audit_ref},common};
 }catch(e){try{await c.query('ROLLBACK');}catch(_){}throw e;}finally{c.release();}}
-async function rereconcile(pool,o={}){authorize(o);let begun;try{begun=await start(pool,o,new Date());}catch(e){if(['23505','40001'].includes(e.code))begun=await start(pool,o,new Date());else throw e;}
+async function rereconcile(pool,o={}){authorize(o);const begun=await start(pool,o,new Date());
   if(begun.existing)return project(begun.existing.attempt,begun.existing.run);let evaluation;
   const observeOpts={...begun.common,authorizationId:begun.started.consumed.authorization_id};
   try{evaluation=reconciliation.evaluate(await reconciliation._test.observe(pool,observeOpts));}catch(e){evaluation={state:'failed',classifications:[e&&e.code==='credential_boundary_mismatch'?'credential_boundary_failure':'observation_failure'],observations:[]};}
