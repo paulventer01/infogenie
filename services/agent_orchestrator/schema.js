@@ -7895,13 +7895,22 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gaac_reservation_unique ON orchestrator_google_ads_activation_capabilities(tenant_id,reservation_id_hash) WHERE reservation_id_hash IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gaac_invocation_unique ON orchestrator_google_ads_activation_capabilities(tenant_id,invocation_id_hash) WHERE invocation_id_hash IS NOT NULL;
-    CREATE OR REPLACE FUNCTION orchestrator_gaac_guard() RETURNS trigger AS $fn$ BEGIN
+    CREATE OR REPLACE FUNCTION orchestrator_gaac_guard() RETURNS trigger AS $fn$ DECLARE review_attempt RECORD; BEGIN
       IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_gaac_audit_evidence'; END IF;
       IF TG_OP='INSERT' THEN
         IF NEW.status<>'issued' OR NEW.reservation_id_hash IS NOT NULL OR NEW.reserved_at IS NOT NULL
           OR NEW.invocation_id_hash IS NOT NULL OR NEW.consumed_at IS NOT NULL
           OR NEW.revoked_at IS NOT NULL OR NEW.revoked_by IS NOT NULL
         THEN RAISE EXCEPTION 'orchestrator_gaac_invalid_initial_state'; END IF;
+        IF NEW.review_case_id IS NOT NULL THEN
+          SELECT * INTO review_attempt FROM orchestrator_google_ads_rereconciliation_attempts
+            WHERE tenant_id=NEW.tenant_id AND id=NEW.rereconciliation_attempt_id;
+          IF NOT FOUND OR review_attempt.review_case_id<>NEW.review_case_id
+            OR review_attempt.review_version<>NEW.review_version OR review_attempt.closure_event_id<>NEW.closure_event_id
+            OR review_attempt.new_authorization_id<>NEW.source_authorization_id
+            OR review_attempt.new_reconciliation_run_id<>NEW.reconciliation_run_id
+          THEN RAISE EXCEPTION 'orchestrator_gaac_invalid_review_provenance'; END IF;
+        END IF;
         RETURN NEW;
       END IF;
       IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id

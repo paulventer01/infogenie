@@ -21,4 +21,7 @@ test('schema binds full Google authority and consume-once review lineage',()=>{
  assert.match(source,/status='expired'[\s\S]*revoked_by IS NULL/);
  assert.match(source,/OLD\.status='issued' AND NEW\.status IN\('revoked','expired'\)/);
  assert.match(source,/NEW\.reservation_id_hash IS NOT NULL OR NEW\.reserved_at IS NOT NULL/);
+ assert.match(source,/orchestrator_google_ads_rereconciliation_attempts/);
+ assert.match(source,/review_attempt\.new_authorization_id<>NEW\.source_authorization_id/);
+ assert.match(source,/review_attempt\.new_reconciliation_run_id<>NEW\.reconciliation_run_id/);
 });

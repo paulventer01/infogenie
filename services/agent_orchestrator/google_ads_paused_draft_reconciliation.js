@@ -155,6 +155,9 @@ async function finishRun(pool,opts,tenantId,id,evaluation,_requestedAt=new Date(
   const client=await pool.connect();
   try {
     await client.query('BEGIN');
+    const hint=await client.query(`SELECT operation_id FROM ${TABLE} WHERE tenant_id=$1 AND id=$2`,[tenantId,id]);
+    if(hint.rowCount!==1)throw fail('invalid_reconciliation_transition');
+    await client.query(`SELECT id FROM orchestrator_google_ads_provider_draft_operations WHERE tenant_id=$1 AND id=$2 FOR SHARE`,[tenantId,hint.rows[0].operation_id]);
     const locked=await client.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,id]);
     if(locked.rowCount!==1)throw fail('invalid_reconciliation_transition');
     assertProofBindings(locked.rows[0],await authority.reproveMetadataAuthority(client,opts));
@@ -216,7 +219,10 @@ async function getRun(pool,opts={}) {
   validateActor(opts);const tenantId=Number(opts.tenantId),id=String(opts.runId||'');
   if(!Number.isSafeInteger(tenantId)||tenantId<1||!SAFE_ID.test(id))throw fail('validation_failed');
   const client=await pool.connect();
-  try{await client.query('BEGIN');const found=await client.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR SHARE`,[tenantId,id]);
+  try{await client.query('BEGIN');const hint=await client.query(`SELECT operation_id FROM ${TABLE} WHERE tenant_id=$1 AND id=$2`,[tenantId,id]);
+    if(hint.rowCount!==1)throw fail('reconciliation_not_found');
+    await client.query(`SELECT id FROM orchestrator_google_ads_provider_draft_operations WHERE tenant_id=$1 AND id=$2 FOR SHARE`,[tenantId,hint.rows[0].operation_id]);
+    const found=await client.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR SHARE`,[tenantId,id]);
     if(found.rowCount!==1)throw fail('reconciliation_not_found');
     assertProofBindings(found.rows[0],await authority.reproveMetadataAuthority(client,opts));
     await client.query('COMMIT');return publicRun(found.rows[0]);

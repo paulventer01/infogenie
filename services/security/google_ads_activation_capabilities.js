@@ -74,13 +74,15 @@ async function authoritative(c,tenantId,actorId,runId){
  return x;}
 function bound(cap,x){return [['workflow_id','workflow_id'],['draft_id','draft_id'],['contract_hash','contract_hash'],['publishing_request_id','publishing_request_id'],
  ['publish_approval_id','publish_approval_id'],['snapshot_hash','snapshot_hash'],['intent_id','intent_id'],['intent_hash','intent_hash'],['operation_id','operation_id'],
- ['source_authorization_id','authorization_id'],['reconciliation_run_id','id'],['credential_ref_id','credential_ref_id'],['account_fingerprint','account_fingerprint'],['ledger_root_hash','ledger_root_hash']]
- .every(([a,b])=>same(String(cap[a]),String(x[b])))&&Number(cap.draft_revision)===Number(x.draft_revision)&&Number(cap.credential_ref_version)===Number(x.credential_ref_version);}
+ ['source_authorization_id','authorization_id'],['reconciliation_run_id','id'],['review_case_id','review_case_id'],['closure_event_id','closure_event_id'],
+ ['rereconciliation_attempt_id','rereconciliation_attempt_id'],['credential_ref_id','credential_ref_id'],['account_fingerprint','account_fingerprint'],['ledger_root_hash','ledger_root_hash']]
+ .every(([a,b])=>same(String(cap[a]),String(x[b])))&&Number(cap.draft_revision)===Number(x.draft_revision)
+ &&Number(cap.review_version||0)===Number(x.review_version||0)&&Number(cap.credential_ref_version)===Number(x.credential_ref_version);}
 async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),ttl=integer(o.ttlMs||DEFAULT_TTL_MS),confirmedAt=new Date(o.confirmedAt);
  if(!tenantId||!valid(o.reconciliationRunId)||!valid(o.confirmationId)||o.confirmation!==CONFIRMATION||!ttl||ttl>MAX_TTL_MS
    ||!Number.isFinite(confirmedAt.getTime()))throw deny('validation_failed');
  const x=await authoritative(c,tenantId,actor,String(o.reconciliationRunId)),now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
- if(confirmedAt>now||now-confirmedAt>MAX_CONFIRMATION_AGE_MS)throw deny('fresh_confirmation_required');
+ if(!(new Date(x.approval_expires_at)>now))throw deny('authoritative_binding_mismatch');
  const confirmationHash=hash(`${tenantId}|${actor}|${o.sessionId}|${o.confirmationId}|${CONFIRMATION}|${confirmedAt.toISOString()}`);
  const prior=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND confirmation_hash=$2 FOR UPDATE`,[tenantId,confirmationHash]);
  const replay=async q=>{const cap=q.rows[0];if(q.rowCount!==1||!same(cap.confirmation_hash,confirmationHash)||Number(cap.actor_user_id)!==actor
@@ -89,6 +91,7 @@ async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),t
    cap.status='expired';await audit(c,cap,actor,'google_ads_activation_capability_expired','expired');}
   return project(cap,true);};
  if(prior.rowCount)return replay(prior);
+ if(confirmedAt>now||now-confirmedAt>MAX_CONFIRMATION_AGE_MS)throw deny('fresh_confirmation_required');
  const row={...x,tenant_id:tenantId,id:`gaac_${crypto.randomUUID()}`};
  await c.query('SAVEPOINT google_ads_activation_issue');
  try{await c.query(`INSERT INTO ${TABLE}(tenant_id,id,actor_user_id,session_id_hash,workflow_id,draft_id,draft_revision,contract_hash,publishing_request_id,publish_approval_id,workflow_approval_id,snapshot_hash,intent_id,intent_hash,operation_id,source_authorization_id,reconciliation_run_id,review_case_id,review_version,closure_event_id,rereconciliation_attempt_id,credential_owner_user_id,credential_ref_id,credential_ref_version,account_fingerprint,ledger_root_hash,confirmation_hash,confirmed_at,issued_at,expires_at,audit_ref)

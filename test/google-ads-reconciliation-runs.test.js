@@ -68,6 +68,8 @@ test('late terminal settlement reads the lease clock after locking and classifie
   const calls=[];
   const client={query:async(sql,params)=>{
     calls.push([sql,params]);
+    if(/^SELECT operation_id/.test(sql.trim()))return {rowCount:1,rows:[{operation_id:'op'}]};
+    if(/^SELECT id FROM orchestrator_google_ads_provider_draft_operations/.test(sql.trim()))return {rowCount:1,rows:[{id:'op'}]};
     if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
     if(/^SELECT clock_timestamp/.test(sql.trim()))return {rowCount:1,rows:[{now:lockedNow}]};
     if(/^UPDATE/.test(sql.trim()))return {rowCount:1,rows:[params.length===3
@@ -157,13 +159,16 @@ test('terminal replay is metadata-only, authority-gated and tenant/idempotency-b
 test('getRun rejects proof belonging to a different authorization/run binding',async(t)=>{
   const row={tenant_id:7,id:'run',authorization_id:'auth-a',invocation_id_hash:'hash',requested_by:3,
     workflow_id:'wf',operation_id:'op',state:'verified',observations:[],classifications:[]};
-  const client={query:async(sql)=>/^SELECT \*/.test(sql.trim())?{rowCount:1,rows:[row]}:{},release:()=>{}};
+  const calls=[];const client={query:async(sql)=>{calls.push(sql);if(/^SELECT operation_id/.test(sql.trim()))return {rowCount:1,rows:[{operation_id:'op'}]};
+    if(/^SELECT id FROM orchestrator_google_ads_provider_draft_operations/.test(sql.trim()))return {rowCount:1,rows:[{id:'op'}]};
+    return /^SELECT \*/.test(sql.trim())?{rowCount:1,rows:[row]}:{};},release:()=>{}};
   const original=authority.reproveMetadataAuthority;t.after(()=>{authority.reproveMetadataAuthority=original;});
   authority.reproveMetadataAuthority=async()=>({tenant_id:7,authorization_id:'auth-b',invocation_id_hash:'hash',
     requested_by:3,workflow_id:'wf',operation_id:'op'});
   await assert.rejects(R.getRun({connect:async()=>client},{tenantId:7,runId:'run',actorType:'human',
     principalType:'user',actorUserId:3,sessionId:'session',hasExplicitTenantPermission:()=>true}),
   (error)=>error.code==='authorization_lineage_mismatch');
+  assert.ok(calls.findIndex(sql=>sql.includes('provider_draft_operations'))<calls.findIndex(sql=>/^SELECT \*/.test(sql.trim())));
 });
 
 function nowString(){return '2026-09-03T00:00:00.000Z';}
