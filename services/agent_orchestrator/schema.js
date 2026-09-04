@@ -7702,7 +7702,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       DROP CONSTRAINT IF EXISTS orchestrator_garevent_payload_hash_check;
     ALTER TABLE orchestrator_google_ads_reconciliation_review_events ADD CONSTRAINT orchestrator_garevent_payload_hash_check
       CHECK((from_state IS NULL AND decision_payload_hash IS NULL) OR
-        (from_state IS NOT NULL AND decision_payload_hash~'^[0-9a-f]{64}$')) NOT VALID;
+        (from_state IS NOT NULL AND decision_payload_hash IS NOT NULL
+          AND decision_payload_hash~'^[0-9a-f]{64}$')) NOT VALID;
 
     CREATE OR REPLACE FUNCTION orchestrator_garcase_guard() RETURNS trigger AS $fn$
     DECLARE r orchestrator_google_ads_reconciliation_runs%ROWTYPE; BEGIN
