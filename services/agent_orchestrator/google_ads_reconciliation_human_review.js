@@ -14,6 +14,7 @@ const KINDS = Object.freeze(['campaign_budget','campaign','ad_group']);
 const SAFE_ID = /^[A-Za-z0-9_.:-]{1,128}$/;
 const NOTE_MAX = 1000;
 const FORBIDDEN_NOTE = /(?:https?:\/\/|bearer\s+|access[_ -]?token|client[_ -]?secret|api[_ -]?key|password|credential|account[_ -]?id|provider[_ -]?id|customer[_ -]?id)/i;
+const RAW_CUSTOMER_ID = /(?:^|\D)\d(?:[\s().‐‑‒–—-]*\d){9}(?!\d)/;
 
 function hash(v) { return crypto.createHash('sha256').update(String(v)).digest('hex'); }
 function fail(code) { const e=new Error(code);e.code=code;e.blocked=true;e.external_action_taken=false;return e; }
@@ -23,7 +24,7 @@ function authorize(opts) {
   const tenantId=Number(opts.tenantId);if(!Number.isSafeInteger(tenantId)||tenantId<1)throw fail('validation_failed');return tenantId;
 }
 function id(value) { const out=String(value||'');if(!SAFE_ID.test(out))throw fail('validation_failed');return out; }
-function note(value) { if(typeof value!=='string')throw fail('invalid_note');const out=value.normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim();if(!out||out.length>NOTE_MAX||FORBIDDEN_NOTE.test(out))throw fail('invalid_note');return out; }
+function note(value) { if(typeof value!=='string')throw fail('invalid_note');const out=value.normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim();if(!out||out.length>NOTE_MAX||FORBIDDEN_NOTE.test(out)||RAW_CUSTOMER_ID.test(out))throw fail('invalid_note');return out; }
 function classification(value) { if(!CLASSIFICATIONS.includes(value))throw fail('invalid_classification');return value; }
 function publicCase(row) {
   const categories=(row.original_classifications||[]).filter((x)=>/^[a-z][a-z0-9_]{0,95}$/.test(x)).slice(0,12);
@@ -67,12 +68,13 @@ const ALLOWED=Object.freeze({open:['acknowledged','escalated'],acknowledged:['es
 async function transition(pool,toState,opts={}) {
   const tenantId=authorize(opts),caseId=id(opts.caseId),decisionId=id(opts.decisionId),safeNote=note(opts.note),safeClassification=classification(opts.classification);
   if(!['acknowledged','escalated','closed'].includes(toState)||!Number.isSafeInteger(opts.expectedVersion)||opts.expectedVersion<0)throw fail('validation_failed');
+  const payloadDigest=hash(JSON.stringify({toState,expectedVersion:opts.expectedVersion,classification:safeClassification,note:safeNote,actorUserId:opts.actorUserId}));
   return tx(pool,async(c)=>{const prior=await c.query(`SELECT * FROM orchestrator_google_ads_reconciliation_review_cases WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,caseId]);if(prior.rowCount!==1)throw fail('review_case_not_found');const row=prior.rows[0];
-    const replay=await c.query(`SELECT to_state FROM orchestrator_google_ads_reconciliation_review_events WHERE tenant_id=$1 AND case_id=$2 AND decision_id=$3`,[tenantId,caseId,decisionId]);if(replay.rowCount){if(replay.rows[0].to_state===toState)return publicCase(row);throw fail('idempotency_conflict');}
+    const replay=await c.query(`SELECT decision_payload_hash FROM orchestrator_google_ads_reconciliation_review_events WHERE tenant_id=$1 AND case_id=$2 AND decision_id=$3`,[tenantId,caseId,decisionId]);if(replay.rowCount){if(replay.rows[0].decision_payload_hash===payloadDigest)return publicCase(row);throw fail('idempotency_conflict');}
     if(row.version!==opts.expectedVersion)throw fail('version_conflict');if(!ALLOWED[row.state].includes(toState))throw fail('invalid_review_transition');
     const now=opts.now instanceof Date?opts.now:new Date(),eventRef=`garc-event:${hash(`${caseId}:${decisionId}`).slice(0,20)}`;
     const updated=await c.query(`UPDATE orchestrator_google_ads_reconciliation_review_cases SET state=$3,classification=$4,assigned_reviewer_id=$5,note=$6,note_digest=$7,version=version+1,acknowledged_at=CASE WHEN $3='acknowledged' THEN $8 ELSE acknowledged_at END,escalated_at=CASE WHEN $3='escalated' THEN $8 ELSE escalated_at END,closed_at=CASE WHEN $3='closed' THEN $8 ELSE closed_at END WHERE tenant_id=$1 AND id=$2 AND version=$9 RETURNING *`,[tenantId,caseId,toState,safeClassification,opts.actorUserId,safeNote,hash(safeNote),now,opts.expectedVersion]);if(updated.rowCount!==1)throw fail('version_conflict');
-    await c.query(`INSERT INTO orchestrator_google_ads_reconciliation_review_events (tenant_id,case_id,decision_id,from_state,to_state,classification,actor_user_id,note,note_digest,audit_ref,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[tenantId,caseId,decisionId,row.state,toState,safeClassification,opts.actorUserId,safeNote,hash(safeNote),eventRef,now]);
+    await c.query(`INSERT INTO orchestrator_google_ads_reconciliation_review_events (tenant_id,case_id,decision_id,decision_payload_hash,from_state,to_state,classification,actor_user_id,note,note_digest,audit_ref,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[tenantId,caseId,decisionId,payloadDigest,row.state,toState,safeClassification,opts.actorUserId,safeNote,hash(safeNote),eventRef,now]);
     await audit(c,updated.rows[0],`google_ads_reconciliation_review_${toState}`,opts.actorUserId,eventRef);return publicCase(updated.rows[0]);});
 }
 module.exports={PERMISSION,STATES,CLASSIFICATIONS,KINDS,NOTE_MAX,publicCase,createOrGet,getCase,listCases,acknowledge:(p,o)=>transition(p,'acknowledged',o),escalate:(p,o)=>transition(p,'escalated',o),close:(p,o)=>transition(p,'closed',o),_test:{authorize,note,classification,transition,audit}};

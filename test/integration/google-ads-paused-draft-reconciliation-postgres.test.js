@@ -8,6 +8,8 @@ const db=require('../../db');
 const schema=require('../../services/agent_orchestrator/schema');
 const authority=require('../../services/security/google_ads_paused_draft_reconciliation');
 const coordinator=require('../../services/agent_orchestrator/google_ads_paused_draft_reconciliation');
+const review=require('../../services/agent_orchestrator/google_ads_reconciliation_human_review');
+const postReview=require('../../services/agent_orchestrator/google_ads_post_review_rereconciliation');
 const {makeFixtures}=require('../helpers');
 const CUSTOMER='1234567890';
 const REFRESH='refresh-token-must-never-escape';const CLIENT_SECRET='client-secret-must-never-escape';
@@ -47,7 +49,8 @@ if (!db.hasDb()) {
   const wa=500000000+parseInt(tag.slice(0,7),16);
   const ids={workflow:id('wf'),draft:id('dr'),approval:id('ap'),request:id('rq'),intent:id('in'),
     cred:id('cr'),cap:id('cp'),op:id('op')};
-  t.after(async()=>replica(['orchestrator_audit_events',coordinator.TABLE,authority.TABLE,
+  t.after(async()=>replica(['orchestrator_audit_events','orchestrator_google_ads_rereconciliation_attempts',
+    'orchestrator_google_ads_reconciliation_review_events','orchestrator_google_ads_reconciliation_review_cases',coordinator.TABLE,authority.TABLE,
     'orchestrator_google_ads_provider_draft_objects','orchestrator_google_ads_provider_draft_operations',
     'orchestrator_google_ads_provider_draft_capabilities','orchestrator_campaign_delivery_intents',
     'orchestrator_campaign_publish_requests','orchestrator_campaign_publish_approvals',
@@ -291,6 +294,29 @@ if (!db.hasDb()) {
   assert.deepEqual([settled.state,settled.discrepancy_classifications],['discrepancy_detected',['campaign_active']]);
   assert.doesNotMatch((await db.getPool().query(`SELECT to_jsonb(r)::text row FROM ${coordinator.TABLE} r
     WHERE tenant_id=$1 AND id=$2`,[tenant.id,pending.row.id])).rows[0].row,/must-not-persist/);
+
+  // PR10C.4: close the Google-only review ledger, then create exactly one
+  // post-review authorization/run/attempt/audit transaction before observation.
+  await setGrant('["advertising.reconciliation.review"]');
+  const reviewActor={tenantId:tenant.id,actorUserId:user.id,actorType:'human',principalType:'user',sessionId:base.sessionId,
+    hasPermission:(p)=>p===review.PERMISSION,hasExplicitTenantPermission:(p)=>p===review.PERMISSION};
+  let reviewCase=await review.createOrGet(db.getPool(),{...reviewActor,reconciliationRunId:settled.reconciliation_run_id});
+  reviewCase=await review.acknowledge(db.getPool(),{...reviewActor,caseId:reviewCase.case_id,decisionId:id('ack'),expectedVersion:0,
+    classification:'observation_failure',note:'Human reviewed the sanitized observation evidence'});
+  reviewCase=await review.close(db.getPool(),{...reviewActor,caseId:reviewCase.case_id,decisionId:id('close'),expectedVersion:1,
+    classification:'external_remediation_required',note:'External remediation is required before another observation'});
+  const postArgs={...reviewActor,reviewCaseId:reviewCase.case_id,invocationId:id('post-review'),tokenTransport,observerTransport};
+  const concurrent=await Promise.all([postReview.rereconcile(db.getPool(),postArgs),postReview.rereconcile(db.getPool(),postArgs)]);
+  const post=concurrent.find((x)=>x.reconciliation.state==='verified');assert.ok(post);
+  assert.equal(concurrent[0].rereconciliation_attempt_id,concurrent[1].rereconciliation_attempt_id);assert.equal(post.external_action_taken,false);
+  assert.equal((await db.getPool().query(`SELECT count(*)::int c FROM orchestrator_google_ads_rereconciliation_attempts
+    WHERE tenant_id=$1 AND review_case_id=$2`,[tenant.id,reviewCase.case_id])).rows[0].c,1);
+  const trafficAfterPost=[exchanges.length,observed.length];
+  assert.equal((await postReview.rereconcile(db.getPool(),postArgs)).rereconciliation_attempt_id,post.rereconciliation_attempt_id);
+  assert.deepEqual([exchanges.length,observed.length],trafficAfterPost,'replay is metadata-only');
+  await assert.rejects(postReview.rereconcile(db.getPool(),{...postArgs,invocationId:id('conflict')}),denied('idempotency_conflict'));
+  await setGrant('[]');
+  await assert.rejects(postReview.rereconcile(db.getPool(),postArgs),denied('authorization_lineage_mismatch'));
 
   const allStored=await db.getPool().query(`SELECT to_jsonb(r)::text row FROM ${coordinator.TABLE} r WHERE tenant_id=$1`,[tenant.id]);
   for(const text of [...allStored.rows.map((r)=>r.row),JSON.stringify(durable)]) for(const secret of

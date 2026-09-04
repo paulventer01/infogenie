@@ -17,6 +17,7 @@ const OBJECTS='orchestrator_google_ads_provider_draft_objects';
 // The existing read permission. Creating drafts is a different authority and is
 // deliberately not required to reconcile what already exists.
 const PERMISSION='advertising.reconciliation.read';
+const POST_REVIEW_PERMISSION='advertising.reconciliation.review';
 const KINDS=Object.freeze(['campaign_budget','campaign','ad_group']);
 const DEFAULT_TTL_MS=5*60*1000;
 const MAX_TTL_MS=10*60*1000;
@@ -38,9 +39,10 @@ function same(a,b) { if(typeof a!=='string'||typeof b!=='string')return false;co
 function int(v) { const n=Number(v);return Number.isSafeInteger(n)&&n>0?n:null; }
 function valid(v) { return SAFE_ID.test(String(v||'')); }
 // PR10A human-session shape: no api_key, worker, service or agent principal may hold a read authorization.
-function human(o) { const id=int(o&&o.actorUserId);
+function permission(o){return o&&o.authorizationPurpose==='post_review'?POST_REVIEW_PERMISSION:PERMISSION;}
+function human(o) { const id=int(o&&o.actorUserId),required=permission(o);
   if(!id||o.actorType!=='human'||!valid(o.sessionId)||['api_key','worker','service','service_account','automation','autonomous','agent'].includes(String(o.principalType||'').toLowerCase()))throw deny('human_session_required');
-  if(typeof o.hasExplicitTenantPermission!=='function'||o.hasExplicitTenantPermission(PERMISSION)!==true)throw deny('permission_denied');return id; }
+  if(typeof o.hasExplicitTenantPermission!=='function'||o.hasExplicitTenantPermission(required)!==true)throw deny('permission_denied');return id; }
 // Audit detail is exactly {authorization_id, operation_id, status}: no session, credential,
 // token, customer id, fingerprint or provider object material.
 async function audit(c,tenantId,actorId,workflowId,event,detail) { await c.query(`INSERT INTO orchestrator_audit_events
@@ -67,10 +69,10 @@ function validateLineage(rows,operation) {
   if(KINDS.some((k)=>!by[k]))throw deny('invalid_ledger_lineage');return ledgerRoot(rows); }
 // The operation row is the only authority, and only one that actually acted may
 // be observed. A create freeze cannot strand this read.
-async function loadOperation(c,tenantId,actorId,operationId) {
+async function loadOperation(c,tenantId,actorId,operationId,requiredPermission=PERMISSION) {
   const r=await c.query(`SELECT op.* FROM ${OPERATIONS} op ${GRANTED.replaceAll('$$','op')}
     WHERE op.tenant_id=$1 AND op.id=$2 AND op.external_action_taken=TRUE
-      AND role.permissions ? $4 FOR SHARE OF op,t,tu,role`,[tenantId,operationId,actorId,PERMISSION]);
+      AND role.permissions ? $4 FOR SHARE OF op,t,tu,role`,[tenantId,operationId,actorId,requiredPermission]);
   if(r.rowCount!==1)throw deny('authorization_lineage_mismatch');const operation=r.rows[0];
   const objects=await c.query(`SELECT object_kind,provider_object_id,provider_object_id_digest,account_fingerprint,
       provider_status,serving,published,activated FROM ${OBJECTS} WHERE tenant_id=$1 AND operation_id=$2
@@ -81,21 +83,23 @@ async function loadOperation(c,tenantId,actorId,operationId) {
 async function issue(c,o={}) {
   const tenantId=int(o.tenantId),actorId=human(o),ttl=int(o.ttlMs||DEFAULT_TTL_MS);
   if(!tenantId||!valid(o.operationId)||!ttl||ttl>MAX_TTL_MS)throw deny('validation_failed');
-  const g=await loadOperation(c,tenantId,actorId,String(o.operationId)),op=g.operation;
+  const purpose=o.authorizationPurpose==='post_review'?'post_review':'initial';
+  const g=await loadOperation(c,tenantId,actorId,String(o.operationId),permission(o)),op=g.operation;
   for(const [key,column] of BINDINGS) if(o[key]!==undefined&&!same(String(o[key]),String(op[column])))throw deny('authorization_lineage_mismatch');
   // The credential owner is the operation's actor, so only they may reconcile.
   if((o.credentialRefVersion!==undefined&&Number(o.credentialRefVersion)!==Number(op.credential_ref_version))
     ||(o.ledgerRootHash!==undefined&&!same(String(o.ledgerRootHash),g.ledgerRoot))
-    ||Number(op.actor_user_id)!==actorId)throw deny('authorization_lineage_mismatch');
+    ||(purpose==='initial'&&Number(op.actor_user_id)!==actorId)
+    ||(purpose==='post_review'&&Number(o.credentialOwnerUserId)!==Number(op.actor_user_id)))throw deny('authorization_lineage_mismatch');
   const now=new Date((await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now);
   if(!Number.isFinite(now.getTime()))throw deny('validation_failed');
   const id=`garr_${crypto.randomUUID()}`,expires=new Date(now.getTime()+ttl);
   try { await c.query(`INSERT INTO ${TABLE}
-    (tenant_id,id,nonce_hash,requested_by,session_id_hash,workflow_id,draft_id,publishing_request_id,intent_id,
+    (tenant_id,id,nonce_hash,requested_by,credential_owner_user_id,session_id_hash,purpose,review_case_id,review_version,closure_event_id,workflow_id,draft_id,publishing_request_id,intent_id,
      snapshot_hash,intent_hash,operation_id,capability_id,credential_ref_id,credential_ref_version,
      account_fingerprint,ledger_root_hash,issued_at,expires_at,audit_ref)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-  [tenantId,id,hash(crypto.randomBytes(32)),actorId,hash(o.sessionId),op.workflow_id,op.draft_id,
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+  [tenantId,id,hash(crypto.randomBytes(32)),actorId,Number(op.actor_user_id),hash(o.sessionId),purpose,o.reviewCaseId||null,o.reviewVersion||null,o.closureEventId||null,op.workflow_id,op.draft_id,
     op.publishing_request_id,op.intent_id,op.snapshot_hash,op.intent_hash,op.id,op.capability_id,op.credential_ref_id,
     op.credential_ref_version,op.account_fingerprint,g.ledgerRoot,now,expires,`garr-audit-${crypto.randomUUID()}`]); }
   catch(error) { if(error?.code==='23505')throw deny('authorization_conflict');throw error; }
@@ -111,14 +115,15 @@ async function prepare(c,o) {
   if(r.rowCount!==1)throw deny('authorization_rejected');const row=r.rows[0];
   const reject=async(code)=>{await audit(c,tenantId,actorId,row.workflow_id,EVENT('rejected'),
     {authorization_id:row.id,operation_id:row.operation_id,status:row.status});throw deny(code);};
-  if(Number(row.requested_by)!==actorId||!same(String(row.session_id_hash),hash(o.sessionId))
+  if(String(row.purpose||'initial')!==String(o.authorizationPurpose||'initial')
+    ||Number(row.requested_by)!==actorId||!same(String(row.session_id_hash),hash(o.sessionId))
     ||!['issued','consumed'].includes(row.status))return reject('authorization_rejected');
   const now=row.status==='issued'?(o.now instanceof Date?o.now:new Date((await c.query('SELECT clock_timestamp() AS now')).rows[0]?.now)):null;
   if(row.status==='issued'&&!(new Date(row.expires_at)>now)) {
     await c.query(`UPDATE ${TABLE} SET status='expired' WHERE tenant_id=$1 AND id=$2 AND status='issued'`,[tenantId,row.id]);
     return reject('authorization_expired'); }
   let g;
-  try { g=await loadOperation(c,tenantId,actorId,row.operation_id); }
+  try { g=await loadOperation(c,tenantId,actorId,row.operation_id,permission(o)); }
   catch(error) { if(error&&error.blocked)return reject(error.code);throw error; }
   if(!bound(g,row))return reject('authorization_lineage_mismatch');
   // Replay is metadata-only, but still requires a live tenant, membership and DB role grant.
@@ -159,6 +164,7 @@ async function consumeIntoReconciliationRun(c,o={},run={}) {
   if(!valid(run.id)||!valid(run.auditRef)||!Number.isSafeInteger(run.observationLeaseMs)
     ||run.observationLeaseMs<1||run.observationLeaseMs>MAX_RECONCILIATION_LEASE_MS)throw deny('validation_failed');
   const row=p.row;
+  if(String(row.purpose||'initial')!==String(o.authorizationPurpose||'initial'))throw deny('authorization_lineage_mismatch');
   // prepare() already holds the authorization row lock. Establish both lease
   // timestamps from one PostgreSQL clock read inside the same transaction.
   const inserted=await c.query(`WITH lease AS (SELECT clock_timestamp() AS now)
@@ -212,11 +218,11 @@ async function observeWithConsumedCredential(c,o={}) {
     AND requested_by=$3 AND session_id_hash=$4 AND invocation_id_hash=$5 FOR UPDATE`,
   [tenantId,String(o.authorizationId),actorId,hash(o.sessionId),hash(o.invocationId)]);
   if(r.rowCount!==1)throw deny('authorization_rejected');
-  const row=r.rows[0],g=await loadOperation(c,tenantId,actorId,row.operation_id);
+  const row=r.rows[0],g=await loadOperation(c,tenantId,actorId,row.operation_id,permission(o));
   if(!bound(g,row))throw deny('credential_boundary_mismatch');
   // Kind plus provider object id only: the observer derives every URL itself.
   const ledgerObjects=g.objects.map((x)=>Object.freeze({object_kind:x.object_kind,provider_object_id:String(x.provider_object_id)}));
-  const observed=await vault.withGoogleAdsPausedDraftSecretScope(c,{tenantId,ownerUserId:actorId,
+  const observed=await vault.withGoogleAdsPausedDraftSecretScope(c,{tenantId,ownerUserId:Number(row.credential_owner_user_id||actorId),
     credentialRefId:row.credential_ref_id,credentialRefVersion:row.credential_ref_version,
     accountFingerprint:row.account_fingerprint,tokenTransport:o.tokenTransport,
     tokenTimeoutMs:o.tokenTimeoutMs},(handle)=>observer.observePausedGoogleAdsLedger({
@@ -272,6 +278,6 @@ async function revoke(c,o={}) {
   await audit(c,tenantId,actorId,r.rows[0].workflow_id,EVENT('revoked'),
     {authorization_id:r.rows[0].id,operation_id:r.rows[0].operation_id,status:'revoked'});
   return project(r.rows[0],false); }
-module.exports={PERMISSION,KINDS,TABLE,DEFAULT_TTL_MS,MAX_TTL_MS,MAX_RECONCILIATION_LEASE_MS,ledgerRoot,validateLineage,issue,consume,
+module.exports={PERMISSION,POST_REVIEW_PERMISSION,KINDS,TABLE,DEFAULT_TTL_MS,MAX_TTL_MS,MAX_RECONCILIATION_LEASE_MS,ledgerRoot,validateLineage,issue,consume,
   consumeIntoReconciliationRun,reproveMetadataAuthority,consumeAtomic,consumeAndObserve,
   observeWithConsumedCredential,get,revoke,_deny:deny,_human:human};
