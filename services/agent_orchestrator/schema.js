@@ -7887,11 +7887,11 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         AND expires_at<=issued_at+interval '10 minutes' AND
         (reserved_at IS NULL OR reserved_at>=issued_at) AND (consumed_at IS NULL OR consumed_at>=reserved_at)
         AND (revoked_at IS NULL OR revoked_at>=issued_at) AND
-        ((status='issued' AND reservation_id_hash IS NULL AND reserved_at IS NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL)
-        OR (status='reserved' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL)
-        OR (status='consumed' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NOT NULL AND invocation_id_hash IS NOT NULL AND revoked_at IS NULL)
-        OR (status='revoked' AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NOT NULL AND revoked_by IS NOT NULL)
-        OR (status='expired' AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL)))
+        ((status='issued' AND reservation_id_hash IS NULL AND reserved_at IS NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)
+        OR (status='reserved' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)
+        OR (status='consumed' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NOT NULL AND invocation_id_hash IS NOT NULL AND revoked_at IS NULL AND revoked_by IS NULL)
+        OR (status='revoked' AND (reservation_id_hash IS NULL)=(reserved_at IS NULL) AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NOT NULL AND revoked_by IS NOT NULL)
+        OR (status='expired' AND (reservation_id_hash IS NULL)=(reserved_at IS NULL) AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)))
     );
     CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gaac_reservation_unique ON orchestrator_google_ads_activation_capabilities(tenant_id,reservation_id_hash) WHERE reservation_id_hash IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gaac_invocation_unique ON orchestrator_google_ads_activation_capabilities(tenant_id,invocation_id_hash) WHERE invocation_id_hash IS NOT NULL;
@@ -7922,6 +7922,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         OR NEW.expires_at IS DISTINCT FROM OLD.expires_at OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
         OR (OLD.reservation_id_hash IS NOT NULL AND NEW.reservation_id_hash IS DISTINCT FROM OLD.reservation_id_hash)
         OR (OLD.reserved_at IS NOT NULL AND NEW.reserved_at IS DISTINCT FROM OLD.reserved_at)
+        OR (OLD.status='issued' AND NEW.status IN('revoked','expired')
+          AND (NEW.reservation_id_hash IS NOT NULL OR NEW.reserved_at IS NOT NULL))
         OR OLD.status IN('consumed','revoked','expired')
         OR NOT ((OLD.status='issued' AND NEW.status IN('reserved','revoked','expired')) OR (OLD.status='reserved' AND NEW.status IN('consumed','revoked','expired')))
       THEN RAISE EXCEPTION 'orchestrator_gaac_immutable_or_invalid_transition'; END IF; RETURN NEW;

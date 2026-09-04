@@ -17,4 +17,8 @@ test('schema binds full Google authority and consume-once review lineage',()=>{
  assert.match(source,/consumed_at IS NULL OR consumed_at>=reserved_at/);
  assert.match(source,/revoked_at IS NULL OR revoked_at>=issued_at/);
  assert.match(source,/TG_OP='INSERT'/);assert.match(source,/orchestrator_gaac_invalid_initial_state/);
+ assert.match(source,/status='consumed'[\s\S]*revoked_by IS NULL/);
+ assert.match(source,/status='expired'[\s\S]*revoked_by IS NULL/);
+ assert.match(source,/OLD\.status='issued' AND NEW\.status IN\('revoked','expired'\)/);
+ assert.match(source,/NEW\.reservation_id_hash IS NOT NULL OR NEW\.reserved_at IS NOT NULL/);
 });

@@ -106,6 +106,14 @@ test('revoked approval and transition lock ordering fail closed',async()=>{
   if(sql.startsWith('SELECT id,state,version')||sql.startsWith('SELECT 1 FROM orchestrator_google_ads_reconciliation_runs'))return {rowCount:0,rows:[]};throw new Error(sql);}};
  await assert.rejects(service._authoritative(client,1,7,'run'),{code:'authoritative_binding_mismatch'});
 });
+test('transitions recheck publishing approval expiry after acquiring all locks',()=>{
+ const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');
+ assert.match(source,/pa\.expires_at AS approval_expires_at/);
+ const locked=source.slice(source.indexOf('async function locked'),source.indexOf('async function reserve'));
+ assert.ok(locked.indexOf('SELECT * FROM ${TABLE}')<locked.indexOf('SELECT clock_timestamp() now'));
+ assert.ok(locked.indexOf('SELECT clock_timestamp() now')<locked.indexOf('authority.approval_expires_at'));
+ assert.match(locked,/new Date\(authority\.approval_expires_at\)>now\)\)throw deny\('authoritative_binding_mismatch'\)/);
+});
 test('terminal metadata replay still revalidates current database authority',async()=>{
  const row={tenant_id:1,id:'gaac_one',actor_user_id:7,session_id_hash:require('node:crypto').createHash('sha256').update('real-session').digest('hex'),
   workflow_id:'wf',reconciliation_run_id:'run',status:'consumed',issued_at:new Date(),expires_at:new Date(Date.now()+1000),consumed_at:new Date()};
