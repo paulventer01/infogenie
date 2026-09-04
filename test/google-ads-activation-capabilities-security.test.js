@@ -37,6 +37,8 @@ test('uniqueness races replay only the identically bound durable winner',async()
  const winner={...x,id:'gaac_winner',reconciliation_run_id:x.id,source_authorization_id:x.authorization_id,actor_user_id:7,
   session_id_hash:sha('real-session'),confirmation_hash:confirmationHash,status:'issued',issued_at:new Date(),expires_at:new Date(Date.now()+60000)};
  let dbNow=new Date(confirmedAt);const client={query:async sql=>{
+  if(sql.startsWith('SELECT operation_id FROM'))return {rowCount:1,rows:[{operation_id:x.operation_id}]};
+  if(sql.startsWith('SELECT id FROM orchestrator_google_ads_provider_draft_operations'))return {rowCount:1,rows:[{id:x.operation_id}]};
   if(sql.startsWith('SELECT run.*'))return {rowCount:1,rows:[x]};
   if(sql.startsWith('SELECT id,state,version'))return {rowCount:0,rows:[]};
   if(sql.startsWith('SELECT 1 FROM orchestrator_google_ads_reconciliation_runs'))return {rowCount:0,rows:[]};
@@ -66,7 +68,10 @@ test('issuance replay durably expires a stale winner and API reports expiry',asy
  const confirmedAt=new Date(),confirmationHash=sha(`1|7|real-session|confirm_1|${service.CONFIRMATION}|${confirmedAt.toISOString()}`),cap={...x,id:'gaac_old',reconciliation_run_id:x.id,
   source_authorization_id:x.authorization_id,actor_user_id:7,session_id_hash:sha('real-session'),confirmation_hash:confirmationHash,status:'issued',
   issued_at:new Date(Date.now()-120000),expires_at:new Date(Date.now()-60000)};
- const statements=[];const client={query:async sql=>{statements.push(sql);if(sql.startsWith('SELECT run.*'))return {rowCount:1,rows:[x]};
+ const statements=[];const client={query:async sql=>{statements.push(sql);
+  if(sql.startsWith('SELECT operation_id FROM'))return {rowCount:1,rows:[{operation_id:x.operation_id}]};
+  if(sql.startsWith('SELECT id FROM orchestrator_google_ads_provider_draft_operations'))return {rowCount:1,rows:[{id:x.operation_id}]};
+  if(sql.startsWith('SELECT run.*'))return {rowCount:1,rows:[x]};
   if(sql.startsWith('SELECT id,state,version')||sql.startsWith('SELECT 1 FROM orchestrator_google_ads_reconciliation_runs'))return {rowCount:0,rows:[]};
   if(sql.startsWith('SELECT clock_timestamp()'))return {rows:[{now:new Date()}]};if(sql.includes('confirmation_hash=$2 FOR UPDATE'))return {rowCount:1,rows:[cap]};return {rowCount:0,rows:[]};}};
  const out=await service.issue(client,{...opts(),reconciliationRunId:x.id,confirmationId:'confirm_1',confirmation:service.CONFIRMATION,confirmedAt:confirmedAt.toISOString()});
@@ -88,12 +93,16 @@ test('revoked approval and transition lock ordering fail closed',async()=>{
  const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');
  const locked=source.slice(source.indexOf('async function locked'),source.indexOf('async function reserve'));
  assert.ok(locked.indexOf('const authority=await authoritative')<locked.indexOf(`SELECT * FROM \${TABLE}`));
+ const authoritative=source.slice(source.indexOf('async function authoritative'),source.indexOf('function bound'));
+ assert.ok(authoritative.indexOf('orchestrator_google_ads_provider_draft_operations')<authoritative.indexOf('SELECT run.*'));
  const revoked={id:'run',tenant_id:1,state:'verified',completed_at:new Date(),created_at:new Date(),external_action_taken:true,object_count:3,
   draft_status:'approved_for_publish',current_revision:1,draft_revision:1,request_revision:1,approval_revision:1,contract_hash:'same',
   request_contract_hash:'same',approval_contract_hash:'same',publish_approval_id:'approval',request_approval_id:'approval',workflow_approval_id:1,
   request_workflow_approval_id:1,approval_revoked_at:new Date(),approval_active:true,intent_hash:'intent',current_intent_hash:'intent',
   credential_status:'active',credential_ref_version:1,current_credential_version:1,credential_owner_user_id:7,owner_user_id:7};
- const client={query:async sql=>{if(sql.startsWith('SELECT run.*'))return {rowCount:1,rows:[revoked]};
+ const client={query:async sql=>{if(sql.startsWith('SELECT operation_id FROM'))return {rowCount:1,rows:[{operation_id:'operation'}]};
+  if(sql.startsWith('SELECT id FROM orchestrator_google_ads_provider_draft_operations'))return {rowCount:1,rows:[{id:'operation'}]};
+  if(sql.startsWith('SELECT run.*'))return {rowCount:1,rows:[revoked]};
   if(sql.startsWith('SELECT id,state,version')||sql.startsWith('SELECT 1 FROM orchestrator_google_ads_reconciliation_runs'))return {rowCount:0,rows:[]};throw new Error(sql);}};
  await assert.rejects(service._authoritative(client,1,7,'run'),{code:'authoritative_binding_mismatch'});
 });

@@ -4,7 +4,7 @@ const source=fs.readFileSync(require.resolve('../services/agent_orchestrator/sch
 test('Google activation capability is separate, tenant-leading and immutable',()=>{
  assert.match(source,/CREATE TABLE IF NOT EXISTS orchestrator_google_ads_activation_capabilities\(/);
  assert.match(source,/PRIMARY KEY\(tenant_id,id\)/);assert.match(source,/UNIQUE\(tenant_id,reconciliation_run_id\)/);
- assert.match(source,/orchestrator_gaac_guard BEFORE UPDATE OR DELETE/);
+ assert.match(source,/orchestrator_gaac_guard BEFORE INSERT OR UPDATE OR DELETE/);
  assert.match(source,/orchestrator_gaac_reservation_unique/);assert.match(source,/orchestrator_gaac_invocation_unique/);
 });
 test('schema binds full Google authority and consume-once review lineage',()=>{
@@ -16,4 +16,5 @@ test('schema binds full Google authority and consume-once review lineage',()=>{
  assert.match(source,/reserved_at IS NULL OR reserved_at>=issued_at/);
  assert.match(source,/consumed_at IS NULL OR consumed_at>=reserved_at/);
  assert.match(source,/revoked_at IS NULL OR revoked_at>=issued_at/);
+ assert.match(source,/TG_OP='INSERT'/);assert.match(source,/orchestrator_gaac_invalid_initial_state/);
 });

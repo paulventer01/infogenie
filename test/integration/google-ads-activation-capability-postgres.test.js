@@ -11,7 +11,11 @@ if(!db.hasDb())test('Google activation capability PostgreSQL requires DATABASE_U
    assert.equal((await p.query('SELECT count(*)::int n FROM pg_constraint WHERE conname=$1',[name])).rows[0].n,1);
   const lifecycle=(await p.query(`SELECT pg_get_constraintdef(oid) definition FROM pg_constraint WHERE conname='orchestrator_gaac_lifecycle'`)).rows[0].definition;
   for(const invariant of ["expires_at <= (issued_at + '00:10:00'::interval)",'reserved_at >= issued_at','consumed_at >= reserved_at','revoked_at >= issued_at'])
-   assert.match(lifecycle,new RegExp(invariant.replace(/[+()[\]]/g,'\\$&')));
+   assert.ok(lifecycle.includes(invariant),`missing lifecycle invariant: ${invariant}`);
   assert.equal((await p.query(`SELECT count(*)::int n FROM pg_trigger WHERE tgname='orchestrator_gaac_guard' AND NOT tgisinternal`)).rows[0].n,1);
+  const trigger=(await p.query(`SELECT pg_get_triggerdef(oid) definition FROM pg_trigger WHERE tgname='orchestrator_gaac_guard' AND NOT tgisinternal`)).rows[0].definition;
+  const guard=(await p.query(`SELECT pg_get_functiondef(tgfoid) definition FROM pg_trigger WHERE tgname='orchestrator_gaac_guard' AND NOT tgisinternal`)).rows[0].definition;
+  assert.match(trigger,/BEFORE INSERT OR DELETE OR UPDATE/);
+  assert.match(guard,/orchestrator_gaac_invalid_initial_state/);
  });
 }

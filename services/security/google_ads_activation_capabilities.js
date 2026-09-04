@@ -26,7 +26,12 @@ function project(r,replay=false){const iso=k=>r[k]?new Date(r[k]).toISOString():
 // Locks every mutable authority row. The selected reconciliation must be the
 // latest completed lineage for the operation. Once review exists, only the
 // verified run produced by the current, correctly closed review may qualify.
-async function authoritative(c,tenantId,actorId,runId){const r=await c.query(`SELECT run.*,a.purpose,a.review_case_id,a.review_version,a.closure_event_id,
+async function authoritative(c,tenantId,actorId,runId){
+ const lineage=await c.query(`SELECT operation_id FROM orchestrator_google_ads_reconciliation_runs WHERE tenant_id=$1 AND id=$2`,[tenantId,runId]);
+ if(lineage.rowCount!==1)throw deny('authority_not_found');const operationId=lineage.rows[0].operation_id;
+ const operation=await c.query(`SELECT id FROM orchestrator_google_ads_provider_draft_operations WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,operationId]);
+ if(operation.rowCount!==1)throw deny('authority_not_found');
+ const r=await c.query(`SELECT run.*,a.purpose,a.review_case_id,a.review_version,a.closure_event_id,
   a.credential_owner_user_id,a.account_fingerprint,op.workflow_id,op.draft_revision,op.contract_hash,
   op.publish_approval_id,op.workflow_approval_id,op.capability_id,op.external_action_taken,
   d.current_revision,d.status AS draft_status,pr.revision AS request_revision,pr.contract_hash AS request_contract_hash,
@@ -51,7 +56,8 @@ async function authoritative(c,tenantId,actorId,runId){const r=await c.query(`SE
  JOIN orchestrator_advertising_tenant_kill_switches k ON k.tenant_id=t.id AND k.switch_key='google_ads_activation' AND k.active=FALSE
  LEFT JOIN orchestrator_google_ads_rereconciliation_attempts ra ON ra.tenant_id=run.tenant_id AND ra.new_reconciliation_run_id=run.id
  LEFT JOIN orchestrator_google_ads_reconciliation_review_cases rc ON rc.tenant_id=ra.tenant_id AND rc.id=ra.review_case_id
- WHERE run.tenant_id=$1 AND run.id=$2 FOR UPDATE OF run,a,op,d,pr,pa,di,cred,t,tu,role,g,k`,[tenantId,runId,actorId,PERMISSION]);
+ WHERE run.tenant_id=$1 AND run.id=$2 AND run.operation_id=$5
+ FOR UPDATE OF run,a,op,d,pr,pa,di,cred,t,tu,role,g,k`,[tenantId,runId,actorId,PERMISSION,operationId]);
  if(r.rowCount!==1)throw deny('authority_not_found');const x=r.rows[0];
  const reviews=await c.query(`SELECT id,state,version FROM orchestrator_google_ads_reconciliation_review_cases WHERE tenant_id=$1 AND operation_id=$2 FOR UPDATE`,[tenantId,x.operation_id]);
  const newer=await c.query(`SELECT 1 FROM orchestrator_google_ads_reconciliation_runs WHERE tenant_id=$1 AND operation_id=$2 AND (created_at,id)>( $3,$4) LIMIT 1 FOR UPDATE`,[tenantId,x.operation_id,x.created_at,x.id]);

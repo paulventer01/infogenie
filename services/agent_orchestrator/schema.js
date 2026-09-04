@@ -7897,6 +7897,13 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gaac_invocation_unique ON orchestrator_google_ads_activation_capabilities(tenant_id,invocation_id_hash) WHERE invocation_id_hash IS NOT NULL;
     CREATE OR REPLACE FUNCTION orchestrator_gaac_guard() RETURNS trigger AS $fn$ BEGIN
       IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_gaac_audit_evidence'; END IF;
+      IF TG_OP='INSERT' THEN
+        IF NEW.status<>'issued' OR NEW.reservation_id_hash IS NOT NULL OR NEW.reserved_at IS NOT NULL
+          OR NEW.invocation_id_hash IS NOT NULL OR NEW.consumed_at IS NOT NULL
+          OR NEW.revoked_at IS NOT NULL OR NEW.revoked_by IS NOT NULL
+        THEN RAISE EXCEPTION 'orchestrator_gaac_invalid_initial_state'; END IF;
+        RETURN NEW;
+      END IF;
       IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
         OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.session_id_hash IS DISTINCT FROM OLD.session_id_hash
         OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
@@ -7920,7 +7927,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       THEN RAISE EXCEPTION 'orchestrator_gaac_immutable_or_invalid_transition'; END IF; RETURN NEW;
     END;$fn$ LANGUAGE plpgsql;
     DROP TRIGGER IF EXISTS orchestrator_gaac_guard ON orchestrator_google_ads_activation_capabilities;
-    CREATE TRIGGER orchestrator_gaac_guard BEFORE UPDATE OR DELETE ON orchestrator_google_ads_activation_capabilities FOR EACH ROW EXECUTE FUNCTION orchestrator_gaac_guard();
+    CREATE TRIGGER orchestrator_gaac_guard BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_google_ads_activation_capabilities FOR EACH ROW EXECUTE FUNCTION orchestrator_gaac_guard();
   `);
 
   // PR 8C — consumes one approved PR8B request without changing it. No provider
