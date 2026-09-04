@@ -302,6 +302,8 @@ router.use('/campaign-drafts', campaignApi);
 
 const reconciliationReviewApi = require('./reconciliation_review_api');
 router.use('/reconciliation-reviews', reconciliationReviewApi);
+const googleAdsReconciliationReviewApi = require('./google_ads_reconciliation_review_api');
+router.use('/google-ads-reconciliation-reviews', googleAdsReconciliationReviewApi);
 
 const optimizationRecommendationsApi = require('./optimization_recommendations_api');
 router.use('/optimization-recommendations', optimizationRecommendationsApi);

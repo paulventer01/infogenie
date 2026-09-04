@@ -138,6 +138,9 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_google_ads_reconciliation_read_authorizations',
   // PR10C.2 — sanitized, durable Google Ads reconciliation outcomes.
   'orchestrator_google_ads_reconciliation_runs',
+  // PR10C.3 — Google-only human review cases and append-only decisions.
+  'orchestrator_google_ads_reconciliation_review_cases',
+  'orchestrator_google_ads_reconciliation_review_events',
   // PR 8C — synchronous internal-simulation runs and their distinct lifecycle.
   'orchestrator_optimization_executions',
   'orchestrator_optimization_execution_run_events',
@@ -7616,6 +7619,117 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     DROP TRIGGER IF EXISTS orchestrator_garrun_guard ON orchestrator_google_ads_reconciliation_runs;
     CREATE TRIGGER orchestrator_garrun_guard BEFORE INSERT OR UPDATE OR DELETE
       ON orchestrator_google_ads_reconciliation_runs FOR EACH ROW EXECUTE FUNCTION orchestrator_garrun_guard();
+  `);
+
+  // PR10C.3 — a Google-only, human decision ledger. The insert trigger copies
+  // and binds the complete safe PR10C.2 lineage; Meta review tables are separate.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_reconciliation_review_cases(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL, reconciliation_run_id TEXT NOT NULL, authorization_id TEXT NOT NULL,
+      workflow_id TEXT NOT NULL, draft_id TEXT NOT NULL, publishing_request_id TEXT NOT NULL,
+      operation_id TEXT NOT NULL, snapshot_hash TEXT NOT NULL, intent_id TEXT NOT NULL,
+      intent_hash TEXT NOT NULL, credential_ref_id TEXT NOT NULL, credential_ref_version INTEGER NOT NULL,
+      ledger_root_hash TEXT NOT NULL,
+      original_object_kinds TEXT[] NOT NULL DEFAULT ARRAY['campaign_budget','campaign','ad_group']::TEXT[],
+      original_state TEXT NOT NULL, original_classifications TEXT[] NOT NULL,
+      original_requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      original_created_at TIMESTAMPTZ NOT NULL, original_completed_at TIMESTAMPTZ NOT NULL,
+      state TEXT NOT NULL DEFAULT 'open', classification TEXT NULL,
+      assigned_reviewer_id INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT,
+      note TEXT NULL, note_digest TEXT NULL, created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(), acknowledged_at TIMESTAMPTZ NULL,
+      escalated_at TIMESTAMPTZ NULL, closed_at TIMESTAMPTZ NULL, audit_ref TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,reconciliation_run_id), UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,reconciliation_run_id)
+        REFERENCES orchestrator_google_ads_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_garcase_id_check CHECK(char_length(id) BETWEEN 1 AND 128 AND id~'^garc_'),
+      CONSTRAINT orchestrator_garcase_kinds_check CHECK(original_object_kinds=ARRAY['campaign_budget','campaign','ad_group']::TEXT[]),
+      CONSTRAINT orchestrator_garcase_original_state_check CHECK(original_state IN ('discrepancy_detected','failed')),
+      CONSTRAINT orchestrator_garcase_state_check CHECK(state IN ('open','acknowledged','escalated','closed')),
+      CONSTRAINT orchestrator_garcase_classification_check CHECK(classification IS NULL OR classification IN
+        ('provider_investigation_required','external_remediation_required','unexpected_activation','object_missing',
+         'relationship_mismatch','account_mismatch','observation_failure','accepted_risk','false_positive','closed_unresolved')),
+      CONSTRAINT orchestrator_garcase_original_classes_check CHECK(cardinality(original_classifications) BETWEEN 1 AND 12
+        AND array_to_string(original_classifications,',')~'^[a-z0-9_]{1,96}(,[a-z0-9_]{1,96})*$'),
+      CONSTRAINT orchestrator_garcase_note_check CHECK(note IS NULL OR char_length(note) BETWEEN 1 AND 1000),
+      CONSTRAINT orchestrator_garcase_digest_check CHECK(note_digest IS NULL OR note_digest~'^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_garcase_lifecycle_check CHECK(version>=0 AND
+        ((state='open' AND acknowledged_at IS NULL AND escalated_at IS NULL AND closed_at IS NULL)
+         OR (state='acknowledged' AND acknowledged_at IS NOT NULL AND escalated_at IS NULL AND closed_at IS NULL)
+         OR (state='escalated' AND escalated_at IS NOT NULL AND closed_at IS NULL)
+         OR (state='closed' AND closed_at IS NOT NULL)))
+    );
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_reconciliation_review_events(
+      tenant_id INTEGER NOT NULL, id BIGSERIAL, case_id TEXT NOT NULL, decision_id TEXT NOT NULL,
+      from_state TEXT NULL, to_state TEXT NOT NULL, classification TEXT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      note TEXT NULL, note_digest TEXT NULL, audit_ref TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,case_id,decision_id), UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,case_id) REFERENCES orchestrator_google_ads_reconciliation_review_cases(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_garevent_states_check CHECK(
+        (from_state IS NULL AND to_state='open') OR
+        (from_state='open' AND to_state IN ('acknowledged','escalated')) OR
+        (from_state='acknowledged' AND to_state IN ('escalated','closed')) OR
+        (from_state='escalated' AND to_state='closed')),
+      CONSTRAINT orchestrator_garevent_decision_check CHECK(char_length(decision_id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_garevent_note_check CHECK(note IS NULL OR char_length(note) BETWEEN 1 AND 1000),
+      CONSTRAINT orchestrator_garevent_digest_check CHECK(note_digest IS NULL OR note_digest~'^[0-9a-f]{64}$')
+    );
+    CREATE INDEX IF NOT EXISTS orchestrator_garcase_tenant_created
+      ON orchestrator_google_ads_reconciliation_review_cases(tenant_id,created_at DESC,id DESC);
+
+    CREATE OR REPLACE FUNCTION orchestrator_garcase_guard() RETURNS trigger AS $fn$
+    DECLARE r orchestrator_google_ads_reconciliation_runs%ROWTYPE; BEGIN
+      IF TG_OP='INSERT' THEN
+        SELECT * INTO r FROM orchestrator_google_ads_reconciliation_runs
+          WHERE tenant_id=NEW.tenant_id AND id=NEW.reconciliation_run_id FOR SHARE;
+        IF NOT FOUND OR r.state NOT IN ('discrepancy_detected','failed')
+          OR NEW.authorization_id IS DISTINCT FROM r.authorization_id OR NEW.workflow_id IS DISTINCT FROM r.workflow_id
+          OR NEW.draft_id IS DISTINCT FROM r.draft_id OR NEW.publishing_request_id IS DISTINCT FROM r.publishing_request_id
+          OR NEW.operation_id IS DISTINCT FROM r.operation_id OR NEW.snapshot_hash IS DISTINCT FROM r.snapshot_hash
+          OR NEW.intent_id IS DISTINCT FROM r.intent_id OR NEW.intent_hash IS DISTINCT FROM r.intent_hash
+          OR NEW.credential_ref_id IS DISTINCT FROM r.credential_ref_id
+          OR NEW.credential_ref_version IS DISTINCT FROM r.credential_ref_version
+          OR NEW.ledger_root_hash IS DISTINCT FROM r.ledger_root_hash
+          OR NEW.original_state IS DISTINCT FROM r.state OR NEW.original_classifications IS DISTINCT FROM r.classifications
+          OR NEW.original_requested_by IS DISTINCT FROM r.requested_by OR NEW.original_created_at IS DISTINCT FROM r.created_at
+          OR NEW.original_completed_at IS DISTINCT FROM r.completed_at
+        THEN RAISE EXCEPTION 'orchestrator_garcase_run_lineage'; END IF; RETURN NEW;
+      END IF;
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_garcase_delete_prohibited'; END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.reconciliation_run_id IS DISTINCT FROM OLD.reconciliation_run_id
+        OR NEW.authorization_id IS DISTINCT FROM OLD.authorization_id OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id
+        OR NEW.draft_id IS DISTINCT FROM OLD.draft_id OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id
+        OR NEW.operation_id IS DISTINCT FROM OLD.operation_id OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
+        OR NEW.intent_id IS DISTINCT FROM OLD.intent_id OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+        OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash
+        OR NEW.original_object_kinds IS DISTINCT FROM OLD.original_object_kinds
+        OR NEW.original_state IS DISTINCT FROM OLD.original_state
+        OR NEW.original_classifications IS DISTINCT FROM OLD.original_classifications
+        OR NEW.original_requested_by IS DISTINCT FROM OLD.original_requested_by
+        OR NEW.original_created_at IS DISTINCT FROM OLD.original_created_at
+        OR NEW.original_completed_at IS DISTINCT FROM OLD.original_completed_at
+        OR NEW.created_by IS DISTINCT FROM OLD.created_by OR NEW.created_at IS DISTINCT FROM OLD.created_at
+        OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref OR NEW.version<>OLD.version+1
+      THEN RAISE EXCEPTION 'orchestrator_garcase_immutable_binding'; END IF;
+      IF OLD.state='closed' OR NOT ((OLD.state='open' AND NEW.state IN ('acknowledged','escalated'))
+        OR (OLD.state='acknowledged' AND NEW.state IN ('escalated','closed'))
+        OR (OLD.state='escalated' AND NEW.state='closed'))
+      THEN RAISE EXCEPTION 'orchestrator_garcase_invalid_transition'; END IF; RETURN NEW;
+    END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_garcase_guard ON orchestrator_google_ads_reconciliation_review_cases;
+    CREATE TRIGGER orchestrator_garcase_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_google_ads_reconciliation_review_cases FOR EACH ROW EXECUTE FUNCTION orchestrator_garcase_guard();
+    CREATE OR REPLACE FUNCTION orchestrator_garevent_guard() RETURNS trigger AS $fn$
+    BEGIN RAISE EXCEPTION 'orchestrator_garevent_append_only'; END; $fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_garevent_guard ON orchestrator_google_ads_reconciliation_review_events;
+    CREATE TRIGGER orchestrator_garevent_guard BEFORE UPDATE OR DELETE
+      ON orchestrator_google_ads_reconciliation_review_events FOR EACH ROW EXECUTE FUNCTION orchestrator_garevent_guard();
   `);
 
   // PR 8C — consumes one approved PR8B request without changing it. No provider

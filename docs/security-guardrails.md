@@ -3445,6 +3445,10 @@ Coverage: `test/google-ads-paused-draft-reconciliation-security.test.js` and `te
 
 PR10C.2 persists one sanitized, tenant-scoped reconciliation run for a consumed PR10C.1 read authorization. Authorization consumption, initial `observing` state and audit evidence must commit atomically before credential scope or GAQL traffic; terminal state and terminal audit must also commit together. Replay is metadata-only, expired observation leases fail deterministically, and the slice adds no route, UI, worker, scheduler, retry, provider mutation or human-review flow.
 
+## Advertising orchestrator — Google Ads reconciliation human review (PR10C.3)
+
+PR10C.3 gives terminal PR10C.2 `discrepancy_detected` and `failed` runs a durable, tenant-scoped human-review case. The flow requires a real human session and the explicit tenant `advertising.reconciliation.review` grant, has no owner or platform-role bypass, copies immutable Google run lineage, and records idempotent optimistic-versioned decisions plus audit atomically. It exposes only sanitized classifications and bounded notes. It cannot read or write Google, open the credential vault, retry reconciliation, remediate, activate, publish, optimize, schedule work or start post-review re-reconciliation.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
