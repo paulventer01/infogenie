@@ -142,6 +142,8 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_google_ads_reconciliation_review_cases',
   'orchestrator_google_ads_reconciliation_review_events',
   'orchestrator_google_ads_rereconciliation_attempts',
+  // PR10D.1 — metadata-only authority for one future Google activation attempt.
+  'orchestrator_google_ads_activation_capabilities',
   // PR 8C — synchronous internal-simulation runs and their distinct lifecycle.
   'orchestrator_optimization_executions',
   'orchestrator_optimization_execution_run_events',
@@ -7844,6 +7846,79 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       FOR EACH ROW EXECUTE FUNCTION orchestrator_garra_guard();
   `);
 
+  // PR10D.1 — Google activation authority is intentionally separate from the
+  // Meta lifecycle. It stores only immutable hashes/identifiers and can never
+  // itself perform a provider write.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_activation_capabilities(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL, actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      session_id_hash TEXT NOT NULL, workflow_id TEXT NOT NULL, draft_id TEXT NOT NULL,
+      draft_revision INTEGER NOT NULL, contract_hash TEXT NOT NULL,
+      publishing_request_id TEXT NOT NULL, publish_approval_id TEXT NOT NULL,
+      workflow_approval_id INTEGER NOT NULL, snapshot_hash TEXT NOT NULL,
+      intent_id TEXT NOT NULL, intent_hash TEXT NOT NULL, operation_id TEXT NOT NULL,
+      source_authorization_id TEXT NOT NULL, reconciliation_run_id TEXT NOT NULL,
+      review_case_id TEXT NULL, review_version INTEGER NULL, closure_event_id BIGINT NULL,
+      rereconciliation_attempt_id TEXT NULL, credential_owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      credential_ref_id TEXT NOT NULL, credential_ref_version INTEGER NOT NULL,
+      account_fingerprint TEXT NOT NULL, ledger_root_hash TEXT NOT NULL,
+      confirmation_hash TEXT NOT NULL, issued_at TIMESTAMPTZ NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL, status TEXT NOT NULL DEFAULT 'issued',
+      reservation_id_hash TEXT NULL, reserved_at TIMESTAMPTZ NULL,
+      invocation_id_hash TEXT NULL, consumed_at TIMESTAMPTZ NULL,
+      revoked_at TIMESTAMPTZ NULL, revoked_by INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT,
+      audit_ref TEXT NOT NULL, PRIMARY KEY(tenant_id,id),
+      UNIQUE(tenant_id,confirmation_hash), UNIQUE(tenant_id,audit_ref),
+      UNIQUE(tenant_id,reconciliation_run_id),
+      FOREIGN KEY(tenant_id,workflow_id) REFERENCES orchestrator_workflows(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,operation_id) REFERENCES orchestrator_google_ads_provider_draft_operations(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,source_authorization_id) REFERENCES orchestrator_google_ads_reconciliation_read_authorizations(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,reconciliation_run_id) REFERENCES orchestrator_google_ads_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_gaac_status CHECK(status IN('issued','reserved','consumed','revoked','expired')),
+      CONSTRAINT orchestrator_gaac_hashes CHECK(session_id_hash~'^[0-9a-f]{64}$' AND contract_hash~'^[0-9a-f]{64}$'
+        AND snapshot_hash~'^[0-9a-f]{64}$' AND intent_hash~'^[0-9a-f]{64}$'
+        AND account_fingerprint~'^[0-9a-f]{64}$' AND ledger_root_hash~'^[0-9a-f]{64}$'
+        AND confirmation_hash~'^[0-9a-f]{64}$' AND (reservation_id_hash IS NULL OR reservation_id_hash~'^[0-9a-f]{64}$')
+        AND (invocation_id_hash IS NULL OR invocation_id_hash~'^[0-9a-f]{64}$')),
+      CONSTRAINT orchestrator_gaac_review CHECK((review_case_id IS NULL AND review_version IS NULL AND closure_event_id IS NULL AND rereconciliation_attempt_id IS NULL)
+        OR (review_case_id IS NOT NULL AND review_version>=1 AND closure_event_id IS NOT NULL AND rereconciliation_attempt_id IS NOT NULL)),
+      CONSTRAINT orchestrator_gaac_lifecycle CHECK(expires_at>issued_at AND
+        ((status='issued' AND reservation_id_hash IS NULL AND reserved_at IS NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL)
+        OR (status='reserved' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL)
+        OR (status='consumed' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NOT NULL AND invocation_id_hash IS NOT NULL AND revoked_at IS NULL)
+        OR (status='revoked' AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NOT NULL AND revoked_by IS NOT NULL)
+        OR (status='expired' AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL)))
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gaac_reservation_unique ON orchestrator_google_ads_activation_capabilities(tenant_id,reservation_id_hash) WHERE reservation_id_hash IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gaac_invocation_unique ON orchestrator_google_ads_activation_capabilities(tenant_id,invocation_id_hash) WHERE invocation_id_hash IS NOT NULL;
+    CREATE OR REPLACE FUNCTION orchestrator_gaac_guard() RETURNS trigger AS $fn$ BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_gaac_audit_evidence'; END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.session_id_hash IS DISTINCT FROM OLD.session_id_hash
+        OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id OR NEW.draft_id IS DISTINCT FROM OLD.draft_id
+        OR NEW.draft_revision IS DISTINCT FROM OLD.draft_revision OR NEW.contract_hash IS DISTINCT FROM OLD.contract_hash
+        OR NEW.publishing_request_id IS DISTINCT FROM OLD.publishing_request_id OR NEW.publish_approval_id IS DISTINCT FROM OLD.publish_approval_id
+        OR NEW.workflow_approval_id IS DISTINCT FROM OLD.workflow_approval_id OR NEW.snapshot_hash IS DISTINCT FROM OLD.snapshot_hash
+        OR NEW.intent_id IS DISTINCT FROM OLD.intent_id OR NEW.intent_hash IS DISTINCT FROM OLD.intent_hash
+        OR NEW.operation_id IS DISTINCT FROM OLD.operation_id OR NEW.source_authorization_id IS DISTINCT FROM OLD.source_authorization_id
+        OR NEW.reconciliation_run_id IS DISTINCT FROM OLD.reconciliation_run_id OR NEW.review_case_id IS DISTINCT FROM OLD.review_case_id
+        OR NEW.review_version IS DISTINCT FROM OLD.review_version OR NEW.closure_event_id IS DISTINCT FROM OLD.closure_event_id
+        OR NEW.rereconciliation_attempt_id IS DISTINCT FROM OLD.rereconciliation_attempt_id
+        OR NEW.credential_owner_user_id IS DISTINCT FROM OLD.credential_owner_user_id OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+        OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash OR NEW.confirmation_hash IS DISTINCT FROM OLD.confirmation_hash
+        OR NEW.issued_at IS DISTINCT FROM OLD.issued_at OR NEW.expires_at IS DISTINCT FROM OLD.expires_at OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+        OR (OLD.reservation_id_hash IS NOT NULL AND NEW.reservation_id_hash IS DISTINCT FROM OLD.reservation_id_hash)
+        OR (OLD.reserved_at IS NOT NULL AND NEW.reserved_at IS DISTINCT FROM OLD.reserved_at)
+        OR OLD.status IN('consumed','revoked','expired')
+        OR NOT ((OLD.status='issued' AND NEW.status IN('reserved','revoked','expired')) OR (OLD.status='reserved' AND NEW.status IN('consumed','revoked','expired')))
+      THEN RAISE EXCEPTION 'orchestrator_gaac_immutable_or_invalid_transition'; END IF; RETURN NEW;
+    END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gaac_guard ON orchestrator_google_ads_activation_capabilities;
+    CREATE TRIGGER orchestrator_gaac_guard BEFORE UPDATE OR DELETE ON orchestrator_google_ads_activation_capabilities FOR EACH ROW EXECUTE FUNCTION orchestrator_gaac_guard();
+  `);
+
   // PR 8C — consumes one approved PR8B request without changing it. No provider
   // identifiers, credential references, source hashes, payloads, or errors are stored.
   // orchestrator_advertising_global_kill_switches is a platform-wide GLOBAL
@@ -7852,7 +7927,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE TABLE IF NOT EXISTS orchestrator_advertising_global_kill_switches(
       switch_key TEXT PRIMARY KEY, active BOOLEAN NOT NULL DEFAULT false, version INTEGER NOT NULL DEFAULT 1,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      CONSTRAINT orchestrator_agks_key CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft')),
+      CONSTRAINT orchestrator_agks_key CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft','google_ads_activation')),
       CONSTRAINT orchestrator_agks_version CHECK(version>0)
     );
     CREATE TABLE IF NOT EXISTS orchestrator_advertising_tenant_kill_switches(
@@ -7860,7 +7935,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       active BOOLEAN NOT NULL DEFAULT false, version INTEGER NOT NULL DEFAULT 1,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY(tenant_id,switch_key),
-      CONSTRAINT orchestrator_atks_key CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft')),
+      CONSTRAINT orchestrator_atks_key CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft','google_ads_activation')),
       CONSTRAINT orchestrator_atks_version CHECK(version>0)
     );
     CREATE OR REPLACE FUNCTION orchestrator_advertising_kill_switch_guard() RETURNS trigger AS $fn$ BEGIN
@@ -7895,18 +7970,18 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     END $migration$;
     ALTER TABLE orchestrator_advertising_global_kill_switches DROP CONSTRAINT IF EXISTS orchestrator_agks_key;
     ALTER TABLE orchestrator_advertising_global_kill_switches ADD CONSTRAINT orchestrator_agks_key
-      CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft'));
+      CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft','google_ads_activation'));
     ALTER TABLE orchestrator_advertising_tenant_kill_switches DROP CONSTRAINT IF EXISTS orchestrator_atks_key;
     ALTER TABLE orchestrator_advertising_tenant_kill_switches ADD CONSTRAINT orchestrator_atks_key
-      CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft'));
+      CHECK(switch_key IN ('optimization_execution','google_ads_provider_draft','google_ads_activation'));
     INSERT INTO orchestrator_advertising_global_kill_switches(switch_key,active)
-      VALUES('optimization_execution',false),('google_ads_provider_draft',false)
+      VALUES('optimization_execution',false),('google_ads_provider_draft',false),('google_ads_activation',false)
       ON CONFLICT(switch_key) DO NOTHING;
     DO $backfill$ DECLARE tenant_row RECORD; BEGIN
       FOR tenant_row IN SELECT id FROM tenants LOOP
         BEGIN
           INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active)
-            VALUES(tenant_row.id,'optimization_execution',false),(tenant_row.id,'google_ads_provider_draft',false)
+            VALUES(tenant_row.id,'optimization_execution',false),(tenant_row.id,'google_ads_provider_draft',false),(tenant_row.id,'google_ads_activation',false)
             ON CONFLICT(tenant_id,switch_key) DO NOTHING;
         EXCEPTION WHEN foreign_key_violation THEN NULL;
         END;
@@ -7914,7 +7989,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     END $backfill$;
     CREATE OR REPLACE FUNCTION orchestrator_seed_advertising_kill_switch() RETURNS trigger AS $fn$ BEGIN
       INSERT INTO orchestrator_advertising_tenant_kill_switches(tenant_id,switch_key,active)
-        VALUES(NEW.id,'optimization_execution',false),(NEW.id,'google_ads_provider_draft',false);
+        VALUES(NEW.id,'optimization_execution',false),(NEW.id,'google_ads_provider_draft',false),(NEW.id,'google_ads_activation',false);
       RETURN NEW;END;$fn$ LANGUAGE plpgsql;
     DROP TRIGGER IF EXISTS orchestrator_seed_advertising_kill_switch ON tenants;
     CREATE TRIGGER orchestrator_seed_advertising_kill_switch AFTER INSERT ON tenants FOR EACH ROW EXECUTE FUNCTION orchestrator_seed_advertising_kill_switch();
