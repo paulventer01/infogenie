@@ -86,3 +86,25 @@ test('PR10C.1 does not mutate Meta CRRA or the platform=\'meta\' freeze', () => 
   assert.match(schemaSource, /CONSTRAINT orchestrator_tmcr_platform_check CHECK \(platform = 'meta'\)/);
   assert.match(schemaSource, /CREATE TABLE IF NOT EXISTS orchestrator_campaign_reconciliation_runs \(/);
 });
+
+
+test('PR10C.4 upgrade backfills credential ownership before restoring the immutable guard', () => {
+  const ddl = slice();
+  const drop = ddl.indexOf('DROP TRIGGER IF EXISTS orchestrator_garr_guard');
+  const addOwner = ddl.indexOf('ADD COLUMN IF NOT EXISTS credential_owner_user_id');
+  const backfill = ddl.indexOf('SET credential_owner_user_id=requested_by');
+  const enforce = ddl.indexOf('ALTER COLUMN credential_owner_user_id SET NOT NULL');
+  const guard = ddl.indexOf('CREATE OR REPLACE FUNCTION orchestrator_garr_guard()');
+  const recreate = ddl.indexOf('CREATE TRIGGER orchestrator_garr_guard', guard);
+  assert.ok(drop >= 0 && drop < addOwner);
+  assert.ok(addOwner < backfill && backfill < enforce);
+  assert.ok(enforce < guard && guard < recreate);
+  assert.equal(ddl.indexOf('SET credential_owner_user_id=requested_by', backfill + 1), -1,
+    'credential-owner migration must have exactly one ordered backfill');
+});
+
+test('PR10C.3 decision-hash constraint preserves legacy rows while enforcing new writes', () => {
+  const ddl = slice();
+  assert.match(ddl,
+    /ADD CONSTRAINT orchestrator_garevent_payload_hash_check[\s\S]*?from_state IS NOT NULL AND decision_payload_hash IS NOT NULL[\s\S]*?decision_payload_hash~'\^\[0-9a-f\]\{64\}\$'\)\) NOT VALID;/);
+});

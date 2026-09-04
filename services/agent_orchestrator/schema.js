@@ -7459,6 +7459,18 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       ON orchestrator_google_ads_reconciliation_read_authorizations(tenant_id,invocation_id_hash)
       WHERE invocation_id_hash IS NOT NULL;
 
+    -- Existing installations may still have the PR10C.1 guard. Remove it only
+    -- inside this migration transaction so the owner backfill can run, then
+    -- recreate the hardened guard below before this statement commits.
+    DROP TRIGGER IF EXISTS orchestrator_garr_guard
+      ON orchestrator_google_ads_reconciliation_read_authorizations;
+    ALTER TABLE orchestrator_google_ads_reconciliation_read_authorizations
+      ADD COLUMN IF NOT EXISTS credential_owner_user_id INTEGER REFERENCES users(id) ON DELETE RESTRICT;
+    UPDATE orchestrator_google_ads_reconciliation_read_authorizations SET credential_owner_user_id=requested_by
+      WHERE credential_owner_user_id IS NULL;
+    ALTER TABLE orchestrator_google_ads_reconciliation_read_authorizations
+      ALTER COLUMN credential_owner_user_id SET NOT NULL;
+
     CREATE OR REPLACE FUNCTION orchestrator_garr_guard() RETURNS trigger AS $fn$
     DECLARE n INTEGER; BEGIN
       IF TG_OP='INSERT' THEN
@@ -7690,7 +7702,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       DROP CONSTRAINT IF EXISTS orchestrator_garevent_payload_hash_check;
     ALTER TABLE orchestrator_google_ads_reconciliation_review_events ADD CONSTRAINT orchestrator_garevent_payload_hash_check
       CHECK((from_state IS NULL AND decision_payload_hash IS NULL) OR
-        (from_state IS NOT NULL AND decision_payload_hash~'^[0-9a-f]{64}$'));
+        (from_state IS NOT NULL AND decision_payload_hash IS NOT NULL
+          AND decision_payload_hash~'^[0-9a-f]{64}$')) NOT VALID;
 
     CREATE OR REPLACE FUNCTION orchestrator_garcase_guard() RETURNS trigger AS $fn$
     DECLARE r orchestrator_google_ads_reconciliation_runs%ROWTYPE; BEGIN
@@ -7776,14 +7789,10 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
 
   await p.query(`
     ALTER TABLE orchestrator_google_ads_reconciliation_read_authorizations
-      ADD COLUMN IF NOT EXISTS credential_owner_user_id INTEGER REFERENCES users(id) ON DELETE RESTRICT,
       ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'initial',
       ADD COLUMN IF NOT EXISTS review_case_id TEXT NULL,
       ADD COLUMN IF NOT EXISTS review_version INTEGER NULL,
       ADD COLUMN IF NOT EXISTS closure_event_id BIGINT NULL;
-    UPDATE orchestrator_google_ads_reconciliation_read_authorizations SET credential_owner_user_id=requested_by
-      WHERE credential_owner_user_id IS NULL;
-    ALTER TABLE orchestrator_google_ads_reconciliation_read_authorizations ALTER COLUMN credential_owner_user_id SET NOT NULL;
     ALTER TABLE orchestrator_google_ads_reconciliation_read_authorizations
       DROP CONSTRAINT IF EXISTS orchestrator_garr_tenant_unique_operation_ledger;
     CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_garr_initial_operation_ledger
