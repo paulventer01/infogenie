@@ -3449,6 +3449,13 @@ PR10C.2 persists one sanitized, tenant-scoped reconciliation run for a consumed 
 
 PR10C.3 gives terminal PR10C.2 `discrepancy_detected` and `failed` runs a durable, tenant-scoped human-review case. The flow requires a real human session and the explicit tenant `advertising.reconciliation.review` grant, has no owner or platform-role bypass, copies immutable Google run lineage, and records idempotent optimistic-versioned decisions plus audit atomically. It exposes only sanitized classifications and bounded notes. It cannot read or write Google, open the credential vault, retry reconciliation, remediate, activate, publish, optimize, schedule work or start post-review re-reconciliation.
 
+
+## Advertising orchestrator — Google Ads activation capability foundation (PR10D.1)
+
+PR10D.1 may issue, reserve, revoke and consume one tenant-scoped authorization for one future human-triggered Google Ads activation attempt. Issuance requires a real human session, active tenant and membership, an explicit tenant `advertising.campaign.activate` grant, open kill switches, and authoritative revalidation of the approved draft, publishing, intent, PAUSED provider-object, reconciliation and closed-review lineage. The authorization is immutable, expiring, optimistic, consume-once and fully audited.
+
+This foundation has no provider connector or Google API reachability. It must not mutate, enable, publish, schedule, optimize, change spend, decrypt credentials, open secret scope, start a worker, retry automatically, or activate anything. A later separately approved slice is required before any provider write can exist.
+
 ## Related existing systems
 
 - Auth gate: `services/auth_gate/`
