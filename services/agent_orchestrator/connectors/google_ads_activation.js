@@ -27,7 +27,8 @@ function validate(input) {
   if (!input.operation || !SAFE_KEY.test(String(input.operation.provider_operation_key || ''))) invalid('invalid_operation');
   if (!vault.isGoogleAdsActivationSecretScope(input.credentials)) invalid('invalid_activation_secret_scope');
   const customerId = digits(input.credentials.customerId);
-  if (!CUSTOMER_DIGITS.test(customerId)) invalid('invalid_account_binding');
+  const loginCustomerId = input.credentials.loginCustomerId ? digits(input.credentials.loginCustomerId) : null;
+  if (!CUSTOMER_DIGITS.test(customerId) || (loginCustomerId && !CUSTOMER_DIGITS.test(loginCustomerId))) invalid('invalid_account_binding');
   const objects = Array.isArray(input.objects) ? input.objects : [];
   if (objects.length !== 3 || objects.some((x, i) => !x || x.object_kind !== OBJECT_SEQUENCE[i]
     || x.provider_status !== 'PAUSED' || !/^[0-9]{1,32}$/.test(String(x.provider_object_id || '')))) {
@@ -36,7 +37,7 @@ function validate(input) {
   if (input.inject !== undefined && (!input.inject || typeof input.inject.mutate !== 'function')) invalid('invalid_inject');
   return Object.freeze({
     provider_operation_key: String(input.operation.provider_operation_key), customer_id: customerId,
-    login_customer_id: input.credentials.loginCustomerId ? digits(input.credentials.loginCustomerId) : null,
+    login_customer_id: loginCustomerId,
     access_token: input.credentials.accessToken, developer_token: input.credentials.developerToken,
     campaign_id: String(objects[1].provider_object_id), ad_group_id: String(objects[2].provider_object_id),
   });
@@ -114,9 +115,10 @@ async function activateGoogleAdsCampaign(input) {
   const injected=input.inject?.mutate;if(!injected&&!liveOptedIn(input))invalid('live_google_ads_disabled');
   const send=injected||((call)=>defaultTransport({...call,headers:headers(bound)}));
   let res;try{res=await send(request);}catch(_e){return result(bound,'unknown');}
-  if(res?.redirect)return result(bound,'failed');
-  if(res?.transportError||res?.malformed||res?.oversized||Number(res?.status)>=500)return result(bound,'unknown');
-  if(!res||Number(res.status)<200||Number(res.status)>=300||res.json?.error)return result(bound,'failed');
+  if(!res)return result(bound,'unknown');
+  if(res.redirect)return result(bound,'failed');
+  if(res.transportError||res.malformed||res.oversized||Number(res.status)>=500)return result(bound,'unknown');
+  if(Number(res.status)<200||Number(res.status)>=300||res.json?.error)return result(bound,'failed');
   return success(res,bound)?result(bound,'succeeded'):result(bound,'unknown');
 }
 
