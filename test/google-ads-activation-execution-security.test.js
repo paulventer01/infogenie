@@ -37,6 +37,7 @@ function pool(){
   if(sql.startsWith(`UPDATE ${service.TABLE} SET status=`)){attempt={...attempt,status:params[2],result_code:params[3],
     objects_activated:params[4],requires_reconciliation:params[5],external_action_taken:params[6],settled_at:new Date()};
     return{rowCount:1,rows:[attempt]};}
+  if(sql.startsWith(`INSERT INTO ${service.OUTCOMES}`))return{rowCount:1,rows:[]};
   if(sql.startsWith('INSERT INTO orchestrator_audit_events'))return{rowCount:1,rows:[]};
   throw new Error(`unexpected SQL: ${sql}`);
  },release(){}};
