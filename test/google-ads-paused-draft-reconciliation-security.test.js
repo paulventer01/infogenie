@@ -32,7 +32,9 @@ function mockPool(state={}) {
     if(/^INSERT INTO orchestrator_audit_events/.test(text)){audits.push(String(params[4]));return {rowCount:1,rows:[]};}
     if(/^UPDATE orchestrator_google_ads_reconciliation_read_authorizations SET status='revoked'/.test(text))
       return {rowCount:1,rows:[authRow({status:'revoked'})]};
-    const rows=/FROM orchestrator_google_ads_provider_draft_operations op/.test(text)
+    const rows=/^SELECT operation_id FROM orchestrator_google_ads_reconciliation_read_authorizations/.test(text)
+      ?(state.authorization===null?[]:[{operation_id:(state.authorization||authRow()).operation_id}])
+      :/FROM orchestrator_google_ads_provider_draft_operations op/.test(text)
       ?(state.operation===null?[]:[state.operation||operation()])
       :/FROM orchestrator_google_ads_provider_draft_objects/.test(text)?(state.objects||paused())
         :/^SELECT \* FROM orchestrator_google_ads_reconciliation_read_authorizations/.test(text)
@@ -192,4 +194,18 @@ test('the consume commits before any secret scope opens, and the handle never es
   // Every audit detail is exactly the three metadata fields.
   assert.equal((source.match(/JSON\.stringify\(/g)||[]).length,1);
   assert.match(source,/JSON\.stringify\(\{authorization_id:detail\.authorization_id,\s*operation_id:detail\.operation_id,status:detail\.status\}\)/);
+});
+
+test('observation and replay lock operation authority before the authorization row',async()=>{
+  const consumed=authRow({status:'consumed',reserved_at:new Date('2026-02-01T00:01:00Z'),
+    consumed_at:new Date('2026-02-01T00:01:00Z'),invocation_id_hash:sha('inv-1')});
+  const {pool,seen}=mockPool({authorization:consumed});
+  await authority.consumeAndObserve(pool,{...actor,...consumeArgs,tokenTransport:never,observerTransport:never});
+  const ordered=()=>{const operationLock=seen.findIndex((q)=>/FROM orchestrator_google_ads_provider_draft_operations op/.test(q));
+    const authorizationLock=seen.findIndex((q)=>/^SELECT \* FROM orchestrator_google_ads_reconciliation_read_authorizations .*FOR UPDATE$/.test(q));
+    assert.ok(operationLock>=0&&operationLock<authorizationLock,'operation lock must precede authorization lock');};
+  ordered();seen.length=0;
+  await assert.rejects(authority.observeWithConsumedCredential((await pool.connect()),
+    {...actor,...consumeArgs,tokenTransport:never,observerTransport:never}));
+  ordered();
 });
