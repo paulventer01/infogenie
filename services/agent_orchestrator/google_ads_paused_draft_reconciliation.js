@@ -101,11 +101,17 @@ async function existingOrRecover(pool,opts,tenantId,authorizationId,invocationHa
   const client=await pool.connect();
   try {
     await client.query('BEGIN');
+    const hint=await client.query(`SELECT operation_id FROM ${TABLE}
+      WHERE tenant_id=$1 AND (authorization_id=$2 OR invocation_id_hash=$3)`,
+    [tenantId,authorizationId,invocationHash]);
+    if(!hint.rowCount){await client.query('COMMIT');return null;}
+    if(hint.rowCount!==1)throw fail('idempotency_conflict');
+    await client.query(`SELECT id FROM orchestrator_google_ads_provider_draft_operations
+      WHERE tenant_id=$1 AND id=$2 FOR SHARE`,[tenantId,hint.rows[0].operation_id]);
     const found=await client.query(`SELECT * FROM ${TABLE}
       WHERE tenant_id=$1 AND (authorization_id=$2 OR invocation_id_hash=$3) FOR UPDATE`,
     [tenantId,authorizationId,invocationHash]);
-    if(!found.rowCount){await client.query('COMMIT');return null;}
-    if(found.rowCount!==1)throw fail('idempotency_conflict');
+    if(found.rowCount!==1||found.rows[0].operation_id!==hint.rows[0].operation_id)throw fail('idempotency_conflict');
     let row=found.rows[0];sameInvocation(row,authorizationId,invocationHash);
     // Metadata access and recovery both re-prove current tenant, membership,
     // database grant, operation/ledger lineage and credential binding.

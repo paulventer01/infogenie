@@ -102,6 +102,8 @@ test('stale recovery reads the lease clock after locking and re-proof',async(t)=
   const calls=[];
   const client={query:async(sql,params)=>{
     calls.push([sql,params]);
+    if(/^SELECT operation_id/.test(sql.trim()))return {rowCount:1,rows:[{operation_id:'op'}]};
+    if(/^SELECT id FROM orchestrator_google_ads_provider_draft_operations/.test(sql.trim()))return {rowCount:1,rows:[{id:'op'}]};
     if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
     if(/^SELECT clock_timestamp/.test(sql.trim()))return {rowCount:1,rows:[{now:lockedNow}]};
     if(/^UPDATE/.test(sql.trim()))return {rowCount:1,rows:[
@@ -131,6 +133,8 @@ test('terminal replay is metadata-only, authority-gated and tenant/idempotency-b
   const calls=[];
   const client={query:async(sql,params)=>{
     calls.push([sql,params]);
+    if(/^SELECT operation_id/.test(sql.trim()))return {rowCount:1,rows:[{operation_id:'op'}]};
+    if(/^SELECT id FROM orchestrator_google_ads_provider_draft_operations/.test(sql.trim()))return {rowCount:1,rows:[{id:'op'}]};
     if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
     return {rowCount:0,rows:[]};
   },release:()=>{}};
@@ -146,6 +150,9 @@ test('terminal replay is metadata-only, authority-gated and tenant/idempotency-b
   assert.equal(calls.some(([sql])=>sql==='reproved'),true);
   assert.equal(calls.some(([sql])=>/observe|vault|credential|mutate/i.test(sql)),false);
   assert.deepEqual(calls.find(([sql])=>/^SELECT \*/.test(sql.trim()))[1],[7,'auth','hash']);
+  assert.ok(calls.findIndex(([sql])=>sql.includes('provider_draft_operations'))
+    <calls.findIndex(([sql])=>/^SELECT \*/.test(sql.trim())),
+  'replay locks the shared operation before the reconciliation run');
 
   authority.reproveMetadataAuthority=async()=>{const error=new Error('stale authority');error.code='authorization_lineage_mismatch';throw error;};
   await assert.rejects(R._test.existingOrRecover(pool,{},7,'auth','hash',new Date()),
