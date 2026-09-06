@@ -104,7 +104,7 @@ function result(bound, status) {
     requires_reconciliation:unknown,retry:false,provider_operation_key:bound.provider_operation_key});
 }
 function success(res,bound){
-  if(!res||res.status<200||res.status>=300||!res.json||res.json.error)return false;
+  if(!res||res.status<200||res.status>=300||!res.json||res.json.error||res.json.partialFailureError)return false;
   const rows=res.json.mutateOperationResponses;if(!Array.isArray(rows)||rows.length!==2)return false;
   return rows[0]?.campaignResult?.resourceName===`customers/${bound.customer_id}/campaigns/${bound.campaign_id}`
     &&rows[1]?.adGroupResult?.resourceName===`customers/${bound.customer_id}/adGroups/${bound.ad_group_id}`;
@@ -119,6 +119,7 @@ async function activateGoogleAdsCampaign(input) {
   if(res.redirect)return result(bound,'failed');
   if(res.transportError||res.malformed||res.oversized||Number(res.status)>=500)return result(bound,'unknown');
   if(Number(res.status)<200||Number(res.status)>=300||res.json?.error)return result(bound,'failed');
+  if(res.json?.partialFailureError)return result(bound,'unknown');
   return success(res,bound)?result(bound,'succeeded'):result(bound,'unknown');
 }
 
