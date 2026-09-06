@@ -14,7 +14,7 @@ if(!db.hasDb())test('Google activation capability PostgreSQL requires DATABASE_U
     ADD CONSTRAINT orchestrator_gaac_lifecycle CHECK(confirmed_at<=issued_at AND expires_at>issued_at)`);
   await ensureAgentOrchestratorSchema();
   const lifecycle=(await p.query(`SELECT pg_get_constraintdef(oid) definition FROM pg_constraint WHERE conname='orchestrator_gaac_lifecycle'`)).rows[0].definition;
-  for(const invariant of ["confirmed_at >= (issued_at - '00:05:00'::interval)","expires_at <= (issued_at + '00:10:00'::interval)",'expires_at <= approval_expires_at','reserved_at >= issued_at','reserved_at <= expires_at','consumed_at >= reserved_at','consumed_at <= expires_at','revoked_at >= issued_at'])
+  for(const invariant of ["confirmed_at >= (issued_at - '00:05:00'::interval)","expires_at <= (issued_at + '00:10:00'::interval)",'expires_at <= approval_expires_at','reserved_at >= issued_at','reserved_at < expires_at','consumed_at >= reserved_at','consumed_at < expires_at','revoked_at >= issued_at','revoked_at < expires_at'])
    assert.ok(lifecycle.includes(invariant),`missing lifecycle invariant: ${invariant}`);
   assert.equal((await p.query(`SELECT convalidated FROM pg_constraint WHERE conname='orchestrator_gaac_lifecycle'`)).rows[0].convalidated,true);
   const probe=await p.connect();
@@ -35,10 +35,14 @@ if(!db.hasDb())test('Google activation capability PostgreSQL requires DATABASE_U
   await assert.rejects(insertProbe('2026-01-01T00:04:59Z'),e=>e.code==='23514');
   await assert.rejects(probe.query(`UPDATE gaac_freshness_probe SET status='reserved',reservation_id_hash=repeat('1',64),
     reserved_at=expires_at+interval '1 microsecond' WHERE id='cap_05'`),e=>e.code==='23514');
+  await assert.rejects(probe.query(`UPDATE gaac_freshness_probe SET status='reserved',reservation_id_hash=repeat('1',64),
+    reserved_at=expires_at WHERE id='cap_05'`),e=>e.code==='23514');
   await probe.query(`UPDATE gaac_freshness_probe SET status='reserved',reservation_id_hash=repeat('1',64),
-    reserved_at=expires_at WHERE id='cap_05'`);
+    reserved_at=expires_at-interval '1 microsecond' WHERE id='cap_05'`);
   await assert.rejects(probe.query(`UPDATE gaac_freshness_probe SET status='consumed',invocation_id_hash=repeat('2',64),
-    consumed_at=expires_at+interval '1 microsecond' WHERE id='cap_05'`),e=>e.code==='23514');
+    consumed_at=expires_at WHERE id='cap_05'`),e=>e.code==='23514');
+  await assert.rejects(probe.query(`UPDATE gaac_freshness_probe SET status='revoked',revoked_at=expires_at,revoked_by=1
+    WHERE id='cap_05'`),e=>e.code==='23514');
   }finally{probe.release();}
   assert.equal((await p.query(`SELECT count(*)::int n FROM pg_trigger WHERE tgname='orchestrator_gaac_guard' AND NOT tgisinternal`)).rows[0].n,1);
   const trigger=(await p.query(`SELECT pg_get_triggerdef(oid) definition FROM pg_trigger WHERE tgname='orchestrator_gaac_guard' AND NOT tgisinternal`)).rows[0].definition;
