@@ -7885,9 +7885,9 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         OR (review_case_id IS NOT NULL AND review_version>=1 AND closure_event_id IS NOT NULL AND rereconciliation_attempt_id IS NOT NULL)),
       CONSTRAINT orchestrator_gaac_lifecycle CHECK(confirmed_at<=issued_at AND confirmed_at>=issued_at-interval '5 minutes' AND expires_at>issued_at
         AND expires_at<=issued_at+interval '10 minutes' AND expires_at<=approval_expires_at AND
-        (reserved_at IS NULL OR (reserved_at>=issued_at AND reserved_at<=expires_at))
-        AND (consumed_at IS NULL OR (consumed_at>=reserved_at AND consumed_at<=expires_at))
-        AND (revoked_at IS NULL OR revoked_at>=issued_at) AND
+        (reserved_at IS NULL OR (reserved_at>=issued_at AND reserved_at<expires_at))
+        AND (consumed_at IS NULL OR (consumed_at>=reserved_at AND consumed_at<expires_at))
+        AND (revoked_at IS NULL OR (revoked_at>=issued_at AND revoked_at<expires_at)) AND
         ((status='issued' AND reservation_id_hash IS NULL AND reserved_at IS NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)
         OR (status='reserved' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)
         OR (status='consumed' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NOT NULL AND invocation_id_hash IS NOT NULL AND revoked_at IS NULL AND revoked_by IS NULL)
@@ -7982,9 +7982,9 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'orchestrator_gaac_lifecycle',
     `confirmed_at<=issued_at AND confirmed_at>=issued_at-interval '5 minutes'
       AND expires_at>issued_at AND expires_at<=issued_at+interval '10 minutes' AND expires_at<=approval_expires_at AND
-      (reserved_at IS NULL OR (reserved_at>=issued_at AND reserved_at<=expires_at))
-      AND (consumed_at IS NULL OR (consumed_at>=reserved_at AND consumed_at<=expires_at))
-      AND (revoked_at IS NULL OR revoked_at>=issued_at) AND
+      (reserved_at IS NULL OR (reserved_at>=issued_at AND reserved_at<expires_at))
+      AND (consumed_at IS NULL OR (consumed_at>=reserved_at AND consumed_at<expires_at))
+      AND (revoked_at IS NULL OR (revoked_at>=issued_at AND revoked_at<expires_at)) AND
       ((status='issued' AND reservation_id_hash IS NULL AND reserved_at IS NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)
       OR (status='reserved' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)
       OR (status='consumed' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NOT NULL AND invocation_id_hash IS NOT NULL AND revoked_at IS NULL AND revoked_by IS NULL)
