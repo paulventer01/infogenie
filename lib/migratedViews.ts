@@ -49,6 +49,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   // panel whose module is dedicated to migrated views (like the pilot's
   // ig_seo_roadmap.js) may drop its module.
   { view: "growth-methodology", legacyModule: null },
+  { view: "marketing-plan", legacyModule: null },
   { view: "white-label", legacyModule: null },
   { view: "bulk-reports", legacyModule: null },
   { view: "model-compare", legacyModule: null },
