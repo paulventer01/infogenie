@@ -87,6 +87,8 @@ test('issuance requires a valid, timestamp-bound human confirmation',async()=>{
  let authorityCalls=0;const client={query:async()=>{authorityCalls++;throw new Error('authority must not be queried');}};
  const base={...opts(),reconciliationRunId:'run_1',confirmationId:'confirm_1',confirmation:service.CONFIRMATION};
  await assert.rejects(service.issue(client,{...base,confirmedAt:'not-a-date'}),{code:'validation_failed'});
+ for(const ttlMs of [0,false,null,'','not-a-number',-1])
+  await assert.rejects(service.issue(client,{...base,confirmedAt:new Date().toISOString(),ttlMs}),{code:'validation_failed'});
  assert.equal(authorityCalls,0);
  const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');
  assert.match(source,/now-confirmedAt>MAX_CONFIRMATION_AGE_MS/);

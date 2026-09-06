@@ -11,7 +11,9 @@ test('schema binds full Google authority and consume-once review lineage',()=>{
  for(const name of ['workflow_id','draft_revision','contract_hash','publishing_request_id','publish_approval_id','workflow_approval_id','snapshot_hash','intent_id','intent_hash','operation_id','source_authorization_id','reconciliation_run_id','rereconciliation_attempt_id','credential_owner_user_id','credential_ref_id','credential_ref_version','account_fingerprint','ledger_root_hash'])assert.match(source,new RegExp(name));
  assert.match(source,/status IN\('issued','reserved','consumed','revoked','expired'\)/);
  assert.match(source,/review_case_id IS NOT NULL AND review_version>=1 AND closure_event_id IS NOT NULL/);
- assert.match(source,/confirmed_at<=issued_at AND expires_at>issued_at/);
+ assert.match(source,/confirmed_at<=issued_at AND confirmed_at>=issued_at-interval '5 minutes' AND expires_at>issued_at/);
+ assert.match(source,/confirmed_at>=issued_at-interval '5 minutes'/);
+ assert.match(source,/_ensureNamedCheck\(p, 'orchestrator_google_ads_activation_capabilities',[\s\S]*'orchestrator_gaac_lifecycle'/);
  assert.match(source,/expires_at<=issued_at\+interval '10 minutes'/);
  assert.match(source,/reserved_at IS NULL OR reserved_at>=issued_at/);
  assert.match(source,/consumed_at IS NULL OR consumed_at>=reserved_at/);

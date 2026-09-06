@@ -78,7 +78,7 @@ function bound(cap,x){return [['workflow_id','workflow_id'],['draft_id','draft_i
  ['rereconciliation_attempt_id','rereconciliation_attempt_id'],['credential_ref_id','credential_ref_id'],['account_fingerprint','account_fingerprint'],['ledger_root_hash','ledger_root_hash']]
  .every(([a,b])=>same(String(cap[a]),String(x[b])))&&Number(cap.draft_revision)===Number(x.draft_revision)
  &&Number(cap.review_version||0)===Number(x.review_version||0)&&Number(cap.credential_ref_version)===Number(x.credential_ref_version);}
-async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),ttl=integer(o.ttlMs||DEFAULT_TTL_MS),confirmedAt=new Date(o.confirmedAt);
+async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),ttl=o.ttlMs===undefined?DEFAULT_TTL_MS:integer(o.ttlMs),confirmedAt=new Date(o.confirmedAt);
  if(!tenantId||!valid(o.reconciliationRunId)||!valid(o.confirmationId)||o.confirmation!==CONFIRMATION||!ttl||ttl>MAX_TTL_MS
    ||!Number.isFinite(confirmedAt.getTime()))throw deny('validation_failed');
  const x=await authoritative(c,tenantId,actor,String(o.reconciliationRunId)),now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);

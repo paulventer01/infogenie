@@ -7883,7 +7883,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         AND (invocation_id_hash IS NULL OR invocation_id_hash~'^[0-9a-f]{64}$')),
       CONSTRAINT orchestrator_gaac_review CHECK((review_case_id IS NULL AND review_version IS NULL AND closure_event_id IS NULL AND rereconciliation_attempt_id IS NULL)
         OR (review_case_id IS NOT NULL AND review_version>=1 AND closure_event_id IS NOT NULL AND rereconciliation_attempt_id IS NOT NULL)),
-      CONSTRAINT orchestrator_gaac_lifecycle CHECK(confirmed_at<=issued_at AND expires_at>issued_at
+      CONSTRAINT orchestrator_gaac_lifecycle CHECK(confirmed_at<=issued_at AND confirmed_at>=issued_at-interval '5 minutes' AND expires_at>issued_at
         AND expires_at<=issued_at+interval '10 minutes' AND
         (reserved_at IS NULL OR reserved_at>=issued_at) AND (consumed_at IS NULL OR consumed_at>=reserved_at)
         AND (revoked_at IS NULL OR revoked_at>=issued_at) AND
@@ -7940,6 +7940,21 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     DROP TRIGGER IF EXISTS orchestrator_gaac_guard ON orchestrator_google_ads_activation_capabilities;
     CREATE TRIGGER orchestrator_gaac_guard BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_google_ads_activation_capabilities FOR EACH ROW EXECUTE FUNCTION orchestrator_gaac_guard();
   `);
+
+  // CREATE TABLE IF NOT EXISTS does not update constraints installed by an
+  // earlier release. Replace this named CHECK transactionally so upgrades get
+  // the same confirmation-freshness and lifecycle authority as clean installs.
+  await _ensureNamedCheck(p, 'orchestrator_google_ads_activation_capabilities',
+    'orchestrator_gaac_lifecycle',
+    `confirmed_at<=issued_at AND confirmed_at>=issued_at-interval '5 minutes'
+      AND expires_at>issued_at AND expires_at<=issued_at+interval '10 minutes' AND
+      (reserved_at IS NULL OR reserved_at>=issued_at) AND (consumed_at IS NULL OR consumed_at>=reserved_at)
+      AND (revoked_at IS NULL OR revoked_at>=issued_at) AND
+      ((status='issued' AND reservation_id_hash IS NULL AND reserved_at IS NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)
+      OR (status='reserved' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)
+      OR (status='consumed' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NOT NULL AND invocation_id_hash IS NOT NULL AND revoked_at IS NULL AND revoked_by IS NULL)
+      OR (status='revoked' AND (reservation_id_hash IS NULL)=(reserved_at IS NULL) AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NOT NULL AND revoked_by IS NOT NULL)
+      OR (status='expired' AND (reservation_id_hash IS NULL)=(reserved_at IS NULL) AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL))`);
 
   // PR 8C — consumes one approved PR8B request without changing it. No provider
   // identifiers, credential references, source hashes, payloads, or errors are stored.

@@ -24,16 +24,16 @@ const authRow=(over={})=>({id:'garr_x',tenant_id:7,operation_id:'gapo_x',request
 // Answers only the queries this module is allowed to make. A kill-switch,
 // user_integrations, capability or provider query is a test failure.
 function mockPool(state={}) {
-  const seen=[],audits=[];
+  const seen=[],audits=[],auditEvents=[];
   const client={release(){},query:async(sql,params=[])=>{
     const text=String(sql).replace(/\s+/g,' ').trim();seen.push(text);
     if(/^(BEGIN|COMMIT|ROLLBACK)/.test(text)||/^INSERT INTO orchestrator_google_ads_reconciliation_read/.test(text))return {rowCount:0,rows:[]};
     if(/^SELECT clock_timestamp/.test(text))return {rowCount:1,rows:[{now:new Date('2026-02-01T00:01:00Z')}]};
-    if(/^INSERT INTO orchestrator_audit_events/.test(text)){audits.push(String(params[4]));return {rowCount:1,rows:[]};}
+    if(/^INSERT INTO orchestrator_audit_events/.test(text)){auditEvents.push(params[2]);audits.push(String(params[4]));return {rowCount:1,rows:[]};}
     if(/^UPDATE orchestrator_google_ads_reconciliation_read_authorizations SET status='revoked'/.test(text))
       return {rowCount:1,rows:[authRow({status:'revoked'})]};
-    const rows=/^SELECT operation_id FROM orchestrator_google_ads_reconciliation_read_authorizations/.test(text)
-      ?(state.authorization===null?[]:[{operation_id:(state.authorization||authRow()).operation_id}])
+    const rows=/^SELECT operation_id,workflow_id,status FROM orchestrator_google_ads_reconciliation_read_authorizations/.test(text)
+      ?(state.authorization===null?[]:[state.authorization||authRow()])
       :/FROM orchestrator_google_ads_provider_draft_operations op/.test(text)
       ?(state.operation===null?[]:[state.operation||operation()])
       :/FROM orchestrator_google_ads_provider_draft_objects/.test(text)?(state.objects||paused())
@@ -41,7 +41,7 @@ function mockPool(state={}) {
           ?(state.authorization===null?[]:[state.authorization||authRow()]):null;
     if(rows===null)throw new Error(`unexpected query: ${text}`);return {rowCount:rows.length,rows};
   }};
-  return {seen,audits,client,pool:{connect:async()=>client}};
+  return {seen,audits,auditEvents,client,pool:{connect:async()=>client}};
 }
 const consumeArgs={authorizationId:'garr_x',invocationId:'inv-1'};
 test('reconciliation read authority reuses the read permission, not the create permission',()=>{
@@ -178,6 +178,17 @@ test('a drifted credential or ledger binding fails closed before the secret scop
   }
   await assert.rejects(authority.consumeAndObserve(mockPool({authorization:null}).pool,
     {...actor,...consumeArgs,tokenTransport:never}),(e)=>e.code==='authorization_rejected');
+});
+test('post-admission authority failures retain sanitized rejection audit evidence',async()=>{
+  for(const state of [{operation:null},{objects:paused().slice(0,2)}]) {
+    const {pool,audits,auditEvents}=mockPool(state);
+    await assert.rejects(authority.consumeAndObserve(pool,{...actor,...consumeArgs,tokenTransport:never}),
+      (e)=>e.blocked===true);
+    assert.equal(audits.length,1);
+    assert.deepEqual(auditEvents,['google_ads_reconciliation_read_authorization_rejected']);
+    assert.deepEqual(JSON.parse(audits[0]),{
+      authorization_id:'garr_x',operation_id:'gapo_x',status:'issued'});
+  }
 });
 test('the consume commits before any secret scope opens, and the handle never escapes',()=>{
   const at=(needle)=>{const i=source.indexOf(needle);assert.ok(i>0,needle);return i;};

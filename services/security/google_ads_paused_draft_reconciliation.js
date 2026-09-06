@@ -83,15 +83,20 @@ async function loadOperation(c,tenantId,actorId,operationId,requiredPermission=P
 // observation/replay and activation/post-review paths must all use this order or
 // a replay can hold the operation while an observer holds the authorization.
 async function lockAuthorizationGraph(c,tenantId,actorId,authorizationId,requiredPermission,consumedBinding=null) {
-  const hint=await c.query(`SELECT operation_id FROM ${TABLE} WHERE tenant_id=$1 AND id=$2`,[tenantId,authorizationId]);
+  const hint=await c.query(`SELECT operation_id,workflow_id,status FROM ${TABLE} WHERE tenant_id=$1 AND id=$2`,[tenantId,authorizationId]);
   if(hint.rowCount!==1)throw deny('authorization_rejected');
-  const graph=await loadOperation(c,tenantId,actorId,hint.rows[0].operation_id,requiredPermission);
+  const hinted=hint.rows[0];
+  const reject=async(code)=>{await audit(c,tenantId,actorId,hinted.workflow_id,EVENT('rejected'),
+    {authorization_id:authorizationId,operation_id:hinted.operation_id,status:hinted.status});throw deny(code);};
+  let graph;
+  try { graph=await loadOperation(c,tenantId,actorId,hinted.operation_id,requiredPermission); }
+  catch(error) { if(error&&error.blocked)return reject(error.code);throw error; }
   const locked=consumedBinding
     ?await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 AND status='consumed'
       AND requested_by=$3 AND session_id_hash=$4 AND invocation_id_hash=$5 FOR UPDATE`,
     [tenantId,authorizationId,actorId,consumedBinding.sessionHash,consumedBinding.invocationHash])
     :await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,authorizationId]);
-  if(locked.rowCount!==1||locked.rows[0].operation_id!==hint.rows[0].operation_id)throw deny('authorization_rejected');
+  if(locked.rowCount!==1||locked.rows[0].operation_id!==hinted.operation_id)return reject('authorization_rejected');
   return {row:locked.rows[0],graph}; }
 // Caller owns the transaction. Every stored binding is copied from the locked
 // operation row; the caller's own options may only agree with it.
