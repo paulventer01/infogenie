@@ -22,7 +22,8 @@ function creds(){const x=Object.create(null);Object.defineProperties(x,{object_k
 function pool(){
  let attempt=null;
  const client={async query(sql,params=[]){
-  if(['BEGIN','COMMIT','ROLLBACK'].includes(sql))return{rows:[],rowCount:null};
+  if(['BEGIN','COMMIT','ROLLBACK'].includes(sql)||sql.startsWith('SAVEPOINT ')||sql.startsWith('RELEASE SAVEPOINT ')
+    ||sql.startsWith('ROLLBACK TO SAVEPOINT '))return{rows:[],rowCount:null};
   if(sql.includes(`FROM ${service.TABLE} WHERE tenant_id=$1 AND capability_id=$2`))return{rowCount:attempt?1:0,rows:attempt?[attempt]:[]};
   if(sql.includes('FROM orchestrator_google_ads_activation_capabilities'))return{rowCount:1,rows:[cap]};
   if(sql.includes('FROM orchestrator_google_ads_provider_draft_objects'))return{rowCount:3,rows:objects};
