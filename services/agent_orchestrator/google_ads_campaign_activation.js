@@ -74,14 +74,26 @@ async function begin(pool,o,actor){
     objects_digest:objectDigest(objects),invocation_id_hash:hash(o.invocationId),status:'in_progress',
     result_code:null,objects_expected:2,objects_activated:0,requires_reconciliation:false,
     external_action_taken:false,created_at:now,started_at:now,settled_at:null,audit_ref:`gaact-audit-${crypto.randomUUID()}`};
-  await c.query(`INSERT INTO ${TABLE}(tenant_id,id,capability_id,actor_user_id,session_id_hash,workflow_id,
-   operation_id,reconciliation_run_id,credential_owner_user_id,credential_ref_id,credential_ref_version,
-   account_fingerprint,ledger_root_hash,objects_digest,invocation_id_hash,status,result_code,objects_expected,
-   objects_activated,requires_reconciliation,external_action_taken,created_at,started_at,settled_at,audit_ref)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'in_progress',NULL,2,0,FALSE,FALSE,$16,$16,NULL,$17)`,
-  [row.tenant_id,row.id,row.capability_id,row.actor_user_id,row.session_id_hash,row.workflow_id,row.operation_id,
-   row.reconciliation_run_id,row.credential_owner_user_id,row.credential_ref_id,row.credential_ref_version,
-   row.account_fingerprint,row.ledger_root_hash,row.objects_digest,row.invocation_id_hash,now,row.audit_ref]);
+  await c.query('SAVEPOINT google_ads_activation_begin');
+  try {
+    await c.query(`INSERT INTO ${TABLE}(tenant_id,id,capability_id,actor_user_id,session_id_hash,workflow_id,
+     operation_id,reconciliation_run_id,credential_owner_user_id,credential_ref_id,credential_ref_version,
+     account_fingerprint,ledger_root_hash,objects_digest,invocation_id_hash,status,result_code,objects_expected,
+     objects_activated,requires_reconciliation,external_action_taken,created_at,started_at,settled_at,audit_ref)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'in_progress',NULL,2,0,FALSE,FALSE,$16,$16,NULL,$17)`,
+    [row.tenant_id,row.id,row.capability_id,row.actor_user_id,row.session_id_hash,row.workflow_id,row.operation_id,
+     row.reconciliation_run_id,row.credential_owner_user_id,row.credential_ref_id,row.credential_ref_version,
+     row.account_fingerprint,row.ledger_root_hash,row.objects_digest,row.invocation_id_hash,now,row.audit_ref]);
+    await c.query('RELEASE SAVEPOINT google_ads_activation_begin');
+  } catch(e) {
+    if(e?.code!=='23505')throw e;
+    await c.query('ROLLBACK TO SAVEPOINT google_ads_activation_begin');
+    await c.query('RELEASE SAVEPOINT google_ads_activation_begin');
+    const winner=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1
+      AND (capability_id=$2 OR invocation_id_hash=$3) FOR UPDATE`,[o.tenantId,o.capabilityId,hash(o.invocationId)]);
+    if(winner.rowCount!==1||!invocationMatches(winner.rows[0],o,actor))throw deny('activation_conflict');
+    return {attempt:project(winner.rows[0],true),replay:true};
+  }
   await audit(c,row,'google_ads_activation_attempt_started');
   return {attempt:project(row,false),replay:false,objects};
  });}
