@@ -39,7 +39,7 @@ const CHANNELS = [
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: 9,
-  border: "1px solid #FED7AA",
+  border: "1px solid rgba(15,118,110,0.28)",
   borderRadius: 8,
 };
 const labelStyle: React.CSSProperties = {
@@ -171,7 +171,7 @@ export default function NewProject() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#FFF7ED", padding: "28px 32px" }}>
+    <div style={{ minHeight: "100vh", background: "#f3f6fb", padding: "28px 32px" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ marginBottom: 24 }}>
           <h1 style={{ margin: 0, fontSize: "1.6rem", color: "#0F172A" }}>
@@ -185,7 +185,7 @@ export default function NewProject() {
         <div
           style={{
             background: "#fff",
-            border: "1px solid #FED7AA",
+            border: "1px solid rgba(15,118,110,0.28)",
             borderRadius: 14,
             padding: 24,
             marginBottom: 24,
@@ -272,8 +272,8 @@ export default function NewProject() {
               <label
                 key={c}
                 style={{
-                  background: "#FFF7ED",
-                  border: "1px solid #FED7AA",
+                  background: "#f3f6fb",
+                  border: "1px solid rgba(15,118,110,0.28)",
                   borderRadius: 99,
                   padding: "6px 12px",
                   cursor: "pointer",
@@ -298,7 +298,7 @@ export default function NewProject() {
             onClick={save}
             style={{
               padding: "11px 22px",
-              background: "linear-gradient(135deg,#F97316,#EA580C)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               color: "#fff",
               border: "none",
               borderRadius: 10,
@@ -317,7 +317,7 @@ export default function NewProject() {
             <div
               style={{
                 background: "#fff",
-                border: "1px dashed #FED7AA",
+                border: "1px dashed rgba(15,118,110,0.28)",
                 borderRadius: 10,
                 padding: 24,
                 textAlign: "center",
@@ -332,7 +332,7 @@ export default function NewProject() {
                 key={p.id}
                 style={{
                   background: "#fff",
-                  border: `1px solid ${p.id === activeId ? "#F97316" : "#E2E8F0"}`,
+                  border: `1px solid ${p.id === activeId ? "#0f766e" : "#E2E8F0"}`,
                   borderRadius: 12,
                   padding: 16,
                   display: "grid",
@@ -347,7 +347,7 @@ export default function NewProject() {
                     {p.id === activeId && (
                       <span
                         style={{
-                          background: "#F97316",
+                          background: "#0f766e",
                           color: "#fff",
                           padding: "2px 8px",
                           borderRadius: 99,
@@ -369,8 +369,8 @@ export default function NewProject() {
                     onClick={() => setActive(p)}
                     style={{
                       padding: "6px 12px",
-                      background: "#FED7AA",
-                      border: "1px solid #F97316",
+                      background: "rgba(15,118,110,0.28)",
+                      border: "1px solid #0f766e",
                       borderRadius: 7,
                       cursor: "pointer",
                       fontWeight: 600,

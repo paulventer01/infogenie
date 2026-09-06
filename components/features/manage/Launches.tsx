@@ -337,7 +337,7 @@ export default function Launches({ embedded = false }: { embedded?: boolean } = 
             <button
               onClick={addLaunch}
               style={{
-                background: "#7C3AED",
+                background: "#0f766e",
                 color: "white",
                 border: "none",
                 borderRadius: 6,
@@ -390,7 +390,7 @@ export default function Launches({ embedded = false }: { embedded?: boolean } = 
   return (
     <div className="view" id="view-launches">
       {!embedded ? (
-      <div className="intel-header ig-panel-hero" style={{ background: "linear-gradient(110deg,#7C3AED 0%,#A855F7 50%,#EC4899 100%)" }}>
+      <div className="intel-header ig-panel-hero" style={{ background: "linear-gradient(110deg,#0f766e 0%,#0284c7 50%,#EC4899 100%)" }}>
         <div className="breadcrumb" style={{ color: "#FBCFE8" }}>
           <span className="bc-group" style={{ color: "#FBCFE8", opacity: 0.85 }}>
             Manage

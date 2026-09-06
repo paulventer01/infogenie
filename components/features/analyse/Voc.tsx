@@ -16,7 +16,7 @@ const KIND_COLOR: Record<string, string> = {
   praise: "#15803D",
   complaint: "#B91C1C",
   question: "#0891B2",
-  feature_request: "#7C3AED",
+  feature_request: "#0f766e",
   neutral: "#6B7280",
 };
 const KIND_BG: Record<string, string> = {

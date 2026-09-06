@@ -59,6 +59,21 @@ interface IntegrationsStatus {
 
 interface VaultSaveResult {
   ok: boolean;
+  configured?: boolean;
+  hint?: string | null;
+  error?: string;
+}
+
+interface VaultStatusResult {
+  ok: boolean;
+  configured?: boolean;
+  hint?: string | null;
+  error?: string;
+}
+
+interface VaultBatchResult {
+  ok: boolean;
+  keys?: Record<string, { configured?: boolean; hint?: string | null; blocked?: boolean }>;
   error?: string;
 }
 
@@ -322,6 +337,24 @@ const INTEGRATIONS: IntegrationsMap = {
         ],
       },
       {
+        id: "mangools", logo: "🥭", name: "Mangools API",
+        tagline: "KWFinder keywords, SiteProfiler metrics & LinkMiner backlinks",
+        authType: "apikey",
+        placeholder: "Mangools API Token",
+        unlocks: [
+          "Related & competitor keyword research (KWFinder)",
+          "Domain overview — Trust Flow, Citation Flow, Moz PA/DA",
+          "Keyword gap analysis vs competitor domains",
+          "Backlink profile summaries and top content pages",
+        ],
+        steps: [
+          { text: 'Create a free account at <a href="https://mangools.com" target="_blank">mangools.com</a>' },
+          { text: 'Open <a href="https://mangools.com/api-token" target="_blank">mangools.com/api-token</a> and copy your API token' },
+          { text: "Paste the token above — or save it as <code>MANGOOLS_API_KEY</code> in <strong>Manage → Platform APIs</strong>" },
+          { text: "Click <strong>Test Connection</strong> — InfoGenie probes KWFinder related-keywords" },
+        ],
+      },
+      {
         id: "moz", logo: "🎯", name: "Moz API",
         tagline: "Domain Authority, Page Authority & link metrics",
         authType: "apikey",
@@ -470,6 +503,7 @@ const INTEGRATIONS: IntegrationsMap = {
         id: "elevenlabs", logo: "🔊", name: "ElevenLabs",
         tagline: "AI voice generation for video ad voiceovers & audio content",
         authType: "apikey",
+        vaultSave: true,
         placeholder: "ElevenLabs API Key",
         unlocks: [
           "AI voiceover generation for video and audio ads",
@@ -525,9 +559,27 @@ const INTEGRATIONS: IntegrationsMap = {
         ],
       },
       {
+        id: "canva", logo: "🎨", name: "Canva",
+        tagline: "Connect Canva for Design Kit briefs + template deep-links",
+        authType: "apikey",
+        vaultSave: true,
+        placeholder: "Canva Client ID (optional — or use Connect OAuth)",
+        unlocks: [
+          "Design Kit briefs that paste straight into Canva text layers",
+          "Curated template deep-links by content type",
+          "OAuth Connect when CANVA_CLIENT_ID + CANVA_CLIENT_SECRET are set",
+        ],
+        steps: [
+          { text: 'Create a Connect app at <a href="https://www.canva.com/developers/" target="_blank">canva.com/developers</a>' },
+          { text: "Set env <code>CANVA_CLIENT_ID</code> + <code>CANVA_CLIENT_SECRET</code> on the server" },
+          { text: "Open Create → Canva → Connect Canva (OAuth) or paste Client ID above for status" },
+        ],
+      },
+      {
         id: "runway", logo: "🎬", name: "Runway ML",
         tagline: "AI video ad generation — text-to-video & image-to-video at scale",
         authType: "apikey",
+        vaultSave: true,
         placeholder: "Runway ML API Key (Bearer ...)",
         unlocks: [
           "Generate 15-second and 30-second video ads from text prompts",
@@ -542,6 +594,84 @@ const INTEGRATIONS: IntegrationsMap = {
           { text: "Click <strong>Create new key</strong> — pricing is credit-based at $0.01 per credit" },
           { text: "Note: Video generation costs ~$0.05–0.40 per second depending on resolution" },
           { text: "Paste your Bearer token above — InfoGenie uses Gen-2 by default, Gen-3 Alpha for premium quality" },
+        ],
+      },
+      {
+        id: "heygen", logo: "🧑‍🎤", name: "HeyGen",
+        tagline: "Avatar / talking-head video ads from a script",
+        authType: "apikey",
+        vaultSave: true,
+        placeholder: "HeyGen API Key",
+        unlocks: [
+          "Avatar spokespeople for product and offer videos",
+          "Multi-language lip-sync for localization",
+          "Fast short-form creatives for paid social",
+        ],
+        steps: [
+          { text: 'Sign up at <a href="https://www.heygen.com" target="_blank">heygen.com</a>' },
+          { text: "Open <strong>Settings → API</strong> and create a key" },
+          { text: "Paste it above — use Create → AI Video to render" },
+        ],
+      },
+      {
+        id: "xai", logo: "𝕏", name: "xAI Grok",
+        tagline: "Grok answers for AI visibility / citation probes",
+        authType: "apikey",
+        vaultSave: true,
+        placeholder: "xAI API Key",
+        unlocks: [
+          "Probe how Grok answers category queries",
+          "Complement LLM Gap Analyzer with an X-native model",
+        ],
+        steps: [
+          { text: 'Get a key at <a href="https://console.x.ai" target="_blank">console.x.ai</a>' },
+          { text: "Paste it above and click <strong>Connect</strong> — saved to your workspace vault (survives reload)" },
+        ],
+      },
+      {
+        id: "fireflies", logo: "🎙", name: "Fireflies.ai",
+        tagline: "Auto-ingest meeting transcripts into Meeting Notes",
+        authType: "apikey",
+        vaultSave: true,
+        placeholder: "Fireflies API Key",
+        unlocks: [
+          "Pull transcripts into InfoGenie Meeting Notes",
+          "Run BANT summaries without paste friction",
+        ],
+        steps: [
+          { text: 'Open <a href="https://app.fireflies.ai" target="_blank">Fireflies</a> → Integrations → API' },
+          { text: "Copy your API key, paste it above, and click <strong>Connect</strong>" },
+        ],
+      },
+      {
+        id: "deepl", logo: "🌍", name: "DeepL",
+        tagline: "Campaign-quality localization for multi-market launches",
+        authType: "apikey",
+        vaultSave: true,
+        placeholder: "DeepL Auth Key",
+        unlocks: [
+          "Translate ad/email/landing copy with DeepL quality",
+          "Feed Localization workflows with accurate source text",
+        ],
+        steps: [
+          { text: 'Create a key at <a href="https://www.deepl.com/pro-api" target="_blank">deepl.com/pro-api</a>' },
+          { text: "Free keys end with <code>:fx</code> — paste the full key above and click <strong>Connect</strong>" },
+        ],
+      },
+      {
+        id: "notion", logo: "📓", name: "Notion",
+        tagline: "Export Attack Plan briefs into your agency workspace",
+        authType: "apikey",
+        vaultSave: true,
+        placeholder: "Notion Internal Integration Token",
+        unlocks: [
+          "Push briefs / Attack Plans into Notion pages",
+          "Agency handoff without leaving InfoGenie",
+        ],
+        steps: [
+          { text: 'Create an integration at <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a>' },
+          { text: "Share a parent page with the integration and set <code>NOTION_PARENT_PAGE_ID</code>" },
+          { text: "Paste the token above and click <strong>Connect</strong>" },
         ],
       },
       {
@@ -723,6 +853,42 @@ const INTEGRATIONS: IntegrationsMap = {
           { text: "In Make, create a new Scenario using the <strong>Webhooks</strong> module as trigger" },
           { text: "Copy the webhook URL and paste it into InfoGenie's Make settings panel" },
           { text: "Enter your API token above and click <strong>Test Connection</strong>" },
+        ],
+      },
+      {
+        id: "n8n", logo: "🟣", name: "n8n",
+        tagline: "Self-hosted / cloud workflow automation & agent orchestration",
+        authType: "apikey",
+        placeholder: "n8n API Key (optional)",
+        unlocks: [
+          "Receive InfoGenie events on n8n Webhook nodes",
+          "Call back into Document RAG / Marketing Memory via inbound bridge",
+          "Orchestrate multi-step AI agents across your stack",
+          "Works with Automations → Zapier · n8n · Make bridge",
+        ],
+        steps: [
+          { text: "In n8n, create a workflow with a <strong>Webhook</strong> trigger and activate it" },
+          { text: "Copy the Production Webhook URL" },
+          { text: "In InfoGenie go to <strong>Manage → Automations</strong> → Zapier · n8n · Make bridge and paste the URL as an outbound target (provider: n8n)" },
+          { text: "Optionally paste an n8n API key above for vault storage" },
+          { text: "Use the inbound webhook URL from Automations to write data back into InfoGenie" },
+        ],
+      },
+      {
+        id: "notion", logo: "📓", name: "Notion",
+        tagline: "Index Notion pages into Knowledge Hub (enterprise search)",
+        authType: "apikey",
+        placeholder: "Notion Internal Integration Secret",
+        unlocks: [
+          "Sync Notion pages into Ask InfoGenie retrieval",
+          "Glean-class workplace knowledge over brand docs & wikis",
+          "Re-sync on demand from Knowledge Hub",
+        ],
+        steps: [
+          { text: 'Create an integration at <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a>' },
+          { text: "Copy the <strong>Internal Integration Secret</strong>" },
+          { text: "Share the Notion pages/databases you want indexed with that integration" },
+          { text: "Paste the secret above, then open <strong>Manage → Knowledge Hub</strong> and click Sync on Notion" },
         ],
       },
     ],
@@ -931,6 +1097,23 @@ const INTEGRATIONS: IntegrationsMap = {
         ],
       },
       {
+        id: "slack_bot", logo: "💬", name: "Slack Bot Token (Knowledge Hub)",
+        tagline: "Index public channel history into Ask InfoGenie (Glean-class search)",
+        authType: "apikey",
+        placeholder: "xoxb-… Bot User OAuth Token",
+        unlocks: [
+          "Sync recent Slack channel messages into Document RAG index",
+          "Ask InfoGenie can cite workplace conversations",
+          "On-demand re-sync from Knowledge Hub",
+        ],
+        steps: [
+          { text: "In your Slack app, open <strong>OAuth & Permissions</strong>" },
+          { text: "Add bot scopes: <code>channels:history</code>, <code>channels:read</code>, <code>groups:history</code> (optional)" },
+          { text: "Reinstall the app and copy the <strong>Bot User OAuth Token</strong> (starts with <code>xoxb-</code>)" },
+          { text: "Paste it above, then sync from <strong>Manage → Knowledge Hub</strong>" },
+        ],
+      },
+      {
         id: "whatsapp", logo: "📱", name: "WhatsApp Business API",
         tagline: "Lead qualification chatbot & conversational campaign follow-up",
         authType: "apikey",
@@ -1059,6 +1242,22 @@ const INTEGRATIONS: IntegrationsMap = {
           { text: "Click <strong>Connect via OAuth</strong> below — InfoGenie requests read/send for Gmail, <code>drive.file</code> for Drive, and <code>calendar.events</code> for Calendar" },
         ],
       },
+      {
+        id: "google_drive", logo: "📁", name: "Google Drive (Knowledge Hub)",
+        tagline: "Index Docs / CSV / text files into Ask InfoGenie",
+        authType: "apikey",
+        placeholder: "Google OAuth access token (Drive scope)",
+        unlocks: [
+          "Pull recent Drive Docs and text files into the shared RAG index",
+          "Enterprise search over brand folders without leaving InfoGenie",
+          "Sync on demand from Knowledge Hub",
+        ],
+        steps: [
+          { text: "Obtain an OAuth access token with <code>https://www.googleapis.com/auth/drive.readonly</code> (or use your Workspace OAuth flow)" },
+          { text: "Paste the access token above and click Connect" },
+          { text: "Open <strong>Manage → Knowledge Hub</strong> and click Sync on Google Drive" },
+        ],
+      },
     ],
   },
 };
@@ -1076,6 +1275,7 @@ const API_DETAILS: Record<string, ApiDetails> = {
   similarweb: { baseUrl: "https://api.similarweb.com/v1", rateLimits: "Depends on plan (typically 1,000 req/month)", plans: "SimilarWeb Digital Intelligence API subscription", errorCodes: [["401", "Invalid API key"], ["402", "Monthly quota exhausted"], ["404", "Website not found in SimilarWeb database"]] },
   ahrefs: { baseUrl: "https://api.ahrefs.com/v3", rateLimits: "500 rows/request, 1,000 req/day (Business)", plans: "Ahrefs Business plan or above", errorCodes: [["401", "Invalid or revoked API token"], ["403", "Feature not available on your plan"], ["429", "Rate limit exceeded — reduce request frequency"]] },
   spyfu: { baseUrl: "https://www.spyfu.com/apis/url_api", rateLimits: "10,000 results/day on Pro plan", plans: "SpyFu API plan subscription", errorCodes: [["403", "Invalid API credentials"], ["429", "Daily rate limit exceeded"], ["404", "Domain not indexed by SpyFu"]] },
+  mangools: { baseUrl: "https://api.mangools.com/v3", rateLimits: "Plan-based daily quotas per resource (related-keywords, serps, sp-overview, links); burst limit ~3 req/short window for API clients", plans: "Free API token available; paid Mangools plans raise KWFinder/SiteProfiler/LinkMiner quotas", errorCodes: [["401", "Invalid API key — regenerate at mangools.com/api-token"], ["402", "Plan quota exhausted — upgrade or wait for reset"], ["422", "Missing/invalid parameter (e.g. kw or url required)"], ["429", "Burst rate limit — wait and retry"]] },
   moz: { baseUrl: "https://lsapi.seomoz.com/v2", rateLimits: "10 queries per 10 seconds (free), higher on paid", plans: "Moz Pro API access (paid plan)", errorCodes: [["401", "Invalid Access ID or Secret Key"], ["429", "Request rate exceeded"], ["400", "Invalid URL or parameter"]] },
   "meta-ad-library": { baseUrl: "https://graph.facebook.com/v19.0/ads_archive", rateLimits: "200 calls/hour per user token, 500/day per app", plans: "Any Facebook Developer App with ads_read permission (free)", errorCodes: [["190", "Access token expired or invalid — regenerate a long-lived token"], ["100", "Missing or invalid parameter — check ad_type and ad_reached_countries fields"], ["17", "Rate limit hit — wait 1 hour before retrying"], ["200", "Insufficient permissions — ensure ads_read scope is granted on your token"]] },
   brandwatch: { baseUrl: "https://api.brandwatch.com/v2", rateLimits: "60 req/min for mentions, 10 req/min for analytics", plans: "Brandwatch Consumer Intelligence or Social Intelligence plan", errorCodes: [["401", "Invalid or expired API token — regenerate in Settings → API Access"], ["403", "Scope not granted — check queries:read and mentions:read permissions"], ["429", "Rate limit exceeded — Brandwatch enforces per-minute windows"], ["404", "Query ID not found — verify your query was created in Brandwatch dashboard"]] },
@@ -1243,9 +1443,33 @@ const API_VALIDATORS: Record<string, Validator> = {
     if (key.length < 30) return rej("Key too short — Artlist Enterprise keys are 40+ characters");
     return unv("Artlist does not allow browser-side API validation. Key length looks plausible — actual validity will be confirmed on first asset request.");
   },
+  canva: (key) => {
+    if (key.length < 8) return rej("Value too short — paste your Canva Client ID, or leave blank and use OAuth Connect.");
+    return unv("Canva Connect uses Client ID + Secret on the server. Client ID format looks plausible — use Create → Canva → Connect for OAuth.");
+  },
   runway: (key) => {
     if (key.length < 30) return rej("Key too short — Runway ML API keys are typically 40+ characters. Check you copied it in full.");
     return unv("Runway ML does not allow browser-side API validation. Key length looks correct — actual validity will be confirmed on first video generation request.");
+  },
+  heygen: (key) => {
+    if (key.length < 20) return rej("Key too short — check you copied the full HeyGen API key.");
+    return unv("HeyGen keys are validated on first AI Video render.");
+  },
+  xai: (key) => {
+    if (key.length < 20) return rej("Key too short — xAI keys are typically longer. Copy the full key.");
+    return unv("xAI/Grok keys are validated on the first Grok probe.");
+  },
+  fireflies: (key) => {
+    if (key.length < 20) return rej("Key too short — paste the full Fireflies API key.");
+    return unv("Fireflies keys are validated on transcript ingest.");
+  },
+  deepl: (key) => {
+    if (key.length < 16) return rej("Key too short — DeepL auth keys are longer (free keys end with :fx).");
+    return unv("DeepL keys are validated on the first translate call.");
+  },
+  notion: (key) => {
+    if (!/^secret_/.test(key) && key.length < 40) return rej("Notion internal tokens usually start with secret_ — check you copied the integration token.");
+    return unv("Notion tokens are validated when exporting a page.");
   },
   semrush: (key) => {
     if (!/^[a-f0-9]{32}$/i.test(key)) return rej("Invalid format — Semrush API keys are exactly 32 hexadecimal characters (a-f, 0-9). Check you copied the full key.");
@@ -1322,6 +1546,22 @@ const API_VALIDATORS: Record<string, Validator> = {
   make: (key) => {
     if (key.length < 20) return rej("Token too short — Make API tokens are typically 30+ characters. Check you copied it in full.");
     return unv("Make does not allow browser-side API validation. Token length looks correct — actual validity will be confirmed on first scenario run.");
+  },
+  n8n: (key) => {
+    if (key.length < 16) return rej("Key too short — paste your n8n API key or use webhook-only setup via Automations.");
+    return unv("n8n API keys are not browser-validated — wire webhooks in Automations → bridge.");
+  },
+  notion: (key) => {
+    if (key.length < 30) return rej("Key too short — Notion integration secrets are typically 50+ characters.");
+    return unv("Notion secrets are confirmed on the first Knowledge Hub sync.");
+  },
+  slack_bot: (key) => {
+    if (!/^xoxb-/i.test(key)) return rej('Slack bot tokens usually start with "xoxb-"');
+    return unv("Slack bot tokens are confirmed on the first Knowledge Hub sync.");
+  },
+  google_drive: (key) => {
+    if (key.length < 20) return rej("Access token looks too short.");
+    return unv("Google Drive tokens are confirmed on the first Knowledge Hub sync.");
   },
   segment: (key) => {
     if (key.length < 20) return rej("Write Key too short — Segment write keys are typically 22 characters. Check you copied it in full.");
@@ -1423,6 +1663,23 @@ function findIntegById(id: string): { item: IntegItem; catKey: string; catLabel:
   return null;
 }
 
+/** Every API-key card persists to the server vault (not just vaultSave:true). */
+function listApiKeyIds(): string[] {
+  const ids: string[] = [];
+  for (const cat of Object.values(INTEGRATIONS)) {
+    for (const item of cat.items) {
+      if (item.authType === "apikey") ids.push(item.id);
+    }
+  }
+  return ids;
+}
+
+function readDomKey(id: string): string {
+  if (typeof document === "undefined") return "";
+  const el = document.getElementById(`inp-${id}`) as HTMLInputElement | null;
+  return (el?.value || "").trim();
+}
+
 type ConnState = Record<string, "1" | "oauth">;
 
 function readStoredState(): ConnState {
@@ -1456,6 +1713,10 @@ export default function Settings() {
   );
   const [docsOpen, setDocsOpen] = useState(false);
   const [docId, setDocId] = useState<string | null>(null);
+  /** Platforms with a key stored in the server vault (raw key is never returned). */
+  const [vaultConfigured, setVaultConfigured] = useState<Record<string, boolean>>({});
+  /** Masked hint shown in the input (••••••••abcd) so reload still looks “saved”. */
+  const [vaultHints, setVaultHints] = useState<Record<string, string>>({});
 
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -1500,6 +1761,53 @@ export default function Settings() {
       }
     })();
 
+    // Vault is the source of truth for all API-key cards (survives new tunnel
+    // origins / cleared localStorage). Batch GET returns configured + masked hint.
+    (async () => {
+      const ids = listApiKeyIds();
+      const r = await apiGet<VaultBatchResult>(
+        `/api/settings/api-keys?platforms=${encodeURIComponent(ids.join(","))}`,
+      );
+      if (cancelled) return;
+      if (!r.ok) {
+        if (r.error === "auth_required" || /login|unauthorized/i.test(r.error || "")) {
+          toast("⚠️ Sign in to restore saved API keys");
+        }
+        return;
+      }
+      const map = r.keys || {};
+      const vaultNext: Record<string, boolean> = {};
+      const hintsNext: Record<string, string> = {};
+      setConnected((prev) => {
+        const next = { ...prev };
+        for (const id of ids) {
+          const row = map[id];
+          const configured = !!(row && row.configured);
+          vaultNext[id] = configured;
+          if (configured) {
+            next[id] = "1";
+            if (row?.hint) hintsNext[id] = row.hint;
+            try {
+              localStorage.setItem("ig_integ_" + id, "1");
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+        return next;
+      });
+      setVaultConfigured(vaultNext);
+      setVaultHints(hintsNext);
+      // Show masked hint in the field so reopen clearly looks saved.
+      setInputs((prev) => {
+        const next = { ...prev };
+        for (const [id, hint] of Object.entries(hintsNext)) {
+          if (!next[id]) next[id] = hint;
+        }
+        return next;
+      });
+    })();
+
     (async () => {
       const data = await apiGet<ApiStatus>("/api/status");
       if (cancelled) return;
@@ -1536,8 +1844,19 @@ export default function Settings() {
 
   const connectedCount = Object.keys(connected).length;
 
+  function resolveKeyInput(id: string): string {
+    const typed = (inputs[id] || "").trim();
+    // Ignore masked vault hints — they are display-only.
+    if (typed && vaultHints[id] && typed === vaultHints[id]) return "";
+    if (typed && !/^•/.test(typed)) return typed;
+    const dom = readDomKey(id);
+    if (dom && vaultHints[id] && dom === vaultHints[id]) return "";
+    if (dom && !/^•/.test(dom)) return dom;
+    return "";
+  }
+
   async function testConnection(id: string) {
-    const key = (inputs[id] || "").trim();
+    const key = resolveKeyInput(id);
     if (!key) {
       toast("⚠️ Please enter your API key first");
       return;
@@ -1558,7 +1877,7 @@ export default function Settings() {
   }
 
   async function connectVault(id: string, name: string) {
-    const key = (inputs[id] || "").trim();
+    const key = resolveKeyInput(id);
     if (!key) {
       toast("⚠️ Please enter your API key before connecting");
       return;
@@ -1567,32 +1886,33 @@ export default function Settings() {
     const r = await apiPost<VaultSaveResult>("/api/settings/api-key", { platform: id, key });
     if (!r.ok) {
       setSaving((p) => ({ ...p, [id]: false }));
-      toast("❌ Could not save key: " + (r.error || "unknown error"));
+      const err = r.error || "unknown error";
+      if (err === "auth_required" || err === "Login required" || /login|unauthorized|401/i.test(err)) {
+        toast("❌ Sign in required — log in, then click Connect again to save the key");
+      } else if (err === "no_tenant") {
+        toast("❌ No workspace selected — pick a tenant, then Connect again");
+      } else if (err === "platform_key_admin_only") {
+        toast("❌ This key is managed under Admin → Platform APIs (owner only)");
+      } else if (/DATABASE_URL|no DATABASE|setApiKey/i.test(err)) {
+        toast("❌ Database not configured — cannot persist API keys");
+      } else {
+        toast("❌ Could not save key: " + err);
+      }
       return;
     }
+    const hint = r.hint || `••••••••${key.slice(-4)}`;
     markConnected(id, "1");
+    setVaultConfigured((p) => ({ ...p, [id]: true }));
+    setVaultHints((p) => ({ ...p, [id]: hint }));
+    // Keep a masked value visible so reopen / refresh still looks saved.
+    setInputs((p) => ({ ...p, [id]: hint }));
     setSaving((p) => ({ ...p, [id]: false }));
-    toast(
-      `✅ ${name} key saved — ${id === "apify" ? "TikTok Organic Monitor and Local Lead Finder are now active" : name + " is now active"}`,
-    );
+    toast(`✅ ${name} API key saved to your workspace — it will stay connected after you reopen the app`);
   }
 
+  /** Legacy name — all API-key cards now persist via the server vault. */
   function connectCard(id: string, name: string) {
-    const key = (inputs[id] || "").trim();
-    if (!key) {
-      toast("⚠️ Please enter your API key before connecting");
-      return;
-    }
-    markConnected(id, "1");
-    const liveMsg =
-      id === "semrush"
-        ? "✅ Semrush connected — Keyword Gap table now shows live data"
-        : id === "brandwatch"
-          ? "✅ Brandwatch connected — Signal Feed and SOV chart now show live monitoring"
-          : id === "meta-ad-library"
-            ? "✅ Meta Ad Library connected — competitor ads now pulled live from Facebook"
-            : `✅ ${name} connected — InfoGenie is now using this integration`;
-    toast(liveMsg);
+    void connectVault(id, name);
   }
 
   function connectOAuth(id: string, name: string) {
@@ -1777,12 +2097,25 @@ export default function Settings() {
                               <input
                                 type="password"
                                 className="api-key-inp"
-                                placeholder={item.placeholder || "Paste your API Key here..."}
+                                placeholder={
+                                  vaultConfigured[item.id]
+                                    ? "Key saved — paste a new key to replace"
+                                    : item.placeholder || "Paste your API Key here..."
+                                }
                                 id={`inp-${item.id}`}
                                 value={inputs[item.id] || ""}
+                                onFocus={() => {
+                                  // Clear masked hint so the user can paste a replacement.
+                                  if (vaultHints[item.id] && inputs[item.id] === vaultHints[item.id]) {
+                                    setInputs((p) => ({ ...p, [item.id]: "" }));
+                                  }
+                                }}
                                 onChange={(e) => setInputs((p) => ({ ...p, [item.id]: e.target.value }))}
+                                autoComplete="off"
+                                name={`ig-api-${item.id}`}
                               />
                               <button
+                                type="button"
                                 className="btn-test"
                                 disabled={!!testing[item.id]}
                                 onClick={() => testConnection(item.id)}
@@ -1790,16 +2123,20 @@ export default function Settings() {
                                 {testing[item.id] ? "Testing…" : "Test"}
                               </button>
                             </div>
+                            {vaultConfigured[item.id] ? (
+                              <div style={{ fontSize: "0.72rem", color: "#0f766e", fontWeight: 700, margin: "6px 0 2px" }}>
+                                ✓ Saved in workspace vault{vaultHints[item.id] ? ` (${vaultHints[item.id]})` : ""}
+                              </div>
+                            ) : null}
                             <div className="integ-card-actions">
                               <button
-                                className={`btn-connect-card${isConn ? " btn-connected-card" : ""}`}
+                                type="button"
+                                className={`btn-connect-card ig-btn-primary${isConn ? " btn-connected-card" : ""}`}
                                 id={`btn-${item.id}`}
                                 disabled={!!saving[item.id]}
-                                onClick={() =>
-                                  item.vaultSave ? connectVault(item.id, item.name) : connectCard(item.id, item.name)
-                                }
+                                onClick={() => connectVault(item.id, item.name)}
                               >
-                                {saving[item.id] ? "Saving…" : isConn ? "✓ Connected" : "Connect"}
+                                {saving[item.id] ? "Saving…" : isConn ? "✓ Connected — update" : "Connect"}
                               </button>
                               <button className="btn-docs-card" onClick={() => openIntegrationDoc(item.id)}>
                                 📖 View Docs

@@ -176,7 +176,7 @@ export default function CanonicalMetrics({ embedded = false }: { embedded?: bool
                 onClick={() => goToView(router, "contribution-record")}
                 style={{
                   padding: "10px 14px", borderRadius: 10, border: "1px solid #FDBA74",
-                  background: "#FFF7ED", color: "#9A3412", fontWeight: 800, fontSize: 13, cursor: "pointer",
+                  background: "#f3f6fb", color: "#9A3412", fontWeight: 800, fontSize: 13, cursor: "pointer",
                 }}
               >
                 Open contribution system of record →

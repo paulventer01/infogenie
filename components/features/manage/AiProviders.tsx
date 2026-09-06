@@ -496,6 +496,13 @@ export default function AiProviders() {
                 Azure OpenAI, Ollama, etc.) and pick a default for each task category — writing,
                 analysis, vision, audio.
               </p>
+              <p className="view-sub" style={{ marginTop: 8 }}>
+                Need the platform OpenAI key for AI Team minutes and daily reports? That lives in{" "}
+                <a href="/manage/admin?tab=platform-keys" style={{ color: "#0f766e", fontWeight: 700 }}>
+                  Manage → Admin Portal → Platform APIs → OpenAI API Key
+                </a>
+                .
+              </p>
             </div>
           </div>
         </div>
@@ -1031,7 +1038,7 @@ export default function AiProviders() {
               <button
                 onClick={addProvider}
                 style={{
-                  background: "linear-gradient(135deg,#0066FF,#7C3AED)",
+                  background: "linear-gradient(135deg,#0066FF,#0f766e)",
                   color: "#fff",
                   border: 0,
                   padding: "10px 22px",

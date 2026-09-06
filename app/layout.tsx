@@ -3,6 +3,7 @@ import { Outfit, Manrope } from "next/font/google";
 import Script from "next/script";
 import "../styles/globals.css";
 import "../styles/theme-v2.css";
+import "../styles/ig-unified.css";
 import HideNextDevBadge from "@/components/layout/HideNextDevBadge";
 
 export const metadata: Metadata = {

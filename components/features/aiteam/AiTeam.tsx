@@ -378,6 +378,35 @@ function readTasks(officerId: string, limit = 200): string[] {
   }
 }
 
+function writeTasks(officerId: string, tasks: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      "ig_officer_tasks_" + officerId,
+      JSON.stringify(tasks.filter((t) => typeof t === "string")),
+    );
+  } catch {
+    /* ignore quota */
+  }
+}
+
+async function syncTeamTasksFromServer(): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  const j = await apiPost<{
+    ok?: boolean;
+    tasks?: Record<string, string[]>;
+  }>("/api/officer/team/activate", {});
+  const store = j?.tasks && typeof j.tasks === "object" ? j.tasks : {};
+  OFFICERS.forEach((o) => {
+    const list = Array.isArray(store[o.id])
+      ? store[o.id]!.filter((t): t is string => typeof t === "string")
+      : readTasks(o.id);
+    if (list.length) writeTasks(o.id, list);
+    counts[o.id] = list.length || readTasks(o.id).length;
+  });
+  return counts;
+}
+
 function downloadFile(
   filename: string,
   content: string,
@@ -604,6 +633,7 @@ export default function AiTeam() {
   // Modal / overlay state
   const [tasksModal, setTasksModal] = useState<{ id: string; title: string } | null>(null);
   const [reportModal, setReportModal] = useState<{ id: string; title: string } | null>(null);
+  const [adviseModal, setAdviseModal] = useState<{ id: string; title: string } | null>(null);
   const [avatarPicker, setAvatarPicker] = useState<{ id: string; x: number; y: number } | null>(null);
   const [showStatusPanel, setShowStatusPanel] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -624,6 +654,15 @@ export default function AiTeam() {
     });
     setTaskCounts(counts);
   }, []);
+
+  const activateTeamTasks = useCallback(async () => {
+    try {
+      const counts = await syncTeamTasksFromServer();
+      setTaskCounts(counts);
+    } catch {
+      recomputeTaskCounts();
+    }
+  }, [recomputeTaskCounts]);
 
   const loadAvatars = useCallback(async () => {
     const j = await apiGet<{ avatars?: Record<string, string> }>(
@@ -648,8 +687,8 @@ export default function AiTeam() {
 
   useEffect(() => {
     loadAvatars();
-    recomputeTaskCounts();
-  }, [loadAvatars, recomputeTaskCounts]);
+    activateTeamTasks();
+  }, [loadAvatars, activateTeamTasks]);
 
   useEffect(() => {
     refreshStatusPill();
@@ -677,11 +716,11 @@ export default function AiTeam() {
             onClick={() => setMainTab(t)}
             style={{
               padding: "12px 22px", border: "none",
-              borderBottom: mainTab === t ? "2px solid #7C3AED" : "2px solid transparent",
+              borderBottom: mainTab === t ? "2px solid #0f766e" : "2px solid transparent",
               marginBottom: -2,
               background: "none", cursor: "pointer", fontSize: ".88rem",
               fontWeight: mainTab === t ? 800 : 600,
-              color: mainTab === t ? "#7C3AED" : "var(--text-muted,#6B7280)",
+              color: mainTab === t ? "#0f766e" : "var(--text-muted,#6B7280)",
               transition: "color .15s, border-color .15s",
             }}
           >
@@ -729,13 +768,41 @@ export default function AiTeam() {
               YOUR AI TEAM
             </div>
             <h1 style={{ margin: "8px 0 6px", fontSize: "1.85rem", fontWeight: 800, color: "#0f172a" }}>
-              {rosterCountLabel(OFFICERS.length)} AI executives, one team
+              {rosterCountLabel(OFFICERS.length)} AI executives, one agent team
             </h1>
             <p style={{ margin: 0, fontSize: ".92rem", color: "#475569", maxWidth: 720 }}>
-              Each officer handles a function full-time. Click any role to open their
-              office. Pick an avatar, assign tasks, run daily reports, and schedule
-              cross-functional meetings — all minutes downloadable.
+              Every roster member is an autonomous AI agent — prompt engineering, tool &amp; function
+              calling, RAG memory, multi-agent consults, and independent recommendations for their
+              domain. Assign tasks, ask for advice, run daily reports, and hold full-team meetings.
             </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+              {[
+                "Prompt Engineering",
+                "Tool Calling",
+                "Function Calling",
+                "RAG",
+                "Memory",
+                "Multi-Agent",
+                "LLMs",
+                "PostgreSQL + Vector",
+                "REST · GraphQL · MCP",
+              ].map((s) => (
+                <span
+                  key={s}
+                  style={{
+                    fontSize: ".68rem",
+                    fontWeight: 700,
+                    color: "#0f766e",
+                    background: "rgba(255,255,255,0.75)",
+                    border: "1px solid rgba(15,118,110,0.22)",
+                    borderRadius: 999,
+                    padding: "4px 10px",
+                  }}
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
           </div>
           <button
             title="Click for full system status"
@@ -793,6 +860,7 @@ export default function AiTeam() {
             }}
             onTasks={() => setTasksModal({ id: o.id, title: o.title })}
             onReport={() => setReportModal({ id: o.id, title: o.title })}
+            onAdvise={() => setAdviseModal({ id: o.id, title: o.title })}
           />
         ))}
       </div>
@@ -854,6 +922,13 @@ export default function AiTeam() {
           officerId={reportModal.id}
           officerTitle={reportModal.title}
           onClose={() => setReportModal(null)}
+        />
+      )}
+      {adviseModal && (
+        <AdviseModal
+          officerId={adviseModal.id}
+          officerTitle={adviseModal.title}
+          onClose={() => setAdviseModal(null)}
         />
       )}
       {showStatusPanel && (
@@ -923,6 +998,7 @@ function OfficerCard({
   onAvatar,
   onTasks,
   onReport,
+  onAdvise,
 }: {
   officer: Officer;
   avatar?: string;
@@ -931,6 +1007,7 @@ function OfficerCard({
   onAvatar: (e: React.MouseEvent) => void;
   onTasks: () => void;
   onReport: () => void;
+  onAdvise: () => void;
 }) {
   const av = typeof avatar === "string" && avatar ? avatar : officer.icon;
   const isImg = typeof av === "string" && isAvatarImage(av);
@@ -1006,6 +1083,9 @@ function OfficerCard({
           <div style={{ fontSize: ".78rem", color: "#64748B", marginTop: 2 }}>
             {officer.role}
           </div>
+          <div style={{ fontSize: ".66rem", color: "#0f766e", fontWeight: 700, marginTop: 4 }}>
+            Autonomous agent · tools · RAG · peer consult
+          </div>
         </div>
         <span style={{ ...pill, background: "#DCFCE7", color: "#166534" }}>● ON DUTY</span>
       </div>
@@ -1070,10 +1150,27 @@ function OfficerCard({
             📋 Tasks
           </button>
           <button
+            type="button"
+            onClick={onAdvise}
+            style={{
+              padding: "6px 11px",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              fontSize: ".72rem",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            🧠 Ask Agent
+          </button>
+          <button
+            type="button"
             onClick={onReport}
             style={{
               padding: "6px 11px",
-              background: '#eef4ff',
+              background: "#eef4ff",
               color: "#0f172a",
               border: "none",
               borderRadius: 8,
@@ -1321,7 +1418,6 @@ function TasksModal({
   officerTitle: string;
   onClose: () => void;
 }) {
-  const storeKey = "ig_officer_tasks_" + officerId;
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [saved, setSaved] = useState<string[]>(() => readTasks(officerId, 200));
   const [loading, setLoading] = useState(true);
@@ -1339,7 +1435,17 @@ function TasksModal({
 
   useEffect(() => {
     fetchTasks();
-  }, [fetchTasks]);
+    (async () => {
+      const j = await apiGet<{ tasks?: Record<string, string[]> }>(
+        "/api/officer/tasks-store",
+      );
+      const serverTasks = j?.tasks?.[officerId];
+      if (Array.isArray(serverTasks) && serverTasks.length) {
+        setSaved(serverTasks.filter((t): t is string => typeof t === "string"));
+        writeTasks(officerId, serverTasks);
+      }
+    })();
+  }, [fetchTasks, officerId]);
 
   const all = useMemo(
     () => [...new Set([...suggestions, ...saved])],
@@ -1358,11 +1464,7 @@ function TasksModal({
     setCustom("");
   }
   async function save() {
-    try {
-      localStorage.setItem(storeKey, JSON.stringify(saved));
-    } catch {
-      /* ignore quota */
-    }
+    writeTasks(officerId, saved);
     await apiPost("/api/officer/tasks-store", { role: officerId, tasks: saved });
     showToast(
       `✓ Saved ${saved.length} ${saved.length === 1 ? "task" : "tasks"} for ${officerTitle}`,
@@ -1444,7 +1546,7 @@ function TasksModal({
                     alignItems: "flex-start",
                     gap: 10,
                     padding: "10px 12px",
-                    border: `1px solid ${checked ? "#7C3AED" : "#E2E8F0"}`,
+                    border: `1px solid ${checked ? "#0f766e" : "#E2E8F0"}`,
                     borderRadius: 9,
                     marginBottom: 6,
                     cursor: "pointer",
@@ -1460,7 +1562,7 @@ function TasksModal({
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: ".88rem", color: "#0F172A", fontWeight: 600 }}>{t}</div>
                     {isCustom && (
-                      <div style={{ fontSize: ".66rem", color: "#7C3AED", marginTop: 2, fontWeight: 700 }}>
+                      <div style={{ fontSize: ".66rem", color: "#0f766e", marginTop: 2, fontWeight: 700 }}>
                         CUSTOM
                       </div>
                     )}
@@ -1534,6 +1636,279 @@ function TasksModal({
   );
 }
 
+// ── Ask Agent modal (strategic thinking + agentic OS loop) ───────────────────
+const THINKING_MODES: Array<{ id: string; label: string; hint: string }> = [
+  { id: "stress_test", label: "Stress-Test My Thinking", hint: "Pressure-test logic & assumptions" },
+  { id: "shift_perspective", label: "Shift the Perspective", hint: "New audience, emotion, or message" },
+  { id: "translate_gut", label: "Translate My Gut Feeling", hint: "Name what feels off" },
+  { id: "organize_thoughts", label: "Organize My Messy Thoughts", hint: "Clear outline, keep your tone" },
+  { id: "face_decision", label: "Help Me Face the Decision", hint: "Spot stalling & choose" },
+  { id: "deeper_question", label: "Surface the Deeper Question", hint: "Core issue behind the ask" },
+  { id: "execution_risks", label: "Spot Execution Risks", hint: "Where the plan can break" },
+  { id: "sense_instinct", label: "Make Sense of My Instinct", hint: "Signals behind the lean" },
+];
+
+interface AdviseResponse {
+  ok?: boolean;
+  error?: string;
+  offline?: boolean;
+  thinkingMode?: { id?: string; label?: string; persona?: string };
+  advice?: {
+    assessment?: string;
+    suggestions?: Array<string | { title?: string; detail?: string; priority?: string }>;
+    risks?: string[];
+    nextChecks?: string[];
+    reasoning?: string[];
+    deeperQuestion?: string;
+    decision?: string;
+    thinkingModeLabel?: string;
+  };
+  toolTrace?: Array<{ tool?: string; ok?: boolean }>;
+}
+
+function AdviseModal({
+  officerId,
+  officerTitle,
+  onClose,
+}: {
+  officerId: string;
+  officerTitle: string;
+  onClose: () => void;
+}) {
+  const [thinkingMode, setThinkingMode] = useState("deeper_question");
+  const [goal, setGoal] = useState(
+    `Here’s the situation I’m working through: what should we prioritize this week, and what are we really optimizing for?`,
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [data, setData] = useState<AdviseResponse | null>(null);
+
+  function pickMode(id: string) {
+    setThinkingMode(id);
+    const m = THINKING_MODES.find((x) => x.id === id);
+    if (!m) return;
+    // Seed a mode-appropriate prompt if the field still looks like a default.
+    const seeds: Record<string, string> = {
+      stress_test: "This is the plan I’m working on: ",
+      shift_perspective: "Here’s the main idea I’m working with: ",
+      translate_gut: "Something about this doesn’t feel right, but I can’t explain it: ",
+      organize_thoughts: "Here’s a rough mix of my thoughts and notes: ",
+      face_decision: "Here’s the situation I’m dealing with: ",
+      deeper_question: "Here’s the situation I’m working through: ",
+      execution_risks: "Here’s the plan I’m about to put into action: ",
+      sense_instinct: "Here’s the idea I’m leaning toward, and it feels right: ",
+    };
+    const seed = seeds[id] || "";
+    if (!goal.trim() || THINKING_MODES.some((tm) => goal.startsWith(seeds[tm.id] || "___"))) {
+      setGoal(seed);
+    }
+  }
+
+  async function run() {
+    setLoading(true);
+    setError("");
+    setData(null);
+    const tasks = typeof readTasks === "function" ? readTasks(officerId, 40) : [];
+    const j = await apiPost<AdviseResponse>("/api/officer/advise", {
+      role: officerId,
+      title: officerTitle,
+      goal,
+      tasks,
+      thinkingMode,
+    });
+    setLoading(false);
+    if (j.error && !j.advice) {
+      setError(j.error);
+      return;
+    }
+    setData(j);
+  }
+
+  const advice = data?.advice;
+  const modeLabel =
+    advice?.thinkingModeLabel || data?.thinkingMode?.label || THINKING_MODES.find((m) => m.id === thinkingMode)?.label;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.45)",
+        zIndex: 80,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "min(820px,100%)",
+          maxHeight: "92vh",
+          overflow: "auto",
+          background: "#fff",
+          borderRadius: 16,
+          border: "1px solid #E2E8F0",
+          boxShadow: "0 24px 60px rgba(15,23,42,0.18)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid #E2E8F0" }}>
+          <div style={{ fontSize: ".72rem", fontWeight: 800, color: "#0f766e", letterSpacing: ".08em" }}>
+            HUMAN → ORCHESTRATOR → AGENT → CONNECTED STACK
+          </div>
+          <h3 style={{ margin: "6px 0 0", color: "#0f172a" }}>🧠 {officerTitle} — Ask Agent</h3>
+          <p style={{ margin: "6px 0 0", color: "#64748B", fontSize: ".82rem" }}>
+            Pick a strategic thinking mode, then let this executive reason with tools, memory, and
+            peer consult — and return intelligent decisions &amp; feedback.
+          </p>
+        </div>
+        <div style={{ padding: 22 }}>
+          <label style={{ display: "block", fontSize: ".72rem", fontWeight: 700, color: "#64748B", marginBottom: 8 }}>
+            Strategic thinking mode
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))", gap: 8, marginBottom: 14 }}>
+            {THINKING_MODES.map((m) => {
+              const on = thinkingMode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => pickMode(m.id)}
+                  style={{
+                    textAlign: "left",
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: on ? "2px solid #0f766e" : "1px solid #E2E8F0",
+                    background: on ? "rgba(15,118,110,0.08)" : "#F8FAFC",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontSize: ".78rem", fontWeight: 800, color: "#0f172a" }}>{m.label}</div>
+                  <div style={{ fontSize: ".66rem", color: "#64748B", marginTop: 2 }}>{m.hint}</div>
+                </button>
+              );
+            })}
+          </div>
+          <label style={{ display: "block", fontSize: ".72rem", fontWeight: 700, color: "#64748B", marginBottom: 6 }}>
+            Your situation / plan / notes
+          </label>
+          <textarea
+            value={goal}
+            onChange={(e) => setGoal(e.target.value)}
+            rows={3}
+            style={{
+              width: "100%",
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid #CBD5E1",
+              fontFamily: "inherit",
+              fontSize: ".9rem",
+              boxSizing: "border-box",
+            }}
+          />
+          <button
+            type="button"
+            disabled={loading || !goal.trim()}
+            onClick={() => void run()}
+            style={{
+              marginTop: 12,
+              padding: "10px 18px",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 10,
+              fontWeight: 800,
+              cursor: loading ? "wait" : "pointer",
+            }}
+          >
+            {loading ? "Agent reasoning…" : "Run intelligent reasoning"}
+          </button>
+          {error && <p style={{ color: "#B91C1C", marginTop: 12 }}>{error}</p>}
+          {advice && (
+            <div style={{ marginTop: 18 }}>
+              {modeLabel && (
+                <div style={{ fontSize: ".72rem", fontWeight: 800, color: "#0f766e", marginBottom: 8 }}>
+                  Mode: {modeLabel}
+                  {data?.offline ? " · offline tool-grounded" : ""}
+                </div>
+              )}
+              <div style={{ fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>Assessment</div>
+              <p style={{ margin: 0, color: "#334155", lineHeight: 1.5 }}>{advice.assessment}</p>
+              {advice.deeperQuestion && (
+                <>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Deeper question</div>
+                  <p style={{ margin: 0, color: "#0f766e", fontWeight: 600 }}>{advice.deeperQuestion}</p>
+                </>
+              )}
+              {advice.decision && (
+                <>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Decision</div>
+                  <p style={{ margin: 0, color: "#334155" }}>{advice.decision}</p>
+                </>
+              )}
+              {!!advice.suggestions?.length && (
+                <>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Intelligent suggestions</div>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {advice.suggestions.map((s, i) => {
+                      const title = typeof s === "string" ? s : s.title || "Suggestion";
+                      const detail = typeof s === "string" ? "" : s.detail || "";
+                      const pri = typeof s === "string" ? "" : s.priority || "";
+                      return (
+                        <li key={i} style={{ marginBottom: 6, color: "#334155" }}>
+                          <strong>{title}</strong>
+                          {pri ? ` · ${pri}` : ""}
+                          {detail ? ` — ${detail}` : ""}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )}
+              {!!advice.risks?.length && (
+                <>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>Risks / feedback</div>
+                  <ul style={{ margin: 0, paddingLeft: 18, color: "#9A3412" }}>
+                    {advice.risks.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {!!advice.reasoning?.length && (
+                <>
+                  <div style={{ fontWeight: 800, color: "#0f172a", margin: "16px 0 6px" }}>How the agent reasoned</div>
+                  <ol style={{ margin: 0, paddingLeft: 18, color: "#64748B", fontSize: ".84rem" }}>
+                    {advice.reasoning.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ol>
+                </>
+              )}
+              {!!data?.toolTrace?.length && (
+                <div style={{ marginTop: 12, fontSize: ".72rem", color: "#0f766e", fontWeight: 700 }}>
+                  Tools used: {data.toolTrace.map((t) => t.tool).filter(Boolean).join(" · ")}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div style={{ padding: "12px 22px", borderTop: "1px solid #E2E8F0", textAlign: "right" }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #CBD5E1", background: "#F8FAFC", fontWeight: 700, cursor: "pointer" }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Daily report modal ───────────────────────────────────────────────────────
 function statusPillNode(s?: string) {
   const map: Record<string, [string, string, string]> = {
@@ -1576,7 +1951,17 @@ function DailyReportModal({
   useEffect(() => {
     let live = true;
     (async () => {
-      const tasks = readTasks(officerId, 40);
+      let tasks = readTasks(officerId, 40);
+      if (!tasks.length) {
+        const j = await apiGet<{ tasks?: Record<string, string[]> }>(
+          "/api/officer/tasks-store",
+        );
+        const serverTasks = j?.tasks?.[officerId];
+        if (Array.isArray(serverTasks) && serverTasks.length) {
+          tasks = serverTasks.filter((t): t is string => typeof t === "string");
+          writeTasks(officerId, tasks);
+        }
+      }
       const j = await apiPost<DailyReportResponse>("/api/officer/daily-report", {
         role: officerId,
         title: officerTitle,
@@ -1636,7 +2021,7 @@ function DailyReportModal({
               <div
                 style={{
                   background: "#F8FAFC",
-                  borderLeft: "3px solid #7C3AED",
+                  borderLeft: "3px solid #0f766e",
                   padding: "12px 14px",
                   borderRadius: 6,
                   marginBottom: 18,
@@ -2213,9 +2598,11 @@ function SystemStatusPanel({
   onClose: () => void;
   onRefresh: () => Promise<void>;
 }) {
+  const router = useRouter();
   const j = status || { checks: {}, activity: {} };
   const checks = j.checks || {};
   const act = j.activity || {};
+  const aiMissing = checks.aiProvider && !checks.aiProvider.ok;
   return (
     <div
       style={{ ...overlayStyle, background: "rgba(15,23,42,0.65)" }}
@@ -2284,6 +2671,45 @@ function SystemStatusPanel({
               <span style={{ fontSize: ".8rem", color: c.ok ? "#166534" : "#991B1B", flex: 1 }}>{c.label || ""}</span>
             </div>
           ))}
+          {aiMissing && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "14px 14px",
+                borderRadius: 10,
+                border: "1px solid #FCD34D",
+                background: "linear-gradient(135deg,#FFFBEB,#FEF3C7)",
+              }}
+            >
+              <div style={{ fontWeight: 800, color: "#92400E", fontSize: ".9rem", marginBottom: 4 }}>
+                Where to add your OpenAI API key
+              </div>
+              <div style={{ fontSize: ".82rem", color: "#78350F", lineHeight: 1.45, marginBottom: 10 }}>
+                Go to <strong>Manage → Admin Portal → Platform APIs</strong>, open the{" "}
+                <strong>AI Models</strong> group, paste your key into <strong>OpenAI API Key</strong>, then Save + Test.
+                (AI Team → AI Providers is for optional BYO models — not this platform key.)
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  router.push("/manage/admin?tab=platform-keys");
+                }}
+                style={{
+                  padding: "9px 14px",
+                  background: "#0f766e",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontSize: ".82rem",
+                  cursor: "pointer",
+                }}
+              >
+                Open Platform APIs →
+              </button>
+            </div>
+          )}
           <div style={{ fontSize: ".7rem", color: "#64748B", fontWeight: 700, textTransform: "uppercase", margin: "14px 0 8px" }}>
             Recent Activity
           </div>
@@ -2474,7 +2900,7 @@ function AutoMeetingsPanel({
           <button
             onClick={runNow}
             disabled={busy}
-            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#ffffff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy ? "⏳ Drafting…" : "▶ Run Now"}
           </button>
@@ -2608,7 +3034,7 @@ function AutoMeetingSettingsModal({
                   style={{
                     flex: 1,
                     padding: 10,
-                    border: `2px solid ${frequency === f ? "#7C3AED" : "#E2E8F0"}`,
+                    border: `2px solid ${frequency === f ? "#0f766e" : "#E2E8F0"}`,
                     borderRadius: 8,
                     cursor: "pointer",
                     textAlign: "center",
@@ -2812,7 +3238,7 @@ function AutoReportPanel({
             title="Generate now and send via email + Slack"
             onClick={runSend}
             disabled={busy !== null}
-            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#0f172a", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+            style={{ padding: "9px 16px", background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#ffffff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
           >
             {busy === "send" ? "⏳ Running…" : "▶ Run + Send"}
           </button>

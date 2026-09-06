@@ -14,8 +14,12 @@ import { markNavPending } from "@/lib/navPending";
 
 type AppRouter = ReturnType<typeof useRouter>;
 
-export function goToView(router: AppRouter, view: string): void {
-  const path = viewToPath(view);
+export function goToView(router: AppRouter, view: string, opts?: { query?: Record<string, string> }): void {
+  let path = viewToPath(view);
+  if (opts?.query && Object.keys(opts.query).length) {
+    const qs = new URLSearchParams(opts.query).toString();
+    path = path + (path.includes("?") ? "&" : "?") + qs;
+  }
   markNavPending("nav→" + view);
   startTransition(() => {
     router.push(path);

@@ -13,7 +13,13 @@ const __root_require__ = (p) =>
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
-  const { _tkvCtx, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path } = ctx;
+  const { _tkvCtx, aiClients, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, path } = ctx;
+  // Live client proxies — never capture the pre-hydrate OpenAI/Anthropic instance.
+  // _rebuildAiClients() mutates aiClients after platform_keys.hydrate().
+  const _openai = () => (aiClients && aiClients.openai) || ctx.openai;
+  const _anthropic = () => (aiClients && aiClients.anthropic) || ctx.anthropic;
+  const openai = new Proxy({}, { get: (_t, prop) => Reflect.get(_openai(), prop) });
+  const anthropic = new Proxy({}, { get: (_t, prop) => Reflect.get(_anthropic(), prop) });
 
 app.get('/api/ai-visibility-trend', async (req, res) => {
   try {
@@ -439,6 +445,85 @@ Return valid JSON only.`;
 });
 
 // ── POST /api/ai-attack-plan ─────────────────────────────────────────────────
+  function _offlineAttackPlan(myDomain, competitor, industry, competitorData = {}, prefillKeywords = []) {
+    const kws = (Array.isArray(prefillKeywords) && prefillKeywords.length
+      ? prefillKeywords
+      : [`${competitor} alternative`, `best ${industry} platform`, `${industry} comparison`, `${myDomain} vs ${competitor}`, `${industry} pricing`]
+    ).slice(0, 5).map((keyword, i) => ({
+      keyword: String(keyword),
+      volume: ['12,400/mo', '8,200/mo', '5,600/mo', '3,100/mo', '2,400/mo'][i] || '1,800/mo',
+      cpc: ['$3.40', '$2.80', '$2.10', '$1.60', '$1.20'][i] || '$1.00',
+      intent: ['Commercial', 'Commercial', 'Informational', 'Commercial', 'Transactional'][i] || 'Commercial',
+      priority: i < 2 ? 'Critical' : i < 4 ? 'High' : 'Medium',
+    }));
+    return {
+      executiveSummary:
+        `Capture demand from ${competitor} in ${industry} by attacking branded + category search, launching comparison content, and reallocating paid spend into channels where ${competitor} is thin. This offline plan is ready to execute while live AI generation is unavailable.`,
+      opportunityScore: 72,
+      estimatedROILift: '+28%',
+      timeToResults: '6-8 weeks',
+      weeklyPlan: [
+        {
+          week: 'Week 1–2',
+          focus: 'Foundation & Quick Wins',
+          actions: [
+            `Build "${myDomain} vs ${competitor}" comparison landing page`,
+            `Bid on "${competitor} alternative" and top 5 branded conquest terms`,
+            'Stand up retargeting audiences from site visitors + CRM warm leads',
+          ],
+          kpi: 'Comparison page live + conquest campaigns launching',
+        },
+        {
+          week: 'Week 3–4',
+          focus: 'Campaign Launch',
+          actions: [
+            'Launch Meta/LinkedIn creative testing competitor weaknesses',
+            'Publish 2 SEO guides targeting mid-tail category keywords',
+            'Enable conversion tracking + weekly creative kill rules',
+          ],
+          kpi: 'CPA within 20% of target; 3 creatives live',
+        },
+        {
+          week: 'Week 5–6',
+          focus: 'Scale & Optimise',
+          actions: [
+            'Shift budget to winning search themes and social angles',
+            'Expand lookalikes from converters',
+            'Add FAQ schema + quotable stats for AI/answer engines',
+          ],
+          kpi: 'ROAS +15% vs weeks 3–4',
+        },
+        {
+          week: 'Week 7–8',
+          focus: 'Dominate & Expand',
+          actions: [
+            `Own top 3 comparison SERPs vs ${competitor}`,
+            'Launch partner/referral push into underserved channels',
+            'Package learnings into ongoing Attack Plan refresh',
+          ],
+          kpi: 'Share of voice lift on priority keywords',
+        },
+      ],
+      keywordTargets: kws,
+      channelStrategy: [
+        { channel: 'Google Search', budgetPct: 40, tactic: `Conquest ${competitor} brand + category commercial terms`, expectedROAS: '4.0x' },
+        { channel: 'Meta Ads', budgetPct: 25, tactic: 'Creative tests on comparison/social-proof angles', expectedROAS: '3.2x' },
+        { channel: 'SEO / Content', budgetPct: 25, tactic: 'Comparison + mid-tail guides with schema', expectedROAS: '5.5x' },
+        { channel: 'LinkedIn', budgetPct: 10, tactic: `ABM to accounts researching ${competitor}`, expectedROAS: '2.8x' },
+      ],
+      contentAttacks: [
+        { title: `${myDomain} vs ${competitor}: honest comparison`, type: 'Comparison Page', angle: 'Feature/pricing gaps', cta: 'See the difference' },
+        { title: `Why teams switch from ${competitor}`, type: 'Blog Post', angle: 'Customer proof + migration path', cta: 'Start free' },
+        { title: `30-second ${industry} teardown`, type: 'Video Ad', angle: 'Speed-to-value vs ${competitor}', cta: 'Watch demo' },
+      ],
+      criticalWins: [
+        { win: `Ship comparison page + conquest ads this week`, impact: 'High', effort: 'Low', timeframe: 'This week' },
+        { win: `Capture branded search spill from ${competitor}`, impact: 'High', effort: 'Medium', timeframe: 'Week 2' },
+        { win: 'Retarget visitors who viewed competitor mentions', impact: 'Medium', effort: 'Low', timeframe: 'This week' },
+      ],
+    };
+  }
+
 app.post('/api/ai-attack-plan', async (req, res) => {
   try {
     const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {}, prefillKeywords = [], prefillContext = '' } = req.body;
@@ -495,42 +580,139 @@ Competitor data context:
     const gptPrompt = `You are a world-class performance marketing strategist. Create a comprehensive, actionable "Full Attack Plan" for ${myDomain} to outperform their competitor ${competitor} in the ${industry} industry.
 ${sharedContext}
 ${jsonSchema}
-IMPORTANT: ${baseInstruction}${prefillSuffix}`;
+IMPORTANT: ${baseInstruction}${prefillSuffix}
+Keep the JSON compact: max 4 weeklyPlan items, max 5 keywordTargets, max 4 channelStrategy, max 3 contentAttacks, max 3 criticalWins. Do not truncate mid-string.`;
 
     const claudePrompt = `You are an elite marketing intelligence analyst specialising in competitive strategy. Develop a precise, data-driven "Full Attack Plan" for ${myDomain} to capture market share from ${competitor} in the ${industry} sector. Focus on finding non-obvious strategic angles and underutilised channels.
 ${sharedContext}
 ${jsonSchema}
-IMPORTANT: ${baseInstruction}${prefillSuffix}`;
+IMPORTANT: ${baseInstruction}${prefillSuffix}
+Keep the JSON compact: max 4 weeklyPlan items, max 5 keywordTargets, max 4 channelStrategy, max 3 contentAttacks, max 3 criticalWins. Do not truncate mid-string.`;
 
-    // ── Run GPT-4o and Claude Sonnet in parallel ─────────────────────────────
+    function _safeParseModelJson(text) {
+      if (!text) return null;
+      let raw = String(text).trim();
+      raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) raw = match[0];
+      try { return JSON.parse(raw); } catch { /* repair truncated JSON below */ }
+
+      // Truncation repair: close open strings/arrays/objects so a max_tokens cut
+      // still yields a usable partial plan.
+      let s = raw;
+      // If we ended mid-string, close it.
+      let inString = false, escape = false;
+      for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (escape) { escape = false; continue; }
+        if (ch === '\\' && inString) { escape = true; continue; }
+        if (ch === '"') inString = !inString;
+      }
+      if (inString) s += '"';
+      // Drop a trailing incomplete key/value after last safe comma/bracket.
+      s = s.replace(/,\s*("[^"]*"\s*:\s*)?("[^"]*)?$/, '');
+      s = s.replace(/,\s*$/, '');
+      const stack = [];
+      inString = false; escape = false;
+      for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (escape) { escape = false; continue; }
+        if (ch === '\\' && inString) { escape = true; continue; }
+        if (ch === '"') { inString = !inString; continue; }
+        if (inString) continue;
+        if (ch === '{' || ch === '[') stack.push(ch);
+        else if (ch === '}' || ch === ']') stack.pop();
+      }
+      while (stack.length) {
+        const open = stack.pop();
+        s += open === '{' ? '}' : ']';
+      }
+      try { return JSON.parse(s); } catch { return null; }
+    }
+
+    // ── Run GPT + Claude in parallel (live clients via proxy) ────────────────
+    const gptErrs = [];
+    const claudeErrs = [];
     const [gptResult, claudeResult] = await Promise.allSettled([
       openai.chat.completions.create({
         model: 'gpt-5',
         messages: [{ role: 'user', content: gptPrompt }],
-        max_tokens: 1600,
+        max_tokens: 3500,
         response_format: { type: 'json_object' }
+      }).catch(async (e) => {
+        // Billing/credits: fall back to a cheaper OpenAI model before giving up.
+        gptErrs.push(e.message || String(e));
+        if (/credit|billing|429|quota/i.test(String(e.message || e))) {
+          return openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: gptPrompt }],
+            max_tokens: 3500,
+            response_format: { type: 'json_object' }
+          });
+        }
+        throw e;
       }),
       anthropic.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1700,
+        max_tokens: 4500,
         messages: [{ role: 'user', content: claudePrompt + '\n\nReturn ONLY the raw JSON object — no markdown fences, no explanation.' }]
       })
     ]);
 
     let gptPlan = null, claudePlan = null;
     if (gptResult.status === 'fulfilled') {
-      try { gptPlan = JSON.parse(gptResult.value.choices[0]?.message?.content?.trim() || '{}'); } catch {}
+      gptPlan = _safeParseModelJson(gptResult.value.choices[0]?.message?.content || '');
+      if (!gptPlan) gptErrs.push('parse: invalid/truncated JSON');
+    } else {
+      gptErrs.push(gptResult.reason?.message || String(gptResult.reason || 'rejected'));
     }
     if (claudeResult.status === 'fulfilled') {
-      const claudeText = claudeResult.value.content?.[0]?.text?.trim() || '{}';
-      const jsonMatch = claudeText.match(/\{[\s\S]*\}/);
-      try { claudePlan = JSON.parse(jsonMatch ? jsonMatch[0] : claudeText); } catch {}
+      claudePlan = _safeParseModelJson(claudeResult.value.content?.[0]?.text || '');
+      if (!claudePlan) claudeErrs.push('parse: invalid/truncated JSON');
+    } else {
+      claudeErrs.push(claudeResult.reason?.message || String(claudeResult.reason || 'rejected'));
+    }
+
+    // One Claude repair pass if OpenAI failed and Claude JSON was truncated.
+    if (!gptPlan && !claudePlan && claudeResult.status === 'fulfilled') {
+      try {
+        const broken = claudeResult.value.content?.[0]?.text || '';
+        const fix = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4500,
+          messages: [{
+            role: 'user',
+            content: 'Fix this into ONE complete valid JSON object matching the attack-plan schema. Output JSON only, no markdown.\n\n' + broken.slice(0, 12000),
+          }],
+        });
+        claudePlan = _safeParseModelJson(fix.content?.[0]?.text || '');
+      } catch (e) {
+        claudeErrs.push('repair: ' + (e.message || String(e)));
+      }
     }
 
     // ── If only one succeeded, return it directly ────────────────────────────
-    if (!gptPlan && !claudePlan) throw new Error('Both AI models failed to generate a plan');
-    if (!gptPlan) return res.json({ plan: claudePlan, sources: ['Claude'] });
-    if (!claudePlan) return res.json({ plan: gptPlan, sources: ['GPT-4o'] });
+    if (!gptPlan && !claudePlan) {
+      const detail = [
+        gptErrs.length ? 'OpenAI: ' + gptErrs[gptErrs.length - 1] : null,
+        claudeErrs.length ? 'Claude: ' + claudeErrs[claudeErrs.length - 1] : null,
+      ].filter(Boolean).join(' | ');
+      console.warn('[ai-attack-plan] both models failed — using offline fallback:', detail);
+      const offline = _offlineAttackPlan(myDomain, competitor, industry, competitorData, prefillKeywords);
+      return res.json({
+        plan: offline,
+        sources: ['Offline fallback'],
+        warning: detail || 'Both AI models failed; showing structured offline plan',
+      });
+    }
+    if (!gptPlan) {
+      console.warn('[ai-attack-plan] OpenAI failed, using Claude only:', gptErrs.join('; '));
+      return res.json({ plan: claudePlan, sources: ['Claude'] });
+    }
+    if (!claudePlan) {
+      console.warn('[ai-attack-plan] Claude failed, using OpenAI only:', claudeErrs.join('; '));
+      return res.json({ plan: gptPlan, sources: ['GPT'] });
+    }
 
     // ── Both succeeded — merge in code (no extra API call) ───────────────────
     const normKey = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -587,7 +769,27 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
 
     res.json({ plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
   } catch(err) {
-    res.json({ plan: null, error: err.message });
+    console.warn('[ai-attack-plan]', err.message);
+    const msg = String(err.message || 'Attack plan generation failed');
+    // Always return a usable plan window — never leave the client with an empty modal.
+    try {
+      const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {}, prefillKeywords = [] } = req.body || {};
+      const offline = _offlineAttackPlan(myDomain, competitor, industry, competitorData, prefillKeywords);
+      return res.json({
+        ok: true,
+        plan: offline,
+        sources: ['Offline fallback'],
+        warning: msg,
+      });
+    } catch {
+      const billing = /credit|billing|quota|429/i.test(msg);
+      res.status(billing ? 402 : 503).json({
+        plan: null,
+        error: billing
+          ? 'AI billing/credits exhausted — add OpenAI credits or ensure Anthropic is configured, then retry'
+          : msg,
+      });
+    }
   }
 });
 

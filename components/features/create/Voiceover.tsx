@@ -41,6 +41,10 @@ export default function Voiceover() {
   const [voice, setVoice] = useState("alloy");
   const [model, setModel] = useState("tts-1");
   const [label, setLabel] = useState("");
+  const [provider, setProvider] = useState<"openai" | "elevenlabs">("openai");
+  const [elevenVoices, setElevenVoices] = useState<{ id: string; name: string }[]>([]);
+  const [elevenVoiceId, setElevenVoiceId] = useState("");
+  const [elevenReady, setElevenReady] = useState(false);
 
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "done">(
     "idle",
@@ -56,6 +60,16 @@ export default function Voiceover() {
 
   useEffect(() => {
     loadHistory();
+    (async () => {
+      const t = await apiGet<{ ok?: boolean; elevenlabs?: boolean }>("/api/voiceover/test");
+      setElevenReady(!!t.elevenlabs);
+      const v = await apiGet<{ ok?: boolean; voices?: { id: string; name: string }[] }>(
+        "/api/voiceover/elevenlabs/voices"
+      );
+      const list = v.voices || [];
+      setElevenVoices(list);
+      if (list[0]?.id) setElevenVoiceId(list[0].id);
+    })();
   }, []);
 
   async function generate() {
@@ -65,11 +79,10 @@ export default function Voiceover() {
       setError("⚠ Paste some text to narrate");
       return;
     }
-    if (t.length > 4000) {
+    const max = provider === "elevenlabs" ? 5000 : 4000;
+    if (t.length > max) {
       setStatus("error");
-      setError(
-        "⚠ Text exceeds 4000 character limit. Split into multiple voiceovers.",
-      );
+      setError(`⚠ Text exceeds ${max} character limit. Split into multiple voiceovers.`);
       return;
     }
     setStatus("loading");
@@ -80,6 +93,8 @@ export default function Voiceover() {
       voice,
       model,
       label: label.trim(),
+      provider,
+      eleven_voice_id: elevenVoiceId,
     });
     if (!r.ok) {
       setStatus("error");
@@ -122,9 +137,8 @@ export default function Voiceover() {
               </div>
               <h2 className="view-title">🔊 Voiceover</h2>
               <p className="view-sub">
-                Turn any script into studio-quality narration in one click. 6
-                voices, 2 quality tiers (standard / HD). Pairs with the Video
-                Script Generator — paste a script, pick a voice, get an mp3.
+                Turn any script into studio-quality narration — OpenAI TTS or ElevenLabs brand voices.
+                Paste a script, pick a provider + voice, get an mp3.
               </p>
             </div>
           </div>
@@ -178,19 +192,46 @@ export default function Voiceover() {
             }}
           >
             <div>
-              <label style={labelStyle}>VOICE</label>
+              <label style={labelStyle}>PROVIDER</label>
               <select
-                value={voice}
-                onChange={(e) => setVoice(e.target.value)}
+                value={provider}
+                onChange={(e) => setProvider(e.target.value as "openai" | "elevenlabs")}
                 style={inputStyle}
               >
-                <option value="alloy">Alloy (neutral)</option>
-                <option value="echo">Echo (male, calm)</option>
-                <option value="fable">Fable (British, warm)</option>
-                <option value="onyx">Onyx (male, deep)</option>
-                <option value="nova">Nova (female, bright)</option>
-                <option value="shimmer">Shimmer (female, soft)</option>
+                <option value="openai">OpenAI TTS</option>
+                <option value="elevenlabs">
+                  ElevenLabs{elevenReady ? "" : " (add key in Settings)"}
+                </option>
               </select>
+            </div>
+            <div>
+              <label style={labelStyle}>VOICE</label>
+              {provider === "elevenlabs" ? (
+                <select
+                  value={elevenVoiceId}
+                  onChange={(e) => setElevenVoiceId(e.target.value)}
+                  style={inputStyle}
+                >
+                  {elevenVoices.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  value={voice}
+                  onChange={(e) => setVoice(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="alloy">Alloy (neutral)</option>
+                  <option value="echo">Echo (male, calm)</option>
+                  <option value="fable">Fable (British, warm)</option>
+                  <option value="onyx">Onyx (male, deep)</option>
+                  <option value="nova">Nova (female, bright)</option>
+                  <option value="shimmer">Shimmer (female, soft)</option>
+                </select>
+              )}
             </div>
             <div>
               <label style={labelStyle}>QUALITY</label>
@@ -198,6 +239,7 @@ export default function Voiceover() {
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 style={inputStyle}
+                disabled={provider === "elevenlabs"}
               >
                 <option value="tts-1">Standard (fast &amp; cheap)</option>
                 <option value="tts-1-hd">HD (richer, ~3x slower)</option>
@@ -218,7 +260,7 @@ export default function Voiceover() {
                 disabled={status === "loading"}
                 style={{
                   width: "100%",
-                  background: "linear-gradient(135deg,#0066FF,#7C3AED)",
+                  background: "linear-gradient(135deg,#0066FF,#0f766e)",
                   color: "#fff",
                   border: "none",
                   padding: "9px 16px",

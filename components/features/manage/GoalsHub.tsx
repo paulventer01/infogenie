@@ -63,6 +63,7 @@ const RELATED: Array<{ view: string; label: string }> = [
   { view: "iroas", label: "iROAS tests" },
   { view: "mmm", label: "MMM" },
   { view: "flywheel", label: "Growth Flywheel" },
+  { view: "marketing-plan", label: "10-Step Plan" },
 ];
 
 function viewToTab(view: string | null): TabId {

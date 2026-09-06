@@ -91,6 +91,8 @@ export default function CompanyContextBar() {
         </Link>
         {ctx.competitors > 0 ? (
           <span className={styles.meta}>{ctx.competitors} competitors tracked</span>
+        ) : ctx.industry ? (
+          <span className={styles.meta}>Analysis complete</span>
         ) : null}
         <div className={styles.actions}>
           {ACTIONS.map((action) => {

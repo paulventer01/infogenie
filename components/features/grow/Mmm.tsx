@@ -93,7 +93,7 @@ function renderResult(r: MMMResults): string {
   const roas_cols: Record<string, string> = {
     linear: "#3b82f6",
     log: "#10b981",
-    "s-curve": "#8b5cf6",
+    "s-curve": "#0284c7",
   };
   return `
 <div class="ig-card" style="margin-bottom:16px">

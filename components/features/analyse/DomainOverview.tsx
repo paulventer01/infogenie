@@ -96,7 +96,6 @@ export default function DomainOverview({ overview, currentView = "dashboard" }: 
             type="button"
             className={ov.moduleCard}
             onClick={() => goToView(router, mod.view)}
-            style={{ borderLeftColor: mod.color, borderLeftWidth: 3 }}
             aria-label={`${mod.label} for ${owner}`}
           >
             <div className={ov.moduleOwner}>{owner}</div>

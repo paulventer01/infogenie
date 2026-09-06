@@ -53,7 +53,7 @@ const GRADE_COLORS: Record<string, string> = {
   A: "#10B981",
   B: "#0E9F6E",
   C: "#F59E0B",
-  D: "#F97316",
+  D: "#d97706",
   F: "#EF4444",
 };
 const STATUS_COLOR: Record<string, string> = {
@@ -242,7 +242,7 @@ export default function SeoAuditor() {
                         : `Cycle to next competitor (${suggestIdx} of ${[getOwnUrl(), ...getCompetitorUrls()].filter(Boolean).length})`
                   }
                   style={{
-                    background: "linear-gradient(135deg,#7C3AED,#0066FF)",
+                    background: "linear-gradient(135deg,#0f766e,#0066FF)",
                     color: "#fff",
                     border: "none",
                     borderRadius: 4,
@@ -501,7 +501,7 @@ export default function SeoAuditor() {
                       <div
                         style={{
                           fontSize: "0.78rem",
-                          color: "#7C3AED",
+                          color: "#0f766e",
                           marginTop: 4,
                           marginLeft: 20,
                         }}

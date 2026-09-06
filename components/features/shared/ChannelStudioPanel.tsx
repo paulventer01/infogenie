@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { goToView } from "@/lib/nav";
+import PanelShell from "@/components/layout/PanelShell";
 
 interface Tool { view: string; label: string; role: string }
 interface Check { id: string; done: boolean; label: string }
@@ -73,69 +74,58 @@ export default function ChannelStudioPanel({ channel }: { channel: keyof typeof 
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div>
-      <div className="intel-header ig-panel-hero" style={{ background: meta.gradient }}>
-        <div className="breadcrumb">
-          <span className="bc-group" style={{ opacity: 0.85 }}>{meta.group}</span>{" "}
-          <span className="bc-sep" style={{ opacity: 0.55 }}>›</span> {meta.title.replace(/^[^\s]+\s/, "")}
-        </div>
-        <h1 className="ih-title">{meta.title}</h1>
-        <p className="ih-sub">{meta.sub}</p>
-      </div>
-
-      <div style={{ padding: 24, maxWidth: 880, margin: "0 auto" }}>
-        {loading && <p style={{ color: "#6B7280" }}>Loading studio…</p>}
-        {data && (
-          <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 18 }}>
-              <div style={card}>
-                <div style={label}>Depth score</div>
-                <div style={val}>{data.score ?? 0}/100</div>
+    <PanelShell group={meta.group} title={meta.title} subtitle={meta.sub} maxWidth={880}>
+      {loading && <p style={{ color: "#6B7280" }}>Loading studio…</p>}
+      {data && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 18 }}>
+            <div className="ig-tile" style={card}>
+              <div style={label}>Depth score</div>
+              <div style={val}>{data.score ?? 0}/100</div>
+            </div>
+            {Object.entries(data.stats || {}).slice(0, 4).map(([k, v]) => (
+              <div key={k} className="ig-tile" style={card}>
+                <div style={label}>{k.replace(/([A-Z])/g, " $1")}</div>
+                <div style={val}>{String(v)}</div>
               </div>
-              {Object.entries(data.stats || {}).slice(0, 4).map(([k, v]) => (
-                <div key={k} style={card}>
-                  <div style={label}>{k.replace(/([A-Z])/g, " $1")}</div>
-                  <div style={val}>{String(v)}</div>
+            ))}
+          </div>
+
+          {(data.checklist || []).length > 0 && (
+            <div className="ig-section-card" style={{ ...card, marginBottom: 18 }}>
+              <h3 style={{ margin: "0 0 10px", color: "#0F172A" }}>Checklist</h3>
+              {(data.checklist || []).map((c) => (
+                <div key={c.id} style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: "1px solid #F3F4F6", fontSize: "0.85rem" }}>
+                  <span>{c.done ? "✅" : "⬜"}</span>
+                  <span style={{ color: c.done ? "#065F46" : "#374151" }}>{c.label}</span>
                 </div>
               ))}
             </div>
+          )}
 
-            {(data.checklist || []).length > 0 && (
-              <div style={{ ...card, marginBottom: 18 }}>
-                <h3 style={{ margin: "0 0 10px" }}>Checklist</h3>
-                {(data.checklist || []).map((c) => (
-                  <div key={c.id} style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: "1px solid #F3F4F6", fontSize: "0.85rem" }}>
-                    <span>{c.done ? "✅" : "⬜"}</span>
-                    <span style={{ color: c.done ? "#065F46" : "#374151" }}>{c.label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {(data.workflow || []).length > 0 && (
-              <div style={{ ...card, marginBottom: 18 }}>
-                <h3 style={{ margin: "0 0 10px" }}>Workflow</h3>
-                <ol style={{ margin: 0, paddingLeft: 18, fontSize: "0.85rem", color: "#374151" }}>
-                  {(data.workflow || []).map((step) => <li key={step} style={{ marginBottom: 6 }}>{step}</li>)}
-                </ol>
-              </div>
-            )}
-
-            <div style={{ display: "grid", gap: 10 }}>
-              {(data.tools || []).map((t) => (
-                <button key={t.view} type="button" onClick={() => goToView(router, t.view)} style={toolBtn}>
-                  <div>
-                    <strong>{t.label}</strong>
-                    <p style={{ margin: "4px 0 0", fontSize: "0.78rem", color: "#64748B" }}>{t.role}</p>
-                  </div>
-                  <span style={{ color: "#0066FF", fontWeight: 700 }}>Open →</span>
-                </button>
-              ))}
+          {(data.workflow || []).length > 0 && (
+            <div className="ig-section-card" style={{ ...card, marginBottom: 18 }}>
+              <h3 style={{ margin: "0 0 10px", color: "#0F172A" }}>Workflow</h3>
+              <ol style={{ margin: 0, paddingLeft: 18, fontSize: "0.85rem", color: "#374151" }}>
+                {(data.workflow || []).map((step) => <li key={step} style={{ marginBottom: 6 }}>{step}</li>)}
+              </ol>
             </div>
-          </>
-        )}
-      </div>
-    </div>
+          )}
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {(data.tools || []).map((t) => (
+              <button key={t.view} type="button" className="ig-hub-tile" onClick={() => goToView(router, t.view)} style={toolBtn}>
+                <div>
+                  <strong style={{ color: "#0F172A" }}>{t.label}</strong>
+                  <p style={{ margin: "4px 0 0", fontSize: "0.78rem", color: "#64748B" }}>{t.role}</p>
+                </div>
+                <span style={{ color: "#0066FF", fontWeight: 700 }}>Open →</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </PanelShell>
   );
 }
 
