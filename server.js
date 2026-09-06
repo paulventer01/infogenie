@@ -4299,7 +4299,7 @@ Known competitors: ${Array.isArray(competitors) && competitors.length ? competit
 
 // Postgres / kv_store status ping.
 // DB status · smart-detect · sector competitors routes → services/competitor_detect/routes.js
-require('./services/competitor_detect/routes')(app, { INFO_SITE_PATTERN, _db, callDataForSEO, openai, openaiChatWithRetry, startMsg });
+require('./services/competitor_detect/routes')(app, { INFO_SITE_PATTERN, _db, callDataForSEO, openai, openaiChatWithRetry, anthropic, startMsg });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BLENDED PERFORMANCE — Meta + Google + TikTok spend, Amplitude conversions,
