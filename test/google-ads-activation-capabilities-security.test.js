@@ -133,3 +133,12 @@ test('terminal metadata replay still revalidates current database authority',asy
  await assert.rejects(service.get(client,{...opts(),capabilityId:'gaac_one'}),{code:'authority_not_found'});
  assert.equal(calls,2);
 });
+test('consume returns committed expiry evidence before the API raises 410',()=>{
+ const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');
+ const locked=source.slice(source.indexOf('async function locked'),source.indexOf('async function reserve'));
+ const consume=source.slice(source.indexOf('async function consume'),source.indexOf('async function revoke'));
+ assert.match(locked,/SET status='expired'[\s\S]*google_ads_activation_capability_expired[\s\S]*return \{terminal:true,cap,actor\}/);
+ assert.ok(consume.indexOf("x.cap.status==='expired'")<consume.indexOf("x.cap.status!=='consumed'"),
+  'an expired consume must return from the transaction instead of throwing and rolling expiry back');
+ assert.throws(()=>api._requireUsable({status:'expired'}),{code:'capability_expired'});
+});

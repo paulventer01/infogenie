@@ -21,8 +21,12 @@ async function find(pool,tenantId,caseId){const r=await pool.query(`SELECT a.*,e
   WHERE a.tenant_id=$1 AND a.review_case_id=$2`,[tenantId,caseId]);if(!r.rowCount)return null;const x=r.rows[0];
   return {attempt:{...x,id:x.attempt_id,audit_ref:x.attempt_audit_ref,created_at:x.attempt_created_at},run:reconciliation.publicRun(x)};}
 async function start(pool,o,now){const c=await pool.connect();try{await c.query('BEGIN');
+  const hint=await c.query(`SELECT operation_id FROM orchestrator_google_ads_reconciliation_review_cases WHERE tenant_id=$1 AND id=$2`,[o.tenantId,o.reviewCaseId]);
+  if(hint.rowCount!==1)throw fail('review_case_not_found');
+  const operation=await c.query(`SELECT id FROM orchestrator_google_ads_provider_draft_operations WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[o.tenantId,hint.rows[0].operation_id]);
+  if(operation.rowCount!==1)throw fail('review_case_not_found');
   const q=await c.query(`SELECT * FROM orchestrator_google_ads_reconciliation_review_cases WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[o.tenantId,o.reviewCaseId]);
-  if(q.rowCount!==1)throw fail('review_case_not_found');const review=q.rows[0],digest=payloadHash(o),prior=await find(c,o.tenantId,review.id);
+  if(q.rowCount!==1||q.rows[0].operation_id!==hint.rows[0].operation_id)throw fail('review_case_not_found');const review=q.rows[0],digest=payloadHash(o),prior=await find(c,o.tenantId,review.id);
   if(prior){if(prior.attempt.invocation_payload_hash!==digest)throw fail('idempotency_conflict');
     await authority.reproveMetadataAuthority(c,{...o,authorizationPurpose:'post_review',authorizationId:prior.attempt.new_authorization_id});
     await c.query('COMMIT');return {existing:prior};}
