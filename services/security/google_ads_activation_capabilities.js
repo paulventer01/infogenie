@@ -14,6 +14,7 @@ const integer=v=>Number.isSafeInteger(Number(v))&&Number(v)>0?Number(v):null;
 const cappedExpiry=(issuedAt,ttl,approvalExpiresAt)=>new Date(Math.min(issuedAt.getTime()+ttl,new Date(approvalExpiresAt).getTime()));
 function deny(code){const e=new Error(code);e.code=code;e.blocked=true;e.external_action_taken=false;return e;}
 function same(a,b){if(typeof a!=='string'||typeof b!=='string')return false;const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&crypto.timingSafeEqual(x,y);}
+function optionalSame(a,b){return (a==null&&b==null)||same(String(a),String(b));}
 function human(o){const id=integer(o?.actorUserId);if(!id||o.actorType!=='human'||!valid(o.sessionId)
   ||['api_key','worker','service','service_account','automation','autonomous','agent'].includes(String(o.principalType||'').toLowerCase()))throw deny('human_session_required');
   if(typeof o.hasExplicitTenantPermission!=='function'||o.hasExplicitTenantPermission(PERMISSION)!==true)throw deny('permission_denied');return id;}
@@ -77,10 +78,11 @@ async function authoritative(c,tenantId,actorId,runId,{requireOpenSwitches=true,
  return x;}
 function bound(cap,x){return [['workflow_id','workflow_id'],['draft_id','draft_id'],['contract_hash','contract_hash'],['publishing_request_id','publishing_request_id'],
  ['publish_approval_id','publish_approval_id'],['snapshot_hash','snapshot_hash'],['intent_id','intent_id'],['intent_hash','intent_hash'],['operation_id','operation_id'],
- ['source_authorization_id','authorization_id'],['reconciliation_run_id','id'],['review_case_id','review_case_id'],['closure_event_id','closure_event_id'],
- ['rereconciliation_attempt_id','rereconciliation_attempt_id'],['credential_owner_user_id','credential_owner_user_id'],
+ ['source_authorization_id','authorization_id'],['reconciliation_run_id','id'],['credential_owner_user_id','credential_owner_user_id'],
  ['credential_ref_id','credential_ref_id'],['account_fingerprint','account_fingerprint'],['ledger_root_hash','ledger_root_hash']]
- .every(([a,b])=>same(String(cap[a]),String(x[b])))&&Number(cap.draft_revision)===Number(x.draft_revision)
+ .every(([a,b])=>same(String(cap[a]),String(x[b])))
+ &&[['review_case_id','review_case_id'],['closure_event_id','closure_event_id'],['rereconciliation_attempt_id','rereconciliation_attempt_id']]
+ .every(([a,b])=>optionalSame(cap[a],x[b]))&&Number(cap.draft_revision)===Number(x.draft_revision)
  &&Number(cap.workflow_approval_id)===Number(x.workflow_approval_id)
  &&new Date(cap.approval_expires_at).getTime()===new Date(x.approval_expires_at).getTime()
  &&Number(cap.review_version||0)===Number(x.review_version||0)&&Number(cap.credential_ref_version)===Number(x.credential_ref_version);}
