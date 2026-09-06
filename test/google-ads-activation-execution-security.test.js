@@ -12,7 +12,8 @@ const objects=[
 ];
 const cap={id:'cap-1',tenant_id:7,actor_user_id:11,session_id_hash:sha('session'),workflow_id:'wf',operation_id:'op',
  reconciliation_run_id:'run',credential_owner_user_id:11,credential_ref_id:'cred',credential_ref_version:3,
- account_fingerprint:sha(CUSTOMER),ledger_root_hash:sha('ledger'),status:'consumed'};
+ account_fingerprint:sha(CUSTOMER),ledger_root_hash:sha('ledger'),status:'consumed',
+ reservation_id_hash:sha(service._reservation('cap-1','invoke-1')),invocation_id_hash:sha('invoke-1')};
 const authority={id:'run'};
 const input={tenantId:7,capabilityId:'cap-1',invocationId:'invoke-1',actorUserId:11,actorType:'human',principalType:'user',
  sessionId:'session',hasExplicitTenantPermission:p=>p===caps.PERMISSION};
