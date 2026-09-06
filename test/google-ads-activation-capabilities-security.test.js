@@ -127,6 +127,8 @@ test('transitions recheck publishing approval expiry after acquiring all locks',
  assert.ok(locked.indexOf('SELECT clock_timestamp() now')<locked.indexOf("SET status='expired'"));
  assert.ok(locked.indexOf("SET status='expired'")<locked.lastIndexOf('authority.approval_expires_at'));
  assert.match(locked,/allowExpiredApproval:true/);
+ assert.match(locked,/cap\.status!==\'expired\'&&!\(new Date\(authority\.approval_expires_at\)>now\)/,
+  'stored expiry evidence must remain replayable after approval expiry');
 });
 test('only revocation bypasses closed activation switches while retaining authority checks',()=>{
  const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');
