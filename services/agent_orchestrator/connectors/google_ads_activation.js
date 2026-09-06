@@ -4,7 +4,7 @@
 // its ad group may move from PAUSED to ENABLED in one atomic mutate. The bound
 // campaign budget is identity evidence only and is never included in a write.
 const https = require('https');
-const vault = require('./services/credentials/vault');
+const vault = require('../../credentials/vault');
 
 const API_ORIGIN = 'https://googleads.googleapis.com';
 const API_VERSION = 'v17';
