@@ -121,7 +121,7 @@ async function locked(c,o,states,{requireOpenSwitches=true}={}){const tenantId=i
  if(Number(cap.actor_user_id)!==actor||!same(cap.session_id_hash,hash(o.sessionId)))throw deny('capability_rejected');
  if(!same(cap.reconciliation_run_id,hint.rows[0].reconciliation_run_id)||!bound(cap,authority))throw deny('authoritative_binding_mismatch');
  const now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
- if(TERMINAL.includes(cap.status)){if(!(new Date(authority.approval_expires_at)>now))throw deny('authoritative_binding_mismatch');return {terminal:true,cap,actor};}
+ if(TERMINAL.includes(cap.status)){if(cap.status!=='expired'&&!(new Date(authority.approval_expires_at)>now))throw deny('authoritative_binding_mismatch');return {terminal:true,cap,actor};}
  if(!states.includes(cap.status))throw deny('capability_rejected');
  if(!(new Date(cap.expires_at)>now)){await c.query(`UPDATE ${TABLE} SET status='expired' WHERE tenant_id=$1 AND id=$2`,[tenantId,cap.id]);cap.status='expired';await audit(c,cap,actor,'google_ads_activation_capability_expired','expired');return {terminal:true,cap,actor};}
  if(!(new Date(authority.approval_expires_at)>now))throw deny('authoritative_binding_mismatch');
