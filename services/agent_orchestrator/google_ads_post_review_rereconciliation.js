@@ -59,7 +59,7 @@ async function start(pool,o,now){const c=await pool.connect();try{await c.query(
   await c.query(`INSERT INTO orchestrator_audit_events(tenant_id,workflow_id,event,actor_user_id,detail) VALUES($1,$2,
     'google_ads_post_review_rereconciliation_started',$3,$4::jsonb)`,[o.tenantId,review.workflow_id,o.actorUserId,JSON.stringify({rereconciliation_attempt_id:id,review_case_id:review.id,audit_reference:auditRef})]);
   await c.query('COMMIT');return {started,attempt:{...attempt,closure_audit_ref:events.rows[0].audit_ref},common};
-}catch(e){try{await c.query('ROLLBACK');}catch(_){}throw e;}finally{c.release();}}
+}catch(e){try{await c.query(e&&e.commit_rejection_audit===true?'COMMIT':'ROLLBACK');}catch(_){}throw e;}finally{c.release();}}
 async function rereconcile(pool,o={}){authorize(o);const begun=await start(pool,o,new Date());
   if(begun.existing)return project(begun.existing.attempt,begun.existing.run);let evaluation;
   const observeOpts={...begun.common,authorizationId:begun.started.consumed.authorization_id};

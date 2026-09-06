@@ -183,7 +183,7 @@ test('post-admission authority failures retain sanitized rejection audit evidenc
   for(const state of [{operation:null},{objects:paused().slice(0,2)}]) {
     const {pool,audits,auditEvents}=mockPool(state);
     await assert.rejects(authority.consumeAndObserve(pool,{...actor,...consumeArgs,tokenTransport:never}),
-      (e)=>e.blocked===true);
+      (e)=>e.blocked===true&&e.commit_rejection_audit===true);
     assert.equal(audits.length,1);
     assert.deepEqual(auditEvents,['google_ads_reconciliation_read_authorization_rejected']);
     assert.deepEqual(JSON.parse(audits[0]),{

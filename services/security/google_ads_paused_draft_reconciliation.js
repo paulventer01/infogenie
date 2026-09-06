@@ -87,7 +87,8 @@ async function lockAuthorizationGraph(c,tenantId,actorId,authorizationId,require
   if(hint.rowCount!==1)throw deny('authorization_rejected');
   const hinted=hint.rows[0];
   const reject=async(code)=>{await audit(c,tenantId,actorId,hinted.workflow_id,EVENT('rejected'),
-    {authorization_id:authorizationId,operation_id:hinted.operation_id,status:hinted.status});throw deny(code);};
+    {authorization_id:authorizationId,operation_id:hinted.operation_id,status:hinted.status});
+    const error=deny(code);error.commit_rejection_audit=true;throw error;};
   let graph;
   try { graph=await loadOperation(c,tenantId,actorId,hinted.operation_id,requiredPermission); }
   catch(error) { if(error&&error.blocked)return reject(error.code);throw error; }
@@ -134,7 +135,8 @@ async function prepare(c,o) {
   const locked=await lockAuthorizationGraph(c,tenantId,actorId,String(o.authorizationId),permission(o));
   const row=locked.row;
   const reject=async(code)=>{await audit(c,tenantId,actorId,row.workflow_id,EVENT('rejected'),
-    {authorization_id:row.id,operation_id:row.operation_id,status:row.status});throw deny(code);};
+    {authorization_id:row.id,operation_id:row.operation_id,status:row.status});
+    const error=deny(code);error.commit_rejection_audit=true;throw error;};
   if(String(row.purpose||'initial')!==String(o.authorizationPurpose||'initial')
     ||Number(row.requested_by)!==actorId||!same(String(row.session_id_hash),hash(o.sessionId))
     ||!['issued','consumed'].includes(row.status))return reject('authorization_rejected');

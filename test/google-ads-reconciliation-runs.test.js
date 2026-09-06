@@ -178,6 +178,28 @@ test('getRun rejects proof belonging to a different authorization/run binding',a
   assert.ok(calls.findIndex(sql=>sql.includes('provider_draft_operations'))<calls.findIndex(sql=>/^SELECT \*/.test(sql.trim())));
 });
 
+test('metadata transaction owners commit classified rejection audits without lifecycle writes',async(t)=>{
+  const row={tenant_id:7,id:'run',authorization_id:'auth',invocation_id_hash:'hash',requested_by:3,
+    workflow_id:'wf',operation_id:'op',state:'verified',observations:[],classifications:[]};
+  const original=authority.reproveMetadataAuthority;t.after(()=>{authority.reproveMetadataAuthority=original;});
+  authority.reproveMetadataAuthority=async()=>{const error=Object.assign(new Error('permission revoked'),{
+    code:'authorization_lineage_mismatch',blocked:true,commit_rejection_audit:true});throw error;};
+  const exercise=async(run)=>{const calls=[];const client={query:async(sql)=>{calls.push(sql);
+    if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rowCount:0,rows:[]};
+    if(/^SELECT operation_id/.test(sql.trim()))return {rowCount:1,rows:[{operation_id:'op'}]};
+    if(/^SELECT id FROM orchestrator_google_ads_provider_draft_operations/.test(sql.trim()))return {rowCount:1,rows:[{id:'op'}]};
+    if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
+    throw new Error(`unexpected query: ${sql}`);},release(){}};
+    await assert.rejects(run({connect:async()=>client}),(error)=>error.commit_rejection_audit===true);
+    assert.equal(calls.at(-1),'COMMIT');
+    assert.equal(calls.some((sql)=>/^UPDATE|^INSERT/.test(sql.trim())),false);
+  };
+  await exercise((pool)=>R._test.existingOrRecover(pool,{},7,'auth','hash'));
+  await exercise((pool)=>R._test.finishRun(pool,{},7,'run',{state:'verified',observations:[],classifications:[]}));
+  await exercise((pool)=>R.getRun(pool,{tenantId:7,runId:'run',actorType:'human',principalType:'user',
+    actorUserId:3,sessionId:'session',hasExplicitTenantPermission:()=>true}));
+});
+
 function nowString(){return '2026-09-03T00:00:00.000Z';}
 
 test('coordinator contains no provider-write surface',()=>{
