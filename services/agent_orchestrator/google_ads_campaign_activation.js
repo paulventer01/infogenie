@@ -11,6 +11,7 @@ const connector=require('./connectors/google_ads_activation');
 
 const TABLE='orchestrator_google_ads_activation_attempts';
 const OBJECTS='orchestrator_google_ads_provider_draft_objects';
+const OUTCOMES='orchestrator_google_ads_activation_object_outcomes';
 const DEADLINE_MS=10000;
 const SAFE=/^[A-Za-z0-9_.:-]{1,128}$/;
 const RESULTS=Object.freeze({succeeded:'provider_activation_succeeded',failed:'provider_activation_failed',unknown:'provider_activation_unknown'});
@@ -100,9 +101,19 @@ async function claim(c,o,actor,attemptId){
  if(!same(row.objects_digest,objectDigest(objects)))throw deny('activation_object_binding_rejected');
  return {row,cap,objects,replay:false};
 }
+async function recordOutcomes(c,row,status){
+ const unknown=status==='unknown',acted=status==='succeeded'?true:(unknown?null:false);
+ for(const [i,kind] of ['campaign','ad_group'].entries())await c.query(`INSERT INTO ${OUTCOMES}
+  (tenant_id,id,activation_attempt_id,object_kind,sequence_number,outcome,result_code,
+   requires_reconciliation,external_action_taken,recorded_at,audit_ref)
+  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,clock_timestamp(),$10)`,
+ [row.tenant_id,`gaacto_${crypto.randomUUID()}`,row.id,kind,i+1,status,RESULTS[status],unknown,acted,
+  `gaacto-audit-${crypto.randomUUID()}`]);
+}
 async function settle(c,row,status){
  if(!Object.hasOwn(RESULTS,status)||row.status!=='in_progress')throw deny('activation_rejected');
  const succeeded=status==='succeeded',unknown=status==='unknown';
+ await recordOutcomes(c,row,status);
  const q=await c.query(`UPDATE ${TABLE} SET status=$3,result_code=$4,objects_activated=$5,
   requires_reconciliation=$6,external_action_taken=$7,settled_at=clock_timestamp()
   WHERE tenant_id=$1 AND id=$2 AND status='in_progress' RETURNING *`,
@@ -140,4 +151,4 @@ async function execute(pool,o={}){
    if(invoked)return out;}catch(_settle){}throw e;}
 }
 
-module.exports={TABLE,RESULTS,DEADLINE_MS,execute,_project:project,_reservation:reservation,_objectDigest:objectDigest};
+module.exports={TABLE,OUTCOMES,RESULTS,DEADLINE_MS,execute,_project:project,_reservation:reservation,_objectDigest:objectDigest};
