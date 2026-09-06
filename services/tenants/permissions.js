@@ -119,7 +119,7 @@ const PERMISSIONS = [
   { key:'advertising.provider_drafts.create', scope:'tenant', area:'Advertising', label:'Confirm creation of a paused provider draft on a connected ad account' },
   { key:'advertising.reconciliation.read', scope:'tenant', area:'Advertising', label:'Authorize one bounded read of a completed provider-draft ledger' },
   { key:'advertising.reconciliation.review', scope:'tenant', area:'Advertising', label:'Human review of a reconciliation discrepancy or observation failure' },
-  { key:'advertising.campaign.activate', scope:'tenant', area:'Advertising', label:'Authorize one activation attempt for a verified Meta campaign graph' },
+  { key:'advertising.campaign.activate', scope:'tenant', area:'Advertising', label:'Authorize one activation attempt for a verified campaign graph' },
   { key:'advertising.campaign.monitor', scope:'tenant', area:'Advertising', label:'Authorize one bounded post-activation Meta campaign observation' },
   { key:'advertising.campaign.delivery.resolve', scope:'tenant', area:'Advertising', label:'Record a human operational disposition for a monitored delivery discrepancy' },
   { key:'advertising.campaign.optimization.review', scope:'tenant', area:'Advertising', label:'Create and review evidence-backed campaign optimization recommendations' },

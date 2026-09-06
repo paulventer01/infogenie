@@ -78,6 +78,27 @@ async function loadOperation(c,tenantId,actorId,operationId,requiredPermission=P
       provider_status,serving,published,activated FROM ${OBJECTS} WHERE tenant_id=$1 AND operation_id=$2
     ORDER BY sequence_number FOR SHARE`,[tenantId,operation.id]);
   return {operation,objects:objects.rows,ledgerRoot:validateLineage(objects.rows,operation)}; }
+// Use the immutable authorization binding only as an unlocked hint, then acquire
+// the shared operation authority before the authorization row.  Reconciliation
+// observation/replay and activation/post-review paths must all use this order or
+// a replay can hold the operation while an observer holds the authorization.
+async function lockAuthorizationGraph(c,tenantId,actorId,authorizationId,requiredPermission,consumedBinding=null) {
+  const hint=await c.query(`SELECT operation_id,workflow_id,status FROM ${TABLE} WHERE tenant_id=$1 AND id=$2`,[tenantId,authorizationId]);
+  if(hint.rowCount!==1)throw deny('authorization_rejected');
+  const hinted=hint.rows[0];
+  const reject=async(code)=>{await audit(c,tenantId,actorId,hinted.workflow_id,EVENT('rejected'),
+    {authorization_id:authorizationId,operation_id:hinted.operation_id,status:hinted.status});
+    const error=deny(code);error.commit_rejection_audit=true;throw error;};
+  let graph;
+  try { graph=await loadOperation(c,tenantId,actorId,hinted.operation_id,requiredPermission); }
+  catch(error) { if(error&&error.blocked)return reject(error.code);throw error; }
+  const locked=consumedBinding
+    ?await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 AND status='consumed'
+      AND requested_by=$3 AND session_id_hash=$4 AND invocation_id_hash=$5 FOR UPDATE`,
+    [tenantId,authorizationId,actorId,consumedBinding.sessionHash,consumedBinding.invocationHash])
+    :await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,authorizationId]);
+  if(locked.rowCount!==1||locked.rows[0].operation_id!==hinted.operation_id)return reject('authorization_rejected');
+  return {row:locked.rows[0],graph}; }
 // Caller owns the transaction. Every stored binding is copied from the locked
 // operation row; the caller's own options may only agree with it.
 async function issue(c,o={}) {
@@ -111,10 +132,11 @@ async function issue(c,o={}) {
 async function prepare(c,o) {
   const tenantId=int(o.tenantId),actorId=human(o);
   if(!tenantId||!valid(o.authorizationId)||!valid(o.invocationId))throw deny('validation_failed');
-  const r=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,String(o.authorizationId)]);
-  if(r.rowCount!==1)throw deny('authorization_rejected');const row=r.rows[0];
+  const locked=await lockAuthorizationGraph(c,tenantId,actorId,String(o.authorizationId),permission(o));
+  const row=locked.row;
   const reject=async(code)=>{await audit(c,tenantId,actorId,row.workflow_id,EVENT('rejected'),
-    {authorization_id:row.id,operation_id:row.operation_id,status:row.status});throw deny(code);};
+    {authorization_id:row.id,operation_id:row.operation_id,status:row.status});
+    const error=deny(code);error.commit_rejection_audit=true;throw error;};
   if(String(row.purpose||'initial')!==String(o.authorizationPurpose||'initial')
     ||Number(row.requested_by)!==actorId||!same(String(row.session_id_hash),hash(o.sessionId))
     ||!['issued','consumed'].includes(row.status))return reject('authorization_rejected');
@@ -122,9 +144,7 @@ async function prepare(c,o) {
   if(row.status==='issued'&&!(new Date(row.expires_at)>now)) {
     await c.query(`UPDATE ${TABLE} SET status='expired' WHERE tenant_id=$1 AND id=$2 AND status='issued'`,[tenantId,row.id]);
     return reject('authorization_expired'); }
-  let g;
-  try { g=await loadOperation(c,tenantId,actorId,row.operation_id,permission(o)); }
-  catch(error) { if(error&&error.blocked)return reject(error.code);throw error; }
+  const g=locked.graph;
   if(!bound(g,row))return reject('authorization_lineage_mismatch');
   // Replay is metadata-only, but still requires a live tenant, membership and DB role grant.
   if(row.status==='consumed')return {replay:true,row};
@@ -214,11 +234,9 @@ async function observeWithConsumedCredential(c,o={}) {
   const tenantId=int(o.tenantId),actorId=human(o);
   if(!tenantId||!valid(o.authorizationId)||!valid(o.invocationId)||typeof o.tokenTransport!=='function'
     ||(o.observerTransport!==undefined&&typeof o.observerTransport!=='function'))throw deny('validation_failed');
-  const r=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 AND status='consumed'
-    AND requested_by=$3 AND session_id_hash=$4 AND invocation_id_hash=$5 FOR UPDATE`,
-  [tenantId,String(o.authorizationId),actorId,hash(o.sessionId),hash(o.invocationId)]);
-  if(r.rowCount!==1)throw deny('authorization_rejected');
-  const row=r.rows[0],g=await loadOperation(c,tenantId,actorId,row.operation_id,permission(o));
+  const locked=await lockAuthorizationGraph(c,tenantId,actorId,String(o.authorizationId),permission(o),
+    {sessionHash:hash(o.sessionId),invocationHash:hash(o.invocationId)});
+  const row=locked.row,g=locked.graph;
   if(!bound(g,row))throw deny('credential_boundary_mismatch');
   // Kind plus provider object id only: the observer derives every URL itself.
   const ledgerObjects=g.objects.map((x)=>Object.freeze({object_kind:x.object_kind,provider_object_id:String(x.provider_object_id)}));
@@ -249,7 +267,7 @@ async function consumeAndObserve(pool,o={}) {
   const c=await pool.connect();
   try { await c.query('BEGIN');
     try { const out=await observeWithConsumedCredential(c,o);await c.query('COMMIT');return out; }
-    catch(error) { await c.query('ROLLBACK');throw error; } }
+    catch(error) { await c.query(error&&error.commit_rejection_audit===true?'COMMIT':'ROLLBACK');throw error; } }
   finally { c.release(); } }
 async function get(c,o={}) {
   const tenantId=int(o.tenantId),actorId=human(o);

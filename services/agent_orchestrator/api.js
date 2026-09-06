@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const metaActivationCapabilitiesApi = require('./meta_activation_capabilities_api');
 const googleAdsProviderDraftCapabilitiesApi = require('./google_ads_provider_draft_capabilities_api');
+const googleAdsActivationCapabilitiesApi = require('./google_ads_activation_capabilities_api');
 const metaPostActivationMonitoringApi = require('./meta_post_activation_monitoring_api');
 const deliveryDiscrepanciesApi = require('./delivery_discrepancies_api');
 const _db = require('../../db');
@@ -77,6 +78,7 @@ const MODULES = [
 
 router.use('/meta-activation-capabilities', metaActivationCapabilitiesApi);
 router.use('/google-ads-provider-draft-capabilities', googleAdsProviderDraftCapabilitiesApi);
+router.use('/google-ads-activation-capabilities', googleAdsActivationCapabilitiesApi);
 router.use('/meta-delivery-monitoring', metaPostActivationMonitoringApi);
 router.use('/delivery-discrepancies', deliveryDiscrepanciesApi);
 

@@ -48,6 +48,14 @@ test('observing creation commits before provider observation and rolls back an a
   authority.observeWithConsumedCredential=async()=>{log.push('provider');return complete();};
   log.length=0;await R._test.observe(pool,{});
   assert.deepEqual(log.slice(0,3),['BEGIN','provider','COMMIT']);
+
+  authority.observeWithConsumedCredential=async()=>{const error=Object.assign(new Error('grant revoked'),
+    {blocked:true,commit_rejection_audit:true});throw error;};
+  log.length=0;await assert.rejects(R._test.observe(pool,{}),(e)=>e.commit_rejection_audit===true);
+  assert.deepEqual(log.slice(0,2),['BEGIN','COMMIT']);
+  authority.observeWithConsumedCredential=async()=>{throw new Error('transport down');};
+  log.length=0;await assert.rejects(R._test.observe(pool,{}),/transport down/);
+  assert.deepEqual(log.slice(0,2),['BEGIN','ROLLBACK']);
 });
 
 test('lease is bounded and established from one PostgreSQL clock read under the authority lock',()=>{
@@ -68,6 +76,8 @@ test('late terminal settlement reads the lease clock after locking and classifie
   const calls=[];
   const client={query:async(sql,params)=>{
     calls.push([sql,params]);
+    if(/^SELECT operation_id/.test(sql.trim()))return {rowCount:1,rows:[{operation_id:'op'}]};
+    if(/^SELECT id FROM orchestrator_google_ads_provider_draft_operations/.test(sql.trim()))return {rowCount:1,rows:[{id:'op'}]};
     if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
     if(/^SELECT clock_timestamp/.test(sql.trim()))return {rowCount:1,rows:[{now:lockedNow}]};
     if(/^UPDATE/.test(sql.trim()))return {rowCount:1,rows:[params.length===3
@@ -100,6 +110,8 @@ test('stale recovery reads the lease clock after locking and re-proof',async(t)=
   const calls=[];
   const client={query:async(sql,params)=>{
     calls.push([sql,params]);
+    if(/^SELECT operation_id/.test(sql.trim()))return {rowCount:1,rows:[{operation_id:'op'}]};
+    if(/^SELECT id FROM orchestrator_google_ads_provider_draft_operations/.test(sql.trim()))return {rowCount:1,rows:[{id:'op'}]};
     if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
     if(/^SELECT clock_timestamp/.test(sql.trim()))return {rowCount:1,rows:[{now:lockedNow}]};
     if(/^UPDATE/.test(sql.trim()))return {rowCount:1,rows:[
@@ -129,6 +141,8 @@ test('terminal replay is metadata-only, authority-gated and tenant/idempotency-b
   const calls=[];
   const client={query:async(sql,params)=>{
     calls.push([sql,params]);
+    if(/^SELECT operation_id/.test(sql.trim()))return {rowCount:1,rows:[{operation_id:'op'}]};
+    if(/^SELECT id FROM orchestrator_google_ads_provider_draft_operations/.test(sql.trim()))return {rowCount:1,rows:[{id:'op'}]};
     if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
     return {rowCount:0,rows:[]};
   },release:()=>{}};
@@ -144,6 +158,9 @@ test('terminal replay is metadata-only, authority-gated and tenant/idempotency-b
   assert.equal(calls.some(([sql])=>sql==='reproved'),true);
   assert.equal(calls.some(([sql])=>/observe|vault|credential|mutate/i.test(sql)),false);
   assert.deepEqual(calls.find(([sql])=>/^SELECT \*/.test(sql.trim()))[1],[7,'auth','hash']);
+  assert.ok(calls.findIndex(([sql])=>sql.includes('provider_draft_operations'))
+    <calls.findIndex(([sql])=>/^SELECT \*/.test(sql.trim())),
+  'replay locks the shared operation before the reconciliation run');
 
   authority.reproveMetadataAuthority=async()=>{const error=new Error('stale authority');error.code='authorization_lineage_mismatch';throw error;};
   await assert.rejects(R._test.existingOrRecover(pool,{},7,'auth','hash',new Date()),
@@ -157,13 +174,38 @@ test('terminal replay is metadata-only, authority-gated and tenant/idempotency-b
 test('getRun rejects proof belonging to a different authorization/run binding',async(t)=>{
   const row={tenant_id:7,id:'run',authorization_id:'auth-a',invocation_id_hash:'hash',requested_by:3,
     workflow_id:'wf',operation_id:'op',state:'verified',observations:[],classifications:[]};
-  const client={query:async(sql)=>/^SELECT \*/.test(sql.trim())?{rowCount:1,rows:[row]}:{},release:()=>{}};
+  const calls=[];const client={query:async(sql)=>{calls.push(sql);if(/^SELECT operation_id/.test(sql.trim()))return {rowCount:1,rows:[{operation_id:'op'}]};
+    if(/^SELECT id FROM orchestrator_google_ads_provider_draft_operations/.test(sql.trim()))return {rowCount:1,rows:[{id:'op'}]};
+    return /^SELECT \*/.test(sql.trim())?{rowCount:1,rows:[row]}:{};},release:()=>{}};
   const original=authority.reproveMetadataAuthority;t.after(()=>{authority.reproveMetadataAuthority=original;});
   authority.reproveMetadataAuthority=async()=>({tenant_id:7,authorization_id:'auth-b',invocation_id_hash:'hash',
     requested_by:3,workflow_id:'wf',operation_id:'op'});
   await assert.rejects(R.getRun({connect:async()=>client},{tenantId:7,runId:'run',actorType:'human',
     principalType:'user',actorUserId:3,sessionId:'session',hasExplicitTenantPermission:()=>true}),
   (error)=>error.code==='authorization_lineage_mismatch');
+  assert.ok(calls.findIndex(sql=>sql.includes('provider_draft_operations'))<calls.findIndex(sql=>/^SELECT \*/.test(sql.trim())));
+});
+
+test('metadata transaction owners commit classified rejection audits without lifecycle writes',async(t)=>{
+  const row={tenant_id:7,id:'run',authorization_id:'auth',invocation_id_hash:'hash',requested_by:3,
+    workflow_id:'wf',operation_id:'op',state:'verified',observations:[],classifications:[]};
+  const original=authority.reproveMetadataAuthority;t.after(()=>{authority.reproveMetadataAuthority=original;});
+  authority.reproveMetadataAuthority=async()=>{const error=Object.assign(new Error('permission revoked'),{
+    code:'authorization_lineage_mismatch',blocked:true,commit_rejection_audit:true});throw error;};
+  const exercise=async(run)=>{const calls=[];const client={query:async(sql)=>{calls.push(sql);
+    if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rowCount:0,rows:[]};
+    if(/^SELECT operation_id/.test(sql.trim()))return {rowCount:1,rows:[{operation_id:'op'}]};
+    if(/^SELECT id FROM orchestrator_google_ads_provider_draft_operations/.test(sql.trim()))return {rowCount:1,rows:[{id:'op'}]};
+    if(/^SELECT \*/.test(sql.trim()))return {rowCount:1,rows:[row]};
+    throw new Error(`unexpected query: ${sql}`);},release(){}};
+    await assert.rejects(run({connect:async()=>client}),(error)=>error.commit_rejection_audit===true);
+    assert.equal(calls.at(-1),'COMMIT');
+    assert.equal(calls.some((sql)=>/^UPDATE|^INSERT/.test(sql.trim())),false);
+  };
+  await exercise((pool)=>R._test.existingOrRecover(pool,{},7,'auth','hash'));
+  await exercise((pool)=>R._test.finishRun(pool,{},7,'run',{state:'verified',observations:[],classifications:[]}));
+  await exercise((pool)=>R.getRun(pool,{tenantId:7,runId:'run',actorType:'human',principalType:'user',
+    actorUserId:3,sessionId:'session',hasExplicitTenantPermission:()=>true}));
 });
 
 function nowString(){return '2026-09-03T00:00:00.000Z';}

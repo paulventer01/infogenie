@@ -42,6 +42,47 @@ test('database start failures fail closed without an automatic second attempt',a
   assert.equal(connections,1);
 });
 
+test('post-review replay locks the shared operation before the review case',async(t)=>{
+  const digest=R._test.payloadHash(opts()),calls=[];
+  const client={query:async(sql)=>{calls.push(sql);
+    if(sql==='BEGIN'||sql==='COMMIT')return {rowCount:0,rows:[]};
+    if(sql.startsWith('SELECT operation_id FROM'))return {rowCount:1,rows:[{operation_id:'operation'}]};
+    if(sql.startsWith('SELECT id FROM orchestrator_google_ads_provider_draft_operations'))return {rowCount:1,rows:[{id:'operation'}]};
+    if(sql.startsWith('SELECT * FROM orchestrator_google_ads_reconciliation_review_cases'))return {rowCount:1,rows:[{id:'case',operation_id:'operation'}]};
+    if(sql.startsWith('SELECT a.*'))return {rowCount:1,rows:[{attempt_id:'attempt',review_case_id:'case',
+      invocation_payload_hash:digest,new_authorization_id:'authorization',state:'verified'}]};
+    throw new Error(`unexpected query: ${sql}`);
+  },release(){}};
+  const authority=require('../services/security/google_ads_paused_draft_reconciliation');
+  const original=authority.reproveMetadataAuthority;t.after(()=>{authority.reproveMetadataAuthority=original;});
+  authority.reproveMetadataAuthority=async()=>({});
+  const result=await R._test.start({connect:async()=>client},opts(),new Date());
+  assert.equal(result.existing.attempt.id,'attempt');
+  const operationLock=calls.findIndex(sql=>sql.startsWith('SELECT id FROM orchestrator_google_ads_provider_draft_operations'));
+  const reviewLock=calls.findIndex(sql=>sql.startsWith('SELECT * FROM orchestrator_google_ads_reconciliation_review_cases'));
+  assert.ok(operationLock>0&&operationLock<reviewLock,'operation lock must precede review-case lock');
+});
+
+test('post-review replay commits a classified authority rejection audit only',async(t)=>{
+  const digest=R._test.payloadHash(opts()),calls=[];
+  const client={query:async(sql)=>{calls.push(sql);
+    if(['BEGIN','COMMIT','ROLLBACK'].includes(sql))return {rowCount:0,rows:[]};
+    if(sql.startsWith('SELECT operation_id FROM'))return {rowCount:1,rows:[{operation_id:'operation'}]};
+    if(sql.startsWith('SELECT id FROM orchestrator_google_ads_provider_draft_operations'))return {rowCount:1,rows:[{id:'operation'}]};
+    if(sql.startsWith('SELECT * FROM orchestrator_google_ads_reconciliation_review_cases'))return {rowCount:1,rows:[{id:'case',operation_id:'operation'}]};
+    if(sql.startsWith('SELECT a.*'))return {rowCount:1,rows:[{attempt_id:'attempt',review_case_id:'case',
+      invocation_payload_hash:digest,new_authorization_id:'authorization',state:'verified'}]};
+    throw new Error(`unexpected query: ${sql}`);},release(){}};
+  const authority=require('../services/security/google_ads_paused_draft_reconciliation');
+  const original=authority.reproveMetadataAuthority;t.after(()=>{authority.reproveMetadataAuthority=original;});
+  authority.reproveMetadataAuthority=async()=>{throw Object.assign(new Error('grant revoked'),{
+    code:'authorization_lineage_mismatch',blocked:true,commit_rejection_audit:true});};
+  await assert.rejects(R._test.start({connect:async()=>client},opts(),new Date()),
+    (error)=>error.commit_rejection_audit===true);
+  assert.equal(calls.at(-1),'COMMIT');
+  assert.equal(calls.some((sql)=>/^UPDATE|^INSERT/.test(sql.trim())),false);
+});
+
 test('coordinator reaches only the existing read observer and contains no provider-write or retry surface',()=>{
   const source=fs.readFileSync(require.resolve('../services/agent_orchestrator/google_ads_post_review_rereconciliation'),'utf8');
   assert.match(source,/reconciliation\._test\.observe/);assert.match(source,/consumeIntoReconciliationRun/);

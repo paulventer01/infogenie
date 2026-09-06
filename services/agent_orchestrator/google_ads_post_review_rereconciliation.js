@@ -21,8 +21,12 @@ async function find(pool,tenantId,caseId){const r=await pool.query(`SELECT a.*,e
   WHERE a.tenant_id=$1 AND a.review_case_id=$2`,[tenantId,caseId]);if(!r.rowCount)return null;const x=r.rows[0];
   return {attempt:{...x,id:x.attempt_id,audit_ref:x.attempt_audit_ref,created_at:x.attempt_created_at},run:reconciliation.publicRun(x)};}
 async function start(pool,o,now){const c=await pool.connect();try{await c.query('BEGIN');
+  const hint=await c.query(`SELECT operation_id FROM orchestrator_google_ads_reconciliation_review_cases WHERE tenant_id=$1 AND id=$2`,[o.tenantId,o.reviewCaseId]);
+  if(hint.rowCount!==1)throw fail('review_case_not_found');
+  const operation=await c.query(`SELECT id FROM orchestrator_google_ads_provider_draft_operations WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[o.tenantId,hint.rows[0].operation_id]);
+  if(operation.rowCount!==1)throw fail('review_case_not_found');
   const q=await c.query(`SELECT * FROM orchestrator_google_ads_reconciliation_review_cases WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[o.tenantId,o.reviewCaseId]);
-  if(q.rowCount!==1)throw fail('review_case_not_found');const review=q.rows[0],digest=payloadHash(o),prior=await find(c,o.tenantId,review.id);
+  if(q.rowCount!==1||q.rows[0].operation_id!==hint.rows[0].operation_id)throw fail('review_case_not_found');const review=q.rows[0],digest=payloadHash(o),prior=await find(c,o.tenantId,review.id);
   if(prior){if(prior.attempt.invocation_payload_hash!==digest)throw fail('idempotency_conflict');
     await authority.reproveMetadataAuthority(c,{...o,authorizationPurpose:'post_review',authorizationId:prior.attempt.new_authorization_id});
     await c.query('COMMIT');return {existing:prior};}
@@ -55,7 +59,7 @@ async function start(pool,o,now){const c=await pool.connect();try{await c.query(
   await c.query(`INSERT INTO orchestrator_audit_events(tenant_id,workflow_id,event,actor_user_id,detail) VALUES($1,$2,
     'google_ads_post_review_rereconciliation_started',$3,$4::jsonb)`,[o.tenantId,review.workflow_id,o.actorUserId,JSON.stringify({rereconciliation_attempt_id:id,review_case_id:review.id,audit_reference:auditRef})]);
   await c.query('COMMIT');return {started,attempt:{...attempt,closure_audit_ref:events.rows[0].audit_ref},common};
-}catch(e){try{await c.query('ROLLBACK');}catch(_){}throw e;}finally{c.release();}}
+}catch(e){try{await c.query(e&&e.commit_rejection_audit===true?'COMMIT':'ROLLBACK');}catch(_){}throw e;}finally{c.release();}}
 async function rereconcile(pool,o={}){authorize(o);const begun=await start(pool,o,new Date());
   if(begun.existing)return project(begun.existing.attempt,begun.existing.run);let evaluation;
   const observeOpts={...begun.common,authorizationId:begun.started.consumed.authorization_id};

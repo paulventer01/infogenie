@@ -24,22 +24,31 @@ const authRow=(over={})=>({id:'garr_x',tenant_id:7,operation_id:'gapo_x',request
 // Answers only the queries this module is allowed to make. A kill-switch,
 // user_integrations, capability or provider query is a test failure.
 function mockPool(state={}) {
-  const seen=[],audits=[];
+  const seen=[],audits=[],auditEvents=[];
   const client={release(){},query:async(sql,params=[])=>{
     const text=String(sql).replace(/\s+/g,' ').trim();seen.push(text);
     if(/^(BEGIN|COMMIT|ROLLBACK)/.test(text)||/^INSERT INTO orchestrator_google_ads_reconciliation_read/.test(text))return {rowCount:0,rows:[]};
     if(/^SELECT clock_timestamp/.test(text))return {rowCount:1,rows:[{now:new Date('2026-02-01T00:01:00Z')}]};
-    if(/^INSERT INTO orchestrator_audit_events/.test(text)){audits.push(String(params[4]));return {rowCount:1,rows:[]};}
+    if(/^INSERT INTO orchestrator_audit_events/.test(text)){auditEvents.push(params[2]);audits.push(String(params[4]));return {rowCount:1,rows:[]};}
     if(/^UPDATE orchestrator_google_ads_reconciliation_read_authorizations SET status='revoked'/.test(text))
       return {rowCount:1,rows:[authRow({status:'revoked'})]};
-    const rows=/FROM orchestrator_google_ads_provider_draft_operations op/.test(text)
-      ?(state.operation===null?[]:[state.operation||operation()])
+    if(/^UPDATE orchestrator_google_ads_reconciliation_read_authorizations SET status='reserved'/.test(text))
+      return {rowCount:1,rows:[]};
+    if(/^UPDATE orchestrator_google_ads_reconciliation_read_authorizations SET status='consumed'/.test(text)) {
+      state.authorization=authRow({status:'consumed',reserved_at:params[2],consumed_at:params[2],invocation_id_hash:sha('inv-1')});
+      return {rowCount:1,rows:[state.authorization]};
+    }
+    const rows=/^SELECT operation_id,workflow_id,status FROM orchestrator_google_ads_reconciliation_read_authorizations/.test(text)
+      ?(state.authorization===null?[]:[state.authorization||authRow()])
+      :/FROM orchestrator_google_ads_provider_draft_operations op/.test(text)
+      ?(()=>{const value=typeof state.operation==='function'?state.operation():state.operation;
+        return value===null?[]:[value||operation()];})()
       :/FROM orchestrator_google_ads_provider_draft_objects/.test(text)?(state.objects||paused())
         :/^SELECT \* FROM orchestrator_google_ads_reconciliation_read_authorizations/.test(text)
           ?(state.authorization===null?[]:[state.authorization||authRow()]):null;
     if(rows===null)throw new Error(`unexpected query: ${text}`);return {rowCount:rows.length,rows};
   }};
-  return {seen,audits,client,pool:{connect:async()=>client}};
+  return {seen,audits,auditEvents,client,pool:{connect:async()=>client}};
 }
 const consumeArgs={authorizationId:'garr_x',invocationId:'inv-1'};
 test('reconciliation read authority reuses the read permission, not the create permission',()=>{
@@ -177,6 +186,28 @@ test('a drifted credential or ledger binding fails closed before the secret scop
   await assert.rejects(authority.consumeAndObserve(mockPool({authorization:null}).pool,
     {...actor,...consumeArgs,tokenTransport:never}),(e)=>e.code==='authorization_rejected');
 });
+test('post-admission authority failures retain sanitized rejection audit evidence',async()=>{
+  for(const state of [{operation:null},{objects:paused().slice(0,2)}]) {
+    const {pool,audits,auditEvents}=mockPool(state);
+    await assert.rejects(authority.consumeAndObserve(pool,{...actor,...consumeArgs,tokenTransport:never}),
+      (e)=>e.blocked===true&&e.commit_rejection_audit===true);
+    assert.equal(audits.length,1);
+    assert.deepEqual(auditEvents,['google_ads_reconciliation_read_authorization_rejected']);
+    assert.deepEqual(JSON.parse(audits[0]),{
+      authorization_id:'garr_x',operation_id:'gapo_x',status:'issued'});
+  }
+});
+test('observation commits classified authority denials and rolls back unclassified failures',async()=>{
+ let operationReads=0;const denied=mockPool({operation:()=>++operationReads===1?operation():null});
+ await assert.rejects(authority.consumeAndObserve(denied.pool,{...actor,...consumeArgs,tokenTransport:never}),
+  (e)=>e.commit_rejection_audit===true);
+ assert.equal(denied.seen.at(-1),'COMMIT');
+ operationReads=0;const infrastructure=mockPool({
+  operation:()=>++operationReads===1?operation():operation({credential_ref_version:2})});
+ await assert.rejects(authority.consumeAndObserve(infrastructure.pool,{...actor,...consumeArgs,
+  tokenTransport:never,observerTransport:never}),{code:'credential_boundary_mismatch'});
+ assert.equal(infrastructure.seen.at(-1),'ROLLBACK');
+});
 test('the consume commits before any secret scope opens, and the handle never escapes',()=>{
   const at=(needle)=>{const i=source.indexOf(needle);assert.ok(i>0,needle);return i;};
   assert.ok(at('const consumed=await consumeAtomic(pool,o);')<at('const out=await observeWithConsumedCredential(c,o);'));
@@ -192,4 +223,18 @@ test('the consume commits before any secret scope opens, and the handle never es
   // Every audit detail is exactly the three metadata fields.
   assert.equal((source.match(/JSON\.stringify\(/g)||[]).length,1);
   assert.match(source,/JSON\.stringify\(\{authorization_id:detail\.authorization_id,\s*operation_id:detail\.operation_id,status:detail\.status\}\)/);
+});
+
+test('observation and replay lock operation authority before the authorization row',async()=>{
+  const consumed=authRow({status:'consumed',reserved_at:new Date('2026-02-01T00:01:00Z'),
+    consumed_at:new Date('2026-02-01T00:01:00Z'),invocation_id_hash:sha('inv-1')});
+  const {pool,seen}=mockPool({authorization:consumed});
+  await authority.consumeAndObserve(pool,{...actor,...consumeArgs,tokenTransport:never,observerTransport:never});
+  const ordered=()=>{const operationLock=seen.findIndex((q)=>/FROM orchestrator_google_ads_provider_draft_operations op/.test(q));
+    const authorizationLock=seen.findIndex((q)=>/^SELECT \* FROM orchestrator_google_ads_reconciliation_read_authorizations .*FOR UPDATE$/.test(q));
+    assert.ok(operationLock>=0&&operationLock<authorizationLock,'operation lock must precede authorization lock');};
+  ordered();seen.length=0;
+  await assert.rejects(authority.observeWithConsumedCredential((await pool.connect()),
+    {...actor,...consumeArgs,tokenTransport:never,observerTransport:never}));
+  ordered();
 });

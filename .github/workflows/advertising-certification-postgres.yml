@@ -5,8 +5,11 @@ on:
     paths:
       - 'services/agent_orchestrator/**'
       - 'services/credentials/**'
+      - 'services/security/google_ads_*.js'
       - 'services/tenants/**'
       - 'test/advertising-*.test.js'
+      - 'test/google-ads-*.test.js'
+      - 'test/integration/google-ads-activation-capability-postgres.test.js'
       - 'test/integration/meta-activation-capability-postgres.test.js'
       - 'scripts/run-advertising-certification.js'
       - 'package.json'
