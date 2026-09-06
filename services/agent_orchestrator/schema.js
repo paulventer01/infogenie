@@ -8031,6 +8031,27 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       CONSTRAINT orchestrator_gaact_counts CHECK(objects_expected=2 AND objects_activated IN(0,2)),
       CONSTRAINT orchestrator_gaact_time CHECK(started_at>=created_at AND (settled_at IS NULL OR settled_at>=started_at))
     );
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_activation_object_outcomes(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL, activation_attempt_id TEXT NOT NULL,
+      object_kind TEXT NOT NULL, sequence_number INTEGER NOT NULL,
+      outcome TEXT NOT NULL, result_code TEXT NOT NULL,
+      requires_reconciliation BOOLEAN NOT NULL, external_action_taken BOOLEAN NULL,
+      recorded_at TIMESTAMPTZ NOT NULL, audit_ref TEXT NOT NULL,
+      PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,activation_attempt_id,object_kind),
+      UNIQUE(tenant_id,activation_attempt_id,sequence_number), UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,activation_attempt_id)
+        REFERENCES orchestrator_google_ads_activation_attempts(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_gaacto_kind CHECK(
+        (object_kind='campaign' AND sequence_number=1) OR (object_kind='ad_group' AND sequence_number=2)),
+      CONSTRAINT orchestrator_gaacto_result CHECK(
+        (outcome='succeeded' AND result_code='provider_activation_succeeded'
+          AND requires_reconciliation=FALSE AND external_action_taken=TRUE)
+        OR (outcome='failed' AND result_code='provider_activation_failed'
+          AND requires_reconciliation=FALSE AND external_action_taken=FALSE)
+        OR (outcome='unknown' AND result_code='provider_activation_unknown'
+          AND requires_reconciliation=TRUE AND external_action_taken IS NULL))
+    );
     CREATE INDEX IF NOT EXISTS orchestrator_gaact_operation_idx
       ON orchestrator_google_ads_activation_attempts(tenant_id,operation_id,created_at DESC);
 
@@ -8075,6 +8096,19 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       THEN RAISE EXCEPTION 'orchestrator_gaact_immutable_or_invalid_transition'; END IF;
       RETURN NEW;
     END;$fn$ LANGUAGE plpgsql;
+    CREATE OR REPLACE FUNCTION orchestrator_gaacto_guard() RETURNS trigger AS $fn$
+    DECLARE parent RECORD; BEGIN
+      IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'orchestrator_gaacto_immutable'; END IF;
+      SELECT status,tenant_id INTO parent FROM orchestrator_google_ads_activation_attempts
+        WHERE tenant_id=NEW.tenant_id AND id=NEW.activation_attempt_id;
+      IF parent.tenant_id IS NULL OR parent.status<>'in_progress'
+      THEN RAISE EXCEPTION 'orchestrator_gaacto_invalid_provenance'; END IF;
+      RETURN NEW;
+    END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gaacto_guard ON orchestrator_google_ads_activation_object_outcomes;
+    CREATE TRIGGER orchestrator_gaacto_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_google_ads_activation_object_outcomes FOR EACH ROW EXECUTE FUNCTION orchestrator_gaacto_guard();
+
     DROP TRIGGER IF EXISTS orchestrator_gaact_guard ON orchestrator_google_ads_activation_attempts;
     CREATE TRIGGER orchestrator_gaact_guard BEFORE INSERT OR UPDATE OR DELETE
       ON orchestrator_google_ads_activation_attempts FOR EACH ROW EXECUTE FUNCTION orchestrator_gaact_guard();
