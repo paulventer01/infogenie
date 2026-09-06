@@ -32,10 +32,17 @@ function mockPool(state={}) {
     if(/^INSERT INTO orchestrator_audit_events/.test(text)){auditEvents.push(params[2]);audits.push(String(params[4]));return {rowCount:1,rows:[]};}
     if(/^UPDATE orchestrator_google_ads_reconciliation_read_authorizations SET status='revoked'/.test(text))
       return {rowCount:1,rows:[authRow({status:'revoked'})]};
+    if(/^UPDATE orchestrator_google_ads_reconciliation_read_authorizations SET status='reserved'/.test(text))
+      return {rowCount:1,rows:[]};
+    if(/^UPDATE orchestrator_google_ads_reconciliation_read_authorizations SET status='consumed'/.test(text)) {
+      state.authorization=authRow({status:'consumed',reserved_at:params[2],consumed_at:params[2],invocation_id_hash:sha('inv-1')});
+      return {rowCount:1,rows:[state.authorization]};
+    }
     const rows=/^SELECT operation_id,workflow_id,status FROM orchestrator_google_ads_reconciliation_read_authorizations/.test(text)
       ?(state.authorization===null?[]:[state.authorization||authRow()])
       :/FROM orchestrator_google_ads_provider_draft_operations op/.test(text)
-      ?(state.operation===null?[]:[state.operation||operation()])
+      ?(()=>{const value=typeof state.operation==='function'?state.operation():state.operation;
+        return value===null?[]:[value||operation()];})()
       :/FROM orchestrator_google_ads_provider_draft_objects/.test(text)?(state.objects||paused())
         :/^SELECT \* FROM orchestrator_google_ads_reconciliation_read_authorizations/.test(text)
           ?(state.authorization===null?[]:[state.authorization||authRow()]):null;
@@ -189,6 +196,17 @@ test('post-admission authority failures retain sanitized rejection audit evidenc
     assert.deepEqual(JSON.parse(audits[0]),{
       authorization_id:'garr_x',operation_id:'gapo_x',status:'issued'});
   }
+});
+test('observation commits classified authority denials and rolls back unclassified failures',async()=>{
+ let operationReads=0;const denied=mockPool({operation:()=>++operationReads===1?operation():null});
+ await assert.rejects(authority.consumeAndObserve(denied.pool,{...actor,...consumeArgs,tokenTransport:never}),
+  (e)=>e.commit_rejection_audit===true);
+ assert.equal(denied.seen.at(-1),'COMMIT');
+ operationReads=0;const infrastructure=mockPool({
+  operation:()=>++operationReads===1?operation():operation({credential_ref_version:2})});
+ await assert.rejects(authority.consumeAndObserve(infrastructure.pool,{...actor,...consumeArgs,
+  tokenTransport:never,observerTransport:never}),{code:'credential_boundary_mismatch'});
+ assert.equal(infrastructure.seen.at(-1),'ROLLBACK');
 });
 test('the consume commits before any secret scope opens, and the handle never escapes',()=>{
   const at=(needle)=>{const i=source.indexOf(needle);assert.ok(i>0,needle);return i;};

@@ -121,6 +121,32 @@ test('transitions recheck publishing approval expiry after acquiring all locks',
  assert.ok(locked.indexOf('SELECT clock_timestamp() now')<locked.indexOf('authority.approval_expires_at'));
  assert.match(locked,/new Date\(authority\.approval_expires_at\)>now\)\)throw deny\('authoritative_binding_mismatch'\)/);
 });
+test('only revocation bypasses closed activation switches while retaining authority checks',()=>{
+ const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');
+ assert.match(source,/requireOpenSwitches&&\(x\.global_switch_active===true\|\|x\.tenant_switch_active===true\)/);
+ assert.match(source,/async function revoke[\s\S]*locked\(c,o,\['issued','reserved'\],\{requireOpenSwitches:false\}\)/);
+ for(const operation of ['issue','reserve','consume','get']) {
+  const start=source.indexOf(`async function ${operation}`),end=source.indexOf('async function ',start+15);
+  assert.doesNotMatch(source.slice(start,end<0?undefined:end),/requireOpenSwitches:false/,`${operation} must fail closed`);
+ }
+});
+test('immutable binding includes workflow approval and credential owner provenance',()=>{
+ const graph={workflow_id:'wf',draft_id:'draft',contract_hash:'contract',publishing_request_id:'request',publish_approval_id:'approval',
+  workflow_approval_id:9,snapshot_hash:'snapshot',intent_id:'intent',intent_hash:'intent-hash',operation_id:'operation',authorization_id:'auth',id:'run',
+  credential_owner_user_id:7,credential_ref_id:'credential',credential_ref_version:1,account_fingerprint:'fingerprint',ledger_root_hash:'ledger'};
+ const cap={...graph,source_authorization_id:'auth',reconciliation_run_id:'run',draft_revision:1,review_version:null,
+  workflow_approval_id:9,credential_owner_user_id:7};graph.draft_revision=1;
+ assert.equal(service._bound(cap,graph),true);
+ assert.equal(service._bound({...cap,workflow_approval_id:10},graph),false);
+ assert.equal(service._bound({...cap,credential_owner_user_id:8},graph),false);
+});
+test('reserve replay accepts only a consumed matching reservation and rejects revoked authority',()=>{
+ const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');
+ const reserve=source.slice(source.indexOf('async function reserve'),source.indexOf('async function consume'));
+ assert.match(reserve,/x\.cap\.status==='expired'/);
+ assert.match(reserve,/x\.cap\.status!=='consumed'\|\|!same\(x\.cap\.reservation_id_hash,hash\(o\.reservationId\)\)/);
+ assert.doesNotMatch(reserve,/if\(x\.terminal\)return project/);
+});
 test('issuance rechecks approval expiry and binds complete review provenance',()=>{
  const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');
  const issue=source.slice(source.indexOf('async function issue'),source.indexOf('async function locked'));

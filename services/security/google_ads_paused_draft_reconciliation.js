@@ -267,7 +267,7 @@ async function consumeAndObserve(pool,o={}) {
   const c=await pool.connect();
   try { await c.query('BEGIN');
     try { const out=await observeWithConsumedCredential(c,o);await c.query('COMMIT');return out; }
-    catch(error) { await c.query('ROLLBACK');throw error; } }
+    catch(error) { await c.query(error&&error.commit_rejection_audit===true?'COMMIT':'ROLLBACK');throw error; } }
   finally { c.release(); } }
 async function get(c,o={}) {
   const tenantId=int(o.tenantId),actorId=human(o);

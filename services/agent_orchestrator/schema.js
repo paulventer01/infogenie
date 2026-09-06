@@ -7885,7 +7885,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         OR (review_case_id IS NOT NULL AND review_version>=1 AND closure_event_id IS NOT NULL AND rereconciliation_attempt_id IS NOT NULL)),
       CONSTRAINT orchestrator_gaac_lifecycle CHECK(confirmed_at<=issued_at AND confirmed_at>=issued_at-interval '5 minutes' AND expires_at>issued_at
         AND expires_at<=issued_at+interval '10 minutes' AND
-        (reserved_at IS NULL OR reserved_at>=issued_at) AND (consumed_at IS NULL OR consumed_at>=reserved_at)
+        (reserved_at IS NULL OR (reserved_at>=issued_at AND reserved_at<=expires_at))
+        AND (consumed_at IS NULL OR (consumed_at>=reserved_at AND consumed_at<=expires_at))
         AND (revoked_at IS NULL OR revoked_at>=issued_at) AND
         ((status='issued' AND reservation_id_hash IS NULL AND reserved_at IS NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)
         OR (status='reserved' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)
@@ -7895,13 +7896,34 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gaac_reservation_unique ON orchestrator_google_ads_activation_capabilities(tenant_id,reservation_id_hash) WHERE reservation_id_hash IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS orchestrator_gaac_invocation_unique ON orchestrator_google_ads_activation_capabilities(tenant_id,invocation_id_hash) WHERE invocation_id_hash IS NOT NULL;
-    CREATE OR REPLACE FUNCTION orchestrator_gaac_guard() RETURNS trigger AS $fn$ DECLARE review_attempt RECORD; BEGIN
+    CREATE OR REPLACE FUNCTION orchestrator_gaac_guard() RETURNS trigger AS $fn$ DECLARE review_attempt RECORD; source_graph RECORD; BEGIN
       IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_gaac_audit_evidence'; END IF;
       IF TG_OP='INSERT' THEN
         IF NEW.status<>'issued' OR NEW.reservation_id_hash IS NOT NULL OR NEW.reserved_at IS NOT NULL
           OR NEW.invocation_id_hash IS NOT NULL OR NEW.consumed_at IS NOT NULL
           OR NEW.revoked_at IS NOT NULL OR NEW.revoked_by IS NOT NULL
         THEN RAISE EXCEPTION 'orchestrator_gaac_invalid_initial_state'; END IF;
+        SELECT run.authorization_id,run.operation_id,a.credential_owner_user_id,
+          op.workflow_approval_id,pr.workflow_approval_id AS request_workflow_approval_id,
+          cred.owner_user_id AS credential_ref_owner_user_id
+          INTO source_graph
+          FROM orchestrator_google_ads_reconciliation_runs run
+          JOIN orchestrator_google_ads_reconciliation_read_authorizations a
+            ON a.tenant_id=run.tenant_id AND a.id=run.authorization_id
+          JOIN orchestrator_google_ads_provider_draft_operations op
+            ON op.tenant_id=run.tenant_id AND op.id=run.operation_id
+          JOIN orchestrator_campaign_publish_requests pr
+            ON pr.tenant_id=op.tenant_id AND pr.id=op.publishing_request_id
+          JOIN orchestrator_tenant_google_ads_credential_refs cred
+            ON cred.tenant_id=op.tenant_id AND cred.id=op.credential_ref_id
+          WHERE run.tenant_id=NEW.tenant_id AND run.id=NEW.reconciliation_run_id;
+        IF NOT FOUND OR source_graph.authorization_id IS DISTINCT FROM NEW.source_authorization_id
+          OR source_graph.operation_id IS DISTINCT FROM NEW.operation_id
+          OR source_graph.workflow_approval_id IS DISTINCT FROM NEW.workflow_approval_id
+          OR source_graph.request_workflow_approval_id IS DISTINCT FROM NEW.workflow_approval_id
+          OR source_graph.credential_owner_user_id IS DISTINCT FROM NEW.credential_owner_user_id
+          OR source_graph.credential_ref_owner_user_id IS DISTINCT FROM NEW.credential_owner_user_id
+        THEN RAISE EXCEPTION 'orchestrator_gaac_invalid_source_provenance'; END IF;
         IF NEW.review_case_id IS NOT NULL THEN
           SELECT * INTO review_attempt FROM orchestrator_google_ads_rereconciliation_attempts
             WHERE tenant_id=NEW.tenant_id AND id=NEW.rereconciliation_attempt_id;
@@ -7948,7 +7970,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     'orchestrator_gaac_lifecycle',
     `confirmed_at<=issued_at AND confirmed_at>=issued_at-interval '5 minutes'
       AND expires_at>issued_at AND expires_at<=issued_at+interval '10 minutes' AND
-      (reserved_at IS NULL OR reserved_at>=issued_at) AND (consumed_at IS NULL OR consumed_at>=reserved_at)
+      (reserved_at IS NULL OR (reserved_at>=issued_at AND reserved_at<=expires_at))
+      AND (consumed_at IS NULL OR (consumed_at>=reserved_at AND consumed_at<=expires_at))
       AND (revoked_at IS NULL OR revoked_at>=issued_at) AND
       ((status='issued' AND reservation_id_hash IS NULL AND reserved_at IS NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)
       OR (status='reserved' AND reservation_id_hash IS NOT NULL AND reserved_at IS NOT NULL AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL)

@@ -48,6 +48,14 @@ test('observing creation commits before provider observation and rolls back an a
   authority.observeWithConsumedCredential=async()=>{log.push('provider');return complete();};
   log.length=0;await R._test.observe(pool,{});
   assert.deepEqual(log.slice(0,3),['BEGIN','provider','COMMIT']);
+
+  authority.observeWithConsumedCredential=async()=>{const error=Object.assign(new Error('grant revoked'),
+    {blocked:true,commit_rejection_audit:true});throw error;};
+  log.length=0;await assert.rejects(R._test.observe(pool,{}),(e)=>e.commit_rejection_audit===true);
+  assert.deepEqual(log.slice(0,2),['BEGIN','COMMIT']);
+  authority.observeWithConsumedCredential=async()=>{throw new Error('transport down');};
+  log.length=0;await assert.rejects(R._test.observe(pool,{}),/transport down/);
+  assert.deepEqual(log.slice(0,2),['BEGIN','ROLLBACK']);
 });
 
 test('lease is bounded and established from one PostgreSQL clock read under the authority lock',()=>{

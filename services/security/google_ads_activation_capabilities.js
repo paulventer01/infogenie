@@ -26,7 +26,7 @@ function project(r,replay=false){const iso=k=>r[k]?new Date(r[k]).toISOString():
 // Locks every mutable authority row. The selected reconciliation must be the
 // latest completed lineage for the operation. Once review exists, only the
 // verified run produced by the current, correctly closed review may qualify.
-async function authoritative(c,tenantId,actorId,runId){
+async function authoritative(c,tenantId,actorId,runId,{requireOpenSwitches=true}={}){
  const lineage=await c.query(`SELECT operation_id FROM orchestrator_google_ads_reconciliation_runs WHERE tenant_id=$1 AND id=$2`,[tenantId,runId]);
  if(lineage.rowCount!==1)throw deny('authority_not_found');const operationId=lineage.rows[0].operation_id;
  const operation=await c.query(`SELECT id FROM orchestrator_google_ads_provider_draft_operations WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,operationId]);
@@ -38,6 +38,7 @@ async function authoritative(c,tenantId,actorId,runId){
   pr.publish_approval_id AS request_approval_id,pr.workflow_approval_id AS request_workflow_approval_id,
   pa.revision AS approval_revision,pa.contract_hash AS approval_contract_hash,pa.revoked_at AS approval_revoked_at,
   pa.expires_at AS approval_expires_at,(pa.expires_at>clock_timestamp()) approval_active,
+  g.active AS global_switch_active,k.active AS tenant_switch_active,
   di.intent_hash AS current_intent_hash,cred.owner_user_id,cred.version AS current_credential_version,cred.status AS credential_status,
   ra.id AS rereconciliation_attempt_id,rc.state AS review_state,rc.version AS current_review_version,
   (SELECT count(*) FROM orchestrator_google_ads_provider_draft_objects ob WHERE ob.tenant_id=op.tenant_id AND ob.operation_id=op.id
@@ -53,8 +54,8 @@ async function authoritative(c,tenantId,actorId,runId){
  JOIN tenants t ON t.id=op.tenant_id AND t.status='active'
  JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$3 AND tu.status='active'
  JOIN roles role ON role.id=tu.role_id AND (role.tenant_id=t.id OR role.tenant_id IS NULL) AND role.permissions ? $4
- JOIN orchestrator_advertising_global_kill_switches g ON g.switch_key='google_ads_activation' AND g.active=FALSE
- JOIN orchestrator_advertising_tenant_kill_switches k ON k.tenant_id=t.id AND k.switch_key='google_ads_activation' AND k.active=FALSE
+ JOIN orchestrator_advertising_global_kill_switches g ON g.switch_key='google_ads_activation'
+ JOIN orchestrator_advertising_tenant_kill_switches k ON k.tenant_id=t.id AND k.switch_key='google_ads_activation'
  LEFT JOIN orchestrator_google_ads_rereconciliation_attempts ra ON ra.tenant_id=run.tenant_id AND ra.new_reconciliation_run_id=run.id
  LEFT JOIN orchestrator_google_ads_reconciliation_review_cases rc ON rc.tenant_id=ra.tenant_id AND rc.id=ra.review_case_id
  WHERE run.tenant_id=$1 AND run.id=$2 AND run.operation_id=$5
@@ -62,7 +63,8 @@ async function authoritative(c,tenantId,actorId,runId){
  if(r.rowCount!==1)throw deny('authority_not_found');const x=r.rows[0];
  const reviews=await c.query(`SELECT id,state,version FROM orchestrator_google_ads_reconciliation_review_cases WHERE tenant_id=$1 AND operation_id=$2 FOR UPDATE`,[tenantId,x.operation_id]);
  const newer=await c.query(`SELECT 1 FROM orchestrator_google_ads_reconciliation_runs WHERE tenant_id=$1 AND operation_id=$2 AND (created_at,id)>( $3,$4) LIMIT 1 FOR UPDATE`,[tenantId,x.operation_id,x.created_at,x.id]);
- if(x.state!=='verified'||!x.completed_at||newer.rowCount||x.external_action_taken!==true||Number(x.object_count)!==3
+ if((requireOpenSwitches&&(x.global_switch_active===true||x.tenant_switch_active===true))
+   ||x.state!=='verified'||!x.completed_at||newer.rowCount||x.external_action_taken!==true||Number(x.object_count)!==3
    ||x.draft_status!=='approved_for_publish'||Number(x.current_revision)!==Number(x.draft_revision)||Number(x.request_revision)!==Number(x.draft_revision)
    ||Number(x.approval_revision)!==Number(x.draft_revision)||!same(x.contract_hash,x.request_contract_hash)||!same(x.contract_hash,x.approval_contract_hash)
    ||!same(x.publish_approval_id,x.request_approval_id)||Number(x.workflow_approval_id)!==Number(x.request_workflow_approval_id)
@@ -75,8 +77,10 @@ async function authoritative(c,tenantId,actorId,runId){
 function bound(cap,x){return [['workflow_id','workflow_id'],['draft_id','draft_id'],['contract_hash','contract_hash'],['publishing_request_id','publishing_request_id'],
  ['publish_approval_id','publish_approval_id'],['snapshot_hash','snapshot_hash'],['intent_id','intent_id'],['intent_hash','intent_hash'],['operation_id','operation_id'],
  ['source_authorization_id','authorization_id'],['reconciliation_run_id','id'],['review_case_id','review_case_id'],['closure_event_id','closure_event_id'],
- ['rereconciliation_attempt_id','rereconciliation_attempt_id'],['credential_ref_id','credential_ref_id'],['account_fingerprint','account_fingerprint'],['ledger_root_hash','ledger_root_hash']]
+ ['rereconciliation_attempt_id','rereconciliation_attempt_id'],['credential_owner_user_id','credential_owner_user_id'],
+ ['credential_ref_id','credential_ref_id'],['account_fingerprint','account_fingerprint'],['ledger_root_hash','ledger_root_hash']]
  .every(([a,b])=>same(String(cap[a]),String(x[b])))&&Number(cap.draft_revision)===Number(x.draft_revision)
+ &&Number(cap.workflow_approval_id)===Number(x.workflow_approval_id)
  &&Number(cap.review_version||0)===Number(x.review_version||0)&&Number(cap.credential_ref_version)===Number(x.credential_ref_version);}
 async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),ttl=o.ttlMs===undefined?DEFAULT_TTL_MS:integer(o.ttlMs),confirmedAt=new Date(o.confirmedAt);
  if(!tenantId||!valid(o.reconciliationRunId)||!valid(o.confirmationId)||o.confirmation!==CONFIRMATION||!ttl||ttl>MAX_TTL_MS
@@ -102,9 +106,9 @@ async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),t
   return replay(winner);
  }
  row.status='issued';row.issued_at=now;row.expires_at=new Date(now.getTime()+ttl);row.reconciliation_run_id=x.id;await audit(c,row,actor,'google_ads_activation_capability_issued','issued');return project(row);}
-async function locked(c,o,states){const tenantId=integer(o.tenantId),actor=human(o);if(!tenantId||!valid(o.capabilityId))throw deny('capability_rejected');
+async function locked(c,o,states,{requireOpenSwitches=true}={}){const tenantId=integer(o.tenantId),actor=human(o);if(!tenantId||!valid(o.capabilityId))throw deny('capability_rejected');
  const hint=await c.query(`SELECT reconciliation_run_id FROM ${TABLE} WHERE tenant_id=$1 AND id=$2`,[tenantId,String(o.capabilityId)]);if(hint.rowCount!==1)throw deny('capability_rejected');
- const authority=await authoritative(c,tenantId,actor,hint.rows[0].reconciliation_run_id);
+ const authority=await authoritative(c,tenantId,actor,hint.rows[0].reconciliation_run_id,{requireOpenSwitches});
  const q=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,String(o.capabilityId)]);if(q.rowCount!==1)throw deny('capability_rejected');const cap=q.rows[0];
  if(Number(cap.actor_user_id)!==actor||!same(cap.session_id_hash,hash(o.sessionId)))throw deny('capability_rejected');
  if(!same(cap.reconciliation_run_id,hint.rows[0].reconciliation_run_id)||!bound(cap,authority))throw deny('authoritative_binding_mismatch');
@@ -113,13 +117,16 @@ async function locked(c,o,states){const tenantId=integer(o.tenantId),actor=human
  if(TERMINAL.includes(cap.status))return {terminal:true,cap,actor};if(!states.includes(cap.status))throw deny('capability_rejected');
  if(!(new Date(cap.expires_at)>now)){await c.query(`UPDATE ${TABLE} SET status='expired' WHERE tenant_id=$1 AND id=$2`,[tenantId,cap.id]);cap.status='expired';await audit(c,cap,actor,'google_ads_activation_capability_expired','expired');return {terminal:true,cap,actor};}
  return {tenantId,actor,cap,now};}
-async function reserve(c,o={}){if(!valid(o.reservationId))throw deny('validation_failed');const x=await locked(c,o,['issued','reserved']);if(x.terminal)return project(x.cap,true);
+async function reserve(c,o={}){if(!valid(o.reservationId))throw deny('validation_failed');const x=await locked(c,o,['issued','reserved']);if(x.terminal){
+ if(x.cap.status==='expired')return project(x.cap,true);
+ if(x.cap.status!=='consumed'||!same(x.cap.reservation_id_hash,hash(o.reservationId)))throw deny('capability_rejected');return project(x.cap,true);}
  if(x.cap.status==='reserved'){if(!same(x.cap.reservation_id_hash,hash(o.reservationId)))throw deny('capability_rejected');return project(x.cap,true);}
  await c.query(`UPDATE ${TABLE} SET status='reserved',reservation_id_hash=$3,reserved_at=$4 WHERE tenant_id=$1 AND id=$2`,[x.tenantId,x.cap.id,hash(o.reservationId),x.now]);x.cap.status='reserved';x.cap.reserved_at=x.now;await audit(c,x.cap,x.actor,'google_ads_activation_capability_reserved','reserved');return project(x.cap);}
 async function consume(c,o={}){if(!valid(o.reservationId)||!valid(o.invocationId))throw deny('validation_failed');const x=await locked(c,o,['reserved']);if(x.terminal){
  if(x.cap.status==='expired')return project(x.cap,true);
  if(x.cap.status!=='consumed'||!same(x.cap.reservation_id_hash,hash(o.reservationId))||!same(x.cap.invocation_id_hash,hash(o.invocationId)))throw deny('capability_rejected');return project(x.cap,true);}
  if(!same(x.cap.reservation_id_hash,hash(o.reservationId)))throw deny('capability_rejected');await c.query(`UPDATE ${TABLE} SET status='consumed',invocation_id_hash=$3,consumed_at=$4 WHERE tenant_id=$1 AND id=$2`,[x.tenantId,x.cap.id,hash(o.invocationId),x.now]);x.cap.status='consumed';x.cap.consumed_at=x.now;await audit(c,x.cap,x.actor,'google_ads_activation_capability_consumed','consumed');return project(x.cap);}
-async function revoke(c,o={}){const x=await locked(c,o,['issued','reserved']);if(x.terminal)return project(x.cap,true);await c.query(`UPDATE ${TABLE} SET status='revoked',revoked_at=$3,revoked_by=$4 WHERE tenant_id=$1 AND id=$2`,[x.tenantId,x.cap.id,x.now,x.actor]);x.cap.status='revoked';x.cap.revoked_at=x.now;await audit(c,x.cap,x.actor,'google_ads_activation_capability_revoked','revoked');return project(x.cap);}
+async function revoke(c,o={}){const x=await locked(c,o,['issued','reserved'],{requireOpenSwitches:false});if(x.terminal)return project(x.cap,true);await c.query(`UPDATE ${TABLE} SET status='revoked',revoked_at=$3,revoked_by=$4 WHERE tenant_id=$1 AND id=$2`,[x.tenantId,x.cap.id,x.now,x.actor]);x.cap.status='revoked';x.cap.revoked_at=x.now;await audit(c,x.cap,x.actor,'google_ads_activation_capability_revoked','revoked');return project(x.cap);}
 async function get(c,o={}){const x=await locked(c,o,['issued','reserved']);return project(x.cap,true);}
-module.exports={PERMISSION,CONFIRMATION,MAX_CONFIRMATION_AGE_MS,MAX_TTL_MS,issue,reserve,consume,revoke,get,_authoritative:authoritative,_deny:deny,_human:human};
+module.exports={PERMISSION,CONFIRMATION,MAX_CONFIRMATION_AGE_MS,MAX_TTL_MS,issue,reserve,consume,revoke,get,
+ _authoritative:authoritative,_bound:bound,_deny:deny,_human:human};

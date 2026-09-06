@@ -15,8 +15,10 @@ test('schema binds full Google authority and consume-once review lineage',()=>{
  assert.match(source,/confirmed_at>=issued_at-interval '5 minutes'/);
  assert.match(source,/_ensureNamedCheck\(p, 'orchestrator_google_ads_activation_capabilities',[\s\S]*'orchestrator_gaac_lifecycle'/);
  assert.match(source,/expires_at<=issued_at\+interval '10 minutes'/);
- assert.match(source,/reserved_at IS NULL OR reserved_at>=issued_at/);
- assert.match(source,/consumed_at IS NULL OR consumed_at>=reserved_at/);
+ assert.match(source,/reserved_at IS NULL OR \(reserved_at>=issued_at/);
+ assert.match(source,/consumed_at IS NULL OR \(consumed_at>=reserved_at/);
+ assert.match(source,/reserved_at<=expires_at/);
+ assert.match(source,/consumed_at<=expires_at/);
  assert.match(source,/revoked_at IS NULL OR revoked_at>=issued_at/);
  assert.match(source,/TG_OP='INSERT'/);assert.match(source,/orchestrator_gaac_invalid_initial_state/);
  assert.match(source,/status='consumed'[\s\S]*revoked_by IS NULL/);
@@ -26,4 +28,7 @@ test('schema binds full Google authority and consume-once review lineage',()=>{
  assert.match(source,/orchestrator_google_ads_rereconciliation_attempts/);
  assert.match(source,/review_attempt\.new_authorization_id<>NEW\.source_authorization_id/);
  assert.match(source,/review_attempt\.new_reconciliation_run_id<>NEW\.reconciliation_run_id/);
+ assert.match(source,/orchestrator_gaac_invalid_source_provenance/);
+ for(const field of ['authorization_id','operation_id','workflow_approval_id','request_workflow_approval_id','credential_owner_user_id','credential_ref_owner_user_id'])
+  assert.match(source,new RegExp(`source_graph\\.${field}`));
 });

@@ -200,7 +200,7 @@ async function observe(pool,opts) {
     await client.query('BEGIN');
     const result=await authority.observeWithConsumedCredential(client,opts);
     await client.query('COMMIT');return result;
-  } catch(error){try{await client.query('ROLLBACK');}catch(_){}throw error;}
+  } catch(error){try{await client.query(error&&error.commit_rejection_audit===true?'COMMIT':'ROLLBACK');}catch(_){}throw error;}
   finally{client.release();}
 }
 
