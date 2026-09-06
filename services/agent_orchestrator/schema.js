@@ -8094,6 +8094,12 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         OR NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.started_at IS DISTINCT FROM OLD.started_at
         OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
       THEN RAISE EXCEPTION 'orchestrator_gaact_immutable_or_invalid_transition'; END IF;
+      SELECT count(*) INTO object_count FROM orchestrator_google_ads_activation_object_outcomes
+        WHERE tenant_id=NEW.tenant_id AND activation_attempt_id=NEW.id
+          AND outcome=NEW.status AND result_code=NEW.result_code
+          AND requires_reconciliation=NEW.requires_reconciliation
+          AND external_action_taken IS NOT DISTINCT FROM NEW.external_action_taken;
+      IF object_count<>2 THEN RAISE EXCEPTION 'orchestrator_gaact_object_outcome_mismatch'; END IF;
       RETURN NEW;
     END;$fn$ LANGUAGE plpgsql;
     CREATE OR REPLACE FUNCTION orchestrator_gaacto_guard() RETURNS trigger AS $fn$
