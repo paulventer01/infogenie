@@ -959,6 +959,31 @@ async function withTenantMetaCredentialSecretForConsumedProviderDraft(pool, opts
   return fn(handle);
 }
 
+// Pinned production token transport. It accepts only the sealed request created
+// below, follows no redirect, returns no raw response and never retries.
+function googleAdsOAuthTokenTransport(request) {
+  const kinds = [GOOGLE_ADS_TOKEN_REQUEST_KIND, GOOGLE_ADS_ACTIVATION_TOKEN_REQUEST_KIND];
+  if (!request || !kinds.includes(request.object_kind) || request.url !== GOOGLE_ADS_OAUTH_TOKEN_URL
+    || request.method !== 'POST' || request.grant_type !== 'refresh_token') {
+    return Promise.reject(_credError('token_exchange_failed', 'google ads token exchange failed'));
+  }
+  let body;
+  try { body = new URLSearchParams({client_id: request.clientId, client_secret: request.clientSecret,
+    refresh_token: request.refreshToken, grant_type: 'refresh_token'}).toString(); }
+  catch (_e) { return Promise.reject(_credError('token_exchange_failed', 'google ads token exchange failed')); }
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = []; let settled = false;
+    const fail = () => { if (!settled) { settled = true; reject(_credError('token_exchange_failed', 'google ads token exchange failed')); } };
+    const req = https.request(GOOGLE_ADS_OAUTH_TOKEN_URL, {method: 'POST', timeout: request.timeoutMs,
+      headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body)}}, (res) => {
+      if (res.statusCode < 200 || res.statusCode >= 300) { res.resume(); return fail(); }
+      res.on('data', (chunk) => { size += chunk.length; if (size > 65536) { req.destroy(); fail(); } else chunks.push(chunk); });
+      res.on('end', () => { if (settled) return; let parsed; try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (_e) { return fail(); } settled = true; resolve(parsed); });
+    });
+    req.on('timeout', () => { req.destroy(); fail(); }); req.on('error', fail); req.end(body);
+  });
+}
+
 // ── PR10B.2a Google Ads paused-draft SECRET boundary ─────────────────────
 //
 // Last-responsible-moment secret scope for one already-funded Google Ads
@@ -1030,31 +1055,6 @@ function isGoogleAdsPausedDraftSecretScope(value) {
 function isGoogleAdsActivationSecretScope(value) {
   try { return !!value && typeof value === 'object' && value[_GA_ACTIVATION_SECRET_BRAND] === true
     && value.object_kind === GOOGLE_ADS_ACTIVATION_SECRET_SCOPE_KIND; } catch (_e) { return false; }
-}
-
-// Pinned production token transport. It accepts only the sealed request created
-// below, follows no redirect, returns no raw response and never retries.
-function googleAdsOAuthTokenTransport(request) {
-  const kinds = [GOOGLE_ADS_TOKEN_REQUEST_KIND, GOOGLE_ADS_ACTIVATION_TOKEN_REQUEST_KIND];
-  if (!request || !kinds.includes(request.object_kind) || request.url !== GOOGLE_ADS_OAUTH_TOKEN_URL
-    || request.method !== 'POST' || request.grant_type !== 'refresh_token') {
-    return Promise.reject(_credError('token_exchange_failed', 'google ads token exchange failed'));
-  }
-  let body;
-  try { body = new URLSearchParams({client_id: request.clientId, client_secret: request.clientSecret,
-    refresh_token: request.refreshToken, grant_type: 'refresh_token'}).toString(); }
-  catch (_e) { return Promise.reject(_credError('token_exchange_failed', 'google ads token exchange failed')); }
-  return new Promise((resolve, reject) => {
-    let size = 0; const chunks = []; let settled = false;
-    const fail = () => { if (!settled) { settled = true; reject(_credError('token_exchange_failed', 'google ads token exchange failed')); } };
-    const req = https.request(GOOGLE_ADS_OAUTH_TOKEN_URL, {method: 'POST', timeout: request.timeoutMs,
-      headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body)}}, (res) => {
-      if (res.statusCode < 200 || res.statusCode >= 300) { res.resume(); return fail(); }
-      res.on('data', (chunk) => { size += chunk.length; if (size > 65536) { req.destroy(); fail(); } else chunks.push(chunk); });
-      res.on('end', () => { if (settled) return; let parsed; try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (_e) { return fail(); } settled = true; resolve(parsed); });
-    });
-    req.on('timeout', () => { req.destroy(); fail(); }); req.on('error', fail); req.end(body);
-  });
 }
 
 // One exchange, hard deadline, no retry. Transport rejections are re-wrapped so
