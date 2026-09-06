@@ -17,6 +17,7 @@
 //          loginCustomerId? } for Google Ads).
 
 const crypto = require('crypto');
+const https = require('https');
 const _db = require('../../db');
 
 const ALG = 'aes-256-gcm';
@@ -958,6 +959,31 @@ async function withTenantMetaCredentialSecretForConsumedProviderDraft(pool, opts
   return fn(handle);
 }
 
+// Pinned production token transport. It accepts only the sealed request created
+// below, follows no redirect, returns no raw response and never retries.
+function googleAdsOAuthTokenTransport(request) {
+  const kinds = [GOOGLE_ADS_TOKEN_REQUEST_KIND, GOOGLE_ADS_ACTIVATION_TOKEN_REQUEST_KIND];
+  if (!request || !kinds.includes(request.object_kind) || request.url !== GOOGLE_ADS_OAUTH_TOKEN_URL
+    || request.method !== 'POST' || request.grant_type !== 'refresh_token') {
+    return Promise.reject(_credError('token_exchange_failed', 'google ads token exchange failed'));
+  }
+  let body;
+  try { body = new URLSearchParams({client_id: request.clientId, client_secret: request.clientSecret,
+    refresh_token: request.refreshToken, grant_type: 'refresh_token'}).toString(); }
+  catch (_e) { return Promise.reject(_credError('token_exchange_failed', 'google ads token exchange failed')); }
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = []; let settled = false;
+    const fail = () => { if (!settled) { settled = true; reject(_credError('token_exchange_failed', 'google ads token exchange failed')); } };
+    const req = https.request(GOOGLE_ADS_OAUTH_TOKEN_URL, {method: 'POST', timeout: request.timeoutMs,
+      headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body)}}, (res) => {
+      if (res.statusCode < 200 || res.statusCode >= 300) { res.resume(); return fail(); }
+      res.on('data', (chunk) => { size += chunk.length; if (size > 65536) { req.destroy(); fail(); } else chunks.push(chunk); });
+      res.on('end', () => { if (settled) return; let parsed; try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (_e) { return fail(); } settled = true; resolve(parsed); });
+    });
+    req.on('timeout', () => { req.destroy(); fail(); }); req.on('error', fail); req.end(body);
+  });
+}
+
 // ── PR10B.2a Google Ads paused-draft SECRET boundary ─────────────────────
 //
 // Last-responsible-moment secret scope for one already-funded Google Ads
@@ -987,6 +1013,9 @@ const GOOGLE_ADS_MAX_TOKEN_LIFETIME_S = 86400;
 const GOOGLE_ADS_SECRET_SCOPE_KIND = 'google_ads_paused_draft_secret_scope';
 const GOOGLE_ADS_TOKEN_REQUEST_KIND = 'google_ads_paused_draft_token_request';
 const _GA_SECRET_BRAND = Symbol.for('infogenie.google_ads_paused_draft_secret_scope');
+const GOOGLE_ADS_ACTIVATION_SECRET_SCOPE_KIND = 'google_ads_activation_secret_scope';
+const GOOGLE_ADS_ACTIVATION_TOKEN_REQUEST_KIND = 'google_ads_activation_token_request';
+const _GA_ACTIVATION_SECRET_BRAND = Symbol.for('infogenie.google_ads_activation_secret_scope');
 
 function _gaSecret(value, max) {
   const s = typeof value === 'string' ? value : '';
@@ -996,7 +1025,7 @@ function _gaSecret(value, max) {
 
 // Enumerable metadata is safe to log. Secret fields are non-enumerable, so
 // JSON.stringify, spread, Object.keys and inspection see nothing at all.
-function _gaSealed(kind, safe, secret, live) {
+function _gaSealed(kind, safe, secret, live, brand = _GA_SECRET_BRAND) {
   const obj = Object.create(null);
   const def = (key, value, enumerable) => Object.defineProperty(obj, key, {
     value, enumerable, writable: false, configurable: false,
@@ -1014,7 +1043,7 @@ function _gaSealed(kind, safe, secret, live) {
       },
     });
   }
-  def(_GA_SECRET_BRAND, true, false);
+  def(brand, true, false);
   def('toJSON', () => { throw _credError('validation_failed', `${kind} is not serializable`); }, false);
   def(Symbol.for('nodejs.util.inspect.custom'), () => `[${kind} redacted]`, false);
   return Object.freeze(obj);
@@ -1022,6 +1051,10 @@ function _gaSealed(kind, safe, secret, live) {
 
 function isGoogleAdsPausedDraftSecretScope(value) {
   try { return !!value && typeof value === 'object' && value[_GA_SECRET_BRAND] === true; } catch (_e) { return false; }
+}
+function isGoogleAdsActivationSecretScope(value) {
+  try { return !!value && typeof value === 'object' && value[_GA_ACTIVATION_SECRET_BRAND] === true
+    && value.object_kind === GOOGLE_ADS_ACTIVATION_SECRET_SCOPE_KIND; } catch (_e) { return false; }
 }
 
 // One exchange, hard deadline, no retry. Transport rejections are re-wrapped so
@@ -1053,7 +1086,7 @@ async function _gaExchangeAccessToken(transport, timeoutMs, request) {
  * whatever `fn` returns; the boundary itself yields no token, customer id or
  * fingerprint.
  */
-async function withGoogleAdsPausedDraftSecretScope(client, opts, fn) {
+async function _withGoogleAdsSecretScope(client, opts, fn, profile) {
   const c = _requireTxClient(client);
   const o = opts || {};
   const timeoutMs = _positiveInt(o.tokenTimeoutMs) || GOOGLE_ADS_TOKEN_TIMEOUT_MS;
@@ -1113,19 +1146,30 @@ async function withGoogleAdsPausedDraftSecretScope(client, opts, fn) {
   }
 
   let exchangeOpen = true; let scopeOpen = true;
-  const request = _gaSealed(GOOGLE_ADS_TOKEN_REQUEST_KIND, {
+  const request = _gaSealed(profile.tokenKind, {
     url: GOOGLE_ADS_OAUTH_TOKEN_URL, method: 'POST', grant_type: 'refresh_token', timeoutMs,
-  }, { clientId, clientSecret, refreshToken }, () => exchangeOpen);
+  }, { clientId, clientSecret, refreshToken }, () => exchangeOpen, profile.brand);
   let token;
   try { token = await _gaExchangeAccessToken(o.tokenTransport, timeoutMs, request); } finally { exchangeOpen = false; }
-  const handle = _gaSealed(GOOGLE_ADS_SECRET_SCOPE_KIND, {
+  const handle = _gaSealed(profile.scopeKind, {
     credential_ref_id: reference.credential_ref_id,
     credential_ref_version: reference.credential_ref_version,
     account_fingerprint_matches: true,
     access_token_expires_at: token.expiresAt,
     has_secret_access: true,
-  }, { accessToken: token.accessToken, developerToken, customerId, loginCustomerId }, () => scopeOpen);
+  }, { accessToken: token.accessToken, developerToken, customerId, loginCustomerId }, () => scopeOpen, profile.brand);
   try { return await fn(handle); } finally { scopeOpen = false; }
+}
+async function withGoogleAdsPausedDraftSecretScope(client, opts, fn) {
+  return _withGoogleAdsSecretScope(client, opts, fn, {
+    tokenKind: GOOGLE_ADS_TOKEN_REQUEST_KIND, scopeKind: GOOGLE_ADS_SECRET_SCOPE_KIND, brand: _GA_SECRET_BRAND,
+  });
+}
+async function withGoogleAdsActivationSecretScope(client, opts, fn) {
+  return _withGoogleAdsSecretScope(client, opts, fn, {
+    tokenKind: GOOGLE_ADS_ACTIVATION_TOKEN_REQUEST_KIND, scopeKind: GOOGLE_ADS_ACTIVATION_SECRET_SCOPE_KIND,
+    brand: _GA_ACTIVATION_SECRET_BRAND,
+  });
 }
 
 // ── Simple API-key vault (tenant-scoped, kv_store, AES-256-GCM) ──────────
@@ -1215,4 +1259,7 @@ module.exports = {
   GOOGLE_ADS_MAX_TOKEN_TIMEOUT_MS,
   isGoogleAdsPausedDraftSecretScope,
   withGoogleAdsPausedDraftSecretScope,
+  isGoogleAdsActivationSecretScope,
+  withGoogleAdsActivationSecretScope,
+  googleAdsOAuthTokenTransport,
 };
