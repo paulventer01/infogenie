@@ -1051,7 +1051,7 @@ function googleAdsOAuthTokenTransport(request) {
       headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body)}}, (res) => {
       if (res.statusCode < 200 || res.statusCode >= 300) { res.resume(); return fail(); }
       res.on('data', (chunk) => { size += chunk.length; if (size > 65536) { req.destroy(); fail(); } else chunks.push(chunk); });
-      res.on('end', () => { if (settled) return; try { settled = true; resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch (_e) { fail(); } });
+      res.on('end', () => { if (settled) return; let parsed; try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (_e) { return fail(); } settled = true; resolve(parsed); });
     });
     req.on('timeout', () => { req.destroy(); fail(); }); req.on('error', fail); req.end(body);
   });
