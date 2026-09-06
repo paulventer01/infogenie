@@ -20,8 +20,9 @@ test('schema binds full Google authority and consume-once review lineage',()=>{
  assert.match(source,/ADD COLUMN IF NOT EXISTS approval_expires_at TIMESTAMPTZ/);
  assert.match(source,/reserved_at IS NULL OR \(reserved_at>=issued_at/);
  assert.match(source,/consumed_at IS NULL OR \(consumed_at>=reserved_at/);
- assert.match(source,/reserved_at<=expires_at/);
- assert.match(source,/consumed_at<=expires_at/);
+ assert.match(source,/reserved_at<expires_at/);
+ assert.match(source,/consumed_at<expires_at/);
+ assert.match(source,/revoked_at<expires_at/);
  assert.match(source,/revoked_at IS NULL OR revoked_at>=issued_at/);
  assert.match(source,/TG_OP='INSERT'/);assert.match(source,/orchestrator_gaac_invalid_initial_state/);
  assert.match(source,/status='consumed'[\s\S]*revoked_by IS NULL/);
