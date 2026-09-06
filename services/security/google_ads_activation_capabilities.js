@@ -11,6 +11,7 @@ const TERMINAL=['consumed','revoked','expired'];
 const hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 const valid=v=>SAFE.test(String(v||''));
 const integer=v=>Number.isSafeInteger(Number(v))&&Number(v)>0?Number(v):null;
+const cappedExpiry=(issuedAt,ttl,approvalExpiresAt)=>new Date(Math.min(issuedAt.getTime()+ttl,new Date(approvalExpiresAt).getTime()));
 function deny(code){const e=new Error(code);e.code=code;e.blocked=true;e.external_action_taken=false;return e;}
 function same(a,b){if(typeof a!=='string'||typeof b!=='string')return false;const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&crypto.timingSafeEqual(x,y);}
 function human(o){const id=integer(o?.actorUserId);if(!id||o.actorType!=='human'||!valid(o.sessionId)
@@ -26,7 +27,7 @@ function project(r,replay=false){const iso=k=>r[k]?new Date(r[k]).toISOString():
 // Locks every mutable authority row. The selected reconciliation must be the
 // latest completed lineage for the operation. Once review exists, only the
 // verified run produced by the current, correctly closed review may qualify.
-async function authoritative(c,tenantId,actorId,runId,{requireOpenSwitches=true}={}){
+async function authoritative(c,tenantId,actorId,runId,{requireOpenSwitches=true,allowExpiredApproval=false}={}){
  const lineage=await c.query(`SELECT operation_id FROM orchestrator_google_ads_reconciliation_runs WHERE tenant_id=$1 AND id=$2`,[tenantId,runId]);
  if(lineage.rowCount!==1)throw deny('authority_not_found');const operationId=lineage.rows[0].operation_id;
  const operation=await c.query(`SELECT id FROM orchestrator_google_ads_provider_draft_operations WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,operationId]);
@@ -68,7 +69,7 @@ async function authoritative(c,tenantId,actorId,runId,{requireOpenSwitches=true}
    ||x.draft_status!=='approved_for_publish'||Number(x.current_revision)!==Number(x.draft_revision)||Number(x.request_revision)!==Number(x.draft_revision)
    ||Number(x.approval_revision)!==Number(x.draft_revision)||!same(x.contract_hash,x.request_contract_hash)||!same(x.contract_hash,x.approval_contract_hash)
    ||!same(x.publish_approval_id,x.request_approval_id)||Number(x.workflow_approval_id)!==Number(x.request_workflow_approval_id)
-   ||x.approval_revoked_at||x.approval_active!==true||!same(x.intent_hash,x.current_intent_hash)
+   ||x.approval_revoked_at||(!allowExpiredApproval&&x.approval_active!==true)||!same(x.intent_hash,x.current_intent_hash)
    ||x.credential_status!=='active'||Number(x.credential_ref_version)!==Number(x.current_credential_version)
    ||Number(x.credential_owner_user_id)!==Number(x.owner_user_id))throw deny('authoritative_binding_mismatch');
  if(reviews.rowCount&&(!x.rereconciliation_attempt_id||x.purpose!=='post_review'||x.review_state!=='closed'
@@ -81,6 +82,7 @@ function bound(cap,x){return [['workflow_id','workflow_id'],['draft_id','draft_i
  ['credential_ref_id','credential_ref_id'],['account_fingerprint','account_fingerprint'],['ledger_root_hash','ledger_root_hash']]
  .every(([a,b])=>same(String(cap[a]),String(x[b])))&&Number(cap.draft_revision)===Number(x.draft_revision)
  &&Number(cap.workflow_approval_id)===Number(x.workflow_approval_id)
+ &&new Date(cap.approval_expires_at).getTime()===new Date(x.approval_expires_at).getTime()
  &&Number(cap.review_version||0)===Number(x.review_version||0)&&Number(cap.credential_ref_version)===Number(x.credential_ref_version);}
 async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),ttl=o.ttlMs===undefined?DEFAULT_TTL_MS:integer(o.ttlMs),confirmedAt=new Date(o.confirmedAt);
  if(!tenantId||!valid(o.reconciliationRunId)||!valid(o.confirmationId)||o.confirmation!==CONFIRMATION||!ttl||ttl>MAX_TTL_MS
@@ -98,24 +100,25 @@ async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),t
  if(confirmedAt>now||now-confirmedAt>MAX_CONFIRMATION_AGE_MS)throw deny('fresh_confirmation_required');
  const row={...x,tenant_id:tenantId,id:`gaac_${crypto.randomUUID()}`};
  await c.query('SAVEPOINT google_ads_activation_issue');
- try{await c.query(`INSERT INTO ${TABLE}(tenant_id,id,actor_user_id,session_id_hash,workflow_id,draft_id,draft_revision,contract_hash,publishing_request_id,publish_approval_id,workflow_approval_id,snapshot_hash,intent_id,intent_hash,operation_id,source_authorization_id,reconciliation_run_id,review_case_id,review_version,closure_event_id,rereconciliation_attempt_id,credential_owner_user_id,credential_ref_id,credential_ref_version,account_fingerprint,ledger_root_hash,confirmation_hash,confirmed_at,issued_at,expires_at,audit_ref)
- VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)`,[tenantId,row.id,actor,hash(o.sessionId),x.workflow_id,x.draft_id,x.draft_revision,x.contract_hash,x.publishing_request_id,x.publish_approval_id,x.workflow_approval_id,x.snapshot_hash,x.intent_id,x.intent_hash,x.operation_id,x.authorization_id,x.id,x.review_case_id,x.review_version,x.closure_event_id,x.rereconciliation_attempt_id,x.credential_owner_user_id,x.credential_ref_id,x.credential_ref_version,x.account_fingerprint,x.ledger_root_hash,confirmationHash,confirmedAt,now,new Date(now.getTime()+ttl),`gaac-audit-${crypto.randomUUID()}`]);
+ try{await c.query(`INSERT INTO ${TABLE}(tenant_id,id,actor_user_id,session_id_hash,workflow_id,draft_id,draft_revision,contract_hash,publishing_request_id,publish_approval_id,workflow_approval_id,snapshot_hash,intent_id,intent_hash,operation_id,source_authorization_id,reconciliation_run_id,review_case_id,review_version,closure_event_id,rereconciliation_attempt_id,credential_owner_user_id,credential_ref_id,credential_ref_version,account_fingerprint,ledger_root_hash,confirmation_hash,confirmed_at,issued_at,expires_at,approval_expires_at,audit_ref)
+ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)`,[tenantId,row.id,actor,hash(o.sessionId),x.workflow_id,x.draft_id,x.draft_revision,x.contract_hash,x.publishing_request_id,x.publish_approval_id,x.workflow_approval_id,x.snapshot_hash,x.intent_id,x.intent_hash,x.operation_id,x.authorization_id,x.id,x.review_case_id,x.review_version,x.closure_event_id,x.rereconciliation_attempt_id,x.credential_owner_user_id,x.credential_ref_id,x.credential_ref_version,x.account_fingerprint,x.ledger_root_hash,confirmationHash,confirmedAt,now,cappedExpiry(now,ttl,x.approval_expires_at),x.approval_expires_at,`gaac-audit-${crypto.randomUUID()}`]);
  await c.query('RELEASE SAVEPOINT google_ads_activation_issue');}catch(e){if(e?.code!=='23505')throw e;
   await c.query('ROLLBACK TO SAVEPOINT google_ads_activation_issue');
   const winner=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND (confirmation_hash=$2 OR reconciliation_run_id=$3) FOR UPDATE`,[tenantId,confirmationHash,x.id]);
   return replay(winner);
  }
- row.status='issued';row.issued_at=now;row.expires_at=new Date(now.getTime()+ttl);row.reconciliation_run_id=x.id;await audit(c,row,actor,'google_ads_activation_capability_issued','issued');return project(row);}
+ row.status='issued';row.issued_at=now;row.expires_at=cappedExpiry(now,ttl,x.approval_expires_at);row.approval_expires_at=x.approval_expires_at;row.reconciliation_run_id=x.id;await audit(c,row,actor,'google_ads_activation_capability_issued','issued');return project(row);}
 async function locked(c,o,states,{requireOpenSwitches=true}={}){const tenantId=integer(o.tenantId),actor=human(o);if(!tenantId||!valid(o.capabilityId))throw deny('capability_rejected');
  const hint=await c.query(`SELECT reconciliation_run_id FROM ${TABLE} WHERE tenant_id=$1 AND id=$2`,[tenantId,String(o.capabilityId)]);if(hint.rowCount!==1)throw deny('capability_rejected');
- const authority=await authoritative(c,tenantId,actor,hint.rows[0].reconciliation_run_id,{requireOpenSwitches});
+ const authority=await authoritative(c,tenantId,actor,hint.rows[0].reconciliation_run_id,{requireOpenSwitches,allowExpiredApproval:true});
  const q=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[tenantId,String(o.capabilityId)]);if(q.rowCount!==1)throw deny('capability_rejected');const cap=q.rows[0];
  if(Number(cap.actor_user_id)!==actor||!same(cap.session_id_hash,hash(o.sessionId)))throw deny('capability_rejected');
  if(!same(cap.reconciliation_run_id,hint.rows[0].reconciliation_run_id)||!bound(cap,authority))throw deny('authoritative_binding_mismatch');
  const now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
- if(!(new Date(authority.approval_expires_at)>now))throw deny('authoritative_binding_mismatch');
- if(TERMINAL.includes(cap.status))return {terminal:true,cap,actor};if(!states.includes(cap.status))throw deny('capability_rejected');
+ if(TERMINAL.includes(cap.status)){if(!(new Date(authority.approval_expires_at)>now))throw deny('authoritative_binding_mismatch');return {terminal:true,cap,actor};}
+ if(!states.includes(cap.status))throw deny('capability_rejected');
  if(!(new Date(cap.expires_at)>now)){await c.query(`UPDATE ${TABLE} SET status='expired' WHERE tenant_id=$1 AND id=$2`,[tenantId,cap.id]);cap.status='expired';await audit(c,cap,actor,'google_ads_activation_capability_expired','expired');return {terminal:true,cap,actor};}
+ if(!(new Date(authority.approval_expires_at)>now))throw deny('authoritative_binding_mismatch');
  return {tenantId,actor,cap,now};}
 async function reserve(c,o={}){if(!valid(o.reservationId))throw deny('validation_failed');const x=await locked(c,o,['issued','reserved']);if(x.terminal){
  if(x.cap.status==='expired')return project(x.cap,true);
@@ -129,4 +132,4 @@ async function consume(c,o={}){if(!valid(o.reservationId)||!valid(o.invocationId
 async function revoke(c,o={}){const x=await locked(c,o,['issued','reserved'],{requireOpenSwitches:false});if(x.terminal)return project(x.cap,true);await c.query(`UPDATE ${TABLE} SET status='revoked',revoked_at=$3,revoked_by=$4 WHERE tenant_id=$1 AND id=$2`,[x.tenantId,x.cap.id,x.now,x.actor]);x.cap.status='revoked';x.cap.revoked_at=x.now;await audit(c,x.cap,x.actor,'google_ads_activation_capability_revoked','revoked');return project(x.cap);}
 async function get(c,o={}){const x=await locked(c,o,['issued','reserved']);return project(x.cap,true);}
 module.exports={PERMISSION,CONFIRMATION,MAX_CONFIRMATION_AGE_MS,MAX_TTL_MS,issue,reserve,consume,revoke,get,
- _authoritative:authoritative,_bound:bound,_deny:deny,_human:human};
+ _authoritative:authoritative,_bound:bound,_cappedExpiry:cappedExpiry,_deny:deny,_human:human};

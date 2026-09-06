@@ -7864,7 +7864,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       credential_ref_id TEXT NOT NULL, credential_ref_version INTEGER NOT NULL,
       account_fingerprint TEXT NOT NULL, ledger_root_hash TEXT NOT NULL,
       confirmation_hash TEXT NOT NULL, confirmed_at TIMESTAMPTZ NOT NULL, issued_at TIMESTAMPTZ NOT NULL,
-      expires_at TIMESTAMPTZ NOT NULL, status TEXT NOT NULL DEFAULT 'issued',
+      expires_at TIMESTAMPTZ NOT NULL, approval_expires_at TIMESTAMPTZ NOT NULL, status TEXT NOT NULL DEFAULT 'issued',
       reservation_id_hash TEXT NULL, reserved_at TIMESTAMPTZ NULL,
       invocation_id_hash TEXT NULL, consumed_at TIMESTAMPTZ NULL,
       revoked_at TIMESTAMPTZ NULL, revoked_by INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT,
@@ -7884,7 +7884,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       CONSTRAINT orchestrator_gaac_review CHECK((review_case_id IS NULL AND review_version IS NULL AND closure_event_id IS NULL AND rereconciliation_attempt_id IS NULL)
         OR (review_case_id IS NOT NULL AND review_version>=1 AND closure_event_id IS NOT NULL AND rereconciliation_attempt_id IS NOT NULL)),
       CONSTRAINT orchestrator_gaac_lifecycle CHECK(confirmed_at<=issued_at AND confirmed_at>=issued_at-interval '5 minutes' AND expires_at>issued_at
-        AND expires_at<=issued_at+interval '10 minutes' AND
+        AND expires_at<=issued_at+interval '10 minutes' AND expires_at<=approval_expires_at AND
         (reserved_at IS NULL OR (reserved_at>=issued_at AND reserved_at<=expires_at))
         AND (consumed_at IS NULL OR (consumed_at>=reserved_at AND consumed_at<=expires_at))
         AND (revoked_at IS NULL OR revoked_at>=issued_at) AND
@@ -7903,7 +7903,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
           OR NEW.invocation_id_hash IS NOT NULL OR NEW.consumed_at IS NOT NULL
           OR NEW.revoked_at IS NOT NULL OR NEW.revoked_by IS NOT NULL
         THEN RAISE EXCEPTION 'orchestrator_gaac_invalid_initial_state'; END IF;
-        SELECT run.authorization_id,run.operation_id,a.credential_owner_user_id,
+        SELECT run.authorization_id,run.operation_id,a.credential_owner_user_id,pa.expires_at AS approval_expires_at,
           op.workflow_approval_id,pr.workflow_approval_id AS request_workflow_approval_id,
           cred.owner_user_id AS credential_ref_owner_user_id
           INTO source_graph
@@ -7914,6 +7914,8 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
             ON op.tenant_id=run.tenant_id AND op.id=run.operation_id
           JOIN orchestrator_campaign_publish_requests pr
             ON pr.tenant_id=op.tenant_id AND pr.id=op.publishing_request_id
+          JOIN orchestrator_campaign_publish_approvals pa
+            ON pa.tenant_id=op.tenant_id AND pa.id=op.publish_approval_id
           JOIN orchestrator_tenant_google_ads_credential_refs cred
             ON cred.tenant_id=op.tenant_id AND cred.id=op.credential_ref_id
           WHERE run.tenant_id=NEW.tenant_id AND run.id=NEW.reconciliation_run_id;
@@ -7923,6 +7925,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
           OR source_graph.request_workflow_approval_id IS DISTINCT FROM NEW.workflow_approval_id
           OR source_graph.credential_owner_user_id IS DISTINCT FROM NEW.credential_owner_user_id
           OR source_graph.credential_ref_owner_user_id IS DISTINCT FROM NEW.credential_owner_user_id
+          OR source_graph.approval_expires_at IS DISTINCT FROM NEW.approval_expires_at
         THEN RAISE EXCEPTION 'orchestrator_gaac_invalid_source_provenance'; END IF;
         IF NEW.review_case_id IS NOT NULL THEN
           SELECT * INTO review_attempt FROM orchestrator_google_ads_rereconciliation_attempts
@@ -7950,6 +7953,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
         OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash OR NEW.confirmation_hash IS DISTINCT FROM OLD.confirmation_hash
         OR NEW.confirmed_at IS DISTINCT FROM OLD.confirmed_at OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
+        OR (OLD.approval_expires_at IS NOT NULL AND NEW.approval_expires_at IS DISTINCT FROM OLD.approval_expires_at)
         OR NEW.expires_at IS DISTINCT FROM OLD.expires_at OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
         OR (OLD.reservation_id_hash IS NOT NULL AND NEW.reservation_id_hash IS DISTINCT FROM OLD.reservation_id_hash)
         OR (OLD.reserved_at IS NOT NULL AND NEW.reserved_at IS DISTINCT FROM OLD.reserved_at)
@@ -7963,13 +7967,21 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE TRIGGER orchestrator_gaac_guard BEFORE INSERT OR UPDATE OR DELETE ON orchestrator_google_ads_activation_capabilities FOR EACH ROW EXECUTE FUNCTION orchestrator_gaac_guard();
   `);
 
+  await p.query(`ALTER TABLE orchestrator_google_ads_activation_capabilities
+    ADD COLUMN IF NOT EXISTS approval_expires_at TIMESTAMPTZ`);
+  await p.query(`UPDATE orchestrator_google_ads_activation_capabilities cap SET approval_expires_at=pa.expires_at
+    FROM orchestrator_google_ads_provider_draft_operations op
+    JOIN orchestrator_campaign_publish_approvals pa ON pa.tenant_id=op.tenant_id AND pa.id=op.publish_approval_id
+    WHERE cap.tenant_id=op.tenant_id AND cap.operation_id=op.id AND cap.approval_expires_at IS NULL`);
+  await p.query(`ALTER TABLE orchestrator_google_ads_activation_capabilities ALTER COLUMN approval_expires_at SET NOT NULL`);
+
   // CREATE TABLE IF NOT EXISTS does not update constraints installed by an
   // earlier release. Replace this named CHECK transactionally so upgrades get
   // the same confirmation-freshness and lifecycle authority as clean installs.
   await _ensureNamedCheck(p, 'orchestrator_google_ads_activation_capabilities',
     'orchestrator_gaac_lifecycle',
     `confirmed_at<=issued_at AND confirmed_at>=issued_at-interval '5 minutes'
-      AND expires_at>issued_at AND expires_at<=issued_at+interval '10 minutes' AND
+      AND expires_at>issued_at AND expires_at<=issued_at+interval '10 minutes' AND expires_at<=approval_expires_at AND
       (reserved_at IS NULL OR (reserved_at>=issued_at AND reserved_at<=expires_at))
       AND (consumed_at IS NULL OR (consumed_at>=reserved_at AND consumed_at<=expires_at))
       AND (revoked_at IS NULL OR revoked_at>=issued_at) AND

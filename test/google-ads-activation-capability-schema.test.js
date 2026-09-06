@@ -15,6 +15,9 @@ test('schema binds full Google authority and consume-once review lineage',()=>{
  assert.match(source,/confirmed_at>=issued_at-interval '5 minutes'/);
  assert.match(source,/_ensureNamedCheck\(p, 'orchestrator_google_ads_activation_capabilities',[\s\S]*'orchestrator_gaac_lifecycle'/);
  assert.match(source,/expires_at<=issued_at\+interval '10 minutes'/);
+ assert.match(source,/expires_at<=approval_expires_at/);
+ assert.match(source,/source_graph\.approval_expires_at IS DISTINCT FROM NEW\.approval_expires_at/);
+ assert.match(source,/ADD COLUMN IF NOT EXISTS approval_expires_at TIMESTAMPTZ/);
  assert.match(source,/reserved_at IS NULL OR \(reserved_at>=issued_at/);
  assert.match(source,/consumed_at IS NULL OR \(consumed_at>=reserved_at/);
  assert.match(source,/reserved_at<=expires_at/);

@@ -118,8 +118,9 @@ test('transitions recheck publishing approval expiry after acquiring all locks',
  assert.match(source,/pa\.expires_at AS approval_expires_at/);
  const locked=source.slice(source.indexOf('async function locked'),source.indexOf('async function reserve'));
  assert.ok(locked.indexOf('SELECT * FROM ${TABLE}')<locked.indexOf('SELECT clock_timestamp() now'));
- assert.ok(locked.indexOf('SELECT clock_timestamp() now')<locked.indexOf('authority.approval_expires_at'));
- assert.match(locked,/new Date\(authority\.approval_expires_at\)>now\)\)throw deny\('authoritative_binding_mismatch'\)/);
+ assert.ok(locked.indexOf('SELECT clock_timestamp() now')<locked.indexOf("SET status='expired'"));
+ assert.ok(locked.indexOf("SET status='expired'")<locked.lastIndexOf('authority.approval_expires_at'));
+ assert.match(locked,/allowExpiredApproval:true/);
 });
 test('only revocation bypasses closed activation switches while retaining authority checks',()=>{
  const source=fs.readFileSync(require.resolve('../services/security/google_ads_activation_capabilities'),'utf8');
@@ -133,7 +134,8 @@ test('only revocation bypasses closed activation switches while retaining author
 test('immutable binding includes workflow approval and credential owner provenance',()=>{
  const graph={workflow_id:'wf',draft_id:'draft',contract_hash:'contract',publishing_request_id:'request',publish_approval_id:'approval',
   workflow_approval_id:9,snapshot_hash:'snapshot',intent_id:'intent',intent_hash:'intent-hash',operation_id:'operation',authorization_id:'auth',id:'run',
-  credential_owner_user_id:7,credential_ref_id:'credential',credential_ref_version:1,account_fingerprint:'fingerprint',ledger_root_hash:'ledger'};
+  credential_owner_user_id:7,credential_ref_id:'credential',credential_ref_version:1,account_fingerprint:'fingerprint',ledger_root_hash:'ledger',
+  approval_expires_at:new Date('2026-01-01T00:10:00Z')};
  const cap={...graph,source_authorization_id:'auth',reconciliation_run_id:'run',draft_revision:1,review_version:null,
   workflow_approval_id:9,credential_owner_user_id:7};graph.draft_revision=1;
  assert.equal(service._bound(cap,graph),true);
@@ -153,6 +155,10 @@ test('issuance rechecks approval expiry and binds complete review provenance',()
  assert.ok(issue.indexOf('await authoritative')<issue.indexOf('approval_expires_at'));
  assert.ok(issue.indexOf('confirmation_hash=$2 FOR UPDATE')<issue.indexOf('fresh_confirmation_required'));
  for(const field of ['review_case_id','closure_event_id','rereconciliation_attempt_id'])assert.match(source,new RegExp(`\\['${field}','${field}'\\]`));
+ const issuedAt=new Date('2026-01-01T00:00:00Z'),shortApproval=new Date('2026-01-01T00:02:00Z');
+ assert.equal(service._cappedExpiry(issuedAt,service.MAX_TTL_MS,shortApproval).toISOString(),shortApproval.toISOString());
+ assert.equal(service._cappedExpiry(issuedAt,60_000,new Date('2026-01-01T00:10:00Z')).toISOString(),'2026-01-01T00:01:00.000Z');
+ assert.match(source,/new Date\(cap\.approval_expires_at\)\.getTime\(\)===new Date\(x\.approval_expires_at\)\.getTime\(\)/);
 });
 test('terminal metadata replay still revalidates current database authority',async()=>{
  const row={tenant_id:1,id:'gaac_one',actor_user_id:7,session_id_hash:require('node:crypto').createHash('sha256').update('real-session').digest('hex'),
