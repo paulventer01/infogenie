@@ -47,7 +47,8 @@ test('determinate rejection is failed; ambiguous and incomplete outcomes are unk
  const rejected=await connector.activateGoogleAdsCampaign({...base,inject:{mutate:async()=>({status:400,json:{error:{code:400}}})}});
  assert.equal(rejected.result_code,'provider_activation_failed');assert.equal(rejected.external_action_taken,false);
  for(const response of [{status:503,json:{}},{transportError:true,mayHaveActed:true},
-  {status:200,json:{}},{status:200,json:{mutateOperationResponses:[success().json.mutateOperationResponses[0]]}}]){
+  {status:200,json:{}},{status:200,json:{...success().json,partialFailureError:{code:13}}},
+  {status:200,json:{mutateOperationResponses:[success().json.mutateOperationResponses[0]]}}]){
   const out=await connector.activateGoogleAdsCampaign({...base,inject:{mutate:async()=>response}});
   assert.equal(out.result_code,'provider_activation_unknown');assert.equal(out.requires_reconciliation,true);
   assert.equal(out.external_action_taken,null);assert.equal(out.retry,false);
