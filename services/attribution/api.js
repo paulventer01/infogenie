@@ -185,4 +185,77 @@ router.delete('/run/:id', _safe(async (req, res) => {
   res.json({ ok: true });
 }));
 
+/** Record a revenue event attributed to a channel/campaign (Stripe, email, etc.). */
+async function recordRevenueEvent({
+  tenant_id, email, amount = 0, channel = 'email', campaign = null,
+  source = 'manual', utm_source = null, utm_medium = null, utm_campaign = null, meta = {},
+}) {
+  if (!_db.hasDb()) return null;
+  // Ensure table exists (idempotent) for older boots.
+  await _db.getPool().query(`
+    CREATE TABLE IF NOT EXISTS attribution_revenue_events (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id INT,
+      email TEXT,
+      amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      channel TEXT NOT NULL DEFAULT 'email',
+      campaign TEXT,
+      source TEXT,
+      utm_source TEXT,
+      utm_medium TEXT,
+      utm_campaign TEXT,
+      meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`).catch(() => {});
+  const r = await _db.getPool().query(
+    `INSERT INTO attribution_revenue_events
+      (tenant_id, email, amount, channel, campaign, source, utm_source, utm_medium, utm_campaign, meta)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb) RETURNING *`,
+    [
+      tenant_id || null, email || null, Number(amount) || 0, channel, campaign, source,
+      utm_source, utm_medium, utm_campaign || campaign, JSON.stringify(meta || {}),
+    ]
+  );
+  return r.rows[0];
+}
+
+router.post('/revenue-event', _safe(async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'attribution:revenue' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const row = await recordRevenueEvent({ ...req.body, tenant_id: tid });
+  res.json({ ok: true, event: row });
+}));
+
+router.get('/revenue-events', _safe(async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'attribution:revenue-list' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const { rows } = await _db.getPool().query(
+    `SELECT * FROM attribution_revenue_events WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 100`,
+    [tid]
+  ).catch(() => ({ rows: [] }));
+  res.json({ ok: true, events: rows });
+}));
+
+/** Aggregate revenue by channel for auto-UTM / email proof. */
+router.get('/revenue-by-channel', _safe(async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'attribution:revenue-by-channel' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
+  const { rows } = await _db.getPool().query(
+    `SELECT COALESCE(channel,'unknown') AS channel,
+            COALESCE(utm_campaign, campaign, 'unknown') AS campaign,
+            COUNT(*)::int AS events,
+            SUM(amount)::float AS revenue
+     FROM attribution_revenue_events
+     WHERE tenant_id=$1 AND created_at > now() - ($2 || ' days')::interval
+     GROUP BY 1, 2
+     ORDER BY revenue DESC NULLS LAST
+     LIMIT 50`,
+    [tid, String(days)]
+  ).catch(() => ({ rows: [] }));
+  res.json({ ok: true, days, rows });
+}));
+
 module.exports = router;
+module.exports.recordRevenueEvent = recordRevenueEvent;
+module.exports.buildModels = buildModels;

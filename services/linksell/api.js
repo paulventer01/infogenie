@@ -187,10 +187,59 @@ router.post('/stripe-webhook', express.raw({ type:'*/*', limit:'1mb' }), async (
   try {
     const ev = JSON.parse(req.body.toString('utf8') || '{}');
     if (ev?.type === 'checkout.session.completed') {
-      const sid = ev.data?.object?.id;
+      const session = ev.data?.object || {};
+      const sid = session.id;
       if (sid && _db.hasDb()) {
-        await _db.getPool().query(`UPDATE linksell_orders SET status='paid', paid_at=now() WHERE stripe_session_id=$1`, [sid]);
+        const upd = await _db.getPool().query(
+          `UPDATE linksell_orders SET status='paid', paid_at=now()
+           WHERE stripe_session_id=$1
+           RETURNING tenant_id, customer_email, amount_cents, currency, product_id, page_slug`,
+          [sid]
+        );
+        const order = upd.rows[0];
+        const email = order?.customer_email || session.customer_email || session.customer_details?.email || null;
+        try {
+          const { fireSignal } = require('../signal_triggers/api');
+          const payload = {
+            tenant_id: order?.tenant_id || null,
+            email,
+            amount_cents: order?.amount_cents || session.amount_total || null,
+            currency: order?.currency || session.currency || 'usd',
+            product_id: order?.product_id || null,
+            page_slug: order?.page_slug || null,
+            stripe_session_id: sid,
+            value: Number(order?.amount_cents || session.amount_total || 0) / 100,
+          };
+          await fireSignal('stripe_checkout_completed', payload);
+          await fireSignal('product_purchased', payload);
+          // Revenue attribution touchpoint (email channel + auto-UTM campaign).
+          try {
+            const attr = require('../attribution/api');
+            if (typeof attr.recordRevenueEvent === 'function') {
+              await attr.recordRevenueEvent({
+                tenant_id: payload.tenant_id,
+                email,
+                amount: payload.value,
+                channel: 'email',
+                campaign: order?.page_slug || 'stripe_checkout',
+                source: 'stripe',
+              });
+            }
+          } catch (ae) { console.warn('[linksell] attribution:', ae.message); }
+        } catch (se) { console.warn('[linksell] fireSignal:', se.message); }
       }
+    } else if (ev?.type === 'invoice.payment_failed') {
+      const inv = ev.data?.object || {};
+      try {
+        const { fireSignal } = require('../signal_triggers/api');
+        await fireSignal('stripe_payment_failed', {
+          email: inv.customer_email || null,
+          amount_cents: inv.amount_due || null,
+          currency: inv.currency || 'usd',
+          invoice_id: inv.id || null,
+          value: Number(inv.amount_due || 0) / 100,
+        });
+      } catch (se) { console.warn('[linksell] payment_failed signal:', se.message); }
     }
   } catch (e) { console.error('[linksell stripe-webhook]', e.message); }
 });
