@@ -62,26 +62,32 @@ test('uniqueness races replay only the identically bound durable winner',async()
   if(sql.startsWith('SELECT clock_timestamp()'))return {rows:[{now:dbNow}]};if(sql.includes('confirmation_hash=$2 FOR UPDATE'))return {rowCount:0,rows:[]};return {rowCount:0,rows:[]};};
  await assert.rejects(service.issue(client,{...input,confirmationId:'new_confirm'}),{code:'fresh_confirmation_required'});
 });
-test('issuance replay durably expires a stale winner and API reports expiry',async()=>{
+test('identical issuance replay expires issued or reserved authority after coincident approval expiry',async()=>{
  const crypto=require('node:crypto'),sha=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
  const x={tenant_id:1,id:'run_1',state:'verified',completed_at:new Date(),created_at:new Date(),external_action_taken:true,object_count:3,
   workflow_id:'wf',draft_id:'draft',draft_revision:1,current_revision:1,draft_status:'approved_for_publish',contract_hash:'contract',publishing_request_id:'request',
   request_revision:1,request_contract_hash:'contract',publish_approval_id:'approval',request_approval_id:'approval',workflow_approval_id:2,
-  request_workflow_approval_id:2,approval_revision:1,approval_contract_hash:'contract',approval_active:true,approval_expires_at:new Date(Date.now()+600000),snapshot_hash:'snapshot',intent_id:'intent',
+  request_workflow_approval_id:2,approval_revision:1,approval_contract_hash:'contract',approval_active:false,approval_expires_at:new Date(Date.now()-60000),snapshot_hash:'snapshot',intent_id:'intent',
   intent_hash:'intent-hash',current_intent_hash:'intent-hash',operation_id:'operation',authorization_id:'auth',credential_owner_user_id:7,owner_user_id:7,
   credential_ref_id:'credential',credential_ref_version:1,current_credential_version:1,credential_status:'active',account_fingerprint:'fingerprint',ledger_root_hash:'ledger'};
  const confirmedAt=new Date(),confirmationHash=sha(`1|7|real-session|confirm_1|${service.CONFIRMATION}|${confirmedAt.toISOString()}`),cap={...x,id:'gaac_old',reconciliation_run_id:x.id,
   source_authorization_id:x.authorization_id,actor_user_id:7,session_id_hash:sha('real-session'),confirmation_hash:confirmationHash,status:'issued',
-  issued_at:new Date(Date.now()-120000),expires_at:new Date(Date.now()-60000)};
- const statements=[];const client={query:async sql=>{statements.push(sql);
+  issued_at:new Date(Date.now()-120000),expires_at:x.approval_expires_at};
+ const statements=[];const client={query:async(sql,params=[])=>{statements.push(sql);
   if(sql.startsWith('SELECT operation_id FROM'))return {rowCount:1,rows:[{operation_id:x.operation_id}]};
   if(sql.startsWith('SELECT id FROM orchestrator_google_ads_provider_draft_operations'))return {rowCount:1,rows:[{id:x.operation_id}]};
   if(sql.startsWith('SELECT run.*'))return {rowCount:1,rows:[x]};
   if(sql.startsWith('SELECT id,state,version')||sql.startsWith('SELECT 1 FROM orchestrator_google_ads_reconciliation_runs'))return {rowCount:0,rows:[]};
-  if(sql.startsWith('SELECT clock_timestamp()'))return {rows:[{now:new Date()}]};if(sql.includes('confirmation_hash=$2 FOR UPDATE'))return {rowCount:1,rows:[cap]};return {rowCount:0,rows:[]};}};
- const out=await service.issue(client,{...opts(),reconciliationRunId:x.id,confirmationId:'confirm_1',confirmation:service.CONFIRMATION,confirmedAt:confirmedAt.toISOString()});
- assert.equal(out.status,'expired');assert.equal(out.replay,true);assert.ok(statements.some(sql=>sql.includes("SET status='expired'")));
- assert.throws(()=>api._requireUsable(out),{code:'capability_expired'});
+  if(sql.startsWith('SELECT clock_timestamp()'))return {rows:[{now:new Date()}]};if(sql.includes('confirmation_hash=$2 FOR UPDATE'))return params[1]===confirmationHash?{rowCount:1,rows:[cap]}:{rowCount:0,rows:[]};return {rowCount:0,rows:[]};}};
+ const input={...opts(),reconciliationRunId:x.id,confirmationId:'confirm_1',confirmation:service.CONFIRMATION,confirmedAt:confirmedAt.toISOString()};
+ for(const status of ['issued','reserved']){cap.status=status;const out=await service.issue(client,input);
+  assert.equal(out.status,'expired');assert.equal(out.replay,true);assert.throws(()=>api._requireUsable(out),{code:'capability_expired'});}
+ assert.equal(statements.filter(sql=>sql.includes("SET status='expired'")).length,2);
+ assert.equal(statements.filter(sql=>sql.startsWith('INSERT INTO orchestrator_audit_events')).length,2);
+ cap.status='issued';cap.workflow_approval_id=999;
+ await assert.rejects(service.issue(client,input),{code:'capability_conflict'});
+ cap.workflow_approval_id=x.workflow_approval_id;
+ await assert.rejects(service.issue(client,{...input,confirmationId:'new_confirmation'}),{code:'authoritative_binding_mismatch'});
 });
 test('issuance requires a valid, timestamp-bound human confirmation',async()=>{
  let authorityCalls=0;const client={query:async()=>{authorityCalls++;throw new Error('authority must not be queried');}};

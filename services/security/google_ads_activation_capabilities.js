@@ -87,8 +87,11 @@ function bound(cap,x){return [['workflow_id','workflow_id'],['draft_id','draft_i
 async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),ttl=o.ttlMs===undefined?DEFAULT_TTL_MS:integer(o.ttlMs),confirmedAt=new Date(o.confirmedAt);
  if(!tenantId||!valid(o.reconciliationRunId)||!valid(o.confirmationId)||o.confirmation!==CONFIRMATION||!ttl||ttl>MAX_TTL_MS
    ||!Number.isFinite(confirmedAt.getTime()))throw deny('validation_failed');
- const x=await authoritative(c,tenantId,actor,String(o.reconciliationRunId)),now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
- if(!(new Date(x.approval_expires_at)>now))throw deny('authoritative_binding_mismatch');
+ // An identical replay must be able to lock and retire its already-issued row
+ // when the approval and (capped) capability expire together. This exception
+ // only relaxes the approval-time predicate; every other authority predicate
+ // is still re-proved, and no new row is inserted below without a live approval.
+ const x=await authoritative(c,tenantId,actor,String(o.reconciliationRunId),{allowExpiredApproval:true}),now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
  const confirmationHash=hash(`${tenantId}|${actor}|${o.sessionId}|${o.confirmationId}|${CONFIRMATION}|${confirmedAt.toISOString()}`);
  const prior=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND confirmation_hash=$2 FOR UPDATE`,[tenantId,confirmationHash]);
  const replay=async q=>{const cap=q.rows[0];if(q.rowCount!==1||!same(cap.confirmation_hash,confirmationHash)||Number(cap.actor_user_id)!==actor
@@ -97,6 +100,7 @@ async function issue(c,o={}){const tenantId=integer(o.tenantId),actor=human(o),t
    cap.status='expired';await audit(c,cap,actor,'google_ads_activation_capability_expired','expired');}
   return project(cap,true);};
  if(prior.rowCount)return replay(prior);
+ if(!(new Date(x.approval_expires_at)>now))throw deny('authoritative_binding_mismatch');
  if(confirmedAt>now||now-confirmedAt>MAX_CONFIRMATION_AGE_MS)throw deny('fresh_confirmation_required');
  const row={...x,tenant_id:tenantId,id:`gaac_${crypto.randomUUID()}`};
  await c.query('SAVEPOINT google_ads_activation_issue');
