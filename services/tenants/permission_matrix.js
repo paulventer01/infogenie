@@ -376,6 +376,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/ahrefs',                    view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/spyfu',                     view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/majestic',                  view: 'seo.view', write: 'seo.run' },
+  { prefix: '/api/mangools',                  view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/serpstat',                  view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/contentking',               view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/bing-webmaster',            view: 'seo.view', write: 'seo.run' },
