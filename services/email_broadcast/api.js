@@ -233,9 +233,18 @@ router.post('/broadcasts/:id/send', async (req, res) => {
           const chunk = recips.slice(i, i + BATCH);
           await Promise.allSettled(chunk.map(async r => {
             try {
+              let html = bc.body_html;
+              try {
+                const { appendAutoUtm, buildEmailUtm } = require('../email_ops/auto_utm');
+                html = appendAutoUtm(html, buildEmailUtm({
+                  channel: 'broadcast',
+                  campaignName: bc.name || bc.subject || 'broadcast',
+                  broadcastId: id,
+                }));
+              } catch (_) { /* optional */ }
               const msgId = await _sendEmail({
                 to: r.email, toName: r.name,
-                subject: bc.subject, html: bc.body_html, text: bc.body_text,
+                subject: bc.subject, html, text: bc.body_text,
                 fromName: bc.from_name, fromEmail: bc.from_email,
                 broadcastId: id, recipientId: r.id
               });
