@@ -20,6 +20,14 @@ if(!db.hasDb())test('Google activation execution PostgreSQL requires DATABASE_UR
   for(const invariant of ['orchestrator_gaact_audit_evidence','orchestrator_gaact_invalid_initial_state',
    'orchestrator_gaact_invalid_provenance','orchestrator_gaact_immutable_or_invalid_transition'])
    assert.ok(guard.includes(invariant),invariant);
+  const outcomeColumns=(await p.query(`SELECT column_name FROM information_schema.columns
+    WHERE table_name='orchestrator_google_ads_activation_object_outcomes'`)).rows.map(x=>x.column_name);
+  for(const required of ['activation_attempt_id','object_kind','sequence_number','outcome','result_code'])
+    assert.ok(outcomeColumns.includes(required),required);
+  for(const forbidden of ['provider_object_id','customer_id','request_payload','provider_response','error'])
+    assert.equal(outcomeColumns.includes(forbidden),false,forbidden);
+  assert.equal((await p.query(`SELECT count(*)::int n FROM pg_trigger
+    WHERE tgname='orchestrator_gaacto_guard' AND NOT tgisinternal`)).rows[0].n,1);
  });
 
  test('PostgreSQL result constraints encode success, determinate failure and ambiguous unknown without skips',async()=>{
