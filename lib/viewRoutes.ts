@@ -511,7 +511,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "agency", icon: "🏢", label: "Agency Workspace" },
           { view: "marketplace", icon: "🏪", label: "AI Marketing Marketplace" },
           { view: "workspaces", icon: "👪", label: "Workspaces & Team" },
-          { view: "admin", icon: "🔐", label: "Admin Portal", id: "navAdminLink", hidden: true },
+          // Visible in the Manage rail so owners can reach Platform APIs
+          // (OpenAI key, etc.). The Admin page still gates on /api/admin/me.
+          { view: "admin", icon: "🔐", label: "Admin Portal", id: "navAdminLink" },
           { view: "technical-suite", icon: "🔧", label: "Technical Suite (admin toolkit · diagnostics)" },
           { view: "brand-safety", icon: "🗝️", label: "Brand Safety & Compliance" },
           { view: "data-provenance", icon: "🖨️", label: "Data Provenance (audit trail)" },
