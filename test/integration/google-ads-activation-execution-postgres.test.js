@@ -40,13 +40,14 @@ if(!db.hasDb())test('Google activation execution PostgreSQL requires DATABASE_UR
     account_fingerprint,ledger_root_hash,objects_digest,invocation_id_hash,status,result_code,objects_expected,
     objects_activated,requires_reconciliation,external_action_taken,created_at,started_at,settled_at,audit_ref)
     VALUES(1,$1,'cap',1,repeat('a',64),'wf','op','run',1,'cred',1,repeat('b',64),repeat('c',64),
-      repeat('d',64),repeat('e',64),$2,$3,2,$4,$5,$6,clock_timestamp(),clock_timestamp(),$7,$8)`;
-   await c.query(base,['progress','in_progress',null,0,false,false,null,'audit-progress']);
-   await c.query(base,['success','succeeded','provider_activation_succeeded',2,false,true,new Date(),'audit-success']);
-   await c.query(base,['failed','failed','provider_activation_failed',0,false,false,new Date(),'audit-failed']);
-   await c.query(base,['unknown','unknown','provider_activation_unknown',0,true,null,new Date(),'audit-unknown']);
-   await assert.rejects(c.query(base,['partial','succeeded','provider_activation_succeeded',1,false,true,new Date(),'audit-partial']),e=>e.code==='23514');
-   await assert.rejects(c.query(base,['unsafe','unknown','provider_activation_unknown',0,true,false,new Date(),'audit-unsafe']),e=>e.code==='23514');
+      repeat('d',64),repeat('e',64),$2,$3,2,$4,$5,$6,statement_timestamp(),statement_timestamp(),
+      CASE WHEN $7::boolean THEN statement_timestamp() ELSE NULL END,$8)`;
+   await c.query(base,['progress','in_progress',null,0,false,false,false,'audit-progress']);
+   await c.query(base,['success','succeeded','provider_activation_succeeded',2,false,true,true,'audit-success']);
+   await c.query(base,['failed','failed','provider_activation_failed',0,false,false,true,'audit-failed']);
+   await c.query(base,['unknown','unknown','provider_activation_unknown',0,true,null,true,'audit-unknown']);
+   await assert.rejects(c.query(base,['partial','succeeded','provider_activation_succeeded',1,false,true,true,'audit-partial']),e=>e.code==='23514');
+   await assert.rejects(c.query(base,['unsafe','unknown','provider_activation_unknown',0,true,false,true,'audit-unsafe']),e=>e.code==='23514');
    await assert.rejects(c.query(`UPDATE gaact_result_probe SET status='failed' WHERE id='success'`),e=>e.code==='23514');
   }finally{c.release();}
  });
