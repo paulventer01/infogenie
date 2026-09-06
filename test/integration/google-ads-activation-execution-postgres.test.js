@@ -18,7 +18,8 @@ if(!db.hasDb())test('Google activation execution PostgreSQL requires DATABASE_UR
   const guard=(await p.query(`SELECT pg_get_functiondef(tgfoid) definition FROM pg_trigger
     WHERE tgname='orchestrator_gaact_guard' AND NOT tgisinternal`)).rows[0].definition;
   for(const invariant of ['orchestrator_gaact_audit_evidence','orchestrator_gaact_invalid_initial_state',
-   'orchestrator_gaact_invalid_provenance','orchestrator_gaact_immutable_or_invalid_transition'])
+   'orchestrator_gaact_invalid_provenance','orchestrator_gaact_immutable_or_invalid_transition',
+   'orchestrator_gaact_object_outcome_mismatch'])
    assert.ok(guard.includes(invariant),invariant);
   const outcomeColumns=(await p.query(`SELECT column_name FROM information_schema.columns
     WHERE table_name='orchestrator_google_ads_activation_object_outcomes'`)).rows.map(x=>x.column_name);
