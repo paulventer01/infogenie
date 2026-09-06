@@ -378,6 +378,35 @@ function readTasks(officerId: string, limit = 200): string[] {
   }
 }
 
+function writeTasks(officerId: string, tasks: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      "ig_officer_tasks_" + officerId,
+      JSON.stringify(tasks.filter((t) => typeof t === "string")),
+    );
+  } catch {
+    /* ignore quota */
+  }
+}
+
+async function syncTeamTasksFromServer(): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  const j = await apiPost<{
+    ok?: boolean;
+    tasks?: Record<string, string[]>;
+  }>("/api/officer/team/activate", {});
+  const store = j?.tasks && typeof j.tasks === "object" ? j.tasks : {};
+  OFFICERS.forEach((o) => {
+    const list = Array.isArray(store[o.id])
+      ? store[o.id]!.filter((t): t is string => typeof t === "string")
+      : readTasks(o.id);
+    if (list.length) writeTasks(o.id, list);
+    counts[o.id] = list.length || readTasks(o.id).length;
+  });
+  return counts;
+}
+
 function downloadFile(
   filename: string,
   content: string,
@@ -625,6 +654,15 @@ export default function AiTeam() {
     setTaskCounts(counts);
   }, []);
 
+  const activateTeamTasks = useCallback(async () => {
+    try {
+      const counts = await syncTeamTasksFromServer();
+      setTaskCounts(counts);
+    } catch {
+      recomputeTaskCounts();
+    }
+  }, [recomputeTaskCounts]);
+
   const loadAvatars = useCallback(async () => {
     const j = await apiGet<{ avatars?: Record<string, string> }>(
       "/api/officer/avatars",
@@ -648,8 +686,8 @@ export default function AiTeam() {
 
   useEffect(() => {
     loadAvatars();
-    recomputeTaskCounts();
-  }, [loadAvatars, recomputeTaskCounts]);
+    activateTeamTasks();
+  }, [loadAvatars, activateTeamTasks]);
 
   useEffect(() => {
     refreshStatusPill();
@@ -1321,7 +1359,6 @@ function TasksModal({
   officerTitle: string;
   onClose: () => void;
 }) {
-  const storeKey = "ig_officer_tasks_" + officerId;
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [saved, setSaved] = useState<string[]>(() => readTasks(officerId, 200));
   const [loading, setLoading] = useState(true);
@@ -1339,7 +1376,17 @@ function TasksModal({
 
   useEffect(() => {
     fetchTasks();
-  }, [fetchTasks]);
+    (async () => {
+      const j = await apiGet<{ tasks?: Record<string, string[]> }>(
+        "/api/officer/tasks-store",
+      );
+      const serverTasks = j?.tasks?.[officerId];
+      if (Array.isArray(serverTasks) && serverTasks.length) {
+        setSaved(serverTasks.filter((t): t is string => typeof t === "string"));
+        writeTasks(officerId, serverTasks);
+      }
+    })();
+  }, [fetchTasks, officerId]);
 
   const all = useMemo(
     () => [...new Set([...suggestions, ...saved])],
@@ -1358,11 +1405,7 @@ function TasksModal({
     setCustom("");
   }
   async function save() {
-    try {
-      localStorage.setItem(storeKey, JSON.stringify(saved));
-    } catch {
-      /* ignore quota */
-    }
+    writeTasks(officerId, saved);
     await apiPost("/api/officer/tasks-store", { role: officerId, tasks: saved });
     showToast(
       `✓ Saved ${saved.length} ${saved.length === 1 ? "task" : "tasks"} for ${officerTitle}`,
@@ -1576,7 +1619,17 @@ function DailyReportModal({
   useEffect(() => {
     let live = true;
     (async () => {
-      const tasks = readTasks(officerId, 40);
+      let tasks = readTasks(officerId, 40);
+      if (!tasks.length) {
+        const j = await apiGet<{ tasks?: Record<string, string[]> }>(
+          "/api/officer/tasks-store",
+        );
+        const serverTasks = j?.tasks?.[officerId];
+        if (Array.isArray(serverTasks) && serverTasks.length) {
+          tasks = serverTasks.filter((t): t is string => typeof t === "string");
+          writeTasks(officerId, tasks);
+        }
+      }
       const j = await apiPost<DailyReportResponse>("/api/officer/daily-report", {
         role: officerId,
         title: officerTitle,
