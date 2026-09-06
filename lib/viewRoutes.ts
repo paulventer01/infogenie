@@ -82,6 +82,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "2 · Rankings & search",
         items: [
           { view: "serp-tracker", icon: "📍", label: "Rank Tracker" },
+          { view: "serp-gap", icon: "🎯", label: "SERP Gap Analyzer" },
           { view: "keyword-explorer", icon: "🔬", label: "Keyword Explorer" },
           { view: "content-gaps", icon: "🧩", label: "Content Gaps vs Rivals" },
           { view: "serp", icon: "🔎", label: "Live Google SERP" },
@@ -90,6 +91,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "3 · Analytics & traffic",
         items: [
+          { view: "daily-trends", icon: "📊", label: "Daily Trends" },
+          { view: "traffic-sources", icon: "🔗", label: "Sources & Destinations" },
+          { view: "market-overview", icon: "🌐", label: "Market Overview" },
           { view: "analytics-hub", icon: "📈", label: "Analytics Hub" },
           { view: "sov-tracker", icon: "📉", label: "Share of Voice" },
           { view: "visitor-intel", icon: "🔍", label: "Visitor Intelligence" },
@@ -103,6 +107,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "battle-cards", icon: "🛡️", label: "Battle Cards" },
           { view: "intelligence", icon: "🧠", label: "Intelligence Hub", className: "nav-link-intel" },
           { view: "war-room", icon: "🗡️", label: "AI Competitor War Room" },
+          { view: "ad-intel", icon: "📣", label: "Ad Intelligence" },
           { view: "ad-library", icon: "🕵️", label: "Ad Library Spy" },
           { view: "benchmarks", icon: "📶", label: "Benchmark Intelligence" },
         ],
@@ -111,7 +116,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "5 · AI search & mentions",
         items: [
           { view: "seo-ai-visibility", icon: "🔍", label: "Search & AI Visibility — start here" },
+          { view: "llm-gap", icon: "🤖", label: "LLM Gap Analyzer" },
           // GEO/AEO/zero-click/voice/auditor open from the hub (deep links preserved)
+          { view: "brand-monitor", icon: "📡", label: "Brand Monitoring" },
           { view: "mentions", icon: "🌐", label: "Mentions Hub" },
           { view: "organic-performance", icon: "📱", label: "Organic Social Performance — start here" },
           { view: "media-intel", icon: "📰", label: "Media Intelligence" },
@@ -196,8 +203,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
           // creative / smart-creative / ad-creative open from Creative Studio hub
           { view: "carousel", icon: "🎠", label: "Carousel Generator" },
           { view: "canva", icon: "🎨", label: "Canva Template Launcher" },
+          { view: "ai-video", icon: "🎬", label: "AI Video (Runway / HeyGen)" },
           { view: "ugc-avatars", icon: "🧑‍🎤", label: "UGC Avatar Videos" },
-          { view: "video-script", icon: "🎬", label: "Video Script Generator" },
+          { view: "video-script", icon: "🎞️", label: "Video Script Generator" },
           { view: "short-form-video", icon: "📹", label: "Short-Form Video Workflow" },
           { view: "podcast-studio", icon: "🎙️", label: "Podcast Marketing Studio" },
           { view: "voiceover", icon: "🔊", label: "AI Voiceovers" },
@@ -290,6 +298,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "social-command-center", icon: "📱", label: "Social Command Center — start here" },
           { view: "social-publisher", icon: "📤", label: "Social Publisher (calendar · drafts · 15 platforms)" },
           { view: "discovery", icon: "🔭", label: "Influencer Discovery" },
+          { view: "influencer-analytics", icon: "📡", label: "Influencer Analytics" },
           { view: "influencers", icon: "💫", label: "Influencer CRM" },
           { view: "tiktok-downloader", icon: "⬇️", label: "TikTok Asset Downloader" },
           { view: "hashtag-intel", icon: "🔖", label: "Hashtag Intelligence (Instagram & TikTok)" },
@@ -515,6 +524,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "technical-suite", icon: "🔧", label: "Technical Suite (admin toolkit · diagnostics)" },
           { view: "brand-safety", icon: "🗝️", label: "Brand Safety & Compliance" },
           { view: "data-provenance", icon: "🖨️", label: "Data Provenance (audit trail)" },
+          { view: "integrations-wave", icon: "🔌", label: "Grok · Fireflies · DeepL · Notion" },
           { view: "settings", icon: "🔩", label: "Settings & Integrations" },
         ],
       },

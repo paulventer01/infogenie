@@ -112,7 +112,7 @@ const AVATARS: Avatar[] = [
   { id: "sarah", name: "Sarah", age: 28, vibe: "Friendly Gen Z", color: "#F472B6", tag: "Best for: Lifestyle, beauty, DTC" },
   { id: "mark", name: "Mark", age: 34, vibe: "Confident Pro", color: "#0EA5E9", tag: "Best for: SaaS, B2B, finance" },
   { id: "aisha", name: "Aisha", age: 31, vibe: "Warm Educator", color: "#10B981", tag: "Best for: Health, edtech, services" },
-  { id: "james", name: "James", age: 42, vibe: "Trusted Expert", color: "#8B5CF6", tag: "Best for: Insurance, real estate" },
+  { id: "james", name: "James", age: 42, vibe: "Trusted Expert", color: "#0284c7", tag: "Best for: Insurance, real estate" },
   { id: "lily", name: "Lily", age: 24, vibe: "Bubbly Creator", color: "#F59E0B", tag: "Best for: Fashion, food, wellness" },
   { id: "kai", name: "Kai", age: 29, vibe: "Tech Reviewer", color: "#06B6D4", tag: "Best for: Apps, gadgets, startups" },
 ];

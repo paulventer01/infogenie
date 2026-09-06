@@ -152,7 +152,7 @@ export default function MigratedPanel() {
   if (!mounted || !view || !Cmp) return null;
 
   return (
-    <div id="ig-react-panel" data-react-view={view}>
+    <div id="ig-react-panel" className="ig-panel-shell" data-react-view={view}>
       <PanelErrorBoundary view={view} remountKey={remountKey} onDomGlitch={onDomGlitch}>
         <Suspense fallback={<PanelFallback />}>
           <PanelReady key={`${view}:${remountKey}`} view={view}>

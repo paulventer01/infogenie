@@ -38,7 +38,7 @@ interface Checklist {
 }
 
 const CATEGORIES = [
-  { id: "brand",  icon: "🎨", label: "Brand Alignment",     color: "#7C3AED" },
+  { id: "brand",  icon: "🎨", label: "Brand Alignment",     color: "#0f766e" },
   { id: "copy",   icon: "✏️",  label: "Copy & Proofreading", color: "#0066FF" },
   { id: "legal",  icon: "⚖️",  label: "Legal & Compliance",  color: "#DC2626" },
   { id: "mobile", icon: "📱",  label: "Mobile Responsive",   color: "#059669" },
@@ -329,13 +329,13 @@ export default function LaunchCompliance() {
                 }}
                 style={{
                   background: "#EDE9FE",
-                  color: "#7C3AED",
+                  color: "#0f766e",
                   padding: "6px 14px",
                   borderRadius: 99,
                   fontSize: "0.82rem",
                   fontWeight: 700,
                   cursor: "pointer",
-                  border: infoPanel === "brand-score" ? "2px solid #7C3AED" : "2px solid transparent",
+                  border: infoPanel === "brand-score" ? "2px solid #0f766e" : "2px solid transparent",
                 }}
               >
                 🎨 Brand {active.brand_score != null ? `${active.brand_score}/10` : "—"}
@@ -348,9 +348,9 @@ export default function LaunchCompliance() {
                 style={{
                   padding: "6px 14px",
                   background: "#EDE9FE",
-                  border: infoPanel === "brand-check" ? "2px solid #7C3AED" : "2px solid transparent",
+                  border: infoPanel === "brand-check" ? "2px solid #0f766e" : "2px solid transparent",
                   borderRadius: 9,
-                  color: "#7C3AED",
+                  color: "#0f766e",
                   fontWeight: 700,
                   fontSize: "0.78rem",
                   cursor: saving ? "wait" : "pointer",
@@ -444,7 +444,7 @@ export default function LaunchCompliance() {
                   </p>
                   {active.brand_score != null ? (
                     <p style={{ margin: "0 0 10px" }}>
-                      Current score: <strong style={{ color: "#7C3AED", fontSize: "1.1rem" }}>{active.brand_score}/10</strong>
+                      Current score: <strong style={{ color: "#0f766e", fontSize: "1.1rem" }}>{active.brand_score}/10</strong>
                       {active.brand_score >= 8
                         ? " — strong brand fit."
                         : active.brand_score >= 5
@@ -456,7 +456,7 @@ export default function LaunchCompliance() {
                       No score yet. Click <strong>Brand Check</strong> to score this campaign against Brand Foundation.
                     </p>
                   )}
-                  <button type="button" onClick={handleBrandCheck} disabled={saving} style={{ ...btnPri, background: "linear-gradient(135deg,#7C3AED,#4F46E5)" }}>
+                  <button type="button" onClick={handleBrandCheck} disabled={saving} style={{ ...btnPri, background: "linear-gradient(135deg,#0f766e,#4F46E5)" }}>
                     {brandRunning ? "Checking…" : "Run Brand Check now"}
                   </button>
                 </div>
@@ -468,12 +468,12 @@ export default function LaunchCompliance() {
                     Brand Check compares this campaign’s copy and assets to your Brand Foundation, then suggests a score and points you to the Brand Alignment checklist.
                   </p>
                   {brandRunning ? (
-                    <p style={{ margin: 0, color: "#7C3AED", fontWeight: 700 }}>Running brand alignment…</p>
+                    <p style={{ margin: 0, color: "#0f766e", fontWeight: 700 }}>Running brand alignment…</p>
                   ) : brandCheckInfo ? (
                     <>
                       <div style={{ background: "#fff", border: "1px solid #DDD6FE", borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
                         {brandCheckInfo.score != null && (
-                          <div style={{ fontWeight: 800, color: "#7C3AED", fontSize: "1.05rem", marginBottom: 6 }}>
+                          <div style={{ fontWeight: 800, color: "#0f766e", fontSize: "1.05rem", marginBottom: 6 }}>
                             Score: {brandCheckInfo.score}/10
                           </div>
                         )}

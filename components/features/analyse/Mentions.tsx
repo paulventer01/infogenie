@@ -71,7 +71,7 @@ interface ChartCtor {
   new (canvas: HTMLCanvasElement, config: unknown): ChartInstance;
 }
 
-const BRAND_COLORS = ["#0066FF", "#10B981", "#F59E0B", "#EC4899", "#8B5CF6"];
+const BRAND_COLORS = ["#0066FF", "#10B981", "#F59E0B", "#EC4899", "#0284c7"];
 
 const COUNTRIES: [string, string][] = [
   ["GLOBAL", "🌍 Global (worldwide)"],

@@ -113,7 +113,7 @@ function AccountCard({ a }: { a: Account }) {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10, textAlign: "center", marginBottom: a.topPost ? 12 : 0 }}>
         {stat(_n(s.posts).toLocaleString(), "POSTS", "#0066FF")}
-        {stat(_n(s.impressions).toLocaleString(), "IMPRESS.", "#7C3AED")}
+        {stat(_n(s.impressions).toLocaleString(), "IMPRESS.", "#0f766e")}
         {stat(_n(s.likes).toLocaleString(), "LIKES", "#EC4899")}
         {stat(_n(s.comments).toLocaleString(), "COMMENTS", "#0E9F6E")}
         {stat(_n(s.shares).toLocaleString(), "SHARES", "#F59E0B")}
@@ -246,7 +246,7 @@ export default function SocialAnalytics() {
                   </select>
                 </div>
                 <div>
-                  <button onClick={loadAnalytics} style={{ width: "100%", background: "linear-gradient(135deg,#0066FF,#7C3AED)", color: "#fff", border: "none", padding: "9px 16px", borderRadius: 6, fontSize: "0.84rem", fontWeight: 800, cursor: "pointer" }}>
+                  <button onClick={loadAnalytics} style={{ width: "100%", background: "linear-gradient(135deg,#0066FF,#0f766e)", color: "#fff", border: "none", padding: "9px 16px", borderRadius: 6, fontSize: "0.84rem", fontWeight: 800, cursor: "pointer" }}>
                     📈 Load Analytics
                   </button>
                 </div>
@@ -264,7 +264,7 @@ export default function SocialAnalytics() {
               )}
               {outStatus === "ready" && data && (
                 <>
-                  <div style={{ background: "linear-gradient(135deg,#0066FF,#7C3AED)", color: "#fff", borderRadius: 12, padding: 18, marginBottom: 14 }}>
+                  <div style={{ background: "linear-gradient(135deg,#0066FF,#0f766e)", color: "#fff", borderRadius: 12, padding: 18, marginBottom: 14 }}>
                     <div style={{ fontSize: "0.74rem", fontWeight: 700, textTransform: "uppercase", opacity: 0.85, marginBottom: 8 }}>
                       📊 Totals across {_n(accounts.length)} account(s) · last {data.range}
                     </div>

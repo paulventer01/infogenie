@@ -86,7 +86,7 @@ const GRADE_COLOR: Record<string, string> = {
   B: "#1D4ED8",
   C: "#D97706",
   D: "#DC2626",
-  F: "#7C3AED",
+  F: "#0f766e",
 };
 const SCORE_DIMS: Record<string, string> = {
   hook_strength: "Hook Strength",
@@ -99,7 +99,7 @@ const UGC_TYPE_COLORS: Record<string, string> = {
   hook: "#EF4444",
   problem: "#F59E0B",
   solution: "#3B82F6",
-  proof: "#8B5CF6",
+  proof: "#0284c7",
   cta: "#10B981",
 };
 const UGC_TYPE_EMOJI: Record<string, string> = {
@@ -539,7 +539,7 @@ export default function AdCreative() {
               style={{
                 width: "100%",
                 padding: 12,
-                background: "linear-gradient(135deg,#6366F1,#8B5CF6)",
+                background: "linear-gradient(135deg,#6366F1,#0284c7)",
                 border: "none",
                 borderRadius: 10,
                 fontSize: "0.85rem",
@@ -1106,7 +1106,7 @@ export default function AdCreative() {
                 style={{
                   width: "100%",
                   padding: 11,
-                  background: "linear-gradient(135deg,#EC4899,#8B5CF6)",
+                  background: "linear-gradient(135deg,#EC4899,#0284c7)",
                   border: "none",
                   borderRadius: 10,
                   fontSize: "0.85rem",
@@ -1310,7 +1310,7 @@ function ScoreView({ r }: { r: ScoreResult }) {
             <div
               key={i}
               style={{
-                background: "#FFF7ED",
+                background: "#f3f6fb",
                 borderLeft: "3px solid #F59E0B",
                 borderRadius: "0 6px 6px 0",
                 padding: "8px 12px",
@@ -1385,7 +1385,7 @@ function UgcView({
           <span
             style={{
               background: "#FDF4FF",
-              color: "#7C3AED",
+              color: "#0f766e",
               padding: "3px 8px",
               borderRadius: 5,
               fontSize: "0.68rem",

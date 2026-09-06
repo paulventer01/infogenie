@@ -242,7 +242,7 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
           <div
             style={{
               fontSize: "0.7rem",
-              color: "#7C3AED",
+              color: "#0f766e",
               textTransform: "uppercase",
               letterSpacing: ".5px",
               fontWeight: 700,
@@ -403,7 +403,7 @@ export default function Goals({ embedded = false }: { embedded?: boolean } = {})
     alignItems: "center",
     gap: 4,
     padding: "4px 10px",
-    background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+    background: "linear-gradient(135deg,#0f766e,#0284c7)",
     color: "white",
     border: "none",
     borderRadius: 6,
@@ -450,7 +450,7 @@ export default function Goals({ embedded = false }: { embedded?: boolean } = {})
                   style={{
                     padding: "10px 16px",
                     background: "white",
-                    color: "#7C3AED",
+                    color: "#0f766e",
                     border: "none",
                     borderRadius: 9,
                     fontWeight: 700,
@@ -553,7 +553,7 @@ export default function Goals({ embedded = false }: { embedded?: boolean } = {})
                 onClick={openModal}
                 style={{
                   padding: "11px 22px",
-                  background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+                  background: "linear-gradient(135deg,#0f766e,#0284c7)",
                   color: "white",
                   border: "none",
                   borderRadius: 9,
@@ -683,7 +683,7 @@ export default function Goals({ embedded = false }: { embedded?: boolean } = {})
                 style={{
                   marginTop: 6,
                   fontSize: "0.72rem",
-                  color: "#7C3AED",
+                  color: "#0f766e",
                   fontStyle: "italic",
                   minHeight: 1,
                 }}
@@ -729,7 +729,7 @@ export default function Goals({ embedded = false }: { embedded?: boolean } = {})
                 style={{
                   marginTop: 6,
                   fontSize: "0.72rem",
-                  color: "#7C3AED",
+                  color: "#0f766e",
                   fontStyle: "italic",
                   minHeight: 1,
                 }}
@@ -756,7 +756,7 @@ export default function Goals({ embedded = false }: { embedded?: boolean } = {})
                 onClick={submit}
                 style={{
                   padding: "10px 18px",
-                  background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+                  background: "linear-gradient(135deg,#0f766e,#0284c7)",
                   color: "white",
                   border: "none",
                   borderRadius: 8,

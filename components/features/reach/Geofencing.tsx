@@ -315,7 +315,7 @@ export default function Geofencing() {
 
           <div>
             {simResult && (
-              <div className="ig-card" style={{ borderLeft: "4px solid #8b5cf6" }}>
+              <div className="ig-card" style={{ borderLeft: "4px solid #0284c7" }}>
                 <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: 16 }}>Simulation Result</h2>
                 {simResult.triggered_count === 0 ? (
                   <div style={{ textAlign: "center", padding: "20px 0" }}>

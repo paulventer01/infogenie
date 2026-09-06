@@ -381,7 +381,7 @@ export default function FunnelAnalytics() {
                   {/* KPI row — matches DashClicks layout */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
                     {[
-                      { label: "Earnings Per Click",     value: fmt(s.earnings_per_click, active.currency),       sub: "revenue ÷ unique sessions",  color: "#7C3AED" },
+                      { label: "Earnings Per Click",     value: fmt(s.earnings_per_click, active.currency),       sub: "revenue ÷ unique sessions",  color: "#0f766e" },
                       { label: "Gross Sales",            value: fmt(s.total_revenue, active.currency),            sub: `${s.total_sales} orders`,     color: "#059669" },
                       { label: "Average Cart Value",     value: fmt(s.average_cart_value, active.currency),       sub: "per sale",                    color: "#D97706" },
                       { label: "Earnings / Page View",   value: fmt(s.earnings_per_page_view, active.currency),   sub: "revenue ÷ all pageviews",     color: "#2563EB" },
@@ -403,7 +403,7 @@ export default function FunnelAnalytics() {
                         { label: "Page Views", bg: "#4F46E5", cols: ["All","Unique"] },
                         { label: "Opt-Ins",    bg: "#059669", cols: ["All","Conversions"] },
                         { label: "Sales",      bg: "#D97706", cols: ["Orders","Conversions","Gross"] },
-                        { label: "Earning per Page View", bg: "#7C3AED", cols: ["All","Unique"] },
+                        { label: "Earning per Page View", bg: "#0f766e", cols: ["All","Unique"] },
                       ].map(col => (
                         <div key={col.label} style={{ background: col.bg, color: "#fff", padding: "10px 14px", textAlign: "center", fontWeight: 700, fontSize: "0.78rem" }}>
                           {col.label}
@@ -639,7 +639,7 @@ export default function FunnelAnalytics() {
                   ].map(ex => (
                     <div key={ex.label} style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 9, padding: "10px 12px" }}>
                       <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#374151", marginBottom: 5 }}>{ex.label}</div>
-                      <code style={{ fontSize: "0.72rem", color: "#7C3AED" }}>{ex.code}</code>
+                      <code style={{ fontSize: "0.72rem", color: "#0f766e" }}>{ex.code}</code>
                     </div>
                   ))}
                 </div>

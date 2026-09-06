@@ -13,7 +13,7 @@ import PanelHero from "@/components/layout/PanelHero";
 
 const STAGE_COLORS: Record<string, string> = {
   unknown: "#64748b",
-  aware: "#8b5cf6",
+  aware: "#0284c7",
   interested: "#3b82f6",
   considering: "#f59e0b",
   customer: "#22c55e",

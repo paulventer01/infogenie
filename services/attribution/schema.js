@@ -35,6 +35,22 @@ async function ensureAttributionSchema() {
       created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_attr_runs_tenant ON attribution_runs(tenant_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS attribution_revenue_events (
+      id           BIGSERIAL PRIMARY KEY,
+      tenant_id    INT,
+      email        TEXT,
+      amount       NUMERIC(12,2) NOT NULL DEFAULT 0,
+      channel      TEXT NOT NULL DEFAULT 'email',
+      campaign     TEXT,
+      source       TEXT,
+      utm_source   TEXT,
+      utm_medium   TEXT,
+      utm_campaign TEXT,
+      meta         JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_attr_rev_tenant ON attribution_revenue_events(tenant_id, created_at DESC);
   `);
 }
 

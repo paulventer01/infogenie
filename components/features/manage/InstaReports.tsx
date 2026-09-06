@@ -242,7 +242,7 @@ export default function InstaReports() {
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <span style={{ background: sc.bg, color: sc.color, padding: "3px 10px", borderRadius: 99, fontSize: "0.68rem", fontWeight: 700 }}>{sc.label}</span>
                       {r.viewed_at && <span style={{ fontSize: "0.68rem", color: "#059669" }}>👁 Viewed</span>}
-                      {r.send_count > 0 && <span style={{ fontSize: "0.68rem", color: "#7C3AED" }}>✉️ Sent</span>}
+                      {r.send_count > 0 && <span style={{ fontSize: "0.68rem", color: "#0f766e" }}>✉️ Sent</span>}
                     </div>
                   </div>
                   <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -511,7 +511,7 @@ export default function InstaReports() {
                             ["Issues", sec.issues, "#DC2626", "#FEF2F2"],
                             ["Quick Fixes", sec.quick_fixes, "#059669", "#ECFDF5"],
                             ["Gaps", sec.gaps, "#D97706", "#FFF7ED"],
-                            ["Opportunities", sec.opportunities, "#7C3AED", "#F5F3FF"],
+                            ["Opportunities", sec.opportunities, "#0f766e", "#F5F3FF"],
                             ["Platforms Detected", sec.platforms_detected, "#0A66C2", "#EFF6FF"],
                             ["Strategic Priorities", sec.strategic_priorities, "#0A1628", "#F8FAFC"],
                           ].filter(([, arr]) => Array.isArray(arr) && (arr as string[]).length > 0).map(([title, items, color, bg]) => (
@@ -546,9 +546,9 @@ export default function InstaReports() {
                 </div>
 
                 <div style={{ ...card, background: "#F5F3FF", border: "1px solid #DDD6FE" }}>
-                  <div style={{ fontWeight: 800, color: "#7C3AED", fontSize: "0.82rem", marginBottom: 8 }}>💡 How to use this</div>
+                  <div style={{ fontWeight: 800, color: "#0f766e", fontSize: "0.82rem", marginBottom: 8 }}>💡 How to use this</div>
                   {["Email the report to the prospect before your first call", "Reference the Quick Wins on the call — they already know the problems", "Offer to fix the top 3 issues as your service pitch", "Track when they open the report (viewed_at timestamp)", "Follow up 2 days after sending if unopened"].map((tip, i) => (
-                    <div key={i} style={{ fontSize: "0.75rem", color: "#7C3AED", marginBottom: 4 }}>• {tip}</div>
+                    <div key={i} style={{ fontSize: "0.75rem", color: "#0f766e", marginBottom: 4 }}>• {tip}</div>
                   ))}
                 </div>
               </div>
