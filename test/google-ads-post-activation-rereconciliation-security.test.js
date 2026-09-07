@@ -47,6 +47,7 @@ test('public evidence is sanitized, immutable and never claims an external actio
 });
 
 test('route and dependency surfaces permit one exact read-only human action only',()=>{
+ assert.ok(R.TABLE.length<=63);
  assert.equal(api._exact({invocation_id:'once'},['invocation_id']),true);
  assert.equal(api._exact({invocation_id:'once',retry:true},['invocation_id']),false);
  const code=fs.readFileSync(require.resolve('../services/agent_orchestrator/google_ads_post_activation_rereconciliation'),'utf8');
@@ -89,6 +90,9 @@ test('one human request observes once and replay never reopens the provider boun
   if(sql.startsWith(`UPDATE ${R.TABLE}`)&&sql.includes("classifications=ARRAY['interrupted_observation']")){
     attempt={...attempt,state:'failed',observations:[],classifications:['interrupted_observation'],completed_at:p[2]};
     return{rows:[attempt],rowCount:1};}
+  if(sql.startsWith(`UPDATE ${R.TABLE}`)&&sql.includes('classifications=ARRAY[$3]')){
+    attempt={...attempt,state:'failed',observations:[],classifications:[p[2]],completed_at:p[3]};
+    return{rows:[attempt],rowCount:1};}
   if(sql.startsWith(`UPDATE ${R.TABLE}`)){attempt={...attempt,state:p[2],observations:JSON.parse(p[3]),classifications:p[4],completed_at:p[5]};
     return{rows:[attempt],rowCount:1};}
   if(sql.startsWith('INSERT INTO orchestrator_audit_events'))return{rows:[],rowCount:1};
@@ -109,5 +113,12 @@ test('one human request observes once and replay never reopens the provider boun
   await assert.rejects(R.getAttempt(opts({pool,attemptId:attempt.id,sessionId:'foreign-session'})),{code:'rereconciliation_not_found'});
   assert.equal(attempt.state,'failed');assert.equal(attempt.classifications[0],'interrupted_observation');
   assert.ok(calls.filter(x=>x==='COMMIT').length>getCommits);assert.equal(observes,1);
+  attempt={...attempt,state:'observing',observations:[],classifications:[],completed_at:null,
+    observation_deadline:new Date(Date.now()+60000)};const driftCommits=calls.filter(x=>x==='COMMIT').length;
+  source._test.proof=async()=>{throw Object.assign(new Error('permission_denied'),{code:'permission_denied',blocked:true});};
+  await assert.rejects(R._test.settle(pool,opts({pool}),7,{row:{...attempt}},
+    {state:'verified_active',observations,classifications:[]}),{code:'permission_denied'});
+  assert.equal(attempt.state,'failed');assert.equal(attempt.classifications[0],'authority_drift');
+  assert.ok(calls.filter(x=>x==='COMMIT').length>driftCommits);assert.equal(observes,1);
  }finally{source._test.proof=priorProof;source._test.observe=priorObserve;}
 });
