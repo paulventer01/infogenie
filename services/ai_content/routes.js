@@ -127,10 +127,105 @@ function _templateAttackPlanResponse(input) {
   };
 }
 
+const ATTACK_PLANS_BASE = 'attack_plans';
+const ATTACK_PLANS_MAX = 20;
+
+function _newAttackPlanId() {
+  const crypto = require('crypto');
+  return `ap_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+}
+
+function _attackPlanListMeta(entry) {
+  const meta = {
+    id: entry.id,
+    competitor: entry.competitor,
+    myDomain: entry.myDomain,
+    industry: entry.industry,
+    savedAt: entry.savedAt,
+    sources: entry.sources,
+  };
+  if (entry.source !== undefined) meta.source = entry.source;
+  if (entry._fabricated !== undefined) meta._fabricated = entry._fabricated;
+  if (entry.plan && entry.plan.opportunityScore != null) {
+    meta.opportunityScore = entry.plan.opportunityScore;
+  }
+  return meta;
+}
+
+function _attackPlanReadBody(entry) {
+  const body = {
+    ok: true,
+    plan: entry.plan,
+    id: entry.id,
+    competitor: entry.competitor,
+    myDomain: entry.myDomain,
+    industry: entry.industry,
+    savedAt: entry.savedAt,
+    sources: entry.sources,
+  };
+  if (entry.source !== undefined) body.source = entry.source;
+  if (entry._fabricated !== undefined) body._fabricated = entry._fabricated;
+  return body;
+}
+
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
-  const { _tkvCtx, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path } = ctx;
+  const { _tkvCtx, _tkvRead, _tkvWrite, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path } = ctx;
+
+  async function _loadAttackPlans(tid) {
+    if (!_tkvRead || tid == null) return [];
+    const list = await _tkvRead(ATTACK_PLANS_BASE, tid, () => []);
+    return Array.isArray(list) ? list : [];
+  }
+
+  async function _saveAttackPlans(tid, list) {
+    if (!_tkvWrite || tid == null) return false;
+    return await _tkvWrite(ATTACK_PLANS_BASE, tid, Array.isArray(list) ? list : []);
+  }
+
+  async function _persistAttackPlan(tid, fields) {
+    if (!_tkvRead || !_tkvWrite || tid == null || !fields || !fields.plan) return;
+    const entry = {
+      id: fields.id || _newAttackPlanId(),
+      competitor: String(fields.competitor || ''),
+      myDomain: String(fields.myDomain || ''),
+      industry: String(fields.industry || ''),
+      plan: fields.plan,
+      sources: fields.sources,
+      savedAt: fields.savedAt || new Date().toISOString(),
+    };
+    if (fields.source !== undefined) entry.source = fields.source;
+    if (fields._fabricated !== undefined) entry._fabricated = fields._fabricated;
+    const cur = await _loadAttackPlans(tid);
+    const next = [entry, ...cur].slice(0, ATTACK_PLANS_MAX);
+    await _saveAttackPlans(tid, next);
+    return entry;
+  }
+
+  async function _tryPersistAttackPlan(tid, fields) {
+    try {
+      return await _persistAttackPlan(tid, fields);
+    } catch (err) {
+      console.warn('[attack-plan] persist failed:', err.message);
+      return null;
+    }
+  }
+
+  async function _respondAttackPlan(res, tid, meta, response) {
+    if (response && response.ok && response.plan) {
+      await _tryPersistAttackPlan(tid, {
+        competitor: meta.competitor,
+        myDomain: meta.myDomain,
+        industry: meta.industry,
+        plan: response.plan,
+        sources: response.sources,
+        source: response.source,
+        _fabricated: response._fabricated,
+      });
+    }
+    return res.json(response);
+  }
 
 app.get('/api/ai-visibility-trend', async (req, res) => {
   try {
@@ -555,9 +650,50 @@ Return valid JSON only.`;
   }
 });
 
+// ── GET /api/ai-attack-plan/list — metadata only, newest first ───────────────
+app.get('/api/ai-attack-plan/list', async (req, res) => {
+  try {
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'attack-plan:read' });
+    const list = await _loadAttackPlans(tid);
+    res.json({ ok: true, plans: list.map(_attackPlanListMeta) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── GET /api/ai-attack-plan/latest — newest plan (optional competitor filter) ─
+app.get('/api/ai-attack-plan/latest', async (req, res) => {
+  try {
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'attack-plan:read' });
+    const list = await _loadAttackPlans(tid);
+    const filter = String(req.query.competitor || '').trim().toLowerCase();
+    const match = filter
+      ? list.find((e) => String(e.competitor || '').trim().toLowerCase() === filter)
+      : list[0];
+    if (!match) return res.json({ ok: true, plan: null });
+    res.json(_attackPlanReadBody(match));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── GET /api/ai-attack-plan/:id — one saved plan ─────────────────────────────
+app.get('/api/ai-attack-plan/:id', async (req, res) => {
+  try {
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'attack-plan:read' });
+    const list = await _loadAttackPlans(tid);
+    const entry = list.find((e) => e.id === req.params.id);
+    if (!entry) return res.status(404).json({ ok: false, error: 'not_found' });
+    res.json(_attackPlanReadBody(entry));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── POST /api/ai-attack-plan ─────────────────────────────────────────────────
 app.post('/api/ai-attack-plan', async (req, res) => {
   try {
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'attack-plan:save' });
     const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {}, prefillKeywords = [], prefillContext = '' } = req.body || {};
     const templateInput = { myDomain, competitor, industry, prefillKeywords };
 
@@ -565,7 +701,7 @@ app.post('/api/ai-attack-plan', async (req, res) => {
     const canOpenAI = _usableLlmKey(_openaiEnvKey()) && !!openai;
     const canAnthropic = _usableLlmKey(_anthropicEnvKey()) && !!anthropic;
     if (!canOpenAI && !canAnthropic) {
-      return res.json(_templateAttackPlanResponse(templateInput));
+      return await _respondAttackPlan(res, tid, templateInput, _templateAttackPlanResponse(templateInput));
     }
 
     const prefillSuffix = (prefillContext ? '\n\nSTRATEGIC CONTEXT — HIGHEST PRIORITY: ' + prefillContext : '') +
@@ -657,9 +793,15 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
     }
 
     // ── If only one succeeded, return it directly ────────────────────────────
-    if (!gptPlan && !claudePlan) return res.json(_templateAttackPlanResponse(templateInput));
-    if (!gptPlan) return res.json({ ok: true, plan: claudePlan, sources: ['Claude'] });
-    if (!claudePlan) return res.json({ ok: true, plan: gptPlan, sources: ['GPT-4o'] });
+    if (!gptPlan && !claudePlan) {
+      return await _respondAttackPlan(res, tid, templateInput, _templateAttackPlanResponse(templateInput));
+    }
+    if (!gptPlan) {
+      return await _respondAttackPlan(res, tid, templateInput, { ok: true, plan: claudePlan, sources: ['Claude'] });
+    }
+    if (!claudePlan) {
+      return await _respondAttackPlan(res, tid, templateInput, { ok: true, plan: gptPlan, sources: ['GPT-4o'] });
+    }
 
     // ── Both succeeded — merge in code (no extra API call) ───────────────────
     const normKey = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -714,7 +856,7 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
       criticalWins:      mergedWins
     };
 
-    res.json({ ok: true, plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
+    return await _respondAttackPlan(res, tid, templateInput, { ok: true, plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
   } catch(err) {
     res.json({ ok: false, plan: null, error: err.message });
   }
