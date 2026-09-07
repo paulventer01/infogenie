@@ -62,10 +62,10 @@ test('agency operations schema is tenant-scoped and has no provider-action surfa
 
 test('agency operations routes carry the shared tenant limiter and CodeQL disposition', () => {
   const api = fs.readFileSync(path.join(__dirname, '..', 'services', 'agency_ops', 'api.js'), 'utf8');
-  const lines = api.split('\\n');
+  const lines = api.split('\n');
   const registrations = lines
     .map((line, index) => ({ line, index }))
-    .filter(({ line }) => /^router\\.(get|post|put|patch|delete)\\(/.test(line));
+    .filter(({ line }) => /^router\.(get|post|put|patch|delete)\(/.test(line));
   assert.equal(registrations.length, 9);
   for (const { line, index } of registrations) {
     assert.match(line, /agencyOpsSharedLimiter/);
