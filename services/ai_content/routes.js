@@ -281,7 +281,7 @@ module.exports = function register(app, ctx) {
     if (fields._fabricated !== undefined) entry._fabricated = fields._fabricated;
     let packed;
     try { packed = JSON.stringify(entry); } catch { return; }
-    if (packed.length > ATTACK_PLAN_ENTRY_MAX) {
+    if (Buffer.byteLength(packed, 'utf8') > ATTACK_PLAN_ENTRY_MAX) {
       console.warn('[attack-plan] persist skipped: entry exceeds size cap');
       return;
     }

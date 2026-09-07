@@ -97,7 +97,25 @@ function tkey(base, tid) { return `${base}:t${tid}`; }
 // unless they go through `_tkvMutate`. Mirrors server.js (lines 336–346).
 const TKV_READ_DELAY_MS = 20;
 
-function mountApp() {
+function makeTkvHelpers(store, writeWrap) {
+  const _tkvRead = async (base, tid, fallback) => {
+    if (tid == null) return typeof fallback === 'function' ? fallback() : fallback;
+    await new Promise((r) => setTimeout(r, TKV_READ_DELAY_MS));
+    const k = tkey(base, tid);
+    return store.has(k) ? store.get(k) : (typeof fallback === 'function' ? fallback() : fallback);
+  };
+  const baseWrite = async (base, tid, value) => {
+    if (tid == null) return false;
+    store.set(tkey(base, tid), value);
+    return true;
+  };
+  const _tkvWrite = writeWrap
+    ? async (base, tid, value) => writeWrap(baseWrite, base, tid, value)
+    : baseWrite;
+  return { _tkvRead, _tkvWrite };
+}
+
+function mountAttackPlanApp({ withMutate = true, writeWrap } = {}) {
   const store = new Map();
   const tkvChain = new Map();
   const app = express();
@@ -107,36 +125,13 @@ function mountApp() {
     if (raw != null && raw !== '') req.tenant = { id: Number(raw) };
     next();
   });
-  const _tkvRead = async (base, tid, fallback) => {
-    if (tid == null) return typeof fallback === 'function' ? fallback() : fallback;
-    await new Promise((r) => setTimeout(r, TKV_READ_DELAY_MS));
-    const k = tkey(base, tid);
-    return store.has(k) ? store.get(k) : (typeof fallback === 'function' ? fallback() : fallback);
-  };
-  const _tkvWrite = async (base, tid, value) => {
-    if (tid == null) return false;
-    store.set(tkey(base, tid), value);
-    return true;
-  };
-  const _tkvMutate = async (base, tid, fallback, mutator) => {
-    const key = `${base}:t${tid}`;
-    const prev = tkvChain.get(key) || Promise.resolve();
-    const run = prev.then(async () => {
-      const cur = await _tkvRead(base, tid, fallback);
-      const updated = await mutator(cur);
-      if (updated !== undefined) await _tkvWrite(base, tid, updated);
-      return updated;
-    });
-    tkvChain.set(key, run.catch(() => {}));
-    return run;
-  };
-  register(app, {
+  const { _tkvRead, _tkvWrite } = makeTkvHelpers(store, writeWrap);
+  const ctx = {
     _tkvCtx: {
       resolveTenantId: async (req) => (req.tenant && req.tenant.id != null ? req.tenant.id : null),
     },
     _tkvRead,
     _tkvWrite,
-    _tkvMutate,
     anthropic: stubAnthropic,
     callDataForSEO: async () => { throw new Error('unused'); },
     callRapidAPI: async () => { throw new Error('unused'); },
@@ -146,13 +141,35 @@ function mountApp() {
     loadAivisHistory: async () => ({}),
     openai: stubOpenai,
     path: require('path'),
-  });
+  };
+  if (withMutate) {
+    ctx._tkvMutate = async (base, tid, fallback, mutator) => {
+      const key = `${base}:t${tid}`;
+      const prev = tkvChain.get(key) || Promise.resolve();
+      const run = prev.then(async () => {
+        const cur = await _tkvRead(base, tid, fallback);
+        const updated = await mutator(cur);
+        if (updated !== undefined) await _tkvWrite(base, tid, updated);
+        return updated;
+      });
+      tkvChain.set(key, run.catch(() => {}));
+      return run;
+    };
+  }
+  register(app, ctx);
   return { app, store };
+}
+
+function mountApp() {
+  return mountAttackPlanApp({ withMutate: true });
 }
 
 let server;
 let baseUrl;
 let kvStore;
+let fallbackServer;
+let fallbackBaseUrl;
+let fallbackKvStore;
 
 before(async () => {
   const mounted = mountApp();
@@ -161,6 +178,13 @@ before(async () => {
     const s = mounted.app.listen(0, '127.0.0.1', () => resolve(s));
   });
   baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+  const fallbackMounted = mountAttackPlanApp({ withMutate: false });
+  fallbackKvStore = fallbackMounted.store;
+  fallbackServer = await new Promise((resolve) => {
+    const s = fallbackMounted.app.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  fallbackBaseUrl = `http://127.0.0.1:${fallbackServer.address().port}`;
 });
 
 after(async () => {
@@ -169,11 +193,13 @@ after(async () => {
   global.fetch = origFetch;
   restoreKeys();
   await new Promise((r) => server.close(r));
+  await new Promise((r) => fallbackServer.close(r));
 });
 
 beforeEach(() => {
   networkHits = 0;
   kvStore.clear();
+  fallbackKvStore.clear();
   setKeys({
     AI_INTEGRATIONS_OPENAI_API_KEY: '_DUMMY_ATTACK_PLAN',
     OPENAI_API_KEY: '_DUMMY_ATTACK_PLAN',
@@ -186,8 +212,8 @@ function asTenant(tenantId) {
   return { headers: { 'Content-Type': 'application/json', 'x-test-tenant': String(tenantId) } };
 }
 
-async function postPlan(tenantId, body) {
-  const res = await fetch(`${baseUrl}/api/ai-attack-plan`, {
+async function postPlan(tenantId, body, url = baseUrl) {
+  const res = await fetch(`${url}/api/ai-attack-plan`, {
     method: 'POST',
     ...asTenant(tenantId),
     body: JSON.stringify(body || {
@@ -200,8 +226,8 @@ async function postPlan(tenantId, body) {
   return { status: res.status, json: await res.json() };
 }
 
-async function getJson(tenantId, path) {
-  const res = await fetch(`${baseUrl}${path}`, asTenant(tenantId));
+async function getJson(tenantId, path, url = baseUrl) {
+  const res = await fetch(`${url}${path}`, asTenant(tenantId));
   return { status: res.status, json: await res.json() };
 }
 
@@ -360,7 +386,7 @@ test('over-long request fields cannot inflate the generated or stored plan', asy
 
   const entry = kvStore.get('attack_plans:t1')[0];
   const packed = JSON.stringify(entry);
-  assert.ok(packed.length < 16 * 1024, 'a capped template entry stays far under the 64 KiB backstop');
+  assert.ok(Buffer.byteLength(packed, 'utf8') < 16 * 1024, 'a capped template entry stays far under the 64 KiB backstop');
   assert.ok(!packed.includes(longComp));
   assert.ok(!packed.includes(longKw));
   assert.ok(!packed.includes(longCtx));
@@ -400,4 +426,95 @@ test('20-entry cap keeps newest plans only', async () => {
   assert.strictEqual(list.json.plans[0].competitor, 'comp-21');
   assert.strictEqual(list.json.plans[19].competitor, 'comp-2');
   assert.ok(!list.json.plans.some((p) => p.competitor === 'comp-0' || p.competitor === 'comp-1'));
+});
+
+test('read/write fallback serializes concurrent saves without loss', async () => {
+  const [a, b] = await Promise.all([
+    postPlan(1, { myDomain: 'a.test', competitor: 'Alpha', industry: 'saas' }, fallbackBaseUrl),
+    postPlan(1, { myDomain: 'b.test', competitor: 'Beta', industry: 'saas' }, fallbackBaseUrl),
+  ]);
+  assert.strictEqual(a.status, 200);
+  assert.strictEqual(b.status, 200);
+  assert.strictEqual(a.json.ok, true);
+  assert.strictEqual(b.json.ok, true);
+
+  const list = await getJson(1, '/api/ai-attack-plan/list', fallbackBaseUrl);
+  assert.strictEqual(list.json.ok, true);
+  assert.strictEqual(list.json.plans.length, 2, 'local mutate chain must not drop a concurrent save');
+  const comps = list.json.plans.map((p) => p.competitor).sort();
+  assert.deepStrictEqual(comps, ['Alpha', 'Beta']);
+
+  const stored = fallbackKvStore.get('attack_plans:t1');
+  assert.ok(Array.isArray(stored));
+  assert.strictEqual(stored.length, 2);
+});
+
+test('read/write fallback keeps newest-first order under concurrent saves', async () => {
+  const results = await Promise.all([
+    postPlan(1, { myDomain: 'first.test', competitor: 'One', industry: 'saas' }, fallbackBaseUrl),
+    postPlan(1, { myDomain: 'second.test', competitor: 'Two', industry: 'saas' }, fallbackBaseUrl),
+    postPlan(1, { myDomain: 'third.test', competitor: 'Three', industry: 'saas' }, fallbackBaseUrl),
+  ]);
+  for (const r of results) {
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.ok, true);
+  }
+
+  const list = await getJson(1, '/api/ai-attack-plan/list', fallbackBaseUrl);
+  assert.strictEqual(list.json.plans.length, 3);
+  const savedAts = list.json.plans.map((p) => p.savedAt);
+  for (let i = 0; i < savedAts.length - 1; i += 1) {
+    assert.ok(savedAts[i] >= savedAts[i + 1], 'list is newest-first');
+  }
+});
+
+test('read/write fallback 20-entry cap keeps newest plans only', async () => {
+  for (let i = 0; i < 22; i += 1) {
+    await postPlan(1, {
+      myDomain: `site-${i}.test`,
+      competitor: `comp-${i}`,
+      industry: 'saas',
+    }, fallbackBaseUrl);
+  }
+  const list = await getJson(1, '/api/ai-attack-plan/list', fallbackBaseUrl);
+  assert.strictEqual(list.json.plans.length, 20);
+  assert.strictEqual(list.json.plans[0].competitor, 'comp-21');
+  assert.strictEqual(list.json.plans[19].competitor, 'comp-2');
+  assert.ok(!list.json.plans.some((p) => p.competitor === 'comp-0' || p.competitor === 'comp-1'));
+});
+
+test('read/write fallback chain survives a rejected kv write', async () => {
+  let failNextWrite = true;
+  const mounted = mountAttackPlanApp({
+    withMutate: false,
+    writeWrap: async (baseWrite, base, tid, value) => {
+      if (failNextWrite) {
+        failNextWrite = false;
+        throw new Error('simulated kv write failure');
+      }
+      return baseWrite(base, tid, value);
+    },
+  });
+  const rejectServer = await new Promise((resolve) => {
+    const s = mounted.app.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  const rejectBaseUrl = `http://127.0.0.1:${rejectServer.address().port}`;
+  try {
+    const first = await postPlan(1, { myDomain: 'lost.test', competitor: 'Lost', industry: 'saas' }, rejectBaseUrl);
+    assert.strictEqual(first.status, 200);
+    assert.strictEqual(first.json.ok, true);
+
+    const afterFail = await getJson(1, '/api/ai-attack-plan/list', rejectBaseUrl);
+    assert.deepStrictEqual(afterFail.json, { ok: true, plans: [] }, 'failed write must not leave a partial entry');
+
+    const second = await postPlan(1, { myDomain: 'kept.test', competitor: 'Kept', industry: 'saas' }, rejectBaseUrl);
+    assert.strictEqual(second.status, 200);
+    assert.strictEqual(second.json.ok, true);
+
+    const list = await getJson(1, '/api/ai-attack-plan/list', rejectBaseUrl);
+    assert.strictEqual(list.json.plans.length, 1);
+    assert.strictEqual(list.json.plans[0].competitor, 'Kept');
+  } finally {
+    await new Promise((r) => rejectServer.close(r));
+  }
 });
