@@ -150,7 +150,7 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_google_ads_post_activation_review_cases',
   'orchestrator_google_ads_post_activation_review_events',
   // PR10D.5 — one human-authorized post-review read-only observation.
-  'orchestrator_google_ads_post_activation_rereconciliation_attempts',
+  'orchestrator_google_ads_post_activation_rereconcile_attempts',
   // PR 8C — synchronous internal-simulation runs and their distinct lifecycle.
   'orchestrator_optimization_executions',
   'orchestrator_optimization_execution_run_events',
@@ -8381,7 +8381,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
   // PR10D.5 — exactly one human-authorized, read-only re-observation after a
   // PR10D.4 case is explicitly closed as external_remediation_required.
   await p.query(`
-    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_post_activation_rereconciliation_attempts(
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_post_activation_rereconcile_attempts(
       tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
       id TEXT NOT NULL, review_case_id TEXT NOT NULL, review_version INTEGER NOT NULL,
       closure_event_id BIGINT NOT NULL, original_reconciliation_run_id TEXT NOT NULL,
@@ -8428,7 +8428,7 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
          OR (state<>'observing' AND completed_at IS NOT NULL AND completed_at>=observing_at)))
     );
     CREATE INDEX IF NOT EXISTS orchestrator_gaparra_tenant_state_deadline
-      ON orchestrator_google_ads_post_activation_rereconciliation_attempts(tenant_id,state,observation_deadline,id);
+      ON orchestrator_google_ads_post_activation_rereconcile_attempts(tenant_id,state,observation_deadline,id);
 
     CREATE OR REPLACE FUNCTION orchestrator_gaparra_guard() RETURNS trigger AS $fn$
     DECLARE review RECORD; event RECORD; source RECORD; BEGIN
@@ -8473,9 +8473,9 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         OR NEW.observation_deadline IS DISTINCT FROM OLD.observation_deadline
       THEN RAISE EXCEPTION 'orchestrator_gaparra_immutable_or_invalid_transition'; END IF; RETURN NEW;
     END;$fn$ LANGUAGE plpgsql;
-    DROP TRIGGER IF EXISTS orchestrator_gaparra_guard ON orchestrator_google_ads_post_activation_rereconciliation_attempts;
+    DROP TRIGGER IF EXISTS orchestrator_gaparra_guard ON orchestrator_google_ads_post_activation_rereconcile_attempts;
     CREATE TRIGGER orchestrator_gaparra_guard BEFORE INSERT OR UPDATE OR DELETE
-      ON orchestrator_google_ads_post_activation_rereconciliation_attempts
+      ON orchestrator_google_ads_post_activation_rereconcile_attempts
       FOR EACH ROW EXECUTE FUNCTION orchestrator_gaparra_guard();
 
     CREATE OR REPLACE FUNCTION orchestrator_gaparra_consistent() RETURNS trigger AS $fn$
@@ -8489,9 +8489,9 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
         AND a.detail->>'status'=NEW.state AND a.detail->>'audit_reference'=NEW.audit_ref)
       THEN RAISE EXCEPTION 'orchestrator_gaparra_audit_inconsistent'; END IF; RETURN NULL;
     END;$fn$ LANGUAGE plpgsql;
-    DROP TRIGGER IF EXISTS orchestrator_gaparra_consistency ON orchestrator_google_ads_post_activation_rereconciliation_attempts;
+    DROP TRIGGER IF EXISTS orchestrator_gaparra_consistency ON orchestrator_google_ads_post_activation_rereconcile_attempts;
     CREATE CONSTRAINT TRIGGER orchestrator_gaparra_consistency AFTER INSERT OR UPDATE
-      ON orchestrator_google_ads_post_activation_rereconciliation_attempts DEFERRABLE INITIALLY DEFERRED
+      ON orchestrator_google_ads_post_activation_rereconcile_attempts DEFERRABLE INITIALLY DEFERRED
       FOR EACH ROW EXECUTE FUNCTION orchestrator_gaparra_consistent();
   `);
 
