@@ -665,6 +665,9 @@ const _OWNER_GATE_ALLOW = [
   // Google Ads activation capabilities are tenant-scoped and require a real
   // human session plus the exact explicit activation grant in their handler.
   /^\/api\/agent-orchestrator\/google-ads-activation-capabilities(?:\/|$)/,
+  // PR10D.3 is a tenant-scoped, human-only, GAQL-read surface. Its router
+  // independently enforces the active-tenant monitor grant with no owner bypass.
+  /^\/api\/agent-orchestrator\/google-ads-post-activation-reconciliation(?:\/|$)/,
   /^\/api\/agent-orchestrator\/delivery-discrepancies(?:\/|$)/,
   /^\/api\/agent-orchestrator\/optimization-recommendations(?:\/|$)/,
   /^\/api\/advertising\/optimization-executions(?:\/|$)/,

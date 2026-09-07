@@ -3497,3 +3497,28 @@ A determinate provider rejection settles `failed`. Timeout, transport loss,
 5xx, malformed, oversized, or incomplete evidence settles `unknown` and
 requires reconciliation. Duplicate delivery returns sanitized stored metadata
 without reopening authority or secrets and without contacting Google.
+
+## PR10D.3 — Human-triggered Google Ads post-activation reconciliation
+
+One real human holding the active tenant's explicit
+`advertising.campaign.monitor` grant may start one synchronous GAQL-only
+observation for a terminal PR10D.2 `succeeded` or `unknown` activation attempt.
+The server re-locks the activation attempt, consumed capability, provider-draft
+operation, current credential reference and exact three-object ledger before
+the observing row commits, before the read-only credential scope opens, and
+again before the terminal result commits.
+
+The only provider surface is the existing allowlisted Google Ads Search
+observer. It derives exactly three resource-bound queries internally and has no
+mutate transport. Campaign budget must remain unchanged; campaign and ad group
+must agree as active or inactive. Complete evidence settles as
+`verified_active` or, for an ambiguous activation attempt whose objects remain
+inactive, `verified_inactive`. Mixed states, missing objects, account/parent drift, or a
+claimed successful activation that is not observed become
+`discrepancy_detected`; transport and provider read failures become `failed`.
+
+The run table and API contain no Google customer/object identifiers, URLs,
+queries, credential material, tokens, raw payloads, raw responses, or raw
+errors. Replay is metadata-only, an expired observation is durably failed, and
+there is no worker, scheduler, queue, automatic retry, remediation,
+optimization, activation, or provider-write path.
