@@ -144,6 +144,8 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_google_ads_rereconciliation_attempts',
   // PR10D.1 — metadata-only authority for one future Google activation attempt.
   'orchestrator_google_ads_activation_capabilities',
+  // PR10D.3 — sanitized post-activation read evidence.
+  'orchestrator_google_ads_post_activation_reconciliation_runs',
   // PR 8C — synchronous internal-simulation runs and their distinct lifecycle.
   'orchestrator_optimization_executions',
   'orchestrator_optimization_execution_run_events',
@@ -8118,6 +8120,74 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     DROP TRIGGER IF EXISTS orchestrator_gaact_guard ON orchestrator_google_ads_activation_attempts;
     CREATE TRIGGER orchestrator_gaact_guard BEFORE INSERT OR UPDATE OR DELETE
       ON orchestrator_google_ads_activation_attempts FOR EACH ROW EXECUTE FUNCTION orchestrator_gaact_guard();
+  `);
+
+  // PR10D.3 — one sanitized, tenant-leading GAQL-only observation for a
+  // terminal Google activation attempt. Provider customer/object ids, URLs,
+  // queries, payloads, tokens and raw errors are deliberately excluded.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_post_activation_reconciliation_runs(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL, activation_attempt_id TEXT NOT NULL,
+      activation_status TEXT NOT NULL, invocation_id_hash TEXT NOT NULL,
+      requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      session_id_hash TEXT NOT NULL, workflow_id TEXT NOT NULL,
+      state TEXT NOT NULL, observations JSONB NOT NULL DEFAULT '[]'::jsonb,
+      classifications TEXT[] NOT NULL DEFAULT '{}'::text[], audit_ref TEXT NOT NULL,
+      observing_at TIMESTAMPTZ NOT NULL, observation_deadline TIMESTAMPTZ NOT NULL,
+      completed_at TIMESTAMPTZ NULL,
+      PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,activation_attempt_id),
+      UNIQUE(tenant_id,invocation_id_hash), UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,activation_attempt_id)
+        REFERENCES orchestrator_google_ads_activation_attempts(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_gapar_hashes CHECK(invocation_id_hash~'^[0-9a-f]{64}$'
+        AND session_id_hash~'^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_gapar_activation CHECK(activation_status IN('succeeded','unknown')),
+      CONSTRAINT orchestrator_gapar_state CHECK(state IN
+        ('observing','verified_active','verified_inactive','discrepancy_detected','failed')),
+      CONSTRAINT orchestrator_gapar_time CHECK(observation_deadline>observing_at AND
+        ((state='observing' AND completed_at IS NULL) OR
+         (state<>'observing' AND completed_at IS NOT NULL AND completed_at>=observing_at))),
+      CONSTRAINT orchestrator_gapar_observations CHECK(jsonb_typeof(observations)='array'),
+      CONSTRAINT orchestrator_gapar_initial CHECK(state<>'observing' OR
+        (observations='[]'::jsonb AND cardinality(classifications)=0))
+    );
+    CREATE INDEX IF NOT EXISTS orchestrator_gapar_tenant_state_deadline
+      ON orchestrator_google_ads_post_activation_reconciliation_runs(tenant_id,state,observation_deadline,id);
+    CREATE OR REPLACE FUNCTION orchestrator_gapar_guard() RETURNS trigger AS $fn$
+    DECLARE attempt RECORD; BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_gapar_audit_evidence'; END IF;
+      IF TG_OP='INSERT' THEN
+        IF NEW.state<>'observing' OR NEW.completed_at IS NOT NULL OR NEW.observations<>'[]'::jsonb
+          OR cardinality(NEW.classifications)<>0
+        THEN RAISE EXCEPTION 'orchestrator_gapar_invalid_initial_state'; END IF;
+        SELECT * INTO attempt FROM orchestrator_google_ads_activation_attempts
+          WHERE tenant_id=NEW.tenant_id AND id=NEW.activation_attempt_id;
+        IF attempt.id IS NULL OR attempt.status NOT IN('succeeded','unknown')
+          OR attempt.status<>NEW.activation_status OR attempt.workflow_id<>NEW.workflow_id
+        THEN RAISE EXCEPTION 'orchestrator_gapar_invalid_provenance'; END IF;
+        RETURN NEW;
+      END IF;
+      IF OLD.state<>'observing' OR NEW.state NOT IN
+          ('verified_active','verified_inactive','discrepancy_detected','failed')
+        OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.activation_attempt_id IS DISTINCT FROM OLD.activation_attempt_id
+        OR NEW.activation_status IS DISTINCT FROM OLD.activation_status
+        OR NEW.invocation_id_hash IS DISTINCT FROM OLD.invocation_id_hash
+        OR NEW.requested_by IS DISTINCT FROM OLD.requested_by
+        OR NEW.session_id_hash IS DISTINCT FROM OLD.session_id_hash
+        OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id
+        OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+        OR NEW.observing_at IS DISTINCT FROM OLD.observing_at
+        OR NEW.observation_deadline IS DISTINCT FROM OLD.observation_deadline
+      THEN RAISE EXCEPTION 'orchestrator_gapar_immutable_or_invalid_transition'; END IF;
+      RETURN NEW;
+    END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gapar_guard
+      ON orchestrator_google_ads_post_activation_reconciliation_runs;
+    CREATE TRIGGER orchestrator_gapar_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_google_ads_post_activation_reconciliation_runs
+      FOR EACH ROW EXECUTE FUNCTION orchestrator_gapar_guard();
   `);
 
   // PR 8C — consumes one approved PR8B request without changing it. No provider
