@@ -277,6 +277,39 @@ test('honesty markers survive the round trip', async () => {
   assert.ok(detectFabrication(latest.json));
 });
 
+test('over-long metadata is truncated on persist; POST response unchanged', async () => {
+  const longComp = 'C'.repeat(200);
+  const longDomain = 'D'.repeat(200);
+  const longIndustry = 'I'.repeat(200);
+
+  const posted = await postPlan(1, {
+    myDomain: longDomain,
+    competitor: longComp,
+    industry: longIndustry,
+  });
+  assert.strictEqual(posted.status, 200);
+  assert.strictEqual(posted.json.ok, true);
+  const summary = posted.json.plan.executiveSummary;
+  assert.ok(summary.includes(longComp), 'POST plan body should keep full competitor');
+  assert.ok(summary.includes(longDomain), 'POST plan body should keep full myDomain');
+  assert.ok(summary.includes(longIndustry), 'POST plan body should keep full industry');
+
+  const expectedComp = longComp.slice(0, 80);
+  const expectedDomain = longDomain.slice(0, 80);
+  const expectedIndustry = longIndustry.slice(0, 80);
+
+  const list = await getJson(1, '/api/ai-attack-plan/list');
+  assert.strictEqual(list.json.plans[0].competitor, expectedComp);
+  assert.strictEqual(list.json.plans[0].myDomain, expectedDomain);
+  assert.strictEqual(list.json.plans[0].industry, expectedIndustry);
+
+  const latest = await getJson(1, '/api/ai-attack-plan/latest');
+  assert.strictEqual(latest.json.competitor, expectedComp);
+  assert.strictEqual(latest.json.myDomain, expectedDomain);
+  assert.strictEqual(latest.json.industry, expectedIndustry);
+  assert.ok(latest.json.plan.executiveSummary.includes(longComp));
+});
+
 test('20-entry cap keeps newest plans only', async () => {
   for (let i = 0; i < 22; i += 1) {
     await postPlan(1, {

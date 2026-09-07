@@ -129,6 +129,12 @@ function _templateAttackPlanResponse(input) {
 
 const ATTACK_PLANS_BASE = 'attack_plans';
 const ATTACK_PLANS_MAX = 20;
+// Matches legacy panel _bpSafe(entry.name, 80) — persistence-only bound.
+const ATTACK_PLAN_FIELD_MAX = 80;
+
+function _capAttackPlanField(s) {
+  return String(s == null ? '' : s).slice(0, ATTACK_PLAN_FIELD_MAX);
+}
 
 function _newAttackPlanId() {
   const crypto = require('crypto');
@@ -196,9 +202,9 @@ module.exports = function register(app, ctx) {
     if (!_tkvRead || !_tkvWrite || tid == null || !fields || !fields.plan) return;
     const entry = {
       id: fields.id || _newAttackPlanId(),
-      competitor: String(fields.competitor || ''),
-      myDomain: String(fields.myDomain || ''),
-      industry: String(fields.industry || ''),
+      competitor: _capAttackPlanField(fields.competitor),
+      myDomain: _capAttackPlanField(fields.myDomain),
+      industry: _capAttackPlanField(fields.industry),
       plan: fields.plan,
       sources: fields.sources,
       savedAt: fields.savedAt || new Date().toISOString(),
