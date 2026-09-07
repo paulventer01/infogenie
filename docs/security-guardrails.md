@@ -3576,3 +3576,62 @@ Coverage: `test/google-ads-post-activation-rereconciliation-security.test.js`
 and
 `test/integration/google-ads-post-activation-rereconciliation-postgres.test.js`,
 both registered in `scripts/run-advertising-certification.js`.
+
+## Route shape vs the public API allowlist (`/api/*/status`)
+
+`_AUTH_PUBLIC_API_PATHS` in `server.js` matches on path *shape*, not on the
+route that will handle the request. One entry is deliberately generic, because
+around forty `/status` handlers across the app rely on it being reachable
+pre-login:
+
+```
+/^\/api\/[^\/]+\/status$/   // per-integration status pings
+```
+
+The consequence is a standing rule for route authors. A bare `/:param` route
+mounted under a single-segment `/api` prefix — either `app.get('/api/x/:id')`
+or a `router.get('/:id')` under `app.use('/api/x', router)` — inherits that
+entry. `GET /api/x/status` is then admitted with **no session**, and because the
+request carries no `req.user`, `enforceMatrix` treats it as anonymous traffic
+and skips it (`permission_enforce.js`). So neither the auth gate nor the
+permission matrix protects that one path, and adding a `ROUTE_GROUPS` row for
+the prefix does not change it.
+
+This shape is widespread and pre-dates this note: `/api/battle-cards/status`,
+`/api/audiences/status`, `/api/voc/status`, `/api/surveys/status`,
+`/api/personas/status` and others all reach their `/:id` handler anonymously
+today. What differs is how far the request gets before it is refused:
+
+- **Refused on the param** — `battle-cards`, `audiences`, `voc` and `carousel`
+  reject the id shape and answer `bad id` / `invalid id` without resolving a
+  tenant or touching storage. This is the pattern to copy.
+- **Refused on the tenant** — `surveys`, `personas` and `agent-goals` reach
+  `resolveTenantId` first and answer `no_tenant`. They are safe only because
+  production runs `MULTITENANT_ENFORCEMENT=on`, where an unresolvable tenant
+  yields `null` and reads return empty. That is one control deep, not two.
+
+For a new route, prefer in this order:
+
+1. Nest the collection — `/api/x/plans/:id` rather than `/api/x/:id`. The
+   allowlist entry cannot match a two-segment path at all.
+2. If the flat shape is required, validate the param against the id shape the
+   server issues, **before** tenant resolution and before any read, so the
+   anonymous path can never become a tenant-data read primitive. Return the same
+   `404 not_found` as an unknown id — do not signal that the shape was wrong.
+
+`GET /api/ai-attack-plan/:id` in `services/ai_content/routes.js` takes option 2
+via `ATTACK_PLAN_ID_RE`, matching its sibling `/api/battle-cards` surface. The
+same reasoning applies to `:slug`, `:key`, `:name` and any other param name.
+
+Two things this note does **not** license. Do not add entries to
+`_AUTH_PUBLIC_API_PATHS` that match a path *shape* rather than a concrete public
+endpoint. And do not treat the param guard as a substitute for narrowing the
+allowlist itself — replacing the generic `/status` regex with an explicit list of
+real status endpoints remains open, and is a Security change with its own QA
+pass because it touches every integration's pre-login ping.
+
+Coverage: `test/attack-plan-read-security.test.js` (param guard runs before any
+tenant resolution or kv read; matrix row and role grants) and
+`test/integration/attack-plan-read-auth.test.js` (real `server.js` chain: the
+reads are 401 anonymously and the allowlisted `/status` shape returns a bare
+`not_found`).

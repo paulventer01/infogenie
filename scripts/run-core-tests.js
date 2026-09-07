@@ -23,6 +23,7 @@ const { spawn } = require('node:child_process');
 const FILES = [
   'test/attack-plan-client.test.js',
   'test/attack-plan-persistence.test.js',
+  'test/attack-plan-read-security.test.js',
   'test/data-mode-charts.test.js',
   'test/migrated-builders-safety.test.js',
   'test/migrated-builders-coverage.test.js',

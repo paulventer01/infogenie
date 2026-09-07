@@ -135,6 +135,14 @@ function _newAttackPlanId() {
   return `ap_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
 }
 
+// Shape emitted by _newAttackPlanId. A bare `/:id` under a single-segment /api
+// prefix is reachable anonymously via the `/^\/api\/[^\/]+\/status$/` entry in
+// server.js's public allowlist, and enforceMatrix skips requests with no
+// req.user — so `/api/ai-attack-plan/status` is gated by neither. Rejecting a
+// non-id param before tenant resolution keeps that path away from any tenant
+// lookup or kv read, as /api/battle-cards does. See docs/security-guardrails.md.
+const ATTACK_PLAN_ID_RE = /^ap_\d{1,20}_[0-9a-f]{6,32}$/;
+
 function _attackPlanListMeta(entry) {
   const meta = {
     id: entry.id,
@@ -680,9 +688,11 @@ app.get('/api/ai-attack-plan/latest', async (req, res) => {
 // ── GET /api/ai-attack-plan/:id — one saved plan ─────────────────────────────
 app.get('/api/ai-attack-plan/:id', async (req, res) => {
   try {
+    const id = String(req.params.id || '');
+    if (!ATTACK_PLAN_ID_RE.test(id)) return res.status(404).json({ ok: false, error: 'not_found' });
     const tid = await _tkvCtx.resolveTenantId(req, { label: 'attack-plan:read' });
     const list = await _loadAttackPlans(tid);
-    const entry = list.find((e) => e.id === req.params.id);
+    const entry = list.find((e) => e.id === id);
     if (!entry) return res.status(404).json({ ok: false, error: 'not_found' });
     res.json(_attackPlanReadBody(entry));
   } catch (err) {
