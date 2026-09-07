@@ -693,9 +693,23 @@ export default function Dashboard() {
             </div>
             <div className="vh-actions">
               <div className="analysis-tags">
-                <span className="atag" title="Your industry category — all benchmarks and AI recommendations are calibrated to this vertical.">{industryName}</span>
+                <button
+                  type="button"
+                  className={`atag ${dm.atagLink}`}
+                  title="Your industry category — all benchmarks and AI recommendations are calibrated to this vertical. Click to open Vertical Playbooks."
+                  onClick={() => goToView(router, "vertical-playbooks")}
+                >
+                  {industryName}
+                </button>
                 <span className="atag" title="Geographic scope of the analysis — traffic, ad spend and benchmarks are filtered to this market.">{countryLabel}</span>
-                <span className="atag" title={`${competitors.length} rival domains are being tracked and benchmarked in this report.`}>{competitors.length} Competitors</span>
+                <button
+                  type="button"
+                  className={`atag ${dm.atagLink}`}
+                  title={`${competitors.length} rival domains are being tracked and benchmarked in this report. Click to open Competitor Profiles.`}
+                  onClick={() => goToView(router, "competitors")}
+                >
+                  {competitors.length} Competitors
+                </button>
                 <span className="atag live-tag" title="Data is refreshed in real time — competitor signals, traffic estimates and alerts are always current.">
                   <span className="live-dot-inline" />Live Intel
                 </span>
