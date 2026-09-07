@@ -78,6 +78,7 @@ test('one human request observes once and replay never reopens the provider boun
   if(sql.includes('SELECT * FROM orchestrator_google_ads_post_activation_review_cases'))return{rows:[review],rowCount:1};
   if(sql.includes('SELECT * FROM orchestrator_google_ads_post_activation_review_events'))return{rows:[event],rowCount:1};
   if(sql.includes('SELECT * FROM orchestrator_google_ads_post_activation_reconciliation_runs'))return{rows:[{id:'gapar_source'}],rowCount:1};
+  if(sql.startsWith(`SELECT review_case_id FROM ${R.TABLE}`))return{rows:attempt?[{review_case_id:attempt.review_case_id}]:[],rowCount:attempt?1:0};
   if(sql.includes(`SELECT a.*,e.audit_ref closure_audit_ref FROM ${R.TABLE}`))return{rows:attempt?[{...attempt,closure_audit_ref:event.audit_ref}]:[],rowCount:attempt?1:0};
   if(sql.startsWith('SELECT clock_timestamp() now'))return{rows:[{now:new Date()}],rowCount:1};
   if(sql.startsWith(`INSERT INTO ${R.TABLE}`)){attempt={tenant_id:1,id:p[1],review_case_id:p[2],review_version:p[3],
@@ -103,5 +104,10 @@ test('one human request observes once and replay never reopens the provider boun
   await assert.rejects(R.rereconcile(opts({pool,sessionId:'new-session',invocationId:'new-invocation'})),{code:'idempotency_conflict'});
   assert.equal(attempt.state,'failed');assert.equal(attempt.classifications[0],'interrupted_observation');
   assert.ok(calls.filter(x=>x==='COMMIT').length>commits);assert.equal(observes,1);
+  attempt={...attempt,state:'observing',observations:[],classifications:[],completed_at:null,
+    observation_deadline:new Date(Date.now()-1000)};const getCommits=calls.filter(x=>x==='COMMIT').length;
+  await assert.rejects(R.getAttempt(opts({pool,attemptId:attempt.id,sessionId:'foreign-session'})),{code:'rereconciliation_not_found'});
+  assert.equal(attempt.state,'failed');assert.equal(attempt.classifications[0],'interrupted_observation');
+  assert.ok(calls.filter(x=>x==='COMMIT').length>getCommits);assert.equal(observes,1);
  }finally{source._test.proof=priorProof;source._test.observe=priorObserve;}
 });
