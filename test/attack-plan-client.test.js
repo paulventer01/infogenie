@@ -58,11 +58,13 @@ before(() => {
   win.eval(
     helpersBlock
     + '\nwindow._unwrapAttackPlanPayload = _unwrapAttackPlanPayload;'
+    + '\nwindow._unwrapAttackPlanListPayload = _unwrapAttackPlanListPayload;'
     + '\nwindow._applyAttackPlanResponse = _applyAttackPlanResponse;'
     + '\nwindow._apHonestyBadgeHtml = _apHonestyBadgeHtml;\n'
     + dataBadgeBlock,
   );
   assert.equal(typeof win._unwrapAttackPlanPayload, 'function');
+  assert.equal(typeof win._unwrapAttackPlanListPayload, 'function');
   assert.equal(typeof win._applyAttackPlanResponse, 'function');
   assert.equal(typeof win._apHonestyBadgeHtml, 'function');
   assert.equal(typeof win._dataBadge, 'function');
@@ -163,6 +165,30 @@ test('ok:true with a missing/null plan is a failure, not a blank success', () =>
   assert.strictEqual(closed, 1);
   assert.ok(toasts.some((t) => t.includes('Could not generate')));
   assert.ok(!toasts.some((t) => t.includes('Attack plan ready')));
+});
+
+test('withheld POST path still dispatches ig:attack-plan-saved so the list refreshes', () => {
+  const fired = [];
+  const onSaved = () => { fired.push('ig:attack-plan-saved'); };
+  win.addEventListener('ig:attack-plan-saved', onSaved);
+  const payload = {
+    ok: true,
+    data_unavailable: true,
+    _dataMode: 'strict',
+    source: 'data_unavailable',
+    message: 'This data is currently unavailable. The issue has been reported to your administrator.',
+  };
+  const applied = win._applyAttackPlanResponse(payload, 'Rival');
+  win.removeEventListener('ig:attack-plan-saved', onSaved);
+  assert.strictEqual(applied, false);
+  assert.deepStrictEqual(fired, ['ig:attack-plan-saved']);
+  assert.ok(!toasts.some((t) => t.includes('Attack plan ready')));
+  assert.ok(!toasts.some((t) => /saved/i.test(t) && !/withheld/i.test(t)));
+  assert.ok(toasts.some((t) => /withheld/i.test(t) && /strict/i.test(t)));
+  const modal = win.document.getElementById('attackPlanModal');
+  assert.ok(modal);
+  assert.match(modal.innerHTML, /Attack plan withheld/);
+  assert.doesNotMatch(modal.innerHTML, /Attack plan ready/);
 });
 
 test('strict data_unavailable envelope is withheld — honest message, no plan, no success toast', () => {
@@ -291,4 +317,184 @@ test('openFullAttackPlanModal falls back to window.analysisData via _resolveAnal
   assert.doesNotMatch(modalSrc, /renderAttackPlan\(plan,/);
 
   assert.match(SHELL_SRC, /_syncBareAnalysisData\?\.\(\)/);
+});
+
+const graceBlock = sliceBetween(
+  SRC,
+  '// Brief grace after open so a second click',
+  '// ── Attack-plan response helpers (envelope unwrap + honesty) ──',
+);
+const savedOpenBlock = sliceBetween(
+  SRC,
+  'window.openSavedAttackPlan = function',
+  'window.openFullAttackPlanModal = function',
+);
+
+test('_apApplyOpenGrace suppresses pointer interaction briefly then restores', async () => {
+  const gdom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { runScripts: 'outside-only' });
+  const gwin = gdom.window;
+  gwin.eval(graceBlock + '\nwindow._apApplyOpenGrace = _apApplyOpenGrace;\n');
+  const modal = gwin.document.createElement('div');
+  const inner = gwin.document.createElement('div');
+  modal.appendChild(inner);
+  gwin.document.body.appendChild(modal);
+  gwin._apApplyOpenGrace(modal);
+  assert.strictEqual(modal.dataset.apGrace, '1');
+  assert.strictEqual(inner.style.pointerEvents, 'none');
+  await new Promise((r) => setTimeout(r, 450));
+  assert.strictEqual(modal.dataset.apGrace, undefined);
+  assert.strictEqual(inner.style.pointerEvents, '');
+});
+
+test('openSavedAttackPlan sets honesty meta before renderAttackPlan', () => {
+  const sdom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { runScripts: 'outside-only' });
+  const swin = sdom.window;
+  const order = [];
+  swin.eval(
+    helpersBlock
+    + '\nwindow._unwrapAttackPlanPayload = _unwrapAttackPlanPayload;'
+    + savedOpenBlock,
+  );
+  swin.showToast = () => {};
+  swin.renderAttackPlan = (plan, competitor) => {
+    order.push({
+      meta: swin._apPlanMeta ? { ...swin._apPlanMeta } : null,
+      plan,
+      competitor,
+    });
+  };
+  const templatePlan = { ...livePlan, executiveSummary: 'Saved template plan.' };
+  const payload = {
+    ok: true,
+    plan: templatePlan,
+    competitor: 'IG Markets',
+    sources: ['template'],
+    source: 'template',
+    _fabricated: true,
+  };
+  assert.strictEqual(swin.openSavedAttackPlan(payload, 'IG Markets'), true);
+  assert.strictEqual(order.length, 1);
+  assert.strictEqual(order[0].meta.fabricated, true);
+  assert.strictEqual(order[0].meta.source, 'template');
+  assert.deepStrictEqual(order[0].meta.sources, ['template']);
+  assert.strictEqual(order[0].plan, templatePlan);
+  assert.strictEqual(order[0].competitor, 'IG Markets');
+});
+
+const BP_SRC = fs.readFileSync(
+  path.join(__dirname, '..', 'components', 'features', 'analyse', 'Battleplan.tsx'),
+  'utf8',
+);
+
+test('saved-plan surface is reachable without analysisData and follows the shell restore events', () => {
+  assert.doesNotMatch(
+    BP_SRC,
+    /useMemo\(\s*getAnalysisData\s*,\s*\[\s*\]\s*\)/,
+    'must not one-shot snapshot analysisData',
+  );
+  assert.match(BP_SRC, /ig:analysis-updated/);
+  assert.match(BP_SRC, /ig:analysis-ready/);
+  assert.match(BP_SRC, /document\.addEventListener\(\s*["']ig:analysis-updated["']/);
+  assert.match(BP_SRC, /document\.addEventListener\(\s*["']ig:analysis-ready["']/);
+
+  const early = BP_SRC.indexOf('if (!hasData || !c)');
+  assert.notEqual(early, -1, 'expected no-analysis early return');
+  const afterEarly = BP_SRC.indexOf('const domain', early);
+  assert.ok(afterEarly > early, 'expected analysis-present path after the empty return');
+  const emptyReturn = BP_SRC.slice(early, afterEarly);
+  assert.match(emptyReturn, /SavedPlansSection|bp-saved-plans|Saved Attack Plans/);
+  assert.match(emptyReturn, /data-bp-no-analysis/);
+  assert.match(emptyReturn, /No Analysis Yet/);
+  assert.doesNotMatch(
+    emptyReturn,
+    /minHeight:\s*["']70vh["']/,
+    'empty-analysis banner must not fill the viewport and hide saved plans',
+  );
+});
+
+test('data_unavailable list payload is withheld — not the empty-state copy', () => {
+  const payload = {
+    ok: true,
+    data_unavailable: true,
+    _dataMode: 'strict',
+    source: 'data_unavailable',
+    message: 'This data is currently unavailable. The issue has been reported to your administrator.',
+  };
+  const unwrapped = win._unwrapAttackPlanListPayload(payload);
+  assert.strictEqual(unwrapped.withheld, true);
+  assert.strictEqual(Array.isArray(unwrapped.plans), true);
+  assert.strictEqual(unwrapped.plans.length, 0);
+  assert.match(unwrapped.message, /currently unavailable/);
+  assert.match(unwrapped.message, /administrator/);
+
+  const emptyCopy = 'No attack plans saved yet — generate one above';
+  const showEmpty = !unwrapped.withheld && unwrapped.plans.length === 0;
+  assert.strictEqual(showEmpty, false, 'withheld list must not use the genuinely-empty copy');
+  assert.doesNotMatch(unwrapped.message, /No attack plans saved yet/);
+  assert.doesNotMatch(unwrapped.message, /generate one above/);
+});
+
+test('openSavedAttackPlan routes withheld single-plan payload through _apShowUnavailable', () => {
+  const sdom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { runScripts: 'outside-only' });
+  const swin = sdom.window;
+  const localToasts = [];
+  swin.eval(
+    helpersBlock
+    + '\nwindow._unwrapAttackPlanPayload = _unwrapAttackPlanPayload;'
+    + savedOpenBlock,
+  );
+  swin.showToast = (msg) => { localToasts.push(String(msg)); };
+  swin.renderAttackPlan = () => { throw new Error('renderAttackPlan must not run for withheld payload'); };
+
+  const payload = {
+    ok: true,
+    data_unavailable: true,
+    source: 'data_unavailable',
+    message: 'This data is currently unavailable. The issue has been reported to your administrator.',
+  };
+  assert.strictEqual(swin.openSavedAttackPlan(payload, 'Rival'), false);
+  assert.strictEqual(localToasts.length, 1);
+  assert.match(localToasts[0], /withheld/i);
+  assert.match(localToasts[0], /strict data mode/i);
+  assert.doesNotMatch(localToasts[0], /Could not load saved attack plan/);
+
+  const modal = swin.document.getElementById('attackPlanModal');
+  assert.ok(modal, 'withheld saved plan opens the honest unavailable dialog');
+  assert.match(modal.innerHTML, /Attack plan withheld/);
+  assert.match(modal.innerHTML, /currently unavailable/);
+  assert.match(modal.innerHTML, /retrying will not generate a plan/i);
+});
+
+test('renderAttackPlan applies open grace on the dialog inner panel', async () => {
+  const bpSafeStart = SRC.indexOf('function _bpSafe(s, max)');
+  const bpSafeEnd = SRC.indexOf('\nfunction ', bpSafeStart + 1);
+  assert.ok(bpSafeStart !== -1 && bpSafeEnd !== -1, 'expected _bpSafe in app.js');
+  const bpSafeBlock = SRC.slice(bpSafeStart, bpSafeEnd);
+  const renderStart = SRC.indexOf('function renderAttackPlan(plan, competitor)');
+  const renderEnd = SRC.indexOf('window._apCloseModal = _apCloseModal', renderStart);
+  assert.ok(renderStart !== -1 && renderEnd !== -1, 'expected renderAttackPlan in app.js');
+  const renderBlock = SRC.slice(renderStart, renderEnd);
+
+  const rdom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { runScripts: 'outside-only' });
+  const rwin = rdom.window;
+  rwin.eval(
+    graceBlock
+    + '\nwindow._apApplyOpenGrace = _apApplyOpenGrace;\n'
+    + bpSafeBlock
+    + '\nfunction _apSwitchTab() {}\n'
+    + '\nfunction _apHonestyBadgeHtml() { return ""; }\n'
+    + renderBlock
+    + '\nwindow.renderAttackPlan = renderAttackPlan;\n',
+  );
+  rwin._apCloseModal = () => {};
+  rwin.renderAttackPlan(livePlan, 'Rival');
+  const modal = rwin.document.getElementById('attackPlanModal');
+  assert.ok(modal, 'modal mounted');
+  const inner = modal.firstElementChild;
+  assert.ok(inner);
+  assert.strictEqual(modal.dataset.apGrace, '1');
+  assert.strictEqual(inner.style.pointerEvents, 'none');
+  await new Promise((r) => setTimeout(r, 450));
+  assert.strictEqual(modal.dataset.apGrace, undefined);
+  assert.strictEqual(inner.style.pointerEvents, '');
 });

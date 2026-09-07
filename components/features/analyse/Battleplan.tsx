@@ -12,16 +12,17 @@
 // launcher; cross-tool links go through `lib/nav#goToView`. See
 // `docs/react-panel-migration.md`.
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
+import { apiGet } from "@/lib/api";
 
 interface Campaign {
   name?: string;
-  channel?: string | null;
-  ctr?: string | null;
-  roas?: number | null;
+  channel?: string;
+  ctr?: string;
+  roas?: number;
   status?: string;
   budget?: string;
 }
@@ -36,7 +37,6 @@ interface AdCopy {
 interface Competitor {
   name?: string;
   url?: string;
-  domain?: string;
   logo?: string;
   threatLevel?: string;
   trafficMo?: number;
@@ -51,40 +51,191 @@ interface Competitor {
   audiences?: Audience[];
   adCopy?: AdCopy[];
   estimatedROI?: string;
-  realData?: boolean;
-  _dataSource?: string;
 }
 interface AnalysisData {
   url?: string;
   industry?: { name?: string };
-  competitors?: unknown[];
+  competitors?: Competitor[];
+}
+
+interface SavedAttackPlanMeta {
+  id: string;
+  competitor?: string;
+  myDomain?: string;
+  industry?: string;
+  savedAt?: string;
+  sources?: string[];
+  source?: string;
+  _fabricated?: boolean;
+  opportunityScore?: number;
+}
+
+interface AttackPlanListResult {
+  ok: boolean;
+  error?: string;
+  plans?: SavedAttackPlanMeta[];
+  data_unavailable?: boolean;
+  source?: string;
+  message?: string;
+}
+
+interface AttackPlanDetailResult {
+  ok: boolean;
+  error?: string;
+  plan?: Record<string, unknown> | null;
+  id?: string;
+  competitor?: string;
+  myDomain?: string;
+  industry?: string;
+  savedAt?: string;
+  sources?: string[];
+  source?: string;
+  _fabricated?: boolean;
+  data_unavailable?: boolean;
+  message?: string;
+}
+
+interface UnwrappedAttackPlanList {
+  withheld: boolean;
+  plans: SavedAttackPlanMeta[];
+  error: string;
+  message: string;
+}
+
+const AP_LIST_UNAVAILABLE_FALLBACK =
+  "Attack plan withheld: live AI output was unavailable and this workspace is in strict data mode. An administrator has been notified.";
+
+function unwrapAttackPlanList(res: AttackPlanListResult): UnwrappedAttackPlanList {
+  if (typeof window !== "undefined") {
+    const w = window as unknown as {
+      _unwrapAttackPlanListPayload?: (r: AttackPlanListResult) => Partial<UnwrappedAttackPlanList>;
+    };
+    if (typeof w._unwrapAttackPlanListPayload === "function") {
+      const u = w._unwrapAttackPlanListPayload(res);
+      return {
+        withheld: !!u.withheld,
+        plans: Array.isArray(u.plans) ? u.plans : [],
+        error: typeof u.error === "string" ? u.error : "",
+        message: typeof u.message === "string" ? u.message : "",
+      };
+    }
+  }
+  if (res.data_unavailable === true || res.source === "data_unavailable") {
+    const message =
+      typeof res.message === "string" && res.message.trim() ? res.message.trim() : AP_LIST_UNAVAILABLE_FALLBACK;
+    return { withheld: true, plans: [], error: "", message };
+  }
+  if (res.ok === false) {
+    return {
+      withheld: false,
+      plans: [],
+      error: res.error || "Could not load saved attack plans",
+      message: "",
+    };
+  }
+  return {
+    withheld: false,
+    plans: Array.isArray(res.plans) ? res.plans : [],
+    error: "",
+    message: "",
+  };
+}
+
+function formatSavedAt(iso?: string): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const diff = Date.now() - d.getTime();
+    if (diff < 60_000) return "Just now";
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hours ago`;
+    return d.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function planHonestyBadge(p: SavedAttackPlanMeta): { label: string; style: CSSProperties } {
+  const sources = Array.isArray(p.sources) ? p.sources : [];
+  const fabricated = !!(p._fabricated || p.source === "template" || sources.includes("template"));
+  if (fabricated) {
+    return { label: "ESTIMATE · TEMPLATE", style: { background: "#FEE2E2", color: "#991B1B" } };
+  }
+  const live = sources.filter((s) => s && s !== "template");
+  if (live.length) {
+    return { label: `AI ANALYSIS · ${live.join(" + ")}`, style: { background: "#FEF3C7", color: "#92400E" } };
+  }
+  return { label: "AI ANALYSIS", style: { background: "#FEF3C7", color: "#92400E" } };
+}
+
+function openSavedPlanBridge(payload: AttackPlanDetailResult, competitor?: string): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as unknown as {
+    openSavedAttackPlan?: (p: AttackPlanDetailResult, name?: string) => boolean;
+    renderAttackPlan?: (plan: Record<string, unknown>, name: string) => void;
+    _unwrapAttackPlanPayload?: (p: AttackPlanDetailResult) => {
+      withheld?: boolean;
+      ok?: boolean;
+      plan?: Record<string, unknown> | null;
+      message?: string;
+      error?: string;
+      source?: string;
+      fabricated?: boolean;
+      sources?: string[];
+    };
+    _apShowUnavailable?: (message?: string) => void;
+    _apPlanMeta?: { source?: string; fabricated?: boolean; sources?: string[] };
+    showToast?: (m: string) => void;
+  };
+  if (typeof w.openSavedAttackPlan === "function") {
+    return w.openSavedAttackPlan(payload, competitor);
+  }
+  if (typeof w._unwrapAttackPlanPayload === "function") {
+    const unwrapped = w._unwrapAttackPlanPayload(payload);
+    if (unwrapped.withheld) {
+      w._apShowUnavailable?.(unwrapped.message || unwrapped.error);
+      w.showToast?.("📭 Attack plan withheld — live AI output unavailable in strict data mode");
+      return false;
+    }
+    if (!unwrapped.ok || !unwrapped.plan) {
+      w.showToast?.("⚠️ Could not load saved attack plan");
+      return false;
+    }
+    w._apPlanMeta = {
+      source: unwrapped.source,
+      fabricated: unwrapped.fabricated,
+      sources: unwrapped.sources,
+    };
+    if (typeof w.renderAttackPlan === "function") {
+      w.renderAttackPlan(unwrapped.plan, competitor || payload.competitor || "Competitor");
+      return true;
+    }
+  }
+  if (!payload.plan) {
+    w.showToast?.("⚠️ Could not load saved attack plan");
+    return false;
+  }
+  const sources = Array.isArray(payload.sources) ? payload.sources : [];
+  const fabricated = !!(payload._fabricated || payload.source === "template" || sources.includes("template"));
+  w._apPlanMeta = { source: payload.source, fabricated, sources };
+  if (typeof w.renderAttackPlan === "function") {
+    w.renderAttackPlan(payload.plan, competitor || payload.competitor || "Competitor");
+    return true;
+  }
+  w.showToast?.("⚠️ Action not ready — refresh the page and try again (openSavedAttackPlan)");
+  return false;
 }
 
 function getAnalysisData(): AnalysisData | null {
   if (typeof window === "undefined") return null;
   return (window as unknown as { analysisData?: AnalysisData }).analysisData || null;
-}
-
-function normalizeCompetitor(raw: unknown): Competitor {
-  if (typeof raw === "string") return { name: raw };
-  if (raw && typeof raw === "object") {
-    const c = raw as Competitor;
-    return {
-      ...c,
-      name: c.name || "Competitor",
-      url: c.url || c.domain,
-    };
-  }
-  return { name: "Competitor" };
-}
-
-function normalizeCompetitors(list: unknown): Competitor[] {
-  if (!Array.isArray(list)) return [];
-  return list.map(normalizeCompetitor);
-}
-
-function hasRealMetrics(c: Competitor): boolean {
-  return !!(c.realData || c._dataSource === "DataForSEO");
 }
 
 // Deterministic seed hash — ported verbatim from the legacy `_blSeed` so the
@@ -120,20 +271,6 @@ function fmtT(n: number): string {
         : String(n || 0);
 }
 
-function fmtMetric(v: string | number | null | undefined): string {
-  if (v == null || v === "null" || v === "") return "—";
-  return String(v);
-}
-
-function isUsableCampaign(camp: Campaign): boolean {
-  return !!(
-    camp.name ||
-    (camp.channel != null && camp.channel !== "null" && camp.channel !== "") ||
-    (camp.ctr != null && camp.ctr !== "null") ||
-    (camp.roas != null && Number.isFinite(camp.roas))
-  );
-}
-
 const KW_VOLUMES = [14800, 8200, 22000, 6600, 18400, 4400, 9800, 12000];
 const KW_DIFFICULTIES = ["Low", "Medium", "Medium", "High"];
 const KW_COLORS = ["#0066FF", "#7C3AED", "#059669", "#D97706"];
@@ -153,9 +290,9 @@ interface Btn {
 interface CardData {
   border: string;
   badgeStyle: CSSProperties;
-  badge: ReactNode;
-  title: ReactNode;
-  body: ReactNode;
+  badge: string;
+  title: string;
+  body: string;
   buttons: Btn[];
 }
 
@@ -174,28 +311,6 @@ const greenStyle: CSSProperties = { ...btnBase, background: "linear-gradient(135
 const ghostStyle: CSSProperties = { ...btnBase, background: "#F3F4F6", border: "1px solid #E5E7EB", color: "#374151" };
 const tealStyle: CSSProperties = { ...btnBase, background: "linear-gradient(135deg,#00C9C8,#00E5FF)", color: "#0A1628" };
 
-function EstimateBadge({ label = "ESTIMATE" }: { label?: string }) {
-  return (
-    <span
-      style={{
-        fontSize: "0.52rem",
-        fontWeight: 800,
-        letterSpacing: ".06em",
-        textTransform: "uppercase",
-        color: "#64748B",
-        background: "#F1F5F9",
-        border: "1px solid #E2E8F0",
-        borderRadius: 4,
-        padding: "1px 5px",
-        marginLeft: 4,
-        verticalAlign: "middle",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
 function Card({ data }: { data: CardData }) {
   return (
     <div
@@ -212,9 +327,15 @@ function Card({ data }: { data: CardData }) {
         <span style={{ fontSize: "0.62rem", fontWeight: 800, padding: "3px 8px", borderRadius: 5, flexShrink: 0, ...data.badgeStyle }}>
           {data.badge}
         </span>
-        <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#0F172A", lineHeight: 1.4 }}>{data.title}</div>
+        <div
+          style={{ fontSize: "0.82rem", fontWeight: 700, color: "#0A1628", lineHeight: 1.4 }}
+          dangerouslySetInnerHTML={{ __html: data.title }}
+        />
       </div>
-      <div style={{ fontSize: "0.78rem", color: "#475569", lineHeight: 1.55, marginBottom: 10 }}>{data.body}</div>
+      <div
+        style={{ fontSize: "0.78rem", color: "#6B7280", lineHeight: 1.55, marginBottom: 10 }}
+        dangerouslySetInnerHTML={{ __html: data.body }}
+      />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {data.buttons.map((b, i) => (
           <button key={i} onClick={b.onClick} style={b.style}>
@@ -228,20 +349,12 @@ function Card({ data }: { data: CardData }) {
 
 function Section({ icon, title, sub, children }: { icon: string; title: string; sub: string; children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        background: "#FFFFFF",
-        border: "1px solid #E5E7EB",
-        borderRadius: 16,
-        padding: 20,
-        boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04)",
-      }}
-    >
+    <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 20 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 16 }}>
         <span style={{ fontSize: "1.2rem", lineHeight: 1 }}>{icon}</span>
         <div>
-          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.9rem", fontWeight: 800, color: "#0F172A" }}>{title}</div>
-          <div style={{ fontSize: "0.7rem", color: "#64748B", marginTop: 2 }}>{sub}</div>
+          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.9rem", fontWeight: 800, color: "white" }} dangerouslySetInnerHTML={{ __html: title }} />
+          <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,.4)", marginTop: 2 }} dangerouslySetInnerHTML={{ __html: sub }} />
         </div>
       </div>
       {children}
@@ -249,35 +362,260 @@ function Section({ icon, title, sub, children }: { icon: string; title: string; 
   );
 }
 
-export default function Battleplan() {
-  const router = useRouter();
-  const [ad, setAd] = useState<AnalysisData | null>(null);
-  const [idxState, setIdxState] = useState(0);
+/** Server-side saved plans — independent of in-page analysisData. */
+function SavedPlansSection({
+  variant,
+  emptyCopy,
+}: {
+  variant: "embedded" | "standalone";
+  emptyCopy: string;
+}) {
+  const [savedPlans, setSavedPlans] = useState<SavedAttackPlanMeta[]>([]);
+  const [savedLoading, setSavedLoading] = useState(true);
+  const [savedError, setSavedError] = useState<string | null>(null);
+  const [savedWithheld, setSavedWithheld] = useState<string | null>(null);
+  const [viewingPlanId, setViewingPlanId] = useState<string | null>(null);
+
+  const loadSavedPlans = useCallback(async () => {
+    setSavedLoading(true);
+    setSavedError(null);
+    setSavedWithheld(null);
+    const res = await apiGet<AttackPlanListResult>("/api/ai-attack-plan/list");
+    const unwrapped = unwrapAttackPlanList(res);
+    if (unwrapped.withheld) {
+      setSavedPlans([]);
+      setSavedWithheld(unwrapped.message || AP_LIST_UNAVAILABLE_FALLBACK);
+      setSavedLoading(false);
+      return;
+    }
+    if (unwrapped.error) {
+      setSavedPlans([]);
+      setSavedError(unwrapped.error);
+      setSavedLoading(false);
+      return;
+    }
+    setSavedPlans(unwrapped.plans);
+    setSavedLoading(false);
+  }, []);
 
   useEffect(() => {
-    const refresh = () => {
-      const next = getAnalysisData();
-      if (!next) {
-        setAd(null);
-        return;
-      }
-      setAd({
-        ...next,
-        competitors: Array.isArray(next.competitors) ? [...next.competitors] : [],
-      });
+    void loadSavedPlans();
+  }, [loadSavedPlans]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onSaved = () => {
+      void loadSavedPlans();
     };
+    window.addEventListener("ig:attack-plan-saved", onSaved);
+    return () => window.removeEventListener("ig:attack-plan-saved", onSaved);
+  }, [loadSavedPlans]);
+
+  async function viewSavedPlan(entry: SavedAttackPlanMeta) {
+    if (!entry.id) return;
+    setViewingPlanId(entry.id);
+    const res = await apiGet<AttackPlanDetailResult>(`/api/ai-attack-plan/${entry.id}`);
+    setViewingPlanId(null);
+    if (res.error === "not_found") {
+      const w = window as unknown as { showToast?: (m: string) => void };
+      w.showToast?.("⚠️ Saved attack plan not found");
+      void loadSavedPlans();
+      return;
+    }
+    openSavedPlanBridge(res, entry.competitor || res.competitor);
+  }
+
+  const wrapStyle: CSSProperties =
+    variant === "standalone"
+      ? {
+          background: "linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06))",
+          border: "1px solid rgba(0,201,200,.2)",
+          borderRadius: 14,
+          padding: "20px 24px",
+        }
+      : { marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(0,201,200,.22)" };
+
+  return (
+    <div className="bp-saved-plans" data-bp-saved-plans="1" style={wrapStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "#0F172A" }}>
+            📂 Saved Attack Plans
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "#64748B", marginTop: 2 }}>
+            Re-open a generated plan anytime — closing the dialog does not delete it
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadSavedPlans()}
+          disabled={savedLoading}
+          style={{
+            padding: "6px 12px",
+            background: "#FFFFFF",
+            border: "1px solid #E2E8F0",
+            borderRadius: 8,
+            fontSize: "0.72rem",
+            fontWeight: 700,
+            color: "#475569",
+            cursor: savedLoading ? "wait" : "pointer",
+          }}
+        >
+          {savedLoading ? "Loading…" : "Refresh"}
+        </button>
+      </div>
+
+      {savedLoading && savedPlans.length === 0 && !savedError ? (
+        <div style={{ fontSize: "0.8rem", color: "#64748B", padding: "12px 0" }}>Loading saved plans…</div>
+      ) : null}
+
+      {savedError ? (
+        <div
+          style={{
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: 10,
+            padding: "12px 14px",
+            fontSize: "0.8rem",
+            color: "#991B1B",
+          }}
+        >
+          Could not load saved attack plans — {savedError}
+        </div>
+      ) : null}
+
+      {savedWithheld ? (
+        <div
+          style={{
+            background: "#FFFBEB",
+            border: "1px solid #FDE68A",
+            borderRadius: 10,
+            padding: "16px 14px",
+            fontSize: "0.8rem",
+            color: "#78350F",
+          }}
+        >
+          <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#92400E", marginBottom: 8 }}>
+            📭 Saved plans withheld
+          </div>
+          <div style={{ lineHeight: 1.55, color: "#92400E" }}>{savedWithheld}</div>
+          <div style={{ fontSize: "0.75rem", color: "#64748B", lineHeight: 1.5, marginTop: 10 }}>
+            Live AI output was unavailable. Strict data mode hides estimated/template plans and reports the issue to an administrator — generating a new plan will not restore access to saved plans here.
+          </div>
+        </div>
+      ) : null}
+
+      {!savedLoading && !savedError && !savedWithheld && savedPlans.length === 0 ? (
+        <div
+          style={{
+            background: "#F8FAFC",
+            border: "1px dashed #CBD5E1",
+            borderRadius: 10,
+            padding: "16px 14px",
+            fontSize: "0.8rem",
+            color: "#64748B",
+            textAlign: "center",
+          }}
+        >
+          {emptyCopy}
+        </div>
+      ) : null}
+
+      {!savedError && savedPlans.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {savedPlans.map((p) => {
+            const honesty = planHonestyBadge(p);
+            const viewing = viewingPlanId === p.id;
+            return (
+              <div
+                key={p.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  background: "#FFFFFF",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 10,
+                  padding: "12px 14px",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: "0.84rem", fontWeight: 800, color: "#0F172A" }}>
+                    vs {p.competitor || "Competitor"}
+                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "#64748B", marginTop: 3 }}>
+                    Generated {formatSavedAt(p.savedAt)}
+                    {p.myDomain ? ` · ${p.myDomain}` : ""}
+                  </div>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      marginTop: 6,
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      fontSize: "0.6rem",
+                      fontWeight: 800,
+                      letterSpacing: ".04em",
+                      textTransform: "uppercase",
+                      ...honesty.style,
+                    }}
+                  >
+                    {honesty.label}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void viewSavedPlan(p)}
+                  disabled={viewing}
+                  style={{
+                    padding: "8px 16px",
+                    background: "linear-gradient(135deg,#0066FF,#00C9C8)",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    color: "#fff",
+                    cursor: viewing ? "wait" : "pointer",
+                    whiteSpace: "nowrap",
+                    opacity: viewing ? 0.7 : 1,
+                  }}
+                >
+                  {viewing ? "Opening…" : "View plan"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default function Battleplan() {
+  const router = useRouter();
+  const [ad, setAd] = useState<AnalysisData | null>(() => getAnalysisData());
+  const comps = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
+  const [idxState, setIdxState] = useState(0);
+
+  // AppShell restore writes window.analysisData then fires these events
+  // (document + window). Do not snapshot once — pick up the restored payload.
+  useEffect(() => {
+    const refresh = () => setAd(getAnalysisData());
     refresh();
     document.addEventListener("ig:analysis-ready", refresh);
     document.addEventListener("ig:analysis-updated", refresh);
+    window.addEventListener("ig:analysis-ready", refresh);
     window.addEventListener("ig:analysis-updated", refresh);
     return () => {
       document.removeEventListener("ig:analysis-ready", refresh);
       document.removeEventListener("ig:analysis-updated", refresh);
+      window.removeEventListener("ig:analysis-ready", refresh);
       window.removeEventListener("ig:analysis-updated", refresh);
     };
   }, []);
-
-  const comps = useMemo(() => normalizeCompetitors(ad?.competitors), [ad]);
 
   const hasData = comps.length > 0;
   const idx = Math.min(idxState, Math.max(0, comps.length - 1));
@@ -306,51 +644,58 @@ export default function Battleplan() {
     w._bpIdx = idx;
   }, [c, idx]);
 
-  function switchComp(i: number, opts?: { scroll?: boolean }) {
+  function switchComp(i: number) {
     setIdxState(i);
     if (typeof window !== "undefined") {
       (window as unknown as { _bpIdx?: number })._bpIdx = i;
-      if (opts?.scroll !== false) {
-        window.scrollTo(0, 0);
-      }
+      window.scrollTo(0, 0);
     }
   }
 
   if (!hasData || !c) {
     return (
       <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "70vh",
-          textAlign: "center",
-          gap: 20,
-          padding: 40,
-          background: "var(--ig-page)",
-        }}
+        data-bp-no-analysis="1"
+        style={{ background: "var(--ig-page)", minHeight: "100vh", paddingBottom: 40 }}
       >
-        <div style={{ fontSize: "3.5rem" }}>⚔️</div>
-        <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "#0F172A" }}>No Analysis Yet</div>
-        <div style={{ color: "#64748B", maxWidth: 420, fontSize: "0.9rem", lineHeight: 1.6 }}>
-          Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.
-        </div>
-        <button
-          onClick={() => goToView(router, "home")}
+        <div
           style={{
-            padding: "13px 30px",
-            background: "linear-gradient(135deg,#0066FF,#00C9C8)",
-            border: "none",
-            borderRadius: 12,
-            color: "white",
-            fontWeight: 700,
-            fontSize: "0.9rem",
-            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            gap: 16,
+            padding: "48px 40px 28px",
           }}
         >
-          Run Analysis →
-        </button>
+          <div style={{ fontSize: "3.5rem" }}>⚔️</div>
+          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "white" }}>No Analysis Yet</div>
+          <div style={{ color: "rgba(255,255,255,.5)", maxWidth: 420, fontSize: "0.9rem", lineHeight: 1.6 }}>
+            Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.
+          </div>
+          <button
+            onClick={() => goToView(router, "home")}
+            style={{
+              padding: "13px 30px",
+              background: "linear-gradient(135deg,#0066FF,#00C9C8)",
+              border: "none",
+              borderRadius: 12,
+              color: "white",
+              fontWeight: 700,
+              fontSize: "0.9rem",
+              cursor: "pointer",
+            }}
+          >
+            Run Analysis →
+          </button>
+        </div>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
+          <SavedPlansSection
+            variant="standalone"
+            emptyCopy="No attack plans saved yet — run an analysis first, then generate a plan from this page"
+          />
+        </div>
       </div>
     );
   }
@@ -358,8 +703,7 @@ export default function Battleplan() {
   const domain = ad?.url || "yourdomain.com";
   const industry = ad?.industry?.name || "your industry";
   const threat = c.threatLevel || "medium";
-  const traffic = c.trafficMo ? fmtT(c.trafficMo) : fmtMetric(c.traffic);
-  const realMetrics = hasRealMetrics(c);
+  const traffic = c.trafficMo ? fmtT(c.trafficMo) : c.traffic || "—";
   const oppBase = threat === "high" ? 74 : threat === "medium" ? 55 : 38;
   const oppScore = oppBase + Math.floor(blSeed(c.name || "") % 18);
   const threatColor = threat === "high" ? "#EF4444" : threat === "medium" ? "#F59E0B" : "#10B981";
@@ -400,21 +744,9 @@ export default function Battleplan() {
       return {
         border: KW_COLORS[i],
         badgeStyle: { background: "#EFF6FF", color: "#1D4ED8" },
-        badge: (
-          <>
-            {vol.toLocaleString()}/mo · CPC ${cpc}
-            <EstimateBadge />
-          </>
-        ),
+        badge: `${vol.toLocaleString()}/mo · CPC $${cpc}`,
         title: `"${kw}"`,
-        body: (
-          <>
-            {cName} is actively bidding here with suboptimal relevance scores — you can capture traffic at{" "}
-            <span style={{ color: "#059669", fontWeight: 700 }}>lower CPC</span> with tighter ad groups. Difficulty:{" "}
-            <span style={{ color: diffColor, fontWeight: 700 }}>{diff}</span>
-            <EstimateBadge label="estimated" />.
-          </>
-        ),
+        body: `${cName} is actively bidding here with suboptimal relevance scores — you can capture traffic at <strong style="color:#059669">lower CPC</strong> with tighter ad groups. Difficulty: <span style="color:${diffColor};font-weight:700">${diff}</span>.`,
         buttons: [
           { label: "🔑 Build Google Ads", onClick: () => callWin("bpGA", idx, i), style: primaryStyle },
           { label: "📝 Build Content", onClick: () => callWin("bpBC", idx, i), style: ghostStyle },
@@ -443,7 +775,6 @@ export default function Battleplan() {
       }));
 
   // ── 4. Audience Gaps ───────────────────────────────────────────────────────
-  const usingFallbackAudiences = !(c.audiences && c.audiences.length);
   const audCards: CardData[] = (c.audiences && c.audiences.length
     ? c.audiences
     : [
@@ -458,18 +789,9 @@ export default function Battleplan() {
       return {
         border: "#0066FF",
         badgeStyle: { background: "#EFF6FF", color: "#1D4ED8" },
-        badge: (
-          <>
-            {a.pct}% of market
-            {usingFallbackAudiences ? <EstimateBadge label="estimated" /> : null}
-          </>
-        ),
+        badge: `${a.pct}% of market`,
         title: a.label || "Audience",
-        body: (
-          <>
-            {AUD_GAPS[i % AUD_GAPS.length].replace("competitor", cName)}. Best capture channel: <strong>{aCh}</strong>.
-          </>
-        ),
+        body: `${AUD_GAPS[i % AUD_GAPS.length].replace("competitor", cName)}. Best capture channel: <strong>${aCh}</strong>.`,
         buttons: [
           { label: "🎯 Target This Audience", onClick: () => callWin("bpTA", idx, i), style: primaryStyle },
           { label: "👥 Audience Deep-Dive", onClick: () => goToView(router, "audience"), style: ghostStyle },
@@ -478,45 +800,22 @@ export default function Battleplan() {
     });
 
   // ── 5. Campaign Counter-Moves ──────────────────────────────────────────────
-  const campCards: CardData[] = (c.campaigns || [])
-    .map((camp, origIdx) => ({ camp, origIdx }))
-    .filter(({ camp }) => isUsableCampaign(camp))
-    .slice(0, 3)
-    .map(({ camp, origIdx }) => {
-      const channel = fmtMetric(camp.channel);
-      const ctr = fmtMetric(camp.ctr);
-      const hasRoas = camp.roas != null && Number.isFinite(camp.roas);
-      const roasStr = hasRoas ? `${camp.roas}×` : null;
-      const roasTarget = hasRoas ? ((camp.roas as number) * 1.2).toFixed(1) : null;
-      return {
-        border: "#10B981",
-        badgeStyle: camp.status === "Active" ? { background: "#D1FAE5", color: "#065F46" } : { background: "#FEF3C7", color: "#92400E" },
-        badge: camp.status || "Campaign",
-        title: `Counter: "${(camp.name || "Campaign").slice(0, 40)}"`,
-        body: (
-          <>
-            {cName} runs this on <strong>{channel}</strong>
-            {ctr !== "—" ? ` at ${ctr} CTR` : ""}
-            {roasStr ? ` / ${roasStr} ROAS` : ""}. Launch a counter-campaign targeting the same audience with superior creative
-            {roasTarget ? (
-              <>
-                {" "}
-                — target ROAS: <span style={{ color: "#059669", fontWeight: 700 }}>{roasTarget}×</span>
-              </>
-            ) : null}
-            .
-          </>
-        ),
-        buttons: [{ label: "📣 Launch Counter-Campaign", onClick: () => callWin("bpCC", idx, origIdx), style: greenStyle }],
-      };
-    });
+  const campCards: CardData[] = (c.campaigns || []).slice(0, 3).map((camp, i) => {
+    const roasTarget = ((camp.roas || 0) * 1.2).toFixed(1);
+    return {
+      border: "#10B981",
+      badgeStyle: camp.status === "Active" ? { background: "#D1FAE5", color: "#065F46" } : { background: "#FEF3C7", color: "#92400E" },
+      badge: camp.status || "",
+      title: `Counter: "${(camp.name || "Campaign").slice(0, 40)}"`,
+      body: `${cName} runs this on <strong>${camp.channel}</strong> at ${camp.ctr} CTR / ${camp.roas}× ROAS. Launch a counter-campaign targeting the same audience with superior creative — target ROAS: <strong style="color:#059669">${roasTarget}×</strong>.`,
+      buttons: [{ label: "📣 Launch Counter-Campaign", onClick: () => callWin("bpCC", idx, i), style: greenStyle }],
+    };
+  });
 
   // ── 6. Quick Wins ──────────────────────────────────────────────────────────
-  const SYNTHETIC_QW_ROI = "+25% CTR improvement via tighter audience segmentation";
-  const firstQwCopy = c.estimatedROI || SYNTHETIC_QW_ROI;
   const qwItems: { t: string; button: Btn }[] = [
     {
-      t: firstQwCopy,
+      t: c.estimatedROI || "+25% CTR improvement via tighter audience segmentation",
       button: { label: "⚡ Execute", onClick: () => callWin("bpQW", idx, 0), style: tealStyle },
     },
     {
@@ -528,74 +827,17 @@ export default function Battleplan() {
       button: { label: "📣 Plan Social", onClick: () => goToView(router, "social"), style: tealStyle },
     },
   ];
-  const qwCards: CardData[] = qwItems.map((w, qi) => {
-    const titleText = w.t.length > 80 ? w.t.slice(0, 80) + "…" : w.t;
-    return {
-      border: "#00C9C8",
-      badgeStyle: { background: "#ECFEFF", color: "#0E7490" },
-      badge: "QUICK WIN",
-      title:
-        qi === 0 ? (
-          <>
-            {titleText}
-            <EstimateBadge label="estimated" />
-          </>
-        ) : (
-          titleText
-        ),
-      body: "Low effort, high impact. Act on this before competitors do.",
-      buttons: [w.button],
-    };
-  });
+  const qwCards: CardData[] = qwItems.map((w) => ({
+    border: "#00C9C8",
+    badgeStyle: { background: "#ECFEFF", color: "#0E7490" },
+    badge: "QUICK WIN",
+    title: w.t.length > 80 ? w.t.slice(0, 80) + "…" : w.t,
+    body: "Low effort, high impact. Act on this before competitors do.",
+    buttons: [w.button],
+  }));
 
   const topRows = (c.suggestions || []).slice(0, 3);
   const initial = (c.logo || (c.name || "?")[0]).toString()[0];
-
-  const overviewMetrics: { v: ReactNode; l: string; color: string }[] = [
-    {
-      v: (
-        <>
-          {traffic}
-          {!realMetrics && traffic !== "—" ? <EstimateBadge label="estimated" /> : null}
-        </>
-      ),
-      l: "Traffic/mo",
-      color: "#0E7490",
-    },
-    {
-      v: (
-        <>
-          {fmtMetric(c.ctr)}
-          {!realMetrics && fmtMetric(c.ctr) !== "—" ? <EstimateBadge label="estimated" /> : null}
-        </>
-      ),
-      l: "CTR",
-      color: "#0E7490",
-    },
-    {
-      v: (
-        <>
-          {fmtMetric(c.roas)}
-          {fmtMetric(c.roas) !== "—" ? "×" : ""}
-          {!realMetrics && fmtMetric(c.roas) !== "—" ? <EstimateBadge label="estimated" /> : null}
-        </>
-      ),
-      l: "ROAS",
-      color: "#0E7490",
-    },
-    {
-      v: (
-        <>
-          {fmtMetric(c.adSpend)}
-          {!realMetrics && fmtMetric(c.adSpend) !== "—" ? <EstimateBadge label="estimated" /> : null}
-        </>
-      ),
-      l: "Ad Spend",
-      color: "#0E7490",
-    },
-    { v: fmtMetric(c.topChannel), l: "Top Channel", color: "#0E7490" },
-    { v: threat.toUpperCase(), l: "Threat", color: threatColor },
-  ];
 
   return (
     <div style={{ background: "var(--ig-page)", minHeight: "100vh", paddingBottom: 40 }}>
@@ -652,8 +894,6 @@ export default function Battleplan() {
               style={{ fontSize: "0.65rem", fontWeight: 800, color: "#0f766e", letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 6 }}
             >
               <span className="bc-group">Analyse</span>
-              <span className="bc-sep"> › </span>
-              <span>Know your competition</span>
               <span className="bc-sep"> › </span>
               Battle Plan
             </div>
@@ -746,7 +986,14 @@ export default function Battleplan() {
             </div>
           </div>
           <div style={{ flex: 1, display: "flex", gap: 24, flexWrap: "wrap" }}>
-            {overviewMetrics.map((m, i) => (
+            {[
+              { v: traffic, l: "Traffic/mo", color: "#0E7490" },
+              { v: c.ctr || "—", l: "CTR", color: "#0E7490" },
+              { v: `${c.roas || "—"}×`, l: "ROAS", color: "#0E7490" },
+              { v: c.adSpend || "—", l: "Ad Spend", color: "#0E7490" },
+              { v: c.topChannel || "—", l: "Top Channel", color: "#0E7490" },
+              { v: threat.toUpperCase(), l: "Threat", color: threatColor },
+            ].map((m, i) => (
               <div key={i} style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "0.92rem", fontWeight: 800, color: m.color }}>{m.v}</div>
                 <div style={{ fontSize: "0.62rem", color: "#64748B", textTransform: "uppercase", letterSpacing: ".06em" }}>{m.l}</div>
@@ -754,9 +1001,7 @@ export default function Battleplan() {
             ))}
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <div style={{ fontSize: "0.67rem", color: "#64748B", marginBottom: 2, textTransform: "uppercase", letterSpacing: ".05em" }}>
-              Opportunity Score <EstimateBadge label="estimated" />
-            </div>
+            <div style={{ fontSize: "0.67rem", color: "#64748B", marginBottom: 2, textTransform: "uppercase", letterSpacing: ".05em" }}>Opportunity Score</div>
             <div style={{ fontSize: "2rem", fontWeight: 900, fontFamily: "Sora,sans-serif", color: oppScore >= 70 ? "#059669" : oppScore >= 50 ? "#D97706" : "#2563EB", lineHeight: 1 }}>
               {oppScore}
             </div>
@@ -786,7 +1031,7 @@ export default function Battleplan() {
 
         {/* 2-Column Action Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(460px,1fr))", gap: 20 }}>
-          <Section icon="🎯" title="Exploit Their Weaknesses" sub={`${(c.suggestions || []).length || 4} identified gaps in ${cName}'s strategy`}>
+          <Section icon="🎯" title="Exploit Their Weaknesses" sub={`${(c.suggestions || []).length || 4} identified gaps in ${cName}&apos;s strategy`}>
             {weakCards.map((d, i) => (
               <Card key={i} data={d} />
             ))}
@@ -796,7 +1041,7 @@ export default function Battleplan() {
               <Card key={i} data={d} />
             ))}
           </Section>
-          <Section icon="🎨" title="Creative Counter-Strategy" sub={`Ad angles that out-perform ${cName}'s current creative`}>
+          <Section icon="🎨" title="Creative Counter-Strategy" sub={`Ad angles that out-perform ${cName}&apos;s current creative`}>
             {creativeCards.map((d, i) => (
               <Card key={i} data={d} />
             ))}
@@ -810,7 +1055,7 @@ export default function Battleplan() {
             {campCards.length > 0 ? (
               campCards.map((d, i) => <Card key={i} data={d} />)
             ) : (
-              <div style={{ color: "#64748B", fontSize: "0.82rem", padding: "12px 0" }}>
+              <div style={{ color: "rgba(255,255,255,.4)", fontSize: "0.82rem", padding: "12px 0" }}>
                 No active campaigns detected — run full analysis for live campaign data.
               </div>
             )}
@@ -837,8 +1082,7 @@ export default function Battleplan() {
               <label style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".07em" }}>Select Competitor</label>
               <select
                 id="attackPlanCompSelect"
-                value={String(idx)}
-                onChange={(e) => switchComp(parseInt(e.target.value, 10), { scroll: false })}
+                defaultValue={String(idx)}
                 style={{ padding: "10px 14px", borderRadius: 9, fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", width: "100%", appearance: "auto" }}
               >
                 {comps.map((cc, i) => (
@@ -850,7 +1094,10 @@ export default function Battleplan() {
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", paddingTop: 18 }}>
               <button
-                onClick={() => callWin("openFullAttackPlanModal", idx)}
+                onClick={() => {
+                  const sel = document.getElementById("attackPlanCompSelect") as HTMLSelectElement | null;
+                  callWin("openFullAttackPlanModal", parseInt(sel?.value || String(idx), 10));
+                }}
                 style={{ padding: "11px 24px", background: "linear-gradient(135deg,#0066FF,#00C9C8)", border: "none", borderRadius: 10, fontSize: "0.84rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 4px 16px rgba(0,102,255,.4)" }}
               >
                 🚀 Generate Attack Plan
@@ -864,6 +1111,11 @@ export default function Battleplan() {
               </button>
             </div>
           </div>
+
+          <SavedPlansSection
+            variant="embedded"
+            emptyCopy="No attack plans saved yet — generate one above"
+          />
         </div>
       </div>
     </div>

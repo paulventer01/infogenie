@@ -134,6 +134,12 @@ body:has(#ig-app-shell) .panel-header::after {
   background: linear-gradient(90deg, #0f766e, #0284c7, #f97316) !important;
 }
 
+/* Legacy dark-hero ::before radial bleeds onto the light shell header */
+body:has(#ig-app-shell) .view-header::before {
+  background: none !important;
+  content: none !important;
+}
+
 body:has(#ig-app-shell) .view-header h1,
 body:has(#ig-app-shell) .view-header h2,
 body:has(#ig-app-shell) .view-title,
