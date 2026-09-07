@@ -6,6 +6,40 @@ const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { requirePermission } = require('../tenants/permission_enforce');
+const { createRateLimiter } = require('../security/rate_limit');
+
+const AGENCY_OPS_WINDOW_MS = 60_000;
+const AGENCY_OPS_MAX = 60;
+
+function _agencyOpsTenantId(req) {
+  const raw = req && req.tenant ? req.tenant.id : undefined;
+  if (typeof raw === 'number') return Number.isSafeInteger(raw) && raw > 0 ? raw : null;
+  if (typeof raw === 'string' && /^[1-9]\d*$/.test(raw)) {
+    const n = Number(raw);
+    return Number.isSafeInteger(n) ? n : null;
+  }
+  return null;
+}
+
+function _agencyOpsTenantGuard(req, res, next) {
+  if (_agencyOpsTenantId(req) == null) {
+    return res.status(400).json({ ok: false, error: 'no_tenant' });
+  }
+  return next();
+}
+
+function _agencyOpsRateLimitKey(req) {
+  const tid = _agencyOpsTenantId(req);
+  return tid == null ? null : `agency-ops|${tid}`;
+}
+
+const agencyOpsSharedLimiter = createRateLimiter({
+  name: 'agency-ops',
+  windowMs: AGENCY_OPS_WINDOW_MS,
+  max: AGENCY_OPS_MAX,
+  keyFn: _agencyOpsRateLimitKey,
+  failClosed: true,
+});
 
 function _err(res, code, msg, extra = {}) {
   return res.status(code).json({ ok: false, error: msg, ...extra });
@@ -377,7 +411,11 @@ function _buildSummary(range, filters, entries, baselines) {
   };
 }
 
-router.get('/time-entries', _safe(async (req, res) => {
+router.use(_agencyOpsTenantGuard);
+router.use(agencyOpsSharedLimiter);
+
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/time-entries', agencyOpsSharedLimiter, _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:time-entries:list');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return res.json({ ok: true, entries: [] });
@@ -388,7 +426,8 @@ router.get('/time-entries', _safe(async (req, res) => {
   res.json({ ok: true, period: range, entries });
 }));
 
-router.post('/time-entries', _safe(async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.post('/time-entries', agencyOpsSharedLimiter, _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:time-entries:create');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');
@@ -413,7 +452,8 @@ router.post('/time-entries', _safe(async (req, res) => {
   res.status(201).json({ ok: true, entry: _entry(result.rows[0]) });
 }));
 
-router.patch('/time-entries/:id', _safe(async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.patch('/time-entries/:id', agencyOpsSharedLimiter, _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:time-entries:update');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');
@@ -447,7 +487,8 @@ router.patch('/time-entries/:id', _safe(async (req, res) => {
   res.json({ ok: true, entry: _entry(result.rows[0]) });
 }));
 
-router.get('/rates', requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/rates', agencyOpsSharedLimiter, requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:rates:list');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return res.json({ ok: true, rates: [] });
@@ -476,7 +517,8 @@ router.get('/rates', requirePermission('tenant.billing.manage'), _safe(async (re
   res.json({ ok: true, rates: result.rows.map(_rate) });
 }));
 
-router.post('/rates', requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.post('/rates', agencyOpsSharedLimiter, requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:rates:create');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');
@@ -502,7 +544,8 @@ router.post('/rates', requirePermission('tenant.billing.manage'), _safe(async (r
   res.status(201).json({ ok: true, rate: _rate(result.rows[0]) });
 }));
 
-router.get('/scope-baselines', _safe(async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/scope-baselines', agencyOpsSharedLimiter, _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:scope-baselines:list');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return res.json({ ok: true, baselines: [] });
@@ -512,7 +555,8 @@ router.get('/scope-baselines', _safe(async (req, res) => {
   res.json({ ok: true, period: range, baselines });
 }));
 
-router.post('/scope-baselines', _safe(async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.post('/scope-baselines', agencyOpsSharedLimiter, _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:scope-baselines:create');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');
@@ -538,7 +582,8 @@ router.post('/scope-baselines', _safe(async (req, res) => {
   res.status(201).json({ ok: true, baseline: result.rows[0] });
 }));
 
-router.get('/scope-signals', _safe(async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/scope-signals', agencyOpsSharedLimiter, _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:scope-signals');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return res.json({ ok: true, period: _range(req), signals: [] });
@@ -552,7 +597,8 @@ router.get('/scope-signals', _safe(async (req, res) => {
   res.json({ ok: true, period: range, signals: _scopeSignals(baselines, entries) });
 }));
 
-router.get('/summary', _safe(async (req, res) => {
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/summary', agencyOpsSharedLimiter, _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:summary');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   const range = _range(req);
@@ -570,3 +616,11 @@ module.exports = router;
 module.exports._buildSummary = _buildSummary;
 module.exports._scopeSignals = _scopeSignals;
 module.exports._fetchEntries = _fetchEntries;
+
+module.exports._agencyOpsTenantGuard = _agencyOpsTenantGuard;
+module.exports._agencyOpsTenantId = _agencyOpsTenantId;
+module.exports._agencyOpsRateLimiter = agencyOpsSharedLimiter;
+module.exports.agencyOpsLimits = Object.freeze({
+  windowMs: AGENCY_OPS_WINDOW_MS,
+  max: AGENCY_OPS_MAX,
+});
