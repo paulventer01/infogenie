@@ -53,4 +53,3 @@ requests, raw responses and raw errors. Every response declares
 - approval, activation, optimization or spend changes
 - UI, background jobs, queues, schedulers and webhooks
 - Meta or any provider other than the bound Google Ads observer
-
