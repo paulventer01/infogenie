@@ -12,16 +12,16 @@
 // launcher; cross-tool links go through `lib/nav#goToView`. See
 // `docs/react-panel-migration.md`.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
 
 interface Campaign {
   name?: string;
-  channel?: string;
-  ctr?: string;
-  roas?: number;
+  channel?: string | null;
+  ctr?: string | null;
+  roas?: number | null;
   status?: string;
   budget?: string;
 }
@@ -36,6 +36,7 @@ interface AdCopy {
 interface Competitor {
   name?: string;
   url?: string;
+  domain?: string;
   logo?: string;
   threatLevel?: string;
   trafficMo?: number;
@@ -50,16 +51,40 @@ interface Competitor {
   audiences?: Audience[];
   adCopy?: AdCopy[];
   estimatedROI?: string;
+  realData?: boolean;
+  _dataSource?: string;
 }
 interface AnalysisData {
   url?: string;
   industry?: { name?: string };
-  competitors?: Competitor[];
+  competitors?: unknown[];
 }
 
 function getAnalysisData(): AnalysisData | null {
   if (typeof window === "undefined") return null;
   return (window as unknown as { analysisData?: AnalysisData }).analysisData || null;
+}
+
+function normalizeCompetitor(raw: unknown): Competitor {
+  if (typeof raw === "string") return { name: raw };
+  if (raw && typeof raw === "object") {
+    const c = raw as Competitor;
+    return {
+      ...c,
+      name: c.name || "Competitor",
+      url: c.url || c.domain,
+    };
+  }
+  return { name: "Competitor" };
+}
+
+function normalizeCompetitors(list: unknown): Competitor[] {
+  if (!Array.isArray(list)) return [];
+  return list.map(normalizeCompetitor);
+}
+
+function hasRealMetrics(c: Competitor): boolean {
+  return !!(c.realData || c._dataSource === "DataForSEO");
 }
 
 // Deterministic seed hash — ported verbatim from the legacy `_blSeed` so the
@@ -95,6 +120,20 @@ function fmtT(n: number): string {
         : String(n || 0);
 }
 
+function fmtMetric(v: string | number | null | undefined): string {
+  if (v == null || v === "null" || v === "") return "—";
+  return String(v);
+}
+
+function isUsableCampaign(camp: Campaign): boolean {
+  return !!(
+    camp.name ||
+    (camp.channel != null && camp.channel !== "null" && camp.channel !== "") ||
+    (camp.ctr != null && camp.ctr !== "null") ||
+    (camp.roas != null && Number.isFinite(camp.roas))
+  );
+}
+
 const KW_VOLUMES = [14800, 8200, 22000, 6600, 18400, 4400, 9800, 12000];
 const KW_DIFFICULTIES = ["Low", "Medium", "Medium", "High"];
 const KW_COLORS = ["#0066FF", "#7C3AED", "#059669", "#D97706"];
@@ -114,9 +153,9 @@ interface Btn {
 interface CardData {
   border: string;
   badgeStyle: CSSProperties;
-  badge: string;
-  title: string;
-  body: string;
+  badge: ReactNode;
+  title: ReactNode;
+  body: ReactNode;
   buttons: Btn[];
 }
 
@@ -135,6 +174,28 @@ const greenStyle: CSSProperties = { ...btnBase, background: "linear-gradient(135
 const ghostStyle: CSSProperties = { ...btnBase, background: "#F3F4F6", border: "1px solid #E5E7EB", color: "#374151" };
 const tealStyle: CSSProperties = { ...btnBase, background: "linear-gradient(135deg,#00C9C8,#00E5FF)", color: "#0A1628" };
 
+function EstimateBadge({ label = "ESTIMATE" }: { label?: string }) {
+  return (
+    <span
+      style={{
+        fontSize: "0.52rem",
+        fontWeight: 800,
+        letterSpacing: ".06em",
+        textTransform: "uppercase",
+        color: "#64748B",
+        background: "#F1F5F9",
+        border: "1px solid #E2E8F0",
+        borderRadius: 4,
+        padding: "1px 5px",
+        marginLeft: 4,
+        verticalAlign: "middle",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 function Card({ data }: { data: CardData }) {
   return (
     <div
@@ -151,15 +212,9 @@ function Card({ data }: { data: CardData }) {
         <span style={{ fontSize: "0.62rem", fontWeight: 800, padding: "3px 8px", borderRadius: 5, flexShrink: 0, ...data.badgeStyle }}>
           {data.badge}
         </span>
-        <div
-          style={{ fontSize: "0.82rem", fontWeight: 700, color: "#0A1628", lineHeight: 1.4 }}
-          dangerouslySetInnerHTML={{ __html: data.title }}
-        />
+        <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#0F172A", lineHeight: 1.4 }}>{data.title}</div>
       </div>
-      <div
-        style={{ fontSize: "0.78rem", color: "#6B7280", lineHeight: 1.55, marginBottom: 10 }}
-        dangerouslySetInnerHTML={{ __html: data.body }}
-      />
+      <div style={{ fontSize: "0.78rem", color: "#475569", lineHeight: 1.55, marginBottom: 10 }}>{data.body}</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {data.buttons.map((b, i) => (
           <button key={i} onClick={b.onClick} style={b.style}>
@@ -173,12 +228,20 @@ function Card({ data }: { data: CardData }) {
 
 function Section({ icon, title, sub, children }: { icon: string; title: string; sub: string; children: React.ReactNode }) {
   return (
-    <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 20 }}>
+    <div
+      style={{
+        background: "#FFFFFF",
+        border: "1px solid #E5E7EB",
+        borderRadius: 16,
+        padding: 20,
+        boxShadow: "0 1px 3px rgba(15, 23, 42, 0.04)",
+      }}
+    >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 16 }}>
         <span style={{ fontSize: "1.2rem", lineHeight: 1 }}>{icon}</span>
         <div>
-          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.9rem", fontWeight: 800, color: "white" }} dangerouslySetInnerHTML={{ __html: title }} />
-          <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,.4)", marginTop: 2 }} dangerouslySetInnerHTML={{ __html: sub }} />
+          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.9rem", fontWeight: 800, color: "#0F172A" }}>{title}</div>
+          <div style={{ fontSize: "0.7rem", color: "#64748B", marginTop: 2 }}>{sub}</div>
         </div>
       </div>
       {children}
@@ -188,9 +251,23 @@ function Section({ icon, title, sub, children }: { icon: string; title: string; 
 
 export default function Battleplan() {
   const router = useRouter();
-  const ad = useMemo(getAnalysisData, []);
-  const comps = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
+  const [ad, setAd] = useState<AnalysisData | null>(null);
   const [idxState, setIdxState] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => setAd(getAnalysisData());
+    refresh();
+    document.addEventListener("ig:analysis-ready", refresh);
+    document.addEventListener("ig:analysis-updated", refresh);
+    window.addEventListener("ig:analysis-updated", refresh);
+    return () => {
+      document.removeEventListener("ig:analysis-ready", refresh);
+      document.removeEventListener("ig:analysis-updated", refresh);
+      window.removeEventListener("ig:analysis-updated", refresh);
+    };
+  }, []);
+
+  const comps = useMemo(() => normalizeCompetitors(ad?.competitors), [ad]);
 
   const hasData = comps.length > 0;
   const idx = Math.min(idxState, Math.max(0, comps.length - 1));
@@ -239,11 +316,12 @@ export default function Battleplan() {
           textAlign: "center",
           gap: 20,
           padding: 40,
+          background: "var(--ig-page)",
         }}
       >
         <div style={{ fontSize: "3.5rem" }}>⚔️</div>
-        <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "white" }}>No Analysis Yet</div>
-        <div style={{ color: "rgba(255,255,255,.5)", maxWidth: 420, fontSize: "0.9rem", lineHeight: 1.6 }}>
+        <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "#0F172A" }}>No Analysis Yet</div>
+        <div style={{ color: "#64748B", maxWidth: 420, fontSize: "0.9rem", lineHeight: 1.6 }}>
           Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.
         </div>
         <button
@@ -268,7 +346,8 @@ export default function Battleplan() {
   const domain = ad?.url || "yourdomain.com";
   const industry = ad?.industry?.name || "your industry";
   const threat = c.threatLevel || "medium";
-  const traffic = c.trafficMo ? fmtT(c.trafficMo) : c.traffic || "—";
+  const traffic = c.trafficMo ? fmtT(c.trafficMo) : fmtMetric(c.traffic);
+  const realMetrics = hasRealMetrics(c);
   const oppBase = threat === "high" ? 74 : threat === "medium" ? 55 : 38;
   const oppScore = oppBase + Math.floor(blSeed(c.name || "") % 18);
   const threatColor = threat === "high" ? "#EF4444" : threat === "medium" ? "#F59E0B" : "#10B981";
@@ -309,9 +388,21 @@ export default function Battleplan() {
       return {
         border: KW_COLORS[i],
         badgeStyle: { background: "#EFF6FF", color: "#1D4ED8" },
-        badge: `${vol.toLocaleString()}/mo · CPC $${cpc}`,
+        badge: (
+          <>
+            {vol.toLocaleString()}/mo · CPC ${cpc}
+            <EstimateBadge />
+          </>
+        ),
         title: `"${kw}"`,
-        body: `${cName} is actively bidding here with suboptimal relevance scores — you can capture traffic at <strong style="color:#059669">lower CPC</strong> with tighter ad groups. Difficulty: <span style="color:${diffColor};font-weight:700">${diff}</span>.`,
+        body: (
+          <>
+            {cName} is actively bidding here with suboptimal relevance scores — you can capture traffic at{" "}
+            <span style={{ color: "#059669", fontWeight: 700 }}>lower CPC</span> with tighter ad groups. Difficulty:{" "}
+            <span style={{ color: diffColor, fontWeight: 700 }}>{diff}</span>
+            <EstimateBadge label="estimated" />.
+          </>
+        ),
         buttons: [
           { label: "🔑 Build Google Ads", onClick: () => callWin("bpGA", idx, i), style: primaryStyle },
           { label: "📝 Build Content", onClick: () => callWin("bpBC", idx, i), style: ghostStyle },
@@ -340,6 +431,7 @@ export default function Battleplan() {
       }));
 
   // ── 4. Audience Gaps ───────────────────────────────────────────────────────
+  const usingFallbackAudiences = !(c.audiences && c.audiences.length);
   const audCards: CardData[] = (c.audiences && c.audiences.length
     ? c.audiences
     : [
@@ -354,9 +446,18 @@ export default function Battleplan() {
       return {
         border: "#0066FF",
         badgeStyle: { background: "#EFF6FF", color: "#1D4ED8" },
-        badge: `${a.pct}% of market`,
+        badge: (
+          <>
+            {a.pct}% of market
+            {usingFallbackAudiences ? <EstimateBadge label="estimated" /> : null}
+          </>
+        ),
         title: a.label || "Audience",
-        body: `${AUD_GAPS[i % AUD_GAPS.length].replace("competitor", cName)}. Best capture channel: <strong>${aCh}</strong>.`,
+        body: (
+          <>
+            {AUD_GAPS[i % AUD_GAPS.length].replace("competitor", cName)}. Best capture channel: <strong>{aCh}</strong>.
+          </>
+        ),
         buttons: [
           { label: "🎯 Target This Audience", onClick: () => callWin("bpTA", idx, i), style: primaryStyle },
           { label: "👥 Audience Deep-Dive", onClick: () => goToView(router, "audience"), style: ghostStyle },
@@ -365,14 +466,31 @@ export default function Battleplan() {
     });
 
   // ── 5. Campaign Counter-Moves ──────────────────────────────────────────────
-  const campCards: CardData[] = (c.campaigns || []).slice(0, 3).map((camp, i) => {
-    const roasTarget = ((camp.roas || 0) * 1.2).toFixed(1);
+  const campCards: CardData[] = (c.campaigns || []).filter(isUsableCampaign).slice(0, 3).map((camp, i) => {
+    const channel = fmtMetric(camp.channel);
+    const ctr = fmtMetric(camp.ctr);
+    const hasRoas = camp.roas != null && Number.isFinite(camp.roas);
+    const roasStr = hasRoas ? `${camp.roas}×` : null;
+    const roasTarget = hasRoas ? ((camp.roas as number) * 1.2).toFixed(1) : null;
     return {
       border: "#10B981",
       badgeStyle: camp.status === "Active" ? { background: "#D1FAE5", color: "#065F46" } : { background: "#FEF3C7", color: "#92400E" },
-      badge: camp.status || "",
+      badge: camp.status || "Campaign",
       title: `Counter: "${(camp.name || "Campaign").slice(0, 40)}"`,
-      body: `${cName} runs this on <strong>${camp.channel}</strong> at ${camp.ctr} CTR / ${camp.roas}× ROAS. Launch a counter-campaign targeting the same audience with superior creative — target ROAS: <strong style="color:#059669">${roasTarget}×</strong>.`,
+      body: (
+        <>
+          {cName} runs this on <strong>{channel}</strong>
+          {ctr !== "—" ? ` at ${ctr} CTR` : ""}
+          {roasStr ? ` / ${roasStr} ROAS` : ""}. Launch a counter-campaign targeting the same audience with superior creative
+          {roasTarget ? (
+            <>
+              {" "}
+              — target ROAS: <span style={{ color: "#059669", fontWeight: 700 }}>{roasTarget}×</span>
+            </>
+          ) : null}
+          .
+        </>
+      ),
       buttons: [{ label: "📣 Launch Counter-Campaign", onClick: () => callWin("bpCC", idx, i), style: greenStyle }],
     };
   });
@@ -403,6 +521,52 @@ export default function Battleplan() {
 
   const topRows = (c.suggestions || []).slice(0, 3);
   const initial = (c.logo || (c.name || "?")[0]).toString()[0];
+
+  const overviewMetrics: { v: ReactNode; l: string; color: string }[] = [
+    {
+      v: (
+        <>
+          {traffic}
+          {!realMetrics && traffic !== "—" ? <EstimateBadge label="estimated" /> : null}
+        </>
+      ),
+      l: "Traffic/mo",
+      color: "#0E7490",
+    },
+    {
+      v: (
+        <>
+          {fmtMetric(c.ctr)}
+          {!realMetrics && fmtMetric(c.ctr) !== "—" ? <EstimateBadge label="estimated" /> : null}
+        </>
+      ),
+      l: "CTR",
+      color: "#0E7490",
+    },
+    {
+      v: (
+        <>
+          {fmtMetric(c.roas)}
+          {fmtMetric(c.roas) !== "—" ? "×" : ""}
+          {!realMetrics && fmtMetric(c.roas) !== "—" ? <EstimateBadge label="estimated" /> : null}
+        </>
+      ),
+      l: "ROAS",
+      color: "#0E7490",
+    },
+    {
+      v: (
+        <>
+          {fmtMetric(c.adSpend)}
+          {!realMetrics && fmtMetric(c.adSpend) !== "—" ? <EstimateBadge label="estimated" /> : null}
+        </>
+      ),
+      l: "Ad Spend",
+      color: "#0E7490",
+    },
+    { v: fmtMetric(c.topChannel), l: "Top Channel", color: "#0E7490" },
+    { v: threat.toUpperCase(), l: "Threat", color: threatColor },
+  ];
 
   return (
     <div style={{ background: "var(--ig-page)", minHeight: "100vh", paddingBottom: 40 }}>
@@ -459,6 +623,8 @@ export default function Battleplan() {
               style={{ fontSize: "0.65rem", fontWeight: 800, color: "#0f766e", letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 6 }}
             >
               <span className="bc-group">Analyse</span>
+              <span className="bc-sep"> › </span>
+              <span>Know your competition</span>
               <span className="bc-sep"> › </span>
               Battle Plan
             </div>
@@ -551,14 +717,7 @@ export default function Battleplan() {
             </div>
           </div>
           <div style={{ flex: 1, display: "flex", gap: 24, flexWrap: "wrap" }}>
-            {[
-              { v: traffic, l: "Traffic/mo", color: "#0E7490" },
-              { v: c.ctr || "—", l: "CTR", color: "#0E7490" },
-              { v: `${c.roas || "—"}×`, l: "ROAS", color: "#0E7490" },
-              { v: c.adSpend || "—", l: "Ad Spend", color: "#0E7490" },
-              { v: c.topChannel || "—", l: "Top Channel", color: "#0E7490" },
-              { v: threat.toUpperCase(), l: "Threat", color: threatColor },
-            ].map((m, i) => (
+            {overviewMetrics.map((m, i) => (
               <div key={i} style={{ textAlign: "center" }}>
                 <div style={{ fontSize: "0.92rem", fontWeight: 800, color: m.color }}>{m.v}</div>
                 <div style={{ fontSize: "0.62rem", color: "#64748B", textTransform: "uppercase", letterSpacing: ".06em" }}>{m.l}</div>
@@ -566,7 +725,9 @@ export default function Battleplan() {
             ))}
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <div style={{ fontSize: "0.67rem", color: "#64748B", marginBottom: 2, textTransform: "uppercase", letterSpacing: ".05em" }}>Opportunity Score</div>
+            <div style={{ fontSize: "0.67rem", color: "#64748B", marginBottom: 2, textTransform: "uppercase", letterSpacing: ".05em" }}>
+              Opportunity Score <EstimateBadge label="estimated" />
+            </div>
             <div style={{ fontSize: "2rem", fontWeight: 900, fontFamily: "Sora,sans-serif", color: oppScore >= 70 ? "#059669" : oppScore >= 50 ? "#D97706" : "#2563EB", lineHeight: 1 }}>
               {oppScore}
             </div>
@@ -596,7 +757,7 @@ export default function Battleplan() {
 
         {/* 2-Column Action Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(460px,1fr))", gap: 20 }}>
-          <Section icon="🎯" title="Exploit Their Weaknesses" sub={`${(c.suggestions || []).length || 4} identified gaps in ${cName}&apos;s strategy`}>
+          <Section icon="🎯" title="Exploit Their Weaknesses" sub={`${(c.suggestions || []).length || 4} identified gaps in ${cName}'s strategy`}>
             {weakCards.map((d, i) => (
               <Card key={i} data={d} />
             ))}
@@ -606,7 +767,7 @@ export default function Battleplan() {
               <Card key={i} data={d} />
             ))}
           </Section>
-          <Section icon="🎨" title="Creative Counter-Strategy" sub={`Ad angles that out-perform ${cName}&apos;s current creative`}>
+          <Section icon="🎨" title="Creative Counter-Strategy" sub={`Ad angles that out-perform ${cName}'s current creative`}>
             {creativeCards.map((d, i) => (
               <Card key={i} data={d} />
             ))}
@@ -620,7 +781,7 @@ export default function Battleplan() {
             {campCards.length > 0 ? (
               campCards.map((d, i) => <Card key={i} data={d} />)
             ) : (
-              <div style={{ color: "rgba(255,255,255,.4)", fontSize: "0.82rem", padding: "12px 0" }}>
+              <div style={{ color: "#64748B", fontSize: "0.82rem", padding: "12px 0" }}>
                 No active campaigns detected — run full analysis for live campaign data.
               </div>
             )}
@@ -647,7 +808,8 @@ export default function Battleplan() {
               <label style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".07em" }}>Select Competitor</label>
               <select
                 id="attackPlanCompSelect"
-                defaultValue={String(idx)}
+                value={String(idx)}
+                onChange={(e) => switchComp(parseInt(e.target.value, 10))}
                 style={{ padding: "10px 14px", borderRadius: 9, fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", width: "100%", appearance: "auto" }}
               >
                 {comps.map((cc, i) => (
@@ -659,10 +821,7 @@ export default function Battleplan() {
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", paddingTop: 18 }}>
               <button
-                onClick={() => {
-                  const sel = document.getElementById("attackPlanCompSelect") as HTMLSelectElement | null;
-                  callWin("openFullAttackPlanModal", parseInt(sel?.value || String(idx), 10));
-                }}
+                onClick={() => callWin("openFullAttackPlanModal", idx)}
                 style={{ padding: "11px 24px", background: "linear-gradient(135deg,#0066FF,#00C9C8)", border: "none", borderRadius: 10, fontSize: "0.84rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 4px 16px rgba(0,102,255,.4)" }}
               >
                 🚀 Generate Attack Plan

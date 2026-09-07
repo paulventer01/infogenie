@@ -99,7 +99,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "4 · Competitors",
         items: [
           { view: "competitors", icon: "🏆", label: "Competitor Profiles" },
-          { view: "battleplan", icon: "⚔️", label: "Marketing Plan / Battle Plan" },
+          { view: "battleplan", icon: "⚔️", label: "Battle Plan" },
           { view: "battle-cards", icon: "🛡️", label: "Battle Cards" },
           { view: "intelligence", icon: "🧠", label: "Intelligence Hub", className: "nav-link-intel" },
           { view: "war-room", icon: "🗡️", label: "AI Competitor War Room" },
