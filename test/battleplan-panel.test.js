@@ -166,3 +166,11 @@ test('Battleplan clones analysis snapshot on refresh events', () => {
     'refresh spreads next and clones competitors array for a new snapshot',
   );
 });
+
+test('Battleplan saved-plans surface markers (#144)', () => {
+  assert.match(BATTLEPLAN, /data-bp-saved-plans/, 'saved plans data attribute');
+  assert.match(BATTLEPLAN, /SavedPlansSection/, 'SavedPlansSection component');
+  assert.match(BATTLEPLAN, /data-bp-no-analysis/, 'no-analysis empty state marker');
+  assert.match(BATTLEPLAN, /ig:attack-plan-saved/, 'listens for ig:attack-plan-saved');
+  assert.match(BATTLEPLAN, /\/api\/ai-attack-plan\/list/, 'loads saved plans via apiGet');
+});
