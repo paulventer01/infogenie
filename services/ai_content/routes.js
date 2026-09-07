@@ -127,10 +127,191 @@ function _templateAttackPlanResponse(input) {
   };
 }
 
+const ATTACK_PLANS_BASE = 'attack_plans';
+const ATTACK_PLANS_MAX = 20;
+// Matches legacy panel _bpSafe(entry.name, 80). Applied at request entry so
+// the generated plan body and stored metadata share the same bound.
+const ATTACK_PLAN_FIELD_MAX = 80;
+const ATTACK_PLAN_KEYWORDS_MAX = 5;
+// Prompt-hint ceiling — a short strategic paragraph, not a pasted brief.
+const ATTACK_PLAN_CONTEXT_MAX = 500;
+// Backstop on one stored entry (JSON). Input caps keep template plans well
+// under this; live LLM output is already token-capped. 20 × 64 KiB ≈ 1.25 MiB
+// per tenant vs. an unbounded 5 MB Express body echoed into every slot.
+const ATTACK_PLAN_ENTRY_MAX = 64 * 1024;
+
+function _capAttackPlanField(s, max = ATTACK_PLAN_FIELD_MAX) {
+  return String(s == null ? '' : s).slice(0, max);
+}
+
+function _isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+// competitorData is optional (omit / undefined → empty object after normalize).
+// When the field is present it must be a plain object — the prompt interpolates
+// .traffic / .channels / etc. An explicit null, array, or primitive is a
+// malformed request, not a provider outage: substituting a template would
+// misrepresent an unparseable body as a successful fallback.
+function _attackPlanCompetitorDataError(body) {
+  if (!_isPlainObject(body)) return null;
+  if (!Object.prototype.hasOwnProperty.call(body, 'competitorData')) return null;
+  const cd = body.competitorData;
+  if (cd === undefined) return null;
+  if (_isPlainObject(cd)) return null;
+  return 'competitorData must be an object';
+}
+
+function _normalizeAttackPlanInput(body) {
+  const src = _isPlainObject(body) ? body : {};
+  const keywords = Array.isArray(src.prefillKeywords) ? src.prefillKeywords : [];
+  return {
+    myDomain: _capAttackPlanField(src.myDomain ?? 'yourdomain.com'),
+    competitor: _capAttackPlanField(src.competitor ?? 'competitor'),
+    industry: _capAttackPlanField(src.industry ?? 'your industry'),
+    competitorData: _isPlainObject(src.competitorData) ? src.competitorData : {},
+    prefillKeywords: keywords
+      .map((k) => _capAttackPlanField(k).trim())
+      .filter(Boolean)
+      .slice(0, ATTACK_PLAN_KEYWORDS_MAX),
+    prefillContext: _capAttackPlanField(src.prefillContext ?? '', ATTACK_PLAN_CONTEXT_MAX),
+  };
+}
+
+function _newAttackPlanId() {
+  const crypto = require('crypto');
+  return `ap_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+}
+
+// Shape emitted by _newAttackPlanId. A bare `/:id` under a single-segment /api
+// prefix is reachable anonymously via the `/^\/api\/[^\/]+\/status$/` entry in
+// server.js's public allowlist, and enforceMatrix skips requests with no
+// req.user — so `/api/ai-attack-plan/status` is gated by neither. Rejecting a
+// non-id param before tenant resolution keeps that path away from any tenant
+// lookup or kv read, as /api/battle-cards does. See docs/security-guardrails.md.
+const ATTACK_PLAN_ID_RE = /^ap_\d{1,20}_[0-9a-f]{6,32}$/;
+
+function _attackPlanListMeta(entry) {
+  const meta = {
+    id: entry.id,
+    competitor: entry.competitor,
+    myDomain: entry.myDomain,
+    industry: entry.industry,
+    savedAt: entry.savedAt,
+    sources: entry.sources,
+  };
+  if (entry.source !== undefined) meta.source = entry.source;
+  if (entry._fabricated !== undefined) meta._fabricated = entry._fabricated;
+  if (entry.plan && entry.plan.opportunityScore != null) {
+    meta.opportunityScore = entry.plan.opportunityScore;
+  }
+  return meta;
+}
+
+function _attackPlanReadBody(entry) {
+  const body = {
+    ok: true,
+    plan: entry.plan,
+    id: entry.id,
+    competitor: entry.competitor,
+    myDomain: entry.myDomain,
+    industry: entry.industry,
+    savedAt: entry.savedAt,
+    sources: entry.sources,
+  };
+  if (entry.source !== undefined) body.source = entry.source;
+  if (entry._fabricated !== undefined) body._fabricated = entry._fabricated;
+  return body;
+}
+
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
-  const { _tkvCtx, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path } = ctx;
+  const { _tkvCtx, _tkvRead, _tkvWrite, _tkvMutate, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path } = ctx;
+
+  // Hermetic mounts that only inject read/write still serialize in-process
+  // with the same promise-chain shape as server.js `_tkvMutate`.
+  const _localMutateChain = new Map();
+
+  async function _loadAttackPlans(tid) {
+    if (!_tkvRead || tid == null) return [];
+    const list = await _tkvRead(ATTACK_PLANS_BASE, tid, () => []);
+    return Array.isArray(list) ? list : [];
+  }
+
+  async function _saveAttackPlans(tid, list) {
+    if (!_tkvWrite || tid == null) return false;
+    return await _tkvWrite(ATTACK_PLANS_BASE, tid, Array.isArray(list) ? list : []);
+  }
+
+  async function _mutateAttackPlans(tid, mutator) {
+    if (tid == null) return;
+    if (typeof _tkvMutate === 'function') {
+      return _tkvMutate(ATTACK_PLANS_BASE, tid, () => [], async (cur) => {
+        const list = Array.isArray(cur) ? cur : [];
+        return mutator(list);
+      });
+    }
+    if (!_tkvRead || !_tkvWrite) return;
+    const key = `${ATTACK_PLANS_BASE}:t${tid}`;
+    const prev = _localMutateChain.get(key) || Promise.resolve();
+    const run = prev.then(async () => {
+      const cur = await _loadAttackPlans(tid);
+      const updated = await mutator(cur);
+      if (updated !== undefined) await _saveAttackPlans(tid, updated);
+      return updated;
+    });
+    _localMutateChain.set(key, run.catch(() => {}));
+    return run;
+  }
+
+  async function _persistAttackPlan(tid, fields) {
+    if (tid == null || !fields || !fields.plan) return;
+    if (typeof _tkvMutate !== 'function' && (!_tkvRead || !_tkvWrite)) return;
+    const entry = {
+      id: fields.id || _newAttackPlanId(),
+      competitor: _capAttackPlanField(fields.competitor),
+      myDomain: _capAttackPlanField(fields.myDomain),
+      industry: _capAttackPlanField(fields.industry),
+      plan: fields.plan,
+      sources: fields.sources,
+      savedAt: fields.savedAt || new Date().toISOString(),
+    };
+    if (fields.source !== undefined) entry.source = fields.source;
+    if (fields._fabricated !== undefined) entry._fabricated = fields._fabricated;
+    let packed;
+    try { packed = JSON.stringify(entry); } catch { return; }
+    if (Buffer.byteLength(packed, 'utf8') > ATTACK_PLAN_ENTRY_MAX) {
+      console.warn('[attack-plan] persist skipped: entry exceeds size cap');
+      return;
+    }
+    await _mutateAttackPlans(tid, (cur) => [entry, ...cur].slice(0, ATTACK_PLANS_MAX));
+    return entry;
+  }
+
+  async function _tryPersistAttackPlan(tid, fields) {
+    try {
+      return await _persistAttackPlan(tid, fields);
+    } catch (err) {
+      console.warn('[attack-plan] persist failed:', err.message);
+      return null;
+    }
+  }
+
+  async function _respondAttackPlan(res, tid, meta, response) {
+    if (response && response.ok && response.plan) {
+      await _tryPersistAttackPlan(tid, {
+        competitor: meta.competitor,
+        myDomain: meta.myDomain,
+        industry: meta.industry,
+        plan: response.plan,
+        sources: response.sources,
+        source: response.source,
+        _fabricated: response._fabricated,
+      });
+    }
+    return res.json(response);
+  }
 
 app.get('/api/ai-visibility-trend', async (req, res) => {
   try {
@@ -555,17 +736,64 @@ Return valid JSON only.`;
   }
 });
 
+// ── GET /api/ai-attack-plan/list — metadata only, newest first ───────────────
+app.get('/api/ai-attack-plan/list', async (req, res) => {
+  try {
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'attack-plan:read' });
+    const list = await _loadAttackPlans(tid);
+    res.json({ ok: true, plans: list.map(_attackPlanListMeta) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── GET /api/ai-attack-plan/latest — newest plan (optional competitor filter) ─
+app.get('/api/ai-attack-plan/latest', async (req, res) => {
+  try {
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'attack-plan:read' });
+    const list = await _loadAttackPlans(tid);
+    const filter = String(req.query.competitor || '').trim().toLowerCase();
+    const match = filter
+      ? list.find((e) => String(e.competitor || '').trim().toLowerCase() === filter)
+      : list[0];
+    if (!match) return res.json({ ok: true, plan: null });
+    res.json(_attackPlanReadBody(match));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── GET /api/ai-attack-plan/:id — one saved plan ─────────────────────────────
+app.get('/api/ai-attack-plan/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!ATTACK_PLAN_ID_RE.test(id)) return res.status(404).json({ ok: false, error: 'not_found' });
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'attack-plan:read' });
+    const list = await _loadAttackPlans(tid);
+    const entry = list.find((e) => e.id === id);
+    if (!entry) return res.status(404).json({ ok: false, error: 'not_found' });
+    res.json(_attackPlanReadBody(entry));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── POST /api/ai-attack-plan ─────────────────────────────────────────────────
 app.post('/api/ai-attack-plan', async (req, res) => {
   try {
-    const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {}, prefillKeywords = [], prefillContext = '' } = req.body || {};
+    const competitorDataError = _attackPlanCompetitorDataError(req.body);
+    if (competitorDataError) {
+      return res.json({ ok: false, plan: null, error: competitorDataError });
+    }
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'attack-plan:save' });
+    const { myDomain, competitor, industry, competitorData, prefillKeywords, prefillContext } = _normalizeAttackPlanInput(req.body);
     const templateInput = { myDomain, competitor, industry, prefillKeywords };
 
     // _DUMMY / missing-key gate — never hit the network without a real key.
     const canOpenAI = _usableLlmKey(_openaiEnvKey()) && !!openai;
     const canAnthropic = _usableLlmKey(_anthropicEnvKey()) && !!anthropic;
     if (!canOpenAI && !canAnthropic) {
-      return res.json(_templateAttackPlanResponse(templateInput));
+      return await _respondAttackPlan(res, tid, templateInput, _templateAttackPlanResponse(templateInput));
     }
 
     const prefillSuffix = (prefillContext ? '\n\nSTRATEGIC CONTEXT — HIGHEST PRIORITY: ' + prefillContext : '') +
@@ -657,9 +885,15 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
     }
 
     // ── If only one succeeded, return it directly ────────────────────────────
-    if (!gptPlan && !claudePlan) return res.json(_templateAttackPlanResponse(templateInput));
-    if (!gptPlan) return res.json({ ok: true, plan: claudePlan, sources: ['Claude'] });
-    if (!claudePlan) return res.json({ ok: true, plan: gptPlan, sources: ['GPT-4o'] });
+    if (!gptPlan && !claudePlan) {
+      return await _respondAttackPlan(res, tid, templateInput, _templateAttackPlanResponse(templateInput));
+    }
+    if (!gptPlan) {
+      return await _respondAttackPlan(res, tid, templateInput, { ok: true, plan: claudePlan, sources: ['Claude'] });
+    }
+    if (!claudePlan) {
+      return await _respondAttackPlan(res, tid, templateInput, { ok: true, plan: gptPlan, sources: ['GPT-4o'] });
+    }
 
     // ── Both succeeded — merge in code (no extra API call) ───────────────────
     const normKey = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -714,7 +948,7 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
       criticalWins:      mergedWins
     };
 
-    res.json({ ok: true, plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
+    return await _respondAttackPlan(res, tid, templateInput, { ok: true, plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
   } catch(err) {
     res.json({ ok: false, plan: null, error: err.message });
   }

@@ -12,10 +12,11 @@
 // launcher; cross-tool links go through `lib/nav#goToView`. See
 // `docs/react-panel-migration.md`.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
+import { apiGet } from "@/lib/api";
 
 interface Campaign {
   name?: string;
@@ -55,6 +56,181 @@ interface AnalysisData {
   url?: string;
   industry?: { name?: string };
   competitors?: Competitor[];
+}
+
+interface SavedAttackPlanMeta {
+  id: string;
+  competitor?: string;
+  myDomain?: string;
+  industry?: string;
+  savedAt?: string;
+  sources?: string[];
+  source?: string;
+  _fabricated?: boolean;
+  opportunityScore?: number;
+}
+
+interface AttackPlanListResult {
+  ok: boolean;
+  error?: string;
+  plans?: SavedAttackPlanMeta[];
+  data_unavailable?: boolean;
+  source?: string;
+  message?: string;
+}
+
+interface AttackPlanDetailResult {
+  ok: boolean;
+  error?: string;
+  plan?: Record<string, unknown> | null;
+  id?: string;
+  competitor?: string;
+  myDomain?: string;
+  industry?: string;
+  savedAt?: string;
+  sources?: string[];
+  source?: string;
+  _fabricated?: boolean;
+  data_unavailable?: boolean;
+  message?: string;
+}
+
+interface UnwrappedAttackPlanList {
+  withheld: boolean;
+  plans: SavedAttackPlanMeta[];
+  error: string;
+  message: string;
+}
+
+const AP_LIST_UNAVAILABLE_FALLBACK =
+  "Attack plan withheld: live AI output was unavailable and this workspace is in strict data mode. An administrator has been notified.";
+
+function unwrapAttackPlanList(res: AttackPlanListResult): UnwrappedAttackPlanList {
+  if (typeof window !== "undefined") {
+    const w = window as unknown as {
+      _unwrapAttackPlanListPayload?: (r: AttackPlanListResult) => Partial<UnwrappedAttackPlanList>;
+    };
+    if (typeof w._unwrapAttackPlanListPayload === "function") {
+      const u = w._unwrapAttackPlanListPayload(res);
+      return {
+        withheld: !!u.withheld,
+        plans: Array.isArray(u.plans) ? u.plans : [],
+        error: typeof u.error === "string" ? u.error : "",
+        message: typeof u.message === "string" ? u.message : "",
+      };
+    }
+  }
+  if (res.data_unavailable === true || res.source === "data_unavailable") {
+    const message =
+      typeof res.message === "string" && res.message.trim() ? res.message.trim() : AP_LIST_UNAVAILABLE_FALLBACK;
+    return { withheld: true, plans: [], error: "", message };
+  }
+  if (res.ok === false) {
+    return {
+      withheld: false,
+      plans: [],
+      error: res.error || "Could not load saved attack plans",
+      message: "",
+    };
+  }
+  return {
+    withheld: false,
+    plans: Array.isArray(res.plans) ? res.plans : [],
+    error: "",
+    message: "",
+  };
+}
+
+function formatSavedAt(iso?: string): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const diff = Date.now() - d.getTime();
+    if (diff < 60_000) return "Just now";
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hours ago`;
+    return d.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function planHonestyBadge(p: SavedAttackPlanMeta): { label: string; style: CSSProperties } {
+  const sources = Array.isArray(p.sources) ? p.sources : [];
+  const fabricated = !!(p._fabricated || p.source === "template" || sources.includes("template"));
+  if (fabricated) {
+    return { label: "ESTIMATE · TEMPLATE", style: { background: "#FEE2E2", color: "#991B1B" } };
+  }
+  const live = sources.filter((s) => s && s !== "template");
+  if (live.length) {
+    return { label: `AI ANALYSIS · ${live.join(" + ")}`, style: { background: "#FEF3C7", color: "#92400E" } };
+  }
+  return { label: "AI ANALYSIS", style: { background: "#FEF3C7", color: "#92400E" } };
+}
+
+function openSavedPlanBridge(payload: AttackPlanDetailResult, competitor?: string): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as unknown as {
+    openSavedAttackPlan?: (p: AttackPlanDetailResult, name?: string) => boolean;
+    renderAttackPlan?: (plan: Record<string, unknown>, name: string) => void;
+    _unwrapAttackPlanPayload?: (p: AttackPlanDetailResult) => {
+      withheld?: boolean;
+      ok?: boolean;
+      plan?: Record<string, unknown> | null;
+      message?: string;
+      error?: string;
+      source?: string;
+      fabricated?: boolean;
+      sources?: string[];
+    };
+    _apShowUnavailable?: (message?: string) => void;
+    _apPlanMeta?: { source?: string; fabricated?: boolean; sources?: string[] };
+    showToast?: (m: string) => void;
+  };
+  if (typeof w.openSavedAttackPlan === "function") {
+    return w.openSavedAttackPlan(payload, competitor);
+  }
+  if (typeof w._unwrapAttackPlanPayload === "function") {
+    const unwrapped = w._unwrapAttackPlanPayload(payload);
+    if (unwrapped.withheld) {
+      w._apShowUnavailable?.(unwrapped.message || unwrapped.error);
+      w.showToast?.("📭 Attack plan withheld — live AI output unavailable in strict data mode");
+      return false;
+    }
+    if (!unwrapped.ok || !unwrapped.plan) {
+      w.showToast?.("⚠️ Could not load saved attack plan");
+      return false;
+    }
+    w._apPlanMeta = {
+      source: unwrapped.source,
+      fabricated: unwrapped.fabricated,
+      sources: unwrapped.sources,
+    };
+    if (typeof w.renderAttackPlan === "function") {
+      w.renderAttackPlan(unwrapped.plan, competitor || payload.competitor || "Competitor");
+      return true;
+    }
+  }
+  if (!payload.plan) {
+    w.showToast?.("⚠️ Could not load saved attack plan");
+    return false;
+  }
+  const sources = Array.isArray(payload.sources) ? payload.sources : [];
+  const fabricated = !!(payload._fabricated || payload.source === "template" || sources.includes("template"));
+  w._apPlanMeta = { source: payload.source, fabricated, sources };
+  if (typeof w.renderAttackPlan === "function") {
+    w.renderAttackPlan(payload.plan, competitor || payload.competitor || "Competitor");
+    return true;
+  }
+  w.showToast?.("⚠️ Action not ready — refresh the page and try again (openSavedAttackPlan)");
+  return false;
 }
 
 function getAnalysisData(): AnalysisData | null {
@@ -186,11 +362,260 @@ function Section({ icon, title, sub, children }: { icon: string; title: string; 
   );
 }
 
+/** Server-side saved plans — independent of in-page analysisData. */
+function SavedPlansSection({
+  variant,
+  emptyCopy,
+}: {
+  variant: "embedded" | "standalone";
+  emptyCopy: string;
+}) {
+  const [savedPlans, setSavedPlans] = useState<SavedAttackPlanMeta[]>([]);
+  const [savedLoading, setSavedLoading] = useState(true);
+  const [savedError, setSavedError] = useState<string | null>(null);
+  const [savedWithheld, setSavedWithheld] = useState<string | null>(null);
+  const [viewingPlanId, setViewingPlanId] = useState<string | null>(null);
+
+  const loadSavedPlans = useCallback(async () => {
+    setSavedLoading(true);
+    setSavedError(null);
+    setSavedWithheld(null);
+    const res = await apiGet<AttackPlanListResult>("/api/ai-attack-plan/list");
+    const unwrapped = unwrapAttackPlanList(res);
+    if (unwrapped.withheld) {
+      setSavedPlans([]);
+      setSavedWithheld(unwrapped.message || AP_LIST_UNAVAILABLE_FALLBACK);
+      setSavedLoading(false);
+      return;
+    }
+    if (unwrapped.error) {
+      setSavedPlans([]);
+      setSavedError(unwrapped.error);
+      setSavedLoading(false);
+      return;
+    }
+    setSavedPlans(unwrapped.plans);
+    setSavedLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadSavedPlans();
+  }, [loadSavedPlans]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onSaved = () => {
+      void loadSavedPlans();
+    };
+    window.addEventListener("ig:attack-plan-saved", onSaved);
+    return () => window.removeEventListener("ig:attack-plan-saved", onSaved);
+  }, [loadSavedPlans]);
+
+  async function viewSavedPlan(entry: SavedAttackPlanMeta) {
+    if (!entry.id) return;
+    setViewingPlanId(entry.id);
+    const res = await apiGet<AttackPlanDetailResult>(`/api/ai-attack-plan/${entry.id}`);
+    setViewingPlanId(null);
+    if (res.error === "not_found") {
+      const w = window as unknown as { showToast?: (m: string) => void };
+      w.showToast?.("⚠️ Saved attack plan not found");
+      void loadSavedPlans();
+      return;
+    }
+    openSavedPlanBridge(res, entry.competitor || res.competitor);
+  }
+
+  const wrapStyle: CSSProperties =
+    variant === "standalone"
+      ? {
+          background: "linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06))",
+          border: "1px solid rgba(0,201,200,.2)",
+          borderRadius: 14,
+          padding: "20px 24px",
+        }
+      : { marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(0,201,200,.22)" };
+
+  return (
+    <div className="bp-saved-plans" data-bp-saved-plans="1" style={wrapStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "#0F172A" }}>
+            📂 Saved Attack Plans
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "#64748B", marginTop: 2 }}>
+            Re-open a generated plan anytime — closing the dialog does not delete it
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadSavedPlans()}
+          disabled={savedLoading}
+          style={{
+            padding: "6px 12px",
+            background: "#FFFFFF",
+            border: "1px solid #E2E8F0",
+            borderRadius: 8,
+            fontSize: "0.72rem",
+            fontWeight: 700,
+            color: "#475569",
+            cursor: savedLoading ? "wait" : "pointer",
+          }}
+        >
+          {savedLoading ? "Loading…" : "Refresh"}
+        </button>
+      </div>
+
+      {savedLoading && savedPlans.length === 0 && !savedError ? (
+        <div style={{ fontSize: "0.8rem", color: "#64748B", padding: "12px 0" }}>Loading saved plans…</div>
+      ) : null}
+
+      {savedError ? (
+        <div
+          style={{
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: 10,
+            padding: "12px 14px",
+            fontSize: "0.8rem",
+            color: "#991B1B",
+          }}
+        >
+          Could not load saved attack plans — {savedError}
+        </div>
+      ) : null}
+
+      {savedWithheld ? (
+        <div
+          style={{
+            background: "#FFFBEB",
+            border: "1px solid #FDE68A",
+            borderRadius: 10,
+            padding: "16px 14px",
+            fontSize: "0.8rem",
+            color: "#78350F",
+          }}
+        >
+          <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#92400E", marginBottom: 8 }}>
+            📭 Saved plans withheld
+          </div>
+          <div style={{ lineHeight: 1.55, color: "#92400E" }}>{savedWithheld}</div>
+          <div style={{ fontSize: "0.75rem", color: "#64748B", lineHeight: 1.5, marginTop: 10 }}>
+            Live AI output was unavailable. Strict data mode hides estimated/template plans and reports the issue to an administrator — generating a new plan will not restore access to saved plans here.
+          </div>
+        </div>
+      ) : null}
+
+      {!savedLoading && !savedError && !savedWithheld && savedPlans.length === 0 ? (
+        <div
+          style={{
+            background: "#F8FAFC",
+            border: "1px dashed #CBD5E1",
+            borderRadius: 10,
+            padding: "16px 14px",
+            fontSize: "0.8rem",
+            color: "#64748B",
+            textAlign: "center",
+          }}
+        >
+          {emptyCopy}
+        </div>
+      ) : null}
+
+      {!savedError && savedPlans.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {savedPlans.map((p) => {
+            const honesty = planHonestyBadge(p);
+            const viewing = viewingPlanId === p.id;
+            return (
+              <div
+                key={p.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  background: "#FFFFFF",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 10,
+                  padding: "12px 14px",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: "0.84rem", fontWeight: 800, color: "#0F172A" }}>
+                    vs {p.competitor || "Competitor"}
+                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "#64748B", marginTop: 3 }}>
+                    Generated {formatSavedAt(p.savedAt)}
+                    {p.myDomain ? ` · ${p.myDomain}` : ""}
+                  </div>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      marginTop: 6,
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      fontSize: "0.6rem",
+                      fontWeight: 800,
+                      letterSpacing: ".04em",
+                      textTransform: "uppercase",
+                      ...honesty.style,
+                    }}
+                  >
+                    {honesty.label}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void viewSavedPlan(p)}
+                  disabled={viewing}
+                  style={{
+                    padding: "8px 16px",
+                    background: "linear-gradient(135deg,#0066FF,#00C9C8)",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    color: "#fff",
+                    cursor: viewing ? "wait" : "pointer",
+                    whiteSpace: "nowrap",
+                    opacity: viewing ? 0.7 : 1,
+                  }}
+                >
+                  {viewing ? "Opening…" : "View plan"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function Battleplan() {
   const router = useRouter();
-  const ad = useMemo(getAnalysisData, []);
+  const [ad, setAd] = useState<AnalysisData | null>(() => getAnalysisData());
   const comps = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
   const [idxState, setIdxState] = useState(0);
+
+  // AppShell restore writes window.analysisData then fires these events
+  // (document + window). Do not snapshot once — pick up the restored payload.
+  useEffect(() => {
+    const refresh = () => setAd(getAnalysisData());
+    refresh();
+    document.addEventListener("ig:analysis-ready", refresh);
+    document.addEventListener("ig:analysis-updated", refresh);
+    window.addEventListener("ig:analysis-ready", refresh);
+    window.addEventListener("ig:analysis-updated", refresh);
+    return () => {
+      document.removeEventListener("ig:analysis-ready", refresh);
+      document.removeEventListener("ig:analysis-updated", refresh);
+      window.removeEventListener("ig:analysis-ready", refresh);
+      window.removeEventListener("ig:analysis-updated", refresh);
+    };
+  }, []);
 
   const hasData = comps.length > 0;
   const idx = Math.min(idxState, Math.max(0, comps.length - 1));
@@ -230,37 +655,47 @@ export default function Battleplan() {
   if (!hasData || !c) {
     return (
       <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "70vh",
-          textAlign: "center",
-          gap: 20,
-          padding: 40,
-        }}
+        data-bp-no-analysis="1"
+        style={{ background: "var(--ig-page)", minHeight: "100vh", paddingBottom: 40 }}
       >
-        <div style={{ fontSize: "3.5rem" }}>⚔️</div>
-        <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "white" }}>No Analysis Yet</div>
-        <div style={{ color: "rgba(255,255,255,.5)", maxWidth: 420, fontSize: "0.9rem", lineHeight: 1.6 }}>
-          Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.
-        </div>
-        <button
-          onClick={() => goToView(router, "home")}
+        <div
           style={{
-            padding: "13px 30px",
-            background: "linear-gradient(135deg,#0066FF,#00C9C8)",
-            border: "none",
-            borderRadius: 12,
-            color: "white",
-            fontWeight: 700,
-            fontSize: "0.9rem",
-            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            gap: 16,
+            padding: "48px 40px 28px",
           }}
         >
-          Run Analysis →
-        </button>
+          <div style={{ fontSize: "3.5rem" }}>⚔️</div>
+          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "white" }}>No Analysis Yet</div>
+          <div style={{ color: "rgba(255,255,255,.5)", maxWidth: 420, fontSize: "0.9rem", lineHeight: 1.6 }}>
+            Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.
+          </div>
+          <button
+            onClick={() => goToView(router, "home")}
+            style={{
+              padding: "13px 30px",
+              background: "linear-gradient(135deg,#0066FF,#00C9C8)",
+              border: "none",
+              borderRadius: 12,
+              color: "white",
+              fontWeight: 700,
+              fontSize: "0.9rem",
+              cursor: "pointer",
+            }}
+          >
+            Run Analysis →
+          </button>
+        </div>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
+          <SavedPlansSection
+            variant="standalone"
+            emptyCopy="No attack plans saved yet — run an analysis first, then generate a plan from this page"
+          />
+        </div>
       </div>
     );
   }
@@ -676,6 +1111,11 @@ export default function Battleplan() {
               </button>
             </div>
           </div>
+
+          <SavedPlansSection
+            variant="embedded"
+            emptyCopy="No attack plans saved yet — generate one above"
+          />
         </div>
       </div>
     </div>

@@ -87,6 +87,7 @@ const ROUTE_GROUPS = [
 
   // ── Compete ───────────────────────────────────────────────────────────────
   { prefix: '/api/battle-cards',              view: 'compete.battle_cards.view', write: 'compete.battle_cards.edit' },
+  { prefix: '/api/ai-attack-plan',            view: 'compete.battle_cards.view', write: 'compete.battle_cards.edit' },
   { prefix: '/api/sov',                       view: 'compete.competitors.view',  write: 'compete.competitors.manage' },
   { prefix: '/api/discovery',                 view: 'compete.competitors.view',  write: 'compete.competitors.manage' },
   { prefix: '/api/competitor-spend',          view: 'compete.competitors.view',  write: 'compete.competitors.manage' },
