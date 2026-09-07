@@ -30,6 +30,7 @@ interface AnalysisGlobals {
   analysisData?: Record<string, unknown> & { url?: string };
   _brandKit?: unknown;
   _lastCompetitorNames?: unknown;
+  _syncBareAnalysisData?: () => unknown;
 }
 
 const LOGO_SVG =
@@ -176,6 +177,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         if (!r.ok || !r.analysisData) return;
         const w = window as unknown as AnalysisGlobals;
         w.analysisData = r.analysisData;
+        w._syncBareAnalysisData?.();
         if (r.brandKit) w._brandKit = r.brandKit;
         if (r.lastCompetitorNames) w._lastCompetitorNames = r.lastCompetitorNames;
         const url =

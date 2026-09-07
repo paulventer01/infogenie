@@ -10,6 +10,123 @@ const __root_require__ = (p) =>
     ? require(__path__.resolve(__APP_ROOT__, p))
     : require(p);
 
+function _usableLlmKey(k) {
+  return !!(k && String(k).trim() && !/^_DUMMY/i.test(String(k)));
+}
+
+function _openaiEnvKey() {
+  return process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
+}
+
+function _anthropicEnvKey() {
+  return process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || '';
+}
+
+// _DUMMY-key / provider-down fallback — honesty-tagged (source='template', _fabricated).
+function _templateAttackPlan({ myDomain, competitor, industry, prefillKeywords } = {}) {
+  const domain = String(myDomain || 'yourdomain.com');
+  const rival = String(competitor || 'competitor');
+  const niche = String(industry || 'your industry');
+  const extras = Array.isArray(prefillKeywords)
+    ? prefillKeywords.map((k) => String(k || '').trim()).filter(Boolean).slice(0, 5)
+    : [];
+  const genericKws = [
+    `${niche} comparison`,
+    `${niche} alternative`,
+    `best ${niche} for teams`,
+    `${niche} pricing`,
+    `${niche} implementation`,
+  ];
+  const seen = new Set(extras.map((k) => k.toLowerCase()));
+  const kwSeeds = [...extras, ...genericKws.filter((k) => !seen.has(k.toLowerCase()))].slice(0, 5);
+  const intents = ['Commercial', 'Commercial', 'Transactional', 'Informational', 'Commercial'];
+  const priorities = ['Critical', 'High', 'High', 'Medium', 'Medium'];
+
+  return {
+    executiveSummary: `Template attack plan for ${domain} versus ${rival} in ${niche}. This is a generic outline to use while AI providers are unavailable — not a measured competitor analysis. Configure live OpenAI or Anthropic keys for a brief-specific plan.`,
+    opportunityScore: 50,
+    estimatedROILift: 'template',
+    timeToResults: '6–8 weeks (template)',
+    weeklyPlan: [
+      {
+        week: 'Week 1–2',
+        focus: 'Foundation & Quick Wins',
+        actions: [
+          `Audit ${domain} positioning against ${rival} using first-party analytics only`,
+          `List the ${niche} queries ${domain} already owns`,
+          'Ship one comparison or alternative landing-page outline',
+        ],
+        kpi: 'Template KPI — pages outlined (not a live metric)',
+      },
+      {
+        week: 'Week 3–4',
+        focus: 'Campaign Launch',
+        actions: [
+          `Launch a tightly themed ${niche} search campaign for ${domain}`,
+          'Stand up retargeting from first-party site visitors only',
+          'Publish the comparison page drafted in weeks 1–2',
+        ],
+        kpi: 'Template KPI — campaigns live (not a live metric)',
+      },
+      {
+        week: 'Week 5–6',
+        focus: 'Scale & Optimise',
+        actions: [
+          'Pause weak ad groups using first-party conversion data',
+          `Expand only the ${niche} themes that already convert`,
+          'Add one proof block (review, case study, or demo) to the landing page',
+        ],
+        kpi: 'Template KPI — wasted spend reduced (not a live metric)',
+      },
+      {
+        week: 'Week 7–8',
+        focus: 'Dominate & Expand',
+        actions: [
+          `Replicate the winning ${niche} angle on a second channel`,
+          `Brief a follow-up content piece aimed at ${rival} switchers`,
+          'Review the template plan against live analytics before the next cycle',
+        ],
+        kpi: 'Template KPI — second channel live (not a live metric)',
+      },
+    ],
+    keywordTargets: kwSeeds.map((keyword, i) => ({
+      keyword,
+      volume: 'n/a (template)',
+      cpc: 'n/a (template)',
+      intent: intents[i] || 'Commercial',
+      priority: extras.some((e) => e.toLowerCase() === keyword.toLowerCase())
+        ? 'Critical'
+        : (priorities[i] || 'Medium'),
+    })),
+    channelStrategy: [
+      { channel: 'Google Search', budgetPct: 40, tactic: `Template: capture high-intent ${niche} queries with exact-match and comparison ads`, expectedROAS: 'n/a (template)' },
+      { channel: 'Meta Ads', budgetPct: 30, tactic: `Template: retarget site visitors with a ${domain} vs alternatives creative`, expectedROAS: 'n/a (template)' },
+      { channel: 'SEO / Content', budgetPct: 20, tactic: `Template: publish one ${niche} comparison guide and one implementation checklist`, expectedROAS: 'n/a (template)' },
+      { channel: 'LinkedIn', budgetPct: 10, tactic: `Template: run a thought-leadership series aimed at ${niche} buyers`, expectedROAS: 'n/a (template)' },
+    ],
+    contentAttacks: [
+      { title: `${domain} vs ${rival}: template comparison outline`, type: 'Comparison Page', angle: `Template angle — contrast ${domain} strengths without inventing ${rival} metrics`, cta: 'Book a walkthrough' },
+      { title: `${niche} buyer checklist (template)`, type: 'Blog Post', angle: 'Template educational piece for consideration-stage buyers', cta: 'Download the checklist' },
+      { title: `Why teams switch in ${niche} (template)`, type: 'Video Ad', angle: 'Template creative brief — pain → outcome, no fabricated stats', cta: 'Start a trial' },
+    ],
+    criticalWins: [
+      { win: `Publish a ${domain} vs alternatives page for ${niche}`, impact: 'High', effort: 'Low', timeframe: 'This week' },
+      { win: 'Connect first-party analytics before spending on new channels', impact: 'High', effort: 'Medium', timeframe: 'Week 2' },
+      { win: 'Refresh one high-intent landing page CTA and proof block', impact: 'Medium', effort: 'Low', timeframe: 'This week' },
+    ],
+  };
+}
+
+function _templateAttackPlanResponse(input) {
+  return {
+    ok: true,
+    plan: _templateAttackPlan(input),
+    sources: ['template'],
+    source: 'template',
+    _fabricated: true,
+  };
+}
+
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
@@ -441,7 +558,15 @@ Return valid JSON only.`;
 // ── POST /api/ai-attack-plan ─────────────────────────────────────────────────
 app.post('/api/ai-attack-plan', async (req, res) => {
   try {
-    const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {}, prefillKeywords = [], prefillContext = '' } = req.body;
+    const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {}, prefillKeywords = [], prefillContext = '' } = req.body || {};
+    const templateInput = { myDomain, competitor, industry, prefillKeywords };
+
+    // _DUMMY / missing-key gate — never hit the network without a real key.
+    const canOpenAI = _usableLlmKey(_openaiEnvKey()) && !!openai;
+    const canAnthropic = _usableLlmKey(_anthropicEnvKey()) && !!anthropic;
+    if (!canOpenAI && !canAnthropic) {
+      return res.json(_templateAttackPlanResponse(templateInput));
+    }
 
     const prefillSuffix = (prefillContext ? '\n\nSTRATEGIC CONTEXT — HIGHEST PRIORITY: ' + prefillContext : '') +
       (prefillKeywords.length > 0 ? '\n\nMANDATORY KEYWORDS — MUST appear in keywordTargets as Critical priority: ' + prefillKeywords.join(', ') : '');
@@ -502,19 +627,23 @@ ${sharedContext}
 ${jsonSchema}
 IMPORTANT: ${baseInstruction}${prefillSuffix}`;
 
-    // ── Run GPT-4o and Claude Sonnet in parallel ─────────────────────────────
+    // ── Run GPT-4o and Claude Sonnet in parallel (skip gated providers) ──────
     const [gptResult, claudeResult] = await Promise.allSettled([
-      openai.chat.completions.create({
-        model: 'gpt-5',
-        messages: [{ role: 'user', content: gptPrompt }],
-        max_tokens: 1600,
-        response_format: { type: 'json_object' }
-      }),
-      anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1700,
-        messages: [{ role: 'user', content: claudePrompt + '\n\nReturn ONLY the raw JSON object — no markdown fences, no explanation.' }]
-      })
+      canOpenAI
+        ? openai.chat.completions.create({
+            model: 'gpt-5',
+            messages: [{ role: 'user', content: gptPrompt }],
+            max_tokens: 1600,
+            response_format: { type: 'json_object' }
+          })
+        : Promise.reject(new Error('openai-key-gated')),
+      canAnthropic
+        ? anthropic.messages.create({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 1700,
+            messages: [{ role: 'user', content: claudePrompt + '\n\nReturn ONLY the raw JSON object — no markdown fences, no explanation.' }]
+          })
+        : Promise.reject(new Error('anthropic-key-gated')),
     ]);
 
     let gptPlan = null, claudePlan = null;
@@ -528,9 +657,9 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
     }
 
     // ── If only one succeeded, return it directly ────────────────────────────
-    if (!gptPlan && !claudePlan) throw new Error('Both AI models failed to generate a plan');
-    if (!gptPlan) return res.json({ plan: claudePlan, sources: ['Claude'] });
-    if (!claudePlan) return res.json({ plan: gptPlan, sources: ['GPT-4o'] });
+    if (!gptPlan && !claudePlan) return res.json(_templateAttackPlanResponse(templateInput));
+    if (!gptPlan) return res.json({ ok: true, plan: claudePlan, sources: ['Claude'] });
+    if (!claudePlan) return res.json({ ok: true, plan: gptPlan, sources: ['GPT-4o'] });
 
     // ── Both succeeded — merge in code (no extra API call) ───────────────────
     const normKey = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -585,9 +714,9 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
       criticalWins:      mergedWins
     };
 
-    res.json({ plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
+    res.json({ ok: true, plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
   } catch(err) {
-    res.json({ plan: null, error: err.message });
+    res.json({ ok: false, plan: null, error: err.message });
   }
 });
 

@@ -508,6 +508,26 @@ function igTrack(eventName, props = {}) {
 
 let currentView = 'marketing-brief';
 let analysisData = null;
+// React boot restore (AppShell) writes only window.analysisData. Prefer the
+// live Analyse Now closure, then fall back to that window mirror and sync the
+// bare variable so attack-plan (and later legacy reads) see restored competitors.
+function _resolveAnalysisData() {
+  if (analysisData) return analysisData;
+  if (window.analysisData) {
+    analysisData = window.analysisData;
+    return analysisData;
+  }
+  return null;
+}
+window._syncBareAnalysisData = function() { return _resolveAnalysisData(); };
+if (!window._igAnalysisDataSyncBound) {
+  window._igAnalysisDataSyncBound = true;
+  try {
+    document.addEventListener('ig:analysis-ready', _resolveAnalysisData);
+    window.addEventListener('ig:analysis-updated', _resolveAnalysisData);
+    document.addEventListener('ig:analysis-updated', _resolveAnalysisData);
+  } catch (_) {}
+}
 let queuedCampaigns = [];
 let creativeRound = 0;
 window._launchedCampaigns = [];
@@ -5500,6 +5520,154 @@ function _apCloseModal() {
   if (m) { m.classList.add('hidden'); m.style.display = 'none'; }
 }
 
+// ── Attack-plan response helpers (envelope unwrap + honesty) ──
+var _AP_UNAVAILABLE_FALLBACK = 'Attack plan withheld: live AI output was unavailable and this workspace is in strict data mode. An administrator has been notified.';
+
+function _apSafeText(s, max) {
+  if (typeof _bpSafe === 'function') return _bpSafe(s, max);
+  return String(s == null ? '' : s).replace(/[<>]/g, '').slice(0, max || 400);
+}
+
+function _unwrapAttackPlanPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return { ok: false, withheld: false, plan: null, error: 'Empty attack plan response', source: '', fabricated: false, sources: [] };
+  }
+  // Enforcement (strict): fabricated/template plan is replaced with this envelope.
+  // Distinct from a hard failure — retrying will not produce a plan.
+  if (payload.data_unavailable === true || payload.source === 'data_unavailable') {
+    const message = (typeof payload.message === 'string' && payload.message.trim())
+      ? payload.message.trim()
+      : _AP_UNAVAILABLE_FALLBACK;
+    return {
+      ok: false,
+      withheld: true,
+      plan: null,
+      error: message,
+      message: message,
+      source: 'data_unavailable',
+      fabricated: false,
+      sources: [],
+    };
+  }
+  if (payload.ok === false) {
+    return {
+      ok: false,
+      withheld: false,
+      plan: null,
+      error: payload.error || 'Attack plan generation failed',
+      source: payload.source || '',
+      fabricated: false,
+      sources: Array.isArray(payload.sources) ? payload.sources : [],
+    };
+  }
+  const nested = payload.plan;
+  if (nested && typeof nested === 'object') {
+    const source = payload.source || '';
+    const sources = Array.isArray(payload.sources) ? payload.sources : [];
+    const fabricated = !!(payload._fabricated || source === 'template' || sources.indexOf('template') !== -1);
+    return {
+      ok: true,
+      withheld: false,
+      plan: nested,
+      error: '',
+      source: source || (fabricated ? 'template' : ''),
+      fabricated,
+      sources,
+    };
+  }
+  if (payload.plan == null && ('plan' in payload || payload.ok === true)) {
+    return {
+      ok: false,
+      withheld: false,
+      plan: null,
+      error: payload.error || 'Attack plan missing from response',
+      source: payload.source || '',
+      fabricated: false,
+      sources: Array.isArray(payload.sources) ? payload.sources : [],
+    };
+  }
+  if (typeof payload.executiveSummary === 'string') {
+    const source = payload.source || '';
+    const sources = Array.isArray(payload.sources) ? payload.sources : [];
+    const fabricated = !!(payload._fabricated || source === 'template' || sources.indexOf('template') !== -1);
+    return {
+      ok: true,
+      withheld: false,
+      plan: payload,
+      error: '',
+      source: source || (fabricated ? 'template' : ''),
+      fabricated,
+      sources,
+    };
+  }
+  return {
+    ok: false,
+    withheld: false,
+    plan: null,
+    error: payload.error || 'Attack plan missing from response',
+    source: '',
+    fabricated: false,
+    sources: [],
+  };
+}
+
+function _apHonestyBadgeHtml(meta) {
+  meta = meta || window._apPlanMeta || {};
+  const source = meta.source || '';
+  const sources = Array.isArray(meta.sources) ? meta.sources : [];
+  const fabricated = !!meta.fabricated || source === 'template' || sources.indexOf('template') !== -1;
+  if (typeof window._dataBadge !== 'function') return '';
+  if (fabricated) return window._dataBadge('estimate', 'template');
+  const live = sources.filter(function (s) { return s && s !== 'template'; });
+  if (live.length) return window._dataBadge('ai-real', live.join(' + '));
+  return '';
+}
+
+function _apShowUnavailable(message) {
+  const msg = _apSafeText(message || _AP_UNAVAILABLE_FALLBACK, 400);
+  let modal = document.getElementById('attackPlanModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'attackPlanModal';
+    modal.className = 'modal-backdrop';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);padding:20px';
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  modal.innerHTML = '<div style="background:white;border-radius:16px;padding:40px;text-align:center;max-width:440px">'
+    + '<div style="font-size:2rem;margin-bottom:12px">📭</div>'
+    + '<div style="font-weight:700;color:#0F172A;margin-bottom:10px">Attack plan withheld</div>'
+    + '<div style="font-size:0.85rem;color:#475569;line-height:1.55">' + msg + '</div>'
+    + '<div style="font-size:0.78rem;color:#64748B;line-height:1.5;margin-top:12px">Live AI output was unavailable. Strict data mode hides estimated/template plans and reports the issue to an administrator — retrying will not generate a plan.</div>'
+    + '<button type="button" onclick="window._apCloseModal && window._apCloseModal()" style="margin-top:20px;padding:10px 18px;background:#F1F5F9;border:none;border-radius:8px;font-weight:600;cursor:pointer">Close</button>'
+    + '</div>';
+}
+
+function _applyAttackPlanResponse(payload, competitorName) {
+  const unwrapped = _unwrapAttackPlanPayload(payload);
+  if (unwrapped.withheld) {
+    _apShowUnavailable(unwrapped.message || unwrapped.error);
+    showToast('📭 Attack plan withheld — live AI output unavailable in strict data mode');
+    return false;
+  }
+  if (!unwrapped.ok || !unwrapped.plan) {
+    if (unwrapped.error) console.error('[openFullAttackPlanModal]', unwrapped.error);
+    _apCloseModal();
+    showToast('⚠️ Could not generate attack plan — try again or use Execute Top Priority');
+    return false;
+  }
+  window._apPlanMeta = {
+    source: unwrapped.source,
+    fabricated: unwrapped.fabricated,
+    sources: unwrapped.sources,
+  };
+  renderAttackPlan(unwrapped.plan, competitorName);
+  showToast('✅ Attack plan ready vs ' + competitorName);
+  return true;
+}
+// ── End attack-plan response helpers ──
+
 function _apSwitchTab(tab) {
   const body = document.getElementById('attackPlanModalBody');
   if (!body || !window._apPlanData) return;
@@ -5555,10 +5723,13 @@ function renderAttackPlan(plan, competitor) {
     document.body.appendChild(modal);
   }
   window._apPlanData = plan;
+  const honestyBadge = _apHonestyBadgeHtml(window._apPlanMeta);
   modal.innerHTML = '<div style="background:white;border-radius:16px;max-width:720px;width:100%;max-height:90vh;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4)">'
     + '<div style="background:linear-gradient(135deg,#0066FF,#00C9C8);padding:20px 24px;color:white;display:flex;justify-content:space-between;align-items:flex-start">'
     + '<div><div style="font-weight:800;font-size:1.1rem">⚔️ Full Attack Plan vs ' + _bpSafe(competitor, 60) + '</div>'
-    + '<div style="font-size:0.78rem;opacity:.85;margin-top:4px">8-week strategy · keywords · channels · quick wins</div></div>'
+    + '<div style="font-size:0.78rem;opacity:.85;margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">8-week strategy · keywords · channels · quick wins'
+    + (honestyBadge ? ' ' + honestyBadge : '')
+    + '</div></div>'
     + '<button type="button" onclick="window._apCloseModal && window._apCloseModal()" style="background:rgba(255,255,255,.2);border:none;width:32px;height:32px;border-radius:8px;color:white;font-size:1rem;cursor:pointer">✕</button></div>'
     + '<div id="apTabBar" style="display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid #E2E8F0">'
     + ['overview','weekly','keywords','wins'].map((t, i) =>
@@ -5580,12 +5751,13 @@ window._apSwitchTab = _apSwitchTab;
 window.renderAttackPlan = renderAttackPlan;
 
 window.openFullAttackPlanModal = function(compIdx) {
-  const comps = (analysisData && analysisData.competitors) || [];
+  const ad = _resolveAnalysisData();
+  const comps = (ad && ad.competitors) || [];
   const comp = comps[compIdx] || comps[0];
   if (!comp) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
   window._apCompIdx = compIdx;
-  const myDomain = (analysisData && analysisData.url) || 'yourdomain.com';
-  const industry = (analysisData && analysisData.industry && analysisData.industry.name) || 'your industry';
+  const myDomain = (ad && ad.url) || 'yourdomain.com';
+  const industry = (ad && ad.industry && ad.industry.name) || 'your industry';
   showToast('⚔️ Generating Full Attack Plan vs ' + (comp.name || 'competitor') + '…');
   let modal = document.getElementById('attackPlanModal');
   if (!modal) {
@@ -5615,9 +5787,8 @@ window.openFullAttackPlanModal = function(compIdx) {
     }),
   })
     .then(r => r.ok ? r.json() : Promise.reject(new Error('Attack plan request failed')))
-    .then(plan => {
-      renderAttackPlan(plan, comp.name);
-      showToast('✅ Attack plan ready vs ' + comp.name);
+    .then(payload => {
+      _applyAttackPlanResponse(payload, comp.name);
     })
     .catch(err => {
       console.error('[openFullAttackPlanModal]', err);
@@ -5663,7 +5834,7 @@ window._dataBadge = function(level, source) {
 function openAttackModal(action, competitor, type) {
   // ── 'attack' and 'keyword' types → go straight to Full Attack Plan ──────────
   if (type === 'attack' || type === 'keyword') {
-    const comps = analysisData?.competitors || [];
+    const comps = (_resolveAnalysisData() || {}).competitors || [];
     let compIdx = comps.findIndex(c =>
       c.name === competitor ||
       (c.name || '').toLowerCase().includes((competitor || '').toLowerCase())
