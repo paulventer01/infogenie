@@ -402,7 +402,7 @@ test('saved-plan surface is reachable without analysisData and follows the shell
   const afterEarly = BP_SRC.indexOf('const domain', early);
   assert.ok(afterEarly > early, 'expected analysis-present path after the empty return');
   const emptyReturn = BP_SRC.slice(early, afterEarly);
-  assert.match(emptyReturn, /SavedPlansSection|bp-saved-plans|Saved Attack Plans/);
+  assert.match(emptyReturn, /SavedPlansSection|AttackPlanWorkspace|bp-saved-plans|Saved Attack Plans|data-bp-inline-plan/);
   assert.match(emptyReturn, /data-bp-no-analysis/);
   assert.match(emptyReturn, /No Analysis Yet/);
   assert.doesNotMatch(
@@ -490,6 +490,7 @@ test('renderAttackPlan applies open grace on the dialog inner panel', async () =
   rwin.renderAttackPlan(livePlan, 'Rival');
   const modal = rwin.document.getElementById('attackPlanModal');
   assert.ok(modal, 'modal mounted');
+  assert.strictEqual(modal.style.zIndex, '99999', 'dialog must sit above shell overlays');
   const inner = modal.firstElementChild;
   assert.ok(inner);
   assert.strictEqual(modal.dataset.apGrace, '1');
@@ -497,4 +498,39 @@ test('renderAttackPlan applies open grace on the dialog inner panel', async () =
   await new Promise((r) => setTimeout(r, 450));
   assert.strictEqual(modal.dataset.apGrace, undefined);
   assert.strictEqual(inner.style.pointerEvents, '');
+});
+
+test('inline Battle Plan panel loads /latest and keeps empty / withheld / error distinct', () => {
+  assert.match(BP_SRC, /\/api\/ai-attack-plan\/latest/);
+  assert.match(BP_SRC, /data-bp-inline-plan/);
+  assert.match(BP_SRC, /Battle Plan vs/);
+  assert.match(BP_SRC, /8-Week Plan/);
+  assert.match(BP_SRC, /planHonestyBadge/);
+  assert.match(BP_SRC, /scrollIntoView\(\s*\{\s*block:\s*["']start["']\s*\}\s*\)/);
+  assert.match(BP_SRC, /ig:attack-plan-saved/);
+
+  const emptyCopy = 'No battle plan yet — generate one above.';
+  assert.match(BP_SRC, /No battle plan yet — generate one above/);
+  assert.match(BP_SRC, /Could not load battle plan/);
+  assert.match(BP_SRC, /data-bp-inline-empty/);
+  assert.match(BP_SRC, /data-bp-inline-withheld/);
+  assert.match(BP_SRC, /data-bp-inline-error/);
+  assert.match(BP_SRC, /data-bp-inline-summary/);
+  assert.match(BP_SRC, /data-bp-inline-weekly/);
+  assert.doesNotMatch(emptyCopy, /withheld/i);
+  assert.doesNotMatch(emptyCopy, /currently unavailable/);
+});
+
+test('attackPlanModal z-index is raised in all three modal builders', () => {
+  const unavailable = sliceBetween(SRC, 'function _apShowUnavailable(message)', 'function _applyAttackPlanResponse');
+  const render = sliceBetween(SRC, 'function renderAttackPlan(plan, competitor)', 'window._apCloseModal = _apCloseModal');
+  const generate = sliceBetween(SRC, 'window.openFullAttackPlanModal = function(compIdx)', 'function closePlanModal()');
+  for (const [name, block] of [
+    ['_apShowUnavailable', unavailable],
+    ['renderAttackPlan', render],
+    ['openFullAttackPlanModal', generate],
+  ]) {
+    assert.match(block, /z-index:99999/, `${name} must use z-index 99999`);
+    assert.doesNotMatch(block, /z-index:10050/, `${name} must not keep the old 10050 stack`);
+  }
 });

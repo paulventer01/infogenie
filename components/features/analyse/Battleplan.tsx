@@ -12,8 +12,8 @@
 // launcher; cross-tool links go through `lib/nav#goToView`. See
 // `docs/react-panel-migration.md`.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
 import { apiGet } from "@/lib/api";
@@ -102,6 +102,60 @@ interface UnwrappedAttackPlanList {
   message: string;
 }
 
+interface UnwrappedLatestPlan {
+  withheld: boolean;
+  empty: boolean;
+  error: string;
+  message: string;
+  plan: Record<string, unknown> | null;
+  competitor: string;
+  source?: string;
+  sources: string[];
+  fabricated: boolean;
+}
+
+type InlinePlanKind = "loading" | "empty" | "withheld" | "error" | "ready";
+type InlinePlanTab = "overview" | "weekly" | "keywords" | "wins";
+
+interface InlinePlanState {
+  kind: InlinePlanKind;
+  error: string;
+  message: string;
+  competitor: string;
+  plan: Record<string, unknown> | null;
+  source?: string;
+  sources: string[];
+  fabricated: boolean;
+}
+
+interface WeeklyPlanRow {
+  week: string;
+  focus: string;
+  actions: string[];
+  kpi: string;
+}
+interface KeywordTargetRow {
+  keyword: string;
+  volume: string;
+  cpc: string;
+  priority: string;
+}
+interface CriticalWinRow {
+  win: string;
+  impact: string;
+  timeframe: string;
+}
+
+interface ParsedAttackPlan {
+  executiveSummary: string;
+  opportunityScore: string;
+  estimatedROILift: string;
+  timeToResults: string;
+  weeklyPlan: WeeklyPlanRow[];
+  keywordTargets: KeywordTargetRow[];
+  criticalWins: CriticalWinRow[];
+}
+
 const AP_LIST_UNAVAILABLE_FALLBACK =
   "Attack plan withheld: live AI output was unavailable and this workspace is in strict data mode. An administrator has been notified.";
 
@@ -138,6 +192,158 @@ function unwrapAttackPlanList(res: AttackPlanListResult): UnwrappedAttackPlanLis
     plans: Array.isArray(res.plans) ? res.plans : [],
     error: "",
     message: "",
+  };
+}
+
+function fieldText(v: unknown): string {
+  if (v == null || v === "") return "—";
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
+  return "—";
+}
+
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+}
+
+function parseAttackPlanBody(plan: Record<string, unknown>): ParsedAttackPlan {
+  const weeklyRaw = Array.isArray(plan.weeklyPlan) ? plan.weeklyPlan : [];
+  const kwRaw = Array.isArray(plan.keywordTargets) ? plan.keywordTargets : [];
+  const winsRaw = Array.isArray(plan.criticalWins) ? plan.criticalWins : [];
+  return {
+    executiveSummary: typeof plan.executiveSummary === "string" ? plan.executiveSummary : "",
+    opportunityScore: fieldText(plan.opportunityScore),
+    estimatedROILift: fieldText(plan.estimatedROILift),
+    timeToResults: fieldText(plan.timeToResults),
+    weeklyPlan: weeklyRaw.map((w) => {
+      const row = asRecord(w);
+      const actions = Array.isArray(row.actions)
+        ? row.actions.map((a) => fieldText(a)).filter((a) => a !== "—")
+        : [];
+      return {
+        week: fieldText(row.week),
+        focus: fieldText(row.focus),
+        actions,
+        kpi: fieldText(row.kpi),
+      };
+    }),
+    keywordTargets: kwRaw.map((k) => {
+      const row = asRecord(k);
+      return {
+        keyword: fieldText(row.keyword),
+        volume: fieldText(row.volume),
+        cpc: fieldText(row.cpc),
+        priority: fieldText(row.priority),
+      };
+    }),
+    criticalWins: winsRaw.map((w) => {
+      const row = asRecord(w);
+      return {
+        win: fieldText(row.win),
+        impact: fieldText(row.impact),
+        timeframe: fieldText(row.timeframe),
+      };
+    }),
+  };
+}
+
+function unwrapLatestPlan(res: AttackPlanDetailResult): UnwrappedLatestPlan {
+  if (res.data_unavailable === true || res.source === "data_unavailable") {
+    const message =
+      typeof res.message === "string" && res.message.trim() ? res.message.trim() : AP_LIST_UNAVAILABLE_FALLBACK;
+    return {
+      withheld: true,
+      empty: false,
+      error: "",
+      message,
+      plan: null,
+      competitor: "",
+      sources: [],
+      fabricated: false,
+    };
+  }
+  if (res.ok === false) {
+    return {
+      withheld: false,
+      empty: false,
+      error: res.error || "Could not load battle plan",
+      message: "",
+      plan: null,
+      competitor: "",
+      sources: [],
+      fabricated: false,
+    };
+  }
+  if (!res.plan) {
+    return {
+      withheld: false,
+      empty: true,
+      error: "",
+      message: "",
+      plan: null,
+      competitor: "",
+      sources: [],
+      fabricated: false,
+    };
+  }
+  const sources = Array.isArray(res.sources) ? res.sources : [];
+  const fabricated = !!(res._fabricated || res.source === "template" || sources.includes("template"));
+  return {
+    withheld: false,
+    empty: false,
+    error: "",
+    message: "",
+    plan: res.plan,
+    competitor: typeof res.competitor === "string" ? res.competitor : "",
+    source: res.source,
+    sources,
+    fabricated,
+  };
+}
+
+function detailToInline(res: AttackPlanDetailResult, competitorHint?: string): InlinePlanState {
+  const u = unwrapLatestPlan(res);
+  if (u.withheld) {
+    return {
+      kind: "withheld",
+      error: "",
+      message: u.message,
+      competitor: competitorHint || u.competitor,
+      plan: null,
+      sources: [],
+      fabricated: false,
+    };
+  }
+  if (u.error) {
+    return {
+      kind: "error",
+      error: u.error,
+      message: "",
+      competitor: "",
+      plan: null,
+      sources: [],
+      fabricated: false,
+    };
+  }
+  if (u.empty || !u.plan) {
+    return {
+      kind: "empty",
+      error: "",
+      message: "",
+      competitor: "",
+      plan: null,
+      sources: [],
+      fabricated: false,
+    };
+  }
+  return {
+    kind: "ready",
+    error: "",
+    message: "",
+    competitor: competitorHint || u.competitor || "Competitor",
+    plan: u.plan,
+    source: u.source,
+    sources: u.sources,
+    fabricated: u.fabricated,
   };
 }
 
@@ -366,9 +572,11 @@ function Section({ icon, title, sub, children }: { icon: string; title: string; 
 function SavedPlansSection({
   variant,
   emptyCopy,
+  onShowInline,
 }: {
   variant: "embedded" | "standalone";
   emptyCopy: string;
+  onShowInline?: (payload: AttackPlanDetailResult, competitor?: string) => void;
 }) {
   const [savedPlans, setSavedPlans] = useState<SavedAttackPlanMeta[]>([]);
   const [savedLoading, setSavedLoading] = useState(true);
@@ -422,7 +630,9 @@ function SavedPlansSection({
       void loadSavedPlans();
       return;
     }
-    openSavedPlanBridge(res, entry.competitor || res.competitor);
+    const competitor = entry.competitor || res.competitor;
+    onShowInline?.(res, competitor);
+    openSavedPlanBridge(res, competitor);
   }
 
   const wrapStyle: CSSProperties =
@@ -594,6 +804,351 @@ function SavedPlansSection({
   );
 }
 
+const INLINE_TABS: { id: InlinePlanTab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "weekly", label: "8-Week Plan" },
+  { id: "keywords", label: "Keywords" },
+  { id: "wins", label: "Quick Wins" },
+];
+
+const inlineTabBtn = (active: boolean): CSSProperties => ({
+  padding: "8px 14px",
+  borderRadius: 8,
+  border: active ? "1px solid rgba(15,118,110,.28)" : "1px solid transparent",
+  background: active ? "rgba(0,201,200,.14)" : "transparent",
+  color: active ? "#0F766E" : "#475569",
+  fontSize: "0.78rem",
+  fontWeight: 700,
+  cursor: "pointer",
+});
+
+function InlineBattlePlanPanel({
+  panelRef,
+  state,
+  tab,
+  onTab,
+  variant,
+}: {
+  panelRef: RefObject<HTMLDivElement | null>;
+  state: InlinePlanState;
+  tab: InlinePlanTab;
+  onTab: (t: InlinePlanTab) => void;
+  variant: "embedded" | "standalone";
+}) {
+  const wrapStyle: CSSProperties =
+    variant === "standalone"
+      ? {
+          background: "linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06))",
+          border: "1px solid rgba(0,201,200,.2)",
+          borderRadius: 14,
+          padding: "20px 24px",
+          marginBottom: 16,
+        }
+      : {
+          marginTop: 18,
+          paddingTop: 16,
+          borderTop: "1px solid rgba(0,201,200,.22)",
+        };
+
+  const title =
+    state.kind === "ready" && state.competitor
+      ? `⚔️ Battle Plan vs ${state.competitor}`
+      : "⚔️ Battle Plan";
+  const honesty =
+    state.kind === "ready"
+      ? planHonestyBadge({
+          id: "inline",
+          competitor: state.competitor,
+          sources: state.sources,
+          source: state.source,
+          _fabricated: state.fabricated,
+        })
+      : null;
+  const body = state.kind === "ready" && state.plan ? parseAttackPlanBody(state.plan) : null;
+
+  return (
+    <div
+      ref={panelRef}
+      id="bp-inline-battle-plan"
+      className="bp-inline-plan"
+      data-bp-inline-plan="1"
+      data-bp-inline-state={state.kind}
+      data-bp-inline-tab={tab}
+      style={wrapStyle}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <div>
+          <div
+            data-bp-inline-title="1"
+            style={{ fontFamily: "Sora,sans-serif", fontSize: "0.95rem", fontWeight: 800, color: "#0F172A" }}
+          >
+            {title}
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "#64748B", marginTop: 2 }}>8-week attack plan</div>
+        </div>
+        {honesty ? (
+          <span
+            data-bp-inline-honesty="1"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "2px 8px",
+              borderRadius: 999,
+              fontSize: "0.6rem",
+              fontWeight: 800,
+              letterSpacing: ".04em",
+              textTransform: "uppercase",
+              ...honesty.style,
+            }}
+          >
+            {honesty.label}
+          </span>
+        ) : null}
+      </div>
+
+      {state.kind === "loading" ? (
+        <div style={{ fontSize: "0.8rem", color: "#64748B", padding: "12px 0" }}>Loading battle plan…</div>
+      ) : null}
+
+      {state.kind === "empty" ? (
+        <div
+          data-bp-inline-empty="1"
+          style={{
+            background: "#F8FAFC",
+            border: "1px dashed #CBD5E1",
+            borderRadius: 10,
+            padding: "16px 14px",
+            fontSize: "0.8rem",
+            color: "#64748B",
+            textAlign: "center",
+          }}
+        >
+          No battle plan yet — generate one above.
+        </div>
+      ) : null}
+
+      {state.kind === "error" ? (
+        <div
+          data-bp-inline-error="1"
+          style={{
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: 10,
+            padding: "12px 14px",
+            fontSize: "0.8rem",
+            color: "#991B1B",
+          }}
+        >
+          Could not load battle plan — {state.error}
+        </div>
+      ) : null}
+
+      {state.kind === "withheld" ? (
+        <div
+          data-bp-inline-withheld="1"
+          style={{
+            background: "#FFFBEB",
+            border: "1px solid #FDE68A",
+            borderRadius: 10,
+            padding: "16px 14px",
+            fontSize: "0.8rem",
+            color: "#78350F",
+          }}
+        >
+          <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#92400E", marginBottom: 8 }}>
+            📭 Saved plans withheld
+          </div>
+          <div style={{ lineHeight: 1.55, color: "#92400E" }}>{state.message}</div>
+          <div style={{ fontSize: "0.75rem", color: "#64748B", lineHeight: 1.5, marginTop: 10 }}>
+            Live AI output was unavailable. Strict data mode hides estimated/template plans and reports the issue to an administrator — generating a new plan will not restore access to saved plans here.
+          </div>
+        </div>
+      ) : null}
+
+      {state.kind === "ready" && body ? (
+        <div>
+          <div
+            role="tablist"
+            aria-label="Battle plan sections"
+            style={{ display: "flex", gap: 4, padding: "4px 0 12px", borderBottom: "1px solid #E2E8F0", flexWrap: "wrap" }}
+          >
+            {INLINE_TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                data-tab={t.id}
+                data-active={tab === t.id ? "true" : "false"}
+                aria-selected={tab === t.id}
+                onClick={() => onTab(t.id)}
+                style={inlineTabBtn(tab === t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "overview" ? (
+            <div style={{ padding: "16px 0 4px", color: "#0F172A", lineHeight: 1.6 }}>
+              <p data-bp-inline-summary="1" style={{ fontSize: "0.9rem", margin: "0 0 16px", color: "#334155" }}>
+                {body.executiveSummary || "No executive summary in this plan."}
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12 }}>
+                <div style={{ background: "#F0FDF4", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                  <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#059669" }}>{body.opportunityScore}</div>
+                  <div style={{ fontSize: "0.7rem", color: "#64748B" }}>Opportunity</div>
+                </div>
+                <div style={{ background: "#EFF6FF", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                  <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#0066FF" }}>{body.estimatedROILift}</div>
+                  <div style={{ fontSize: "0.7rem", color: "#64748B" }}>ROI lift</div>
+                </div>
+                <div style={{ background: "#FEF3C7", borderRadius: 10, padding: 14, textAlign: "center" }}>
+                  <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#D97706" }}>{body.timeToResults}</div>
+                  <div style={{ fontSize: "0.7rem", color: "#64748B" }}>Time to results</div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "weekly" ? (
+            <div data-bp-inline-weekly="1" style={{ padding: "16px 0 4px" }}>
+              {body.weeklyPlan.length === 0 ? (
+                <div style={{ fontSize: "0.8rem", color: "#64748B" }}>No weekly milestones in this plan.</div>
+              ) : (
+                body.weeklyPlan.map((w, i) => (
+                  <div
+                    key={i}
+                    style={{ border: "1px solid #E2E8F0", borderRadius: 10, padding: 14, marginBottom: 10, background: "#FFFFFF" }}
+                  >
+                    <div style={{ fontWeight: 800, color: "#0F172A", marginBottom: 4 }}>
+                      {w.week} — {w.focus}
+                    </div>
+                    {w.actions.length > 0 ? (
+                      <ul style={{ margin: "8px 0 0 18px", color: "#475569", fontSize: "0.85rem" }}>
+                        {w.actions.map((a, j) => (
+                          <li key={j}>{a}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <div style={{ fontSize: "0.75rem", color: "#64748B", marginTop: 8 }}>KPI: {w.kpi}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : null}
+
+          {tab === "keywords" ? (
+            <div data-bp-inline-keywords="1" style={{ padding: "16px 0 4px", overflow: "auto" }}>
+              {body.keywordTargets.length === 0 ? (
+                <div style={{ fontSize: "0.8rem", color: "#64748B" }}>No keyword targets in this plan.</div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
+                  <thead>
+                    <tr style={{ background: "#F8FAFC" }}>
+                      <th style={{ textAlign: "left", padding: 8 }}>Keyword</th>
+                      <th style={{ padding: 8 }}>Volume</th>
+                      <th style={{ padding: 8 }}>CPC</th>
+                      <th style={{ padding: 8 }}>Priority</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {body.keywordTargets.map((k, i) => (
+                      <tr key={i}>
+                        <td style={{ padding: 8, borderTop: "1px solid #E2E8F0", color: "#0F172A" }}>{k.keyword}</td>
+                        <td style={{ textAlign: "center", borderTop: "1px solid #E2E8F0" }}>{k.volume}</td>
+                        <td style={{ textAlign: "center", borderTop: "1px solid #E2E8F0" }}>{k.cpc}</td>
+                        <td style={{ textAlign: "center", borderTop: "1px solid #E2E8F0", fontWeight: 700 }}>{k.priority}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ) : null}
+
+          {tab === "wins" ? (
+            <div data-bp-inline-wins="1" style={{ padding: "16px 0 4px" }}>
+              {body.criticalWins.length === 0 ? (
+                <div style={{ fontSize: "0.8rem", color: "#64748B" }}>No quick wins in this plan.</div>
+              ) : (
+                body.criticalWins.map((w, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      borderLeft: "4px solid #10B981",
+                      padding: "10px 14px",
+                      marginBottom: 10,
+                      background: "#F0FDF4",
+                      borderRadius: "0 8px 8px 0",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, color: "#0F172A" }}>{w.win}</div>
+                    <div style={{ fontSize: "0.75rem", color: "#64748B", marginTop: 4 }}>
+                      Impact: {w.impact} · {w.timeframe}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AttackPlanWorkspace({
+  variant,
+  emptyCopy,
+}: {
+  variant: "embedded" | "standalone";
+  emptyCopy: string;
+}) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [inline, setInline] = useState<InlinePlanState>({
+    kind: "loading",
+    error: "",
+    message: "",
+    competitor: "",
+    plan: null,
+    sources: [],
+    fabricated: false,
+  });
+  const [tab, setTab] = useState<InlinePlanTab>("overview");
+
+  const loadLatest = useCallback(async () => {
+    const res = await apiGet<AttackPlanDetailResult>("/api/ai-attack-plan/latest");
+    setInline(detailToInline(res));
+    setTab("overview");
+  }, []);
+
+  useEffect(() => {
+    void loadLatest();
+  }, [loadLatest]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onSaved = () => {
+      void loadLatest();
+    };
+    window.addEventListener("ig:attack-plan-saved", onSaved);
+    return () => window.removeEventListener("ig:attack-plan-saved", onSaved);
+  }, [loadLatest]);
+
+  const showInline = useCallback((res: AttackPlanDetailResult, competitor?: string) => {
+    setInline(detailToInline(res, competitor));
+    setTab("overview");
+    panelRef.current?.scrollIntoView({ block: "start" });
+  }, []);
+
+  return (
+    <>
+      <InlineBattlePlanPanel panelRef={panelRef} state={inline} tab={tab} onTab={setTab} variant={variant} />
+      <SavedPlansSection variant={variant} emptyCopy={emptyCopy} onShowInline={showInline} />
+    </>
+  );
+}
+
 export default function Battleplan() {
   const router = useRouter();
   const [ad, setAd] = useState<AnalysisData | null>(() => getAnalysisData());
@@ -691,7 +1246,7 @@ export default function Battleplan() {
           </button>
         </div>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
-          <SavedPlansSection
+          <AttackPlanWorkspace
             variant="standalone"
             emptyCopy="No attack plans saved yet — run an analysis first, then generate a plan from this page"
           />
@@ -1112,7 +1667,7 @@ export default function Battleplan() {
             </div>
           </div>
 
-          <SavedPlansSection
+          <AttackPlanWorkspace
             variant="embedded"
             emptyCopy="No attack plans saved yet — generate one above"
           />

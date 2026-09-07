@@ -5669,7 +5669,7 @@ function _apShowUnavailable(message) {
     modal = document.createElement('div');
     modal.id = 'attackPlanModal';
     modal.className = 'modal-backdrop';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);padding:20px';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);padding:20px';
     document.body.appendChild(modal);
   }
   modal.classList.remove('hidden');
@@ -5761,7 +5761,7 @@ function renderAttackPlan(plan, competitor) {
     modal = document.createElement('div');
     modal.id = 'attackPlanModal';
     modal.className = 'modal-backdrop';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:20px';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:20px';
     modal.onclick = (e) => { if (e.target === modal && modal.dataset.apGrace !== '1') _apCloseModal(); };
     document.body.appendChild(modal);
   } else {
@@ -5832,7 +5832,7 @@ window.openFullAttackPlanModal = function(compIdx) {
     modal = document.createElement('div');
     modal.id = 'attackPlanModal';
     modal.className = 'modal-backdrop';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);padding:20px';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);padding:20px';
     document.body.appendChild(modal);
   }
   modal.classList.remove('hidden');
