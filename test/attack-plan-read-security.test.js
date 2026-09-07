@@ -10,8 +10,14 @@
 //      so that path cannot become a tenant-data read primitive. This mirrors
 //      what /api/battle-cards already does. See docs/security-guardrails.md.
 //   2. The permission matrix row for the prefix, and the role grants behind it.
-//      Reading a saved plan requires the same key that renders the `battleplan`
-//      panel; generating one is a write and requires the edit key.
+//      These are matrix-layer facts only. The whole prefix also sits behind the
+//      legacy owner gate in server.js, which is mounted AFTER enforceMatrix and
+//      refuses every non-owner principal with `owner_only` before a handler
+//      runs — so the matrix row decides nothing today and the reachable
+//      principal set is exactly "deployment owner + the API-key principal".
+//      The row is the correct mapping for the day that gate is retired, and it
+//      is what `requiredPermissionForComponent('battleplan')` must agree with.
+//      Nothing here asserts that a marketer or analyst can call the endpoint.
 //   3. Honesty markers and secret hygiene on the stored blob — a stored
 //      template plan must still trip strict data mode, and no key material may
 //      ever land in kv.
@@ -22,6 +28,8 @@ require('./helpers/env');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const http = require('node:http');
 const https = require('node:https');
 const express = require('express');
@@ -231,6 +239,9 @@ test('every persisted key is tenant-namespaced', async () => {
 });
 
 // ── 2. Permission matrix + role grants ──────────────────────────────────────
+// Matrix-layer only — see the header note. The last test in this section locks
+// the fact that the owner gate, not the matrix, is what actually answers a
+// non-owner request to this prefix today.
 
 test('matrix: the prefix maps read to view and every mutating verb to edit', () => {
   assert.deepStrictEqual(matrix.validate(), [], 'matrix references only catalog keys');
@@ -246,8 +257,8 @@ test('matrix: the prefix maps read to view and every mutating verb to edit', () 
 });
 
 test('matrix: the API gate and the battleplan panel gate agree', () => {
-  // A role that can open the panel can read its saved plans — nothing narrower
-  // and nothing wider.
+  // The panel gate and the route row require the same key — nothing narrower
+  // and nothing wider. Both still sit behind the owner gate.
   assert.strictEqual(matrix.requiredPermissionForComponent('battleplan'), VIEW_KEY);
   assert.strictEqual(matrix.requiredPermissionForRequest(`${PREFIX}/list`, 'GET').permission, VIEW_KEY);
   // Same keys as the sibling battle-cards surface.
@@ -262,30 +273,66 @@ test('matrix: a look-alike prefix does not inherit this row', () => {
     matrix.requiredPermissionForRequest('/api/ai-visibility/trend', 'GET').permission, 'seo.view');
 });
 
-test('roles: generating a plan is a write authority, reading is not', () => {
+test('roles: the read key and the write key are held by different role sets', () => {
+  // Grant-set shape only. Holding a key is necessary, not sufficient: the owner
+  // gate refuses every one of these roles unless the principal is the
+  // deployment owner.
   const held = (roleKey) => {
     const r = SYSTEM_ROLES.find((x) => x.key === roleKey);
     if (!r) throw new Error(`unknown role ${roleKey}`);
     return new Set(r.permissions);
   };
 
-  // Roles that may generate (and therefore persist + spend AI budget).
+  // Roles carrying the generate key (a write: it persists and spends AI budget).
   for (const roleKey of ['tenant_owner', 'tenant_admin', 'platform_admin', 'platform_owner', 'marketer']) {
-    assert.ok(held(roleKey).has(VIEW_KEY), `${roleKey} should read saved plans`);
-    assert.ok(held(roleKey).has(EDIT_KEY), `${roleKey} should generate plans`);
+    assert.ok(held(roleKey).has(VIEW_KEY), `${roleKey} should hold the read key`);
+    assert.ok(held(roleKey).has(EDIT_KEY), `${roleKey} should hold the generate key`);
   }
 
-  // Analyst is read-only by definition: it may re-open a saved plan but must
-  // not trigger a new generation, which now writes tenant kv.
+  // Analyst is read-only by definition: it carries the key that re-opens a
+  // saved plan but not the one that triggers a generation.
   const analyst = held('analyst');
-  assert.ok(analyst.has(VIEW_KEY), 'analyst reads saved plans');
-  assert.strictEqual(analyst.has(EDIT_KEY), false, 'analyst must not generate — POST persists and spends');
+  assert.ok(analyst.has(VIEW_KEY), 'analyst holds the read key');
+  assert.strictEqual(analyst.has(EDIT_KEY), false, 'analyst must not hold the generate key — POST persists and spends');
 
-  // Roles with no Compete grant reach neither, matching the panel gate.
+  // Roles with no Compete grant hold neither, matching the panel gate.
   for (const roleKey of ['content_creator', 'client_viewer']) {
-    assert.strictEqual(held(roleKey).has(VIEW_KEY), false, `${roleKey} must not read saved plans`);
-    assert.strictEqual(held(roleKey).has(EDIT_KEY), false, `${roleKey} must not generate plans`);
+    assert.strictEqual(held(roleKey).has(VIEW_KEY), false, `${roleKey} must not hold the read key`);
+    assert.strictEqual(held(roleKey).has(EDIT_KEY), false, `${roleKey} must not hold the generate key`);
   }
+});
+
+test('the prefix is NOT exempt from the legacy owner gate', () => {
+  // `_OWNER_GATE_ALLOW` is mounted after enforceMatrix and refuses any
+  // authenticated principal without isOwner. This prefix is deliberately absent
+  // from it, so the matrix row above is forward-wiring, not a live grant: a
+  // tenant_admin, marketer or analyst gets 403 owner_only on every route here,
+  // including the pre-existing POST — as they did before these read routes
+  // existed.
+  //
+  // Adding an exemption would make the coarse prefix row the SOLE authorisation
+  // on a tenant read and on a provider-spending write. Every exemption already
+  // in that list was granted to a router that independently calls
+  // requirePermission per handler with no owner bypass; this router calls it
+  // zero times. That is a data-scoping change with its own Security + QA pass,
+  // not a routing tweak. Fail here until that review happens.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const start = src.indexOf('const _OWNER_GATE_ALLOW = [');
+  assert.ok(start > 0, '_OWNER_GATE_ALLOW must be locatable');
+  const allow = src.slice(start, src.indexOf('\n];', start));
+
+  assert.doesNotMatch(allow, /ai-attack-plan/,
+    'exempting /api/ai-attack-plan is a multi-user data-scoping decision, not a routing tweak');
+  // Sanity: this is the real list, not an empty slice.
+  assert.match(allow, /agent-orchestrator\\\/workflows/);
+  assert.match(allow, /agent-orchestrator\\\/credits/);
+
+  // And the gate still denies non-owners on /api.
+  const gateIdx = src.indexOf('_OWNER_GATE_ALLOW.some');
+  assert.ok(gateIdx > start, 'the allow-list must still be consulted by the gate middleware');
+  const window = src.slice(gateIdx, gateIdx + 600);
+  assert.match(window, /req\.user\.isOwner === true/);
+  assert.match(window, /error: 'owner_only'/);
 });
 
 // ── 3. Honesty markers + secret hygiene ─────────────────────────────────────
