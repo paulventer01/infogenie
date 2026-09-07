@@ -85,10 +85,10 @@ async function createOrGet(o={}){const {actor,tenant}=authorize(o),runId=id(o.re
     q=await c.query(`INSERT INTO ${TABLE}(tenant_id,id,reconciliation_run_id,activation_attempt_id,activation_status,
       workflow_id,intended_provider_state,observed_provider_state,source_discrepancy_classifications,source_requested_by,
       source_observing_at,source_completed_at,created_by,audit_ref)
-      VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,orchestrator_gaparv_safe_observations($8::jsonb),$9,$10,$11,$12,$13,$14)
-      ON CONFLICT DO NOTHING RETURNING *`,[tenant,caseId,runId,src.row.activation_attempt_id,src.row.activation_status,
-      src.row.workflow_id,JSON.stringify(INTENDED_STATE),JSON.stringify(src.row.observations),src.classifications,src.row.requested_by,
-      src.row.observing_at,src.row.completed_at,actor,auditRef]);
+      SELECT $1,$2,s.id,s.activation_attempt_id,s.activation_status,s.workflow_id,$4::jsonb,
+        orchestrator_gaparv_safe_observations(s.observations),s.classifications,s.requested_by,
+        s.observing_at,s.completed_at,$5,$6 FROM ${SOURCE} s WHERE s.tenant_id=$1 AND s.id=$3
+      ON CONFLICT DO NOTHING RETURNING *`,[tenant,caseId,runId,JSON.stringify(INTENDED_STATE),actor,auditRef]);
     if(!q.rowCount){const durable=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND reconciliation_run_id=$2`,[tenant,runId]);
       if(durable.rowCount===1)return publicCase(durable.rows[0]);throw deny('concurrent_creation_conflict');}
     const row=q.rows[0];await c.query(`INSERT INTO ${EVENTS}

@@ -102,6 +102,8 @@ test('notes, request shapes and dependency surface reject secret or autonomous p
  assert.equal(api._exact({reconciliation_run_id:'run'},['reconciliation_run_id']),true);
  assert.equal(api._exact({reconciliation_run_id:'run',retry:true},['reconciliation_run_id']),false);
  const src=fs.readFileSync(require.resolve('../services/agent_orchestrator/google_ads_post_activation_review'),'utf8');
+ assert.match(src,/orchestrator_gaparv_safe_observations\(s\.observations\)/);
+ assert.match(src,/s\.observing_at,s\.completed_at/);
  assert.doesNotMatch(src,/require\(['"].*(?:connector|vault|credential|oauth|activation\.js|worker|scheduler|webhook)/i);
  assert.doesNotMatch(src,/\b(?:fetch|axios)\s*\(|googleads\.googleapis|UPDATE\s+orchestrator_google_ads_post_activation_reconciliation_runs/i);
  for(const key of Object.keys(R))assert.doesNotMatch(key,/approve|retry|reconcile|provider|vault|delete|reopen/i);
