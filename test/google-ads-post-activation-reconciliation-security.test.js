@@ -96,7 +96,9 @@ function lifecyclePool(seed=null){
   if(['BEGIN','COMMIT','ROLLBACK'].includes(sql))return{rows:[],rowCount:null};
   if(sql.includes(`FROM ${service.TABLE}`)&&sql.includes('(activation_attempt_id=$2 OR invocation_id_hash=$3)'))
     return{rowCount:run?1:0,rows:run?[{id:run.id}]:[]};
-  if(sql.includes('SELECT operation_id FROM orchestrator_google_ads_activation_attempts'))return{rowCount:1,rows:[{operation_id:'op-1'}]};
+  if(sql.includes('SELECT capability_id,operation_id FROM orchestrator_google_ads_activation_attempts'))
+    return{rowCount:1,rows:[{capability_id:'cap-1',operation_id:'op-1'}]};
+  if(sql.includes('SELECT id FROM orchestrator_google_ads_activation_capabilities'))return{rowCount:1,rows:[{id:'cap-1'}]};
   if(sql.includes('SELECT id FROM orchestrator_google_ads_provider_draft_operations'))return{rowCount:1,rows:[{id:'op-1'}]};
   if(sql.includes('SELECT a.*,cap.status capability_status'))return{rowCount:1,rows:[attempt]};
   if(sql.includes('FROM orchestrator_google_ads_provider_draft_objects'))return{rowCount:3,rows:objects};

@@ -76,8 +76,10 @@ function sameRequest(row,o,actor,invocationHash){if(row.activation_attempt_id!==
 function objectDigest(rows){return hash(rows.map(x=>`${x.object_kind}:${x.provider_object_id}`).join('|'));}
 function validateObjects(rows,proof){const root=lineage.validateLineage(rows,{account_fingerprint:proof.account_fingerprint});
   if(!same(root,proof.ledger_root_hash)||!same(objectDigest(rows),proof.objects_digest))throw deny('authoritative_binding_mismatch');return rows;}
-async function proof(c,o,actor,lock='FOR SHARE'){const hint=await c.query(`SELECT operation_id FROM orchestrator_google_ads_activation_attempts
-  WHERE tenant_id=$1 AND id=$2`,[o.tenantId,o.activationAttemptId]);if(hint.rowCount!==1)throw deny('activation_attempt_not_found');
+async function proof(c,o,actor,lock='FOR SHARE'){const hint=await c.query(`SELECT capability_id,operation_id FROM orchestrator_google_ads_activation_attempts
+  WHERE tenant_id=$1 AND id=$2 ${lock}`,[o.tenantId,o.activationAttemptId]);if(hint.rowCount!==1)throw deny('activation_attempt_not_found');
+  await c.query(`SELECT id FROM orchestrator_google_ads_activation_capabilities WHERE tenant_id=$1 AND id=$2 ${lock}`,
+   [o.tenantId,hint.rows[0].capability_id]);
   await c.query(`SELECT id FROM orchestrator_google_ads_provider_draft_operations WHERE tenant_id=$1 AND id=$2 ${lock}`,[o.tenantId,hint.rows[0].operation_id]);
   const q=await c.query(`SELECT a.*,cap.status capability_status,cap.operation_id capability_operation_id,
     cap.reconciliation_run_id capability_reconciliation_run_id,
@@ -95,7 +97,7 @@ async function proof(c,o,actor,lock='FOR SHARE'){const hint=await c.query(`SELEC
     JOIN tenants t ON t.id=a.tenant_id AND t.status='active'
     JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$3 AND tu.status='active'
     JOIN roles role ON role.id=tu.role_id AND (role.tenant_id=t.id OR role.tenant_id IS NULL)
-    WHERE a.tenant_id=$1 AND a.id=$2 AND role.permissions ? $4 ${lock} OF a,cap,op,cred`,
+    WHERE a.tenant_id=$1 AND a.id=$2 AND role.permissions ? $4 ${lock} OF cred,t,tu,role`,
    [o.tenantId,o.activationAttemptId,actor,PERMISSION]);
   if(q.rowCount!==1)throw deny('permission_denied');const row=q.rows[0];
   if(!['succeeded','unknown'].includes(row.status))throw deny('activation_attempt_ineligible');
