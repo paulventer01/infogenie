@@ -62,6 +62,8 @@ test('API requires matching human session and explicit monitor grant with no own
   assert.equal(api._human({...req,viaApiKey:true}),false);
   assert.equal(api._human({...req,user:{...req.user,principalType:'worker'}}),false);
   assert.equal(api._grant({...req,tenantRole:{permissions:[service.PERMISSION]}}),true);
+  assert.equal(api._publicCode('permission_denied'),'permission_denied');
+  assert.equal(api._publicCode('23514'),'reconciliation_request_failed');
 });
 
 const digest=v=>crypto.createHash('sha256').update(v).digest('hex');
