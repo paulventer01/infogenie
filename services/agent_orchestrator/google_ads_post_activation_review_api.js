@@ -36,16 +36,13 @@ function route(label,fn){return async(req,res)=>{try{if(!human(req))throw Object
  }catch(e){const code=publicCode(e.code);return res.status(status(code)).json({error:code,external_action_taken:false});}};}
 function exact(body,keys){return !!(body&&typeof body==='object'&&!Array.isArray(body)&&Object.keys(body).length===keys.length
   &&keys.every(key=>Object.hasOwn(body,key)));}
-async function tokenTransport(request){const response=await fetch(request.url,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},
-  body:new URLSearchParams({client_id:request.clientId,client_secret:request.clientSecret,refresh_token:request.refreshToken,
-    grant_type:'refresh_token'}),signal:AbortSignal.timeout(request.timeoutMs)});return response.json();}
 router.post('/',limiter,express.json({limit:'2kb'}),route('create',async(o,req)=>{if(!exact(req.body,['reconciliation_run_id']))
   throw Object.assign(new Error(),{code:'validation_failed'});return review.createOrGet({...o,reconciliationRunId:req.body.reconciliation_run_id});}));
 router.get('/',limiter,route('list',(o,req)=>review.listCases({...o,state:req.query.state,limit:req.query.limit,cursor:req.query.cursor})));
 router.get('/:caseId',limiter,route('get',(o,req)=>review.getCase({...o,caseId:req.params.caseId})));
 router.post('/:caseId/rereconcile',limiter,express.json({limit:'2kb'}),route('rereconcile',async(o,req)=>{if(!exact(req.body,['invocation_id']))
   throw Object.assign(new Error(),{code:'validation_failed'});return rereconciliation.rereconcile({...o,reviewCaseId:req.params.caseId,
-    invocationId:req.body.invocation_id,tokenTransport,allowLive:true});}));
+    invocationId:req.body.invocation_id,allowLive:true});}));
 router.get('/:caseId/rereconciliation/:attemptId',limiter,route('get-rereconciliation',(o,req)=>rereconciliation.getAttempt({...o,
   reviewCaseId:req.params.caseId,attemptId:req.params.attemptId})));
 for(const action of ['acknowledge','escalate','close'])router.post(`/:caseId/${action}`,limiter,express.json({limit:'2kb'}),route(action,async(o,req)=>{
