@@ -86,7 +86,7 @@ export default function WebAnalytics() {
         {
           label: "Impressions (30d)",
           val: (summary.impressions || 0).toLocaleString(),
-          color: "#8B5CF6",
+          color: "#0284c7",
         },
         { label: "Ad Spend (30d)", val: money(summary.spend_cents || 0), color: "#16A34A" },
       ]

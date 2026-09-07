@@ -113,7 +113,7 @@ function SovDonut({ rows }: { rows: SovRow[] }) {
 
 const SOV_PALETTE = [
   "#0066FF", "#00C9C8", "#6366F1", "#F59E0B", "#10B981",
-  "#EF4444", "#8B5CF6", "#EC4899", "#F97316", "#14B8A6",
+  "#EF4444", "#0284c7", "#EC4899", "#0f766e", "#14B8A6",
 ];
 
 const KW_LOCATIONS = [

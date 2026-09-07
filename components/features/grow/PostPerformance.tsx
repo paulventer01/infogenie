@@ -104,7 +104,7 @@ function PostRow({ p, i }: { p: Post; i: number }) {
           {p.username && <span style={{ fontSize: "0.72rem", color: "#9CA3AF" }}>@{p.username}</span>}
           <span style={{ fontSize: "0.7rem", color: "#9CA3AF" }}>{fmtDate(p.publishedAt)}</span>
           {(p.engRate || 0) > 0 && (
-            <span style={{ background: "#EDE9FE", color: "#7C3AED", fontSize: "0.7rem", fontWeight: 700, padding: "2px 7px", borderRadius: 99 }}>{p.engRate}% ER</span>
+            <span style={{ background: "#EDE9FE", color: "#0f766e", fontSize: "0.7rem", fontWeight: 700, padding: "2px 7px", borderRadius: 99 }}>{p.engRate}% ER</span>
           )}
           {p.url && (
             <a href={safeUrl(p.url)} target="_blank" rel="noopener noreferrer" style={{ color: "#6B7280", fontSize: "0.75rem", textDecoration: "none" }}>↗ View post</a>
@@ -213,7 +213,7 @@ export default function PostPerformance() {
               <MetaStat label="Likes" val={totals.likes || 0} color="#EF4444" />
               <MetaStat label="Comments" val={totals.comments || 0} color="#F59E0B" />
               <MetaStat label="Shares" val={totals.shares || 0} color="#10B981" />
-              <MetaStat label="Clicks" val={totals.clicks || 0} color="#7C3AED" />
+              <MetaStat label="Clicks" val={totals.clicks || 0} color="#0f766e" />
               <MetaStat label="Total Eng." val={totals.engTotal || 0} color="#0A1628" />
             </div>
             <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 16, marginBottom: 16 }}>
@@ -223,7 +223,7 @@ export default function PostPerformance() {
                   <button
                     key={s}
                     onClick={() => setSort(s)}
-                    style={{ padding: "5px 12px", borderRadius: 6, fontSize: "0.76rem", fontWeight: 700, border: `1px solid ${sort === s ? "#7C3AED" : "#E5E7EB"}`, background: sort === s ? "#EDE9FE" : "#fff", color: sort === s ? "#7C3AED" : "#374151", cursor: "pointer" }}
+                    style={{ padding: "5px 12px", borderRadius: 6, fontSize: "0.76rem", fontWeight: 700, border: `1px solid ${sort === s ? "#0f766e" : "#E5E7EB"}`, background: sort === s ? "#EDE9FE" : "#fff", color: sort === s ? "#0f766e" : "#374151", cursor: "pointer" }}
                   >
                     {s.charAt(0).toUpperCase() + s.slice(1)}
                   </button>

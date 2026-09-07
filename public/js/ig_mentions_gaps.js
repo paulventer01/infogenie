@@ -752,7 +752,7 @@ window.optimizerDeleteCampaign = async function(id, name) {
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               <button onclick="creativeRefreshToggleEnabled(${!stR.enabled})" style="padding:9px 14px;background:${stR.enabled?'#FFFFFF':'linear-gradient(135deg,#10B981,#059669)'};color:${stR.enabled?'#374151':'white'};border:1px solid ${stR.enabled?'#D1D5DB':'transparent'};border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">${stR.enabled?'⏸ Disable':'▶ Enable'}</button>
               <button onclick="creativeRefreshToggleDryRun(${!stR.dryRun})" style="padding:9px 14px;background:${stR.dryRun?'linear-gradient(135deg,#0066FF,#00C9C8)':'#FFFFFF'};color:${stR.dryRun?'white':'#374151'};border:1px solid ${stR.dryRun?'transparent':'#D1D5DB'};border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">${stR.dryRun?'⚡ Switch to LIVE':'🛑 Back to dry-run'}</button>
-              <button onclick="creativeRefreshRunNow()" style="padding:9px 14px;background:linear-gradient(135deg,#7C3AED,#EC4899);color:white;border:none;border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">🔄 Run refresh now</button>
+              <button onclick="creativeRefreshRunNow()" style="padding:9px 14px;background:linear-gradient(135deg,#0f766e,#EC4899);color:white;border:none;border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">🔄 Run refresh now</button>
             </div>
           </div>
           <p style="margin:0 0 14px;color:#6B7280;font-size:0.82rem;line-height:1.55">
@@ -762,7 +762,7 @@ window.optimizerDeleteCampaign = async function(id, name) {
             ? `<div style="padding:30px;text-align:center;color:#6B7280;background:#F9FAFB;border-radius:10px">No refreshes yet. The cron runs every 24h, or click "Run refresh now" above. Needs at least one Meta campaign with the optimizer ON and ads >72h old that are underperforming.</div>`
             : `<div style="display:flex;flex-direction:column;gap:10px">${refreshes.map(r => {
                 const tag   = r.applied ? '<span style="color:#059669;font-size:0.7rem;font-weight:700;margin-left:8px">UPLOADED</span>' : (r.apply_error ? '<span style="color:#DC2626;font-size:0.7rem;font-weight:700;margin-left:8px">FAILED</span>' : '<span style="color:#92400E;font-size:0.7rem;font-weight:700;margin-left:8px">GENERATED ONLY</span>');
-                const color = r.applied ? '#7C3AED' : (r.apply_error ? '#DC2626' : '#F59E0B');
+                const color = r.applied ? '#0f766e' : (r.apply_error ? '#DC2626' : '#F59E0B');
                 const when  = new Date(r.created_at).toLocaleString();
                 const perf  = r.perf_snapshot || {};
                 const imgPreview = (r.new_image_url && !r.new_image_url.startsWith('data:'))
@@ -957,7 +957,7 @@ window.banditRunNow = async function() {
           ${decisions.length === 0
             ? `<div style="padding:30px;text-align:center;color:#6B7280;background:#F9FAFB;border-radius:10px">No decisions logged yet. The optimizer runs every 6 hours; click "Run optimizer now" above to force a run.</div>`
             : `<div style="display:flex;flex-direction:column;gap:8px;max-height:600px;overflow-y:auto">${decisions.map(d => {
-                const color = d.action_type === 'pause' ? '#DC2626' : d.action_type === 'scale_budget' ? '#059669' : d.action_type === 'hold' ? '#6B7280' : d.action_type === 'creative_refresh' ? '#7C3AED' : '#F59E0B';
+                const color = d.action_type === 'pause' ? '#DC2626' : d.action_type === 'scale_budget' ? '#059669' : d.action_type === 'hold' ? '#6B7280' : d.action_type === 'creative_refresh' ? '#0f766e' : '#F59E0B';
                 const icon  = d.action_type === 'pause' ? '⏸' : d.action_type === 'scale_budget' ? '📈' : d.action_type === 'hold' ? '✓' : d.action_type === 'creative_refresh' ? '🎨' : '🎲';
                 const when  = new Date(d.created_at).toLocaleString();
                 const tag   = d.applied ? '<span style="color:#059669;font-size:0.7rem;font-weight:700;margin-left:8px">APPLIED</span>' : '<span style="color:#92400E;font-size:0.7rem;font-weight:700;margin-left:8px">LOGGED</span>';

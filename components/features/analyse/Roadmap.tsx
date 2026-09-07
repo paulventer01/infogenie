@@ -56,7 +56,7 @@ interface ProgressResult {
 type Tab = "plan" | "cadence" | "principles";
 type Filter = "ALL" | "SEO" | "SMM" | "PPC";
 
-const FOCUS_COLOR: Record<string, string> = { SEO: "#0891B2", SMM: "#EC4899", PPC: "#7C3AED" };
+const FOCUS_COLOR: Record<string, string> = { SEO: "#0891B2", SMM: "#EC4899", PPC: "#0f766e" };
 const PRINCIPLE_LINK: Record<string, { view: string; label: string }> = {
   PLAN: { view: "content-calendar", label: "Open Content Calendar" },
   CREATE: { view: "creative", label: "Open Creative Studio" },
@@ -423,7 +423,7 @@ export default function Roadmap() {
                   {filterBtn("ALL", "All 90 days", "#0066FF")}
                   {filterBtn("SEO", "SEO (Days 1-30)", "#0891B2")}
                   {filterBtn("SMM", "Social (Days 31-60)", "#EC4899")}
-                  {filterBtn("PPC", "Paid Ads (Days 61-90)", "#7C3AED")}
+                  {filterBtn("PPC", "Paid Ads (Days 61-90)", "#0f766e")}
                 </div>
                 {filteredPlan.length === 0 ? (
                   <div style={{ padding: 32, textAlign: "center", color: "#64748B" }}>No tasks in this filter.</div>

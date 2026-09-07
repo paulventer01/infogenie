@@ -57,3 +57,16 @@ test('buildCompanyOverview merges journeyStatus into journey rail', () => {
   assert.equal(geo?.done, true);
   assert.equal(rankings?.done, false);
 });
+
+test('analysed domain shows green ticks on Backlinks, Marketing Plan, Website Audit', () => {
+  const overview = buildCompanyOverview(
+    'cmtrading.com',
+    'Fintech & Finance',
+    { url: 'cmtrading.com', websiteKPIs: { ctr: 2, roas: 2, trafficMo: 1000 }, competitors: [] },
+    null,
+  );
+  assert.equal(overview.journey.find((s) => s.view === 'backlinks')?.done, true);
+  assert.equal(overview.journey.find((s) => s.view === 'marketing-plan')?.done, true);
+  assert.equal(overview.journey.find((s) => s.view === 'seo-auditor')?.done, true);
+  assert.equal(overview.journey.find((s) => s.view === 'competitors')?.done, false);
+});

@@ -170,7 +170,7 @@ export default function QuestionMiner() {
             onClick={run}
             disabled={status === "loading"}
             style={{
-              background: "linear-gradient(135deg,#0066FF,#7C3AED)",
+              background: "linear-gradient(135deg,#0066FF,#0f766e)",
               color: "#fff",
               border: 0,
               padding: "10px 22px",

@@ -79,6 +79,100 @@ const TOOLS = [
     }
   },
   {
+    name: 'list_email_broadcasts',
+    description: 'List email broadcast campaigns with send/open/click stats',
+    inputSchema: {
+      type: 'object',
+      properties: { limit: { type: 'number', description: 'Max results (default 20)' } },
+      required: []
+    }
+  },
+  {
+    name: 'enroll_drip',
+    description: 'Enroll contacts into a drip email sequence (email ops for AI Team)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        contacts: {
+          type: 'array',
+          description: 'Contacts to enroll',
+          items: {
+            type: 'object',
+            properties: {
+              email: { type: 'string' },
+              name: { type: 'string' },
+            },
+            required: ['email'],
+          },
+        },
+        sequence: {
+          type: 'array',
+          description: 'Steps: [{label, subject, msg, day, channel}]',
+        },
+        brand: { type: 'string' },
+        dry_run: { type: 'boolean' },
+      },
+      required: ['contacts', 'sequence'],
+    },
+  },
+  {
+    name: 'get_email_analytics',
+    description: 'Combined drip + broadcast email analytics for this tenant',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'query_document_rag',
+    description: 'List indexed Document RAG / enterprise-connector knowledge (PDFs, Notion, Slack, Drive) for this workspace.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', description: 'Optional filter: upload | slack | notion | google_drive | paste | automation' },
+        limit: { type: 'number' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'list_email_replies',
+    description: 'List inbound email replies to outreach (reply inbox)',
+    inputSchema: {
+      type: 'object',
+      properties: { limit: { type: 'number' } },
+      required: [],
+    },
+  },
+  {
+    name: 'start_journey',
+    description: 'Start a journey run for a contact (billing/auth/product lifecycle)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        journey_id: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' },
+        meta: { type: 'object' },
+      },
+      required: ['journey_id'],
+    },
+  },
+  {
+    name: 'fire_lifecycle_signal',
+    description: 'Fire a lifecycle signal (stripe_checkout_completed, user_signup, email_replied, etc.) to trigger journeys',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        signal_type: { type: 'string' },
+        email: { type: 'string' },
+        payload: { type: 'object' },
+      },
+      required: ['signal_type'],
+    },
+  },
+  {
     name: 'query_marketing_memory',
     description: 'Semantic search over Marketing Memory (RAG). Returns top relevant memory nodes for a question.',
     inputSchema: {
@@ -307,7 +401,150 @@ router.post('/call', async (req, res) => {
         break;
       }
       case 'get_drip_enrollments': {
-        result = { message: 'Drip enrollments are stored in kv_store. Use GET /api/drips to retrieve them.', status_filter: args.status || 'all' };
+        try {
+          if (typeof global._dripLoad === 'function') {
+            const list = await global._dripLoad(tid);
+            let rows = Array.isArray(list) ? list : [];
+            if (args.status) rows = rows.filter((e) => e.status === args.status);
+            result = {
+              enrollments: rows.slice(0, 50).map((e) => ({
+                id: e.id,
+                email: e.email,
+                status: e.status,
+                currentStep: e.currentStep,
+                brand: e.brand,
+                history_len: (e.history || []).length,
+              })),
+              count: rows.length,
+            };
+          } else {
+            result = { message: 'Drip store unavailable', status_filter: args.status || 'all' };
+          }
+        } catch (e) { result = { error: e.message }; }
+        break;
+      }
+      case 'list_email_broadcasts': {
+        try {
+          if (!p) { result = { broadcasts: [] }; break; }
+          const lim = Math.min(Number(args.limit) || 20, 50);
+          const r = await p.query(
+            `SELECT id,name,subject,status,recipient_count,sent_count,open_count,click_count,bounce_count,created_at,sent_at
+             FROM email_broadcasts WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`,
+            [tid, lim]
+          );
+          result = { broadcasts: r.rows, count: r.rows.length };
+        } catch (e) { result = { broadcasts: [], error: e.message }; }
+        break;
+      }
+      case 'enroll_drip': {
+        try {
+          if (typeof global._enrollDripCore !== 'function') {
+            result = { ok: false, error: 'drip enroll helper not available' };
+            break;
+          }
+          const out = await global._enrollDripCore(tid, {
+            contacts: args.contacts || [],
+            sequence: args.sequence || [],
+            brand: args.brand || 'InfoGenie',
+            dryRun: !!args.dry_run,
+            appOrigin: '',
+          });
+          result = { ok: true, ...out };
+        } catch (e) { result = { ok: false, error: e.message }; }
+        break;
+      }
+      case 'get_email_analytics': {
+        try {
+          let drip = { note: 'unavailable' };
+          if (typeof global._dripLoad === 'function') {
+            const list = await global._dripLoad(tid);
+            const rows = Array.isArray(list) ? list : [];
+            drip = {
+              total: rows.length,
+              active: rows.filter((e) => e.status === 'active').length,
+              completed: rows.filter((e) => e.status === 'completed').length,
+              paused: rows.filter((e) => e.status === 'paused').length,
+            };
+          }
+          let broadcasts = [];
+          if (p) {
+            const r = await p.query(
+              `SELECT COALESCE(SUM(sent_count),0)::int AS sent,
+                      COALESCE(SUM(open_count),0)::int AS opens,
+                      COALESCE(SUM(click_count),0)::int AS clicks,
+                      COALESCE(SUM(bounce_count),0)::int AS bounces,
+                      COUNT(*)::int AS campaigns
+               FROM email_broadcasts WHERE tenant_id=$1`,
+              [tid]
+            ).catch(() => ({ rows: [{}] }));
+            broadcasts = r.rows[0] || {};
+          }
+          let replies = { total: 0 };
+          if (p) {
+            const r = await p.query(
+              `SELECT COUNT(*)::int AS total FROM email_replies WHERE tenant_id=$1`,
+              [tid]
+            ).catch(() => ({ rows: [{ total: 0 }] }));
+            replies = r.rows[0] || { total: 0 };
+          }
+          result = { drip, broadcasts, replies };
+        } catch (e) { result = { error: e.message }; }
+        break;
+      }
+      case 'list_email_replies': {
+        try {
+          if (!p) { result = { replies: [] }; break; }
+          const lim = Math.min(Number(args.limit) || 30, 100);
+          const r = await p.query(
+            `SELECT id, from_email, subject, matched_channel, created_at
+             FROM email_replies WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`,
+            [tid, lim]
+          );
+          result = { replies: r.rows, count: r.rows.length };
+        } catch (e) { result = { replies: [], error: e.message }; }
+        break;
+      }
+      case 'start_journey': {
+        try {
+          if (!p) { result = { ok: false, error: 'no-db' }; break; }
+          const jid = args.journey_id;
+          const jr = await p.query(
+            `SELECT id, nodes, status FROM journeys WHERE id=$1 AND tenant_id=$2`,
+            [jid, tid]
+          );
+          if (!jr.rows.length) { result = { ok: false, error: 'journey not found' }; break; }
+          if (jr.rows[0].status === 'paused') { result = { ok: false, error: 'journey paused' }; break; }
+          const trigger = (jr.rows[0].nodes || []).find((n) => n.type === 'trigger');
+          if (!trigger) { result = { ok: false, error: 'no trigger node' }; break; }
+          const ins = await p.query(
+            `INSERT INTO journey_runs (tenant_id, journey_id, contact_email, contact_phone, contact_meta, current_node, next_run_at)
+             VALUES ($1,$2,$3,$4,$5::jsonb,$6, now()) RETURNING id`,
+            [tid, jid, args.email || null, args.phone || null, JSON.stringify(args.meta || {}), trigger.id]
+          );
+          result = { ok: true, run_id: ins.rows[0].id };
+        } catch (e) { result = { ok: false, error: e.message }; }
+        break;
+      }
+      case 'fire_lifecycle_signal': {
+        try {
+          const { fireSignal } = require('../signal_triggers/api');
+          const out = await fireSignal(args.signal_type, {
+            ...(args.payload || {}),
+            email: args.email || args.payload?.email,
+            tenant_id: tid,
+          });
+          result = { ok: true, ...out };
+        } catch (e) { result = { ok: false, error: e.message }; }
+        break;
+      }
+      case 'query_document_rag': {
+        const { listDocuments } = require('../document_rag/index');
+        const source = args.source ? String(args.source) : null;
+        const listed = await listDocuments(tid, {
+          limit: Math.min(Number(args.limit) || 20, 50),
+          source,
+        });
+        result = listed;
         break;
       }
       case 'query_marketing_memory': {

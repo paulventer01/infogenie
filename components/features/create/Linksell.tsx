@@ -325,7 +325,7 @@ export default function Linksell() {
                   onClick={addProd}
                   style={{
                     float: "right",
-                    background: "#7C3AED",
+                    background: "#0f766e",
                     color: "white",
                     border: 0,
                     padding: "6px 12px",

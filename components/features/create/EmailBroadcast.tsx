@@ -112,7 +112,7 @@ function StatusBadge({ status }: { status: string }) {
         draft: "#6B7280:#F3F4F6",
         sending: "#D97706:#FEF3C7",
         sent: "#059669:#D1FAE5",
-        paused: "#7C3AED:#EDE9FE",
+        paused: "#0f766e:#EDE9FE",
       } as Record<string, string>
     )[status] || "#6B7280:#F3F4F6";
   const [fg, bg] = cfg.split(":");
@@ -138,7 +138,7 @@ function RecipBadge({ status }: { status: string }) {
     queued: "#6B7280",
     sent: "#374151",
     opened: "#0066FF",
-    clicked: "#7C3AED",
+    clicked: "#0f766e",
     bounced: "#EF4444",
     complained: "#D97706",
     unsubscribed: "#9CA3AF",
@@ -500,7 +500,7 @@ export default function EmailBroadcast() {
                     onClick={openCreate}
                     style={{
                       padding: "9px 20px",
-                      background: "linear-gradient(135deg,#0066FF,#7C3AED)",
+                      background: "linear-gradient(135deg,#0066FF,#0f766e)",
                       border: "none",
                       borderRadius: 8,
                       color: "#fff",
@@ -656,7 +656,7 @@ export default function EmailBroadcast() {
                                   padding: "10px 14px",
                                   textAlign: "right",
                                   fontWeight: 700,
-                                  color: s > 0 ? "#7C3AED" : "#9CA3AF",
+                                  color: s > 0 ? "#0f766e" : "#9CA3AF",
                                 }}
                               >
                                 {clickRate}
@@ -841,7 +841,7 @@ export default function EmailBroadcast() {
                   onClick={saveDraft}
                   style={{
                     padding: "10px 22px",
-                    background: "linear-gradient(135deg,#0066FF,#7C3AED)",
+                    background: "linear-gradient(135deg,#0066FF,#0f766e)",
                     border: "none",
                     borderRadius: 8,
                     color: "#fff",
@@ -1023,7 +1023,7 @@ export default function EmailBroadcast() {
                         label="Clicked"
                         val={fmtNum(st.click_count || 0)}
                         sub={fmtPct(st.click_rate || 0) + " rate"}
-                        color="#7C3AED"
+                        color="#0f766e"
                       />
                       <StatCard
                         label="Bounced"
@@ -1068,11 +1068,11 @@ export default function EmailBroadcast() {
                             border: "none",
                             borderBottom:
                               detailTab === t
-                                ? "2px solid #7C3AED"
+                                ? "2px solid #0f766e"
                                 : "2px solid transparent",
                             fontSize: "0.8rem",
                             fontWeight: 700,
-                            color: detailTab === t ? "#7C3AED" : "#6B7280",
+                            color: detailTab === t ? "#0f766e" : "#6B7280",
                             cursor: "pointer",
                           }}
                         >

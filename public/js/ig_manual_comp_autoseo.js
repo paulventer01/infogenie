@@ -391,7 +391,7 @@ ${needsSetup ? `
   ${[
     { icon:'📄', label:'Articles / Month', val: sch.count, color:'#059669', bg:'#F0FDF4' },
     { icon:'🔗', label:'Backlinks Tracked', val: window._autoSeoBacklinks ? window._autoSeoBacklinks.length : '—', color:'#0066FF', bg:'#EFF6FF' },
-    { icon:'🔍', label:'Keywords Found', val: window._autoSeoKeywords ? window._autoSeoKeywords.length : '—', color:'#7C3AED', bg:'#F5F3FF' },
+    { icon:'🔍', label:'Keywords Found', val: window._autoSeoKeywords ? window._autoSeoKeywords.length : '—', color:'#0f766e', bg:'#F5F3FF' },
     { icon:'🟦', label:'WordPress', val: wpConnected ? 'Connected' : 'Not Connected', color: wpConnected ? '#059669':'#DC2626', bg: wpConnected ? '#F0FDF4':'#FFF1F2' },
   ].map(s=>`
     <div style="background:white;border-radius:14px;border:1.5px solid #E5E7EB;padding:16px 20px;display:flex;align-items:center;gap:14px">
@@ -436,7 +436,7 @@ function renderAutoSeoCalendar(domain, industry, comps, sch) {
       <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">${sch.count} SEO-optimised articles for <strong>${domain}</strong> in the <strong>${industry}</strong> niche</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      ${articles ? `<button onclick="addAllGeneratedToSocialCalendar()" style="padding:9px 14px;background:linear-gradient(135deg,#7C3AED,#5B21B6);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">📲 Add All to Social</button>` : ''}
+      ${articles ? `<button onclick="addAllGeneratedToSocialCalendar()" style="padding:9px 14px;background:linear-gradient(135deg,#0f766e,#5B21B6);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">📲 Add All to Social</button>` : ''}
       ${articles ? `<button onclick="publishAllToWordPress()" ${!wpOk?'disabled title="Connect WordPress first"':''} style="padding:9px 14px;background:${wpOk?'linear-gradient(135deg,#2563EB,#1D4ED8)':'#E5E7EB'};border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:${wpOk?'white':'#9CA3AF'};cursor:${wpOk?'pointer':'not-allowed'}">🟦 Publish All to WP</button>` : ''}
       <button onclick="generateArticleTopics()" id="gen-topics-btn" style="padding:9px 18px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;gap:6px">
         <span id="gen-topics-icon">✨</span> <span id="gen-topics-label">${articles ? 'Regenerate Topics' : 'Generate ' + sch.count + ' Article Topics'}</span><span id="gen-topics-timer" style="font-size:0.7rem;font-weight:600;opacity:0.85;display:none;margin-left:2px;background:rgba(0,0,0,0.2);padding:1px 6px;border-radius:5px">0s</span>
@@ -536,7 +536,7 @@ function renderArticleGrid(articles, wpOk, sch) {
           <span style="font-size:0.66rem;padding:2px 7px;background:#EFF6FF;border-radius:4px;color:#1D4ED8;font-weight:600">${a.keyword}</span>
           <span style="font-size:0.66rem;padding:2px 7px;background:#F5F3FF;border-radius:4px;color:#6D28D9;font-weight:600">${a.intent || 'Informational'}</span>
           <span style="font-size:0.66rem;padding:2px 7px;background:${a.status === 'published' ? '#DCFCE7' : a.status === 'generated' ? '#DBEAFE' : '#F3F4F6'};border-radius:4px;color:${a.status === 'published' ? '#059669' : a.status === 'generated' ? '#1D4ED8' : '#6B7280'};font-weight:700">${a.status === 'published' ? '✓ Published' : a.status === 'generated' ? '✓ Written' : 'Pending'}</span>
-          <span style="font-size:0.66rem;padding:2px 7px;background:#FFF7ED;border-radius:4px;color:#C2410C;font-weight:600">📅 ${_fmtDate(pubDate)}</span>
+          <span style="font-size:0.66rem;padding:2px 7px;background:#FFF7ED;border-radius:4px;color:#0b5f59;font-weight:600">📅 ${_fmtDate(pubDate)}</span>
         </div>
       </div>
       <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
@@ -546,7 +546,7 @@ function renderArticleGrid(articles, wpOk, sch) {
   ? `<button onclick="generateSingleArticle(${a.idx})" style="padding:5px 10px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:7px;font-size:0.67rem;font-weight:700;color:white;cursor:pointer">✍️ Write</button>`
   : ''}
         ${a.generatedHtml ? `<button onclick="previewGeneratedArticle(${a.idx})" style="padding:5px 10px;background:white;border:1px solid #E5E7EB;border-radius:7px;font-size:0.67rem;font-weight:700;color:#374151;cursor:pointer">👁 Preview</button>` : ''}
-        ${a.generatedHtml ? `<button onclick="addArticleToSocialCalendar(${a.idx})" style="padding:5px 10px;background:${alreadyInSocial?'#F0FDF4':'linear-gradient(135deg,#7C3AED,#5B21B6)'};border:${alreadyInSocial?'1px solid #BBF7D0':'none'};border-radius:7px;font-size:0.67rem;font-weight:700;color:${alreadyInSocial?'#059669':'white'};cursor:pointer">${alreadyInSocial?'✓ In Social':'📲 Social'}</button>` : ''}
+        ${a.generatedHtml ? `<button onclick="addArticleToSocialCalendar(${a.idx})" style="padding:5px 10px;background:${alreadyInSocial?'#F0FDF4':'linear-gradient(135deg,#0f766e,#5B21B6)'};border:${alreadyInSocial?'1px solid #BBF7D0':'none'};border-radius:7px;font-size:0.67rem;font-weight:700;color:${alreadyInSocial?'#059669':'white'};cursor:pointer">${alreadyInSocial?'✓ In Social':'📲 Social'}</button>` : ''}
         ${a.status === 'generated' && wpOk ? `<button onclick="publishSingleArticle(${a.idx})" style="padding:5px 10px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:7px;font-size:0.67rem;font-weight:700;color:white;cursor:pointer">🟦 Publish</button>` : ''}
       </div>
     </div>`;
@@ -631,7 +631,7 @@ function renderAutoSeoKeywords(domain, industry, comps) {
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <input id="kw-seed" placeholder="Seed keyword (optional)" style="padding:8px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.78rem;width:180px;outline:none">
-      <button onclick="loadKeywordResearch()" id="kw-btn" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#5B21B6);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🔍 ${kws ? 'Refresh' : 'Research Keywords'}</button>
+      <button onclick="loadKeywordResearch()" id="kw-btn" style="padding:9px 18px;background:linear-gradient(135deg,#0f766e,#5B21B6);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🔍 ${kws ? 'Refresh' : 'Research Keywords'}</button>
     </div>
   </div>
   <div id="kw-content" style="padding:20px 24px">
@@ -640,14 +640,14 @@ function renderAutoSeoKeywords(domain, industry, comps) {
   <div style="font-size:3rem;margin-bottom:12px">🔍</div>
   <div style="font-size:1.1rem;font-weight:700;color:#111827;margin-bottom:8px">Uncover Winning Keywords</div>
   <div style="font-size:0.82rem;color:#6B7280;max-width:420px;margin:0 auto 24px">AI-powered research surfaces high-volume, low-difficulty keywords your competitors haven't fully captured — perfect for quick wins.</div>
-  <button onclick="loadKeywordResearch()" style="padding:12px 28px;background:linear-gradient(135deg,#7C3AED,#5B21B6);border:none;border-radius:10px;font-size:0.88rem;font-weight:700;color:white;cursor:pointer">🔍 Start Keyword Research</button>
+  <button onclick="loadKeywordResearch()" style="padding:12px 28px;background:linear-gradient(135deg,#0f766e,#5B21B6);border:none;border-radius:10px;font-size:0.88rem;font-weight:700;color:white;cursor:pointer">🔍 Start Keyword Research</button>
 </div>`}
   </div>
 </div>`;
 }
 
 function renderKeywordTable(kws) {
-  const intentColor = { Informational:'#0066FF', Commercial:'#7C3AED', Transactional:'#059669', Navigational:'#D97706' };
+  const intentColor = { Informational:'#0066FF', Commercial:'#0f766e', Transactional:'#059669', Navigational:'#D97706' };
   const intentBg    = { Informational:'#EFF6FF', Commercial:'#F5F3FF', Transactional:'#F0FDF4', Navigational:'#FFFBEB' };
   const sorted = [...kws].sort((a, b) => b.opportunity_score - a.opportunity_score);
   return `
@@ -882,7 +882,7 @@ function previewGeneratedArticle(idx) {
     <div id="art-fact-check-results" style="padding:0 30px 24px"></div>
   </div>
   <div style="padding:14px 20px;border-top:1px solid #E5E7EB;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
-    <button id="art-fact-check-btn" onclick="runArticleFactCheck(${idx})" style="padding:8px 16px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🔍 Check Facts</button>
+    <button id="art-fact-check-btn" onclick="runArticleFactCheck(${idx})" style="padding:8px 16px;background:linear-gradient(135deg,#0f766e,#4338CA);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🔍 Check Facts</button>
     <button onclick="navigator.clipboard.writeText(document.querySelector('#art-preview-body').innerHTML);showToast('📋 Copied!')" style="padding:8px 16px;background:white;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer">📋 Copy HTML</button>
     ${!!(window._wpCreds&&window._wpCreds.siteUrl) ? `<button onclick="this.closest('[style*=fixed]').remove();publishSingleArticle(${idx})" style="padding:8px 16px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🟦 Publish to WP</button>` : ''}
   </div>
@@ -977,7 +977,7 @@ async function runArticleAutoCorrect(idx) {
     if (out) out.innerHTML = `<div style="background:white;border:2px solid #10B981;border-radius:12px;padding:14px 16px;margin:12px 0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div><div style="font-size:0.85rem;font-weight:800;color:#0A1628">🪄 Auto-Correct Complete</div><div style="font-size:0.7rem;color:#6B7280;margin-top:2px">${(r.edits||[]).length} passages rewritten in ${elapsed}s · article HTML updated above</div></div>
-        <button onclick="runArticleFactCheck(${idx})" style="padding:8px 14px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:8px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer">🔄 Re-check Facts</button>
+        <button onclick="runArticleFactCheck(${idx})" style="padding:8px 14px;background:linear-gradient(135deg,#0f766e,#4338CA);border:none;border-radius:8px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer">🔄 Re-check Facts</button>
       </div>
       ${editsHtml ? `<div style="margin-top:8px"><div style="font-size:0.74rem;font-weight:800;color:#065F46;margin-bottom:6px">✅ Edits applied</div>${editsHtml}</div>` : '<div style="font-size:0.74rem;color:#6B7280">No edits returned by the model.</div>'}
     </div>`;
@@ -1172,7 +1172,7 @@ function renderAutoSeoOutreach(domain, industry) {
   }
 
   const statuses = { 'not_started':'Not Started', 'email1_sent':'Email 1 Sent', 'followup_sent':'Follow-up Sent', 'final_sent':'Final Sent', 'responded':'Responded ✉️', 'secured':'🔗 Link Secured' };
-  const statusColors = { not_started:'#6B7280', email1_sent:'#0066FF', followup_sent:'#7C3AED', final_sent:'#D97706', responded:'#059669', secured:'#059669' };
+  const statusColors = { not_started:'#6B7280', email1_sent:'#0066FF', followup_sent:'#0f766e', final_sent:'#D97706', responded:'#059669', secured:'#059669' };
   const statusBg     = { not_started:'#F3F4F6', email1_sent:'#EFF6FF', followup_sent:'#F5F3FF', final_sent:'#FFFBEB', responded:'#DCFCE7', secured:'#F0FDF4' };
 
   const secured = Object.values(orMap).filter(o => o.status === 'secured').length;
@@ -1374,7 +1374,7 @@ function renderTrafficDashboard(td, domain, articlesCount, backlinksCount) {
       { icon:'👥', label:'Baseline Traffic', val: fmt(td.baseline_monthly), sub:'/month', color:'#374151', bg:'#F3F4F6' },
       { icon:'📈', label:'Projected (90d)', val: fmt(td.projected_monthly_90d), sub:'/month', color:'#0066FF', bg:'#EFF6FF' },
       { icon:'🚀', label:'Growth Forecast', val: '+'+pct+'%', sub:'in 90 days', color:'#059669', bg:'#F0FDF4' },
-      { icon:'🔗', label:'DA Improvement', val: '+'+(td.da_improvement||'3-5'), sub:'points est.', color:'#7C3AED', bg:'#F5F3FF' },
+      { icon:'🔗', label:'DA Improvement', val: '+'+(td.da_improvement||'3-5'), sub:'points est.', color:'#0f766e', bg:'#F5F3FF' },
     ].map(s=>`
     <div style="background:white;border-radius:14px;border:1.5px solid #E5E7EB;padding:16px 18px;display:flex;align-items:center;gap:12px">
       <div style="width:40px;height:40px;border-radius:10px;background:${s.bg};display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0">${s.icon}</div>
@@ -1439,7 +1439,7 @@ function renderTrafficDashboard(td, domain, articlesCount, backlinksCount) {
       <div style="font-size:0.88rem;font-weight:800;color:#111827;margin-bottom:14px">💡 Top Growth Opportunities</div>
       <div style="display:flex;flex-direction:column;gap:10px">
         ${(td.top_opportunities||[]).map((opp,i)=>`
-        <div style="display:flex;gap:10px;padding:10px 12px;background:#F9FAFB;border-radius:10px;border-left:3px solid ${['#0066FF','#7C3AED','#059669'][i]}">
+        <div style="display:flex;gap:10px;padding:10px 12px;background:#F9FAFB;border-radius:10px;border-left:3px solid ${['#0066FF','#0f766e','#059669'][i]}">
           <span style="font-size:1rem;flex-shrink:0">${['🚀','🔗','📝'][i]}</span>
           <div style="font-size:0.78rem;color:#374151;line-height:1.5">${opp}</div>
         </div>`).join('')}

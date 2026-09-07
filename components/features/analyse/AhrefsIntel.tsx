@@ -144,7 +144,7 @@ export default function AhrefsIntel() {
             <DRMeter value={overview.domainRating} />
             <Pill label="URL Rating"      value={overview.urlRating}    color="#f59e0b" />
             <Pill label="Backlinks"       value={overview.backlinks}    color="#0ea5e9" />
-            <Pill label="Ref. Domains"    value={overview.refDomains}   color="#8b5cf6" />
+            <Pill label="Ref. Domains"    value={overview.refDomains}   color="#0284c7" />
             <Pill label="Org. Keywords"   value={overview.orgKeywords}  color="#10b981" />
             <Pill label="Org. Traffic"    value={overview.orgTraffic}   color="#10b981" />
           </div>

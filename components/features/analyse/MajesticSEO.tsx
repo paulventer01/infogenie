@@ -45,10 +45,10 @@ function TFBar({ tf, cf }: { tf:number|null; cf:number|null }) {
         <div style={{ width:`${(t/mx)*100}%`, background:"#0ea5e9", height:"100%", borderRadius:6 }} />
       </div>
       <div style={{ display:"flex", justifyContent:"space-between", fontSize:"0.75rem", color:"#64748b", marginBottom:3 }}>
-        <span>Citation Flow</span><span style={{ fontWeight:700, color:"#8b5cf6" }}>{c}</span>
+        <span>Citation Flow</span><span style={{ fontWeight:700, color:"#0284c7" }}>{c}</span>
       </div>
       <div style={{ background:"#e2e8f0", borderRadius:6, height:8 }}>
-        <div style={{ width:`${(c/mx)*100}%`, background:"#8b5cf6", height:"100%", borderRadius:6 }} />
+        <div style={{ width:`${(c/mx)*100}%`, background:"#0284c7", height:"100%", borderRadius:6 }} />
       </div>
     </div>
   );
@@ -188,7 +188,7 @@ export default function MajesticSEO() {
             <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:20 }}>
               {[
                 { label:"Trust Flow",       value: metrics.trustFlow ?? "—",     color:"#0ea5e9", tip:"Editorial quality of links (0–100)" },
-                { label:"Citation Flow",    value: metrics.citationFlow ?? "—",  color:"#8b5cf6", tip:"Volume of links pointing to this site (0–100)" },
+                { label:"Citation Flow",    value: metrics.citationFlow ?? "—",  color:"#0284c7", tip:"Volume of links pointing to this site (0–100)" },
                 { label:"TF/CF Ratio",      value: (metrics.trustFlow && metrics.citationFlow) ? (metrics.trustFlow / metrics.citationFlow).toFixed(2) : "—", color:"#16a34a", tip:">0.5 = high quality, <0.2 = spammy" },
                 { label:"Ref. Domains",     value: fmtNum(metrics.refDomains),   color:"#f59e0b", tip:"Unique domains linking in" },
                 { label:"Backlinks",        value: fmtNum(metrics.extBackLinks), color:"#334155", tip:"Total external backlinks" },
@@ -296,7 +296,7 @@ function BacklinksTable({ rows }: { rows: BacklinkRow[] }) {
               </td>
               <td style={{ padding:"8px 14px", color:"#334155" }}>{r.AnchorText || <em style={{ color:"#94a3b8" }}>none</em>}</td>
               <td style={{ padding:"8px 14px", textAlign:"right", fontWeight:700, color:"#0ea5e9" }}>{r.TrustFlow ?? "—"}</td>
-              <td style={{ padding:"8px 14px", textAlign:"right", color:"#8b5cf6" }}>{r.CitationFlow ?? "—"}</td>
+              <td style={{ padding:"8px 14px", textAlign:"right", color:"#0284c7" }}>{r.CitationFlow ?? "—"}</td>
               <td style={{ padding:"8px 14px", textAlign:"center", fontSize:"0.72rem" }}>
                 {r.FlagNoFollow ? <span style={{ background:"#fef9c3", color:"#78350f", borderRadius:4, padding:"1px 5px" }}>nofollow</span> : ""}
                 {r.FlagRedirect ? <span style={{ background:"#ede9fe", color:"#5b21b6", borderRadius:4, padding:"1px 5px", marginLeft:3 }}>redirect</span> : ""}
@@ -330,7 +330,7 @@ function RefDomainsTable({ rows }: { rows: RefDomainRow[] }) {
                   style={{ color:"#dc2626", textDecoration:"none", fontWeight:600 }}>{r.RefDomain}</a>
               </td>
               <td style={{ padding:"8px 14px", textAlign:"right", fontWeight:700, color:"#0ea5e9" }}>{r.TrustFlow ?? "—"}</td>
-              <td style={{ padding:"8px 14px", textAlign:"right", color:"#8b5cf6" }}>{r.CitationFlow ?? "—"}</td>
+              <td style={{ padding:"8px 14px", textAlign:"right", color:"#0284c7" }}>{r.CitationFlow ?? "—"}</td>
               <td style={{ padding:"8px 14px", textAlign:"right" }}>{fmtNum(r.TotalBackLinks)}</td>
             </tr>
           ))}

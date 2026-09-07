@@ -142,7 +142,7 @@ const FUNNEL_STAGES: FunnelStageDef[] = [
   { id: "interest", label: "Interest", icon: "💡", color: "#3B82F6", bg: "#EFF6FF" },
   { id: "nurture", label: "Nurture", icon: "❤️", color: "#EC4899", bg: "#FDF2F8" },
   { id: "conversion", label: "Conversion", icon: "💰", color: "#F59E0B", bg: "#FFFBEB" },
-  { id: "advocacy", label: "Advocacy", icon: "🌟", color: "#7C3AED", bg: "#F5F3FF" },
+  { id: "advocacy", label: "Advocacy", icon: "🌟", color: "#0f766e", bg: "#F5F3FF" },
 ];
 
 const STATUS_CFG: Record<Status, { label: string; bg: string; border: string; color: string }> = {
@@ -1035,7 +1035,7 @@ function AiActionPlan({ model }: { model: Model }) {
     <div
       style={{
         marginTop: 24,
-        background: "linear-gradient(135deg,#FFF7ED,#FFF1F2)",
+        background: "linear-gradient(135deg,#e8f6f3,#eef4ff)",
         border: "1.5px solid #FCA5A5",
         borderRadius: 14,
         padding: "18px 22px",

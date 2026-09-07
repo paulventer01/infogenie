@@ -101,7 +101,7 @@ export default function VisLeaderboard() {
             style={{
               marginTop: 12,
               padding: "8px 18px",
-              background: "#7C3AED",
+              background: "#0f766e",
               border: "none",
               borderRadius: 6,
               color: "#fff",
@@ -173,7 +173,7 @@ export default function VisLeaderboard() {
             </div>
           </div>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: "1.6rem", fontWeight: 900, color: "#7C3AED" }}>
+            <div style={{ fontSize: "1.6rem", fontWeight: 900, color: "#0f766e" }}>
               {result.summary?.youShare || 0}%
             </div>
             <div style={{ fontSize: "0.68rem", color: "#6B7280", fontWeight: 700 }}>YOUR SOV</div>
@@ -228,14 +228,14 @@ export default function VisLeaderboard() {
                     : "#9CA3AF";
                 return (
                   <tr key={row.rank + row.brand} style={{ background: rowBg, borderBottom: "1px solid #F3F4F6" }}>
-                    <td style={{ padding: "9px 12px", fontWeight: 800, color: isYou ? "#7C3AED" : "#374151" }}>
+                    <td style={{ padding: "9px 12px", fontWeight: 800, color: isYou ? "#0f766e" : "#374151" }}>
                       {row.rank}
                     </td>
                     <td
                       style={{
                         padding: "9px 12px",
                         fontWeight: isYou ? 800 : 600,
-                        color: isYou ? "#7C3AED" : "#0A1628",
+                        color: isYou ? "#0f766e" : "#0A1628",
                       }}
                     >
                       {row.brand}

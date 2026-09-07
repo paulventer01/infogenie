@@ -189,7 +189,12 @@ const adminSend = <T extends object = ApiResult>(p: string, method: string, body
   });
 
 function errText(r: ApiResult): string {
-  return r.error || "unknown error";
+  const e = r.error || "unknown error";
+  if (e === "encryption_key_missing") {
+    return "Cannot save — CREDENTIAL_ENCRYPTION_KEY is not set on the server. Add that secret (openssl rand -base64 32), restart, then Save again.";
+  }
+  if (e === "db_unavailable") return "Cannot save — database is unavailable.";
+  return e;
 }
 
 // Relative-time formatter for the platform-key health dots (e.g. "5m ago").
@@ -1775,7 +1780,7 @@ const AUDIT_ACTION_META: Record<string, { label: string; color: string; icon: st
   "membership.role_change": { label: "Role changed", color: "#2563EB", icon: "🔄" },
   "membership.remove": { label: "Member removed", color: "#DC2626", icon: "➖" },
   "membership.accept": { label: "Invite accepted", color: "#16A34A", icon: "✅" },
-  "platform_role.grant": { label: "Platform role granted", color: "#7C3AED", icon: "🛡️" },
+  "platform_role.grant": { label: "Platform role granted", color: "#0f766e", icon: "🛡️" },
   "platform_role.revoke": { label: "Platform role revoked", color: "#B45309", icon: "🚫" },
   "invite.send": { label: "Invite sent", color: "#0891B2", icon: "✉️" },
   "invite.resend": { label: "Invite resent", color: "#0EA5E9", icon: "🔁" },
@@ -1929,7 +1934,7 @@ function AuditTab() {
 // ════════════════════════════════════════════════════════════════════════════
 const SEV_COLOR: Record<string, string> = {
   critical: "#DC2626",
-  error: "#EA580C",
+  error: "#0f766e",
   warning: "#B45309",
   info: "#2563EB",
 };
@@ -2089,7 +2094,17 @@ function IssuesTab() {
 // Main Admin Portal
 // ════════════════════════════════════════════════════════════════════════════
 export default function Admin() {
-  const [tab, setTab] = useState<string>("data-mode");
+  const initialTab = (() => {
+    if (typeof window === "undefined") return "data-mode";
+    try {
+      const q = new URLSearchParams(window.location.search).get("tab");
+      if (q && TABS.some((t) => t.id === q)) return q;
+    } catch {
+      /* ignore */
+    }
+    return "data-mode";
+  })();
+  const [tab, setTab] = useState<string>(initialTab);
   const [gate, setGate] = useState<"loading" | "ok" | "error">("loading");
   const [gateMsg, setGateMsg] = useState<{ forbidden: boolean; text: string }>({ forbidden: false, text: "" });
 
@@ -2110,6 +2125,17 @@ export default function Admin() {
       cancelled = true;
     };
   }, []);
+
+  function selectTab(id: string) {
+    setTab(id);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", id);
+      window.history.replaceState({}, "", url.toString());
+    } catch {
+      /* ignore */
+    }
+  }
 
   return (
     <div className="view" id="view-admin" style={{ display: "block" }}>
@@ -2156,7 +2182,7 @@ export default function Admin() {
                 <button
                   key={t.id}
                   className={"ig-admin-tab" + (tab === t.id ? " active" : "")}
-                  onClick={() => setTab(t.id)}
+                  onClick={() => selectTab(t.id)}
                 >
                   {t.label}
                 </button>

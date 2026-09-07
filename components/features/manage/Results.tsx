@@ -352,7 +352,7 @@ export default function Results() {
       const ctx = rt.getContext("2d");
       if (ctx) {
         const weeks = ["Wk1", "Wk2", "Wk3", "Wk4", "Wk5", "Wk6", "Wk7", "Wk8"];
-        const campColors = ["#0066FF", "#00C9C8", "#10B981", "#F59E0B", "#7C3AED", "#EF4444"];
+        const campColors = ["#0066FF", "#00C9C8", "#10B981", "#F59E0B", "#0f766e", "#EF4444"];
         instances.push(
           new ChartCtor(ctx, {
             type: "line",
@@ -691,7 +691,7 @@ export default function Results() {
     ["Impressions", totalImpressions, "#0066FF", 100],
     ["Clicks", totalClicks, "#00C9C8", totalImpressions > 0 ? Math.round((totalClicks / totalImpressions) * 100) : 45],
     ["Conversions", totalConv, "#10B981", totalImpressions > 0 ? Math.round((totalConv / totalImpressions) * 100) : 2],
-    ["Repeat Buys", Math.round(totalConv * 0.28), "#7C3AED", totalImpressions > 0 ? Math.round(((totalConv * 0.28) / totalImpressions) * 100) : 1],
+    ["Repeat Buys", Math.round(totalConv * 0.28), "#0f766e", totalImpressions > 0 ? Math.round(((totalConv * 0.28) / totalImpressions) * 100) : 1],
   ];
 
   const proj = isProjected ? (
@@ -703,7 +703,7 @@ export default function Results() {
     { label: "💰 Total Budget/mo", val: displayBudget > 0 ? <>{"$" + displayBudget.toLocaleString()}{proj}</> : "—", color: "#0066FF", tip: isProjected ? "Projected total monthly budget if all AI-recommended campaigns are launched." : "Combined monthly advertising budget across all active campaigns." },
     { label: "📈 Avg. ROAS", val: displayROAS ? <>{displayROAS + "×"}{proj}</> : "—", color: "#10B981", tip: isProjected ? "Projected average ROAS from your AI campaign recommendations based on competitor benchmarks." : "Average Return on Ad Spend across all campaigns — the blended revenue earned per $1 of total ad budget." },
     { label: "🎯 Total Conversions", val: displayConv > 0 ? <>{displayConv.toLocaleString()}{proj}</> : "—", color: "#F59E0B", tip: isProjected ? "Projected monthly conversions if recommended campaigns are launched at the suggested budgets." : "Total completed goals (sign-ups, purchases, calls) driven by all InfoGenie campaigns combined." },
-    { label: "👁 Impressions", val: displayImpr > 0 ? <>{displayImpr >= 1e6 ? (displayImpr / 1e6).toFixed(1) + "M" : (displayImpr / 1e3).toFixed(0) + "K"}{proj}</> : "—", color: "#7C3AED", tip: isProjected ? "Estimated monthly impressions based on recommended budgets and industry CPM benchmarks." : "Total number of times your ads have been shown across all platforms and campaigns." },
+    { label: "👁 Impressions", val: displayImpr > 0 ? <>{displayImpr >= 1e6 ? (displayImpr / 1e6).toFixed(1) + "M" : (displayImpr / 1e3).toFixed(0) + "K"}{proj}</> : "—", color: "#0f766e", tip: isProjected ? "Estimated monthly impressions based on recommended budgets and industry CPM benchmarks." : "Total number of times your ads have been shown across all platforms and campaigns." },
     { label: "⚡ AI Actions", val: String(allActions.length), color: "#00E5FF", tip: "Total automated and AI-assisted actions InfoGenie has taken: analyses run, campaigns built, audiences detected, and optimisations applied." },
   ];
 
@@ -719,7 +719,7 @@ export default function Results() {
   const leadTiles: [string, number | string, string, string][] = [
     ["💬 Messages", ldMsgs, "#0066FF", "Total message enquiries received — WhatsApp, email, contact forms or DMs logged here."],
     ["📞 Calls", ldCalls, "#10B981", "Total inbound phone calls received from prospects. Log all calls to accurately calculate your cost-per-call."],
-    ["🧲 Total Leads", ldTotal, "#7C3AED", "Combined total of all inbound leads: messages + calls. This is your overall lead volume."],
+    ["🧲 Total Leads", ldTotal, "#0f766e", "Combined total of all inbound leads: messages + calls. This is your overall lead volume."],
     ["💰 Cost-per-Lead", cpl, "#F59E0B", "Total monthly ad budget divided by total leads. The lower this number, the more efficient your ad spend."],
     ["💬 Cost/Message", cpm, "#0066FF", "Monthly budget divided by total messages received — cost to generate one message enquiry."],
     ["📞 Cost/Call", cpc2, "#10B981", "Monthly budget divided by total calls received — cost to generate one inbound phone call."],
@@ -979,7 +979,7 @@ export default function Results() {
                 {[
                   { title: "Competitor Gap Identified", before: "Unknown", after: adComps.length + " competitors analysed", icon: "🔍", color: "#059669" },
                   { title: "Keyword Opportunities", before: "No data", after: adComps[0]?.topKeywords?.slice(0, 3).join(", ") || "High-intent terms found", icon: "🔑", color: "#0369A1" },
-                  { title: "Campaign Strategy", before: "Manual / Guesswork", after: recs.length + " AI-ranked campaigns ready", icon: "🎯", color: "#7C3AED" },
+                  { title: "Campaign Strategy", before: "Manual / Guesswork", after: recs.length + " AI-ranked campaigns ready", icon: "🎯", color: "#0f766e" },
                   { title: "Audience Targeting", before: "Broad / Generic", after: "Auto-segmented from " + adComps.length + " competitors", icon: "👥", color: "#D97706" },
                   { title: "Projected ROAS", before: (analysisData.websiteKPIs?.roas || "2.8") + "× (current)", after: (parseFloat(String(analysisData.websiteKPIs?.roas || 2.8)) * 1.3).toFixed(1) + "× (projected)", icon: "💰", color: "#10B981" },
                   { title: "Market Intelligence", before: "No competitor data", after: "Full 360° competitor view active", icon: "⚡", color: "#0066FF" },
@@ -1094,7 +1094,7 @@ export default function Results() {
             <div className="dtc-flush" style={{ display: "flex", flexDirection: "column", gap: 0, padding: "0 24px" }}>
               {allActions.map((a, i) => {
                 const iconMap: Record<string, string> = { campaign_launch: "🚀", config: "⚙️", audience: "👥", analysis: "🔍", campaigns: "🎯", intelligence: "⚡", budget: "💰" };
-                const colorMap: Record<string, string> = { campaign_launch: "#0066FF", config: "#6B7280", audience: "#7C3AED", analysis: "#00C9C8", campaigns: "#10B981", intelligence: "#F59E0B", budget: "#D97706" };
+                const colorMap: Record<string, string> = { campaign_launch: "#0066FF", config: "#6B7280", audience: "#0f766e", analysis: "#00C9C8", campaigns: "#10B981", intelligence: "#F59E0B", budget: "#D97706" };
                 const icon = (a.type && iconMap[a.type]) || "•";
                 const color = (a.type && colorMap[a.type]) || "#6B7280";
                 return (

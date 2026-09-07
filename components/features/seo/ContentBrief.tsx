@@ -173,12 +173,27 @@ export default function ContentBrief() {
     setError(null);
     setRun(null);
     try {
-      const r = await apiPost<BriefRun & { ok: boolean; error?: string }>("/api/content-brief/generate", {
-        keyword: keyword.trim(),
-      });
-      if (r.ok === false) { setError(r.error || "Generation failed"); return; }
+      const r = await apiPost<BriefRun & { ok: boolean; error?: string; data_unavailable?: boolean; message?: string }>(
+        "/api/content-brief/generate",
+        { keyword: keyword.trim() },
+      );
+      if (r.data_unavailable || r.source === "data_unavailable") {
+        setError(
+          r.message ||
+            r.error ||
+            "Content brief generation is unavailable. Configure OpenAI and DataForSEO API keys in Settings → Integrations.",
+        );
+        return;
+      }
+      if (r.ok === false) {
+        setError(r.error || "Generation failed");
+        return;
+      }
       const normalized = normalizeRun(r);
-      if (!normalized?.keyword) { setError(r.error || "Generation failed"); return; }
+      if (!normalized?.keyword) {
+        setError(r.error || "Generation failed — the server returned an incomplete response.");
+        return;
+      }
       setRun(normalized);
       setActiveTab("brief");
     } catch (e) {
@@ -264,8 +279,9 @@ export default function ContentBrief() {
       {/* Error */}
       {error && (
         <div style={{ background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 8,
-          padding: "10px 16px", color: "#DC2626", fontSize: ".85rem", marginBottom: 14 }}>
-          ⚠️ {error}
+          padding: "12px 16px", color: "#991B1B", fontSize: ".85rem", marginBottom: 14, lineHeight: 1.55 }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠️ Could not generate brief</div>
+          <div>{error}</div>
         </div>
       )}
 

@@ -30,6 +30,7 @@ const STAGES: Stage[] = [
     summary:
       "Understand the business, audience, and competitive landscape — and align everyone on a single goal.",
     features: [
+      { label: "10-Step Marketing Plan", view: "marketing-plan", why: "Guided Goal → Customer → Offer → Channels → Optimization." },
       { label: "New Marketing Project", view: "new-project", why: "Lock in goal, budget, channels, owner, and dates." },
       { label: "Competitor Analysis", view: "competitors", why: "Map competitor ads, landing pages, offers, keywords." },
       { label: "Battle Cards", view: "battle-cards", why: "One-page summary of how to beat each competitor." },
@@ -87,7 +88,7 @@ const STAGES: Stage[] = [
   {
     n: 5,
     title: "Compound & Innovate",
-    color: "#8B5CF6",
+    color: "#0284c7",
     summary:
       "Re-engage past customers, build look-alike scale, and let the AI Team learn from every cycle.",
     features: [
@@ -130,7 +131,7 @@ function Diagram({
       <defs>
         <radialGradient id="ghub" cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="#FB923C" />
-          <stop offset="100%" stopColor="#EA580C" />
+          <stop offset="100%" stopColor="#0f766e" />
         </radialGradient>
         <filter id="gshadow" x="-50%" y="-50%" width="200%" height="200%">
           <feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#0F172A" floodOpacity="0.15" />

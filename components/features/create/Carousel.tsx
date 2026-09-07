@@ -66,14 +66,14 @@ interface LoadResult {
 
 const PALETTE = [
   "#FB7185",
-  "#F97316",
+  "#0f766e",
   "#FACC15",
   "#34D399",
   "#10B981",
   "#06B6D4",
   "#3B82F6",
   "#6366F1",
-  "#A855F7",
+  "#0284c7",
   "#EC4899",
 ];
 
@@ -222,7 +222,7 @@ export default function Carousel() {
         <div
           style={{
             background:
-              "linear-gradient(135deg,#FB7185 0%,#F97316 50%,#FACC15 100%)",
+              "linear-gradient(135deg,#FB7185 0%,#0f766e 50%,#FACC15 100%)",
             borderRadius: 18,
             padding: "24px 28px",
             color: "white",
@@ -423,7 +423,7 @@ export default function Carousel() {
             onClick={generate}
             disabled={generating}
             style={{
-              background: "linear-gradient(135deg,#0066FF,#7C3AED)",
+              background: "linear-gradient(135deg,#0066FF,#0f766e)",
               color: "white",
               border: "none",
               padding: "12px 28px",

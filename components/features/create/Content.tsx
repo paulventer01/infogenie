@@ -129,7 +129,7 @@ const FUNNEL_STAGES: FunnelStage[] = [
   { id: "interest", label: "Interest", icon: "💡", color: "#3B82F6", bg: "#EFF6FF", fmt: "Carousels", tip: "Frameworks, before-after, step-by-step tutorials — convert attention to curiosity." },
   { id: "nurture", label: "Nurture", icon: "❤️", color: "#EC4899", bg: "#FDF2F8", fmt: "Stories", tip: "Process sharing, myth-breaking, polls, soft CTAs — build belief & trust." },
   { id: "conversion", label: "Conversion", icon: "💰", color: "#F59E0B", bg: "#FFFBEB", fmt: "DMs", tip: "Personalised DMs, testimonials, limited-spot urgency — turn trust into sales." },
-  { id: "advocacy", label: "Advocacy", icon: "🌟", color: "#7C3AED", bg: "#F5F3FF", fmt: "Community", tip: "Client wins, UGC, referrals, private challenges — turn buyers into brand evangelists." },
+  { id: "advocacy", label: "Advocacy", icon: "🌟", color: "#0f766e", bg: "#F5F3FF", fmt: "Community", tip: "Client wins, UGC, referrals, private challenges — turn buyers into brand evangelists." },
 ];
 
 const FORMAT_EXAMPLES: Record<string, [string, string][]> = {
@@ -570,7 +570,7 @@ function OverviewTab({
     ["Traffic Health", trafficHealth + "%", trafficHealth > 70 ? "#10B981" : trafficHealth > 50 ? "#F59E0B" : "#DC2626", "📈", "Traffic Health — how well your site's organic, referral and paid traffic is performing. Green = 70%+, Amber = 50–70%, Red = below 50%."],
     ["Content Score", contentScore + "/100", contentScore > 70 ? "#10B981" : contentScore > 50 ? "#F59E0B" : "#DC2626", "📝", "Content Score — overall quality and depth rating of your published content. 100 = exceptional, 70+ = good, below 50 = needs significant improvement."],
     ["AI Visibility", aiVisibility + "%", aiVisibility > 70 ? "#10B981" : aiVisibility > 50 ? "#F59E0B" : "#DC2626", "🤖", "AI Visibility — percentage of key industry queries where AI assistants (ChatGPT, Gemini, Perplexity) cite or recommend your brand. Higher = better LLM presence."],
-    ["Content Gaps", gapCount + " found", "#7C3AED", "🔍", "Content Gaps — number of topics your competitors rank for where you currently have no content. Each gap is a missed traffic opportunity."],
+    ["Content Gaps", gapCount + " found", "#0f766e", "🔍", "Content Gaps — number of topics your competitors rank for where you currently have no content. Each gap is a missed traffic opportunity."],
   ];
   return (
     <>
@@ -614,7 +614,7 @@ function OverviewTab({
                   </div>
                 </div>
                 {!g.cited && (
-                  <button onClick={() => onSeedFromTerm(g.topic)} style={{ marginLeft: 8, padding: "4px 10px", background: "#7C3AED", border: "none", borderRadius: 6, fontSize: "0.62rem", fontWeight: 700, color: "white", cursor: "pointer", flexShrink: 0 }}>
+                  <button onClick={() => onSeedFromTerm(g.topic)} style={{ marginLeft: 8, padding: "4px 10px", background: "#0f766e", border: "none", borderRadius: 6, fontSize: "0.62rem", fontWeight: 700, color: "white", cursor: "pointer", flexShrink: 0 }}>
                     Fix Gap
                   </button>
                 )}
@@ -697,7 +697,7 @@ function ClustersTab({
                     <span title="Synthesised from GPT-4o + Claude Sonnet" style={{ fontSize: "0.6rem", fontWeight: 700, padding: "3px 9px", borderRadius: 6, background: "linear-gradient(135deg,#EFF6FF,#F3E8FF)", color: "#6D28D9", border: "1px solid #C4B5FD" }}>✨ GPT-4o + Claude</span>
                   )}
                   <span title="Number of subtopic pages in this cluster" style={{ fontSize: "0.65rem", fontWeight: 700, padding: "3px 9px", borderRadius: 6, background: "#EFF6FF", color: "#0066FF" }}>{cl.topics?.length || 0} Topics</span>
-                  <span title="Number of user questions to target for AI citation" style={{ fontSize: "0.65rem", fontWeight: 700, padding: "3px 9px", borderRadius: 6, background: "#F3E8FF", color: "#7C3AED" }}>{cl.questions?.length || 0} Questions</span>
+                  <span title="Number of user questions to target for AI citation" style={{ fontSize: "0.65rem", fontWeight: 700, padding: "3px 9px", borderRadius: 6, background: "#F3E8FF", color: "#0f766e" }}>{cl.questions?.length || 0} Questions</span>
                   <button onClick={() => onRemove(ci)} style={{ fontSize: "0.65rem", fontWeight: 700, padding: "3px 9px", background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 6, color: "#DC2626", cursor: "pointer" }}>Remove</button>
                 </div>
               </div>
@@ -773,7 +773,7 @@ function GapsTab({
               <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "#0A1628", marginBottom: 2 }}>{g.topic}</div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: "0.62rem", fontWeight: 700, padding: "2px 7px", background: g.type === "Missing Page" ? "#FEF2F2" : g.type === "Outdated" ? "#FFFBEB" : "#EFF6FF", color: g.type === "Missing Page" ? "#DC2626" : g.type === "Outdated" ? "#D97706" : "#0066FF", borderRadius: 4 }}>{g.type}</span>
-                {g.llm && <span style={{ fontSize: "0.6rem", fontWeight: 700, padding: "2px 7px", background: "#F3E8FF", color: "#7C3AED", borderRadius: 4 }}>🤖 LLM Gap</span>}
+                {g.llm && <span style={{ fontSize: "0.6rem", fontWeight: 700, padding: "2px 7px", background: "#F3E8FF", color: "#0f766e", borderRadius: 4 }}>🤖 LLM Gap</span>}
               </div>
             </div>
             <div style={{ fontSize: "0.75rem", color: "#6B7280", fontWeight: 500 }}>{g.intent}</div>

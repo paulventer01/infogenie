@@ -110,6 +110,7 @@ export const MARKETING_HUBS: Record<string, MarketingHubDef> = {
       { view: "chatbot-builder", icon: "🤖", label: "Chatbot Builder", desc: "Deploy site & landing-page bots", tag: "Build" },
       { view: "reply-assistant", icon: "📩", label: "Reply Assistant", desc: "AI drafts for inbound enquiries" },
       { view: "ask-infogenie", icon: "🎧", label: "Ask InfoGenie", desc: "Chat with your marketing data" },
+      { view: "knowledge-hub", icon: "📚", label: "Knowledge Hub", desc: "Docs + Slack/Notion/Drive RAG" },
       { view: "autoclaw", icon: "🦞", label: "AutoClaw Agent", desc: "GLM 5.2 agentic tasks & gateway" },
       { view: "lead-intelligence", icon: "🎯", label: "Lead Intelligence", desc: "Classify inbound leads with AI" },
       { view: "voice-caller", icon: "📞", label: "AI Voice Caller", desc: "Outbound voice conversations" },
@@ -138,6 +139,7 @@ export const MARKETING_HUBS: Record<string, MarketingHubDef> = {
     subtitle:
       "Growth methodology, forecasting, experimentation, and full-funnel ROI — scale what works.",
     tiles: [
+      { view: "marketing-plan", icon: "🎯", label: "10-Step Marketing Plan", desc: "Goal → customer → offer → channels → loop", tag: "Start here" },
       { view: "growth-methodology", icon: "💶", label: "Growth Methodology", desc: "5-stage growth framework", tag: "Framework" },
       { view: "flywheel", icon: "🔁", label: "Growth Goals Loop", desc: "Set goals · six-stage compounding loop" },
       { view: "digital-twin", icon: "🪞", label: "Digital Twin", desc: "What-if scenario simulator" },

@@ -532,7 +532,7 @@ export default function SchemaGenerator() {
                   <button
                     onClick={save}
                     style={{
-                      background: "linear-gradient(135deg,#7C3AED,#0066FF)",
+                      background: "linear-gradient(135deg,#0f766e,#0066FF)",
                       color: "#fff",
                       border: "none",
                       padding: "8px 16px",

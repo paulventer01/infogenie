@@ -94,7 +94,7 @@ window.buildDecisionEngine = async function() {
 window.buildIdentitySpine = async function() {
   const el = document.getElementById('view-identity-spine');
   if (!el) return;
-  const STAGE_COLORS={unknown:'#64748b',aware:'#8b5cf6',interested:'#3b82f6',considering:'#f59e0b',customer:'#22c55e',churned:'#ef4444'};
+  const STAGE_COLORS={unknown:'#64748b',aware:'#0284c7',interested:'#3b82f6',considering:'#f59e0b',customer:'#22c55e',churned:'#ef4444'};
 
   el.innerHTML = `<div class="ig-panel">
     <div class="ig-panel-header"><h2>🪪 Identity Spine</h2>

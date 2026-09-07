@@ -158,7 +158,7 @@ export default function CampaignComposer() {
                     {activeDraft.status}
                   </span>
                   {activeDraft.draft.source === 'openai' && (
-                    <span style={{ fontSize: '0.75rem', color: '#8b5cf6', fontWeight: 'bold' }}>✨ AI Generated</span>
+                    <span style={{ fontSize: '0.75rem', color: '#0284c7', fontWeight: 'bold' }}>✨ AI Generated</span>
                   )}
                 </div>
               </div>
@@ -266,7 +266,7 @@ export default function CampaignComposer() {
                   style={{
                     padding: 12,
                     borderRadius: 8,
-                    border: `1px solid ${activeDraft?.id === row.id ? '#8b5cf6' : '#e5e7eb'}`,
+                    border: `1px solid ${activeDraft?.id === row.id ? '#0284c7' : '#e5e7eb'}`,
                     background: activeDraft?.id === row.id ? '#f5f3ff' : '#fff',
                     cursor: "pointer",
                     fontSize: "0.85rem"

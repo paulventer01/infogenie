@@ -33,7 +33,7 @@ const GRADE_COLOR: Record<string, string> = {
   A: "#15803D",
   B: "#16A34A",
   C: "#F59E0B",
-  D: "#EA580C",
+  D: "#d97706",
   F: "#B91C1C",
 };
 
@@ -47,7 +47,7 @@ const CHECK_ROWS: [string, string][] = [
 ];
 
 function sevColor(sev?: string): string {
-  return sev === "high" ? "#B91C1C" : sev === "med" ? "#EA580C" : "#15803D";
+  return sev === "high" ? "#B91C1C" : sev === "med" ? "#0f766e" : "#15803D";
 }
 
 function recordPreview(record?: string | object) {

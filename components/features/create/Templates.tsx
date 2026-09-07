@@ -144,9 +144,9 @@ function templateImageFor(
     .reduce((a, c) => ((a * 31 + c.charCodeAt(0)) >>> 0), 0);
   const palette = [
     ["#1E3A8A", "#3B82F6"],
-    ["#7C2D12", "#EA580C"],
+    ["#7C2D12", "#0f766e"],
     ["#064E3B", "#10B981"],
-    ["#581C87", "#A855F7"],
+    ["#581C87", "#0284c7"],
     ["#831843", "#EC4899"],
     ["#0C4A6E", "#0EA5E9"],
     ["#365314", "#84CC16"],
@@ -239,13 +239,13 @@ function generateTemplates(): Template[] {
   const rng = seedRng(lsDomain() + "tpl");
   const palettes = [
     ["#0EA5E9", "#6366F1"],
-    ["#EC4899", "#8B5CF6"],
+    ["#EC4899", "#0284c7"],
     ["#10B981", "#06B6D4"],
     ["#F59E0B", "#EF4444"],
     ["#1E40AF", "#3B82F6"],
-    ["#7C3AED", "#A855F7"],
+    ["#0f766e", "#0284c7"],
     ["#059669", "#10B981"],
-    ["#DC2626", "#F97316"],
+    ["#DC2626", "#0f766e"],
     ["#0F172A", "#475569"],
   ];
   const types = ["ad", "lp", "email", "social"];
@@ -671,7 +671,7 @@ export default function Templates() {
                           left: 8,
                           zIndex: 5,
                           background:
-                            "linear-gradient(135deg,#F59E0B,#EA580C)",
+                            "linear-gradient(135deg,#F59E0B,#0f766e)",
                           color: "white",
                           fontSize: 10,
                           fontWeight: 800,

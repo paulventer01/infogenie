@@ -41,7 +41,7 @@ interface WpSite {
 const MODE_CONFIG: Record<string, { label: string; color: string }> = {
   article: { label: "📝 Article", color: "#0891B2" },
   affiliation: { label: "💰 Affiliation", color: "#D97706" },
-  ecommerce: { label: "🛒 E-commerce", color: "#7C3AED" },
+  ecommerce: { label: "🛒 E-commerce", color: "#0f766e" },
   local: { label: "📍 Local SEO", color: "#059669" },
   update: { label: "🔄 Update Content", color: "#6B7280" },
   discovery: { label: "🔥 Google Discovery", color: "#DC2626" },

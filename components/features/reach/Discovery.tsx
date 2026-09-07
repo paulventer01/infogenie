@@ -48,7 +48,7 @@ const SOURCE_META: Record<string, { label: string; bg: string; title: string }> 
   },
   perplexity: {
     label: "Source: Perplexity (estimated)",
-    bg: "#7C3AED",
+    bg: "#0f766e",
     title: "AI-estimated via Perplexity live web search — add a Modash key for authoritative figures",
   },
   template: {
@@ -256,7 +256,7 @@ export default function Discovery() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div>
                         <div style={{ fontWeight: 800, color: "#0A1628", fontSize: "1rem" }}>@{c.handle}</div>
-                        <div style={{ fontSize: "0.7rem", color: "#7C3AED", textTransform: "uppercase", fontWeight: 700 }}>
+                        <div style={{ fontSize: "0.7rem", color: "#0f766e", textTransform: "uppercase", fontWeight: 700 }}>
                           {c.platform}
                         </div>
                       </div>
@@ -287,7 +287,7 @@ export default function Discovery() {
                             href={safeUrl(u)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            style={{ color: "#7C3AED", display: "block", marginTop: 1 }}
+                            style={{ color: "#0f766e", display: "block", marginTop: 1 }}
                           >
                             {u.replace(/^https?:\/\//, "").slice(0, 60)}
                           </a>

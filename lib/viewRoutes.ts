@@ -82,6 +82,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "2 · Rankings & search",
         items: [
           { view: "serp-tracker", icon: "📍", label: "Rank Tracker" },
+          { view: "serp-gap", icon: "🎯", label: "SERP Gap Analyzer" },
           { view: "keyword-explorer", icon: "🔬", label: "Keyword Explorer" },
           { view: "content-gaps", icon: "🧩", label: "Content Gaps vs Rivals" },
           { view: "serp", icon: "🔎", label: "Live Google SERP" },
@@ -90,6 +91,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         header: "3 · Analytics & traffic",
         items: [
+          { view: "daily-trends", icon: "📊", label: "Daily Trends" },
+          { view: "traffic-sources", icon: "🔗", label: "Sources & Destinations" },
+          { view: "market-overview", icon: "🌐", label: "Market Overview" },
           { view: "analytics-hub", icon: "📈", label: "Analytics Hub" },
           { view: "sov-tracker", icon: "📉", label: "Share of Voice" },
           { view: "visitor-intel", icon: "🔍", label: "Visitor Intelligence" },
@@ -99,10 +103,11 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "4 · Competitors",
         items: [
           { view: "competitors", icon: "🏆", label: "Competitor Profiles" },
-          { view: "battleplan", icon: "⚔️", label: "Marketing Plan / Battle Plan" },
+          { view: "battleplan", icon: "⚔️", label: "Battle Plan (competitive attack)" },
           { view: "battle-cards", icon: "🛡️", label: "Battle Cards" },
           { view: "intelligence", icon: "🧠", label: "Intelligence Hub", className: "nav-link-intel" },
           { view: "war-room", icon: "🗡️", label: "AI Competitor War Room" },
+          { view: "ad-intel", icon: "📣", label: "Ad Intelligence" },
           { view: "ad-library", icon: "🕵️", label: "Ad Library Spy" },
           { view: "benchmarks", icon: "📶", label: "Benchmark Intelligence" },
         ],
@@ -111,7 +116,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
         header: "5 · AI search & mentions",
         items: [
           { view: "seo-ai-visibility", icon: "🔍", label: "Search & AI Visibility — start here" },
+          { view: "llm-gap", icon: "🤖", label: "LLM Gap Analyzer" },
           // GEO/AEO/zero-click/voice/auditor open from the hub (deep links preserved)
+          { view: "brand-monitor", icon: "📡", label: "Brand Monitoring" },
           { view: "mentions", icon: "🌐", label: "Mentions Hub" },
           { view: "organic-performance", icon: "📱", label: "Organic Social Performance — start here" },
           { view: "media-intel", icon: "📰", label: "Media Intelligence" },
@@ -196,8 +203,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
           // creative / smart-creative / ad-creative open from Creative Studio hub
           { view: "carousel", icon: "🎠", label: "Carousel Generator" },
           { view: "canva", icon: "🎨", label: "Canva Template Launcher" },
+          { view: "ai-video", icon: "🎬", label: "AI Video (Runway / HeyGen)" },
           { view: "ugc-avatars", icon: "🧑‍🎤", label: "UGC Avatar Videos" },
-          { view: "video-script", icon: "🎬", label: "Video Script Generator" },
+          { view: "video-script", icon: "🎞️", label: "Video Script Generator" },
           { view: "short-form-video", icon: "📹", label: "Short-Form Video Workflow" },
           { view: "podcast-studio", icon: "🎙️", label: "Podcast Marketing Studio" },
           { view: "voiceover", icon: "🔊", label: "AI Voiceovers" },
@@ -290,6 +298,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "social-command-center", icon: "📱", label: "Social Command Center — start here" },
           { view: "social-publisher", icon: "📤", label: "Social Publisher (calendar · drafts · 15 platforms)" },
           { view: "discovery", icon: "🔭", label: "Influencer Discovery" },
+          { view: "influencer-analytics", icon: "📡", label: "Influencer Analytics" },
           { view: "influencers", icon: "💫", label: "Influencer CRM" },
           { view: "tiktok-downloader", icon: "⬇️", label: "TikTok Asset Downloader" },
           { view: "hashtag-intel", icon: "🔖", label: "Hashtag Intelligence (Instagram & TikTok)" },
@@ -462,6 +471,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "ask-infogenie", icon: "🎧", label: "Ask InfoGenie (your data)" },
           { view: "strategic-intelligence", icon: "🧠", label: "Strategic Intelligence (root-cause · scenarios · write-back)" },
           { view: "marketing-memory", icon: "🔉", label: "Marketing Memory (knowledge graph)" },
+          { view: "knowledge-hub", icon: "📚", label: "Knowledge Hub (docs · Slack · Notion · Drive)" },
           { view: "predictive-intelligence", icon: "🪬", label: "Predictive Intelligence (90-day AI forecast)" },
           // AI Providers + Governance live under AI Team → Team ops (single destination)
           { view: "autoclaw", icon: "🦞", label: "AutoClaw (Z.ai GLM agent)" },
@@ -475,6 +485,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "meeting-notes", icon: "✏️", label: "Sales Meeting Notes (BANT transcript)" },
           // AI Team minutes live under AI Team → Team ops
           { view: "playbook-7day", icon: "📖", label: "7-Day Marketing Playbook" },
+          { view: "marketing-plan", icon: "🎯", label: "10-Step Marketing Plan" },
           { view: "growth-methodology", icon: "💶", label: "Growth Methodology (5-stage)" },
           { view: "flywheel", icon: "🔁", label: "Performance Growth Flywheel" },
         ],
@@ -511,10 +522,13 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "agency", icon: "🏢", label: "Agency Workspace" },
           { view: "marketplace", icon: "🏪", label: "AI Marketing Marketplace" },
           { view: "workspaces", icon: "👪", label: "Workspaces & Team" },
-          { view: "admin", icon: "🔐", label: "Admin Portal", id: "navAdminLink", hidden: true },
+          // Visible in the Manage rail so owners can reach Platform APIs
+          // (OpenAI key, etc.). The Admin page still gates on /api/admin/me.
+          { view: "admin", icon: "🔐", label: "Admin Portal", id: "navAdminLink" },
           { view: "technical-suite", icon: "🔧", label: "Technical Suite (admin toolkit · diagnostics)" },
           { view: "brand-safety", icon: "🗝️", label: "Brand Safety & Compliance" },
           { view: "data-provenance", icon: "🖨️", label: "Data Provenance (audit trail)" },
+          { view: "integrations-wave", icon: "🔌", label: "Grok · Fireflies · DeepL · Notion" },
           { view: "settings", icon: "🔩", label: "Settings & Integrations" },
         ],
       },
@@ -579,6 +593,7 @@ for (const group of NAV_GROUPS) {
 
 // Keep established bookmark paths when nav ownership moves (AI Team ops, etc.).
 VIEW_TO_PATH.flywheel = "/manage/flywheel";
+VIEW_TO_PATH["marketing-plan"] = "/manage/marketing-plan";
 VIEW_TO_PATH["canonical-metrics"] = "/manage/canonical-metrics";
 VIEW_TO_PATH["contribution-record"] = "/grow/contribution-record";
 VIEW_TO_PATH.capacity = "/manage/capacity";
@@ -673,6 +688,7 @@ export const SIDEBAR_HIDDEN_VIEWS: readonly string[] = [
   "bing-webmaster",
   "spyfu",
   "majestic",
+  "mangools",
   "serpstat",
   "contentking",
   "link-prospector",
@@ -729,6 +745,7 @@ export const INTEL_ARCHIVE_TOOLS: ReadonlyArray<{
   { view: "google-trends", icon: "📊", label: "Google Trends", group: "Keyword & SEO utilities" },
   { view: "spyfu", icon: "🕵️‍♂️", label: "SpyFu", group: "Keyword & SEO utilities" },
   { view: "majestic", icon: "🔗", label: "Majestic", group: "Keyword & SEO utilities" },
+  { view: "mangools", icon: "🥭", label: "Mangools", group: "Keyword & SEO utilities" },
   { view: "serpstat", icon: "📟", label: "Serpstat", group: "Keyword & SEO utilities" },
   { view: "contentking", icon: "👑", label: "ContentKing", group: "Keyword & SEO utilities" },
   { view: "bing-webmaster", icon: "🅱️", label: "Bing Webmaster", group: "Keyword & SEO utilities" },

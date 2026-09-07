@@ -122,7 +122,8 @@ if (!process.env.RAPIDAPI_KEY && process.env.RAPIDAPI_EMAIL_KEY) {
 // ── Shared AI clients (used by all routes) ───────────────────────────────────
 // `let` (not `const`) so they can be rebuilt after platform_keys.hydrate() pulls
 // an admin-managed OpenAI/Anthropic key out of the DB at boot. Route handlers
-// close over these bindings and call them lazily, so a rebuild is picked up.
+// must read through `aiClients` (or call after rebuild) — never capture the
+// client object by value at require()-time, or they keep the pre-hydrate dummy.
 let openai = new OpenAI({
   apiKey:   process.env.AI_INTEGRATIONS_OPENAI_API_KEY || 'dummy',
   baseURL:  process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
@@ -131,15 +132,18 @@ let anthropic = new Anthropic.default({
   apiKey:   process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
   baseURL:  process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
+const aiClients = { openai, anthropic };
 function _rebuildAiClients() {
   openai = new OpenAI({
-    apiKey:   process.env.AI_INTEGRATIONS_OPENAI_API_KEY || 'dummy',
+    apiKey:   process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || 'dummy',
     baseURL:  process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
   });
   anthropic = new Anthropic.default({
-    apiKey:   process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+    apiKey:   process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
     baseURL:  process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
   });
+  aiClients.openai = openai;
+  aiClients.anthropic = anthropic;
 }
 
 // ── Retry-with-fallback helper for OpenAI chat completions ─────────────────
@@ -467,6 +471,7 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/linksell\/checkout\/[^\/]+$/,             // public Stripe checkout init (rate-limited)
   /^\/api\/linksell\/optin\/[^\/]+$/,                // public email opt-in  (rate-limited)
   /^\/api\/email-broadcast\/webhook$/,               // Resend Svix-signed broadcast events
+  /^\/api\/email-replies\/webhook$/,                 // Resend Receiving inbound replies
   /^\/api\/studio\/case-study\/[^\/]+\/page$/,       // public share page for case studies (HTML render)
   /^\/api\/scroll-tracker\/event$/,                  // public scroll-depth ingest from rendered pages (rate-limited)
   /^\/api\/site-search\/event$/,                     // public site-search ingest from rendered pages (rate-limited)
@@ -477,6 +482,7 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/digital-twin\/share\/[^\/]+\/view$/,      // public simulator share HTML (no auth)
   /^\/api\/digital-twin\/share\/[^\/]+\/pdf$/,       // public simulator share PDF (no auth)
   /^\/api\/visitor-intel\/ping$/,                    // public visitor tracking pixel endpoint
+  /^\/api\/automation-bridge\/hooks\/[^\/]+$/,       // Zapier / n8n / Make inbound (token-authenticated)
 ];
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.
@@ -493,7 +499,7 @@ function _rateLimitPublic(req, res, next) {
   next();
 }
 // Apply to public POST surfaces (cheap; never blocks dashboard usage)
-const _RL_PATHS = [/^\/api\/bookings\/book\//, /^\/api\/linksell\/checkout\//, /^\/api\/linksell\/optin\//, /^\/api\/scroll-tracker\/event$/, /^\/api\/site-search\/event$/, /^\/api\/visitor-intel\/ping$/];
+const _RL_PATHS = [/^\/api\/bookings\/book\//, /^\/api\/linksell\/checkout\//, /^\/api\/linksell\/optin\//, /^\/api\/scroll-tracker\/event$/, /^\/api\/site-search\/event$/, /^\/api\/visitor-intel\/ping$/, /^\/api\/automation-bridge\/hooks\//];
 app.use((req, res, next) => {
   if (req.method !== 'POST') return next();
   if (_RL_PATHS.some(rx => rx.test(req.path))) return _rateLimitPublic(req, res, next);
@@ -1299,7 +1305,7 @@ async function recordAivisRun(tid, domain, run) {
 // AI Visibility view can render sparklines + week-over-week deltas per model
 // and per prompt.
 // AI visibility/brand/content generation suite routes → services/ai_content/routes.js
-require('./services/ai_content/routes')(app, { _tkvCtx, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path });
+require('./services/ai_content/routes')(app, { _tkvCtx, aiClients, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path });
 
 // Legacy 6-digit code signup verification was fully removed; real per-user
 // auth lives in services/auth/{schema,api}.js (token-link verification +
@@ -1476,7 +1482,15 @@ async function _dripTickInner(tid) {
       } else if (isEmail) {
         const subject = (step.subject || step.label || `Message from ${enr.brand || 'InfoGenie'}`).slice(0, 140);
         const unsubUrl = `${enr.appOrigin || ''}/api/drips/unsubscribe?email=${encodeURIComponent(enr.email)}&t=${encodeURIComponent(tid)}`;
-        const html = _dripEmailHtml({ subject, body: step.msg || '', brand: enr.brand, unsubUrl });
+        let html = _dripEmailHtml({ subject, body: step.msg || '', brand: enr.brand, unsubUrl });
+        try {
+          const { appendAutoUtm, buildEmailUtm } = require('./services/email_ops/auto_utm');
+          html = appendAutoUtm(html, buildEmailUtm({
+            channel: 'drip',
+            campaignName: enr.brand || enr.sequenceName || 'drip',
+            stepLabel: step.label || `step-${enr.currentStep}`,
+          }));
+        } catch (_) { /* auto-utm optional */ }
         const text = (step.msg || '') + `\n\n— Unsubscribe: ${unsubUrl}`;
         const sendRes = await _sendEmailViaResend({ to: enr.email, subject, html, text });
         entry.ok = true;
@@ -1591,6 +1605,48 @@ async function _enrollDripCore(tid, { contacts, sequence, brand, dryRun, appOrig
   _dripTick().catch(()=>{});
   return result;
 }
+
+// Expose drip helpers for MCP / email-replies (pause on inbound reply).
+global._dripLoad = _dripLoad;
+global._enrollDripCore = _enrollDripCore;
+global._pauseDripOnReply = async function _pauseDripOnReply(fromEmail, providerNeedle) {
+  const email = String(fromEmail || '').trim().toLowerCase();
+  if (!email) return null;
+  let tids = [];
+  try { tids = await _tkvCtx.listActiveTenantIds(); } catch { tids = []; }
+  for (const tid of tids) {
+    const hit = await _dripLock(async () => {
+      const list = await _dripLoad(tid);
+      let found = null;
+      for (const enr of list) {
+        if (String(enr.email || '').toLowerCase() !== email) continue;
+        if (!['active', 'paused'].includes(enr.status)) continue;
+        if (providerNeedle) {
+          const matchHist = (enr.history || []).some((h) =>
+            h.providerId && String(providerNeedle).includes(String(h.providerId))
+          );
+          // Prefer provider match when available; otherwise any active enrollment for email.
+          if (!matchHist && (enr.history || []).some((h) => h.providerId)) {
+            // keep searching for a stronger match, but remember this enrollment
+          }
+        }
+        enr.status = 'paused';
+        enr.pausedAt = Date.now();
+        enr.pauseReason = 'email_reply';
+        found = {
+          enrollmentId: enr.id,
+          tenantId: tid,
+          providerId: (enr.history || []).map((h) => h.providerId).filter(Boolean).slice(-1)[0] || null,
+        };
+        break;
+      }
+      if (found) await _dripSave(tid, list);
+      return found;
+    });
+    if (hit) return hit;
+  }
+  return null;
+};
 
 // Drip enrollment · stats · webhooks routes → services/drips/routes.js
 require('./services/drips/routes')(app, { _dripLoad, _dripLock, _dripSave, _dripUnsubscribe, _enrollDripCore, _tkvCtx, anthropic, openaiChatWithRetry, path });
@@ -2723,6 +2779,17 @@ BOOT_TASKS.push(async () => { try {
   }
 } catch (e) { console.warn('[t40] init failed:', e.message); }});
 
+// ── Email reply inbox (Resend Receiving → Unified Inbox + drip pause) ───────
+const _emailRepliesSchema = require('./services/email_replies/schema');
+const _emailRepliesRouter = require('./services/email_replies/api');
+app.use('/api/email-replies', _emailRepliesRouter);
+BOOT_TASKS.push(async () => { try {
+  if (_db.hasDb()) {
+    await _emailRepliesSchema.ensureEmailRepliesSchema();
+    console.log('[email-replies] schema ready');
+  }
+} catch (e) { console.warn('[email-replies] init failed:', e.message); }});
+
 // ── T41 — Hunter · LinkedIn Ads · Canva Bridge · CRM Sync ───────────────────
 const _hunterRouter   = require('./services/hunter/api');
 const _hunterSchema   = require('./services/hunter/schema');
@@ -2734,6 +2801,8 @@ const _crmSchema      = require('./services/crm_sync/schema');
 app.use('/api/hunter',       _hunterRouter);
 app.use('/api/linkedin-ads',    _linkedinRouter);
 app.use('/api/canva',          _canvaRouter);
+app.use('/api/ai-video',       require('./services/ai_video/api'));
+app.use('/api/integrations-wave', require('./services/integrations_wave/api'));
 app.use('/api/crm-sync',       _crmRouter);
 app.use('/api/tools/remove-bg',  require('./services/remove_bg/api'));
 app.use('/api/advocacy',         require('./services/employee_advocacy/api'));
@@ -3032,7 +3101,8 @@ app.get('/api/ecom-video/veo-status', async (req, res) => {
 
 // ── Settings: simple API-key vault (tenant-scoped, Postgres kv_store) ─────
 // POST /api/settings/api-key  { platform, key }  → saves encrypted key
-// GET  /api/settings/api-key/:platform           → { ok, configured: bool }
+// GET  /api/settings/api-keys?platforms=a,b     → { ok, keys: { a: {configured,hint} } }
+// GET  /api/settings/api-key/:platform           → { ok, configured, hint }
 // Platform-owned API keys are managed only via the admin "Platform APIs" tab
 // (POST/GET /api/admin/platform-keys). Block non-admins from reading or writing
 // those key names through the tenant-scoped user settings vault (Task 136).
@@ -3042,9 +3112,15 @@ function _settingsCallerIsPlatformAdmin(req) {
   const k = req.platformRole && req.platformRole.key;
   return k === 'platform_owner' || k === 'platform_admin';
 }
+function _settingsKeyHint(keyStr) {
+  const k = String(keyStr || '').trim();
+  if (!k) return null;
+  const tail = k.length <= 4 ? k : k.slice(-4);
+  return `••••••••${tail}`;
+}
 app.post('/api/settings/api-key', async (req, res) => {
   try {
-    if (!req.user) return res.status(401).json({ ok: false, error: 'Login required' });
+    if (!req.user) return res.status(401).json({ ok: false, error: 'auth_required' });
     const tid = await _tkvCtx.resolveTenantId(req, { label: 'settings:save-api-key' });
     if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
     const { platform, key } = req.body || {};
@@ -3055,24 +3131,71 @@ app.post('/api/settings/api-key', async (req, res) => {
     if (!key || typeof key !== 'string' || !key.trim())
       return res.status(400).json({ ok: false, error: 'key required' });
     const _vault = require('./services/credentials/vault');
-    await _vault.setApiKey(tid, platform.toLowerCase().trim(), key.trim());
-    console.log(`[settings] api-key saved: platform=${platform.toLowerCase().trim()} tid=${tid}`);
-    res.json({ ok: true });
+    const plat = platform.toLowerCase().trim();
+    const trimmed = key.trim();
+    await _vault.setApiKey(tid, plat, trimmed);
+    console.log(`[settings] api-key saved: platform=${plat} tid=${tid}`);
+    res.json({ ok: true, configured: true, hint: _settingsKeyHint(trimmed) });
   } catch (e) {
     console.error('[settings] api-key save error:', e.message);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+// Batch status — must be registered before /:platform
+app.get('/api/settings/api-keys', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ ok: false, error: 'auth_required' });
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'settings:list-api-keys' });
+    if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
+    const requested = String(req.query.platforms || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const _vault = require('./services/credentials/vault');
+    const _db = require('./db');
+    let ids = requested;
+    if (!ids.length && _db.hasDb()) {
+      try {
+        const r = await _db.getPool().query(
+          `SELECT key FROM kv_store WHERE key LIKE $1`,
+          [`apikey:%:t${tid}`],
+        );
+        ids = r.rows
+          .map((row) => {
+            const m = String(row.key || '').match(/^apikey:(.+):t\d+$/);
+            return m ? m[1] : null;
+          })
+          .filter(Boolean);
+      } catch (_) {
+        ids = [];
+      }
+    }
+    const keys = {};
+    for (const id of ids) {
+      if (_platformKeys.isPlatformKeyName(id) && !_settingsCallerIsPlatformAdmin(req)) {
+        keys[id] = { configured: false, hint: null, blocked: true };
+        continue;
+      }
+      const k = await _vault.getApiKey(tid, id);
+      const configured = !!(k && String(k).trim());
+      keys[id] = { configured, hint: configured ? _settingsKeyHint(k) : null };
+    }
+    res.json({ ok: true, keys });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 app.get('/api/settings/api-key/:platform', async (req, res) => {
   try {
-    if (!req.user) return res.status(401).json({ ok: false, error: 'Login required' });
+    if (!req.user) return res.status(401).json({ ok: false, error: 'auth_required' });
     const tid = await _tkvCtx.resolveTenantId(req, { label: 'settings:get-api-key' });
     if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
     if (_platformKeys.isPlatformKeyName(req.params.platform) && !_settingsCallerIsPlatformAdmin(req))
       return res.status(403).json({ ok: false, error: 'platform_key_admin_only' });
     const _vault = require('./services/credentials/vault');
     const k = await _vault.getApiKey(tid, req.params.platform.toLowerCase().trim());
-    res.json({ ok: true, configured: !!(k && k.trim()) });
+    const configured = !!(k && String(k).trim());
+    res.json({ ok: true, configured, hint: configured ? _settingsKeyHint(k) : null });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -3343,10 +3466,20 @@ app.use('/api/workflow-builder',   _workflowBuilderRouter);
 const _askCopilotSchema = require('./services/ask_copilot/schema');
 const _askCopilotRouter = require('./services/ask_copilot/api');
 app.use('/api/ask',                _askCopilotRouter);
+const _documentRagRouter = require('./services/document_rag/api');
+const _enterpriseSearchRouter = require('./services/enterprise_search/api');
+const _automationBridge = require('./services/automation_bridge/api');
+app.use('/api/document-rag',       _documentRagRouter);
+app.use('/api/enterprise-search',  _enterpriseSearchRouter);
+app.use('/api/automation-bridge',  _automationBridge.router);
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _askCopilotSchema.ensureAskCopilotSchema();
   console.log('[ask-copilot] schema ready');
-} } catch(e) { console.warn('[ask-copilot] schema init failed:', e.message); } });
+  await require('./services/document_rag/schema').ensureDocumentRagSchema();
+  await require('./services/enterprise_search/schema').ensureEnterpriseSearchSchema();
+  await require('./services/automation_bridge/schema').ensureAutomationBridgeSchema();
+  console.log('[document-rag + enterprise-search + automation-bridge] schemas ready');
+} } catch(e) { console.warn('[rag-connectors] schema init failed:', e.message); } });
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _swarmSchema.ensureAgentSwarmSchema();
   await _selfHealingSchema.ensureSelfHealingSchema();
@@ -3436,6 +3569,18 @@ const _bfSchema    = require('./services/brand_foundation/schema');
 const _bfRouter    = require('./services/brand_foundation/api');
 app.use('/api/deliverability', _delivRouter);
 app.use('/api/landing-pages',  _lpRouter);
+const _marketingPlanRouter = require('./services/marketing_plan/api');
+app.use('/api/marketing-plan', _marketingPlanRouter.router);
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await require('./services/marketing_plan/schema').ensureMarketingPlanSchema();
+      console.log('[marketing-plan] schema ready');
+    }
+  } catch (e) {
+    console.warn('[marketing-plan] schema init failed:', e.message);
+  }
+});
 
 // ── Customer.io-inspired features (Surveys · Email Designer · MCP · Smart Send · Ad Sync) ──
 const _surveysSchema = require('./services/surveys/schema');
@@ -3613,6 +3758,37 @@ const _serpTrackerRouter = require('./services/serp_tracker/api');
 const _hubspotSyncRouter = require('./services/hubspot_sync/api');
 app.use('/api/serp-tracker', _serpTrackerRouter);
 app.use('/api/hubspot-sync', _hubspotSyncRouter);
+
+// ── Semrush-style app hubs (Daily Trends + App Center worth-it pack) ─────────
+const _dailyTrendsSchema = require('./services/daily_trends/schema');
+const _dailyTrendsRouter = require('./services/daily_trends/api');
+const _serpGapSchema = require('./services/serp_gap/schema');
+const _serpGapRouter = require('./services/serp_gap/api');
+const _llmGapSchema = require('./services/llm_gap/schema');
+const _llmGapRouter = require('./services/llm_gap/api');
+const _adIntelRouter = require('./services/ad_intel/api');
+const _infAnalyticsSchema = require('./services/influencer_analytics/schema');
+const _infAnalyticsRouter = require('./services/influencer_analytics/api');
+const _brandMonitorRouter = require('./services/brand_monitor/api');
+app.use('/api/daily-trends', _dailyTrendsRouter);
+app.use('/api/serp-gap', _serpGapRouter);
+app.use('/api/llm-gap', _llmGapRouter);
+app.use('/api/ad-intel', _adIntelRouter);
+app.use('/api/influencer-analytics', _infAnalyticsRouter);
+app.use('/api/brand-monitor', _brandMonitorRouter);
+app.use('/api/traffic-sources', require('./services/traffic_sources/api'));
+app.use('/api/market-overview', require('./services/market_overview/api'));
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _dailyTrendsSchema.ensureDailyTrendsSchema();
+      await _serpGapSchema.ensureSerpGapSchema();
+      await _llmGapSchema.ensureLlmGapSchema();
+      await _infAnalyticsSchema.ensureInfluencerAnalyticsSchema();
+      console.log('[semrush-apps] daily-trends + serp-gap + llm-gap + influencer-analytics schemas ready');
+    }
+  } catch (e) { console.error('[semrush-apps] init failed:', e.message); }
+});
 
 // ── Tier 13 ────────────────────────────────────────────────────────────────
 const _metaInsightsRouter = require('./services/meta_ads_insights/api');
@@ -4299,7 +4475,7 @@ Known competitors: ${Array.isArray(competitors) && competitors.length ? competit
 
 // Postgres / kv_store status ping.
 // DB status · smart-detect · sector competitors routes → services/competitor_detect/routes.js
-require('./services/competitor_detect/routes')(app, { INFO_SITE_PATTERN, _db, callDataForSEO, openai, openaiChatWithRetry, startMsg });
+require('./services/competitor_detect/routes')(app, { INFO_SITE_PATTERN, _db, callDataForSEO, openai, openaiChatWithRetry, anthropic, startMsg });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BLENDED PERFORMANCE — Meta + Google + TikTok spend, Amplitude conversions,
@@ -4671,6 +4847,10 @@ app.use('/api/spyfu', _spyfuRouter);
 // ── Majestic SEO ──────────────────────────────────────────────────────────────
 const _majesticRouter = require('./services/majestic/api');
 app.use('/api/majestic', _majesticRouter);
+
+// ── Mangools SEO (KWFinder / SiteProfiler / LinkMiner) ────────────────────────
+const _mangoolsRouter = require('./services/mangools/api');
+app.use('/api/mangools', _mangoolsRouter);
 
 // ── T116 — Real-Time News ─────────────────────────────────────────────────────
 const _rtnRouter = require('./services/realtime_news/api');

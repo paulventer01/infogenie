@@ -16,6 +16,7 @@ function _safeAsync(h) {
   });
 }
 
+const _eleven = require('./elevenlabs');
 const VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
 const MODELS = ['tts-1', 'tts-1-hd'];
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads', 'voiceovers');
@@ -29,34 +30,78 @@ function _hasOpenAI() {
 router.get('/test', (req, res) => res.json({
   ok: true,
   openai: _hasOpenAI(),
+  elevenlabs: _eleven.hasElevenLabs(),
   db: _db.hasDb && _db.hasDb(),
   voices: VOICES,
-  models: MODELS
+  models: MODELS,
+  providers: ['openai', 'elevenlabs'],
 }));
 
-// POST /api/voiceover/generate { text, voice='alloy', model='tts-1', label? }
+router.get('/elevenlabs/voices', _safeAsync(async (req, res) => {
+  const tid = await _tid(req, 'voiceover:eleven-voices').catch(() => null);
+  const key = await _eleven.resolveElevenKey(tid);
+  if (!key) {
+    return res.json({
+      ok: true,
+      configured: false,
+      voices: [
+        { id: _eleven.DEFAULT_VOICE_ID, name: 'Rachel (default)', category: 'premade' },
+        { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi', category: 'premade' },
+        { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', category: 'premade' },
+      ],
+      note: 'Add ELEVENLABS_API_KEY in Platform APIs / Settings to load your library.',
+    });
+  }
+  const voices = await _eleven.listVoices(key);
+  res.json({ ok: true, configured: true, voices });
+}));
+
+// POST /api/voiceover/generate { text, voice='alloy', model='tts-1', label?, provider? }
 router.post('/generate', _safeAsync(async (req, res) => {
   const text = String(req.body?.text || '').trim();
+  const provider = String(req.body?.provider || 'openai').toLowerCase() === 'elevenlabs' ? 'elevenlabs' : 'openai';
   const voice = VOICES.includes(req.body?.voice) ? req.body.voice : 'alloy';
   const model = MODELS.includes(req.body?.model) ? req.body.model : 'tts-1';
+  const elevenVoice = String(req.body?.eleven_voice_id || req.body?.voiceId || _eleven.DEFAULT_VOICE_ID).slice(0, 80);
   const label = String(req.body?.label || '').trim().slice(0, 200);
 
   if (!text) return _err(res, 400, 'text required');
-  if (text.length > 4000) return _err(res, 400, 'Text too long — TTS limit is 4000 characters per request.');
-  if (!_hasOpenAI()) return _err(res, 400, 'OpenAI API key required for voiceover generation.');
-
-  const OpenAI = require('openai');
-  const client = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY });
+  if (text.length > 4000 && provider === 'openai') return _err(res, 400, 'Text too long — TTS limit is 4000 characters per request.');
+  if (text.length > 5000) return _err(res, 400, 'Text too long — ElevenLabs limit is 5000 characters per request.');
 
   let mp3Buffer;
-  try {
-    const resp = await client.audio.speech.create({ model, voice, input: text, response_format: 'mp3' });
-    mp3Buffer = Buffer.from(await resp.arrayBuffer());
-  } catch (e) {
-    const msg = e?.error?.message || e?.message || String(e);
-    if (/quota|insufficient|billing/i.test(msg)) return _err(res, 402, 'OpenAI quota exhausted — check billing.');
-    if (/invalid.*api.*key|unauthorized/i.test(msg)) return _err(res, 401, 'OpenAI API key invalid.');
-    return _err(res, 502, 'OpenAI TTS failed: ' + msg);
+  let usedVoice = voice;
+  let usedModel = model;
+
+  if (provider === 'elevenlabs') {
+    const tidForKey = await _tid(req, 'voiceover:eleven-key').catch(() => null);
+    const elevenKey = await _eleven.resolveElevenKey(tidForKey);
+    if (!elevenKey) {
+      return _err(res, 400, 'ElevenLabs API key required — add it in Settings → ElevenLabs.');
+    }
+    try {
+      mp3Buffer = await _eleven.synthesize(text, elevenVoice, elevenKey);
+      usedVoice = elevenVoice;
+      usedModel = 'eleven_multilingual_v2';
+    } catch (e) {
+      const msg = e?.message || String(e);
+      if (/401|unauthorized|invalid/i.test(msg)) return _err(res, 401, 'ElevenLabs API key invalid.');
+      if (/quota|limit|402/i.test(msg)) return _err(res, 402, 'ElevenLabs quota exhausted.');
+      return _err(res, 502, 'ElevenLabs TTS failed: ' + msg);
+    }
+  } else {
+    if (!_hasOpenAI()) return _err(res, 400, 'OpenAI API key required for voiceover generation.');
+    const OpenAI = require('openai');
+    const client = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY });
+    try {
+      const resp = await client.audio.speech.create({ model, voice, input: text, response_format: 'mp3' });
+      mp3Buffer = Buffer.from(await resp.arrayBuffer());
+    } catch (e) {
+      const msg = e?.error?.message || e?.message || String(e);
+      if (/quota|insufficient|billing/i.test(msg)) return _err(res, 402, 'OpenAI quota exhausted — check billing.');
+      if (/invalid.*api.*key|unauthorized/i.test(msg)) return _err(res, 401, 'OpenAI API key invalid.');
+      return _err(res, 502, 'OpenAI TTS failed: ' + msg);
+    }
   }
 
   const id = crypto.randomBytes(12).toString('hex');
@@ -70,12 +115,20 @@ router.post('/generate', _safeAsync(async (req, res) => {
       const tid = await _tid(req, 'voiceover:generate');
       await _db.getPool().query(
         `INSERT INTO voiceover_runs (tenant_id, label, voice, model, char_count, mp3_url) VALUES ($1,$2,$3,$4,$5,$6)`,
-        [tid, label || null, voice, model, text.length, mp3Url]
+        [tid, label || null, usedVoice, usedModel, text.length, mp3Url]
       );
     } catch (_) {}
   }
 
-  res.json({ ok: true, mp3Url, voice, model, charCount: text.length, sizeBytes: mp3Buffer.length });
+  res.json({
+    ok: true,
+    mp3Url,
+    provider,
+    voice: usedVoice,
+    model: usedModel,
+    charCount: text.length,
+    sizeBytes: mp3Buffer.length,
+  });
 }));
 
 // GET /api/voiceover/list — last 50

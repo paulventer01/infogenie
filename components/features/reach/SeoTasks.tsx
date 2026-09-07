@@ -329,7 +329,7 @@ export default function SeoTasks() {
                             {(t.message || "").slice(0, 120)}
                           </div>
                           {t.fix ? (
-                            <div style={{ fontSize: "0.72rem", color: "#7C3AED", marginTop: 2 }}>
+                            <div style={{ fontSize: "0.72rem", color: "#0f766e", marginTop: 2 }}>
                               <strong>Fix:</strong> {t.fix.slice(0, 140)}
                             </div>
                           ) : null}

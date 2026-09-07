@@ -44,7 +44,7 @@ interface Current {
   clusters: Cluster[];
 }
 
-const VOL_COLOR: Record<string, string> = { very_high: "#DC2626", high: "#F97316", medium: "#0EA5E9", low: "#8B5CF6" };
+const VOL_COLOR: Record<string, string> = { very_high: "#DC2626", high: "#0f766e", medium: "#0EA5E9", low: "#0284c7" };
 const CMP_COLOR: Record<string, string> = { very_high: "#991B1B", high: "#B45309", medium: "#0369A1", low: "#047857" };
 const TRD_ICON: Record<string, string> = { viral: "🔥", growing: "📈", stable: "➡️", declining: "📉" };
 const PLAT_GRAD: Record<string, string> = {
@@ -302,7 +302,7 @@ export default function HashtagIntel() {
                     style={{
                       padding: "4px 12px",
                       background: "#EDE9FE",
-                      color: "#7C3AED",
+                      color: "#0f766e",
                       border: "1px solid #DDD6FE",
                       borderRadius: 12,
                       fontSize: "0.74rem",
@@ -320,7 +320,7 @@ export default function HashtagIntel() {
             onClick={research}
             style={{
               width: "100%",
-              background: "linear-gradient(135deg,#4F46E5,#7C3AED)",
+              background: "linear-gradient(135deg,#4F46E5,#0f766e)",
               color: "#fff",
               border: "none",
               padding: "10px 20px",

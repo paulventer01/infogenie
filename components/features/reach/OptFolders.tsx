@@ -250,7 +250,7 @@ function buildData(): OptData {
     {
       name: "Brand Campaigns",
       icon: "🎯",
-      color: "#8B5CF6",
+      color: "#0284c7",
       rules: [
         { cond: "Frequency > 4.5", action: "Refresh creative" },
         { cond: "CPM > $25", action: "Narrow audience" },

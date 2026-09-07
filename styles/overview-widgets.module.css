@@ -28,21 +28,22 @@
 }
 
 .card {
-  background: var(--ig-surface, #fff);
-  border: 1px solid var(--ig-border, #e2e8f0);
-  border-top: 3px solid #0066ff;
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid rgba(11, 18, 32, 0.1);
+  border-left: 3px solid #0f766e;
+  border-radius: 14px;
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-height: 180px;
+  box-shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 10px 28px rgba(11, 18, 32, 0.06);
 }
 
 .cardOwner {
   font-size: 11px;
   font-weight: 800;
-  color: var(--ig-primary, #0066ff);
+  color: #0f766e;
   letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
@@ -66,22 +67,23 @@
 
 .viewBtn {
   flex-shrink: 0;
-  background: transparent;
-  border: 1px solid var(--ig-border, #e2e8f0);
-  border-radius: 6px;
-  padding: 4px 10px;
+  background: #ffffff;
+  border: 1.5px solid rgba(11, 18, 32, 0.14);
+  border-radius: 10px;
+  padding: 6px 12px;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: var(--ig-primary, #4f46e5);
+  color: #0b1220;
   cursor: pointer;
   font-family: inherit;
 }
 
 .viewBtn:hover {
-  background: var(--ig-primary-soft, #eef2ff);
-  border-color: var(--ig-primary-border, #c7d2fe);
+  background: rgba(15, 118, 110, 0.1);
+  border-color: rgba(15, 118, 110, 0.28);
+  color: #0f766e;
 }
 
 .hero {

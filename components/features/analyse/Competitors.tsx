@@ -7,7 +7,7 @@
 // home-page competitor analysis). Links into the Battle Plan / Tech Stack via
 // `goToView`. See `docs/react-panel-migration.md`.
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
 
@@ -35,7 +35,23 @@ interface AnalysisData {
 
 function getAnalysisData(): AnalysisData {
   if (typeof window === "undefined") return {};
-  return (window as unknown as { analysisData?: AnalysisData }).analysisData || {};
+  const live = (window as unknown as { analysisData?: AnalysisData }).analysisData;
+  if (live && (live.url || (Array.isArray(live.competitors) && live.competitors.length))) {
+    return live;
+  }
+  try {
+    const raw = sessionStorage.getItem("ig-analysis-data");
+    if (raw) {
+      const parsed = JSON.parse(raw) as AnalysisData;
+      if (parsed && (parsed.url || (Array.isArray(parsed.competitors) && parsed.competitors.length))) {
+        (window as unknown as { analysisData?: AnalysisData }).analysisData = parsed;
+        return parsed;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return live || {};
 }
 
 function threatColor(level?: string): string {
@@ -47,12 +63,27 @@ function threatColor(level?: string): string {
 
 export default function Competitors() {
   const router = useRouter();
-  const ad = useMemo(getAnalysisData, []);
-  const competitors = useMemo(
-    () => (Array.isArray(ad.competitors) ? ad.competitors : []),
-    [ad],
-  );
+  const [ad, setAd] = useState<AnalysisData>(getAnalysisData);
+  const competitors = Array.isArray(ad.competitors) ? ad.competitors : [];
   const [filter, setFilter] = useState("all");
+
+  useEffect(() => {
+    const onReady = () => setAd(getAnalysisData());
+    document.addEventListener("ig:analysis-ready", onReady);
+    document.addEventListener("ig:analysis-updated", onReady);
+    window.addEventListener("ig:analysis-ready", onReady);
+    window.addEventListener("ig:analysis-updated", onReady);
+    const t1 = window.setTimeout(onReady, 50);
+    const t2 = window.setTimeout(onReady, 400);
+    return () => {
+      document.removeEventListener("ig:analysis-ready", onReady);
+      document.removeEventListener("ig:analysis-updated", onReady);
+      window.removeEventListener("ig:analysis-ready", onReady);
+      window.removeEventListener("ig:analysis-updated", onReady);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, []);
 
   const liveCount = competitors.filter((c) => c._dataSource === "DataForSEO" || c._realTraffic).length;
   const aiCount = competitors.filter((c) => c.aiDetected).length;
@@ -149,13 +180,24 @@ export default function Competitors() {
         {competitors.length === 0 ? (
           <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 14, padding: 48, textAlign: "center", color: "#6B7280" }}>
             <div style={{ fontSize: "2.5rem", marginBottom: 10 }}>⚡</div>
-            <div style={{ fontWeight: 800, color: "#0A1628", marginBottom: 6 }}>No competitors analysed yet</div>
-            <div style={{ fontSize: "0.88rem", marginBottom: 16 }}>
-              Run a competitor analysis from the home page to populate the
-              Intelligence Engine.
-            </div>
+            {ad.url ? (
+              <>
+                <div style={{ fontWeight: 800, color: "#0A1628", marginBottom: 6 }}>No same-industry competitors confirmed</div>
+                <div style={{ fontSize: "0.88rem", marginBottom: 16 }}>
+                  Analysis finished for {ad.url}, but no direct rivals were verified for this business. Re-analyse to retry with every available AI provider.
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontWeight: 800, color: "#0A1628", marginBottom: 6 }}>No competitors analysed yet</div>
+                <div style={{ fontSize: "0.88rem", marginBottom: 16 }}>
+                  Run a competitor analysis from the home page to populate the
+                  Intelligence Engine.
+                </div>
+              </>
+            )}
             <button className="btn-primary" onClick={() => goToView(router, "home")}>
-              Run Analysis →
+              {ad.url ? "Re-analyse →" : "Run Analysis →"}
             </button>
           </div>
         ) : (

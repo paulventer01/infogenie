@@ -276,8 +276,8 @@ export default function ReplyAssistant() {
               onClick={load}
               style={{
                 padding: "10px 20px",
-                background: "#7C3AED",
-                border: "2px solid #7C3AED",
+                background: "#0f766e",
+                border: "2px solid #0f766e",
                 borderRadius: 8,
                 fontSize: "0.82rem",
                 fontWeight: 800,
@@ -436,8 +436,8 @@ export default function ReplyAssistant() {
                           onClick={() => openDraft(i)}
                           style={{
                             padding: "7px 14px",
-                            background: "#7C3AED",
-                            border: "2px solid #7C3AED",
+                            background: "#0f766e",
+                            border: "2px solid #0f766e",
                             borderRadius: 6,
                             fontSize: "0.74rem",
                             fontWeight: 800,
@@ -575,7 +575,7 @@ export default function ReplyAssistant() {
                                   style={{
                                     fontSize: "0.7rem",
                                     fontWeight: 700,
-                                    color: "#7C3AED",
+                                    color: "#0f766e",
                                     letterSpacing: ".06em",
                                     marginBottom: 6,
                                   }}

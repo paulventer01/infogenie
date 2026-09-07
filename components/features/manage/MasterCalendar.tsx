@@ -166,7 +166,7 @@ function styleFor(type: EventType, status: string, risk: boolean) {
   if (risk) return { color: "#D97706", bg: "#FEF3C7", label: "⚠️ At Risk" };
   if (type === "campaign") {
     const live = status === "active" || status === "live";
-    return { color: live ? "#7C3AED" : "#6B7280", bg: live ? "#F5F3FF" : "#F3F4F6", label: live ? "🔵 Live" : "Ended" };
+    return { color: live ? "#0f766e" : "#6B7280", bg: live ? "#F5F3FF" : "#F3F4F6", label: live ? "🔵 Live" : "Ended" };
   }
   if (type === "social" || type === "content") {
     const done = status === "published" || status === "done";

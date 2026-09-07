@@ -48,7 +48,7 @@ const GRADE_COLORS: Record<string, string> = {
   A: "#16a34a",
   B: "#65a30d",
   C: "#d97706",
-  D: "#ea580c",
+  D: "#d97706",
   F: "#dc2626",
 };
 
@@ -74,7 +74,7 @@ const IG = {
   teal: "#0f766e",
   blue: "#0284c7",
   green: "#16a34a",
-  warm: "#f97316",
+  warm: "#0f766e",
   soft: "rgba(15, 118, 110, 0.12)",
   softBlue: "rgba(2, 132, 199, 0.1)",
   shadow: "0 1px 0 rgba(11, 18, 32, 0.04), 0 12px 32px rgba(11, 18, 32, 0.06)",

@@ -131,7 +131,7 @@ export default function AudioSummary() {
                   <a href={selected.audio_url} download style={{ display: "inline-block", marginTop: 8, fontSize: "0.75rem", color: "#0066FF", fontWeight: 600, textDecoration: "none" }}>⬇️ Download MP3</a>
                 </div>
               ) : (
-                <div style={{ background: "#FFF7ED", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", fontSize: "0.78rem", color: "#92400E", marginBottom: 14 }}>
+                <div style={{ background: "#f3f6fb", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", fontSize: "0.78rem", color: "#92400E", marginBottom: 14 }}>
                   ⚠️ Audio file not available — OpenAI TTS requires a valid API key. The script below was generated.
                 </div>
               )}

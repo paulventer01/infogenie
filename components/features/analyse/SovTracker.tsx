@@ -19,7 +19,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
 import { markNavPending, settleNavPending } from "@/lib/navPending";
 
-const PALETTE = ["#7C3AED", "#0891B2", "#F59E0B", "#15803D", "#B91C1C", "#1E40AF"];
+const PALETTE = ["#0f766e", "#0891B2", "#F59E0B", "#15803D", "#B91C1C", "#1E40AF"];
 
 interface Target {
   target_brand: string;
@@ -411,8 +411,8 @@ export default function SovTracker() {
                     title="Let AI pick the most strategically important competitor to focus on based on your brand"
                     style={{
                       padding: "8px 13px",
-                      background: "#7C3AED",
-                      border: "2px solid #7C3AED",
+                      background: "#0f766e",
+                      border: "2px solid #0f766e",
                       borderRadius: 6,
                       fontSize: "0.78rem",
                       fontWeight: 700,
@@ -500,7 +500,7 @@ export default function SovTracker() {
                       e.preventDefault();
                       goToView(router, "crisis-radar");
                     }}
-                    style={{ color: "#7C3AED", fontWeight: 700 }}
+                    style={{ color: "#0f766e", fontWeight: 700 }}
                   >
                     Crisis Radar
                   </a>{" "}

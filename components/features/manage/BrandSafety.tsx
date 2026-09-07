@@ -72,7 +72,7 @@ const JURISDICTIONS: {
   { key: "ftc", label: "FTC", region: "US", subtitle: "Advertising & endorsements", accent: "#2563EB" },
   { key: "gdpr", label: "GDPR", region: "EU", subtitle: "Privacy & consent", accent: "#4F46E5" },
   { key: "fca", label: "FCA", region: "UK", subtitle: "Financial promotions", accent: "#0F766E" },
-  { key: "esma", label: "ESMA", region: "EU", subtitle: "Investment marketing", accent: "#7C3AED" },
+  { key: "esma", label: "ESMA", region: "EU", subtitle: "Investment marketing", accent: "#0f766e" },
   { key: "hipaa", label: "HIPAA", region: "US", subtitle: "Health data & PHI", accent: "#DB2777" },
   { key: "asa", label: "ASA", region: "UK", subtitle: "General advertising", accent: "#D97706" },
 ];
@@ -484,7 +484,7 @@ export default function BrandSafety() {
 
         {r.rewritten_version && r.rewritten_version !== r.content_snippet && (
           <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: ".75rem", fontWeight: 600, color: "#8b5cf6", marginBottom: 6 }}>
+            <div style={{ fontSize: ".75rem", fontWeight: 600, color: "#0284c7", marginBottom: 6 }}>
               ✏️ COMPLIANT REWRITE
             </div>
             <div

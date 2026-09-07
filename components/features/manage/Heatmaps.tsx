@@ -231,7 +231,7 @@ export default function Heatmaps() {
                 style={{
                   display: "inline-block",
                   marginBottom: 18,
-                  background: "linear-gradient(135deg,#FF6B35,#F97316)",
+                  background: "linear-gradient(135deg,#0f766e,#0f766e)",
                   color: "#fff",
                   padding: "10px 22px",
                   borderRadius: 7,

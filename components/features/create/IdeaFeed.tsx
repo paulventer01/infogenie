@@ -286,7 +286,7 @@ export default function IdeaFeed() {
               style={{
                 width: "100%",
                 padding: 11,
-                background: "linear-gradient(135deg,#6366F1,#8B5CF6)",
+                background: "linear-gradient(135deg,#6366F1,#0284c7)",
                 border: "none",
                 borderRadius: 10,
                 fontSize: "0.82rem",
@@ -462,7 +462,7 @@ export default function IdeaFeed() {
                         onClick={() => loadIdeas(true)}
                         style={{
                           padding: "10px 20px",
-                          background: "linear-gradient(135deg,#6366F1,#8B5CF6)",
+                          background: "linear-gradient(135deg,#6366F1,#0284c7)",
                           border: "none",
                           borderRadius: 10,
                           fontSize: "0.82rem",
@@ -714,7 +714,7 @@ function IdeaCard({
           style={{
             flex: 2,
             padding: 11,
-            background: "linear-gradient(135deg,#6366F1,#8B5CF6)",
+            background: "linear-gradient(135deg,#6366F1,#0284c7)",
             border: "none",
             borderRadius: 10,
             fontSize: "0.8rem",

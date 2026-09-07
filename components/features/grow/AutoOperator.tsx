@@ -105,7 +105,7 @@ function ResultCard({ r }: { r: AOResult }) {
 
       {r.new_ad_copy?.headline && (
         <div style={{ background: "#faf5ff", borderRadius: 8, padding: 12, marginBottom: 12 }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "#8b5cf6", marginBottom: 8 }}>✏️ REWRITTEN AD COPY</div>
+          <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "#0284c7", marginBottom: 8 }}>✏️ REWRITTEN AD COPY</div>
           <div><span style={{ fontSize: "0.75rem", color: "#6b7280" }}>Headline: </span><strong>{r.new_ad_copy.headline}</strong></div>
           <div style={{ fontSize: "0.85rem", color: "#374151", margin: "4px 0" }}>{r.new_ad_copy.body || ""}</div>
           <div><span style={{ fontSize: "0.75rem", color: "#6b7280" }}>CTA: </span><strong>{r.new_ad_copy.cta || ""}</strong></div>
@@ -215,7 +215,7 @@ export default function AutoOperator() {
               <label>Known Issues (one per line)</label>
               <textarea className="form-control" rows={3} placeholder={"ROAS dropping on Meta\nTikTok CPM spiked 40%\nLanding page CVR below 2%"} value={issues} onChange={(e) => setIssues(e.target.value)} />
             </div>
-            <button onClick={run} disabled={running} className="btn btn-primary" style={{ width: "100%", background: "linear-gradient(135deg,#7c3aed,#3b82f6)" }}>
+            <button onClick={run} disabled={running} className="btn btn-primary" style={{ width: "100%", background: "linear-gradient(135deg,#0f766e,#3b82f6)" }}>
               {running ? "Operator analysing & acting…" : "🦾 Deploy Operator Now"}
             </button>
           </div>

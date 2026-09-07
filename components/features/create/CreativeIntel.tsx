@@ -305,7 +305,7 @@ export default function CreativeIntel() {
               onClick={analyze}
               disabled={status === "loading"}
               style={{
-                background: "linear-gradient(135deg,#1a1a2e,#7C3AED)",
+                background: "linear-gradient(135deg,#1a1a2e,#0f766e)",
                 color: "#fff",
                 border: "none",
                 padding: "9px 22px",
@@ -645,7 +645,7 @@ function Report({
           >
             📊 Pattern Analysis
           </div>
-          <PatternBlock title="Hook Styles" items={hookItems} color="#7C3AED" />
+          <PatternBlock title="Hook Styles" items={hookItems} color="#0f766e" />
           <PatternBlock
             title="Emotion Triggers"
             items={emotionItems}
@@ -838,7 +838,7 @@ function VideoCard({ v }: { v: VideoAnalysis }) {
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
         {v.hook_type && (
-          <Tag bg="#EDE9FE" color="#7C3AED">
+          <Tag bg="#EDE9FE" color="#0f766e">
             {HOOK_LABELS[v.hook_type] || v.hook_type}
           </Tag>
         )}

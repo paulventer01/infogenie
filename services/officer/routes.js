@@ -18,6 +18,7 @@ module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
   const { _db, _fetchAmplitudeConversions, _fetchGoogleAdsSpend, _fetchMetaSpend, _fetchTikTokSpend, _sendChatWebhook, _sendEmailViaResend, _tkvCtx, fs, multer, openai, openaiChatWithRetry, path } = ctx;
+  const _execAgent = require('./services/officer/executive_agent');
 
 async function _revenueByPlatform(days = 30, tenantId = null) {
   if (!_db.hasDb()) return {};
@@ -182,17 +183,34 @@ Rules:
 
     let aiResult = null;
     try {
-      const completion = await openaiChatWithRetry({
-        model: 'gpt-5-mini',
-        messages: [
-          { role:'system', content: `You are the ${roleSpec.title}. Output strict JSON only — no prose, no markdown. Be specific and quantitative.` },
-          { role:'user',   content: prompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 900,
-        response_format: { type: 'json_object' },
-      });
-      aiResult = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+      const tid = await _tkvCtx.resolveTenantId(req, { label: `officer:brief:${role}` }).catch(() => null);
+      // Prefer full executive agent stack (tools + memory + reasoning)
+      if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY) {
+        const out = await _execAgent.runExecutiveAgent({
+          role,
+          title: roleSpec.title,
+          mode: 'brief',
+          thinkingMode: 'deeper_question',
+          goal: `Produce an executive brief focused on: ${roleSpec.focus}`,
+          facts,
+          tenantId: tid,
+          openaiChatWithRetry,
+        });
+        if (out.result && out.result.summary) aiResult = out.result;
+      }
+      if (!aiResult) {
+        const completion = await openaiChatWithRetry({
+          model: 'gpt-5-mini',
+          messages: [
+            { role:'system', content: `You are the ${roleSpec.title}. Output strict JSON only — no prose, no markdown. Be specific and quantitative.` },
+            { role:'user',   content: prompt },
+          ],
+          temperature: 0.2,
+          max_tokens: 900,
+          response_format: { type: 'json_object' },
+        });
+        aiResult = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+      }
     } catch (aiErr) {
       console.warn(`[officer/brief:${role}] AI failed, using template:`, aiErr.message);
     }
@@ -261,36 +279,7 @@ app.post('/api/officer/tasks', async (req, res) => {
     const role  = String(req.body?.role  || '').trim();
     const title = String(req.body?.title || role || 'Officer').trim();
     if (!role) return res.status(400).json({ ok:false, error:'role required' });
-    const FALLBACK = {
-      marketing: ['Plan and launch monthly campaigns','Write ad copy and creative briefs','Monitor competitor campaigns weekly','Reallocate budget to top-performing channels','Run weekly performance retrospective','Brief content team on campaign themes','Manage email + SMS drip sequences','Refresh ad creative on fatigue','Review brand voice + tone consistency','Coordinate cross-channel launches','Set quarterly OKRs','Approve every paid creative before launch'],
-      sales:     ['Build weekly outbound prospect lists','Qualify inbound leads within 1 hour','Follow up on stalled deals every 3 days','Run weekly pipeline review','Re-engage cold leads monthly','Update CRM after every touch','Forecast monthly revenue','Negotiate pricing within guardrails','Hand off won deals to onboarding','Track conversion rate by source','Coach SDRs weekly','Maintain ICP definition'],
-      analyst:   ['Build weekly cross-channel performance report','Track attribution model accuracy','Flag KPI anomalies daily','Run cohort analysis monthly','Maintain dashboard data freshness','Validate tracking pixels weekly','A/B test methodology review','Surface "why did X change" answers','Audit data sources monthly','Maintain a single source of truth metric glossary','Forecast next-quarter pipeline','Calculate true blended ROAS'],
-      content:   ['Plan monthly content calendar','Score every piece before publishing','Brief writers + designers','Schedule social posts across platforms','Repurpose top content into 5 formats','Audit existing content quarterly for refresh','Track content engagement weekly','Maintain brand voice guide','Source UGC + customer stories','Run monthly content gap analysis vs competitors','Optimise headlines + thumbnails','Distribute content via newsletter'],
-      seo:       ['Run weekly on-page audit','Track keyword rankings daily','Build internal link plan monthly','Audit competitor backlinks','Submit fresh sitemaps','Monitor Core Web Vitals','Optimise meta titles + descriptions','Identify content gaps vs SERPs','Run GEO audit for AI search visibility','Schema markup review','Local SEO citations','Disavow toxic backlinks'],
-      cro:       ['Run weekly A/B tests on top pages','Analyse heatmaps + session recordings','Document every winning experiment','Build conversion playbook','Implement urgency + social proof boosters','Test pricing page variants','Optimise checkout flow','Reduce form-field friction','Run mobile-first usability audits','Personalise CTAs by traffic source','Test exit-intent overlays','Maintain experiment backlog'],
-      finance:   ['Track marketing P&L weekly','Compute CAC by channel monthly','Calculate LTV/CAC ratio','Flag overspending campaigns','Forecast 90-day cash flow','Approve budget reallocations','Audit invoices vs platform spend','Tax-prep marketing line items','Negotiate annual platform contracts','Report MER monthly','Set channel budget caps','Variance analysis vs plan'],
-      ops:       ['Run weekly campaign QA scan','Audit brand asset library completeness','Check lead routing health daily','Maintain SOPs for every workflow','Onboard new tools + integrations','Quarterly access review','Vendor relationship management','Backup critical data weekly','Track team capacity vs workload','Run incident postmortems','Maintain compliance + privacy register','Schedule team standups'],
-      // Aligned to Chief Technical Manager JD: availability, observability of every
-      // client-visible surface, multi-tenant isolation, AI safety, security/vault,
-      // incident command. Deprioritised: hiring/1:1s, product roadmap ownership,
-      // generic "research tooling" busywork (folded into approval-gated gap reports).
-      technical: [
-        'Monitor every page subpage and feature live',
-        'Probe every API and readiness endpoint',
-        'Watch LLM gateway cost and guardrails',
-        'Enforce credential vault and token hygiene',
-        'Scan security posture and permission gaps',
-        'Guard autonomous AI with emergency stop',
-        'Track tenant isolation and leakage risk',
-        'Monitor connector freshness and silent failures',
-        'Validate update safety before any install',
-        'Draft incident plans for management approval',
-        'Report live status in daily management meetings',
-        'Close monitoring gaps with approval-gated asks',
-        'Keep alerts actionable and runbook-linked',
-        'Publish availability and error-budget posture',
-      ]
-    };
+    const FALLBACK = _DEFAULT_TASKS;
     const key = role.toLowerCase();
     let tasks = null;
     if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
@@ -327,28 +316,216 @@ app.post('/api/officer/tasks', async (req, res) => {
 // localStorage remains the source of truth for the modal UI; this kv mirror
 // is updated whenever the user clicks Save in the tasks modal.
 const _TASKS_KEY = 'officer_tasks_v1';
+const _TASKS_META_KEY = 'officer_tasks_meta_v1';
 // All Officer kv stores are per-workspace (`<base>:t<tid>`). _TASKS_KEY is also
 // written by services/playbook_7day (keep the base aligned). resolveTenantId is
 // used per request; the auto-report / auto-meeting schedulers iterate tenants.
 const _officerScope = require('./services/tenants/kv_scope');
 const _officerCtx   = require('./services/tenants/context');
+const {
+  OFFICER_ROLES: _OFFICER_ROLES,
+  OFFICER_TITLES: _OFFICER_TITLES,
+  DEFAULT_TASKS: _DEFAULT_TASKS,
+  OFFICER_VIEWS: _OFFICER_VIEWS,
+  formatViewsBlock: _formatViewsBlock,
+  ensureActivatedTaskStore: _ensureActivatedTaskStore,
+} = require('./services/officer/default_tasks');
+
+function _buildDailyReportPrompt(role, title, tasks, snap) {
+  const tasksList = tasks.map((t, i) => `${i + 1}. ${t}`).join('\n');
+  const viewsBlock = _formatViewsBlock(role);
+  const viewsSection = viewsBlock
+    ? `\n\nINFOGENIE SECTIONS YOU OWN (analyse each; tie evidence to your responsibilities):\n${viewsBlock}`
+    : '';
+  return `You are the AI ${title} writing an HONEST end-of-day report to the CEO.
+
+ASSIGNED RESPONSIBILITIES (activated — execute daily, do not stop):
+${tasksList}${viewsSection}
+
+PLATFORM DATA SNAPSHOT (real counts — null means table not present):
+${JSON.stringify(snap, null, 2)}
+
+For each responsibility, decide HONESTLY based on the snapshot and your InfoGenie sections:
+- "done"        → clear evidence of activity in the snapshot today
+- "in_progress" → some activity but not complete
+- "blocked"     → blocked by missing data, missing integration, or external dep
+- "not_started" → no evidence of activity yet
+
+Do NOT fake completions. If the snapshot shows 0 or null, mark not_started or blocked and explain why.
+Reference specific InfoGenie views in evidence and actionPlan steps where relevant.
+
+Return ONLY this JSON:
+{
+  "summary": "<2-3 sentence honest plain-English summary>",
+  "tasksReviewed": [{"task":"<exact task text>","status":"done|in_progress|blocked|not_started","evidence":"<what in the snapshot or InfoGenie sections supports this — be specific or say no data>"}],
+  "successes": ["<concrete win today with a number>", "..."],
+  "issues":    ["<concrete blocker or risk with detail>", "..."],
+  "actionPlan":[{"step":"<verb-led step the user can take in InfoGenie>", "priority":"high|med|low"}]
+}`;
+}
+
+function _buildMeetingViewsBlock() {
+  const lines = _OFFICER_ROLES.map((role) => {
+    const views = _OFFICER_VIEWS[role] || [];
+    const viewLines = views.map(v => `  - ${v.label} (view: ${v.view})`).join('\n');
+    return `${_OFFICER_TITLES[role]}:\n${viewLines || '  - (general platform overview)'}`;
+  });
+  return lines.join('\n\n');
+}
 const _officerKey = (base, tid) => _officerScope.tkey(base, tid);
-const _OFFICER_ROLES = ['marketing','sales','analyst','content','seo','cro','finance','ops','technical'];
-const _OFFICER_TITLES = {
-  marketing:'Marketing Officer', sales:'Sales Officer', analyst:'Analyst Officer',
-  content:'Content Officer', seo:'SEO Officer', cro:'CRO Officer',
-  finance:'Finance Officer', ops:'Operations Officer', technical:'Technical Manager'
-};
+
+async function _persistTaskStore(tid, store, meta) {
+  const _db = require('./db');
+  await _db.kvSet(_officerKey(_TASKS_KEY, tid), store);
+  await _db.kvSet(_officerKey(_TASKS_META_KEY, tid), meta);
+}
+
+async function _loadActivatedTaskStore(tid, { persistIfChanged = true } = {}) {
+  const _db = require('./db');
+  const raw = (await _db.kvGet(_officerKey(_TASKS_KEY, tid), {})) || {};
+  const rawMeta = (await _db.kvGet(_officerKey(_TASKS_META_KEY, tid), {})) || {};
+  const ensured = _ensureActivatedTaskStore(raw, rawMeta);
+  if (persistIfChanged && ensured.changed) {
+    await _persistTaskStore(tid, ensured.store, ensured.meta);
+  }
+  return ensured;
+}
+
+// Shared AI Executive skill pack (every roster member inherits the full agent stack)
+app.get('/api/officer/skill-pack', async (_req, res) => {
+  res.json({
+    ok: true,
+    skillPack: _execAgent.AGENT_SKILL_PACK,
+    specialties: _execAgent.OFFICER_SPECIALTIES,
+    thinkingModes: Object.values(_execAgent.STRATEGIC_THINKING_MODES || {}),
+    domainToolStack: _execAgent.DOMAIN_TOOL_STACK,
+    tools: (_execAgent.EXECUTIVE_TOOLS || []).map((t) => t.function?.name).filter(Boolean),
+    roles: _OFFICER_ROLES.map((id) => ({ id, title: _OFFICER_TITLES[id] })),
+    os: {
+      human: ['Creative', 'Vision', 'Quality Feedback'],
+      orchestrator: ['Map', 'Brainstorm', 'Refine next actions'],
+      loop: 'Human → Orchestrator → Agents (N) → MCP/APIs → Connected Stack',
+    },
+  });
+});
+
+// Independent agent advice — each executive reasons with tools + memory
+app.post('/api/officer/advise', async (req, res) => {
+  try {
+    const role = String(req.body?.role || '').trim().toLowerCase();
+    const title = String(req.body?.title || _OFFICER_TITLES[role] || 'Officer').trim();
+    const goal = String(req.body?.goal || req.body?.question || '').trim();
+    const thinkingMode = String(req.body?.thinkingMode || req.body?.mode || 'deeper_question').trim();
+    if (!_OFFICER_ROLES.includes(role)) return res.status(400).json({ ok: false, error: 'unknown role' });
+    if (!goal) return res.status(400).json({ ok: false, error: 'goal or question required' });
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:advise' });
+    let tasks = Array.isArray(req.body?.tasks) ? req.body.tasks.filter((t) => typeof t === 'string').slice(0, 40) : [];
+    if (!tasks.length && _db.hasDb() && tid != null) {
+      try {
+        const store = (await _db.kvGet(_officerKey(_TASKS_KEY, tid), {})) || {};
+        tasks = Array.isArray(store[role]) ? store[role] : [];
+      } catch (_) { /* ignore */ }
+    }
+    const snap = await _execAgent.loadWorkspaceSnapshot(tid);
+    const thinking = _execAgent.resolveThinkingMode(thinkingMode);
+    const offlineAdvice = () => _execAgent.buildStrategicOfflineAdvice({
+      role, title, goal, tasks, snap, thinkingMode: thinking.id,
+    });
+
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
+      return res.json({
+        ok: true,
+        role,
+        title,
+        offline: true,
+        thinkingMode: thinking,
+        advice: offlineAdvice(),
+        toolTrace: [{ tool: 'get_workspace_snapshot', ok: true }],
+        skillPack: _execAgent.AGENT_SKILL_PACK,
+        generatedAt: new Date().toISOString(),
+      });
+    }
+    try {
+      const out = await _execAgent.runExecutiveAgent({
+        role,
+        title,
+        mode: 'advise',
+        goal,
+        tasks,
+        thinkingMode: thinking.id,
+        tenantId: tid,
+        openaiChatWithRetry,
+      });
+      res.json({
+        ok: true,
+        role,
+        title,
+        thinkingMode: thinking,
+        advice: out.result || {
+          assessment: out.raw || 'Agent could not parse a structured answer.',
+          suggestions: [],
+          risks: [],
+          nextChecks: [],
+          reasoning: (out.toolTrace || []).map((t) => `Used tool ${t.tool}`),
+        },
+        toolTrace: out.toolTrace || [],
+        skillPack: _execAgent.AGENT_SKILL_PACK,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (aiErr) {
+      console.warn('[officer/advise] agent failed, offline advice:', aiErr.message);
+      res.json({
+        ok: true,
+        role,
+        title,
+        offline: true,
+        thinkingMode: thinking,
+        advice: offlineAdvice(),
+        toolTrace: [{ tool: 'get_workspace_snapshot', ok: true }],
+        skillPack: _execAgent.AGENT_SKILL_PACK,
+        warning: aiErr.message,
+        generatedAt: new Date().toISOString(),
+      });
+    }
+  } catch (e) {
+    console.error('[officer/advise]', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 app.get('/api/officer/tasks-store', async (req, res) => {
   try {
     const _db = require('./db');
-    if (!_db.hasDb()) return res.json({ tasks: {} });
+    if (!_db.hasDb()) return res.json({ tasks: {}, meta: {}, activated: false });
     const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:tasks-store:get' });
-    if (tid == null) return res.json({ tasks: {} });
-    const v = (await _db.kvGet(_officerKey(_TASKS_KEY, tid), {})) || {};
-    res.json({ tasks: (v && typeof v==='object' && !Array.isArray(v)) ? v : {} });
+    if (tid == null) return res.json({ tasks: {}, meta: {}, activated: false });
+    const ensured = await _loadActivatedTaskStore(tid, { persistIfChanged: true });
+    res.json({
+      tasks: ensured.store,
+      meta: ensured.meta,
+      activated: !!ensured.meta.teamActivated,
+      seededRoles: ensured.seededRoles,
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+app.post('/api/officer/team/activate', async (req, res) => {
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.status(503).json({ error: 'database not configured' });
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:team:activate' });
+    if (tid == null) return res.status(400).json({ error: 'no_tenant' });
+    const ensured = await _loadActivatedTaskStore(tid, { persistIfChanged: true });
+    res.json({
+      ok: true,
+      tasks: ensured.store,
+      meta: ensured.meta,
+      activated: true,
+      seededRoles: ensured.seededRoles,
+      officerCount: _OFFICER_ROLES.length,
+    });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 app.post('/api/officer/tasks-store', async (req, res) => {
   try {
     const _db = require('./db');
@@ -360,11 +537,22 @@ app.post('/api/officer/tasks-store', async (req, res) => {
     if (!_OFFICER_ROLES.includes(safeRole)) return res.status(400).json({ error: 'unknown role' });
     const safeTasks = Array.isArray(tasks) ? tasks.filter(t => typeof t==='string').slice(0,40).map(t=>String(t).slice(0,200)) : [];
     const key = _officerKey(_TASKS_KEY, tid);
+    const metaKey = _officerKey(_TASKS_META_KEY, tid);
     const cur = (await _db.kvGet(key, {})) || {};
     const safeCur = (cur && typeof cur==='object' && !Array.isArray(cur)) ? cur : {};
     safeCur[safeRole] = safeTasks;
-    await _db.kvSet(key, safeCur);
-    res.json({ ok: true });
+    const meta = (await _db.kvGet(metaKey, {})) || {};
+    const safeMeta = (meta && typeof meta==='object' && !Array.isArray(meta)) ? meta : {};
+    safeMeta[safeRole] = {
+      ...(safeMeta[safeRole] && typeof safeMeta[safeRole] === 'object' ? safeMeta[safeRole] : {}),
+      activated: safeTasks.length > 0,
+      activatedAt: new Date().toISOString(),
+      cadence: 'daily',
+      userCustomized: true,
+    };
+    safeMeta.teamActivated = _OFFICER_ROLES.every(r => Array.isArray(safeCur[r]) && safeCur[r].length > 0);
+    await _persistTaskStore(tid, safeCur, safeMeta);
+    res.json({ ok: true, taskCount: safeTasks.length, activated: safeTasks.length > 0 });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -476,7 +664,7 @@ app.post('/api/officer/daily-report', async (req, res) => {
   try {
     const role  = String(req.body?.role  || '').trim().toLowerCase();
     const title = String(req.body?.title || 'Officer').trim();
-    const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks.filter(t => typeof t==='string').slice(0,40) : [];
+    let tasks = Array.isArray(req.body?.tasks) ? req.body.tasks.filter(t => typeof t==='string').slice(0,40) : [];
     if (!role) return res.status(400).json({ ok:false, error: 'role required' });
 
     // Snapshot is scoped to the caller's workspace so one workspace's report is
@@ -499,6 +687,10 @@ app.post('/api/officer/daily-report', async (req, res) => {
         snap.bookings_last7d      = await safe(`SELECT COUNT(*)::int c FROM bookings WHERE created_at > now() - interval '7 days' AND tenant_id=$1`, [tid]);
         snap.waCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM wa_campaigns WHERE tenant_id=$1`, [tid]);
         snap.activeProjects       = await safe(`SELECT COUNT(*)::int c FROM marketing_projects WHERE status='active' AND tenant_id=$1`, [tid]);
+        if (tasks.length === 0 && tid != null) {
+          const ensured = await _loadActivatedTaskStore(tid, { persistIfChanged: true });
+          tasks = Array.isArray(ensured.store[role]) ? ensured.store[role] : [];
+        }
       }
     } catch(_) {}
 
@@ -513,51 +705,43 @@ app.post('/api/officer/daily-report', async (req, res) => {
     };
 
     let report = null;
-    if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY && tasks.length) {
-      const tasksList = tasks.map((t,i)=>`${i+1}. ${t}`).join('\n');
-      const prompt = `You are the AI ${title} writing an HONEST end-of-day report to the CEO.
-
-ASSIGNED RESPONSIBILITIES:
-${tasksList}
-
-PLATFORM DATA SNAPSHOT (real counts — null means table not present):
-${JSON.stringify(snap, null, 2)}
-
-For each responsibility, decide HONESTLY based on the snapshot:
-- "done"        → clear evidence of activity in the snapshot today
-- "in_progress" → some activity but not complete
-- "blocked"     → blocked by missing data, missing integration, or external dep
-- "not_started" → no evidence of activity yet
-
-Do NOT fake completions. If the snapshot shows 0 or null, mark not_started or blocked and explain why.
-
-Return ONLY this JSON:
-{
-  "summary": "<2-3 sentence honest plain-English summary>",
-  "tasksReviewed": [{"task":"<exact task text>","status":"done|in_progress|blocked|not_started","evidence":"<what in the snapshot supports this — be specific or say no data>"}],
-  "successes": ["<concrete win today with a number>", "..."],
-  "issues":    ["<concrete blocker or risk with detail>", "..."],
-  "actionPlan":[{"step":"<verb-led step the user can take in InfoGenie>", "priority":"high|med|low"}]
-}`;
+    let toolTrace = [];
+    if ((process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY) && tasks.length) {
       try {
-        const completion = await Promise.race([
-          openai.chat.completions.create({
-            model: 'gpt-5-mini',
-            response_format: { type: 'json_object' },
-            max_tokens: 1800, temperature: 0.3,
-            messages: [
-              { role:'system', content:`You are the AI ${title}. Output strict JSON only. Be honest about what was and was not done.` },
-              { role:'user', content: prompt }
-            ]
+        const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:daily-report-agent' });
+        const out = await Promise.race([
+          _execAgent.runExecutiveAgent({
+            role,
+            title,
+            mode: 'daily-report',
+            thinkingMode: 'execution_risks',
+            goal: `Write an honest end-of-day report for the CEO covering each assigned responsibility. Ground every status in tools/snapshot; do not invent completions.`,
+            tasks,
+            facts: { snapshot: snap },
+            tenantId: tid,
+            openaiChatWithRetry,
           }),
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_18s')), 18000))
+          new Promise((_, rej) => setTimeout(() => rej(new Error('openai_timeout_45s')), 45000)),
         ]);
-        const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+        toolTrace = out.toolTrace || [];
+        const parsed = out.result;
         if (parsed && parsed.summary && Array.isArray(parsed.tasksReviewed)) report = parsed;
-      } catch(e) { console.warn('[daily-report] AI failed:', e.message); }
+      } catch (e) {
+        console.warn('[daily-report] agent failed:', e.message);
+      }
     }
     if (!report) report = FALLBACK;
-    res.json({ ok:true, role, title, generatedAt: new Date().toISOString(), snapshot: snap, report });
+    res.json({
+      ok: true,
+      role,
+      title,
+      generatedAt: new Date().toISOString(),
+      snapshot: snap,
+      report,
+      toolTrace,
+      agent: true,
+      skillPack: _execAgent.AGENT_SKILL_PACK,
+    });
   } catch (err) {
     console.error('[daily-report] error:', err);
     res.status(500).json({ ok:false, error: err.message });
@@ -733,27 +917,29 @@ async function _generateOfficerReportInternal(role, title, tasks, tid = null) {
     successes: [], issues: [], actionPlan: []
   };
   let report = null;
-  if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY && tasks.length) {
-    const tasksList = tasks.map((t,i)=>`${i+1}. ${t}`).join('\n');
-    const prompt = `You are the AI ${title} writing an HONEST end-of-day report to the CEO.\n\nASSIGNED RESPONSIBILITIES:\n${tasksList}\n\nPLATFORM DATA SNAPSHOT (real counts — null means table not present):\n${JSON.stringify(snap, null, 2)}\n\nFor each responsibility, decide HONESTLY based on the snapshot:\n- "done"        → clear evidence of activity in the snapshot today\n- "in_progress" → some activity but not complete\n- "blocked"     → blocked by missing data, missing integration, or external dep\n- "not_started" → no evidence of activity yet\n\nDo NOT fake completions. If the snapshot shows 0 or null, mark not_started or blocked.\n\nReturn ONLY this JSON: {"summary":"<2-3 sentence honest summary>","tasksReviewed":[{"task":"<exact text>","status":"done|in_progress|blocked|not_started","evidence":"<specific or no data>"}],"successes":["<concrete win with number>"],"issues":["<concrete blocker>"],"actionPlan":[{"step":"<verb-led step>","priority":"high|med|low"}]}`;
+  if ((process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY) && tasks.length) {
     try {
-      const completion = await Promise.race([
-        openai.chat.completions.create({
-          model: 'gpt-5-mini', response_format: { type: 'json_object' },
-          max_tokens: 1800, temperature: 0.3,
-          messages: [
-            { role:'system', content:`You are the AI ${title}. Output strict JSON only. Be honest about what was and was not done.` },
-            { role:'user', content: prompt }
-          ]
+      const out = await Promise.race([
+        _execAgent.runExecutiveAgent({
+          role,
+          title,
+          mode: 'daily-report',
+          goal: 'Write an honest end-of-day report for the CEO. Ground statuses in tools/snapshot.',
+          tasks,
+          facts: { snapshot: snap },
+          tenantId: tid,
+          openaiChatWithRetry,
         }),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_18s')), 18000))
+        new Promise((_, rej) => setTimeout(() => rej(new Error('openai_timeout_45s')), 45000)),
       ]);
-      const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+      const parsed = out.result;
       if (parsed && parsed.summary && Array.isArray(parsed.tasksReviewed)) report = parsed;
-    } catch(e) { console.warn('[autoreport] AI failed for', role, e.message); }
+    } catch (e) {
+      console.warn('[autoreport] agent failed for', role, e.message);
+    }
   }
   if (!report) report = FALLBACK;
-  return { role, title, generatedAt: new Date().toISOString(), snapshot: snap, report };
+  return { role, title, generatedAt: new Date().toISOString(), snapshot: snap, report, agent: true };
 }
 
 async function _runAutonomousDailyReports({ manualTrigger = false, skipDelivery = false, tenantId = null } = {}) {
@@ -768,7 +954,8 @@ async function _runAutonomousDailyReports({ manualTrigger = false, skipDelivery 
   let _tz = settings.timezone || 'UTC';
   try { new Intl.DateTimeFormat('en-US', { timeZone: _tz }).format(new Date()); }
   catch { console.warn('[autoreport] stored timezone invalid, falling back to UTC:', _tz); _tz = 'UTC'; settings.timezone = 'UTC'; }
-  const tasksStore = (await _db.kvGet(_officerKey(_TASKS_KEY, tid), {})) || {};
+  const ensured = await _loadActivatedTaskStore(tid, { persistIfChanged: true });
+  const tasksStore = ensured.store || {};
 
   // Generate all officer reports in parallel (includes Technical Manager)
   const reports = await Promise.all(_OFFICER_ROLES.map(role => {
@@ -941,8 +1128,15 @@ const _AUTOMTG_DEFAULTS = { enabled:false, frequency:'weekly', dayOfWeek:1, hour
 if (_runtimeFlags.backgroundEnabled()) {
   setTimeout(async () => {
     try {
-      for (const base of [_TASKS_KEY, _AVATAR_KEY, _MEETINGS_KEY, _AUTOREPORT_KEY, _AUTOREPORT_HISTORY_KEY, _AUTOMTG_KEY]) {
+      for (const base of [_TASKS_KEY, _TASKS_META_KEY, _AVATAR_KEY, _MEETINGS_KEY, _AUTOREPORT_KEY, _AUTOREPORT_HISTORY_KEY, _AUTOMTG_KEY]) {
         await _officerScope.migrateGlobalSingleton(base, base);
+      }
+      // Seed activated daily tasks for every active workspace so schedulers
+      // and the AI Team page always have responsibilities without manual save.
+      let tenantIds = [];
+      try { tenantIds = await _officerCtx.listActiveTenantIds(); } catch (_) { tenantIds = []; }
+      for (const tid of tenantIds) {
+        try { await _loadActivatedTaskStore(tid, { persistIfChanged: true }); } catch (_) {}
       }
     } catch (e) { console.warn('[officer] boot migration', e.message); }
   }, 9000);
@@ -987,7 +1181,8 @@ app.get('/api/officer/system-status', async (req, res) => {
   try {
     const _db = require('./db');
     const dbOk = !!_db.hasDb();
-    const aiOk = !!process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    const _aiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
+    const aiOk = !!_aiKey && !/^_?DUMMY/i.test(_aiKey) && _aiKey !== 'dummy';
     let autoreport = { enabled:false, frequency:'daily', hour:null, minute:null, timezone:'UTC', lastScheduledRunDate:'' };
     let automtg    = { enabled:false, frequency:'weekly', dayOfWeek:1, hour:null, minute:null, timezone:'UTC', lastScheduledRunDate:'' };
     let lastMeetingAt = null, totalMeetings = 0, lastReportAt = null, totalReports = 0;
@@ -1047,7 +1242,8 @@ async function _runAutonomousMeeting({ manualTrigger = false, tenantId = null } 
   if (tenantId == null) throw new Error('no_tenant');
   const tid = tenantId;
   const settings = (await _db.kvGet(_officerKey(_AUTOMTG_KEY, tid), _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
-  const tasksStore = (await _db.kvGet(_officerKey(_TASKS_KEY, tid), {})) || {};
+  const ensured = await _loadActivatedTaskStore(tid, { persistIfChanged: true });
+  const tasksStore = ensured.store || {};
   // Entire AI executive roster is mandatory when auto-meetings are used.
   const attendees = _OFFICER_ROLES.map(r => _OFFICER_TITLES[r]);
   const tasksByRole = {};
@@ -1066,8 +1262,11 @@ This is a MANDATORY full-team meeting. EVERY attendee listed MUST appear in depa
 ATTENDEES (all required): ${attendees.join(', ')}
 TOPIC: ${topic}
 
-ASSIGNED RESPONSIBILITIES BY OFFICER:
+ASSIGNED RESPONSIBILITIES BY OFFICER (activated — team executes daily):
 ${JSON.stringify(tasksByRole, null, 2)}
+
+INFOGENIE APP SECTIONS EACH OFFICER MUST ANALYSE (report findings tied to their tasks):
+${_buildMeetingViewsBlock()}
 
 For EACH officer produce a department update with exactly these fields:
 - whatWorks: what is working in their department
