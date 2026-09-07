@@ -59,6 +59,59 @@ test('agency operations schema is tenant-scoped and has no provider-action surfa
   assert.match(api, /WHERE id=\$1 AND tenant_id=\$2/);
 });
 
+
+test('agency operations routes carry the shared tenant limiter and CodeQL disposition', () => {
+  const api = fs.readFileSync(path.join(__dirname, '..', 'services', 'agency_ops', 'api.js'), 'utf8');
+  const lines = api.split('\\n');
+  const registrations = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => /^router\\.(get|post|put|patch|delete)\\(/.test(line));
+  assert.equal(registrations.length, 9);
+  for (const { line, index } of registrations) {
+    assert.match(line, /agencyOpsSharedLimiter/);
+    assert.equal(
+      lines[index - 1],
+      '// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id',
+      `missing CodeQL disposition for ${line.trim()}`,
+    );
+  }
+  assert.match(api, /keyFn: _agencyOpsRateLimitKey/);
+  assert.match(api, /failClosed: true/);
+});
+
+test('agency operations limiter is tenant-scoped and fail-closed', async () => {
+  const agencyOpsApi = require('../services/agency_ops/api');
+  const limiter = agencyOpsApi._agencyOpsRateLimiter;
+  const limits = agencyOpsApi.agencyOpsLimits;
+  const hit = (tenantId) => new Promise((resolve, reject) => {
+    const req = { tenant: tenantId == null ? null : { id: tenantId }, headers: {}, socket: {}, path: '/agency-ops' };
+    const res = {
+      setHeader() { return res; },
+      status(code) {
+        return {
+          json(body) { resolve({ status: code, body }); },
+        };
+      },
+    };
+    try {
+      limiter(req, res, () => resolve({ status: 200 }));
+    } catch (error) {
+      reject(error);
+    }
+  });
+  limiter.reset();
+  try {
+    for (let i = 0; i < limits.max; i++) {
+      assert.equal((await hit(901)).status, 200);
+    }
+    assert.equal((await hit(901)).status, 429);
+    assert.equal((await hit(902)).status, 200);
+    assert.equal((await hit(null)).status, 429);
+  } finally {
+    limiter.reset();
+  }
+});
+
 before(async () => {
   if (!HAS_DB) return;
   await ensureAuthSchema();
@@ -92,6 +145,10 @@ before(async () => {
   app.use((req, _res, next) => {
     req.user = { id: 1, isOwner: true };
     req.can = () => true;
+    const testTenantId = Number.parseInt(req.headers['x-test-tid'], 10);
+    req.tenant = Number.isSafeInteger(testTenantId) && testTenantId > 0
+      ? { id: testTenantId }
+      : null;
     next();
   });
   app.use('/api/agency-ops', require('../services/agency_ops/api'));
