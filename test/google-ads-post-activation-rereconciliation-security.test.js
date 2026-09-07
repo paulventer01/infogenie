@@ -85,6 +85,9 @@ test('one human request observes once and replay never reopens the provider boun
     invocation_id_hash:p[8],requested_by:p[9],session_id_hash:p[10],workflow_id:p[11],state:'observing',observations:[],
     classifications:[],audit_ref:p[12],observing_at:p[13],observation_deadline:p[14],completed_at:null};return{rows:[attempt],rowCount:1};}
   if(sql.startsWith(`SELECT * FROM ${R.TABLE}`))return{rows:attempt?[{...attempt}]:[],rowCount:attempt?1:0};
+  if(sql.startsWith(`UPDATE ${R.TABLE}`)&&sql.includes("classifications=ARRAY['interrupted_observation']")){
+    attempt={...attempt,state:'failed',observations:[],classifications:['interrupted_observation'],completed_at:p[2]};
+    return{rows:[attempt],rowCount:1};}
   if(sql.startsWith(`UPDATE ${R.TABLE}`)){attempt={...attempt,state:p[2],observations:JSON.parse(p[3]),classifications:p[4],completed_at:p[5]};
     return{rows:[attempt],rowCount:1};}
   if(sql.startsWith('INSERT INTO orchestrator_audit_events'))return{rows:[],rowCount:1};
@@ -95,5 +98,10 @@ test('one human request observes once and replay never reopens the provider boun
  try{const first=await R.rereconcile(opts({pool}));assert.equal(first.state,'verified_active');assert.equal(first.replay,false);
   const replay=await R.rereconcile(opts({pool}));assert.equal(replay.state,'verified_active');assert.equal(replay.replay,true);assert.equal(observes,1);
   assert.ok(calls.indexOf('COMMIT')<calls.findIndex(x=>x.startsWith(`UPDATE ${R.TABLE}`)));
+  attempt={...attempt,state:'observing',observations:[],classifications:[],completed_at:null,
+    observation_deadline:new Date(Date.now()-1000)};const commits=calls.filter(x=>x==='COMMIT').length;
+  await assert.rejects(R.rereconcile(opts({pool,sessionId:'new-session',invocationId:'new-invocation'})),{code:'idempotency_conflict'});
+  assert.equal(attempt.state,'failed');assert.equal(attempt.classifications[0],'interrupted_observation');
+  assert.ok(calls.filter(x=>x==='COMMIT').length>commits);assert.equal(observes,1);
  }finally{source._test.proof=priorProof;source._test.observe=priorObserve;}
 });
