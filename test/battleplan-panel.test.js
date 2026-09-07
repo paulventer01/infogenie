@@ -76,10 +76,31 @@ test('Battleplan null-safe campaign metrics and no dangerouslySetInnerHTML', () 
   );
 });
 
+test('Battleplan first quick win tags estimated ROI copy', () => {
+  const quickWinSection = BATTLEPLAN.match(/\/\/ ── 6\. Quick Wins[\s\S]*?const overviewMetrics/);
+  assert.ok(quickWinSection, 'quick wins section present');
+  const block = quickWinSection[0];
+  assert.match(
+    block,
+    /firstQwCopy\s*=\s*c\.estimatedROI\s*\|\|\s*SYNTHETIC_QW_ROI/,
+    'first quick win uses estimatedROI with synthetic CTR fallback',
+  );
+  assert.match(
+    block,
+    /SYNTHETIC_QW_ROI\s*=\s*["']\+25% CTR improvement via tighter audience segmentation["']/,
+    'synthetic CTR fallback string is defined',
+  );
+  assert.match(
+    block,
+    /qi\s*===\s*0[\s\S]{0,250}<EstimateBadge/,
+    'first quick-win card (qi === 0) includes EstimateBadge for estimated ROI copy',
+  );
+});
+
 test('Battleplan honesty tagging and breadcrumb', () => {
   assert.match(
     BATTLEPLAN,
-    /EstimateBadge|ESTIMATE|estimated/,
+    /EstimateBadge/,
     'estimate / honesty tagging for synthetic metrics',
   );
   assert.match(

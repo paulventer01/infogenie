@@ -496,9 +496,11 @@ export default function Battleplan() {
   });
 
   // ── 6. Quick Wins ──────────────────────────────────────────────────────────
+  const SYNTHETIC_QW_ROI = "+25% CTR improvement via tighter audience segmentation";
+  const firstQwCopy = c.estimatedROI || SYNTHETIC_QW_ROI;
   const qwItems: { t: string; button: Btn }[] = [
     {
-      t: c.estimatedROI || "+25% CTR improvement via tighter audience segmentation",
+      t: firstQwCopy,
       button: { label: "⚡ Execute", onClick: () => callWin("bpQW", idx, 0), style: tealStyle },
     },
     {
@@ -510,14 +512,25 @@ export default function Battleplan() {
       button: { label: "📣 Plan Social", onClick: () => goToView(router, "social"), style: tealStyle },
     },
   ];
-  const qwCards: CardData[] = qwItems.map((w) => ({
-    border: "#00C9C8",
-    badgeStyle: { background: "#ECFEFF", color: "#0E7490" },
-    badge: "QUICK WIN",
-    title: w.t.length > 80 ? w.t.slice(0, 80) + "…" : w.t,
-    body: "Low effort, high impact. Act on this before competitors do.",
-    buttons: [w.button],
-  }));
+  const qwCards: CardData[] = qwItems.map((w, qi) => {
+    const titleText = w.t.length > 80 ? w.t.slice(0, 80) + "…" : w.t;
+    return {
+      border: "#00C9C8",
+      badgeStyle: { background: "#ECFEFF", color: "#0E7490" },
+      badge: "QUICK WIN",
+      title:
+        qi === 0 ? (
+          <>
+            {titleText}
+            <EstimateBadge label="estimated" />
+          </>
+        ) : (
+          titleText
+        ),
+      body: "Low effort, high impact. Act on this before competitors do.",
+      buttons: [w.button],
+    };
+  });
 
   const topRows = (c.suggestions || []).slice(0, 3);
   const initial = (c.logo || (c.name || "?")[0]).toString()[0];
