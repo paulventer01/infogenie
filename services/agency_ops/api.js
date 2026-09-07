@@ -173,7 +173,7 @@ async function _fetchEntries(pool, tenantId, range, filters = {}) {
     "         OR (r.member_id IS NULL AND r.role IS NOT NULL AND r.role=m.role)",
     '         OR (r.member_id IS NULL AND r.role IS NULL)',
     '       )',
-    '     ORDER BY (r.member_id=e.member_id) DESC,',
+    '     ORDER BY COALESCE((r.member_id=e.member_id), false) DESC,',
     '              (r.role IS NOT NULL) DESC,',
     '              r.effective_from DESC, r.id DESC',
     '     LIMIT 1',
