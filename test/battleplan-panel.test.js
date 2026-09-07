@@ -128,7 +128,41 @@ test('Battleplan attack plan select is controlled', () => {
   );
   assert.match(
     BATTLEPLAN,
-    /onChange=\{.*switchComp/,
-    'select onChange calls switchComp',
+    /switchComp\(parseInt\(e\.target\.value,\s*10\),\s*\{\s*scroll:\s*false\s*\}\)/,
+    'select onChange calls switchComp with scroll disabled',
+  );
+});
+
+test('Battleplan campaign cards preserve original campaign index for bpCC', () => {
+  const campSection = BATTLEPLAN.match(/\/\/ ── 5\. Campaign Counter-Moves[\s\S]*?\/\/ ── 6\. Quick Wins/);
+  assert.ok(campSection, 'campaign counter-moves section present');
+  const block = campSection[0];
+  assert.match(
+    block,
+    /\.map\(\(camp,\s*origIdx\)\s*=>\s*\(\{\s*camp,\s*origIdx\s*\}\)\)/,
+    'campaign cards map with original index before filtering',
+  );
+  assert.match(
+    block,
+    /callWin\(\s*["']bpCC["']\s*,\s*idx\s*,\s*origIdx\s*\)/,
+    'bpCC uses origIdx so _bpCache campaign index matches app.js _bpOpenCounter',
+  );
+  assert.doesNotMatch(
+    block,
+    /callWin\(\s*["']bpCC["']\s*,\s*idx\s*,\s*i\s*\)/,
+    'bpCC must not use filtered map index i',
+  );
+});
+
+test('Battleplan clones analysis snapshot on refresh events', () => {
+  assert.doesNotMatch(
+    BATTLEPLAN,
+    /setAd\(\s*getAnalysisData\(\)\s*\)/,
+    'refresh must not pass getAnalysisData() reference directly to setAd',
+  );
+  assert.match(
+    BATTLEPLAN,
+    /setAd\(\s*\{[\s\S]*?\.\.\.next[\s\S]*?competitors:\s*Array\.isArray\(next\.competitors\)\s*\?\s*\[\.\.\.next\.competitors\]\s*:\s*\[\]/,
+    'refresh spreads next and clones competitors array for a new snapshot',
   );
 });

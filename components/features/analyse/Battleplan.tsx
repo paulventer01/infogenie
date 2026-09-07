@@ -255,7 +255,17 @@ export default function Battleplan() {
   const [idxState, setIdxState] = useState(0);
 
   useEffect(() => {
-    const refresh = () => setAd(getAnalysisData());
+    const refresh = () => {
+      const next = getAnalysisData();
+      if (!next) {
+        setAd(null);
+        return;
+      }
+      setAd({
+        ...next,
+        competitors: Array.isArray(next.competitors) ? [...next.competitors] : [],
+      });
+    };
     refresh();
     document.addEventListener("ig:analysis-ready", refresh);
     document.addEventListener("ig:analysis-updated", refresh);
@@ -296,11 +306,13 @@ export default function Battleplan() {
     w._bpIdx = idx;
   }, [c, idx]);
 
-  function switchComp(i: number) {
+  function switchComp(i: number, opts?: { scroll?: boolean }) {
     setIdxState(i);
     if (typeof window !== "undefined") {
       (window as unknown as { _bpIdx?: number })._bpIdx = i;
-      window.scrollTo(0, 0);
+      if (opts?.scroll !== false) {
+        window.scrollTo(0, 0);
+      }
     }
   }
 
@@ -466,34 +478,38 @@ export default function Battleplan() {
     });
 
   // ── 5. Campaign Counter-Moves ──────────────────────────────────────────────
-  const campCards: CardData[] = (c.campaigns || []).filter(isUsableCampaign).slice(0, 3).map((camp, i) => {
-    const channel = fmtMetric(camp.channel);
-    const ctr = fmtMetric(camp.ctr);
-    const hasRoas = camp.roas != null && Number.isFinite(camp.roas);
-    const roasStr = hasRoas ? `${camp.roas}×` : null;
-    const roasTarget = hasRoas ? ((camp.roas as number) * 1.2).toFixed(1) : null;
-    return {
-      border: "#10B981",
-      badgeStyle: camp.status === "Active" ? { background: "#D1FAE5", color: "#065F46" } : { background: "#FEF3C7", color: "#92400E" },
-      badge: camp.status || "Campaign",
-      title: `Counter: "${(camp.name || "Campaign").slice(0, 40)}"`,
-      body: (
-        <>
-          {cName} runs this on <strong>{channel}</strong>
-          {ctr !== "—" ? ` at ${ctr} CTR` : ""}
-          {roasStr ? ` / ${roasStr} ROAS` : ""}. Launch a counter-campaign targeting the same audience with superior creative
-          {roasTarget ? (
-            <>
-              {" "}
-              — target ROAS: <span style={{ color: "#059669", fontWeight: 700 }}>{roasTarget}×</span>
-            </>
-          ) : null}
-          .
-        </>
-      ),
-      buttons: [{ label: "📣 Launch Counter-Campaign", onClick: () => callWin("bpCC", idx, i), style: greenStyle }],
-    };
-  });
+  const campCards: CardData[] = (c.campaigns || [])
+    .map((camp, origIdx) => ({ camp, origIdx }))
+    .filter(({ camp }) => isUsableCampaign(camp))
+    .slice(0, 3)
+    .map(({ camp, origIdx }) => {
+      const channel = fmtMetric(camp.channel);
+      const ctr = fmtMetric(camp.ctr);
+      const hasRoas = camp.roas != null && Number.isFinite(camp.roas);
+      const roasStr = hasRoas ? `${camp.roas}×` : null;
+      const roasTarget = hasRoas ? ((camp.roas as number) * 1.2).toFixed(1) : null;
+      return {
+        border: "#10B981",
+        badgeStyle: camp.status === "Active" ? { background: "#D1FAE5", color: "#065F46" } : { background: "#FEF3C7", color: "#92400E" },
+        badge: camp.status || "Campaign",
+        title: `Counter: "${(camp.name || "Campaign").slice(0, 40)}"`,
+        body: (
+          <>
+            {cName} runs this on <strong>{channel}</strong>
+            {ctr !== "—" ? ` at ${ctr} CTR` : ""}
+            {roasStr ? ` / ${roasStr} ROAS` : ""}. Launch a counter-campaign targeting the same audience with superior creative
+            {roasTarget ? (
+              <>
+                {" "}
+                — target ROAS: <span style={{ color: "#059669", fontWeight: 700 }}>{roasTarget}×</span>
+              </>
+            ) : null}
+            .
+          </>
+        ),
+        buttons: [{ label: "📣 Launch Counter-Campaign", onClick: () => callWin("bpCC", idx, origIdx), style: greenStyle }],
+      };
+    });
 
   // ── 6. Quick Wins ──────────────────────────────────────────────────────────
   const SYNTHETIC_QW_ROI = "+25% CTR improvement via tighter audience segmentation";
@@ -822,7 +838,7 @@ export default function Battleplan() {
               <select
                 id="attackPlanCompSelect"
                 value={String(idx)}
-                onChange={(e) => switchComp(parseInt(e.target.value, 10))}
+                onChange={(e) => switchComp(parseInt(e.target.value, 10), { scroll: false })}
                 style={{ padding: "10px 14px", borderRadius: 9, fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", width: "100%", appearance: "auto" }}
               >
                 {comps.map((cc, i) => (
