@@ -9,6 +9,7 @@ const metaActivationCapabilitiesApi = require('./meta_activation_capabilities_ap
 const googleAdsProviderDraftCapabilitiesApi = require('./google_ads_provider_draft_capabilities_api');
 const googleAdsActivationCapabilitiesApi = require('./google_ads_activation_capabilities_api');
 const googleAdsPostActivationReconciliationApi = require('./google_ads_post_activation_reconciliation_api');
+const googleAdsPostActivationReviewApi = require('./google_ads_post_activation_review_api');
 const metaPostActivationMonitoringApi = require('./meta_post_activation_monitoring_api');
 const deliveryDiscrepanciesApi = require('./delivery_discrepancies_api');
 const _db = require('../../db');
@@ -81,6 +82,7 @@ router.use('/meta-activation-capabilities', metaActivationCapabilitiesApi);
 router.use('/google-ads-provider-draft-capabilities', googleAdsProviderDraftCapabilitiesApi);
 router.use('/google-ads-activation-capabilities', googleAdsActivationCapabilitiesApi);
 router.use('/google-ads-post-activation-reconciliation', googleAdsPostActivationReconciliationApi);
+router.use('/google-ads-post-activation-reviews', googleAdsPostActivationReviewApi);
 router.use('/meta-delivery-monitoring', metaPostActivationMonitoringApi);
 router.use('/delivery-discrepancies', deliveryDiscrepanciesApi);
 

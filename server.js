@@ -668,6 +668,9 @@ const _OWNER_GATE_ALLOW = [
   // PR10D.3 is a tenant-scoped, human-only, GAQL-read surface. Its router
   // independently enforces the active-tenant monitor grant with no owner bypass.
   /^\/api\/agent-orchestrator\/google-ads-post-activation-reconciliation(?:\/|$)/,
+  // PR10D.4 is an explicit human review surface over immutable PR10D.3
+  // metadata; it has no provider, secret, automation or owner bypass.
+  /^\/api\/agent-orchestrator\/google-ads-post-activation-reviews(?:\/|$)/,
   /^\/api\/agent-orchestrator\/delivery-discrepancies(?:\/|$)/,
   /^\/api\/agent-orchestrator\/optimization-recommendations(?:\/|$)/,
   /^\/api\/advertising\/optimization-executions(?:\/|$)/,

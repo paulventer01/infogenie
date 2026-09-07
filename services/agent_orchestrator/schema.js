@@ -146,6 +146,9 @@ const ADVERTISING_ORCH_TABLES = [
   'orchestrator_google_ads_activation_capabilities',
   // PR10D.3 — sanitized post-activation read evidence.
   'orchestrator_google_ads_post_activation_reconciliation_runs',
+  // PR10D.4 — human-only post-activation discrepancy decisions.
+  'orchestrator_google_ads_post_activation_review_cases',
+  'orchestrator_google_ads_post_activation_review_events',
   // PR 8C — synchronous internal-simulation runs and their distinct lifecycle.
   'orchestrator_optimization_executions',
   'orchestrator_optimization_execution_run_events',
@@ -8188,6 +8191,189 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
     CREATE TRIGGER orchestrator_gapar_guard BEFORE INSERT OR UPDATE OR DELETE
       ON orchestrator_google_ads_post_activation_reconciliation_runs
       FOR EACH ROW EXECUTE FUNCTION orchestrator_gapar_guard();
+  `);
+
+  // PR10D.4 — a separate, Google-only human decision ledger over a completed
+  // PR10D.3 discrepancy. Only normalized observation metadata crosses this
+  // boundary; no provider identifier or credential lineage is copied.
+  await p.query(`
+    CREATE OR REPLACE FUNCTION orchestrator_gaparv_safe_observations(input JSONB)
+    RETURNS JSONB AS $fn$
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'object_kind',item->'object_kind','outcome',item->'outcome',
+        'status_classification',item->'status_classification',
+        'account_binding_matches',item->'account_binding_matches',
+        'campaign_parent_matches',item->'campaign_parent_matches',
+        'budget_parent_matches',item->'budget_parent_matches',
+        'error_classification',item->'error_classification',
+        'observed_at',item->'observed_at') ORDER BY ordinal),'[]'::jsonb)
+      FROM jsonb_array_elements(input) WITH ORDINALITY AS source(item,ordinal)
+    $fn$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE;
+
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_post_activation_review_cases(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL, reconciliation_run_id TEXT NOT NULL, activation_attempt_id TEXT NOT NULL,
+      activation_status TEXT NOT NULL, workflow_id TEXT NOT NULL,
+      intended_provider_state JSONB NOT NULL,
+      observed_provider_state JSONB NOT NULL,
+      source_discrepancy_classifications TEXT[] NOT NULL,
+      source_requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      source_observing_at TIMESTAMPTZ NOT NULL, source_completed_at TIMESTAMPTZ NOT NULL,
+      state TEXT NOT NULL DEFAULT 'open', disposition TEXT NULL,
+      assigned_reviewer_id INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT,
+      note TEXT NULL, note_digest TEXT NULL,
+      created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(), acknowledged_at TIMESTAMPTZ NULL,
+      escalated_at TIMESTAMPTZ NULL, closed_at TIMESTAMPTZ NULL,
+      audit_ref TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(tenant_id,id),
+      CONSTRAINT orchestrator_gaparv_unique_run UNIQUE(tenant_id,reconciliation_run_id),
+      CONSTRAINT orchestrator_gaparv_unique_attempt UNIQUE(tenant_id,activation_attempt_id),
+      CONSTRAINT orchestrator_gaparv_unique_audit UNIQUE(tenant_id,audit_ref),
+      CONSTRAINT orchestrator_gaparv_run_fkey FOREIGN KEY(tenant_id,reconciliation_run_id)
+        REFERENCES orchestrator_google_ads_post_activation_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_gaparv_workflow_fkey FOREIGN KEY(tenant_id,workflow_id)
+        REFERENCES orchestrator_workflows(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_gaparv_id_check CHECK(char_length(id) BETWEEN 1 AND 128 AND id~'^gaparv_'),
+      CONSTRAINT orchestrator_gaparv_activation_check CHECK(activation_status IN('succeeded','unknown')),
+      CONSTRAINT orchestrator_gaparv_intended_check CHECK(intended_provider_state=
+        '{"campaign_budget":"paused","campaign":"active","ad_group":"active"}'::jsonb),
+      CONSTRAINT orchestrator_gaparv_observed_check CHECK(jsonb_typeof(observed_provider_state)='array'
+        AND jsonb_array_length(observed_provider_state)=3
+        AND NOT jsonb_path_exists(observed_provider_state,
+          '$[*].keyvalue() ? (@.key != "object_kind" && @.key != "outcome" && @.key != "status_classification" && @.key != "account_binding_matches" && @.key != "campaign_parent_matches" && @.key != "budget_parent_matches" && @.key != "error_classification" && @.key != "observed_at")')),
+      CONSTRAINT orchestrator_gaparv_classes_check CHECK(cardinality(source_discrepancy_classifications) BETWEEN 1 AND 12
+        AND array_to_string(source_discrepancy_classifications,',')~'^[a-z0-9_]{1,96}(,[a-z0-9_]{1,96})*$'),
+      CONSTRAINT orchestrator_gaparv_state_check CHECK(state IN('open','acknowledged','escalated','closed')),
+      CONSTRAINT orchestrator_gaparv_disposition_check CHECK(disposition IS NULL OR disposition IN(
+        'provider_investigation_required','external_remediation_required','activation_state_mismatch',
+        'unexpected_activation','object_missing','relationship_mismatch','account_mismatch',
+        'accepted_risk','false_positive','closed_unresolved')),
+      CONSTRAINT orchestrator_gaparv_note_check CHECK(note IS NULL OR char_length(note) BETWEEN 1 AND 1000),
+      CONSTRAINT orchestrator_gaparv_digest_check CHECK(note_digest IS NULL OR note_digest~'^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_gaparv_lifecycle_check CHECK(version>=0 AND
+        ((state='open' AND disposition IS NULL AND assigned_reviewer_id IS NULL AND note IS NULL
+          AND note_digest IS NULL AND acknowledged_at IS NULL AND escalated_at IS NULL AND closed_at IS NULL)
+         OR (state='acknowledged' AND disposition IS NOT NULL AND assigned_reviewer_id IS NOT NULL
+          AND note IS NOT NULL AND note_digest IS NOT NULL AND acknowledged_at IS NOT NULL
+          AND escalated_at IS NULL AND closed_at IS NULL)
+         OR (state='escalated' AND disposition IS NOT NULL AND assigned_reviewer_id IS NOT NULL
+          AND note IS NOT NULL AND note_digest IS NOT NULL AND escalated_at IS NOT NULL AND closed_at IS NULL)
+         OR (state='closed' AND disposition IS NOT NULL AND assigned_reviewer_id IS NOT NULL
+          AND note IS NOT NULL AND note_digest IS NOT NULL AND closed_at IS NOT NULL)))
+    );
+    CREATE INDEX IF NOT EXISTS orchestrator_gaparv_tenant_state_created
+      ON orchestrator_google_ads_post_activation_review_cases(tenant_id,state,created_at DESC,id DESC);
+
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_post_activation_review_events(
+      tenant_id INTEGER NOT NULL, id BIGSERIAL, case_id TEXT NOT NULL, case_version INTEGER NOT NULL,
+      decision_id TEXT NOT NULL, decision_payload_hash TEXT NULL,
+      from_state TEXT NULL, to_state TEXT NOT NULL, disposition TEXT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      note TEXT NULL, note_digest TEXT NULL, audit_ref TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY(tenant_id,id),
+      CONSTRAINT orchestrator_gaparve_unique_decision UNIQUE(tenant_id,case_id,decision_id),
+      CONSTRAINT orchestrator_gaparve_unique_audit UNIQUE(tenant_id,audit_ref),
+      CONSTRAINT orchestrator_gaparve_case_fkey FOREIGN KEY(tenant_id,case_id)
+        REFERENCES orchestrator_google_ads_post_activation_review_cases(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_gaparve_version_check CHECK(case_version>=0),
+      CONSTRAINT orchestrator_gaparve_decision_check CHECK(char_length(decision_id) BETWEEN 1 AND 128),
+      CONSTRAINT orchestrator_gaparve_transition_check CHECK(
+        (case_version=0 AND from_state IS NULL AND to_state='open' AND disposition IS NULL
+          AND decision_payload_hash IS NULL AND note IS NULL AND note_digest IS NULL)
+        OR (case_version>0 AND decision_payload_hash~'^[0-9a-f]{64}$' AND disposition IS NOT NULL
+          AND note IS NOT NULL AND note_digest~'^[0-9a-f]{64}$' AND (
+            (from_state='open' AND to_state IN('acknowledged','escalated')) OR
+            (from_state='acknowledged' AND to_state IN('escalated','closed')) OR
+            (from_state='escalated' AND to_state='closed')))),
+      CONSTRAINT orchestrator_gaparve_disposition_check CHECK(disposition IS NULL OR disposition IN(
+        'provider_investigation_required','external_remediation_required','activation_state_mismatch',
+        'unexpected_activation','object_missing','relationship_mismatch','account_mismatch',
+        'accepted_risk','false_positive','closed_unresolved')),
+      CONSTRAINT orchestrator_gaparve_note_check CHECK(note IS NULL OR char_length(note) BETWEEN 1 AND 1000)
+    );
+
+    CREATE OR REPLACE FUNCTION orchestrator_gaparv_guard() RETURNS trigger AS $fn$
+    DECLARE source_run orchestrator_google_ads_post_activation_reconciliation_runs%ROWTYPE; BEGIN
+      IF TG_OP='INSERT' THEN
+        SELECT * INTO source_run FROM orchestrator_google_ads_post_activation_reconciliation_runs
+          WHERE tenant_id=NEW.tenant_id AND id=NEW.reconciliation_run_id FOR SHARE;
+        IF NOT FOUND OR source_run.state<>'discrepancy_detected' OR source_run.completed_at IS NULL
+          OR jsonb_array_length(source_run.observations)<>3
+          OR cardinality(source_run.classifications) NOT BETWEEN 1 AND 12
+          OR NEW.activation_attempt_id IS DISTINCT FROM source_run.activation_attempt_id
+          OR NEW.activation_status IS DISTINCT FROM source_run.activation_status
+          OR NEW.workflow_id IS DISTINCT FROM source_run.workflow_id
+          OR NEW.observed_provider_state IS DISTINCT FROM orchestrator_gaparv_safe_observations(source_run.observations)
+          OR NEW.source_discrepancy_classifications IS DISTINCT FROM source_run.classifications
+          OR NEW.source_requested_by IS DISTINCT FROM source_run.requested_by
+          OR NEW.source_observing_at IS DISTINCT FROM source_run.observing_at
+          OR NEW.source_completed_at IS DISTINCT FROM source_run.completed_at
+        THEN RAISE EXCEPTION 'orchestrator_gaparv_source_lineage'; END IF; RETURN NEW;
+      END IF;
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_gaparv_delete_prohibited'; END IF;
+      IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.reconciliation_run_id IS DISTINCT FROM OLD.reconciliation_run_id
+        OR NEW.activation_attempt_id IS DISTINCT FROM OLD.activation_attempt_id
+        OR NEW.activation_status IS DISTINCT FROM OLD.activation_status
+        OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id
+        OR NEW.intended_provider_state IS DISTINCT FROM OLD.intended_provider_state
+        OR NEW.observed_provider_state IS DISTINCT FROM OLD.observed_provider_state
+        OR NEW.source_discrepancy_classifications IS DISTINCT FROM OLD.source_discrepancy_classifications
+        OR NEW.source_requested_by IS DISTINCT FROM OLD.source_requested_by
+        OR NEW.source_observing_at IS DISTINCT FROM OLD.source_observing_at
+        OR NEW.source_completed_at IS DISTINCT FROM OLD.source_completed_at
+        OR NEW.created_by IS DISTINCT FROM OLD.created_by OR NEW.created_at IS DISTINCT FROM OLD.created_at
+        OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref OR NEW.version<>OLD.version+1
+      THEN RAISE EXCEPTION 'orchestrator_gaparv_immutable_binding'; END IF;
+      IF OLD.state='closed' OR NOT ((OLD.state='open' AND NEW.state IN('acknowledged','escalated'))
+        OR (OLD.state='acknowledged' AND NEW.state IN('escalated','closed'))
+        OR (OLD.state='escalated' AND NEW.state='closed'))
+      THEN RAISE EXCEPTION 'orchestrator_gaparv_invalid_transition'; END IF; RETURN NEW;
+    END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gaparv_guard ON orchestrator_google_ads_post_activation_review_cases;
+    CREATE TRIGGER orchestrator_gaparv_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_google_ads_post_activation_review_cases FOR EACH ROW EXECUTE FUNCTION orchestrator_gaparv_guard();
+
+    CREATE OR REPLACE FUNCTION orchestrator_gaparve_guard() RETURNS trigger AS $fn$
+    BEGIN RAISE EXCEPTION 'orchestrator_gaparve_append_only'; END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gaparve_guard ON orchestrator_google_ads_post_activation_review_events;
+    CREATE TRIGGER orchestrator_gaparve_guard BEFORE UPDATE OR DELETE
+      ON orchestrator_google_ads_post_activation_review_events FOR EACH ROW EXECUTE FUNCTION orchestrator_gaparve_guard();
+
+    CREATE OR REPLACE FUNCTION orchestrator_gaparv_ledger_consistent() RETURNS trigger AS $fn$
+    DECLARE c RECORD; e RECORD; n INTEGER; BEGIN
+      IF TG_TABLE_NAME='orchestrator_google_ads_post_activation_review_cases' THEN
+        SELECT * INTO c FROM orchestrator_google_ads_post_activation_review_cases
+          WHERE tenant_id=NEW.tenant_id AND id=NEW.id;
+      ELSE
+        SELECT * INTO c FROM orchestrator_google_ads_post_activation_review_cases
+          WHERE tenant_id=NEW.tenant_id AND id=NEW.case_id;
+      END IF;
+      IF NOT FOUND THEN RETURN NULL; END IF;
+      SELECT * INTO e FROM orchestrator_google_ads_post_activation_review_events
+        WHERE tenant_id=c.tenant_id AND case_id=c.id ORDER BY case_version DESC,id DESC LIMIT 1;
+      SELECT count(*) INTO n FROM orchestrator_google_ads_post_activation_review_events
+        WHERE tenant_id=c.tenant_id AND case_id=c.id;
+      IF n<>c.version+1 OR e.case_version<>c.version OR e.to_state<>c.state
+        OR e.disposition IS DISTINCT FROM c.disposition
+        OR e.actor_user_id IS DISTINCT FROM COALESCE(c.assigned_reviewer_id,c.created_by)
+        OR NOT EXISTS(SELECT 1 FROM orchestrator_audit_events a WHERE a.tenant_id=c.tenant_id
+          AND a.workflow_id=c.workflow_id
+          AND a.event='google_ads_post_activation_review_'||CASE WHEN c.version=0 THEN 'opened' ELSE c.state END
+          AND a.detail->>'post_activation_review_case_id'=c.id
+          AND a.detail->>'audit_reference'=e.audit_ref)
+      THEN RAISE EXCEPTION 'orchestrator_gaparv_ledger_inconsistent'; END IF; RETURN NULL;
+    END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gaparv_case_consistency ON orchestrator_google_ads_post_activation_review_cases;
+    CREATE CONSTRAINT TRIGGER orchestrator_gaparv_case_consistency AFTER INSERT OR UPDATE
+      ON orchestrator_google_ads_post_activation_review_cases DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION orchestrator_gaparv_ledger_consistent();
+    DROP TRIGGER IF EXISTS orchestrator_gaparve_consistency ON orchestrator_google_ads_post_activation_review_events;
+    CREATE CONSTRAINT TRIGGER orchestrator_gaparve_consistency AFTER INSERT
+      ON orchestrator_google_ads_post_activation_review_events DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION orchestrator_gaparv_ledger_consistent();
   `);
 
   // PR 8C — consumes one approved PR8B request without changing it. No provider

@@ -3522,3 +3522,28 @@ queries, credential material, tokens, raw payloads, raw responses, or raw
 errors. Replay is metadata-only, an expired observation is durably failed, and
 there is no worker, scheduler, queue, automatic retry, remediation,
 optimization, activation, or provider-write path.
+
+## PR10D.4 — Human review for Google Ads post-activation discrepancies
+
+Only a completed PR10D.3 `discrepancy_detected` result with all three bounded,
+sanitized observations may create one PR10D.4 case. The service re-proves the
+active tenant, membership and explicit `advertising.reconciliation.review`
+grant from PostgreSQL on every operation. Tenant/run and tenant/activation
+uniqueness make case creation idempotent under retry and concurrency.
+
+The case copies only internal workflow and activation references, the fixed
+intended status classes, normalized observed status/relationship metadata,
+bounded discrepancy classifications, timestamps and audit references. Source
+evidence is immutable. Human acknowledge, escalate and close decisions require
+an optimistic version, idempotency key, approved disposition and sanitized
+note; the case, append-only event and audit record commit atomically. There is
+no direct open-to-closed transition and no automatic approval or closure.
+
+The module has no Google connector, OAuth, credential vault, secret scope,
+network, provider read/write, retry, remediation, activation, optimization,
+worker, queue, scheduler or Meta dependency. Every response is sanitized and
+states `external_action_taken: false`.
+
+Coverage: `test/google-ads-post-activation-review-security.test.js` and
+`test/integration/google-ads-post-activation-review-postgres.test.js`, both
+registered in `scripts/run-advertising-certification.js`.
