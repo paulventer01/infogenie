@@ -3547,3 +3547,32 @@ states `external_action_taken: false`.
 Coverage: `test/google-ads-post-activation-review-security.test.js` and
 `test/integration/google-ads-post-activation-review-postgres.test.js`, both
 registered in `scripts/run-advertising-certification.js`.
+
+## PR10D.5 — Human-authorized Google Ads post-review re-reconciliation
+
+Only a real human holding the active tenant's explicit
+`advertising.reconciliation.review` grant may request one read-only observation
+for a PR10D.4 case whose exact current closure event records
+`external_remediation_required`. The service re-locks and re-proves the closed
+case, closure event, byte-exact PostgreSQL source timestamps, classifications
+and sanitized observations, and the original PR10D.3/PR10D.2 authority lineage
+before the observing attempt commits and again before terminal settlement.
+
+The one-attempt-per-case ledger binds the invocation, actor and session.
+Duplicate delivery is a metadata-only replay; an expired observation is
+durably failed and cannot be restarted. The observing row and audit commit
+before the existing short-lived secret scope opens, and terminal evidence and
+audit commit atomically.
+
+The only provider operation is the existing fixed, three-object GAQL observer.
+There is no mutate transport, caller-supplied query, retry, remediation,
+activation, optimization, worker, queue, scheduler or webhook. Durable and
+public output contains only normalized evidence and internal references, never
+provider/customer identifiers, credential lineage, tokens, URLs, queries, raw
+payloads, raw responses or raw errors, and always reports
+`external_action_taken: false`.
+
+Coverage: `test/google-ads-post-activation-rereconciliation-security.test.js`
+and
+`test/integration/google-ads-post-activation-rereconciliation-postgres.test.js`,
+both registered in `scripts/run-advertising-certification.js`.

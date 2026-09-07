@@ -11,6 +11,7 @@ const lineage=require('../security/google_ads_paused_draft_reconciliation');
 
 const TABLE='orchestrator_google_ads_post_activation_reconciliation_runs';
 const PERMISSION='advertising.campaign.monitor';
+const POST_REVIEW_PERMISSION='advertising.reconciliation.review';
 const KINDS=Object.freeze(['campaign_budget','campaign','ad_group']);
 const TERMINAL=Object.freeze(['verified_active','verified_inactive','discrepancy_detected','failed']);
 const LEASE_MS=180000;
@@ -21,6 +22,7 @@ const ERRORS=new Set(['not_found','provider_unauthorized','rate_limited','provid
 const hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 const same=(a,b)=>{if(typeof a!=='string'||typeof b!=='string')return false;const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&crypto.timingSafeEqual(x,y);};
 function deny(code){const e=new Error(code);e.code=code;e.blocked=true;e.external_action_taken=false;return e;}
+const requiredPermission=o=>o&&o.authorizationPurpose==='post_review'?POST_REVIEW_PERMISSION:PERMISSION;
 function human(o){const id=Number(o&&o.actorUserId);if(!Number.isSafeInteger(id)||id<1||o.actorType!=='human'
   ||o.principalType!=='user'||!SAFE_ID.test(String(o.sessionId||'')))throw deny('human_session_required');
   if(typeof o.hasExplicitTenantPermission!=='function'||o.hasExplicitTenantPermission(PERMISSION)!==true)throw deny('permission_denied');return id;}
@@ -101,7 +103,7 @@ async function proof(c,o,actor,lock='FOR SHARE'){const hint=await c.query(`SELEC
     JOIN tenant_users tu ON tu.tenant_id=t.id AND tu.user_id=$3 AND tu.status='active'
     JOIN roles role ON role.id=tu.role_id AND (role.tenant_id=t.id OR role.tenant_id IS NULL)
     WHERE a.tenant_id=$1 AND a.id=$2 AND role.permissions ? $4 ${lock} OF cred,t,tu,role`,
-   [o.tenantId,o.activationAttemptId,actor,PERMISSION]);
+   [o.tenantId,o.activationAttemptId,actor,requiredPermission(o)]);
   if(q.rowCount!==1)throw deny('permission_denied');const row=q.rows[0];
   if(!['succeeded','unknown'].includes(row.status))throw deny('activation_attempt_ineligible');
   if(row.capability_status!=='consumed'||row.operation_status!=='succeeded'||row.operation_acted!==true
@@ -184,5 +186,5 @@ async function getRun(opts={}){const actor=human(opts),tenantId=Number(opts.tena
     if(q.rowCount!==1)throw deny('reconciliation_not_found');const row=q.rows[0];if(Number(row.requested_by)!==actor||!same(row.session_id_hash,hash(opts.sessionId)))throw deny('reconciliation_not_found');
     return publicRun(row,true);});}
 
-module.exports={TABLE,PERMISSION,KINDS,TERMINAL,LEASE_MS,reconcile,getRun,evaluate,publicRun,
-  _test:{safeObservation,objectDigest,validateObjects,proof,existing,reserve,observe,settle}};
+module.exports={TABLE,PERMISSION,POST_REVIEW_PERMISSION,KINDS,TERMINAL,LEASE_MS,reconcile,getRun,evaluate,publicRun,
+  _test:{requiredPermission,safeObservation,objectDigest,validateObjects,proof,existing,reserve,observe,settle}};
