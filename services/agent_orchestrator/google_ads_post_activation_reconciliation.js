@@ -82,12 +82,15 @@ async function proof(c,o,actor,lock='FOR SHARE'){const hint=await c.query(`SELEC
    [o.tenantId,hint.rows[0].capability_id]);
   await c.query(`SELECT id FROM orchestrator_google_ads_provider_draft_operations WHERE tenant_id=$1 AND id=$2 ${lock}`,[o.tenantId,hint.rows[0].operation_id]);
   const q=await c.query(`SELECT a.*,cap.status capability_status,cap.operation_id capability_operation_id,
+    cap.actor_user_id capability_actor_user_id,cap.session_id_hash capability_session_id_hash,
+    cap.workflow_id capability_workflow_id,cap.credential_owner_user_id capability_credential_owner_user_id,
     cap.reconciliation_run_id capability_reconciliation_run_id,
     cap.credential_ref_id capability_credential_ref_id,cap.credential_ref_version capability_credential_ref_version,
     cap.account_fingerprint capability_account_fingerprint,cap.ledger_root_hash capability_ledger_root_hash,
     op.status operation_status,op.workflow_id operation_workflow_id,op.reconciliation_run_id operation_reconciliation_run_id,
     op.credential_ref_id operation_credential_ref_id,op.credential_ref_version operation_credential_ref_version,
     op.account_fingerprint operation_account_fingerprint,
+    op.published operation_published,op.activated operation_activated,
     op.external_action_taken operation_acted,cred.status credential_status,cred.revoked_at,
     cred.version current_credential_version,cred.account_fingerprint current_account_fingerprint,
     cred.owner_user_id FROM orchestrator_google_ads_activation_attempts a
@@ -102,6 +105,10 @@ async function proof(c,o,actor,lock='FOR SHARE'){const hint=await c.query(`SELEC
   if(q.rowCount!==1)throw deny('permission_denied');const row=q.rows[0];
   if(!['succeeded','unknown'].includes(row.status))throw deny('activation_attempt_ineligible');
   if(row.capability_status!=='consumed'||row.operation_status!=='succeeded'||row.operation_acted!==true
+    ||row.operation_published!==false||row.operation_activated!==false
+    ||Number(row.capability_actor_user_id)!==Number(row.actor_user_id)
+    ||!same(row.capability_session_id_hash,row.session_id_hash)||row.capability_workflow_id!==row.workflow_id
+    ||Number(row.capability_credential_owner_user_id)!==Number(row.credential_owner_user_id)
     ||row.capability_operation_id!==row.operation_id||row.capability_reconciliation_run_id!==row.reconciliation_run_id
     ||row.capability_credential_ref_id!==row.credential_ref_id
     ||Number(row.capability_credential_ref_version)!==Number(row.credential_ref_version)
@@ -111,6 +118,9 @@ async function proof(c,o,actor,lock='FOR SHARE'){const hint=await c.query(`SELEC
     ||Number(row.operation_credential_ref_version)!==Number(row.credential_ref_version)
     ||!same(row.operation_account_fingerprint,row.account_fingerprint)
     ||Number(row.owner_user_id)!==Number(row.credential_owner_user_id)
+    ||Number(row.objects_expected)!==2||Number(row.objects_activated)!==(row.status==='succeeded'?2:0)
+    ||row.requires_reconciliation!==(row.status==='unknown')
+    ||row.external_action_taken!==(row.status==='succeeded'?true:null)
     ||row.credential_status!=='active'||row.revoked_at||Number(row.current_credential_version)!==Number(row.credential_ref_version)
     ||!same(row.current_account_fingerprint,row.account_fingerprint))throw deny('authoritative_binding_mismatch');
   const objects=(await c.query(`SELECT object_kind,sequence_number,provider_object_id,provider_object_id_digest,

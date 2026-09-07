@@ -84,12 +84,16 @@ function lifecyclePool(seed=null){
   capability_id:'cap-1',workflow_id:'wf-1',operation_id:'op-1',reconciliation_run_id:'source-run-1',
   credential_owner_user_id:11,credential_ref_id:'cred-1',credential_ref_version:3,
   account_fingerprint:fingerprint,ledger_root_hash:lineage.ledgerRoot(objects),objects_digest:service._test.objectDigest(objects),
+  actor_user_id:11,session_id_hash:digest('session-1'),objects_expected:2,objects_activated:2,
+  requires_reconciliation:false,external_action_taken:true,
   capability_status:'consumed',capability_operation_id:'op-1',capability_reconciliation_run_id:'source-run-1',
+  capability_actor_user_id:11,capability_session_id_hash:digest('session-1'),capability_workflow_id:'wf-1',
+  capability_credential_owner_user_id:11,
   capability_credential_ref_id:'cred-1',capability_credential_ref_version:3,
   capability_account_fingerprint:fingerprint,capability_ledger_root_hash:lineage.ledgerRoot(objects),
   operation_status:'succeeded',operation_workflow_id:'wf-1',operation_reconciliation_run_id:'source-run-1',
   operation_credential_ref_id:'cred-1',operation_credential_ref_version:3,operation_account_fingerprint:fingerprint,
-  operation_acted:true,credential_status:'active',revoked_at:null,current_credential_version:3,
+  operation_published:false,operation_activated:false,operation_acted:true,credential_status:'active',revoked_at:null,current_credential_version:3,
   current_account_fingerprint:fingerprint,owner_user_id:11};
  let run=seed;
  const client={async query(sql,params=[]){
