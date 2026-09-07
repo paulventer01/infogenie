@@ -3464,3 +3464,36 @@ This foundation has no provider connector or Google API reachability. It must no
 - Credential vault: `services/credentials/vault.js`
 - Advertising provider mutation guard: `services/security/advertising_provider_mutations.js`
 - Advertising provider-draft capability: `services/security/advertising_provider_capabilities.js`
+
+
+## PR10D.2 — Human-triggered Google Ads activation execution
+
+The only Google Ads activation route is
+`POST /api/agent-orchestrator/google-ads-activation-capabilities/:capabilityId/activate`.
+It requires a real human session, active tenant membership, and the explicit
+`advertising.campaign.activate` grant. Its JSON body is exactly
+`{"invocation_id":"..."}`; customer ids, object ids, URLs, request bodies,
+statuses, budgets, bids, schedules, and retry controls are rejected or cannot
+be represented at this boundary.
+
+Before the provider call, the service atomically reserves and consumes one
+PR10D.1 capability and writes one durable activation-attempt row. It then
+re-locks and re-proves the complete authority lineage, current approval,
+credential version and fingerprint, all three PAUSED object bindings, both kill
+switches, the tenant/member/role grant, and invocation lineage. Credential
+material is available only inside the dedicated short-lived activation secret
+scope at the last responsible moment.
+
+The connector internally constructs one `googleAds:mutate` containing exactly
+two status-only updates: the bound campaign and ad group move from `PAUSED` to
+`ENABLED`. `partialFailure` is false. The campaign budget is identity-only
+and is never mutated. There is no create, remove, budget, bid, spend, schedule,
+optimization, generic proxy, worker, queue, automatic retry, or remediation
+path. Live mutation is off unless
+`INFOGENIE_LIVE_GOOGLE_ADS_ACTIVATION=1`.
+
+Only complete, identity-matched two-result evidence may settle `succeeded`.
+A determinate provider rejection settles `failed`. Timeout, transport loss,
+5xx, malformed, oversized, or incomplete evidence settles `unknown` and
+requires reconciliation. Duplicate delivery returns sanitized stored metadata
+without reopening authority or secrets and without contacting Google.

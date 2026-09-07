@@ -7991,6 +7991,135 @@ async function _runEnsureAgentOrchestratorSchemaLocked(p) {
       OR (status='revoked' AND (reservation_id_hash IS NULL)=(reserved_at IS NULL) AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NOT NULL AND revoked_by IS NOT NULL)
       OR (status='expired' AND (reservation_id_hash IS NULL)=(reserved_at IS NULL) AND consumed_at IS NULL AND invocation_id_hash IS NULL AND revoked_at IS NULL AND revoked_by IS NULL))`);
 
+  // PR10D.2 — durable, tenant-leading evidence for exactly one human
+  // activation attempt. Raw Google customer/object ids, requests, responses,
+  // tokens, URLs and errors are forbidden from this public ledger.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_activation_attempts(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL, capability_id TEXT NOT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      session_id_hash TEXT NOT NULL, workflow_id TEXT NOT NULL, operation_id TEXT NOT NULL,
+      reconciliation_run_id TEXT NOT NULL,
+      credential_owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      credential_ref_id TEXT NOT NULL, credential_ref_version INTEGER NOT NULL,
+      account_fingerprint TEXT NOT NULL, ledger_root_hash TEXT NOT NULL,
+      objects_digest TEXT NOT NULL, invocation_id_hash TEXT NOT NULL,
+      status TEXT NOT NULL, result_code TEXT NULL,
+      objects_expected INTEGER NOT NULL DEFAULT 2, objects_activated INTEGER NOT NULL DEFAULT 0,
+      requires_reconciliation BOOLEAN NOT NULL DEFAULT FALSE, external_action_taken BOOLEAN NULL,
+      created_at TIMESTAMPTZ NOT NULL, started_at TIMESTAMPTZ NOT NULL,
+      settled_at TIMESTAMPTZ NULL, audit_ref TEXT NOT NULL,
+      PRIMARY KEY(tenant_id,id),
+      UNIQUE(tenant_id,capability_id), UNIQUE(tenant_id,invocation_id_hash), UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,capability_id) REFERENCES orchestrator_google_ads_activation_capabilities(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,operation_id) REFERENCES orchestrator_google_ads_provider_draft_operations(tenant_id,id) ON DELETE RESTRICT,
+      FOREIGN KEY(tenant_id,reconciliation_run_id) REFERENCES orchestrator_google_ads_reconciliation_runs(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_gaact_hashes CHECK(session_id_hash~'^[0-9a-f]{64}$'
+        AND account_fingerprint~'^[0-9a-f]{64}$' AND ledger_root_hash~'^[0-9a-f]{64}$'
+        AND objects_digest~'^[0-9a-f]{64}$' AND invocation_id_hash~'^[0-9a-f]{64}$'),
+      CONSTRAINT orchestrator_gaact_status CHECK(status IN('in_progress','succeeded','failed','unknown')),
+      CONSTRAINT orchestrator_gaact_result CHECK(
+        (status='in_progress' AND result_code IS NULL AND objects_activated=0 AND requires_reconciliation=FALSE
+          AND external_action_taken=FALSE AND settled_at IS NULL)
+        OR (status='succeeded' AND result_code='provider_activation_succeeded' AND objects_activated=2
+          AND requires_reconciliation=FALSE AND external_action_taken=TRUE AND settled_at IS NOT NULL)
+        OR (status='failed' AND result_code='provider_activation_failed' AND objects_activated=0
+          AND requires_reconciliation=FALSE AND external_action_taken=FALSE AND settled_at IS NOT NULL)
+        OR (status='unknown' AND result_code='provider_activation_unknown' AND objects_activated=0
+          AND requires_reconciliation=TRUE AND external_action_taken IS NULL AND settled_at IS NOT NULL)),
+      CONSTRAINT orchestrator_gaact_counts CHECK(objects_expected=2 AND objects_activated IN(0,2)),
+      CONSTRAINT orchestrator_gaact_time CHECK(started_at>=created_at AND (settled_at IS NULL OR settled_at>=started_at))
+    );
+    CREATE TABLE IF NOT EXISTS orchestrator_google_ads_activation_object_outcomes(
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
+      id TEXT NOT NULL, activation_attempt_id TEXT NOT NULL,
+      object_kind TEXT NOT NULL, sequence_number INTEGER NOT NULL,
+      outcome TEXT NOT NULL, result_code TEXT NOT NULL,
+      requires_reconciliation BOOLEAN NOT NULL, external_action_taken BOOLEAN NULL,
+      recorded_at TIMESTAMPTZ NOT NULL, audit_ref TEXT NOT NULL,
+      PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,activation_attempt_id,object_kind),
+      UNIQUE(tenant_id,activation_attempt_id,sequence_number), UNIQUE(tenant_id,audit_ref),
+      FOREIGN KEY(tenant_id,activation_attempt_id)
+        REFERENCES orchestrator_google_ads_activation_attempts(tenant_id,id) ON DELETE RESTRICT,
+      CONSTRAINT orchestrator_gaacto_kind CHECK(
+        (object_kind='campaign' AND sequence_number=1) OR (object_kind='ad_group' AND sequence_number=2)),
+      CONSTRAINT orchestrator_gaacto_result CHECK(
+        (outcome='succeeded' AND result_code='provider_activation_succeeded'
+          AND requires_reconciliation=FALSE AND external_action_taken=TRUE)
+        OR (outcome='failed' AND result_code='provider_activation_failed'
+          AND requires_reconciliation=FALSE AND external_action_taken=FALSE)
+        OR (outcome='unknown' AND result_code='provider_activation_unknown'
+          AND requires_reconciliation=TRUE AND external_action_taken IS NULL))
+    );
+    CREATE INDEX IF NOT EXISTS orchestrator_gaact_operation_idx
+      ON orchestrator_google_ads_activation_attempts(tenant_id,operation_id,created_at DESC);
+
+    CREATE OR REPLACE FUNCTION orchestrator_gaact_guard() RETURNS trigger AS $fn$
+    DECLARE cap RECORD; object_count INTEGER; BEGIN
+      IF TG_OP='DELETE' THEN RAISE EXCEPTION 'orchestrator_gaact_audit_evidence'; END IF;
+      IF TG_OP='INSERT' THEN
+        IF NEW.status<>'in_progress' OR NEW.result_code IS NOT NULL OR NEW.settled_at IS NOT NULL
+          OR NEW.external_action_taken<>FALSE OR NEW.requires_reconciliation<>FALSE
+        THEN RAISE EXCEPTION 'orchestrator_gaact_invalid_initial_state'; END IF;
+        SELECT * INTO cap FROM orchestrator_google_ads_activation_capabilities
+          WHERE tenant_id=NEW.tenant_id AND id=NEW.capability_id;
+        SELECT count(*) INTO object_count FROM orchestrator_google_ads_provider_draft_objects
+          WHERE tenant_id=NEW.tenant_id AND operation_id=NEW.operation_id
+            AND provider_status='PAUSED' AND published=FALSE AND activated=FALSE AND serving=FALSE;
+        IF cap.id IS NULL OR cap.status<>'consumed' OR object_count<>3
+          OR cap.actor_user_id<>NEW.actor_user_id OR cap.session_id_hash<>NEW.session_id_hash
+          OR cap.workflow_id<>NEW.workflow_id OR cap.operation_id<>NEW.operation_id
+          OR cap.reconciliation_run_id<>NEW.reconciliation_run_id
+          OR cap.credential_owner_user_id<>NEW.credential_owner_user_id
+          OR cap.credential_ref_id<>NEW.credential_ref_id
+          OR cap.credential_ref_version<>NEW.credential_ref_version
+          OR cap.account_fingerprint<>NEW.account_fingerprint OR cap.ledger_root_hash<>NEW.ledger_root_hash
+          OR cap.invocation_id_hash<>NEW.invocation_id_hash
+        THEN RAISE EXCEPTION 'orchestrator_gaact_invalid_provenance'; END IF;
+        RETURN NEW;
+      END IF;
+      IF OLD.status<>'in_progress' OR NEW.status NOT IN('succeeded','failed','unknown')
+        OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id
+        OR NEW.capability_id IS DISTINCT FROM OLD.capability_id
+        OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.session_id_hash IS DISTINCT FROM OLD.session_id_hash
+        OR NEW.workflow_id IS DISTINCT FROM OLD.workflow_id OR NEW.operation_id IS DISTINCT FROM OLD.operation_id
+        OR NEW.reconciliation_run_id IS DISTINCT FROM OLD.reconciliation_run_id
+        OR NEW.credential_owner_user_id IS DISTINCT FROM OLD.credential_owner_user_id
+        OR NEW.credential_ref_id IS DISTINCT FROM OLD.credential_ref_id
+        OR NEW.credential_ref_version IS DISTINCT FROM OLD.credential_ref_version
+        OR NEW.account_fingerprint IS DISTINCT FROM OLD.account_fingerprint
+        OR NEW.ledger_root_hash IS DISTINCT FROM OLD.ledger_root_hash OR NEW.objects_digest IS DISTINCT FROM OLD.objects_digest
+        OR NEW.invocation_id_hash IS DISTINCT FROM OLD.invocation_id_hash OR NEW.objects_expected IS DISTINCT FROM OLD.objects_expected
+        OR NEW.created_at IS DISTINCT FROM OLD.created_at OR NEW.started_at IS DISTINCT FROM OLD.started_at
+        OR NEW.audit_ref IS DISTINCT FROM OLD.audit_ref
+      THEN RAISE EXCEPTION 'orchestrator_gaact_immutable_or_invalid_transition'; END IF;
+      SELECT count(*) INTO object_count FROM orchestrator_google_ads_activation_object_outcomes
+        WHERE tenant_id=NEW.tenant_id AND activation_attempt_id=NEW.id
+          AND outcome=NEW.status AND result_code=NEW.result_code
+          AND requires_reconciliation=NEW.requires_reconciliation
+          AND external_action_taken IS NOT DISTINCT FROM NEW.external_action_taken;
+      IF object_count<>2 THEN RAISE EXCEPTION 'orchestrator_gaact_object_outcome_mismatch'; END IF;
+      RETURN NEW;
+    END;$fn$ LANGUAGE plpgsql;
+    CREATE OR REPLACE FUNCTION orchestrator_gaacto_guard() RETURNS trigger AS $fn$
+    DECLARE parent RECORD; BEGIN
+      IF TG_OP<>'INSERT' THEN RAISE EXCEPTION 'orchestrator_gaacto_immutable'; END IF;
+      SELECT status,tenant_id INTO parent FROM orchestrator_google_ads_activation_attempts
+        WHERE tenant_id=NEW.tenant_id AND id=NEW.activation_attempt_id;
+      IF parent.tenant_id IS NULL OR parent.status<>'in_progress'
+      THEN RAISE EXCEPTION 'orchestrator_gaacto_invalid_provenance'; END IF;
+      RETURN NEW;
+    END;$fn$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS orchestrator_gaacto_guard ON orchestrator_google_ads_activation_object_outcomes;
+    CREATE TRIGGER orchestrator_gaacto_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_google_ads_activation_object_outcomes FOR EACH ROW EXECUTE FUNCTION orchestrator_gaacto_guard();
+
+    DROP TRIGGER IF EXISTS orchestrator_gaact_guard ON orchestrator_google_ads_activation_attempts;
+    CREATE TRIGGER orchestrator_gaact_guard BEFORE INSERT OR UPDATE OR DELETE
+      ON orchestrator_google_ads_activation_attempts FOR EACH ROW EXECUTE FUNCTION orchestrator_gaact_guard();
+  `);
+
   // PR 8C — consumes one approved PR8B request without changing it. No provider
   // identifiers, credential references, source hashes, payloads, or errors are stored.
   // orchestrator_advertising_global_kill_switches is a platform-wide GLOBAL
