@@ -40,7 +40,7 @@ if(!db.hasDb())test('Google post-review re-reconciliation PostgreSQL requires DA
 
  test('PostgreSQL constraints admit only clean observing and bounded terminal metadata',async()=>{const c=await db.getPool().connect();
   try{await c.query(`CREATE TEMP TABLE gaparra_probe
-    (LIKE orchestrator_google_ads_post_activation_rereconciliation_attempts INCLUDING DEFAULTS INCLUDING CONSTRAINTS)`);
+    (LIKE orchestrator_google_ads_post_activation_rereconcile_attempts INCLUDING DEFAULTS INCLUDING CONSTRAINTS)`);
    const insert=`INSERT INTO gaparra_probe(tenant_id,id,review_case_id,review_version,closure_event_id,
     original_reconciliation_run_id,activation_attempt_id,activation_status,invocation_id_hash,requested_by,session_id_hash,
     workflow_id,state,observations,classifications,audit_ref,observing_at,observation_deadline,completed_at)
