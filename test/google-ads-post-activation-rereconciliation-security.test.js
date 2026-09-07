@@ -55,6 +55,7 @@ test('route and dependency surfaces permit one exact read-only human action only
  assert.doesNotMatch(code,/require\(['"].*(?:activation_execution|worker|scheduler|webhook)/i);
  const apiCode=fs.readFileSync(require.resolve('../services/agent_orchestrator/google_ads_post_activation_review_api'),'utf8');
  assert.match(apiCode,/post\('\/:caseId\/rereconcile'/);assert.match(apiCode,/exact\(req\.body,\['invocation_id'\]\)/);
+ assert.doesNotMatch(apiCode,/tokenTransport|fetch\s*\(|client_secret|refresh_token/);
 });
 
 test('source lineage proof uses exact database equality for copied D4 evidence',()=>{
