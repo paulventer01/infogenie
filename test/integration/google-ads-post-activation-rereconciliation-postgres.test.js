@@ -26,11 +26,12 @@ if(!db.hasDb())test('Google post-review re-reconciliation PostgreSQL requires DA
  test('database guards bind the closed D4 case, closure event and exact D3 evidence',async()=>{const p=db.getPool();
   const guard=(await p.query(`SELECT pg_get_functiondef(tgfoid) definition FROM pg_trigger
     WHERE tgname='orchestrator_gaparra_guard' AND NOT tgisinternal`)).rows[0].definition;
-  for(const invariant of ['external_remediation_required','review.version <> new.review_version','event.case_version <> review.version',
-   'source.id <> review.reconciliation_run_id','source.observing_at IS DISTINCT FROM review.source_observing_at',
-   'orchestrator_gaparv_safe_observations(source.observations)','orchestrator_gaparra_invalid_provenance',
-   'orchestrator_gaparra_immutable_or_invalid_transition','orchestrator_gaparra_delete_prohibited'])
-   assert.ok(guard.includes(invariant),invariant);
+  for(const invariant of [/external_remediation_required/i,/review\.version\s*<>\s*new\.review_version/i,
+   /event\.case_version\s*<>\s*review\.version/i,/source\.id\s*<>\s*review\.reconciliation_run_id/i,
+   /source\.observing_at\s+IS DISTINCT FROM\s+review\.source_observing_at/i,
+   /orchestrator_gaparv_safe_observations\(source\.observations\)/i,/orchestrator_gaparra_invalid_provenance/i,
+   /orchestrator_gaparra_immutable_or_invalid_transition/i,/orchestrator_gaparra_delete_prohibited/i])
+   assert.match(guard,invariant);
   const consistent=(await p.query(`SELECT pg_get_functiondef(tgfoid) definition FROM pg_trigger
     WHERE tgname='orchestrator_gaparra_consistency'`)).rows[0].definition;
   assert.ok(consistent.includes('orchestrator_gaparra_audit_inconsistent'));
