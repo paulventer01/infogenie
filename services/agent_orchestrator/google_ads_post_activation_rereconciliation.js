@@ -73,13 +73,17 @@ async function find(c,tenant,caseId){const q=await c.query(`SELECT a.*,e.audit_r
   JOIN ${REVIEW_EVENTS} e ON e.tenant_id=a.tenant_id AND e.id=a.closure_event_id
   WHERE a.tenant_id=$1 AND a.review_case_id=$2 FOR UPDATE OF a`,[tenant,caseId]);
   return q.rowCount===1?q.rows[0]:null;}
+async function finalizeExpired(c,row,closureAuditRef){if(row.state!=='observing')return row;
+  const now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
+  if(new Date(row.observation_deadline)>now)return row;
+  const done=await c.query(`UPDATE ${TABLE} SET state='failed',
+    classifications=ARRAY['interrupted_observation'],completed_at=$3 WHERE tenant_id=$1 AND id=$2 AND state='observing' RETURNING *`,
+   [row.tenant_id,row.id,now]);if(done.rowCount!==1)throw deny('invalid_rereconciliation_transition');
+  const failed={...done.rows[0],closure_audit_ref:closureAuditRef};
+  await audit(c,failed,'google_ads_post_activation_rereconciliation_failed');return failed;}
 async function existing(pool,o,actor,digest){const found=await tx(pool,async c=>{const p=await proof(c,o,actor);let row=await find(c,o.tenantId,o.reviewCaseId);
   if(!row)return null;
-  if(row.state==='observing'){const now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
-    if(new Date(row.observation_deadline)<=now){const done=await c.query(`UPDATE ${TABLE} SET state='failed',
-      classifications=ARRAY['interrupted_observation'],completed_at=$3 WHERE tenant_id=$1 AND id=$2 AND state='observing' RETURNING *`,
-     [o.tenantId,row.id,now]);if(done.rowCount!==1)throw deny('invalid_rereconciliation_transition');row={...done.rows[0],closure_audit_ref:p.event.audit_ref};
-      await audit(c,row,'google_ads_post_activation_rereconciliation_failed');}}
+  row=await finalizeExpired(c,row,p.event.audit_ref);
   return {row,closure_audit_ref:p.event.audit_ref};});
   if(!found)return null;sameRequest(found.row,o,actor,digest);
   return publicAttempt({...found.row,closure_audit_ref:found.closure_audit_ref},true);}
@@ -116,12 +120,14 @@ async function rereconcile(o={}){const {actor,tenant}=authorize(o),pool=o.pool||
   return settle(pool,opts,actor,started,outcome);}
 async function getAttempt(o={}){const actor=Number(o.actorUserId),tenant=Number(o.tenantId),attemptId=String(o.attemptId||'');
   authorize({...o,invocationId:'read'});if(!SAFE_ID.test(attemptId))throw deny('validation_failed');
-  return tx(o.pool||db.getPool(),async c=>{const hint=await c.query(`SELECT review_case_id FROM ${TABLE} WHERE tenant_id=$1 AND id=$2`,[tenant,attemptId]);
+  const found=await tx(o.pool||db.getPool(),async c=>{const hint=await c.query(`SELECT review_case_id FROM ${TABLE} WHERE tenant_id=$1 AND id=$2`,[tenant,attemptId]);
     if(hint.rowCount!==1||hint.rows[0].review_case_id!==String(o.reviewCaseId))throw deny('rereconciliation_not_found');
     const p=await proof(c,{...o,tenantId:tenant,reviewCaseId:hint.rows[0].review_case_id,
       authorizationPurpose:'post_review'},actor);const row=await find(c,tenant,hint.rows[0].review_case_id);
-    if(!row||row.id!==attemptId||Number(row.requested_by)!==actor||!same(row.session_id_hash,hash(o.sessionId)))
-      throw deny('rereconciliation_not_found');return publicAttempt({...row,closure_audit_ref:p.event.audit_ref},true);});}
+    if(!row||row.id!==attemptId)throw deny('rereconciliation_not_found');return {row:await finalizeExpired(c,row,p.event.audit_ref),
+      closure_audit_ref:p.event.audit_ref};});
+  if(Number(found.row.requested_by)!==actor||!same(found.row.session_id_hash,hash(o.sessionId)))throw deny('rereconciliation_not_found');
+  return publicAttempt({...found.row,closure_audit_ref:found.closure_audit_ref},true);}
 
 module.exports={TABLE,PERMISSION,rereconcile,getAttempt,publicAttempt,
-  _test:{authorize,requestHash,storageObservations,sameRequest,proof,find,existing,reserve,settle,audit}};
+  _test:{authorize,requestHash,storageObservations,sameRequest,proof,find,finalizeExpired,existing,reserve,settle,audit}};
