@@ -144,16 +144,32 @@ function _capAttackPlanField(s, max = ATTACK_PLAN_FIELD_MAX) {
   return String(s == null ? '' : s).slice(0, max);
 }
 
+function _isPlainObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+// competitorData is optional (omit / undefined → empty object after normalize).
+// When the field is present it must be a plain object — the prompt interpolates
+// .traffic / .channels / etc. An explicit null, array, or primitive is a
+// malformed request, not a provider outage: substituting a template would
+// misrepresent an unparseable body as a successful fallback.
+function _attackPlanCompetitorDataError(body) {
+  if (!_isPlainObject(body)) return null;
+  if (!Object.prototype.hasOwnProperty.call(body, 'competitorData')) return null;
+  const cd = body.competitorData;
+  if (cd === undefined) return null;
+  if (_isPlainObject(cd)) return null;
+  return 'competitorData must be an object';
+}
+
 function _normalizeAttackPlanInput(body) {
-  const src = (body && typeof body === 'object' && !Array.isArray(body)) ? body : {};
+  const src = _isPlainObject(body) ? body : {};
   const keywords = Array.isArray(src.prefillKeywords) ? src.prefillKeywords : [];
   return {
     myDomain: _capAttackPlanField(src.myDomain ?? 'yourdomain.com'),
     competitor: _capAttackPlanField(src.competitor ?? 'competitor'),
     industry: _capAttackPlanField(src.industry ?? 'your industry'),
-    competitorData: (src.competitorData && typeof src.competitorData === 'object' && !Array.isArray(src.competitorData))
-      ? src.competitorData
-      : {},
+    competitorData: _isPlainObject(src.competitorData) ? src.competitorData : {},
     prefillKeywords: keywords
       .map((k) => _capAttackPlanField(k).trim())
       .filter(Boolean)
@@ -765,6 +781,10 @@ app.get('/api/ai-attack-plan/:id', async (req, res) => {
 // ── POST /api/ai-attack-plan ─────────────────────────────────────────────────
 app.post('/api/ai-attack-plan', async (req, res) => {
   try {
+    const competitorDataError = _attackPlanCompetitorDataError(req.body);
+    if (competitorDataError) {
+      return res.json({ ok: false, plan: null, error: competitorDataError });
+    }
     const tid = await _tkvCtx.resolveTenantId(req, { label: 'attack-plan:save' });
     const { myDomain, competitor, industry, competitorData, prefillKeywords, prefillContext } = _normalizeAttackPlanInput(req.body);
     const templateInput = { myDomain, competitor, industry, prefillKeywords };
