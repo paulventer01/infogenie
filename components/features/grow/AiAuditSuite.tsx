@@ -2470,7 +2470,7 @@ function AttributionModule({
               style={{
                 height: "100%",
                 width: `${((s.sessions || 0) / maxAi) * 100}%`,
-                background: "linear-gradient(90deg,#7C3AED,#4338CA)",
+                background: "linear-gradient(90deg,#0f766e,#4338CA)",
                 borderRadius: 4,
               }}
             />

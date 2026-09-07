@@ -175,7 +175,7 @@ function scoreColor(score: number): string {
     : score >= 60
       ? "#F59E0B"
       : score >= 40
-        ? "#F97316"
+        ? "#0f766e"
         : "#EF4444";
 }
 function scoreLabel(score: number): string {
@@ -1291,7 +1291,7 @@ function CountryPanel({
                       style={{
                         textAlign: "center",
                         fontWeight: 700,
-                        color: "#7C3AED",
+                        color: "#0f766e",
                       }}
                     >
                       {c.rank}

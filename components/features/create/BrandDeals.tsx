@@ -184,7 +184,7 @@ const IG = {
   teal: "#0f766e",
   blue: "#0284c7",
   green: "#16a34a",
-  warm: "#f97316",
+  warm: "#0f766e",
   soft: "rgba(15, 118, 110, 0.12)",
   shadow: "0 1px 0 rgba(11, 18, 32, 0.04), 0 12px 32px rgba(11, 18, 32, 0.06)",
   grad: "linear-gradient(135deg, #0f766e 0%, #0284c7 100%)",

@@ -56,6 +56,11 @@ function toast(msg: string) {
 export default function Canva() {
   const [templates, setTemplates] = useState<TemplateCategory[]>([]);
   const [activeCategory, setActiveCategory] = useState("social-post");
+  const [oauthReady, setOauthReady] = useState(false);
+  const [kitBrief, setKitBrief] = useState("");
+  const [kitLinks, setKitLinks] = useState<{ name: string; open_url: string; platform: string }[]>([]);
+  const [kitBusy, setKitBusy] = useState(false);
+  const [brand, setBrand] = useState("");
 
   const [formatType, setFormatType] = useState("social-post");
   const [title, setTitle] = useState("");
@@ -77,6 +82,8 @@ export default function Canva() {
     (async () => {
       const d = await apiGet<TemplatesResult>("/api/canva/templates");
       setTemplates(d.templates || []);
+      const st = await apiGet<{ ok?: boolean; oauthReady?: boolean }>("/api/canva/status");
+      setOauthReady(!!st.oauthReady);
     })();
   }, []);
 
@@ -196,6 +203,163 @@ export default function Canva() {
       </div>
 
       <div className="container" style={{ paddingTop: 24, paddingBottom: 56 }}>
+        <div
+          style={{
+            background: "linear-gradient(135deg,#EEF2FF,#ECFEFF)",
+            border: "1px solid #C7D2FE",
+            borderRadius: 14,
+            padding: 16,
+            marginBottom: 20,
+            maxWidth: 1100,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <div>
+              <div style={{ fontWeight: 800, color: "#0F172A" }}>Design Kit + Connect</div>
+              <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+                Build a paste-ready brief and open matching Canva templates.{" "}
+                {oauthReady ? "Canva Connect credentials detected." : "Template deep-links work without OAuth."}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  const r = await apiGet<{ ok?: boolean; authorize_url?: string; error?: string }>(
+                    "/api/canva/oauth/start"
+                  );
+                  if (r.authorize_url) window.open(r.authorize_url, "_blank", "noopener,noreferrer");
+                  else toast(r.error || "Add CANVA_CLIENT_ID + CANVA_CLIENT_SECRET to enable Connect.");
+                }}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 9,
+                  border: "1px solid #6366F1",
+                  background: oauthReady ? "#4F46E5" : "#fff",
+                  color: oauthReady ? "#fff" : "#4F46E5",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                {oauthReady ? "Connect Canva" : "Connect Canva (needs keys)"}
+              </button>
+              <button
+                type="button"
+                disabled={kitBusy}
+                onClick={async () => {
+                  setKitBusy(true);
+                  const r = await apiPost<{
+                    ok?: boolean;
+                    brief?: string;
+                    templates?: { name: string; open_url: string; platform: string }[];
+                    error?: string;
+                  }>("/api/canva/design-kit", {
+                    type: formatType || activeCategory,
+                    title: title.trim(),
+                    body: body.trim(),
+                    cta: cta.trim() || "Learn more",
+                    brand: brand.trim(),
+                  });
+                  setKitBrief(r.brief || "");
+                  setKitLinks(r.templates || []);
+                  setKitBusy(false);
+                  if (!r.ok) toast(r.error || "Design Kit failed");
+                }}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 9,
+                  border: "none",
+                  background: "linear-gradient(135deg,#0066FF,#00C9C8)",
+                  color: "#fff",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  opacity: kitBusy ? 0.7 : 1,
+                }}
+              >
+                {kitBusy ? "Building…" : "Build Design Kit"}
+              </button>
+            </div>
+          </div>
+          <input
+            value={brand}
+            onChange={(e) => setBrand(e.target.value)}
+            placeholder="Brand name (optional)"
+            style={{
+              marginTop: 12,
+              width: "100%",
+              maxWidth: 360,
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid #CBD5E1",
+              fontSize: 13,
+            }}
+          />
+          {kitBrief && (
+            <div style={{ marginTop: 12 }}>
+              <pre
+                style={{
+                  whiteSpace: "pre-wrap",
+                  background: "#fff",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 10,
+                  padding: 12,
+                  fontSize: 12,
+                  color: "#334155",
+                  margin: 0,
+                }}
+              >
+                {kitBrief}
+              </pre>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(kitBrief);
+                      toast("Brief copied");
+                    } catch {
+                      toast("Copy failed");
+                    }
+                  }}
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #CBD5E1",
+                    background: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  Copy brief
+                </button>
+                {kitLinks.map((t) => (
+                  <a
+                    key={t.name}
+                    href={safeUrl(t.open_url)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      padding: "7px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #A5B4FC",
+                      background: "#EEF2FF",
+                      color: "#3730A3",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      textDecoration: "none",
+                    }}
+                  >
+                    Open {t.name} →
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div
           style={{
             display: "grid",

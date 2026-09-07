@@ -239,11 +239,11 @@ export default function BacklinkMonitor() {
             style={{
               padding: "10px 22px",
               background: "#fff",
-              border: "2px solid #7C3AED",
+              border: "2px solid #0f766e",
               borderRadius: 8,
               fontSize: "0.84rem",
               fontWeight: 800,
-              color: "#7C3AED",
+              color: "#0f766e",
               cursor: "pointer",
               marginLeft: 8,
             }}
@@ -372,8 +372,8 @@ export default function BacklinkMonitor() {
                           onClick={() => runOne(mn.id)}
                           style={{
                             background: "none",
-                            border: "1px solid #7C3AED",
-                            color: "#7C3AED",
+                            border: "1px solid #0f766e",
+                            color: "#0f766e",
                             borderRadius: 6,
                             padding: "4px 10px",
                             fontSize: "0.72rem",

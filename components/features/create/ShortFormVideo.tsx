@@ -42,7 +42,7 @@ export default function ShortFormVideo() {
               alignItems: "flex-start",
             }}
           >
-            <span style={{ fontSize: "1.5rem", fontWeight: 900, color: "#7C3AED", minWidth: 28 }}>{s.n}</span>
+            <span style={{ fontSize: "1.5rem", fontWeight: 900, color: "#0f766e", minWidth: 28 }}>{s.n}</span>
             <span style={{ fontSize: "1.4rem" }}>{s.icon}</span>
             <div>
               <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#0F172A" }}>{s.title}</div>

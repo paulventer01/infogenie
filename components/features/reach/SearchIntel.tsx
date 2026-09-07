@@ -301,9 +301,9 @@ export default function SearchIntel() {
                 onClick={() => setTab(t.id)}
                 style={{
                   padding: "11px 18px",
-                  background: active ? "#7C3AED" : "transparent",
+                  background: active ? "#0f766e" : "transparent",
                   border: "none",
-                  borderBottom: `3px solid ${active ? "#7C3AED" : "transparent"}`,
+                  borderBottom: `3px solid ${active ? "#0f766e" : "transparent"}`,
                   fontSize: "0.82rem",
                   fontWeight: 800,
                   color: active ? "#fff" : "#6B7280",
@@ -843,8 +843,8 @@ function QueryCard({
           onClick={onRun}
           style={{
             padding: 7,
-            background: "#7C3AED",
-            border: "2px solid #7C3AED",
+            background: "#0f766e",
+            border: "2px solid #0f766e",
             borderRadius: 6,
             fontSize: "0.7rem",
             fontWeight: 800,
@@ -1104,7 +1104,7 @@ function HistoryRunRow({ rn }: { rn: HistoryRun }) {
                       href={url}
                       target="_blank"
                       rel="noreferrer"
-                      style={{ color: "#7C3AED" }}
+                      style={{ color: "#0f766e" }}
                     >
                       {url.slice(0, 60)}
                     </a>
@@ -1216,8 +1216,8 @@ function PulseTab() {
             disabled={status === "loading"}
             style={{
               padding: "9px 18px",
-              background: "#7C3AED",
-              border: "2px solid #7C3AED",
+              background: "#0f766e",
+              border: "2px solid #0f766e",
               borderRadius: 7,
               fontSize: "0.78rem",
               fontWeight: 800,
@@ -1282,7 +1282,7 @@ function PulseTab() {
               </div>
               <div style={{ fontSize: "0.72rem", color: "#6B7280" }}>
                 Total monthly volume:{" "}
-                <strong style={{ color: "#7C3AED" }}>
+                <strong style={{ color: "#0f766e" }}>
                   {(result.totalVolume || 0).toLocaleString()}
                 </strong>
               </div>
@@ -1331,7 +1331,7 @@ function PulseTab() {
                         textAlign: "right",
                         fontVariantNumeric: "tabular-nums",
                         fontWeight: 700,
-                        color: "#7C3AED",
+                        color: "#0f766e",
                       }}
                     >
                       {(s.search_volume || 0).toLocaleString()}
@@ -1440,8 +1440,8 @@ function ImageTab() {
             disabled={status === "loading"}
             style={{
               padding: "9px 18px",
-              background: "#7C3AED",
-              border: "2px solid #7C3AED",
+              background: "#0f766e",
+              border: "2px solid #0f766e",
               borderRadius: 7,
               fontSize: "0.78rem",
               fontWeight: 800,

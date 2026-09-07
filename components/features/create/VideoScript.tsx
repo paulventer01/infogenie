@@ -370,7 +370,7 @@ function ScriptCard({
               >
                 CUE
               </div>
-              <div style={{ color: "#7C3AED", fontStyle: "italic" }}>
+              <div style={{ color: "#0f766e", fontStyle: "italic" }}>
                 {b.cue || ""}
               </div>
             </div>

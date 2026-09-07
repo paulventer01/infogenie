@@ -50,7 +50,7 @@ const severityColor = (s: string) =>
   (
     {
       critical: "#EF4444",
-      serious: "#F97316",
+      serious: "#0f766e",
       moderate: "#F59E0B",
       minor: "#6366F1",
     } as Record<string, string>

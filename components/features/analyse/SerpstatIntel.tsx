@@ -87,8 +87,8 @@ export default function SerpstatIntel() {
             <button key={t.k} onClick={() => setTab(t.k)} style={{
               padding: "8px 14px", border: 0, background: "none", cursor: "pointer",
               fontWeight: tab === t.k ? 700 : 500,
-              color: tab === t.k ? "#8b5cf6" : "#64748b",
-              borderBottom: tab === t.k ? "2px solid #8b5cf6" : "2px solid transparent",
+              color: tab === t.k ? "#0284c7" : "#64748b",
+              borderBottom: tab === t.k ? "2px solid #0284c7" : "2px solid transparent",
               marginBottom: -2, fontSize: "0.85rem", whiteSpace: "nowrap",
             }}>{t.label}</button>
           ))}
@@ -119,7 +119,7 @@ export default function SerpstatIntel() {
               {SE_OPTIONS.map(o => <option key={o.k} value={o.k}>{o.label}</option>)}
             </select>
           </div>
-          <button className="btn btn-primary" style={{ background: "#8b5cf6", borderColor: "#8b5cf6" }} disabled={loading}
+          <button className="btn btn-primary" style={{ background: "#0284c7", borderColor: "#0284c7" }} disabled={loading}
             onClick={() => {
               if (tab === "domain")      run(async () => { const d = await post("domain",      { domain: domain.trim(), se }); if (!d.ok) throw new Error(d.error); setSummary(d.summary); });
               if (tab === "keywords")    run(async () => { const d = await post("keywords",    { domain: domain.trim(), se, limit: 20 }); if (!d.ok) throw new Error(d.error); setKws(d.keywords || []); });
@@ -183,7 +183,7 @@ export default function SerpstatIntel() {
                     <td style={{ padding: "8px 12px", color: "#64748b" }}>{k.cpc ? `$${Number(k.cpc).toFixed(2)}` : "—"}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 700, color: (k.difficulty||0) > 70 ? "#ef4444" : (k.difficulty||0) > 40 ? "#f59e0b" : "#10b981" }}>{k.difficulty ?? "—"}</td>
                     <td style={{ padding: "8px 12px", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {k.url ? <a href={k.url} target="_blank" rel="noreferrer" style={{ color: "#8b5cf6", textDecoration: "none", fontSize: "0.75rem" }}>{k.url.replace(/^https?:\/\//, "")}</a> : "—"}
+                      {k.url ? <a href={k.url} target="_blank" rel="noreferrer" style={{ color: "#0284c7", textDecoration: "none", fontSize: "0.75rem" }}>{k.url.replace(/^https?:\/\//, "")}</a> : "—"}
                     </td>
                   </tr>
                 ))}
@@ -201,11 +201,11 @@ export default function SerpstatIntel() {
             {comps.map((c, i) => (
               <div key={i} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 18px", display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
                 <div style={{ fontWeight: 700, flex: "1 1 160px" }}>
-                  <a href={`https://${c.domain}`} target="_blank" rel="noreferrer" style={{ color: "#8b5cf6", textDecoration: "none" }}>{c.domain}</a>
+                  <a href={`https://${c.domain}`} target="_blank" rel="noreferrer" style={{ color: "#0284c7", textDecoration: "none" }}>{c.domain}</a>
                 </div>
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#8b5cf6" }}>{c.relevance?.toFixed(2) ?? "—"}</div>
+                    <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0284c7" }}>{c.relevance?.toFixed(2) ?? "—"}</div>
                     <div style={{ fontSize: "0.7rem", color: "#94a3b8" }}>Relevance</div>
                   </div>
                   <div style={{ textAlign: "center" }}>

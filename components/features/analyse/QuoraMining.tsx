@@ -30,7 +30,7 @@ interface MineResult {
 
 const INTENT_COLOR: Record<string, string> = {
   informational: "#0066FF",
-  comparison: "#7C3AED",
+  comparison: "#0f766e",
   recommendation: "#EC4899",
   complaint: "#DC2626",
   "how-to": "#0E9F6E",

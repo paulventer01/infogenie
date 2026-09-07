@@ -119,7 +119,7 @@ function generate(): Section[] {
   const sector = esc(lsSector());
   const kw = esc(lsKeywords()[0] || lsSector());
   const rng = seedRng(lsDomain() + "lp");
-  const cl = ["#0EA5E9", "#6366F1", "#A855F7", "#10B981", "#F59E0B"];
+  const cl = ["#0EA5E9", "#6366F1", "#0284c7", "#10B981", "#F59E0B"];
   const accent = cl[Math.floor(rng() * cl.length)];
   return [
     {

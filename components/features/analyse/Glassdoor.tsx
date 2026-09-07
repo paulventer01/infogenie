@@ -349,7 +349,7 @@ export default function Glassdoor() {
                       style={{
                         fontSize: "1.6rem",
                         fontWeight: 800,
-                        color: "#7C3AED",
+                        color: "#0f766e",
                       }}
                     >
                       {num(result.recommend_pct) || "—"}
@@ -395,7 +395,7 @@ export default function Glassdoor() {
                     borderRadius: 12,
                     padding: "16px 20px",
                     marginBottom: 14,
-                    borderLeft: "4px solid #7C3AED",
+                    borderLeft: "4px solid #0f766e",
                   }}
                 >
                   <h3

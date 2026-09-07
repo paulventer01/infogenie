@@ -486,7 +486,7 @@ export default function UnifiedInbox() {
               <button
                 onClick={generateDraft}
                 disabled={aiDrafting}
-                style={{ padding: "8px 16px", background: "#f5f3ff", color: "#7c3aed", border: "1px solid #ddd6fe", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: "0.88rem" }}
+                style={{ padding: "8px 16px", background: "#f5f3ff", color: "#0f766e", border: "1px solid #ddd6fe", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: "0.88rem" }}
               >
                 {aiDrafting ? "⏳ Drafting…" : "✨ AI Draft"}
               </button>

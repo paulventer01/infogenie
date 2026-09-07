@@ -47,7 +47,7 @@ function safeId(s: string | undefined): string {
 function SvgBody({ d }: { d: Infographic }) {
   const pal: Required<Palette> = {
     primary: d.palette?.primary || "#0066FF",
-    accent: d.palette?.accent || "#7C3AED",
+    accent: d.palette?.accent || "#0f766e",
     text: d.palette?.text || "#0A1628",
   };
   const items = d.items || [];
@@ -541,7 +541,7 @@ export default function Infographics() {
             onClick={generate}
             disabled={generating}
             style={{
-              background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+              background: "linear-gradient(135deg,#0f766e,#0284c7)",
               color: "#fff",
               border: 0,
               padding: "10px 22px",
@@ -613,7 +613,7 @@ export default function Infographics() {
                   x={W / 2}
                   y={H - 15}
                   textAnchor="middle"
-                  fill={d.palette?.accent || "#7C3AED"}
+                  fill={d.palette?.accent || "#0f766e"}
                   fontSize="12"
                   fontStyle="italic"
                 >
@@ -638,7 +638,7 @@ export default function Infographics() {
                 <button
                   onClick={downloadPng}
                   style={{
-                    background: "#7C3AED",
+                    background: "#0f766e",
                     color: "#fff",
                     border: 0,
                     padding: "8px 16px",

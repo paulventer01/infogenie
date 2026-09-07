@@ -288,7 +288,7 @@ function _renderTwinResult(d){
   const r = d.results||{};
   const el = document.getElementById('dt-result');
   el.innerHTML = `
-<div class="ig-card" style="border-left:4px solid #8b5cf6;margin-bottom:16px">
+<div class="ig-card" style="border-left:4px solid #0284c7;margin-bottom:16px">
   <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap">
     ${_scoreRing(r.confidence||65)}
     <div>
@@ -303,7 +303,7 @@ function _renderTwinResult(d){
     <div style="font-size:.75rem;font-weight:600;color:#6b7280;margin-bottom:8px">WHAT HAPPENS OVER 90 DAYS</div>
     <div style="display:flex;flex-direction:column;gap:8px">${r.timeline.map((t,i)=>`
       <div style="display:flex;gap:12px;padding:10px;background:#faf5ff;border-radius:8px">
-        <div style="width:80px;min-width:80px;font-size:.75rem;font-weight:700;color:#8b5cf6;padding-top:2px">${_e(t.period)}</div>
+        <div style="width:80px;min-width:80px;font-size:.75rem;font-weight:700;color:#0284c7;padding-top:2px">${_e(t.period)}</div>
         <div><div style="font-size:.85rem;font-weight:600">${_e(t.what_happens)}</div><div style="font-size:.8rem;color:#6b7280">${_e(t.metric_impact)}</div></div>
       </div>`).join('')}</div>
   </div>`:''}
@@ -402,7 +402,7 @@ function _renderAEResult(d){
     <div style="text-align:center"><div style="font-size:2rem;font-weight:800;color:#3b82f6">${d.stats?.total_found||0}</div><div style="font-size:.75rem;color:#6b7280">Prospects Found</div></div>
     <div style="text-align:center"><div style="font-size:2rem;font-weight:800;color:#10b981">${d.stats?.emails_sent||0}</div><div style="font-size:.75rem;color:#6b7280">Emails Sent</div></div>
     <div style="text-align:center"><div style="font-size:2rem;font-weight:800;color:#f59e0b">${d.stats?.replies||0}</div><div style="font-size:.75rem;color:#6b7280">Replies</div></div>
-    <div style="text-align:center"><div style="font-size:2rem;font-weight:800;color:#8b5cf6">${d.stats?.meetings_booked||0}</div><div style="font-size:.75rem;color:#6b7280">Meetings Booked</div></div>
+    <div style="text-align:center"><div style="font-size:2rem;font-weight:800;color:#0284c7">${d.stats?.meetings_booked||0}</div><div style="font-size:.75rem;color:#6b7280">Meetings Booked</div></div>
   </div>
   <h4 style="font-weight:600;margin-bottom:8px">Prospects</h4>
   <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.85rem">
@@ -688,7 +688,7 @@ window.buildAutooperator = function(){
       <div class="form-group"><label>Budget Remaining</label><input id="ao-budget" class="form-control" type="number" placeholder="18000" /></div>
     </div>
     <div class="form-group"><label>Known Issues (one per line)</label><textarea id="ao-issues" class="form-control" rows="3" placeholder="ROAS dropping on Meta&#10;TikTok CPM spiked 40%&#10;Landing page CVR below 2%"></textarea></div>
-    <button id="ao-run" class="btn btn-primary" style="width:100%;background:linear-gradient(135deg,#7c3aed,#3b82f6)">🦾 Deploy Operator Now</button>
+    <button id="ao-run" class="btn btn-primary" style="width:100%;background:linear-gradient(135deg,#0f766e,#3b82f6)">🦾 Deploy Operator Now</button>
   </div>
   <div id="ao-history-panel" style="flex:1;min-width:280px"></div>
 </div>
@@ -746,7 +746,7 @@ function _renderAOResult(d){
   </div>
 
   ${r.new_ad_copy?.headline?`<div style="background:#faf5ff;border-radius:8px;padding:12px;margin-bottom:12px">
-    <div style="font-size:.75rem;font-weight:600;color:#8b5cf6;margin-bottom:8px">✏️ REWRITTEN AD COPY</div>
+    <div style="font-size:.75rem;font-weight:600;color:#0284c7;margin-bottom:8px">✏️ REWRITTEN AD COPY</div>
     <div><span style="font-size:.75rem;color:#6b7280">Headline: </span><strong>${_e(r.new_ad_copy.headline)}</strong></div>
     <div style="font-size:.85rem;color:#374151;margin:4px 0">${_e(r.new_ad_copy.body||'')}</div>
     <div><span style="font-size:.75rem;color:#6b7280">CTA: </span><strong>${_e(r.new_ad_copy.cta||'')}</strong></div>

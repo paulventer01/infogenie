@@ -536,7 +536,7 @@ export default function ContentScore() {
                               background: "#EDE9FE",
                               border: "none",
                               borderRadius: 5,
-                              color: "#7C3AED",
+                              color: "#0f766e",
                               fontSize: "0.7rem",
                               fontWeight: 800,
                               cursor: "pointer",
@@ -616,7 +616,7 @@ export default function ContentScore() {
                               style={{
                                 fontSize: "0.78rem",
                                 fontWeight: 800,
-                                color: "#7C3AED",
+                                color: "#0f766e",
                                 marginBottom: 5,
                               }}
                             >

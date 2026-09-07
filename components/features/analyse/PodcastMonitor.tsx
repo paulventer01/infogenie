@@ -35,7 +35,7 @@ const SENT_COLOR: Record<string, string> = {
   negative: "#B91C1C",
 };
 const PLAT_COLOR: Record<string, string> = {
-  apple: "#A855F7",
+  apple: "#0284c7",
   spotify: "#1DB954",
   youtube: "#FF0000",
   other: "#6B7280",
@@ -235,7 +235,7 @@ export default function PodcastMonitor() {
                 <span
                   style={{
                     background:
-                      result.source === "perplexity" ? "#7C3AED" : "#9CA3AF",
+                      result.source === "perplexity" ? "#0f766e" : "#9CA3AF",
                     color: "#fff",
                     padding: "3px 9px",
                     borderRadius: 5,
@@ -351,7 +351,7 @@ export default function PodcastMonitor() {
                             href={safeUrl(ep.url)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            style={{ color: "#7C3AED", fontSize: "0.78rem" }}
+                            style={{ color: "#0f766e", fontSize: "0.78rem" }}
                           >
                             🔗 Open episode
                           </a>

@@ -35,7 +35,7 @@ interface LogEntry {
 
 const AUTOMATIONS: Automation[] = [
   {
-    id: "social-autopub", cat: "social", icon: "🚀", color: "#7C3AED", bg: "#F5F3FF", border: "#DDD6FE",
+    id: "social-autopub", cat: "social", icon: "🚀", color: "#0f766e", bg: "#F5F3FF", border: "#DDD6FE",
     name: "Social Auto-Publisher",
     desc: "Monitors your scheduled posts every 60 seconds and automatically publishes them to connected platforms at their exact scheduled time.",
     trigger: "Scheduled post time reached",
@@ -83,7 +83,7 @@ const AUTOMATIONS: Automation[] = [
     nav: "campaigns",
   },
   {
-    id: "competitor-spend-alert", cat: "campaigns", icon: "🔔", color: "#7C3AED", bg: "#F5F3FF", border: "#DDD6FE",
+    id: "competitor-spend-alert", cat: "campaigns", icon: "🔔", color: "#0f766e", bg: "#F5F3FF", border: "#DDD6FE",
     name: "Competitor Spend Alert",
     desc: "Detects significant changes in competitor estimated ad spend. Sends an in-app alert when a competitor increases or decreases spend by 25%+.",
     trigger: "Competitor spend change ≥ 25%",
@@ -107,7 +107,7 @@ const AUTOMATIONS: Automation[] = [
     nav: "intelligence",
   },
   {
-    id: "reddit-watcher", cat: "intelligence", icon: "🔴", color: "#FF6B35", bg: "#FFF4EF", border: "#FDBA74",
+    id: "reddit-watcher", cat: "intelligence", icon: "🔴", color: "#0f766e", bg: "#FFF4EF", border: "#FDBA74",
     name: "Reddit Signal Watcher",
     desc: "Auto-monitors subreddits relevant to your industry every 2 hours. Surfaces high-relevance threads and pre-drafts reply suggestions.",
     trigger: "Every 2 hours",
@@ -161,7 +161,7 @@ const CAT_LABELS: Record<string, string> = {
   intelligence: "Intelligence", reengage: "Re-Engagement", ai: "AI Visibility",
 };
 const CAT_COLORS: Record<string, string> = {
-  all: "#10B981", social: "#7C3AED", campaigns: "#059669",
+  all: "#10B981", social: "#0f766e", campaigns: "#059669",
   intelligence: "#0066FF", reengage: "#D97706", ai: "#10A37F",
 };
 

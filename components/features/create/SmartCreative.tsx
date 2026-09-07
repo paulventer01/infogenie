@@ -155,12 +155,12 @@ function generate(): CreativeData {
   ];
   const palettes: [string, string][] = [
     ["#0EA5E9", "#6366F1"],
-    ["#EC4899", "#8B5CF6"],
+    ["#EC4899", "#0284c7"],
     ["#10B981", "#0EA5E9"],
     ["#F59E0B", "#EF4444"],
-    ["#6366F1", "#A855F7"],
+    ["#6366F1", "#0284c7"],
     ["#0F172A", "#1E40AF"],
-    ["#DC2626", "#F97316"],
+    ["#DC2626", "#0f766e"],
     ["#059669", "#10B981"],
   ];
   const platforms: Platform[] = [

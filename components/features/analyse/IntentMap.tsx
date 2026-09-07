@@ -95,7 +95,7 @@ const BUCKETS: {
   desc: string;
 }[] = [
   { key: "informational", label: "Informational", icon: "📚", color: "#0066FF", bg: "#EFF6FF", desc: "User wants to learn" },
-  { key: "commercial", label: "Commercial", icon: "⚖️", color: "#7C3AED", bg: "#F5F3FF", desc: "User comparing options" },
+  { key: "commercial", label: "Commercial", icon: "⚖️", color: "#0f766e", bg: "#F5F3FF", desc: "User comparing options" },
   { key: "transactional", label: "Transactional", icon: "💳", color: "#10B981", bg: "#ECFDF5", desc: "User ready to buy" },
   { key: "navigational", label: "Navigational", icon: "🧭", color: "#F59E0B", bg: "#FEF3C7", desc: "User searching a brand" },
 ];
@@ -238,7 +238,7 @@ export default function IntentMap() {
     <div className="view-header-wrap">
       <div
         className="view-header ig-panel-hero"
-        style={{ background: "linear-gradient(135deg,#0066FF 0%,#7C3AED 100%)" }}
+        style={{ background: "linear-gradient(135deg,#0066FF 0%,#0f766e 100%)" }}
       >
         <div className="container">
           <div className="vh-inner">
@@ -302,7 +302,7 @@ export default function IntentMap() {
                 width: 36,
                 height: 36,
                 borderRadius: 10,
-                background: "linear-gradient(135deg,#0066FF,#7C3AED)",
+                background: "linear-gradient(135deg,#0066FF,#0f766e)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -378,7 +378,7 @@ export default function IntentMap() {
               disabled={busy}
               style={{
                 padding: "10px 22px",
-                background: "linear-gradient(135deg,#0066FF,#7C3AED)",
+                background: "linear-gradient(135deg,#0066FF,#0f766e)",
                 border: "none",
                 borderRadius: 10,
                 fontSize: "0.82rem",
@@ -637,7 +637,7 @@ function IntentResults({
             onClick={onSend}
             style={{
               padding: "8px 16px",
-              background: "linear-gradient(135deg,#0066FF,#7C3AED)",
+              background: "linear-gradient(135deg,#0066FF,#0f766e)",
               border: "none",
               borderRadius: 8,
               fontSize: "0.78rem",

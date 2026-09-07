@@ -192,11 +192,11 @@ export default function RcsCampaigns() {
 
             {aiResult && (
               <div style={{ marginTop: 14, background: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontWeight: 800, color: "#7C3AED", fontSize: "0.82rem", marginBottom: 8 }}>🤖 AI-Generated Extras</div>
+                <div style={{ fontWeight: 800, color: "#0f766e", fontSize: "0.82rem", marginBottom: 8 }}>🤖 AI-Generated Extras</div>
                 {aiResult.rich_card && <div style={{ fontSize: "0.75rem", color: "#374151", marginBottom: 4 }}>📇 Rich Card: <strong>{aiResult.rich_card.title}</strong></div>}
                 {aiResult.cta_buttons && <div style={{ fontSize: "0.75rem", color: "#374151", marginBottom: 4 }}>🔘 {aiResult.cta_buttons.length} CTA button(s): {aiResult.cta_buttons.map(b => b.label).join(", ")}</div>}
                 {aiResult.suggested_replies && <div style={{ fontSize: "0.75rem", color: "#374151", marginBottom: 4 }}>💬 Suggested replies: {aiResult.suggested_replies.slice(0, 3).join(", ")}</div>}
-                {aiResult.best_send_time && <div style={{ fontSize: "0.75rem", color: "#7C3AED" }}>⏰ Best send time: {aiResult.best_send_time}</div>}
+                {aiResult.best_send_time && <div style={{ fontSize: "0.75rem", color: "#0f766e" }}>⏰ Best send time: {aiResult.best_send_time}</div>}
               </div>
             )}
 

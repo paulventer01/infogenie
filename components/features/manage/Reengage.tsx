@@ -204,7 +204,7 @@ const DM_SEQS: DmSeq[] = [
     ],
   },
   {
-    id: "testimonial", icon: "⭐", label: "Testimonial Request DM", stage: "Advocacy", color: "#7C3AED", bg: "#F5F3FF",
+    id: "testimonial", icon: "⭐", label: "Testimonial Request DM", stage: "Advocacy", color: "#0f766e", bg: "#F5F3FF",
     intro: "Send to customers ~30 days after purchase or after they've had a win. Makes it personal and easy for them to say yes.",
     steps: [
       { day: 0, msg: "Hey [Name]! So glad to see how [specific result] has been going for you. I'd love to share your story — would you be open to a quick 2–3 sentence quote I could use? Totally your words, I'll just format it." },
@@ -582,7 +582,7 @@ export default function Reengage() {
       why: offers[s % offers.length][1],
       angle: stealReasons,
       threat: ["High", "Medium", "Medium", "High", "Low"][s % 5],
-      color: ["#DC2626", "#D97706", "#7C3AED"][i % 3],
+      color: ["#DC2626", "#D97706", "#0f766e"][i % 3],
       idx: i,
     };
   });
@@ -613,7 +613,7 @@ export default function Reengage() {
       ],
     },
     {
-      id: "t2", icon: "🔥", title: "60-Day Lapse", color: "#7C3AED", bg: "#F5F3FF", border: "#DDD6FE",
+      id: "t2", icon: "🔥", title: "60-Day Lapse", color: "#0f766e", bg: "#F5F3FF", border: "#DDD6FE",
       desc: "Contacts who slipped away 1–2 months ago. Acknowledge the silence and lead with a compelling new value angle.",
       rate: "44%", leads: leads.filter((l) => l.daysDormant >= 30 && l.daysDormant < 70).length,
       steps: [
@@ -677,7 +677,7 @@ export default function Reengage() {
         { icon: "👥", label: "Lapsed Contacts", value: leads.length, color: "#D97706", sub: "Detected by AI", bg: "#FFFBEB", border: "#FDE68A" },
         { icon: "🔥", label: "High Priority", value: highPri, color: "#DC2626", sub: "Score ≥ 75", bg: "#FEF2F2", border: "#FECACA" },
         { icon: "💰", label: "Est. Recovery Value", value: "$" + totalValue.toLocaleString(), color: "#059669", sub: "If re-engaged", bg: "#F0FDF4", border: "#BBF7D0" },
-        { icon: "📅", label: "Avg Days Dormant", value: avgDays + "d", color: "#7C3AED", sub: "Across all leads", bg: "#F5F3FF", border: "#DDD6FE" },
+        { icon: "📅", label: "Avg Days Dormant", value: avgDays + "d", color: "#0f766e", sub: "Across all leads", bg: "#F5F3FF", border: "#DDD6FE" },
       ].map((k) => (
         <div key={k.label} style={{ background: k.bg, border: `1.5px solid ${k.border}`, borderRadius: 16, padding: "18px 16px" }}>
           <div style={{ fontSize: "1.5rem", marginBottom: 6 }}>{k.icon}</div>
@@ -885,7 +885,7 @@ export default function Reengage() {
                       </div>
                     ))}
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(96px,1fr))", gap: 8, marginBottom: 14, padding: 10, background: "linear-gradient(135deg,#FEF2F2,#FFF7ED)", border: "1px solid #FECACA", borderRadius: 10 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(96px,1fr))", gap: 8, marginBottom: 14, padding: 10, background: "linear-gradient(135deg,#e8f6f3,#eef4ff)", border: "1px solid #FECACA", borderRadius: 10 }}>
                     <div style={{ gridColumn: "1/-1", fontSize: "0.62rem", fontWeight: 700, color: "#991B1B", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 2 }}>📬 Email Deliverability {stats.emailAttempts ? `· ${stats.emailAttempts} live attempt${stats.emailAttempts === 1 ? "" : "s"}` : "· no live email sends yet"}</div>
                     {([
                       ["Attempts", stats.emailAttempts || 0, "#0A1628"],
@@ -977,7 +977,7 @@ export default function Reengage() {
               <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 12 }}>⚡ Sequence Stats</div>
               {([
                 ["Total Steps", seq.length, "#D97706"],
-                ["Duration (days)", seq.length ? Math.max(...seq.map((s) => s.day)) : 0, "#7C3AED"],
+                ["Duration (days)", seq.length ? Math.max(...seq.map((s) => s.day)) : 0, "#0f766e"],
                 ["Target Leads", highPri, "#059669"],
                 ["Est. Re-engage", "~" + Math.round(highPri * 0.44), "#0066FF"],
               ] as [string, string | number, string][]).map(([l, v, c]) => (
@@ -1090,7 +1090,7 @@ export default function Reengage() {
                   <div style={{ fontSize: "1.5rem", marginBottom: 10 }}>⏳</div>
                   <div style={{ fontSize: "0.82rem", color: "#6B7280", fontWeight: 600 }}>Generating personalised re-engagement copy…</div>
                   <div style={{ fontSize: "0.72rem", color: "#9CA3AF", marginTop: 4 }}>Analysing {copyTarget.name}&apos;s profile, last activity, and best channel</div>
-                  <div style={{ marginTop: 14, display: "inline-flex", alignItems: "center", gap: 8, background: "#FFF7ED", border: "1.5px solid #FED7AA", borderRadius: 999, padding: "6px 14px" }}>
+                  <div style={{ marginTop: 14, display: "inline-flex", alignItems: "center", gap: 8, background: "#f3f6fb", border: "1.5px solid #FED7AA", borderRadius: 999, padding: "6px 14px" }}>
                     <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#D97706" }} />
                     <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#92400E", letterSpacing: ".04em" }}>InfoGenie working</span>
                     <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "#B45309", fontVariantNumeric: "tabular-nums" }}>{copyTimer.toFixed(1)}s</span>

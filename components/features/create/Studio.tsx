@@ -125,7 +125,7 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 const aiBtnStyle: React.CSSProperties = {
-  background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+  background: "linear-gradient(135deg,#0f766e,#0284c7)",
   color: "#fff",
   border: 0,
   padding: "4px 10px",
@@ -860,7 +860,7 @@ function ImageModal({ ctx, onClose }: { ctx: StudioCtx; onClose: () => void }) {
             })
           }
           style={{
-            background: "#7C3AED",
+            background: "#0f766e",
             color: "white",
             border: 0,
             padding: "10px 16px",
@@ -1176,7 +1176,7 @@ function VideoModal({ ctx, onClose }: { ctx: StudioCtx; onClose: () => void }) {
               <button
                 onClick={renderFrames}
                 style={{
-                  background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+                  background: "linear-gradient(135deg,#0f766e,#0284c7)",
                   color: "#fff",
                   border: 0,
                   padding: "10px 18px",
@@ -1505,7 +1505,7 @@ function PresentationModal({ ctx, onClose }: { ctx: StudioCtx; onClose: () => vo
                 onClick={addImages}
                 disabled={imgBusy}
                 style={{
-                  background: hasImages ? "#E2E8F0" : "#7C3AED",
+                  background: hasImages ? "#E2E8F0" : "#0f766e",
                   color: hasImages ? "#475569" : "white",
                   border: 0,
                   padding: "10px 16px",
@@ -2149,7 +2149,7 @@ function CaseStudyModal({ ctx, onClose }: { ctx: StudioCtx; onClose: () => void 
             {study.pullQuote?.text && (
               <div
                 style={{
-                  background: "linear-gradient(135deg,#0066FF,#7C3AED)",
+                  background: "linear-gradient(135deg,#0066FF,#0f766e)",
                   color: "white",
                   padding: 18,
                   borderRadius: 10,
@@ -2342,7 +2342,7 @@ function PageInsightsModal({ onClose }: { onClose: () => void }) {
         <div style={{ background: "#F1F5F9", borderRadius: 4, height: 8, overflow: "hidden" }}>
           <div
             style={{
-              background: "linear-gradient(90deg,#0066FF,#7C3AED)",
+              background: "linear-gradient(90deg,#0066FF,#0f766e)",
               height: "100%",
               width: `${pct}%`,
             }}
@@ -2582,7 +2582,7 @@ interface Annotation {
 }
 const TAG_COLOR: Record<string, string> = {
   content: "#0066FF",
-  technical: "#7C3AED",
+  technical: "#0f766e",
   onpage: "#0F766E",
   backlink: "#DB2777",
   redesign: "#F59E0B",

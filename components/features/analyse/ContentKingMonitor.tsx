@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 
 const SEVERITY_COLOR: Record<string, string> = {
   critical: "#ef4444", error: "#ef4444",
-  high: "#f97316",
+  high: "#0f766e",
   medium: "#f59e0b", warning: "#f59e0b",
   low: "#10b981", info: "#10b981",
 };
@@ -241,7 +241,7 @@ export default function ContentKingMonitor() {
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
                 {[
                   { label: "Critical", value: issuesSummary.critical, bg: "#fee2e2", color: "#b91c1c" },
-                  { label: "High",     value: issuesSummary.high,     bg: "#ffedd5", color: "#c2410c" },
+                  { label: "High",     value: issuesSummary.high,     bg: "#ffedd5", color: "#0b5f59" },
                   { label: "Medium",   value: issuesSummary.medium,   bg: "#fffbeb", color: "#78350f" },
                   { label: "Low",      value: issuesSummary.low,      bg: "#f0fdf4", color: "#15803d" },
                 ].map(s => (

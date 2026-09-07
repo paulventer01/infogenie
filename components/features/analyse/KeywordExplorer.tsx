@@ -351,7 +351,7 @@ export default function KeywordExplorer() {
                   title="Show keywords from your analysis"
                   style={{
                     padding: "2px 9px",
-                    background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+                    background: "linear-gradient(135deg,#0f766e,#0284c7)",
                     border: "none",
                     borderRadius: 6,
                     color: "#fff",
@@ -386,7 +386,7 @@ export default function KeywordExplorer() {
                     right: 0,
                     top: "calc(100% + 4px)",
                     background: "#fff",
-                    border: "1.5px solid #7C3AED",
+                    border: "1.5px solid #0f766e",
                     borderRadius: 10,
                     boxShadow: "0 8px 28px rgba(124,58,237,.22)",
                     zIndex: 9999,
@@ -405,7 +405,7 @@ export default function KeywordExplorer() {
                       style={{
                         fontSize: "0.65rem",
                         fontWeight: 700,
-                        color: "#7C3AED",
+                        color: "#0f766e",
                         textTransform: "uppercase",
                         letterSpacing: ".06em",
                       }}
@@ -528,8 +528,8 @@ export default function KeywordExplorer() {
               disabled={status === "loading"}
               style={{
                 padding: "10px 18px",
-                background: "#8B5CF6",
-                border: "2px solid #8B5CF6",
+                background: "#0284c7",
+                border: "2px solid #0284c7",
                 borderRadius: 8,
                 fontSize: "0.82rem",
                 fontWeight: 800,
@@ -601,7 +601,7 @@ export default function KeywordExplorer() {
                   <span
                     style={{
                       background: "#F3F0FF",
-                      color: "#7C3AED",
+                      color: "#0f766e",
                       border: "1px solid #DDD6FE",
                       borderRadius: 6,
                       padding: "2px 8px",
@@ -642,7 +642,7 @@ export default function KeywordExplorer() {
               <div
                 style={{
                   background:
-                    "linear-gradient(135deg,#8B5CF6 0%,#6D28D9 100%)",
+                    "linear-gradient(135deg,#0284c7 0%,#6D28D9 100%)",
                   color: "#fff",
                   borderRadius: 12,
                   padding: "16px 20px",
@@ -834,8 +834,8 @@ export default function KeywordExplorer() {
                   style={{
                     padding: "8px 14px",
                     background: "#fff",
-                    border: "1.5px solid #8B5CF6",
-                    color: "#8B5CF6",
+                    border: "1.5px solid #0284c7",
+                    color: "#0284c7",
                     borderRadius: 6,
                     fontSize: "0.8rem",
                     fontWeight: 700,

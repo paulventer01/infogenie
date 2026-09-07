@@ -64,7 +64,7 @@ function scoreColor(s: number): string {
 }
 
 const aiBtnStyle: React.CSSProperties = {
-  background: "linear-gradient(135deg,#7C3AED,#A855F7)",
+  background: "linear-gradient(135deg,#0f766e,#0284c7)",
   color: "#fff",
   border: 0,
   padding: "3px 9px",

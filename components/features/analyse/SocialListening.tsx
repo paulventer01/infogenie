@@ -58,7 +58,7 @@ const SRC_COLOR: Record<string, string> = {
   twitter: "#1DA1F2",
   reddit: "#FF4500",
   news: "#F59E0B",
-  blog: "#8B5CF6",
+  blog: "#0284c7",
   linkedin: "#0A66C2",
   forum: "#10B981",
 };

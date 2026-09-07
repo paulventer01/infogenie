@@ -71,7 +71,7 @@ function buildContent() {
           ['Traffic Health', trafficHealth+'%', trafficHealth>70?'#10B981':trafficHealth>50?'#F59E0B':'#DC2626','📈', 'Traffic Health — how well your site\'s organic, referral and paid traffic is performing. Green = 70%+, Amber = 50–70%, Red = below 50%.'],
           ['Content Score', contentScore+'/100', contentScore>70?'#10B981':contentScore>50?'#F59E0B':'#DC2626','📝', 'Content Score — overall quality and depth rating of your published content. 100 = exceptional, 70+ = good, below 50 = needs significant improvement.'],
           ['AI Visibility', aiVisibility+'%', aiVisibility>70?'#10B981':aiVisibility>50?'#F59E0B':'#DC2626','🤖', 'AI Visibility — percentage of key industry queries where AI assistants (ChatGPT, Gemini, Perplexity) cite or recommend your brand. Higher = better LLM presence.'],
-          ['Content Gaps', gapCount+' found', '#7C3AED','🔍', 'Content Gaps — number of topics your competitors rank for where you currently have no content. Each gap is a missed traffic opportunity.'],
+          ['Content Gaps', gapCount+' found', '#0f766e','🔍', 'Content Gaps — number of topics your competitors rank for where you currently have no content. Each gap is a missed traffic opportunity.'],
         ].map(([l,v,c,ic,tip])=>`
           <div title="${tip}" style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.04);cursor:help">
             <div style="font-size:1.8rem;margin-bottom:4px">${ic}</div>
@@ -104,7 +104,7 @@ function buildContent() {
                   <div style="font-size:0.75rem;font-weight:600;color:#0A1628;margin-bottom:2px">${g.topic}</div>
                   <div style="font-size:0.62rem;font-weight:700;color:${g.cited?'#059669':g.opportunity==='Critical'?'#DC2626':'#D97706'}">${g.cited?'✅ Cited':'⚠️ Not Cited'} · ${g.opportunity} Opportunity</div>
                 </div>
-                ${!g.cited?`<button onclick="window._contentTab='clusters';window._clusterSeedPrefill='${g.topic.replace(/'/g,"\\'")}';buildContent()" style="margin-left:8px;padding:4px 10px;background:#7C3AED;border:none;border-radius:6px;font-size:0.62rem;font-weight:700;color:white;cursor:pointer;flex-shrink:0">Fix Gap</button>`:''}
+                ${!g.cited?`<button onclick="window._contentTab='clusters';window._clusterSeedPrefill='${g.topic.replace(/'/g,"\\'")}';buildContent()" style="margin-left:8px;padding:4px 10px;background:#0f766e;border:none;border-radius:6px;font-size:0.62rem;font-weight:700;color:white;cursor:pointer;flex-shrink:0">Fix Gap</button>`:''}
               </div>`).join('')}
           </div>
         </div>
@@ -126,7 +126,7 @@ function buildContent() {
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             ${cl._dualAI ? `<span title="Synthesised from GPT-4o + Claude Sonnet" style="font-size:0.6rem;font-weight:700;padding:3px 9px;border-radius:6px;background:linear-gradient(135deg,#EFF6FF,#F3E8FF);color:#6D28D9;border:1px solid #C4B5FD">✨ GPT-4o + Claude</span>` : ''}
             <span title="Number of subtopic pages in this cluster" style="font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;background:#EFF6FF;color:#0066FF">${cl.topics?.length||0} Topics</span>
-            <span title="Number of user questions to target for AI citation" style="font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;background:#F3E8FF;color:#7C3AED">${cl.questions?.length||0} Questions</span>
+            <span title="Number of user questions to target for AI citation" style="font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;background:#F3E8FF;color:#0f766e">${cl.questions?.length||0} Questions</span>
             <button onclick="window._contentClusters.splice(${ci},1);buildContent()" style="font-size:0.65rem;font-weight:700;padding:3px 9px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:6px;color:#DC2626;cursor:pointer">Remove</button>
           </div>
         </div>
@@ -195,7 +195,7 @@ function buildContent() {
               <div style="font-size:0.8rem;font-weight:600;color:#0A1628;margin-bottom:2px">${g.topic}</div>
               <div style="display:flex;align-items:center;gap:6px">
                 <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;background:${g.type==='Missing Page'?'#FEF2F2':g.type==='Outdated'?'#FFFBEB':'#EFF6FF'};color:${g.type==='Missing Page'?'#DC2626':g.type==='Outdated'?'#D97706':'#0066FF'};border-radius:4px">${g.type}</span>
-                ${g.llm?`<span style="font-size:0.6rem;font-weight:700;padding:2px 7px;background:#F3E8FF;color:#7C3AED;border-radius:4px">🤖 LLM Gap</span>`:''}
+                ${g.llm?`<span style="font-size:0.6rem;font-weight:700;padding:2px 7px;background:#F3E8FF;color:#0f766e;border-radius:4px">🤖 LLM Gap</span>`:''}
               </div>
             </div>
             <div style="font-size:0.75rem;color:#6B7280;font-weight:500">${g.intent}</div>
@@ -789,7 +789,7 @@ function buildSocialCalendar() {
     { id:'publishing',  icon:'🚀', label:'Auto-Publishing' },
   ];
   const tabBar = `<div style="display:flex;gap:0;border-bottom:2px solid #E5E7EB;margin-bottom:24px;background:white;border-radius:14px 14px 0 0;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)">
-    ${tabs.map(t=>`<button onclick="window._socialTab='${t.id}';buildSocialCalendar()" style="flex:1;padding:14px 10px;border:none;border-bottom:3px solid ${tab===t.id?'#7C3AED':'transparent'};background:${tab===t.id?'#F5F3FF':'white'};font-size:0.82rem;font-weight:${tab===t.id?'800':'600'};color:${tab===t.id?'#7C3AED':'#6B7280'};cursor:pointer;transition:all .15s">${t.icon} ${t.label}</button>`).join('')}
+    ${tabs.map(t=>`<button onclick="window._socialTab='${t.id}';buildSocialCalendar()" style="flex:1;padding:14px 10px;border:none;border-bottom:3px solid ${tab===t.id?'#0f766e':'transparent'};background:${tab===t.id?'#F5F3FF':'white'};font-size:0.82rem;font-weight:${tab===t.id?'800':'600'};color:${tab===t.id?'#0f766e':'#6B7280'};cursor:pointer;transition:all .15s">${t.icon} ${t.label}</button>`).join('')}
   </div>`;
 
   if (tab === 'analytics') { _buildSocialAnalytics(wrap, tabBar); return; }
@@ -819,8 +819,8 @@ function buildSocialCalendar() {
       return `<div style="width:7px;height:7px;background:${pl.color};border-radius:50%;flex-shrink:0"></div>`;
     }).join('');
     cells.push(`
-      <div onclick="openCreatePost('${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}')" style="min-height:70px;border:1px solid ${isToday ? '#7C3AED' : '#E5E7EB'};border-radius:10px;padding:8px;cursor:pointer;background:${isToday ? '#F3E8FF' : 'white'};transition:background .15s" onmouseover="this.style.background='${isToday?'#EDE9FE':'#F9FAFB'}'" onmouseout="this.style.background='${isToday?'#F3E8FF':'white'}'">
-        <div style="font-size:0.78rem;font-weight:${isToday?'800':'600'};color:${isToday?'#7C3AED':'#374151'};margin-bottom:4px">${d}</div>
+      <div onclick="openCreatePost('${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}')" style="min-height:70px;border:1px solid ${isToday ? '#0f766e' : '#E5E7EB'};border-radius:10px;padding:8px;cursor:pointer;background:${isToday ? '#F3E8FF' : 'white'};transition:background .15s" onmouseover="this.style.background='${isToday?'#EDE9FE':'#F9FAFB'}'" onmouseout="this.style.background='${isToday?'#F3E8FF':'white'}'">
+        <div style="font-size:0.78rem;font-weight:${isToday?'800':'600'};color:${isToday?'#0f766e':'#374151'};margin-bottom:4px">${d}</div>
         <div style="display:flex;flex-wrap:wrap;gap:3px">${dots}</div>
         ${dayPosts.length > 4 ? `<div style="font-size:0.6rem;color:#9CA3AF;margin-top:2px">+${dayPosts.length-4} more</div>` : ''}
       </div>`);
@@ -872,7 +872,7 @@ function buildSocialCalendar() {
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
             <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${p.status==='scheduled'?'#EFF6FF':isPublished?'#F0FDF4':'#F9FAFB'};color:${p.status==='scheduled'?'#0066FF':isPublished?'#059669':'#6B7280'};text-transform:uppercase">${p.status||'scheduled'}</span>
             ${p.funnelStage ? (()=>{ const fs=FUNNEL_STAGES.find(s=>s.id===p.funnelStage); return fs?`<span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${fs.bg};color:${fs.color}">${fs.icon} ${fs.label}</span>`:''; })() : ''}
-            ${p.archetypeTitle ? `<span title="2026 Post Archetype: ${p.archetypeTitle}" style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:#F5F3FF;color:#7C3AED;border:1px solid #DDD6FE">✨ ${p.archetypeTitle}</span>` : ''}
+            ${p.archetypeTitle ? `<span title="2026 Post Archetype: ${p.archetypeTitle}" style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:#F5F3FF;color:#0f766e;border:1px solid #DDD6FE">✨ ${p.archetypeTitle}</span>` : ''}
             <span style="flex:1"></span>
             ${isPublished
               ? `<span style="font-size:0.62rem;color:#059669;font-weight:700;padding:2px 7px">✅ Live</span>`
@@ -890,7 +890,7 @@ function buildSocialCalendar() {
         ['Scheduled', allPosts.filter(p=>p.status==='scheduled').length, '#0066FF','📅','Posts queued and ready to publish — click any day on the calendar to see what\'s planned.'],
         ['Published',  allPosts.filter(p=>p.status==='published').length, '#10B981','✅','Posts that have already gone live across your connected social channels.'],
         ['Drafts',     allPosts.filter(p=>p.status==='draft').length, '#F59E0B','✏️','Posts saved as drafts — not yet scheduled or published.'],
-        ['This Month', allPosts.filter(p=>{ const d=new Date(p.scheduledDate); return d.getFullYear()===year&&d.getMonth()===month; }).length, '#7C3AED','📊','Total posts (any status) scheduled or published in the currently viewed calendar month.'],
+        ['This Month', allPosts.filter(p=>{ const d=new Date(p.scheduledDate); return d.getFullYear()===year&&d.getMonth()===month; }).length, '#0f766e','📊','Total posts (any status) scheduled or published in the currently viewed calendar month.'],
       ].map(([l,v,c,ic,tip])=>`
         <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.04)" title="${tip}">
           <div style="font-size:1.6rem;margin-bottom:4px">${ic}</div>
@@ -964,7 +964,7 @@ function buildSocialCalendar() {
         <!-- Right sidebar: upcoming + create -->
         <div style="display:flex;flex-direction:column;gap:14px">
           <!-- Create Post Button -->
-          <button onclick="openCreatePost()" style="width:100%;padding:13px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:12px;font-size:0.9rem;font-weight:700;color:white;cursor:pointer">+ Create Post</button>
+          <button onclick="openCreatePost()" style="width:100%;padding:13px;background:linear-gradient(135deg,#0f766e,#4F46E5);border:none;border-radius:12px;font-size:0.9rem;font-weight:700;color:white;cursor:pointer">+ Create Post</button>
 
           <!-- Upcoming Posts -->
           <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
@@ -993,7 +993,7 @@ window.openCreatePost = function(preDate) {
 
   overlay.innerHTML = `
     <div style="background:white;border-radius:18px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.3)">
-      <div style="background:linear-gradient(135deg,#7C3AED,#4F46E5);border-radius:18px 18px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
+      <div style="background:linear-gradient(135deg,#0f766e,#4F46E5);border-radius:18px 18px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
         <div>
           <div style="font-size:0.65rem;font-weight:700;color:#C4B5FD;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">New Post</div>
           <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:#FFFFFF !important">Create & Schedule Post</div>
@@ -1009,7 +1009,7 @@ window.openCreatePost = function(preDate) {
           <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Caption</div>
           <textarea id="cp-caption" rows="4" placeholder="Write your post caption here, or let AI generate it…" style="width:100%;box-sizing:border-box;padding:11px 13px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:0.82rem;color:#0A1628;font-family:'Inter',sans-serif;resize:vertical;outline:none;line-height:1.5"></textarea>
         </div>
-        <button id="cp-ai-gen" style="padding:9px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✨ Generate Caption with AI</button>
+        <button id="cp-ai-gen" style="padding:9px;background:linear-gradient(135deg,#0f766e,#4F46E5);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✨ Generate Caption with AI</button>
         <div id="cp-ai-status" style="display:none;font-size:0.75rem;color:#6366F1;text-align:center">Generating…</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div>
@@ -1047,11 +1047,11 @@ window.openCreatePost = function(preDate) {
         <div id="cp-archetype-wrap" style="display:none">
           <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">✨ Pick a Proven Archetype <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#9CA3AF">(2026 formats)</span></div>
           <div id="cp-archetype-row" style="display:grid;grid-template-columns:1fr 1fr;gap:7px"></div>
-          <div id="cp-archetype-active" style="margin-top:6px;font-size:0.66rem;color:#7C3AED;font-weight:700;display:none"></div>
+          <div id="cp-archetype-active" style="margin-top:6px;font-size:0.66rem;color:#0f766e;font-weight:700;display:none"></div>
         </div>
         <div style="display:flex;gap:10px;margin-top:4px">
           <button id="cp-cancel" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
-          <button id="cp-save" style="flex:2;padding:11px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📅 Schedule Post</button>
+          <button id="cp-save" style="flex:2;padding:11px;background:linear-gradient(135deg,#0f766e,#4F46E5);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📅 Schedule Post</button>
         </div>
       </div>
     </div>`;
@@ -1079,7 +1079,7 @@ window.openCreatePost = function(preDate) {
     const list = stageId ? (POST_ARCHETYPES[stageId] || []) : [];
     if (list.length === 0) { wrap.style.display = 'none'; row.innerHTML = ''; return; }
     const stage = FUNNEL_STAGES.find(s => s.id === stageId);
-    const stageColor = stage?.color || '#7C3AED';
+    const stageColor = stage?.color || '#0f766e';
     const stageBg    = stage?.bg    || '#F5F3FF';
     row.innerHTML = list.map(a => `
       <button type="button" data-arch="${a.id}" class="cp-arch-btn" style="text-align:left;padding:8px 10px;background:white;border:1.5px solid #E5E7EB;border-radius:9px;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif">
@@ -1242,7 +1242,7 @@ function _buildSocialAnalytics(wrap, tabBar) {
   const followerGrow = 240 + Math.round(seed(domain)%380);
 
   const kpis = [
-    { icon:'👁️', label:'Total Reach', value: hasData ? totalReach.toLocaleString() : '28,600', color:'#7C3AED', sub:'Last 30 days' },
+    { icon:'👁️', label:'Total Reach', value: hasData ? totalReach.toLocaleString() : '28,600', color:'#0f766e', sub:'Last 30 days' },
     { icon:'💬', label:'Avg Engagement', value: avgER+'%', color:'#0066FF', sub:'Across platforms' },
     { icon:'📝', label:'Posts Published', value: String(published.length||totalPosts), color:'#10B981', sub:'All time' },
     { icon:'📈', label:'Follower Growth', value: '+'+followerGrow, color:'#F59E0B', sub:'This month' },
@@ -1299,10 +1299,10 @@ function _buildSocialAnalytics(wrap, tabBar) {
           const scores=[[2,4,3,2,1,1],[3,5,4,4,2,2],[2,4,5,5,3,2],[1,3,4,5,4,2],[2,4,5,4,3,1],[3,3,2,3,4,3],[2,2,1,2,3,2]];
           return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:separate;border-spacing:3px;font-size:0.6rem">
             <tr><th></th>${times.map(t=>`<th style="color:#9CA3AF;font-weight:600;text-align:center;padding:2px">${t}</th>`).join('')}</tr>
-            ${days.map((d,di)=>`<tr><td style="color:#374151;font-weight:700;padding:2px 6px;white-space:nowrap">${d}</td>${scores[di].map(s=>{const c=s===5?'#7C3AED':s===4?'#A78BFA':s===3?'#DDD6FE':s===2?'#F3F4F6':'#F9FAFB';const tc=s>=4?'white':'#9CA3AF';return `<td style="background:${c};color:${tc};text-align:center;border-radius:4px;padding:4px 2px;font-weight:${s>=4?'700':'400'}">${s>=4?'●':''}</td>`}).join('')}</tr>`).join('')}
+            ${days.map((d,di)=>`<tr><td style="color:#374151;font-weight:700;padding:2px 6px;white-space:nowrap">${d}</td>${scores[di].map(s=>{const c=s===5?'#0f766e':s===4?'#A78BFA':s===3?'#DDD6FE':s===2?'#F3F4F6':'#F9FAFB';const tc=s>=4?'white':'#9CA3AF';return `<td style="background:${c};color:${tc};text-align:center;border-radius:4px;padding:4px 2px;font-weight:${s>=4?'700':'400'}">${s>=4?'●':''}</td>`}).join('')}</tr>`).join('')}
           </table>
           <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
-            ${[['#7C3AED','Best'],['#A78BFA','Good'],['#DDD6FE','OK']].map(([c,l])=>`<div style="display:flex;align-items:center;gap:4px;font-size:0.62rem;color:#6B7280"><div style="width:10px;height:10px;background:${c};border-radius:2px"></div>${l}</div>`).join('')}
+            ${[['#0f766e','Best'],['#A78BFA','Good'],['#DDD6FE','OK']].map(([c,l])=>`<div style="display:flex;align-items:center;gap:4px;font-size:0.62rem;color:#6B7280"><div style="width:10px;height:10px;background:${c};border-radius:2px"></div>${l}</div>`).join('')}
           </div></div>`;
         })()}
       </div>
@@ -1327,7 +1327,7 @@ function _buildSocialAnalytics(wrap, tabBar) {
               return `<tr style="border-bottom:1px solid #F3F4F6">
                 <td style="padding:10px 12px"><span style="background:${pl.bg};color:${pl.color};border-radius:6px;padding:3px 8px;font-size:0.65rem;font-weight:700">${pl.icon} ${p.platform}</span></td>
                 <td style="padding:10px 12px;color:#374151;max-width:250px"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(p.caption||'').substring(0,60)}${(p.caption||'').length>60?'…':''}</div></td>
-                <td style="text-align:center;padding:10px 12px;font-weight:700;color:#7C3AED">${p.reach.toLocaleString()}</td>
+                <td style="text-align:center;padding:10px 12px;font-weight:700;color:#0f766e">${p.reach.toLocaleString()}</td>
                 <td style="text-align:center;padding:10px 12px;font-weight:700;color:#0066FF">${p.likes.toLocaleString()}</td>
                 <td style="text-align:center;padding:10px 12px;color:#374151">${p.comments}</td>
                 <td style="text-align:center;padding:10px 12px"><span style="background:${p.er>=4?'#F0FDF4':p.er>=3?'#FFFBEB':'#F9FAFB'};color:${p.er>=4?'#059669':p.er>=3?'#D97706':'#6B7280'};border-radius:6px;padding:2px 8px;font-weight:700;font-size:0.72rem">${p.er}%</span></td>
@@ -1356,7 +1356,7 @@ function _buildSocialAnalytics(wrap, tabBar) {
       if (!(window._applyChartDataMode && window._applyChartDataMode('socialReachChart', !hasData, 'Sample data')))
       window._sReachChart = new Chart(rCtx.getContext('2d'), {
         type:'line',
-        data:{ labels:weekLabels, datasets:[{ label:'Total Reach', data:weekReach, borderColor:'#7C3AED', backgroundColor:'rgba(124,58,237,0.08)', tension:0.4, fill:true, pointRadius:4, pointBackgroundColor:'#7C3AED' }] },
+        data:{ labels:weekLabels, datasets:[{ label:'Total Reach', data:weekReach, borderColor:'#0f766e', backgroundColor:'rgba(124,58,237,0.08)', tension:0.4, fill:true, pointRadius:4, pointBackgroundColor:'#0f766e' }] },
         options:{ responsive:true, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:false, ticks:{ callback:v=>v>=1000?(v/1000).toFixed(0)+'K':v, font:{size:10} }, grid:{ color:'rgba(0,0,0,.04)' } }, x:{ ticks:{ font:{size:10} }, grid:{ display:false } } } }
       });
     }
@@ -1421,7 +1421,7 @@ function _buildSocialPublishing(wrap, tabBar) {
           <div style="font-size:0.78rem;color:#374151;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(p.caption||'').substring(0,90)}${(p.caption||'').length>90?'…':''}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
-          <button onclick="socialPublishNow('${p.id}')" style="padding:6px 14px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:8px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">🚀 Publish Now</button>
+          <button onclick="socialPublishNow('${p.id}')" style="padding:6px 14px;background:linear-gradient(135deg,#0f766e,#4F46E5);border:none;border-radius:8px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">🚀 Publish Now</button>
           <button onclick="window._socialPosts=window._socialPosts.filter(x=>x.id!=='${p.id}');buildSocialCalendar()" style="padding:6px 10px;background:white;border:1px solid #FCA5A5;border-radius:8px;font-size:0.7rem;color:#DC2626;cursor:pointer">✕</button>
         </div>
       </div>
@@ -1444,7 +1444,7 @@ function _buildSocialPublishing(wrap, tabBar) {
             </div>
             <div style="display:flex;align-items:center;gap:10px">
               <span style="font-size:0.75rem;font-weight:600;color:${window._autoPublishEnabled?'#059669':'#9CA3AF'}">${window._autoPublishEnabled?'● Active':'○ Inactive'}</span>
-              <button id="autoPublishToggle" onclick="socialToggleAutoPublish()" style="padding:10px 20px;background:${window._autoPublishEnabled?'linear-gradient(135deg,#059669,#047857)':'linear-gradient(135deg,#7C3AED,#4F46E5)'};border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">${window._autoPublishEnabled?'⏸ Pause Auto-Publish':'▶ Enable Auto-Publish'}</button>
+              <button id="autoPublishToggle" onclick="socialToggleAutoPublish()" style="padding:10px 20px;background:${window._autoPublishEnabled?'linear-gradient(135deg,#059669,#047857)':'linear-gradient(135deg,#0f766e,#4F46E5)'};border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">${window._autoPublishEnabled?'⏸ Pause Auto-Publish':'▶ Enable Auto-Publish'}</button>
             </div>
           </div>
           ${window._autoPublishEnabled ? `<div style="margin-top:12px;background:rgba(5,150,105,.08);border:1px solid rgba(5,150,105,.2);border-radius:8px;padding:10px 14px;font-size:0.75rem;color:#065F46">✅ Auto-publish is ON — InfoGenie checks every 60 seconds and publishes posts at their scheduled time</div>` : ''}
@@ -1461,7 +1461,7 @@ function _buildSocialPublishing(wrap, tabBar) {
         <div>
           <div style="font-size:0.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">📅 Upcoming Queue — ${upcoming.length} Post${upcoming.length!==1?'s':''}</div>
           ${upcoming.length === 0
-            ? `<div style="background:white;border:1px solid #E5E7EB;border-radius:12px;padding:32px;text-align:center;color:#9CA3AF"><div style="font-size:2rem;margin-bottom:8px">📭</div><div style="font-size:0.82rem">No upcoming posts — go to Calendar to create and schedule posts</div><button onclick="window._socialTab='calendar';buildSocialCalendar()" style="margin-top:12px;padding:8px 18px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">+ Create Post</button></div>`
+            ? `<div style="background:white;border:1px solid #E5E7EB;border-radius:12px;padding:32px;text-align:center;color:#9CA3AF"><div style="font-size:2rem;margin-bottom:8px">📭</div><div style="font-size:0.82rem">No upcoming posts — go to Calendar to create and schedule posts</div><button onclick="window._socialTab='calendar';buildSocialCalendar()" style="margin-top:12px;padding:8px 18px;background:linear-gradient(135deg,#0f766e,#4F46E5);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">+ Create Post</button></div>`
             : upcoming.map(p=>postRow(p,false)).join('')}
         </div>
 
@@ -1502,7 +1502,7 @@ function _buildSocialPublishing(wrap, tabBar) {
         <!-- Stats -->
         <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
           <div style="font-size:0.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">📊 Publishing Stats</div>
-          ${[['Total Scheduled',scheduled.length,'#7C3AED'],['Total Published',published.length,'#059669'],['Overdue',overdue.length,'#D97706'],['Drafts',posts.filter(p=>p.status==='draft').length,'#6B7280']].map(([l,v,c])=>`
+          ${[['Total Scheduled',scheduled.length,'#0f766e'],['Total Published',published.length,'#059669'],['Overdue',overdue.length,'#D97706'],['Drafts',posts.filter(p=>p.status==='draft').length,'#6B7280']].map(([l,v,c])=>`
             <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #F9FAFB">
               <span style="font-size:0.75rem;color:#6B7280">${l}</span>
               <span style="font-size:0.88rem;font-weight:800;color:${c}">${v}</span>
@@ -1631,7 +1631,7 @@ function buildAiVisibility() {
       <div style="font-size:2.2rem;margin-bottom:10px">🤖</div>
       <div style="font-size:0.92rem;font-weight:700;color:#0A1628;margin-bottom:5px">Run Your AI Visibility Audit</div>
       <div style="font-size:0.78rem;color:#64748B;margin-bottom:18px;max-width:380px;margin-left:auto;margin-right:auto">GPT-4 analyses your brand's presence across all major LLMs and produces a prioritised action plan</div>
-      <button onclick="generateAiVisibilityAudit()" style="padding:12px 32px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:11px;font-size:0.87rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 14px rgba(99,102,241,0.35)">✨ Run AI Visibility Audit</button>
+      <button onclick="generateAiVisibilityAudit()" style="padding:12px 32px;background:linear-gradient(135deg,#0f766e,#4338CA);border:none;border-radius:11px;font-size:0.87rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 14px rgba(99,102,241,0.35)">✨ Run AI Visibility Audit</button>
       <div style="margin-top:14px;font-size:0.72rem;color:#64748B">— or —</div>
       <button onclick="runDfsAiOptimization()" style="margin-top:10px;padding:10px 24px;background:linear-gradient(135deg,#0EA5E9,#0369A1);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 3px 10px rgba(14,165,233,.35)">🚀 Probe All 4 LLMs via DataForSEO (live answers)</button>
       <div style="margin-top:6px;font-size:0.7rem;color:#94A3B8;max-width:460px;margin-left:auto;margin-right:auto">Fires the same prompt at ChatGPT · Claude · Gemini · Perplexity in parallel through DataForSEO's AI Optimization API. Returns each model's real answer + brand-citation analysis + per-call cost. Uses your active 14-day trial.</div>
@@ -1751,7 +1751,7 @@ function buildAiVisibility() {
       <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:12px;padding:14px 16px;margin-bottom:16px">
         <div style="font-size:0.64rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">🏷️ Keywords AI Engines Associate With Your Brand</div>
         <div style="display:flex;flex-wrap:wrap;gap:7px">
-          ${bmKeywords.map((k,i) => `<span style="padding:4px 12px;background:${['#EEF2FF','#E0F2FE','#F0FDF4','#FFF7ED','#FEF3C7','#FCE7F3','#F3F4F6'][i%7]};color:${['#4338CA','#0369A1','#15803D','#C2410C','#92400E','#BE185D','#374151'][i%7]};border-radius:20px;font-size:0.7rem;font-weight:700">${k}</span>`).join('')}
+          ${bmKeywords.map((k,i) => `<span style="padding:4px 12px;background:${['#EEF2FF','#E0F2FE','#F0FDF4','#FFF7ED','#FEF3C7','#FCE7F3','#F3F4F6'][i%7]};color:${['#4338CA','#0369A1','#15803D','#0b5f59','#92400E','#BE185D','#374151'][i%7]};border-radius:20px;font-size:0.7rem;font-weight:700">${k}</span>`).join('')}
         </div>
       </div>
 
@@ -1795,7 +1795,7 @@ function buildAiVisibility() {
               <span style="font-size:0.68rem;font-weight:700;color:#6B7280">${c.sov}%</span>
             </div>
             <div style="background:#E5E7EB;border-radius:4px;height:6px">
-              <div style="width:${c.sov}%;height:6px;border-radius:4px;background:${['#EF4444','#F59E0B','#8B5CF6','#10B981'][i%4]}"></div>
+              <div style="width:${c.sov}%;height:6px;border-radius:4px;background:${['#EF4444','#F59E0B','#0284c7','#10B981'][i%4]}"></div>
             </div>
           </div>`).join('')}
           <div style="font-size:0.58rem;color:#9CA3AF;margin-top:8px">Est. from AI query coverage · updates with analysis</div>
@@ -1830,7 +1830,7 @@ function buildAiVisibility() {
       const ugcCount = advPosts.filter(p=>p.caption&&p.caption.toLowerCase().includes('client')||p.caption&&p.caption.toLowerCase().includes('testimonial')).length;
       const totalAdv = advPosts.length;
       const signals = [
-        { icon:'🌟', label:'Advocacy Posts Scheduled', value:totalAdv, color:'#7C3AED', tip:'Posts tagged as Advocacy stage in your Social Calendar' },
+        { icon:'🌟', label:'Advocacy Posts Scheduled', value:totalAdv, color:'#0f766e', tip:'Posts tagged as Advocacy stage in your Social Calendar' },
         { icon:'💬', label:'Client Feature / UGC', value:ugcCount, color:'#10B981', tip:'Advocacy posts mentioning clients or testimonials' },
         { icon:'📢', label:'Social Shares (Est)', value:Math.max(0,totalAdv*3), color:'#3B82F6', tip:'Estimated organic shares from advocacy content' },
         { icon:'🔗', label:'Referral Potential', value: totalAdv > 0 ? 'Active':'Inactive', color: totalAdv>0?'#059669':'#9CA3AF', tip:'Whether advocacy content is active in your funnel' },
@@ -1841,7 +1841,7 @@ function buildAiVisibility() {
             <div style="font-family:Sora,sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">🌟 Advocacy Stage Signals</div>
             <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">UGC, referrals, and client content tracked from your Social Calendar</div>
           </div>
-          <button onclick="window._socialTab='calendar';navigateTo('social');showToast('Create Advocacy posts to build this score!')" style="padding:7px 14px;background:#F5F3FF;border:1px solid #C4B5FD;border-radius:9px;font-size:0.7rem;font-weight:700;color:#7C3AED;cursor:pointer">+ Add Advocacy Content</button>
+          <button onclick="window._socialTab='calendar';navigateTo('social');showToast('Create Advocacy posts to build this score!')" style="padding:7px 14px;background:#F5F3FF;border:1px solid #C4B5FD;border-radius:9px;font-size:0.7rem;font-weight:700;color:#0f766e;cursor:pointer">+ Add Advocacy Content</button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
           ${signals.map(s=>`<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center" title="${s.tip}"><div style="font-size:1.4rem;margin-bottom:4px">${s.icon}</div><div style="font-size:1.3rem;font-weight:800;color:${s.color};margin-bottom:2px">${s.value}</div><div style="font-size:0.62rem;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:.04em">${s.label}</div></div>`).join('')}
@@ -1856,7 +1856,7 @@ function buildAiVisibility() {
         <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">AI Audit Suite</div>
         <div style="font-size:0.74rem;color:#475569;margin-top:2px">Run the deep-dive audits — Prompt Coverage, Trend Tracking, Answer Accuracy, Competitive Citation, Entity Mapping, Sentiment, Google AI Overview & Attribution — each on its own card.</div>
       </div>
-      <button onclick="navigateTo('ai-audit-suite')" style="padding:10px 22px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:10px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">Open Audit Suite →</button>
+      <button onclick="navigateTo('ai-audit-suite')" style="padding:10px 22px;background:linear-gradient(135deg,#0f766e,#4338CA);border:none;border-radius:10px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">Open Audit Suite →</button>
     </div>
 
 
@@ -2121,14 +2121,14 @@ function buildAiVisibility() {
                 <span style="display:flex;align-items:center;gap:7px;font-weight:700;color:#0A1628"><span style="width:7px;height:7px;background:${dot};border-radius:50%"></span>${s.label}</span>
                 <span style="font-weight:800;color:${labelColor};font-variant-numeric:tabular-nums">${label}</span>
               </div>
-              <div style="height:6px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:${sess>0?Math.min(100,(sess/Math.max(1,totalSess))*100):0}%;background:linear-gradient(90deg,#7C3AED,#4338CA);border-radius:3px"></div></div>
+              <div style="height:6px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:${sess>0?Math.min(100,(sess/Math.max(1,totalSess))*100):0}%;background:linear-gradient(90deg,#0f766e,#4338CA);border-radius:3px"></div></div>
             </div>`;
           }).join('')}`;
       } else {
         // (3) Live AI sessions — render the breakdown bars
         bodyHtml = (at.sessions || []).map(s => `<div style="margin-bottom:9px">
           <div style="display:flex;justify-content:space-between;font-size:0.74rem;margin-bottom:4px"><span style="font-weight:700;color:#0A1628">${s.label}</span><span style="font-weight:800;color:#0A1628">${(s.sessions||0).toLocaleString()}</span></div>
-          <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${((s.sessions||0)/maxAi)*100}%;background:linear-gradient(90deg,#7C3AED,#4338CA);border-radius:4px"></div></div>
+          <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${((s.sessions||0)/maxAi)*100}%;background:linear-gradient(90deg,#0f766e,#4338CA);border-radius:4px"></div></div>
         </div>`).join('');
       }
       card.innerHTML = `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">${headerHtml}<div id="aivisAttribBody" style="display:none">${bodyHtml}</div></div>`;

@@ -1378,7 +1378,7 @@ function OutreachMode({
                 [selectedCampaign.stats?.total_found ?? selectedProspects.length, "Prospects Found", "#3b82f6"],
                 [selectedCampaign.stats?.emails_sent || 0, "Emails Sent", "#10b981"],
                 [selectedCampaign.stats?.replies || 0, "Replies", "#f59e0b"],
-                [selectedCampaign.stats?.meetings_booked || 0, "Meetings Booked", "#8b5cf6"],
+                [selectedCampaign.stats?.meetings_booked || 0, "Meetings Booked", "#0284c7"],
               ] as [number, string, string][]
             ).map(([v, l, col]) => (
               <div key={l} style={{ textAlign: "center" }}>
@@ -1400,7 +1400,7 @@ function OutreachMode({
                   [stats.total_found || 0, "Prospects Found", "#3b82f6"],
                   [stats.emails_sent || 0, "Emails Sent", "#10b981"],
                   [stats.replies || 0, "Replies", "#f59e0b"],
-                  [stats.meetings_booked || 0, "Meetings Booked", "#8b5cf6"],
+                  [stats.meetings_booked || 0, "Meetings Booked", "#0284c7"],
                 ] as [number, string, string][]
               ).map(([v, l, col]) => (
                 <div key={l} style={{ textAlign: "center" }}>

@@ -11,7 +11,7 @@ function _api(method, path, body){
 function _pct(val, max){ return Math.min(100,Math.max(0,Math.round((val/max)*100))); }
 function _riskCol(score){ return score>=70?'#ef4444':score>=40?'#f59e0b':'#10b981'; }
 function _verdictBadge(v){
-  const map={pass:'#10b981',caution:'#f59e0b',fail:'#ef4444',approved:'#10b981',pending_approval:'#3b82f6',executing:'#8b5cf6',executed:'#10b981',rejected:'#6b7280',rolled_back:'#ef4444'};
+  const map={pass:'#10b981',caution:'#f59e0b',fail:'#ef4444',approved:'#10b981',pending_approval:'#3b82f6',executing:'#0284c7',executed:'#10b981',rejected:'#6b7280',rolled_back:'#ef4444'};
   return `<span style="background:${map[v]||'#6b7280'};color:#fff;border-radius:4px;padding:2px 8px;font-size:.75rem;font-weight:700;text-transform:uppercase">${_e(v?.replace(/_/g,' '))}</span>`;
 }
 
@@ -205,7 +205,7 @@ function _renderMMMResult(d){
   const r = d.results||{};
   const alloc = r.recommended_allocation||[];
   const total = alloc.reduce((s,c)=>s+c.budget,0)||1;
-  const roas_cols = {linear:'#3b82f6','log':'#10b981','s-curve':'#8b5cf6'};
+  const roas_cols = {linear:'#3b82f6','log':'#10b981','s-curve':'#0284c7'};
   el.innerHTML = `
 <div class="ig-card" style="margin-bottom:16px">
   <div style="font-size:1rem;font-weight:600;margin-bottom:8px">Recommended Media Mix</div>
@@ -395,7 +395,7 @@ function _renderBSResult(d){
   </div>`:''}
 
   ${r.rewritten_version&&r.rewritten_version!==d.results?.content_snippet?`<div style="margin-top:12px">
-    <div style="font-size:.75rem;font-weight:600;color:#8b5cf6;margin-bottom:6px">✏️ COMPLIANT REWRITE</div>
+    <div style="font-size:.75rem;font-weight:600;color:#0284c7;margin-bottom:6px">✏️ COMPLIANT REWRITE</div>
     <div style="background:#faf5ff;border-radius:8px;padding:12px;font-size:.85rem;color:#374151;white-space:pre-wrap">${_e(r.rewritten_version)}</div>
     <button class="btn btn-sm btn-outline" style="margin-top:6px" onclick="navigator.clipboard.writeText(${JSON.stringify(r.rewritten_version||'')})">Copy rewrite</button>
   </div>`:''}
@@ -517,7 +517,7 @@ function _renderSAProposal(d){
     }).join('')}</div>
   </div>`:''}
 
-  ${p.rollback_plan?`<div style="background:#faf5ff;border-radius:8px;padding:10px"><span style="font-weight:600;color:#8b5cf6">↩ Rollback plan: </span>${_e(p.rollback_plan)}</div>`:''}
+  ${p.rollback_plan?`<div style="background:#faf5ff;border-radius:8px;padding:10px"><span style="font-weight:600;color:#0284c7">↩ Rollback plan: </span>${_e(p.rollback_plan)}</div>`:''}
   ${p._recommendation_reason?`<div style="margin-top:8px;font-size:.85rem;color:#374151"><strong>AI says:</strong> ${_e(p._recommendation_reason)}</div>`:''}
 </div>`;
 }
@@ -769,7 +769,7 @@ function _renderVPDetail(c, id){
   <div>
     <div style="font-size:.75rem;font-weight:600;color:#6b7280;margin-bottom:12px">90-DAY ROADMAP</div>
     <div style="display:flex;flex-direction:column;gap:12px">${(c.phases||[]).map((ph,i)=>{
-      const cols=['#3b82f6','#8b5cf6','#10b981'];
+      const cols=['#3b82f6','#0284c7','#10b981'];
       const col=cols[i%cols.length];
       return `<div style="display:flex;gap:12px;align-items:flex-start">
         <div style="min-width:72px;background:${col};color:#fff;border-radius:6px;padding:4px 8px;text-align:center;font-size:.75rem;font-weight:700;line-height:1.3">${_e(ph.week||`Phase ${i+1}`)}</div>

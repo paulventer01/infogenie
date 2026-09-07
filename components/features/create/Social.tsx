@@ -49,7 +49,7 @@ const FUNNEL_STAGES: FunnelStage[] = [
   { id: "interest", label: "Interest", icon: "💡", color: "#3B82F6", bg: "#EFF6FF", fmt: "Carousels", tip: "Frameworks, before-after, step-by-step tutorials — convert attention to curiosity." },
   { id: "nurture", label: "Nurture", icon: "❤️", color: "#EC4899", bg: "#FDF2F8", fmt: "Stories", tip: "Process sharing, myth-breaking, polls, soft CTAs — build belief & trust." },
   { id: "conversion", label: "Conversion", icon: "💰", color: "#F59E0B", bg: "#FFFBEB", fmt: "DMs", tip: "Personalised DMs, testimonials, limited-spot urgency — turn trust into sales." },
-  { id: "advocacy", label: "Advocacy", icon: "🌟", color: "#7C3AED", bg: "#F5F3FF", fmt: "Community", tip: "Client wins, UGC, referrals, private challenges — turn buyers into brand evangelists." },
+  { id: "advocacy", label: "Advocacy", icon: "🌟", color: "#0f766e", bg: "#F5F3FF", fmt: "Community", tip: "Client wins, UGC, referrals, private challenges — turn buyers into brand evangelists." },
 ];
 
 interface Archetype {
@@ -285,7 +285,7 @@ export default function Social({ embedded = false }: { embedded?: boolean } = {}
         <button
           key={t.id}
           onClick={() => setTab(t.id)}
-          style={{ flex: 1, padding: "14px 10px", border: "none", borderBottom: `3px solid ${tab === t.id ? "#7C3AED" : "transparent"}`, background: tab === t.id ? "#F5F3FF" : "white", fontSize: "0.82rem", fontWeight: tab === t.id ? 800 : 600, color: tab === t.id ? "#7C3AED" : "#6B7280", cursor: "pointer", transition: "all .15s" }}
+          style={{ flex: 1, padding: "14px 10px", border: "none", borderBottom: `3px solid ${tab === t.id ? "#0f766e" : "transparent"}`, background: tab === t.id ? "#F5F3FF" : "white", fontSize: "0.82rem", fontWeight: tab === t.id ? 800 : 600, color: tab === t.id ? "#0f766e" : "#6B7280", cursor: "pointer", transition: "all .15s" }}
         >
           {t.icon} {t.label}
         </button>
@@ -310,14 +310,14 @@ export default function Social({ embedded = false }: { embedded?: boolean } = {}
           <div className="vh-inner">
             <div>
               <div className="breadcrumb" style={{ color: "#0f766e" }}>
-                <span className="bc-group" style={{ color: "#7c3aed" }}>Create</span>{" "}
+                <span className="bc-group" style={{ color: "#0f766e" }}>Create</span>{" "}
                 <span className="bc-sep" style={{ color: "#94a3b8" }}>›</span> Social
               </div>
               <h2 className="view-title" style={{ color: "#0f172a" }}>Social Content Generator, Calendar &amp; Scheduling</h2>
               <p className="view-sub" style={{ color: "#334155" }}>Create, schedule, and publish AI-generated content across all social platforms from one place</p>
             </div>
             <div className="vh-actions">
-              <button className="btn-primary" style={{ background: "white", color: "#7C3AED" }} onClick={() => openCreate()}>
+              <button className="btn-primary" style={{ background: "white", color: "#0f766e" }} onClick={() => openCreate()}>
                 + Create Post
               </button>
             </div>
@@ -331,7 +331,7 @@ export default function Social({ embedded = false }: { embedded?: boolean } = {}
           {embedded ? (
             <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#0F766E" }}>Social Calendar editor</div>
-              <button className="btn-primary" style={{ background: "#7C3AED", color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" }} onClick={() => openCreate()}>
+              <button className="btn-primary" style={{ background: "#0f766e", color: "#fff", border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 700, cursor: "pointer" }} onClick={() => openCreate()}>
                 + Create Post
               </button>
             </div>
@@ -342,14 +342,14 @@ export default function Social({ embedded = false }: { embedded?: boolean } = {}
               padding: "12px 14px",
               borderRadius: 10,
               border: "1px solid #FDBA74",
-              background: "#FFF7ED",
+              background: "#f3f6fb",
               color: "#9A3412",
               fontSize: "0.82rem",
               lineHeight: 1.5,
             }}
           >
             <strong>Moved:</strong> Planning + publishing now live in{" "}
-            <a href="/reach/social-publisher" style={{ color: "#C2410C", fontWeight: 800 }}>
+            <a href="/reach/social-publisher" style={{ color: "#0b5f59", fontWeight: 800 }}>
               Social Publisher
             </a>{" "}
             (Calendar · Compose · Queue · Ideas). This page keeps the legacy local planner for reference;
@@ -428,9 +428,9 @@ function CalendarTab({
       <div
         key={`d-${d}`}
         onClick={() => onCreate(dateStr)}
-        style={{ minHeight: 70, border: `1px solid ${isToday ? "#7C3AED" : "#E5E7EB"}`, borderRadius: 10, padding: 8, cursor: "pointer", background: isToday ? "#F3E8FF" : "white" }}
+        style={{ minHeight: 70, border: `1px solid ${isToday ? "#0f766e" : "#E5E7EB"}`, borderRadius: 10, padding: 8, cursor: "pointer", background: isToday ? "#F3E8FF" : "white" }}
       >
-        <div style={{ fontSize: "0.78rem", fontWeight: isToday ? 800 : 600, color: isToday ? "#7C3AED" : "#374151", marginBottom: 4 }}>{d}</div>
+        <div style={{ fontSize: "0.78rem", fontWeight: isToday ? 800 : 600, color: isToday ? "#0f766e" : "#374151", marginBottom: 4 }}>{d}</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
           {dayPosts.slice(0, 4).map((p, i) => (
             <div key={i} style={{ width: 7, height: 7, background: platMeta(p.platform).color, borderRadius: "50%", flexShrink: 0 }} />
@@ -451,7 +451,7 @@ function CalendarTab({
     ["Scheduled", posts.filter((p) => p.status === "scheduled").length, "#0066FF", "📅", "Posts queued and ready to publish — click any day on the calendar to see what's planned."],
     ["Published", posts.filter((p) => p.status === "published").length, "#10B981", "✅", "Posts that have already gone live across your connected social channels."],
     ["Drafts", posts.filter((p) => p.status === "draft").length, "#F59E0B", "✏️", "Posts saved as drafts — not yet scheduled or published."],
-    ["This Month", posts.filter((p) => { const dd = new Date(p.scheduledDate); return dd.getFullYear() === viewYear && dd.getMonth() === viewMonth; }).length, "#7C3AED", "📊", "Total posts (any status) scheduled or published in the currently viewed calendar month."],
+    ["This Month", posts.filter((p) => { const dd = new Date(p.scheduledDate); return dd.getFullYear() === viewYear && dd.getMonth() === viewMonth; }).length, "#0f766e", "📊", "Total posts (any status) scheduled or published in the currently viewed calendar month."],
   ];
 
   // Funnel balance
@@ -548,7 +548,7 @@ function CalendarTab({
 
         {/* Sidebar */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <button onClick={() => onCreate()} style={{ width: "100%", padding: 13, background: "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 12, fontSize: "0.9rem", fontWeight: 700, color: "white", cursor: "pointer" }}>
+          <button onClick={() => onCreate()} style={{ width: "100%", padding: 13, background: "linear-gradient(135deg,#0f766e,#4F46E5)", border: "none", borderRadius: 12, fontSize: "0.9rem", fontWeight: 700, color: "white", cursor: "pointer" }}>
             + Create Post
           </button>
           <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 16, padding: 18, boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
@@ -628,7 +628,7 @@ function UpcomingCard({
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ fontSize: "0.62rem", fontWeight: 700, padding: "2px 7px", borderRadius: 5, background: p.status === "scheduled" ? "#EFF6FF" : isPublished ? "#F0FDF4" : "#F9FAFB", color: p.status === "scheduled" ? "#0066FF" : isPublished ? "#059669" : "#6B7280", textTransform: "uppercase" }}>{p.status || "scheduled"}</span>
         {fs && <span style={{ fontSize: "0.62rem", fontWeight: 700, padding: "2px 7px", borderRadius: 5, background: fs.bg, color: fs.color }}>{fs.icon} {fs.label}</span>}
-        {p.archetypeTitle && <span title={`2026 Post Archetype: ${p.archetypeTitle}`} style={{ fontSize: "0.62rem", fontWeight: 700, padding: "2px 7px", borderRadius: 5, background: "#F5F3FF", color: "#7C3AED", border: "1px solid #DDD6FE" }}>✨ {p.archetypeTitle}</span>}
+        {p.archetypeTitle && <span title={`2026 Post Archetype: ${p.archetypeTitle}`} style={{ fontSize: "0.62rem", fontWeight: 700, padding: "2px 7px", borderRadius: 5, background: "#F5F3FF", color: "#0f766e", border: "1px solid #DDD6FE" }}>✨ {p.archetypeTitle}</span>}
         <span style={{ flex: 1 }} />
         {isPublished ? (
           <span style={{ fontSize: "0.62rem", color: "#059669", fontWeight: 700, padding: "2px 7px" }}>✅ Live</span>
@@ -688,7 +688,7 @@ function AnalyticsTab({ posts }: { posts: Post[] }) {
   const followerGrow = 240 + Math.round(seed(domain) % 380);
 
   const kpis = [
-    { icon: "👁️", label: "Total Reach", value: hasData ? totalReach.toLocaleString() : "28,600", color: "#7C3AED", sub: "Last 30 days" },
+    { icon: "👁️", label: "Total Reach", value: hasData ? totalReach.toLocaleString() : "28,600", color: "#0f766e", sub: "Last 30 days" },
     { icon: "💬", label: "Avg Engagement", value: avgER + "%", color: "#0066FF", sub: "Across platforms" },
     { icon: "📝", label: "Posts Published", value: String(published.length || totalPosts), color: "#10B981", sub: "All time" },
     { icon: "📈", label: "Follower Growth", value: "+" + followerGrow, color: "#F59E0B", sub: "This month" },
@@ -704,7 +704,7 @@ function AnalyticsTab({ posts }: { posts: Post[] }) {
       const ctx = reachRef.current.getContext("2d");
       if (ctx) instances.push(new ChartCtorRef(ctx, {
         type: "line",
-        data: { labels: weekLabels, datasets: [{ label: "Total Reach", data: weekReach, borderColor: "#7C3AED", backgroundColor: "rgba(124,58,237,0.08)", tension: 0.4, fill: true, pointRadius: 4, pointBackgroundColor: "#7C3AED" }] },
+        data: { labels: weekLabels, datasets: [{ label: "Total Reach", data: weekReach, borderColor: "#0f766e", backgroundColor: "rgba(124,58,237,0.08)", tension: 0.4, fill: true, pointRadius: 4, pointBackgroundColor: "#0f766e" }] },
         options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false, ticks: { callback: (v: number) => (v >= 1000 ? (v / 1000).toFixed(0) + "K" : v), font: { size: 10 } }, grid: { color: "rgba(0,0,0,.04)" } }, x: { ticks: { font: { size: 10 } }, grid: { display: false } } } },
       }));
     }
@@ -731,7 +731,7 @@ function AnalyticsTab({ posts }: { posts: Post[] }) {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const times = ["6am", "9am", "12pm", "3pm", "6pm", "9pm"];
   const heatScores = [[2, 4, 3, 2, 1, 1], [3, 5, 4, 4, 2, 2], [2, 4, 5, 5, 3, 2], [1, 3, 4, 5, 4, 2], [2, 4, 5, 4, 3, 1], [3, 3, 2, 3, 4, 3], [2, 2, 1, 2, 3, 2]];
-  const heatColor = (s: number) => (s === 5 ? "#7C3AED" : s === 4 ? "#A78BFA" : s === 3 ? "#DDD6FE" : s === 2 ? "#F3F4F6" : "#F9FAFB");
+  const heatColor = (s: number) => (s === 5 ? "#0f766e" : s === 4 ? "#A78BFA" : s === 3 ? "#DDD6FE" : s === 2 ? "#F3F4F6" : "#F9FAFB");
 
   return (
     <>
@@ -791,7 +791,7 @@ function AnalyticsTab({ posts }: { posts: Post[] }) {
               </tbody>
             </table>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-              {([["#7C3AED", "Best"], ["#A78BFA", "Good"], ["#DDD6FE", "OK"]] as [string, string][]).map(([c, l]) => (
+              {([["#0f766e", "Best"], ["#A78BFA", "Good"], ["#DDD6FE", "OK"]] as [string, string][]).map(([c, l]) => (
                 <div key={l} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "0.62rem", color: "#6B7280" }}>
                   <div style={{ width: 10, height: 10, background: c, borderRadius: 2 }} />{l}
                 </div>
@@ -819,7 +819,7 @@ function AnalyticsTab({ posts }: { posts: Post[] }) {
                   <tr key={p.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={{ padding: "10px 12px" }}><span style={{ background: pl.bg, color: pl.color, borderRadius: 6, padding: "3px 8px", fontSize: "0.65rem", fontWeight: 700 }}>{pl.icon} {p.platform}</span></td>
                     <td style={{ padding: "10px 12px", color: "#374151", maxWidth: 250 }}><div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.caption || "").substring(0, 60)}{(p.caption || "").length > 60 ? "…" : ""}</div></td>
-                    <td style={{ textAlign: "center", padding: "10px 12px", fontWeight: 700, color: "#7C3AED" }}>{p.reach.toLocaleString()}</td>
+                    <td style={{ textAlign: "center", padding: "10px 12px", fontWeight: 700, color: "#0f766e" }}>{p.reach.toLocaleString()}</td>
                     <td style={{ textAlign: "center", padding: "10px 12px", fontWeight: 700, color: "#0066FF" }}>{p.likes.toLocaleString()}</td>
                     <td style={{ textAlign: "center", padding: "10px 12px", color: "#374151" }}>{p.comments}</td>
                     <td style={{ textAlign: "center", padding: "10px 12px" }}><span style={{ background: p.er >= 4 ? "#F0FDF4" : p.er >= 3 ? "#FFFBEB" : "#F9FAFB", color: p.er >= 4 ? "#059669" : p.er >= 3 ? "#D97706" : "#6B7280", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: "0.72rem" }}>{p.er}%</span></td>
@@ -889,7 +889,7 @@ function PublishingTab({
             <div style={{ fontSize: "0.78rem", color: "#374151", lineHeight: 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.caption || "").substring(0, 90)}{(p.caption || "").length > 90 ? "…" : ""}</div>
           </div>
           <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
-            <button onClick={() => onPublish(p.id)} style={{ padding: "6px 14px", background: "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 8, fontSize: "0.7rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap" }}>🚀 Publish Now</button>
+            <button onClick={() => onPublish(p.id)} style={{ padding: "6px 14px", background: "linear-gradient(135deg,#0f766e,#4F46E5)", border: "none", borderRadius: 8, fontSize: "0.7rem", fontWeight: 700, color: "white", cursor: "pointer", whiteSpace: "nowrap" }}>🚀 Publish Now</button>
             <button onClick={() => onRemove(p.id)} style={{ padding: "6px 10px", background: "white", border: "1px solid #FCA5A5", borderRadius: 8, fontSize: "0.7rem", color: "#DC2626", cursor: "pointer" }}>✕</button>
           </div>
         </div>
@@ -908,7 +908,7 @@ function PublishingTab({
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ fontSize: "0.75rem", fontWeight: 600, color: autoPublish ? "#059669" : "#9CA3AF" }}>{autoPublish ? "● Active" : "○ Inactive"}</span>
-              <button onClick={onToggleAutoPublish} style={{ padding: "10px 20px", background: autoPublish ? "linear-gradient(135deg,#0f766e,#0284c7)" : "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{autoPublish ? "⏸ Pause Auto-Publish" : "▶ Enable Auto-Publish"}</button>
+              <button onClick={onToggleAutoPublish} style={{ padding: "10px 20px", background: autoPublish ? "linear-gradient(135deg,#0f766e,#0284c7)" : "linear-gradient(135deg,#0f766e,#4F46E5)", border: "none", borderRadius: 10, fontSize: "0.8rem", fontWeight: 700, color: "white", cursor: "pointer" }}>{autoPublish ? "⏸ Pause Auto-Publish" : "▶ Enable Auto-Publish"}</button>
             </div>
           </div>
           {autoPublish && <div style={{ marginTop: 12, background: "rgba(5,150,105,.08)", border: "1px solid rgba(5,150,105,.2)", borderRadius: 8, padding: "10px 14px", fontSize: "0.75rem", color: "#065F46" }}>✅ Auto-publish is ON — InfoGenie checks every 60 seconds and publishes posts at their scheduled time</div>}
@@ -927,7 +927,7 @@ function PublishingTab({
             <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 12, padding: 32, textAlign: "center", color: "#9CA3AF" }}>
               <div style={{ fontSize: "2rem", marginBottom: 8 }}>📭</div>
               <div style={{ fontSize: "0.82rem" }}>No upcoming posts — go to Calendar to create and schedule posts</div>
-              <button onClick={() => { goToCalendar(); onCreate(); }} style={{ marginTop: 12, padding: "8px 18px", background: "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>+ Create Post</button>
+              <button onClick={() => { goToCalendar(); onCreate(); }} style={{ marginTop: 12, padding: "8px 18px", background: "linear-gradient(135deg,#0f766e,#4F46E5)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: "pointer" }}>+ Create Post</button>
             </div>
           ) : (
             upcoming.map((p) => postRow(p, false))
@@ -974,7 +974,7 @@ function PublishingTab({
 
         <div style={{ background: "white", border: "1px solid #E5E7EB", borderRadius: 16, padding: 18, boxShadow: "0 1px 4px rgba(0,0,0,.04)" }}>
           <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 12 }}>📊 Publishing Stats</div>
-          {([["Total Scheduled", scheduled.length, "#7C3AED"], ["Total Published", published.length, "#059669"], ["Overdue", overdue.length, "#D97706"], ["Drafts", posts.filter((p) => p.status === "draft").length, "#6B7280"]] as [string, number, string][]).map(([l, v, c]) => (
+          {([["Total Scheduled", scheduled.length, "#0f766e"], ["Total Published", published.length, "#059669"], ["Overdue", overdue.length, "#D97706"], ["Drafts", posts.filter((p) => p.status === "draft").length, "#6B7280"]] as [string, number, string][]).map(([l, v, c]) => (
             <div key={l} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #F9FAFB" }}>
               <span style={{ fontSize: "0.75rem", color: "#6B7280" }}>{l}</span>
               <span style={{ fontSize: "0.88rem", fontWeight: 800, color: c }}>{v}</span>
@@ -1077,7 +1077,7 @@ function CreatePostModal({ preDate, onClose, onSaved }: { preDate?: string; onCl
   return (
     <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 18, width: "100%", maxWidth: 560, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.3)" }}>
-        <div style={{ background: "linear-gradient(135deg,#7C3AED,#4F46E5)", borderRadius: "18px 18px 0 0", padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ background: "linear-gradient(135deg,#0f766e,#4F46E5)", borderRadius: "18px 18px 0 0", padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "#C4B5FD", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 3 }}>New Post</div>
             <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.1rem", fontWeight: 800, color: "#FFFFFF" }}>Create &amp; Schedule Post</div>
@@ -1102,7 +1102,7 @@ function CreatePostModal({ preDate, onClose, onSaved }: { preDate?: string; onCl
             <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Caption</div>
             <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={4} placeholder="Write your post caption here, or let AI generate it…" style={{ width: "100%", boxSizing: "border-box", padding: "11px 13px", border: "1.5px solid #E2E8F0", borderRadius: 10, fontSize: "0.82rem", color: "#0A1628", fontFamily: "'Inter',sans-serif", resize: "vertical", outline: "none", lineHeight: 1.5 }} />
           </div>
-          <button onClick={generateAi} disabled={aiBusy} style={{ padding: 9, background: "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: aiBusy ? "default" : "pointer", opacity: aiBusy ? 0.7 : 1 }}>{aiBusy ? "⏳ Generating…" : aiLabel}</button>
+          <button onClick={generateAi} disabled={aiBusy} style={{ padding: 9, background: "linear-gradient(135deg,#0f766e,#4F46E5)", border: "none", borderRadius: 9, fontSize: "0.78rem", fontWeight: 700, color: "white", cursor: aiBusy ? "default" : "pointer", opacity: aiBusy ? 0.7 : 1 }}>{aiBusy ? "⏳ Generating…" : aiLabel}</button>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
               <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 5 }}>Schedule Date</div>
@@ -1145,7 +1145,7 @@ function CreatePostModal({ preDate, onClose, onSaved }: { preDate?: string; onCl
                 {archetypeList.map((a) => {
                   const on = archetype?.id === a.id;
                   return (
-                    <button key={a.id} type="button" onClick={() => selectArchetype(a)} style={{ textAlign: "left", padding: "8px 10px", background: on ? stage?.bg || "#F5F3FF" : "white", border: `1.5px solid ${on ? stage?.color || "#7C3AED" : "#E5E7EB"}`, borderRadius: 9, cursor: "pointer", transition: "all .15s", fontFamily: "'Inter',sans-serif", boxShadow: on ? `0 0 0 3px ${stage?.color || "#7C3AED"}22` : "none" }}>
+                    <button key={a.id} type="button" onClick={() => selectArchetype(a)} style={{ textAlign: "left", padding: "8px 10px", background: on ? stage?.bg || "#F5F3FF" : "white", border: `1.5px solid ${on ? stage?.color || "#0f766e" : "#E5E7EB"}`, borderRadius: 9, cursor: "pointer", transition: "all .15s", fontFamily: "'Inter',sans-serif", boxShadow: on ? `0 0 0 3px ${stage?.color || "#0f766e"}22` : "none" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                         <span style={{ fontSize: "0.95rem" }}>{a.icon}</span>
                         <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#0A1628", lineHeight: 1.2 }}>{a.title}</span>
@@ -1155,12 +1155,12 @@ function CreatePostModal({ preDate, onClose, onSaved }: { preDate?: string; onCl
                   );
                 })}
               </div>
-              {archetype && <div style={{ marginTop: 6, fontSize: "0.66rem", color: stage?.color || "#7C3AED", fontWeight: 700 }}>{archetype.icon} <strong>{archetype.title}</strong> selected — AI will write in this format</div>}
+              {archetype && <div style={{ marginTop: 6, fontSize: "0.66rem", color: stage?.color || "#0f766e", fontWeight: 700 }}>{archetype.icon} <strong>{archetype.title}</strong> selected — AI will write in this format</div>}
             </div>
           )}
           <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
             <button onClick={onClose} style={{ flex: 1, padding: 11, background: "#F3F4F6", border: "none", borderRadius: 10, fontSize: "0.85rem", fontWeight: 600, color: "#6B7280", cursor: "pointer" }}>Cancel</button>
-            <button onClick={save} style={{ flex: 2, padding: 11, background: "linear-gradient(135deg,#7C3AED,#4F46E5)", border: "none", borderRadius: 10, fontSize: "0.85rem", fontWeight: 700, color: "white", cursor: "pointer" }}>📅 Schedule Post</button>
+            <button onClick={save} style={{ flex: 2, padding: 11, background: "linear-gradient(135deg,#0f766e,#4F46E5)", border: "none", borderRadius: 10, fontSize: "0.85rem", fontWeight: 700, color: "white", cursor: "pointer" }}>📅 Schedule Post</button>
           </div>
         </div>
       </div>

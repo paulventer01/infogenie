@@ -109,7 +109,7 @@ export default function CtvStreaming() {
   const card:   React.CSSProperties = { background: "#fff", border: "1px solid #E8EEF8", borderRadius: 14, padding: "20px 24px", marginBottom: 16, boxShadow: "0 2px 8px rgba(10,20,50,.06)" };
   const input:  React.CSSProperties = { width: "100%", padding: "9px 12px", border: "1px solid #CBD5E1", borderRadius: 8, fontSize: "0.85rem", color: "#0A1628", boxSizing: "border-box" };
   const lbl:    React.CSSProperties = { display: "block", fontSize: "0.72rem", fontWeight: 700, color: "#374151", textTransform: "uppercase" as const, letterSpacing: ".06em", marginBottom: 5 };
-  const btnPri: React.CSSProperties = { padding: "10px 22px", background: "linear-gradient(135deg,#7C3AED,#0066FF)", border: "none", borderRadius: 9, color: "#fff", fontWeight: 700, fontSize: "0.84rem", cursor: "pointer" };
+  const btnPri: React.CSSProperties = { padding: "10px 22px", background: "linear-gradient(135deg,#0f766e,#0066FF)", border: "none", borderRadius: 9, color: "#fff", fontWeight: 700, fontSize: "0.84rem", cursor: "pointer" };
 
   const filtered = campaigns.filter(c => typeFilter === "all" ? true : c.campaign_type === typeFilter);
 
@@ -126,14 +126,14 @@ export default function CtvStreaming() {
       {/* Platform pills */}
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
         {[["all","All Channels"],["ctv","📺 Connected TV"],["streaming_audio","🎵 Streaming Audio"]].map(([t, label]) => (
-          <button key={t} onClick={() => setTypeFilter(t as "all"|"ctv"|"streaming_audio")} style={{ padding: "6px 14px", background: typeFilter === t ? "#7C3AED" : "#F1F5F9", color: typeFilter === t ? "#fff" : "#374151", border: "none", borderRadius: 99, fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}>{label}</button>
+          <button key={t} onClick={() => setTypeFilter(t as "all"|"ctv"|"streaming_audio")} style={{ padding: "6px 14px", background: typeFilter === t ? "#0f766e" : "#F1F5F9", color: typeFilter === t ? "#fff" : "#374151", border: "none", borderRadius: 99, fontWeight: 700, fontSize: "0.78rem", cursor: "pointer" }}>{label}</button>
         ))}
       </div>
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #E8EEF8", marginBottom: 24 }}>
         {([["campaigns","📋 Campaigns"], ["new","➕ New Campaign"]] as const).map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 18px", background: "transparent", border: "none", borderBottom: `3px solid ${tab === t ? "#7C3AED" : "transparent"}`, color: tab === t ? "#7C3AED" : "#64748B", fontWeight: tab === t ? 700 : 500, fontSize: "0.84rem", cursor: "pointer", marginBottom: -2 }}>
+          <button key={t} onClick={() => setTab(t)} style={{ padding: "10px 18px", background: "transparent", border: "none", borderBottom: `3px solid ${tab === t ? "#0f766e" : "transparent"}`, color: tab === t ? "#0f766e" : "#64748B", fontWeight: tab === t ? 700 : 500, fontSize: "0.84rem", cursor: "pointer", marginBottom: -2 }}>
             {label}{t === "campaigns" ? ` (${filtered.length})` : ""}
           </button>
         ))}
@@ -187,7 +187,7 @@ export default function CtvStreaming() {
                 const sc = STATUS_CONFIG[c.status] || STATUS_CONFIG.draft;
                 const plat = platforms.find(p => p.id === c.platform);
                 return (
-                  <div key={c.id} onClick={() => { setActive(c); setBrief(c.creative_brief || null); setBriefForm({ brand_name: "", industry: "", target_audience: "", key_message: "" }); }} style={{ ...card, cursor: "pointer", borderLeft: `4px solid ${c.campaign_type === "streaming_audio" ? "#7C3AED" : "#0066FF"}`, background: active?.id === c.id ? "#F8FAFF" : "#fff" }}>
+                  <div key={c.id} onClick={() => { setActive(c); setBrief(c.creative_brief || null); setBriefForm({ brand_name: "", industry: "", target_audience: "", key_message: "" }); }} style={{ ...card, cursor: "pointer", borderLeft: `4px solid ${c.campaign_type === "streaming_audio" ? "#0f766e" : "#0066FF"}`, background: active?.id === c.id ? "#F8FAFF" : "#fff" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div>
                         <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#0A1628", fontSize: "0.9rem" }}>{c.name}</div>
@@ -224,14 +224,14 @@ export default function CtvStreaming() {
 
                 {/* AI Brief Generator */}
                 <div style={{ background: "#F5F3FF", border: "1px solid #DDD6FE", borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
-                  <div style={{ fontWeight: 800, color: "#7C3AED", fontSize: "0.82rem", marginBottom: 10 }}>🤖 AI Creative Brief Generator</div>
+                  <div style={{ fontWeight: 800, color: "#0f766e", fontSize: "0.82rem", marginBottom: 10 }}>🤖 AI Creative Brief Generator</div>
                   <div style={{ display: "grid", gap: 8 }}>
                     <input style={{ ...input, fontSize: "0.78rem" }} placeholder="Brand name" value={briefForm.brand_name} onChange={e => setBriefForm(f => ({ ...f, brand_name: e.target.value }))} />
                     <input style={{ ...input, fontSize: "0.78rem" }} placeholder="Industry (e.g. Fintech, Fashion)" value={briefForm.industry} onChange={e => setBriefForm(f => ({ ...f, industry: e.target.value }))} />
                     <input style={{ ...input, fontSize: "0.78rem" }} placeholder="Target audience" value={briefForm.target_audience} onChange={e => setBriefForm(f => ({ ...f, target_audience: e.target.value }))} />
                     <input style={{ ...input, fontSize: "0.78rem" }} placeholder="Key message / offer" value={briefForm.key_message} onChange={e => setBriefForm(f => ({ ...f, key_message: e.target.value }))} />
                   </div>
-                  <button onClick={() => handleGenerateBrief(active.id)} disabled={genBrief} style={{ marginTop: 10, width: "100%", padding: "8px", background: "#7C3AED", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer", opacity: genBrief ? 0.7 : 1 }}>
+                  <button onClick={() => handleGenerateBrief(active.id)} disabled={genBrief} style={{ marginTop: 10, width: "100%", padding: "8px", background: "#0f766e", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: "0.78rem", cursor: "pointer", opacity: genBrief ? 0.7 : 1 }}>
                     {genBrief ? "Generating…" : active.campaign_type === "streaming_audio" ? "🎵 Generate Audio Script" : "📺 Generate 30s TV Script"}
                   </button>
                 </div>

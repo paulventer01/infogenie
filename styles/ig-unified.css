@@ -1,0 +1,448 @@
+/* ============================================================
+   InfoGenie — UNIFIED UI SYSTEM
+   One language for heroes, tiles, buttons, type, and sections
+   across every React panel and shell surface.
+   ============================================================ */
+
+body:has(#ig-app-shell) {
+  --ig-surface: #ffffff;
+  --ig-surface-muted: #f8fafc;
+  --ig-primary: #0f766e;
+  --ig-primary-hover: #0b5f59;
+  --ig-primary-soft: rgba(15, 118, 110, 0.1);
+  --ig-primary-border: rgba(15, 118, 110, 0.28);
+  --ig-accent: #0284c7;
+  --ig-success: #059669;
+  --ig-danger: #dc2626;
+  --ig-warn: #d97706;
+  --ig-radius: 14px;
+  --ig-radius-sm: 10px;
+  --ig-shadow: 0 1px 0 rgba(11, 18, 32, 0.04), 0 10px 28px rgba(11, 18, 32, 0.06);
+  --ig-shadow-hover: 0 4px 18px rgba(15, 118, 110, 0.12);
+  --ig-btn-h: 40px;
+  --ig-grad: linear-gradient(135deg, #0f766e 0%, #0284c7 100%);
+}
+
+/* ── Type: one stack everywhere ───────────────────────────────────────────── */
+body:has(#ig-app-shell) #ig-react-panel,
+body:has(#ig-app-shell) #ig-react-panel button,
+body:has(#ig-app-shell) #ig-react-panel input,
+body:has(#ig-app-shell) #ig-react-panel select,
+body:has(#ig-app-shell) #ig-react-panel textarea {
+  font-family: var(--font-ui) !important;
+  color: var(--ig-text, #0b1220);
+}
+
+body:has(#ig-app-shell) #ig-react-panel h1,
+body:has(#ig-app-shell) #ig-react-panel h2,
+body:has(#ig-app-shell) #ig-react-panel .view-title,
+body:has(#ig-app-shell) #ig-react-panel .ih-title {
+  font-family: var(--font-display) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.025em !important;
+  color: #0b1220 !important;
+  -webkit-text-fill-color: #0b1220 !important;
+  text-shadow: none !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel h3,
+body:has(#ig-app-shell) #ig-react-panel h4,
+body:has(#ig-app-shell) #ig-react-panel .ig-section-title {
+  font-family: var(--font-ui) !important;
+  font-weight: 800 !important;
+  color: #0b1220 !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .view-sub,
+body:has(#ig-app-shell) #ig-react-panel .ih-sub,
+body:has(#ig-app-shell) #ig-react-panel .ig-section-sub,
+body:has(#ig-app-shell) #ig-react-panel p {
+  color: #5b6577;
+}
+
+/* ── Heroes: one treatment ────────────────────────────────────────────────── */
+body:has(#ig-app-shell) #ig-react-panel .view-header,
+body:has(#ig-app-shell) #ig-react-panel .intel-header,
+body:has(#ig-app-shell) #ig-react-panel .ig-panel-hero {
+  background:
+    radial-gradient(ellipse 75% 65% at 10% 15%, rgba(15, 118, 110, 0.16), transparent 55%),
+    radial-gradient(ellipse 55% 50% at 92% 85%, rgba(2, 132, 199, 0.14), transparent 50%),
+    linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 48%, #eef4ff 100%) !important;
+  border: 1px solid rgba(15, 118, 110, 0.16) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--ig-shadow) !important;
+  color: #0b1220 !important;
+  margin: 0 0 18px !important;
+  padding: 22px 24px !important;
+}
+
+/* ── Unified cards / tiles ────────────────────────────────────────────────── */
+body:has(#ig-app-shell) #ig-react-panel .ig-tile,
+body:has(#ig-app-shell) #ig-react-panel .ig-hub-tile,
+body:has(#ig-app-shell) #ig-react-panel .ig-section-card,
+body:has(#ig-app-shell) #ig-react-panel .ig-kpi,
+body:has(#ig-app-shell) #ig-react-panel .ig-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(11, 18, 32, 0.1) !important;
+  border-radius: var(--ig-radius) !important;
+  box-shadow: var(--ig-shadow) !important;
+  color: #0b1220 !important;
+}
+
+/* CSS-module dashboard tiles → same surface language */
+body:has(#ig-app-shell) #ig-react-panel [class*="stripCard"],
+body:has(#ig-app-shell) #ig-react-panel [class*="moduleCard"],
+body:has(#ig-app-shell) #ig-react-panel [class*="overview-widgets_card"],
+body:has(#ig-app-shell) #ig-react-panel [class*="card"][class*="module"],
+body:has(#ig-app-shell) #ig-react-panel button[class*="stripCard"],
+body:has(#ig-app-shell) #ig-react-panel button[class*="moduleCard"] {
+  background: #ffffff !important;
+  border: 1px solid rgba(11, 18, 32, 0.1) !important;
+  border-radius: var(--ig-radius) !important;
+  box-shadow: var(--ig-shadow) !important;
+  color: #0b1220 !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+body:has(#ig-app-shell) #ig-react-panel button[class*="stripCard"]:hover,
+body:has(#ig-app-shell) #ig-react-panel button[class*="moduleCard"]:hover,
+body:has(#ig-app-shell) #ig-react-panel .ig-tile:hover,
+body:has(#ig-app-shell) #ig-react-panel .ig-hub-tile:hover {
+  border-color: var(--ig-primary-border) !important;
+  box-shadow: var(--ig-shadow-hover) !important;
+  transform: translateY(-1px);
+}
+
+/* Kill rainbow accent borders — one teal accent rail */
+body:has(#ig-app-shell) #ig-react-panel button[class*="moduleCard"],
+body:has(#ig-app-shell) #ig-react-panel [class*="overview-widgets_card"] {
+  border-top: 1px solid rgba(11, 18, 32, 0.1) !important;
+  border-left: 3px solid var(--ig-primary) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel [class*="stripLabel"],
+body:has(#ig-app-shell) #ig-react-panel [class*="sectionTitle"],
+body:has(#ig-app-shell) #ig-react-panel .ig-label {
+  font-size: 0.68rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: #64748b !important;
+  font-family: var(--font-ui) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel [class*="stripValue"],
+body:has(#ig-app-shell) #ig-react-panel [class*="moduleTitle"],
+body:has(#ig-app-shell) #ig-react-panel .ig-value {
+  color: #0b1220 !important;
+  font-weight: 800 !important;
+  font-family: var(--font-display) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel [class*="stripOwner"],
+body:has(#ig-app-shell) #ig-react-panel [class*="moduleOwner"],
+body:has(#ig-app-shell) #ig-react-panel [class*="moduleStat"],
+body:has(#ig-app-shell) #ig-react-panel [class*="cardOwner"] {
+  color: var(--ig-primary) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel [class*="moduleDesc"],
+body:has(#ig-app-shell) #ig-react-panel [class*="stripHint"] {
+  color: #64748b !important;
+}
+
+/* Journey chips */
+body:has(#ig-app-shell) #ig-react-panel [class*="journey"] {
+  background: #ffffff !important;
+  border: 1px solid rgba(11, 18, 32, 0.1) !important;
+  border-radius: var(--ig-radius) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel [class*="journeyCurrent"] {
+  background: var(--ig-primary-soft) !important;
+  color: var(--ig-primary) !important;
+  border-color: var(--ig-primary-border) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel [class*="journeyCurrent"] [class*="journeyNum"] {
+  background: var(--ig-primary) !important;
+  color: #fff !important;
+}
+
+/* ── Buttons: three roles only ────────────────────────────────────────────── */
+body:has(#ig-app-shell) #ig-react-panel .btn-primary,
+body:has(#ig-app-shell) #ig-react-panel .ig-btn-primary,
+body:has(#ig-app-shell) #ig-react-panel .btn-analyse,
+body:has(#ig-app-shell) #ig-react-panel button.ig-btn-primary {
+  background: var(--ig-grad) !important;
+  border: none !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  min-height: var(--ig-btn-h) !important;
+  padding: 0 18px !important;
+  border-radius: var(--ig-radius-sm) !important;
+  font-weight: 700 !important;
+  font-size: 0.84rem !important;
+  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.25) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .btn-secondary,
+body:has(#ig-app-shell) #ig-react-panel .btn-outline,
+body:has(#ig-app-shell) #ig-react-panel .btn-ghost,
+body:has(#ig-app-shell) #ig-react-panel .ig-btn-secondary,
+body:has(#ig-app-shell) #ig-react-panel button.ig-btn-secondary {
+  background: #ffffff !important;
+  border: 1.5px solid rgba(11, 18, 32, 0.14) !important;
+  color: #0b1220 !important;
+  -webkit-text-fill-color: #0b1220 !important;
+  min-height: var(--ig-btn-h) !important;
+  padding: 0 16px !important;
+  border-radius: var(--ig-radius-sm) !important;
+  font-weight: 700 !important;
+  font-size: 0.84rem !important;
+  box-shadow: none !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .btn-secondary:hover,
+body:has(#ig-app-shell) #ig-react-panel .ig-btn-secondary:hover {
+  border-color: var(--ig-primary-border) !important;
+  color: var(--ig-primary) !important;
+}
+
+/* Hero tags / atags */
+body:has(#ig-app-shell) #ig-react-panel .atag,
+body:has(#ig-app-shell) #ig-react-panel .hero-pill,
+body:has(#ig-app-shell) #ig-react-panel .badge {
+  background: #ffffff !important;
+  color: #0f766e !important;
+  border: 1px solid rgba(15, 118, 110, 0.22) !important;
+  border-radius: 999px !important;
+  font-weight: 700 !important;
+  font-size: 0.68rem !important;
+  box-shadow: 0 1px 3px rgba(15, 30, 61, 0.08) !important;
+}
+
+/* Form controls */
+body:has(#ig-app-shell) #ig-react-panel input:not([type="checkbox"]):not([type="radio"]),
+body:has(#ig-app-shell) #ig-react-panel select,
+body:has(#ig-app-shell) #ig-react-panel textarea {
+  border: 1px solid rgba(11, 18, 32, 0.14) !important;
+  border-radius: var(--ig-radius-sm) !important;
+  background: #ffffff !important;
+  color: #0b1220 !important;
+  min-height: var(--ig-btn-h);
+}
+
+body:has(#ig-app-shell) #ig-react-panel input:focus,
+body:has(#ig-app-shell) #ig-react-panel select:focus,
+body:has(#ig-app-shell) #ig-react-panel textarea:focus {
+  outline: none !important;
+  border-color: var(--ig-primary) !important;
+  box-shadow: 0 0 0 3px var(--ig-primary-soft) !important;
+}
+
+/* Content column spacing */
+body:has(#ig-app-shell) #ig-react-panel .ig-panel-body,
+body:has(#ig-app-shell) #ig-react-panel .container {
+  color: #0b1220;
+}
+
+/* Sidebar nav active state alignment */
+body:has(#ig-app-shell) .nav-item.active,
+body:has(#ig-app-shell) .nav-sub.active,
+body:has(#ig-app-shell) [data-nav-active="1"] {
+  background: var(--ig-primary-soft) !important;
+  color: var(--ig-primary) !important;
+}
+
+/* Marketing command center / dark leftover panels → light */
+body:has(#ig-app-shell) #ig-react-panel [class*="dashboard-marketing_hero"],
+body:has(#ig-app-shell) #ig-react-panel [class*="metricDark"] {
+  background: #ffffff !important;
+  color: #0b1220 !important;
+  border: 1px solid rgba(11, 18, 32, 0.1) !important;
+  border-radius: var(--ig-radius) !important;
+}
+
+/* Legacy KPI / chart / table cards on Dashboard */
+body:has(#ig-app-shell) #ig-react-panel .kpi-grid > *,
+body:has(#ig-app-shell) #ig-react-panel .kpi-card,
+body:has(#ig-app-shell) #ig-react-panel .chart-box,
+body:has(#ig-app-shell) #ig-react-panel .data-table-card,
+body:has(#ig-app-shell) #ig-react-panel .roi-banner,
+body:has(#ig-app-shell) #ig-react-panel .two-charts > * {
+  background: #ffffff !important;
+  border: 1px solid rgba(11, 18, 32, 0.1) !important;
+  border-radius: var(--ig-radius) !important;
+  box-shadow: var(--ig-shadow) !important;
+  color: #0b1220 !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .kpi-card,
+body:has(#ig-app-shell) #ig-react-panel .kpi-grid > * {
+  border-left: 3px solid var(--ig-primary) !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .btn-link {
+  background: transparent !important;
+  border: none !important;
+  color: var(--ig-primary) !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .ig-table th {
+  background: #f8fafc !important;
+  color: #64748b !important;
+  font-size: 0.72rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+}
+
+body:has(#ig-app-shell) #ig-react-panel .ig-table td {
+  color: #0b1220 !important;
+}
+
+/* ============================================================
+   PLATFORM CTA LOCK — teal→sky only (no orange / purple chrome)
+   DESIGN: warm #f97316 is never main chrome or primary CTAs.
+   Inline-styled legacy buttons are remapped here so every page
+   inherits the brand without waiting on per-file migrations.
+   ============================================================ */
+
+body:has(#ig-app-shell) {
+  --gold: #0f766e;
+  --ig-warm: #0284c7;
+  --v2-warm: #0284c7;
+}
+
+/* Filled orange / amber / dark-orange CTAs → brand gradient */
+body:has(#ig-app-shell) button[style*="#F97316"],
+body:has(#ig-app-shell) button[style*="#f97316"],
+body:has(#ig-app-shell) button[style*="#EA580C"],
+body:has(#ig-app-shell) button[style*="#ea580c"],
+body:has(#ig-app-shell) button[style*="#C2410C"],
+body:has(#ig-app-shell) button[style*="#c2410c"],
+body:has(#ig-app-shell) button[style*="#FF6B35"],
+body:has(#ig-app-shell) button[style*="#ff6b35"],
+body:has(#ig-app-shell) button[style*="#FB923C"],
+body:has(#ig-app-shell) button[style*="#fb923c"],
+body:has(#ig-app-shell) button[style*="#F59E0B"][style*="background"],
+body:has(#ig-app-shell) a[style*="#F97316"][style*="background"],
+body:has(#ig-app-shell) a[style*="#EA580C"][style*="background"],
+body:has(#ig-app-shell) [role="button"][style*="#F97316"],
+body:has(#ig-app-shell) [role="button"][style*="#EA580C"] {
+  background: var(--ig-grad) !important;
+  background-image: var(--ig-grad) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.25) !important;
+  text-shadow: none !important;
+}
+
+/* Outline orange CTAs → brand outline */
+body:has(#ig-app-shell) button[style*="border"][style*="#F97316"],
+body:has(#ig-app-shell) button[style*="border"][style*="#f97316"],
+body:has(#ig-app-shell) button[style*="border"][style*="#EA580C"],
+body:has(#ig-app-shell) button[style*="borderColor"][style*="#F97316"] {
+  border-color: var(--ig-primary) !important;
+  color: var(--ig-primary) !important;
+  -webkit-text-fill-color: var(--ig-primary) !important;
+}
+
+/* When outline also had orange fill forced above, restore outline look if bg was white */
+body:has(#ig-app-shell) button[style*="background: #fff"][style*="#F97316"],
+body:has(#ig-app-shell) button[style*="background:#fff"][style*="#F97316"],
+body:has(#ig-app-shell) button[style*='background: "#fff"'][style*="#F97316"],
+body:has(#ig-app-shell) button[style*="background: #ffffff"][style*="#F97316"],
+body:has(#ig-app-shell) button[style*="background:#ffffff"][style*="#F97316"] {
+  background: #ffffff !important;
+  background-image: none !important;
+  border: 1.5px solid var(--ig-primary) !important;
+  color: var(--ig-primary) !important;
+  -webkit-text-fill-color: var(--ig-primary) !important;
+  box-shadow: none !important;
+}
+
+/* Purple “AI” micro-buttons → brand gradient (no violet chrome) */
+body:has(#ig-app-shell) button[style*="#7C3AED"],
+body:has(#ig-app-shell) button[style*="#7c3aed"],
+body:has(#ig-app-shell) button[style*="#A855F7"],
+body:has(#ig-app-shell) button[style*="#a855f7"],
+body:has(#ig-app-shell) button[style*="#8B5CF6"],
+body:has(#ig-app-shell) button[style*="#8b5cf6"] {
+  background: var(--ig-grad) !important;
+  background-image: var(--ig-grad) !important;
+  border: none !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* Links that used orange as brand accent → teal */
+body:has(#ig-app-shell) a[style*="color: #F97316"],
+body:has(#ig-app-shell) a[style*="color:#F97316"],
+body:has(#ig-app-shell) a[style*="color: #f97316"],
+body:has(#ig-app-shell) a[style*="color:#f97316"],
+body:has(#ig-app-shell) a[style*="color: #EA580C"],
+body:has(#ig-app-shell) a[style*="color:#EA580C"] {
+  color: var(--ig-primary) !important;
+}
+
+/* Toggle / switch on-state often hard-coded orange */
+body:has(#ig-app-shell) button[aria-pressed="true"][style*="#F97316"],
+body:has(#ig-app-shell) button[aria-pressed="true"][style*="#f97316"],
+body:has(#ig-app-shell) button[aria-pressed="true"][style*="#EA580C"],
+body:has(#ig-app-shell) .ig-toggle[aria-pressed="true"],
+body:has(#ig-app-shell) .ig-toggle.is-on {
+  background: var(--ig-primary) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* Active pill tabs: prefer brand over pure black when black was used as “selected” */
+body:has(#ig-app-shell) #ig-react-panel button[style*="background: #0A1628"],
+body:has(#ig-app-shell) #ig-react-panel button[style*="background:#0A1628"],
+body:has(#ig-app-shell) #ig-react-panel button[style*='#0A1628'] {
+  background: var(--ig-primary) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* Kill leftover HubSpot / warm orange hero bands */
+body:has(#ig-app-shell) [style*="#FF7A59"],
+body:has(#ig-app-shell) [style*="#ff7a59"],
+body:has(#ig-app-shell) [style*="#FF5C35"],
+body:has(#ig-app-shell) [style*="#ff5c35"] {
+  background: linear-gradient(135deg, #e8f6f3 0%, #eaf2fb 48%, #eef4ff 100%) !important;
+  color: #0b1220 !important;
+  -webkit-text-fill-color: #0b1220 !important;
+  border: 1px solid rgba(15, 118, 110, 0.16) !important;
+}
+
+/* Shared toggle primitive */
+body:has(#ig-app-shell) .ig-toggle {
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  background: #d1d5db;
+  padding: 0;
+}
+body:has(#ig-app-shell) .ig-toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s ease;
+}
+body:has(#ig-app-shell) .ig-toggle[aria-pressed="true"]::after,
+body:has(#ig-app-shell) .ig-toggle.is-on::after {
+  left: 21px;
+}

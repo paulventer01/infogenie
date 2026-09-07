@@ -68,7 +68,7 @@ const MODE_CONFIG: Record<
 > = {
   article: { label: "📝 Article", color: "#0891B2", fields: [] },
   affiliation: { label: "💰 Affiliation", color: "#D97706", fields: ["competitor_hint"] },
-  ecommerce: { label: "🛒 E-commerce", color: "#7C3AED", fields: [] },
+  ecommerce: { label: "🛒 E-commerce", color: "#0f766e", fields: [] },
   local: { label: "📍 Local SEO", color: "#059669", fields: ["location"] },
   update: { label: "🔄 Update Content", color: "#6B7280", fields: ["existing_content"] },
   discovery: { label: "🔥 Google Discovery", color: "#DC2626", fields: [] },

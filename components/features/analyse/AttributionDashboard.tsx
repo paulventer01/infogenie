@@ -40,7 +40,7 @@ const MODELS = [
   { key: "last_touch",     label: "Last Touch",      desc: "100% credit to the final channel before conversion.", color: "#059669" },
   { key: "linear",         label: "Linear",          desc: "Equal credit shared across all touchpoints.", color: "#D97706" },
   { key: "position_based", label: "Position-Based",  desc: "40% first, 40% last, 20% shared across middle channels.", color: "#DC2626" },
-  { key: "time_decay",     label: "Time Decay",      desc: "More recent touchpoints receive exponentially more credit.", color: "#7C3AED" },
+  { key: "time_decay",     label: "Time Decay",      desc: "More recent touchpoints receive exponentially more credit.", color: "#0f766e" },
 ];
 
 const EMPTY_TP: Touchpoint = { channel: "", spend: "", impressions: "", clicks: "", leads: "", customers: "", revenue: "" };
@@ -228,7 +228,7 @@ export default function AttributionDashboard() {
                 {[
                   { label: "Total Spend", value: fmt(totals.spend), sub: "all channels", color: "#DC2626" },
                   { label: "Total Revenue", value: fmt(totals.revenue), sub: "attributed", color: "#059669" },
-                  { label: "Blended ROAS", value: totals.spend > 0 ? (totals.revenue / totals.spend).toFixed(2) + "x" : "—", sub: "revenue / spend", color: "#7C3AED" },
+                  { label: "Blended ROAS", value: totals.spend > 0 ? (totals.revenue / totals.spend).toFixed(2) + "x" : "—", sub: "revenue / spend", color: "#0f766e" },
                   { label: "Customers", value: fmtN(totals.customers), sub: "converted", color: "#1D4ED8" },
                 ].map(s => (
                   <div key={s.label} style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: "14px 16px" }}>

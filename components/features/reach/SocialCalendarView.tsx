@@ -239,7 +239,7 @@ export default function SocialCalendarView({
               }}
             >
               {cell.date && (
-                <div style={{ fontSize: "0.72rem", fontWeight: 800, color: isToday ? "#C2410C" : "#0A1628", marginBottom: 4 }}>
+                <div style={{ fontSize: "0.72rem", fontWeight: 800, color: isToday ? "#0b5f59" : "#0A1628", marginBottom: 4 }}>
                   {cell.date.getDate()}
                 </div>
               )}

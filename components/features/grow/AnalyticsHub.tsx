@@ -261,7 +261,7 @@ export default function AnalyticsHub() {
     tag === "CORE"
       ? { background: "#0F766E", color: "white" }
       : tag === "PIPELINE"
-        ? { background: "#7C3AED", color: "white" }
+        ? { background: "#0f766e", color: "white" }
         : { background: "#E2E8F0", color: "#475569" };
 
   const ConnCard = ({ s }: { s: AnalyticsSource }) => {
@@ -348,7 +348,7 @@ export default function AnalyticsHub() {
     const kpis: [string, string, string, string][] = [
       ["👁️", fmt(t.impressions), "Impressions", "#4285F4"],
       ["🖱️", fmt(t.clicks), "Clicks", "#0F766E"],
-      ["📊", t.ctr + "%", "Avg CTR", "#7C3AED"],
+      ["📊", t.ctr + "%", "Avg CTR", "#0f766e"],
       ["🎯", fmt(t.conversions), "Conversions", "#F59E0B"],
       ["💰", dollars(t.revenue), "Revenue", "#059669"],
     ];
@@ -400,7 +400,7 @@ export default function AnalyticsHub() {
                     <div style={{ fontSize: "0.7rem", color: "#64748B", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.path}</div>
                     <div style={{ fontSize: "0.68rem", color: "#DC2626", marginTop: 2 }}><strong>{fmt(p.impressions)}</strong> impressions · <strong>{p.ctr}%</strong> CTR · pos <strong>{p.avgPos}</strong></div>
                   </div>
-                  <button onClick={() => goToView(router, "autoseo")} style={{ padding: "7px 12px", background: "#EA580C", color: "white", border: "none", borderRadius: 7, fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Fix</button>
+                  <button onClick={() => goToView(router, "autoseo")} style={{ padding: "7px 12px", background: "#0f766e", color: "white", border: "none", borderRadius: 7, fontSize: "0.7rem", fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Fix</button>
                 </div>
               ))
             ) : (
@@ -462,7 +462,7 @@ export default function AnalyticsHub() {
               <p className="view-sub" style={{ color: "#0f172a", opacity: 1, textShadow: "none" }}>Connect Google Search Console &amp; GA4 — InfoGenie pulls real impressions, clicks, ranks and revenue per page, then highlights top performers and weak performers ready to fix.</p>
             </div>
             <div className="vh-actions">
-              <button className="btn-primary" style={{ background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#0f172a" }} onClick={refresh}>📡 Refresh Data</button>
+              <button className="btn-primary" style={{ background: "linear-gradient(135deg,#0f766e,#0284c7)", color: "#ffffff" }} onClick={refresh}>📡 Refresh Data</button>
             </div>
           </div>
         </div>
