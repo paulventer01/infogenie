@@ -75,6 +75,8 @@ beforeEach(() => {
   errors = [];
   win._apPlanMeta = undefined;
   win._apPlanData = undefined;
+  const leftover = win.document.getElementById('attackPlanModal');
+  if (leftover && leftover.parentNode) leftover.parentNode.removeChild(leftover);
   win.showToast = (msg) => { toasts.push(String(msg)); };
   win._apCloseModal = () => { closed += 1; };
   win.renderAttackPlan = (plan, competitor) => { rendered.push({ plan, competitor }); };
@@ -161,6 +163,102 @@ test('ok:true with a missing/null plan is a failure, not a blank success', () =>
   assert.strictEqual(closed, 1);
   assert.ok(toasts.some((t) => t.includes('Could not generate')));
   assert.ok(!toasts.some((t) => t.includes('Attack plan ready')));
+});
+
+test('strict data_unavailable envelope is withheld — honest message, no plan, no success toast', () => {
+  const payload = {
+    ok: true,
+    data_unavailable: true,
+    _dataMode: 'strict',
+    source: 'data_unavailable',
+    message: 'This data is currently unavailable. The issue has been reported to your administrator.',
+  };
+  const unwrapped = win._unwrapAttackPlanPayload(payload);
+  assert.strictEqual(unwrapped.ok, false);
+  assert.strictEqual(unwrapped.withheld, true);
+  assert.strictEqual(unwrapped.plan, null);
+  assert.strictEqual(unwrapped.source, 'data_unavailable');
+  assert.match(unwrapped.message, /currently unavailable/);
+  assert.match(unwrapped.error, /currently unavailable/);
+
+  const applied = win._applyAttackPlanResponse(payload, 'Rival');
+  assert.strictEqual(applied, false);
+  assert.strictEqual(rendered.length, 0);
+  assert.strictEqual(closed, 0, 'modal stays open so the user can read the withheld message');
+  assert.ok(!toasts.some((t) => t.includes('Attack plan ready')));
+  assert.ok(!toasts.some((t) => t.includes('Could not generate')));
+  assert.ok(toasts.some((t) => /withheld/i.test(t) && /strict/i.test(t)));
+
+  const modal = win.document.getElementById('attackPlanModal');
+  assert.ok(modal, 'withheld state is shown inside the already-open modal');
+  assert.match(modal.innerHTML, /Attack plan withheld/);
+  assert.match(modal.innerHTML, /currently unavailable/);
+  assert.match(modal.innerHTML, /administrator/);
+  assert.match(modal.innerHTML, /Strict data mode/);
+  assert.match(modal.innerHTML, /retrying will not generate a plan/i);
+  assert.doesNotMatch(modal.innerHTML, /Attack plan ready/);
+});
+
+test('source:data_unavailable without the boolean flag is still withheld', () => {
+  const payload = { ok: true, source: 'data_unavailable' };
+  const unwrapped = win._unwrapAttackPlanPayload(payload);
+  assert.strictEqual(unwrapped.withheld, true);
+  assert.strictEqual(unwrapped.ok, false);
+  assert.strictEqual(unwrapped.plan, null);
+  assert.match(unwrapped.message, /strict data mode/i);
+
+  assert.strictEqual(win._applyAttackPlanResponse(payload, 'Rival'), false);
+  assert.strictEqual(rendered.length, 0);
+  assert.strictEqual(closed, 0);
+  const modal = win.document.getElementById('attackPlanModal');
+  assert.match(modal.innerHTML, /strict data mode/i);
+});
+
+test('withheld server message is escaped, never interpolated raw into innerHTML', () => {
+  const payload = {
+    ok: true,
+    data_unavailable: true,
+    source: 'data_unavailable',
+    message: '<img src=x onerror=alert(1)>injected-unavailable',
+  };
+  assert.strictEqual(win._applyAttackPlanResponse(payload, 'Rival'), false);
+  const html = win.document.getElementById('attackPlanModal').innerHTML;
+  assert.doesNotMatch(html, /<img/i);
+  assert.doesNotMatch(html, /<script/i);
+  assert.match(html, /injected-unavailable/);
+});
+
+test('demo-mode template passthrough renders the plan WITH the honesty badge', () => {
+  const templatePlan = { ...livePlan, executiveSummary: 'Template strategy vs Rival.' };
+  const payload = {
+    ok: true,
+    plan: templatePlan,
+    sources: ['template'],
+    source: 'template',
+    _fabricated: true,
+    _dataMode: 'demo',
+    _demo: true,
+  };
+  const unwrapped = win._unwrapAttackPlanPayload(payload);
+  assert.strictEqual(unwrapped.ok, true);
+  assert.strictEqual(unwrapped.withheld, false);
+  assert.strictEqual(unwrapped.plan, templatePlan);
+  assert.strictEqual(unwrapped.fabricated, true);
+  assert.strictEqual(unwrapped.source, 'template');
+
+  const applied = win._applyAttackPlanResponse(payload, 'Rival');
+  assert.strictEqual(applied, true);
+  assert.strictEqual(rendered.length, 1);
+  assert.strictEqual(rendered[0].plan, templatePlan);
+  assert.strictEqual(win._apPlanMeta.fabricated, true);
+  assert.strictEqual(win._apPlanMeta.source, 'template');
+  const badge = win._apHonestyBadgeHtml(win._apPlanMeta);
+  assert.match(badge, /ESTIMATE/i);
+  assert.match(badge, /template/i);
+  assert.doesNotMatch(badge, /AI ANALYSIS/i);
+  assert.ok(toasts.some((t) => t.includes('Attack plan ready')));
+  assert.ok(!toasts.some((t) => t.includes('Could not generate')));
+  assert.ok(!toasts.some((t) => /withheld/i.test(t)));
 });
 
 test('live sources badge is AI ANALYSIS, never ESTIMATE/template', () => {

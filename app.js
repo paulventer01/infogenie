@@ -5521,13 +5521,38 @@ function _apCloseModal() {
 }
 
 // ── Attack-plan response helpers (envelope unwrap + honesty) ──
+var _AP_UNAVAILABLE_FALLBACK = 'Attack plan withheld: live AI output was unavailable and this workspace is in strict data mode. An administrator has been notified.';
+
+function _apSafeText(s, max) {
+  if (typeof _bpSafe === 'function') return _bpSafe(s, max);
+  return String(s == null ? '' : s).replace(/[<>]/g, '').slice(0, max || 400);
+}
+
 function _unwrapAttackPlanPayload(payload) {
   if (!payload || typeof payload !== 'object') {
-    return { ok: false, plan: null, error: 'Empty attack plan response', source: '', fabricated: false, sources: [] };
+    return { ok: false, withheld: false, plan: null, error: 'Empty attack plan response', source: '', fabricated: false, sources: [] };
+  }
+  // Enforcement (strict): fabricated/template plan is replaced with this envelope.
+  // Distinct from a hard failure — retrying will not produce a plan.
+  if (payload.data_unavailable === true || payload.source === 'data_unavailable') {
+    const message = (typeof payload.message === 'string' && payload.message.trim())
+      ? payload.message.trim()
+      : _AP_UNAVAILABLE_FALLBACK;
+    return {
+      ok: false,
+      withheld: true,
+      plan: null,
+      error: message,
+      message: message,
+      source: 'data_unavailable',
+      fabricated: false,
+      sources: [],
+    };
   }
   if (payload.ok === false) {
     return {
       ok: false,
+      withheld: false,
       plan: null,
       error: payload.error || 'Attack plan generation failed',
       source: payload.source || '',
@@ -5542,6 +5567,7 @@ function _unwrapAttackPlanPayload(payload) {
     const fabricated = !!(payload._fabricated || source === 'template' || sources.indexOf('template') !== -1);
     return {
       ok: true,
+      withheld: false,
       plan: nested,
       error: '',
       source: source || (fabricated ? 'template' : ''),
@@ -5552,6 +5578,7 @@ function _unwrapAttackPlanPayload(payload) {
   if (payload.plan == null && ('plan' in payload || payload.ok === true)) {
     return {
       ok: false,
+      withheld: false,
       plan: null,
       error: payload.error || 'Attack plan missing from response',
       source: payload.source || '',
@@ -5565,6 +5592,7 @@ function _unwrapAttackPlanPayload(payload) {
     const fabricated = !!(payload._fabricated || source === 'template' || sources.indexOf('template') !== -1);
     return {
       ok: true,
+      withheld: false,
       plan: payload,
       error: '',
       source: source || (fabricated ? 'template' : ''),
@@ -5574,6 +5602,7 @@ function _unwrapAttackPlanPayload(payload) {
   }
   return {
     ok: false,
+    withheld: false,
     plan: null,
     error: payload.error || 'Attack plan missing from response',
     source: '',
@@ -5594,8 +5623,34 @@ function _apHonestyBadgeHtml(meta) {
   return '';
 }
 
+function _apShowUnavailable(message) {
+  const msg = _apSafeText(message || _AP_UNAVAILABLE_FALLBACK, 400);
+  let modal = document.getElementById('attackPlanModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'attackPlanModal';
+    modal.className = 'modal-backdrop';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);padding:20px';
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  modal.innerHTML = '<div style="background:white;border-radius:16px;padding:40px;text-align:center;max-width:440px">'
+    + '<div style="font-size:2rem;margin-bottom:12px">📭</div>'
+    + '<div style="font-weight:700;color:#0F172A;margin-bottom:10px">Attack plan withheld</div>'
+    + '<div style="font-size:0.85rem;color:#475569;line-height:1.55">' + msg + '</div>'
+    + '<div style="font-size:0.78rem;color:#64748B;line-height:1.5;margin-top:12px">Live AI output was unavailable. Strict data mode hides estimated/template plans and reports the issue to an administrator — retrying will not generate a plan.</div>'
+    + '<button type="button" onclick="window._apCloseModal && window._apCloseModal()" style="margin-top:20px;padding:10px 18px;background:#F1F5F9;border:none;border-radius:8px;font-weight:600;cursor:pointer">Close</button>'
+    + '</div>';
+}
+
 function _applyAttackPlanResponse(payload, competitorName) {
   const unwrapped = _unwrapAttackPlanPayload(payload);
+  if (unwrapped.withheld) {
+    _apShowUnavailable(unwrapped.message || unwrapped.error);
+    showToast('📭 Attack plan withheld — live AI output unavailable in strict data mode');
+    return false;
+  }
   if (!unwrapped.ok || !unwrapped.plan) {
     if (unwrapped.error) console.error('[openFullAttackPlanModal]', unwrapped.error);
     _apCloseModal();
