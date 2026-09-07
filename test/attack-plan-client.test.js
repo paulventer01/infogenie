@@ -58,11 +58,13 @@ before(() => {
   win.eval(
     helpersBlock
     + '\nwindow._unwrapAttackPlanPayload = _unwrapAttackPlanPayload;'
+    + '\nwindow._unwrapAttackPlanListPayload = _unwrapAttackPlanListPayload;'
     + '\nwindow._applyAttackPlanResponse = _applyAttackPlanResponse;'
     + '\nwindow._apHonestyBadgeHtml = _apHonestyBadgeHtml;\n'
     + dataBadgeBlock,
   );
   assert.equal(typeof win._unwrapAttackPlanPayload, 'function');
+  assert.equal(typeof win._unwrapAttackPlanListPayload, 'function');
   assert.equal(typeof win._applyAttackPlanResponse, 'function');
   assert.equal(typeof win._apHonestyBadgeHtml, 'function');
   assert.equal(typeof win._dataBadge, 'function');
@@ -353,6 +355,59 @@ test('openSavedAttackPlan sets honesty meta before renderAttackPlan', () => {
   assert.deepStrictEqual(order[0].meta.sources, ['template']);
   assert.strictEqual(order[0].plan, templatePlan);
   assert.strictEqual(order[0].competitor, 'IG Markets');
+});
+
+test('data_unavailable list payload is withheld — not the empty-state copy', () => {
+  const payload = {
+    ok: true,
+    data_unavailable: true,
+    _dataMode: 'strict',
+    source: 'data_unavailable',
+    message: 'This data is currently unavailable. The issue has been reported to your administrator.',
+  };
+  const unwrapped = win._unwrapAttackPlanListPayload(payload);
+  assert.strictEqual(unwrapped.withheld, true);
+  assert.strictEqual(Array.isArray(unwrapped.plans), true);
+  assert.strictEqual(unwrapped.plans.length, 0);
+  assert.match(unwrapped.message, /currently unavailable/);
+  assert.match(unwrapped.message, /administrator/);
+
+  const emptyCopy = 'No attack plans saved yet — generate one above';
+  const showEmpty = !unwrapped.withheld && unwrapped.plans.length === 0;
+  assert.strictEqual(showEmpty, false, 'withheld list must not use the genuinely-empty copy');
+  assert.doesNotMatch(unwrapped.message, /No attack plans saved yet/);
+  assert.doesNotMatch(unwrapped.message, /generate one above/);
+});
+
+test('openSavedAttackPlan routes withheld single-plan payload through _apShowUnavailable', () => {
+  const sdom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { runScripts: 'outside-only' });
+  const swin = sdom.window;
+  const localToasts = [];
+  swin.eval(
+    helpersBlock
+    + '\nwindow._unwrapAttackPlanPayload = _unwrapAttackPlanPayload;'
+    + savedOpenBlock,
+  );
+  swin.showToast = (msg) => { localToasts.push(String(msg)); };
+  swin.renderAttackPlan = () => { throw new Error('renderAttackPlan must not run for withheld payload'); };
+
+  const payload = {
+    ok: true,
+    data_unavailable: true,
+    source: 'data_unavailable',
+    message: 'This data is currently unavailable. The issue has been reported to your administrator.',
+  };
+  assert.strictEqual(swin.openSavedAttackPlan(payload, 'Rival'), false);
+  assert.strictEqual(localToasts.length, 1);
+  assert.match(localToasts[0], /withheld/i);
+  assert.match(localToasts[0], /strict data mode/i);
+  assert.doesNotMatch(localToasts[0], /Could not load saved attack plan/);
+
+  const modal = swin.document.getElementById('attackPlanModal');
+  assert.ok(modal, 'withheld saved plan opens the honest unavailable dialog');
+  assert.match(modal.innerHTML, /Attack plan withheld/);
+  assert.match(modal.innerHTML, /currently unavailable/);
+  assert.match(modal.innerHTML, /retrying will not generate a plan/i);
 });
 
 test('renderAttackPlan applies open grace on the dialog inner panel', async () => {

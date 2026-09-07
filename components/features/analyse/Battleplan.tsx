@@ -74,6 +74,9 @@ interface AttackPlanListResult {
   ok: boolean;
   error?: string;
   plans?: SavedAttackPlanMeta[];
+  data_unavailable?: boolean;
+  source?: string;
+  message?: string;
 }
 
 interface AttackPlanDetailResult {
@@ -88,6 +91,54 @@ interface AttackPlanDetailResult {
   sources?: string[];
   source?: string;
   _fabricated?: boolean;
+  data_unavailable?: boolean;
+  message?: string;
+}
+
+interface UnwrappedAttackPlanList {
+  withheld: boolean;
+  plans: SavedAttackPlanMeta[];
+  error: string;
+  message: string;
+}
+
+const AP_LIST_UNAVAILABLE_FALLBACK =
+  "Attack plan withheld: live AI output was unavailable and this workspace is in strict data mode. An administrator has been notified.";
+
+function unwrapAttackPlanList(res: AttackPlanListResult): UnwrappedAttackPlanList {
+  if (typeof window !== "undefined") {
+    const w = window as unknown as {
+      _unwrapAttackPlanListPayload?: (r: AttackPlanListResult) => Partial<UnwrappedAttackPlanList>;
+    };
+    if (typeof w._unwrapAttackPlanListPayload === "function") {
+      const u = w._unwrapAttackPlanListPayload(res);
+      return {
+        withheld: !!u.withheld,
+        plans: Array.isArray(u.plans) ? u.plans : [],
+        error: typeof u.error === "string" ? u.error : "",
+        message: typeof u.message === "string" ? u.message : "",
+      };
+    }
+  }
+  if (res.data_unavailable === true || res.source === "data_unavailable") {
+    const message =
+      typeof res.message === "string" && res.message.trim() ? res.message.trim() : AP_LIST_UNAVAILABLE_FALLBACK;
+    return { withheld: true, plans: [], error: "", message };
+  }
+  if (res.ok === false) {
+    return {
+      withheld: false,
+      plans: [],
+      error: res.error || "Could not load saved attack plans",
+      message: "",
+    };
+  }
+  return {
+    withheld: false,
+    plans: Array.isArray(res.plans) ? res.plans : [],
+    error: "",
+    message: "",
+  };
 }
 
 function formatSavedAt(iso?: string): string {
@@ -129,11 +180,43 @@ function openSavedPlanBridge(payload: AttackPlanDetailResult, competitor?: strin
   const w = window as unknown as {
     openSavedAttackPlan?: (p: AttackPlanDetailResult, name?: string) => boolean;
     renderAttackPlan?: (plan: Record<string, unknown>, name: string) => void;
+    _unwrapAttackPlanPayload?: (p: AttackPlanDetailResult) => {
+      withheld?: boolean;
+      ok?: boolean;
+      plan?: Record<string, unknown> | null;
+      message?: string;
+      error?: string;
+      source?: string;
+      fabricated?: boolean;
+      sources?: string[];
+    };
+    _apShowUnavailable?: (message?: string) => void;
     _apPlanMeta?: { source?: string; fabricated?: boolean; sources?: string[] };
     showToast?: (m: string) => void;
   };
   if (typeof w.openSavedAttackPlan === "function") {
     return w.openSavedAttackPlan(payload, competitor);
+  }
+  if (typeof w._unwrapAttackPlanPayload === "function") {
+    const unwrapped = w._unwrapAttackPlanPayload(payload);
+    if (unwrapped.withheld) {
+      w._apShowUnavailable?.(unwrapped.message || unwrapped.error);
+      w.showToast?.("📭 Attack plan withheld — live AI output unavailable in strict data mode");
+      return false;
+    }
+    if (!unwrapped.ok || !unwrapped.plan) {
+      w.showToast?.("⚠️ Could not load saved attack plan");
+      return false;
+    }
+    w._apPlanMeta = {
+      source: unwrapped.source,
+      fabricated: unwrapped.fabricated,
+      sources: unwrapped.sources,
+    };
+    if (typeof w.renderAttackPlan === "function") {
+      w.renderAttackPlan(unwrapped.plan, competitor || payload.competitor || "Competitor");
+      return true;
+    }
   }
   if (!payload.plan) {
     w.showToast?.("⚠️ Could not load saved attack plan");
@@ -287,19 +370,28 @@ export default function Battleplan() {
   const [savedPlans, setSavedPlans] = useState<SavedAttackPlanMeta[]>([]);
   const [savedLoading, setSavedLoading] = useState(true);
   const [savedError, setSavedError] = useState<string | null>(null);
+  const [savedWithheld, setSavedWithheld] = useState<string | null>(null);
   const [viewingPlanId, setViewingPlanId] = useState<string | null>(null);
 
   const loadSavedPlans = useCallback(async () => {
     setSavedLoading(true);
     setSavedError(null);
+    setSavedWithheld(null);
     const res = await apiGet<AttackPlanListResult>("/api/ai-attack-plan/list");
-    if (!res.ok) {
+    const unwrapped = unwrapAttackPlanList(res);
+    if (unwrapped.withheld) {
       setSavedPlans([]);
-      setSavedError(res.error || "Could not load saved attack plans");
+      setSavedWithheld(unwrapped.message || AP_LIST_UNAVAILABLE_FALLBACK);
       setSavedLoading(false);
       return;
     }
-    setSavedPlans(Array.isArray(res.plans) ? res.plans : []);
+    if (unwrapped.error) {
+      setSavedPlans([]);
+      setSavedError(unwrapped.error);
+      setSavedLoading(false);
+      return;
+    }
+    setSavedPlans(unwrapped.plans);
     setSavedLoading(false);
   }, []);
 
@@ -319,10 +411,10 @@ export default function Battleplan() {
     setViewingPlanId(entry.id);
     const res = await apiGet<AttackPlanDetailResult>(`/api/ai-attack-plan/${entry.id}`);
     setViewingPlanId(null);
-    if (!res.ok || !res.plan) {
+    if (res.error === "not_found") {
       const w = window as unknown as { showToast?: (m: string) => void };
-      w.showToast?.(res.error === "not_found" ? "⚠️ Saved attack plan not found" : "⚠️ Could not load saved attack plan");
-      if (res.error === "not_found") void loadSavedPlans();
+      w.showToast?.("⚠️ Saved attack plan not found");
+      void loadSavedPlans();
       return;
     }
     openSavedPlanBridge(res, entry.competitor || res.competitor);
@@ -865,7 +957,28 @@ export default function Battleplan() {
               </div>
             ) : null}
 
-            {!savedLoading && !savedError && savedPlans.length === 0 ? (
+            {savedWithheld ? (
+              <div
+                style={{
+                  background: "#FFFBEB",
+                  border: "1px solid #FDE68A",
+                  borderRadius: 10,
+                  padding: "16px 14px",
+                  fontSize: "0.8rem",
+                  color: "#78350F",
+                }}
+              >
+                <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#92400E", marginBottom: 8 }}>
+                  📭 Saved plans withheld
+                </div>
+                <div style={{ lineHeight: 1.55, color: "#92400E" }}>{savedWithheld}</div>
+                <div style={{ fontSize: "0.75rem", color: "#64748B", lineHeight: 1.5, marginTop: 10 }}>
+                  Live AI output was unavailable. Strict data mode hides estimated/template plans and reports the issue to an administrator — generating a new plan will not restore access to saved plans here.
+                </div>
+              </div>
+            ) : null}
+
+            {!savedLoading && !savedError && !savedWithheld && savedPlans.length === 0 ? (
               <div
                 style={{
                   background: "#F8FAFC",

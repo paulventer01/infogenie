@@ -5541,6 +5541,32 @@ function _apSafeText(s, max) {
   return String(s == null ? '' : s).replace(/[<>]/g, '').slice(0, max || 400);
 }
 
+function _unwrapAttackPlanListPayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return { withheld: false, plans: [], error: 'Empty attack plan list response', message: '' };
+  }
+  if (payload.data_unavailable === true || payload.source === 'data_unavailable') {
+    const message = (typeof payload.message === 'string' && payload.message.trim())
+      ? payload.message.trim()
+      : _AP_UNAVAILABLE_FALLBACK;
+    return { withheld: true, plans: [], error: '', message: message };
+  }
+  if (payload.ok === false) {
+    return {
+      withheld: false,
+      plans: [],
+      error: payload.error || 'Could not load saved attack plans',
+      message: '',
+    };
+  }
+  return {
+    withheld: false,
+    plans: Array.isArray(payload.plans) ? payload.plans : [],
+    error: '',
+    message: '',
+  };
+}
+
 function _unwrapAttackPlanPayload(payload) {
   if (!payload || typeof payload !== 'object') {
     return { ok: false, withheld: false, plan: null, error: 'Empty attack plan response', source: '', fabricated: false, sources: [] };
@@ -5766,9 +5792,15 @@ function renderAttackPlan(plan, competitor) {
 window._apCloseModal = _apCloseModal;
 window._apSwitchTab = _apSwitchTab;
 window.renderAttackPlan = renderAttackPlan;
+window._unwrapAttackPlanListPayload = _unwrapAttackPlanListPayload;
 
 window.openSavedAttackPlan = function(payload, competitorName) {
   const unwrapped = _unwrapAttackPlanPayload(payload);
+  if (unwrapped.withheld) {
+    _apShowUnavailable(unwrapped.message || unwrapped.error);
+    showToast('📭 Attack plan withheld — live AI output unavailable in strict data mode');
+    return false;
+  }
   if (!unwrapped.ok || !unwrapped.plan) {
     showToast('⚠️ Could not load saved attack plan');
     return false;
