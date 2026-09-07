@@ -5520,6 +5520,19 @@ function _apCloseModal() {
   if (m) { m.classList.add('hidden'); m.style.display = 'none'; }
 }
 
+// Brief grace after open so a second click (under the cursor) cannot dismiss instantly.
+var _AP_OPEN_GRACE_MS = 400;
+function _apApplyOpenGrace(modal) {
+  if (!modal) return;
+  modal.dataset.apGrace = '1';
+  var inner = modal.firstElementChild;
+  if (inner && inner.style) inner.style.pointerEvents = 'none';
+  setTimeout(function() {
+    delete modal.dataset.apGrace;
+    if (inner && inner.style) inner.style.pointerEvents = '';
+  }, _AP_OPEN_GRACE_MS);
+}
+
 // ── Attack-plan response helpers (envelope unwrap + honesty) ──
 var _AP_UNAVAILABLE_FALLBACK = 'Attack plan withheld: live AI output was unavailable and this workspace is in strict data mode. An administrator has been notified.';
 
@@ -5664,6 +5677,7 @@ function _applyAttackPlanResponse(payload, competitorName) {
   };
   renderAttackPlan(unwrapped.plan, competitorName);
   showToast('✅ Attack plan ready vs ' + competitorName);
+  try { window.dispatchEvent(new CustomEvent('ig:attack-plan-saved')); } catch (_) {}
   return true;
 }
 // ── End attack-plan response helpers ──
@@ -5719,8 +5733,10 @@ function renderAttackPlan(plan, competitor) {
     modal.id = 'attackPlanModal';
     modal.className = 'modal-backdrop';
     modal.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:20px';
-    modal.onclick = (e) => { if (e.target === modal) _apCloseModal(); };
+    modal.onclick = (e) => { if (e.target === modal && modal.dataset.apGrace !== '1') _apCloseModal(); };
     document.body.appendChild(modal);
+  } else {
+    modal.onclick = (e) => { if (e.target === modal && modal.dataset.apGrace !== '1') _apCloseModal(); };
   }
   window._apPlanData = plan;
   const honestyBadge = _apHonestyBadgeHtml(window._apPlanMeta);
@@ -5744,11 +5760,28 @@ function renderAttackPlan(plan, competitor) {
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
   _apSwitchTab('overview');
+  _apApplyOpenGrace(modal);
 }
 
 window._apCloseModal = _apCloseModal;
 window._apSwitchTab = _apSwitchTab;
 window.renderAttackPlan = renderAttackPlan;
+
+window.openSavedAttackPlan = function(payload, competitorName) {
+  const unwrapped = _unwrapAttackPlanPayload(payload);
+  if (!unwrapped.ok || !unwrapped.plan) {
+    showToast('⚠️ Could not load saved attack plan');
+    return false;
+  }
+  window._apPlanMeta = {
+    source: unwrapped.source,
+    fabricated: unwrapped.fabricated,
+    sources: unwrapped.sources,
+  };
+  const name = competitorName || (payload && payload.competitor) || 'Competitor';
+  renderAttackPlan(unwrapped.plan, name);
+  return true;
+};
 
 window.openFullAttackPlanModal = function(compIdx) {
   const ad = _resolveAnalysisData();

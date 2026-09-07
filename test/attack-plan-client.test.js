@@ -292,3 +292,99 @@ test('openFullAttackPlanModal falls back to window.analysisData via _resolveAnal
 
   assert.match(SHELL_SRC, /_syncBareAnalysisData\?\.\(\)/);
 });
+
+const graceBlock = sliceBetween(
+  SRC,
+  '// Brief grace after open so a second click',
+  '// ── Attack-plan response helpers (envelope unwrap + honesty) ──',
+);
+const savedOpenBlock = sliceBetween(
+  SRC,
+  'window.openSavedAttackPlan = function',
+  'window.openFullAttackPlanModal = function',
+);
+
+test('_apApplyOpenGrace suppresses pointer interaction briefly then restores', async () => {
+  const gdom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { runScripts: 'outside-only' });
+  const gwin = gdom.window;
+  gwin.eval(graceBlock + '\nwindow._apApplyOpenGrace = _apApplyOpenGrace;\n');
+  const modal = gwin.document.createElement('div');
+  const inner = gwin.document.createElement('div');
+  modal.appendChild(inner);
+  gwin.document.body.appendChild(modal);
+  gwin._apApplyOpenGrace(modal);
+  assert.strictEqual(modal.dataset.apGrace, '1');
+  assert.strictEqual(inner.style.pointerEvents, 'none');
+  await new Promise((r) => setTimeout(r, 450));
+  assert.strictEqual(modal.dataset.apGrace, undefined);
+  assert.strictEqual(inner.style.pointerEvents, '');
+});
+
+test('openSavedAttackPlan sets honesty meta before renderAttackPlan', () => {
+  const sdom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { runScripts: 'outside-only' });
+  const swin = sdom.window;
+  const order = [];
+  swin.eval(
+    helpersBlock
+    + '\nwindow._unwrapAttackPlanPayload = _unwrapAttackPlanPayload;'
+    + savedOpenBlock,
+  );
+  swin.showToast = () => {};
+  swin.renderAttackPlan = (plan, competitor) => {
+    order.push({
+      meta: swin._apPlanMeta ? { ...swin._apPlanMeta } : null,
+      plan,
+      competitor,
+    });
+  };
+  const templatePlan = { ...livePlan, executiveSummary: 'Saved template plan.' };
+  const payload = {
+    ok: true,
+    plan: templatePlan,
+    competitor: 'IG Markets',
+    sources: ['template'],
+    source: 'template',
+    _fabricated: true,
+  };
+  assert.strictEqual(swin.openSavedAttackPlan(payload, 'IG Markets'), true);
+  assert.strictEqual(order.length, 1);
+  assert.strictEqual(order[0].meta.fabricated, true);
+  assert.strictEqual(order[0].meta.source, 'template');
+  assert.deepStrictEqual(order[0].meta.sources, ['template']);
+  assert.strictEqual(order[0].plan, templatePlan);
+  assert.strictEqual(order[0].competitor, 'IG Markets');
+});
+
+test('renderAttackPlan applies open grace on the dialog inner panel', async () => {
+  const bpSafeStart = SRC.indexOf('function _bpSafe(s, max)');
+  const bpSafeEnd = SRC.indexOf('\nfunction ', bpSafeStart + 1);
+  assert.ok(bpSafeStart !== -1 && bpSafeEnd !== -1, 'expected _bpSafe in app.js');
+  const bpSafeBlock = SRC.slice(bpSafeStart, bpSafeEnd);
+  const renderStart = SRC.indexOf('function renderAttackPlan(plan, competitor)');
+  const renderEnd = SRC.indexOf('window._apCloseModal = _apCloseModal', renderStart);
+  assert.ok(renderStart !== -1 && renderEnd !== -1, 'expected renderAttackPlan in app.js');
+  const renderBlock = SRC.slice(renderStart, renderEnd);
+
+  const rdom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { runScripts: 'outside-only' });
+  const rwin = rdom.window;
+  rwin.eval(
+    graceBlock
+    + '\nwindow._apApplyOpenGrace = _apApplyOpenGrace;\n'
+    + bpSafeBlock
+    + '\nfunction _apSwitchTab() {}\n'
+    + '\nfunction _apHonestyBadgeHtml() { return ""; }\n'
+    + renderBlock
+    + '\nwindow.renderAttackPlan = renderAttackPlan;\n',
+  );
+  rwin._apCloseModal = () => {};
+  rwin.renderAttackPlan(livePlan, 'Rival');
+  const modal = rwin.document.getElementById('attackPlanModal');
+  assert.ok(modal, 'modal mounted');
+  const inner = modal.firstElementChild;
+  assert.ok(inner);
+  assert.strictEqual(modal.dataset.apGrace, '1');
+  assert.strictEqual(inner.style.pointerEvents, 'none');
+  await new Promise((r) => setTimeout(r, 450));
+  assert.strictEqual(modal.dataset.apGrace, undefined);
+  assert.strictEqual(inner.style.pointerEvents, '');
+});
