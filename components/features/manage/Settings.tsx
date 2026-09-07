@@ -322,6 +322,24 @@ const INTEGRATIONS: IntegrationsMap = {
         ],
       },
       {
+        id: "mangools", logo: "🥭", name: "Mangools API",
+        tagline: "KWFinder keywords, SiteProfiler metrics & LinkMiner backlinks",
+        authType: "apikey",
+        placeholder: "Mangools API Token",
+        unlocks: [
+          "Related & competitor keyword research (KWFinder)",
+          "Domain overview — Trust Flow, Citation Flow, Moz PA/DA",
+          "Keyword gap analysis vs competitor domains",
+          "Backlink profile summaries and top content pages",
+        ],
+        steps: [
+          { text: 'Create a free account at <a href="https://mangools.com" target="_blank">mangools.com</a>' },
+          { text: 'Open <a href="https://mangools.com/api-token" target="_blank">mangools.com/api-token</a> and copy your API token' },
+          { text: "Paste the token above — or save it as <code>MANGOOLS_API_KEY</code> in <strong>Manage → Platform APIs</strong>" },
+          { text: "Click <strong>Test Connection</strong> — InfoGenie probes KWFinder related-keywords" },
+        ],
+      },
+      {
         id: "moz", logo: "🎯", name: "Moz API",
         tagline: "Domain Authority, Page Authority & link metrics",
         authType: "apikey",
@@ -1076,6 +1094,7 @@ const API_DETAILS: Record<string, ApiDetails> = {
   similarweb: { baseUrl: "https://api.similarweb.com/v1", rateLimits: "Depends on plan (typically 1,000 req/month)", plans: "SimilarWeb Digital Intelligence API subscription", errorCodes: [["401", "Invalid API key"], ["402", "Monthly quota exhausted"], ["404", "Website not found in SimilarWeb database"]] },
   ahrefs: { baseUrl: "https://api.ahrefs.com/v3", rateLimits: "500 rows/request, 1,000 req/day (Business)", plans: "Ahrefs Business plan or above", errorCodes: [["401", "Invalid or revoked API token"], ["403", "Feature not available on your plan"], ["429", "Rate limit exceeded — reduce request frequency"]] },
   spyfu: { baseUrl: "https://www.spyfu.com/apis/url_api", rateLimits: "10,000 results/day on Pro plan", plans: "SpyFu API plan subscription", errorCodes: [["403", "Invalid API credentials"], ["429", "Daily rate limit exceeded"], ["404", "Domain not indexed by SpyFu"]] },
+  mangools: { baseUrl: "https://api.mangools.com/v3", rateLimits: "Plan-based daily quotas per resource (related-keywords, serps, sp-overview, links); burst limit ~3 req/short window for API clients", plans: "Free API token available; paid Mangools plans raise KWFinder/SiteProfiler/LinkMiner quotas", errorCodes: [["401", "Invalid API key — regenerate at mangools.com/api-token"], ["402", "Plan quota exhausted — upgrade or wait for reset"], ["422", "Missing/invalid parameter (e.g. kw or url required)"], ["429", "Burst rate limit — wait and retry"]] },
   moz: { baseUrl: "https://lsapi.seomoz.com/v2", rateLimits: "10 queries per 10 seconds (free), higher on paid", plans: "Moz Pro API access (paid plan)", errorCodes: [["401", "Invalid Access ID or Secret Key"], ["429", "Request rate exceeded"], ["400", "Invalid URL or parameter"]] },
   "meta-ad-library": { baseUrl: "https://graph.facebook.com/v19.0/ads_archive", rateLimits: "200 calls/hour per user token, 500/day per app", plans: "Any Facebook Developer App with ads_read permission (free)", errorCodes: [["190", "Access token expired or invalid — regenerate a long-lived token"], ["100", "Missing or invalid parameter — check ad_type and ad_reached_countries fields"], ["17", "Rate limit hit — wait 1 hour before retrying"], ["200", "Insufficient permissions — ensure ads_read scope is granted on your token"]] },
   brandwatch: { baseUrl: "https://api.brandwatch.com/v2", rateLimits: "60 req/min for mentions, 10 req/min for analytics", plans: "Brandwatch Consumer Intelligence or Social Intelligence plan", errorCodes: [["401", "Invalid or expired API token — regenerate in Settings → API Access"], ["403", "Scope not granted — check queries:read and mentions:read permissions"], ["429", "Rate limit exceeded — Brandwatch enforces per-minute windows"], ["404", "Query ID not found — verify your query was created in Brandwatch dashboard"]] },

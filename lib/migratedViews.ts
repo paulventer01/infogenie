@@ -174,6 +174,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "bing-webmaster", legacyModule: null },
   { view: "spyfu", legacyModule: null },
   { view: "majestic", legacyModule: null },
+  { view: "mangools", legacyModule: null },
   { view: "semrush", legacyModule: null },
   { view: "ahrefs", legacyModule: null },
   { view: "serpstat", legacyModule: null },
