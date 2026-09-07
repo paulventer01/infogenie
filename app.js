@@ -5688,6 +5688,9 @@ function _applyAttackPlanResponse(payload, competitorName) {
   if (unwrapped.withheld) {
     _apShowUnavailable(unwrapped.message || unwrapped.error);
     showToast('📭 Attack plan withheld — live AI output unavailable in strict data mode');
+    // Persist happens before enforcement rewrites the POST; refresh the list
+    // without implying the generation succeeded (withheld toast/modal win).
+    try { window.dispatchEvent(new CustomEvent('ig:attack-plan-saved')); } catch (_) {}
     return false;
   }
   if (!unwrapped.ok || !unwrapped.plan) {

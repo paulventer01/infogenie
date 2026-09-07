@@ -1305,7 +1305,7 @@ async function recordAivisRun(tid, domain, run) {
 // AI Visibility view can render sparklines + week-over-week deltas per model
 // and per prompt.
 // AI visibility/brand/content generation suite routes → services/ai_content/routes.js
-require('./services/ai_content/routes')(app, { _tkvCtx, _tkvRead, _tkvWrite, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path });
+require('./services/ai_content/routes')(app, { _tkvCtx, _tkvRead, _tkvWrite, _tkvMutate, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path });
 
 // Legacy 6-digit code signup verification was fully removed; real per-user
 // auth lives in services/auth/{schema,api}.js (token-link verification +

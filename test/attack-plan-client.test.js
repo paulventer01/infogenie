@@ -167,6 +167,30 @@ test('ok:true with a missing/null plan is a failure, not a blank success', () =>
   assert.ok(!toasts.some((t) => t.includes('Attack plan ready')));
 });
 
+test('withheld POST path still dispatches ig:attack-plan-saved so the list refreshes', () => {
+  const fired = [];
+  const onSaved = () => { fired.push('ig:attack-plan-saved'); };
+  win.addEventListener('ig:attack-plan-saved', onSaved);
+  const payload = {
+    ok: true,
+    data_unavailable: true,
+    _dataMode: 'strict',
+    source: 'data_unavailable',
+    message: 'This data is currently unavailable. The issue has been reported to your administrator.',
+  };
+  const applied = win._applyAttackPlanResponse(payload, 'Rival');
+  win.removeEventListener('ig:attack-plan-saved', onSaved);
+  assert.strictEqual(applied, false);
+  assert.deepStrictEqual(fired, ['ig:attack-plan-saved']);
+  assert.ok(!toasts.some((t) => t.includes('Attack plan ready')));
+  assert.ok(!toasts.some((t) => /saved/i.test(t) && !/withheld/i.test(t)));
+  assert.ok(toasts.some((t) => /withheld/i.test(t) && /strict/i.test(t)));
+  const modal = win.document.getElementById('attackPlanModal');
+  assert.ok(modal);
+  assert.match(modal.innerHTML, /Attack plan withheld/);
+  assert.doesNotMatch(modal.innerHTML, /Attack plan ready/);
+});
+
 test('strict data_unavailable envelope is withheld — honest message, no plan, no success toast', () => {
   const payload = {
     ok: true,
@@ -355,6 +379,37 @@ test('openSavedAttackPlan sets honesty meta before renderAttackPlan', () => {
   assert.deepStrictEqual(order[0].meta.sources, ['template']);
   assert.strictEqual(order[0].plan, templatePlan);
   assert.strictEqual(order[0].competitor, 'IG Markets');
+});
+
+const BP_SRC = fs.readFileSync(
+  path.join(__dirname, '..', 'components', 'features', 'analyse', 'Battleplan.tsx'),
+  'utf8',
+);
+
+test('saved-plan surface is reachable without analysisData and follows the shell restore events', () => {
+  assert.doesNotMatch(
+    BP_SRC,
+    /useMemo\(\s*getAnalysisData\s*,\s*\[\s*\]\s*\)/,
+    'must not one-shot snapshot analysisData',
+  );
+  assert.match(BP_SRC, /ig:analysis-updated/);
+  assert.match(BP_SRC, /ig:analysis-ready/);
+  assert.match(BP_SRC, /document\.addEventListener\(\s*["']ig:analysis-updated["']/);
+  assert.match(BP_SRC, /document\.addEventListener\(\s*["']ig:analysis-ready["']/);
+
+  const early = BP_SRC.indexOf('if (!hasData || !c)');
+  assert.notEqual(early, -1, 'expected no-analysis early return');
+  const afterEarly = BP_SRC.indexOf('const domain', early);
+  assert.ok(afterEarly > early, 'expected analysis-present path after the empty return');
+  const emptyReturn = BP_SRC.slice(early, afterEarly);
+  assert.match(emptyReturn, /SavedPlansSection|bp-saved-plans|Saved Attack Plans/);
+  assert.match(emptyReturn, /data-bp-no-analysis/);
+  assert.match(emptyReturn, /No Analysis Yet/);
+  assert.doesNotMatch(
+    emptyReturn,
+    /minHeight:\s*["']70vh["']/,
+    'empty-analysis banner must not fill the viewport and hide saved plans',
+  );
 });
 
 test('data_unavailable list payload is withheld — not the empty-state copy', () => {

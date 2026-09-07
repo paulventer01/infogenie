@@ -362,11 +362,14 @@ function Section({ icon, title, sub, children }: { icon: string; title: string; 
   );
 }
 
-export default function Battleplan() {
-  const router = useRouter();
-  const ad = useMemo(getAnalysisData, []);
-  const comps = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
-  const [idxState, setIdxState] = useState(0);
+/** Server-side saved plans — independent of in-page analysisData. */
+function SavedPlansSection({
+  variant,
+  emptyCopy,
+}: {
+  variant: "embedded" | "standalone";
+  emptyCopy: string;
+}) {
   const [savedPlans, setSavedPlans] = useState<SavedAttackPlanMeta[]>([]);
   const [savedLoading, setSavedLoading] = useState(true);
   const [savedError, setSavedError] = useState<string | null>(null);
@@ -401,7 +404,9 @@ export default function Battleplan() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onSaved = () => { void loadSavedPlans(); };
+    const onSaved = () => {
+      void loadSavedPlans();
+    };
     window.addEventListener("ig:attack-plan-saved", onSaved);
     return () => window.removeEventListener("ig:attack-plan-saved", onSaved);
   }, [loadSavedPlans]);
@@ -419,6 +424,198 @@ export default function Battleplan() {
     }
     openSavedPlanBridge(res, entry.competitor || res.competitor);
   }
+
+  const wrapStyle: CSSProperties =
+    variant === "standalone"
+      ? {
+          background: "linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06))",
+          border: "1px solid rgba(0,201,200,.2)",
+          borderRadius: 14,
+          padding: "20px 24px",
+        }
+      : { marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(0,201,200,.22)" };
+
+  return (
+    <div className="bp-saved-plans" data-bp-saved-plans="1" style={wrapStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "#0F172A" }}>
+            📂 Saved Attack Plans
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "#64748B", marginTop: 2 }}>
+            Re-open a generated plan anytime — closing the dialog does not delete it
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadSavedPlans()}
+          disabled={savedLoading}
+          style={{
+            padding: "6px 12px",
+            background: "#FFFFFF",
+            border: "1px solid #E2E8F0",
+            borderRadius: 8,
+            fontSize: "0.72rem",
+            fontWeight: 700,
+            color: "#475569",
+            cursor: savedLoading ? "wait" : "pointer",
+          }}
+        >
+          {savedLoading ? "Loading…" : "Refresh"}
+        </button>
+      </div>
+
+      {savedLoading && savedPlans.length === 0 && !savedError ? (
+        <div style={{ fontSize: "0.8rem", color: "#64748B", padding: "12px 0" }}>Loading saved plans…</div>
+      ) : null}
+
+      {savedError ? (
+        <div
+          style={{
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: 10,
+            padding: "12px 14px",
+            fontSize: "0.8rem",
+            color: "#991B1B",
+          }}
+        >
+          Could not load saved attack plans — {savedError}
+        </div>
+      ) : null}
+
+      {savedWithheld ? (
+        <div
+          style={{
+            background: "#FFFBEB",
+            border: "1px solid #FDE68A",
+            borderRadius: 10,
+            padding: "16px 14px",
+            fontSize: "0.8rem",
+            color: "#78350F",
+          }}
+        >
+          <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#92400E", marginBottom: 8 }}>
+            📭 Saved plans withheld
+          </div>
+          <div style={{ lineHeight: 1.55, color: "#92400E" }}>{savedWithheld}</div>
+          <div style={{ fontSize: "0.75rem", color: "#64748B", lineHeight: 1.5, marginTop: 10 }}>
+            Live AI output was unavailable. Strict data mode hides estimated/template plans and reports the issue to an administrator — generating a new plan will not restore access to saved plans here.
+          </div>
+        </div>
+      ) : null}
+
+      {!savedLoading && !savedError && !savedWithheld && savedPlans.length === 0 ? (
+        <div
+          style={{
+            background: "#F8FAFC",
+            border: "1px dashed #CBD5E1",
+            borderRadius: 10,
+            padding: "16px 14px",
+            fontSize: "0.8rem",
+            color: "#64748B",
+            textAlign: "center",
+          }}
+        >
+          {emptyCopy}
+        </div>
+      ) : null}
+
+      {!savedError && savedPlans.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {savedPlans.map((p) => {
+            const honesty = planHonestyBadge(p);
+            const viewing = viewingPlanId === p.id;
+            return (
+              <div
+                key={p.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  background: "#FFFFFF",
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 10,
+                  padding: "12px 14px",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: "0.84rem", fontWeight: 800, color: "#0F172A" }}>
+                    vs {p.competitor || "Competitor"}
+                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "#64748B", marginTop: 3 }}>
+                    Generated {formatSavedAt(p.savedAt)}
+                    {p.myDomain ? ` · ${p.myDomain}` : ""}
+                  </div>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      marginTop: 6,
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      fontSize: "0.6rem",
+                      fontWeight: 800,
+                      letterSpacing: ".04em",
+                      textTransform: "uppercase",
+                      ...honesty.style,
+                    }}
+                  >
+                    {honesty.label}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void viewSavedPlan(p)}
+                  disabled={viewing}
+                  style={{
+                    padding: "8px 16px",
+                    background: "linear-gradient(135deg,#0066FF,#00C9C8)",
+                    border: "none",
+                    borderRadius: 8,
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    color: "#fff",
+                    cursor: viewing ? "wait" : "pointer",
+                    whiteSpace: "nowrap",
+                    opacity: viewing ? 0.7 : 1,
+                  }}
+                >
+                  {viewing ? "Opening…" : "View plan"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default function Battleplan() {
+  const router = useRouter();
+  const [ad, setAd] = useState<AnalysisData | null>(() => getAnalysisData());
+  const comps = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
+  const [idxState, setIdxState] = useState(0);
+
+  // AppShell restore writes window.analysisData then fires these events
+  // (document + window). Do not snapshot once — pick up the restored payload.
+  useEffect(() => {
+    const refresh = () => setAd(getAnalysisData());
+    refresh();
+    document.addEventListener("ig:analysis-ready", refresh);
+    document.addEventListener("ig:analysis-updated", refresh);
+    window.addEventListener("ig:analysis-ready", refresh);
+    window.addEventListener("ig:analysis-updated", refresh);
+    return () => {
+      document.removeEventListener("ig:analysis-ready", refresh);
+      document.removeEventListener("ig:analysis-updated", refresh);
+      window.removeEventListener("ig:analysis-ready", refresh);
+      window.removeEventListener("ig:analysis-updated", refresh);
+    };
+  }, []);
 
   const hasData = comps.length > 0;
   const idx = Math.min(idxState, Math.max(0, comps.length - 1));
@@ -458,37 +655,47 @@ export default function Battleplan() {
   if (!hasData || !c) {
     return (
       <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "70vh",
-          textAlign: "center",
-          gap: 20,
-          padding: 40,
-        }}
+        data-bp-no-analysis="1"
+        style={{ background: "var(--ig-page)", minHeight: "100vh", paddingBottom: 40 }}
       >
-        <div style={{ fontSize: "3.5rem" }}>⚔️</div>
-        <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "white" }}>No Analysis Yet</div>
-        <div style={{ color: "rgba(255,255,255,.5)", maxWidth: 420, fontSize: "0.9rem", lineHeight: 1.6 }}>
-          Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.
-        </div>
-        <button
-          onClick={() => goToView(router, "home")}
+        <div
           style={{
-            padding: "13px 30px",
-            background: "linear-gradient(135deg,#0066FF,#00C9C8)",
-            border: "none",
-            borderRadius: 12,
-            color: "white",
-            fontWeight: 700,
-            fontSize: "0.9rem",
-            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            gap: 16,
+            padding: "48px 40px 28px",
           }}
         >
-          Run Analysis →
-        </button>
+          <div style={{ fontSize: "3.5rem" }}>⚔️</div>
+          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "1.5rem", fontWeight: 900, color: "white" }}>No Analysis Yet</div>
+          <div style={{ color: "rgba(255,255,255,.5)", maxWidth: 420, fontSize: "0.9rem", lineHeight: 1.6 }}>
+            Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.
+          </div>
+          <button
+            onClick={() => goToView(router, "home")}
+            style={{
+              padding: "13px 30px",
+              background: "linear-gradient(135deg,#0066FF,#00C9C8)",
+              border: "none",
+              borderRadius: 12,
+              color: "white",
+              fontWeight: 700,
+              fontSize: "0.9rem",
+              cursor: "pointer",
+            }}
+          >
+            Run Analysis →
+          </button>
+        </div>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px" }}>
+          <SavedPlansSection
+            variant="standalone"
+            emptyCopy="No attack plans saved yet — run an analysis first, then generate a plan from this page"
+          />
+        </div>
       </div>
     );
   }
@@ -905,165 +1112,10 @@ export default function Battleplan() {
             </div>
           </div>
 
-          {/* Saved attack plans */}
-          <div
-            className="bp-saved-plans"
-            style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(0,201,200,.22)" }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "#0F172A" }}>
-                  📂 Saved Attack Plans
-                </div>
-                <div style={{ fontSize: "0.75rem", color: "#64748B", marginTop: 2 }}>
-                  Re-open a generated plan anytime — closing the dialog does not delete it
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => void loadSavedPlans()}
-                disabled={savedLoading}
-                style={{
-                  padding: "6px 12px",
-                  background: "#FFFFFF",
-                  border: "1px solid #E2E8F0",
-                  borderRadius: 8,
-                  fontSize: "0.72rem",
-                  fontWeight: 700,
-                  color: "#475569",
-                  cursor: savedLoading ? "wait" : "pointer",
-                }}
-              >
-                {savedLoading ? "Loading…" : "Refresh"}
-              </button>
-            </div>
-
-            {savedLoading && savedPlans.length === 0 && !savedError ? (
-              <div style={{ fontSize: "0.8rem", color: "#64748B", padding: "12px 0" }}>Loading saved plans…</div>
-            ) : null}
-
-            {savedError ? (
-              <div
-                style={{
-                  background: "#FEF2F2",
-                  border: "1px solid #FECACA",
-                  borderRadius: 10,
-                  padding: "12px 14px",
-                  fontSize: "0.8rem",
-                  color: "#991B1B",
-                }}
-              >
-                Could not load saved attack plans — {savedError}
-              </div>
-            ) : null}
-
-            {savedWithheld ? (
-              <div
-                style={{
-                  background: "#FFFBEB",
-                  border: "1px solid #FDE68A",
-                  borderRadius: 10,
-                  padding: "16px 14px",
-                  fontSize: "0.8rem",
-                  color: "#78350F",
-                }}
-              >
-                <div style={{ fontFamily: "Sora,sans-serif", fontWeight: 800, color: "#92400E", marginBottom: 8 }}>
-                  📭 Saved plans withheld
-                </div>
-                <div style={{ lineHeight: 1.55, color: "#92400E" }}>{savedWithheld}</div>
-                <div style={{ fontSize: "0.75rem", color: "#64748B", lineHeight: 1.5, marginTop: 10 }}>
-                  Live AI output was unavailable. Strict data mode hides estimated/template plans and reports the issue to an administrator — generating a new plan will not restore access to saved plans here.
-                </div>
-              </div>
-            ) : null}
-
-            {!savedLoading && !savedError && !savedWithheld && savedPlans.length === 0 ? (
-              <div
-                style={{
-                  background: "#F8FAFC",
-                  border: "1px dashed #CBD5E1",
-                  borderRadius: 10,
-                  padding: "16px 14px",
-                  fontSize: "0.8rem",
-                  color: "#64748B",
-                  textAlign: "center",
-                }}
-              >
-                No attack plans saved yet — generate one above
-              </div>
-            ) : null}
-
-            {!savedError && savedPlans.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {savedPlans.map((p) => {
-                  const honesty = planHonestyBadge(p);
-                  const viewing = viewingPlanId === p.id;
-                  return (
-                    <div
-                      key={p.id}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        flexWrap: "wrap",
-                        background: "#FFFFFF",
-                        border: "1px solid #E2E8F0",
-                        borderRadius: 10,
-                        padding: "12px 14px",
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 180 }}>
-                        <div style={{ fontSize: "0.84rem", fontWeight: 800, color: "#0F172A" }}>
-                          vs {p.competitor || "Competitor"}
-                        </div>
-                        <div style={{ fontSize: "0.72rem", color: "#64748B", marginTop: 3 }}>
-                          Generated {formatSavedAt(p.savedAt)}
-                          {p.myDomain ? ` · ${p.myDomain}` : ""}
-                        </div>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            marginTop: 6,
-                            padding: "2px 8px",
-                            borderRadius: 999,
-                            fontSize: "0.6rem",
-                            fontWeight: 800,
-                            letterSpacing: ".04em",
-                            textTransform: "uppercase",
-                            ...honesty.style,
-                          }}
-                        >
-                          {honesty.label}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void viewSavedPlan(p)}
-                        disabled={viewing}
-                        style={{
-                          padding: "8px 16px",
-                          background: "linear-gradient(135deg,#0066FF,#00C9C8)",
-                          border: "none",
-                          borderRadius: 8,
-                          fontSize: "0.78rem",
-                          fontWeight: 700,
-                          color: "#fff",
-                          cursor: viewing ? "wait" : "pointer",
-                          whiteSpace: "nowrap",
-                          opacity: viewing ? 0.7 : 1,
-                        }}
-                      >
-                        {viewing ? "Opening…" : "View plan"}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
+          <SavedPlansSection
+            variant="embedded"
+            emptyCopy="No attack plans saved yet — generate one above"
+          />
         </div>
       </div>
     </div>

@@ -93,8 +93,13 @@ const stubAnthropic = {
 
 function tkey(base, tid) { return `${base}:t${tid}`; }
 
+// Delay inside `_tkvRead` so two in-flight persists interleave their reads
+// unless they go through `_tkvMutate`. Mirrors server.js (lines 336–346).
+const TKV_READ_DELAY_MS = 20;
+
 function mountApp() {
   const store = new Map();
+  const tkvChain = new Map();
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -102,20 +107,36 @@ function mountApp() {
     if (raw != null && raw !== '') req.tenant = { id: Number(raw) };
     next();
   });
+  const _tkvRead = async (base, tid, fallback) => {
+    if (tid == null) return typeof fallback === 'function' ? fallback() : fallback;
+    await new Promise((r) => setTimeout(r, TKV_READ_DELAY_MS));
+    const k = tkey(base, tid);
+    return store.has(k) ? store.get(k) : (typeof fallback === 'function' ? fallback() : fallback);
+  };
+  const _tkvWrite = async (base, tid, value) => {
+    if (tid == null) return false;
+    store.set(tkey(base, tid), value);
+    return true;
+  };
+  const _tkvMutate = async (base, tid, fallback, mutator) => {
+    const key = `${base}:t${tid}`;
+    const prev = tkvChain.get(key) || Promise.resolve();
+    const run = prev.then(async () => {
+      const cur = await _tkvRead(base, tid, fallback);
+      const updated = await mutator(cur);
+      if (updated !== undefined) await _tkvWrite(base, tid, updated);
+      return updated;
+    });
+    tkvChain.set(key, run.catch(() => {}));
+    return run;
+  };
   register(app, {
     _tkvCtx: {
       resolveTenantId: async (req) => (req.tenant && req.tenant.id != null ? req.tenant.id : null),
     },
-    _tkvRead: async (base, tid, fallback) => {
-      if (tid == null) return typeof fallback === 'function' ? fallback() : fallback;
-      const k = tkey(base, tid);
-      return store.has(k) ? store.get(k) : (typeof fallback === 'function' ? fallback() : fallback);
-    },
-    _tkvWrite: async (base, tid, value) => {
-      if (tid == null) return false;
-      store.set(tkey(base, tid), value);
-      return true;
-    },
+    _tkvRead,
+    _tkvWrite,
+    _tkvMutate,
     anthropic: stubAnthropic,
     callDataForSEO: async () => { throw new Error('unused'); },
     callRapidAPI: async () => { throw new Error('unused'); },
@@ -277,26 +298,47 @@ test('honesty markers survive the round trip', async () => {
   assert.ok(detectFabrication(latest.json));
 });
 
-test('over-long metadata is truncated on persist; POST response unchanged', async () => {
+test('over-long request fields cannot inflate the generated or stored plan', async () => {
   const longComp = 'C'.repeat(200);
   const longDomain = 'D'.repeat(200);
   const longIndustry = 'I'.repeat(200);
+  const longKw = 'K'.repeat(200);
+  const longCtx = 'X'.repeat(2000);
 
   const posted = await postPlan(1, {
     myDomain: longDomain,
     competitor: longComp,
     industry: longIndustry,
+    prefillKeywords: [longKw, 'payroll', longKw, 'ok', 'more', 'overflow'],
+    prefillContext: longCtx,
   });
   assert.strictEqual(posted.status, 200);
   assert.strictEqual(posted.json.ok, true);
-  const summary = posted.json.plan.executiveSummary;
-  assert.ok(summary.includes(longComp), 'POST plan body should keep full competitor');
-  assert.ok(summary.includes(longDomain), 'POST plan body should keep full myDomain');
-  assert.ok(summary.includes(longIndustry), 'POST plan body should keep full industry');
+  assert.strictEqual(posted.json.source, 'template');
+  assert.strictEqual(posted.json._fabricated, true);
 
   const expectedComp = longComp.slice(0, 80);
   const expectedDomain = longDomain.slice(0, 80);
   const expectedIndustry = longIndustry.slice(0, 80);
+  const expectedKw = longKw.slice(0, 80);
+
+  const summary = posted.json.plan.executiveSummary;
+  assert.ok(!summary.includes(longComp), 'generated plan must not embed the unbounded competitor');
+  assert.ok(!summary.includes(longDomain), 'generated plan must not embed the unbounded domain');
+  assert.ok(!summary.includes(longIndustry), 'generated plan must not embed the unbounded industry');
+  assert.ok(summary.includes(expectedComp));
+  assert.ok(summary.includes(expectedDomain));
+  assert.ok(summary.includes(expectedIndustry));
+
+  const postedKws = (posted.json.plan.keywordTargets || []).map((k) => k.keyword);
+  assert.ok(postedKws.length <= 5);
+  assert.ok(postedKws.every((k) => String(k).length <= 80), 'each keyword in the plan is length-capped');
+  assert.ok(postedKws.includes(expectedKw));
+  assert.ok(!postedKws.includes(longKw));
+
+  const postedBlob = JSON.stringify(posted.json.plan);
+  assert.ok(!postedBlob.includes(longKw));
+  assert.ok(!postedBlob.includes(longCtx));
 
   const list = await getJson(1, '/api/ai-attack-plan/list');
   assert.strictEqual(list.json.plans[0].competitor, expectedComp);
@@ -307,7 +349,42 @@ test('over-long metadata is truncated on persist; POST response unchanged', asyn
   assert.strictEqual(latest.json.competitor, expectedComp);
   assert.strictEqual(latest.json.myDomain, expectedDomain);
   assert.strictEqual(latest.json.industry, expectedIndustry);
-  assert.ok(latest.json.plan.executiveSummary.includes(longComp));
+  const storedPlan = JSON.stringify(latest.json.plan);
+  assert.ok(!storedPlan.includes(longComp));
+  assert.ok(!storedPlan.includes(longDomain));
+  assert.ok(!storedPlan.includes(longIndustry));
+  assert.ok(!storedPlan.includes(longKw));
+  assert.ok(!storedPlan.includes(longCtx));
+  assert.ok(storedPlan.includes(expectedComp));
+  assert.ok(storedPlan.includes(expectedKw));
+
+  const entry = kvStore.get('attack_plans:t1')[0];
+  const packed = JSON.stringify(entry);
+  assert.ok(packed.length < 16 * 1024, 'a capped template entry stays far under the 64 KiB backstop');
+  assert.ok(!packed.includes(longComp));
+  assert.ok(!packed.includes(longKw));
+  assert.ok(!packed.includes(longCtx));
+});
+
+test('concurrent saves for the same tenant both survive', async () => {
+  const [a, b] = await Promise.all([
+    postPlan(1, { myDomain: 'a.test', competitor: 'Alpha', industry: 'saas' }),
+    postPlan(1, { myDomain: 'b.test', competitor: 'Beta', industry: 'saas' }),
+  ]);
+  assert.strictEqual(a.status, 200);
+  assert.strictEqual(b.status, 200);
+  assert.strictEqual(a.json.ok, true);
+  assert.strictEqual(b.json.ok, true);
+
+  const list = await getJson(1, '/api/ai-attack-plan/list');
+  assert.strictEqual(list.json.ok, true);
+  assert.strictEqual(list.json.plans.length, 2, 'last-writer-wins must not drop a concurrent save');
+  const comps = list.json.plans.map((p) => p.competitor).sort();
+  assert.deepStrictEqual(comps, ['Alpha', 'Beta']);
+
+  const stored = kvStore.get('attack_plans:t1');
+  assert.ok(Array.isArray(stored));
+  assert.strictEqual(stored.length, 2);
 });
 
 test('20-entry cap keeps newest plans only', async () => {

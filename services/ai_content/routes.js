@@ -129,11 +129,37 @@ function _templateAttackPlanResponse(input) {
 
 const ATTACK_PLANS_BASE = 'attack_plans';
 const ATTACK_PLANS_MAX = 20;
-// Matches legacy panel _bpSafe(entry.name, 80) — persistence-only bound.
+// Matches legacy panel _bpSafe(entry.name, 80). Applied at request entry so
+// the generated plan body and stored metadata share the same bound.
 const ATTACK_PLAN_FIELD_MAX = 80;
+const ATTACK_PLAN_KEYWORDS_MAX = 5;
+// Prompt-hint ceiling — a short strategic paragraph, not a pasted brief.
+const ATTACK_PLAN_CONTEXT_MAX = 500;
+// Backstop on one stored entry (JSON). Input caps keep template plans well
+// under this; live LLM output is already token-capped. 20 × 64 KiB ≈ 1.25 MiB
+// per tenant vs. an unbounded 5 MB Express body echoed into every slot.
+const ATTACK_PLAN_ENTRY_MAX = 64 * 1024;
 
-function _capAttackPlanField(s) {
-  return String(s == null ? '' : s).slice(0, ATTACK_PLAN_FIELD_MAX);
+function _capAttackPlanField(s, max = ATTACK_PLAN_FIELD_MAX) {
+  return String(s == null ? '' : s).slice(0, max);
+}
+
+function _normalizeAttackPlanInput(body) {
+  const src = (body && typeof body === 'object' && !Array.isArray(body)) ? body : {};
+  const keywords = Array.isArray(src.prefillKeywords) ? src.prefillKeywords : [];
+  return {
+    myDomain: _capAttackPlanField(src.myDomain ?? 'yourdomain.com'),
+    competitor: _capAttackPlanField(src.competitor ?? 'competitor'),
+    industry: _capAttackPlanField(src.industry ?? 'your industry'),
+    competitorData: (src.competitorData && typeof src.competitorData === 'object' && !Array.isArray(src.competitorData))
+      ? src.competitorData
+      : {},
+    prefillKeywords: keywords
+      .map((k) => _capAttackPlanField(k).trim())
+      .filter(Boolean)
+      .slice(0, ATTACK_PLAN_KEYWORDS_MAX),
+    prefillContext: _capAttackPlanField(src.prefillContext ?? '', ATTACK_PLAN_CONTEXT_MAX),
+  };
 }
 
 function _newAttackPlanId() {
@@ -185,7 +211,11 @@ function _attackPlanReadBody(entry) {
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
-  const { _tkvCtx, _tkvRead, _tkvWrite, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path } = ctx;
+  const { _tkvCtx, _tkvRead, _tkvWrite, _tkvMutate, anthropic, callDataForSEO, callRapidAPI, getDataForSEOAuth, getRapidApiKey, https, loadAivisHistory, openai, path } = ctx;
+
+  // Hermetic mounts that only inject read/write still serialize in-process
+  // with the same promise-chain shape as server.js `_tkvMutate`.
+  const _localMutateChain = new Map();
 
   async function _loadAttackPlans(tid) {
     if (!_tkvRead || tid == null) return [];
@@ -198,8 +228,30 @@ module.exports = function register(app, ctx) {
     return await _tkvWrite(ATTACK_PLANS_BASE, tid, Array.isArray(list) ? list : []);
   }
 
+  async function _mutateAttackPlans(tid, mutator) {
+    if (tid == null) return;
+    if (typeof _tkvMutate === 'function') {
+      return _tkvMutate(ATTACK_PLANS_BASE, tid, () => [], async (cur) => {
+        const list = Array.isArray(cur) ? cur : [];
+        return mutator(list);
+      });
+    }
+    if (!_tkvRead || !_tkvWrite) return;
+    const key = `${ATTACK_PLANS_BASE}:t${tid}`;
+    const prev = _localMutateChain.get(key) || Promise.resolve();
+    const run = prev.then(async () => {
+      const cur = await _loadAttackPlans(tid);
+      const updated = await mutator(cur);
+      if (updated !== undefined) await _saveAttackPlans(tid, updated);
+      return updated;
+    });
+    _localMutateChain.set(key, run.catch(() => {}));
+    return run;
+  }
+
   async function _persistAttackPlan(tid, fields) {
-    if (!_tkvRead || !_tkvWrite || tid == null || !fields || !fields.plan) return;
+    if (tid == null || !fields || !fields.plan) return;
+    if (typeof _tkvMutate !== 'function' && (!_tkvRead || !_tkvWrite)) return;
     const entry = {
       id: fields.id || _newAttackPlanId(),
       competitor: _capAttackPlanField(fields.competitor),
@@ -211,9 +263,13 @@ module.exports = function register(app, ctx) {
     };
     if (fields.source !== undefined) entry.source = fields.source;
     if (fields._fabricated !== undefined) entry._fabricated = fields._fabricated;
-    const cur = await _loadAttackPlans(tid);
-    const next = [entry, ...cur].slice(0, ATTACK_PLANS_MAX);
-    await _saveAttackPlans(tid, next);
+    let packed;
+    try { packed = JSON.stringify(entry); } catch { return; }
+    if (packed.length > ATTACK_PLAN_ENTRY_MAX) {
+      console.warn('[attack-plan] persist skipped: entry exceeds size cap');
+      return;
+    }
+    await _mutateAttackPlans(tid, (cur) => [entry, ...cur].slice(0, ATTACK_PLANS_MAX));
     return entry;
   }
 
@@ -710,7 +766,7 @@ app.get('/api/ai-attack-plan/:id', async (req, res) => {
 app.post('/api/ai-attack-plan', async (req, res) => {
   try {
     const tid = await _tkvCtx.resolveTenantId(req, { label: 'attack-plan:save' });
-    const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {}, prefillKeywords = [], prefillContext = '' } = req.body || {};
+    const { myDomain, competitor, industry, competitorData, prefillKeywords, prefillContext } = _normalizeAttackPlanInput(req.body);
     const templateInput = { myDomain, competitor, industry, prefillKeywords };
 
     // _DUMMY / missing-key gate — never hit the network without a real key.
