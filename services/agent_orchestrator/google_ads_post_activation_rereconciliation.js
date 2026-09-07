@@ -7,7 +7,7 @@ const crypto=require('crypto');
 const db=require('../../db');
 const reconciliation=require('./google_ads_post_activation_reconciliation');
 
-const TABLE='orchestrator_google_ads_post_activation_rereconciliation_attempts';
+const TABLE='orchestrator_google_ads_post_activation_rereconcile_attempts';
 const REVIEW_CASES='orchestrator_google_ads_post_activation_review_cases';
 const REVIEW_EVENTS='orchestrator_google_ads_post_activation_review_events';
 const SOURCE_RUNS='orchestrator_google_ads_post_activation_reconciliation_runs';
@@ -81,9 +81,23 @@ async function finalizeExpired(c,row,closureAuditRef){if(row.state!=='observing'
    [row.tenant_id,row.id,now]);if(done.rowCount!==1)throw deny('invalid_rereconciliation_transition');
   const failed={...done.rows[0],closure_audit_ref:closureAuditRef};
   await audit(c,failed,'google_ads_post_activation_rereconciliation_failed');return failed;}
-async function existing(pool,o,actor,digest){const found=await tx(pool,async c=>{const p=await proof(c,o,actor);let row=await find(c,o.tenantId,o.reviewCaseId);
+async function recoverExpired(pool,tenant,caseId){return tx(pool,async c=>{const row=await find(c,tenant,caseId);
+  return row?finalizeExpired(c,row,row.closure_audit_ref):null;});}
+async function failStarted(pool,o,started,actor,classification){return tx(pool,async c=>{const q=await c.query(`SELECT * FROM ${TABLE}
+    WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[o.tenantId,started.row.id]);
+  if(q.rowCount!==1)throw deny('invalid_rereconciliation_transition');const row=q.rows[0];
+  if(row.state!=='observing')return row;
+  if(row.review_case_id!==o.reviewCaseId||Number(row.requested_by)!==actor
+    ||!same(row.invocation_id_hash,requestHash(o,actor))||!same(row.session_id_hash,hash(o.sessionId)))
+    throw deny('invalid_rereconciliation_transition');
+  const now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
+  const done=await c.query(`UPDATE ${TABLE} SET state='failed',observations='[]'::jsonb,
+    classifications=ARRAY[$3],completed_at=$4 WHERE tenant_id=$1 AND id=$2 AND state='observing' RETURNING *`,
+   [o.tenantId,row.id,classification,now]);if(done.rowCount!==1)throw deny('invalid_rereconciliation_transition');
+  await audit(c,done.rows[0],'google_ads_post_activation_rereconciliation_failed');return done.rows[0];});}
+async function existing(pool,o,actor,digest){await recoverExpired(pool,o.tenantId,o.reviewCaseId);
+  const found=await tx(pool,async c=>{const p=await proof(c,o,actor);const row=await find(c,o.tenantId,o.reviewCaseId);
   if(!row)return null;
-  row=await finalizeExpired(c,row,p.event.audit_ref);
   return {row,closure_audit_ref:p.event.audit_ref};});
   if(!found)return null;sameRequest(found.row,o,actor,digest);
   return publicAttempt({...found.row,closure_audit_ref:found.closure_audit_ref},true);}
@@ -98,7 +112,7 @@ async function reserve(pool,o,actor,digest){return tx(pool,async c=>{const p=awa
     now,new Date(now.getTime()+reconciliation.LEASE_MS)]);
   const row={...q.rows[0],closure_audit_ref:p.event.audit_ref};await audit(c,row,'google_ads_post_activation_rereconciliation_observing');
   return {row,proof:p.activation.row,objects:p.activation.objects};});}
-async function settle(pool,o,actor,started,outcome){return tx(pool,async c=>{const p=await proof(c,o,actor);
+async function settle(pool,o,actor,started,outcome){try{return await tx(pool,async c=>{const p=await proof(c,o,actor);
   const q=await c.query(`SELECT * FROM ${TABLE} WHERE tenant_id=$1 AND id=$2 FOR UPDATE`,[o.tenantId,started.row.id]);
   if(q.rowCount!==1||q.rows[0].state!=='observing')throw deny('invalid_rereconciliation_transition');
   const now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now),finalOutcome=new Date(q.rows[0].observation_deadline)<=now
@@ -108,6 +122,8 @@ async function settle(pool,o,actor,started,outcome){return tx(pool,async c=>{con
     JSON.stringify(storageObservations(finalOutcome.observations)),finalOutcome.classifications,now]);
   if(done.rowCount!==1)throw deny('invalid_rereconciliation_transition');const row={...done.rows[0],closure_audit_ref:p.event.audit_ref};
   await audit(c,row,`google_ads_post_activation_rereconciliation_${row.state}`);return publicAttempt(row,false);});}
+  catch(error){if(error&&error.blocked)await failStarted(pool,o,started,actor,error.code==='credential_boundary_mismatch'
+    ?'credential_boundary_failure':'authority_drift');throw error;}}
 async function rereconcile(o={}){const {actor,tenant}=authorize(o),pool=o.pool||db.getPool(),opts={...o,tenantId:tenant,
   reviewCaseId:String(o.reviewCaseId),invocationId:String(o.invocationId),authorizationPurpose:'post_review'},digest=requestHash(opts,actor);
   const replay=await existing(pool,opts,actor,digest);if(replay)return replay;
@@ -120,14 +136,15 @@ async function rereconcile(o={}){const {actor,tenant}=authorize(o),pool=o.pool||
   return settle(pool,opts,actor,started,outcome);}
 async function getAttempt(o={}){const actor=Number(o.actorUserId),tenant=Number(o.tenantId),attemptId=String(o.attemptId||'');
   authorize({...o,invocationId:'read'});if(!SAFE_ID.test(attemptId))throw deny('validation_failed');
+  await recoverExpired(o.pool||db.getPool(),tenant,String(o.reviewCaseId));
   const found=await tx(o.pool||db.getPool(),async c=>{const hint=await c.query(`SELECT review_case_id FROM ${TABLE} WHERE tenant_id=$1 AND id=$2`,[tenant,attemptId]);
     if(hint.rowCount!==1||hint.rows[0].review_case_id!==String(o.reviewCaseId))throw deny('rereconciliation_not_found');
     const p=await proof(c,{...o,tenantId:tenant,reviewCaseId:hint.rows[0].review_case_id,
       authorizationPurpose:'post_review'},actor);const row=await find(c,tenant,hint.rows[0].review_case_id);
-    if(!row||row.id!==attemptId)throw deny('rereconciliation_not_found');return {row:await finalizeExpired(c,row,p.event.audit_ref),
-      closure_audit_ref:p.event.audit_ref};});
+    if(!row||row.id!==attemptId)throw deny('rereconciliation_not_found');return {row,closure_audit_ref:p.event.audit_ref};});
   if(Number(found.row.requested_by)!==actor||!same(found.row.session_id_hash,hash(o.sessionId)))throw deny('rereconciliation_not_found');
   return publicAttempt({...found.row,closure_audit_ref:found.closure_audit_ref},true);}
 
 module.exports={TABLE,PERMISSION,rereconcile,getAttempt,publicAttempt,
-  _test:{authorize,requestHash,storageObservations,sameRequest,proof,find,finalizeExpired,existing,reserve,settle,audit}};
+  _test:{authorize,requestHash,storageObservations,sameRequest,proof,find,finalizeExpired,recoverExpired,failStarted,
+    existing,reserve,settle,audit}};
