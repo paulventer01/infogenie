@@ -73,14 +73,16 @@ async function find(c,tenant,caseId){const q=await c.query(`SELECT a.*,e.audit_r
   JOIN ${REVIEW_EVENTS} e ON e.tenant_id=a.tenant_id AND e.id=a.closure_event_id
   WHERE a.tenant_id=$1 AND a.review_case_id=$2 FOR UPDATE OF a`,[tenant,caseId]);
   return q.rowCount===1?q.rows[0]:null;}
-async function existing(pool,o,actor,digest){return tx(pool,async c=>{const p=await proof(c,o,actor);let row=await find(c,o.tenantId,o.reviewCaseId);
-  if(!row)return null;sameRequest(row,o,actor,digest);
+async function existing(pool,o,actor,digest){const found=await tx(pool,async c=>{const p=await proof(c,o,actor);let row=await find(c,o.tenantId,o.reviewCaseId);
+  if(!row)return null;
   if(row.state==='observing'){const now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now);
     if(new Date(row.observation_deadline)<=now){const done=await c.query(`UPDATE ${TABLE} SET state='failed',
       classifications=ARRAY['interrupted_observation'],completed_at=$3 WHERE tenant_id=$1 AND id=$2 AND state='observing' RETURNING *`,
      [o.tenantId,row.id,now]);if(done.rowCount!==1)throw deny('invalid_rereconciliation_transition');row={...done.rows[0],closure_audit_ref:p.event.audit_ref};
       await audit(c,row,'google_ads_post_activation_rereconciliation_failed');}}
-  return publicAttempt(row,true);});}
+  return {row,closure_audit_ref:p.event.audit_ref};});
+  if(!found)return null;sameRequest(found.row,o,actor,digest);
+  return publicAttempt({...found.row,closure_audit_ref:found.closure_audit_ref},true);}
 async function reserve(pool,o,actor,digest){return tx(pool,async c=>{const p=await proof(c,o,actor,'FOR UPDATE');
   const now=new Date((await c.query('SELECT clock_timestamp() now')).rows[0].now),id=`gaparra_${crypto.randomUUID()}`;
   const q=await c.query(`INSERT INTO ${TABLE}(tenant_id,id,review_case_id,review_version,closure_event_id,
