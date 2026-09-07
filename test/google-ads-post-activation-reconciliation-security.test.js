@@ -38,6 +38,8 @@ test('missing, relationship drift, unsafe status, and transport failure are boun
   assert.equal(missing.state,'discrepancy_detected');assert.ok(missing.classifications.includes('campaign_missing'));
   const drift=service.evaluate(result(base.map(x=>x.object_kind==='ad_group'?{...x,campaign_parent_matches:false}:x)),'succeeded');
   assert.equal(drift.state,'discrepancy_detected');assert.ok(drift.classifications.includes('ad_group_campaign_mismatch'));
+  const removedBudget=service.evaluate(result(base.map(x=>x.object_kind==='campaign_budget'?{...x,status_classification:'inactive'}:x)),'succeeded');
+  assert.equal(removedBudget.state,'discrepancy_detected');assert.ok(removedBudget.classifications.includes('campaign_budget_changed'));
   const failed=service.evaluate(result(base.map(x=>x.object_kind==='campaign'?{...x,outcome:'transient_failure',error_classification:'rate_limited'}:x)),'unknown');
   assert.equal(failed.state,'failed');assert.ok(failed.classifications.includes('campaign_rate_limited'));
   assert.equal(service.evaluate({attempted_observations:2,completed_observations:2,observations:base.slice(0,2)},'unknown').state,'failed');

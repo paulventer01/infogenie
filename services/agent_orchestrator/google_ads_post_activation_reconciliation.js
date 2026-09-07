@@ -55,7 +55,7 @@ function evaluate(result,activationStatus){const observations=Array.isArray(resu
     if(o.account_binding_matches!==true)discrepancies.push(`${o.object_kind}_account_mismatch`);
     if(o.object_kind==='campaign'&&o.budget_parent_matches!==true)discrepancies.push('campaign_budget_mismatch');
     if(o.object_kind==='ad_group'&&o.campaign_parent_matches!==true)discrepancies.push('ad_group_campaign_mismatch');
-    if(o.object_kind==='campaign_budget'&&!['paused','inactive'].includes(o.status_classification))discrepancies.push('campaign_budget_changed');
+    if(o.object_kind==='campaign_budget'&&o.status_classification!=='paused')discrepancies.push('campaign_budget_changed');
     if(['unsafe','unknown'].includes(o.status_classification))discrepancies.push(`${o.object_kind}_unsafe_status`);}
   if(failures.length)return {state:'failed',classifications:[...new Set(failures)].sort(),observations};
   const by=Object.fromEntries(observations.map(x=>[x.object_kind,x]));
