@@ -590,6 +590,40 @@ test('time-entry pricing preserves the captured member role', { skip }, async ()
   }
 });
 
+test('same-date rate corrections use the latest rate-card revision', { skip }, async () => {
+  const tenantA = tenantIds[0];
+  const memberA = 'member-a-' + SUFFIX;
+  const effectiveFrom = '2028-01-01';
+
+  for (const [costRate, billRate] of [[40, 80], [45, 90]]) {
+    const response = await request('POST', '/api/agency-ops/rates', {
+      tid: tenantA,
+      body: {
+        member_id: memberA,
+        cost_rate: costRate,
+        bill_rate: billRate,
+        currency: 'USD',
+        effective_from: effectiveFrom,
+      },
+    });
+    assert.equal(response.status, 201, response.text);
+  }
+
+  const response = await request('POST', '/api/agency-ops/time-entries', {
+    tid: tenantA,
+    body: {
+      member_id: memberA,
+      client_ref: 'same-date-rate-correction',
+      work_item: 'Latest rate revision',
+      work_date: '2028-01-15',
+      hours: 1,
+    },
+  });
+  assert.equal(response.status, 201, response.text);
+  assert.equal(response.json.entry.cost_rate, 45);
+  assert.equal(response.json.entry.bill_rate, 90);
+});
+
 test('agency summary reports one currency and rejects mixed financial totals', () => {
   const agencyOpsApi = require('../services/agency_ops/api');
   const range = { from: '2026-01-01', to: '2026-01-31' };

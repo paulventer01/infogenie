@@ -239,7 +239,7 @@ async function _fetchEntries(pool, tenantId, range, filters = {}, { limit = null
     '       )',
     '     ORDER BY COALESCE((r.member_id=e.member_id), false) DESC,',
     '              (r.role IS NOT NULL) DESC,',
-    '              r.effective_from DESC, r.id DESC',
+    '              r.effective_from DESC, r.created_at DESC, r.id DESC',
     '     LIMIT 1',
     '  ) r ON true',
     ' WHERE ' + conditions.join(' AND '),
