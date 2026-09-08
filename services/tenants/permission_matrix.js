@@ -67,13 +67,14 @@ const ROUTE_GROUPS = [
   { prefix: '/api/true-roas',                 view: 'analytics.view' },
   { prefix: '/api/iroas',                     view: 'analytics.view' },
   { prefix: '/api/metrics',                   view: 'analytics.view' },
-  // Agency Operations Dashboard reads finance/scope data and its capacity
-  // summary; align every dashboard GET with the component's billing gate.
-  { prefix: '/api/capacity/summary',          view: 'tenant.billing.manage' },
-  { prefix: '/api/capacity',                  view: 'manage.projects.view', write: 'manage.projects.edit' },
-  { prefix: '/api/agency-ops/summary',        view: 'tenant.billing.manage' },
-  { prefix: '/api/agency-ops/scope-signals',  view: 'tenant.billing.manage' },
-  { prefix: '/api/agency-ops',                view: 'manage.projects.view', write: 'manage.projects.edit' },
+  // Agency Operations Dashboard GETs share its billing gate. The dashboard
+  // uses a dedicated aggregate capacity projection so the legacy Capacity
+  // panel keeps its manage.projects.view contract.
+  { prefix: '/api/agency-ops/capacity-summary', view: 'tenant.billing.manage' },
+  { prefix: '/api/agency-ops/summary',          view: 'tenant.billing.manage' },
+  { prefix: '/api/agency-ops/scope-signals',    view: 'tenant.billing.manage' },
+  { prefix: '/api/agency-ops',                  view: 'manage.projects.view', write: 'manage.projects.edit' },
+  { prefix: '/api/capacity',                    view: 'manage.projects.view', write: 'manage.projects.edit' },
   { prefix: '/api/technical-manager',         view: 'dashboard.view', write: 'dashboard.view' },
   { prefix: '/api/ops-tooling',               view: 'dashboard.view', write: 'dashboard.view' },
   { prefix: '/api/weekly-report',             view: 'reports.view', write: 'reports.export' },
