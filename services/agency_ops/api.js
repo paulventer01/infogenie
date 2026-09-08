@@ -192,6 +192,10 @@ async function _fetchEntries(pool, tenantId, range, filters = {}, { limit = null
     params.push(filters.memberId);
     conditions.push('e.member_id=$' + params.length);
   }
+  if (filters.entryId) {
+    params.push(filters.entryId);
+    conditions.push('e.id=$' + params.length);
+  }
 
   if (limit != null && (!Number.isSafeInteger(limit) || limit < 1)) {
     throw _bad('limit must be a positive integer');
@@ -231,6 +235,18 @@ async function _fetchEntries(pool, tenantId, range, filters = {}, { limit = null
   ].join('\n');
   const result = await pool.query(sql, params);
   return result.rows.map(_entry);
+}
+
+async function _fetchEffectiveEntry(pool, tenantId, row) {
+  const workDate = _dateValue(row.work_date);
+  const entries = await _fetchEntries(
+    pool,
+    tenantId,
+    { from: workDate, to: workDate },
+    { entryId: row.id },
+  );
+  if (!entries.length) throw new Error('mutated time entry could not be reloaded');
+  return entries[0];
 }
 
 async function _fetchBaselines(pool, tenantId, range, clientRef = null) {
@@ -501,7 +517,8 @@ router.post('/time-entries', agencyOpsSharedLimiter, _safe(async (req, res) => {
     'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) RETURNING *',
     [id, tenantId, memberId, clientRef, projectRef, workItem, workDate, hours, billable, notes],
   );
-  res.status(201).json({ ok: true, entry: _entry(result.rows[0]) });
+  const entry = await _fetchEffectiveEntry(pool, tenantId, result.rows[0]);
+  res.status(201).json({ ok: true, entry });
 }));
 
 // codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
@@ -536,7 +553,8 @@ router.patch('/time-entries/:id', agencyOpsSharedLimiter, _safe(async (req, res)
     values,
   );
   if (!result.rows.length) return _err(res, 404, 'time entry not found');
-  res.json({ ok: true, entry: _entry(result.rows[0]) });
+  const entry = await _fetchEffectiveEntry(_db.getPool(), tenantId, result.rows[0]);
+  res.json({ ok: true, entry });
 }));
 
 // codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id

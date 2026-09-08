@@ -7,7 +7,6 @@ const path = require('node:path');
 const http = require('node:http');
 const crypto = require('node:crypto');
 
-process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/infogenie';
 process.env.PERMISSION_ENFORCEMENT = 'on';
 require('./helpers/env');
 
@@ -368,6 +367,7 @@ test('effective rates honor date boundaries and prefer member pricing while miss
     assert.equal(response.status, 201, response.text);
   }
 
+  let pricedEntryId = null;
   for (const [workDate, workItem] of [
     ['2025-05-31', 'Role-priced work'],
     ['2025-06-01', 'Boundary member-priced work'],
@@ -377,9 +377,22 @@ test('effective rates honor date boundaries and prefer member pricing while miss
       body: { member_id: memberA, client_ref: 'rate-client', work_item: workItem, work_date: workDate, hours: 1 },
     });
     assert.equal(response.status, 201, response.text);
+    assert.equal(response.json.entry.rate_status, 'priced');
+    assert.equal(response.json.entry.currency, 'USD');
+    if (workDate === '2025-05-31') pricedEntryId = response.json.entry.id;
   }
 
-  let response = await request(
+  assert.ok(pricedEntryId);
+  let response = await request('PATCH', '/api/agency-ops/time-entries/' + pricedEntryId, {
+    tid: tenantA,
+    body: { work_item: 'Corrected priced work' },
+  });
+  assert.equal(response.status, 200, response.text);
+  assert.equal(response.json.entry.rate_status, 'priced');
+  assert.equal(response.json.entry.rate_source, 'role');
+  assert.equal(response.json.entry.bill_rate, 20);
+
+  response = await request(
     'GET',
     '/api/agency-ops/time-entries?from=2025-05-31&to=2025-06-01&client_ref=rate-client',
     { tid: tenantA },
@@ -402,6 +415,9 @@ test('effective rates honor date boundaries and prefer member pricing while miss
     },
   });
   assert.equal(response.status, 201, response.text);
+  assert.equal(response.json.entry.rate_status, 'missing');
+  assert.equal(response.json.entry.cost_rate, 0);
+  assert.equal(response.json.entry.bill_rate, 0);
 
   response = await request(
     'GET',
