@@ -8,6 +8,7 @@ const http = require('node:http');
 const crypto = require('node:crypto');
 
 process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/infogenie';
+process.env.PERMISSION_ENFORCEMENT = 'on';
 require('./helpers/env');
 
 const db = require('../db');
@@ -26,11 +27,12 @@ let server = null;
 let port = 0;
 const originalResolveTenantId = tenantCtx.resolveTenantId;
 
-function request(method, pathname, { tid, body } = {}) {
+function request(method, pathname, { tid, body, permissions } = {}) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? null : JSON.stringify(body);
     const headers = { 'content-type': 'application/json' };
     if (tid != null) headers['x-test-tid'] = String(tid);
+    if (permissions) headers['x-test-permissions'] = permissions.join(',');
     if (data) headers['content-length'] = Buffer.byteLength(data);
     const req = http.request({ host: '127.0.0.1', port, path: pathname, method, headers }, (res) => {
       let text = '';
@@ -143,8 +145,11 @@ before(async () => {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.user = { id: 1, isOwner: true };
-    req.can = () => true;
+    req.user = { id: 1, isOwner: false };
+    const permissionHeader = req.headers['x-test-permissions'];
+    req.can = permissionHeader === undefined
+      ? () => true
+      : (permission) => String(permissionHeader).split(',').includes(permission);
     const testTenantId = Number.parseInt(req.headers['x-test-tid'], 10);
     req.tenant = Number.isSafeInteger(testTenantId) && testTenantId > 0
       ? { id: testTenantId }
@@ -173,6 +178,47 @@ after(async () => {
   await pool.query('DELETE FROM agency_scope_baselines WHERE tenant_id=ANY($1)', [ids]);
   await pool.query('DELETE FROM team_capacity WHERE tenant_id=ANY($1)', [ids]);
   await pool.query('DELETE FROM tenants WHERE id=ANY($1)', [ids]);
+});
+
+test('financial agency operations endpoints require billing permission', { skip }, async () => {
+  const tenantA = tenantIds[0];
+  const projectOnly = { tid: tenantA, permissions: ['manage.projects.view'] };
+
+  for (const pathname of ['/api/agency-ops/time-entries', '/api/agency-ops/scope-baselines', '/api/agency-ops/summary']) {
+    const denied = await request('GET', pathname, projectOnly);
+    assert.equal(denied.status, 403, denied.text);
+    assert.equal(denied.json?.error, 'forbidden');
+    assert.equal(denied.json?.required, 'tenant.billing.manage');
+
+    const allowed = await request('GET', pathname, {
+      tid: tenantA,
+      permissions: ['manage.projects.view', 'tenant.billing.manage'],
+    });
+    assert.equal(allowed.status, 200, allowed.text);
+  }
+
+  const baseline = {
+    client_ref: 'permission-check',
+    name: 'Permission check baseline',
+    period_start: '2026-01-01',
+    period_end: '2026-01-31',
+    contracted_hours: 10,
+    change_budget_hours: 2,
+    contracted_value: 1000,
+  };
+  const denied = await request('POST', '/api/agency-ops/scope-baselines', {
+    ...projectOnly,
+    body: baseline,
+  });
+  assert.equal(denied.status, 403, denied.text);
+  assert.equal(denied.json?.required, 'tenant.billing.manage');
+
+  const allowed = await request('POST', '/api/agency-ops/scope-baselines', {
+    tid: tenantA,
+    permissions: ['manage.projects.edit', 'tenant.billing.manage'],
+    body: baseline,
+  });
+  assert.equal(allowed.status, 201, allowed.text);
 });
 
 test('time, rates, margin, scope signals, and capacity remain tenant-isolated', { skip }, async () => {
@@ -252,4 +298,127 @@ test('time, rates, margin, scope signals, and capacity remain tenant-isolated', 
   assert.ok(member, 'capacity roster member should be present');
   assert.equal(Number(member.logged_hours), 2);
   assert.equal(Number(response.json.totals.logged_hours), 2);
+});
+
+test('time corrections validate input and cannot cross tenant boundaries', { skip }, async () => {
+  const [tenantA, tenantB] = tenantIds;
+  const memberA = 'member-a-' + SUFFIX;
+  const base = {
+    member_id: memberA,
+    client_ref: 'correction-client',
+    work_item: 'Original work',
+    work_date: '2025-07-10',
+    hours: 1,
+  };
+
+  let response = await request('POST', '/api/agency-ops/time-entries', { tid: tenantA, body: base });
+  assert.equal(response.status, 201, response.text);
+  const entryId = response.json.entry.id;
+
+  response = await request('PATCH', '/api/agency-ops/time-entries/' + entryId, {
+    tid: tenantA,
+    body: { work_item: 'Corrected work', work_date: '2025-07-11', hours: 2.5, billable: false },
+  });
+  assert.equal(response.status, 200, response.text);
+  assert.equal(response.json.entry.work_item, 'Corrected work');
+  assert.equal(response.json.entry.work_date, '2025-07-11');
+  assert.equal(response.json.entry.hours, 2.5);
+  assert.equal(response.json.entry.billable, false);
+
+  response = await request('PATCH', '/api/agency-ops/time-entries/' + entryId, {
+    tid: tenantB,
+    body: { hours: 9 },
+  });
+  assert.equal(response.status, 404, response.text);
+
+  response = await request(
+    'GET',
+    '/api/agency-ops/time-entries?from=2025-07-11&to=2025-07-11&client_ref=correction-client',
+    { tid: tenantA },
+  );
+  assert.equal(response.status, 200, response.text);
+  assert.equal(response.json.entries.length, 1);
+  assert.equal(response.json.entries[0].hours, 2.5, 'cross-tenant PATCH must not alter the entry');
+
+  for (const body of [
+    { ...base, hours: 0 },
+    { ...base, hours: 25 },
+    { ...base, work_date: '2025-02-29' },
+    { ...base, work_date: 'not-a-date' },
+  ]) {
+    response = await request('POST', '/api/agency-ops/time-entries', { tid: tenantA, body });
+    assert.equal(response.status, 400, response.text);
+  }
+
+  for (const body of [{}, { unsupported: true }]) {
+    response = await request('PATCH', '/api/agency-ops/time-entries/' + entryId, { tid: tenantA, body });
+    assert.equal(response.status, 400, response.text);
+  }
+});
+
+test('effective rates honor date boundaries and prefer member pricing while missing pricing is signaled', { skip }, async () => {
+  const tenantA = tenantIds[0];
+  const memberA = 'member-a-' + SUFFIX;
+
+  for (const body of [
+    { role: 'designer', cost_rate: 10, bill_rate: 20, effective_from: '2025-01-01', effective_to: '2025-06-01' },
+    { member_id: memberA, cost_rate: 30, bill_rate: 60, effective_from: '2025-06-01', effective_to: '2025-12-31' },
+  ]) {
+    const response = await request('POST', '/api/agency-ops/rates', { tid: tenantA, body });
+    assert.equal(response.status, 201, response.text);
+  }
+
+  for (const [workDate, workItem] of [
+    ['2025-05-31', 'Role-priced work'],
+    ['2025-06-01', 'Boundary member-priced work'],
+  ]) {
+    const response = await request('POST', '/api/agency-ops/time-entries', {
+      tid: tenantA,
+      body: { member_id: memberA, client_ref: 'rate-client', work_item: workItem, work_date: workDate, hours: 1 },
+    });
+    assert.equal(response.status, 201, response.text);
+  }
+
+  let response = await request(
+    'GET',
+    '/api/agency-ops/time-entries?from=2025-05-31&to=2025-06-01&client_ref=rate-client',
+    { tid: tenantA },
+  );
+  assert.equal(response.status, 200, response.text);
+  const byDate = Object.fromEntries(response.json.entries.map((entry) => [entry.work_date, entry]));
+  assert.equal(byDate['2025-05-31'].rate_source, 'role');
+  assert.equal(byDate['2025-05-31'].bill_rate, 20);
+  assert.equal(byDate['2025-06-01'].rate_source, 'member');
+  assert.equal(byDate['2025-06-01'].bill_rate, 60);
+
+  response = await request('POST', '/api/agency-ops/time-entries', {
+    tid: tenantA,
+    body: {
+      member_id: memberA,
+      client_ref: 'unpriced-client',
+      work_item: 'Work before any effective rate',
+      work_date: '2024-12-31',
+      hours: 3,
+    },
+  });
+  assert.equal(response.status, 201, response.text);
+
+  response = await request(
+    'GET',
+    '/api/agency-ops/time-entries?from=2024-12-31&to=2024-12-31&client_ref=unpriced-client',
+    { tid: tenantA },
+  );
+  assert.equal(response.status, 200, response.text);
+  assert.equal(response.json.entries[0].rate_status, 'missing');
+  assert.equal(response.json.entries[0].cost_rate, 0);
+  assert.equal(response.json.entries[0].bill_rate, 0);
+
+  response = await request(
+    'GET',
+    '/api/agency-ops/summary?from=2024-12-31&to=2024-12-31&client_ref=unpriced-client',
+    { tid: tenantA },
+  );
+  assert.equal(response.status, 200, response.text);
+  assert.equal(response.json.totals.unpriced_hours, 3);
+  assert.equal(response.json.clients[0].unpriced_hours, 3);
 });

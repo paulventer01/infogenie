@@ -415,7 +415,7 @@ router.use(_agencyOpsTenantGuard);
 router.use(agencyOpsSharedLimiter);
 
 // codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
-router.get('/time-entries', agencyOpsSharedLimiter, _safe(async (req, res) => {
+router.get('/time-entries', agencyOpsSharedLimiter, requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:time-entries:list');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return res.json({ ok: true, entries: [] });
@@ -545,7 +545,7 @@ router.post('/rates', agencyOpsSharedLimiter, requirePermission('tenant.billing.
 }));
 
 // codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
-router.get('/scope-baselines', agencyOpsSharedLimiter, _safe(async (req, res) => {
+router.get('/scope-baselines', agencyOpsSharedLimiter, requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:scope-baselines:list');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return res.json({ ok: true, baselines: [] });
@@ -556,7 +556,7 @@ router.get('/scope-baselines', agencyOpsSharedLimiter, _safe(async (req, res) =>
 }));
 
 // codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
-router.post('/scope-baselines', agencyOpsSharedLimiter, _safe(async (req, res) => {
+router.post('/scope-baselines', agencyOpsSharedLimiter, requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:scope-baselines:create');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');
@@ -598,7 +598,7 @@ router.get('/scope-signals', agencyOpsSharedLimiter, _safe(async (req, res) => {
 }));
 
 // codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
-router.get('/summary', agencyOpsSharedLimiter, _safe(async (req, res) => {
+router.get('/summary', agencyOpsSharedLimiter, requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:summary');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   const range = _range(req);
