@@ -351,9 +351,9 @@ function _emptySummary(range, filters) {
   };
 }
 
-function _buildSummary(range, filters, entries, baselines) {
+function _buildSummary(range, filters, entries, baselines, scopeEntries = entries) {
   const currency = _summaryCurrency(entries, baselines);
-  const signals = _scopeSignals(baselines, entries);
+  const signals = _scopeSignals(baselines, scopeEntries);
   const clientMap = new Map();
   const totals = {
     time_entries: entries.length,
@@ -662,7 +662,11 @@ router.get('/summary', agencyOpsSharedLimiter, requirePermission('tenant.billing
     _fetchEntries(pool, tenantId, range, { clientRef: filters.client_ref }),
     _fetchBaselines(pool, tenantId, range, filters.client_ref),
   ]);
-  res.json(_buildSummary(range, filters, entries, baselines));
+  const scopeEntryRange = _baselineRange(baselines);
+  const scopeEntries = scopeEntryRange
+    ? await _fetchEntries(pool, tenantId, scopeEntryRange, { clientRef: filters.client_ref })
+    : [];
+  res.json(_buildSummary(range, filters, entries, baselines, scopeEntries));
 }));
 
 module.exports = router;

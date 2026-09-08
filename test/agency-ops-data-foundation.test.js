@@ -479,3 +479,49 @@ test('scope signal reads expand to the complete range of overlapping baselines',
   );
   assert.equal(agencyOpsApi._baselineRange([]), null);
 });
+
+test('summary keeps financial totals narrow while scope signals use full baseline periods', () => {
+  const agencyOpsApi = require('../services/agency_ops/api');
+  const range = { from: '2026-03-01', to: '2026-03-31' };
+  const marchEntry = {
+    client_ref: 'scope-client',
+    project_ref: null,
+    work_date: '2026-03-15',
+    hours: 1,
+    billable: true,
+    cost_value: 10,
+    billable_value: 20,
+    rate_status: 'priced',
+    currency: 'USD',
+  };
+  const historicalEntry = {
+    ...marchEntry,
+    work_date: '2026-01-15',
+    hours: 11,
+    cost_value: 110,
+    billable_value: 220,
+  };
+  const summary = agencyOpsApi._buildSummary(
+    range,
+    {},
+    [marchEntry],
+    [{
+      id: 'scope-1',
+      client_ref: 'scope-client',
+      project_ref: null,
+      name: 'Quarterly scope',
+      period_start: '2026-01-01',
+      period_end: '2026-03-31',
+      contracted_hours: 10,
+      change_budget_hours: 0,
+      contracted_value: 100,
+      currency: 'USD',
+    }],
+    [marchEntry, historicalEntry],
+  );
+
+  assert.equal(summary.totals.hours, 1);
+  assert.equal(summary.scope_signals[0].actual_hours, 12);
+  assert.equal(summary.scope_signals[0].status, 'over_scope');
+  assert.equal(summary.totals.scope_overage_hours, 2);
+});
