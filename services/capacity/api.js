@@ -16,7 +16,7 @@ function _safe(h) {
 }
 function _id(prefix) { return prefix + crypto.randomBytes(5).toString('hex'); }
 
-async function _loadAgentWorkload(tid) {
+async function _loadAgentWorkload(tid, { strict = false } = {}) {
   if (!_db.hasDb()) return [];
   try {
     const r = await _db.getPool().query(
@@ -46,24 +46,32 @@ async function _loadAgentWorkload(tid) {
         source: 'agent_tasks',
       };
     });
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return [];
   }
 }
 
-async function _buildSummary(tid) {
+function _emptyRowsUnlessStrict(strict) {
+  return (error) => {
+    if (strict) throw error;
+    return { rows: [] };
+  };
+}
+
+async function _buildSummary(tid, { strict = false } = {}) {
   const pool = _db.getPool();
   const membersR = await pool.query(
     `SELECT * FROM team_capacity WHERE tenant_id=$1 AND active=true ORDER BY member_name`,
     [tid],
-  ).catch(() => ({ rows: [] }));
+  ).catch(_emptyRowsUnlessStrict(strict));
   const assignR = await pool.query(
     `SELECT * FROM capacity_assignments
       WHERE tenant_id=$1 AND status='open'
       ORDER BY due_date ASC NULLS LAST`,
     [tid],
-  ).catch(() => ({ rows: [] }));
-  const agentWork = await _loadAgentWorkload(tid);
+  ).catch(_emptyRowsUnlessStrict(strict));
+  const agentWork = await _loadAgentWorkload(tid, { strict });
   const loggedR = await pool.query(
     `SELECT member_id, COALESCE(SUM(hours), 0) AS logged_hours
        FROM agency_time_entries
@@ -72,7 +80,7 @@ async function _buildSummary(tid) {
         AND work_date < (date_trunc('week', CURRENT_DATE) + INTERVAL '7 days')::date
       GROUP BY member_id`,
     [tid],
-  ).catch(() => ({ rows: [] }));
+  ).catch(_emptyRowsUnlessStrict(strict));
   const loggedByMember = new Map(
     loggedR.rows.map((row) => [String(row.member_id), Number(row.logged_hours || 0)]),
   );
