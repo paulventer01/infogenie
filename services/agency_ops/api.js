@@ -710,7 +710,7 @@ router.get('/capacity-summary', agencyOpsSharedLimiter, requirePermission('tenan
       },
     });
   }
-  const summary = await capacityApi.buildSummary(tenantId);
+  const summary = await capacityApi.buildSummary(tenantId, { strict: true });
   res.json({ ok: true, totals: summary.totals });
 }));
 
