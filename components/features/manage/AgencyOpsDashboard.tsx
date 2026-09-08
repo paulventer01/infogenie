@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { apiGet, type ApiResult } from "@/lib/api";
 import {
+  applyLatestAgencyOpsResults,
   buildAgencyOpsQuery,
   dataUnavailableMessage,
   formatHours,
@@ -159,29 +160,35 @@ export default function AgencyOpsDashboard() {
       apiGet<ScopeResponse>("/api/agency-ops/scope-signals" + query),
       apiGet<CapacityResponse>("/api/capacity/summary?read_only=true"),
     ]);
-    const summaryUnavailable = isDataUnavailable(summaryResult);
-    const scopeUnavailable = isDataUnavailable(scopeResult);
-    const capacityUnavailable = isDataUnavailable(capacityResult);
-    if (requestId !== requestIdRef.current) return;
-    setSummary(summaryResult.ok && !summaryUnavailable ? summaryResult : null);
-    setScope(scopeResult.ok && !scopeUnavailable ? scopeResult : null);
-    setCapacity(capacityResult.ok && !capacityUnavailable ? capacityResult : null);
-    setSummaryError(
-      summaryUnavailable
-        ? dataUnavailableMessage(summaryResult)
-        : summaryResult.ok ? null : summaryResult.error || "summary request failed",
+    applyLatestAgencyOpsResults(
+      requestId,
+      requestIdRef.current,
+      { summaryResult, scopeResult, capacityResult },
+      ({ summaryResult: latestSummary, scopeResult: latestScope, capacityResult: latestCapacity }) => {
+        const summaryUnavailable = isDataUnavailable(latestSummary);
+        const scopeUnavailable = isDataUnavailable(latestScope);
+        const capacityUnavailable = isDataUnavailable(latestCapacity);
+        setSummary(latestSummary.ok && !summaryUnavailable ? latestSummary : null);
+        setScope(latestScope.ok && !scopeUnavailable ? latestScope : null);
+        setCapacity(latestCapacity.ok && !capacityUnavailable ? latestCapacity : null);
+        setSummaryError(
+          summaryUnavailable
+            ? dataUnavailableMessage(latestSummary)
+            : latestSummary.ok ? null : latestSummary.error || "summary request failed",
+        );
+        setScopeError(
+          scopeUnavailable
+            ? dataUnavailableMessage(latestScope)
+            : latestScope.ok ? null : latestScope.error || "scope-signal request failed",
+        );
+        setCapacityError(
+          capacityUnavailable
+            ? dataUnavailableMessage(latestCapacity)
+            : latestCapacity.ok ? null : latestCapacity.error || "capacity request failed",
+        );
+        setLoading(false);
+      },
     );
-    setScopeError(
-      scopeUnavailable
-        ? dataUnavailableMessage(scopeResult)
-        : scopeResult.ok ? null : scopeResult.error || "scope-signal request failed",
-    );
-    setCapacityError(
-      capacityUnavailable
-        ? dataUnavailableMessage(capacityResult)
-        : capacityResult.ok ? null : capacityResult.error || "capacity request failed",
-    );
-    setLoading(false);
   }, [from, to]);
 
   useEffect(() => {
