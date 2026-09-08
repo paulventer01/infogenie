@@ -82,12 +82,13 @@ test("dashboard guards read-only capacity and stale reporting-period responses",
 test("capacity summary is tenant-authorized and side-effect free in read-only mode", () => {
   const source = fs.readFileSync(path.join(ROOT, "services/capacity/api.js"), "utf8");
   assert.match(source, /router\.get\('\/summary', requirePermission\('manage\.projects\.view'\)/);
-  assert.match(source, /req\.query\?\.read_only === 'true'/);
+  assert.match(source, /req\.query\?\.read_only !== 'true'/);
+  assert.match(source, /req\.query\?\.read_only !== '1'/);
 });
 
 test("agency operations dashboard has a billing permission and narrow capacity owner exemption", () => {
   const matrix = fs.readFileSync(path.join(ROOT, "services/tenants/permission_matrix.js"), "utf8");
   const server = fs.readFileSync(path.join(ROOT, "server.js"), "utf8");
   assert.match(matrix, /'agency-ops-dashboard'\s*:\s*'tenant\.billing\.manage'/);
-  assert.match(server, /\/\^\\\/api\\\/capacity\\\/summary\$\//);
+  assert.ok(server.includes("  /^\\/api\\/capacity\\/summary$/,"));
 });
