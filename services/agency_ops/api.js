@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
-const { requirePermission } = require('../tenants/permission_enforce');
+const { hasPermission, requirePermission } = require('../tenants/permission_enforce');
 const { createRateLimiter } = require('../security/rate_limit');
 
 const AGENCY_OPS_WINDOW_MS = 60_000;
@@ -138,12 +138,31 @@ function _rate(row) {
   };
 }
 
-function _entry(row) {
+function _entry(row, { includeFinancial = true } = {}) {
   const hours = Number(row.hours || 0);
   const costRate = Number(row.cost_rate || 0);
   const billRate = Number(row.bill_rate || 0);
   const priced = Boolean(row.rate_id);
   const billableValue = row.billable ? hours * billRate : 0;
+  const financial = includeFinancial
+    ? {
+      cost_rate: _round(costRate),
+      bill_rate: _round(billRate),
+      currency: _currency(row.currency),
+      rate_status: priced ? 'priced' : 'missing',
+      rate_source: row.rate_source || null,
+      cost_value: _round(hours * costRate),
+      billable_value: _round(billableValue),
+    }
+    : {
+      cost_rate: null,
+      bill_rate: null,
+      currency: null,
+      rate_status: 'hidden',
+      rate_source: null,
+      cost_value: null,
+      billable_value: null,
+    };
   return {
     id: row.id,
     member_id: row.member_id,
@@ -155,13 +174,7 @@ function _entry(row) {
     hours: _round(hours),
     billable: row.billable !== false,
     notes: row.notes || '',
-    cost_rate: _round(costRate),
-    bill_rate: _round(billRate),
-    currency: _currency(row.currency),
-    rate_status: priced ? 'priced' : 'missing',
-    rate_source: row.rate_source || null,
-    cost_value: _round(hours * costRate),
-    billable_value: _round(billableValue),
+    ...financial,
   };
 }
 
@@ -171,13 +184,14 @@ async function _tenantId(req, label) {
 
 async function _assertMember(pool, tenantId, memberId) {
   const result = await pool.query(
-    'SELECT id FROM team_capacity WHERE id=$1 AND tenant_id=$2 LIMIT 1',
+    'SELECT id, role FROM team_capacity WHERE id=$1 AND tenant_id=$2 LIMIT 1',
     [memberId, tenantId],
   );
   if (!result.rows.length) throw _bad('member_id must belong to this tenant capacity roster');
+  return result.rows[0];
 }
 
-async function _fetchEntries(pool, tenantId, range, filters = {}, { limit = null } = {}) {
+async function _fetchEntries(pool, tenantId, range, filters = {}, { limit = null, includeFinancial = true } = {}) {
   const params = [tenantId, range.from, range.to];
   const conditions = [
     'e.tenant_id=$1',
@@ -205,11 +219,9 @@ async function _fetchEntries(pool, tenantId, range, filters = {}, { limit = null
   const sql = [
     'SELECT e.id, e.member_id, e.client_ref, e.project_ref, e.work_item,',
     '       e.work_date, e.hours, e.billable, e.notes,',
-    '       m.role AS member_role,',
+    '       e.member_role AS member_role,',
     '       r.id AS rate_id, r.cost_rate, r.bill_rate, r.currency, r.rate_source',
     '  FROM agency_time_entries e',
-    '  LEFT JOIN team_capacity m',
-    '    ON m.id=e.member_id AND m.tenant_id=e.tenant_id',
     '  LEFT JOIN LATERAL (',
     '    SELECT r.id, r.cost_rate, r.bill_rate, r.currency,',
     "           CASE WHEN r.member_id=e.member_id THEN 'member'",
@@ -222,7 +234,7 @@ async function _fetchEntries(pool, tenantId, range, filters = {}, { limit = null
     '       AND (r.effective_to IS NULL OR r.effective_to >= e.work_date)',
     '       AND (',
     '         r.member_id=e.member_id',
-    "         OR (r.member_id IS NULL AND r.role IS NOT NULL AND r.role=m.role)",
+    "         OR (r.member_id IS NULL AND r.role IS NOT NULL AND r.role=e.member_role)",
     '         OR (r.member_id IS NULL AND r.role IS NULL)',
     '       )',
     '     ORDER BY COALESCE((r.member_id=e.member_id), false) DESC,',
@@ -234,16 +246,17 @@ async function _fetchEntries(pool, tenantId, range, filters = {}, { limit = null
     ' ORDER BY e.work_date DESC, e.created_at DESC' + limitClause,
   ].join('\n');
   const result = await pool.query(sql, params);
-  return result.rows.map(_entry);
+  return result.rows.map((row) => _entry(row, { includeFinancial }));
 }
 
-async function _fetchEffectiveEntry(pool, tenantId, row) {
+async function _fetchEffectiveEntry(pool, tenantId, row, { includeFinancial = true } = {}) {
   const workDate = _dateValue(row.work_date);
   const entries = await _fetchEntries(
     pool,
     tenantId,
     { from: workDate, to: workDate },
     { entryId: row.id },
+    { includeFinancial },
   );
   if (!entries.length) throw new Error('mutated time entry could not be reloaded');
   return entries[0];
@@ -509,15 +522,17 @@ router.post('/time-entries', agencyOpsSharedLimiter, _safe(async (req, res) => {
   const billable = _bool(body.billable, true);
   const notes = _text(body.notes, 'notes', { max: 2000 }) || '';
   const pool = _db.getPool();
-  await _assertMember(pool, tenantId, memberId);
+  const member = await _assertMember(pool, tenantId, memberId);
   const id = _id('time_');
   const result = await pool.query(
     'INSERT INTO agency_time_entries ' +
-    '(id, tenant_id, member_id, client_ref, project_ref, work_item, work_date, hours, billable, notes, updated_at) ' +
-    'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) RETURNING *',
-    [id, tenantId, memberId, clientRef, projectRef, workItem, workDate, hours, billable, notes],
+    '(id, tenant_id, member_id, member_role, client_ref, project_ref, work_item, work_date, hours, billable, notes, updated_at) ' +
+    'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) RETURNING *',
+    [id, tenantId, memberId, member.role || null, clientRef, projectRef, workItem, workDate, hours, billable, notes],
   );
-  const entry = await _fetchEffectiveEntry(pool, tenantId, result.rows[0]);
+  const entry = await _fetchEffectiveEntry(pool, tenantId, result.rows[0], {
+    includeFinancial: hasPermission(req, 'tenant.billing.manage'),
+  });
   res.status(201).json({ ok: true, entry });
 }));
 
@@ -535,8 +550,9 @@ router.patch('/time-entries/:id', agencyOpsSharedLimiter, _safe(async (req, res)
   };
   if (Object.hasOwn(body, 'member_id')) {
     const memberId = _text(body.member_id, 'member_id', { required: true });
-    await _assertMember(_db.getPool(), tenantId, memberId);
+    const member = await _assertMember(_db.getPool(), tenantId, memberId);
     add('member_id', memberId);
+    add('member_role', member.role || null);
   }
   if (Object.hasOwn(body, 'client_ref')) add('client_ref', _text(body.client_ref, 'client_ref', { required: true }));
   if (Object.hasOwn(body, 'project_ref')) add('project_ref', _text(body.project_ref, 'project_ref'));
@@ -553,7 +569,9 @@ router.patch('/time-entries/:id', agencyOpsSharedLimiter, _safe(async (req, res)
     values,
   );
   if (!result.rows.length) return _err(res, 404, 'time entry not found');
-  const entry = await _fetchEffectiveEntry(_db.getPool(), tenantId, result.rows[0]);
+  const entry = await _fetchEffectiveEntry(_db.getPool(), tenantId, result.rows[0], {
+    includeFinancial: hasPermission(req, 'tenant.billing.manage'),
+  });
   res.json({ ok: true, entry });
 }));
 

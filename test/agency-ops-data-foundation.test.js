@@ -55,6 +55,7 @@ test('agency operations schema is tenant-scoped and has no provider-action surfa
     assert.match(schema, new RegExp('CREATE TABLE IF NOT EXISTS ' + table));
   }
   assert.equal((schema.match(/tenant_id INT NOT NULL REFERENCES tenants\(id\) ON DELETE CASCADE/g) || []).length, 3);
+  assert.match(schema, /member_role TEXT/);
   assert.doesNotMatch(api, /fetch\s*\(|axios|google|meta|tiktok|publish|activate/i);
   assert.match(api, /e\.tenant_id=\$1/);
   assert.match(api, /WHERE id=\$1 AND tenant_id=\$2/);
@@ -195,6 +196,58 @@ test('financial agency operations endpoints require billing permission', { skip 
     });
     assert.equal(allowed.status, 200, allowed.text);
   }
+
+  const projectEditor = { tid: tenantA, permissions: ['manage.projects.edit'] };
+  const billingEditor = {
+    tid: tenantA,
+    permissions: ['manage.projects.edit', 'tenant.billing.manage'],
+  };
+  let response = await request('POST', '/api/agency-ops/rates', {
+    ...billingEditor,
+    body: {
+      role: 'designer',
+      cost_rate: 10,
+      bill_rate: 20,
+      currency: 'USD',
+      effective_from: '2026-01-01',
+      effective_to: '2026-12-31',
+    },
+  });
+  assert.equal(response.status, 201, response.text);
+
+  response = await request('POST', '/api/agency-ops/time-entries', {
+    ...projectEditor,
+    body: {
+      member_id: 'member-a-' + SUFFIX,
+      client_ref: 'permission-time',
+      work_item: 'Permission redaction check',
+      work_date: '2026-02-01',
+      hours: 1,
+    },
+  });
+  assert.equal(response.status, 201, response.text);
+  assert.equal(response.json.entry.rate_status, 'hidden');
+  for (const field of ['cost_rate', 'bill_rate', 'currency', 'rate_source', 'cost_value', 'billable_value']) {
+    assert.equal(response.json.entry[field], null, field + ' must be hidden without billing permission');
+  }
+
+  response = await request('PATCH', '/api/agency-ops/time-entries/' + response.json.entry.id, {
+    ...projectEditor,
+    body: { notes: 'patched redaction check' },
+  });
+  assert.equal(response.status, 200, response.text);
+  assert.equal(response.json.entry.rate_status, 'hidden');
+  assert.equal(response.json.entry.cost_value, null);
+  assert.equal(response.json.entry.billable_value, null);
+
+  response = await request(
+    'GET',
+    '/api/agency-ops/time-entries?from=2026-02-01&to=2026-02-01&client_ref=permission-time',
+    { tid: tenantA, permissions: ['manage.projects.view', 'tenant.billing.manage'] },
+  );
+  assert.equal(response.status, 200, response.text);
+  assert.equal(response.json.entries[0].rate_status, 'priced');
+  assert.equal(response.json.entries[0].bill_rate, 20);
 
   const baseline = {
     client_ref: 'permission-check',
@@ -437,6 +490,93 @@ test('effective rates honor date boundaries and prefer member pricing while miss
   assert.equal(response.status, 200, response.text);
   assert.equal(response.json.totals.unpriced_hours, 3);
   assert.equal(response.json.clients[0].unpriced_hours, 3);
+});
+
+test('time-entry pricing preserves the captured member role', { skip }, async () => {
+  const tenantA = tenantIds[0];
+  const memberA = 'member-a-' + SUFFIX;
+  const pool = db.getPool();
+  await pool.query(
+    'UPDATE team_capacity SET role=$1 WHERE id=$2 AND tenant_id=$3',
+    ['designer', memberA, tenantA],
+  );
+
+  try {
+    for (const body of [
+      {
+        role: 'designer',
+        cost_rate: 11,
+        bill_rate: 22,
+        effective_from: '2027-01-01',
+        effective_to: '2027-12-31',
+      },
+      {
+        role: 'strategist',
+        cost_rate: 17,
+        bill_rate: 34,
+        effective_from: '2027-01-01',
+        effective_to: '2027-12-31',
+      },
+    ]) {
+      const response = await request('POST', '/api/agency-ops/rates', {
+        tid: tenantA,
+        permissions: ['manage.projects.edit', 'tenant.billing.manage'],
+        body,
+      });
+      assert.equal(response.status, 201, response.text);
+    }
+
+    let response = await request('POST', '/api/agency-ops/time-entries', {
+      tid: tenantA,
+      permissions: ['manage.projects.edit', 'tenant.billing.manage'],
+      body: {
+        member_id: memberA,
+        client_ref: 'role-snapshot-client',
+        work_item: 'Role snapshot before promotion',
+        work_date: '2027-02-01',
+        hours: 1,
+      },
+    });
+    assert.equal(response.status, 201, response.text);
+    assert.equal(response.json.entry.member_role, 'designer');
+    assert.equal(response.json.entry.bill_rate, 22);
+    const historicalEntryId = response.json.entry.id;
+
+    await pool.query(
+      'UPDATE team_capacity SET role=$1 WHERE id=$2 AND tenant_id=$3',
+      ['strategist', memberA, tenantA],
+    );
+
+    response = await request(
+      'GET',
+      '/api/agency-ops/time-entries?from=2027-02-01&to=2027-02-01&client_ref=role-snapshot-client',
+      { tid: tenantA, permissions: ['manage.projects.view', 'tenant.billing.manage'] },
+    );
+    assert.equal(response.status, 200, response.text);
+    assert.equal(response.json.entries[0].id, historicalEntryId);
+    assert.equal(response.json.entries[0].member_role, 'designer');
+    assert.equal(response.json.entries[0].bill_rate, 22);
+
+    response = await request('POST', '/api/agency-ops/time-entries', {
+      tid: tenantA,
+      permissions: ['manage.projects.edit', 'tenant.billing.manage'],
+      body: {
+        member_id: memberA,
+        client_ref: 'role-snapshot-client',
+        work_item: 'Role snapshot after promotion',
+        work_date: '2027-02-02',
+        hours: 1,
+      },
+    });
+    assert.equal(response.status, 201, response.text);
+    assert.equal(response.json.entry.member_role, 'strategist');
+    assert.equal(response.json.entry.bill_rate, 34);
+  } finally {
+    await pool.query(
+      'UPDATE team_capacity SET role=$1 WHERE id=$2 AND tenant_id=$3',
+      ['designer', memberA, tenantA],
+    );
+  }
 });
 
 test('agency summary reports one currency and rejects mixed financial totals', () => {

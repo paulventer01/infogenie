@@ -11,6 +11,7 @@ async function ensureAgencyOpsSchema() {
       id TEXT PRIMARY KEY,
       tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       member_id TEXT NOT NULL,
+      member_role TEXT,
       client_ref TEXT NOT NULL,
       project_ref TEXT,
       work_item TEXT NOT NULL,
@@ -28,6 +29,17 @@ async function ensureAgencyOpsSchema() {
       ON agency_time_entries(tenant_id, client_ref, work_date DESC);
     CREATE INDEX IF NOT EXISTS idx_agency_time_entries_tenant_member
       ON agency_time_entries(tenant_id, member_id, work_date DESC);
+  `);
+
+  await pool.query(`
+    ALTER TABLE agency_time_entries
+      ADD COLUMN IF NOT EXISTS member_role TEXT;
+    UPDATE agency_time_entries e
+       SET member_role = m.role
+      FROM team_capacity m
+     WHERE e.member_role IS NULL
+       AND m.id = e.member_id
+       AND m.tenant_id = e.tenant_id;
   `);
 
   await pool.query(`
