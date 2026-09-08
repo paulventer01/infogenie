@@ -104,12 +104,52 @@ test("capacity projection includes only measured dashboard fields", () => {
   );
 });
 
-test("capacity summary counts the complete tenant backlog independently of the workload limit", () => {
-  const capacity = fs.readFileSync(path.join(ROOT, "services/capacity/api.js"), "utf8");
-  assert.match(capacity, /SELECT COUNT\(\*\)::int AS open_agent_tasks/);
-  assert.match(capacity, /WHERE g\.tenant_id = \$1/);
-  assert.match(capacity, /open_agent_tasks: openAgentTasks/);
-  assert.doesNotMatch(capacity, /open_agent_tasks: agentWork\.length/);
+test("capacity summary uses an uncapped, tenant-scoped task count", async () => {
+  const db = require("../db");
+  const capacity = require("../services/capacity/api");
+  const queries = [];
+  const detailedRows = Array.from({ length: 100 }, (_, index) => ({
+    id: "task-" + index,
+    title: "Open task " + index,
+    status: "open",
+    priority: 2,
+    due_date: null,
+    action_type: "review",
+    goal_title: "Goal",
+  }));
+  const pool = {
+    async query(sql, params) {
+      queries.push({ sql, params });
+      if (sql.includes("FROM team_capacity")) {
+        return { rows: [{ id: "member-1", weekly_hours: 40, allocated_hours: 0 }] };
+      }
+      if (sql.includes("FROM capacity_assignments")) return { rows: [] };
+      if (sql.includes("COUNT(*)::int AS open_agent_tasks")) {
+        return { rows: [{ open_agent_tasks: 150 }] };
+      }
+      if (sql.includes("FROM agent_tasks")) return { rows: detailedRows };
+      if (sql.includes("FROM agency_time_entries")) return { rows: [] };
+      throw new Error("unexpected capacity query: " + sql);
+    },
+  };
+  const originalHasDb = db.hasDb;
+  const originalGetPool = db.getPool;
+  db.hasDb = () => true;
+  db.getPool = () => pool;
+  try {
+    const summary = await capacity.buildSummary(4242, { strict: true });
+    assert.equal(summary.agent_workload.length, 100);
+    assert.equal(summary.totals.open_agent_tasks, 150);
+
+    const countQueries = queries.filter((query) => query.sql.includes("COUNT(*)::int AS open_agent_tasks"));
+    assert.equal(countQueries.length, 1);
+    assert.deepEqual(countQueries[0].params, [4242]);
+    assert.match(countQueries[0].sql, /g\.tenant_id = \$1/);
+    assert.match(countQueries[0].sql, /t\.tenant_id = \$1/);
+  } finally {
+    db.hasDb = originalHasDb;
+    db.getPool = originalGetPool;
+  }
 });
 
 test("dashboard applies only the latest reporting-period response", () => {
