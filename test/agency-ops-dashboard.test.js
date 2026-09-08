@@ -116,12 +116,12 @@ test("agency operations dashboard aligns component and GET API permissions", () 
   const matrix = require("../services/tenants/permission_matrix");
   assert.ok(matrixSource.includes("'agency-ops-dashboard':  'tenant.billing.manage'"));
   assert.equal(matrix.requiredPermissionForRequest("/api/agency-ops/summary", "GET").permission, "tenant.billing.manage");
-  assert.equal(matrix.requiredPermissionForRequest("/api/agency-ops/scope-signals", "GET").permission, "tenant.billing.manage");
+  assert.equal(matrix.requiredPermissionForRequest("/api/agency-ops/scope-signals", "GET").permission, "manage.projects.view");
   assert.equal(matrix.requiredPermissionForRequest("/api/agency-ops/capacity-summary", "GET").permission, "tenant.billing.manage");
   assert.equal(matrix.requiredPermissionForRequest("/api/capacity/summary", "GET").permission, "manage.projects.view");
   assert.equal(matrix.requiredPermissionForRequest("/api/capacity/members", "GET").permission, "manage.projects.view");
   assert.ok(agencyApi.includes("router.get('/capacity-summary'"));
   assert.ok(agencyApi.includes("capacityApi.buildSummary(tenantId, { strict: true })"));
   assert.ok(agencyApi.includes("res.json({ ok: true, totals: summary.totals })"));
-  assert.ok(server.includes("\\/api\\/capacity\\/summary"));
+  assert.ok(server.includes("^\\/api\\/capacity\\/summary\\/?$"));
 });
