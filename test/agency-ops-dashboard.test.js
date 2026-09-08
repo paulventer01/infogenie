@@ -104,6 +104,14 @@ test("capacity projection includes only measured dashboard fields", () => {
   );
 });
 
+test("capacity summary counts the complete tenant backlog independently of the workload limit", () => {
+  const capacity = fs.readFileSync(path.join(ROOT, "services/capacity/api.js"), "utf8");
+  assert.match(capacity, /SELECT COUNT\(\*\)::int AS open_agent_tasks/);
+  assert.match(capacity, /WHERE g\.tenant_id = \$1/);
+  assert.match(capacity, /open_agent_tasks: openAgentTasks/);
+  assert.doesNotMatch(capacity, /open_agent_tasks: agentWork\.length/);
+});
+
 test("dashboard applies only the latest reporting-period response", () => {
   const applied = [];
   assert.equal(
