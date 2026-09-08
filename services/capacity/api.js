@@ -178,7 +178,7 @@ async function _buildSummary(tid) {
   };
 }
 
-router.get('/summary', requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
+router.get('/summary', requirePermission('manage.projects.view'), _safe(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:summary' });
   if (!tid) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) {
