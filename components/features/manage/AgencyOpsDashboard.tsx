@@ -158,7 +158,7 @@ export default function AgencyOpsDashboard() {
     const [summaryResult, scopeResult, capacityResult] = await Promise.all([
       apiGet<SummaryResponse>("/api/agency-ops/summary" + query),
       apiGet<ScopeResponse>("/api/agency-ops/scope-signals" + query),
-      apiGet<CapacityResponse>("/api/capacity/summary?read_only=true"),
+      apiGet<CapacityResponse>("/api/agency-ops/capacity-summary"),
     ]);
     applyLatestAgencyOpsResults(
       requestId,
