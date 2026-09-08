@@ -64,21 +64,12 @@ type SummaryResponse = ApiResult & {
   clients?: ClientSummary[];
   scope_signals?: ScopeSignal[];
 };
-type ScopeResponse = ApiResult & {
-  period?: Period;
-  signals?: ScopeSignal[];
-};
 type CapacityTotals = {
   members?: number;
   weekly_hours?: number;
   allocated_hours?: number;
-  remaining_hours?: number;
   utilization_pct?: number | null;
   logged_hours?: number;
-  logged_utilization_pct?: number | null;
-  overloaded?: number;
-  at_capacity?: number;
-  available?: number;
   open_agent_tasks?: number;
 };
 type CapacityResponse = ApiResult & { totals?: CapacityTotals };
@@ -143,10 +134,8 @@ export default function AgencyOpsDashboard() {
   const [to, setTo] = useState(todayIso);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
-  const [scope, setScope] = useState<ScopeResponse | null>(null);
   const [capacity, setCapacity] = useState<CapacityResponse | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
-  const [scopeError, setScopeError] = useState<string | null>(null);
   const [capacityError, setCapacityError] = useState<string | null>(null);
 
   const requestIdRef = useRef(0);
@@ -155,31 +144,23 @@ export default function AgencyOpsDashboard() {
     const requestId = ++requestIdRef.current;
     setLoading(true);
     const query = buildAgencyOpsQuery(from, to);
-    const [summaryResult, scopeResult, capacityResult] = await Promise.all([
+    const [summaryResult, capacityResult] = await Promise.all([
       apiGet<SummaryResponse>("/api/agency-ops/summary" + query),
-      apiGet<ScopeResponse>("/api/agency-ops/scope-signals" + query),
       apiGet<CapacityResponse>("/api/agency-ops/capacity-summary"),
     ]);
     applyLatestAgencyOpsResults(
       requestId,
       requestIdRef.current,
-      { summaryResult, scopeResult, capacityResult },
-      ({ summaryResult: latestSummary, scopeResult: latestScope, capacityResult: latestCapacity }) => {
+      { summaryResult, capacityResult },
+      ({ summaryResult: latestSummary, capacityResult: latestCapacity }) => {
         const summaryUnavailable = isDataUnavailable(latestSummary);
-        const scopeUnavailable = isDataUnavailable(latestScope);
         const capacityUnavailable = isDataUnavailable(latestCapacity);
         setSummary(latestSummary.ok && !summaryUnavailable ? latestSummary : null);
-        setScope(latestScope.ok && !scopeUnavailable ? latestScope : null);
         setCapacity(latestCapacity.ok && !capacityUnavailable ? latestCapacity : null);
         setSummaryError(
           summaryUnavailable
             ? dataUnavailableMessage(latestSummary)
             : latestSummary.ok ? null : latestSummary.error || "summary request failed",
-        );
-        setScopeError(
-          scopeUnavailable
-            ? dataUnavailableMessage(latestScope)
-            : latestScope.ok ? null : latestScope.error || "scope-signal request failed",
         );
         setCapacityError(
           capacityUnavailable
@@ -197,7 +178,7 @@ export default function AgencyOpsDashboard() {
 
   const totals = summary?.totals;
   const currency = totals?.currency || null;
-  const signals = scope?.signals || [];
+  const signals = summary?.scope_signals || [];
   const clients = summary?.clients || [];
   const pricing = useMemo(
     () => pricingCompleteness(totals?.hours, totals?.unpriced_hours),
@@ -272,7 +253,7 @@ export default function AgencyOpsDashboard() {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
           <Panel title="Scope signals">
-            {scopeError ? <Failure message={scopeError} /> : signals.length === 0 ? <Empty>No active scope baselines overlap the selected period.</Empty> : (
+            {summaryError ? <Failure message={summaryError} /> : signals.length === 0 ? <Empty>No active scope baselines overlap the selected period.</Empty> : (
               <div style={{ display: "grid", gap: 9 }}>
                 {signals.map((signal, index) => (
                   <div key={signal.id || `${signal.client_ref || "signal"}-${index}`} style={{ borderTop: index ? "1px solid #E2E8F0" : 0, paddingTop: index ? 9 : 0 }}>
