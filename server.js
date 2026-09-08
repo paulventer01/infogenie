@@ -632,6 +632,9 @@ const _OWNER_GATE_ALLOW = [
   /^\/api\/integrations\/meta-ads\//,   // per-user Meta Ads Connect OAuth flow
   // Agency operations is tenant-scoped and self-gated by the permission matrix.
   /^\/api\/agency-ops(?:\/|$)/,
+  // Capacity summary is tenant-scoped and read-only for dashboard consumers;
+  // keep mutating/member-management routes behind the legacy owner gate.
+  /^\/api\/capacity\/summary$/,
   // Tenant-scoped advertising workflows: gated by orchestrator.workflows.* via
   // the matrix + per-handler requirePermission, not the legacy owner gate. That
   // is what lets a marketer create/drive a workflow while every
