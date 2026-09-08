@@ -634,7 +634,7 @@ const _OWNER_GATE_ALLOW = [
   /^\/api\/agency-ops(?:\/|$)/,
   // Capacity summary is tenant-scoped and read-only for dashboard consumers;
   // keep mutating/member-management routes behind the legacy owner gate.
-  /^\/api\/capacity\/summary$/,
+  /^\/api\/capacity\/summary\/?$/,
   // Tenant-scoped advertising workflows: gated by orchestrator.workflows.* via
   // the matrix + per-handler requirePermission, not the legacy owner gate. That
   // is what lets a marketer create/drive a workflow while every
