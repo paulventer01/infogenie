@@ -547,6 +547,16 @@ test('time-entry pricing preserves the captured member role', { skip }, async ()
       ['strategist', memberA, tenantA],
     );
 
+    response = await request('PATCH', '/api/agency-ops/time-entries/' + historicalEntryId, {
+      tid: tenantA,
+      permissions: ['manage.projects.edit', 'tenant.billing.manage'],
+      body: { member_id: memberA, hours: 1.5 },
+    });
+    assert.equal(response.status, 200, response.text);
+    assert.equal(response.json.entry.hours, 1.5);
+    assert.equal(response.json.entry.member_role, 'designer');
+    assert.equal(response.json.entry.bill_rate, 22);
+
     response = await request(
       'GET',
       '/api/agency-ops/time-entries?from=2027-02-01&to=2027-02-01&client_ref=role-snapshot-client',
