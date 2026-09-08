@@ -79,6 +79,7 @@ test('agency operations routes carry the shared tenant limiter and CodeQL dispos
   }
   assert.match(api, /keyFn: _agencyOpsRateLimitKey/);
   assert.match(api, /failClosed: true/);
+  assert.match(api, /member_role=CASE WHEN member_id IS DISTINCT FROM/);
 });
 
 test('agency operations limiter is tenant-scoped and fail-closed', async () => {

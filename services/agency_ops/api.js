@@ -551,15 +551,14 @@ router.patch('/time-entries/:id', agencyOpsSharedLimiter, _safe(async (req, res)
   if (Object.hasOwn(body, 'member_id')) {
     const memberId = _text(body.member_id, 'member_id', { required: true });
     const member = await _assertMember(_db.getPool(), tenantId, memberId);
-    const currentResult = await _db.getPool().query(
-      'SELECT member_id FROM agency_time_entries WHERE id=$1 AND tenant_id=$2 LIMIT 1',
-      [req.params.id, tenantId],
-    );
-    const current = currentResult.rows[0] || null;
+    const memberIdParam = values.length + 1;
     add('member_id', memberId);
-    if (current && String(current.member_id) !== memberId) {
-      add('member_role', member.role || null);
-    }
+    const memberRoleParam = values.length + 1;
+    values.push(member.role || null);
+    updates.push(
+      'member_role=CASE WHEN member_id IS DISTINCT FROM $' + memberIdParam +
+      ' THEN $' + memberRoleParam + ' ELSE member_role END',
+    );
   }
   if (Object.hasOwn(body, 'client_ref')) add('client_ref', _text(body.client_ref, 'client_ref', { required: true }));
   if (Object.hasOwn(body, 'project_ref')) add('project_ref', _text(body.project_ref, 'project_ref'));
