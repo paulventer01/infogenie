@@ -75,3 +75,15 @@ export function dataUnavailableMessage(value: unknown): string {
   }
   return "This data is currently unavailable. The issue has been reported to your administrator.";
 }
+
+
+export function applyLatestAgencyOpsResults<T>(
+  requestId: number,
+  currentRequestId: number,
+  result: T,
+  apply: (result: T) => void,
+): boolean {
+  if (requestId !== currentRequestId) return false;
+  apply(result);
+  return true;
+}
