@@ -121,6 +121,7 @@ test("agency operations dashboard aligns component and GET API permissions", () 
   assert.equal(matrix.requiredPermissionForRequest("/api/capacity/summary", "GET").permission, "manage.projects.view");
   assert.equal(matrix.requiredPermissionForRequest("/api/capacity/members", "GET").permission, "manage.projects.view");
   assert.ok(agencyApi.includes("router.get('/capacity-summary'"));
+  assert.ok(agencyApi.includes("capacityApi.buildSummary(tenantId, { strict: true })"));
   assert.ok(agencyApi.includes("res.json({ ok: true, totals: summary.totals })"));
-  assert.ok(server.includes("/api/capacity/summary"));
+  assert.ok(server.includes("\\/api\\/capacity\\/summary"));
 });
