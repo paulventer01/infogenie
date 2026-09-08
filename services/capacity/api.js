@@ -178,7 +178,7 @@ async function _buildSummary(tid) {
   };
 }
 
-router.get('/summary', requirePermission('manage.projects.view'), _safe(async (req, res) => {
+router.get('/summary', requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:summary' });
   if (!tid) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) {
@@ -193,14 +193,8 @@ router.get('/summary', requirePermission('manage.projects.view'), _safe(async (r
       },
     });
   }
-  // Legacy callers retain roster bootstrap behavior, while dashboard reads
-  // explicitly opt into a side-effect-free summary.
-  if (req.query?.read_only !== 'true' && req.query?.read_only !== '1') {
-    try {
-      const { ensureCapacityMember } = require('../technical_manager/api');
-      await ensureCapacityMember(tid);
-    } catch (_) { /* optional */ }
-  }
+  // GET /summary is universally side-effect-free: dashboard and legacy
+  // consumers read the existing tenant roster without bootstrapping a member.
   res.json(await _buildSummary(tid));
 }));
 
