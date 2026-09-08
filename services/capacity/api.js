@@ -63,13 +63,27 @@ async function _buildSummary(tid) {
     [tid],
   ).catch(() => ({ rows: [] }));
   const agentWork = await _loadAgentWorkload(tid);
+  const loggedR = await pool.query(
+    `SELECT member_id, COALESCE(SUM(hours), 0) AS logged_hours
+       FROM agency_time_entries
+      WHERE tenant_id=$1
+        AND work_date >= date_trunc('week', CURRENT_DATE)::date
+        AND work_date < (date_trunc('week', CURRENT_DATE) + INTERVAL '7 days')::date
+      GROUP BY member_id`,
+    [tid],
+  ).catch(() => ({ rows: [] }));
+  const loggedByMember = new Map(
+    loggedR.rows.map((row) => [String(row.member_id), Number(row.logged_hours || 0)]),
+  );
 
   const members = membersR.rows.map((m) => {
     const assigned = assignR.rows.filter((a) => a.member_id === m.id);
     const assignedHours = assigned.reduce((s, a) => s + Number(a.hours || 0), 0);
     const weekly = Number(m.weekly_hours || 40);
     const allocated = Number(m.allocated_hours || 0) + assignedHours;
+    const loggedHours = loggedByMember.get(String(m.id)) || 0;
     const util = weekly > 0 ? Math.round((allocated / weekly) * 100) : 0;
+    const loggedUtil = weekly > 0 ? Math.round((loggedHours / weekly) * 100) : 0;
     let load = 'available';
     if (util >= 110) load = 'overloaded';
     else if (util >= 85) load = 'at_capacity';
@@ -79,6 +93,8 @@ async function _buildSummary(tid) {
       weekly_hours: weekly,
       allocated_hours: allocated,
       utilization_pct: util,
+      logged_hours: loggedHours,
+      logged_utilization_pct: loggedUtil,
       load,
       open_assignments: assigned.length,
       assignments: assigned,
@@ -89,6 +105,7 @@ async function _buildSummary(tid) {
   const usedHours = members.reduce((s, m) => s + m.allocated_hours, 0);
   const unassignedHours = agentWork.reduce((s, w) => s + w.estimated_hours, 0);
   const remainingHours = Math.max(0, totalHours - usedHours);
+  const loggedHours = members.reduce((sum, member) => sum + member.logged_hours, 0);
 
   // Recommendations: pair top unassigned tasks with least-loaded members
   const sortedMembers = [...members].sort((a, b) => a.utilization_pct - b.utilization_pct);
@@ -154,6 +171,8 @@ async function _buildSummary(tid) {
       available: members.filter((m) => m.load === 'available' || m.load === 'busy').length,
       unassigned_task_hours: unassignedHours,
       open_agent_tasks: agentWork.length,
+      logged_hours: loggedHours,
+      logged_utilization_pct: totalHours > 0 ? Math.round((loggedHours / totalHours) * 100) : 0,
     },
   };
 }
@@ -169,6 +188,7 @@ router.get('/summary', _safe(async (req, res) => {
       totals: {
         members: 0, weekly_hours: 0, allocated_hours: 0, utilization_pct: 0,
         overloaded: 0, at_capacity: 0, available: 0, unassigned_task_hours: 0, open_agent_tasks: 0,
+        logged_hours: 0, logged_utilization_pct: 0,
       },
     });
   }
