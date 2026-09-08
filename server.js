@@ -630,6 +630,8 @@ const _OWNER_GATE_ALLOW = [
   /^\/api\/credentials\//,           // per-user credential vault + smoke tests
   /^\/api\/integrations\/google-ads\//, // per-user Google Ads Connect OAuth flow
   /^\/api\/integrations\/meta-ads\//,   // per-user Meta Ads Connect OAuth flow
+  // Agency operations is tenant-scoped and self-gated by the permission matrix.
+  /^\/api\/agency-ops(?:\/|$)/,
   // Tenant-scoped advertising workflows: gated by orchestrator.workflows.* via
   // the matrix + per-handler requirePermission, not the legacy owner gate. That
   // is what lets a marketer create/drive a workflow while every
@@ -2571,6 +2573,9 @@ app.use('/api/metrics',         _canonicalMetricsRouter);
 const _capacitySchema = require('./services/capacity/schema');
 const _capacityRouter = require('./services/capacity/api');
 app.use('/api/capacity',        _capacityRouter);
+const _agencyOpsSchema = require('./services/agency_ops/schema');
+const _agencyOpsRouter = require('./services/agency_ops/api');
+app.use('/api/agency-ops',      _agencyOpsRouter);
 const _technicalManagerRouter = require('./services/technical_manager/api');
 app.use('/api/technical-manager', _technicalManagerRouter);
 const _opsToolingRouter = require('./services/ops_tooling/api');
@@ -2582,6 +2587,14 @@ BOOT_TASKS.push(async () => {
       console.log('[capacity] schema ready');
     }
   } catch (e) { console.error('[capacity] init failed:', e.message); }
+});
+BOOT_TASKS.push(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _agencyOpsSchema.ensureAgencyOpsSchema();
+      console.log('[agency-ops] schema ready');
+    }
+  } catch (e) { console.error('[agency-ops] init failed:', e.message); }
 });
 const _companyOverviewSchema = require('./services/company_overview/schema');
 const _companyOverviewRouter = require('./services/company_overview/api');
