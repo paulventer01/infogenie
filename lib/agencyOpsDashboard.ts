@@ -57,3 +57,21 @@ export function scopeStatusLabel(status: unknown): string {
   if (status === "within_scope") return "Within scope";
   return "Unavailable";
 }
+
+
+export function isDataUnavailable(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return record.data_unavailable === true
+    || record.source === "data_unavailable"
+    || record._dataMode === "strict"
+    || record._data_mode === "strict";
+}
+
+export function dataUnavailableMessage(value: unknown): string {
+  if (value && typeof value === "object") {
+    const message = (value as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim()) return message.trim();
+  }
+  return "This data is currently unavailable. The issue has been reported to your administrator.";
+}
