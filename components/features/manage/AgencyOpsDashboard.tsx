@@ -1,14 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { apiGet, type ApiResult } from "@/lib/api";
 import {
   buildAgencyOpsQuery,
+  dataUnavailableMessage,
   formatHours,
   formatMoney,
   formatPercent,
   monthStartIso,
   pricingCompleteness,
+  isDataUnavailable,
   scopeStatusLabel,
   todayIso,
 } from "@/lib/agencyOpsDashboard";
@@ -146,20 +148,39 @@ export default function AgencyOpsDashboard() {
   const [scopeError, setScopeError] = useState<string | null>(null);
   const [capacityError, setCapacityError] = useState<string | null>(null);
 
+  const requestIdRef = useRef(0);
+
   const refresh = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     const query = buildAgencyOpsQuery(from, to);
     const [summaryResult, scopeResult, capacityResult] = await Promise.all([
       apiGet<SummaryResponse>("/api/agency-ops/summary" + query),
       apiGet<ScopeResponse>("/api/agency-ops/scope-signals" + query),
-      apiGet<CapacityResponse>("/api/capacity/summary"),
+      apiGet<CapacityResponse>("/api/capacity/summary?read_only=true"),
     ]);
-    setSummary(summaryResult.ok ? summaryResult : null);
-    setScope(scopeResult.ok ? scopeResult : null);
-    setCapacity(capacityResult.ok ? capacityResult : null);
-    setSummaryError(summaryResult.ok ? null : summaryResult.error || "summary request failed");
-    setScopeError(scopeResult.ok ? null : scopeResult.error || "scope-signal request failed");
-    setCapacityError(capacityResult.ok ? null : capacityResult.error || "capacity request failed");
+    const summaryUnavailable = isDataUnavailable(summaryResult);
+    const scopeUnavailable = isDataUnavailable(scopeResult);
+    const capacityUnavailable = isDataUnavailable(capacityResult);
+    if (requestId !== requestIdRef.current) return;
+    setSummary(summaryResult.ok && !summaryUnavailable ? summaryResult : null);
+    setScope(scopeResult.ok && !scopeUnavailable ? scopeResult : null);
+    setCapacity(capacityResult.ok && !capacityUnavailable ? capacityResult : null);
+    setSummaryError(
+      summaryUnavailable
+        ? dataUnavailableMessage(summaryResult)
+        : summaryResult.ok ? null : summaryResult.error || "summary request failed",
+    );
+    setScopeError(
+      scopeUnavailable
+        ? dataUnavailableMessage(scopeResult)
+        : scopeResult.ok ? null : scopeResult.error || "scope-signal request failed",
+    );
+    setCapacityError(
+      capacityUnavailable
+        ? dataUnavailableMessage(capacityResult)
+        : capacityResult.ok ? null : capacityResult.error || "capacity request failed",
+    );
     setLoading(false);
   }, [from, to]);
 
