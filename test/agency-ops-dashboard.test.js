@@ -50,7 +50,7 @@ test("dashboard remains read-only and uses all merged data sources", () => {
   const source = fs.readFileSync(path.join(ROOT, "components/features/manage/AgencyOpsDashboard.tsx"), "utf8");
   assert.match(source, /\/api\/agency-ops\/summary/);
   assert.match(source, /\/api\/agency-ops\/scope-signals/);
-  assert.match(source, /\/api\/capacity\/summary/);
+  assert.match(source, /\/api\/agency-ops\/capacity-summary/);
   assert.doesNotMatch(source, /api(Post|Put|Patch|Delete)\s*\(/);
 });
 
@@ -72,9 +72,10 @@ test("strict-data envelopes remain visibly unavailable", () => {
   );
 });
 
-test("dashboard requests capacity through the read-only endpoint", () => {
+test("dashboard requests capacity through its billing-gated aggregate endpoint", () => {
   const dashboard = fs.readFileSync(path.join(ROOT, "components/features/manage/AgencyOpsDashboard.tsx"), "utf8");
-  assert.ok(dashboard.includes("/api/capacity/summary?read_only=true"));
+  assert.ok(dashboard.includes("/api/agency-ops/capacity-summary"));
+  assert.ok(!dashboard.includes("/api/capacity/summary"));
 });
 
 test("dashboard applies only the latest reporting-period response", () => {
@@ -102,20 +103,24 @@ test("dashboard applies only the latest reporting-period response", () => {
   assert.deepEqual(applied, ["fresh"]);
 });
 
-test("capacity summary is tenant-authorized and side-effect free", () => {
+test("legacy capacity summary keeps project-view access and remains side-effect free", () => {
   const capacity = fs.readFileSync(path.join(ROOT, "services/capacity/api.js"), "utf8");
-  assert.ok(capacity.includes("router.get('/summary', requirePermission('tenant.billing.manage')"));
+  assert.ok(capacity.includes("router.get('/summary', requirePermission('manage.projects.view')"));
   assert.doesNotMatch(capacity, /ensureCapacityMember/);
 });
 
 test("agency operations dashboard aligns component and GET API permissions", () => {
   const matrixSource = fs.readFileSync(path.join(ROOT, "services/tenants/permission_matrix.js"), "utf8");
   const server = fs.readFileSync(path.join(ROOT, "server.js"), "utf8");
+  const agencyApi = fs.readFileSync(path.join(ROOT, "services/agency_ops/api.js"), "utf8");
   const matrix = require("../services/tenants/permission_matrix");
   assert.ok(matrixSource.includes("'agency-ops-dashboard':  'tenant.billing.manage'"));
   assert.equal(matrix.requiredPermissionForRequest("/api/agency-ops/summary", "GET").permission, "tenant.billing.manage");
   assert.equal(matrix.requiredPermissionForRequest("/api/agency-ops/scope-signals", "GET").permission, "tenant.billing.manage");
-  assert.equal(matrix.requiredPermissionForRequest("/api/capacity/summary", "GET").permission, "tenant.billing.manage");
+  assert.equal(matrix.requiredPermissionForRequest("/api/agency-ops/capacity-summary", "GET").permission, "tenant.billing.manage");
+  assert.equal(matrix.requiredPermissionForRequest("/api/capacity/summary", "GET").permission, "manage.projects.view");
   assert.equal(matrix.requiredPermissionForRequest("/api/capacity/members", "GET").permission, "manage.projects.view");
+  assert.ok(agencyApi.includes("router.get('/capacity-summary'"));
+  assert.ok(agencyApi.includes("res.json({ ok: true, totals: summary.totals })"));
   assert.ok(server.includes("/api/capacity/summary"));
 });
