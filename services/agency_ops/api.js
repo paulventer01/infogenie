@@ -677,7 +677,7 @@ router.post('/scope-baselines', agencyOpsSharedLimiter, requirePermission('tenan
 }));
 
 // codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
-router.get('/scope-signals', agencyOpsSharedLimiter, _safe(async (req, res) => {
+router.get('/scope-signals', agencyOpsSharedLimiter, requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
   const tenantId = await _tenantId(req, 'agency-ops:scope-signals');
   if (!tenantId) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return res.json({ ok: true, period: _range(req), signals: [] });
