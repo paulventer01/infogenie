@@ -67,12 +67,12 @@ const ROUTE_GROUPS = [
   { prefix: '/api/true-roas',                 view: 'analytics.view' },
   { prefix: '/api/iroas',                     view: 'analytics.view' },
   { prefix: '/api/metrics',                   view: 'analytics.view' },
-  // Agency Operations Dashboard GETs share its billing gate. The dashboard
-  // uses a dedicated aggregate capacity projection so the legacy Capacity
-  // panel keeps its manage.projects.view contract.
+  // Billing-sensitive dashboard reads use dedicated entries. Preserve the
+  // pre-existing non-financial scope-signals contract for project viewers,
+  // and expose capacity to the dashboard through aggregate totals only.
   { prefix: '/api/agency-ops/capacity-summary', view: 'tenant.billing.manage' },
   { prefix: '/api/agency-ops/summary',          view: 'tenant.billing.manage' },
-  { prefix: '/api/agency-ops/scope-signals',    view: 'tenant.billing.manage' },
+  { prefix: '/api/agency-ops/scope-signals',    view: 'manage.projects.view' },
   { prefix: '/api/agency-ops',                  view: 'manage.projects.view', write: 'manage.projects.edit' },
   { prefix: '/api/capacity',                    view: 'manage.projects.view', write: 'manage.projects.edit' },
   { prefix: '/api/technical-manager',         view: 'dashboard.view', write: 'dashboard.view' },
