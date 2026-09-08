@@ -77,6 +77,7 @@ async function _buildSummary(tid, { strict = false } = {}) {
        FROM agent_tasks t
        JOIN agent_goals g ON g.id = t.goal_id
       WHERE g.tenant_id = $1
+        AND t.tenant_id = $1
         AND t.status NOT IN ('done','cancelled','skipped')`,
     [tid],
   ).catch(_emptyRowsUnlessStrict(strict));
