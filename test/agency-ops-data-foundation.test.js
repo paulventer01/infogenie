@@ -422,3 +422,60 @@ test('effective rates honor date boundaries and prefer member pricing while miss
   assert.equal(response.json.totals.unpriced_hours, 3);
   assert.equal(response.json.clients[0].unpriced_hours, 3);
 });
+
+test('agency summary reports one currency and rejects mixed financial totals', () => {
+  const agencyOpsApi = require('../services/agency_ops/api');
+  const range = { from: '2026-01-01', to: '2026-01-31' };
+  const usdEntry = {
+    client_ref: 'currency-client',
+    hours: 1,
+    billable: true,
+    cost_value: 10,
+    billable_value: 20,
+    rate_status: 'priced',
+    currency: 'usd',
+  };
+
+  const single = agencyOpsApi._buildSummary(range, {}, [usdEntry], []);
+  assert.equal(single.totals.currency, 'USD');
+  assert.equal(single.clients[0].currency, 'USD');
+
+  assert.throws(
+    () => agencyOpsApi._buildSummary(range, {}, [usdEntry, { ...usdEntry, currency: 'EUR' }], []),
+    (error) => {
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.publicCode, 'mixed_currencies');
+      assert.deepEqual(error.currencies, ['EUR', 'USD']);
+      return true;
+    },
+  );
+});
+
+test('agency aggregate reads are uncapped while listing reads retain the 500-row cap', async () => {
+  const agencyOpsApi = require('../services/agency_ops/api');
+  const queries = [];
+  const pool = {
+    async query(sql) {
+      queries.push(sql);
+      return { rows: [] };
+    },
+  };
+  const range = { from: '2026-01-01', to: '2026-01-31' };
+
+  await agencyOpsApi._fetchEntries(pool, 1, range, {});
+  assert.doesNotMatch(queries[0], /LIMIT 500/);
+  await agencyOpsApi._fetchEntries(pool, 1, range, {}, { limit: 500 });
+  assert.match(queries[1], /LIMIT 500/);
+});
+
+test('scope signal reads expand to the complete range of overlapping baselines', () => {
+  const agencyOpsApi = require('../services/agency_ops/api');
+  assert.deepEqual(
+    agencyOpsApi._baselineRange([
+      { period_start: '2026-02-01', period_end: '2026-03-31' },
+      { period_start: '2026-01-15', period_end: '2026-02-20' },
+    ]),
+    { from: '2026-01-15', to: '2026-03-31' },
+  );
+  assert.equal(agencyOpsApi._baselineRange([]), null);
+});

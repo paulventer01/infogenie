@@ -55,7 +55,11 @@ function _safe(handler) {
   return (req, res) => Promise.resolve(handler(req, res)).catch((e) => {
     const code = Number(e.statusCode) || 500;
     if (code >= 500) console.warn('[agency-ops]', e.message);
-    if (!res.headersSent) _err(res, code, code >= 500 ? 'internal error' : e.message);
+    if (!res.headersSent) {
+      const message = code >= 500 ? 'internal error' : (e.publicCode || e.message);
+      const extra = e.currencies ? { currencies: e.currencies } : {};
+      _err(res, code, message, extra);
+    }
   });
 }
 
@@ -115,6 +119,11 @@ function _dateValue(value) {
   return value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10);
 }
 
+function _currency(value) {
+  const text = value == null ? '' : String(value).trim().toUpperCase();
+  return text || null;
+}
+
 function _rate(row) {
   return {
     id: row.id,
@@ -122,7 +131,7 @@ function _rate(row) {
     role: row.role || null,
     cost_rate: Number(row.cost_rate || 0),
     bill_rate: Number(row.bill_rate || 0),
-    currency: row.currency,
+    currency: _currency(row.currency),
     effective_from: _dateValue(row.effective_from),
     effective_to: row.effective_to ? _dateValue(row.effective_to) : null,
     active: row.active !== false,
@@ -148,7 +157,7 @@ function _entry(row) {
     notes: row.notes || '',
     cost_rate: _round(costRate),
     bill_rate: _round(billRate),
-    currency: row.currency || null,
+    currency: _currency(row.currency),
     rate_status: priced ? 'priced' : 'missing',
     rate_source: row.rate_source || null,
     cost_value: _round(hours * costRate),
@@ -168,7 +177,7 @@ async function _assertMember(pool, tenantId, memberId) {
   if (!result.rows.length) throw _bad('member_id must belong to this tenant capacity roster');
 }
 
-async function _fetchEntries(pool, tenantId, range, filters = {}) {
+async function _fetchEntries(pool, tenantId, range, filters = {}, { limit = null } = {}) {
   const params = [tenantId, range.from, range.to];
   const conditions = [
     'e.tenant_id=$1',
@@ -183,6 +192,11 @@ async function _fetchEntries(pool, tenantId, range, filters = {}) {
     params.push(filters.memberId);
     conditions.push('e.member_id=$' + params.length);
   }
+
+  if (limit != null && (!Number.isSafeInteger(limit) || limit < 1)) {
+    throw _bad('limit must be a positive integer');
+  }
+  const limitClause = limit == null ? '' : '\n LIMIT ' + limit;
 
   const sql = [
     'SELECT e.id, e.member_id, e.client_ref, e.project_ref, e.work_item,',
@@ -213,8 +227,7 @@ async function _fetchEntries(pool, tenantId, range, filters = {}) {
     '     LIMIT 1',
     '  ) r ON true',
     ' WHERE ' + conditions.join(' AND '),
-    ' ORDER BY e.work_date DESC, e.created_at DESC',
-    ' LIMIT 500',
+    ' ORDER BY e.work_date DESC, e.created_at DESC' + limitClause,
   ].join('\n');
   const result = await pool.query(sql, params);
   return result.rows.map(_entry);
@@ -240,6 +253,40 @@ async function _fetchBaselines(pool, tenantId, range, clientRef = null) {
     params,
   );
   return result.rows;
+}
+
+function _baselineRange(baselines) {
+  if (!baselines.length) return null;
+  return baselines.reduce((range, baseline) => {
+    const start = _dateValue(baseline.period_start);
+    const end = _dateValue(baseline.period_end);
+    if (!range) return { from: start, to: end };
+    return {
+      from: start < range.from ? start : range.from,
+      to: end > range.to ? end : range.to,
+    };
+  }, null);
+}
+
+function _summaryCurrency(entries, baselines) {
+  const currencies = new Set();
+  for (const row of entries) {
+    const currency = _currency(row.currency);
+    if (currency) currencies.add(currency);
+  }
+  for (const row of baselines) {
+    const currency = _currency(row.currency);
+    if (currency) currencies.add(currency);
+  }
+  const values = Array.from(currencies).sort();
+  if (values.length > 1) {
+    const error = _bad('mixed currencies are not supported in a single summary');
+    error.statusCode = 409;
+    error.publicCode = 'mixed_currencies';
+    error.currencies = values;
+    throw error;
+  }
+  return values[0] || null;
 }
 
 function _scopeSignals(baselines, entries) {
@@ -297,6 +344,7 @@ function _emptySummary(range, filters) {
       unpriced_hours: 0,
       contracted_value: 0,
       scope_overage_hours: 0,
+      currency: null,
     },
     clients: [],
     scope_signals: [],
@@ -304,6 +352,7 @@ function _emptySummary(range, filters) {
 }
 
 function _buildSummary(range, filters, entries, baselines) {
+  const currency = _summaryCurrency(entries, baselines);
   const signals = _scopeSignals(baselines, entries);
   const clientMap = new Map();
   const totals = {
@@ -318,6 +367,7 @@ function _buildSummary(range, filters, entries, baselines) {
     unpriced_hours: 0,
     contracted_value: 0,
     scope_overage_hours: signals.reduce((sum, signal) => sum + signal.overage_hours, 0),
+    currency,
   };
 
   for (const entry of entries) {
@@ -335,6 +385,7 @@ function _buildSummary(range, filters, entries, baselines) {
       unpriced_hours: 0,
       contracted_value: 0,
       scope_overage_hours: 0,
+      currency,
     };
     current.time_entries += 1;
     current.hours += entry.hours;
@@ -360,6 +411,7 @@ function _buildSummary(range, filters, entries, baselines) {
       unpriced_hours: 0,
       contracted_value: 0,
       scope_overage_hours: 0,
+      currency,
     };
     current.contracted_value += Number(baseline.contracted_value || 0);
     clientMap.set(baseline.client_ref, current);
@@ -422,7 +474,7 @@ router.get('/time-entries', agencyOpsSharedLimiter, requirePermission('tenant.bi
   const range = _range(req);
   const clientRef = _text(req.query?.client_ref, 'client_ref');
   const memberId = _text(req.query?.member_id, 'member_id');
-  const entries = await _fetchEntries(_db.getPool(), tenantId, range, { clientRef, memberId });
+  const entries = await _fetchEntries(_db.getPool(), tenantId, range, { clientRef, memberId }, { limit: 500 });
   res.json({ ok: true, period: range, entries });
 }));
 
@@ -590,10 +642,11 @@ router.get('/scope-signals', agencyOpsSharedLimiter, _safe(async (req, res) => {
   const range = _range(req);
   const clientRef = _text(req.query?.client_ref, 'client_ref');
   const pool = _db.getPool();
-  const [entries, baselines] = await Promise.all([
-    _fetchEntries(pool, tenantId, range, { clientRef }),
-    _fetchBaselines(pool, tenantId, range, clientRef),
-  ]);
+  const baselines = await _fetchBaselines(pool, tenantId, range, clientRef);
+  const entryRange = _baselineRange(baselines);
+  const entries = entryRange
+    ? await _fetchEntries(pool, tenantId, entryRange, { clientRef })
+    : [];
   res.json({ ok: true, period: range, signals: _scopeSignals(baselines, entries) });
 }));
 
@@ -616,6 +669,7 @@ module.exports = router;
 module.exports._buildSummary = _buildSummary;
 module.exports._scopeSignals = _scopeSignals;
 module.exports._fetchEntries = _fetchEntries;
+module.exports._baselineRange = _baselineRange;
 
 module.exports._agencyOpsTenantGuard = _agencyOpsTenantGuard;
 module.exports._agencyOpsTenantId = _agencyOpsTenantId;
