@@ -72,6 +72,19 @@ async function _buildSummary(tid, { strict = false } = {}) {
     [tid],
   ).catch(_emptyRowsUnlessStrict(strict));
   const agentWork = await _loadAgentWorkload(tid, { strict });
+  const openAgentTasksR = await pool.query(
+    `SELECT COUNT(*)::int AS open_agent_tasks
+       FROM agent_tasks t
+       JOIN agent_goals g ON g.id = t.goal_id
+      WHERE g.tenant_id = $1
+        AND t.status NOT IN ('done','cancelled','skipped')`,
+    [tid],
+  ).catch(_emptyRowsUnlessStrict(strict));
+  // The workload list is intentionally capped for recommendations, but the
+  // dashboard total must represent the tenant's complete open-task backlog.
+  const openAgentTasks = openAgentTasksR.rows.length
+    ? Number(openAgentTasksR.rows[0].open_agent_tasks || 0)
+    : agentWork.length;
   const loggedR = await pool.query(
     `SELECT member_id, COALESCE(SUM(hours), 0) AS logged_hours
        FROM agency_time_entries
@@ -179,7 +192,7 @@ async function _buildSummary(tid, { strict = false } = {}) {
       at_capacity: members.filter((m) => m.load === 'at_capacity').length,
       available: members.filter((m) => m.load === 'available' || m.load === 'busy').length,
       unassigned_task_hours: unassignedHours,
-      open_agent_tasks: agentWork.length,
+      open_agent_tasks: openAgentTasks,
       logged_hours: loggedHours,
       logged_utilization_pct: totalHours > 0 ? Math.round((loggedHours / totalHours) * 100) : 0,
     },
