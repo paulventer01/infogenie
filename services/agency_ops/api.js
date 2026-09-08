@@ -4,6 +4,7 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const _db = require('../../db');
+const capacityApi = require('../capacity/api');
 const _tenantCtx = require('../tenants/context');
 const { hasPermission, requirePermission } = require('../tenants/permission_enforce');
 const { createRateLimiter } = require('../security/rate_limit');
@@ -690,6 +691,27 @@ router.get('/scope-signals', agencyOpsSharedLimiter, requirePermission('tenant.b
     ? await _fetchEntries(pool, tenantId, entryRange, { clientRef })
     : [];
   res.json({ ok: true, period: range, signals: _scopeSignals(baselines, entries) });
+}));
+
+// Dashboard-only capacity projection. The legacy /api/capacity/summary contract
+// remains available to manage.projects.view; this route exposes only aggregate
+// totals to billing-authorized Agency Operations users.
+// codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
+router.get('/capacity-summary', agencyOpsSharedLimiter, requirePermission('tenant.billing.manage'), _safe(async (req, res) => {
+  const tenantId = await _tenantId(req, 'agency-ops:capacity-summary');
+  if (!tenantId) return _err(res, 400, 'no_tenant');
+  if (!_db.hasDb()) {
+    return res.json({
+      ok: true,
+      totals: {
+        members: 0, weekly_hours: 0, allocated_hours: 0, remaining_hours: 0,
+        utilization_pct: 0, overloaded: 0, at_capacity: 0, available: 0,
+        open_agent_tasks: 0, logged_hours: 0, logged_utilization_pct: 0,
+      },
+    });
+  }
+  const summary = await capacityApi.buildSummary(tenantId);
+  res.json({ ok: true, totals: summary.totals });
 }));
 
 // codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
