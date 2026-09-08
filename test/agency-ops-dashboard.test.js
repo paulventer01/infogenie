@@ -53,3 +53,41 @@ test("dashboard remains read-only and uses all merged data sources", () => {
   assert.match(source, /\/api\/capacity\/summary/);
   assert.doesNotMatch(source, /api(Post|Put|Patch|Delete)\s*\(/);
 });
+
+
+test("strict-data envelopes remain visibly unavailable", () => {
+  assert.equal(
+    helpers.isDataUnavailable({
+      ok: true,
+      data_unavailable: true,
+      source: "data_unavailable",
+      message: "This data is currently unavailable.",
+    }),
+    true,
+  );
+  assert.equal(helpers.isDataUnavailable({ ok: true, totals: {} }), false);
+  assert.equal(
+    helpers.dataUnavailableMessage({ message: "Administrator action required." }),
+    "Administrator action required.",
+  );
+});
+
+test("dashboard guards read-only capacity and stale reporting-period responses", () => {
+  const source = fs.readFileSync(path.join(ROOT, "components/features/manage/AgencyOpsDashboard.tsx"), "utf8");
+  assert.match(source, /\/api\/capacity\/summary\?read_only=true/);
+  assert.match(source, /requestIdRef/);
+  assert.match(source, /requestId !== requestIdRef\.current/);
+});
+
+test("capacity summary is tenant-authorized and side-effect free in read-only mode", () => {
+  const source = fs.readFileSync(path.join(ROOT, "services/capacity/api.js"), "utf8");
+  assert.match(source, /router\.get\('\/summary', requirePermission\('manage\.projects\.view'\)/);
+  assert.match(source, /req\.query\?\.read_only === 'true'/);
+});
+
+test("agency operations dashboard has a billing permission and narrow capacity owner exemption", () => {
+  const matrix = fs.readFileSync(path.join(ROOT, "services/tenants/permission_matrix.js"), "utf8");
+  const server = fs.readFileSync(path.join(ROOT, "server.js"), "utf8");
+  assert.match(matrix, /'agency-ops-dashboard'\s*:\s*'tenant\.billing\.manage'/);
+  assert.match(server, /\/\^\\\/api\\\/capacity\\\/summary\$\//);
+});
