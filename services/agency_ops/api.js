@@ -693,6 +693,17 @@ router.get('/scope-signals', agencyOpsSharedLimiter, _safe(async (req, res) => {
   res.json({ ok: true, period: range, signals: _scopeSignals(baselines, entries) });
 }));
 
+function _dashboardCapacityTotals(totals = {}) {
+  return {
+    members: totals.members,
+    weekly_hours: totals.weekly_hours,
+    allocated_hours: totals.allocated_hours,
+    logged_hours: totals.logged_hours,
+    utilization_pct: totals.utilization_pct,
+    open_agent_tasks: totals.open_agent_tasks,
+  };
+}
+
 // Dashboard-only capacity projection. The legacy /api/capacity/summary contract
 // remains available to manage.projects.view; this route exposes only aggregate
 // totals to billing-authorized Agency Operations users.
@@ -703,15 +714,14 @@ router.get('/capacity-summary', agencyOpsSharedLimiter, requirePermission('tenan
   if (!_db.hasDb()) {
     return res.json({
       ok: true,
-      totals: {
-        members: 0, weekly_hours: 0, allocated_hours: 0, remaining_hours: 0,
-        utilization_pct: 0, overloaded: 0, at_capacity: 0, available: 0,
-        open_agent_tasks: 0, logged_hours: 0, logged_utilization_pct: 0,
-      },
+      totals: _dashboardCapacityTotals({
+        members: 0, weekly_hours: 0, allocated_hours: 0,
+        logged_hours: 0, utilization_pct: 0, open_agent_tasks: 0,
+      }),
     });
   }
   const summary = await capacityApi.buildSummary(tenantId, { strict: true });
-  res.json({ ok: true, totals: summary.totals });
+  res.json({ ok: true, totals: _dashboardCapacityTotals(summary.totals) });
 }));
 
 // codeql[js/missing-rate-limiting] rate limited by createRateLimiter keyed on req.tenant.id
@@ -739,6 +749,7 @@ module.exports._scopeSignals = _scopeSignals;
 module.exports._fetchEntries = _fetchEntries;
 module.exports._baselineRange = _baselineRange;
 
+module.exports._dashboardCapacityTotals = _dashboardCapacityTotals;
 module.exports._agencyOpsTenantGuard = _agencyOpsTenantGuard;
 module.exports._agencyOpsTenantId = _agencyOpsTenantId;
 module.exports._agencyOpsRateLimiter = agencyOpsSharedLimiter;
