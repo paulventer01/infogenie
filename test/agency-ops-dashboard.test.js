@@ -49,7 +49,7 @@ test("scope statuses are explicit and unknown statuses stay unavailable", () => 
 test("dashboard remains read-only and uses all merged data sources", () => {
   const source = fs.readFileSync(path.join(ROOT, "components/features/manage/AgencyOpsDashboard.tsx"), "utf8");
   assert.match(source, /\/api\/agency-ops\/summary/);
-  assert.match(source, /\/api\/agency-ops\/scope-signals/);
+  assert.doesNotMatch(source, /\/api\/agency-ops\/scope-signals/);
   assert.match(source, /\/api\/agency-ops\/capacity-summary/);
   assert.doesNotMatch(source, /api(Post|Put|Patch|Delete)\s*\(/);
 });
@@ -72,10 +72,36 @@ test("strict-data envelopes remain visibly unavailable", () => {
   );
 });
 
-test("dashboard requests capacity through its billing-gated aggregate endpoint", () => {
+test("dashboard uses billing-authorized summary signals and aggregate capacity", () => {
   const dashboard = fs.readFileSync(path.join(ROOT, "components/features/manage/AgencyOpsDashboard.tsx"), "utf8");
   assert.ok(dashboard.includes("/api/agency-ops/capacity-summary"));
   assert.ok(!dashboard.includes("/api/capacity/summary"));
+  assert.ok(!dashboard.includes("/api/agency-ops/scope-signals"));
+  assert.ok(dashboard.includes("summary?.scope_signals"));
+});
+
+test("capacity projection includes only measured dashboard fields", () => {
+  const agencyOpsApi = require("../services/agency_ops/api");
+  assert.deepEqual(
+    agencyOpsApi._dashboardCapacityTotals({
+      members: 2,
+      weekly_hours: 80,
+      allocated_hours: 64,
+      logged_hours: 58,
+      utilization_pct: 80,
+      open_agent_tasks: 3,
+      unassigned_task_hours: 99,
+      recommendations: [{ task_id: "hidden" }],
+    }),
+    {
+      members: 2,
+      weekly_hours: 80,
+      allocated_hours: 64,
+      logged_hours: 58,
+      utilization_pct: 80,
+      open_agent_tasks: 3,
+    },
+  );
 });
 
 test("dashboard applies only the latest reporting-period response", () => {
@@ -122,6 +148,6 @@ test("agency operations dashboard aligns component and GET API permissions", () 
   assert.equal(matrix.requiredPermissionForRequest("/api/capacity/members", "GET").permission, "manage.projects.view");
   assert.ok(agencyApi.includes("router.get('/capacity-summary'"));
   assert.ok(agencyApi.includes("capacityApi.buildSummary(tenantId, { strict: true })"));
-  assert.ok(agencyApi.includes("res.json({ ok: true, totals: summary.totals })"));
+  assert.ok(agencyApi.includes("totals: _dashboardCapacityTotals(summary.totals)"));
   assert.ok(server.includes("^\\/api\\/capacity\\/summary\\/?$"));
 });
