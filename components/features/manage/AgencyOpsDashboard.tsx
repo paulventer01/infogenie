@@ -225,7 +225,7 @@ export default function AgencyOpsDashboard() {
           <Metric label="Scope overage" value={formatHours(totals?.scope_overage_hours)} />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16, marginBottom: 16 }}>
           <Panel title="Financial and pricing context">
             {summaryError ? <Failure message={summaryError} /> : !summary ? <Empty>No summary data is available for this period.</Empty> : (
               <dl style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "8px 16px", margin: 0, fontSize: ".9rem" }}>
@@ -251,7 +251,7 @@ export default function AgencyOpsDashboard() {
           </Panel>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
           <Panel title="Scope signals">
             {summaryError ? <Failure message={summaryError} /> : signals.length === 0 ? <Empty>No active scope baselines overlap the selected period.</Empty> : (
               <div style={{ display: "grid", gap: 9 }}>
