@@ -6,6 +6,28 @@ const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { requirePermission } = require('../tenants/permission_enforce');
+const { createRateLimiter } = require('../security/rate_limit');
+
+function _capacityWriteKey(req) {
+  const raw = req.tenant?.id;
+  if (!['number', 'string'].includes(typeof raw) || !/^[1-9]\d*$/.test(String(raw))) return null;
+  const tid = Number(raw);
+  return Number.isSafeInteger(tid) ? `capacity-write|${tid}` : null;
+}
+
+function _capacityTenantGuard(req, res, next) {
+  if (_capacityWriteKey(req) === null) return _err(res, 400, 'no_tenant');
+  return next();
+}
+
+// One tenant budget across all writes; only trusted server context selects it.
+const capacityWriteLimiter = createRateLimiter({
+  name: 'capacity-write',
+  windowMs: 60_000,
+  max: 60,
+  keyFn: _capacityWriteKey,
+  failClosed: true,
+});
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safe(h) {
@@ -256,7 +278,7 @@ router.get('/members', _safe(async (req, res) => {
   res.json({ ok: true, members: r.rows });
 }));
 
-router.post('/members', _safe(async (req, res) => {
+router.post('/members', _capacityTenantGuard, capacityWriteLimiter, _safe(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:member-save' });
   if (!tid) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');
@@ -291,7 +313,7 @@ router.post('/members', _safe(async (req, res) => {
   res.json({ ok: true, id: mid });
 }));
 
-router.delete('/members/:id', _safe(async (req, res) => {
+router.delete('/members/:id', _capacityTenantGuard, capacityWriteLimiter, _safe(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:member-del' });
   if (!tid) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');
@@ -344,7 +366,7 @@ async function _saveAssignment(tid, body, existingId = null) {
   return aid;
 }
 
-router.post('/assignments', _safe(async (req, res) => {
+router.post('/assignments', _capacityTenantGuard, capacityWriteLimiter, _safe(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:assign' });
   if (!tid) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');
@@ -352,7 +374,7 @@ router.post('/assignments', _safe(async (req, res) => {
   res.json({ ok: true, id: aid });
 }));
 
-router.patch('/assignments/:id', _safe(async (req, res) => {
+router.patch('/assignments/:id', _capacityTenantGuard, capacityWriteLimiter, _safe(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:assign-patch' });
   if (!tid) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');
@@ -372,7 +394,7 @@ router.patch('/assignments/:id', _safe(async (req, res) => {
 }));
 
 // Auto-assign an agent task (or arbitrary work) to the least-loaded member
-router.post('/assign-best', _safe(async (req, res) => {
+router.post('/assign-best', _capacityTenantGuard, capacityWriteLimiter, _safe(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:assign-best' });
   if (!tid) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');
@@ -423,7 +445,7 @@ router.post('/assign-best', _safe(async (req, res) => {
 }));
 
 // Seed roster from tenant_users — merges any workspace users not already listed
-router.post('/seed-from-users', _safe(async (req, res) => {
+router.post('/seed-from-users', _capacityTenantGuard, capacityWriteLimiter, _safe(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:seed' });
   if (!tid) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) return _err(res, 503, 'database not configured');

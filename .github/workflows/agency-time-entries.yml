@@ -13,6 +13,7 @@ on:
       - 'services/tenants/permission_matrix.js'
       - 'services/agency_ops/**'
       - 'services/capacity/**'
+      - 'server.js'
       - 'test/agency-*.test.js'
       - 'test/capacity-controls*.test.js'
       - '.github/workflows/agency-time-entries.yml'

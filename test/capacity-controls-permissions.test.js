@@ -19,7 +19,8 @@ const WRITES = [
 // Canonical isolated HTTP seam from agency-time-entries-permissions.test.js.
 // Runs the shipped router, matrix, enforcement AND tenant resolver with modes on.
 // Query stubs are SQL-contract coverage, not PostgreSQL/concurrency, session auth,
-// tenant-context-loader, owner-gate, CSRF, rate-limiter or browser integration.
+// tenant-context-loader, CSRF or browser integration.
+// Real rate limiter: each router gets its own memory store, with Redis disabled by injection.
 // No environment, require.cache, provider calls or live database mutation.
 function load(relative, overrides) {
   const filename = path.join(ROOT, relative), module = { exports: {} };
@@ -31,6 +32,19 @@ function load(relative, overrides) {
 const enforce = load('services/tenants/permission_enforce.js', {
   '../security/prod_defaults': { permissionMode: () => 'on' },
 });
+const rateLimit = load('services/security/rate_limit.js', {
+  '../infra/redis': { isRedisConfigured: () => false },
+});
+function loadOwnerGate() {
+  const source = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const start = source.indexOf('const _OWNER_GATE_ALLOW = [');
+  const end = source.indexOf('\n// ── Per-provider budget caps', start);
+  assert.ok(start > source.indexOf('app.use(_permEnforce.enforceMatrix);') && end > start);
+  const handlers = [];
+  new Function('app', source.slice(start, end))({ use: (handler) => handlers.push(handler) });
+  assert.equal(handlers.length, 1);
+  return handlers[0]; // Shipped middleware and allowlists; never boot server.js.
+}
 function principal(grants = [VIEW, EDIT], extra = {}) {
   const permissions = new Set(grants);
   return { user: { id: 7, isOwner: false }, tenant: { id: 101 }, permissions,
@@ -49,21 +63,23 @@ async function fixture(t, actor = principal(), query = () => { throw new Error('
   });
   const router = load('services/capacity/api.js', {
     '../../db': db, '../tenants/context': context, '../tenants/permission_enforce': enforce,
+    '../security/rate_limit': rateLimit,
   });
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => { Object.assign(req, actor); next(); });
   app.use(enforce.enforceMatrix);
+  app.use(loadOwnerGate());
   app.use(BASE, router);
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
   async function request(method, suffix, body) {
-    const response = await fetch('http://127.0.0.1:' + server.address().port + BASE + suffix, {
+    const response = await fetch('http://127.0.0.1:' + server.address().port + (suffix.startsWith('/api/') ? suffix : BASE + suffix), {
       method, headers: { 'Content-Type': 'application/json', Connection: 'close' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: response.status, body: method === 'HEAD' ? null : await response.json() };
+    return { status: response.status, retryAfter: response.headers.get('retry-after'), body: method === 'HEAD' ? null : await response.json() };
   }
   return { request, calls, controls };
 }
@@ -94,6 +110,21 @@ test('read/edit denials precede queries; supplied authority and tenant roles can
   }
   const { request, calls } = await fixture(t, principal([EDIT]));
   for (const suffix of ['/members', '/summary']) assert.equal((await request('GET', suffix)).status, 403);
+  assert.equal(calls.length, 0);
+});
+
+test('new capacity owner-gate exemptions reject unsupported methods, lookalikes and unrelated data', async (t) => {
+  const { request, calls } = await fixture(t, principal([VIEW, EDIT, 'brand.view']));
+  for (const [method, suffix] of [
+    ['PUT', '/members'], ['GET', '/assignments'],
+    ['GET', '/members/member-a'], ['GET', '/members-extra'], ['POST', '/members/member-a'],
+    ['DELETE', '/members/member-a/extra'], ['PATCH', '/assignments/assignment-a/extra'],
+    ['POST', '/seed-from-users-extra'], ['GET', '/api/capacity-export/members'], ['GET', '/api/brand'],
+  ]) {
+    const response = await request(method, suffix);
+    assert.equal(response.status, 403, method + suffix);
+    assert.equal(response.body.error, 'owner_only');
+  }
   assert.equal(calls.length, 0);
 });
 
@@ -294,4 +325,32 @@ test('summary and seed read failures are errors, never fabricated emptiness or w
     assert.equal((await request(...args)).status, 503);
   }
   assert.equal(calls.length, 0);
+});
+
+test('real limiter shares 60 writes across paths per server tenant; 61st denies before DB', async (t) => {
+  const actor = principal();
+  const query = (sql, params) => {
+    assert.match(sql.trim(), /^INSERT INTO team_capacity/);
+    assert.equal(params[1], actor.tenant.id);
+    return { rows: [{ id: params[0] }] };
+  };
+  const { request, calls, controls } = await fixture(t, actor, query);
+  const forged = { ...MEMBER, tenant_id: 202, tenantId: 202 };
+  for (let i = 0; i < 60; i++) {
+    assert.equal((await request('POST', '/members?tenant_id=202', forged)).status, 200, 'write ' + (i + 1));
+  }
+  assert.equal(calls.length, 60);
+  for (const [method, suffix, body] of WRITES) {
+    const denied = await request(method, suffix + '?tenant_id=999', { ...body, tenant_id: 999, tenantId: 999 });
+    assert.equal(denied.status, 429, method + suffix);
+    assert.deepEqual(denied.body, { ok: false, error: 'rate_limited', retryAfterSec: 60 });
+    assert.equal(denied.retryAfter, '60');
+  }
+  assert.equal(calls.length, 60); assert.deepEqual(controls, []);
+  actor.tenant = { id: 202 };
+  assert.equal((await request('POST', '/members?tenant_id=202', forged)).status, 200);
+  assert.equal(calls.length, 61);
+  actor.tenant = { id: 101 };
+  const isolated = await fixture(t, actor, query);
+  assert.equal((await isolated.request('POST', '/members', MEMBER)).status, 200, 'new fixture has its own store');
 });

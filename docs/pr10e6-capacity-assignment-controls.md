@@ -7,6 +7,8 @@ Paul approved this slice after PR #151 was human-merged. Base:
 
 - Harden the existing Team Capacity & Workload React screen and capacity APIs.
   Preserve project-view access for reads and project-edit access for writes.
+  Exempt only the named capacity control routes from the legacy global-data
+  owner gate; keep authentication, tenant and permission enforcement intact.
 - Add and edit roster names, roles, weekly availability and base allocated hours.
   Preserve explicit zero availability and distinguish base allocation from the
   calculated allocation that includes open assignments.
@@ -20,6 +22,9 @@ Paul approved this slice after PR #151 was human-merged. Base:
   the server. Verify active member ownership and any linked task/goal ownership
   within the authenticated tenant. Missing or foreign records cannot report a
   successful update. Guard duplicate open task assignments.
+- Share a limit of 60 capacity mutations per minute per server-resolved tenant
+  across all write routes, using the existing Redis-first limiter and its
+  process-local fallback. Reject over-limit requests before database work.
 - Keep reads side-effect-free and expose query failures. Explain the capped task
   list, estimated effort and the difference between weekly availability and open
   allocations across due dates; do not present incomplete data as complete totals.
