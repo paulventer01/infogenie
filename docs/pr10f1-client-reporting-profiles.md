@@ -30,7 +30,7 @@ Missing, archived and foreign clients return the same `404 client_not_found`. Ex
 | `branding_overrides` | Plain object with optional `agencyName` (80 characters), `footerText` (200), and flat `primaryColor`, `accentColor`, `textColor` (`#RRGGBB`) |
 | `expected_version` | `0` to create; the current positive version to update |
 
-Workspace branding requires empty overrides. Unknown keys, tenant/client ownership fields, asset URLs and malformed values are rejected. Writes are limited to 8 KiB and 60 attempts per minute per workspace. Actor and timestamps are assigned by the server.
+Workspace branding requires empty overrides. Unknown keys, tenant/client ownership fields, asset URLs and malformed values are rejected. Writes are limited to 8 KiB and 60 attempts per minute per workspace. Reads, including HEAD requests, share a separate 300-request-per-minute workspace budget across the three read routes. Actor and timestamps are assigned by the server.
 
 A transaction locks the active client row before saving. Archiving and profile writes therefore serialize. Stale versions return `409 version_conflict`; competing writes with the same version cannot silently overwrite each other. The stored version increments after a successful update.
 

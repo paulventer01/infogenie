@@ -164,3 +164,30 @@ test('write limiter is per resolved tenant; reads remain available and storage f
   const response = await broken.request('GET', '/clients');
   assert.equal(response.status, 500); assert.deepEqual(response.body, { ok: false, error: 'internal_error' });
 });
+
+test('GET and inherited HEAD share a 300-read tenant budget, with no DB access after exhaustion or write-budget impact', async (t) => {
+  const fx = await fixture(t, {
+    actor: (req) => principal(req.headers['x-test-tenant'] ?
+      { tenant: { id: 102, status: 'active' }, tenantMemberships: [{ tenantId: 102 }] } : {}),
+    query: async (sql) => ({ rows: sql.includes('FROM clients') ? [client]
+      : sql.includes('RETURNING') ? [{ client_id: 11, version: 1 }] : [] }),
+  });
+  const paths = ['/clients', '/clients/11', '/clients/11/profile'];
+  for (let n = 0; n < 300; n++) {
+    assert.equal((await fx.request(n % 2 ? 'HEAD' : 'GET', paths[n % paths.length])).status, 200);
+  }
+  const callsBeforeExhaustion = fx.calls.length;
+  for (const pathname of paths) {
+    for (const method of ['GET', 'HEAD']) {
+      const response = await fx.request(method, pathname);
+      assert.equal(response.status, 429);
+      assert.equal(response.headers.get('retry-after'), '60');
+      if (method === 'GET') assert.equal(response.body.error, 'rate_limited');
+    }
+  }
+  assert.equal(fx.calls.length, callsBeforeExhaustion);
+  assert.equal((await fx.request('GET', '/clients', undefined, { 'x-test-tenant': '102' })).status, 200);
+  assert.equal(fx.calls.length, callsBeforeExhaustion + 1);
+  assert.equal((await fx.request('PUT', '/clients/11/profile', input)).status, 200);
+  assert.equal(fx.calls.at(-1).sql, 'COMMIT');
+});

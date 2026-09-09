@@ -46,6 +46,10 @@ const writeLimiter = createRateLimiter({
   name: 'client-reporting', windowMs: 60_000, max: 60, failClosed: true,
   keyFn: (req) => req.clientReportingTenantId ? `client-reporting|${req.clientReportingTenantId}` : null,
 });
+const readLimiter = createRateLimiter({
+  name: 'client-reporting-read', windowMs: 60_000, max: 300, failClosed: true,
+  keyFn: (req) => req.clientReportingTenantId ? `client-reporting-read|${req.clientReportingTenantId}` : null,
+});
 
 function profileInput(req) {
   const body = req.body;
@@ -82,7 +86,7 @@ async function activeClient(pool, tenantId, id, lock = false) {
   return rows[0];
 }
 
-router.get('/clients', safe(async (req, res) => {
+router.get('/clients', readLimiter, safe(async (req, res) => {
   const cursor = req.query.cursor === undefined ? 0 : positiveId(req.query.cursor);
   const limit = req.query.limit === undefined ? 50 : positiveId(req.query.limit);
   if (cursor === null || cursor > 2147483647 || !limit || limit > 100) throw fail(400, 'invalid_pagination');
@@ -92,12 +96,12 @@ router.get('/clients', safe(async (req, res) => {
   return res.json({ ok: true, clients, has_more: hasMore, next_cursor: hasMore ? clients.at(-1).id : null });
 }));
 
-router.get('/clients/:clientId', safe(async (req, res) => {
+router.get('/clients/:clientId', readLimiter, safe(async (req, res) => {
   const client = await activeClient(_db.getPool(), req.clientReportingTenantId, clientId(req));
   return res.json({ ok: true, client });
 }));
 
-router.get('/clients/:clientId/profile', safe(async (req, res) => {
+router.get('/clients/:clientId/profile', readLimiter, safe(async (req, res) => {
   const pool = _db.getPool(), tenantId = req.clientReportingTenantId, id = clientId(req);
   const client = await activeClient(pool, tenantId, id);
   const { rows } = await pool.query(`SELECT ${PROFILE_COLUMNS} FROM client_reporting_profiles
