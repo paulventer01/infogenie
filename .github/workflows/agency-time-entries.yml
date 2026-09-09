@@ -11,11 +11,17 @@ on:
       - 'lib/migratedViews.ts'
       - 'lib/viewRoutes.ts'
       - 'services/tenants/permission_matrix.js'
+      - 'services/auth/**'
+      - 'services/tenants/**'
+      - 'services/security/**'
       - 'services/agency_ops/**'
       - 'services/capacity/**'
       - 'server.js'
+      - 'db.js'
       - 'test/agency-*.test.js'
       - 'test/capacity-controls*.test.js'
+      - 'test/integration/agency-ops-acceptance.test.js'
+      - 'test/helpers/**'
       - '.github/workflows/agency-time-entries.yml'
       - 'package*.json'
 
@@ -73,3 +79,61 @@ jobs:
           node --test --test-reporter=tap --test-force-exit test/capacity-controls-eligibility.test.js | tee /tmp/capacity-eligibility.tap
           grep -Eq '^# tests [1-9][0-9]*$' /tmp/capacity-eligibility.tap
           grep -Eq '^# skipped 0$' /tmp/capacity-eligibility.tap
+
+  agency-acceptance-postgres:
+    name: Agency operations acceptance PostgreSQL (zero skips)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: infogenie_agency_acceptance
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres -d infogenie_agency_acceptance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Enable TLS on disposable PostgreSQL
+        env:
+          PR10E8_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec --user root "$PR10E8_POSTGRES_CONTAINER" sh -ec '
+            openssl req -new -x509 -days 1 -nodes -out /var/lib/postgresql/server.crt \
+              -keyout /var/lib/postgresql/server.key -subj "/CN=localhost"
+            chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key
+            chmod 600 /var/lib/postgresql/server.key
+          '
+          docker exec "$PR10E8_POSTGRES_CONTAINER" psql -U postgres -d infogenie_agency_acceptance -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET ssl = 'on'" \
+            -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt'" \
+            -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key'"
+          docker restart "$PR10E8_POSTGRES_CONTAINER"
+          for attempt in {1..30}; do
+            docker exec "$PR10E8_POSTGRES_CONTAINER" pg_isready -U postgres -d infogenie_agency_acceptance && break
+            test "$attempt" -lt 30 || exit 1
+            sleep 1
+          done
+      - name: Verify connected agency workflow and authorization
+        shell: bash
+        env:
+          NODE_ENV: test
+          PR10E8_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports[5432] }}/infogenie_agency_acceptance
+          PR10E8_REQUIRE_DATABASE: '1'
+          PERMISSION_ENFORCEMENT: 'on'
+          MULTITENANT_ENFORCEMENT: 'on'
+        run: |
+          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/integration/agency-ops-acceptance.test.js | tee /tmp/agency-ops-acceptance.tap
+          grep -Eq '^# tests [1-9][0-9]*$' /tmp/agency-ops-acceptance.tap
+          grep -Eq '^# skipped 0$' /tmp/agency-ops-acceptance.tap
