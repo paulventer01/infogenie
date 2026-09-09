@@ -92,7 +92,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: infogenie_agency_acceptance
         ports:
-          - 5432/tcp
+          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres -d infogenie_agency_acceptance"
           --health-interval 5s
@@ -129,7 +129,7 @@ jobs:
         shell: bash
         env:
           NODE_ENV: test
-          PR10E8_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports[5432] }}/infogenie_agency_acceptance
+          PR10E8_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/infogenie_agency_acceptance
           PR10E8_REQUIRE_DATABASE: '1'
           PERMISSION_ENFORCEMENT: 'on'
           MULTITENANT_ENFORCEMENT: 'on'
