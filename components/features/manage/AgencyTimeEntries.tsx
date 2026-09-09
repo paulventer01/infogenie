@@ -250,7 +250,7 @@ function EntriesPanel({ canWrite: initialCanWrite, tenantId, invalidate }: { can
         </table>
       </div>}
     </section>
-    {canWrite && <section style={card} aria-label="Time-entry editor">
+    {canWrite && <section style={card} aria-label="Time-entry editor" data-ig-no-enhance>
       <h2>{editing ? "Correct time entry" : "New time entry"}</h2>
       {editing && <p>Correcting entry {editing.id}. Changes are saved only when you submit.</p>}
       <form aria-label="Save time entry" onSubmit={(event) => { event.preventDefault(); void save(); }}>

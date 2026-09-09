@@ -28,17 +28,25 @@ async function drainAudits(page) {
   const state = pageAudits.get(page);
   if (!state) return;
   const started = Date.now();
+  const document = new URL(page.url()).pathname.startsWith('/manage/')
+    ? (await state.cdp.send('Page.getFrameTree', {}, { timeout: 10_000 })).frameTree.frame : null;
+  const shellReady = () => !document || [...state.shellReads.values()].some((read) =>
+    read.frameId === document.id && read.loaderId === document.loaderId && read.status === 200 && read.jsonOk === true && read.finished);
   while (Date.now() - started < 10_000) {
-    if (!state.requests.size && !state.audits.size && Date.now() - Math.max(started, state.changedAt) >= 250) return;
+    if (shellReady() && !state.requests.size && !state.audits.size && Date.now() - Math.max(started, state.changedAt) >= 250) return;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   const requests = [...state.requests.values()].slice(0, 8).map((request) => ({ ...request, ageMs: Date.now() - request.at }));
-  assert.fail(`API drain exceeded 10s: ${JSON.stringify({ currentUrl: page.url(), pending: state.requests.size,
+  assert.fail(`Shell readiness/API drain exceeded 10s: ${JSON.stringify({ currentUrl: page.url(), document, shellReady: shellReady(),
+    shellReads: [...state.shellReads.values()].filter((read) => read.loaderId === document?.loaderId).slice(-4), pending: state.requests.size,
     requests, pendingBodies: state.audits.size, bodies: [...state.audits.values()].slice(0, 8) })}`);
 }
 async function reload(page) {
   await drainAudits(page);
-  return page.reload({ waitUntil: 'networkidle2' });
+  const response = await page.reload({ waitUntil: 'domcontentloaded' });
+  assert.equal(response?.status(), 200, 'real document reload succeeds');
+  await drainAudits(page);
+  return response;
 }
 
 async function visibleText(page, text, scope = PANEL) {
@@ -73,7 +81,7 @@ async function responseFor(page, method, pathname, action, status = 200) {
   const [response] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === method && new URL(r.url()).pathname === pathname),
     action(),
-  ]);
+  ]).catch((error) => { throw new Error(`Expected ${method} ${pathname} response: ${error.message}`, { cause: error }); });
   assert.equal(response.status(), status, `${method} ${pathname}`);
   const body = await response.json();
   assert.equal(body.ok, true, `${method} ${pathname} must confirm the real operation`);
@@ -85,6 +93,7 @@ async function go(page, baseUrl, view) {
   assert.equal(response.status(), 200, paths[view]);
   await page.waitForSelector(`${PANEL} h1`, { visible: true });
   assert.equal(new URL(page.url()).pathname, paths[view]);
+  await drainAudits(page);
 }
 async function rows(page, scope) {
   return page.$$eval(`${scope} tbody tr`, (list) => list.map((tr) =>
@@ -143,12 +152,13 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
   const puppeteer = require('puppeteer');
   browser = await puppeteer.launch({ headless: true, pipe: true,
     args: ['--disable-dev-shm-usage', '--disable-background-networking', '--lang=en-US'] });
-  async function guardedPage(actor) {
+  async function guardedPage(actor, mobile = false) {
     const context = await browser.createBrowserContext();
     const page = await context.newPage();
     page.setDefaultTimeout(45_000);
     page.setDefaultNavigationTimeout(90_000);
-    await page.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
+    await page.setViewport(mobile ? { width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true }
+      : { width: 1440, height: 1000, deviceScaleFactor: 1 });
     await page.emulateTimezone('UTC');
     await page.setBypassServiceWorker(true);
     const cdp = await page.createCDPSession();
@@ -157,7 +167,8 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     await page.setCacheEnabled(false);
     await page.setRequestInterception(true);
     const deliberate = new WeakSet(), pendingAudits = new Map(), pendingRequests = new Map();
-    const activity = { requests: pendingRequests, audits: pendingAudits, changedAt: Date.now() };
+    const shellReads = new Map();
+    const activity = { cdp, shellReads, requests: pendingRequests, audits: pendingAudits, changedAt: Date.now() };
     pageAudits.set(page, activity);
     // Duplicate Fetch.requestPaused events create multiple Puppeteer objects
     // for one network request. Only CDP Network terminal events settle this ledger.
@@ -168,10 +179,12 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
       if (prior && !event.redirectResponse) return;
       const redirects = event.redirectResponse ? [...(prior?.redirects || []),
         { url: event.redirectResponse.url, status: event.redirectResponse.status }].slice(-4) : [];
-      pendingRequests.set(key, { key, url: url.href, method: event.request.method, at: Date.now(),
+      const record = { key, url: url.href, method: event.request.method, at: Date.now(),
         frameId: event.frameId, loaderId: event.loaderId, documentUrl: event.documentURL, pageAtStart: page.url(),
         response: null, status: null, redirects,
-        deliberate: prior?.deliberate || (fault?.page === page && event.request.method === 'GET' && url.pathname === fault.path) });
+        deliberate: prior?.deliberate || (fault?.page === page && event.request.method === 'GET' && url.pathname === fault.path) };
+      pendingRequests.set(key, record);
+      if (url.origin === origin.origin && url.pathname === '/api/data-mode/effective' && event.request.method === 'GET') shellReads.set(key, record);
       activity.changedAt = Date.now();
     });
     cdp.on('Network.responseReceived', (event) => {
@@ -185,17 +198,36 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
       const key = networkKey(event.requestId), request = pendingRequests.get(key);
       if (!request) return;
       if (event.errorText && !closing && !request.deliberate) apiErrors.push(`CDP failed ${request.method} ${request.url}: ${event.errorText}`);
+      request.finished = !event.errorText;
       pendingRequests.delete(key); activity.changedAt = Date.now();
     };
     cdp.on('Network.loadingFinished', finishNetwork);
     cdp.on('Network.loadingFailed', finishNetwork);
     await cdp.send('Network.enable');
+    await page.evaluateOnNewDocument(() => {
+      window.__pr10e9Clicks = [];
+      for (const type of ['pointerdown', 'click', 'submit']) document.addEventListener(type, (event) => {
+        const el = event.target instanceof Element ? event.target : null, button = el?.closest('button');
+        const submit = document.querySelector('#ig-react-panel form[aria-label="Save time entry"] button[type="submit"]');
+        const rect = submit?.getBoundingClientRect();
+        window.__pr10e9Clicks.push({ type, target: el?.tagName, name: el?.getAttribute('name'), button: button?.textContent?.trim(),
+          form: el?.closest('form')?.getAttribute('aria-label'), x: event.clientX, y: event.clientY,
+          submitRect: rect && { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          enhanced: !!document.querySelector('#ig-react-panel [data-ig-bar]') });
+        window.__pr10e9Clicks = window.__pr10e9Clicks.slice(-8);
+      }, true);
+    });
     page.on('request', (request) => {
       const url = new URL(request.url());
       // Includes Clarity emitted by root layout. Block analytics without
       // treating intentional external resource denial as an app API failure.
       if (!['data:', 'blob:'].includes(url.protocol) && url.origin !== origin.origin) {
         void request.abort('blockedbyclient'); return;
+      }
+      if (url.pathname === '/api/studio/ai-suggest' && request.method() === 'POST') {
+        apiErrors.push('Unexpected POST /api/studio/ai-suggest during manual agency acceptance');
+        audits.push(page.evaluate(() => window.__pr10e9Clicks).then((clicks) =>
+          t.diagnostic(`Unexpected studio POST click trail: ${JSON.stringify(clicks)}`)).catch(() => {}));
       }
       if (fault?.page === page && request.method() === 'GET' && url.pathname === fault.path) {
         deliberate.add(request);
@@ -230,9 +262,14 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
           }
           return;
         }
-        if (response.status() >= 400) apiErrors.push(`${response.status()} ${url.pathname}`);
+        if (response.status() >= 400) {
+          apiErrors.push(`${response.status()} ${url.pathname}`);
+          t.diagnostic(`Unexpected API response: ${response.request().method()} ${url.pathname} ${response.status()}`);
+        }
         else if ((response.headers()['content-type'] || '').includes('application/json')) {
           const body = await response.json();
+          const shellRead = shellReads.get(networkKey(response.request().id));
+          if (shellRead && url.pathname === '/api/data-mode/effective') shellRead.jsonOk = body.ok === true;
           if (body.ok === false) apiErrors.push(`ok:false ${url.pathname}`);
         }
       })().catch(() => apiErrors.push(`unreadable API response ${url.pathname}`));
@@ -261,8 +298,8 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
       return response.body;
     } finally { expectedFailures.delete(page); }
   }
-  async function session(actor) {
-    const page = await guardedPage(actor);
+  async function session(actor, mobile = false) {
+    const page = await guardedPage(actor, mobile);
     await drainAudits(page);
     await page.goto(`${baseUrl}/login?next=${encodeURIComponent(paths.capacity)}`, { waitUntil: 'networkidle2' });
     await button(page, 'Log In', 'body');
@@ -296,6 +333,7 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     for (const permission of ['manage.projects.view', 'manage.projects.edit', 'tenant.billing.manage']) {
       assert.equal(active.permissions.includes(permission), actor !== actors.viewer || permission === 'manage.projects.view');
     }
+    await drainAudits(page);
     return page;
   }
   const client = 'PR10E9 client', memberName = 'PR10E9 marketer', work = 'PR10E9 delivery';
@@ -425,10 +463,15 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
       [['PR10E9 baseline', client, 'launch', dates.monday, dates.sunday, '8.00', '1.00', '1000.00', 'USD']]);
   });
   await t.test('create, correct and reload time; exact dashboard and mobile persistence', async () => {
+    let stage, active = owner;
+    const mark = (name) => { stage = name; t.diagnostic(`Time/mobile stage: ${name}`); };
+    try {
+    mark('desktop time entries and correction');
     await go(owner, baseUrl, 'time');
     await timeFilters(owner);
     await visibleText(owner, 'No time entries match these filters.');
     await absent(owner, foreign);
+    assert.equal(await owner.$(`${section('Time-entry editor')} [data-ig-bar]`), null, 'human time editor has no AI toolbar');
     await createTime(owner, memberId, client, work, 6);
     await createTime(owner, memberId, client, 'PR10E9 internal', 2, false);
     await button(owner, `Correct ${work}`, section('Existing time entries'));
@@ -438,6 +481,7 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     await responseFor(owner, 'PATCH', `/api/agency-ops/time-entries/${entry}`,
       () => button(owner, 'Save correction', form('Save time entry')));
     await visibleText(owner, 'Saved. The list is refreshed from persisted data');
+    mark('desktop corrected entry reload');
     await reload(owner);
     await timeFilters(owner);
     const entries = await rows(owner, section('Existing time entries'));
@@ -445,15 +489,20 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     assert.deepEqual(entries.find((r) => r[3].startsWith(work)).slice(3, 6),
       [`${work}\nNotes: PR10E9 corrected after review`, '8', 'Yes']);
     assert.deepEqual(entries.find((r) => r[3] === 'PR10E9 internal').slice(4, 6), ['2', 'No']);
+    mark('desktop dashboard totals');
     await go(owner, baseUrl, 'dashboard');
     await dashboard(owner);
-    await drainAudits(owner); // Changing isMobile can itself reload Chromium.
-    await owner.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
-    await reload(owner);
-    await dashboard(owner);
-    const width = await owner.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    mark('fresh mobile context and actual owner login');
+    const mobile = await session(actors.owner, true); active = mobile;
+    mark('mobile dashboard totals and layout');
+    await go(mobile, baseUrl, 'dashboard');
+    await dashboard(mobile);
+    mark('mobile dashboard reload persistence');
+    await reload(mobile);
+    await dashboard(mobile);
+    const width = await mobile.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
     if (width.scroll > width.client + 1) {
-      const overflow = await owner.evaluate(() => [...document.body.querySelectorAll('*')].flatMap((el) => {
+      const overflow = await mobile.evaluate(() => [...document.body.querySelectorAll('*')].flatMap((el) => {
         const rect = el.getBoundingClientRect(), css = getComputedStyle(el);
         if (!rect.width || !rect.height || rect.right <= document.documentElement.clientWidth + 1 || css.visibility === 'hidden') return [];
         return [{ node: el.tagName.toLowerCase(), id: el.id, label: el.getAttribute('aria-label') || el.getAttribute('aria-labelledby'),
@@ -463,16 +512,27 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
       t.diagnostic(`Mobile overflow DOM: ${JSON.stringify(overflow)}`);
     }
     assert.ok(width.scroll <= width.client + 1, `mobile page overflow: ${width.scroll}/${width.client}`);
-    await go(owner, baseUrl, 'time');
-    await timeFilters(owner);
-    await button(owner, `Correct ${work}`, section('Existing time entries'));
-    await fill(owner, form('Save time entry'), { notes: 'PR10E9 mobile correction' });
-    await responseFor(owner, 'PATCH', `/api/agency-ops/time-entries/${entry}`,
-      () => button(owner, 'Save correction', form('Save time entry')));
-    await visibleText(owner, 'Saved. The list is refreshed from persisted data');
-    await reload(owner);
-    await timeFilters(owner);
-    await visibleText(owner, 'Notes: PR10E9 mobile correction', section('Existing time entries'));
+    mark('mobile time list and correction selection');
+    await go(mobile, baseUrl, 'time');
+    await timeFilters(mobile);
+    await button(mobile, `Correct ${work}`, section('Existing time entries'));
+    assert.equal(await mobile.$(`${section('Time-entry editor')} [data-ig-bar]`), null, 'mobile time editor has no AI toolbar');
+    mark('mobile notes fill');
+    await fill(mobile, form('Save time entry'), { notes: 'PR10E9 mobile correction' });
+    mark('mobile Save correction click and real PATCH');
+    assert.equal(await mobile.$(`${section('Time-entry editor')} [data-ig-bar]`), null, 'notes editing must not insert AI controls');
+    await responseFor(mobile, 'PATCH', `/api/agency-ops/time-entries/${entry}`,
+      () => button(mobile, 'Save correction', form('Save time entry')));
+    await visibleText(mobile, 'Saved. The list is refreshed from persisted data');
+    mark('mobile corrected entry reload');
+    await reload(mobile);
+    await timeFilters(mobile);
+    await visibleText(mobile, 'Notes: PR10E9 mobile correction', section('Existing time entries'));
+    } catch (error) {
+      const clicks = await active.evaluate(() => window.__pr10e9Clicks).catch(() => []);
+      t.diagnostic(`Time/mobile failure: ${stage}; URL=${active.url()}; clicks=${JSON.stringify(clicks)}`);
+      throw new Error(`Time/mobile stage "${stage}": ${error.message}`, { cause: error });
+    }
   });
   await t.test('visible viewer restrictions and populated foreign tenant absence', async () => {
     for (const view of ['rates', 'scope', 'time', 'dashboard']) {

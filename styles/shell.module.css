@@ -614,7 +614,9 @@
 
 @media (max-width: 640px) {
   .shell:has(:global(#ig-react-panel[data-react-view="agency-ops-dashboard"])) .topbar,
-  .shell:has(:global(#ig-react-panel[data-react-view="agency-ops-dashboard"])) .topbarRight {
+  .shell:has(:global(#ig-react-panel[data-react-view="agency-ops-dashboard"])) .topbarRight,
+  .shell:has(:global(#ig-react-panel[data-react-view="agency-time-entries"])) .topbar,
+  .shell:has(:global(#ig-react-panel[data-react-view="agency-time-entries"])) .topbarRight {
     flex-wrap: wrap;
   }
 
