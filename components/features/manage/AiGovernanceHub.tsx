@@ -86,8 +86,8 @@ export default function AiGovernanceHub() {
   const load = useCallback(async () => {
     const [st, pol, aud] = await Promise.all([
       apiGet<StatusPayload>("/api/ai-governance/status"),
-      apiGet<{ policy?: Policy }>("/api/ai-governance/policy"),
-      apiGet<{ events?: AuditEvent[] }>("/api/ai-governance/audit?limit=40"),
+      apiGet<{ ok?: boolean; policy?: Policy }>("/api/ai-governance/policy"),
+      apiGet<{ ok?: boolean; events?: AuditEvent[] }>("/api/ai-governance/audit?limit=40"),
     ]);
     if (st.ok !== false) setStatus(st);
     if (pol.ok !== false && pol.policy) {
@@ -134,7 +134,7 @@ export default function AiGovernanceHub() {
 
   async function demoEvent(forceBlock = false) {
     setBusy("demo");
-    const r = await apiPost<{ result?: { proceeded?: boolean; status?: string; warnings?: string[] } }>(
+    const r = await apiPost<{ ok?: boolean; result?: { proceeded?: boolean; status?: string; warnings?: string[] } }>(
       "/api/ai-governance/demo-event",
       { forceBlock, surface: "marketing_spine", action: "apply_calendar" },
     );

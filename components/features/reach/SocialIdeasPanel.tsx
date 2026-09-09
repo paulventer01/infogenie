@@ -122,7 +122,7 @@ export default function SocialIdeasPanel({ platforms, onUseCaption }: Props) {
     setPreview({ text, archetype: arch });
   }
 
-  function usePreview(platformIds?: string[]) {
+  function applyPreview(platformIds?: string[]) {
     if (!preview) return;
     const plats = platformIds?.length
       ? platformIds
@@ -218,7 +218,7 @@ export default function SocialIdeasPanel({ platforms, onUseCaption }: Props) {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               type="button"
-              onClick={() => usePreview(["instagram", "linkedin", "twitter"])}
+              onClick={() => applyPreview(["instagram", "linkedin", "twitter"])}
               style={{ background: "#FF5722", color: "#fff", border: "none", padding: "8px 14px", borderRadius: 7, fontSize: "0.78rem", fontWeight: 800, cursor: "pointer" }}
             >
               Use in Compose

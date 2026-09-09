@@ -14,6 +14,7 @@
 // See `docs/react-panel-migration.md` for the porting pattern.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { apiPost } from "@/lib/api";
 
 // ── Legacy constants (copied from app.js so the port is self-contained) ───────
@@ -349,9 +350,9 @@ export default function Social({ embedded = false }: { embedded?: boolean } = {}
             }}
           >
             <strong>Moved:</strong> Planning + publishing now live in{" "}
-            <a href="/reach/social-publisher" style={{ color: "#C2410C", fontWeight: 800 }}>
+            <Link href="/reach/social-publisher" style={{ color: "#C2410C", fontWeight: 800 }}>
               Social Publisher
-            </a>{" "}
+            </Link>{" "}
             (Calendar · Compose · Queue · Ideas). This page keeps the legacy local planner for reference;
             new posts should be created on Social Publisher so they publish via Zernio.
           </div>
