@@ -14,6 +14,13 @@ const section = (name) => `${PANEL} section[aria-label="${name}"]`;
 const paths = { capacity: '/manage/capacity', rates: '/manage/agency-rate-cards',
   scope: '/manage/agency-scope-budgets', time: '/manage/agency-time-entries',
   dashboard: '/manage/agency-ops-dashboard' };
+// CI job 102534058964: AppShell restores optional analysis/brief state; app.js
+// reads analytics config. These fixtures have no captures or global owner role.
+const baselineReads = new Map([
+  ['GET /api/diag-capture/latest 404', 'no captures yet — run Analyse Now once to seed'],
+  ['GET /api/marketing-brief/merged 403', 'owner_only'],
+  ['GET /api/config 403', 'owner_only'],
+]);
 
 async function visibleText(page, text, scope = PANEL) {
   await page.waitForFunction((root, wanted) => {
@@ -86,6 +93,7 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
 }, async (t) => {
   assert.ok(dedicatedUrl, 'PR10E9_TEST_DATABASE_URL is required; ambient DATABASE_URL is never used');
   const apiErrors = [], browserErrors = [], audits = [], held = new Set();
+  const reportedBaselineReads = new Set();
   const expectedFailures = new WeakMap();
   let browser, fault = null, closing = false;
   // Register before the helper: close Chromium before stopping its real servers.
@@ -151,7 +159,21 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
       const rejectedProbe = expected?.method === response.request().method() &&
         expected.path === url.pathname && expected.status === response.status();
       if (deliberate.has(response.request()) || denied || rejectedProbe) return;
+      // Login performs a full document navigation, which can discard its CDP
+      // response body. session() checks status, cookie and real identity reads.
+      if (response.status() === 200 && response.request().method() === 'POST' && url.pathname === '/api/auth/login') return;
       audits.push((async () => {
+        const key = `${response.request().method()} ${url.pathname} ${response.status()}`;
+        if (actor && !url.search && baselineReads.has(key)) {
+          const body = await response.json();
+          if (body.ok !== false || body.error !== baselineReads.get(key)) {
+            apiErrors.push(`unexpected shell probe response ${key}`);
+          } else if (!reportedBaselineReads.has(key)) {
+            reportedBaselineReads.add(key);
+            t.diagnostic(`Known baseline shell read: ${key} (${body.error})`);
+          }
+          return;
+        }
         if (response.status() >= 400) apiErrors.push(`${response.status()} ${url.pathname}`);
         else if ((response.headers()['content-type'] || '').includes('application/json')) {
           const body = await response.json();
@@ -187,8 +209,17 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     await button(page, 'Log In', 'body');
     await page.locator('#email').fill(actor.email);
     await page.locator('#pass').fill(actor.password);
-    await responseFor(page, 'POST', '/api/auth/login', () => button(page, 'Log In →', 'form'));
+    const [loginResponse, navigation] = await Promise.all([
+      page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/auth/login'),
+      page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+      button(page, 'Log In →', 'form'),
+    ]);
+    assert.equal(loginResponse.status(), 200, 'actual login POST succeeds');
+    assert.equal(navigation?.status(), 200, 'login lands on the real app');
+    assert.equal(new URL(page.url()).pathname, paths.capacity);
     await page.waitForSelector(`${PANEL} h1`, { visible: true });
+    const sid = (await page.browserContext().cookies()).find((cookie) => cookie.name === 'infogenie.sid');
+    assert.ok(sid?.httpOnly && decodeURIComponent(sid.value).startsWith('s:'), 'login issues a signed HttpOnly session cookie');
     // Identity checks use only real reads after the real login form issued a cookie.
     const auth = await probe(page, 'GET', '/api/auth/me');
     assert.equal(auth.authenticated, true);
