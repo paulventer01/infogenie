@@ -20,7 +20,21 @@ const baselineReads = new Map([
   ['GET /api/diag-capture/latest 404', 'no captures yet — run Analyse Now once to seed'],
   ['GET /api/marketing-brief/merged 403', 'owner_only'],
   ['GET /api/config 403', 'owner_only'],
+  ['GET /api/alerts/list?limit=30 403', 'owner_only'],
+  ['GET /api/alerts/check-credits 403', 'owner_only'],
 ]);
+const pageAudits = new WeakMap();
+async function drainAudits(page) {
+  const pending = pageAudits.get(page);
+  if (!pending) return;
+  // Finish requests AND CDP body reads before destroying their document.
+  await page.waitForNetworkIdle({ idleTime: 250 });
+  while (pending.size) await Promise.all([...pending]);
+}
+async function reload(page) {
+  await drainAudits(page);
+  return page.reload({ waitUntil: 'networkidle2' });
+}
 
 async function visibleText(page, text, scope = PANEL) {
   await page.waitForFunction((root, wanted) => {
@@ -61,6 +75,7 @@ async function responseFor(page, method, pathname, action, status = 200) {
   return body;
 }
 async function go(page, baseUrl, view) {
+  await drainAudits(page);
   const response = await page.goto(baseUrl + paths[view], { waitUntil: 'domcontentloaded' });
   assert.equal(response.status(), 200, paths[view]);
   await page.waitForSelector(`${PANEL} h1`, { visible: true });
@@ -98,12 +113,13 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
   let browser, fault = null, closing = false;
   // Register before the helper: close Chromium before stopping its real servers.
   t.after(async () => {
-    closing = true;
     for (const request of held) if (!request.isInterceptResolutionHandled()) await request.abort();
-    if (browser) await browser.close();
+    if (browser) {
+      try { await Promise.all((await browser.pages()).map(drainAudits)); }
+      finally { closing = true; await browser.close(); }
+    }
     await Promise.all(audits);
-    assert.deepEqual(apiErrors, [], 'unexpected application API failures');
-    assert.deepEqual(browserErrors, [], 'uncaught browser errors');
+    assert.deepEqual({ apiErrors, browserErrors }, { apiErrors: [], browserErrors: [] }, 'application API and browser audit');
   });
   // No catch-and-skip: missing helper, Chrome, DB, fonts or boot errors fail.
   const { startAgencyBrowser } = require('../helpers/agency-browser');
@@ -133,7 +149,8 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     const cdp = await page.createCDPSession();
     await cdp.send('Emulation.setLocaleOverride', { locale: 'en-US' });
     await page.setRequestInterception(true);
-    const deliberate = new WeakSet();
+    const deliberate = new WeakSet(), pendingAudits = new Set();
+    pageAudits.set(page, pendingAudits);
     page.on('request', (request) => {
       const url = new URL(request.url());
       // Includes Clarity emitted by root layout. Block analytics without
@@ -162,9 +179,9 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
       // Login performs a full document navigation, which can discard its CDP
       // response body. session() checks status, cookie and real identity reads.
       if (response.status() === 200 && response.request().method() === 'POST' && url.pathname === '/api/auth/login') return;
-      audits.push((async () => {
-        const key = `${response.request().method()} ${url.pathname} ${response.status()}`;
-        if (actor && !url.search && baselineReads.has(key)) {
+      const audit = (async () => {
+        const key = `${response.request().method()} ${url.pathname}${url.search} ${response.status()}`;
+        if (actor && baselineReads.has(key)) {
           const body = await response.json();
           if (body.ok !== false || body.error !== baselineReads.get(key)) {
             apiErrors.push(`unexpected shell probe response ${key}`);
@@ -179,7 +196,9 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
           const body = await response.json();
           if (body.ok === false) apiErrors.push(`ok:false ${url.pathname}`);
         }
-      })().catch(() => apiErrors.push(`unreadable API response ${url.pathname}`)));
+      })().catch(() => apiErrors.push(`unreadable API response ${url.pathname}`));
+      audits.push(audit); pendingAudits.add(audit);
+      void audit.finally(() => pendingAudits.delete(audit));
     });
     page.on('requestfailed', (request) => {
       const url = new URL(request.url());
@@ -205,10 +224,12 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
   }
   async function session(actor) {
     const page = await guardedPage(actor);
+    await drainAudits(page);
     await page.goto(`${baseUrl}/login?next=${encodeURIComponent(paths.capacity)}`, { waitUntil: 'networkidle2' });
     await button(page, 'Log In', 'body');
     await page.locator('#email').fill(actor.email);
     await page.locator('#pass').fill(actor.password);
+    await drainAudits(page);
     const [loginResponse, navigation] = await Promise.all([
       page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/auth/login'),
       page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
@@ -324,8 +345,9 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     await responseFor(owner, 'POST', '/api/capacity/assignments',
       () => button(owner, 'Save change', section('Review capacity change')));
     await visibleText(owner, 'Saved. Lists refreshed.');
-    await owner.reload({ waitUntil: 'networkidle2' });
-    await visibleText(owner, `${work} · 8h · due ${dates.sunday}`);
+    await reload(owner);
+    // Persisted NUMERIC(6,2) assignment hours render directly as 8.00h.
+    await visibleText(owner, `${work} · 8.00h · due ${dates.sunday}`, `${PANEL} ul`);
     await absent(owner, foreign);
   });
   await t.test('real rate history and reviewed scope budget persist after reload', async () => {
@@ -339,7 +361,7 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
       await responseFor(owner, 'POST', '/api/agency-ops/rates', () => button(owner, 'Save rate', form('Save rate')), 201);
       await visibleText(owner, 'Saved. Rate history was refreshed');
     }
-    await owner.reload({ waitUntil: 'networkidle2' });
+    await reload(owner);
     await visibleText(owner, 'Stored rate history');
     const history = await rows(owner, section('Existing rates'));
     assert.equal(history.length, 2);
@@ -356,7 +378,7 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     await responseFor(owner, 'POST', '/api/agency-ops/scope-baselines',
       () => button(owner, 'Save active baseline', section('Review baseline')), 201);
     await visibleText(owner, 'Saved. The list was refreshed for the created client and period.');
-    await owner.reload({ waitUntil: 'networkidle2' });
+    await reload(owner);
     await fill(owner, form('Scope filters'), { filter_from: dates.monday, filter_to: dates.sunday });
     await button(owner, 'Apply filters', form('Scope filters'));
     await visibleText(owner, 'Active baselines matching the applied filters');
@@ -377,7 +399,7 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     await responseFor(owner, 'PATCH', `/api/agency-ops/time-entries/${entry}`,
       () => button(owner, 'Save correction', form('Save time entry')));
     await visibleText(owner, 'Saved. The list is refreshed from persisted data');
-    await owner.reload({ waitUntil: 'networkidle2' });
+    await reload(owner);
     await timeFilters(owner);
     const entries = await rows(owner, section('Existing time entries'));
     assert.equal(entries.length, 2, 'correction must not duplicate the entry');
@@ -386,10 +408,21 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     assert.deepEqual(entries.find((r) => r[3] === 'PR10E9 internal').slice(4, 6), ['2', 'No']);
     await go(owner, baseUrl, 'dashboard');
     await dashboard(owner);
+    await drainAudits(owner); // Changing isMobile can itself reload Chromium.
     await owner.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
-    await owner.reload({ waitUntil: 'networkidle2' });
+    await reload(owner);
     await dashboard(owner);
     const width = await owner.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    if (width.scroll > width.client + 1) {
+      const overflow = await owner.evaluate(() => [...document.body.querySelectorAll('*')].flatMap((el) => {
+        const rect = el.getBoundingClientRect(), css = getComputedStyle(el);
+        if (!rect.width || !rect.height || rect.right <= document.documentElement.clientWidth + 1 || css.visibility === 'hidden') return [];
+        return [{ node: el.tagName.toLowerCase(), id: el.id, label: el.getAttribute('aria-label') || el.getAttribute('aria-labelledby'),
+          left: Math.round(rect.left), right: Math.round(rect.right), width: Math.round(rect.width),
+          display: css.display, minWidth: css.minWidth, grid: css.gridTemplateColumns, overflowX: css.overflowX }];
+      }).sort((a, b) => b.right - a.right).slice(0, 12));
+      t.diagnostic(`Mobile overflow DOM: ${JSON.stringify(overflow)}`);
+    }
     assert.ok(width.scroll <= width.client + 1, `mobile page overflow: ${width.scroll}/${width.client}`);
     await go(owner, baseUrl, 'time');
     await timeFilters(owner);
@@ -398,7 +431,7 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     await responseFor(owner, 'PATCH', `/api/agency-ops/time-entries/${entry}`,
       () => button(owner, 'Save correction', form('Save time entry')));
     await visibleText(owner, 'Saved. The list is refreshed from persisted data');
-    await owner.reload({ waitUntil: 'networkidle2' });
+    await reload(owner);
     await timeFilters(owner);
     await visibleText(owner, 'Notes: PR10E9 mobile correction', section('Existing time entries'));
   });
@@ -415,7 +448,7 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     }
     const viewer = await session(actors.viewer);
     await visibleText(viewer, 'Read-only access. Changes require project editing access.');
-    await visibleText(viewer, `${work} · 8h · due ${dates.sunday}`);
+    await visibleText(viewer, `${work} · 8.00h · due ${dates.sunday}`, `${PANEL} ul`);
     for (const editor of ['Roster details', 'Assignment details']) {
       const enabled = await viewer.$$eval(`${form(editor)} input, ${form(editor)} select, ${form(editor)} button`,
         (controls) => controls.filter((el) => !el.matches(':disabled')).length);
@@ -447,6 +480,7 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     const invalid = await guardedPage(null);
     await invalid.browserContext().setCookie({ name: 'infogenie.sid', value: 's:pr10e9-invalid.signature',
       domain: origin.hostname, path: '/', httpOnly: true, sameSite: 'Lax' });
+    await drainAudits(invalid);
     await invalid.goto(baseUrl + '/login', { waitUntil: 'networkidle2' });
     await visibleText(invalid, 'Welcome back', 'body');
     const unauthenticated = await probe(invalid, 'GET', '/api/auth/me');

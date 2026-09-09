@@ -613,6 +613,11 @@
 }
 
 @media (max-width: 640px) {
+  .shell:has(:global(#ig-react-panel[data-react-view="agency-ops-dashboard"])) .topbar,
+  .shell:has(:global(#ig-react-panel[data-react-view="agency-ops-dashboard"])) .topbarRight {
+    flex-wrap: wrap;
+  }
+
   .backLabel {
     display: none;
   }

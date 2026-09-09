@@ -8,6 +8,7 @@ on:
       - 'hooks/**'
       - 'lib/**'
       - 'public/**'
+      - 'styles/**'
       - 'index.html'
       - 'app.js'
       - 'style.css'
