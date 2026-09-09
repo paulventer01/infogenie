@@ -146,6 +146,14 @@ test("capacity summary uses an uncapped, tenant-scoped task count", async () => 
     assert.deepEqual(countQueries[0].params, [4242]);
     assert.match(countQueries[0].sql, /g\.tenant_id = \$1/);
     assert.match(countQueries[0].sql, /t\.tenant_id = \$1/);
+
+    const workloadQueries = queries.filter((query) => (
+      query.sql.includes("FROM agent_tasks") && query.sql.includes("LIMIT 100")
+    ));
+    assert.equal(workloadQueries.length, 1);
+    assert.deepEqual(workloadQueries[0].params, [4242]);
+    assert.match(workloadQueries[0].sql, /g\.tenant_id = \$1/);
+    assert.match(workloadQueries[0].sql, /t\.tenant_id = \$1/);
   } finally {
     db.hasDb = originalHasDb;
     db.getPool = originalGetPool;
