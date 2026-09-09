@@ -25,11 +25,14 @@ const baselineReads = new Map([
 ]);
 const pageAudits = new WeakMap();
 async function drainAudits(page) {
-  const pending = pageAudits.get(page);
-  if (!pending) return;
-  // Finish requests AND CDP body reads before destroying their document.
-  await page.waitForNetworkIdle({ idleTime: 250 });
-  while (pending.size) await Promise.all([...pending]);
+  const state = pageAudits.get(page);
+  if (!state) return;
+  const started = Date.now();
+  while (Date.now() - started < 10_000) {
+    if (!state.requests.size && !state.audits.size && Date.now() - Math.max(started, state.changedAt) >= 250) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.fail(`API drain exceeded 10s: ${JSON.stringify({ requests: [...state.requests.values()], bodies: [...state.audits.values()] })}`);
 }
 async function reload(page) {
   await drainAudits(page);
@@ -149,10 +152,16 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     const cdp = await page.createCDPSession();
     await cdp.send('Emulation.setLocaleOverride', { locale: 'en-US' });
     await page.setRequestInterception(true);
-    const deliberate = new WeakSet(), pendingAudits = new Set();
-    pageAudits.set(page, pendingAudits);
+    const deliberate = new WeakSet(), pendingAudits = new Map(), pendingRequests = new Map();
+    const activity = { requests: pendingRequests, audits: pendingAudits, changedAt: Date.now() };
+    pageAudits.set(page, activity);
+    const finishRequest = (request) => { if (pendingRequests.delete(request)) activity.changedAt = Date.now(); };
+    page.on('requestfinished', finishRequest);
     page.on('request', (request) => {
       const url = new URL(request.url());
+      if (url.origin === origin.origin && url.pathname.startsWith('/api/')) {
+        pendingRequests.set(request, `${request.method()} ${url.pathname}`); activity.changedAt = Date.now();
+      }
       // Includes Clarity emitted by root layout. Block analytics without
       // treating intentional external resource denial as an app API failure.
       if (!['data:', 'blob:'].includes(url.protocol) && url.origin !== origin.origin) {
@@ -197,10 +206,11 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
           if (body.ok === false) apiErrors.push(`ok:false ${url.pathname}`);
         }
       })().catch(() => apiErrors.push(`unreadable API response ${url.pathname}`));
-      audits.push(audit); pendingAudits.add(audit);
-      void audit.finally(() => pendingAudits.delete(audit));
+      audits.push(audit); pendingAudits.set(audit, `${response.request().method()} ${url.pathname}`); activity.changedAt = Date.now();
+      void audit.finally(() => { pendingAudits.delete(audit); activity.changedAt = Date.now(); });
     });
     page.on('requestfailed', (request) => {
+      finishRequest(request);
       const url = new URL(request.url());
       if (!closing && url.origin === origin.origin && url.pathname.startsWith('/api/') && !deliberate.has(request)) {
         apiErrors.push(`failed ${url.pathname}`);
