@@ -456,6 +456,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "customer-360", icon: "🎚️", label: "Customer 360 (unified account view)" },
           { view: "agency-ops-dashboard", icon: "📊", label: "Agency Operations Dashboard" },
           { view: "agency-time-entries", icon: "🕒", label: "Time Entry & Corrections" },
+          { view: "agency-rate-cards", icon: "💱", label: "Rate Card Setup" },
         ],
       },
       {
