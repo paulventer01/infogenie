@@ -23,6 +23,7 @@ const baselineReads = new Map([
   ['GET /api/alerts/list?limit=30 403', 'owner_only'],
   ['GET /api/alerts/check-credits 403', 'owner_only'],
 ]);
+const creditPath = '/api/alerts/check-credits', alertsPath = '/api/alerts/list?limit=30';
 const pageAudits = new WeakMap();
 async function drainAudits(page) {
   const state = pageAudits.get(page);
@@ -30,8 +31,17 @@ async function drainAudits(page) {
   const started = Date.now();
   const document = new URL(page.url()).pathname.startsWith('/manage/')
     ? (await state.cdp.send('Page.getFrameTree', {}, { timeout: 10_000 })).frameTree.frame : null;
-  const shellReady = () => !document || [...state.shellReads.values()].some((read) =>
-    read.frameId === document.id && read.loaderId === document.loaderId && read.status === 200 && read.jsonOk === true && read.finished);
+  const shellReady = () => {
+    if (!document) return true;
+    const reads = [...state.shellReads.values()].filter((read) => read.frameId === document.id &&
+      read.loaderId === document.loaderId && read.bodyValid === true && read.finished);
+    // app.js waits for replayed DOMContentLoaded; ig_mentions_gaps.js also
+    // schedules a credit check followed by another list read on boot. Require
+    // that real sequence, not the earlier auto-list or a fixed quiet delay.
+    return reads.some((read) => new URL(read.url).pathname === '/api/data-mode/effective' && read.status === 200) &&
+      reads.some((credit) => credit.path === creditPath && credit.status === 403 &&
+        reads.some((list) => list.path === alertsPath && list.status === 403 && list.startedAt >= credit.respondedAt));
+  };
   while (Date.now() - started < 10_000) {
     if (shellReady() && !state.requests.size && !state.audits.size && Date.now() - Math.max(started, state.changedAt) >= 250) return;
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -179,18 +189,21 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
       if (prior && !event.redirectResponse) return;
       const redirects = event.redirectResponse ? [...(prior?.redirects || []),
         { url: event.redirectResponse.url, status: event.redirectResponse.status }].slice(-4) : [];
-      const record = { key, url: url.href, method: event.request.method, at: Date.now(),
+      const record = { key, url: url.href, path: url.pathname + url.search, method: event.request.method,
+        at: Date.now(), startedAt: event.timestamp,
         frameId: event.frameId, loaderId: event.loaderId, documentUrl: event.documentURL, pageAtStart: page.url(),
         response: null, status: null, redirects,
         deliberate: prior?.deliberate || (fault?.page === page && event.request.method === 'GET' && url.pathname === fault.path) };
       pendingRequests.set(key, record);
-      if (url.origin === origin.origin && url.pathname === '/api/data-mode/effective' && event.request.method === 'GET') shellReads.set(key, record);
+      if (url.origin === origin.origin && event.request.method === 'GET' &&
+        (url.pathname === '/api/data-mode/effective' || [creditPath, alertsPath].includes(record.path))) shellReads.set(key, record);
       activity.changedAt = Date.now();
     });
     cdp.on('Network.responseReceived', (event) => {
       const request = pendingRequests.get(networkKey(event.requestId));
       if (request) {
-        Object.assign(request, { response: event.response.url, status: event.response.status, fromDiskCache: event.response.fromDiskCache });
+        Object.assign(request, { response: event.response.url, status: event.response.status,
+          respondedAt: event.timestamp, fromDiskCache: event.response.fromDiskCache });
         activity.changedAt = Date.now();
       }
     });
@@ -254,7 +267,10 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
         const key = `${response.request().method()} ${url.pathname}${url.search} ${response.status()}`;
         if (actor && baselineReads.has(key)) {
           const body = await response.json();
-          if (body.ok !== false || body.error !== baselineReads.get(key)) {
+          const valid = body.ok === false && body.error === baselineReads.get(key);
+          const shellRead = shellReads.get(networkKey(response.request().id));
+          if (shellRead) shellRead.bodyValid = valid;
+          if (!valid) {
             apiErrors.push(`unexpected shell probe response ${key}`);
           } else if (!reportedBaselineReads.has(key)) {
             reportedBaselineReads.add(key);
@@ -269,7 +285,7 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
         else if ((response.headers()['content-type'] || '').includes('application/json')) {
           const body = await response.json();
           const shellRead = shellReads.get(networkKey(response.request().id));
-          if (shellRead && url.pathname === '/api/data-mode/effective') shellRead.jsonOk = body.ok === true;
+          if (shellRead && url.pathname === '/api/data-mode/effective') shellRead.bodyValid = body.ok === true;
           if (body.ok === false) apiErrors.push(`ok:false ${url.pathname}`);
         }
       })().catch(() => apiErrors.push(`unreadable API response ${url.pathname}`));
