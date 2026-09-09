@@ -744,6 +744,7 @@ const COMPONENT_MATRIX = {
   'agency':               'platform.tenants.manage',
   'agency-ops-dashboard':  'tenant.billing.manage',
   'agency-time-entries':   'tenant.billing.manage',
+  'agency-rate-cards':     'tenant.billing.manage',
   'workspaces':           'tenant.settings.manage',
   'white-label':          'tenant.settings.manage',
   'settings':             'tenant.settings.manage',
