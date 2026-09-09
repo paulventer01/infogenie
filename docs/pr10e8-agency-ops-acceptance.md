@@ -36,6 +36,14 @@ These are HTTP/API integration tests, not browser automation. Existing component
 tests continue to cover rendering and interaction. Report the distinction and
 identify whether each database result ran locally or in native PostgreSQL CI.
 
+## Blocking defect found
+
+Native acceptance exposed a time-entry creation failure: the INSERT listed 12
+columns but supplied 13 expressions, including an extra parameter placeholder.
+Correct the statement to match its 11 bound values plus the update timestamp.
+The connected HTTP test verifies creation, persisted values and subsequent
+correction without mocking the database query.
+
 Backend owns workflow acceptance tests; Security assesses isolation and access
 controls separately from day one. Lead owns scope and CI. Independent QA checks
 the complete frozen SHA; a separate read-only Reviewer follows QA. All verdicts

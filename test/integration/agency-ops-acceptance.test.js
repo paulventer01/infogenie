@@ -77,8 +77,8 @@ test('Agency Operations acceptance through real sessions, tenant membership and 
     }
   });
 
-  const { bootApp, request, login, makeFixtures } = require('../helpers');
   db = require('../../db');
+  const { makeFixtures } = require('../helpers/fixtures');
   fx = makeFixtures();
   const tls = await db.getPool().query('SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()');
   assert.equal(tls.rows[0]?.ssl, true, 'application pool must use TLS before schema setup');
@@ -87,6 +87,7 @@ test('Agency Operations acceptance through real sessions, tenant membership and 
   await require('../../services/capacity/schema').ensureCapacitySchema();
   await require('../../services/agency_ops/schema').ensureAgencyOpsSchema();
   await require('../../services/agent_goals/schema').ensureAgentGoalsSchema();
+  const { bootApp, request, login } = require('../helpers');
   app = await bootApp(); // No mounts, authority headers, resolver stubs or hooks.
   ports.add(app.port);
 
