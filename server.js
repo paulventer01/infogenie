@@ -632,8 +632,7 @@ const _OWNER_GATE_ALLOW = [
   /^\/api\/integrations\/meta-ads\//,   // per-user Meta Ads Connect OAuth flow
   // Agency operations is tenant-scoped and self-gated by the permission matrix.
   /^\/api\/agency-ops(?:\/|$)/,
-  // Capacity summary is tenant-scoped and read-only for dashboard consumers;
-  // keep mutating/member-management routes behind the legacy owner gate.
+  // Capacity summary is tenant-scoped and read-only for dashboard consumers.
   /^\/api\/capacity\/summary\/?$/,
   // Tenant-scoped advertising workflows: gated by orchestrator.workflows.* via
   // the matrix + per-handler requirePermission, not the legacy owner gate. That
@@ -681,9 +680,18 @@ const _OWNER_GATE_ALLOW = [
   /^\/api\/advertising\/optimization-executions(?:\/|$)/,
   /^\/api\/advertising\/optimization-execution-runs(?:\/|$)/,
 ];
+// Existing tenant-scoped Capacity controls use the project grants enforced above.
+// Match both method and full route; other Capacity paths remain owner-only.
+const _CAPACITY_OWNER_GATE_ALLOW = [
+  [/^(GET|HEAD)$/, /^\/api\/capacity\/members\/?$/],
+  [/^POST$/, /^\/api\/capacity\/(members|assignments|assign-best|seed-from-users)\/?$/],
+  [/^DELETE$/, /^\/api\/capacity\/members\/[^/]+\/?$/],
+  [/^PATCH$/, /^\/api\/capacity\/assignments\/[^/]+\/?$/],
+];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
   if (_OWNER_GATE_ALLOW.some(rx => rx.test(req.path))) return next();
+  if (_CAPACITY_OWNER_GATE_ALLOW.some(([method, route]) => method.test(req.method) && route.test(req.path))) return next();
   if (!req.user) return next();              // API-key path already mapped to owner
   if (req.user.isOwner === true) return next();
   return res.status(403).json({
