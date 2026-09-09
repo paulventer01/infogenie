@@ -1,0 +1,89 @@
+name: Agency browser acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'hooks/**'
+      - 'lib/**'
+      - 'public/**'
+      - 'index.html'
+      - 'app.js'
+      - 'style.css'
+      - 'services/**'
+      - 'server.js'
+      - 'db.js'
+      - 'middleware.ts'
+      - 'next.config.ts'
+      - 'package*.json'
+      - 'test/browser/**'
+      - 'test/helpers/**'
+      - '.github/workflows/agency-browser-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  browser-postgres:
+    name: Agency browser acceptance Chromium + PostgreSQL (zero skips)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: infogenie_agency_browser
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d infogenie_agency_browser"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install the Chromium version pinned by Puppeteer
+        run: npx --no-install puppeteer browsers install chrome
+      - name: Enable TLS on disposable PostgreSQL
+        shell: bash
+        env:
+          PR10E9_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec --user root "$PR10E9_POSTGRES_CONTAINER" sh -ec '
+            openssl req -new -x509 -days 1 -nodes -out /var/lib/postgresql/server.crt \
+              -keyout /var/lib/postgresql/server.key -subj "/CN=localhost"
+            chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key
+            chmod 600 /var/lib/postgresql/server.key
+          '
+          docker exec "$PR10E9_POSTGRES_CONTAINER" psql -U postgres -d infogenie_agency_browser -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET ssl = 'on'" \
+            -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt'" \
+            -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key'"
+          docker restart "$PR10E9_POSTGRES_CONTAINER"
+          for attempt in {1..30}; do
+            docker exec "$PR10E9_POSTGRES_CONTAINER" pg_isready -U postgres -d infogenie_agency_browser && break
+            test "$attempt" -lt 30 || exit 1
+            sleep 1
+          done
+      - name: Verify browser journeys with real authorization and persistence
+        shell: bash
+        env:
+          PR10E9_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/infogenie_agency_browser
+          PR10E9_REQUIRE_BROWSER: '1'
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          set -o pipefail
+          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/browser/agency-operations.test.js | tee /tmp/agency-browser.tap
+          grep -Eq '^# tests [1-9][0-9]*$' /tmp/agency-browser.tap
+          grep -Eq '^# fail 0$' /tmp/agency-browser.tap
+          grep -Eq '^# skipped 0$' /tmp/agency-browser.tap
