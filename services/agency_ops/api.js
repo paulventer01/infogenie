@@ -530,7 +530,7 @@ router.post('/time-entries', agencyOpsSharedLimiter, _safe(async (req, res) => {
   const result = await pool.query(
     'INSERT INTO agency_time_entries ' +
     '(id, tenant_id, member_id, member_role, client_ref, project_ref, work_item, work_date, hours, billable, notes, updated_at) ' +
-    'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) RETURNING *',
+    'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()) RETURNING *',
     [id, tenantId, memberId, member.role || null, clientRef, projectRef, workItem, workDate, hours, billable, notes],
   );
   const entry = await _fetchEffectiveEntry(pool, tenantId, result.rows[0], {
