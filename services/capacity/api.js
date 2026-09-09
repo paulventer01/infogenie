@@ -25,6 +25,7 @@ async function _loadAgentWorkload(tid, { strict = false } = {}) {
          FROM agent_tasks t
          JOIN agent_goals g ON g.id = t.goal_id
         WHERE g.tenant_id = $1
+          AND t.tenant_id = $1
           AND t.status NOT IN ('done','cancelled','skipped')
         ORDER BY t.priority ASC NULLS LAST, t.due_date ASC NULLS LAST
         LIMIT 100`,
