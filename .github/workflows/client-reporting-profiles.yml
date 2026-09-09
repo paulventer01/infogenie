@@ -1,0 +1,98 @@
+name: Client reporting profiles
+
+on:
+  pull_request:
+    paths:
+      - 'services/client_reporting/**'
+      - 'services/admin/schema.js'
+      - 'services/auth/**'
+      - 'services/tenants/**'
+      - 'services/security/**'
+      - 'server.js'
+      - 'db.js'
+      - 'test/client-reporting*.test.js'
+      - 'test/integration/client-reporting-profiles.test.js'
+      - 'test/helpers/**'
+      - 'package*.json'
+      - '.github/workflows/client-reporting-profiles.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  focused-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify reporting profiles and authorization
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/client-reporting.test.js test/client-reporting-permissions.test.js test/permission-matrix.test.js test/permission-matrix-coverage.test.js test/build-app-no-side-effects.test.js test/tenant-read-audit.test.js test/tenant-write-audit.test.js
+
+  native-postgres:
+    name: Client reporting PostgreSQL (TLS, zero skips)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: infogenie_client_reporting
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d infogenie_client_reporting"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Enable TLS on disposable PostgreSQL
+        env:
+          PR10F1_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec --user root "$PR10F1_POSTGRES_CONTAINER" sh -ec '
+            openssl req -new -x509 -days 1 -nodes -out /var/lib/postgresql/server.crt \
+              -keyout /var/lib/postgresql/server.key -subj "/CN=localhost"
+            chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key
+            chmod 600 /var/lib/postgresql/server.key
+          '
+          docker exec "$PR10F1_POSTGRES_CONTAINER" psql -U postgres -d infogenie_client_reporting -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET ssl = 'on'" \
+            -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt'" \
+            -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key'"
+          docker restart "$PR10F1_POSTGRES_CONTAINER"
+          for attempt in {1..30}; do
+            docker exec "$PR10F1_POSTGRES_CONTAINER" pg_isready -U postgres -d infogenie_client_reporting && break
+            test "$attempt" -lt 30 || exit 1
+            sleep 1
+          done
+      - name: Verify real persistence, isolation and concurrent saves
+        shell: bash
+        env:
+          NODE_ENV: test
+          PR10F1_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/infogenie_client_reporting
+          PR10F1_REQUIRE_DATABASE: '1'
+          PERMISSION_ENFORCEMENT: 'on'
+          MULTITENANT_ENFORCEMENT: 'on'
+        run: |
+          set -o pipefail
+          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/integration/client-reporting-profiles.test.js | tee /tmp/client-reporting-profiles.tap
+          grep -Eq '^# tests [1-9][0-9]*$' /tmp/client-reporting-profiles.tap
+          grep -Eq '^# fail 0$' /tmp/client-reporting-profiles.tap
+          grep -Eq '^# skipped 0$' /tmp/client-reporting-profiles.tap

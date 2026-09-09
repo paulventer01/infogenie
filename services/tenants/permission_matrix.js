@@ -30,6 +30,7 @@ const ROUTE_GROUPS = [
   // ── Platform / agency administration ──────────────────────────────────────
   { prefix: '/api/admin',                     view: 'platform.tenants.manage' },
   { prefix: '/api/white-label',               view: 'tenant.settings.manage' },
+  { prefix: '/api/client-reporting',          view: 'tenant.settings.manage', write: 'tenant.settings.manage' },
   // Tenant context/session router (/me, /active, /switch, /roles, /permissions,
   // self-serve create). These are bootstrap endpoints EVERY authenticated user
   // must reach — and each carries its own internal guard (membership checks,
