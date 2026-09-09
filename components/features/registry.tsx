@@ -96,6 +96,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   csuite: L("csuite", () => import("@/components/features/manage/Csuite")),
   "investor-mode": L("investor-mode", () => import("@/components/features/manage/InvestorMode")),
   agency: L("agency", () => import("@/components/features/manage/Agency")),
+  "agency-ops-dashboard": L("agency-ops-dashboard", () => import("@/components/features/manage/AgencyOpsDashboard")),
   marketplace: L("marketplace", () => import("@/components/features/manage/Marketplace")),
   workspaces: L("workspaces", () => import("@/components/features/manage/Workspaces")),
   admin: L("admin", () => import("@/components/features/manage/Admin")),

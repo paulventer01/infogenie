@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const { requirePermission } = require('../tenants/permission_enforce');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safe(h) {
@@ -15,7 +16,7 @@ function _safe(h) {
 }
 function _id(prefix) { return prefix + crypto.randomBytes(5).toString('hex'); }
 
-async function _loadAgentWorkload(tid) {
+async function _loadAgentWorkload(tid, { strict = false } = {}) {
   if (!_db.hasDb()) return [];
   try {
     const r = await _db.getPool().query(
@@ -24,6 +25,7 @@ async function _loadAgentWorkload(tid) {
          FROM agent_tasks t
          JOIN agent_goals g ON g.id = t.goal_id
         WHERE g.tenant_id = $1
+          AND t.tenant_id = $1
           AND t.status NOT IN ('done','cancelled','skipped')
         ORDER BY t.priority ASC NULLS LAST, t.due_date ASC NULLS LAST
         LIMIT 100`,
@@ -45,24 +47,46 @@ async function _loadAgentWorkload(tid) {
         source: 'agent_tasks',
       };
     });
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return [];
   }
 }
 
-async function _buildSummary(tid) {
+function _emptyRowsUnlessStrict(strict) {
+  return (error) => {
+    if (strict) throw error;
+    return { rows: [] };
+  };
+}
+
+async function _buildSummary(tid, { strict = false } = {}) {
   const pool = _db.getPool();
   const membersR = await pool.query(
     `SELECT * FROM team_capacity WHERE tenant_id=$1 AND active=true ORDER BY member_name`,
     [tid],
-  ).catch(() => ({ rows: [] }));
+  ).catch(_emptyRowsUnlessStrict(strict));
   const assignR = await pool.query(
     `SELECT * FROM capacity_assignments
       WHERE tenant_id=$1 AND status='open'
       ORDER BY due_date ASC NULLS LAST`,
     [tid],
-  ).catch(() => ({ rows: [] }));
-  const agentWork = await _loadAgentWorkload(tid);
+  ).catch(_emptyRowsUnlessStrict(strict));
+  const agentWork = await _loadAgentWorkload(tid, { strict });
+  const openAgentTasksR = await pool.query(
+    `SELECT COUNT(*)::int AS open_agent_tasks
+       FROM agent_tasks t
+       JOIN agent_goals g ON g.id = t.goal_id
+      WHERE g.tenant_id = $1
+        AND t.tenant_id = $1
+        AND t.status NOT IN ('done','cancelled','skipped')`,
+    [tid],
+  ).catch(_emptyRowsUnlessStrict(strict));
+  // The workload list is intentionally capped for recommendations, but the
+  // dashboard total must represent the tenant's complete open-task backlog.
+  const openAgentTasks = openAgentTasksR.rows.length
+    ? Number(openAgentTasksR.rows[0].open_agent_tasks || 0)
+    : agentWork.length;
   const loggedR = await pool.query(
     `SELECT member_id, COALESCE(SUM(hours), 0) AS logged_hours
        FROM agency_time_entries
@@ -71,7 +95,7 @@ async function _buildSummary(tid) {
         AND work_date < (date_trunc('week', CURRENT_DATE) + INTERVAL '7 days')::date
       GROUP BY member_id`,
     [tid],
-  ).catch(() => ({ rows: [] }));
+  ).catch(_emptyRowsUnlessStrict(strict));
   const loggedByMember = new Map(
     loggedR.rows.map((row) => [String(row.member_id), Number(row.logged_hours || 0)]),
   );
@@ -170,14 +194,14 @@ async function _buildSummary(tid) {
       at_capacity: members.filter((m) => m.load === 'at_capacity').length,
       available: members.filter((m) => m.load === 'available' || m.load === 'busy').length,
       unassigned_task_hours: unassignedHours,
-      open_agent_tasks: agentWork.length,
+      open_agent_tasks: openAgentTasks,
       logged_hours: loggedHours,
       logged_utilization_pct: totalHours > 0 ? Math.round((loggedHours / totalHours) * 100) : 0,
     },
   };
 }
 
-router.get('/summary', _safe(async (req, res) => {
+router.get('/summary', requirePermission('manage.projects.view'), _safe(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'capacity:summary' });
   if (!tid) return _err(res, 400, 'no_tenant');
   if (!_db.hasDb()) {
@@ -192,11 +216,8 @@ router.get('/summary', _safe(async (req, res) => {
       },
     });
   }
-  // Ensure senior Technical Manager always appears on the human roster
-  try {
-    const { ensureCapacityMember } = require('../technical_manager/api');
-    await ensureCapacityMember(tid);
-  } catch (_) { /* optional */ }
+  // GET /summary is universally side-effect-free: dashboard and legacy
+  // consumers read the existing tenant roster without bootstrapping a member.
   res.json(await _buildSummary(tid));
 }));
 

@@ -454,6 +454,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "launch-compliance", icon: "☑️", label: "Launch Compliance Checklist (brand · copy · legal · mobile)" },
           { view: "post-launch-audit", icon: "📽️", label: "Post-Launch Audit (live data + lead flow 24-48h)" },
           { view: "customer-360", icon: "🎚️", label: "Customer 360 (unified account view)" },
+          { view: "agency-ops-dashboard", icon: "📊", label: "Agency Operations Dashboard" },
         ],
       },
       {

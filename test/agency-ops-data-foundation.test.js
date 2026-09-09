@@ -68,7 +68,7 @@ test('agency operations routes carry the shared tenant limiter and CodeQL dispos
   const registrations = lines
     .map((line, index) => ({ line, index }))
     .filter(({ line }) => /^router\.(get|post|put|patch|delete)\(/.test(line));
-  assert.equal(registrations.length, 9);
+  assert.equal(registrations.length, 10);
   for (const { line, index } of registrations) {
     assert.match(line, /agencyOpsSharedLimiter/);
     assert.equal(

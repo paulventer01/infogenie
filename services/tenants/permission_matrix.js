@@ -67,8 +67,14 @@ const ROUTE_GROUPS = [
   { prefix: '/api/true-roas',                 view: 'analytics.view' },
   { prefix: '/api/iroas',                     view: 'analytics.view' },
   { prefix: '/api/metrics',                   view: 'analytics.view' },
-  { prefix: '/api/capacity',                  view: 'manage.projects.view', write: 'manage.projects.edit' },
-  { prefix: '/api/agency-ops',               view: 'manage.projects.view', write: 'manage.projects.edit' },
+  // Billing-sensitive dashboard reads use dedicated entries. Preserve the
+  // pre-existing non-financial scope-signals contract for project viewers,
+  // and expose capacity to the dashboard through aggregate totals only.
+  { prefix: '/api/agency-ops/capacity-summary', view: 'tenant.billing.manage' },
+  { prefix: '/api/agency-ops/summary',          view: 'tenant.billing.manage' },
+  { prefix: '/api/agency-ops/scope-signals',    view: 'manage.projects.view' },
+  { prefix: '/api/agency-ops',                  view: 'manage.projects.view', write: 'manage.projects.edit' },
+  { prefix: '/api/capacity',                    view: 'manage.projects.view', write: 'manage.projects.edit' },
   { prefix: '/api/technical-manager',         view: 'dashboard.view', write: 'dashboard.view' },
   { prefix: '/api/ops-tooling',               view: 'dashboard.view', write: 'dashboard.view' },
   { prefix: '/api/weekly-report',             view: 'reports.view', write: 'reports.export' },
@@ -736,6 +742,7 @@ const COMPONENT_MATRIX = {
   // Tenant / platform admin surfaces
   'admin':                'platform.tenants.manage',
   'agency':               'platform.tenants.manage',
+  'agency-ops-dashboard':  'tenant.billing.manage',
   'workspaces':           'tenant.settings.manage',
   'white-label':          'tenant.settings.manage',
   'settings':             'tenant.settings.manage',
