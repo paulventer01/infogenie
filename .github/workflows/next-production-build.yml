@@ -1,0 +1,49 @@
+name: Next production build
+
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'hooks/**'
+      - 'lib/**'
+      - 'public/**'
+      - 'styles/**'
+      - 'services/**'
+      - '*.js'
+      - '*.ts'
+      - '*.json'
+      - '*.css'
+      - 'index.html'
+      - 'test/aeo-optimizer-navigation.test.js'
+      - 'test/marketing-intel-seed.test.js'
+      - '.github/workflows/next-production-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  production-build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check all TypeScript without incremental state
+        run: node node_modules/typescript/bin/tsc --noEmit --incremental false
+      - name: Compile the strict production build
+        run: npm run build:next
+      - name: Verify the affected navigation and marketing intelligence
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/aeo-optimizer-navigation.test.js test/marketing-intel-seed.test.js
+      - name: Verify the core regression gate
+        run: npm run test:core
+        env:
+          NODE_OPTIONS: --no-experimental-global-navigator --test-reporter=tap

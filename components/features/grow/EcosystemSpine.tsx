@@ -56,7 +56,7 @@ export default function EcosystemSpine() {
   async function suggest() {
     setBusy("suggest");
     setMsg("");
-    const r = await apiPost<{ insertedCount?: number; error?: string }>("/api/marketing-spine/suggest", {});
+    const r = await apiPost<{ ok?: boolean; insertedCount?: number; error?: string }>("/api/marketing-spine/suggest", {});
     setBusy("");
     if (r.ok === false) { setMsg(r.error || "Suggest failed"); return; }
     setMsg(`Suggested ${r.insertedCount ?? 0} new action(s) from Brief, Decisions, Optimizer, and health gaps.`);
@@ -66,7 +66,7 @@ export default function EcosystemSpine() {
   async function resolve() {
     setBusy("resolve");
     setMsg("");
-    const r = await apiPost<{ plan?: typeof plan; summary?: string; error?: string }>("/api/marketing-spine/resolve", {});
+    const r = await apiPost<{ ok?: boolean; plan?: typeof plan; summary?: string; error?: string }>("/api/marketing-spine/resolve", {});
     setBusy("");
     if (r.ok === false) { setMsg(r.error || "Resolve failed"); return; }
     setPlan(r.plan || []);
@@ -76,7 +76,7 @@ export default function EcosystemSpine() {
   async function apply(id: string) {
     setBusy(id);
     setMsg("");
-    const r = await apiPost<{ result?: ActionRow["result"]; error?: string }>(`/api/marketing-spine/apply/${id}`, {});
+    const r = await apiPost<{ ok?: boolean; result?: ActionRow["result"]; error?: string }>(`/api/marketing-spine/apply/${id}`, {});
     setBusy("");
     if (r.ok === false) { setMsg(r.error || "Apply failed"); return; }
     setMsg(`Applied — ${r.result?.kind || "done"}${r.result?.id ? ` (${r.result.id})` : ""}`);

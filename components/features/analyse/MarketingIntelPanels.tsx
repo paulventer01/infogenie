@@ -3,10 +3,7 @@
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { goToView } from "@/lib/nav";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { buildMarketingIntel } = require("@/lib/marketingIntelSeed") as {
-  buildMarketingIntel: (domain: string, industry?: string) => import("@/lib/marketingIntelSeed").MarketingIntel;
-};
+import { buildMarketingIntel } from "@/lib/marketingIntelSeed";
 import dm from "@/styles/dashboard-marketing.module.css";
 
 interface Props {

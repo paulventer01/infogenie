@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiGet, apiPost } from "@/lib/api";
 import { goToView } from "@/lib/nav";
 
@@ -51,6 +52,7 @@ const pillarColors: Record<string, string> = {
 const statusIcon = (s: string) => (s === "pass" ? "✅" : s === "warn" ? "⚠️" : "❌");
 
 export default function AeoOptimizer() {
+  const router = useRouter();
   const [principles, setPrinciples] = useState<Principle[]>([]);
   const [url, setUrl] = useState("");
   const [report, setReport] = useState<RunSummary | null>(null);
@@ -149,10 +151,10 @@ export default function AeoOptimizer() {
                   <button type="button" disabled={busyFaq || !report.id} onClick={generateFaq} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #D1D5DB", background: "white", fontWeight: 700, cursor: "pointer" }}>
                     {busyFaq ? "Generating…" : "✨ Generate FAQ + schema"}
                   </button>
-                  <button type="button" onClick={() => goToView("schema-generator")} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#10B981", color: "white", fontWeight: 700, cursor: "pointer" }}>
+                  <button type="button" onClick={() => goToView(router, "schema-generator")} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#10B981", color: "white", fontWeight: 700, cursor: "pointer" }}>
                     Open Schema Generator
                   </button>
-                  <button type="button" onClick={() => goToView("geo-audit")} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #D1D5DB", background: "white", fontWeight: 700, cursor: "pointer" }}>
+                  <button type="button" onClick={() => goToView(router, "geo-audit")} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #D1D5DB", background: "white", fontWeight: 700, cursor: "pointer" }}>
                     Citation check (GEO)
                   </button>
                 </div>

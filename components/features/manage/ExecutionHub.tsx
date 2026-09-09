@@ -46,7 +46,7 @@ export default function ExecutionHub() {
   async function testSegment() {
     setBusy(true);
     setTrackMsg("");
-    const r = await apiPost<{ status?: string; dryRun?: boolean; error?: string }>("/api/segment/track", {
+    const r = await apiPost<{ ok?: boolean; status?: string; dryRun?: boolean; error?: string }>("/api/segment/track", {
       event: "InfoGenie Ecosystem Ping",
       properties: { surface: "execution-hub" },
     });
