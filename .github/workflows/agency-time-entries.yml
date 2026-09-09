@@ -1,0 +1,35 @@
+name: Agency time-entry checks
+
+on:
+  pull_request:
+    paths:
+      - 'components/features/manage/Agency*.tsx'
+      - 'components/features/registry.tsx'
+      - 'lib/agency*.ts'
+      - 'lib/migratedViews.ts'
+      - 'lib/viewRoutes.ts'
+      - 'services/tenants/permission_matrix.js'
+      - 'services/agency_ops/**'
+      - 'test/agency-*.test.js'
+      - '.github/workflows/agency-time-entries.yml'
+      - 'package*.json'
+
+permissions:
+  contents: read
+
+jobs:
+  focused-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      # Match the Node 20 global environment expected by older dashboard tests.
+      - run: node --no-experimental-global-navigator --test --test-force-exit test/agency-time-entries.test.js test/agency-time-entries-permissions.test.js test/agency-ops-dashboard.test.js test/migrated-views-lockstep.test.js test/permission-matrix.test.js
+      - run: npm run test:core
+        env:
+          NODE_OPTIONS: --no-experimental-global-navigator
