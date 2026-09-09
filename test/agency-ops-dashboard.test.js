@@ -5,6 +5,8 @@ const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
 const ts = require("typescript");
+const React = require("react");
+const { JSDOM } = require("jsdom");
 
 const ROOT = path.join(__dirname, "..");
 
@@ -19,6 +21,29 @@ function loadHelpers() {
 }
 
 const helpers = loadHelpers();
+
+
+function loadDashboard(apiGet) {
+  const source = fs.readFileSync(
+    path.join(ROOT, "components/features/manage/AgencyOpsDashboard.tsx"),
+    "utf8",
+  );
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: {
+      jsx: ts.JsxEmit.ReactJSX,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2019,
+    },
+  });
+  const module = { exports: {} };
+  const fakeRequire = (request) => {
+    if (request === "@/lib/api") return { apiGet };
+    if (request === "@/lib/agencyOpsDashboard") return helpers;
+    return require(request);
+  };
+  new Function("exports", "require", "module", outputText)(module.exports, fakeRequire, module);
+  return module.exports.default;
+}
 
 test("agency ops helpers build an encoded selected-period query", () => {
   assert.equal(
@@ -206,4 +231,76 @@ test("agency operations dashboard aligns component and GET API permissions", () 
   assert.ok(agencyApi.includes("capacityApi.buildSummary(tenantId, { strict: true })"));
   assert.ok(agencyApi.includes("totals: _dashboardCapacityTotals(summary.totals)"));
   assert.ok(server.includes("^\\/api\\/capacity\\/summary\\/?$"));
+});
+
+
+test("dashboard renders rejected and strict-data responses visibly", async () => {
+  const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {
+    url: "http://localhost/",
+  });
+  const previous = {
+    window: global.window,
+    document: global.document,
+    navigator: global.navigator,
+    Node: global.Node,
+    Text: global.Text,
+    Element: global.Element,
+    HTMLElement: global.HTMLElement,
+    Event: global.Event,
+    MouseEvent: global.MouseEvent,
+    IS_REACT_ACT_ENVIRONMENT: global.IS_REACT_ACT_ENVIRONMENT,
+  };
+  Object.assign(global, {
+    window: dom.window,
+    document: dom.window.document,
+    navigator: dom.window.navigator,
+    Node: dom.window.Node,
+    Text: dom.window.Text,
+    Element: dom.window.Element,
+    HTMLElement: dom.window.HTMLElement,
+    Event: dom.window.Event,
+    MouseEvent: dom.window.MouseEvent,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
+
+  const calls = [];
+  const apiGet = async (url) => {
+    calls.push(url);
+    if (url.includes("/api/agency-ops/summary")) {
+      return { ok: false, error: "summary backend unavailable" };
+    }
+    return {
+      ok: true,
+      data_unavailable: true,
+      source: "data_unavailable",
+      message: "Capacity feed unavailable.",
+    };
+  };
+
+  let root;
+  try {
+    const Dashboard = loadDashboard(apiGet);
+    const { createRoot } = require("react-dom/client");
+    const { act } = require("react-dom/test-utils");
+    await act(async () => {
+      root = createRoot(dom.window.document.getElementById("root"));
+      root.render(React.createElement(Dashboard));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    assert.equal(calls.length, 2);
+    const rendered = dom.window.document.body.textContent;
+    assert.match(rendered, /Data unavailable: summary backend unavailable/);
+    assert.match(rendered, /Data unavailable: Capacity feed unavailable./);
+  } finally {
+    if (root) {
+      const { act } = require("react-dom/test-utils");
+      await act(async () => root.unmount());
+    }
+    dom.window.close();
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete global[key];
+      else global[key] = value;
+    }
+  }
 });
