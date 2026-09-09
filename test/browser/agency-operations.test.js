@@ -32,7 +32,9 @@ async function drainAudits(page) {
     if (!state.requests.size && !state.audits.size && Date.now() - Math.max(started, state.changedAt) >= 250) return;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  assert.fail(`API drain exceeded 10s: ${JSON.stringify({ requests: [...state.requests.values()], bodies: [...state.audits.values()] })}`);
+  const requests = [...state.requests.values()].slice(0, 8).map((request) => ({ ...request, ageMs: Date.now() - request.at }));
+  assert.fail(`API drain exceeded 10s: ${JSON.stringify({ currentUrl: page.url(), pending: state.requests.size,
+    requests, pendingBodies: state.audits.size, bodies: [...state.audits.values()].slice(0, 8) })}`);
 }
 async function reload(page) {
   await drainAudits(page);
@@ -151,17 +153,45 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
     await page.setBypassServiceWorker(true);
     const cdp = await page.createCDPSession();
     await cdp.send('Emulation.setLocaleOverride', { locale: 'en-US' });
+    // Require real server reads; interception alone leaves caching enabled.
+    await page.setCacheEnabled(false);
     await page.setRequestInterception(true);
     const deliberate = new WeakSet(), pendingAudits = new Map(), pendingRequests = new Map();
     const activity = { requests: pendingRequests, audits: pendingAudits, changedAt: Date.now() };
     pageAudits.set(page, activity);
-    const finishRequest = (request) => { if (pendingRequests.delete(request)) activity.changedAt = Date.now(); };
-    page.on('requestfinished', finishRequest);
+    // Duplicate Fetch.requestPaused events create multiple Puppeteer objects
+    // for one network request. Only CDP Network terminal events settle this ledger.
+    const networkKey = (id) => `${cdp.id()}:${id}`;
+    cdp.on('Network.requestWillBeSent', (event) => {
+      const key = networkKey(event.requestId), prior = pendingRequests.get(key), url = new URL(event.request.url);
+      if (!prior && (url.origin !== origin.origin || !url.pathname.startsWith('/api/'))) return;
+      if (prior && !event.redirectResponse) return;
+      const redirects = event.redirectResponse ? [...(prior?.redirects || []),
+        { url: event.redirectResponse.url, status: event.redirectResponse.status }].slice(-4) : [];
+      pendingRequests.set(key, { key, url: url.href, method: event.request.method, at: Date.now(),
+        frameId: event.frameId, loaderId: event.loaderId, documentUrl: event.documentURL, pageAtStart: page.url(),
+        response: null, status: null, redirects,
+        deliberate: prior?.deliberate || (fault?.page === page && event.request.method === 'GET' && url.pathname === fault.path) });
+      activity.changedAt = Date.now();
+    });
+    cdp.on('Network.responseReceived', (event) => {
+      const request = pendingRequests.get(networkKey(event.requestId));
+      if (request) {
+        Object.assign(request, { response: event.response.url, status: event.response.status, fromDiskCache: event.response.fromDiskCache });
+        activity.changedAt = Date.now();
+      }
+    });
+    const finishNetwork = (event) => {
+      const key = networkKey(event.requestId), request = pendingRequests.get(key);
+      if (!request) return;
+      if (event.errorText && !closing && !request.deliberate) apiErrors.push(`CDP failed ${request.method} ${request.url}: ${event.errorText}`);
+      pendingRequests.delete(key); activity.changedAt = Date.now();
+    };
+    cdp.on('Network.loadingFinished', finishNetwork);
+    cdp.on('Network.loadingFailed', finishNetwork);
+    await cdp.send('Network.enable');
     page.on('request', (request) => {
       const url = new URL(request.url());
-      if (url.origin === origin.origin && url.pathname.startsWith('/api/')) {
-        pendingRequests.set(request, `${request.method()} ${url.pathname}`); activity.changedAt = Date.now();
-      }
       // Includes Clarity emitted by root layout. Block analytics without
       // treating intentional external resource denial as an app API failure.
       if (!['data:', 'blob:'].includes(url.protocol) && url.origin !== origin.origin) {
@@ -210,7 +240,6 @@ test('PR10E.9 agency browser acceptance (real Chromium, Next dev, Express and Po
       void audit.finally(() => { pendingAudits.delete(audit); activity.changedAt = Date.now(); });
     });
     page.on('requestfailed', (request) => {
-      finishRequest(request);
       const url = new URL(request.url());
       if (!closing && url.origin === origin.origin && url.pathname.startsWith('/api/') && !deliberate.has(request)) {
         apiErrors.push(`failed ${url.pathname}`);
