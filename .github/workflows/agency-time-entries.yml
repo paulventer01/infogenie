@@ -38,3 +38,38 @@ jobs:
       - run: npm run test:core
         env:
           NODE_OPTIONS: --no-experimental-global-navigator
+
+  capacity-eligibility-postgres:
+    name: Capacity eligibility PostgreSQL (zero skips)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: capacity_eligibility
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres -d capacity_eligibility"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify capacity task eligibility against PostgreSQL
+        shell: bash
+        env:
+          PR10E7_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:${{ job.services.postgres.ports[5432] }}/capacity_eligibility
+          PR10E7_REQUIRE_DATABASE: '1'
+        run: |
+          node --test --test-reporter=tap --test-force-exit test/capacity-controls-eligibility.test.js | tee /tmp/capacity-eligibility.tap
+          grep -Eq '^# tests [1-9][0-9]*$' /tmp/capacity-eligibility.tap
+          grep -Eq '^# skipped 0$' /tmp/capacity-eligibility.tap

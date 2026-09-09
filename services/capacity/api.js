@@ -88,7 +88,8 @@ async function _loadAgentWorkload(tid, { strict = true } = {}) {
          JOIN agent_goals g ON g.id = t.goal_id
         WHERE g.tenant_id = $1
           AND t.tenant_id = $1
-          AND t.status NOT IN ('done','cancelled','skipped')
+          AND g.status = 'active'
+          AND t.status IN ('pending','open','in_progress')
         ORDER BY t.priority ASC NULLS LAST, t.due_date ASC NULLS LAST
         LIMIT 100`,
       [tid],
@@ -125,7 +126,7 @@ async function _buildSummary(tid) {
   const assignR = await pool.query(
     `SELECT *, to_char(due_date, 'YYYY-MM-DD') AS due_date FROM capacity_assignments
       WHERE tenant_id=$1 AND status='open'
-      ORDER BY due_date ASC NULLS LAST`,
+      ORDER BY capacity_assignments.due_date ASC NULLS LAST`,
     [tid],
   );
   const agentWork = await _loadAgentWorkload(tid, { strict: true });
@@ -135,7 +136,8 @@ async function _buildSummary(tid) {
        JOIN agent_goals g ON g.id = t.goal_id
       WHERE g.tenant_id = $1
         AND t.tenant_id = $1
-        AND t.status NOT IN ('done','cancelled','skipped')`,
+        AND g.status = 'active'
+        AND t.status IN ('pending','open','in_progress')`,
     [tid],
   );
   // The workload list is intentionally capped for recommendations, but the
