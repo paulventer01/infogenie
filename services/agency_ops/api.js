@@ -276,7 +276,9 @@ async function _fetchBaselines(pool, tenantId, range, clientRef = null) {
     where.push('client_ref=$' + params.length);
   }
   const result = await pool.query(
-    'SELECT id, client_ref, project_ref, name, period_start, period_end, ' +
+    'SELECT id, client_ref, project_ref, name, ' +
+    "to_char(period_start, 'YYYY-MM-DD') AS period_start, " +
+    "to_char(period_end, 'YYYY-MM-DD') AS period_end, " +
     'contracted_hours, change_budget_hours, contracted_value, currency, active ' +
     'FROM agency_scope_baselines WHERE ' + where.join(' AND ') +
     ' ORDER BY period_start ASC, client_ref ASC',
@@ -671,7 +673,11 @@ router.post('/scope-baselines', agencyOpsSharedLimiter, requirePermission('tenan
   const result = await _db.getPool().query(
     'INSERT INTO agency_scope_baselines ' +
     '(id, tenant_id, client_ref, project_ref, name, period_start, period_end, contracted_hours, change_budget_hours, contracted_value, currency, active, updated_at) ' +
-    'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) RETURNING *',
+    'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) ' +
+    'RETURNING id, tenant_id, client_ref, project_ref, name, ' +
+    "to_char(period_start, 'YYYY-MM-DD') AS period_start, " +
+    "to_char(period_end, 'YYYY-MM-DD') AS period_end, " +
+    'contracted_hours, change_budget_hours, contracted_value, currency, active, created_at, updated_at',
     [id, tenantId, clientRef, projectRef, name, periodStart, periodEnd, contractedHours, changeBudgetHours, contractedValue, currency, active],
   );
   res.status(201).json({ ok: true, baseline: result.rows[0] });

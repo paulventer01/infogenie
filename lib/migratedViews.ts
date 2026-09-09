@@ -62,6 +62,7 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "agency-ops-dashboard", legacyModule: null },
   { view: "agency-time-entries", legacyModule: null },
   { view: "agency-rate-cards", legacyModule: null },
+  { view: "agency-scope-budgets", legacyModule: null },
   { view: "canonical-metrics", legacyModule: null },
   { view: "contribution-record", legacyModule: null },
   { view: "playbook-7day", legacyModule: null },

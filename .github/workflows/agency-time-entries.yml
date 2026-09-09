@@ -29,7 +29,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       # Match the Node 20 global environment expected by older dashboard tests.
-      - run: node --no-experimental-global-navigator --test --test-force-exit test/agency-rate-cards.test.js test/agency-rate-cards-permissions.test.js test/agency-time-entries.test.js test/agency-time-entries-permissions.test.js test/agency-ops-dashboard.test.js test/migrated-views-lockstep.test.js test/permission-matrix.test.js
+      - run: node --no-experimental-global-navigator --test --test-force-exit test/agency-scope-budgets.test.js test/agency-scope-budgets-permissions.test.js test/agency-rate-cards.test.js test/agency-rate-cards-permissions.test.js test/agency-time-entries.test.js test/agency-time-entries-permissions.test.js test/agency-ops-dashboard.test.js test/migrated-views-lockstep.test.js test/permission-matrix.test.js
       - run: npm run test:core
         env:
           NODE_OPTIONS: --no-experimental-global-navigator

@@ -99,6 +99,7 @@ export const MIGRATED_COMPONENTS: Record<string, Panel> = {
   "agency-ops-dashboard": L("agency-ops-dashboard", () => import("@/components/features/manage/AgencyOpsDashboard")),
   "agency-time-entries": L("agency-time-entries", () => import("@/components/features/manage/AgencyTimeEntries")),
   "agency-rate-cards": L("agency-rate-cards", () => import("@/components/features/manage/AgencyRateCards")),
+  "agency-scope-budgets": L("agency-scope-budgets", () => import("@/components/features/manage/AgencyScopeBudgets")),
   marketplace: L("marketplace", () => import("@/components/features/manage/Marketplace")),
   workspaces: L("workspaces", () => import("@/components/features/manage/Workspaces")),
   admin: L("admin", () => import("@/components/features/manage/Admin")),
