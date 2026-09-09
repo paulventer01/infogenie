@@ -4,14 +4,15 @@
  * Team Capacity & Workload — operational roster, utilization, queue matching.
  */
 
-import { useEffect, useState } from "react";
-import { apiGet, apiPost, apiDelete } from "@/lib/api";
-import { useToast } from "@/hooks/useToast";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { apiGet, apiPost, apiDelete, apiPatch, type ApiResult } from "@/lib/api";
+import { accessLost, amount, assignmentError, assignmentPayload, calendarDay, memberDraft, memberError, memberPayload,
+  newAssignment, newMember, responseError, validRoster, verifyCapacityAccess, type Context, type RosterMember } from "@/lib/capacityControls";
 
 interface Assignment {
   id: string;
   work_item: string;
-  hours: number;
+  hours: number | string;
   due_date?: string | null;
   status?: string;
 }
@@ -63,12 +64,26 @@ interface Totals {
 }
 interface Summary {
   ok?: boolean;
+  error?: string;
   members: Member[];
   agent_workload: AgentTask[];
   recommendations?: Recommendation[];
   alerts?: Alert[];
   totals: Totals;
 }
+
+function validSummary(r: Summary): boolean {
+  const number = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n >= 0;
+  return !!r?.totals && ["members", "weekly_hours", "allocated_hours", "remaining_hours", "utilization_pct", "overloaded", "open_agent_tasks", "unassigned_task_hours"]
+    .every((k) => number(r.totals[k as keyof Totals])) && Array.isArray(r.members) && r.members.every((m) => m && typeof m.id === "string"
+      && typeof m.member_name === "string" && [m.weekly_hours, m.allocated_hours, m.utilization_pct].every(number) && typeof m.load === "string"
+      && Array.isArray(m.assignments) && m.assignments.every((a) => a && typeof a.id === "string" && typeof a.work_item === "string"
+        && amount(a.hours) !== null && a.status === "open" && (!a.due_date || calendarDay(a.due_date))))
+    && Array.isArray(r.agent_workload) && r.agent_workload.every((w) => w && w.id != null && typeof w.title === "string")
+    && Array.isArray(r.recommendations) && r.recommendations.every((v) => v && v.task_id != null && typeof v.task_title === "string")
+    && Array.isArray(r.alerts) && r.alerts.every((a) => a && typeof a.message === "string");
+}
+type Review = { kind: "member" | "assignment" | "seed" | "deactivate" | "reactivate" | "status"; label: string; id?: string; status?: "done" | "cancelled" };
 
 const LOAD_COLOR: Record<string, string> = {
   available: "#16A34A",
@@ -78,94 +93,133 @@ const LOAD_COLOR: Record<string, string> = {
 };
 
 export default function Capacity() {
-  const toast = useToast();
   const [data, setData] = useState<Summary | null>(null);
-  const [name, setName] = useState("");
-  const [role, setRole] = useState("marketer");
-  const [hours, setHours] = useState("40");
+  const [roster, setRoster] = useState<RosterMember[] | null>(null);
+  const [member, setMember] = useState(newMember), [assignment, setAssignment] = useState(newAssignment);
+  const [review, setReview] = useState<Review | null>(null);
+  const [checking, setChecking] = useState(true), [canWrite, setCanWrite] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null), [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [seedMsg, setSeedMsg] = useState<{ tone: "ok" | "warn" | "err"; text: string } | null>(null);
-
-  async function refresh() {
-    const r = await apiGet<Summary>("/api/capacity/summary");
-    setData({
-      members: r.members || [],
-      agent_workload: r.agent_workload || [],
-      recommendations: r.recommendations || [],
-      alerts: r.alerts || [],
-      totals: r.totals || {
-        members: 0, weekly_hours: 0, allocated_hours: 0, remaining_hours: 0,
-        utilization_pct: 0, overloaded: 0, at_capacity: 0, available: 0,
-        unassigned_task_hours: 0, open_agent_tasks: 0,
-      },
-    });
-  }
-
-  useEffect(() => {
-    refresh().catch(() => setData(null));
+  const live = useRef(false), generation = useRef(0), listVersion = useRef(0), submitting = useRef(false);
+  const context = useRef<Context>(), tail = useRef(Promise.resolve()), pending = useRef(0);
+  const stopRequests = useCallback(() => { live.current = false; ++generation.current; ++listVersion.current; }, []);
+  const clearContext = useCallback((message: string) => {
+    ++generation.current; ++listVersion.current; context.current = undefined;
+    setData(null); setRoster(null); setMember(newMember()); setAssignment(newAssignment()); setReview(null);
+    setSeedMsg(null); setCanWrite(false); setAccessError(message); setLoading(false);
   }, []);
-
-  async function addMember() {
-    if (!name.trim()) { toast("Name required"); return; }
-    const r = await apiPost<{ ok: boolean; error?: string }>("/api/capacity/members", {
-      member_name: name.trim(), role, weekly_hours: +hours || 40,
-    });
-    if (!r.ok) { toast(r.error || "Failed"); return; }
-    setName("");
-    toast("Member added");
-    refresh();
-  }
-
-  async function removeMember(id: string) {
-    await apiDelete(`/api/capacity/members/${id}`);
-    toast("Member deactivated");
-    refresh();
-  }
-
-  async function seedUsers() {
-    setBusy(true);
-    setSeedMsg(null);
+  const checkContext = useCallback(async () => {
+    const epoch = generation.current, current = () => live.current && epoch === generation.current;
+    const prior = tail.current; let release!: () => void;
+    tail.current = new Promise<void>((resolve) => { release = resolve; });
+    ++pending.current; setChecking(true);
     try {
-      const r = await apiPost<{
-        ok: boolean;
-        seeded?: number;
-        added?: string[];
-        note?: string;
-        error?: string;
-      }>("/api/capacity/seed-from-users", {});
-      if (!r.ok) {
-        const text = r.error || "Seed failed";
-        setSeedMsg({ tone: "err", text });
-        toast(text);
-        return;
+      await prior; if (!current()) return null;
+      const verified = await verifyCapacityAccess(context.current);
+      if (!current()) return null;
+      if (verified.lost || (!verified.error && !verified.canRead)) {
+        clearContext(verified.error || "Project viewing access was revoked. Rows and drafts were cleared."); return null;
       }
-      const text = r.seeded
-        ? `Added ${r.seeded} teammate(s) from workspace users${r.added?.length ? `: ${r.added.join(", ")}` : ""}`
-        : (r.note || "No new members to add — everyone from the workspace is already on the roster");
-      setSeedMsg({ tone: r.seeded ? "ok" : "warn", text });
-      toast(text);
-      await refresh();
-    } catch (e: unknown) {
-      const text = e instanceof Error ? e.message : "Seed failed";
-      setSeedMsg({ tone: "err", text });
-      toast(text);
-    } finally {
-      setBusy(false);
+      setAccessError(verified.error);
+      if (verified.error) { ++listVersion.current; setData(null); setRoster(null); setLoading(false); }
+      else { context.current = verified.context; setCanWrite(verified.canWrite === true); }
+      return verified;
+    } finally { release(); --pending.current; if (live.current) setChecking(pending.current > 0); }
+  }, [clearContext]);
+  const refresh = useCallback(async () => {
+    const version = ++listVersion.current, epoch = generation.current;
+    const current = () => live.current && version === listVersion.current && epoch === generation.current;
+    setData(null); setRoster(null); setLoadError(null); setLoading(true);
+    const before = await checkContext();
+    if (!current() || !before || before.error) return null;
+    const [members, summary] = await Promise.all([
+      apiGet<ApiResult & { members?: RosterMember[] }>("/api/capacity/members"), apiGet<Summary>("/api/capacity/summary"),
+    ]);
+    if (!current()) return null;
+    const rosterError = responseError(members) || (!validRoster(members.members) ? "Invalid roster response." : null);
+    const summaryError = responseError(summary) || (!validSummary(summary) ? "Invalid summary response." : null);
+    if (accessLost(rosterError) || accessLost(summaryError)) { clearContext(rosterError || summaryError!); return null; }
+    const after = await checkContext();
+    if (!current() || !after || after.error) return null;
+    setRoster(rosterError ? null : members.members!); setData(summaryError ? null : summary); setLoading(false);
+    setLoadError([rosterError && `Roster unavailable: ${rosterError}`, summaryError && `Workload unavailable: ${summaryError}`].filter(Boolean).join(" ") || null);
+    return rosterError || summaryError ? null : { roster: members.members!, summary };
+  }, [checkContext, clearContext]);
+  useEffect(() => {
+    live.current = true; void refresh();
+    const recheck = () => { void checkContext(); };
+    window.addEventListener("focus", recheck); document.addEventListener("visibilitychange", recheck);
+    return () => { stopRequests();
+      window.removeEventListener("focus", recheck); document.removeEventListener("visibilitychange", recheck); };
+  }, [refresh, checkContext, stopRequests]);
+  function reviewAction(action: Review) {
+    if (submitting.current || !canWrite || !roster || !data) return;
+    const error = action.kind === "member" ? memberError(member, roster) : action.kind === "assignment" ? assignmentError(assignment, roster) : null;
+    setSeedMsg(error ? { tone: "err", text: error } : null); setReview(error ? null : action);
+  }
+  async function save() {
+    if (!live.current || submitting.current || !canWrite || checking || accessError || !review) return;
+    submitting.current = true; setBusy(true); setSeedMsg(null);
+    const epoch = generation.current, current = () => live.current && epoch === generation.current;
+    try {
+      const fresh = await refresh();
+      if (!current()) return;
+      if (!fresh) { setSeedMsg({ tone: "err", text: "Save not attempted. Refresh to verify data and access. Draft retained." }); return; }
+      const target = fresh.roster.find((m) => m.id === review.id);
+      const invalid = review.kind === "member" ? memberError(member, fresh.roster) : review.kind === "assignment"
+        ? assignmentError(assignment, fresh.roster) || (assignment.taskId && !fresh.summary.agent_workload.some((w) => String(w.id) === assignment.taskId) ? "Task is no longer in the loaded open queue. Review again." : null)
+        : review.kind === "status" ? (!fresh.summary.members.some((m) => m.assignments?.some((a) => a.id === review.id && a.status === "open")) ? "Assignment is no longer open. Refresh and review again." : null)
+        : ["deactivate", "reactivate"].includes(review.kind) && (!target || target.active !== (review.kind === "deactivate")) ? "Member status changed. Review again." : null;
+      if (invalid) { setSeedMsg({ tone: "err", text: invalid }); setReview(null); return; }
+      const before = await checkContext();
+      if (!current() || !before) return;
+      if (before.error || !before.canWrite) { setSeedMsg({ tone: "err", text: "Save not attempted. Project editing access is required. Draft retained." }); return; }
+      const result = review.kind === "status" ? await apiPatch<ApiResult>(`/api/capacity/assignments/${encodeURIComponent(review.id!)}`, { status: review.status })
+        : review.kind === "deactivate" ? await apiDelete<ApiResult>(`/api/capacity/members/${encodeURIComponent(review.id!)}`)
+        : await apiPost<ApiResult>(`/api/capacity/${review.kind === "seed" ? "seed-from-users" : review.kind === "assignment" ? "assignments" : "members"}`,
+          review.kind === "seed" ? {} : review.kind === "assignment" ? assignmentPayload(assignment)
+            : review.kind === "reactivate" ? { ...memberPayload(memberDraft(target!), fresh.roster), active: true } : memberPayload(member, fresh.roster));
+      if (!current()) return;
+      const error = responseError(result) || (["member", "assignment", "reactivate"].includes(review.kind) && (typeof result.id !== "string" || !result.id) ? "Invalid save confirmation." : null)
+        || (review.kind === "seed" && (!Number.isInteger(result.seeded) || Number(result.seeded) < 0 || !Array.isArray(result.added)) ? "Invalid seed confirmation." : null);
+      if (accessLost(error)) { clearContext(error!); return; }
+      const after = await checkContext();
+      if (!current() || !after) return;
+      if (error) {
+        setSeedMsg({ tone: "err", text: `${error} ${review.kind === "seed" ? "Seeding may be partial or uncertain." : "Save not confirmed. Draft retained."} Verify the roster and assignments before retrying; the request may have reached the server.` });
+        setReview(null); return;
+      }
+      if (after.error) {
+        setReview(null); setSeedMsg({ tone: "warn", text: "Saved, but access verification and refresh failed. Draft retained for reference. Verify the lists; do not resubmit." }); return;
+      }
+      const savedText = review.kind === "seed" ? `Saved. Added ${result.seeded} teammate(s)${(result.added as string[]).length ? `: ${(result.added as string[]).join(", ")}` : ""}. ${typeof result.note === "string" ? result.note : ""}` : "Saved.";
+      if (review.kind === "member") setMember(newMember());
+      if (review.kind === "assignment") setAssignment(newAssignment());
+      setReview(null);
+      const refreshed = await refresh();
+      if (current()) setSeedMsg({ tone: refreshed ? "ok" : "warn", text: savedText + (refreshed ? " Lists refreshed." : " Saved, but refresh failed. Refresh to verify; do not resubmit.") });
+    } catch {
+      if (current()) { setReview(null); setSeedMsg({ tone: "err", text: "Request uncertain; seeding may be partial. Draft retained. Verify the roster and assignments before retrying." }); }
+    } finally { submitting.current = false; if (live.current) setBusy(false); }
+  }
+  function prefill(taskId: string | number) {
+    if (submitting.current || !canWrite) return;
+    const task = data?.agent_workload.find((w) => String(w.id) === String(taskId));
+    const rec = data?.recommendations?.find((r) => String(r.task_id) === String(taskId));
+    if (task) {
+      setAssignment({ member_id: rec?.suggested_member_id || "", work_item: task.title, hours: rec?.estimated_hours == null && task.estimated_hours == null ? "" : String(rec?.estimated_hours ?? task.estimated_hours),
+        due_date: calendarDay(task.due_date) || "", taskId: String(task.id) }); setReview(null); setSeedMsg(null);
     }
   }
-
-  async function assignBest(taskId: string | number) {
-    setBusy(true);
-    const r = await apiPost<{ ok: boolean; member_name?: string; error?: string }>("/api/capacity/assign-best", {
-      task_id: taskId,
-    });
-    setBusy(false);
-    if (!r.ok) { toast(r.error || "Assign failed — add teammates with free hours"); return; }
-    toast(`Assigned to ${r.member_name}`);
-    refresh();
-  }
-
+  const locked = busy || !!review || !canWrite || !roster || !data;
   const t = data?.totals;
+  if (checking || accessError) return <div style={{ padding: 28 }}><h1>Team Capacity &amp; Workload</h1>
+    {checking ? <p role="status">Verifying account, workspace and project access…</p> : <><p role="alert">{accessError}</p>
+      <p>Capacity data is hidden until access is verified. Temporary verification failures retain drafts.</p>
+      <button type="button" disabled={busy} onClick={() => void refresh()} style={btnStyle}>Refresh capacity</button></>}
+  </div>;
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(180deg,#F0F9FF 0%,#F8FAFC 40%)", padding: "28px 32px" }}>
@@ -174,13 +228,13 @@ export default function Capacity() {
           <div>
             <h1 style={{ margin: 0, fontSize: "1.55rem", color: "#0F172A" }}>Team Capacity & Workload</h1>
             <p style={{ margin: "6px 0 0", color: "#64748B" }}>
-              Who has hours this week, what is already allocated, and which open Marketing Goal tasks should go where.
+              Weekly capacity compared with base allocations and open assignments across all due dates.
             </p>
           </div>
           <button
             type="button"
-            disabled={busy}
-            onClick={() => { void seedUsers(); }}
+            disabled={locked}
+            onClick={() => reviewAction({ kind: "seed", label: "Seed from up to 40 workspace users, with default 40 weekly hours each. Includes active/invited workspace users; sends no invitations. Review the resulting roster after saving." })}
             style={{
               ...btnStyle,
               background: "#0369A1",
@@ -189,13 +243,25 @@ export default function Capacity() {
               cursor: busy ? "wait" : "pointer",
             }}
           >
-            {busy ? "Seeding…" : "Seed from workspace users"}
+            Seed from workspace users
           </button>
         </div>
 
+        <button type="button" disabled={busy || loading} onClick={() => void refresh()} style={btnStyle}>Refresh capacity</button>
+        {loading && <p role="status">Loading roster and workload…</p>}
+        {loadError && <p role="alert">{loadError} Failed data is withheld; refresh to try again.</p>}
+        {!canWrite && <p role="status">Read-only access. Changes require project editing access.</p>}
+        {review && <section aria-label="Review capacity change" style={{ background: "#FFFBEB", padding: 16, margin: "12px 0", borderRadius: 12 }}>
+          <h3>Review before saving</h3><p>{review.label}</p>
+          {review.kind === "member" && <p>{member.member_name} · {member.role} · {member.weekly_hours} weekly hours · {member.allocated_hours} base allocated hours · {member.active ? "Active" : "Inactive"}</p>}
+          {review.kind === "assignment" && <p>Person: {roster?.find((m) => m.id === assignment.member_id)?.member_name} ({assignment.member_id}) · {assignment.work_item} · {assignment.hours}h · Due: {assignment.due_date || "None"}{assignment.taskId ? ` · Agent task ${assignment.taskId}` : " · Manual work"}</p>}
+          <button type="button" disabled={busy} onClick={() => void save()} style={btnStyle}>Save change</button>{" "}
+          <button type="button" disabled={busy} onClick={() => setReview(null)} style={btnStyle}>Back to draft</button>
+        </section>}
+
         {seedMsg ? (
           <div
-            role="status"
+            role={seedMsg.tone === "err" ? "alert" : "status"}
             style={{
               marginBottom: 12,
               padding: "10px 14px",
@@ -218,20 +284,20 @@ export default function Capacity() {
             border: `1px solid ${a.severity === "high" ? "#FECACA" : "#FDE68A"}`,
             color: a.severity === "high" ? "#991B1B" : "#92400E",
           }}>
-            {a.message}
+            {a.message.replace("free this week", "remaining against weekly capacity (all due dates)")}
           </div>
         ))}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginBottom: 20 }}>
           {[
-            ["Members", t?.members ?? "—"],
+            ["Active members", t?.members ?? "—"],
             ["Weekly hours", t?.weekly_hours ?? "—"],
             ["Allocated", t?.allocated_hours ?? "—"],
             ["Remaining", t?.remaining_hours ?? "—"],
-            ["Utilization", t ? `${t.utilization_pct}%` : "—"],
+            ["Utilization", t ? t.weekly_hours === 0 ? "N/A (0 capacity)" : `${t.utilization_pct}%` : "—"],
             ["Overloaded", t?.overloaded ?? "—"],
             ["Open queue", t?.open_agent_tasks ?? "—"],
-            ["Unassigned hrs", t?.unassigned_task_hours ?? "—"],
+            ["Listed queue est. hrs", t?.unassigned_task_hours ?? "—"],
           ].map(([label, val]) => (
             <div key={String(label)} style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: "12px 14px" }}>
               <div style={{ fontSize: "0.66rem", color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>{label}</div>
@@ -243,7 +309,7 @@ export default function Capacity() {
         <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 16, marginBottom: 18 }}>
           <h3 style={{ margin: "0 0 10px", fontSize: "1rem" }}>Recommended assignments</h3>
           {(data?.recommendations || []).length === 0 ? (
-            <div style={{ color: "#64748B", fontSize: "0.9rem" }}>No open agent tasks to place — or everyone is clear.</div>
+            <div style={{ color: "#64748B", fontSize: "0.9rem" }}>{data ? "No assignment recommendations returned." : "Recommendations unavailable until workload loads."}</div>
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
               {(data?.recommendations || []).slice(0, 8).map((r) => (
@@ -254,18 +320,18 @@ export default function Capacity() {
                   <div>
                     <div style={{ fontWeight: 700, color: "#0F172A" }}>{r.task_title}</div>
                     <div style={{ fontSize: "0.82rem", color: "#64748B" }}>
-                      {r.goal_title || "Goal"} · {r.estimated_hours || 1}h · {r.priority || "—"}
+                      {r.goal_title || "Goal"} · {r.estimated_hours ?? "—"}h estimate · {r.priority || "—"}
                       {r.suggested_member_name ? ` → ${r.suggested_member_name}` : ""}
                     </div>
                     <div style={{ fontSize: "0.78rem", color: "#94A3B8" }}>{r.reason}</div>
                   </div>
                   <button
                     type="button"
-                    disabled={busy || !r.suggested_member_id}
-                    onClick={() => assignBest(r.task_id)}
+                    disabled={locked}
+                    onClick={() => prefill(r.task_id)}
                     style={btnStyle}
                   >
-                    Assign best
+                    Review assignment
                   </button>
                 </div>
               ))}
@@ -275,30 +341,57 @@ export default function Capacity() {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 22 }}>
           <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 18 }}>
-            <h3 style={{ margin: "0 0 12px", fontSize: "1rem" }}>Add teammate</h3>
-            <div style={{ display: "grid", gap: 8 }}>
-              <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} />
-              <input placeholder="Role" value={role} onChange={(e) => setRole(e.target.value)} style={inputStyle} />
-              <input placeholder="Weekly hours" value={hours} onChange={(e) => setHours(e.target.value)} style={inputStyle} />
-              <button type="button" onClick={addMember} style={btnStyle}>Add member</button>
-            </div>
+            <h3 style={{ margin: "0 0 12px", fontSize: "1rem" }}>{member.id ? "Edit teammate" : "Add teammate"}</h3>
+            <form aria-label="Roster details" onSubmit={(e) => { e.preventDefault(); reviewAction({ kind: "member", label: "Save these roster details. Skills, notes and active status are retained for existing members." }); }}>
+              <fieldset disabled={locked} style={{ border: 0, padding: 0, display: "grid", gap: 8 }}>
+                {([["member_name", "Name"], ["role", "Role"], ["weekly_hours", "Weekly hours (0–168)"], ["allocated_hours", "Base allocated hours (0–9999.99)"]] as const).map(([key, label]) => <label key={key}>{label}
+                  <input name={key} value={member[key]} onChange={(e) => { setMember({ ...member, [key]: e.target.value }); setSeedMsg(null); }} style={inputStyle} />
+                </label>)}
+                <p>Base allocated hours exclude open assignments. Zero is valid; at most 2 decimal places. Status: {member.active ? "active" : "inactive"}.</p>
+                <button type="submit" style={btnStyle}>Review member</button>
+                <button type="button" onClick={() => setMember(newMember())} style={btnStyle}>New member draft</button>
+              </fieldset>
+            </form>
           </div>
           <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: 18 }}>
             <h3 style={{ margin: "0 0 8px", fontSize: "1rem" }}>How to use this</h3>
             <ol style={{ margin: 0, paddingLeft: 18, color: "#475569", fontSize: "0.88rem", lineHeight: 1.55 }}>
               <li>Seed or add your marketers with weekly hour budgets.</li>
               <li>Open Marketing Goals create agent tasks automatically.</li>
-              <li>Use <strong>Assign best</strong> to place queue items on the least-loaded person.</li>
+              <li>Review a recommendation or queue item, choose the person and hours, then explicitly save.</li>
               <li>Watch overloaded alerts before committing more work.</li>
             </ol>
+            <h3>Assign work</h3>
+            <form aria-label="Assignment details" onSubmit={(e) => { e.preventDefault(); reviewAction({ kind: "assignment", label: "Confirm the assigned person, work item and hours. This records capacity only; it does not execute providers or finish agent tasks." }); }}>
+              <fieldset disabled={locked} style={{ border: 0, padding: 0, display: "grid", gap: 8 }}>
+                <label>Assigned person<select name="member_id" value={assignment.member_id} onChange={(e) => setAssignment({ ...assignment, member_id: e.target.value })} style={inputStyle}>
+                  <option value="">Choose an active person</option>{roster?.filter((m) => m.active).map((m) => <option key={m.id} value={m.id}>{m.member_name} ({m.id})</option>)}
+                </select></label>
+                {([["work_item", "Work item"], ["hours", "Assigned hours (>0–9999.99)"], ["due_date", "Due date (optional YYYY-MM-DD)"]] as const).map(([key, label]) => <label key={key}>{label}
+                  <input name={key} value={assignment[key]} readOnly={key === "work_item" && !!assignment.taskId} onChange={(e) => setAssignment({ ...assignment, [key]: e.target.value })} style={inputStyle} />
+                </label>)}
+                {assignment.taskId && <p>Agent task {assignment.taskId}: prefilled hours are priority-based estimates. Review the person and hours before saving.</p>}
+                <button type="submit" style={btnStyle}>Review assigned person and hours</button>
+                <button type="button" onClick={() => setAssignment(newAssignment())} style={btnStyle}>New manual assignment</button>
+              </fieldset>
+            </form>
           </div>
         </div>
 
-        <h3 style={{ margin: "0 0 10px" }}>Team load</h3>
+        <h3 style={{ margin: "0 0 10px" }}>Full roster</h3>
+        {roster?.length === 0 && <p>No teammates yet. Add a member or explicitly review seeding from workspace users.</p>}
+        {roster?.map((m) => <div key={m.id} style={{ marginBottom: 8 }}>
+          {m.member_name} · {m.role || "—"} · {m.active ? "Active" : "Inactive"} · {m.weekly_hours} weekly hours · {m.allocated_hours} base allocated hours{" "}
+          <button type="button" disabled={locked} onClick={() => { setMember(memberDraft(m)); setSeedMsg(null); }} style={btnStyle}>Edit {m.member_name}</button>{" "}
+          <button type="button" disabled={locked} onClick={() => reviewAction({ kind: m.active ? "deactivate" : "reactivate", id: m.id,
+            label: `${m.active ? "Deactivate" : "Reactivate"} ${m.member_name}? ${m.active ? "Open work must be done or cancelled first; deactivation does not close assignments." : `Review ${m.weekly_hours} weekly hours and ${m.allocated_hours} base allocated hours before reactivation.`}` })} style={btnStyle}>{m.active ? "Deactivate" : "Reactivate"} {m.member_name}</button>
+        </div>)}
+        <h3 style={{ margin: "18px 0 10px" }}>Team load</h3>
+        <p>Open allocations include all due dates. Done/cancelled controls close only the capacity assignment, not the underlying agent task.</p>
         <div style={{ display: "grid", gap: 10, marginBottom: 28 }}>
-          {(data?.members || []).length === 0 && (
+          {data && data.members.length === 0 && (
             <div style={{ padding: 18, background: "#fff", border: "1px dashed #CBD5E1", borderRadius: 12, color: "#64748B" }}>
-              No teammates yet — seed from workspace users or add someone above.
+              No active teammates in the workload summary.
             </div>
           )}
           {(data?.members || []).map((m) => (
@@ -317,9 +410,8 @@ export default function Capacity() {
                     color: LOAD_COLOR[m.load] || "#334155",
                     background: `${LOAD_COLOR[m.load] || "#334155"}18`,
                   }}>
-                    {m.load.replace("_", " ")} · {m.utilization_pct}%
+                    {m.weekly_hours === 0 ? "No weekly capacity · utilization N/A" : `${m.load.replace("_", " ")} · ${m.utilization_pct}%`}
                   </span>
-                  <button type="button" onClick={() => removeMember(m.id)} style={{ ...btnStyle, background: "#FEE2E2", color: "#991B1B" }}>Remove</button>
                 </div>
               </div>
               <div style={{ marginTop: 10, height: 8, background: "#F1F5F9", borderRadius: 999, overflow: "hidden" }}>
@@ -332,7 +424,11 @@ export default function Capacity() {
               {(m.assignments || []).length > 0 && (
                 <ul style={{ margin: "10px 0 0", paddingLeft: 18, color: "#475569", fontSize: "0.85rem" }}>
                   {m.assignments!.map((a) => (
-                    <li key={a.id}>{a.work_item} · {a.hours}h{a.due_date ? ` · due ${a.due_date}` : ""}</li>
+                    <li key={a.id}>{a.work_item} · {a.hours}h{a.due_date ? ` · due ${calendarDay(a.due_date)}` : ""}{" "}
+                      {(["done", "cancelled"] as const).map((status) => <button key={status} type="button" disabled={locked}
+                        onClick={() => reviewAction({ kind: "status", id: a.id, status, label: `Mark ${a.work_item} ${status}? This closes only this capacity assignment; the underlying agent task stays unchanged.` })}
+                        style={{ ...btnStyle, padding: "4px 8px", marginLeft: 4 }}>Mark {status}</button>)}
+                    </li>
                   ))}
                 </ul>
               )}
@@ -341,9 +437,10 @@ export default function Capacity() {
         </div>
 
         <h3 style={{ margin: "0 0 10px" }}>Open agent task queue</h3>
+        {data && <p>Showing {data.agent_workload.length} listed tasks of {data.totals.open_agent_tasks} total open tasks (list cap: 100). Priority-based hours are estimates for this listed subset, including tasks already assigned.</p>}
         <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, overflow: "hidden" }}>
           {(data?.agent_workload || []).length === 0 ? (
-            <div style={{ padding: 18, color: "#64748B" }}>No open agent tasks — Marketing Goals queue is clear.</div>
+            <div style={{ padding: 18, color: "#64748B" }}>{data ? data.totals.open_agent_tasks === 0 ? "No open agent tasks." : "No tasks returned in the listed subset." : "Task queue unavailable until workload loads."}</div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
               <thead>
@@ -365,8 +462,8 @@ export default function Capacity() {
                     <td style={td}>{w.estimated_hours ?? "—"}</td>
                     <td style={td}>{w.due_date ? String(w.due_date).slice(0, 10) : "—"}</td>
                     <td style={td}>
-                      <button type="button" disabled={busy} onClick={() => assignBest(w.id)} style={{ ...btnStyle, padding: "6px 10px", fontSize: "0.78rem" }}>
-                        Assign best
+                      <button type="button" disabled={locked} onClick={() => prefill(w.id)} style={{ ...btnStyle, padding: "6px 10px", fontSize: "0.78rem" }}>
+                        Review assignment
                       </button>
                     </td>
                   </tr>
