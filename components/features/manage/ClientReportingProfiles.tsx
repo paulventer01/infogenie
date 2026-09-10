@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { apiGet, apiPut } from "@/lib/api";
+import ClientReportingMappings from "@/components/features/manage/ClientReportingMappings";
 import { API, BRAND_FIELDS, accessLost, draftError, newDraft, profileDraft, profilePayload, responseError,
   saveMatches, validClient, validPage, validProfile, verifyAccess,
   type Client, type ClientsResponse, type Context, type Draft, type ProfileResponse } from "@/lib/clientReporting";
@@ -223,6 +224,9 @@ export default function ClientReportingProfiles() {
             {dirty || reloadRequired ? "Discard changes and reload" : "Reload profile"}
           </button>}
         </section>}
+        {clientId && context.current && !pendingClient && <ClientReportingMappings
+          key={`${context.current.userId}:${context.current.tenantId}:${clientId}`}
+          clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}
       </div>
     </div>
   </main>;
