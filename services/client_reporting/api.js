@@ -9,6 +9,7 @@ const { randomUUID } = require('node:crypto');
 const sources = require('./sources');
 const reports = require('./report');
 const delivery = require('./delivery');
+const _audit = require('../admin/audit');
 const router = express.Router();
 const PERMISSION = 'tenant.settings.manage';
 const CLIENT_COLUMNS = 'id, name, slug, website, status';
@@ -250,20 +251,62 @@ function deliveryInput(req) {
   return body.expected_version;
 }
 
+const RECIPIENT_COLUMNS = 'client_id, email, enabled, updated_at';
+const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function recipientInput(req) {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192) throw fail(413, 'payload_too_large');
+  if (Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 2 ||
+      typeof body.enabled !== 'boolean') throw fail(400, 'invalid_recipient');
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+  if (!EMAIL_RX.test(email) || email.length > 240) throw fail(400, 'invalid_recipient');
+  return { email, enabled: body.enabled };
+}
+
 async function deliveryContext(req, expectedVersion) {
   const tenantId = req.clientReportingTenantId, id = clientId(req), pool = _db.getPool();
   const snapshot = await reportSnapshot(req, expectedVersion);
-  const recipient = await clientRecipient(pool, tenantId, snapshot.client.name);
+  const recipient = await delivery.clientRecipient(pool, tenantId, id);
   if (!recipient) throw fail(409, 'no_recipient');
   return { snapshot, recipient };
 }
 
-async function clientRecipient(pool, tenantId, clientName) {
-  await pool.query('SELECT 1 FROM weekly_report_subs LIMIT 0').catch(() => {
-    throw fail(503, 'recipient_source_unavailable');
-  });
-  return delivery.clientRecipient(pool, tenantId, clientName);
-}
+router.get('/clients/:clientId/recipient', readLimiter, safe(async (req, res) => {
+  if (Object.keys(req.query).length) throw fail(400, 'invalid_recipient');
+  const tenantId = req.clientReportingTenantId, id = clientId(req), pool = _db.getPool();
+  const client = await activeClient(pool, tenantId, id);
+  const { rows } = await pool.query(`SELECT ${RECIPIENT_COLUMNS} FROM client_reporting_recipients
+    WHERE tenant_id=$1 AND client_id=$2`, [tenantId, id]);
+  return res.json({ ok: true, client, configured: !!rows[0], recipient: rows[0] || null });
+}));
+
+router.put('/clients/:clientId/recipient', writeLimiter, safe(async (req, res) => {
+  const tenantId = req.clientReportingTenantId, id = clientId(req), input = recipientInput(req);
+  const connection = await _db.getPool().connect();
+  try {
+    await connection.query('BEGIN');
+    const client = await activeClient(connection, tenantId, id, true);
+    const prior = await connection.query(`SELECT email, enabled FROM client_reporting_recipients
+      WHERE tenant_id=$1 AND client_id=$2`, [tenantId, id]);
+    const result = await connection.query(`INSERT INTO client_reporting_recipients
+      (tenant_id, client_id, email, enabled, updated_by_user_id)
+      VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (tenant_id, client_id) DO UPDATE SET email=EXCLUDED.email, enabled=EXCLUDED.enabled,
+        updated_by_user_id=EXCLUDED.updated_by_user_id, updated_at=now()
+      RETURNING ${RECIPIENT_COLUMNS}`, [tenantId, id, input.email, input.enabled, positiveId(req.user.id)]);
+    await connection.query('COMMIT');
+    await _audit.recordAudit({
+      action: 'client_reporting.recipient_update', actorUserId: req.user.id, actorEmail: req.user.email,
+      tenantId, targetEmail: input.email, detail: `${client.name}: ${prior.rows[0]?.email || 'none'} -> ${input.email}`,
+      context: { client_id: id, enabled: input.enabled },
+    });
+    return res.json({ ok: true, client, configured: true, recipient: result.rows[0] });
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally { connection.release(); }
+}));
 
 router.get('/clients/:clientId/report-recipient', readLimiter, safe(async (req, res) => {
   if (Object.keys(req.query).length) throw fail(400, 'invalid_delivery');
@@ -273,10 +316,10 @@ router.get('/clients/:clientId/report-recipient', readLimiter, safe(async (req, 
     WHERE tenant_id=$1 AND client_id=$2`, [tenantId, id]);
   const profile = rows[0];
   if (!profile) throw fail(409, 'profile_required');
-  const email = await clientRecipient(pool, tenantId, client.name);
+  const email = await delivery.clientRecipient(pool, tenantId, id);
   if (!email) throw fail(409, 'no_recipient');
   return res.json({ ok: true, client, profile_version: profile.version, format: profile.default_format,
-    recipient: { email, source: 'weekly_report_sub', brand: client.name } });
+    recipient: { email, source: 'client_reporting_recipient', enabled: true } });
 }));
 
 router.post('/clients/:clientId/report-email', writeLimiter, safe(async (req, res) => {
@@ -296,6 +339,12 @@ router.post('/clients/:clientId/report-email', writeLimiter, safe(async (req, re
     if (error.code === 'mail_failed') return res.status(502).json({ ok: false, error: 'mail_failed' });
     throw error;
   }
+  await _audit.recordAudit({
+    action: 'client_reporting.report_email', actorUserId: req.user.id, actorEmail: req.user.email,
+    tenantId: req.clientReportingTenantId, targetEmail: recipient,
+    detail: `Client ${clientId(req)} ${snapshot.format} profile v${snapshot.profile_version}`,
+    context: { client_id: clientId(req), profile_version: snapshot.profile_version, format: snapshot.format },
+  });
   return res.json({ ok: true, sent: true, recipient, format: snapshot.format, profile_version: snapshot.profile_version });
 }));
 

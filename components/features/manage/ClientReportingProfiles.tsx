@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { apiGet, apiPut } from "@/lib/api";
 import ClientReportingReport from "@/components/features/manage/ClientReportingReport";
+import ClientReportingRecipient from "@/components/features/manage/ClientReportingRecipient";
 import ClientReportingMappings from "@/components/features/manage/ClientReportingMappings";
 import { API, BRAND_FIELDS, accessLost, draftError, newDraft, profileDraft, profilePayload, responseError,
   saveMatches, validClient, validPage, validProfile, verifyAccess,
@@ -225,6 +226,9 @@ export default function ClientReportingProfiles() {
             {dirty || reloadRequired ? "Discard changes and reload" : "Reload profile"}
           </button>}
         </section>}
+        {clientId && context.current && !pendingClient && <ClientReportingRecipient
+          key={`${context.current.userId}:${context.current.tenantId}:${clientId}:recipient`}
+          clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}
         {clientId && context.current && !pendingClient && (draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError
           ? <ClientReportingReport key={`${context.current.userId}:${context.current.tenantId}:${clientId}:${version}`}
             clientId={clientId} version={version} format={draft.default_format} checkAccess={checkAccess} clearContext={clearContext} />

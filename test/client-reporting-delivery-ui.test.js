@@ -7,7 +7,7 @@ const BASE = "/api/client-reporting";
 const client = (id) => ({ id, name: "Client", slug: null, website: null, status: "active" });
 const profile = (s) => ({ client_id: s.clientId, version: s.version, report_source: "search-intel", default_format: s.format, report_title: "Saved report", branding_mode: "workspace", branding_overrides: {}, created_at: "2026-01-01", updated_at: "2026-01-01" });
 const preview = (s) => ({ ok: true, client: client(s.clientId), profile_version: s.version, format: s.format, can_generate: true, brand: {}, report: { title: "Saved report", generated_at: "2026-01-01", sections: [{ kind: "table", title: "Mapped records", headers: ["Name"], rows: [["Client record"]] }] } });
-const recipient = (s) => ({ ok: true, client: client(s.clientId), profile_version: s.version, format: s.format, recipient: { email: "client@example.com", source: "weekly_report_sub", brand: "Client" } });
+const recipient = (s) => ({ ok: true, client: client(s.clientId), profile_version: s.version, format: s.format, recipient: { email: "client@example.com", source: "client_reporting_recipient", enabled: true } });
 async function harness(t, handler = () => undefined) {
   const dom = new JSDOM("<div id='root'></div>", { url: "http://localhost/manage/client-reporting", pretendToBeVisual: true });
   const calls = [], cleared = [], state = { clientId: 11, allowed: true, version: 1, format: "pdf" };
@@ -63,7 +63,7 @@ test("missing recipient shows actionable error", async (t) => {
   const h = await harness(t, (c) => c.url.endsWith("/report-recipient") ? { ok: false, error: "no_recipient", httpStatus: 409 } : undefined);
   await h.click("Preview report");
   await h.click("Email report");
-  assert.match(h.text(), /weekly report subscription/);
+  assert.match(h.text(), /delivery recipient/);
 });
 test("mail failure shows actionable error after confirmation", async (t) => {
   const h = await harness(t, (c) => c.url.endsWith("/report-email") ? { ok: false, error: "mail_failed", httpStatus: 502 } : undefined);

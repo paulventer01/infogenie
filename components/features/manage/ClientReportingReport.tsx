@@ -71,7 +71,7 @@ export default function ClientReportingReport({ clientId, version, format, check
       if (failure && accessLost(failure)) clearContext(failure);
       if (failure || !validRecipient(result, clientId, version, format)) {
         throw new Error(failure === "no_recipient"
-          ? "No weekly report subscription matches this client name. Add the client email under Weekly Reports before emailing."
+          ? "No active delivery recipient is configured for this client. Add or enable one above before emailing."
           : failure || "The delivery recipient could not be verified. Preview again before emailing.");
       }
       if (!await verify(current) || !current()) return;
@@ -97,7 +97,7 @@ export default function ClientReportingReport({ clientId, version, format, check
       if (failure) throw new Error(failure === "mail_failed"
         ? "The report could not be emailed. Check mail configuration and try again."
         : failure === "no_recipient"
-          ? "No weekly report subscription matches this client name anymore. Reload the profile and try again."
+          ? "The delivery recipient is missing or deactivated. Reload the recipient and try again."
           : failure);
       if (!await verify(current) || !current()) return;
       setConfirm(null); setNotice(`Report emailed to ${confirm.recipient.email}.`);
@@ -111,14 +111,14 @@ export default function ClientReportingReport({ clientId, version, format, check
   }
   return <section aria-label="Client report preview" style={{ marginTop: 20, padding: 20, border: "1px solid #E2E8F0", borderRadius: 12, background: "#FFFFFF", minWidth: 0 }}>
     <h2>Preview and generate a client report</h2>
-    <p>Uses this client&apos;s saved profile and mapped records. Generate downloads a fresh snapshot, so values may differ from the preview. Email uses the weekly report subscription that matches this client&apos;s name.</p>
+    <p>Uses this client&apos;s saved profile and mapped records. Generate downloads a fresh snapshot, so values may differ from the preview. Email sends to the configured delivery recipient.</p>
     <button disabled={busy} onClick={() => void perform(false)}>Preview report</button>{" "}
     <button disabled={busy || !preview?.can_generate} onClick={() => void perform(true)}>Generate &amp; download {format.toUpperCase()}</button>{" "}
     <button disabled={busy || !preview?.can_generate} onClick={() => void prepareEmail()}>Email report</button>
     {busy && <p role="status">Verifying access and preparing the report…</p>}
     {confirm && !busy && <div role="dialog" aria-label="Confirm email delivery" style={{ marginTop: 16, padding: 16, border: "1px solid #CBD5E1", borderRadius: 8, background: "#F8FAFC" }}>
       <p>Email the current {format.toUpperCase()} report to <strong>{confirm.recipient.email}</strong>?</p>
-      <p style={{ color: "#64748B", fontSize: 14 }}>Uses weekly report subscription for &ldquo;{confirm.recipient.brand}&rdquo; and saved profile version {version}.</p>
+      <p style={{ color: "#64748B", fontSize: 14 }}>Uses the saved delivery recipient and profile version {version}.</p>
       <button disabled={busy} onClick={() => void sendEmail()}>Confirm email</button>{" "}
       <button disabled={busy} onClick={() => setConfirm(null)}>Cancel</button>
     </div>}

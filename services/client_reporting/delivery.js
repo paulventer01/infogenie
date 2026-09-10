@@ -10,12 +10,11 @@ const MIME = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
 
-async function clientRecipient(pool, tenantId, clientName) {
+async function clientRecipient(pool, tenantId, clientId) {
   const { rows } = await pool.query(
-    `SELECT email FROM weekly_report_subs
-     WHERE tenant_id=$1 AND brand=$2 AND enabled=true
-     ORDER BY last_sent_at DESC NULLS LAST, created_at ASC LIMIT 1`,
-    [tenantId, clientName],
+    `SELECT email FROM client_reporting_recipients
+     WHERE tenant_id=$1 AND client_id=$2 AND enabled=true`,
+    [tenantId, clientId],
   );
   return rows[0]?.email || null;
 }

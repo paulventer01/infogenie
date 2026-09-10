@@ -41,6 +41,18 @@ async function ensureClientReportingSchema() {
         (jsonb_typeof(branding_overrides->'textColor') = 'string' AND
          branding_overrides->>'textColor' ~ '^#[0-9A-Fa-f]{6}$'))
     );
+    CREATE TABLE IF NOT EXISTS client_reporting_recipients (
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      email TEXT NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT true,
+      updated_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, client_id),
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE,
+      CHECK (email = lower(btrim(email)) AND email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' AND length(email) <= 240)
+    );
   `);
 }
 

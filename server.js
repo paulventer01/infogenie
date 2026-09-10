@@ -694,6 +694,7 @@ const _CLIENT_REPORTING_OWNER_GATE_ALLOW = [
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/?$/],
   [/^(GET|HEAD|PUT)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/profile\/?$/],
+  [/^(GET|HEAD|PUT)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/recipient\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/report-preview\/?$/],
   [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/report\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/report-recipient\/?$/],
