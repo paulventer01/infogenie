@@ -1,0 +1,86 @@
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { createRequire } = require('node:module');
+const matrix = require('../services/tenants/permission_matrix');
+const { SYSTEM_ROLES } = require('../services/tenants/permissions');
+
+// Execute the real legacy owner-gate middleware and actual strict matrix with
+// injected principals. Full session/membership/SQL coverage belongs to the API
+// integration suite; no server boot, network or PostgreSQL is claimed here.
+const source = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const start = source.indexOf('const _OWNER_GATE_ALLOW = [');
+const end = source.indexOf('// ── Per-provider budget caps', start);
+assert.ok(start > 0 && end > start, 'owner-gate source must remain identifiable');
+let ownerGate;
+vm.runInNewContext(source.slice(start, end), { app: { use: (fn) => { ownerGate = fn; } } });
+assert.equal(typeof ownerGate, 'function');
+const filename = path.join(__dirname, '..', 'services/tenants/permission_enforce.js');
+const localRequire = createRequire(filename), loaded = { exports: {} };
+new Function('require', 'module', 'exports', fs.readFileSync(filename, 'utf8'))(
+  (name) => name === '../security/prod_defaults' ? { permissionMode: () => 'on' } : localRequire(name),
+  loaded, loaded.exports,
+);
+const enforce = loaded.exports;
+const ROOT = '/api/client-reporting/clients';
+const routes = [
+  ['GET', ROOT], ['HEAD', ROOT], ['GET', ROOT + '/12'], ['HEAD', ROOT + '/12'],
+  ['GET', ROOT + '/12/profile'], ['HEAD', ROOT + '/12/profile'], ['PUT', ROOT + '/12/profile'],
+];
+function invoke(middleware, method, pathname, roleKey = 'tenant_admin') {
+  const role = SYSTEM_ROLES.find((r) => r.key === roleKey);
+  const req = { method, path: pathname, user: { id: 17, isOwner: false },
+    can: (key) => role.permissions.includes(key) };
+  const result = { allowed: false, status: null, body: null };
+  const res = { status: (code) => { result.status = code; return res; },
+    json: (body) => { result.body = body; return res; } };
+  middleware(req, res, () => { result.allowed = true; });
+  return result;
+}
+
+test('client reporting matrix requires workspace settings for every implemented method', () => {
+  assert.deepEqual(matrix.validate(), []);
+  for (const [method, pathname] of routes) {
+    const requirement = matrix.requiredPermissionForRequest(pathname, method);
+    assert.equal(requirement.matched, true);
+    assert.equal(requirement.permission, 'tenant.settings.manage');
+    for (const role of ['tenant_owner', 'tenant_admin']) {
+      assert.equal(invoke(enforce.enforceMatrix, method, pathname, role).allowed, true);
+    }
+    for (const role of ['analyst', 'client_viewer', 'marketer', 'content_creator']) {
+      const result = invoke(enforce.enforceMatrix, method, pathname, role);
+      assert.equal(result.allowed, false, role + ' must not access reporting settings');
+      assert.equal(result.status, 403);
+      assert.equal(result.body.required, 'tenant.settings.manage');
+    }
+  }
+});
+
+test('authorized non-owner settings routes pass the real owner gate, including normal HEAD behavior', () => {
+  for (const [method, pathname] of routes) {
+    assert.equal(invoke(ownerGate, method, pathname).allowed, true, method + ' ' + pathname);
+    assert.equal(invoke(ownerGate, method, pathname + '/').allowed, true);
+  }
+});
+
+test('owner-gate exemption cannot expose generation, client creation or lookalike paths', () => {
+  const blocked = [
+    ['GET', '/api/client-reporting'], ['POST', ROOT], ['DELETE', ROOT + '/12'],
+    ['PATCH', ROOT + '/12/profile'], ['POST', ROOT + '/12/profile'], ['DELETE', ROOT + '/12/profile'],
+    ['GET', ROOT + '/12/profile/export'], ['POST', ROOT + '/12/generate'],
+    ['GET', ROOT + '-export'], ['GET', ROOT + '/12/profile-export'], ['GET', ROOT + '/12extra'],
+    ['GET', ROOT + '/0'], ['GET', ROOT + '/-12'], ['GET', ROOT + '/12.5/profile'],
+    ['GET', '/api/client-reporting-export/clients'], ['GET', '/api/other' + ROOT],
+    ['GET', '/api/exports/campaigns/pdf'], ['GET', '/api/agency-report'],
+  ];
+  for (const [method, pathname] of blocked) {
+    const result = invoke(ownerGate, method, pathname);
+    assert.equal(result.allowed, false, method + ' ' + pathname);
+    assert.equal(result.status, 403);
+    assert.equal(result.body.error, 'owner_only');
+  }
+});

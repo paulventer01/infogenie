@@ -688,10 +688,18 @@ const _CAPACITY_OWNER_GATE_ALLOW = [
   [/^DELETE$/, /^\/api\/capacity\/members\/[^/]+\/?$/],
   [/^PATCH$/, /^\/api\/capacity\/assignments\/[^/]+\/?$/],
 ];
+// Client reporting settings are scoped to active tenant membership and the
+// settings grant in their router. Exempt only the implemented methods/paths.
+const _CLIENT_REPORTING_OWNER_GATE_ALLOW = [
+  [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/?$/],
+  [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/?$/],
+  [/^(GET|HEAD|PUT)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/profile\/?$/],
+];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
   if (_OWNER_GATE_ALLOW.some(rx => rx.test(req.path))) return next();
   if (_CAPACITY_OWNER_GATE_ALLOW.some(([method, route]) => method.test(req.method) && route.test(req.path))) return next();
+  if (_CLIENT_REPORTING_OWNER_GATE_ALLOW.some(([method, route]) => method.test(req.method) && route.test(req.path))) return next();
   if (!req.user) return next();              // API-key path already mapped to owner
   if (req.user.isOwner === true) return next();
   return res.status(403).json({
@@ -2479,6 +2487,11 @@ BOOT_TASKS.push(async () => {
       } catch (e) {
         console.error('[admin] schema init failed:', e.message);
       }
+      try {
+        await require('./services/client_reporting/schema').ensureClientReportingSchema();
+      } catch (e) {
+        console.error('[client-reporting] schema init failed:', e.message);
+      }
       // Phase 2 mass migration: add tenant_id column + index + backfill to
       // every business table. Deferred 8s so all parallel `ensureXSchema()`
       // CREATE TABLE statements have completed first. Fully idempotent —
@@ -2529,6 +2542,7 @@ const _searchIntelRouter = require('./services/search_intel/api');
 app.use('/api/search-intel', _searchIntelRouter);
 const _exportsRouter = require('./services/exports/api');
 app.use('/api/exports', _exportsRouter);
+app.use('/api/client-reporting', require('./services/client_reporting/api'));
 
 // ── Customer Journey Builder + Signal Triggers + Omni-Channel ─────────────
 const _journeySchema    = require('./services/journey_builder/schema');
