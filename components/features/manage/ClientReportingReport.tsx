@@ -1,13 +1,15 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiBlob, apiGet } from "@/lib/api";
+import { apiBlob, apiGet, apiPost } from "@/lib/api";
 import { API, accessLost, responseError, validClient, validProfile, type Draft, type ProfileResponse } from "@/lib/clientReporting";
+import { validRecipient, type RecipientResponse } from "@/lib/clientReportingDelivery";
 import { validPreview, validReportBlob, type Preview } from "@/lib/clientReportingReport";
 
 type Props = { clientId: number; version: number; format: Draft["default_format"]; checkAccess: () => Promise<boolean>; clearContext: (message: string) => void };
 export default function ClientReportingReport({ clientId, version, format, checkAccess, clearContext }: Props) {
   const [preview, setPreview] = useState<Preview | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<RecipientResponse | null>(null);
   const live = useRef(false), running = useRef(false), sequence = useRef(0);
   const stop = useCallback(() => { live.current = false; ++sequence.current; }, []);
   useEffect(() => { live.current = true; return stop; }, [stop]);
@@ -57,12 +59,69 @@ export default function ClientReportingReport({ clientId, version, format, check
       }
     } finally { if (current()) { running.current = false; setBusy(false); } }
   }
+  async function prepareEmail() {
+    if (running.current || !live.current || !preview?.can_generate) return;
+    const operation = ++sequence.current, current = () => live.current && operation === sequence.current;
+    running.current = true; setBusy(true); setError(null); setNotice(null); setConfirm(null);
+    try {
+      if (!await verify(current) || !current()) return;
+      const result = await apiGet<RecipientResponse>(`${API}/${clientId}/report-recipient`);
+      if (!current()) return;
+      const failure = responseError(result);
+      if (failure && accessLost(failure)) clearContext(failure);
+      if (failure || !validRecipient(result, clientId, version, format)) {
+        throw new Error(failure === "no_recipient"
+          ? "No active delivery recipient is configured for this client. Add or enable one above before emailing."
+          : failure || "The delivery recipient could not be verified. Preview again before emailing.");
+      }
+      if (!await verify(current) || !current()) return;
+      setConfirm(result);
+    } catch (e) {
+      if (current()) {
+        const message = e instanceof Error ? e.message : "Email delivery could not be prepared. Preview again before retrying.";
+        if (accessLost(message)) clearContext(message);
+        setError(message);
+      }
+    } finally { if (current()) { running.current = false; setBusy(false); } }
+  }
+  async function sendEmail() {
+    if (running.current || !live.current || !confirm) return;
+    const operation = ++sequence.current, current = () => live.current && operation === sequence.current;
+    running.current = true; setBusy(true); setError(null); setNotice(null);
+    try {
+      if (!await verify(current) || !current()) return;
+      const result = await apiPost(`${API}/${clientId}/report-email`, { expected_version: version, confirm: true });
+      if (!current()) return;
+      const failure = responseError(result);
+      if (failure && accessLost(failure)) clearContext(failure);
+      if (failure) throw new Error(failure === "mail_failed"
+        ? "The report could not be emailed. Check mail configuration and try again."
+        : failure === "no_recipient"
+          ? "The delivery recipient is missing or deactivated. Reload the recipient and try again."
+          : failure);
+      if (!await verify(current) || !current()) return;
+      setConfirm(null); setNotice(`Report emailed to ${confirm.recipient.email}.`);
+    } catch (e) {
+      if (current()) {
+        const message = e instanceof Error ? e.message : "Email delivery failed. Preview again before retrying.";
+        if (accessLost(message)) clearContext(message);
+        setError(message); setConfirm(null);
+      }
+    } finally { if (current()) { running.current = false; setBusy(false); } }
+  }
   return <section aria-label="Client report preview" style={{ marginTop: 20, padding: 20, border: "1px solid #E2E8F0", borderRadius: 12, background: "#FFFFFF", minWidth: 0 }}>
     <h2>Preview and generate a client report</h2>
-    <p>Uses this client&apos;s saved profile and mapped records. Generate downloads a fresh snapshot, so values may differ from the preview. Scheduling and delivery are not included.</p>
+    <p>Uses this client&apos;s saved profile and mapped records. Generate downloads a fresh snapshot, so values may differ from the preview. Email sends to the configured delivery recipient.</p>
     <button disabled={busy} onClick={() => void perform(false)}>Preview report</button>{" "}
-    <button disabled={busy || !preview?.can_generate} onClick={() => void perform(true)}>Generate &amp; download {format.toUpperCase()}</button>
+    <button disabled={busy || !preview?.can_generate} onClick={() => void perform(true)}>Generate &amp; download {format.toUpperCase()}</button>{" "}
+    <button disabled={busy || !preview?.can_generate} onClick={() => void prepareEmail()}>Email report</button>
     {busy && <p role="status">Verifying access and preparing the report…</p>}
+    {confirm && !busy && <div role="dialog" aria-label="Confirm email delivery" style={{ marginTop: 16, padding: 16, border: "1px solid #CBD5E1", borderRadius: 8, background: "#F8FAFC" }}>
+      <p>Email the current {format.toUpperCase()} report to <strong>{confirm.recipient.email}</strong>?</p>
+      <p style={{ color: "#64748B", fontSize: 14 }}>Uses the saved delivery recipient and profile version {version}.</p>
+      <button disabled={busy} onClick={() => void sendEmail()}>Confirm email</button>{" "}
+      <button disabled={busy} onClick={() => setConfirm(null)}>Cancel</button>
+    </div>}
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     {preview && !busy && <article style={{ borderTop: `4px solid ${preview.brand.primaryColor || "#0F766E"}`, color: preview.brand.textColor || "#0F172A", marginTop: 16, overflowWrap: "anywhere" }}>
       {preview.brand.agencyName && <p>{preview.brand.agencyName}</p>}

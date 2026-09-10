@@ -32,6 +32,8 @@ const routes = [
   ['GET', ROOT], ['HEAD', ROOT], ['GET', ROOT + '/12'], ['HEAD', ROOT + '/12'],
   ['GET', ROOT + '/12/profile'], ['HEAD', ROOT + '/12/profile'], ['PUT', ROOT + '/12/profile'],
   ['GET', ROOT + '/12/report-preview'], ['HEAD', ROOT + '/12/report-preview'], ['POST', ROOT + '/12/report'],
+  ['GET', ROOT + '/12/report-recipient'], ['HEAD', ROOT + '/12/report-recipient'], ['POST', ROOT + '/12/report-email'],
+  ['GET', ROOT + '/12/recipient'], ['HEAD', ROOT + '/12/recipient'], ['PUT', ROOT + '/12/recipient'],
 ];
 for (const source of ['search-intel', 'campaigns']) {
   routes.push(
@@ -100,6 +102,10 @@ test('owner-gate exemption cannot expose unimplemented methods, client creation 
   const blocked = [
     ['POST', ROOT + '/12/report-preview'], ['PUT', ROOT + '/12/report-preview'],
     ['GET', ROOT + '/12/report'], ['HEAD', ROOT + '/12/report'], ['DELETE', ROOT + '/12/report'],
+    ['POST', ROOT + '/12/report-recipient'], ['PUT', ROOT + '/12/report-recipient'],
+    ['POST', ROOT + '/12/recipient'], ['DELETE', ROOT + '/12/recipient'],
+    ['GET', ROOT + '/12/report-email'], ['DELETE', ROOT + '/12/report-email'],
+    ['POST', ROOT + '/12/report-recipient-extra'], ['GET', ROOT + '/12/report-email/send'],
     ['GET', ROOT + '/12/report-preview/export'], ['POST', ROOT + '/12/report/export'],
     ['GET', ROOT + '/12/report-preview-extra'], ['POST', ROOT + '/12/report-extra'],
     ['GET', ROOT + '/0/report-preview'], ['POST', ROOT + '/12extra/report'],
