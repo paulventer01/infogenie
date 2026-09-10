@@ -106,18 +106,14 @@ jobs:
           NEXT_TELEMETRY_DISABLED: '1'
         run: |
           set -o pipefail
-          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/browser/client-reporting-profiles.test.js | tee /tmp/client-reporting-browser.tap
-          grep -Eq '^# tests [1-9][0-9]*$' /tmp/client-reporting-browser.tap
-          grep -Eq '^# fail 0$' /tmp/client-reporting-browser.tap
-          grep -Eq '^# skipped 0$' /tmp/client-reporting-browser.tap
-          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/browser/client-reporting-mappings.test.js | tee /tmp/client-reporting-mappings-browser.tap
-          grep -Eq '^# tests [1-9][0-9]*$' /tmp/client-reporting-mappings-browser.tap
-          grep -Eq '^# fail 0$' /tmp/client-reporting-mappings-browser.tap
-          grep -Eq '^# skipped 0$' /tmp/client-reporting-mappings-browser.tap
-          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/browser/client-reporting-reports.test.js | tee /tmp/client-reporting-reports-browser.tap
-          grep -Eq '^# tests [1-9][0-9]*$' /tmp/client-reporting-reports-browser.tap
-          grep -Eq '^# fail 0$' /tmp/client-reporting-reports-browser.tap
-          grep -Eq '^# skipped 0$' /tmp/client-reporting-reports-browser.tap
+          result=0
+          for suite in profiles mappings reports; do
+            node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit "test/browser/client-reporting-${suite}.test.js" | tee "/tmp/client-reporting-${suite}-browser.tap" || result=1
+            grep -Eq '^# tests [1-9][0-9]*$' "/tmp/client-reporting-${suite}-browser.tap" || result=1
+            grep -Eq '^# fail 0$' "/tmp/client-reporting-${suite}-browser.tap" || result=1
+            grep -Eq '^# skipped 0$' "/tmp/client-reporting-${suite}-browser.tap" || result=1
+          done
+          exit "$result"
       - name: Upload synthetic profile screenshots
         if: always()
         uses: actions/upload-artifact@v4
