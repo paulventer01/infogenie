@@ -5,6 +5,8 @@ const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 const { hasPermission } = require('../tenants/permission_enforce');
 const { createRateLimiter } = require('../security/rate_limit');
+const { randomUUID } = require('node:crypto');
+const sources = require('./sources');
 const router = express.Router();
 const PERMISSION = 'tenant.settings.manage';
 const CLIENT_COLUMNS = 'id, name, slug, website, status';
@@ -129,6 +131,72 @@ router.put('/clients/:clientId/profile', writeLimiter, safe(async (req, res) => 
     if (!result.rows[0]) throw fail(409, 'version_conflict');
     await connection.query('COMMIT');
     return res.json({ ok: true, configured: true, profile: result.rows[0] });
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally { connection.release(); }
+}));
+
+function pagination(req) {
+  const cursor = req.query.cursor === undefined ? 0 : positiveId(req.query.cursor);
+  const limit = req.query.limit === undefined ? 50 : positiveId(req.query.limit);
+  if (Object.keys(req.query).some((key) => !['cursor', 'limit'].includes(key)) ||
+      cursor === null || cursor > 2147483647 || !limit || limit > 100) throw fail(400, 'invalid_pagination');
+  return { cursor, limit };
+}
+function mappingInput(req) {
+  const body = req.body, deleting = req.method === 'DELETE';
+  const raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192) throw fail(413, 'payload_too_large');
+  if (Object.keys(req.query).length || !object(body) || (deleting
+    ? Object.keys(body).length !== 1 || typeof body.mapping_id !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.mapping_id)
+    : Object.keys(body).length !== 0)) throw fail(400, 'invalid_mapping');
+  return body.mapping_id;
+}
+router.get('/sources/:source/records', readLimiter, safe(async (req, res) => {
+  const spec = sources.source(req.params.source), { cursor, limit } = pagination(req);
+  return res.json({ ok: true, source: req.params.source,
+    ...await sources.candidates(_db.getPool(), spec, req.clientReportingTenantId, cursor, limit) });
+}));
+
+const mutateMapping = safe(async (req, res) => {
+  const spec = sources.source(req.params.source), token = mappingInput(req);
+  const tenantId = req.clientReportingTenantId, id = clientId(req), recordId = positiveId(req.params.recordId);
+  if (!recordId || recordId > 2147483647) throw fail(400, 'invalid_record_id');
+  const connection = await _db.getPool().connect();
+  try {
+    await connection.query('BEGIN');
+    await activeClient(connection, tenantId, id, true);
+    const root = await connection.query(`SELECT id FROM ${spec.table} WHERE tenant_id=$1 AND id=$2 FOR KEY SHARE`, [tenantId, recordId]);
+    if (!root.rows[0]) throw fail(404, 'record_not_found');
+    const result = req.method === 'POST'
+      ? await connection.query(`INSERT INTO ${spec.mappings} (tenant_id,${spec.key},client_id,mapping_id,created_by_user_id)
+        VALUES ($1,$2,$3,$4,$5) ON CONFLICT (tenant_id,${spec.key}) DO NOTHING
+        RETURNING ${spec.key} AS record_id,client_id,mapping_id`, [tenantId, recordId, id, randomUUID(), positiveId(req.user.id)])
+      : await connection.query(`DELETE FROM ${spec.mappings} WHERE tenant_id=$1 AND ${spec.key}=$2 AND client_id=$3 AND mapping_id=$4
+        RETURNING ${spec.key} AS record_id,client_id,mapping_id`, [tenantId, recordId, id, token]);
+    if (!result.rows[0]) throw fail(409, 'mapping_conflict');
+    await connection.query('COMMIT');
+    return res.status(req.method === 'POST' ? 201 : 200).json({ ok: true, source: req.params.source,
+      ...(req.method === 'POST' ? { mapping: result.rows[0] } : { deleted: true }) });
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally { connection.release(); }
+});
+router.post('/clients/:clientId/mappings/:source/:recordId', writeLimiter, mutateMapping);
+router.delete('/clients/:clientId/mappings/:source/:recordId', writeLimiter, mutateMapping);
+
+router.get('/clients/:clientId/data/:source', readLimiter, safe(async (req, res) => {
+  const spec = sources.source(req.params.source), { cursor, limit } = pagination(req);
+  const tenantId = req.clientReportingTenantId, id = clientId(req), connection = await _db.getPool().connect();
+  try {
+    await connection.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const client = await activeClient(connection, tenantId, id);
+    const data = await sources.data(connection, req.params.source, spec, tenantId, id, cursor, limit);
+    await connection.query('COMMIT');
+    return res.json({ ok: true, client, ...data });
   } catch (error) {
     await connection.query('ROLLBACK');
     throw error;

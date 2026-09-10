@@ -191,3 +191,132 @@ test('GET and inherited HEAD share a 300-read tenant budget, with no DB access a
   assert.equal((await fx.request('PUT', '/clients/11/profile', input)).status, 200);
   assert.equal(fx.calls.at(-1).sql, 'COMMIT');
 });
+
+test('mapping inputs reject forged ownership, unsafe source/IDs and extra query parameters before SQL', async (t) => {
+  const fx = await fixture(t);
+  const mappingPath = '/clients/11/mappings/search-intel/5';
+  for (const [method, pathname, body] of [
+    ['POST', mappingPath, { tenant_id: 102 }], ['POST', mappingPath, { client_id: 12 }],
+    ['POST', mappingPath, { mapping_id: '123' }], ['POST', mappingPath, []],
+    ['POST', mappingPath + '?tenant_id=102', {}], ['POST', mappingPath.replace('/5', '/5junk'), {}],
+    ['POST', mappingPath.replace('search-intel', 'constructor'), {}], ['POST', mappingPath.replace('/11/', '/0/'), {}],
+    ['DELETE', mappingPath, {}], ['DELETE', mappingPath, { mapping_id: 'bad' }],
+    ['DELETE', mappingPath, { mapping_id: '11111111-1111-4111-8111-111111111111', client_id: 12 }],
+  ]) assert.equal((await fx.request(method, pathname, body)).status, 400);
+  assert.equal((await fx.request('POST', mappingPath, ' '.repeat(8192) + '{}')).status, 413);
+  for (const pathname of ['/sources/constructor/records', '/sources/search-intel/records?cursor=0',
+    '/sources/campaigns/records?limit=101', '/sources/campaigns/records?limit[]=1',
+    '/clients/11/data/search-intel?tenant_id=102']) assert.equal((await fx.request('GET', pathname)).status, 400);
+  assert.equal(fx.calls.length, 0);
+});
+
+test('every mapping and data route inherits membership and direct permission enforcement', async (t) => {
+  for (const mode of ['off', 'shadow', 'on']) {
+    for (const actor of [principal({ can: () => false }), principal({ tenantMemberships: [] })]) {
+      const fx = await fixture(t, { actor, mode });
+      for (const [method, pathname, body] of [
+        ['GET', '/sources/search-intel/records'], ['HEAD', '/sources/campaigns/records'],
+        ['GET', '/clients/11/data/search-intel'], ['HEAD', '/clients/11/data/campaigns'],
+        ['POST', '/clients/11/mappings/campaigns/5', {}],
+        ['DELETE', '/clients/11/mappings/search-intel/5', { mapping_id: '11111111-1111-4111-8111-111111111111' }],
+      ]) assert.equal((await fx.request(method, pathname, body)).status, 403);
+      assert.equal(fx.calls.length, 0);
+    }
+  }
+});
+
+test('candidate pagination uses tenant-bound mapping join and minimal source whitelist', async (t) => {
+  const fx = await fixture(t, { query: async () => ({ rows: [
+    { id: 5, label: 'Prompt', client_id: null, mapping_id: null },
+    { id: 6, label: 'Other', client_id: 12, mapping_id: 'token' },
+  ] }) });
+  for (const source of ['search-intel', 'campaigns']) {
+    const response = await fx.request('GET', `/sources/${source}/records?cursor=4&limit=1`);
+    assert.equal(response.status, 200); assert.equal(response.body.records.length, 1);
+    assert.equal(response.body.next_cursor, 5); assert.equal(response.body.has_more, true);
+    const call = fx.calls.at(-1);
+    assert.deepEqual(call.params, [101, 4, 2]);
+    assert.match(call.sql, /m.tenant_id=\$1/); assert.match(call.sql, /WHERE r.tenant_id=\$1/);
+    assert.doesNotMatch(call.sql, /SELECT \*|owner_email|platform_camp_id/);
+    assert.equal((await fx.request('HEAD', `/sources/${source}/records`)).status, 200);
+  }
+});
+
+test('mapping mutations lock active client and source; duplicates and stale tokens rollback', async (t) => {
+  let conflict = false;
+  const token = '11111111-1111-4111-8111-111111111111';
+  const fx = await fixture(t, { query: async (sql) => ({ rows: sql.includes('FROM clients') ? [client]
+    : sql.includes('FOR KEY SHARE') ? [{ id: 5 }] : sql.includes('RETURNING') && !conflict
+      ? [{ record_id: 5, client_id: 11, mapping_id: token }] : [] }) });
+  for (const source of ['search-intel', 'campaigns']) {
+    const pathname = `/clients/11/mappings/${source}/5`;
+    assert.equal((await fx.request('POST', pathname, {})).status, 201);
+    const insert = fx.calls.at(-2);
+    assert.match(insert.sql, /ON CONFLICT \(tenant_id,(query|campaign)_id\) DO NOTHING/);
+    assert.deepEqual(insert.params.slice(0, 3), [101, 5, 11]);
+    assert.match(insert.params[3], /^[0-9a-f-]{36}$/); assert.equal(insert.params[4], 7);
+    assert.match(fx.calls.at(-3).sql, /WHERE tenant_id=\$1 AND id=\$2 FOR KEY SHARE/);
+    assert.match(fx.calls.at(-4).sql, /status='active' FOR UPDATE/);
+    assert.equal((await fx.request('DELETE', pathname, { mapping_id: token })).status, 200);
+    assert.deepEqual(fx.calls.at(-2).params, [101, 5, 11, token]);
+    assert.match(fx.calls.at(-2).sql, /client_id=\$3 AND mapping_id=\$4/);
+    conflict = true;
+    for (const method of ['POST', 'DELETE']) {
+      const response = await fx.request(method, pathname, method === 'POST' ? {} : { mapping_id: token });
+      assert.deepEqual(response.body, { ok: false, error: 'mapping_conflict' });
+      assert.equal(response.status, 409); assert.equal(fx.calls.at(-1).sql, 'ROLLBACK');
+    }
+    conflict = false;
+  }
+  assert.equal(fx.releases(), 8);
+});
+
+test('missing clients and source records do not disclose foreign mappings', async (t) => {
+  const missingClient = await fixture(t);
+  const missingRecord = await fixture(t, { query: async (sql) => ({ rows: sql.includes('FROM clients') ? [client] : [] }) });
+  for (const method of ['POST', 'DELETE']) {
+    const body = method === 'POST' ? {} : { mapping_id: '11111111-1111-4111-8111-111111111111' };
+    const path = '/clients/11/mappings/campaigns/5';
+    assert.equal((await missingClient.request(method, path, body)).body.error, 'client_not_found');
+    assert.equal((await missingRecord.request(method, path, body)).body.error, 'record_not_found');
+  }
+  assert.ok(missingRecord.calls.every(({ sql }) => !/INSERT|DELETE/.test(sql)));
+});
+
+test('client data has a stable snapshot; every root, aggregate and child is explicitly tenant/client joined', async (t) => {
+  const fx = await fixture(t, { query: async (sql) => ({ rows: sql.includes('FROM clients') ? [client]
+    : sql.includes('AS mapped_records') ? [{ mapped_records: 0 }]
+      : sql.includes('AS successful_runs') ? [{ runs: 0, successful_runs: 0, brand_mentions: 0 }] : [] }) });
+  for (const source of ['search-intel', 'campaigns']) {
+    fx.calls.length = 0;
+    const response = await fx.request('GET', `/clients/11/data/${source}?limit=1`);
+    assert.equal(response.status, 200); assert.deepEqual(response.body.records, []);
+    assert.equal(response.body.next_cursor, null); assert.equal(response.body.summary.mapped_records, 0);
+    assert.equal(response.body.summary_scope, 'all_mapped_records'); assert.equal(response.body.recent_limit, 50);
+    assert.deepEqual(response.body.excluded_sections, source === 'search-intel' ? ['search_pulses', 'image_scans'] : ['legacy_kv_launches']);
+    assert.equal(fx.calls[0].sql, 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    assert.equal(fx.calls.at(-1).sql, 'COMMIT');
+    for (const { sql, params } of fx.calls.slice(2, -1)) {
+      assert.match(sql, /m.tenant_id=\$1/); assert.match(sql, /m.client_id=\$2/);
+      assert.match(sql, /r.tenant_id=\$1/); assert.deepEqual(params.slice(0, 2), [101, 11]);
+      if (sql.includes('FROM search_intel_llm_runs') || sql.includes('FROM ad_performance_hourly') || sql.includes('FROM optimizer_actions')) {
+        assert.match(sql, /WHERE c.tenant_id=\$1/);
+        if (!sql.includes('count(*)')) assert.match(sql, /LIMIT 50/);
+      }
+      assert.doesNotMatch(sql, /SELECT \*|response_text|platform_camp_id|owner_email|before_value|after_value|apply_error|kv_store/);
+    }
+    if (source === 'campaigns') assert.ok(fx.calls.some(({ sql }) => /GROUP BY r.currency/.test(sql)));
+  }
+  assert.equal(fx.releases(), 2);
+});
+
+test('source data storage failures rollback and return no partial success or database details', async (t) => {
+  const fx = await fixture(t, { query: async (sql) => {
+    if (sql.includes('FROM clients')) return { rows: [client] };
+    if (sql.includes('client_reporting_query_mappings')) throw new Error('sensitive detail');
+    return { rows: [] };
+  } });
+  const response = await fx.request('GET', '/clients/11/data/search-intel');
+  assert.equal(response.status, 500); assert.deepEqual(response.body, { ok: false, error: 'internal_error' });
+  assert.equal(fx.calls.at(-1).sql, 'ROLLBACK'); assert.equal(fx.releases(), 1);
+});

@@ -44,4 +44,42 @@ async function ensureClientReportingSchema() {
   `);
 }
 
-module.exports = { ensureClientReportingSchema };
+// Called only after the canonical client and both source schemas are ready.
+// No inferred/backfilled assignments: existing records remain unmapped.
+async function ensureClientReportingMappingSchema() {
+  if (!_db.hasDb()) return;
+  await _db.getPool().query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS search_intel_queries_tenant_unique_id
+      ON search_intel_queries(tenant_id, id);
+    CREATE UNIQUE INDEX IF NOT EXISTS ad_campaigns_tenant_unique_id
+      ON ad_campaigns(tenant_id, id);
+    CREATE TABLE IF NOT EXISTS client_reporting_query_mappings (
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      query_id INT NOT NULL,
+      client_id INT NOT NULL,
+      mapping_id UUID NOT NULL UNIQUE,
+      created_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, query_id),
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (tenant_id, query_id) REFERENCES search_intel_queries(tenant_id, id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS client_reporting_query_mappings_client_idx
+      ON client_reporting_query_mappings(tenant_id, client_id, query_id);
+    CREATE TABLE IF NOT EXISTS client_reporting_campaign_mappings (
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      campaign_id INT NOT NULL,
+      client_id INT NOT NULL,
+      mapping_id UUID NOT NULL UNIQUE,
+      created_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, campaign_id),
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE,
+      FOREIGN KEY (tenant_id, campaign_id) REFERENCES ad_campaigns(tenant_id, id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS client_reporting_campaign_mappings_client_idx
+      ON client_reporting_campaign_mappings(tenant_id, client_id, campaign_id);
+  `);
+}
+
+module.exports = { ensureClientReportingSchema, ensureClientReportingMappingSchema };
