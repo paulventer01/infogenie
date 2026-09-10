@@ -477,6 +477,9 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/digital-twin\/share\/[^\/]+\/view$/,      // public simulator share HTML (no auth)
   /^\/api\/digital-twin\/share\/[^\/]+\/pdf$/,       // public simulator share PDF (no auth)
   /^\/api\/visitor-intel\/ping$/,                    // public visitor tracking pixel endpoint
+  /^\/api\/client-reporting\/portal\/redeem\/[a-f0-9]+$/, // single-use client portal invitation redeem
+  /^\/api\/client-reporting\/portal\/report$/,       // portal session report view (infogenie.crp cookie)
+  /^\/api\/client-reporting\/portal\/delivery-history$/, // portal session delivery history
 ];
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.
@@ -702,6 +705,9 @@ const _CLIENT_REPORTING_OWNER_GATE_ALLOW = [
   [/^(GET|HEAD|PUT)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/schedule\/?$/],
   [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/schedule\/(pause|resume)\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/delivery-history\/?$/],
+  [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/portal\/?$/],
+  [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/portal\/invitations\/?$/],
+  [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/portal\/revoke\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/sources\/(search-intel|campaigns)\/records\/?$/],
   [/^(POST|DELETE)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/mappings\/(search-intel|campaigns)\/[1-9]\d*\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/data\/(search-intel|campaigns)\/?$/],
@@ -2558,6 +2564,7 @@ const _searchIntelRouter = require('./services/search_intel/api');
 app.use('/api/search-intel', _searchIntelRouter);
 const _exportsRouter = require('./services/exports/api');
 app.use('/api/exports', _exportsRouter);
+app.use('/api/client-reporting/portal', require('./services/client_reporting/portal_api'));
 app.use('/api/client-reporting', require('./services/client_reporting/api'));
 
 // ── Customer Journey Builder + Signal Triggers + Omni-Channel ─────────────

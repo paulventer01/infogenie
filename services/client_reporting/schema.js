@@ -94,6 +94,50 @@ async function ensureClientReportingSchema() {
     );
     CREATE INDEX IF NOT EXISTS client_reporting_delivery_history_client_idx
       ON client_reporting_delivery_history (tenant_id, client_id, attempted_at DESC);
+    CREATE TABLE IF NOT EXISTS client_reporting_portal_access (
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT true,
+      revoked_at TIMESTAMPTZ,
+      created_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      updated_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, client_id),
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE
+    );
+    ALTER TABLE client_reporting_portal_access ADD COLUMN IF NOT EXISTS updated_by_user_id INT REFERENCES users(id) ON DELETE SET NULL;
+    CREATE TABLE IF NOT EXISTS client_reporting_portal_invitations (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      token_hash CHAR(64) NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      revoked_at TIMESTAMPTZ,
+      redeemed_at TIMESTAMPTZ,
+      redeemed_session_id BIGINT,
+      created_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE,
+      CHECK (token_hash ~ '^[0-9a-f]{64}$')
+    );
+    CREATE INDEX IF NOT EXISTS client_reporting_portal_invitations_client_idx
+      ON client_reporting_portal_invitations (tenant_id, client_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS client_reporting_portal_sessions (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      token_hash CHAR(64) NOT NULL UNIQUE,
+      invitation_id BIGINT REFERENCES client_reporting_portal_invitations(id) ON DELETE SET NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      revoked_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_access_at TIMESTAMPTZ,
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE,
+      CHECK (token_hash ~ '^[0-9a-f]{64}$')
+    );
+    CREATE INDEX IF NOT EXISTS client_reporting_portal_sessions_client_idx
+      ON client_reporting_portal_sessions (tenant_id, client_id, created_at DESC);
   `);
 }
 
