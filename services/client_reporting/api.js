@@ -252,7 +252,20 @@ function deliveryInput(req) {
 }
 
 const RECIPIENT_COLUMNS = 'client_id, email, enabled, updated_at';
-const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validRecipientEmail(email) {
+  if (!email || email.length > 240) return false;
+  const at = email.indexOf('@');
+  if (at <= 0 || email.lastIndexOf('@') !== at) return false;
+  for (let i = 0; i < email.length; i++) {
+    const code = email.charCodeAt(i);
+    if (code <= 32 || code === 127) return false;
+  }
+  const domain = email.slice(at + 1);
+  if (!domain || domain.startsWith('.') || domain.endsWith('.') || domain.includes('..')) return false;
+  const dot = domain.indexOf('.');
+  return dot > 0 && dot < domain.length - 1;
+}
 
 function recipientInput(req) {
   const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
@@ -260,7 +273,7 @@ function recipientInput(req) {
   if (Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 2 ||
       typeof body.enabled !== 'boolean') throw fail(400, 'invalid_recipient');
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-  if (!EMAIL_RX.test(email) || email.length > 240) throw fail(400, 'invalid_recipient');
+  if (!validRecipientEmail(email)) throw fail(400, 'invalid_recipient');
   return { email, enabled: body.enabled };
 }
 

@@ -74,3 +74,10 @@ test('foreign tenant cannot read another client recipient row', async (t) => {
   fx.current.tenantMismatch = true;
   assert.equal((await fx.request()).status, 403);
 });
+test('recipient email validation rejects polynomial-redos adversarial input in linear time', async (t) => {
+  const fx = await fixture(t);
+  const adversarial = 'a@' + 'a.'.repeat(3000);
+  const start = Date.now();
+  assert.equal((await fx.request('PUT', 'recipient', { email: adversarial, enabled: true })).status, 400);
+  assert.ok(Date.now() - start < 500, 'email validation must not backtrack polynomially');
+});
