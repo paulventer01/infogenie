@@ -38,8 +38,10 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
   assert.ok(dedicatedUrl, 'PR10E9_TEST_DATABASE_URL required; ambient DATABASE_URL is never used');
   const errors = [], requests = new WeakMap(), expected = new WeakMap();
   let browser, pool, tenantIds, closing = false;
+  const downloadPath = await fs.mkdtemp('/tmp/pr10f5-downloads-');
   t.after(async () => {
     closing = true; if (browser) await browser.close();
+    await fs.rm(downloadPath, { recursive: true, force: true });
     if (pool && tenantIds) for (const table of ['search_intel_queries', 'ad_campaigns']) {
       await pool.query(`DELETE FROM ${table} WHERE tenant_id=ANY($1::int[])`, [tenantIds]);
     }
@@ -74,7 +76,7 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
   browser = await require('puppeteer').launch({ headless: true, pipe: true,
     args: ['--disable-dev-shm-usage', '--disable-background-networking', '--lang=en-US'] });
   async function session(actor) {
-    const context = await browser.createBrowserContext(), page = await context.newPage();
+    const context = await browser.createBrowserContext({ downloadBehavior: { policy: 'allow', downloadPath } }), page = await context.newPage();
     page.setDefaultTimeout(45_000); page.setDefaultNavigationTimeout(90_000);
     await page.setViewport({ width: 1440, height: 1050 });
     await page.setBypassServiceWorker(true); await page.setCacheEnabled(false); await page.setRequestInterception(true);
@@ -156,10 +158,23 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
       for (const excluded of ['BIRCH', 'UNMAPPED', 'FOREIGN']) assert.ok(!JSON.stringify(data).includes(excluded), excluded);
       const response = await responseFor(owner, 'POST', reportPath(first.id),
         () => button(owner, `Generate & download ${format.toUpperCase()}`, SECTION));
-      const bytes = Buffer.from(await response.buffer());
-      const mime = response.headers()['content-type'] || '';
-      const detail = mime.includes('json') && bytes.length <= 500 ? bytes.toString('utf8') : '';
-      assert.ok(bytes.length > 500, `nonempty generated document: format=${format}, bytes=${bytes.length}, MIME=${mime}, body=${detail}`);
+      // CDP can return an empty body for a Blob response; inspect the user's actual downloaded file.
+      await owner.waitForFunction((selector) => {
+        const section = document.querySelector(selector);
+        return section?.querySelector('[role="alert"]') || section?.innerText.includes('Report download started.');
+      }, {}, SECTION);
+      const alert = await owner.$eval(SECTION, (el) => el.querySelector('[role="alert"]')?.textContent || '');
+      assert.equal(alert, '', 'generation must reach an actual browser download');
+      const filename = `${downloadPath}/client-${first.id}-report.${format}`;
+      let bytes;
+      const deadline = Date.now() + 45_000;
+      while (Date.now() < deadline) {
+        try { bytes = await fs.readFile(filename); break; }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.ok(bytes, `browser completed ${format} download within 45 seconds`);
+      assert.ok(bytes.length > 500, `nonempty downloaded document: format=${format}, bytes=${bytes.length}`);
       assert.match(response.headers()['content-disposition'], new RegExp(`\\.${format}"?$`));
       if (format === 'pdf') {
         assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
