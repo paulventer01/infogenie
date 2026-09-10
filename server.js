@@ -234,8 +234,11 @@ app.use(express.json({ limit: '5mb', verify: (req, _res, buf) => { req.rawBody =
 app.set('trust proxy', true);
 
 // Liveness / readiness — public, no auth (for LB + k8s probes).
+// GET /health is inlined so a Billy/xAI load failure cannot take down the probe.
 app.use('/api', require('./services/health/api'));
-app.get('/health', require('./services/billy/api').sendLiveness);
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, status: 'alive', ts: new Date().toISOString() });
+});
 
 // ── Session store (Postgres-backed, falls back to in-memory if no DB) ────────
 // Required for the real per-user auth flow (signup / login / social OAuth).
@@ -4727,9 +4730,9 @@ app.use('/api/majestic', _majesticRouter);
 
 // ── Billy chat (xAI) ─────────────────────────────────────────────────────────
 // /api/billy uses the existing /api/* session + INFOGENIE_API_KEY gate + matrix.
-// /v1/billy is outside /api/* so it uses the temporary token stub only.
+// /v1/billy is outside /api/* so it uses the Security Bearer token gate only.
 const _billyRouter = require('./services/billy/api');
-const _billyTokenGate = require('./services/billy/token_gate');
+const _billyTokenGate = require('./services/security/billy_token');
 app.use('/api/billy', _billyRouter);
 app.use('/v1/billy', _billyTokenGate, _billyRouter);
 

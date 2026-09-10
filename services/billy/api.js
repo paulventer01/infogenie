@@ -23,10 +23,6 @@ const chatBodySchema = z.object({
   }).optional(),
 });
 
-function sendLiveness(_req, res) {
-  res.json({ ok: true, status: 'alive', ts: new Date().toISOString() });
-}
-
 function emptyUsage() {
   return { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 }
@@ -200,4 +196,3 @@ router.post('/chat/stream', validate(chatBodySchema), _safe(async (req, res) => 
 }));
 
 module.exports = router;
-module.exports.sendLiveness = sendLiveness;

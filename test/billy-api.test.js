@@ -10,9 +10,12 @@ const http = require('node:http');
 const express = require('express');
 
 const billy = require('../services/ai/billy');
-const tokenGate = require('../services/billy/token_gate');
+const tokenGate = require('../services/security/billy_token');
 const router = require('../services/billy/api');
-const { sendLiveness } = require('../services/billy/api');
+
+function sendLiveness(_req, res) {
+  res.json({ ok: true, status: 'alive', ts: new Date().toISOString() });
+}
 
 const origBilly = {
   chatBilly: billy.chatBilly,
