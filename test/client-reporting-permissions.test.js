@@ -32,6 +32,15 @@ const routes = [
   ['GET', ROOT], ['HEAD', ROOT], ['GET', ROOT + '/12'], ['HEAD', ROOT + '/12'],
   ['GET', ROOT + '/12/profile'], ['HEAD', ROOT + '/12/profile'], ['PUT', ROOT + '/12/profile'],
 ];
+for (const source of ['search-intel', 'campaigns']) {
+  routes.push(
+    ['GET', `/api/client-reporting/sources/${source}/records`],
+    ['HEAD', `/api/client-reporting/sources/${source}/records`],
+    ['POST', `${ROOT}/12/mappings/${source}/34`],
+    ['DELETE', `${ROOT}/12/mappings/${source}/34`],
+    ['GET', `${ROOT}/12/data/${source}`], ['HEAD', `${ROOT}/12/data/${source}`],
+  );
+}
 function invoke(middleware, method, pathname, roleKey = 'tenant_admin') {
   const role = SYSTEM_ROLES.find((r) => r.key === roleKey);
   const req = { method, path: pathname, user: { id: 17, isOwner: false },
@@ -88,6 +97,19 @@ test('authorized non-owner settings routes pass the real owner gate, including n
 
 test('owner-gate exemption cannot expose generation, client creation or lookalike paths', () => {
   const blocked = [
+    ['POST', '/api/client-reporting/sources/search-intel/records'],
+    ['GET', '/api/client-reporting/sources/unknown/records'],
+    ['GET', '/api/client-reporting/sources/campaigns/records/export'],
+    ['GET', ROOT + '/12/mappings/campaigns/34'],
+    ['PUT', ROOT + '/12/mappings/campaigns/34'],
+    ['PATCH', ROOT + '/12/mappings/campaigns/34'],
+    ['POST', ROOT + '/12/mappings/unknown/34'],
+    ['DELETE', ROOT + '/12/mappings/campaigns/0'],
+    ['POST', ROOT + '/12/mappings/campaigns/34extra'],
+    ['DELETE', ROOT + '/12/mappings/campaigns/34/export'],
+    ['POST', ROOT + '/12/data/campaigns'],
+    ['GET', ROOT + '/12/data/unknown'],
+    ['GET', ROOT + '/12/data/campaigns/export'],
     ['GET', '/api/client-reporting'], ['POST', ROOT], ['DELETE', ROOT + '/12'],
     ['PATCH', ROOT + '/12/profile'], ['POST', ROOT + '/12/profile'], ['DELETE', ROOT + '/12/profile'],
     ['GET', ROOT + '/12/profile/export'], ['POST', ROOT + '/12/generate'],

@@ -694,6 +694,9 @@ const _CLIENT_REPORTING_OWNER_GATE_ALLOW = [
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/?$/],
   [/^(GET|HEAD|PUT)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/profile\/?$/],
+  [/^(GET|HEAD)$/, /^\/api\/client-reporting\/sources\/(search-intel|campaigns)\/records\/?$/],
+  [/^(POST|DELETE)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/mappings\/(search-intel|campaigns)\/[1-9]\d*\/?$/],
+  [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/data\/(search-intel|campaigns)\/?$/],
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
@@ -2489,6 +2492,9 @@ BOOT_TASKS.push(async () => {
       }
       try {
         await require('./services/client_reporting/schema').ensureClientReportingSchema();
+        await require('./services/search_intel/schema').ensureSearchIntelSchema();
+        await require('./services/optimizer/schema').ensureOptimizerSchema();
+        await require('./services/client_reporting/schema').ensureClientReportingMappingSchema();
       } catch (e) {
         console.error('[client-reporting] schema init failed:', e.message);
       }
