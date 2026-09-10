@@ -99,12 +99,16 @@ test('PR10F.4 client data mapping browser acceptance (real PostgreSQL/TLS)', {
     });
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto(`${baseUrl}/login?next=${encodeURIComponent(ROUTE)}`, { waitUntil: 'networkidle2' });
+    // Localhost login initializes demo defaults in its mount effect; wait before replacing them.
+    await page.waitForFunction(() => [...document.querySelectorAll('strong')].some((el) => el.textContent === 'Preview login'));
     await button(page, 'Log In', 'body');
     await page.locator('#email').fill(actor.email); await page.locator('#pass').fill(actor.password);
     const [login, navigation] = await Promise.all([
       page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/auth/login'),
       page.waitForNavigation({ waitUntil: 'domcontentloaded' }), button(page, 'Log In →', 'form'),
     ]);
+    const submitted = JSON.parse(login.request().postData());
+    assert.ok(submitted.email === actor.email && submitted.password === actor.password, 'login submitted fixture credentials');
     assert.equal(login.status(), 200); assert.equal(navigation?.status(), 200);
     assert.equal(new URL(page.url()).pathname, ROUTE);
     const sid = (await context.cookies()).find((cookie) => cookie.name === 'infogenie.sid');
