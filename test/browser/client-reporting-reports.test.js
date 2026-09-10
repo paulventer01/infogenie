@@ -197,7 +197,9 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     assert.ok(await owner.$eval(SECTION, (el) => el.getBoundingClientRect().right <= innerWidth + 1), 'report fits mobile');
   });
   await t.test('dirty draft blocks generation and a real concurrent profile change rejects the stale version', async () => {
+    await owner.setViewport({ width: 1440, height: 1050 });
     await save('xlsx'); await owner.reload({ waitUntil: 'networkidle2' }); await selectClient(owner, first.id);
+    await owner.waitForFunction((selector) => document.querySelector(selector)?.value === 'Alpine saved report', {}, `${PANEL} input[name="report_title"]`);
     const before = reportPosts();
     await owner.locator(`${PANEL} input[name="report_title"]`).fill('Unsaved draft');
     await text(owner, 'Save or reload the reporting profile', PANEL);
