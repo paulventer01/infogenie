@@ -5,6 +5,7 @@ import { apiGet, apiPut } from "@/lib/api";
 import ClientReportingReport from "@/components/features/manage/ClientReportingReport";
 import ClientReportingRecipient from "@/components/features/manage/ClientReportingRecipient";
 import ClientReportingSchedule from "@/components/features/manage/ClientReportingSchedule";
+import ClientReportingPortal from "@/components/features/manage/ClientReportingPortal";
 import ClientReportingMappings from "@/components/features/manage/ClientReportingMappings";
 import { API, BRAND_FIELDS, accessLost, draftError, newDraft, profileDraft, profilePayload, responseError,
   saveMatches, validClient, validPage, validProfile, verifyAccess,
@@ -237,6 +238,9 @@ export default function ClientReportingProfiles() {
         {clientId && context.current && !pendingClient && draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError
           && <ClientReportingSchedule key={`${context.current.userId}:${context.current.tenantId}:${clientId}:schedule`}
             clientId={clientId} defaultFormat={draft.default_format} checkAccess={checkAccess} clearContext={clearContext} />}
+        {clientId && context.current && !pendingClient && draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError
+          && <ClientReportingPortal key={`${context.current.userId}:${context.current.tenantId}:${clientId}:portal`}
+            clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}
         {clientId && context.current && !pendingClient && <ClientReportingMappings
           key={`${context.current.userId}:${context.current.tenantId}:${clientId}`}
           clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}

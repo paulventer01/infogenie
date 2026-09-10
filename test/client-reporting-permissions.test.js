@@ -34,6 +34,8 @@ const routes = [
   ['GET', ROOT + '/12/report-preview'], ['HEAD', ROOT + '/12/report-preview'], ['POST', ROOT + '/12/report'],
   ['GET', ROOT + '/12/report-recipient'], ['HEAD', ROOT + '/12/report-recipient'], ['POST', ROOT + '/12/report-email'],
   ['GET', ROOT + '/12/recipient'], ['HEAD', ROOT + '/12/recipient'], ['PUT', ROOT + '/12/recipient'],
+  ['GET', ROOT + '/12/portal'], ['HEAD', ROOT + '/12/portal'],
+  ['POST', ROOT + '/12/portal/invitations'], ['POST', ROOT + '/12/portal/revoke'],
 ];
 for (const source of ['search-intel', 'campaigns']) {
   routes.push(

@@ -11,6 +11,7 @@ const reports = require('./report');
 const delivery = require('./delivery');
 const _snapshot = require('./snapshot');
 const schedule = require('./schedule');
+const portal = require('./portal');
 const _audit = require('../admin/audit');
 const router = express.Router();
 const PERMISSION = 'tenant.settings.manage';
@@ -455,6 +456,52 @@ router.get('/clients/:clientId/delivery-history', readLimiter, safe(async (req, 
     ORDER BY id DESC LIMIT $4`, [tenantId, id, cursor, limit + 1]);
   const deliveries = rows.slice(0, limit), hasMore = rows.length > limit;
   return res.json({ ok: true, client, deliveries, has_more: hasMore, next_cursor: hasMore ? deliveries.at(-1).id : null });
+}));
+
+router.get('/clients/:clientId/portal', readLimiter, safe(async (req, res) => {
+  if (Object.keys(req.query).length) throw fail(400, 'invalid_portal');
+  const tenantId = req.clientReportingTenantId, id = clientId(req), pool = _db.getPool();
+  const client = await activeClient(pool, tenantId, id);
+  const status = await portal.portalStatus(pool, tenantId, id);
+  return res.json({ ok: true, client, portal: status });
+}));
+
+router.post('/clients/:clientId/portal/invitations', writeLimiter, safe(async (req, res) => {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 0) {
+    throw fail(400, 'invalid_portal');
+  }
+  const tenantId = req.clientReportingTenantId, id = clientId(req);
+  const client = await activeClient(_db.getPool(), tenantId, id);
+  const profile = await _db.getPool().query('SELECT version FROM client_reporting_profiles WHERE tenant_id=$1 AND client_id=$2', [tenantId, id]);
+  if (!profile.rows[0]) throw fail(409, 'profile_required');
+  const { token, invitation } = await portal.createInvitation(_db.getPool(), tenantId, id, positiveId(req.user.id));
+  await _audit.recordAudit({
+    action: 'client_reporting.portal_invite', actorUserId: req.user.id, actorEmail: req.user.email,
+    tenantId, detail: `${client.name}: portal invitation created`,
+    context: { client_id: id, invitation_id: invitation.id, expires_at: invitation.expires_at },
+  });
+  const invitePath = `/client-report/invite/${token}`;
+  return res.status(201).json({
+    ok: true, client, invitation: { id: invitation.id, expires_at: invitation.expires_at, created_at: invitation.created_at },
+    invite_path: invitePath,
+  });
+}));
+
+router.post('/clients/:clientId/portal/revoke', writeLimiter, safe(async (req, res) => {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 0) {
+    throw fail(400, 'invalid_portal');
+  }
+  const tenantId = req.clientReportingTenantId, id = clientId(req);
+  const client = await activeClient(_db.getPool(), tenantId, id);
+  await portal.revokeAccess(_db.getPool(), tenantId, id);
+  await _audit.recordAudit({
+    action: 'client_reporting.portal_revoke', actorUserId: req.user.id, actorEmail: req.user.email,
+    tenantId, detail: `${client.name}: portal access revoked`,
+    context: { client_id: id },
+  });
+  return res.json({ ok: true, client, portal: await portal.portalStatus(_db.getPool(), tenantId, id) });
 }));
 
 module.exports = router;
