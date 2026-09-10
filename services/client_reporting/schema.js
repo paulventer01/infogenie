@@ -53,6 +53,47 @@ async function ensureClientReportingSchema() {
       FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE,
       CHECK (email = lower(btrim(email)) AND email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' AND length(email) <= 240)
     );
+    CREATE TABLE IF NOT EXISTS client_reporting_schedules (
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      cadence TEXT NOT NULL CHECK (cadence IN ('weekly', 'monthly')),
+      timezone TEXT NOT NULL CHECK (length(timezone) > 0 AND length(timezone) <= 64),
+      send_time TEXT NOT NULL CHECK (send_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+      format TEXT NOT NULL CHECK (format IN ('pdf', 'pptx', 'xlsx')),
+      opted_in BOOLEAN NOT NULL DEFAULT false,
+      paused BOOLEAN NOT NULL DEFAULT false,
+      next_due_at TIMESTAMPTZ NOT NULL,
+      updated_by_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, client_id),
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS client_reporting_schedules_due_idx
+      ON client_reporting_schedules (next_due_at) WHERE opted_in = true AND paused = false;
+    CREATE TABLE IF NOT EXISTS client_reporting_schedule_claims (
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      window_key TEXT NOT NULL CHECK (length(window_key) > 0 AND length(window_key) <= 32),
+      claimed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (tenant_id, client_id, window_key),
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS client_reporting_delivery_history (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      window_key TEXT NOT NULL CHECK (length(window_key) > 0 AND length(window_key) <= 32),
+      status TEXT NOT NULL CHECK (status IN ('sent', 'failed', 'skipped')),
+      attempted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      recipient_email TEXT,
+      profile_version INT,
+      format TEXT CHECK (format IS NULL OR format IN ('pdf', 'pptx', 'xlsx')),
+      error_code TEXT CHECK (error_code IS NULL OR length(error_code) <= 64),
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS client_reporting_delivery_history_client_idx
+      ON client_reporting_delivery_history (tenant_id, client_id, attempted_at DESC);
   `);
 }
 

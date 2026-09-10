@@ -699,6 +699,9 @@ const _CLIENT_REPORTING_OWNER_GATE_ALLOW = [
   [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/report\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/report-recipient\/?$/],
   [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/report-email\/?$/],
+  [/^(GET|HEAD|PUT)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/schedule\/?$/],
+  [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/schedule\/(pause|resume)\/?$/],
+  [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/delivery-history\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/sources\/(search-intel|campaigns)\/records\/?$/],
   [/^(POST|DELETE)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/mappings\/(search-intel|campaigns)\/[1-9]\d*\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/data\/(search-intel|campaigns)\/?$/],
@@ -2500,6 +2503,8 @@ BOOT_TASKS.push(async () => {
         await require('./services/search_intel/schema').ensureSearchIntelSchema();
         await require('./services/optimizer/schema').ensureOptimizerSchema();
         await require('./services/client_reporting/schema').ensureClientReportingMappingSchema();
+        const _crApi = require('./services/client_reporting/api');
+        if (require('./services/runtime_flags').backgroundEnabled()) _crApi.startScheduleCron(60_000);
       } catch (e) {
         console.error('[client-reporting] schema init failed:', e.message);
       }

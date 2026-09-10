@@ -26,6 +26,37 @@ async function fixture(t, options = {}) {
     '../tenants/permission_enforce': { hasPermission: () => !current.denied },
     './sources': { source: (name) => { assert.equal(name, current.profile.report_source); return {}; }, data: async (...args) => { mappings.push(args); return current.data; } },
     './report': options.realRenderer ? require('../services/client_reporting/report') : { buildReport, streamReport: async (snapshot, res) => { streams.push(snapshot); res.type('application/pdf').send('binary'); } },
+    './snapshot': {
+      activeClient: async (_db, tenantId, clientId) => {
+        if (current.absent) throw Object.assign(new Error('client_not_found'), { status: 404 });
+        assert.deepEqual([tenantId, clientId], [101, 11]);
+        return client;
+      },
+      buildReportSnapshot: async (db, tenantId, clientId, expectedVersion) => {
+        await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+        try {
+          const clientRow = await db.query('SELECT id FROM clients WHERE tenant_id=$1 AND id=$2', [tenantId, clientId]);
+          if (current.absent || !clientRow.rows[0]) throw Object.assign(new Error('client_not_found'), { status: 404 });
+          await db.query('SELECT client_id FROM client_reporting_profiles WHERE tenant_id=$1 AND client_id=$2', [tenantId, clientId]);
+          if (!current.profile) throw Object.assign(new Error('profile_required'), { status: 409 });
+          if (expectedVersion !== undefined && current.profile.version !== expectedVersion) throw Object.assign(new Error('version_conflict'), { status: 409 });
+          mappings.push([db, current.profile.report_source, {}, tenantId, clientId, 0, 100]);
+          const workspace = current.profile.branding_mode === 'workspace'
+            ? (await db.query('SELECT value FROM kv_store WHERE key=$1', [`white_label.brand_profile:t${tenantId}`])).rows[0]?.value
+            : null;
+          const built = buildReport(client, current.profile, current.data, workspace);
+          if (expectedVersion !== undefined && !built.can_generate) throw Object.assign(new Error('no_mapped_records'), { status: 409 });
+          await db.query('COMMIT');
+          return { snapshot: built, profile: current.profile, client };
+        } catch (error) {
+          await db.query('ROLLBACK');
+          throw error;
+        }
+      },
+    },
+    './delivery': require('../services/client_reporting/delivery'),
+    './schedule': require('../services/client_reporting/schedule'),
+    '../admin/audit': { recordAudit: async () => ({ ok: true, id: 1 }) },
   };
   new Function('require', 'module', 'exports', fs.readFileSync(filename, 'utf8'))((name) => overrides[name] || native(name), module, module.exports);
   const app = express();
