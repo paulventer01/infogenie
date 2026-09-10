@@ -749,6 +749,7 @@ const COMPONENT_MATRIX = {
   'agency-scope-budgets':  'tenant.billing.manage',
   'workspaces':           'tenant.settings.manage',
   'white-label':          'tenant.settings.manage',
+  'client-reporting':     'tenant.settings.manage',
   'settings':             'tenant.settings.manage',
   'crm-sync':             'tenant.integrations.manage',
   'hubspot-sync':         'tenant.integrations.manage',

@@ -8,6 +8,7 @@ const vm = require('node:vm');
 const { createRequire } = require('node:module');
 const matrix = require('../services/tenants/permission_matrix');
 const { SYSTEM_ROLES } = require('../services/tenants/permissions');
+const { createNavPerms } = require('../public/js/ig_navperms');
 
 // Execute the real legacy owner-gate middleware and actual strict matrix with
 // injected principals. Full session/membership/SQL coverage belongs to the API
@@ -58,6 +59,24 @@ test('client reporting matrix requires workspace settings for every implemented 
       assert.equal(result.body.required, 'tenant.settings.manage');
     }
   }
+});
+
+test('client reporting setup uses the settings grant, including for report exporters', () => {
+  assert.equal(matrix.requiredPermissionForComponent('client-reporting'), 'tenant.settings.manage');
+  for (const roleKey of ['tenant_owner', 'tenant_admin', 'analyst', 'client_viewer', 'marketer', 'content_creator']) {
+    const role = SYSTEM_ROLES.find((row) => row.key === roleKey);
+    const allowed = ['tenant_owner', 'tenant_admin'].includes(roleKey);
+    const nav = createNavPerms().configure({ permissions: role.permissions,
+      componentMatrix: matrix.COMPONENT_MATRIX, isPlatformAdmin: false });
+    assert.equal(nav.can('client-reporting'), allowed, roleKey);
+    assert.equal(nav.guard('client-reporting', ['dashboard']).allowed, allowed, roleKey);
+    if (['analyst', 'client_viewer'].includes(roleKey)) {
+      assert.ok(role.permissions.includes('reports.export'), 'export permission alone must not grant settings access');
+    }
+  }
+  const admin = createNavPerms().configure({ permissions: [],
+    componentMatrix: matrix.COMPONENT_MATRIX, isPlatformAdmin: true });
+  assert.equal(admin.can('client-reporting'), true, 'existing platform permission semantics remain unchanged');
 });
 
 test('authorized non-owner settings routes pass the real owner gate, including normal HEAD behavior', () => {

@@ -457,6 +457,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "agency-ops-dashboard", icon: "📊", label: "Agency Operations Dashboard" },
           { view: "agency-time-entries", icon: "🕒", label: "Time Entry & Corrections" },
           { view: "agency-rate-cards", icon: "💱", label: "Rate Card Setup" },
+          { view: "client-reporting", icon: "📄", label: "Client Reporting Profiles" },
           { view: "agency-scope-budgets", icon: "📐", label: "Scope & Budget Setup" },
         ],
       },
