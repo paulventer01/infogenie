@@ -7,6 +7,7 @@ const dedicatedUrl = process.env.PR10E9_TEST_DATABASE_URL;
 const required = process.env.PR10F5_REQUIRE_BROWSER === '1';
 const PANEL = '#ig-react-panel', ROUTE = '/manage/client-reporting';
 const SECTION = `${PANEL} [aria-label="Client report preview"]`, API = '/api/client-reporting';
+const profilePath = (id) => `${API}/clients/${id}/profile`;
 async function button(page, name, scope = PANEL) {
   await page.locator(`${scope} ::-p-aria([name="${name}"][role="button"])`).click();
 }
@@ -14,9 +15,9 @@ async function text(page, wanted, scope = SECTION) {
   await page.waitForFunction((selector, value) => document.querySelector(selector)?.innerText.includes(value), {}, scope, wanted);
 }
 async function selectClient(page, id) {
-  await page.waitForSelector(`${PANEL} select[name="client_id"]:enabled`);
-  await page.select(`${PANEL} select[name="client_id"]`, String(id));
-  await page.waitForSelector(SECTION, { visible: true });
+  await page.waitForSelector(`${PANEL} select[name="client_id"]:enabled`, { visible: true });
+  await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
+  await page.waitForSelector(`${SECTION} ::-p-aria([name="Preview report"][role="button"]):not([disabled])`, { visible: true });
 }
 async function call(page, path, method = 'GET', body) {
   return page.evaluate(async (url, verb, data) => {
@@ -128,7 +129,6 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     assert.ok(sid?.httpOnly && decodeURIComponent(sid.value).startsWith('s:'), 'real signed session');
     return page;
   }
-  const profilePath = (id) => `${API}/clients/${id}/profile`;
   const reportPath = (id) => `${API}/clients/${id}/report`;
   const previewPath = (id) => `${API}/clients/${id}/report-preview`;
   let version = 0, owner;
