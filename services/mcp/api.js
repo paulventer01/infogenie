@@ -79,6 +79,18 @@ const TOOLS = [
     }
   },
   {
+    name: 'query_document_rag',
+    description: 'List indexed Document RAG / enterprise-connector knowledge (PDFs, Notion, Slack, Drive) for this workspace.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', description: 'Optional filter: upload | slack | notion | google_drive | paste | automation' },
+        limit: { type: 'number' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'query_marketing_memory',
     description: 'Semantic search over Marketing Memory (RAG). Returns top relevant memory nodes for a question.',
     inputSchema: {
@@ -308,6 +320,16 @@ router.post('/call', async (req, res) => {
       }
       case 'get_drip_enrollments': {
         result = { message: 'Drip enrollments are stored in kv_store. Use GET /api/drips to retrieve them.', status_filter: args.status || 'all' };
+        break;
+      }
+      case 'query_document_rag': {
+        const { listDocuments } = require('../document_rag/index');
+        const source = args.source ? String(args.source) : null;
+        const listed = await listDocuments(tid, {
+          limit: Math.min(Number(args.limit) || 20, 50),
+          source,
+        });
+        result = listed;
         break;
       }
       case 'query_marketing_memory': {

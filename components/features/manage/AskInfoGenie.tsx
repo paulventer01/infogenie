@@ -110,11 +110,15 @@ const TYPE_LABELS: Record<string, string> = {
   campaign: "Campaign", insight: "Ad Insight", lead: "Lead", mention: "Mention",
   landing_page: "Landing Page", content_calendar: "Content", brand_calendar: "Brand Calendar",
   budget: "Budget", booking: "Booking", linksell: "Link-in-Bio", audience: "Audience", task: "Task",
+  document_pdf: "PDF Doc", document_docx: "Word Doc", document_csv: "CSV", document_txt: "Document",
+  connector_slack: "Slack", connector_notion: "Notion", connector_drive: "Google Drive",
 };
 const TYPE_ICONS: Record<string, string> = {
   campaign: "📣", insight: "📊", lead: "👤", mention: "💬",
   landing_page: "🔗", content_calendar: "📅", brand_calendar: "🗓",
   budget: "💰", booking: "📆", linksell: "🔗", audience: "👥", task: "✅",
+  document_pdf: "📄", document_docx: "📝", document_csv: "📊", document_txt: "📃",
+  connector_slack: "💬", connector_notion: "📓", connector_drive: "📁",
 };
 
 const EFFORT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
