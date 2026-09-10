@@ -27,6 +27,20 @@ async function fixture(t, options = {}) {
     './sources': { source: (name) => { assert.equal(name, current.profile.report_source); return {}; }, data: async () => current.data },
     './report': { buildReport: require('../services/client_reporting/report').buildReport,
       streamReport: async (snapshot, res) => { res.type('application/pdf').end('%PDF-test'); } },
+    './snapshot': {
+      activeClient: async (_db, _tenantId, _clientId) => {
+        if (current.absent) throw Object.assign(new Error('client_not_found'), { status: 404 });
+        return client;
+      },
+      buildReportSnapshot: async (_db, tenantId, clientId, expectedVersion) => {
+        assert.equal(tenantId, 101); assert.equal(clientId, 11);
+        if (expectedVersion !== undefined && current.profile.version !== expectedVersion) throw Object.assign(new Error('version_conflict'), { status: 409 });
+        if (!current.profile) throw Object.assign(new Error('profile_required'), { status: 409 });
+        const built = require('../services/client_reporting/report').buildReport(client, current.profile, current.data, null);
+        if (expectedVersion !== undefined && !built.can_generate) throw Object.assign(new Error('no_mapped_records'), { status: 409 });
+        return { snapshot: built, profile: current.profile, client };
+      },
+    },
     './delivery': {
       clientRecipient: async (_pool, tenantId, clientId) => { assert.equal(tenantId, 101); assert.equal(clientId, 11); return current.recipient; },
       bufferReport: async () => ({ buffer: Buffer.from('%PDF-test'), filename: 'client-11-report.pdf', contentType: 'application/pdf' }),

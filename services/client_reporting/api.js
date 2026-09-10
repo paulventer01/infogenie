@@ -9,6 +9,8 @@ const { randomUUID } = require('node:crypto');
 const sources = require('./sources');
 const reports = require('./report');
 const delivery = require('./delivery');
+const _snapshot = require('./snapshot');
+const schedule = require('./schedule');
 const _audit = require('../admin/audit');
 const router = express.Router();
 const PERMISSION = 'tenant.settings.manage';
@@ -84,12 +86,7 @@ function clientId(req) {
   if (!id || id > 2147483647) throw fail(400, 'invalid_client_id');
   return id;
 }
-async function activeClient(pool, tenantId, id, lock = false) {
-  const { rows } = await pool.query(`SELECT ${CLIENT_COLUMNS} FROM clients
-    WHERE tenant_id=$1 AND id=$2 AND status='active'${lock ? ' FOR UPDATE' : ''}`, [tenantId, id]);
-  if (!rows[0]) throw fail(404, 'client_not_found');
-  return rows[0];
-}
+const activeClient = _snapshot.activeClient;
 
 router.get('/clients', readLimiter, safe(async (req, res) => {
   const cursor = req.query.cursor === undefined ? 0 : positiveId(req.query.cursor);
@@ -207,27 +204,10 @@ router.get('/clients/:clientId/data/:source', readLimiter, safe(async (req, res)
 }));
 
 async function reportSnapshot(req, expectedVersion) {
-  const tenantId = req.clientReportingTenantId, id = clientId(req), connection = await _db.getPool().connect();
+  const connection = await _db.getPool().connect();
   try {
-    await connection.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    const client = await activeClient(connection, tenantId, id);
-    const { rows } = await connection.query(`SELECT ${PROFILE_COLUMNS} FROM client_reporting_profiles
-      WHERE tenant_id=$1 AND client_id=$2`, [tenantId, id]);
-    const profile = rows[0];
-    if (!profile) throw fail(409, 'profile_required');
-    if (expectedVersion !== undefined && profile.version !== expectedVersion) throw fail(409, 'version_conflict');
-    if (!['pdf', 'pptx', 'xlsx'].includes(profile.default_format)) throw fail(409, 'invalid_profile');
-    const spec = sources.source(profile.report_source);
-    const data = await sources.data(connection, profile.report_source, spec, tenantId, id, 0, 100);
-    const workspace = profile.branding_mode === 'workspace' ? await connection.query(
-      'SELECT value FROM kv_store WHERE key=$1', [`white_label.brand_profile:t${tenantId}`]) : { rows: [] };
-    const snapshot = reports.buildReport(client, profile, data, workspace.rows[0]?.value);
-    if (expectedVersion !== undefined && !snapshot.can_generate) throw fail(409, 'no_mapped_records');
-    await connection.query('COMMIT');
-    return snapshot;
-  } catch (error) {
-    await connection.query('ROLLBACK');
-    throw error;
+    const { snapshot: built } = await _snapshot.buildReportSnapshot(connection, req.clientReportingTenantId, clientId(req), expectedVersion);
+    return built;
   } finally { connection.release(); }
 }
 router.get('/clients/:clientId/report-preview', readLimiter, safe(async (req, res) => {
@@ -361,4 +341,121 @@ router.post('/clients/:clientId/report-email', writeLimiter, safe(async (req, re
   return res.json({ ok: true, sent: true, recipient, format: snapshot.format, profile_version: snapshot.profile_version });
 }));
 
+const SCHEDULE_COLUMNS = 'client_id, cadence, timezone, send_time, format, opted_in, paused, next_due_at, updated_at';
+
+function scheduleInput(req) {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192) throw fail(413, 'payload_too_large');
+  if (Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 5) throw fail(400, 'invalid_schedule');
+  const { cadence, timezone, send_time, format, opt_in } = body;
+  if (!['weekly', 'monthly'].includes(cadence) || !['pdf', 'pptx', 'xlsx'].includes(format) ||
+      opt_in !== true || !schedule.validTimezone(timezone) || !schedule.parseSendTime(send_time)) throw fail(400, 'invalid_schedule');
+  return { cadence, timezone, send_time, format, opted_in: true };
+}
+
+router.get('/clients/:clientId/schedule', readLimiter, safe(async (req, res) => {
+  if (Object.keys(req.query).length) throw fail(400, 'invalid_schedule');
+  const tenantId = req.clientReportingTenantId, id = clientId(req), pool = _db.getPool();
+  const client = await activeClient(pool, tenantId, id);
+  const { rows } = await pool.query(`SELECT ${SCHEDULE_COLUMNS} FROM client_reporting_schedules
+    WHERE tenant_id=$1 AND client_id=$2`, [tenantId, id]);
+  return res.json({ ok: true, client, configured: !!rows[0], schedule: rows[0] || null });
+}));
+
+router.put('/clients/:clientId/schedule', writeLimiter, safe(async (req, res) => {
+  const tenantId = req.clientReportingTenantId, id = clientId(req), input = scheduleInput(req);
+  const connection = await _db.getPool().connect();
+  try {
+    await connection.query('BEGIN');
+    const client = await activeClient(connection, tenantId, id, true);
+    const profile = await connection.query('SELECT version FROM client_reporting_profiles WHERE tenant_id=$1 AND client_id=$2', [tenantId, id]);
+    if (!profile.rows[0]) throw fail(409, 'profile_required');
+    const recipient = await connection.query('SELECT enabled FROM client_reporting_recipients WHERE tenant_id=$1 AND client_id=$2', [tenantId, id]);
+    if (!recipient.rows[0]?.enabled) throw fail(409, 'no_recipient');
+    const prior = await connection.query(`SELECT cadence, timezone, send_time, format, opted_in, paused FROM client_reporting_schedules
+      WHERE tenant_id=$1 AND client_id=$2`, [tenantId, id]);
+    const nextDue = schedule.computeNextDueAt(input.cadence, input.timezone, input.send_time);
+    const result = await connection.query(`INSERT INTO client_reporting_schedules
+      (tenant_id, client_id, cadence, timezone, send_time, format, opted_in, paused, next_due_at, updated_by_user_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,false,$8,$9)
+      ON CONFLICT (tenant_id, client_id) DO UPDATE SET cadence=EXCLUDED.cadence, timezone=EXCLUDED.timezone,
+        send_time=EXCLUDED.send_time, format=EXCLUDED.format, opted_in=EXCLUDED.opted_in, paused=false,
+        next_due_at=EXCLUDED.next_due_at, updated_by_user_id=EXCLUDED.updated_by_user_id, updated_at=now()
+      RETURNING ${SCHEDULE_COLUMNS}`, [tenantId, id, input.cadence, input.timezone, input.send_time, input.format,
+        input.opted_in, nextDue, positiveId(req.user.id)]);
+    await connection.query('COMMIT');
+    await _audit.recordAudit({
+      action: 'client_reporting.schedule_update', actorUserId: req.user.id, actorEmail: req.user.email,
+      tenantId, detail: `${client.name}: ${prior.rows[0] ? 'updated' : 'created'} ${input.cadence} schedule`,
+      context: { client_id: id, cadence: input.cadence, timezone: input.timezone, send_time: input.send_time, format: input.format },
+    });
+    return res.json({ ok: true, client, configured: true, schedule: result.rows[0] });
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally { connection.release(); }
+}));
+
+router.post('/clients/:clientId/schedule/pause', writeLimiter, safe(async (req, res) => {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 0) throw fail(400, 'invalid_schedule');
+  const tenantId = req.clientReportingTenantId, id = clientId(req), connection = await _db.getPool().connect();
+  try {
+    await connection.query('BEGIN');
+    const client = await activeClient(connection, tenantId, id, true);
+    const result = await connection.query(`UPDATE client_reporting_schedules SET paused=true, updated_by_user_id=$3, updated_at=now()
+      WHERE tenant_id=$1 AND client_id=$2 AND opted_in=true RETURNING ${SCHEDULE_COLUMNS}`,
+      [tenantId, id, positiveId(req.user.id)]);
+    if (!result.rows[0]) throw fail(404, 'schedule_not_found');
+    await connection.query('COMMIT');
+    await _audit.recordAudit({ action: 'client_reporting.schedule_pause', actorUserId: req.user.id, actorEmail: req.user.email,
+      tenantId, detail: `${client.name}: paused`, context: { client_id: id } });
+    return res.json({ ok: true, client, schedule: result.rows[0] });
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally { connection.release(); }
+}));
+
+router.post('/clients/:clientId/schedule/resume', writeLimiter, safe(async (req, res) => {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 0) throw fail(400, 'invalid_schedule');
+  const tenantId = req.clientReportingTenantId, id = clientId(req), connection = await _db.getPool().connect();
+  try {
+    await connection.query('BEGIN');
+    const client = await activeClient(connection, tenantId, id, true);
+    const current = await connection.query(`SELECT cadence, timezone, send_time FROM client_reporting_schedules
+      WHERE tenant_id=$1 AND client_id=$2 AND opted_in=true`, [tenantId, id]);
+    if (!current.rows[0]) throw fail(404, 'schedule_not_found');
+    const row = current.rows[0];
+    const nextDue = schedule.computeNextDueAt(row.cadence, row.timezone, row.send_time);
+    const result = await connection.query(`UPDATE client_reporting_schedules SET paused=false, next_due_at=$4, updated_by_user_id=$3, updated_at=now()
+      WHERE tenant_id=$1 AND client_id=$2 AND opted_in=true RETURNING ${SCHEDULE_COLUMNS}`,
+      [tenantId, id, positiveId(req.user.id), nextDue]);
+    if (!result.rows[0]) throw fail(404, 'schedule_not_found');
+    await connection.query('COMMIT');
+    await _audit.recordAudit({ action: 'client_reporting.schedule_resume', actorUserId: req.user.id, actorEmail: req.user.email,
+      tenantId, detail: `${client.name}: resumed`, context: { client_id: id } });
+    return res.json({ ok: true, client, schedule: result.rows[0] });
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally { connection.release(); }
+}));
+
+router.get('/clients/:clientId/delivery-history', readLimiter, safe(async (req, res) => {
+  const cursor = req.query.cursor === undefined ? 0 : positiveId(req.query.cursor);
+  const limit = req.query.limit === undefined ? 20 : positiveId(req.query.limit);
+  if (Object.keys(req.query).some((key) => !['cursor', 'limit'].includes(key)) ||
+      cursor === null || !limit || limit > 50) throw fail(400, 'invalid_pagination');
+  const tenantId = req.clientReportingTenantId, id = clientId(req), pool = _db.getPool();
+  const client = await activeClient(pool, tenantId, id);
+  const { rows } = await pool.query(`SELECT id, window_key, status, attempted_at, recipient_email, profile_version, format, error_code
+    FROM client_reporting_delivery_history WHERE tenant_id=$1 AND client_id=$2 AND ($3=0 OR id < $3)
+    ORDER BY id DESC LIMIT $4`, [tenantId, id, cursor, limit + 1]);
+  const deliveries = rows.slice(0, limit), hasMore = rows.length > limit;
+  return res.json({ ok: true, client, deliveries, has_more: hasMore, next_cursor: hasMore ? deliveries.at(-1).id : null });
+}));
+
 module.exports = router;
+module.exports.startScheduleCron = schedule.startScheduleCron;

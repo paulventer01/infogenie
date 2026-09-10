@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { apiGet, apiPut } from "@/lib/api";
 import ClientReportingReport from "@/components/features/manage/ClientReportingReport";
 import ClientReportingRecipient from "@/components/features/manage/ClientReportingRecipient";
+import ClientReportingSchedule from "@/components/features/manage/ClientReportingSchedule";
 import ClientReportingMappings from "@/components/features/manage/ClientReportingMappings";
 import { API, BRAND_FIELDS, accessLost, draftError, newDraft, profileDraft, profilePayload, responseError,
   saveMatches, validClient, validPage, validProfile, verifyAccess,
@@ -162,7 +163,7 @@ export default function ClientReportingProfiles() {
     <div style={{ maxWidth: 1000, margin: "0 auto" }}>
       <h1>Client Reporting Profiles</h1>
       <p>Save each client&apos;s preferred report source, format, title and branding.</p>
-      <p>Preview and download reports using saved profiles and mapped client data. Scheduled delivery is not available here yet.</p>
+      <p>Preview, download and schedule reports using saved profiles, mapped client data and delivery recipients.</p>
       {checking && <p role="status">Verifying account, workspace and access…</p>}
       {accessError && <><Failure>{accessError}</Failure><button style={button} onClick={() => {
         if (context.current && !denied.current) void checkAccess().then((valid) => { if (valid && !clients.length) void loadClients(); });
@@ -233,6 +234,9 @@ export default function ClientReportingProfiles() {
           ? <ClientReportingReport key={`${context.current.userId}:${context.current.tenantId}:${clientId}:${version}`}
             clientId={clientId} version={version} format={draft.default_format} checkAccess={checkAccess} clearContext={clearContext} />
           : <p>Save or reload the reporting profile before previewing and generating reports.</p>)}
+        {clientId && context.current && !pendingClient && draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError
+          && <ClientReportingSchedule key={`${context.current.userId}:${context.current.tenantId}:${clientId}:schedule`}
+            clientId={clientId} defaultFormat={draft.default_format} checkAccess={checkAccess} clearContext={clearContext} />}
         {clientId && context.current && !pendingClient && <ClientReportingMappings
           key={`${context.current.userId}:${context.current.tenantId}:${clientId}`}
           clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}
