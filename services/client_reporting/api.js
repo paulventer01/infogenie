@@ -7,6 +7,7 @@ const { hasPermission } = require('../tenants/permission_enforce');
 const { createRateLimiter } = require('../security/rate_limit');
 const { randomUUID } = require('node:crypto');
 const sources = require('./sources');
+const reports = require('./report');
 const router = express.Router();
 const PERMISSION = 'tenant.settings.manage';
 const CLIENT_COLUMNS = 'id, name, slug, website, status';
@@ -201,6 +202,42 @@ router.get('/clients/:clientId/data/:source', readLimiter, safe(async (req, res)
     await connection.query('ROLLBACK');
     throw error;
   } finally { connection.release(); }
+}));
+
+async function reportSnapshot(req, expectedVersion) {
+  const tenantId = req.clientReportingTenantId, id = clientId(req), connection = await _db.getPool().connect();
+  try {
+    await connection.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const client = await activeClient(connection, tenantId, id);
+    const { rows } = await connection.query(`SELECT ${PROFILE_COLUMNS} FROM client_reporting_profiles
+      WHERE tenant_id=$1 AND client_id=$2`, [tenantId, id]);
+    const profile = rows[0];
+    if (!profile) throw fail(409, 'profile_required');
+    if (expectedVersion !== undefined && profile.version !== expectedVersion) throw fail(409, 'version_conflict');
+    if (!['pdf', 'pptx', 'xlsx'].includes(profile.default_format)) throw fail(409, 'invalid_profile');
+    const spec = sources.source(profile.report_source);
+    const data = await sources.data(connection, profile.report_source, spec, tenantId, id, 0, 100);
+    const workspace = profile.branding_mode === 'workspace' ? await connection.query(
+      'SELECT value FROM kv_store WHERE key=$1', [`white_label.brand_profile:t${tenantId}`]) : { rows: [] };
+    const snapshot = reports.buildReport(client, profile, data, workspace.rows[0]?.value);
+    if (expectedVersion !== undefined && !snapshot.can_generate) throw fail(409, 'no_mapped_records');
+    await connection.query('COMMIT');
+    return snapshot;
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally { connection.release(); }
+}
+router.get('/clients/:clientId/report-preview', readLimiter, safe(async (req, res) => {
+  if (Object.keys(req.query).length) throw fail(400, 'invalid_report');
+  return res.json(await reportSnapshot(req));
+}));
+router.post('/clients/:clientId/report', writeLimiter, safe(async (req, res) => {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192) throw fail(413, 'payload_too_large');
+  if (Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 1 ||
+      !Number.isInteger(body.expected_version) || body.expected_version < 1 || body.expected_version >= 2147483647) throw fail(400, 'invalid_report');
+  return reports.streamReport(await reportSnapshot(req, body.expected_version), res);
 }));
 
 module.exports = router;

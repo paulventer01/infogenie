@@ -31,6 +31,7 @@ const ROOT = '/api/client-reporting/clients';
 const routes = [
   ['GET', ROOT], ['HEAD', ROOT], ['GET', ROOT + '/12'], ['HEAD', ROOT + '/12'],
   ['GET', ROOT + '/12/profile'], ['HEAD', ROOT + '/12/profile'], ['PUT', ROOT + '/12/profile'],
+  ['GET', ROOT + '/12/report-preview'], ['HEAD', ROOT + '/12/report-preview'], ['POST', ROOT + '/12/report'],
 ];
 for (const source of ['search-intel', 'campaigns']) {
   routes.push(
@@ -95,8 +96,13 @@ test('authorized non-owner settings routes pass the real owner gate, including n
   }
 });
 
-test('owner-gate exemption cannot expose generation, client creation or lookalike paths', () => {
+test('owner-gate exemption cannot expose unimplemented methods, client creation or lookalike paths', () => {
   const blocked = [
+    ['POST', ROOT + '/12/report-preview'], ['PUT', ROOT + '/12/report-preview'],
+    ['GET', ROOT + '/12/report'], ['HEAD', ROOT + '/12/report'], ['DELETE', ROOT + '/12/report'],
+    ['GET', ROOT + '/12/report-preview/export'], ['POST', ROOT + '/12/report/export'],
+    ['GET', ROOT + '/12/report-preview-extra'], ['POST', ROOT + '/12/report-extra'],
+    ['GET', ROOT + '/0/report-preview'], ['POST', ROOT + '/12extra/report'],
     ['POST', '/api/client-reporting/sources/search-intel/records'],
     ['GET', '/api/client-reporting/sources/unknown/records'],
     ['GET', '/api/client-reporting/sources/campaigns/records/export'],

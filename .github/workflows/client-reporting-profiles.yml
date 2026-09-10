@@ -36,7 +36,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify reporting profiles and authorization
-        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/client-reporting.test.js test/client-reporting-permissions.test.js test/permission-matrix.test.js test/permission-matrix-coverage.test.js test/build-app-no-side-effects.test.js test/tenant-read-audit.test.js test/tenant-write-audit.test.js
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/client-reporting.test.js test/client-reporting-report.test.js test/client-reporting-permissions.test.js test/permission-matrix.test.js test/permission-matrix-coverage.test.js test/build-app-no-side-effects.test.js test/tenant-read-audit.test.js test/tenant-write-audit.test.js
 
   native-postgres:
     name: Client reporting PostgreSQL (TLS, zero skips)

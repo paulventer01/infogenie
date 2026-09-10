@@ -22,6 +22,7 @@ on:
       - 'test/helpers/**'
       - 'test/client-reporting-ui.test.js'
       - 'test/client-reporting-mapping-ui.test.js'
+      - 'test/client-reporting-report-ui.test.js'
       - 'test/client-reporting-permissions.test.js'
       - '.github/workflows/client-reporting-ui.yml'
 
@@ -42,7 +43,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify profile form, access and navigation
-        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/client-reporting-ui.test.js test/client-reporting-mapping-ui.test.js test/client-reporting-permissions.test.js test/migrated-views-lockstep.test.js
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/client-reporting-ui.test.js test/client-reporting-mapping-ui.test.js test/client-reporting-report-ui.test.js test/client-reporting-permissions.test.js test/migrated-views-lockstep.test.js
 
   browser-postgres:
     name: Client reporting UI Chromium + PostgreSQL (zero skips)
@@ -101,17 +102,18 @@ jobs:
           PR10E9_REQUIRE_BROWSER: '1'
           PR10F2_REQUIRE_BROWSER: '1'
           PR10F4_REQUIRE_BROWSER: '1'
+          PR10F5_REQUIRE_BROWSER: '1'
           NEXT_TELEMETRY_DISABLED: '1'
         run: |
           set -o pipefail
-          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/browser/client-reporting-profiles.test.js | tee /tmp/client-reporting-browser.tap
-          grep -Eq '^# tests [1-9][0-9]*$' /tmp/client-reporting-browser.tap
-          grep -Eq '^# fail 0$' /tmp/client-reporting-browser.tap
-          grep -Eq '^# skipped 0$' /tmp/client-reporting-browser.tap
-          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/browser/client-reporting-mappings.test.js | tee /tmp/client-reporting-mappings-browser.tap
-          grep -Eq '^# tests [1-9][0-9]*$' /tmp/client-reporting-mappings-browser.tap
-          grep -Eq '^# fail 0$' /tmp/client-reporting-mappings-browser.tap
-          grep -Eq '^# skipped 0$' /tmp/client-reporting-mappings-browser.tap
+          result=0
+          for suite in profiles mappings reports; do
+            node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit "test/browser/client-reporting-${suite}.test.js" | tee "/tmp/client-reporting-${suite}-browser.tap" || result=1
+            grep -Eq '^# tests [1-9][0-9]*$' "/tmp/client-reporting-${suite}-browser.tap" || result=1
+            grep -Eq '^# fail 0$' "/tmp/client-reporting-${suite}-browser.tap" || result=1
+            grep -Eq '^# skipped 0$' "/tmp/client-reporting-${suite}-browser.tap" || result=1
+          done
+          exit "$result"
       - name: Upload synthetic profile screenshots
         if: always()
         uses: actions/upload-artifact@v4

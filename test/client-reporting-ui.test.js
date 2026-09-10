@@ -281,3 +281,17 @@ for (const phase of ["preflight", "profile", "save"]) test("unmount prevents lat
   await h.resolve(pending, phase === "preflight" ? h.me() : { ok: true, client: client(), configured: true, profile: profile() });
   assert.equal(h.text(), ""); assert.equal(h.reads().length, readCount); assert.equal(h.writes().length, phase === "save" ? 1 : 0);
 });
+test("report generation is unavailable for unsaved or dirty profiles and restored only after save", async (t) => {
+  const h = await harness(t); await h.select(); assert.equal(h.button("Preview report"), undefined);
+  await h.fill(); await h.submit(); assert.ok(h.button("Preview report"));
+  await h.set("report_title", "Changed title"); assert.equal(h.button("Preview report"), undefined);
+  await h.click("Discard changes and reload"); assert.ok(h.button("Preview report"));
+  assert.equal(h.calls.filter((c) => /\/report(-preview)?$/.test(c.url)).length, 0);
+});
+for (const change of ["user", "tenant"]) test("pending report preview cannot survive " + change + " switch", async (t) => {
+  const pending = deferred(); const h = await harness(t, (c) => c.url.endsWith("/report-preview") ? pending.promise : undefined);
+  h.state.profiles.set(11, profile()); await h.select(); await h.click("Preview report"); h.state[change]++;
+  await h.resolve(pending, { ok: true, client: client(), profile_version: 1, format: "pdf", can_generate: true, brand: {},
+    report: { title: "Private report", generated_at: "2026-01-01", sections: [{ kind: "table", title: "Private", headers: ["Name"], rows: [["Private data"]] }] } });
+  assert.doesNotMatch(h.text(), /Private report|Private data/); assert.equal(h.button("Preview report"), undefined);
+});
