@@ -43,7 +43,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify profile form, access and navigation
-        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/client-reporting-ui.test.js test/client-reporting-mapping-ui.test.js test/client-reporting-report-ui.test.js test/client-reporting-permissions.test.js test/migrated-views-lockstep.test.js
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/client-reporting-ui.test.js test/client-reporting-mapping-ui.test.js test/client-reporting-report-ui.test.js test/client-reporting-delivery.test.js test/client-reporting-delivery-ui.test.js test/client-reporting-permissions.test.js test/migrated-views-lockstep.test.js
 
   browser-postgres:
     name: Client reporting UI Chromium + PostgreSQL (zero skips)

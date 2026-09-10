@@ -8,6 +8,7 @@ const { createRateLimiter } = require('../security/rate_limit');
 const { randomUUID } = require('node:crypto');
 const sources = require('./sources');
 const reports = require('./report');
+const delivery = require('./delivery');
 const router = express.Router();
 const PERMISSION = 'tenant.settings.manage';
 const CLIENT_COLUMNS = 'id, name, slug, website, status';
@@ -238,6 +239,64 @@ router.post('/clients/:clientId/report', writeLimiter, safe(async (req, res) => 
   if (Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 1 ||
       !Number.isInteger(body.expected_version) || body.expected_version < 1 || body.expected_version >= 2147483647) throw fail(400, 'invalid_report');
   return reports.streamReport(await reportSnapshot(req, body.expected_version), res);
+}));
+
+function deliveryInput(req) {
+  const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
+  if (Buffer.byteLength(raw, 'utf8') > 8192) throw fail(413, 'payload_too_large');
+  if (Object.keys(req.query).length || !object(body) || Object.keys(body).length !== 2 ||
+      !Number.isInteger(body.expected_version) || body.expected_version < 1 || body.expected_version >= 2147483647 ||
+      body.confirm !== true) throw fail(400, 'invalid_delivery');
+  return body.expected_version;
+}
+
+async function deliveryContext(req, expectedVersion) {
+  const tenantId = req.clientReportingTenantId, id = clientId(req), pool = _db.getPool();
+  const snapshot = await reportSnapshot(req, expectedVersion);
+  const recipient = await clientRecipient(pool, tenantId, snapshot.client.name);
+  if (!recipient) throw fail(409, 'no_recipient');
+  return { snapshot, recipient };
+}
+
+async function clientRecipient(pool, tenantId, clientName) {
+  await pool.query('SELECT 1 FROM weekly_report_subs LIMIT 0').catch(() => {
+    throw fail(503, 'recipient_source_unavailable');
+  });
+  return delivery.clientRecipient(pool, tenantId, clientName);
+}
+
+router.get('/clients/:clientId/report-recipient', readLimiter, safe(async (req, res) => {
+  if (Object.keys(req.query).length) throw fail(400, 'invalid_delivery');
+  const tenantId = req.clientReportingTenantId, id = clientId(req), pool = _db.getPool();
+  const client = await activeClient(pool, tenantId, id);
+  const { rows } = await pool.query(`SELECT default_format, version FROM client_reporting_profiles
+    WHERE tenant_id=$1 AND client_id=$2`, [tenantId, id]);
+  const profile = rows[0];
+  if (!profile) throw fail(409, 'profile_required');
+  const email = await clientRecipient(pool, tenantId, client.name);
+  if (!email) throw fail(409, 'no_recipient');
+  return res.json({ ok: true, client, profile_version: profile.version, format: profile.default_format,
+    recipient: { email, source: 'weekly_report_sub', brand: client.name } });
+}));
+
+router.post('/clients/:clientId/report-email', writeLimiter, safe(async (req, res) => {
+  const expectedVersion = deliveryInput(req);
+  const { snapshot, recipient } = await deliveryContext(req, expectedVersion);
+  const { buffer, filename, contentType } = await delivery.bufferReport(snapshot);
+  const subject = `${snapshot.report.title} — ${snapshot.client.name}`;
+  const text = `Attached is the ${snapshot.format.toUpperCase()} report "${snapshot.report.title}" for ${snapshot.client.name}.`;
+  const html = `<div style="font-family:sans-serif;max-width:560px;line-height:1.6">
+    <p>Attached is the <strong>${snapshot.format.toUpperCase()}</strong> report <strong>${snapshot.report.title}</strong> for ${snapshot.client.name}.</p>
+    <p style="color:#64748B;font-size:13px">Generated from the saved client reporting profile (version ${snapshot.profile_version}).</p>
+  </div>`;
+  try {
+    await delivery.sendReportEmail({ to: recipient, subject, html, text, filename, content: buffer, contentType });
+  } catch (error) {
+    if (error.code === 'mail_unconfigured') return res.status(503).json({ ok: false, error: 'mail_unconfigured' });
+    if (error.code === 'mail_failed') return res.status(502).json({ ok: false, error: 'mail_failed' });
+    throw error;
+  }
+  return res.json({ ok: true, sent: true, recipient, format: snapshot.format, profile_version: snapshot.profile_version });
 }));
 
 module.exports = router;
