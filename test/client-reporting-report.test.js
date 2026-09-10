@@ -25,7 +25,7 @@ async function fixture(t, options = {}) {
     '../tenants/context': { resolveTenantId: async () => 101 },
     '../tenants/permission_enforce': { hasPermission: () => !current.denied },
     './sources': { source: (name) => { assert.equal(name, current.profile.report_source); return {}; }, data: async (...args) => { mappings.push(args); return current.data; } },
-    './report': { buildReport, streamReport: async (snapshot, res) => { streams.push(snapshot); res.type('application/pdf').send('binary'); } },
+    './report': options.realRenderer ? require('../services/client_reporting/report') : { buildReport, streamReport: async (snapshot, res) => { streams.push(snapshot); res.type('application/pdf').send('binary'); } },
   };
   new Function('require', 'module', 'exports', fs.readFileSync(filename, 'utf8'))((name) => overrides[name] || native(name), module, module.exports);
   const app = express();
@@ -38,7 +38,7 @@ async function fixture(t, options = {}) {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api/client-reporting/clients/11/${suffix}`, {
       method, headers: { 'Content-Type': 'application/json', Connection: 'close' }, body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
     });
-    return { status: response.status, headers: response.headers, body: response.headers.get('content-type').includes('application/json') ? await response.json() : await response.text() };
+    return { status: response.status, headers: response.headers, body: response.headers.get('content-type').includes('application/json') ? await response.json() : options.realRenderer ? Buffer.from(await response.arrayBuffer()) : await response.text() };
   }
   return { current, calls, streams, mappings, request, released: () => released };
 }
@@ -96,4 +96,15 @@ test('report bounds tables and primitive cells, keeps scope notices and currenci
   assert.match(text, /All-time recorded data/); assert.match(text, /Unmapped records/); assert.match(text, /maximum 100/);
   assert.match(text, /USD.*spend.*12.50/); assert.match(text, /ZAR.*spend.*20.00/); assert.doesNotMatch(text, /formula|secret|\\u0000/);
   assert.equal(out.report.sections.filter((s) => s.title.startsWith('Mapped campaigns')).flatMap((s) => s.rows).length, 100);
+});
+
+test('real renderers produce binary documents through the report route', async (t) => {
+  const fx = await fixture(t, { realRenderer: true });
+  for (const [format, mime, signature] of [['pdf', 'application/pdf', '%PDF-'], ['pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'PK'], ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'PK']]) {
+    fx.current.profile.default_format = format;
+    const response = await fx.request('POST', 'report', { expected_version: 2 });
+    assert.equal(response.status, 200); assert.equal(response.headers.get('content-type'), mime);
+    assert.ok(response.body.length > 500, `${format}: ${response.body.length} bytes`);
+    assert.equal(response.body.subarray(0, signature.length).toString(), signature);
+  }
 });

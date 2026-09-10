@@ -157,7 +157,9 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
       const response = await responseFor(owner, 'POST', reportPath(first.id),
         () => button(owner, `Generate & download ${format.toUpperCase()}`, SECTION));
       const bytes = Buffer.from(await response.buffer());
-      assert.ok(bytes.length > 500, 'nonempty generated document');
+      const mime = response.headers()['content-type'] || '';
+      const detail = mime.includes('json') && bytes.length <= 500 ? bytes.toString('utf8') : '';
+      assert.ok(bytes.length > 500, `nonempty generated document: format=${format}, bytes=${bytes.length}, MIME=${mime}, body=${detail}`);
       assert.match(response.headers()['content-disposition'], new RegExp(`\\.${format}"?$`));
       if (format === 'pdf') {
         assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
@@ -180,6 +182,7 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     assert.ok(await owner.$eval(SECTION, (el) => el.getBoundingClientRect().right <= innerWidth + 1), 'report fits mobile');
   });
   await t.test('dirty draft blocks generation and a real concurrent profile change rejects the stale version', async () => {
+    await save('xlsx'); await owner.reload({ waitUntil: 'networkidle2' }); await selectClient(owner, first.id);
     const before = reportPosts();
     await owner.locator(`${PANEL} input[name="report_title"]`).fill('Unsaved draft');
     await text(owner, 'Save or reload the reporting profile', PANEL);
