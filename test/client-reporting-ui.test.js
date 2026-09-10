@@ -23,6 +23,7 @@ function loader() {
     } });
     const mod = { exports: {} };
     new Function("exports", "require", "module", outputText)(mod.exports, (id) => id.startsWith("@/lib/") ? load(id.slice(2) + ".ts")
+      : id.startsWith("@/components/") ? load(id.slice(2) + ".tsx")
       : id === "next/link" ? { default: ({ children, ...props }) => React.createElement("a", props, children) } : require(id), mod);
     cache.set(file, mod.exports); return mod.exports;
   };
@@ -44,6 +45,8 @@ async function harness(t, handler = () => undefined) {
         if (url === "/api/tenants/me") body = me();
         else if (url === "/api/tenants/active") body = { ok: true, tenant: { id: state.tenant, status: "active" }, permissions: state.permissions, isPlatformAdmin: state.admin };
         else if (url.startsWith(API + "?")) body = { ok: true, clients: state.clients, has_more: false, next_cursor: null };
+        else if (/\/clients\/\d+$/.test(url)) body = { ok: true, client: state.clients.find((c) => c.id === Number(url.split("/").at(-1))) };
+        else if (url.includes("/sources/")) body = { ok: true, source: url.split("/")[4], records: [], has_more: false, next_cursor: null };
         else if (/\/clients\/\d+\/profile$/.test(url)) {
           const id = Number(url.split("/").at(-2));
           if (call.method === "PUT") {
@@ -88,6 +91,19 @@ async function harness(t, handler = () => undefined) {
     reads: () => calls.filter((c) => c.url.startsWith(API) && c.method === "GET"), writes: () => calls.filter((c) => c.method !== "GET") };
 }
 
+for (const change of ["user", "tenant"]) test("mapping responses cannot expose previous context after " + change + " switch", async (t) => {
+  const pending = deferred();
+  const h = await harness(t, (c) => c.url.includes("/sources/") ? pending.promise : undefined);
+  await h.select(); h.state[change]++;
+  await h.resolve(pending, { ok: true, source: "search-intel", records: [{ id: 1, label: "Old mapping secret", client_id: null, mapping_id: null }], has_more: false, next_cursor: null });
+  assert.doesNotMatch(h.text(), /Old mapping secret|Acme|Beta/); assert.equal(h.query("[data-record-id]"), null);
+  assert.equal(h.writes().length, 0); assert.equal(h.visible('[name="client_id"]'), false);
+});
+test("mapping source selection leaves the unsaved reporting profile intact", async (t) => {
+  const h = await harness(t); await h.select(); await h.set("report_title", "Unsaved title"); await h.set("mapping_source", "campaigns");
+  assert.equal(h.query('[name="report_source"]').value, "search-intel"); assert.equal(h.query('[name="report_title"]').value, "Unsaved title");
+  assert.equal(h.writes().length, 0);
+});
 test("checks identity and membership before listing real clients; never auto-selects or auto-saves", async (t) => {
   const pending = deferred();
   const h = await harness(t, (c) => c.url.endsWith("/active") ? pending.promise : undefined);

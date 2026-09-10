@@ -58,7 +58,10 @@ test('PR10F.2 client reporting setup browser acceptance (real PostgreSQL/TLS)', 
   });
   const { startAgencyBrowser } = require('../helpers/agency-browser');
   const { baseUrl, db, actors } = await startAgencyBrowser(t);
+  await require('../../services/search_intel/schema').ensureSearchIntelSchema();
+  await require('../../services/optimizer/schema').ensureOptimizerSchema();
   await require('../../services/client_reporting/schema').ensureClientReportingSchema();
+  await require('../../services/client_reporting/schema').ensureClientReportingMappingSchema();
   const pool = db.getPool();
   const seeded = (await pool.query(`INSERT INTO clients (tenant_id, name, status) VALUES
     ($1, 'PR10F2 Alpine', 'active'), ($1, 'PR10F2 Birch', 'active'),
