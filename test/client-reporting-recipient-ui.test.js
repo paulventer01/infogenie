@@ -3,7 +3,6 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), ts = require("typescript");
 const React = require("react"), { JSDOM } = require("jsdom"), { act } = React;
-const BASE = "/api/client-reporting";
 const client = (id) => ({ id, name: "Client", slug: null, website: null, status: "active" });
 async function harness(t, handler = () => undefined) {
   const dom = new JSDOM("<div id='root'></div>", { url: "http://localhost/manage/client-reporting", pretendToBeVisual: true });
