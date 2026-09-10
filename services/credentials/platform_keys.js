@@ -45,6 +45,7 @@ const REGISTRY = [
   { key: 'OPENROUTER_API_KEY', group: 'AI Models', service: 'OpenRouter', label: 'OpenRouter API Key', desc: 'Multi-model gateway (Llama, Claude, GPT and more) via OpenRouter', secret: true, settingsIds: ['openrouter'] },
   { key: 'TOGETHER_API_KEY', group: 'AI Models', service: 'Together AI', label: 'Together API Key', desc: 'Together AI OpenAI-compatible chat models', secret: true, settingsIds: ['together'] },
   { key: 'OLLAMA_API_KEY', group: 'AI Models', service: 'Ollama Cloud', label: 'Ollama API Key', desc: 'Cloud models via https://ollama.com/v1 (OpenAI-compatible). Create at ollama.com/settings/keys', secret: true, settingsIds: ['ollama', 'ollama_cloud'] },
+  { key: 'XAI_API_KEY', group: 'AI Models', service: 'xAI Grok', label: 'xAI API Key', desc: 'Grok via xAI Responses API — Billy marketing assistant', secret: true, aliases: ['XAI_KEY'], test: 'xai', settingsIds: ['xai', 'grok'] },
 
   // ── Data & Intelligence ─────────────────────────────────────────────────────
   { key: 'DATAFORSEO_LOGIN', group: 'Data & Intelligence', service: 'DataForSEO', label: 'DataForSEO Login', desc: 'SEO/SERP/keyword data — account login', secret: false, test: 'dataforseo', settingsIds: ['dataforseo', 'dataseo'] },
@@ -308,6 +309,14 @@ async function _runTest(keyName) {
       if (r.ok) return _OK('OpenAI reachable');
       if (r.status === 401 || r.status === 403) return _BAD('OpenAI rejected the key (HTTP ' + r.status + ')');
       return _HTTP('OpenAI', r);
+    }
+    if (entry.test === 'xai') {
+      const key = resolvePlatformKey('XAI_API_KEY') || resolvePlatformKey('XAI_KEY');
+      if (!key) return _UNCONF();
+      const r = await _fetchT('https://api.x.ai/v1/models', { headers: { Authorization: 'Bearer ' + key } });
+      if (r.ok) return _OK('xAI reachable');
+      if (r.status === 401 || r.status === 403) return _BAD('xAI rejected the key (HTTP ' + r.status + ')');
+      return _HTTP('xAI', r);
     }
     if (entry.test === 'anthropic') {
       const key = resolvePlatformKey('AI_INTEGRATIONS_ANTHROPIC_API_KEY') || resolvePlatformKey('ANTHROPIC_API_KEY');
