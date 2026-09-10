@@ -561,7 +561,12 @@ async function _runTest(keyName) {
         },
         body: JSON.stringify({ model: 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo', messages: [{ role: 'user', content: 'Say ok' }], max_tokens: 5 }),
       });
-      if (r.status === 401 || r.status === 403) return _BAD('RapidAPI rejected the key (HTTP ' + r.status + ')');
+      // 403 on RapidAPI almost always means "authenticated but not subscribed
+      // to this specific API" — the application key can still be valid.
+      if (r.status === 403) {
+        return _BAD('Not subscribed to Meta Llama 3.2 Vision on RapidAPI (HTTP 403). Open rapidapi.com/swift-api-swift-api-default/api/meta-llama-3-2-vision → Pricing → Subscribe (Basic/free is fine), then Test again.');
+      }
+      if (r.status === 401) return _BAD('RapidAPI rejected the application key (HTTP 401) — paste the X-RapidAPI-Key from rapidapi.com/developer/security');
       if (r.ok || r.status === 400 || r.status === 422) return _OK('Meta Llama (RapidAPI) reachable');
       return _HTTP('Meta Llama (RapidAPI)', r);
     }
