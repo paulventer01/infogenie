@@ -31,6 +31,7 @@ All **✅ integrated** services whose keys are optional (not required to boot) s
 | **Cloudflare Workers AI** | `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_AI_TOKEN` | @cf/meta/llama-3.1-8b-instruct, @cf/meta/llama-3 | ✅ | Low-latency on-demand inference, fallback LLM for market signals |
 | **RapidAPI (Meta Llama)** | `RAPIDAPI_KEY` | Meta Llama 3.2 Vision (via RapidAPI host) | ✅ | Vision-capable LLM fallback, keyword research endpoint (keyword-research-for-seo) |
 | **DeepSeek** | `DEEPSEEK_API_KEY` | deepseek-chat | ⚙️ | Referenced in model-compare and ai_compat — available as selectable model; no dedicated UI panel |
+| **xAI Grok** | `XAI_API_KEY` (`XAI_MODEL`, default `grok-4.6`) | grok-4.6 | ⚙️ | Billy marketing assistant via xAI Responses API (`POST https://api.x.ai/v1/responses`). Platform key, server-side only (`services/xai/client.js`). No dedicated React panel in this slice |
 
 ### 1.2 LLM routing & compatibility layer
 
@@ -45,7 +46,6 @@ All **✅ integrated** services whose keys are optional (not required to boot) s
 |----------|-------|
 | **Mistral** | No env var or service module |
 | **Cohere** | No env var or service module |
-| **xAI Grok** | No env var or service module |
 | **OpenAI o1/o3** | Reasoning models — partial support via ai_compat normalization; no explicit tier routing |
 
 ---
@@ -369,6 +369,8 @@ The following are either referenced in the codebase without a working integratio
 | Env var | Feature(s) that use it |
 |---------|------------------------|
 | `AI_INTEGRATIONS_OPENAI_API_KEY` | All 119+ AI-powered tiers: ad copy, content calendar, cold email, battle cards, strategy, DALL·E image gen |
+| `XAI_API_KEY` | Billy marketing assistant — Grok via xAI Responses API (`https://api.x.ai/v1/responses`); server-side only |
+| `XAI_MODEL` | Optional Grok model override for Billy (default `grok-4.6`) |
 | `AI_INTEGRATIONS_ANTHROPIC_API_KEY` | Deep competitive analysis, SEO audits, long-form strategy docs, content scorer |
 | `GEMINI_API_KEY` | GEO Audit, infographics, social content, multimodal analysis, creator studio |
 | `PERPLEXITY_API_KEY` | Real-time market signals, competitor news, web-grounded research |

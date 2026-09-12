@@ -419,6 +419,9 @@ const ROUTE_GROUPS = [
   { prefix: '/api/ai-answer-sov',             view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/acquisition-engine',        view: 'reach.leads.view', write: 'reach.leads.manage' },
   { prefix: '/api/lead-aggregator',           view: 'reach.leads.view', write: 'reach.leads.manage' },
+  // Billy chat — dashboard utility (session / INFOGENIE_API_KEY). /v1/billy is
+  // outside /api/* and is not matrix-mapped (temporary token stub).
+  { prefix: '/api/billy',                     view: 'dashboard.view', write: 'dashboard.view' },
 ];
 
 // Pre-sort longest prefix first so the most specific group wins.
