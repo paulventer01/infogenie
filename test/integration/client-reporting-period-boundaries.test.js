@@ -68,6 +68,7 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
   const jhbBounds = period.sqlBounds(period.validateCustomRange('2026-06-15', '2026-06-15', 'Africa/Johannesburg'));
   const nyRuns = runs.filter(([ran_at]) => ran_at >= nyBounds.start && ran_at < nyBounds.end).length;
   const jhbRuns = runs.filter(([ran_at]) => ran_at >= jhbBounds.start && ran_at < jhbBounds.end).length;
+  assert.ok(nyRuns >= 2 && jhbRuns >= 1, 'fixture must straddle both timezone boundaries');
   async function call(method, path, body, status = 200) {
     const response = await request(app.baseUrl, method, path, { cookie: actor.cookie, body, headers: { Origin: app.baseUrl } });
     assert.equal(response.status, status, `${method} ${path}: ${response.text}`);
