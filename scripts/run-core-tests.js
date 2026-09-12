@@ -36,6 +36,7 @@ const FILES = [
   'test/legacy-dispatch-guard.test.js',
   'test/agent-system.test.js',
   'test/agent-model-routing.test.js',
+  'test/battleplan-panel.test.js',
 ];
 
 const QUIESCE_MS = 6000; // once tests have printed, this much silence => done
