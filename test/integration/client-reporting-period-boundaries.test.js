@@ -33,6 +33,7 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
   await db.ensureSchema();
   await fx.ensureSchemas();
   await require('../../services/search_intel/schema').ensureSearchIntelSchema();
+  await require('../../services/optimizer/schema').ensureOptimizerSchema();
   await require('../../services/client_reporting/schema').ensureClientReportingSchema();
   await require('../../services/client_reporting/schema').ensureClientReportingMappingSchema();
   const { bootApp, request, login } = require('../helpers');
