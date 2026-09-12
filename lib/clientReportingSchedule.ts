@@ -72,7 +72,7 @@ export function validScheduleResponse(value: unknown, clientId: number): value i
 function deliveryHistoryId(value: unknown): boolean {
   if (typeof value === "string") {
     if (!/^\d+$/.test(value)) return false;
-    try { return BigInt(value) > 0n; } catch { return false; }
+    try { return BigInt(value) > BigInt(0); } catch { return false; }
   }
   if (typeof value === "number") return Number.isSafeInteger(value) && value > 0;
   return false;
