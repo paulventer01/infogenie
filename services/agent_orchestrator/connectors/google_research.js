@@ -425,18 +425,8 @@ function normalizeAdsSearchPage(json, req, opts) {
     });
   }
 
-  const depth = depthOf(opts && opts.depth);
-  const pageIndex = Number(opts && opts.pageIndex) || 0;
-  const ids = (opts && Array.isArray(opts.advertiserIds)) ? opts.advertiserIds : [];
-  const target = (opts && opts.target) || '';
-  const canContinue = evidence.length >= depth && !!(ids.length || target);
-  const nextState = canContinue ? {
-    ids: ids.slice(0, MAX_ADVERTISER_IDS),
-    tgt: target || '',
-    p: pageIndex + 1,
-    f: firstCreativeId,
-  } : null;
-  const next_cursor = nextState ? bindGoogleCursor(req.tenant_id, req.research_run_id, nextState) : null;
+  // DataForSEO ads_search/live/advanced has no page offset — only `depth`.
+  // One hop is the complete bounded result. Never advertise a fake next page.
   return {
     ok: true,
     contract_version: 'v1',
@@ -445,8 +435,8 @@ function normalizeAdsSearchPage(json, req, opts) {
     competitors: [...competitorsByAdv.values()],
     evidence,
     assets: [],
-    page: { next_cursor, has_more: !!next_cursor },
-    continuation_state: { honesty_class: 'live', cursor: next_cursor },
+    page: { next_cursor: null, has_more: false },
+    continuation_state: { honesty_class: 'live', cursor: null },
     rate_limit: (opts && opts.rate_limit) || null,
     retry_class: 'none',
     _first_creative_id: firstCreativeId,
@@ -626,10 +616,6 @@ async function fetchLivePage(input, ctx) {
     countries: requestedCountries,
     rate_limit: searchHop.rate_limit || null,
     names,
-    advertiserIds,
-    target,
-    depth,
-    pageIndex,
   });
   if (unbound.state && unbound.state.f && raw._first_creative_id && raw._first_creative_id === unbound.state.f) {
     return failPage('invalid_response', 'repeated_continuation_token', req);

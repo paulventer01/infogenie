@@ -196,7 +196,7 @@ test('1. live Google page normalizes advertisers + ads_search hops', async () =>
   assertNoSecrets(page);
 });
 
-test('2. pagination uses a bound cursor; repeated first creative_id is a loop', async () => {
+test('2. a full first ads_search page is terminal; crafted cursor still detects loops', async () => {
   const hops = [];
   const first = await google.fetchPage(baseReq({
     search_parameters: { query: 'jackets', countries: ['US'], max_results_per_page: 1 },
@@ -209,14 +209,20 @@ test('2. pagination uses a bound cursor; repeated first creative_id is a loop', 
     },
   });
   assert.strictEqual(first.ok, true);
-  assert.strictEqual(first.page.has_more, true);
-  assert.ok(first.page.next_cursor);
-  const decoded = google.unbindGoogleCursor(first.page.next_cursor, 9, 'run-google-live-001');
+  assert.strictEqual(first.evidence.length, 1);
+  assert.strictEqual(first.page.has_more, false);
+  assert.strictEqual(first.page.next_cursor, null);
+  assert.strictEqual(first.continuation_state.cursor, null);
+  const crafted = google.bindGoogleCursor(9, 'run-google-live-001', {
+    ids: ['AR11122233344455566677'], tgt: '', p: 1, f: 'CR99988877766655544433',
+  });
+  assert.ok(crafted);
+  const decoded = google.unbindGoogleCursor(crafted, 9, 'run-google-live-001');
   assert.strictEqual(decoded.ok, true);
   assert.strictEqual(decoded.state.p, 1);
   assert.ok(decoded.state.ids.includes('AR11122233344455566677'));
-  const second = await google.fetchPage(baseReq({
-    cursor: first.page.next_cursor,
+  const advanced = await google.fetchPage(baseReq({
+    cursor: crafted,
     search_parameters: { query: 'jackets', countries: ['US'], max_results_per_page: 1 },
     idempotency_key: 'ik-pg2',
   }), {
@@ -227,11 +233,13 @@ test('2. pagination uses a bound cursor; repeated first creative_id is a loop', 
       return liveHop(dfsOk([sampleAd({ creative_id: 'CR11111111111111111111', title: 'Page two' })]));
     },
   });
-  assert.strictEqual(second.ok, true);
-  assert.strictEqual(second.evidence[0].provider_external_id, 'CR11111111111111111111');
+  assert.strictEqual(advanced.ok, true);
+  assert.strictEqual(advanced.evidence[0].provider_external_id, 'CR11111111111111111111');
+  assert.strictEqual(advanced.page.has_more, false);
+  assert.strictEqual(advanced.page.next_cursor, null);
   assert.ok(hops.filter((h) => isAdvertisers(h.url)).length === 1);
   const looped = await google.fetchPage(baseReq({
-    cursor: first.page.next_cursor,
+    cursor: crafted,
     search_parameters: { query: 'jackets', countries: ['US'], max_results_per_page: 1 },
     idempotency_key: 'ik-loop',
   }), {
@@ -247,7 +255,7 @@ test('2. pagination uses a bound cursor; repeated first creative_id is a loop', 
     assert.doesNotMatch(hop.url, /evil\.example/);
   }
   assertNoSecrets(first);
-  assertNoSecrets(second);
+  assertNoSecrets(advanced);
 });
 
 test('3. idempotent replay yields the same fingerprints', async () => {
@@ -263,11 +271,15 @@ test('4. empty live results stay live and never become fixture', async () => {
   const emptyAdv = (await liveFetch(baseReq({ idempotency_key: 'ik-empty-adv' }), twoHop([], []))).page;
   assert.strictEqual(emptyAdv.ok, true);
   assert.strictEqual(emptyAdv.evidence.length, 0);
+  assert.strictEqual(emptyAdv.page.has_more, false);
+  assert.strictEqual(emptyAdv.page.next_cursor, null);
   assert.strictEqual(emptyAdv.continuation_state.honesty_class, 'live');
   assert.notStrictEqual(emptyAdv.continuation_state.honesty_class, 'fixture');
   const emptyAds = (await liveFetch(baseReq({ idempotency_key: 'ik-empty-ads' }), twoHop([sampleAdvertiser()], []))).page;
   assert.strictEqual(emptyAds.ok, true);
   assert.strictEqual(emptyAds.evidence.length, 0);
+  assert.strictEqual(emptyAds.page.has_more, false);
+  assert.strictEqual(emptyAds.page.next_cursor, null);
   assert.strictEqual(emptyAds.continuation_state.honesty_class, 'live');
   const none = (await liveFetch(baseReq({ idempotency_key: 'ik-40102' }), (opts) => {
     if (isAdvertisers(opts.url)) {
@@ -727,14 +739,14 @@ if (!HAS_DB) {
     await fx.cleanup();
   });
 
-  async function runningHost() {
+  async function runningHost(searchParameters) {
     const wf = await approvedWorkflow();
     const created = await startResearchRun(db.getPool(), {
       tenantId: tenantA.id,
       userId: ownerA.id,
       workflowId: wf.id,
       requestedPlatforms: ['google'],
-      searchParameters: { query: 'jackets', countries: ['US'], max_results_per_page: 1 },
+      searchParameters: searchParameters || { query: 'jackets', countries: ['US'], max_results_per_page: 1 },
       idempotencyKey: `ik-gl-${crypto.randomBytes(4).toString('hex')}`,
       credentialRefs: { google_research: 'user_integrations' },
       execute: false,
@@ -823,17 +835,22 @@ if (!HAS_DB) {
     assert.strictEqual(ev.rowCount, 0);
   });
 
-  test('12. stop-order cancel during pagination keeps later pages off disk', async () => {
-    const host = await runningHost();
-    let pages = 0;
+  test('12. full ads_search page + max_pages: 2 completes without a second hop', async () => {
+    const host = await runningHost({
+      query: 'jackets',
+      countries: ['US'],
+      max_results_per_page: 1,
+      max_pages: 2,
+    });
+    let adsSearchHops = 0;
     const runtime = createResearchRuntime({
       mode: 'live',
       resolveSecret: async () => TOKEN,
       transport: async (opts) => {
         if (isAdvertisers(opts.url)) return liveHop(dfsOk([sampleAdvertiser()]));
-        pages += 1;
-        if (pages === 1) return liveHop(dfsOk([sampleAd({ creative_id: `pg1-${host.run.id}`.slice(0, 24) })]));
-        return liveHop(dfsOk([sampleAd({ creative_id: `pg2-${host.run.id}`.slice(0, 24), title: 'Page two' })]));
+        adsSearchHops += 1;
+        if (adsSearchHops > 1) throw new Error('must-not-request-second-ads-search');
+        return liveHop(dfsOk([sampleAd({ creative_id: `pg1-${host.run.id}`.slice(0, 24) })]));
       },
     });
     const finished = await executeResearchRun(db.getPool(), {
@@ -844,15 +861,18 @@ if (!HAS_DB) {
       runtime,
       credentialRefs: { google_research: 'user_integrations' },
       betweenPages: async () => {
-        await cancelResearchRun(db.getPool(), tenantA.id, host.run.id);
+        throw new Error('must-not-paginate');
       },
     });
-    assert.strictEqual(finished.state, 'cancelled');
+    assert.strictEqual(finished.state, 'completed');
+    assert.notStrictEqual(finished.error_code, 'repeated_continuation_token');
+    assert.strictEqual(adsSearchHops, 1);
     const ev = await db.getPool().query(
       `SELECT provider_external_id FROM orchestrator_research_evidence
         WHERE tenant_id=$1 AND research_run_id=$2`,
       [tenantA.id, host.run.id]
     );
+    assert.ok(ev.rowCount >= 1);
     for (const row of ev.rows) {
       assert.notStrictEqual(row.provider_external_id, `pg2-${host.run.id}`.slice(0, 24));
     }
