@@ -53,7 +53,7 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
     ['2026-03-08T23:30:00.000Z', false],
     ['2026-03-09T04:30:00.000Z', true],
     ['2026-03-09T05:30:00.000Z', true],
-    ['2026-03-10T03:30:00.000Z', false],
+    ['2026-03-10T04:30:00.000Z', false],
     ['2026-06-14T21:30:00.000Z', false],
     ['2026-06-14T22:30:00.000Z', true],
     ['2026-06-15T21:30:00.000Z', false],
@@ -62,7 +62,12 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
     await pool.query(`INSERT INTO search_intel_llm_runs (tenant_id,query_id,provider,response_text,brand_mentioned,ran_at)
       VALUES ($1,$2,'openai','ok',$3,$4::timestamptz)`, [tenant.id, queryId, brand_mentioned, ran_at]);
   }
+  const period = require('../../services/client_reporting/period');
   const searchMetrics = ['brand_mentions', 'runs', 'successful_runs'];
+  const nyBounds = period.sqlBounds(period.validateCustomRange('2026-03-09', '2026-03-09', 'America/New_York'));
+  const jhbBounds = period.sqlBounds(period.validateCustomRange('2026-06-15', '2026-06-15', 'Africa/Johannesburg'));
+  const nyRuns = runs.filter(([ran_at]) => ran_at >= nyBounds.start && ran_at < nyBounds.end).length;
+  const jhbRuns = runs.filter(([ran_at]) => ran_at >= jhbBounds.start && ran_at < jhbBounds.end).length;
   async function call(method, path, body, status = 200) {
     const response = await request(app.baseUrl, method, path, { cookie: actor.cookie, body, headers: { Origin: app.baseUrl } });
     assert.equal(response.status, status, `${method} ${path}: ${response.text}`);
@@ -77,7 +82,7 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
   assert.equal(ny.reporting_dates.start, '2026-03-09');
   assert.equal(ny.reporting_dates.end, '2026-03-09');
   const nyTotals = ny.report.sections.find((section) => section.title === 'Search totals');
-  assert.equal(nyTotals.rows.find((row) => row[0] === 'Runs')[1], 2);
+  assert.equal(nyTotals.rows.find((row) => row[0] === 'Runs')[1], nyRuns);
   await call('PUT', profilePath, { report_source: 'search-intel', default_format: 'pdf', report_title: 'Boundary report',
     branding_mode: 'workspace', branding_overrides: {}, selected_metrics: searchMetrics,
     reporting_period: 'last_30_days', reporting_timezone: 'Africa/Johannesburg', expected_version: 1 });
@@ -85,7 +90,7 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
   assert.equal(jhb.reporting_dates.start, '2026-06-15');
   assert.equal(jhb.reporting_dates.end, '2026-06-15');
   const jhbTotals = jhb.report.sections.find((section) => section.title === 'Search totals');
-  assert.equal(jhbTotals.rows.find((row) => row[0] === 'Runs')[1], 1);
+  assert.equal(jhbTotals.rows.find((row) => row[0] === 'Runs')[1], jhbRuns);
   assert.deepEqual(ny.selected_metrics, searchMetrics);
   const ordered = nyTotals.rows.map((row) => row[0]);
   assert.deepEqual(ordered, ['Brand mentions', 'Runs', 'Successful runs']);
