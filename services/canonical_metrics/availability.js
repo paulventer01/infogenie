@@ -17,6 +17,7 @@ const REASON = {
   DATABASE_UNAVAILABLE: 'database_unavailable',
   SOURCE_QUERY_FAILED: 'source_query_failed',
   INPUT_UNAVAILABLE: 'input_unavailable',
+  INPUT_PARTIAL: 'input_partial',
   ZERO_DENOMINATOR: 'zero_denominator',
   OFFLINE_UNAVAILABLE: 'offline_conversions_unavailable',
 };
@@ -40,9 +41,16 @@ function partial(reason) {
 /**
  * Safe ratio: returns { value, availability, availability_reason }.
  * Valid zero numerator with positive denominator → value 0, available.
- * Zero denominator → null, unavailable, zero_denominator.
+ * Zero denominator → null, unavailable (takes precedence over partial).
+ * Partial inputs → numeric value with partial status when denominator > 0.
  */
-function ratio(numerator, denominator, { numAvail = true, denomAvail = true, label = 'ratio' } = {}) {
+function ratio(numerator, denominator, {
+  numAvail = true,
+  denomAvail = true,
+  numPartial = false,
+  denomPartial = false,
+  partialReason = null,
+} = {}) {
   if (!numAvail || !denomAvail) {
     const missing = !numAvail ? 'numerator' : 'denominator';
     return {
@@ -59,11 +67,34 @@ function ratio(numerator, denominator, { numAvail = true, denomAvail = true, lab
     };
   }
   const num = Number(numerator || 0);
+  const value = Math.round((num / Number(denominator)) * 100) / 100;
+  if (numPartial || denomPartial) {
+    return {
+      value,
+      availability: AVAILABILITY.PARTIAL,
+      availability_reason: partialReason || REASON.INPUT_PARTIAL,
+    };
+  }
   return {
-    value: Math.round((num / Number(denominator)) * 100) / 100,
+    value,
     availability: AVAILABILITY.AVAILABLE,
     availability_reason: null,
   };
+}
+
+/** Resolve spend availability when the primary ad source may have failed. */
+function resolveSpendAvailability(sources, supplementalDollars) {
+  if (sources.ad_performance_hourly?.ok) {
+    return { status: AVAILABILITY.AVAILABLE, reason: null };
+  }
+  const adFail = sourceFailedReason('ad_performance_hourly');
+  if (!sources.spend_events?.ok) {
+    return { status: AVAILABILITY.UNAVAILABLE, reason: adFail };
+  }
+  if (Number(supplementalDollars) > 0) {
+    return { status: AVAILABILITY.PARTIAL, reason: adFail };
+  }
+  return { status: AVAILABILITY.UNAVAILABLE, reason: adFail };
 }
 
 function sourceFailedReason(source) {
@@ -78,5 +109,6 @@ module.exports = {
   unavailable,
   partial,
   ratio,
+  resolveSpendAvailability,
   sourceFailedReason,
 };

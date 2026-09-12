@@ -178,6 +178,11 @@ function _money(n) {
 }
 
 function _metricDisplay(value, unit, labelled) {
+  const suffix = () => {
+    if (!labelled?.availability || labelled.availability === 'available') return '';
+    const reason = (labelled.availability_reason || labelled.availability).replace(/_/g, ' ');
+    return labelled.availability === 'partial' ? ` · partial (${reason})` : ` · unavailable (${reason})`;
+  };
   if (value == null || !Number.isFinite(Number(value))) {
     if (labelled?.availability === 'unavailable' || labelled?.availability === 'partial') {
       const reason = (labelled.availability_reason || 'unavailable').replace(/_/g, ' ');
@@ -185,9 +190,11 @@ function _metricDisplay(value, unit, labelled) {
     }
     return '—';
   }
-  if (unit === '$') return `$${value}`;
-  if (unit === 'x') return `${value}x`;
-  return String(value);
+  let base;
+  if (unit === '$') base = `$${value}`;
+  else if (unit === 'x') base = `${value}x`;
+  else base = String(value);
+  return base + suffix();
 }
 
 function _deltaPhrase(pct, invertGood = false) {

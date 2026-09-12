@@ -15,6 +15,7 @@ const {
   AVAILABILITY,
   REASON,
   ratio,
+  resolveSpendAvailability,
   sourceFailedReason,
 } = require('./availability');
 
@@ -65,28 +66,40 @@ function _snapshotField(snapshot, metricKey) {
  */
 function _applyDerivedMetrics(out, sources) {
   const adOk = sources.ad_performance_hourly.ok;
-  const spendEventsOk = sources.spend_events.ok;
   const offlineOk = sources.offline_conversions.ok;
-
-  const spendAvail = adOk || spendEventsOk;
   const onlineAvail = adOk;
   const offlineAvail = offlineOk;
   const convAvail = adOk;
 
-  out.spend = spendAvail ? _round(out._raw.spend) ?? 0 : null;
+  const spendMeta = resolveSpendAvailability(sources, out._raw.supplemental_spend);
+  const spendPartial = spendMeta.status === AVAILABILITY.PARTIAL;
+  const spendAvailable = spendMeta.status !== AVAILABILITY.UNAVAILABLE;
+
+  if (adOk) {
+    out.spend = _round(out._raw.spend) ?? 0;
+  } else if (spendPartial) {
+    out.spend = _round(out._raw.supplemental_spend) ?? 0;
+  } else {
+    out.spend = null;
+  }
+
   out.online_revenue = onlineAvail ? _round(out._raw.online_revenue) ?? 0 : null;
   out.offline_revenue = offlineAvail ? _round(out._raw.offline_revenue) ?? 0 : null;
   out.impressions = convAvail ? out._raw.impressions : null;
   out.clicks = convAvail ? out._raw.clicks : null;
   out.conversions = convAvail ? out._raw.conversions : null;
   out.offline_buyers = offlineAvail ? out._raw.offline_buyers : null;
-  out.waste_cents = adOk ? out._raw.waste_cents : 0;
+  out.waste_cents = adOk ? out._raw.waste_cents : null;
   out.waste_channels = adOk ? out._raw.waste_channels : [];
 
+  let totalRevenuePartial = false;
+  let totalRevenueReason = null;
   if (onlineAvail && offlineAvail) {
     out.total_revenue = _round((out.online_revenue || 0) + (out.offline_revenue || 0));
   } else if (onlineAvail && !offlineAvail) {
     out.total_revenue = out.online_revenue;
+    totalRevenuePartial = true;
+    totalRevenueReason = REASON.OFFLINE_UNAVAILABLE;
   } else {
     out.total_revenue = null;
   }
@@ -95,38 +108,40 @@ function _applyDerivedMetrics(out, sources) {
   out.customers = convAvail ? out._raw.conversions : null;
   out.customer_source = convAvail && out._raw.conversions > 0 ? 'ad_performance' : 'none';
 
+  const spendDenomAvail = spendAvailable;
   const roasRatio = ratio(out.online_revenue, out.spend, {
     numAvail: onlineAvail,
-    denomAvail: spendAvail,
+    denomAvail: spendDenomAvail,
+    denomPartial: spendPartial,
+    partialReason: spendMeta.reason,
   });
   out.reported_roas = roasRatio.value;
   out.blended_roas = roasRatio.value;
 
-  let trueRoasAvail = spendAvail && onlineAvail;
-  let trueRoasPartial = false;
-  let trueRoasReason = roasRatio.availability_reason;
-  if (spendAvail && onlineAvail && !offlineAvail) {
-    trueRoasPartial = true;
-    trueRoasReason = REASON.OFFLINE_UNAVAILABLE;
-  }
-  if (!offlineAvail && !onlineAvail) trueRoasAvail = false;
-
-  const trueNum = out.total_revenue;
-  const trueRatio = ratio(trueNum, out.spend, {
-    numAvail: onlineAvail && (offlineAvail || trueRoasPartial),
-    denomAvail: spendAvail,
+  const truePartial = totalRevenuePartial || spendPartial;
+  const truePartialReason = totalRevenuePartial ? REASON.OFFLINE_UNAVAILABLE : spendMeta.reason;
+  const trueRatio = ratio(out.total_revenue, out.spend, {
+    numAvail: out.total_revenue != null,
+    denomAvail: spendDenomAvail,
+    numPartial: totalRevenuePartial,
+    denomPartial: spendPartial,
+    partialReason: truePartialReason,
   });
   out.true_roas = trueRatio.value;
 
   const cpaRatio = ratio(out.spend, out.conversions, {
-    numAvail: spendAvail,
+    numAvail: spendDenomAvail,
     denomAvail: convAvail,
+    numPartial: spendPartial,
+    partialReason: spendMeta.reason,
   });
   out.cpa = cpaRatio.value;
 
   const cacRatio = ratio(out.spend, out.customers, {
-    numAvail: spendAvail,
+    numAvail: spendDenomAvail,
     denomAvail: convAvail,
+    numPartial: spendPartial,
+    partialReason: spendMeta.reason,
   });
   out.cac = cacRatio.value;
 
@@ -134,8 +149,10 @@ function _applyDerivedMetrics(out, sources) {
     ? Math.max(out._raw.conversions, out._raw.offline_buyers || 0)
     : (convAvail ? out._raw.conversions : null);
   const blendedCacRatio = ratio(out.spend, denomBuyers, {
-    numAvail: spendAvail,
+    numAvail: spendDenomAvail,
     denomAvail: convAvail || offlineAvail,
+    numPartial: spendPartial,
+    partialReason: spendMeta.reason,
   });
   out.blended_cac = blendedCacRatio.value ?? out.cac;
 
@@ -161,15 +178,16 @@ function _applyDerivedMetrics(out, sources) {
   out.ltv = ltvValue;
   out._ltvMeta = { availability: ltvAvail, availability_reason: ltvReason, is_proxy: ltvProxy };
 
+  const merPartial = totalRevenuePartial || spendPartial;
+  const merPartialReason = totalRevenuePartial ? REASON.OFFLINE_UNAVAILABLE : spendMeta.reason;
   const merBase = ratio(out.total_revenue, out.spend, {
     numAvail: out.total_revenue != null,
-    denomAvail: spendAvail,
+    denomAvail: spendDenomAvail,
+    numPartial: totalRevenuePartial,
+    denomPartial: spendPartial,
+    partialReason: merPartialReason,
   });
   out.mer = merBase.value != null ? _round(merBase.value * 100, 1) : null;
-  const merRatio = {
-    availability: merBase.availability,
-    availability_reason: merBase.availability_reason,
-  };
 
   if (out.total_revenue != null && out.spend != null) {
     out.net_sales = _round(out.total_revenue - out.spend);
@@ -177,22 +195,23 @@ function _applyDerivedMetrics(out, sources) {
     out.net_sales = null;
   }
 
+  const wasteAvail = adOk
+    ? { status: AVAILABILITY.AVAILABLE, reason: null }
+    : { status: AVAILABILITY.UNAVAILABLE, reason: sourceFailedReason('ad_performance_hourly') };
+
   out.availability = {
-    spend: spendAvail ? { status: AVAILABILITY.AVAILABLE, reason: null } : {
-      status: AVAILABILITY.UNAVAILABLE,
-      reason: !adOk && !spendEventsOk ? sourceFailedReason('spend') : REASON.INPUT_UNAVAILABLE,
-    },
+    spend: spendMeta,
     online_revenue: onlineAvail ? { status: AVAILABILITY.AVAILABLE, reason: null } : {
       status: AVAILABILITY.UNAVAILABLE,
-      reason: adOk ? null : sourceFailedReason('ad_performance_hourly'),
+      reason: sourceFailedReason('ad_performance_hourly'),
     },
     offline_revenue: offlineAvail ? { status: AVAILABILITY.AVAILABLE, reason: null } : {
       status: AVAILABILITY.UNAVAILABLE,
       reason: sourceFailedReason('offline_conversions'),
     },
     total_revenue: out.total_revenue != null ? {
-      status: offlineAvail ? AVAILABILITY.AVAILABLE : AVAILABILITY.PARTIAL,
-      reason: offlineAvail ? null : REASON.OFFLINE_UNAVAILABLE,
+      status: totalRevenuePartial ? AVAILABILITY.PARTIAL : AVAILABILITY.AVAILABLE,
+      reason: totalRevenueReason,
     } : { status: AVAILABILITY.UNAVAILABLE, reason: REASON.INPUT_UNAVAILABLE },
     reported_roas: {
       status: roasRatio.availability,
@@ -203,14 +222,15 @@ function _applyDerivedMetrics(out, sources) {
       reason: roasRatio.availability_reason,
     },
     true_roas: {
-      status: trueRoasPartial ? AVAILABILITY.PARTIAL : trueRatio.availability,
-      reason: trueRoasPartial ? trueRoasReason : trueRatio.availability_reason,
+      status: trueRatio.availability,
+      reason: trueRatio.availability_reason,
     },
     cpa: { status: cpaRatio.availability, reason: cpaRatio.availability_reason },
     cac: { status: cacRatio.availability, reason: cacRatio.availability_reason },
     blended_cac: { status: blendedCacRatio.availability, reason: blendedCacRatio.availability_reason },
     ltv: { status: ltvAvail, reason: ltvReason },
-    mer: { status: merRatio.availability, reason: merRatio.availability_reason },
+    mer: { status: merBase.availability, reason: merBase.availability_reason },
+    waste: wasteAvail,
     conversions: convAvail ? { status: AVAILABILITY.AVAILABLE, reason: null } : {
       status: AVAILABILITY.UNAVAILABLE,
       reason: sourceFailedReason('ad_performance_hourly'),
@@ -218,7 +238,13 @@ function _applyDerivedMetrics(out, sources) {
   };
 
   for (const k of Object.keys(out._raw.spend_by_channel)) {
-    out.spend_by_channel[k] = spendAvail ? _round(out._raw.spend_by_channel[k]) ?? 0 : null;
+    if (adOk) {
+      out.spend_by_channel[k] = _round(out._raw.spend_by_channel[k]) ?? 0;
+    } else if (spendPartial) {
+      out.spend_by_channel[k] = _round(out._raw.spend_by_channel[k]) ?? 0;
+    } else {
+      out.spend_by_channel[k] = null;
+    }
   }
 }
 
@@ -240,10 +266,14 @@ function _buildKpisAndLabelled(out) {
   const cacA = avail('cac');
   const ltvMeta = out._ltvMeta || {};
 
+  const wasteA = avail('waste');
+
   out.kpis = [
     _kpi('spend', out.spend, out.deltas?.spend_pct, {
-      confidence: spendA.status === AVAILABILITY.AVAILABLE ? 0.95 : null,
-      evidence: 'ad_performance_hourly+spend_events',
+      confidence: spendA.status === AVAILABILITY.AVAILABLE ? 0.95 : (
+        spendA.status === AVAILABILITY.PARTIAL ? 0.5 : null
+      ),
+      evidence: spendA.status === AVAILABILITY.PARTIAL ? 'spend_events_only' : 'ad_performance_hourly+spend_events',
     }),
     _kpi('total_revenue', out.total_revenue, out.deltas?.revenue_pct, {
       confidence: avail('total_revenue').status === AVAILABILITY.PARTIAL ? 0.65 : (
@@ -252,11 +282,15 @@ function _buildKpisAndLabelled(out) {
       evidence: avail('total_revenue').status === AVAILABILITY.PARTIAL ? 'online_only' : 'online+offline',
     }),
     _kpi('reported_roas', out.reported_roas, out.deltas?.blended_roas_pct, {
-      confidence: roasA.status === AVAILABILITY.AVAILABLE ? 0.9 : null,
+      confidence: roasA.status === AVAILABILITY.AVAILABLE ? 0.9 : (
+        roasA.status === AVAILABILITY.PARTIAL ? 0.55 : null
+      ),
       evidence: 'platform_attribution',
     }),
     _kpi('blended_roas', out.blended_roas, out.deltas?.blended_roas_pct, {
-      confidence: roasA.status === AVAILABILITY.AVAILABLE ? 0.9 : null,
+      confidence: roasA.status === AVAILABILITY.AVAILABLE ? 0.9 : (
+        roasA.status === AVAILABILITY.PARTIAL ? 0.55 : null
+      ),
       evidence: 'platform_attribution',
     }),
     _kpi('true_roas', out.true_roas, out.deltas?.true_roas_pct, {
@@ -292,18 +326,24 @@ function _buildKpisAndLabelled(out) {
       evidence: 'ad_performance_hourly',
     }),
     _kpi('mer', out.mer, null, {
-      confidence: avail('mer').status === AVAILABILITY.AVAILABLE ? 0.65 : null,
-      evidence: 'total_revenue/spend',
+      confidence: avail('mer').status === AVAILABILITY.AVAILABLE ? 0.65 : (
+        avail('mer').status === AVAILABILITY.PARTIAL ? 0.45 : null
+      ),
+      evidence: avail('mer').status === AVAILABILITY.PARTIAL ? 'partial_inputs' : 'total_revenue/spend',
     }),
     _kpi('waste', out.waste_cents != null ? _round(out.waste_cents / 100) : null, null, {
-      confidence: avail('spend').status === AVAILABILITY.AVAILABLE ? 0.5 : null,
+      availability: wasteA.status,
+      availability_reason: wasteA.reason,
+      confidence: wasteA.status === AVAILABILITY.AVAILABLE ? 0.5 : null,
       evidence: 'roas_lt_1_heuristic',
     }),
   ];
 
   out.labelled = {
     spend: labelledValue('spend', out.spend, {
-      confidence: spendA.status === AVAILABILITY.AVAILABLE ? 0.95 : null,
+      confidence: spendA.status === AVAILABILITY.AVAILABLE ? 0.95 : (
+        spendA.status === AVAILABILITY.PARTIAL ? 0.5 : null
+      ),
       availability: spendA.status,
       availability_reason: spendA.reason,
     }),
@@ -339,6 +379,9 @@ function _buildKpisAndLabelled(out) {
       is_proxy: ltvMeta.is_proxy,
     }),
     mer: labelledValue('mer', out.mer, {
+      confidence: avail('mer').status === AVAILABILITY.AVAILABLE ? 0.65 : (
+        avail('mer').status === AVAILABILITY.PARTIAL ? 0.45 : null
+      ),
       availability: avail('mer').status,
       availability_reason: avail('mer').reason,
     }),
@@ -429,6 +472,7 @@ async function computeCanonicalMetrics(tid, opts = {}) {
     generated_at: new Date().toISOString(),
     _raw: {
       spend: 0,
+      supplemental_spend: 0,
       online_revenue: 0,
       offline_revenue: 0,
       impressions: 0,
@@ -514,6 +558,7 @@ async function computeCanonicalMetrics(tid, opts = {}) {
       if (!out._raw.spend_by_channel[ch] || out._raw.spend_by_channel[ch] === 0) {
         out._raw.spend_by_channel[ch] = dollars;
         out._raw.spend += dollars;
+        out._raw.supplemental_spend += dollars;
         added += dollars;
       }
     }

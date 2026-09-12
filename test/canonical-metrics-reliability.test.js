@@ -134,7 +134,7 @@ describe('Canonical metrics data reliability (PR10G.1)', () => {
     assert.equal(readMetric(snap, 'ads.blendedRoas'), 0);
   });
 
-  it('marks metrics unavailable when ad_performance query fails', async () => {
+  it('marks spend unavailable when ad_performance fails and supplemental spend is empty', async () => {
     installMockDb(async (sql) => {
       const s = sql.replace(/\s+/g, ' ');
       if (/FROM ad_performance_hourly/i.test(s)) {
@@ -153,7 +153,9 @@ describe('Canonical metrics data reliability (PR10G.1)', () => {
     });
 
     const { snap, readMetricDetail } = await compute(1);
-    assert.equal(snap.spend, 0);
+    assert.equal(snap.spend, null);
+    assert.equal(snap.availability.spend.status, 'unavailable');
+    assert.match(snap.availability.spend.reason, /source_query_failed:ad_performance_hourly/);
     assert.equal(snap.online_revenue, null);
     assert.equal(snap.availability.online_revenue.status, 'unavailable');
     assert.equal(snap.reported_roas, null);
@@ -162,6 +164,89 @@ describe('Canonical metrics data reliability (PR10G.1)', () => {
     assert.equal(roas.value, null);
     assert.equal(roas.availability, 'unavailable');
     assert.equal(snap.kpis.find((k) => k.key === 'reported_roas')?.confidence, null);
+    assert.equal(snap.waste_cents, null);
+    assert.equal(snap.availability.waste.status, 'unavailable');
+    assert.equal(snap.kpis.find((k) => k.key === 'waste')?.value, null);
+  });
+
+  it('marks spend partial when ad_performance fails but supplemental spend exists', async () => {
+    installMockDb(async (sql) => {
+      const s = sql.replace(/\s+/g, ' ');
+      if (/FROM ad_performance_hourly/i.test(s)) {
+        throw new Error('relation missing');
+      }
+      if (/FROM spend_events/i.test(s) && /GROUP BY 1/i.test(s) && /CURRENT_DATE/i.test(s)) {
+        return { rows: [{ channel: 'google', cents: '15000' }] };
+      }
+      if (/FROM offline_conversions/i.test(s)) {
+        return { rows: [{ cents: '0', n: 0 }] };
+      }
+      if (/FROM okr_key_results/i.test(s)) return { rows: [] };
+      if (/FROM agent_goals/i.test(s)) return { rows: [] };
+      if (/FROM budgets/i.test(s)) return { rows: [] };
+      return { rows: [] };
+    });
+
+    const { snap } = await compute(1);
+    assert.equal(snap.spend, 150);
+    assert.equal(snap.availability.spend.status, 'partial');
+    assert.equal(snap.online_revenue, null);
+    assert.equal(snap.reported_roas, null);
+  });
+
+  it('propagates partial revenue to MER with a numeric value', async () => {
+    installMockDb(async (sql) => {
+      const s = sql.replace(/\s+/g, ' ');
+      if (/FROM ad_performance_hourly/i.test(s) && /GROUP BY 1/i.test(s)) {
+        return { rows: [adPerfRow({ spend: 100, revenue: 250, conversions: 5 })] };
+      }
+      if (/FROM spend_events/i.test(s) && /GROUP BY 1/i.test(s) && /CURRENT_DATE/i.test(s)) {
+        return { rows: [] };
+      }
+      if (/FROM offline_conversions/i.test(s)) {
+        throw new Error('offline table missing');
+      }
+      if (/FROM okr_key_results/i.test(s)) return { rows: [] };
+      if (/FROM agent_goals/i.test(s)) return { rows: [] };
+      if (/FROM budgets/i.test(s)) return { rows: [] };
+      if (/prior/i.test(s) || /bucket_hour <  now/i.test(s)) {
+        return { rows: [{ spend: 0, revenue: 0, conversions: 0 }] };
+      }
+      return { rows: [] };
+    });
+
+    const { snap } = await compute(1);
+    assert.equal(snap.mer, 250);
+    assert.equal(snap.availability.mer.status, 'partial');
+    assert.equal(snap.availability.mer.reason, REASON.OFFLINE_UNAVAILABLE);
+    assert.equal(snap.kpis.find((k) => k.key === 'mer')?.value, 250);
+    assert.equal(snap.kpis.find((k) => k.key === 'mer')?.availability, 'partial');
+  });
+
+  it('zero denominator takes precedence over partial inputs for MER', async () => {
+    installMockDb(async (sql) => {
+      const s = sql.replace(/\s+/g, ' ');
+      if (/FROM ad_performance_hourly/i.test(s) && /GROUP BY 1/i.test(s)) {
+        return { rows: [adPerfRow({ spend: 0, revenue: 200, conversions: 0 })] };
+      }
+      if (/FROM spend_events/i.test(s) && /GROUP BY 1/i.test(s) && /CURRENT_DATE/i.test(s)) {
+        return { rows: [] };
+      }
+      if (/FROM offline_conversions/i.test(s)) {
+        throw new Error('offline table missing');
+      }
+      if (/FROM okr_key_results/i.test(s)) return { rows: [] };
+      if (/FROM agent_goals/i.test(s)) return { rows: [] };
+      if (/FROM budgets/i.test(s)) return { rows: [] };
+      return { rows: [] };
+    });
+
+    const { snap } = await compute(1);
+    assert.equal(snap.total_revenue, 200);
+    assert.equal(snap.availability.total_revenue.status, 'partial');
+    assert.equal(snap.mer, null);
+    assert.equal(snap.availability.mer.reason, REASON.ZERO_DENOMINATOR);
+    assert.equal(snap.availability.mer.status, 'unavailable');
   });
 
   it('supports partial availability when offline conversions fail', async () => {

@@ -65,6 +65,12 @@ interface Snap {
   error?: string;
 }
 
+function availabilitySuffix(kpi?: Kpi) {
+  if (!kpi?.availability || kpi.availability === "available") return "";
+  const reason = kpi.availability_reason?.replace(/_/g, " ") || kpi.availability;
+  return kpi.availability === "partial" ? ` · partial (${reason})` : ` · unavailable (${reason})`;
+}
+
 function fmt(v: number | null | undefined, unit: string, kpi?: Kpi) {
   if (v == null || !Number.isFinite(Number(v))) {
     if (kpi?.availability === "unavailable" || kpi?.availability === "partial") {
@@ -73,10 +79,12 @@ function fmt(v: number | null | undefined, unit: string, kpi?: Kpi) {
     }
     return "—";
   }
-  if (unit === "$") return "$" + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
-  if (unit === "x") return `${v}x`;
-  if (unit === "%") return `${v}%`;
-  return String(v);
+  let base: string;
+  if (unit === "$") base = "$" + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  else if (unit === "x") base = `${v}x`;
+  else if (unit === "%") base = `${v}%`;
+  else base = String(v);
+  return base + availabilitySuffix(kpi);
 }
 
 function deltaColor(pct: number | null | undefined, key: string) {
@@ -175,12 +183,20 @@ export default function CanonicalMetrics({ embedded = false }: { embedded?: bool
                           color: "#7C2D12", background: "#FFEDD5", borderRadius: 999, padding: "1px 6px",
                         }}>proxy</span>
                       ) : null}
+                      {k.availability === "partial" ? (
+                        <span style={{
+                          fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em",
+                          color: "#92400E", background: "#FEF3C7", borderRadius: 999, padding: "1px 6px",
+                        }}>partial</span>
+                      ) : null}
                     </div>
                   </div>
                   <div style={{
-                    fontSize: "1.35rem", fontWeight: 800,
+                    fontSize: k.availability === "partial" ? "1.05rem" : "1.35rem",
+                    fontWeight: 800,
                     color: k.availability === "unavailable" ? "#94A3B8" : "#0F172A",
                     marginTop: 4,
+                    lineHeight: 1.25,
                   }}>{fmt(k.value, k.unit, k)}</div>
                   {k.delta_pct != null && (
                     <div style={{ fontSize: "0.75rem", fontWeight: 700, color: deltaColor(k.delta_pct, k.key), marginTop: 2 }}>

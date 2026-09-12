@@ -139,17 +139,23 @@ async function _fetchLiveMetrics(tid) {
         'Every figure is labelled measured|modelled|projected. Do not invent alternate definitions.',
       ];
       for (const k of snap.kpis || []) {
-        const unit = k.value == null
-          ? (k.availability === 'unavailable' || k.availability === 'partial'
-            ? `unavailable (${(k.availability_reason || 'unknown').replace(/_/g, ' ')})`
-            : 'n/a')
-          : k.unit === '$' ? `$${Number(k.value).toFixed(2)}`
+        const reason = (k.availability_reason || 'unknown').replace(/_/g, ' ');
+        let display;
+        if (k.value == null) {
+          if (k.availability === 'unavailable' || k.availability === 'partial') {
+            display = `${k.availability} (${reason})`;
+          } else {
+            continue;
+          }
+        } else {
+          const val = k.unit === '$' ? `$${Number(k.value).toFixed(2)}`
             : k.unit === 'x' ? `${k.value}x`
               : k.unit === '%' ? `${k.value}%`
                 : String(k.value);
-        if (k.value == null && k.availability !== 'unavailable' && k.availability !== 'partial') continue;
+          display = k.availability === 'partial' ? `${val} · partial (${reason})` : val;
+        }
         lines.push(
-          `- ${k.label}: ${unit} [${k.kind || 'unknown'}`
+          `- ${k.label}: ${display} [${k.kind || 'unknown'}`
           + `${k.is_proxy ? ' · proxy' : ''}`
           + `${k.confidence != null ? ` · conf ${Math.round(k.confidence * 100)}%` : ''}]`,
         );
