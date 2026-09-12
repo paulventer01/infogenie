@@ -238,7 +238,7 @@ async function startAgencyBrowser(t) {
     assert.equal(identity.status, 200, 'Next must proxy the real Express auth endpoint');
     assert.deepEqual(JSON.parse(identity.text), { ok: true, authenticated: false, user: null });
     assert.deepEqual(blocked, [], 'No forbidden provider attempt during startup');
-    return { baseUrl, actors, dates, db, fx, close };
+    return { baseUrl, apiBase: app.baseUrl, actors, dates, db, fx, close };
   } catch (error) {
     try { await close(); } catch (cleanupError) {
       throw new AggregateError([error, cleanupError], 'Agency browser startup failed');
