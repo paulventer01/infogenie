@@ -106,6 +106,8 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
   assert.deepEqual(portalReport.json.selected_metrics, searchMetrics);
   assert.ok(portalReport.json.reporting_dates?.start);
   const mail = require('../helpers/mail').installMailCapture();
+  const priorResendKey = process.env.RESEND_API_KEY;
+  process.env.RESEND_API_KEY = priorResendKey || 'test-resend-key';
   try {
     await pool.query(`INSERT INTO client_reporting_recipients (tenant_id, client_id, email, enabled)
       VALUES ($1,$2,$3,true) ON CONFLICT (tenant_id, client_id) DO UPDATE SET email=EXCLUDED.email, enabled=true`,
@@ -116,5 +118,9 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
     assert.equal(mail.messages.length, 1);
     assert.equal(mail.messages[0].to, 'boundary@example.com');
     assert.match(mail.messages[0].subject, /Boundary report/);
-  } finally { mail.restore(); }
+  } finally {
+    mail.restore();
+    if (priorResendKey === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = priorResendKey;
+  }
 });
