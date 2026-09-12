@@ -23,7 +23,7 @@ export type ScheduleDraft = {
 export type ScheduleResponse = { ok: true; client: Client; configured: boolean; schedule: ScheduleRow | null };
 
 export type DeliveryRow = {
-  id: number;
+  id: string;
   window_key: string;
   status: "sent" | "failed" | "skipped";
   attempted_at: string;
@@ -70,9 +70,21 @@ export function validScheduleResponse(value: unknown, clientId: number): value i
 }
 
 function deliveryHistoryId(value: unknown): boolean {
-  if (typeof value === "number") return Number.isInteger(value) && value > 0;
-  if (typeof value === "string") return /^\d+$/.test(value) && Number(value) > 0;
+  if (typeof value === "string") {
+    if (!/^\d+$/.test(value)) return false;
+    try { return BigInt(value) > 0n; } catch { return false; }
+  }
+  if (typeof value === "number") return Number.isSafeInteger(value) && value > 0;
   return false;
+}
+
+export function normalizeDeliveryHistoryId(id: string | number): string {
+  if (typeof id === "string") {
+    if (!deliveryHistoryId(id)) throw new Error("invalid delivery history id");
+    return id;
+  }
+  if (Number.isSafeInteger(id) && id > 0) return String(id);
+  throw new Error("invalid delivery history id");
 }
 
 export function validDeliveryHistory(value: unknown, clientId: number): value is DeliveryHistoryResponse {
@@ -82,6 +94,8 @@ export function validDeliveryHistory(value: unknown, clientId: number): value is
     && row.deliveries.every((entry) => deliveryHistoryId(entry.id) && ["sent", "failed", "skipped"].includes(entry.status));
 }
 
-export function normalizeDeliveryHistory(deliveries: DeliveryHistoryResponse["deliveries"]): DeliveryRow[] {
-  return deliveries.map((entry) => ({ ...entry, id: Number(entry.id) }));
+type DeliveryHistoryEntry = Omit<DeliveryRow, "id"> & { id: string | number };
+
+export function normalizeDeliveryHistory(deliveries: DeliveryHistoryEntry[]): DeliveryRow[] {
+  return deliveries.map((entry) => ({ ...entry, id: normalizeDeliveryHistoryId(entry.id) }));
 }
