@@ -14,7 +14,7 @@ async function _tid(req, label) {
   return await _tenantCtx.resolveTenantId(req, { label });
 }
 
-const SOURCES = ['reddit', 'twitter', 'review', 'quora', 'glassdoor', 'newsletter', 'chatbot'];
+const SOURCES = ['reddit', 'twitter', 'review', 'quora', 'glassdoor', 'newsletter', 'chatbot', 'email'];
 const STATUSES = ['new', 'replied', 'resolved', 'snoozed'];
 const SENTIMENTS = ['positive', 'neutral', 'negative'];
 
@@ -490,3 +490,5 @@ Message: ${(item.content || '').slice(0, 800)}`;
 }));
 
 module.exports = router;
+module.exports._upsertMany = _upsertMany;
+module.exports.SOURCES = SOURCES;
