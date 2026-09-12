@@ -139,13 +139,18 @@ async function _fetchLiveMetrics(tid) {
         'Every figure is labelled measured|modelled|projected. Do not invent alternate definitions.',
       ];
       for (const k of snap.kpis || []) {
-        if (k.value == null) continue;
-        const unit = k.unit === '$' ? `$${Number(k.value).toFixed(2)}`
-          : k.unit === 'x' ? `${k.value}x`
-            : k.unit === '%' ? `${k.value}%`
-              : String(k.value);
+        const unit = k.value == null
+          ? (k.availability === 'unavailable' || k.availability === 'partial'
+            ? `unavailable (${(k.availability_reason || 'unknown').replace(/_/g, ' ')})`
+            : 'n/a')
+          : k.unit === '$' ? `$${Number(k.value).toFixed(2)}`
+            : k.unit === 'x' ? `${k.value}x`
+              : k.unit === '%' ? `${k.value}%`
+                : String(k.value);
+        if (k.value == null && k.availability !== 'unavailable' && k.availability !== 'partial') continue;
         lines.push(
           `- ${k.label}: ${unit} [${k.kind || 'unknown'}`
+          + `${k.is_proxy ? ' · proxy' : ''}`
           + `${k.confidence != null ? ` · conf ${Math.round(k.confidence * 100)}%` : ''}]`,
         );
       }

@@ -29,11 +29,12 @@ describe('Canonical metric definitions', () => {
     assert.equal(resolveDefinition('ads.blendedCac')?.key, 'blended_cac');
   });
 
-  it('labels values with kind + definition version', () => {
-    const v = labelledValue('reported_roas', 4.8, { confidence: 0.9, evidence: 'platform' });
+  it('labels values with kind + definition version + availability', () => {
+    const v = labelledValue('reported_roas', 4.8, { confidence: 0.9, evidence: 'platform', availability: 'available' });
     assert.equal(v.kind, 'measured');
     assert.equal(v.definition_version, DEFINITION_VERSION);
     assert.equal(v.value, 4.8);
+    assert.equal(v.availability, 'available');
   });
 });
 
@@ -48,6 +49,7 @@ describe('Canonical metrics compute', () => {
     assert.ok('blended_cac' in snap);
     assert.ok('ltv' in snap);
     assert.ok(snap.labelled?.spend);
+    assert.equal(snap.labelled.spend.availability, 'unavailable');
     assert.equal(readMetric(snap, 'ads.cpa'), snap.cpa);
   });
 });

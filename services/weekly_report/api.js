@@ -112,16 +112,17 @@ async function _gatherSections(brand, tid) {
   try {
     const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
     const m = await computeCanonicalMetrics(tid, { days: 7 });
+    const lbl = m.labelled || {};
     sections.push({
       title: '📐 Canonical Metrics (7 days)',
       kind: 'table',
       headers: ['Metric', 'Value'],
       rows: [
-        ['Spend', `$${Number(m.spend || 0).toFixed(2)}`],
-        ['Blended ROAS', m.blended_roas != null ? String(m.blended_roas) : '—'],
-        ['True ROAS', m.true_roas != null ? String(m.true_roas) : '—'],
-        ['CAC', m.cac != null ? `$${m.cac}` : '—'],
-        ['Waste (underwater channels)', `$${(Number(m.waste_cents || 0) / 100).toFixed(2)}`],
+        ['Spend', _metricDisplay(m.spend, '$', lbl.spend)],
+        ['Blended ROAS', _metricDisplay(m.blended_roas, 'x', lbl.reported_roas)],
+        ['True ROAS', _metricDisplay(m.true_roas, 'x', lbl.true_roas)],
+        ['CAC', _metricDisplay(m.cac, '$', lbl.cac) + (lbl.cac?.is_proxy ? ' (proxy)' : '')],
+        ['Waste (underwater channels)', m.waste_cents != null ? `$${(Number(m.waste_cents || 0) / 100).toFixed(2)}` : '—'],
       ],
     });
     if (m.goals_vs_actuals?.length) {
@@ -176,6 +177,19 @@ function _money(n) {
   return `$${Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
+function _metricDisplay(value, unit, labelled) {
+  if (value == null || !Number.isFinite(Number(value))) {
+    if (labelled?.availability === 'unavailable' || labelled?.availability === 'partial') {
+      const reason = (labelled.availability_reason || 'unavailable').replace(/_/g, ' ');
+      return labelled.availability === 'partial' ? `partial (${reason})` : `unavailable (${reason})`;
+    }
+    return '—';
+  }
+  if (unit === '$') return `$${value}`;
+  if (unit === 'x') return `${value}x`;
+  return String(value);
+}
+
 function _deltaPhrase(pct, invertGood = false) {
   if (pct == null || !Number.isFinite(Number(pct))) return null;
   const n = Number(pct);
@@ -202,10 +216,13 @@ async function _buildClientNarrative(brand, tid, sections = []) {
   const facts = [];
 
   if (metrics) {
-    facts.push(`Spend ${_money(metrics.spend)} over 7 days`);
+    if (metrics.spend != null) facts.push(`Spend ${_money(metrics.spend)} over 7 days`);
+    else if (metrics.labelled?.spend?.availability === 'unavailable') {
+      facts.push('Spend unavailable (data source not queried)');
+    }
     if (metrics.blended_roas != null) facts.push(`blended ROAS ${metrics.blended_roas}x`);
     if (metrics.true_roas != null) facts.push(`true ROAS ${metrics.true_roas}x`);
-    if (metrics.cac != null) facts.push(`CAC $${metrics.cac}`);
+    if (metrics.cac != null) facts.push(`CAC $${metrics.cac}${metrics.labelled?.cac?.is_proxy ? ' (conversion proxy)' : ''}`);
 
     const roasDelta = _deltaPhrase(metrics.deltas?.blended_roas_pct);
     if (roasDelta?.good) wins.push(`Efficiency ${roasDelta.text}`);
