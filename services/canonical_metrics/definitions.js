@@ -8,9 +8,17 @@
  *   measured  — observed from ingested facts (spend, clicks, platform revenue)
  *   modelled  — derived / causal estimate (true ROAS with offline, iROAS, MMM)
  *   projected — forecast / scenario
+ *
+ * availability (v2026.09.1):
+ *   available   — required inputs were queried successfully (value may be 0)
+ *   unavailable — source/DB failure, missing required input, or zero denominator
+ *   partial     — derived metric computed with a degraded input set (see reason)
+ *
+ * Successful zero ≠ unavailable: e.g. ROAS is 0 when verified revenue is 0 and
+ * spend > 0. A zero denominator (spend=0 for ROAS) is unavailable, not 0.
  */
 
-const DEFINITION_VERSION = '2026.08.1';
+const DEFINITION_VERSION = '2026.09.1';
 
 /** @typedef {'measured'|'modelled'|'projected'} MetricKind */
 
@@ -94,7 +102,8 @@ const METRIC_DEFINITIONS = {
     unit: '$',
     kind: 'modelled',
     formula: 'spend / customers (customers := conversions until CRM unique buyers available)',
-    notes: 'Blended CAC when customer identity is incomplete.',
+    notes: 'Proxy: uses platform conversions as customer count until CRM unique buyers exist.',
+    is_proxy: true,
   },
   blended_cac: {
     key: 'blended_cac',
@@ -112,7 +121,8 @@ const METRIC_DEFINITIONS = {
     unit: '$',
     kind: 'modelled',
     formula: 'avg offline deal value when available; else AOV proxy from online_revenue/conversions',
-    notes: 'Coarse until lifecycle cohort tables exist — always labelled modelled.',
+    notes: 'Proxy when derived from average order value (online_revenue/conversions); offline deal average is measured.',
+    is_proxy_when: 'aov',
   },
   mer: {
     key: 'mer',
@@ -194,7 +204,14 @@ function resolveDefinition(key) {
   return null;
 }
 
-function labelledValue(defKey, value, { confidence = null, evidence = null, overrideKind = null } = {}) {
+function labelledValue(defKey, value, {
+  confidence = null,
+  evidence = null,
+  overrideKind = null,
+  availability = null,
+  availability_reason = null,
+  is_proxy = null,
+} = {}) {
   const def = resolveDefinition(defKey) || {
     key: defKey,
     label: defKey,
@@ -202,6 +219,11 @@ function labelledValue(defKey, value, { confidence = null, evidence = null, over
     kind: 'modelled',
     formula: null,
   };
+  const avail = availability || (value == null ? 'unavailable' : 'available');
+  const resolvedProxy = is_proxy == null ? !!def.is_proxy : !!is_proxy;
+  const conf = avail === 'available' && confidence != null ? Number(confidence) : (
+    avail === 'partial' && confidence != null ? Number(confidence) : null
+  );
   return {
     key: def.key,
     label: def.label,
@@ -210,8 +232,11 @@ function labelledValue(defKey, value, { confidence = null, evidence = null, over
     kind: overrideKind || def.kind,
     definition_version: DEFINITION_VERSION,
     formula: def.formula || null,
-    confidence: confidence == null ? null : Number(confidence),
+    confidence: conf,
     evidence: evidence || null,
+    availability: avail,
+    availability_reason: availability_reason || null,
+    is_proxy: resolvedProxy,
   };
 }
 

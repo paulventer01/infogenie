@@ -3,7 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const _tenantCtx = require('../tenants/context');
-const { computeCanonicalMetrics, readMetric, DEFINITION_VERSION } = require('./compute');
+const { computeCanonicalMetrics, readMetric, readMetricDetail, DEFINITION_VERSION } = require('./compute');
 const { listDefinitions, resolveDefinition } = require('./definitions');
 const { computeContribution } = require('./contribution');
 
@@ -44,12 +44,16 @@ router.get('/canonical/metric', _safe(async (req, res) => {
   const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 30));
   const snap = await computeCanonicalMetrics(tid, { days });
   const def = resolveDefinition(key);
+  const detail = readMetricDetail(snap, key);
   res.json({
     ok: true,
     key,
-    value: readMetric(snap, key),
+    value: detail.value,
+    availability: detail.availability,
+    availability_reason: detail.availability_reason,
+    is_proxy: detail.is_proxy,
     days,
-    kind: def?.kind || null,
+    kind: def?.kind || detail.kind || null,
     definition: def || null,
     definition_version: DEFINITION_VERSION,
     labelled: snap.labelled?.[def?.key] || null,
@@ -97,5 +101,6 @@ router.post('/contribution/refresh', _safe(async (req, res) => {
 module.exports = router;
 module.exports.computeCanonicalMetrics = computeCanonicalMetrics;
 module.exports.readMetric = readMetric;
+module.exports.readMetricDetail = readMetricDetail;
 module.exports.computeContribution = computeContribution;
 module.exports.DEFINITION_VERSION = DEFINITION_VERSION;
