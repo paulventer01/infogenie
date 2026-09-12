@@ -15,10 +15,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import {
+  carriesCanonicalMetadata,
+  formatMetricTarget,
   formatMetricValue,
   hasCanonicalAvailability,
   isPartialCanonical,
-  isUnavailableCanonical,
+  isUnverifiedCanonical,
   progressLabel,
   type MetricAvailabilityMeta,
 } from "@/lib/metricAvailability";
@@ -96,13 +98,16 @@ const STATUS_COLORS: Record<
 };
 
 function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
-  const unavailable = isUnavailableCanonical(g);
+  const recognizedCanonical = carriesCanonicalMetadata(g);
+  const unverified = isUnverifiedCanonical(g, recognizedCanonical);
   const partial = isPartialCanonical(g);
-  const displayStatus = unavailable ? "unknown" : g.status;
+  const displayStatus = unverified ? "unknown" : g.status;
   const c = STATUS_COLORS[displayStatus] || STATUS_COLORS.unknown;
   const unit = g.meta?.unit || "";
-  const fmt = (v: number | string | null | undefined) => formatMetricValue(v, unit, g);
-  const pct = unavailable ? null : g.pct == null ? null : g.pct;
+  const fmtCurrent = (v: number | string | null | undefined) =>
+    formatMetricValue(v, unit, g, recognizedCanonical);
+  const fmtTarget = (v: number | string | null | undefined) => formatMetricTarget(v, unit);
+  const pct = unverified ? null : g.pct == null ? null : g.pct;
   const barWidth = pct == null ? 0 : pct;
   const barColor =
     displayStatus === "on-track"
@@ -145,7 +150,7 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
           </div>
           <div style={{ fontSize: "0.78rem", color: "#64748B", marginTop: 3 }}>
             {g.metric} · target {g.meta?.direction === "lte" ? "≤" : "≥"}{" "}
-            {fmt(g.target)}
+            {fmtTarget(g.target)}
             <MetricAvailabilityBadges meta={g} />
           </div>
         </div>
@@ -161,7 +166,7 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
               color: c.text,
             }}
           >
-            {unavailable ? "❔ Unverified" : partial && displayStatus !== "unknown" ? `${c.label} (Partial)` : c.label}
+            {unverified ? "❔ Unverified" : partial && displayStatus !== "unknown" ? `${c.label} (Partial)` : c.label}
           </span>
           <button
             onClick={onDelete}
@@ -201,13 +206,13 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
           </div>
           <div
             style={{
-              fontSize: unavailable ? "1.05rem" : "1.4rem",
+              fontSize: unverified ? "1.05rem" : "1.4rem",
               fontWeight: 700,
-              color: unavailable ? "#94A3B8" : "#0F172A",
+              color: unverified ? "#94A3B8" : "#0F172A",
             }}
-            aria-label={`Current value ${fmt(g.current)}`}
+            aria-label={`Current value ${fmtCurrent(g.current)}`}
           >
-            {fmt(g.current)}
+            {fmtCurrent(g.current)}
           </div>
         </div>
         <div>
@@ -223,7 +228,7 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
             Target
           </div>
           <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "#475569" }}>
-            {fmt(g.target)}
+            {fmtTarget(g.target)}
           </div>
         </div>
         {pct != null && (
@@ -251,7 +256,7 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
           background: "#F1F5F9",
           borderRadius: 999,
           overflow: "hidden",
-          marginBottom: rc && !unavailable ? 14 : unavailable ? 8 : 0,
+          marginBottom: rc && !unverified ? 14 : unverified ? 8 : 0,
         }}
         aria-hidden={pct == null}
       >
@@ -264,7 +269,7 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
           }}
         />
       </div>
-      {unavailable && hasCanonicalAvailability(g) && (
+      {unverified && hasCanonicalAvailability(g) && (
         <div
           style={{
             marginBottom: rc ? 14 : 0,
@@ -275,7 +280,7 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
           Progress is withheld until this canonical metric is available.
         </div>
       )}
-      {rc && !unavailable && rc.hypothesis && (
+      {rc && !unverified && rc.hypothesis && (
         <div
           style={{
             marginTop: 14,

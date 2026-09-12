@@ -188,8 +188,23 @@ test("Goals UI shows unavailable canonical metrics without zero progress", async
     metric_availability_reason: "source_query_failed",
   }]);
   assert.match(h.text(), /Unavailable \(source query failed\)/i);
+  assert.match(h.text(), /\$1,000/);
   assert.match(h.text(), /Unverified/);
   assert.doesNotMatch(h.text(), /0%/);
+});
+
+test("Goals UI keeps saved target visible when current measurement is unavailable", async (t) => {
+  const h = await goalsHarness(t, [{
+    ...baseGoal,
+    target: 2500,
+    current: null,
+    pct: null,
+    status: "unknown",
+    metric_availability: "unavailable",
+    metric_availability_reason: "source_query failed",
+  }]);
+  assert.match(h.text(), /Target\$2,500/);
+  assert.match(h.text(), /target ≤ \$2,500/);
 });
 
 test("Goals UI qualifies partial progress", async (t) => {
@@ -231,6 +246,82 @@ test("Goals suggest insufficient_data leaves target unchanged", async (t) => {
   });
   assert.equal(target.value, "250");
   assert.match(h.text(), /Insufficient data/i);
+});
+
+test("OKR objective summary shows Unverified when canonical KR is unavailable", async (t) => {
+  const h = await okrHarness(t, [{
+    id: "o2",
+    title: "Stored on track",
+    description: "",
+    quarter: "2026-Q1",
+    owner_email: "",
+    status: "on_track",
+    created_at: "2026-01-01",
+    key_results: [{
+      id: "kr2",
+      title: "Canonical ROAS",
+      metric_type: "roas",
+      linked_channel: "",
+      target_value: 2,
+      current_value: null,
+      unit: "x",
+      updated_at: "2026-01-01",
+      metric_availability: "unavailable",
+      metric_availability_reason: "source_query_failed",
+    }],
+  }]);
+  assert.match(h.text(), /Stored on track[\s\S]*❔ Unverified/);
+});
+
+test("OKR objective summary qualifies partial aggregate", async (t) => {
+  const partial = await okrHarness(t, [{
+    id: "o3",
+    title: "Partial objective",
+    description: "",
+    quarter: "2026-Q1",
+    owner_email: "",
+    status: "on_track",
+    created_at: "2026-01-01",
+    key_results: [{
+      id: "kr3",
+      title: "Partial ROAS",
+      metric_type: "roas",
+      linked_channel: "",
+      target_value: 2,
+      current_value: 1,
+      unit: "x",
+      updated_at: "2026-01-01",
+      metric_availability: "partial",
+      metric_availability_reason: "input_unavailable:offline",
+    }],
+  }]);
+  assert.match(partial.text(), /50% \(Partial\)/);
+  assert.match(partial.text(), /Partial objective[\s\S]*🟢 On Track/);
+});
+
+test("OKR objective summary preserves manual completion", async (t) => {
+  const complete = await okrHarness(t, [{
+    id: "o4",
+    title: "Done objective",
+    description: "",
+    quarter: "2026-Q1",
+    owner_email: "",
+    status: "complete",
+    created_at: "2026-01-01",
+    key_results: [{
+      id: "kr4",
+      title: "Unavailable KR",
+      metric_type: "roas",
+      linked_channel: "",
+      target_value: 2,
+      current_value: null,
+      unit: "x",
+      updated_at: "2026-01-01",
+      metric_availability: "unavailable",
+      metric_availability_reason: "source_query_failed",
+    }],
+  }]);
+  assert.match(complete.text(), /Done objective[\s\S]*✅ Complete/);
 });
 
 test("Marketing OKR refresh preserves availability metadata", async (t) => {
@@ -278,10 +369,29 @@ test("Marketing OKR refresh preserves availability metadata", async (t) => {
 test("metricAvailability helpers preserve valid zero and unavailable labels", () => {
   const lib = load("lib/metricAvailability.ts");
   assert.equal(lib.formatMetricValue(0, "$", { metric_availability: "available" }), "$0");
+  assert.equal(lib.formatMetricTarget(2500, "$"), "$2,500");
   assert.equal(
-    lib.formatMetricValue(null, "x", { metric_availability: "unavailable", metric_availability_reason: "no_data" }),
+    lib.formatMetricValue(null, "x", { metric_availability: "unavailable", metric_availability_reason: "no_data" }, true),
     "Unavailable (no data)",
   );
-  assert.equal(lib.progressPctFromValues(50, 100, { metric_availability: "unavailable" }), null);
+  assert.equal(lib.progressPctFromValues(50, 100, { metric_availability: "unavailable" }, true), null);
+  assert.equal(lib.progressPctFromValues("", 100, { metric_availability: "available" }, true), null);
   assert.equal(lib.progressLabel(55, { metric_availability: "partial" }), "55% (Partial)");
+  assert.equal(
+    lib.summarizeObjective({
+      status: "on_track",
+      key_results: [{
+        metric_type: "roas",
+        linked_channel: "",
+        target_value: 2,
+        current_value: null,
+        metric_availability: "unavailable",
+      }],
+    }).statusKey,
+    "unverified",
+  );
+  assert.equal(
+    lib.isUnverifiedCanonical({ metric_availability: null, metric_availability_reason: null, metric_is_proxy: false }, true),
+    true,
+  );
 });

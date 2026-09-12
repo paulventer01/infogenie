@@ -42,31 +42,36 @@ const goalsFixture = {
   rootCause: {},
 };
 
-const okrFixture = {
-  ok: true,
-  objectives: [{
-    id: 'okr1',
-    title: 'PR10G3 ROAS objective',
-    description: 'browser fixture',
-    quarter: '2026-Q1',
-    owner_email: '',
-    status: 'on_track',
-    created_at: '2026-01-01T00:00:00.000Z',
-    key_results: [{
-      id: 'kr-partial',
-      title: 'Partial ROAS KR',
-      metric_type: 'roas',
-      linked_channel: '',
-      target_value: 2,
-      current_value: 1.2,
-      unit: 'x',
-      updated_at: '2026-01-01T00:00:00.000Z',
-      metric_availability: 'partial',
-      metric_availability_reason: 'input_unavailable:offline',
-      metric_is_proxy: true,
+function makeOkrFixture(overrides = {}) {
+  return {
+    ok: true,
+    objectives: [{
+      id: 'okr1',
+      title: 'PR10G3 ROAS objective',
+      description: 'browser fixture',
+      quarter: '2026-Q1',
+      owner_email: '',
+      status: 'on_track',
+      created_at: '2026-01-01T00:00:00.000Z',
+      key_results: [{
+        id: 'kr-partial',
+        title: 'Partial ROAS KR',
+        metric_type: 'roas',
+        linked_channel: '',
+        target_value: 2,
+        current_value: 1.2,
+        unit: 'x',
+        updated_at: '2026-01-01T00:00:00.000Z',
+        metric_availability: 'partial',
+        metric_availability_reason: 'input_unavailable:offline',
+        metric_is_proxy: true,
+      }],
+      ...overrides,
     }],
-  }],
-};
+  };
+}
+
+let okrState = makeOkrFixture();
 
 async function login(page, baseUrl, actors) {
   await page.goto(`${baseUrl}/login?next=${encodeURIComponent(GOALS_ROUTE)}`, { waitUntil: 'domcontentloaded' });
@@ -84,6 +89,7 @@ test('PR10G.3 goals and OKR availability browser acceptance', {
   timeout: 600_000,
 }, async (t) => {
   assert.ok(dedicatedUrl, 'PR10E9_TEST_DATABASE_URL is required');
+  okrState = makeOkrFixture();
   const errors = [];
   let browser;
   let closing = false;
@@ -128,7 +134,46 @@ test('PR10G.3 goals and OKR availability browser acceptance', {
       void request.respond({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(okrFixture),
+        body: JSON.stringify(okrState),
+      });
+      return;
+    }
+    if (request.method() === 'POST' && /^\/api\/okr\/objectives\/[^/]+\/refresh$/.test(url.pathname)) {
+      okrState = makeOkrFixture({
+        status: 'at_risk',
+        key_results: [{
+          id: 'kr-partial',
+          title: 'Partial ROAS KR',
+          metric_type: 'roas',
+          linked_channel: '',
+          target_value: 2,
+          current_value: null,
+          unit: 'x',
+          updated_at: '2026-01-01T00:00:00.000Z',
+          metric_availability: 'unavailable',
+          metric_availability_reason: 'source_query_failed',
+          metric_is_proxy: false,
+        }],
+      });
+      void request.respond({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, status: 'at_risk', key_results: okrState.objectives[0].key_results }),
+      });
+      return;
+    }
+    if (request.method() === 'POST' && url.pathname === '/api/goals/suggest') {
+      void request.respond({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          insufficient_data: true,
+          value: null,
+          current: null,
+          metric_availability: 'partial',
+          reason: 'Insufficient data for a data-based target suggestion — enter a target manually.',
+        }),
       });
       return;
     }
@@ -172,6 +217,30 @@ test('PR10G.3 goals and OKR availability browser acceptance', {
   const reloadGoals = await page.reload({ waitUntil: 'domcontentloaded' });
   assert.equal(reloadGoals?.status(), 200);
   await page.waitForFunction((panel) => document.querySelector(panel)?.innerText.includes('Available zero spend'), {}, PANEL);
+  assert.match(await page.$eval(PANEL, (el) => el.innerText), /\$1,000|1,000/);
+
+  await page.waitForFunction((panel) => {
+    const root = document.querySelector(panel);
+    return [...(root?.querySelectorAll('button') || [])].some((b) => /\+ Add Goal/.test(b.textContent || ''));
+  }, {}, PANEL);
+  await page.evaluate((panel) => {
+    const root = document.querySelector(panel);
+    const btn = [...(root?.querySelectorAll('button') || [])].find((b) => /\+ Add Goal/.test(b.textContent || ''));
+    if (!btn) throw new Error('Add Goal button not found');
+    btn.click();
+  }, PANEL);
+  await page.waitForSelector('input[placeholder="e.g. 50"]', { visible: true });
+  await page.$eval('input[placeholder="e.g. 50"]', (el) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '425');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => /✨ AI suggest/.test(b.textContent || ''));
+    if (!btn) throw new Error('AI suggest button not found');
+    btn.click();
+  });
+  await page.waitForFunction(() => document.body.innerText.includes('Insufficient data'), {});
+  assert.equal(await page.$eval('input[placeholder="e.g. 50"]', (el) => el.value), '425');
 
   await page.goto(`${baseUrl}${OKR_ROUTE}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector(`${PANEL}`, { visible: true });
@@ -186,6 +255,16 @@ test('PR10G.3 goals and OKR availability browser acceptance', {
   assert.match(okrText, /Partial/);
   assert.match(okrText, /PROXY/);
   assert.match(okrText, /\(Partial\)/);
+
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => /refresh from campaigns/i.test(b.textContent || ''));
+    if (!btn) throw new Error('Refresh button not found');
+    btn.click();
+  });
+  await page.waitForFunction((panel) => document.querySelector(panel)?.innerText.includes('Unavailable (source query failed)'), {}, PANEL);
+  const refreshed = await page.$eval(PANEL, (el) => el.innerText);
+  assert.match(refreshed, /PR10G3 ROAS objective[\s\S]*❔ Unverified/);
+  assert.doesNotMatch(refreshed.split('PR10G3 ROAS objective')[1] || '', /🟢 On Track/);
 
   const reloadOkr = await page.reload({ waitUntil: 'domcontentloaded' });
   assert.equal(reloadOkr?.status(), 200);

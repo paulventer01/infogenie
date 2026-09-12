@@ -7,12 +7,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import {
+  coerceMetricNumber,
+  formatMetricTarget,
   formatMetricValue,
-  isPartialCanonical,
-  isUnavailableCanonical,
+  isCanonicalAutoKr,
+  isUnverifiedCanonical,
   mergeMetricAvailability,
   progressLabel,
   progressPctFromValues,
+  summarizeObjective,
   type MetricAvailabilityMeta,
 } from "@/lib/metricAvailability";
 import MetricAvailabilityBadges from "@/components/features/shared/MetricAvailabilityBadges";
@@ -53,6 +56,7 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; ic
   at_risk:   { label: "At Risk",   color: "#92400e", bg: "#fef9c3", icon: "🟡" },
   off_track: { label: "Off Track", color: "#b91c1c", bg: "#fee2e2", icon: "🔴" },
   complete:  { label: "Complete",  color: "#1d4ed8", bg: "#eff6ff", icon: "✅" },
+  unverified: { label: "Unverified", color: "#475569", bg: "#f1f5f9", icon: "❔" },
 };
 
 const METRIC_TYPES = [
@@ -86,14 +90,18 @@ function KrRow({
   onDelete: () => void;
 }) {
   const isAuto = kr.metric_type !== "manual";
-  const unavailable = isUnavailableCanonical(kr);
+  const recognizedCanonical = isCanonicalAutoKr(kr);
+  const unverified = isUnverifiedCanonical(kr, recognizedCanonical);
   const pct = isAuto
-    ? progressPctFromValues(kr.current_value, kr.target_value, kr)
-    : kr.target_value > 0
-      ? Math.min(100, Math.round((Number(kr.current_value) / Number(kr.target_value)) * 100))
-      : 0;
-  const currentDisplay = formatMetricValue(kr.current_value, kr.unit, kr);
-  const targetDisplay = formatMetricValue(kr.target_value, kr.unit, null);
+    ? progressPctFromValues(kr.current_value, kr.target_value, kr, recognizedCanonical)
+    : (() => {
+        const cur = coerceMetricNumber(kr.current_value);
+        const tgt = coerceMetricNumber(kr.target_value);
+        if (tgt == null || tgt <= 0 || cur == null) return null;
+        return Math.min(100, Math.round((cur / tgt) * 100));
+      })();
+  const currentDisplay = formatMetricValue(kr.current_value, kr.unit, kr, recognizedCanonical);
+  const targetDisplay = formatMetricTarget(kr.target_value, kr.unit);
   const barPct = pct == null ? 0 : pct;
   return (
     <div style={{ padding: "10px 0", borderBottom: "1px solid #f1f5f9", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -115,7 +123,7 @@ function KrRow({
         </div>
       </div>
       <div
-        style={{ fontSize: "0.82rem", color: unavailable ? "#94a3b8" : "#475569", minWidth: 160, textAlign: "right" }}
+        style={{ fontSize: "0.82rem", color: unverified ? "#94a3b8" : "#475569", minWidth: 160, textAlign: "right" }}
         aria-label={`Current ${currentDisplay}, target ${targetDisplay}`}
       >
         {currentDisplay}{kr.unit && !currentDisplay.includes(kr.unit) ? kr.unit : ""}
@@ -125,23 +133,6 @@ function KrRow({
       <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: "0.9rem", padding: "2px 6px" }} title="Remove">✕</button>
     </div>
   );
-}
-
-function verifiedKrProgress(kr: KeyResult): number | null {
-  if (kr.metric_type !== "manual" && isUnavailableCanonical(kr)) return null;
-  if (kr.metric_type !== "manual") {
-    return progressPctFromValues(kr.current_value, kr.target_value, kr);
-  }
-  if (kr.target_value > 0) {
-    return Math.min(100, Math.round((Number(kr.current_value) / Number(kr.target_value)) * 100));
-  }
-  return 0;
-}
-
-function objectiveAvgPct(krs: KeyResult[]): number | null {
-  const pcts = krs.map(verifiedKrProgress).filter((p): p is number => p != null);
-  if (!pcts.length) return null;
-  return Math.round(pcts.reduce((s, p) => s + p, 0) / pcts.length);
 }
 
 // ── main component ────────────────────────────────────────────────────────────
@@ -274,10 +265,12 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
     load(selQ);
   }
 
-  const onTrack  = objectives.filter(o => o.status === "on_track").length;
-  const atRisk   = objectives.filter(o => o.status === "at_risk").length;
-  const offTrack = objectives.filter(o => o.status === "off_track").length;
-  const complete = objectives.filter(o => o.status === "complete").length;
+  const summaries = objectives.map((obj) => summarizeObjective(obj));
+  const onTrack  = summaries.filter((s) => s.statusKey === "on_track").length;
+  const atRisk   = summaries.filter((s) => s.statusKey === "at_risk").length;
+  const offTrack = summaries.filter((s) => s.statusKey === "off_track").length;
+  const complete = summaries.filter((s) => s.statusKey === "complete").length;
+  const unverified = summaries.filter((s) => s.statusKey === "unverified").length;
 
   return (
     <div className="view-header-wrap">
@@ -324,9 +317,10 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
         {/* Summary pills */}
         {objectives.length > 0 && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 22 }}>
-            {(["on_track","at_risk","off_track","complete"] as const).map(key => {
+            {(["on_track","at_risk","off_track","complete","unverified"] as const).map(key => {
               const sm = STATUS_META[key];
-              const val = key === "on_track" ? onTrack : key === "at_risk" ? atRisk : key === "off_track" ? offTrack : complete;
+              const val = key === "on_track" ? onTrack : key === "at_risk" ? atRisk : key === "off_track" ? offTrack : key === "complete" ? complete : unverified;
+              if (val === 0 && key === "unverified") return null;
               return (
                 <div key={key} style={{ background: sm.bg, color: sm.color, borderRadius: 20, padding: "5px 14px", fontSize: "0.83rem", fontWeight: 600 }}>
                   {sm.icon} {val} {sm.label}
@@ -353,11 +347,10 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {objectives.map(obj => {
-              const sm = STATUS_META[obj.status] || STATUS_META.on_track;
+              const summary = summarizeObjective(obj);
+              const sm = STATUS_META[summary.statusKey] || STATUS_META.on_track;
               const isOpen = expanded.has(obj.id);
               const krs = obj.key_results || [];
-              const avgPct = objectiveAvgPct(krs);
-              const hasPartialKr = krs.some((kr) => isPartialCanonical(kr));
               return (
                 <div key={obj.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
                   {/* Header */}
@@ -375,16 +368,16 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
                       )}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      {krs.length > 0 && avgPct != null && (
+                      {krs.length > 0 && summary.avgPct != null && (
                         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 120 }}>
-                          <ProgressBar pct={avgPct} />
+                          <ProgressBar pct={summary.avgPct} />
                           <span style={{ fontSize: "0.83rem", fontWeight: 700 }}>
-                            {hasPartialKr ? `${avgPct}% (Partial)` : `${avgPct}%`}
+                            {summary.avgLabel}
                           </span>
                         </div>
                       )}
                       <div style={{ background: sm.bg, color: sm.color, borderRadius: 20, padding: "4px 12px", fontSize: "0.8rem", fontWeight: 600, whiteSpace: "nowrap" }}>
-                        {sm.icon} {sm.label}
+                        {sm.icon} {summary.statusLabel}
                       </div>
                       <div style={{ color: "#64748b", fontSize: "0.8rem" }}>{krs.length} KRs</div>
                       <span style={{ color: "#94a3b8" }}>{isOpen ? "▲" : "▼"}</span>
