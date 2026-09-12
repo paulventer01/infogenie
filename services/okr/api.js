@@ -33,18 +33,20 @@ function _quarterBounds(quarter) {
 }
 
 async function _pullAutoMetric(tid, metric_type, linked_channel, quarter) {
-  if (!hasDb()) return null;
+  if (!hasDb()) return { value: null, from_canonical: false };
   const bounds = _quarterBounds(quarter);
-  if (!bounds) return null;
+  if (!bounds) return { value: null, from_canonical: false };
   // Canonical SSOT for ROAS family (channel filter still uses legacy path below)
   if (!linked_channel && ['roas', 'true_roas', 'blended_roas'].includes(metric_type)) {
     try {
-      const { computeCanonicalMetrics, readMetric } = require('../canonical_metrics/compute');
+      const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
+      const { resolveConsumerMetric } = require('../canonical_metrics/consumer');
       const days = Math.max(1, Math.ceil((new Date(bounds.end) - new Date(bounds.start)) / 864e5));
       const snap = await computeCanonicalMetrics(tid, { days: Math.min(90, days) });
       const key = metric_type === 'true_roas' ? 'true_roas' : metric_type === 'blended_roas' ? 'blended_roas' : 'roas';
-      const v = readMetric(snap, key);
-      if (v != null) return v;
+      const detail = resolveConsumerMetric(snap, key);
+      if (detail.availability === 'unavailable') return detail;
+      if (detail.value != null || detail.availability === 'available') return detail;
     } catch (_) { /* fall through */ }
   }
   try {
@@ -58,7 +60,7 @@ async function _pullAutoMetric(tid, metric_type, linked_channel, quarter) {
          WHERE tenant_id=$1 AND occurred_at BETWEEN $2 AND $3 ${channelClause}`,
         args
       );
-      return parseFloat(r.rows[0].val) / 100;
+      return { value: parseFloat(r.rows[0].val) / 100, from_canonical: false };
     }
     const colMap = {
       impressions: 'impressions',
@@ -87,10 +89,13 @@ async function _pullAutoMetric(tid, metric_type, linked_channel, quarter) {
       );
       const sp = parseFloat(r.rows[0].total_spend || 0);
       const cv = parseFloat(r.rows[0].total_conv || 0);
-      return sp > 0 && cv > 0 ? parseFloat((cv / sp).toFixed(2)) : null;
+      return {
+        value: sp > 0 && cv > 0 ? parseFloat((cv / sp).toFixed(2)) : null,
+        from_canonical: false,
+      };
     }
     const col = colMap[metric_type];
-    if (!col) return null;
+    if (!col) return { value: null, from_canonical: false };
     const channelFilter = linked_channel
       ? `AND LOWER(c.platform) ILIKE $4` : '';
     const args = linked_channel
@@ -105,11 +110,17 @@ async function _pullAutoMetric(tid, metric_type, linked_channel, quarter) {
          ${channelFilter}`,
       args
     );
-    return parseFloat(r.rows[0].val);
+    return { value: parseFloat(r.rows[0].val), from_canonical: false };
   } catch (e) {
     console.warn('[okr] auto-metric pull failed:', e.message);
-    return null;
+    return { value: null, from_canonical: false };
   }
+}
+
+function _metricValue(measured) {
+  if (measured == null) return null;
+  if (typeof measured === 'object' && measured !== null && 'value' in measured) return measured.value;
+  return measured;
 }
 
 function _deriveStatus(krs) {
@@ -255,15 +266,21 @@ router.post('/objectives/:id/refresh', _safe(async (req, res) => {
   const updated = [];
   for (const kr of krs.rows) {
     if (kr.metric_type === 'manual') { updated.push(kr); continue; }
-    const val = await _pullAutoMetric(tid, kr.metric_type, kr.linked_channel, obj.quarter);
+    const measured = await _pullAutoMetric(tid, kr.metric_type, kr.linked_channel, obj.quarter);
+    const val = _metricValue(measured);
+    const metaFields = measured?.from_canonical ? {
+      metric_availability: measured.availability || null,
+      metric_availability_reason: measured.availability_reason || null,
+      metric_is_proxy: measured.is_proxy ?? false,
+    } : {};
     if (val !== null) {
       await pool.query(
         `UPDATE okr_key_results SET current_value=$1, updated_at=now() WHERE id=$2`,
         [val, kr.id]
       );
-      updated.push({ ...kr, current_value: val });
+      updated.push({ ...kr, current_value: val, ...metaFields });
     } else {
-      updated.push(kr);
+      updated.push({ ...kr, ...metaFields });
     }
   }
   const newStatus = _deriveStatus(updated);

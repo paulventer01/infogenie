@@ -39,10 +39,13 @@ async function _measureGoal(metric, tid) {
   // Prefer canonical metrics SSOT for ad economics
   if (metric.startsWith('ads.') && tid != null) {
     try {
-      const { computeCanonicalMetrics, readMetric } = require('../canonical_metrics/compute');
-      const snap = await computeCanonicalMetrics(tid, { days: 30 });
-      const v = readMetric(snap, metric);
-      if (v != null) return v;
+      const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
+      const { resolveConsumerMetric, isCanonicalAdMetric } = require('../canonical_metrics/consumer');
+      if (isCanonicalAdMetric(metric)) {
+        const snap = await computeCanonicalMetrics(tid, { days: 30 });
+        const detail = resolveConsumerMetric(snap, metric);
+        return detail;
+      }
     } catch (_) { /* fall through to legacy fetchers */ }
   }
   if (metric.startsWith('drip.')) {
@@ -62,9 +65,9 @@ async function _measureGoal(metric, tid) {
     }
     const bounceRate    = attempts > 0 ? +((bounced   / attempts) * 100).toFixed(1) : 0;
     const deliveryRate  = attempts > 0 ? +((delivered / attempts) * 100).toFixed(1) : 0;
-    if (metric === 'drip.bounceRate')   return bounceRate;
-    if (metric === 'drip.totalSends')   return sentTotal;
-    if (metric === 'drip.deliveryRate') return deliveryRate;
+    if (metric === 'drip.bounceRate')   return { value: bounceRate, from_canonical: false };
+    if (metric === 'drip.totalSends')   return { value: sentTotal, from_canonical: false };
+    if (metric === 'drip.deliveryRate') return { value: deliveryRate, from_canonical: false };
   }
   if (metric === 'amp.sessions') {
     const apiKey = process.env.AMPLITUDE_API_KEY;
@@ -76,23 +79,29 @@ async function _measureGoal(metric, tid) {
     const e = encodeURIComponent(JSON.stringify({ event_type:'_active' }));
     const j = await _amplitudeFetch(`/api/2/sessions/average?start=${fmt(start)}&end=${fmt(end)}&e=${e}`, auth);
     const series = j?.data?.series?.[0] || [];
-    return series.reduce((a, b) => a + (Number(b) || 0), 0);
+    return { value: series.reduce((a, b) => a + (Number(b) || 0), 0), from_canonical: false };
   }
   if (metric === 'ads.totalSpend' || metric === 'ads.cac') {
     const [meta, google, tiktok] = await Promise.all([
       _fetchMetaSpend(30), _fetchGoogleAdsSpend(30), _fetchTikTokSpend(30),
     ]);
     const totalSpend = [meta, google, tiktok].filter(c => c.ok).reduce((s, c) => s + (c.spend || 0), 0);
-    if (metric === 'ads.totalSpend') return +totalSpend.toFixed(2);
+    if (metric === 'ads.totalSpend') return { value: +totalSpend.toFixed(2), from_canonical: false };
     const amp = await _fetchAmplitudeConversions(30);
     const customers = amp.ok && amp.conversions
       ? amp.conversions
       : [meta, google, tiktok].filter(c => c.ok).reduce((s, c) => s + (c.conversions || 0), 0);
-    return customers > 0 ? +(totalSpend / customers).toFixed(2) : null;
+    return { value: customers > 0 ? +(totalSpend / customers).toFixed(2) : null, from_canonical: false };
   }
-  return null;
+  return { value: null, from_canonical: false };
 }
-function _goalStatus(g, current) {
+function _normalizeMeasured(measured) {
+  if (measured == null) return { value: null, from_canonical: false };
+  if (typeof measured === 'object' && measured !== null && 'value' in measured) return measured;
+  return { value: measured, from_canonical: false };
+}
+function _goalStatus(g, measured) {
+  const { value: current } = _normalizeMeasured(measured);
   if (current == null) return { status:'unknown', pct:null, current:null };
   const meta = GOAL_METRICS[g.metric];
   const dir  = meta?.direction || 'gte';
@@ -134,8 +143,9 @@ app.post('/api/goals/suggest', async (req, res) => {
     if (field !== 'target' && field !== 'label') return res.status(400).json({ ok:false, error:'invalid-field' });
     const meta = GOAL_METRICS[metric];
     const tid = await _tkvCtx.resolveTenantId(req, { label: 'goals:suggest' });
-    let current = null;
-    try { current = await _measureGoal(metric, tid); } catch (_) { current = null; }
+    let measured = null;
+    try { measured = await _measureGoal(metric, tid); } catch (_) { measured = null; }
+    const current = _normalizeMeasured(measured).value;
 
     // Deterministic fallback so the button always returns something useful
     // even if the LLM is degraded or no API key is set.
@@ -237,14 +247,24 @@ app.get('/api/goals/check', async (req, res) => {
     const goals = await _goalsLock(() => _readGoals(tid));
     const evaluated = await Promise.all(goals.map(async g => {
       try {
-        const current = await _measureGoal(g.metric, tid);
-        const st = _goalStatus(g, current);
-        return { ...g, ...st, meta: GOAL_METRICS[g.metric] };
+        const measured = await _measureGoal(g.metric, tid);
+        const norm = _normalizeMeasured(measured);
+        const st = _goalStatus(g, norm);
+        const metaFields = norm.from_canonical ? {
+          metric_availability: norm.availability || null,
+          metric_availability_reason: norm.availability_reason || null,
+          metric_is_proxy: norm.is_proxy ?? false,
+        } : {};
+        return { ...g, ...st, ...metaFields, meta: GOAL_METRICS[g.metric] };
       } catch (e) {
         return { ...g, status:'error', error: e.message, current:null, pct:null, meta: GOAL_METRICS[g.metric] };
       }
     }));
-    const offTrack = evaluated.filter(g => g.status === 'off-track' || g.status === 'at-risk');
+    const offTrack = evaluated.filter(g =>
+      (g.status === 'off-track' || g.status === 'at-risk')
+      && g.metric_availability !== 'unavailable'
+      && g.metric_availability !== 'partial',
+    );
     let rootCause = null;
     if (offTrack.length > 0) {
       try {
