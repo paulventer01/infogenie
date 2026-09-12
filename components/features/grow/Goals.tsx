@@ -14,12 +14,21 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import {
+  formatMetricValue,
+  hasCanonicalAvailability,
+  isPartialCanonical,
+  isUnavailableCanonical,
+  progressLabel,
+  type MetricAvailabilityMeta,
+} from "@/lib/metricAvailability";
+import MetricAvailabilityBadges from "@/components/features/shared/MetricAvailabilityBadges";
 
 interface GoalMeta {
   unit?: string;
   direction?: string;
 }
-interface Goal {
+interface Goal extends MetricAvailabilityMeta {
   id: string;
   label?: string;
   metric: string;
@@ -40,12 +49,13 @@ interface GoalsCheck {
   goals?: Goal[];
   rootCause?: Record<string, RootCause>;
 }
-interface SuggestResult {
+interface SuggestResult extends MetricAvailabilityMeta {
   ok: boolean;
   error?: string;
-  value?: number | string;
+  insufficient_data?: boolean;
+  value?: number | string | null;
   label?: string;
-  current?: number | string;
+  current?: number | string | null;
   reason?: string;
 }
 
@@ -86,22 +96,20 @@ const STATUS_COLORS: Record<
 };
 
 function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
-  const c = STATUS_COLORS[g.status] || STATUS_COLORS.unknown;
+  const unavailable = isUnavailableCanonical(g);
+  const partial = isPartialCanonical(g);
+  const displayStatus = unavailable ? "unknown" : g.status;
+  const c = STATUS_COLORS[displayStatus] || STATUS_COLORS.unknown;
   const unit = g.meta?.unit || "";
-  const fmt = (v: number | string | null | undefined) => {
-    if (v == null || v === "") return "—";
-    if (unit === "$")
-      return "$" + Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
-    if (unit === "%") return Number(v).toFixed(1) + "%";
-    return Number(v).toLocaleString();
-  };
-  const pct = g.pct == null ? 0 : g.pct;
+  const fmt = (v: number | string | null | undefined) => formatMetricValue(v, unit, g);
+  const pct = unavailable ? null : g.pct == null ? null : g.pct;
+  const barWidth = pct == null ? 0 : pct;
   const barColor =
-    g.status === "on-track"
+    displayStatus === "on-track"
       ? "#10B981"
-      : g.status === "at-risk"
+      : displayStatus === "at-risk"
         ? "#F59E0B"
-        : g.status === "off-track"
+        : displayStatus === "off-track"
           ? "#EF4444"
           : "#94A3B8";
 
@@ -138,6 +146,7 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
           <div style={{ fontSize: "0.78rem", color: "#64748B", marginTop: 3 }}>
             {g.metric} · target {g.meta?.direction === "lte" ? "≤" : "≥"}{" "}
             {fmt(g.target)}
+            <MetricAvailabilityBadges meta={g} />
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -152,7 +161,7 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
               color: c.text,
             }}
           >
-            {c.label}
+            {unavailable ? "❔ Unverified" : partial && displayStatus !== "unknown" ? `${c.label} (Partial)` : c.label}
           </span>
           <button
             onClick={onDelete}
@@ -190,7 +199,14 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
           >
             Current
           </div>
-          <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "#0F172A" }}>
+          <div
+            style={{
+              fontSize: unavailable ? "1.05rem" : "1.4rem",
+              fontWeight: 700,
+              color: unavailable ? "#94A3B8" : "#0F172A",
+            }}
+            aria-label={`Current value ${fmt(g.current)}`}
+          >
             {fmt(g.current)}
           </div>
         </div>
@@ -210,6 +226,24 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
             {fmt(g.target)}
           </div>
         </div>
+        {pct != null && (
+          <div style={{ marginLeft: "auto", textAlign: "right" }}>
+            <div
+              style={{
+                fontSize: "0.7rem",
+                color: "#64748B",
+                textTransform: "uppercase",
+                letterSpacing: ".4px",
+                fontWeight: 600,
+              }}
+            >
+              Progress
+            </div>
+            <div style={{ fontSize: "1rem", fontWeight: 700, color: "#475569" }}>
+              {progressLabel(pct, g)}
+            </div>
+          </div>
+        )}
       </div>
       <div
         style={{
@@ -217,19 +251,31 @@ function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
           background: "#F1F5F9",
           borderRadius: 999,
           overflow: "hidden",
-          marginBottom: rc ? 14 : 0,
+          marginBottom: rc && !unavailable ? 14 : unavailable ? 8 : 0,
         }}
+        aria-hidden={pct == null}
       >
         <div
           style={{
             height: "100%",
-            width: `${pct}%`,
+            width: `${barWidth}%`,
             background: barColor,
             transition: "width .4s",
           }}
         />
       </div>
-      {rc && rc.hypothesis && (
+      {unavailable && hasCanonicalAvailability(g) && (
+        <div
+          style={{
+            marginBottom: rc ? 14 : 0,
+            fontSize: "0.78rem",
+            color: "#64748B",
+          }}
+        >
+          Progress is withheld until this canonical metric is available.
+        </div>
+      )}
+      {rc && !unavailable && rc.hypothesis && (
         <div
           style={{
             marginTop: 14,
@@ -356,13 +402,20 @@ export default function Goals({ embedded = false }: { embedded?: boolean } = {})
       setSuggesting(null);
       return;
     }
+    if (j.insufficient_data) {
+      const msg = j.reason || "Insufficient data for a data-based suggestion — enter a target manually.";
+      if (field === "target") setTargetReason(msg);
+      else setLabelReason(msg);
+      setSuggesting(null);
+      return;
+    }
     const cur = j.current != null ? ` (current: ${j.current})` : "";
     const reason = "✨ " + (j.reason || "AI suggestion applied") + cur;
     if (field === "target") {
-      setTarget(j.value != null ? String(j.value) : "");
+      if (j.value != null) setTarget(String(j.value));
       setTargetReason(reason);
     } else {
-      setLabel(j.label != null ? String(j.label) : "");
+      if (j.label != null) setLabel(String(j.label));
       setLabelReason(reason);
     }
     setSuggesting(null);

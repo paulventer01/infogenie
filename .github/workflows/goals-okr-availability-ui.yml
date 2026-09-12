@@ -1,0 +1,85 @@
+name: Goals OKR availability UI
+
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'hooks/**'
+      - 'lib/**'
+      - 'services/growth_ops/**'
+      - 'services/okr/**'
+      - 'services/canonical_metrics/**'
+      - 'server.js'
+      - 'package*.json'
+      - 'test/goals-okr-availability-ui.test.js'
+      - 'test/browser/goals-okr-availability.test.js'
+      - 'test/helpers/**'
+      - '.github/workflows/goals-okr-availability-ui.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  focused-tests:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify goals and OKR availability UI behavior
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/goals-okr-availability-ui.test.js test/canonical-metrics-consumer-consistency.test.js
+
+  browser-postgres:
+    name: Goals OKR availability Chromium + PostgreSQL (zero skips)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: infogenie_agency_browser
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d infogenie_agency_browser"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Chromium for Puppeteer
+        run: npx --no-install puppeteer browsers install chrome
+      - name: Prepare isolated browser database
+        run: |
+          PR10E9_POSTGRES_CONTAINER="$(docker ps --filter ancestor=postgres:16 --format '{{.ID}}' | head -n1)"
+          docker exec "$PR10E9_POSTGRES_CONTAINER" psql -U postgres -d infogenie_agency_browser -v ON_ERROR_STOP=1 \
+            -c "SELECT 1"
+          for attempt in $(seq 1 30); do
+            docker exec "$PR10E9_POSTGRES_CONTAINER" pg_isready -U postgres -d infogenie_agency_browser && break
+            sleep 1
+          done
+      - name: Verify browser journeys for goals and OKR availability
+        env:
+          PR10E9_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/infogenie_agency_browser
+          PR10G3_REQUIRE_BROWSER: '1'
+        run: |
+          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/browser/goals-okr-availability.test.js | tee /tmp/goals-okr-browser.tap
+          grep -Eq '^# tests [1-9][0-9]*$' /tmp/goals-okr-browser.tap
+          grep -Eq '^# fail 0$' /tmp/goals-okr-browser.tap
+          grep -Eq '^# skipped 0$' /tmp/goals-okr-browser.tap

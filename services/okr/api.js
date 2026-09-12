@@ -132,13 +132,37 @@ function _metricValue(measured) {
 
 function _deriveStatus(krs) {
   if (!krs.length) return 'on_track';
-  const pcts = krs.map(kr => kr.target_value > 0
-    ? Math.min(100, (Number(kr.current_value) / Number(kr.target_value)) * 100)
-    : 0);
+  const pcts = krs.map(kr => {
+    if (kr.metric_type !== 'manual' && kr.metric_availability === 'unavailable') return null;
+    if (kr.target_value > 0 && kr.current_value != null) {
+      return Math.min(100, (Number(kr.current_value) / Number(kr.target_value)) * 100);
+    }
+    return null;
+  }).filter(p => p != null);
+  if (!pcts.length) return 'on_track';
   const avg = pcts.reduce((s, p) => s + p, 0) / pcts.length;
   if (avg >= 70) return 'on_track';
   if (avg >= 40) return 'at_risk';
   return 'off_track';
+}
+
+async function _enrichKrForDisplay(tid, kr, quarter) {
+  if (kr.metric_type === 'manual') return kr;
+  const measured = await _pullAutoMetric(tid, kr.metric_type, kr.linked_channel, quarter);
+  const metaFields = measured?.from_canonical ? {
+    metric_availability: measured.availability || null,
+    metric_availability_reason: measured.availability_reason || null,
+    metric_is_proxy: measured.is_proxy ?? false,
+  } : {};
+  const val = _metricValue(measured);
+  let current_value = kr.current_value;
+  if (measured?.from_canonical) {
+    if (val !== null) current_value = val;
+    else if (measured.availability === 'unavailable') current_value = null;
+  } else if (val !== null) {
+    current_value = val;
+  }
+  return { ...kr, current_value, ...metaFields };
 }
 
 // ── list objectives ───────────────────────────────────────────────────────────
@@ -163,7 +187,13 @@ router.get('/objectives', _safe(async (req, res) => {
     if (!krMap[kr.objective_id]) krMap[kr.objective_id] = [];
     krMap[kr.objective_id].push(kr);
   }
-  const objectives = objs.rows.map(o => ({ ...o, key_results: krMap[o.id] || [] }));
+  const objectives = await Promise.all(objs.rows.map(async (o) => {
+    const rawKrs = krMap[o.id] || [];
+    const key_results = await Promise.all(
+      rawKrs.map((kr) => _enrichKrForDisplay(tid, kr, o.quarter)),
+    );
+    return { ...o, key_results };
+  }));
   res.json({ ok: true, objectives });
 }));
 

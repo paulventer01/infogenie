@@ -4,18 +4,28 @@
 // with optional auto-tracking from live campaign data (spend, impressions,
 // clicks, conversions, ROAS), and monitor progress with status badges.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import {
+  formatMetricValue,
+  isPartialCanonical,
+  isUnavailableCanonical,
+  mergeMetricAvailability,
+  progressLabel,
+  progressPctFromValues,
+  type MetricAvailabilityMeta,
+} from "@/lib/metricAvailability";
+import MetricAvailabilityBadges from "@/components/features/shared/MetricAvailabilityBadges";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-interface KeyResult {
+interface KeyResult extends MetricAvailabilityMeta {
   id: string;
   title: string;
   metric_type: string;
   linked_channel: string;
   target_value: number;
-  current_value: number;
+  current_value: number | null;
   unit: string;
   updated_at: string;
 }
@@ -75,14 +85,23 @@ function KrRow({
   kr: KeyResult;
   onDelete: () => void;
 }) {
-  const pct = kr.target_value > 0
-    ? Math.min(100, Math.round((Number(kr.current_value) / Number(kr.target_value)) * 100))
-    : 0;
   const isAuto = kr.metric_type !== "manual";
+  const unavailable = isUnavailableCanonical(kr);
+  const pct = isAuto
+    ? progressPctFromValues(kr.current_value, kr.target_value, kr)
+    : kr.target_value > 0
+      ? Math.min(100, Math.round((Number(kr.current_value) / Number(kr.target_value)) * 100))
+      : 0;
+  const currentDisplay = formatMetricValue(kr.current_value, kr.unit, kr);
+  const targetDisplay = formatMetricValue(kr.target_value, kr.unit, null);
+  const barPct = pct == null ? 0 : pct;
   return (
     <div style={{ padding: "10px 0", borderBottom: "1px solid #f1f5f9", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 200 }}>
-        <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>{kr.title}</div>
+        <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>
+          {kr.title}
+          <MetricAvailabilityBadges meta={kr} />
+        </div>
         <div style={{ color: "#64748b", fontSize: "0.76rem", marginTop: 2 }}>
           {METRIC_TYPES.find(m => m.value === kr.metric_type)?.label}
           {kr.linked_channel ? ` · ${kr.linked_channel}` : ""}
@@ -90,15 +109,39 @@ function KrRow({
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 180 }}>
-        <ProgressBar pct={pct} />
-        <div style={{ fontSize: "0.82rem", fontWeight: 700, minWidth: 38, textAlign: "right" }}>{pct}%</div>
+        <ProgressBar pct={barPct} />
+        <div style={{ fontSize: "0.82rem", fontWeight: 700, minWidth: 56, textAlign: "right" }}>
+          {progressLabel(pct, kr)}
+        </div>
       </div>
-      <div style={{ fontSize: "0.82rem", color: "#475569", minWidth: 120, textAlign: "right" }}>
-        {Number(kr.current_value).toLocaleString()}{kr.unit} / {Number(kr.target_value).toLocaleString()}{kr.unit}
+      <div
+        style={{ fontSize: "0.82rem", color: unavailable ? "#94a3b8" : "#475569", minWidth: 160, textAlign: "right" }}
+        aria-label={`Current ${currentDisplay}, target ${targetDisplay}`}
+      >
+        {currentDisplay}{kr.unit && !currentDisplay.includes(kr.unit) ? kr.unit : ""}
+        {" / "}
+        {targetDisplay}{kr.unit && !targetDisplay.includes(kr.unit) ? kr.unit : ""}
       </div>
       <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: "0.9rem", padding: "2px 6px" }} title="Remove">✕</button>
     </div>
   );
+}
+
+function verifiedKrProgress(kr: KeyResult): number | null {
+  if (kr.metric_type !== "manual" && isUnavailableCanonical(kr)) return null;
+  if (kr.metric_type !== "manual") {
+    return progressPctFromValues(kr.current_value, kr.target_value, kr);
+  }
+  if (kr.target_value > 0) {
+    return Math.min(100, Math.round((Number(kr.current_value) / Number(kr.target_value)) * 100));
+  }
+  return 0;
+}
+
+function objectiveAvgPct(krs: KeyResult[]): number | null {
+  const pcts = krs.map(verifiedKrProgress).filter((p): p is number => p != null);
+  if (!pcts.length) return null;
+  return Math.round(pcts.reduce((s, p) => s + p, 0) / pcts.length);
 }
 
 // ── main component ────────────────────────────────────────────────────────────
@@ -123,12 +166,12 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
   });
   const [saving, setSaving] = useState(false);
 
-  async function load(q: string) {
+  const load = useCallback(async (q: string) => {
     setLoading(true);
     const r = await apiGet<ObjResp>(`/api/okr/objectives${q ? `?quarter=${q}` : ""}`);
     setObjectives(r.ok && r.objectives ? r.objectives : []);
     setLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
     apiGet<QtrResp>("/api/okr/quarters").then(r => {
@@ -140,7 +183,7 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
         load(q);
       }
     });
-  }, []);
+  }, [load]);
 
   function toggleExpanded(id: string) {
     setExpanded(prev => {
@@ -192,8 +235,35 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
     setRefreshing(id);
     const r = await apiPost<RefreshR>(`/api/okr/objectives/${id}/refresh`, {});
     setRefreshing(null);
-    if (r.ok) load(selQ);
-    else alert(r.error || "Refresh failed");
+    if (!r.ok) {
+      alert(r.error || "Refresh failed");
+      return;
+    }
+    if (r.key_results?.length) {
+      const refreshed = new Map(r.key_results.map((kr) => [kr.id, kr]));
+      setObjectives((prev) =>
+        prev.map((obj) => {
+          if (obj.id !== id) return obj;
+          return {
+            ...obj,
+            status: (r.status as Objective["status"]) || obj.status,
+            key_results: (obj.key_results || []).map((kr) => {
+              const next = refreshed.get(kr.id);
+              if (!next) return kr;
+              return mergeMetricAvailability(
+                {
+                  ...kr,
+                  current_value: next.current_value,
+                },
+                next,
+              );
+            }),
+          };
+        }),
+      );
+      return;
+    }
+    load(selQ);
   }
 
   async function markComplete(obj: Objective) {
@@ -286,9 +356,8 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
               const sm = STATUS_META[obj.status] || STATUS_META.on_track;
               const isOpen = expanded.has(obj.id);
               const krs = obj.key_results || [];
-              const avgPct = krs.length
-                ? Math.round(krs.reduce((s, kr) => s + (kr.target_value > 0 ? Math.min(100, (Number(kr.current_value) / Number(kr.target_value)) * 100) : 0), 0) / krs.length)
-                : 0;
+              const avgPct = objectiveAvgPct(krs);
+              const hasPartialKr = krs.some((kr) => isPartialCanonical(kr));
               return (
                 <div key={obj.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
                   {/* Header */}
@@ -306,10 +375,12 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
                       )}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      {krs.length > 0 && (
+                      {krs.length > 0 && avgPct != null && (
                         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 120 }}>
                           <ProgressBar pct={avgPct} />
-                          <span style={{ fontSize: "0.83rem", fontWeight: 700 }}>{avgPct}%</span>
+                          <span style={{ fontSize: "0.83rem", fontWeight: 700 }}>
+                            {hasPartialKr ? `${avgPct}% (Partial)` : `${avgPct}%`}
+                          </span>
                         </div>
                       )}
                       <div style={{ background: sm.bg, color: sm.color, borderRadius: 20, padding: "4px 12px", fontSize: "0.8rem", fontWeight: 600, whiteSpace: "nowrap" }}>
