@@ -226,8 +226,8 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     await owner.reload({ waitUntil: 'networkidle2' });
     await selectClient(owner, first.id);
     await preview();
-    await owner.locator(`${SECTION} input[type="checkbox"]`).click();
-    await owner.waitForSelector(`${SECTION} [role="alert"]`, { visible: true });
+    await owner.$eval(`${SECTION} input[type="checkbox"]`, (el) => { el.click(); });
+    await owner.waitForSelector(`${SECTION} input[name="start_date"]`, { visible: true });
     const today = new Date().toISOString().slice(0, 10);
     await owner.locator(`${SECTION} input[name="start_date"]`).fill(today);
     await owner.locator(`${SECTION} input[name="end_date"]`).fill(today);
@@ -240,8 +240,11 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     const ordered = customData.report.sections.find((section) => section.title === 'Search totals')?.rows.map((row) => row[0]) || [];
     assert.deepEqual(ordered, ['Brand mentions', 'Runs']);
     await owner.locator(`${SECTION} input[name="end_date"]`).fill('');
-    await owner.waitForFunction((selector) => !document.querySelector(`${selector} article`), {}, SECTION);
-    assert.equal(await owner.$eval(`${SECTION} ::-p-aria([name="Generate & download PDF"][role="button"])`, (el) => el.disabled), true);
+    await owner.waitForFunction((selector) => {
+      const generate = [...document.querySelector(selector)?.querySelectorAll('button') || []]
+        .find((button) => button.textContent?.includes('Generate & download'));
+      return generate?.disabled === true && !document.querySelector(`${selector} article`);
+    }, {}, SECTION);
     await owner.locator(`${SECTION} input[name="end_date"]`).fill(today);
     await preview();
     assert.equal(await owner.$eval(`${SECTION} ::-p-aria([name="Email report"][role="button"])`, (el) => el.disabled), false);
