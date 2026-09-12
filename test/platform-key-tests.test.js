@@ -45,6 +45,9 @@ const ALL_KEY_VARS = [
   'APOLLO_API_KEY', 'BUILTWITH_API_KEY', 'GOOGLE_PAGESPEED_API_KEY',
   'GOOGLE_SEARCH_API_KEY', 'RESEND_API_KEY', 'AMPLITUDE_API_KEY',
   'STRIPE_SECRET_KEY',
+  'YOUTUBE_DATA_API_KEY', 'BING_WEBMASTER_API_KEY', 'SPYFU_API_KEY',
+  'MAJESTIC_API_KEY', 'MODASH_API_KEY', 'MOONSHOT_API_KEY',
+  'RAPIDAPI_KEY', 'ZAI_API_KEY',
 ];
 const _savedKeyVars = {};
 
@@ -107,6 +110,15 @@ const CASES = {
   pagespeed:     { set: { GOOGLE_PAGESPEED_API_KEY: 'k' }, valid: { status: 400, body: 'Required parameter: url' }, bad: { status: 400, body: 'API key not valid. Please pass a valid API key.' } },
   google_search: { set: { GOOGLE_SEARCH_API_KEY: 'k' }, valid: { status: 400, body: 'Required parameter: q' }, bad: { status: 400, body: 'API key not valid.' } },
   amplitude:     { set: { AMPLITUDE_API_KEY: 'k' }, valid: { status: 400, body: 'missing required field' }, bad: { status: 400, body: 'Invalid API key' } },
+  // Additional registry vendors (must stay 1:1 with REGISTRY `test` ids).
+  youtube_data:    { set: { YOUTUBE_DATA_API_KEY: 'k' }, valid: { status: 200, body: { items: [] } }, bad: { status: 400, body: 'API key not valid.' } },
+  bing_webmaster:  { set: { BING_WEBMASTER_API_KEY: 'k' }, valid: { status: 200, body: { d: [] } }, bad: { status: 403 } },
+  spyfu:           { set: { SPYFU_API_KEY: 'k' }, valid: { status: 200, body: {} }, bad: { status: 401 } },
+  majestic:        { set: { MAJESTIC_API_KEY: 'k' }, valid: { status: 200, body: { Code: 'OK' } }, bad: { status: 200, body: { Code: 'ApiKeyUnauthorized', ErrorMessage: 'bad key' } } },
+  modash:          { set: { MODASH_API_KEY: 'k' }, valid: { status: 200 }, bad: { status: 401 } },
+  moonshot:        { set: { MOONSHOT_API_KEY: 'k' }, valid: { status: 200 }, bad: { status: 401 } },
+  rapidapi_llama:  { set: { RAPIDAPI_KEY: 'k' }, valid: { status: 200 }, bad: { status: 401 } },
+  zai:             { set: { ZAI_API_KEY: 'k' }, valid: { status: 200 }, bad: { status: 401 } },
 };
 
 // Map each REGISTRY `test` id → the key_name that carries it (the one testKey is
