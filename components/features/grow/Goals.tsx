@@ -15,10 +15,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPost } from "@/lib/api";
 import {
-  carriesCanonicalMetadata,
   formatMetricTarget,
   formatMetricValue,
   hasCanonicalAvailability,
+  isCanonicalGoalMetric,
   isPartialCanonical,
   isUnverifiedCanonical,
   progressLabel,
@@ -98,7 +98,7 @@ const STATUS_COLORS: Record<
 };
 
 function GoalCard({ g, rc }: { g: Goal; rc?: RootCause }) {
-  const recognizedCanonical = carriesCanonicalMetadata(g);
+  const recognizedCanonical = isCanonicalGoalMetric(g.metric);
   const unverified = isUnverifiedCanonical(g, recognizedCanonical);
   const partial = isPartialCanonical(g);
   const displayStatus = unverified ? "unknown" : g.status;

@@ -43,9 +43,28 @@ export function isPartialCanonical(meta?: MetricAvailabilityMeta | null): boolea
   return meta?.metric_availability === "partial";
 }
 
-/** Recognized canonical auto metrics that must carry availability metadata. */
+const CANONICAL_GOAL_METRICS = new Set([
+  "ads.totalSpend",
+  "ads.cac",
+  "ads.blendedRoas",
+  "ads.trueRoas",
+  "ads.revenue",
+]);
+
+const CANONICAL_OKR_AUTO_TYPES = new Set(["roas", "true_roas", "blended_roas"]);
+
+/** Goals panel metrics that use the canonical ad-economics path on the backend. */
+export function isCanonicalGoalMetric(metric?: string | null): boolean {
+  return Boolean(metric && CANONICAL_GOAL_METRICS.has(metric));
+}
+
+/** OKR auto metrics that use canonical ROAS family without a channel filter. */
 export function isCanonicalAutoKr(kr: { metric_type?: string; linked_channel?: string | null }): boolean {
-  return kr.metric_type === "roas" && !kr.linked_channel;
+  return Boolean(
+    kr.metric_type &&
+    CANONICAL_OKR_AUTO_TYPES.has(kr.metric_type) &&
+    !kr.linked_channel,
+  );
 }
 
 export function carriesCanonicalMetadata(meta?: MetricAvailabilityMeta | null): boolean {
@@ -63,7 +82,6 @@ export function isUnverifiedCanonical(
   recognized = true,
 ): boolean {
   if (!recognized) return false;
-  if (!carriesCanonicalMetadata(meta)) return true;
   const avail = meta?.metric_availability;
   return !avail || avail === "unavailable";
 }
@@ -90,7 +108,7 @@ export function formatMetricValue(
   value: number | string | null | undefined,
   unit: string,
   meta?: MetricAvailabilityMeta | null,
-  recognizedCanonical = Boolean(meta && carriesCanonicalMetadata(meta)),
+  recognizedCanonical = false,
 ): string {
   const availability = meta?.metric_availability;
   const reason = safeAvailabilityReason(meta?.metric_availability_reason);
@@ -127,7 +145,7 @@ export function progressPctFromValues(
   current: number | string | null | undefined,
   target: number | string | null | undefined,
   meta?: MetricAvailabilityMeta | null,
-  recognizedCanonical = Boolean(meta && carriesCanonicalMetadata(meta)),
+  recognizedCanonical = false,
 ): number | null {
   if (recognizedCanonical && isUnverifiedCanonical(meta, true)) return null;
   if (isUnavailableCanonical(meta)) return null;
@@ -210,7 +228,7 @@ export function summarizeObjective(obj: ObjectiveSummaryInput): ObjectiveSummary
     unverified,
   };
 
-  const hasPartial = krs.some((kr) => isPartialCanonical(kr));
+  const hasCanonicalPartial = krs.some((kr) => isCanonicalAutoKr(kr) && isPartialCanonical(kr));
   const excludedUnavailable = krs.filter(
     (kr) => isCanonicalAutoKr(kr) && isUnverifiedCanonical(kr, true),
   ).length;
@@ -221,12 +239,16 @@ export function summarizeObjective(obj: ObjectiveSummaryInput): ObjectiveSummary
   const avgPct = pcts.length ? Math.round(pcts.reduce((s, p) => s + p, 0) / pcts.length) : null;
   let avgLabel = avgPct == null ? "—" : `${avgPct}%`;
   if (avgPct != null) {
-    if (hasPartial) avgLabel = `${avgPct}% (Partial)`;
+    if (hasCanonicalPartial) avgLabel = `${avgPct}% (Partial)`;
     else if (excludedUnavailable > 0) avgLabel = `${avgPct}% (Incomplete)`;
   }
 
   if (krs.length > 0 && pcts.length === 0) {
     return { ...unverified, avgLabel };
+  }
+
+  if (hasCanonicalPartial) {
+    return { ...unverified, avgPct, avgLabel };
   }
 
   const cannotVerifyStored =

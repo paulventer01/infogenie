@@ -193,6 +193,34 @@ test("Goals UI shows unavailable canonical metrics without zero progress", async
   assert.doesNotMatch(h.text(), /0%/);
 });
 
+test("Goals UI treats canonical metric without metadata as unverified", async (t) => {
+  const h = await goalsHarness(t, [{
+    ...baseGoal,
+    metric: "ads.blendedRoas",
+    target: 2,
+    meta: { unit: "x", direction: "gte" },
+    current: 1.5,
+    pct: 75,
+    status: "on-track",
+  }]);
+  assert.match(h.text(), /Unverified/);
+  assert.match(h.text(), /Target2x|2x/);
+  assert.doesNotMatch(h.text(), /75%/);
+});
+
+test("Goals UI preserves non-canonical metrics without availability metadata", async (t) => {
+  const h = await goalsHarness(t, [{
+    ...baseGoal,
+    metric: "drip.bounceRate",
+    meta: { unit: "%", direction: "lte" },
+    current: 4.2,
+    pct: 84,
+    status: "on-track",
+  }]);
+  assert.match(h.text(), /On Track/);
+  assert.match(h.text(), /84%/);
+});
+
 test("Goals UI keeps saved target visible when current measurement is unavailable", async (t) => {
   const h = await goalsHarness(t, [{
     ...baseGoal,
@@ -296,7 +324,9 @@ test("OKR objective summary qualifies partial aggregate", async (t) => {
     }],
   }]);
   assert.match(partial.text(), /50% \(Partial\)/);
-  assert.match(partial.text(), /Partial objective[\s\S]*🟢 On Track/);
+  assert.match(partial.text(), /Partial objective[\s\S]*❔ Unverified/);
+  assert.match(partial.text(), /❔ 1 Unverified/);
+  assert.doesNotMatch(partial.text(), /🟢 1 On Track/);
 });
 
 test("OKR objective summary preserves manual completion", async (t) => {
@@ -393,5 +423,36 @@ test("metricAvailability helpers preserve valid zero and unavailable labels", ()
   assert.equal(
     lib.isUnverifiedCanonical({ metric_availability: null, metric_availability_reason: null, metric_is_proxy: false }, true),
     true,
+  );
+  assert.equal(lib.isCanonicalGoalMetric("ads.totalSpend"), true);
+  assert.equal(lib.isCanonicalGoalMetric("drip.bounceRate"), false);
+  assert.equal(lib.isCanonicalAutoKr({ metric_type: "blended_roas", linked_channel: "" }), true);
+  assert.equal(lib.isCanonicalAutoKr({ metric_type: "true_roas", linked_channel: "" }), true);
+  assert.equal(
+    lib.summarizeObjective({
+      status: "on_track",
+      key_results: [{
+        metric_type: "blended_roas",
+        linked_channel: "",
+        target_value: 2,
+        current_value: 1,
+        metric_availability: "partial",
+        metric_availability_reason: "input_unavailable:offline",
+      }],
+    }).statusKey,
+    "unverified",
+  );
+  assert.equal(
+    lib.summarizeObjective({
+      status: "on_track",
+      key_results: [{
+        metric_type: "blended_roas",
+        linked_channel: "",
+        target_value: 2,
+        current_value: 1,
+        metric_availability: "partial",
+      }],
+    }).avgLabel,
+    "50% (Partial)",
   );
 });
