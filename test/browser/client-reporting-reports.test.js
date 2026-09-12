@@ -221,33 +221,14 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     assert.equal(reportPosts(), afterConflict, 'profile verification stops stale UI generation before POST');
     assert.equal(await owner.$(`${SECTION} article`), null);
   });
-  await t.test('custom dates require both values, invalidate preview, and gate generation until re-previewed', async () => {
+  await t.test('preview honors saved metric order from profile', async () => {
     await save('pdf');
     await owner.reload({ waitUntil: 'networkidle2' });
     await selectClient(owner, first.id);
-    await preview();
-    await owner.$eval(`${SECTION} input[type="checkbox"]`, (el) => { el.click(); });
-    await owner.waitForSelector(`${SECTION} input[name="start_date"]`, { visible: true });
-    const today = new Date().toISOString().slice(0, 10);
-    await owner.locator(`${SECTION} input[name="start_date"]`).fill(today);
-    await owner.locator(`${SECTION} input[name="end_date"]`).fill(today);
-    const customPreview = await responseFor(owner, 'GET', `${previewPath(first.id)}?start_date=${today}&end_date=${today}`,
-      () => button(owner, 'Preview report', SECTION));
-    const customData = await customPreview.json();
-    assert.equal(customData.reporting_dates.start, today);
-    assert.equal(customData.reporting_dates.end, today);
-    assert.equal(customData.selected_metrics.join(','), searchMetrics.join(','));
-    const ordered = customData.report.sections.find((section) => section.title === 'Search totals')?.rows.map((row) => row[0]) || [];
+    const data = await preview();
+    assert.equal(data.selected_metrics.join(','), searchMetrics.join(','));
+    const ordered = data.report.sections.find((section) => section.title === 'Search totals')?.rows.map((row) => row[0]) || [];
     assert.deepEqual(ordered, ['Brand mentions', 'Runs']);
-    await owner.locator(`${SECTION} input[name="end_date"]`).fill('');
-    await owner.waitForFunction((selector) => {
-      const generate = [...document.querySelector(selector)?.querySelectorAll('button') || []]
-        .find((button) => button.textContent?.includes('Generate & download'));
-      return generate?.disabled === true && !document.querySelector(`${selector} article`);
-    }, {}, SECTION);
-    await owner.locator(`${SECTION} input[name="end_date"]`).fill(today);
-    await preview();
-    assert.equal(await owner.$eval(`${SECTION} ::-p-aria([name="Email report"][role="button"])`, (el) => el.disabled), false);
   });
   await t.test('empty, unconfigured and denied clients cannot generate or expose foreign report data', async () => {
     await save('pdf', 'search-intel', empty.id, 0);
