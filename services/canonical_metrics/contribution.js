@@ -13,6 +13,11 @@
 const _db = require('../../db');
 const { computeCanonicalMetrics } = require('./compute');
 const { DEFINITION_VERSION, labelledValue } = require('./definitions');
+const {
+  labelledAvailability,
+  isUsableForRecommendations,
+  safeAvailabilityReason,
+} = require('./consumer');
 
 function _round(n, d = 2) {
   if (n == null || !Number.isFinite(Number(n))) return null;
@@ -203,6 +208,10 @@ function _holdoutByChannel(tests) {
 async function computeContribution(tid, opts = {}) {
   const days = Math.min(90, Math.max(7, parseInt(opts.days, 10) || 30));
   const snap = await computeCanonicalMetrics(tid, { days });
+  const spendMeta = labelledAvailability(snap, 'spend');
+  const roasMeta = labelledAvailability(snap, 'reported_roas');
+  const inputsUsable = isUsableForRecommendations(spendMeta.status)
+    && isUsableForRecommendations(roasMeta.status);
   const series = await _channelDailySeries(tid, days);
   const tests = await _loadHoldoutTests(tid);
   const holdouts = _holdoutByChannel(tests);
@@ -224,8 +233,8 @@ async function computeContribution(tid, opts = {}) {
     const platformRev = daily.reduce((s, p) => s + p.revenue, 0);
     // If daily empty, apportion online revenue by spend share
     let reportedRev = platformRev;
-    if (!reportedRev && snap.spend > 0 && spend > 0) {
-      reportedRev = (snap.online_revenue || 0) * (spend / snap.spend);
+    if (!reportedRev && snap.spend > 0 && spend > 0 && snap.online_revenue != null) {
+      reportedRev = snap.online_revenue * (spend / snap.spend);
     }
     platformRevenue += reportedRev;
     const platformRoas = spend > 0 ? reportedRev / spend : null;
@@ -327,7 +336,7 @@ async function computeContribution(tid, opts = {}) {
     .sort((a, b) => (b.recommendation_score || 0) - (a.recommendation_score || 0));
 
   const budget_recommendations = [];
-  if (ranked.length >= 2) {
+  if (inputsUsable && ranked.length >= 2) {
     const best = ranked[0];
     const worst = ranked[ranked.length - 1];
     if (
@@ -361,7 +370,7 @@ async function computeContribution(tid, opts = {}) {
   }
 
   // Underwater by causal estimate
-  for (const row of channel_rows) {
+  if (inputsUsable) for (const row of channel_rows) {
     if (row.spend > 0 && row.causal.iroas?.value != null && row.causal.iroas.value < 1) {
       budget_recommendations.push({
         from: row.channel,
@@ -414,6 +423,12 @@ async function computeContribution(tid, opts = {}) {
     holdout_tests_used: Object.keys(holdouts).length,
     holdout_tests_total: tests.length,
     channels_modelled: channel_rows.length,
+    input_availability: {
+      spend: spendMeta.status,
+      reported_roas: roasMeta.status,
+      usable_for_recommendations: inputsUsable,
+      reason: inputsUsable ? null : safeAvailabilityReason(spendMeta.reason || roasMeta.reason),
+    },
   };
 
   return {

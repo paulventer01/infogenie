@@ -178,11 +178,16 @@ async function _fetchLiveMetrics(tid) {
         `Overstatement factor: ${s.overstatement_factor ?? 'n/a'}× · Holdout tests used: ${s.holdout_tests_used || 0}`,
         'When answering budget questions, prefer causal iROAS over platform ROAS.',
       ];
-      for (const rec of (contrib.budget_recommendations || []).slice(0, 3)) {
-        lines.push(
-          `- Rec: ${rec.action === 'reduce' ? 'reduce' : 'shift'} $${rec.amount}`
-          + `${rec.from ? ` from ${rec.from}` : ''}${rec.to ? ` → ${rec.to}` : ''} — ${rec.why}`,
-        );
+      if (contrib.summary?.input_availability?.usable_for_recommendations) {
+        for (const rec of (contrib.budget_recommendations || []).slice(0, 3)) {
+          lines.push(
+            `- Rec: ${rec.action === 'reduce' ? 'reduce' : 'shift'} $${rec.amount}`
+            + `${rec.from ? ` from ${rec.from}` : ''}${rec.to ? ` → ${rec.to}` : ''} — ${rec.why}`,
+          );
+        }
+      } else {
+        const reason = (contrib.summary?.input_availability?.reason || 'inputs incomplete').replace(/_/g, ' ');
+        lines.push(`Budget shift recommendations withheld — canonical spend/ROAS inputs are not fully available (${reason}).`);
       }
       blocks.push(lines.join('\n'));
     }

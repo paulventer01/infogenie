@@ -122,6 +122,7 @@ router.post('/spend-scan', _safe(async (req, res) => {
   if (!tid) return _err(res, 400, 'no_tenant');
   const days = Math.min(90, Math.max(7, parseInt(req.body?.days, 10) || 30));
   const anomalies = [];
+  const skipped_checks = [];
 
   let metrics = null;
   try {
@@ -132,19 +133,38 @@ router.post('/spend-scan', _safe(async (req, res) => {
   }
 
   if (metrics) {
-    for (const w of metrics.waste_channels || []) {
-      anomalies.push({
-        anomaly_type: 'spend_waste',
-        severity: w.waste_cents >= 50000 ? 'high' : 'medium',
-        channel: w.channel,
-        spike_factor: w.roas != null && w.roas > 0 ? +(1 / w.roas).toFixed(2) : null,
-        baseline_value: w.revenue,
-        current_value: w.spend,
-        ai_explanation: `Channel “${w.channel}” is underwater — spend $${Number(w.spend).toFixed(0)} vs revenue $${Number(w.revenue).toFixed(0)} (ROAS ${w.roas ?? 'n/a'}).`,
-        recommended_action: `Pause or cut budget on “${w.channel}” until creative/audience is refreshed; reallocate to channels with ROAS ≥ 1.`,
-      });
+    const {
+      labelledAvailability,
+      isUsableForRecommendations,
+      safeAvailabilityReason,
+    } = require('../canonical_metrics/consumer');
+    const spendMeta = labelledAvailability(metrics, 'spend');
+    const roasMeta = labelledAvailability(metrics, 'reported_roas');
+    const wasteMeta = labelledAvailability(metrics, 'waste');
+    const inputsUsable = isUsableForRecommendations(spendMeta.status)
+      && isUsableForRecommendations(roasMeta.status);
+
+    if (inputsUsable && isUsableForRecommendations(wasteMeta.status)) {
+      for (const w of metrics.waste_channels || []) {
+        anomalies.push({
+          anomaly_type: 'spend_waste',
+          severity: w.waste_cents >= 50000 ? 'high' : 'medium',
+          channel: w.channel,
+          spike_factor: w.roas != null && w.roas > 0 ? +(1 / w.roas).toFixed(2) : null,
+          baseline_value: w.revenue,
+          current_value: w.spend,
+          ai_explanation: `Channel “${w.channel}” is underwater — spend $${Number(w.spend).toFixed(0)} vs revenue $${Number(w.revenue).toFixed(0)} (ROAS ${w.roas ?? 'n/a'}).`,
+          recommended_action: `Pause or cut budget on “${w.channel}” until creative/audience is refreshed; reallocate to channels with ROAS ≥ 1.`,
+        });
+      }
     }
-    if (metrics.blended_roas != null && metrics.blended_roas < 1 && metrics.spend >= 100) {
+
+    if (
+      inputsUsable
+      && metrics.blended_roas != null
+      && metrics.blended_roas < 1
+      && metrics.spend >= 100
+    ) {
       anomalies.push({
         anomaly_type: 'blended_roas_crash',
         severity: metrics.blended_roas < 0.5 ? 'critical' : 'high',
@@ -154,6 +174,21 @@ router.post('/spend-scan', _safe(async (req, res) => {
         current_value: metrics.blended_roas,
         ai_explanation: `Blended ROAS is ${metrics.blended_roas}x over the last ${days}d — below break-even.`,
         recommended_action: 'Freeze non-performing campaigns and shift budget to proven winners before next spend cycle.',
+      });
+    }
+
+    if (!inputsUsable) {
+      skipped_checks.push({
+        check: 'canonical_spend_roas',
+        spend_availability: spendMeta.status,
+        roas_availability: roasMeta.status,
+        reason: safeAvailabilityReason(spendMeta.reason || roasMeta.reason),
+      });
+    } else if (!isUsableForRecommendations(wasteMeta.status)) {
+      skipped_checks.push({
+        check: 'waste_channels',
+        waste_availability: wasteMeta.status,
+        reason: safeAvailabilityReason(wasteMeta.reason),
       });
     }
   }
@@ -243,11 +278,14 @@ router.post('/spend-scan', _safe(async (req, res) => {
     severity: top?.severity || 'none',
     anomaly_type: top?.anomaly_type || 'no_anomaly',
     anomalies,
+    skipped_checks,
     metrics: metrics ? {
       spend: metrics.spend,
       blended_roas: metrics.blended_roas,
       true_roas: metrics.true_roas,
       waste_cents: metrics.waste_cents,
+      spend_availability: metrics.labelled?.spend?.availability || metrics.availability?.spend?.status || null,
+      roas_availability: metrics.labelled?.reported_roas?.availability || metrics.availability?.reported_roas?.status || null,
     } : null,
   });
 }));
