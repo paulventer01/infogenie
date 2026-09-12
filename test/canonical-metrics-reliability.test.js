@@ -322,3 +322,45 @@ describe('Canonical metrics data reliability (PR10G.1)', () => {
     assert.ok(cpa.availability_reason);
   });
 });
+
+describe('weekly report narrative availability', () => {
+  const computePath = require.resolve('../services/canonical_metrics/compute');
+  const weeklyPath = require.resolve('../services/weekly_report/api');
+  let origCompute;
+
+  beforeEach(() => {
+    delete require.cache[weeklyPath];
+    origCompute = require(computePath).computeCanonicalMetrics;
+  });
+
+  afterEach(() => {
+    require(computePath).computeCanonicalMetrics = origCompute;
+    delete require.cache[weeklyPath];
+  });
+
+  it('labels partial true ROAS in the client narrative via _metricDisplay', async () => {
+    require(computePath).computeCanonicalMetrics = async () => ({
+      days: 7,
+      spend: 100,
+      blended_roas: 2,
+      true_roas: 2,
+      total_revenue: 200,
+      cac: null,
+      waste_cents: 0,
+      waste_channels: [],
+      goals_vs_actuals: [],
+      pacing: null,
+      deltas: {},
+      labelled: {
+        spend: { availability: 'available' },
+        reported_roas: { availability: 'available' },
+        true_roas: { availability: 'partial', availability_reason: 'offline_conversions_unavailable' },
+        cac: { availability: 'unavailable', availability_reason: 'input_unavailable:numerator' },
+      },
+    });
+    const { _buildClientNarrative } = require(weeklyPath);
+    const narrative = await _buildClientNarrative('Acme Co', 1, []);
+    const joined = [narrative.executive_summary, ...(narrative.client_paragraphs || [])].join(' ');
+    assert.match(joined, /true ROAS 2x · partial \(offline conversions unavailable\)/);
+  });
+});

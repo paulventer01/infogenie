@@ -569,9 +569,4 @@ function startWeeklyCron(intervalDays = 7) {
   console.log(`[weekly-report] cron started — every ${intervalDays}d`);
 }
 
-module.exports = {
-  router,
-  startWeeklyCron,
-  _buildClientNarrative,
-  _metricDisplay,
-};
+module.exports = { router, startWeeklyCron, _buildClientNarrative };
