@@ -50,6 +50,10 @@ test('PR10F.7 schedule opt-in, pause and history browser acceptance', {
     VALUES ($1,$2,'search-intel','pdf','Scheduled report','workspace','{}'::jsonb)`, [actors.owner.tid, clientId]);
   await pool.query('INSERT INTO client_reporting_recipients (tenant_id,client_id,email,enabled) VALUES ($1,$2,$3,true)',
     [actors.owner.tid, clientId, 'schedule@example.com']);
+  await pool.query(`INSERT INTO client_reporting_delivery_history
+    (tenant_id, client_id, window_key, status, recipient_email, profile_version, format, error_code)
+    VALUES ($1, $2, 'weekly:2026-W10', 'failed', 'schedule@example.com', 1, 'pdf', 'mail_unconfigured')`,
+  [actors.owner.tid, clientId]);
   browser = await require('puppeteer').launch({ headless: true, pipe: true,
     args: ['--disable-dev-shm-usage', '--disable-background-networking', '--lang=en-US'] });
   const context = await browser.createBrowserContext(), page = await context.newPage();
@@ -86,6 +90,11 @@ test('PR10F.7 schedule opt-in, pause and history browser acceptance', {
   assert.equal(new URL(page.url()).pathname, ROUTE);
   await page.waitForSelector(`${PANEL} h1`, { visible: true });
   await selectClient(page, clientId);
+  await page.waitForSelector(`${SECTION} [aria-label="Delivery history"]`, { visible: true });
+  await page.waitForFunction((selector) => {
+    const section = document.querySelector(selector);
+    return section?.innerText.includes('mail_unconfigured') && section?.innerText.includes('schedule@example.com');
+  }, {}, SECTION);
   await page.locator(`${SECTION} input[name="opt_in"]`).click();
   await page.locator(`${SECTION} input[name="send_time"]`).fill('10:00');
   await responseFor(page, 'PUT', `${API}/clients/${clientId}/schedule`, () =>

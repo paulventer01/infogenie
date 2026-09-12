@@ -69,9 +69,19 @@ export function validScheduleResponse(value: unknown, clientId: number): value i
     && typeof schedule.send_time === "string";
 }
 
+function deliveryHistoryId(value: unknown): boolean {
+  if (typeof value === "number") return Number.isInteger(value) && value > 0;
+  if (typeof value === "string") return /^\d+$/.test(value) && Number(value) > 0;
+  return false;
+}
+
 export function validDeliveryHistory(value: unknown, clientId: number): value is DeliveryHistoryResponse {
   if (!value || typeof value !== "object") return false;
   const row = value as DeliveryHistoryResponse;
   return row.ok === true && row.client?.id === clientId && Array.isArray(row.deliveries)
-    && row.deliveries.every((entry) => typeof entry.id === "number" && ["sent", "failed", "skipped"].includes(entry.status));
+    && row.deliveries.every((entry) => deliveryHistoryId(entry.id) && ["sent", "failed", "skipped"].includes(entry.status));
+}
+
+export function normalizeDeliveryHistory(deliveries: DeliveryHistoryResponse["deliveries"]): DeliveryRow[] {
+  return deliveries.map((entry) => ({ ...entry, id: Number(entry.id) }));
 }

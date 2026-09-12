@@ -194,6 +194,9 @@ test('PR10F.9 client reporting end-to-end acceptance (real PostgreSQL/TLS)', {
     assert.equal(history.client.id, clientId);
     assert.ok(history.deliveries.length >= 1, 'delivery history metadata is readable');
     assert.equal(history.deliveries[0].error_code, 'mail_unconfigured');
+    await owner.waitForSelector(`${SCHEDULE} [aria-label="Delivery history"]`, { visible: true });
+    await text(owner, 'mail_unconfigured', SCHEDULE);
+    await text(owner, 'e2e@example.com', SCHEDULE);
     await responseFor(owner, 'POST', `${API}/clients/${clientId}/schedule/pause`,
       () => button(owner, 'Pause schedule', SCHEDULE));
     await text(owner, 'paused', SCHEDULE);

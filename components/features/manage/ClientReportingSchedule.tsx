@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { API, accessLost, responseError, type Draft } from "@/lib/clientReporting";
 import {
-  defaultTimezone, scheduleDraft, scheduleDraftError, validDeliveryHistory, validScheduleResponse,
+  defaultTimezone, normalizeDeliveryHistory, scheduleDraft, scheduleDraftError, validDeliveryHistory, validScheduleResponse,
   type DeliveryRow, type ScheduleDraft, type ScheduleResponse,
 } from "@/lib/clientReportingSchedule";
 
@@ -36,7 +36,7 @@ export default function ClientReportingSchedule({ clientId, defaultFormat, check
     if (!current()) return;
     const failure = responseError(result);
     if (failure && accessLost(failure)) clearContext(failure);
-    if (!failure && validDeliveryHistory(result, clientId)) setHistory(result.deliveries);
+    if (!failure && validDeliveryHistory(result, clientId)) setHistory(normalizeDeliveryHistory(result.deliveries));
   }, [clearContext, clientId]);
 
   const load = useCallback(async () => {
