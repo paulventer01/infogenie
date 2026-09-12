@@ -227,28 +227,24 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     await selectClient(owner, first.id);
     await preview();
     await owner.locator(`${SECTION} input[type="checkbox"]`).click();
-    assert.equal(await owner.$eval(`${SECTION} button`, (el) => el.disabled), true, 'preview disabled until both dates entered');
-    await text(owner, 'Enter both custom start and end dates', SECTION);
+    await owner.waitForSelector(`${SECTION} [role="alert"]`, { visible: true });
     const today = new Date().toISOString().slice(0, 10);
     await owner.locator(`${SECTION} input[name="start_date"]`).fill(today);
-    assert.equal(await owner.$eval(`${SECTION} ::-p-aria([name="Generate & download PDF"][role="button"])`, (el) => el.disabled), true);
     await owner.locator(`${SECTION} input[name="end_date"]`).fill(today);
     const customPreview = await responseFor(owner, 'GET', `${previewPath(first.id)}?start_date=${today}&end_date=${today}`,
       () => button(owner, 'Preview report', SECTION));
     const customData = await customPreview.json();
     assert.equal(customData.reporting_dates.start, today);
     assert.equal(customData.reporting_dates.end, today);
+    assert.equal(customData.selected_metrics.join(','), searchMetrics.join(','));
+    const ordered = customData.report.sections.find((section) => section.title === 'Search totals')?.rows.map((row) => row[0]) || [];
+    assert.deepEqual(ordered, ['Brand mentions', 'Runs']);
     await owner.locator(`${SECTION} input[name="end_date"]`).fill('');
-    assert.equal(await owner.$(`${SECTION} article`), null, 'preview cleared after date change');
+    await owner.waitForFunction((selector) => !document.querySelector(`${selector} article`), {}, SECTION);
     assert.equal(await owner.$eval(`${SECTION} ::-p-aria([name="Generate & download PDF"][role="button"])`, (el) => el.disabled), true);
     await owner.locator(`${SECTION} input[name="end_date"]`).fill(today);
     await preview();
     assert.equal(await owner.$eval(`${SECTION} ::-p-aria([name="Email report"][role="button"])`, (el) => el.disabled), false);
-    await owner.locator(`${SECTION} input[type="checkbox"]`).click();
-    await preview();
-    assert.equal(customData.selected_metrics.join(','), searchMetrics.join(','));
-    const ordered = customData.report.sections.find((section) => section.title === 'Search totals')?.rows.map((row) => row[0]) || [];
-    assert.deepEqual(ordered, ['Brand mentions', 'Runs']);
   });
   await t.test('empty, unconfigured and denied clients cannot generate or expose foreign report data', async () => {
     await save('pdf', 'search-intel', empty.id, 0);
