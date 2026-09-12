@@ -28,4 +28,10 @@ export type ReportingPeriod = typeof REPORTING_PERIODS[number]["value"] | "all_t
 export function defaultMetrics(source: DraftSource): string[] {
   return METRIC_CATALOG[source].map((entry) => entry.key);
 }
+export function orderedMetricEditor(source: DraftSource, selected: string[]): MetricCatalogEntry[] {
+  const labels = new Map(METRIC_CATALOG[source].map((entry) => [entry.key, entry]));
+  const ordered = selected.filter((key) => labels.has(key)).map((key) => labels.get(key)!);
+  const remaining = METRIC_CATALOG[source].filter((entry) => !selected.includes(entry.key));
+  return [...ordered, ...remaining];
+}
 export type DraftSource = keyof typeof METRIC_CATALOG;

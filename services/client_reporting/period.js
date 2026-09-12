@@ -48,6 +48,19 @@ function daysBetween(start, end) {
   return Math.floor((b - a) / 86400000);
 }
 
+function zonedInstant(year, month, day, timezone, hour = 0, minute = 0) {
+  const desired = Date.UTC(year, month - 1, day, hour, minute);
+  let utc = desired;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const local = zonedParts(new Date(utc), timezone);
+    const localAsUtc = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute);
+    const diff = desired - localAsUtc;
+    if (diff === 0) break;
+    utc += diff;
+  }
+  return new Date(utc);
+}
+
 function periodLabel(periodKey, startDate, endDate, timezone) {
   if (periodKey === 'all_time') return 'All-time recorded data';
   if (periodKey === 'custom') return `${startDate} to ${endDate} (${timezone})`;
@@ -64,7 +77,7 @@ function resolveRelative(periodKey, timezone, asOf = new Date()) {
   if (!validTimezone(timezone)) throw fail(400, 'invalid_profile');
   if (periodKey === 'all_time') {
     return { periodKey, timezone, startDate: null, endDate: null, exclusiveEnd: null,
-      label: periodLabel('all_time', null, null, timezone) };
+      startUtc: null, endUtc: null, label: periodLabel('all_time', null, null, timezone) };
   }
   const today = zonedParts(asOf, timezone);
   const yesterday = addDays(today.year, today.month, today.day, -1);
@@ -81,9 +94,11 @@ function resolveRelative(periodKey, timezone, asOf = new Date()) {
   const startDate = isoDate(start.year, start.month, start.day);
   const endDate = isoDate(end.year, end.month, end.day);
   const exclusive = addDays(end.year, end.month, end.day, 1);
+  const exclusiveEnd = isoDate(exclusive.year, exclusive.month, exclusive.day);
+  const startUtc = zonedInstant(start.year, start.month, start.day, timezone).toISOString();
+  const endUtc = zonedInstant(exclusive.year, exclusive.month, exclusive.day, timezone).toISOString();
   return {
-    periodKey, timezone, startDate, endDate,
-    exclusiveEnd: isoDate(exclusive.year, exclusive.month, exclusive.day),
+    periodKey, timezone, startDate, endDate, exclusiveEnd, startUtc, endUtc,
     label: periodLabel(periodKey, startDate, endDate, timezone),
   };
 }
@@ -103,18 +118,21 @@ function validateCustomRange(startDate, endDate, timezone, asOf = new Date()) {
   const earliestIso = isoDate(earliest.year, earliest.month, earliest.day);
   if (startDate < earliestIso) throw fail(400, 'invalid_report');
   const exclusive = addDays(end.year, end.month, end.day, 1);
+  const exclusiveEnd = isoDate(exclusive.year, exclusive.month, exclusive.day);
+  const startUtc = zonedInstant(start.year, start.month, start.day, timezone).toISOString();
+  const endUtc = zonedInstant(exclusive.year, exclusive.month, exclusive.day, timezone).toISOString();
   return {
-    periodKey: 'custom', timezone, startDate, endDate,
-    exclusiveEnd: isoDate(exclusive.year, exclusive.month, exclusive.day),
+    periodKey: 'custom', timezone, startDate, endDate, exclusiveEnd, startUtc, endUtc,
     label: periodLabel('custom', startDate, endDate, timezone),
   };
 }
 
 function sqlBounds(range) {
   if (!range || !range.startDate) return { start: null, end: null };
-  return { start: `${range.startDate}T00:00:00.000Z`, end: `${range.exclusiveEnd}T00:00:00.000Z` };
+  return { start: range.startUtc, end: range.endUtc };
 }
 
 module.exports = {
-  MAX_LOOKBACK_DAYS, RELATIVE_PERIODS, resolveRelative, validateCustomRange, periodLabel, sqlBounds, parseIsoDate,
+  MAX_LOOKBACK_DAYS, RELATIVE_PERIODS, resolveRelative, validateCustomRange, periodLabel, sqlBounds,
+  parseIsoDate, zonedInstant, zonedParts,
 };

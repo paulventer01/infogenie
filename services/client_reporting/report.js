@@ -2,6 +2,9 @@
 
 const { labelFor } = require('./metrics');
 
+const SEARCH_SCALAR = new Set(['runs', 'successful_runs', 'brand_mentions']);
+const CAMPAIGN_SCALAR = new Set(['performance_rows', 'spend', 'impressions', 'clicks', 'conversions', 'revenue']);
+
 function cell(value, limit = 160) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : '';
   if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString() : '';
@@ -21,7 +24,6 @@ function branding(value) {
 }
 function buildReport(client, profile, data, workspaceBrand, selectedMetrics, dateRange) {
   const sections = [];
-  const selected = new Set(selectedMetrics);
   const table = (title, headers, rows) => {
     const safeRows = rows.length ? rows : [['No recorded data']];
     for (let offset = 0; offset < safeRows.length; offset += 20) sections.push({
@@ -48,37 +50,35 @@ function buildReport(client, profile, data, workspaceBrand, selectedMetrics, dat
     ['Generation', 'Fresh snapshot at generation; may differ from preview'],
   ]);
   if (data.source === 'search-intel') {
-    const metricRows = [];
-    if (selected.has('runs')) metricRows.push([labelFor(data.source, 'runs'), summary.runs]);
-    if (selected.has('successful_runs')) metricRows.push([labelFor(data.source, 'successful_runs'), summary.successful_runs]);
-    if (selected.has('brand_mentions')) metricRows.push([labelFor(data.source, 'brand_mentions'), summary.brand_mentions]);
+    const metricRows = selectedMetrics.filter((key) => SEARCH_SCALAR.has(key))
+      .map((key) => [labelFor(data.source, key), summary[key]]);
     if (metricRows.length) table('Search totals', ['Metric', 'Recorded value'], metricRows);
-    if (selected.has('mapped_queries')) {
-      table('Mapped queries', ['ID', 'Query', 'Brand', 'Locale'], records.map((r) => [r.id, r.query, r.brand, r.locale]));
-    }
-    if (selected.has('recent_search_runs')) {
-      table('Recent search runs', ['ID', 'Query ID', 'Provider', 'Mentioned', 'Position', 'Failed', 'Recorded at'],
-        recent.llm_runs.slice(0, 50).map((r) => [r.id, r.query_id, r.provider, r.brand_mentioned, r.brand_position, r.failed, r.ran_at]));
+    for (const key of selectedMetrics) {
+      if (key === 'mapped_queries') {
+        table('Mapped queries', ['ID', 'Query', 'Brand', 'Locale'], records.map((r) => [r.id, r.query, r.brand, r.locale]));
+      } else if (key === 'recent_search_runs') {
+        table('Recent search runs', ['ID', 'Query ID', 'Provider', 'Mentioned', 'Position', 'Failed', 'Recorded at'],
+          recent.llm_runs.slice(0, 50).map((r) => [r.id, r.query_id, r.provider, r.brand_mentioned, r.brand_position, r.failed, r.ran_at]));
+      }
     }
   } else {
-    const metricKeys = ['performance_rows', 'spend', 'impressions', 'clicks', 'conversions', 'revenue']
-      .filter((key) => selected.has(key));
+    const metricKeys = selectedMetrics.filter((key) => CAMPAIGN_SCALAR.has(key));
     if (metricKeys.length) {
       table('Currency totals', ['Currency', 'Metric', 'Recorded value'], summary.by_currency.slice(0, 100).flatMap((r) =>
         metricKeys.map((key) => [r.currency, labelFor(data.source, key), r[key]])));
       table('Currency coverage', ['Item', 'Coverage'], [['Currency groups', `First ${Math.min(100, summary.by_currency.length)} of ${summary.by_currency.length}`],
         ['Money', 'Currencies reported separately; no conversion or combined money total']]);
     }
-    if (selected.has('mapped_campaigns')) {
-      table('Mapped campaigns', ['ID', 'Name', 'Platform', 'Currency', 'Status'], records.map((r) => [r.id, r.name, r.platform, r.currency, r.status]));
-    }
-    if (selected.has('recent_performance')) {
-      table('Recent performance', ['Campaign', 'Recorded at', 'Currency', 'Spend', 'Impressions', 'Clicks', 'Conversions', 'Revenue'],
-        recent.performance.slice(0, 50).map((r) => [r.campaign_id, r.bucket_hour, r.currency, r.spend, r.impressions, r.clicks, r.conversions, r.revenue]));
-    }
-    if (selected.has('recent_actions')) {
-      table('Recent actions', ['Campaign', 'Action', 'Applied', 'Recorded at'],
-        recent.optimizer_actions.slice(0, 50).map((r) => [r.campaign_id, r.action_type, r.applied, r.created_at]));
+    for (const key of selectedMetrics) {
+      if (key === 'mapped_campaigns') {
+        table('Mapped campaigns', ['ID', 'Name', 'Platform', 'Currency', 'Status'], records.map((r) => [r.id, r.name, r.platform, r.currency, r.status]));
+      } else if (key === 'recent_performance') {
+        table('Recent performance', ['Campaign', 'Recorded at', 'Currency', 'Spend', 'Impressions', 'Clicks', 'Conversions', 'Revenue'],
+          recent.performance.slice(0, 50).map((r) => [r.campaign_id, r.bucket_hour, r.currency, r.spend, r.impressions, r.clicks, r.conversions, r.revenue]));
+      } else if (key === 'recent_actions') {
+        table('Recent actions', ['Campaign', 'Action', 'Applied', 'Recorded at'],
+          recent.optimizer_actions.slice(0, 50).map((r) => [r.campaign_id, r.action_type, r.applied, r.created_at]));
+      }
     }
   }
   return { ok: true, client, profile_version: profile.version, format: profile.default_format,

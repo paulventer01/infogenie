@@ -223,14 +223,22 @@ router.get('/clients/:clientId/data/:source', readLimiter, safe(async (req, res)
 function customRangeFromQuery(query) {
   const keys = Object.keys(query);
   if (!keys.length) return null;
-  if (keys.length !== 2 || !keys.includes('start_date') || !keys.includes('end_date')) throw fail(400, 'invalid_report');
+  const hasStart = Object.hasOwn(query, 'start_date');
+  const hasEnd = Object.hasOwn(query, 'end_date');
+  if (hasStart !== hasEnd) throw fail(400, 'invalid_report');
+  if (!hasStart) throw fail(400, 'invalid_report');
+  if (keys.length !== 2) throw fail(400, 'invalid_report');
+  if (typeof query.start_date !== 'string' || typeof query.end_date !== 'string') throw fail(400, 'invalid_report');
   return { startDate: query.start_date, endDate: query.end_date };
 }
 
 function customRangeFromBody(body) {
   const keys = Object.keys(body).filter((key) => key !== 'expected_version' && key !== 'confirm');
-  if (!keys.length) return null;
-  if (keys.length !== 2 || !keys.includes('start_date') || !keys.includes('end_date')) throw fail(400, 'invalid_report');
+  const hasStart = Object.hasOwn(body, 'start_date');
+  const hasEnd = Object.hasOwn(body, 'end_date');
+  if (hasStart !== hasEnd) throw fail(400, 'invalid_report');
+  if (!hasStart) return null;
+  if (keys.length !== 2) throw fail(400, 'invalid_report');
   if (typeof body.start_date !== 'string' || typeof body.end_date !== 'string') throw fail(400, 'invalid_report');
   return { startDate: body.start_date, endDate: body.end_date };
 }

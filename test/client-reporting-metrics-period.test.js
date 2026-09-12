@@ -80,6 +80,32 @@ test('relative periods resolve completed days and previous calendar month bounda
   assert.equal(allTime.startDate, null);
 });
 
+test('sqlBounds convert profile timezone midnights to UTC instants including DST offsets', () => {
+  const range = period.validateCustomRange('2024-03-10', '2024-03-10', 'America/New_York', new Date('2024-03-11T12:00:00.000Z'));
+  const bounds = period.sqlBounds(range);
+  assert.equal(bounds.start, '2024-03-10T05:00:00.000Z');
+  assert.equal(bounds.end, '2024-03-11T04:00:00.000Z');
+  const jhb = period.validateCustomRange('2024-06-15', '2024-06-15', 'Africa/Johannesburg', new Date('2024-06-16T12:00:00.000Z'));
+  const jhbBounds = period.sqlBounds(jhb);
+  assert.equal(jhbBounds.start, '2024-06-14T22:00:00.000Z');
+  assert.equal(jhbBounds.end, '2024-06-15T22:00:00.000Z');
+});
+
+test('buildReport preserves selected metric order in search totals and campaign currency rows', () => {
+  const data = { source: 'search-intel', records: [], summary: { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 },
+    recent: { llm_runs: [] }, summary_scope: 'all_mapped_records' };
+  const out = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, data, null,
+    ['brand_mentions', 'runs'], null);
+  const totals = out.report.sections.find((section) => section.title === 'Search totals');
+  assert.deepEqual(totals.rows.map((row) => row[0]), ['Brand mentions', 'Runs']);
+  const campaigns = { source: 'campaigns', records: [], summary: { mapped_records: 1, by_currency: [{ currency: 'USD', spend: 1, impressions: 2, clicks: 3, conversions: 0, revenue: 0, performance_rows: 1 }] },
+    recent: { performance: [], optimizer_actions: [] }, summary_scope: 'all_mapped_records' };
+  const campaignOut = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, campaigns, null,
+    ['clicks', 'spend'], null);
+  const currency = campaignOut.report.sections.find((section) => section.title === 'Currency totals');
+  assert.deepEqual(currency.rows.map((row) => row[1]), ['Clicks', 'Spend']);
+});
+
 test('custom date validation enforces order, future end and supported lookback', () => {
   const asOf = new Date('2026-03-15T12:00:00.000Z');
   const ok = period.validateCustomRange('2026-03-01', '2026-03-10', 'UTC', asOf);
@@ -157,6 +183,7 @@ test('report preview accepts custom date query and rejects invalid ranges', asyn
   assert.equal(preview.body.reporting_dates.start, '2026-03-01');
   assert.equal((await request('/clients/11/report-preview?start_date=bad&end_date=2026-03-10')).status, 400);
   assert.equal((await request('/clients/11/report-preview?start_date=2026-03-10&end_date=2026-03-01')).status, 400);
+  assert.equal((await request('/clients/11/report-preview?start_date=2026-03-01')).status, 400);
 });
 
 test('metrics catalog endpoint is read-only and source scoped', async (t) => {

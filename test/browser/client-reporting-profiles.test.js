@@ -124,12 +124,14 @@ test('PR10F.2 client reporting setup browser acceptance (real PostgreSQL/TLS)', 
     return page;
   }
   const stored = async (id) => (await pool.query(`SELECT client_id, report_source, default_format, report_title,
-    branding_mode, branding_overrides, version, updated_by_user_id FROM client_reporting_profiles
-    WHERE tenant_id=$1 AND client_id=$2`, [actors.owner.tid, id])).rows[0];
+    branding_mode, branding_overrides, selected_metrics, reporting_period, reporting_timezone, version, updated_by_user_id
+    FROM client_reporting_profiles WHERE tenant_id=$1 AND client_id=$2`, [actors.owner.tid, id])).rows[0];
   let owner;
+  const metrics = require('../../services/client_reporting/metrics');
   const custom = { report_source: 'campaigns', default_format: 'pptx', report_title: 'Alpine quarterly review',
     branding_mode: 'custom', agencyName: 'Alpine agency', footerText: 'Prepared for Alpine',
-    primaryColor: '#234567', accentColor: '#C86432', textColor: '#123456' };
+    primaryColor: '#234567', accentColor: '#C86432', textColor: '#123456',
+    reporting_period: 'last_7_days', reporting_timezone: 'Africa/Johannesburg' };
 
   await t.test('real client list, unsaved defaults, custom save and document reload persistence', async () => {
     owner = await session(actors.owner);
@@ -143,6 +145,8 @@ test('PR10F.2 client reporting setup browser acceptance (real PostgreSQL/TLS)', 
       default_format: custom.default_format, report_title: custom.report_title, branding_mode: 'custom',
       branding_overrides: { agencyName: custom.agencyName, footerText: custom.footerText,
         primaryColor: custom.primaryColor, accentColor: custom.accentColor, textColor: custom.textColor },
+      selected_metrics: metrics.defaultKeys('campaigns'), reporting_period: custom.reporting_period,
+      reporting_timezone: custom.reporting_timezone,
       version: 1, updated_by_user_id: actors.owner.uid });
     assert.equal((await owner.reload({ waitUntil: 'networkidle2' })).status(), 200);
     await selectClient(owner, first.id); await text(owner, 'Saved profile loaded.');
@@ -189,6 +193,20 @@ test('PR10F.2 client reporting setup browser acceptance (real PostgreSQL/TLS)', 
     assert.notEqual((await values(owner, ['report_title'])).report_title, 'Must not follow the client switch');
     assert.equal(await stored(second.id), undefined);
     assert.equal((await stored(first.id)).version, 2); assert.equal(writes.length, before);
+  });
+  await t.test('metric selection and reorder persist across save and reload', async () => {
+    owner = owner || await session(actors.owner);
+    await selectClient(owner, first.id);
+    await fill(owner, { report_source: 'search-intel', report_title: 'Metric order test' });
+    await owner.locator(`${FORM} ::-p-aria([name="Move Runs down"][role="button"])`).click();
+    await owner.locator(`${FORM} ::-p-aria([name="Move Brand mentions up"][role="button"])`).click();
+    const saved = await responseFor(owner, 'PUT', profilePath(first.id), () => button(owner, 'Save profile'));
+    assert.deepEqual(saved.profile.selected_metrics.slice(0, 3), ['successful_runs', 'brand_mentions', 'runs']);
+    await owner.reload({ waitUntil: 'networkidle2' });
+    await selectClient(owner, first.id);
+    await text(owner, 'Saved profile loaded.');
+    const metrics = await owner.$$eval(`${FORM} input[type="checkbox"]:checked`, (boxes) => boxes.map((box) => box.parentElement?.textContent?.trim()));
+    assert.deepEqual(metrics.slice(0, 3), ['Successful runs', 'Brand mentions', 'Runs']);
   });
   await t.test('analyst direct navigation shows access denied and no client reporting data', async () => {
     const viewer = await session(actors.viewer);

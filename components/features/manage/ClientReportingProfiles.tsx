@@ -10,7 +10,7 @@ import ClientReportingMappings from "@/components/features/manage/ClientReportin
 import { API, BRAND_FIELDS, PERIOD_HELP, accessLost, draftError, newDraft, profileDraft, profilePayload, responseError,
   saveMatches, validClient, validPage, validProfile, verifyAccess,
   type Client, type ClientsResponse, type Context, type Draft, type ProfileResponse } from "@/lib/clientReporting";
-import { METRIC_CATALOG, REPORTING_PERIODS, defaultMetrics } from "@/lib/clientReportingMetrics";
+import { REPORTING_PERIODS, defaultMetrics, orderedMetricEditor } from "@/lib/clientReportingMetrics";
 
 const card: CSSProperties = { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 12, padding: 20, marginTop: 20 };
 const grid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 };
@@ -244,8 +244,8 @@ export default function ClientReportingProfiles() {
                 <div style={{ marginTop: 16 }}>
                   <h3>Report metrics</h3>
                   <p>Choose and order the metrics included in preview, exports, email and the client portal.</p>
-                  <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                    {METRIC_CATALOG[draft.report_source].map((entry) => {
+                  <ol style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                    {orderedMetricEditor(draft.report_source, draft.selected_metrics).map((entry) => {
                       const selected = draft.selected_metrics.includes(entry.key);
                       const index = draft.selected_metrics.indexOf(entry.key);
                       return <li key={entry.key} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
@@ -256,7 +256,7 @@ export default function ClientReportingProfiles() {
                         </>}
                       </li>;
                     })}
-                  </ul>
+                  </ol>
                 </div>
                 <div style={{ marginTop: 16 }}>
                   <h3>Default reporting period</h3>
