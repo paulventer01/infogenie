@@ -95,7 +95,7 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
   assert.deepEqual(ny.selected_metrics, searchMetrics);
   const ordered = nyTotals.rows.map((row) => row[0]);
   assert.deepEqual(ordered, ['Brand mentions', 'Runs', 'Successful runs']);
-  const portalInvite = await call('POST', `/api/client-reporting/clients/${clientId}/portal/invitations`, {});
+  const portalInvite = await call('POST', `/api/client-reporting/clients/${clientId}/portal/invitations`, {}, 201);
   const rawToken = portalInvite.invite_path.split('/').pop();
   const redeem = await request(app.baseUrl, 'POST', `/api/client-reporting/portal/redeem/${rawToken}`, { body: {} });
   assert.equal(redeem.status, 200);
