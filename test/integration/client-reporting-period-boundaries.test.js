@@ -50,13 +50,13 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
   await pool.query(`INSERT INTO client_reporting_query_mappings (tenant_id,query_id,client_id,mapping_id,created_by_user_id)
     VALUES ($1,$2,$3,$4,$5)`, [tenant.id, queryId, clientId, randomUUID(), user.id]);
   const runs = [
-    ['2024-03-09T23:30:00.000Z', false],
-    ['2024-03-10T04:30:00.000Z', true],
-    ['2024-03-10T05:30:00.000Z', true],
-    ['2024-03-11T03:30:00.000Z', false],
-    ['2024-06-14T21:30:00.000Z', false],
-    ['2024-06-14T22:30:00.000Z', true],
-    ['2024-06-15T21:30:00.000Z', false],
+    ['2026-03-08T23:30:00.000Z', false],
+    ['2026-03-09T04:30:00.000Z', true],
+    ['2026-03-09T05:30:00.000Z', true],
+    ['2026-03-10T03:30:00.000Z', false],
+    ['2026-06-14T21:30:00.000Z', false],
+    ['2026-06-14T22:30:00.000Z', true],
+    ['2026-06-15T21:30:00.000Z', false],
   ];
   for (const [ran_at, brand_mentioned] of runs) {
     await pool.query(`INSERT INTO search_intel_llm_runs (tenant_id,query_id,provider,response_text,brand_mentioned,ran_at)
@@ -73,17 +73,17 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
   await call('PUT', profilePath, { report_source: 'search-intel', default_format: 'pdf', report_title: 'Boundary report',
     branding_mode: 'workspace', branding_overrides: {}, selected_metrics: searchMetrics,
     reporting_period: 'last_30_days', reporting_timezone: 'America/New_York', expected_version: 0 });
-  const ny = await call('GET', `${previewPath}?start_date=2024-03-10&end_date=2024-03-10`);
-  assert.equal(ny.reporting_dates.start, '2024-03-10');
-  assert.equal(ny.reporting_dates.end, '2024-03-10');
+  const ny = await call('GET', `${previewPath}?start_date=2026-03-09&end_date=2026-03-09`);
+  assert.equal(ny.reporting_dates.start, '2026-03-09');
+  assert.equal(ny.reporting_dates.end, '2026-03-09');
   const nyTotals = ny.report.sections.find((section) => section.title === 'Search totals');
   assert.equal(nyTotals.rows.find((row) => row[0] === 'Runs')[1], 2);
   await call('PUT', profilePath, { report_source: 'search-intel', default_format: 'pdf', report_title: 'Boundary report',
     branding_mode: 'workspace', branding_overrides: {}, selected_metrics: searchMetrics,
     reporting_period: 'last_30_days', reporting_timezone: 'Africa/Johannesburg', expected_version: 1 });
-  const jhb = await call('GET', `${previewPath}?start_date=2024-06-15&end_date=2024-06-15`);
-  assert.equal(jhb.reporting_dates.start, '2024-06-15');
-  assert.equal(jhb.reporting_dates.end, '2024-06-15');
+  const jhb = await call('GET', `${previewPath}?start_date=2026-06-15&end_date=2026-06-15`);
+  assert.equal(jhb.reporting_dates.start, '2026-06-15');
+  assert.equal(jhb.reporting_dates.end, '2026-06-15');
   const jhbTotals = jhb.report.sections.find((section) => section.title === 'Search totals');
   assert.equal(jhbTotals.rows.find((row) => row[0] === 'Runs')[1], 1);
   assert.deepEqual(ny.selected_metrics, searchMetrics);
@@ -105,7 +105,7 @@ test('Client reporting period boundaries: timezone-aware UTC SQL filters', {
       VALUES ($1,$2,$3,true) ON CONFLICT (tenant_id, client_id) DO UPDATE SET email=EXCLUDED.email, enabled=true`,
     [tenant.id, clientId, 'boundary@example.com']);
     const emailed = await call('POST', `/api/client-reporting/clients/${clientId}/report-email`,
-      { expected_version: 2, confirm: true, start_date: '2024-03-10', end_date: '2024-03-10' });
+      { expected_version: 2, confirm: true, start_date: '2026-03-09', end_date: '2026-03-09' });
     assert.equal(emailed.sent, true);
     assert.equal(mail.messages.length, 1);
     assert.equal(mail.messages[0].to, 'boundary@example.com');
