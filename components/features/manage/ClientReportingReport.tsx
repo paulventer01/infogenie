@@ -1,18 +1,42 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiBlob, apiGet, apiPost } from "@/lib/api";
-import { API, accessLost, responseError, validClient, validProfile, type Draft, type ProfileResponse } from "@/lib/clientReporting";
+import { API, PERIOD_HELP, accessLost, responseError, validClient, validProfile, type Draft, type ProfileResponse } from "@/lib/clientReporting";
 import { validRecipient, type RecipientResponse } from "@/lib/clientReportingDelivery";
 import { validPreview, validReportBlob, type Preview } from "@/lib/clientReportingReport";
 
-type Props = { clientId: number; version: number; format: Draft["default_format"]; checkAccess: () => Promise<boolean>; clearContext: (message: string) => void };
-export default function ClientReportingReport({ clientId, version, format, checkAccess, clearContext }: Props) {
+type DateStamp = { custom: boolean; start: string; end: string };
+type Props = { clientId: number; version: number; format: Draft["default_format"]; timezone: string;
+  checkAccess: () => Promise<boolean>; clearContext: (message: string) => void };
+export default function ClientReportingReport({ clientId, version, format, timezone, checkAccess, clearContext }: Props) {
   const [preview, setPreview] = useState<Preview | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<RecipientResponse | null>(null);
+  const [useCustomDates, setUseCustomDates] = useState(false);
+  const [startDate, setStartDate] = useState(""), [endDate, setEndDate] = useState("");
+  const [previewStamp, setPreviewStamp] = useState<DateStamp | null>(null);
   const live = useRef(false), running = useRef(false), sequence = useRef(0);
   const stop = useCallback(() => { live.current = false; ++sequence.current; }, []);
   useEffect(() => { live.current = true; return stop; }, [stop]);
+  const currentStamp = (): DateStamp => ({ custom: useCustomDates, start: startDate, end: endDate });
+  const stampMatches = (left: DateStamp | null, right: DateStamp) => left
+    && left.custom === right.custom && (!right.custom || (left.start === right.start && left.end === right.end));
+  const customDatesReady = !useCustomDates || (startDate.length > 0 && endDate.length > 0);
+  const previewCurrent = !!preview && stampMatches(previewStamp, currentStamp());
+  function invalidatePreview() {
+    setPreview(null); setPreviewStamp(null); setConfirm(null); setNotice(null);
+  }
+  useEffect(() => { invalidatePreview(); }, [useCustomDates, startDate, endDate]);
+  function dateQuery() {
+    if (!useCustomDates) return "";
+    if (!startDate || !endDate) throw new Error("Enter both custom start and end dates before previewing.");
+    return `?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+  }
+  function dateBody() {
+    if (!useCustomDates) return {};
+    if (!startDate || !endDate) throw new Error("Enter both custom start and end dates before generating.");
+    return { start_date: startDate, end_date: endDate };
+  }
   async function verify(current: () => boolean) {
     if (!await checkAccess() || !current()) throw new Error("Access could not be verified. Preview again before generating.");
     const result = await apiGet<ProfileResponse>(`${API}/${clientId}/profile`);
@@ -27,14 +51,16 @@ export default function ClientReportingReport({ clientId, version, format, check
     return true;
   }
   async function perform(download: boolean) {
-    if (running.current || !live.current || download && !preview?.can_generate) return;
+    if (running.current || !live.current) return;
+    if (download && (!previewCurrent || !preview?.can_generate)) return;
     const operation = ++sequence.current, current = () => live.current && operation === sequence.current;
     running.current = true; setBusy(true); setError(null); setNotice(null);
-    if (!download) setPreview(null);
+    if (!download) invalidatePreview();
     try {
+      if (!customDatesReady) throw new Error("Enter both custom start and end dates before previewing.");
       if (!await verify(current) || !current()) return;
       if (download) {
-        const blob = await apiBlob(`${API}/${clientId}/report`, { method: "POST", body: JSON.stringify({ expected_version: version }) });
+        const blob = await apiBlob(`${API}/${clientId}/report`, { method: "POST", body: JSON.stringify({ expected_version: version, ...dateBody() }) });
         if (!current()) return;
         if (!await validReportBlob(blob, format)) throw new Error("The downloaded report could not be verified. Preview again before retrying.");
         if (!await verify(current) || !current()) return;
@@ -43,24 +69,24 @@ export default function ClientReportingReport({ clientId, version, format, check
         finally { anchor.remove(); URL.revokeObjectURL(url); }
         setNotice("Report download started.");
       } else {
-        const result = await apiGet<Preview>(`${API}/${clientId}/report-preview`);
+        const result = await apiGet<Preview>(`${API}/${clientId}/report-preview${dateQuery()}`);
         if (!current()) return;
         const failure = responseError(result);
         if (failure && accessLost(failure)) clearContext(failure);
         if (failure || !validPreview(result, clientId, version, format)) throw new Error(failure || "The preview could not be verified. Try previewing again.");
         if (!await verify(current) || !current()) return;
-        setPreview(result);
+        setPreview(result); setPreviewStamp(currentStamp());
       }
     } catch (e) {
       if (current()) {
         const message = e instanceof Error ? e.message : "Report request failed. Preview again before retrying.";
         if (accessLost(message)) clearContext(message);
-        setPreview(null); setError(message);
+        invalidatePreview(); setError(message);
       }
     } finally { if (current()) { running.current = false; setBusy(false); } }
   }
   async function prepareEmail() {
-    if (running.current || !live.current || !preview?.can_generate) return;
+    if (running.current || !live.current || !previewCurrent || !preview?.can_generate) return;
     const operation = ++sequence.current, current = () => live.current && operation === sequence.current;
     running.current = true; setBusy(true); setError(null); setNotice(null); setConfirm(null);
     try {
@@ -85,12 +111,12 @@ export default function ClientReportingReport({ clientId, version, format, check
     } finally { if (current()) { running.current = false; setBusy(false); } }
   }
   async function sendEmail() {
-    if (running.current || !live.current || !confirm) return;
+    if (running.current || !live.current || !confirm || !previewCurrent) return;
     const operation = ++sequence.current, current = () => live.current && operation === sequence.current;
     running.current = true; setBusy(true); setError(null); setNotice(null);
     try {
       if (!await verify(current) || !current()) return;
-      const result = await apiPost(`${API}/${clientId}/report-email`, { expected_version: version, confirm: true });
+      const result = await apiPost(`${API}/${clientId}/report-email`, { expected_version: version, confirm: true, ...dateBody() });
       if (!current()) return;
       const failure = responseError(result);
       if (failure && accessLost(failure)) clearContext(failure);
@@ -112,9 +138,18 @@ export default function ClientReportingReport({ clientId, version, format, check
   return <section aria-label="Client report preview" style={{ marginTop: 20, padding: 20, border: "1px solid #E2E8F0", borderRadius: 12, background: "#FFFFFF", minWidth: 0 }}>
     <h2>Preview and generate a client report</h2>
     <p>Uses this client&apos;s saved profile and mapped records. Generate downloads a fresh snapshot, so values may differ from the preview. Email sends to the configured delivery recipient.</p>
-    <button disabled={busy} onClick={() => void perform(false)}>Preview report</button>{" "}
-    <button disabled={busy || !preview?.can_generate} onClick={() => void perform(true)}>Generate &amp; download {format.toUpperCase()}</button>{" "}
-    <button disabled={busy || !preview?.can_generate} onClick={() => void prepareEmail()}>Email report</button>
+    <div style={{ margin: "12px 0", padding: 12, background: "#F8FAFC", borderRadius: 8 }}>
+      <label><input type="checkbox" checked={useCustomDates} onChange={(event) => setUseCustomDates(event.target.checked)} /> Use custom dates for this manual run</label>
+      <p style={{ fontSize: 14, color: "#64748B", margin: "8px 0" }}>{PERIOD_HELP} Profile timezone: {timezone}.</p>
+      {useCustomDates && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+        <label>Start date<input type="date" name="start_date" required value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
+        <label>End date<input type="date" name="end_date" required value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+      </div>}
+      {useCustomDates && !customDatesReady && <p role="alert">Enter both custom start and end dates. The saved relative period is not used while custom dates are enabled.</p>}
+    </div>
+    <button disabled={busy || !customDatesReady} onClick={() => void perform(false)}>Preview report</button>{" "}
+    <button disabled={busy || !previewCurrent || !preview?.can_generate} onClick={() => void perform(true)}>Generate &amp; download {format.toUpperCase()}</button>{" "}
+    <button disabled={busy || !previewCurrent || !preview?.can_generate} onClick={() => void prepareEmail()}>Email report</button>
     {busy && <p role="status">Verifying access and preparing the report…</p>}
     {confirm && !busy && <div role="dialog" aria-label="Confirm email delivery" style={{ marginTop: 16, padding: 16, border: "1px solid #CBD5E1", borderRadius: 8, background: "#F8FAFC" }}>
       <p>Email the current {format.toUpperCase()} report to <strong>{confirm.recipient.email}</strong>?</p>
@@ -125,7 +160,9 @@ export default function ClientReportingReport({ clientId, version, format, check
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     {preview && !busy && <article style={{ borderTop: `4px solid ${preview.brand.primaryColor || "#0F766E"}`, color: preview.brand.textColor || "#0F172A", marginTop: 16, overflowWrap: "anywhere" }}>
       {preview.brand.agencyName && <p>{preview.brand.agencyName}</p>}
-      <h3>{preview.report.title}</h3><p>Snapshot: {preview.report.generated_at}</p>
+      <h3>{preview.report.title}</h3>
+      <p>Snapshot: {preview.report.generated_at}</p>
+      {preview.reporting_dates && <p>Reporting dates: {preview.reporting_dates.start} to {preview.reporting_dates.end} ({preview.reporting_dates.timezone})</p>}
       {!preview.can_generate && <p>No mapped records are available. Assign records to this client, then preview again.</p>}
       {preview.report.sections.map((section, i) => <div key={i}><h4>{section.title}</h4>
         {!section.rows.length ? <p>No data available for this section.</p> : <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={section.title}>

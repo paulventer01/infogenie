@@ -44,7 +44,8 @@ async function fixture(t, options = {}) {
           const workspace = current.profile.branding_mode === 'workspace'
             ? (await db.query('SELECT value FROM kv_store WHERE key=$1', [`white_label.brand_profile:t${tenantId}`])).rows[0]?.value
             : null;
-          const built = buildReport(client, current.profile, current.data, workspace);
+          const selected = ['runs', 'successful_runs', 'brand_mentions', 'mapped_queries', 'recent_search_runs'];
+          const built = buildReport(client, current.profile, current.data, workspace, selected, null);
           if (expectedVersion !== undefined && !built.can_generate) throw Object.assign(new Error('no_mapped_records'), { status: 409 });
           await db.query('COMMIT');
           return { snapshot: built, profile: current.profile, client };
@@ -120,12 +121,13 @@ test('report bounds tables and primitive cells, keeps scope notices and currenci
   const d = { source: 'campaigns', records: Array.from({ length: 110 }, (_, id) => ({ id, name: '=SUM(A1)\u0000', currency: 'USD' })),
     summary: { mapped_records: 110, by_currency: [{ currency: 'USD', spend: '12.50' }, { currency: 'ZAR', spend: '20.00' }] },
     recent: { performance: [{ spend: { formula: '1+1' }, bucket_hour: new Date('2026-01-01') }], optimizer_actions: [] } };
-  const out = buildReport(client, { ...profile, branding_overrides: { agencyName: { formula: '1+1' }, primaryColor: 'red', logoDataUrl: 'secret', footerText: 'Footer' } }, d);
+  const out = buildReport(client, { ...profile, branding_overrides: { agencyName: { formula: '1+1' }, primaryColor: 'red', logoDataUrl: 'secret', footerText: 'Footer' } }, d, null,
+    ['performance_rows', 'spend', 'impressions', 'clicks', 'conversions', 'revenue', 'mapped_campaigns', 'recent_performance', 'recent_actions'], null);
   assert.deepEqual(out.brand, { footerText: 'Footer' });
   assert.ok(out.report.sections.every((s) => s.kind === 'table' && s.rows.length <= 20 && s.rows.every((r) => r.every((v) => ['string', 'number'].includes(typeof v)))));
   const text = JSON.stringify(out.report);
-  assert.match(text, /All-time recorded data/); assert.match(text, /Unmapped records/); assert.match(text, /maximum 100/);
-  assert.match(text, /USD.*spend.*12.50/); assert.match(text, /ZAR.*spend.*20.00/); assert.doesNotMatch(text, /formula|secret|\\u0000/);
+  assert.match(text, /All-time recorded data|Queried dates/); assert.match(text, /Unmapped records/); assert.match(text, /maximum 100/);
+  assert.match(text, /USD.*Spend.*12.50/); assert.match(text, /ZAR.*Spend.*20.00/); assert.doesNotMatch(text, /formula|secret|\\u0000/);
   assert.equal(out.report.sections.filter((s) => s.title.startsWith('Mapped campaigns')).flatMap((s) => s.rows).length, 100);
 });
 

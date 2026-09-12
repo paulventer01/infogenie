@@ -11,7 +11,9 @@ const API = "/api/client-reporting/clients";
 const grants = ["tenant.settings.manage"];
 const client = (id = 11, name = "Acme") => ({ id, name, slug: null, website: null, status: "active" });
 const profile = (extra = {}) => ({ client_id: 11, report_source: "search-intel", default_format: "pdf",
-  report_title: "Monthly review", branding_mode: "workspace", branding_overrides: {}, version: 1,
+  report_title: "Monthly review", branding_mode: "workspace", branding_overrides: {},
+  selected_metrics: ["runs", "successful_runs", "brand_mentions", "mapped_queries", "recent_search_runs"],
+  reporting_period: "last_30_days", reporting_timezone: "UTC", version: 1,
   created_at: "2026-09-10T10:00:00.000Z", updated_at: "2026-09-10T10:00:00.000Z", ...extra });
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
 function loader() {
@@ -119,8 +121,12 @@ test("checks identity and membership before listing real clients; never auto-sel
 test("saves an explicit full profile, blocks duplicate submit, and uses persisted versions on updates", async (t) => {
   const h = await harness(t); await h.select(); await h.fill(); await h.submit(true);
   assert.equal(h.writes().length, 1);
-  assert.deepEqual(h.writes()[0].body, { report_source: "campaigns", default_format: "xlsx", report_title: "Acme monthly",
-    branding_mode: "workspace", branding_overrides: {}, expected_version: 0 });
+  assert.deepEqual(h.writes()[0].body.report_source, "campaigns");
+  assert.deepEqual(h.writes()[0].body.default_format, "xlsx");
+  assert.equal(h.writes()[0].body.report_title, "Acme monthly");
+  assert.equal(h.writes()[0].body.reporting_period, "last_30_days");
+  assert.ok(Array.isArray(h.writes()[0].body.selected_metrics) && h.writes()[0].body.selected_metrics.length > 0);
+  assert.equal(h.writes()[0].body.expected_version, 0);
   assert.equal(h.writes()[0].url, API + "/11/profile"); assert.equal(h.writes()[0].method, "PUT");
   const saveIndex = h.calls.indexOf(h.writes()[0]);
   assert.deepEqual(h.calls.slice(saveIndex - 3, saveIndex).map((c) => c.url), ["/api/tenants/me", "/api/tenants/active", "/api/tenants/me"]);

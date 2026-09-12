@@ -14,6 +14,7 @@ on:
       - 'db.js'
       - 'test/client-reporting*.test.js'
       - 'test/integration/client-reporting-profiles.test.js'
+      - 'test/integration/client-reporting-period-boundaries.test.js'
       - 'test/integration/client-reporting-mappings.test.js'
       - 'test/helpers/**'
       - 'package*.json'
@@ -36,7 +37,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify reporting profiles and authorization
-        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/client-reporting.test.js test/client-reporting-report.test.js test/client-reporting-permissions.test.js test/permission-matrix.test.js test/permission-matrix-coverage.test.js test/build-app-no-side-effects.test.js test/tenant-read-audit.test.js test/tenant-write-audit.test.js
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/client-reporting.test.js test/client-reporting-report.test.js test/client-reporting-metrics-period.test.js test/client-reporting-permissions.test.js test/permission-matrix.test.js test/permission-matrix-coverage.test.js test/build-app-no-side-effects.test.js test/tenant-read-audit.test.js test/tenant-write-audit.test.js
 
   native-postgres:
     name: Client reporting PostgreSQL (TLS, zero skips)
@@ -92,6 +93,7 @@ jobs:
           PR10F1_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/infogenie_client_reporting
           PR10F1_REQUIRE_DATABASE: '1'
           PR10F3_REQUIRE_DATABASE: '1'
+          PR10G4_REQUIRE_DATABASE: '1'
           PERMISSION_ENFORCEMENT: 'on'
           MULTITENANT_ENFORCEMENT: 'on'
         run: |
@@ -100,6 +102,10 @@ jobs:
           grep -Eq '^# tests [1-9][0-9]*$' /tmp/client-reporting-profiles.tap
           grep -Eq '^# fail 0$' /tmp/client-reporting-profiles.tap
           grep -Eq '^# skipped 0$' /tmp/client-reporting-profiles.tap
+          node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/integration/client-reporting-period-boundaries.test.js | tee /tmp/client-reporting-period-boundaries.tap
+          grep -Eq '^# tests [1-9][0-9]*$' /tmp/client-reporting-period-boundaries.tap
+          grep -Eq '^# fail 0$' /tmp/client-reporting-period-boundaries.tap
+          grep -Eq '^# skipped 0$' /tmp/client-reporting-period-boundaries.tap
           node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/integration/client-reporting-mappings.test.js | tee /tmp/client-reporting-mappings.tap
           grep -Eq '^# tests [1-9][0-9]*$' /tmp/client-reporting-mappings.tap
           grep -Eq '^# fail 0$' /tmp/client-reporting-mappings.tap

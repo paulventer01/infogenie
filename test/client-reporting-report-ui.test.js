@@ -5,7 +5,9 @@ const fs = require("node:fs"), path = require("node:path"), ts = require("typesc
 const React = require("react"), { JSDOM } = require("jsdom"), { act } = React;
 const BASE = "/api/client-reporting";
 const client = (id) => ({ id, name: "Client", slug: null, website: null, status: "active" });
-const profile = (s) => ({ client_id: s.clientId, version: s.version, report_source: "search-intel", default_format: s.format, report_title: "Saved report", branding_mode: "workspace", branding_overrides: {}, created_at: "2026-01-01", updated_at: "2026-01-01" });
+const profile = (s) => ({ client_id: s.clientId, version: s.version, report_source: "search-intel", default_format: s.format, report_title: "Saved report", branding_mode: "workspace", branding_overrides: {},
+  selected_metrics: ["runs", "successful_runs", "brand_mentions", "mapped_queries", "recent_search_runs"],
+  reporting_period: "last_30_days", reporting_timezone: "UTC", created_at: "2026-01-01", updated_at: "2026-01-01" });
 const preview = (s) => ({ ok: true, client: client(s.clientId), profile_version: s.version, format: s.format, can_generate: true, brand: {}, report: { title: "Saved report", generated_at: "2026-01-01", sections: [{ kind: "table", title: "Mapped records", headers: ["Name"], rows: [["Client record"]] }] } });
 const mime = { pdf: "application/pdf", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
 const TOKEN = "11111111-1111-4111-8111-111111111111";
@@ -45,7 +47,9 @@ async function harness(t, handler = () => undefined) {
   const Component = load("components/features/manage/ClientReportingReport.tsx").default;
   const root = require("react-dom/client").createRoot(dom.window.document.getElementById("root"));
   const checkAccess = async () => state.check ? state.check() : state.allowed, clearContext = (message) => cleared.push(message);
-  const render = async () => act(async () => root.render(React.createElement(Component, { key: `${state.clientId}:${state.version}:${state.format}`, clientId: state.clientId, version: state.version, format: state.format, checkAccess, clearContext })));
+  const render = async () => act(async () => root.render(React.createElement(Component, {
+    key: `${state.clientId}:${state.version}:${state.format}`, clientId: state.clientId, version: state.version,
+    format: state.format, timezone: state.timezone || "UTC", checkAccess, clearContext })));
   t.after(async () => { await act(async () => root.unmount()); dom.window.close(); previous.forEach((d, k) => {
     if (d) Object.defineProperty(global, k, d); else delete global[k];
   }); });
@@ -117,4 +121,29 @@ test("profile changed while binary pending prevents download", async (t) => {
 test("binary permission denial clears protected context", async (t) => {
   const h = await harness(t, (c) => c.url.endsWith("/report") ? { ok: false, httpStatus: 403 } : undefined);
   await h.click("Preview report"); await h.click("Generate & download PDF"); assert.equal(h.cleared.length, 1); assert.equal(h.downloads.length, 0);
+});
+test("custom dates require both values and invalidate preview before generation", async (t) => {
+  const h = await harness(t, (c, s) => {
+    if (!c.url.includes("/report-preview")) return;
+    const query = new URL("http://local" + c.url).searchParams;
+    return { ...preview(s), reporting_dates: { start: query.get("start_date"), end: query.get("end_date"), timezone: "UTC" } };
+  });
+  const change = (selector, value) => act(async () => {
+    const el = h.query(selector); assert.ok(el);
+    const setter = Object.getOwnPropertyDescriptor(global.window.HTMLInputElement.prototype, "value").set;
+    setter.call(el, value);
+    el.dispatchEvent(new global.window.Event("change", { bubbles: true }));
+  });
+  await act(async () => { h.query('input[type="checkbox"]').click(); });
+  assert.ok(h.button("Preview report").disabled);
+  assert.match(h.text(), /Enter both custom start and end dates/);
+  await change('input[name="start_date"]', "2026-03-01");
+  assert.ok(h.button("Generate & download PDF").disabled);
+  await change('input[name="end_date"]', "2026-03-10");
+  await h.click("Preview report");
+  assert.match(h.text(), /2026-03-01 to 2026-03-10/);
+  assert.ok(!h.button("Generate & download PDF").disabled);
+  await change('input[name="end_date"]', "");
+  assert.equal(h.query("article"), null);
+  assert.ok(h.button("Generate & download PDF").disabled);
 });

@@ -41,6 +41,18 @@ async function ensureClientReportingSchema() {
         (jsonb_typeof(branding_overrides->'textColor') = 'string' AND
          branding_overrides->>'textColor' ~ '^#[0-9A-Fa-f]{6}$'))
     );
+    ALTER TABLE client_reporting_profiles ADD COLUMN IF NOT EXISTS selected_metrics JSONB NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE client_reporting_profiles ADD COLUMN IF NOT EXISTS reporting_period TEXT NOT NULL DEFAULT 'all_time';
+    ALTER TABLE client_reporting_profiles ADD COLUMN IF NOT EXISTS reporting_timezone TEXT NOT NULL DEFAULT 'UTC';
+    ALTER TABLE client_reporting_profiles DROP CONSTRAINT IF EXISTS client_reporting_profiles_reporting_period_check;
+    ALTER TABLE client_reporting_profiles ADD CONSTRAINT client_reporting_profiles_reporting_period_check
+      CHECK (reporting_period IN ('all_time', 'last_7_days', 'last_30_days', 'previous_calendar_month'));
+    ALTER TABLE client_reporting_profiles DROP CONSTRAINT IF EXISTS client_reporting_profiles_selected_metrics_check;
+    ALTER TABLE client_reporting_profiles ADD CONSTRAINT client_reporting_profiles_selected_metrics_check
+      CHECK (jsonb_typeof(selected_metrics) = 'array');
+    ALTER TABLE client_reporting_profiles DROP CONSTRAINT IF EXISTS client_reporting_profiles_reporting_timezone_check;
+    ALTER TABLE client_reporting_profiles ADD CONSTRAINT client_reporting_profiles_reporting_timezone_check
+      CHECK (length(reporting_timezone) > 0 AND length(reporting_timezone) <= 64);
     CREATE TABLE IF NOT EXISTS client_reporting_recipients (
       tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       client_id INT NOT NULL,

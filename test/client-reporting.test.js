@@ -9,8 +9,11 @@ const ROOT = path.join(__dirname, '..');
 const PREFIX = '/api/client-reporting';
 const PERMISSION = 'tenant.settings.manage';
 const client = { id: 11, name: 'Client A', slug: 'client-a', website: null, status: 'active' };
+const campaignMetrics = ['performance_rows', 'spend', 'impressions', 'clicks', 'conversions', 'revenue',
+  'mapped_campaigns', 'recent_performance', 'recent_actions'];
 const input = { report_source: 'campaigns', default_format: 'pdf', report_title: 'Monthly report',
-  branding_mode: 'workspace', branding_overrides: {}, expected_version: 0 };
+  branding_mode: 'workspace', branding_overrides: {}, selected_metrics: campaignMetrics,
+  reporting_period: 'last_30_days', reporting_timezone: 'UTC', expected_version: 0 };
 
 // Isolated router/SQL-contract tests. Native PostgreSQL + full session middleware
 // are covered separately by integration/client-reporting-profiles.test.js.
@@ -114,6 +117,9 @@ test('profile validation rejects managed fields, unsafe branding, invalid enum/v
     { ...input, default_format: 'html' }, { ...input, report_title: ' ' }, { ...input, report_title: 'a'.repeat(161) },
     { ...input, expected_version: '0' }, { ...input, expected_version: -1 }, { ...input, expected_version: 0.5 },
     { ...input, branding_overrides: [] }, { ...input, branding_mode: 'inherit' },
+    { ...input, selected_metrics: [] }, { ...input, selected_metrics: ['spend', 'spend'] },
+    { ...input, selected_metrics: ['unknown'] }, { ...input, reporting_period: 'yesterday' },
+    { ...input, reporting_timezone: '' },
     ...[{ primaryColor: '#000000' }, { logoUrl: 'https://example.com' }, { font: 'Arial' }, { primaryColor: 'red' },
       { footerText: 'a'.repeat(201) }, { agencyName: { html: 'x' } }, { accentColor: '#123' }]
       .map((branding_overrides, index) => ({ ...input, branding_mode: index === 0 ? 'workspace' : 'custom', branding_overrides })),
@@ -135,13 +141,16 @@ test('PUT locks active client and performs scoped full-replacement CAS using act
   const insert = fx.calls.find(({ sql }) => sql.includes('INSERT INTO'));
   assert.match(fx.calls[1].sql, /FOR UPDATE$/);
   assert.match(insert.sql, /ON CONFLICT \(tenant_id,client_id\) DO NOTHING/);
-  assert.deepEqual(insert.params, [101, 11, 'campaigns', 'pdf', 'Branded monthly report', 'custom',
-    JSON.stringify({ agencyName: 'Agency', primaryColor: '#AAbbCC', footerText: 'Footer' }), 7]);
+  assert.deepEqual(insert.params.slice(0, 7), [101, 11, 'campaigns', 'pdf', 'Branded monthly report', 'custom',
+    JSON.stringify({ agencyName: 'Agency', primaryColor: '#AAbbCC', footerText: 'Footer' })]);
+  assert.equal(insert.params[8], 'last_30_days');
+  assert.equal(insert.params[9], 'UTC');
+  assert.equal(insert.params[10], 7);
   assert.equal(fx.calls.at(-1).sql, 'COMMIT');
   assert.equal((await fx.request('PUT', '/clients/11/profile', { ...input, expected_version: 1 })).status, 200);
   const update = fx.calls.find(({ sql }) => sql.startsWith('UPDATE'));
-  assert.match(update.sql, /WHERE tenant_id=\$1 AND client_id=\$2 AND version=\$9/);
-  assert.match(update.sql, /version=version\+1/); assert.equal(update.params[8], 1);
+  assert.match(update.sql, /WHERE tenant_id=\$1 AND client_id=\$2 AND version=\$12/);
+  assert.match(update.sql, /version=version\+1/); assert.equal(update.params[11], 1);
   for (const expected_version of [0, 1]) {
     stale = true;
     const response = await fx.request('PUT', '/clients/11/profile', { ...input, expected_version });
