@@ -223,13 +223,17 @@ async function _buildClientNarrative(brand, tid, sections = []) {
   const facts = [];
 
   if (metrics) {
-    if (metrics.spend != null) facts.push(`Spend ${_money(metrics.spend)} over 7 days`);
-    else if (metrics.labelled?.spend?.availability === 'unavailable') {
-      facts.push('Spend unavailable (data source not queried)');
+    const lbl = metrics.labelled || {};
+    const spendDisp = _metricDisplay(metrics.spend, '$', lbl.spend);
+    if (spendDisp !== '—') facts.push(`Spend ${spendDisp} over 7 days`);
+    const blendedDisp = _metricDisplay(metrics.blended_roas, 'x', lbl.reported_roas);
+    if (blendedDisp !== '—') facts.push(`blended ROAS ${blendedDisp}`);
+    const trueDisp = _metricDisplay(metrics.true_roas, 'x', lbl.true_roas);
+    if (trueDisp !== '—') facts.push(`true ROAS ${trueDisp}`);
+    const cacDisp = _metricDisplay(metrics.cac, '$', lbl.cac);
+    if (cacDisp !== '—') {
+      facts.push(`CAC ${cacDisp}${lbl.cac?.is_proxy && metrics.cac != null ? ' (conversion proxy)' : ''}`);
     }
-    if (metrics.blended_roas != null) facts.push(`blended ROAS ${metrics.blended_roas}x`);
-    if (metrics.true_roas != null) facts.push(`true ROAS ${metrics.true_roas}x`);
-    if (metrics.cac != null) facts.push(`CAC $${metrics.cac}${metrics.labelled?.cac?.is_proxy ? ' (conversion proxy)' : ''}`);
 
     const roasDelta = _deltaPhrase(metrics.deltas?.blended_roas_pct);
     if (roasDelta?.good) wins.push(`Efficiency ${roasDelta.text}`);
@@ -565,4 +569,9 @@ function startWeeklyCron(intervalDays = 7) {
   console.log(`[weekly-report] cron started — every ${intervalDays}d`);
 }
 
-module.exports = { router, startWeeklyCron };
+module.exports = {
+  router,
+  startWeeklyCron,
+  _buildClientNarrative,
+  _metricDisplay,
+};
