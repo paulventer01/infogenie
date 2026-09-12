@@ -8381,6 +8381,12 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
 .alert-meta { font-size:.68rem; color:#94A3B8; text-transform:capitalize; }
 .alert-unread .alert-title { color:#0066FF; }
 .alert-unread { background:#F0F9FF; }
+.alert-clickable { cursor:pointer; }
+.alert-clickable:hover { background:#EFF6FF; }
+.alert-clickable:focus-visible { outline:2px solid #0066FF; outline-offset:-2px; }
+.alert-action-hint { color:#0066FF; font-weight:700; }
+.alert-settings-link { margin-top:6px; display:inline-block; background:none; border:none; padding:0; color:#64748B; font-size:.72rem; font-weight:700; cursor:pointer; text-decoration:underline; }
+.alert-settings-link:hover { color:#0066FF; }
 [data-theme="dark"] .alerts-panel { background:#1E293B; border-color:#334155; }
 [data-theme="dark"] .alerts-panel-header { border-color:#334155; }
 [data-theme="dark"] .alert-title { color:#F1F5F9; }

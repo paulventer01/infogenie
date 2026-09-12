@@ -20,6 +20,7 @@ module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
   const { _DIAG_CAP_PREFIX, _DIAG_LATEST_KEY, _fetchGoogleAdsSpend, _fetchMetaSpend, _fetchMicrosoftSpend, _fetchTikTokSpend, _isUrlSafeToFetch, _sendEmailViaResend, _tkvCtx, _tkvMutate, _tkvRead, _tkvScope, callDataForSEO, fs, openaiChatWithRetry, path } = ctx;
+  const { enrichAlert, clientMap, adminSettingsPath } = require('./services/assistant_ops/provider_links');
 
 const _ASSISTANT_TOOLS = [
   { type:'function', function: {
@@ -737,13 +738,19 @@ async function _runCreditCheck(tid) {
       body = `Your DataForSEO balance is below $20 (of $${dfs.total.toFixed(0)} total). Consider topping up before SERP/backlinks/AI Optimization throttle.`;
     }
     if (severity) {
-      const a = { id:`credit-dfs-balance-${Date.now()}`, type:'credit_low', severity, title, body };
+      const a = enrichAlert({
+        id:`credit-dfs-balance-${Date.now()}`, type:'credit_low', severity, title, body,
+        providerKey: 'DATAFORSEO_LOGIN',
+      }, 'DATAFORSEO_LOGIN');
       await _emitCreditAlert(tid, a); emitted.push(a);
     }
   } else if (dfs.error !== 'no_creds') {
-    const a = { id:`credit-dfs-error-${Date.now()}`, type:'credit_error', severity:'medium',
+    const a = enrichAlert({
+      id:`credit-dfs-error-${Date.now()}`, type:'credit_error', severity:'medium',
       title:'⚠️ DataForSEO balance check failed',
-      body:`Could not read DataForSEO balance (${dfs.error}). The login/password may be wrong, or the account may be suspended for non-payment.` };
+      body:`Could not read DataForSEO balance (${dfs.error}). The login/password may be wrong, or the account may be suspended for non-payment.`,
+      providerKey: 'DATAFORSEO_LOGIN',
+    }, 'DATAFORSEO_LOGIN');
     await _emitCreditAlert(tid, a); emitted.push(a);
   }
 
@@ -764,12 +771,12 @@ async function _runCreditCheck(tid) {
   for (const svc of PAID_SERVICES) {
     if (process.env[svc.key]) continue;
     if (!CRITICAL.includes(svc.key)) continue;
-    const a = {
+    const a = enrichAlert({
       id: `credit-missing-${svc.key.toLowerCase()}-${Date.now()}`,
       type: 'service_missing', severity: 'high',
       title: `🔑 ${svc.name} not connected — subscription / API key required`,
-      body: `${svc.why} Add ${svc.key} in Replit Secrets to enable.`,
-    };
+      body: `${svc.why} Add ${svc.key} in Manage → Admin → Platform APIs, or open ${svc.name} to subscribe and top up.`,
+    }, svc.key);
     await _emitCreditAlert(tid, a); emitted.push(a);
   }
 
@@ -777,18 +784,23 @@ async function _runCreditCheck(tid) {
   for (const svc of PAID_SERVICES) {
     const v = process.env[svc.key];
     if (v && /^_DUMMY/i.test(v)) {
-      const a = {
+      const a = enrichAlert({
         id: `credit-dummy-${svc.key.toLowerCase()}-${Date.now()}`,
         type: 'key_placeholder', severity: 'high',
         title: `🚧 ${svc.name} key is a placeholder`,
-        body: `${svc.key} starts with "_DUMMY". ${svc.name} calls are skipped and template fallbacks are used. Replace with a real key in Replit Secrets to unlock live ${svc.name} responses.`,
-      };
+        body: `${svc.key} starts with "_DUMMY". ${svc.name} calls are skipped and template fallbacks are used. Replace with a real key in Manage → Admin → Platform APIs.`,
+      }, svc.key);
       await _emitCreditAlert(tid, a); emitted.push(a);
     }
   }
 
   return { emitted, dfs };
 }
+
+// GET /api/alerts/provider-links — billing/signup URLs for alert click-through (no secrets)
+app.get('/api/alerts/provider-links', (_req, res) => {
+  res.json({ ok: true, providers: clientMap(), settingsPath: adminSettingsPath('') });
+});
 
 // GET /api/alerts/check-credits  — manual + cron entrypoint
 app.get('/api/alerts/check-credits', async (req, res) => {
