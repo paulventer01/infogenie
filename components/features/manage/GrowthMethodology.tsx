@@ -30,6 +30,7 @@ const STAGES: Stage[] = [
     summary:
       "Understand the business, audience, and competitive landscape — and align everyone on a single goal.",
     features: [
+      { label: "10-Step Marketing Plan", view: "marketing-plan", why: "Guided Goal → Customer → Offer → Channels → Optimization." },
       { label: "New Marketing Project", view: "new-project", why: "Lock in goal, budget, channels, owner, and dates." },
       { label: "Competitor Analysis", view: "competitors", why: "Map competitor ads, landing pages, offers, keywords." },
       { label: "Battle Cards", view: "battle-cards", why: "One-page summary of how to beat each competitor." },
