@@ -55,7 +55,8 @@ router.get('/status', _safe(async (req, res) => {
 // ── GET /api/bing-webmaster/sites ─────────────────────────────────────────────
 router.get('/sites', _safe(async (req, res) => {
   if (!_key()) return _err(res, 400, 'BING_WEBMASTER_API_KEY not configured');
-  const sites = await _bingGet('GetSites');
+  // Official method is GetUserSites (GetSites returns HTTP 404).
+  const sites = await _bingGet('GetUserSites');
   res.json({ ok: true, sites: Array.isArray(sites) ? sites : [] });
 }));
 
