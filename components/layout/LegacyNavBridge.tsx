@@ -33,7 +33,17 @@ export default function LegacyNavBridge() {
       });
     };
     document.addEventListener("ig:spa-navigate", onNavigate);
-    return () => document.removeEventListener("ig:spa-navigate", onNavigate);
+    (window as unknown as { __igNavigate?: (path: string) => void }).__igNavigate = (path: string) => {
+      if (!path || path === window.location.pathname) return;
+      markNavPending("nav→path");
+      startTransition(() => {
+        router.push(path);
+      });
+    };
+    return () => {
+      document.removeEventListener("ig:spa-navigate", onNavigate);
+      delete (window as unknown as { __igNavigate?: (path: string) => void }).__igNavigate;
+    };
   }, [router]);
 
   return null;
