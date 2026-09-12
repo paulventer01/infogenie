@@ -77,7 +77,9 @@ test('Client reporting portal: tenant isolation, token lifecycle and unauthentic
   const invitePath = (id) => `${prefix}/${id}/portal/invitations`;
   const revokePath = (id) => `${prefix}/${id}/portal/revoke`;
   for (const [actorRow, clientId] of [[a, ca], [b, cb]]) {
-    await call(actorRow, 'PUT', profile(clientId), { report_source: 'search-intel', default_format: 'pdf', report_title: 'Report', branding_mode: 'workspace', branding_overrides: {}, expected_version: 0 });
+    await call(actorRow, 'PUT', profile(clientId), { report_source: 'search-intel', default_format: 'pdf', report_title: 'Report', branding_mode: 'workspace', branding_overrides: {},
+      selected_metrics: ['runs', 'successful_runs', 'brand_mentions', 'mapped_queries', 'recent_search_runs'],
+      reporting_period: 'last_30_days', reporting_timezone: 'UTC', expected_version: 0 });
   }
   const unauth = await request(app.baseUrl, 'GET', `${portalApi}/report`);
   assert.equal(unauth.status, 401);

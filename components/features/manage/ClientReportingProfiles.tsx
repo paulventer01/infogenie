@@ -7,9 +7,10 @@ import ClientReportingRecipient from "@/components/features/manage/ClientReporti
 import ClientReportingSchedule from "@/components/features/manage/ClientReportingSchedule";
 import ClientReportingPortal from "@/components/features/manage/ClientReportingPortal";
 import ClientReportingMappings from "@/components/features/manage/ClientReportingMappings";
-import { API, BRAND_FIELDS, accessLost, draftError, newDraft, profileDraft, profilePayload, responseError,
+import { API, BRAND_FIELDS, PERIOD_HELP, accessLost, draftError, newDraft, profileDraft, profilePayload, responseError,
   saveMatches, validClient, validPage, validProfile, verifyAccess,
   type Client, type ClientsResponse, type Context, type Draft, type ProfileResponse } from "@/lib/clientReporting";
+import { METRIC_CATALOG, REPORTING_PERIODS, defaultMetrics } from "@/lib/clientReportingMetrics";
 
 const card: CSSProperties = { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 12, padding: 20, marginTop: 20 };
 const grid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 };
@@ -124,8 +125,38 @@ export default function ClientReportingProfiles() {
   }, [attempt, checkAccess, loadClients, stop]);
 
   function change(key: keyof Draft, value: string) {
-    setDraft((previous) => previous ? { ...previous, [key]: value } : null); setDirty(true); setSaved(false);
+    setDraft((previous) => {
+      if (!previous) return null;
+      if (key === "report_source" && value !== previous.report_source) {
+        return { ...previous, report_source: value as Draft["report_source"], selected_metrics: defaultMetrics(value as Draft["report_source"]) };
+      }
+      return { ...previous, [key]: value };
+    });
+    setDirty(true); setSaved(false);
     if (!reloadRequired) setSaveError(null);
+  }
+  function toggleMetric(key: string) {
+    setDraft((previous) => {
+      if (!previous) return null;
+      const selected = previous.selected_metrics.includes(key)
+        ? previous.selected_metrics.filter((metric) => metric !== key)
+        : [...previous.selected_metrics, key];
+      return { ...previous, selected_metrics: selected };
+    });
+    setDirty(true); setSaved(false); if (!reloadRequired) setSaveError(null);
+  }
+  function moveMetric(key: string, direction: -1 | 1) {
+    setDraft((previous) => {
+      if (!previous) return null;
+      const index = previous.selected_metrics.indexOf(key);
+      if (index < 0) return previous;
+      const target = index + direction;
+      if (target < 0 || target >= previous.selected_metrics.length) return previous;
+      const next = [...previous.selected_metrics];
+      [next[index], next[target]] = [next[target], next[index]];
+      return { ...previous, selected_metrics: next };
+    });
+    setDirty(true); setSaved(false); if (!reloadRequired) setSaveError(null);
   }
   async function save() {
     if (!draft || !dirty || !clientId || submitting.current || reloadRequired || checking || accessError || denied.current) return;
@@ -210,6 +241,34 @@ export default function ClientReportingProfiles() {
                     <option value="workspace">Use workspace branding</option><option value="custom">Custom client branding</option>
                   </select></Field>
                 </div>
+                <div style={{ marginTop: 16 }}>
+                  <h3>Report metrics</h3>
+                  <p>Choose and order the metrics included in preview, exports, email and the client portal.</p>
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                    {METRIC_CATALOG[draft.report_source].map((entry) => {
+                      const selected = draft.selected_metrics.includes(entry.key);
+                      const index = draft.selected_metrics.indexOf(entry.key);
+                      return <li key={entry.key} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                        <label><input type="checkbox" checked={selected} onChange={() => toggleMetric(entry.key)} /> {entry.label}</label>
+                        {selected && <>
+                          <button type="button" style={button} disabled={index === 0} onClick={() => moveMetric(entry.key, -1)} aria-label={`Move ${entry.label} up`}>↑</button>
+                          <button type="button" style={button} disabled={index === draft.selected_metrics.length - 1} onClick={() => moveMetric(entry.key, 1)} aria-label={`Move ${entry.label} down`}>↓</button>
+                        </>}
+                      </li>;
+                    })}
+                  </ul>
+                </div>
+                <div style={{ marginTop: 16 }}>
+                  <h3>Default reporting period</h3>
+                  <p>{PERIOD_HELP}</p>
+                  <div style={grid}>
+                    <Field label="Relative period"><select name="reporting_period" style={input} value={draft.reporting_period} onChange={(event) => change("reporting_period", event.target.value)}>
+                      {REPORTING_PERIODS.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}
+                    </select></Field>
+                    <Field label="Timezone (IANA)"><input name="reporting_timezone" required maxLength={64} style={input} value={draft.reporting_timezone}
+                      onChange={(event) => change("reporting_timezone", event.target.value)} placeholder="UTC" /></Field>
+                  </div>
+                </div>
                 {draft.branding_mode === "workspace" ? <p>This profile will use the workspace branding preference.</p> : <>
                   <p>Set the client&apos;s agency name, footer and colours. Blank colour fields leave that override unset.</p>
                   <div style={grid}>{BRAND_FIELDS.map(([key, label, max]) => <Field key={key} label={label}>
@@ -233,7 +292,8 @@ export default function ClientReportingProfiles() {
           clientId={clientId} checkAccess={checkAccess} clearContext={clearContext} />}
         {clientId && context.current && !pendingClient && (draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError
           ? <ClientReportingReport key={`${context.current.userId}:${context.current.tenantId}:${clientId}:${version}`}
-            clientId={clientId} version={version} format={draft.default_format} checkAccess={checkAccess} clearContext={clearContext} />
+            clientId={clientId} version={version} format={draft.default_format} timezone={draft.reporting_timezone}
+            checkAccess={checkAccess} clearContext={clearContext} />
           : <p>Save or reload the reporting profile before previewing and generating reports.</p>)}
         {clientId && context.current && !pendingClient && draft && version > 0 && !dirty && !profileBusy && !saving && !reloadRequired && !profileError
           && <ClientReportingSchedule key={`${context.current.userId}:${context.current.tenantId}:${clientId}:schedule`}

@@ -1,18 +1,29 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiBlob, apiGet, apiPost } from "@/lib/api";
-import { API, accessLost, responseError, validClient, validProfile, type Draft, type ProfileResponse } from "@/lib/clientReporting";
+import { API, PERIOD_HELP, accessLost, responseError, validClient, validProfile, type Draft, type ProfileResponse } from "@/lib/clientReporting";
 import { validRecipient, type RecipientResponse } from "@/lib/clientReportingDelivery";
 import { validPreview, validReportBlob, type Preview } from "@/lib/clientReportingReport";
 
-type Props = { clientId: number; version: number; format: Draft["default_format"]; checkAccess: () => Promise<boolean>; clearContext: (message: string) => void };
-export default function ClientReportingReport({ clientId, version, format, checkAccess, clearContext }: Props) {
+type Props = { clientId: number; version: number; format: Draft["default_format"]; timezone: string;
+  checkAccess: () => Promise<boolean>; clearContext: (message: string) => void };
+export default function ClientReportingReport({ clientId, version, format, timezone, checkAccess, clearContext }: Props) {
   const [preview, setPreview] = useState<Preview | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<RecipientResponse | null>(null);
+  const [useCustomDates, setUseCustomDates] = useState(false);
+  const [startDate, setStartDate] = useState(""), [endDate, setEndDate] = useState("");
   const live = useRef(false), running = useRef(false), sequence = useRef(0);
   const stop = useCallback(() => { live.current = false; ++sequence.current; }, []);
   useEffect(() => { live.current = true; return stop; }, [stop]);
+  function dateQuery() {
+    if (!useCustomDates || !startDate || !endDate) return "";
+    return `?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`;
+  }
+  function dateBody() {
+    if (!useCustomDates || !startDate || !endDate) return {};
+    return { start_date: startDate, end_date: endDate };
+  }
   async function verify(current: () => boolean) {
     if (!await checkAccess() || !current()) throw new Error("Access could not be verified. Preview again before generating.");
     const result = await apiGet<ProfileResponse>(`${API}/${clientId}/profile`);
@@ -34,7 +45,7 @@ export default function ClientReportingReport({ clientId, version, format, check
     try {
       if (!await verify(current) || !current()) return;
       if (download) {
-        const blob = await apiBlob(`${API}/${clientId}/report`, { method: "POST", body: JSON.stringify({ expected_version: version }) });
+        const blob = await apiBlob(`${API}/${clientId}/report`, { method: "POST", body: JSON.stringify({ expected_version: version, ...dateBody() }) });
         if (!current()) return;
         if (!await validReportBlob(blob, format)) throw new Error("The downloaded report could not be verified. Preview again before retrying.");
         if (!await verify(current) || !current()) return;
@@ -43,7 +54,7 @@ export default function ClientReportingReport({ clientId, version, format, check
         finally { anchor.remove(); URL.revokeObjectURL(url); }
         setNotice("Report download started.");
       } else {
-        const result = await apiGet<Preview>(`${API}/${clientId}/report-preview`);
+        const result = await apiGet<Preview>(`${API}/${clientId}/report-preview${dateQuery()}`);
         if (!current()) return;
         const failure = responseError(result);
         if (failure && accessLost(failure)) clearContext(failure);
@@ -90,7 +101,7 @@ export default function ClientReportingReport({ clientId, version, format, check
     running.current = true; setBusy(true); setError(null); setNotice(null);
     try {
       if (!await verify(current) || !current()) return;
-      const result = await apiPost(`${API}/${clientId}/report-email`, { expected_version: version, confirm: true });
+      const result = await apiPost(`${API}/${clientId}/report-email`, { expected_version: version, confirm: true, ...dateBody() });
       if (!current()) return;
       const failure = responseError(result);
       if (failure && accessLost(failure)) clearContext(failure);
@@ -112,6 +123,14 @@ export default function ClientReportingReport({ clientId, version, format, check
   return <section aria-label="Client report preview" style={{ marginTop: 20, padding: 20, border: "1px solid #E2E8F0", borderRadius: 12, background: "#FFFFFF", minWidth: 0 }}>
     <h2>Preview and generate a client report</h2>
     <p>Uses this client&apos;s saved profile and mapped records. Generate downloads a fresh snapshot, so values may differ from the preview. Email sends to the configured delivery recipient.</p>
+    <div style={{ margin: "12px 0", padding: 12, background: "#F8FAFC", borderRadius: 8 }}>
+      <label><input type="checkbox" checked={useCustomDates} onChange={(event) => setUseCustomDates(event.target.checked)} /> Use custom dates for this manual run</label>
+      <p style={{ fontSize: 14, color: "#64748B", margin: "8px 0" }}>{PERIOD_HELP} Profile timezone: {timezone}.</p>
+      {useCustomDates && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+        <label>Start date<input type="date" name="start_date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
+        <label>End date<input type="date" name="end_date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+      </div>}
+    </div>
     <button disabled={busy} onClick={() => void perform(false)}>Preview report</button>{" "}
     <button disabled={busy || !preview?.can_generate} onClick={() => void perform(true)}>Generate &amp; download {format.toUpperCase()}</button>{" "}
     <button disabled={busy || !preview?.can_generate} onClick={() => void prepareEmail()}>Email report</button>
@@ -125,7 +144,9 @@ export default function ClientReportingReport({ clientId, version, format, check
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     {preview && !busy && <article style={{ borderTop: `4px solid ${preview.brand.primaryColor || "#0F766E"}`, color: preview.brand.textColor || "#0F172A", marginTop: 16, overflowWrap: "anywhere" }}>
       {preview.brand.agencyName && <p>{preview.brand.agencyName}</p>}
-      <h3>{preview.report.title}</h3><p>Snapshot: {preview.report.generated_at}</p>
+      <h3>{preview.report.title}</h3>
+      <p>Snapshot: {preview.report.generated_at}</p>
+      {preview.reporting_dates && <p>Reporting dates: {preview.reporting_dates.start} to {preview.reporting_dates.end} ({preview.reporting_dates.timezone})</p>}
       {!preview.can_generate && <p>No mapped records are available. Assign records to this client, then preview again.</p>}
       {preview.report.sections.map((section, i) => <div key={i}><h4>{section.title}</h4>
         {!section.rows.length ? <p>No data available for this section.</p> : <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={section.title}>

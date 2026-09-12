@@ -98,8 +98,10 @@ test('Client reporting profiles: native PostgreSQL and production session/middle
   const ca = await client(ta, 'Client A'), ca2 = await client(ta, 'Client A2');
   const cb = await client(tb, 'Client B'), archived = await client(ta, 'Archived', 'archived');
   const profilePath = (id) => `${prefix}/${id}/profile`;
+  const searchMetrics = ['runs', 'successful_runs', 'brand_mentions', 'mapped_queries', 'recent_search_runs'];
   const body = (expected_version = 0, extra = {}) => ({ expected_version, report_source: 'search-intel',
-    default_format: 'pdf', report_title: 'Client report', branding_mode: 'workspace', branding_overrides: {}, ...extra });
+    default_format: 'pdf', report_title: 'Client report', branding_mode: 'workspace', branding_overrides: {},
+    selected_metrics: searchMetrics, reporting_period: 'last_30_days', reporting_timezone: 'UTC', ...extra });
 
   await t.test('client lists and empty profile reads stay tenant scoped and never persist defaults', async () => {
     const before = await snapshot();
