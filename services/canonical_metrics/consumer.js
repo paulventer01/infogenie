@@ -79,6 +79,32 @@ function resolveConsumerMetric(snapshot, metricKey) {
   };
 }
 
+/** Controlled unavailable result when canonical compute/read throws. */
+function unavailableConsumerMetric(reason = REASON.SOURCE_QUERY_FAILED) {
+  return {
+    value: null,
+    availability: AVAILABILITY.UNAVAILABLE,
+    availability_reason: safeAvailabilityReason(reason),
+    is_proxy: false,
+    kind: null,
+    from_canonical: true,
+  };
+}
+
+function canonicalMetricMeta(detail = {}) {
+  if (!detail.from_canonical) return {};
+  return {
+    metric_availability: detail.availability || null,
+    metric_availability_reason: detail.availability_reason || null,
+    metric_is_proxy: detail.is_proxy ?? false,
+  };
+}
+
+function isCanonicalDataUsableForTarget(detail = {}) {
+  if (!detail.from_canonical) return true;
+  return detail.availability === AVAILABILITY.AVAILABLE;
+}
+
 function formatMetricDisplay(value, unit, detail = {}) {
   const availability = detail.availability;
   const reason = safeAvailabilityReason(detail.availability_reason || detail.availability);
@@ -127,6 +153,9 @@ module.exports = {
   isUsableForRecommendations,
   isCanonicalAdMetric,
   resolveConsumerMetric,
+  unavailableConsumerMetric,
+  canonicalMetricMeta,
+  isCanonicalDataUsableForTarget,
   formatMetricDisplay,
   metricAnnotation,
 };

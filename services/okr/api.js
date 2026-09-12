@@ -36,18 +36,25 @@ async function _pullAutoMetric(tid, metric_type, linked_channel, quarter) {
   if (!hasDb()) return { value: null, from_canonical: false };
   const bounds = _quarterBounds(quarter);
   if (!bounds) return { value: null, from_canonical: false };
+  const {
+    resolveConsumerMetric,
+    unavailableConsumerMetric,
+  } = require('../canonical_metrics/consumer');
+
   // Canonical SSOT for ROAS family (channel filter still uses legacy path below)
   if (!linked_channel && ['roas', 'true_roas', 'blended_roas'].includes(metric_type)) {
     try {
       const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
-      const { resolveConsumerMetric } = require('../canonical_metrics/consumer');
       const days = Math.max(1, Math.ceil((new Date(bounds.end) - new Date(bounds.start)) / 864e5));
       const snap = await computeCanonicalMetrics(tid, { days: Math.min(90, days) });
       const key = metric_type === 'true_roas' ? 'true_roas' : metric_type === 'blended_roas' ? 'blended_roas' : 'roas';
       const detail = resolveConsumerMetric(snap, key);
       if (detail.availability === 'unavailable') return detail;
       if (detail.value != null || detail.availability === 'available') return detail;
-    } catch (_) { /* fall through */ }
+      return detail;
+    } catch (_) {
+      return unavailableConsumerMetric();
+    }
   }
   try {
     if (metric_type === 'spend') {
@@ -280,7 +287,10 @@ router.post('/objectives/:id/refresh', _safe(async (req, res) => {
       );
       updated.push({ ...kr, current_value: val, ...metaFields });
     } else {
-      updated.push({ ...kr, ...metaFields });
+      const responseValue = measured?.from_canonical
+        ? (measured.availability === 'unavailable' ? null : kr.current_value)
+        : kr.current_value;
+      updated.push({ ...kr, current_value: responseValue, ...metaFields });
     }
   }
   const newStatus = _deriveStatus(updated);

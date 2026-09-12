@@ -10,8 +10,8 @@ Audit of services that read `computeCanonicalMetrics`, `readMetric`, or `/api/me
 | `components/features/manage/CanonicalMetrics.tsx` | OK (PR10G.1) | KPI cards show partial/unavailable suffixes and proxy labels |
 | `services/weekly_report/api.js` | OK (PR10G.1) | `_metricDisplay` preserves availability; narrative skips unavailable facts |
 | `services/ask_copilot/api.js` | **Updated** | Contribution budget recs gated when inputs not fully available |
-| `services/growth_ops/routes.js` | **Updated** | Goals no longer fall back to legacy ad fetchers when canonical says unavailable |
-| `services/okr/api.js` | **Updated** | ROAS family uses canonical detail; no legacy fallback on unavailable |
+| `services/growth_ops/routes.js` | **Updated** | Canonical ad metrics never fall back to legacy on unavailable **or** compute exceptions |
+| `services/okr/api.js` | **Updated** | ROAS family uses canonical detail; exceptions return controlled unavailable (no legacy fallback) |
 | `services/anomaly_detector/api.js` | **Updated** | Spend-scan skips waste/ROAS anomalies unless inputs are available (not partial) |
 | `services/canonical_metrics/contribution.js` | **Updated** | Budget recommendations require fully available spend + ROAS inputs |
 | `services/budget_board/api.js` | OK | Uses `computePacing` on spend events only — not canonical economics |
@@ -21,6 +21,8 @@ Audit of services that read `computeCanonicalMetrics`, `readMetric`, or `/api/me
 
 - Added `services/canonical_metrics/consumer.js` shared helpers (`resolveConsumerMetric`, `formatMetricDisplay`, `isUsableForRecommendations`, `safeAvailabilityReason`).
 - Growth Ops goals (`/api/goals/check`, `/api/goals/suggest`) return `metric_availability`, `metric_availability_reason`, `metric_is_proxy` for canonical ad metrics.
+- `/api/goals/suggest` withholds data-based **target** suggestions when canonical inputs are partial/unavailable (LLM and deterministic fallback skipped); returns `insufficient_data` with explanation. Available zero still allows target suggestions.
+- Canonical compute exceptions in Growth Ops / OKR return `unavailable` with `source_query_failed` — never legacy recompute.
 - OKR refresh returns the same metadata on auto-tracked key results.
 - Anomaly spend-scan annotates skipped checks when canonical inputs are partial/unavailable.
 - Contribution omits `budget_recommendations` when canonical spend or reported ROAS is not fully available.

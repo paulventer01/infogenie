@@ -98,6 +98,41 @@ describe('canonical metrics consumer helpers (PR10G.2)', () => {
   });
 });
 
+function growthOpsTestCtx(overrides = {}) {
+  return {
+    _amplitudeFetch: async () => ({}),
+    _amplitudeFmtDate: () => '20260101',
+    _dripLoad: async () => [],
+    _dripLock: (fn) => fn(),
+    _dripSave: async () => {},
+    _enrollDripCore: async () => ({ created: [], skipped: 0 }),
+    _fetchAmplitudeConversions: async () => ({ ok: true, conversions: 99 }),
+    _fetchGoogleAdsSpend: async () => { throw new Error('legacy should not run'); },
+    _fetchMetaSpend: async () => { throw new Error('legacy should not run'); },
+    _fetchTikTokSpend: async () => { throw new Error('legacy should not run'); },
+    _tkvCtx: { resolveTenantId: async () => 1 },
+    _tkvRead: async () => [],
+    _tkvWrite: async () => {},
+    openaiChatWithRetry: async () => {
+      throw new Error('LLM should not run');
+    },
+    ...overrides,
+  };
+}
+
+function registerGrowthOpsRoute(path, ctx) {
+  const growthPath = require.resolve('../services/growth_ops/routes');
+  delete require.cache[growthPath];
+  const handlers = [];
+  const routes = {
+    get: (p, h) => { if (p === path) handlers.push(h); },
+    post: (p, h) => { if (p === path) handlers.push(h); },
+    delete: () => {},
+  };
+  require(growthPath)(routes, ctx);
+  return handlers[0];
+}
+
 describe('growth ops goals consumer', () => {
   const computePath = require.resolve('../services/canonical_metrics/compute');
   const growthPath = require.resolve('../services/growth_ops/routes');
@@ -128,35 +163,14 @@ describe('growth ops goals consumer', () => {
       },
     });
 
-    const register = require(growthPath);
-    const measuredCalls = [];
-    const ctx = {
-      _amplitudeFetch: async () => ({}),
-      _amplitudeFmtDate: () => '20260101',
-      _dripLoad: async () => [],
-      _dripLock: (fn) => fn(),
-      _dripSave: async () => {},
-      _enrollDripCore: async () => ({ created: [], skipped: 0 }),
-      _fetchAmplitudeConversions: async () => ({ ok: true, conversions: 99 }),
-      _fetchGoogleAdsSpend: async () => { throw new Error('legacy should not run'); },
-      _fetchMetaSpend: async () => { throw new Error('legacy should not run'); },
-      _fetchTikTokSpend: async () => { throw new Error('legacy should not run'); },
-      _tkvCtx: {
-        resolveTenantId: async () => 1,
-      },
+    const handler = registerGrowthOpsRoute('/api/goals/check', growthOpsTestCtx({
       _tkvRead: async () => [{
         id: 'g1',
         metric: 'ads.totalSpend',
         target: 100,
         label: 'Spend cap',
       }],
-      _tkvWrite: async () => {},
-      openaiChatWithRetry: async () => ({ choices: [{ message: { content: '{}' } }] }),
-    };
-    const routes = { get: (path, h) => { if (path === '/api/goals/check') measuredCalls.push(h); }, post: () => {}, delete: () => {} };
-    register(routes, ctx);
-
-    const handler = measuredCalls[0];
+    }));
     assert.ok(handler, 'goals/check route registered');
     const res = {
       statusCode: 200,
@@ -169,6 +183,89 @@ describe('growth ops goals consumer', () => {
     assert.equal(res.body.goals[0].current, null);
     assert.equal(res.body.goals[0].status, 'unknown');
     assert.equal(res.body.goals[0].metric_availability, AVAILABILITY.UNAVAILABLE);
+  });
+
+  it('returns unavailable on canonical exceptions without legacy fetch', async () => {
+    require(computePath).computeCanonicalMetrics = async () => {
+      throw new Error('database connection lost');
+    };
+
+    const handler = registerGrowthOpsRoute('/api/goals/check', growthOpsTestCtx({
+      _tkvRead: async () => [{
+        id: 'g1',
+        metric: 'ads.blendedRoas',
+        target: 2,
+        label: 'ROAS target',
+      }],
+    }));
+
+    const res = {
+      body: null,
+      json(payload) { this.body = payload; return payload; },
+      status() { return this; },
+    };
+    await handler({ body: {} }, res);
+    assert.equal(res.body.goals[0].current, null);
+    assert.equal(res.body.goals[0].metric_availability, AVAILABILITY.UNAVAILABLE);
+    assert.equal(res.body.goals[0].metric_availability_reason, REASON.SOURCE_QUERY_FAILED);
+  });
+
+  it('withholds target suggestions for partial canonical inputs', async () => {
+    require(computePath).computeCanonicalMetrics = async () => mockSnap({
+      spend: 100,
+      availability: {
+        spend: { status: AVAILABILITY.PARTIAL, reason: REASON.SOURCE_QUERY_FAILED },
+      },
+      labelled: {
+        spend: {
+          availability: AVAILABILITY.PARTIAL,
+          availability_reason: REASON.SOURCE_QUERY_FAILED,
+        },
+      },
+    });
+
+    const handler = registerGrowthOpsRoute('/api/goals/suggest', growthOpsTestCtx());
+    const res = {
+      body: null,
+      json(payload) { this.body = payload; return payload; },
+      status() { return this; },
+    };
+    await handler({ body: { metric: 'ads.totalSpend', field: 'target' } }, res);
+    assert.equal(res.body.insufficient_data, true);
+    assert.equal(res.body.value, null);
+    assert.equal(res.body.metric_availability, AVAILABILITY.PARTIAL);
+    assert.match(res.body.reason, /Insufficient data/i);
+  });
+
+  it('allows target suggestions for available canonical zero', async () => {
+    require(computePath).computeCanonicalMetrics = async () => mockSnap({
+      spend: 0,
+      availability: {
+        spend: { status: AVAILABILITY.AVAILABLE, reason: null },
+      },
+      labelled: {
+        spend: { availability: AVAILABILITY.AVAILABLE },
+      },
+    });
+
+    let llmCalled = false;
+    const handler = registerGrowthOpsRoute('/api/goals/suggest', growthOpsTestCtx({
+      openaiChatWithRetry: async () => {
+        llmCalled = true;
+        throw new Error('force fallback');
+      },
+    }));
+    const res = {
+      body: null,
+      json(payload) { this.body = payload; return payload; },
+      status() { return this; },
+    };
+    await handler({ body: { metric: 'ads.totalSpend', field: 'target' } }, res);
+    assert.equal(res.body.insufficient_data, undefined);
+    assert.equal(res.body.current, 0);
+    assert.equal(res.body.value, 0);
+    assert.equal(res.body.metric_availability, AVAILABILITY.AVAILABLE);
+    assert.equal(llmCalled, true);
   });
 });
 
@@ -346,5 +443,61 @@ describe('OKR canonical ROAS consumer', () => {
     assert.equal(kr.current_value, 1.8);
     assert.equal(kr.metric_availability, AVAILABILITY.PARTIAL);
     assert.match(kr.metric_availability_reason, /offline/i);
+  });
+
+  it('returns unavailable on canonical exceptions without legacy ROAS recompute', async () => {
+    require(computePath).computeCanonicalMetrics = async () => {
+      throw new Error('relation ad_performance_hourly does not exist');
+    };
+
+    const okr = require(okrPath);
+    const layer = okr.stack.find((l) => l.route?.path === '/objectives/:id/refresh' && l.route.methods.post);
+    const _tenantCtx = require('../services/tenants/context');
+    const origResolve = _tenantCtx.resolveTenantId;
+    _tenantCtx.resolveTenantId = async () => 1;
+
+    const db = require('../db');
+    const origPool = db.getPool;
+    let legacyQueried = false;
+    db.getPool = () => ({
+      query: async (sql) => {
+        if (/ad_performance_hourly/i.test(sql)) {
+          legacyQueried = true;
+          throw new Error('legacy should not run');
+        }
+        if (/okr_objectives/i.test(sql)) {
+          return { rowCount: 1, rows: [{ id: 'o1', quarter: '2026-Q1' }] };
+        }
+        if (/okr_key_results/i.test(sql) && /SELECT/i.test(sql)) {
+          return {
+            rows: [{
+              id: 'kr1',
+              metric_type: 'blended_roas',
+              linked_channel: '',
+              target_value: 2,
+              current_value: 0,
+            }],
+          };
+        }
+        return { rows: [] };
+      },
+    });
+
+    const res = {
+      headersSent: false,
+      body: null,
+      status() { return this; },
+      json(payload) { this.body = payload; return payload; },
+    };
+    await layer.route.stack[0].handle({ params: { id: 'o1' } }, res);
+
+    db.getPool = origPool;
+    _tenantCtx.resolveTenantId = origResolve;
+
+    assert.equal(legacyQueried, false);
+    const kr = res.body.key_results[0];
+    assert.equal(kr.current_value, null);
+    assert.equal(kr.metric_availability, AVAILABILITY.UNAVAILABLE);
+    assert.equal(kr.metric_availability_reason, REASON.SOURCE_QUERY_FAILED);
   });
 });

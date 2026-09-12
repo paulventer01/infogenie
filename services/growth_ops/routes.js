@@ -36,17 +36,21 @@ const GOAL_METRICS = {
   'ads.revenue':       { label:'Total Revenue (30d)',       direction:'gte', unit:'$' },
 };
 async function _measureGoal(metric, tid) {
-  // Prefer canonical metrics SSOT for ad economics
-  if (metric.startsWith('ads.') && tid != null) {
+  const {
+    resolveConsumerMetric,
+    unavailableConsumerMetric,
+    isCanonicalAdMetric,
+  } = require('../canonical_metrics/consumer');
+
+  // Canonical SSOT for recognized ad economics — never fall back to legacy on failure.
+  if (tid != null && metric.startsWith('ads.') && isCanonicalAdMetric(metric)) {
     try {
       const { computeCanonicalMetrics } = require('../canonical_metrics/compute');
-      const { resolveConsumerMetric, isCanonicalAdMetric } = require('../canonical_metrics/consumer');
-      if (isCanonicalAdMetric(metric)) {
-        const snap = await computeCanonicalMetrics(tid, { days: 30 });
-        const detail = resolveConsumerMetric(snap, metric);
-        return detail;
-      }
-    } catch (_) { /* fall through to legacy fetchers */ }
+      const snap = await computeCanonicalMetrics(tid, { days: 30 });
+      return resolveConsumerMetric(snap, metric);
+    } catch (_) {
+      return unavailableConsumerMetric();
+    }
   }
   if (metric.startsWith('drip.')) {
     // Reuse drip-store logic inline (cheaper than HTTP self-call)
@@ -143,9 +147,32 @@ app.post('/api/goals/suggest', async (req, res) => {
     if (field !== 'target' && field !== 'label') return res.status(400).json({ ok:false, error:'invalid-field' });
     const meta = GOAL_METRICS[metric];
     const tid = await _tkvCtx.resolveTenantId(req, { label: 'goals:suggest' });
+    const {
+      canonicalMetricMeta,
+      isCanonicalDataUsableForTarget,
+      unavailableConsumerMetric,
+      AVAILABILITY,
+    } = require('../canonical_metrics/consumer');
     let measured = null;
-    try { measured = await _measureGoal(metric, tid); } catch (_) { measured = null; }
-    const current = _normalizeMeasured(measured).value;
+    try { measured = await _measureGoal(metric, tid); } catch (_) {
+      measured = unavailableConsumerMetric();
+    }
+    const norm = _normalizeMeasured(measured);
+    const current = norm.value;
+    const metaFields = canonicalMetricMeta(norm);
+
+    if (field === 'target' && !isCanonicalDataUsableForTarget(norm)) {
+      const status = norm.availability || AVAILABILITY.UNAVAILABLE;
+      const reasonText = norm.availability_reason || 'unavailable';
+      return res.json({
+        ok: true,
+        insufficient_data: true,
+        value: null,
+        current,
+        ...metaFields,
+        reason: `Insufficient data for a data-based target suggestion — canonical metric is ${status} (${reasonText}). Enter a target manually.`,
+      });
+    }
 
     // Deterministic fallback so the button always returns something useful
     // even if the LLM is degraded or no API key is set.
@@ -185,17 +212,43 @@ app.post('/api/goals/suggest', async (req, res) => {
       if (field === 'target') {
         const v = Number(parsed.value);
         if (!Number.isFinite(v) || v < 0) throw new Error('bad-value');
-        return res.json({ ok:true, value: +v.toFixed(2), reason: String(parsed.reason || '').slice(0, 200), current });
+        return res.json({
+          ok: true,
+          value: +v.toFixed(2),
+          reason: String(parsed.reason || '').slice(0, 200),
+          current,
+          ...metaFields,
+        });
       }
       const lbl = String(parsed.label || '').trim().slice(0, 80);
       if (!lbl) throw new Error('bad-label');
-      return res.json({ ok:true, label: lbl, reason: String(parsed.reason || '').slice(0, 200), current });
+      return res.json({
+        ok: true,
+        label: lbl,
+        reason: String(parsed.reason || '').slice(0, 200),
+        current,
+        ...metaFields,
+      });
     } catch (_llmErr) {
       if (field === 'target') {
         const v = _fallbackTarget();
-        return res.json({ ok:true, value: v, reason: 'Suggested ~20% improvement on your current value.', current, fallback: true });
+        return res.json({
+          ok: true,
+          value: v,
+          reason: 'Suggested ~20% improvement on your current value.',
+          current,
+          fallback: true,
+          ...metaFields,
+        });
       }
-      return res.json({ ok:true, label: _fallbackLabel(), reason: 'Default time-stamped goal label.', current, fallback: true });
+      return res.json({
+        ok: true,
+        label: _fallbackLabel(),
+        reason: 'Default time-stamped goal label.',
+        current,
+        fallback: true,
+        ...metaFields,
+      });
     }
   } catch (e) {
     res.status(500).json({ ok:false, error: e.message });
