@@ -75,6 +75,9 @@ run("express", "node", ["server.js"], {
   EXPRESS_PORT,
   NEXT_FRONT_DOOR: "1",
   NODE_ENV: "production",
+  // Scan checks the raw env var (not NODE_ENV). Default on so production
+  // actually enforces and reports PERMISSION_ENFORCEMENT as enabled.
+  PERMISSION_ENFORCEMENT: process.env.PERMISSION_ENFORCEMENT || "on",
 });
 
 // Next.js: public webview port, production server against the prebuilt .next

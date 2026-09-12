@@ -36,6 +36,21 @@ describe('Technical Manager scan', () => {
       if (prev != null) process.env.SESSION_SECRET = prev;
     }
   });
+
+  it('reports permission enforcement when PERMISSION_ENFORCEMENT=on', async () => {
+    const prev = process.env.PERMISSION_ENFORCEMENT;
+    process.env.PERMISSION_ENFORCEMENT = 'on';
+    try {
+      const snap = await runTechnicalScan(null);
+      assert.equal(snap.security.permission_enforcement, true);
+      assert.equal(snap.security.PERMISSION_ENFORCEMENT_env_scan, true);
+      assert.equal(snap.security.permissionMode_debug, 'on');
+      assert.ok(!snap.events.some((e) => String(e.message || '').includes('PERMISSION_ENFORCEMENT is not on')));
+    } finally {
+      if (prev != null) process.env.PERMISSION_ENFORCEMENT = prev;
+      else delete process.env.PERMISSION_ENFORCEMENT;
+    }
+  });
 });
 
 describe('Technical Manager surface monitor', () => {
@@ -57,6 +72,7 @@ describe('Technical Manager surface monitor', () => {
     assert.ok(surfaces.probes.length >= 4);
     assert.ok(!surfaces.probes.some((p) => String(p.path || '').includes('technical-manager')));
     assert.ok(Array.isArray(surfaces.issues));
+    assert.equal(surfaces.counts.missing_permissions, 0, `missing permission-matrix views: ${(surfaces.missing_permissions || []).join(', ')}`);
   });
 });
 
@@ -64,6 +80,13 @@ describe('Technical Manager registration', () => {
   it('maps API + view permissions', () => {
     assert.equal(matrix.requiredPermissionForRequest('/api/technical-manager/scan', 'POST').matched, true);
     assert.equal(matrix.COMPONENT_MATRIX['technical-manager'], 'manage.projects.view');
+  });
+
+  it('covers every nav view in COMPONENT_MATRIX', () => {
+    const nav = inventoryNavViews();
+    const mapped = new Set(Object.keys(matrix.COMPONENT_MATRIX));
+    const missing = nav.filter((v) => !mapped.has(v));
+    assert.deepEqual(missing, [], `nav views missing COMPONENT_MATRIX: ${missing.join(', ')}`);
   });
 });
 
