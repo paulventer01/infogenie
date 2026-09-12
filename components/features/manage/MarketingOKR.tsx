@@ -4,18 +4,31 @@
 // with optional auto-tracking from live campaign data (spend, impressions,
 // clicks, conversions, ROAS), and monitor progress with status badges.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import {
+  coerceMetricNumber,
+  formatMetricTarget,
+  formatMetricValue,
+  isCanonicalAutoKr,
+  isUnverifiedCanonical,
+  mergeMetricAvailability,
+  progressLabel,
+  progressPctFromValues,
+  summarizeObjective,
+  type MetricAvailabilityMeta,
+} from "@/lib/metricAvailability";
+import MetricAvailabilityBadges from "@/components/features/shared/MetricAvailabilityBadges";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-interface KeyResult {
+interface KeyResult extends MetricAvailabilityMeta {
   id: string;
   title: string;
   metric_type: string;
   linked_channel: string;
   target_value: number;
-  current_value: number;
+  current_value: number | null;
   unit: string;
   updated_at: string;
 }
@@ -43,6 +56,7 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; ic
   at_risk:   { label: "At Risk",   color: "#92400e", bg: "#fef9c3", icon: "🟡" },
   off_track: { label: "Off Track", color: "#b91c1c", bg: "#fee2e2", icon: "🔴" },
   complete:  { label: "Complete",  color: "#1d4ed8", bg: "#eff6ff", icon: "✅" },
+  unverified: { label: "Unverified", color: "#475569", bg: "#f1f5f9", icon: "❔" },
 };
 
 const METRIC_TYPES = [
@@ -75,14 +89,27 @@ function KrRow({
   kr: KeyResult;
   onDelete: () => void;
 }) {
-  const pct = kr.target_value > 0
-    ? Math.min(100, Math.round((Number(kr.current_value) / Number(kr.target_value)) * 100))
-    : 0;
   const isAuto = kr.metric_type !== "manual";
+  const recognizedCanonical = isCanonicalAutoKr(kr);
+  const unverified = isUnverifiedCanonical(kr, recognizedCanonical);
+  const pct = isAuto
+    ? progressPctFromValues(kr.current_value, kr.target_value, kr, recognizedCanonical)
+    : (() => {
+        const cur = coerceMetricNumber(kr.current_value);
+        const tgt = coerceMetricNumber(kr.target_value);
+        if (tgt == null || tgt <= 0 || cur == null) return null;
+        return Math.min(100, Math.round((cur / tgt) * 100));
+      })();
+  const currentDisplay = formatMetricValue(kr.current_value, kr.unit, kr, recognizedCanonical);
+  const targetDisplay = formatMetricTarget(kr.target_value, kr.unit);
+  const barPct = pct == null ? 0 : pct;
   return (
     <div style={{ padding: "10px 0", borderBottom: "1px solid #f1f5f9", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 200 }}>
-        <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>{kr.title}</div>
+        <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>
+          {kr.title}
+          <MetricAvailabilityBadges meta={kr} />
+        </div>
         <div style={{ color: "#64748b", fontSize: "0.76rem", marginTop: 2 }}>
           {METRIC_TYPES.find(m => m.value === kr.metric_type)?.label}
           {kr.linked_channel ? ` · ${kr.linked_channel}` : ""}
@@ -90,11 +117,18 @@ function KrRow({
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 180 }}>
-        <ProgressBar pct={pct} />
-        <div style={{ fontSize: "0.82rem", fontWeight: 700, minWidth: 38, textAlign: "right" }}>{pct}%</div>
+        <ProgressBar pct={barPct} />
+        <div style={{ fontSize: "0.82rem", fontWeight: 700, minWidth: 56, textAlign: "right" }}>
+          {progressLabel(pct, kr)}
+        </div>
       </div>
-      <div style={{ fontSize: "0.82rem", color: "#475569", minWidth: 120, textAlign: "right" }}>
-        {Number(kr.current_value).toLocaleString()}{kr.unit} / {Number(kr.target_value).toLocaleString()}{kr.unit}
+      <div
+        style={{ fontSize: "0.82rem", color: unverified ? "#94a3b8" : "#475569", minWidth: 160, textAlign: "right" }}
+        aria-label={`Current ${currentDisplay}, target ${targetDisplay}`}
+      >
+        {currentDisplay}{kr.unit && !currentDisplay.includes(kr.unit) ? kr.unit : ""}
+        {" / "}
+        {targetDisplay}{kr.unit && !targetDisplay.includes(kr.unit) ? kr.unit : ""}
       </div>
       <button onClick={onDelete} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: "0.9rem", padding: "2px 6px" }} title="Remove">✕</button>
     </div>
@@ -123,12 +157,12 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
   });
   const [saving, setSaving] = useState(false);
 
-  async function load(q: string) {
+  const load = useCallback(async (q: string) => {
     setLoading(true);
     const r = await apiGet<ObjResp>(`/api/okr/objectives${q ? `?quarter=${q}` : ""}`);
     setObjectives(r.ok && r.objectives ? r.objectives : []);
     setLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
     apiGet<QtrResp>("/api/okr/quarters").then(r => {
@@ -140,7 +174,7 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
         load(q);
       }
     });
-  }, []);
+  }, [load]);
 
   function toggleExpanded(id: string) {
     setExpanded(prev => {
@@ -192,8 +226,35 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
     setRefreshing(id);
     const r = await apiPost<RefreshR>(`/api/okr/objectives/${id}/refresh`, {});
     setRefreshing(null);
-    if (r.ok) load(selQ);
-    else alert(r.error || "Refresh failed");
+    if (!r.ok) {
+      alert(r.error || "Refresh failed");
+      return;
+    }
+    if (r.key_results?.length) {
+      const refreshed = new Map(r.key_results.map((kr) => [kr.id, kr]));
+      setObjectives((prev) =>
+        prev.map((obj) => {
+          if (obj.id !== id) return obj;
+          return {
+            ...obj,
+            status: (r.status as Objective["status"]) || obj.status,
+            key_results: (obj.key_results || []).map((kr) => {
+              const next = refreshed.get(kr.id);
+              if (!next) return kr;
+              return mergeMetricAvailability(
+                {
+                  ...kr,
+                  current_value: next.current_value,
+                },
+                next,
+              );
+            }),
+          };
+        }),
+      );
+      return;
+    }
+    load(selQ);
   }
 
   async function markComplete(obj: Objective) {
@@ -204,10 +265,12 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
     load(selQ);
   }
 
-  const onTrack  = objectives.filter(o => o.status === "on_track").length;
-  const atRisk   = objectives.filter(o => o.status === "at_risk").length;
-  const offTrack = objectives.filter(o => o.status === "off_track").length;
-  const complete = objectives.filter(o => o.status === "complete").length;
+  const summaries = objectives.map((obj) => summarizeObjective(obj));
+  const onTrack  = summaries.filter((s) => s.statusKey === "on_track").length;
+  const atRisk   = summaries.filter((s) => s.statusKey === "at_risk").length;
+  const offTrack = summaries.filter((s) => s.statusKey === "off_track").length;
+  const complete = summaries.filter((s) => s.statusKey === "complete").length;
+  const unverified = summaries.filter((s) => s.statusKey === "unverified").length;
 
   return (
     <div className="view-header-wrap">
@@ -254,9 +317,10 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
         {/* Summary pills */}
         {objectives.length > 0 && (
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 22 }}>
-            {(["on_track","at_risk","off_track","complete"] as const).map(key => {
+            {(["on_track","at_risk","off_track","complete","unverified"] as const).map(key => {
               const sm = STATUS_META[key];
-              const val = key === "on_track" ? onTrack : key === "at_risk" ? atRisk : key === "off_track" ? offTrack : complete;
+              const val = key === "on_track" ? onTrack : key === "at_risk" ? atRisk : key === "off_track" ? offTrack : key === "complete" ? complete : unverified;
+              if (val === 0 && key === "unverified") return null;
               return (
                 <div key={key} style={{ background: sm.bg, color: sm.color, borderRadius: 20, padding: "5px 14px", fontSize: "0.83rem", fontWeight: 600 }}>
                   {sm.icon} {val} {sm.label}
@@ -283,12 +347,10 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {objectives.map(obj => {
-              const sm = STATUS_META[obj.status] || STATUS_META.on_track;
+              const summary = summarizeObjective(obj);
+              const sm = STATUS_META[summary.statusKey] || STATUS_META.on_track;
               const isOpen = expanded.has(obj.id);
               const krs = obj.key_results || [];
-              const avgPct = krs.length
-                ? Math.round(krs.reduce((s, kr) => s + (kr.target_value > 0 ? Math.min(100, (Number(kr.current_value) / Number(kr.target_value)) * 100) : 0), 0) / krs.length)
-                : 0;
               return (
                 <div key={obj.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
                   {/* Header */}
@@ -306,14 +368,16 @@ export default function MarketingOKR({ embedded = false }: { embedded?: boolean 
                       )}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      {krs.length > 0 && (
+                      {krs.length > 0 && summary.avgPct != null && (
                         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 120 }}>
-                          <ProgressBar pct={avgPct} />
-                          <span style={{ fontSize: "0.83rem", fontWeight: 700 }}>{avgPct}%</span>
+                          <ProgressBar pct={summary.avgPct} />
+                          <span style={{ fontSize: "0.83rem", fontWeight: 700 }}>
+                            {summary.avgLabel}
+                          </span>
                         </div>
                       )}
                       <div style={{ background: sm.bg, color: sm.color, borderRadius: 20, padding: "4px 12px", fontSize: "0.8rem", fontWeight: 600, whiteSpace: "nowrap" }}>
-                        {sm.icon} {sm.label}
+                        {sm.icon} {summary.statusLabel}
                       </div>
                       <div style={{ color: "#64748b", fontSize: "0.8rem" }}>{krs.length} KRs</div>
                       <span style={{ color: "#94a3b8" }}>{isOpen ? "▲" : "▼"}</span>
