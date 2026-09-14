@@ -34,7 +34,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify goals and OKR availability UI behavior
-        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/goals-okr-availability-ui.test.js test/canonical-metrics-consumer-consistency.test.js
+        run: node --no-experimental-global-navigator --test --test-reporter=tap --test-force-exit test/goals-okr-availability-ui.test.js test/canonical-metrics-consumer-consistency.test.js test/canonical-metrics-goals-vs-actuals.test.js
 
   browser-postgres:
     name: Goals OKR availability Chromium + PostgreSQL (zero skips)

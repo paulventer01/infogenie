@@ -593,11 +593,16 @@ async function computeCanonicalMetrics(tid, opts = {}) {
   _applyDerivedMetrics(out, sources);
   provenance.push(_provenance('canonical_metrics', 'availability+derived', `defs ${DEFINITION_VERSION}`));
 
-  // 4) Goals vs actuals
+  // 4) Goals vs actuals — live canonical actuals for auto-tracked metrics (PR10G.7)
+  const { buildGoalsVsActuals } = require('./goals_vs_actuals');
+  const { tkey } = require('../tenants/kv_scope');
+  let okrRows = [];
+  let agentGoalRows = [];
+  let growthGoals = [];
   try {
     const okr = await pool.query(
       `SELECT o.title AS objective, kr.title AS kr_title, kr.metric_type,
-              kr.target_value, kr.current_value, kr.unit
+              kr.linked_channel, kr.target_value, kr.current_value, kr.unit
          FROM okr_key_results kr
          JOIN okr_objectives o ON o.id = kr.objective_id
         WHERE o.tenant_id = $1
@@ -605,22 +610,8 @@ async function computeCanonicalMetrics(tid, opts = {}) {
         LIMIT 20`,
       [tid],
     );
-    for (const row of okr.rows) {
-      const target = Number(row.target_value) || 0;
-      const current = Number(row.current_value) || 0;
-      const pct = target > 0 ? Math.min(200, Math.round((current / target) * 100)) : null;
-      out.goals_vs_actuals.push({
-        source: 'okr',
-        label: `${row.objective} · ${row.kr_title}`,
-        metric: row.metric_type,
-        target,
-        actual: current,
-        unit: row.unit || '',
-        pct,
-        status: pct == null ? 'unknown' : pct >= 100 ? 'on-track' : pct >= 70 ? 'at-risk' : 'off-track',
-      });
-    }
-    if (okr.rows.length) provenance.push(_provenance('okr_key_results', 'goals_vs_actuals'));
+    okrRows = okr.rows;
+    if (okr.rows.length) provenance.push(_provenance('okr_key_results', 'goals_vs_actuals', 'live canonical actuals'));
   } catch (e) {
     provenance.push(_provenance('okr_key_results', 'goals_vs_actuals', `unavailable: ${e.message}`));
   }
@@ -634,24 +625,23 @@ async function computeCanonicalMetrics(tid, opts = {}) {
         LIMIT 15`,
       [tid],
     );
-    for (const row of ag.rows) {
-      const pct = row.progress_pct != null ? Number(row.progress_pct) : null;
-      out.goals_vs_actuals.push({
-        source: 'agent_goals',
-        label: row.title,
-        metric: 'progress_pct',
-        target: 100,
-        actual: pct,
-        unit: '%',
-        pct,
-        status: pct == null ? 'unknown' : pct >= 80 ? 'on-track' : pct >= 50 ? 'at-risk' : 'off-track',
-        deadline: row.deadline || null,
-      });
-    }
+    agentGoalRows = ag.rows;
     if (ag.rows.length) provenance.push(_provenance('agent_goals', 'goals_vs_actuals'));
   } catch (e) {
     provenance.push(_provenance('agent_goals', 'goals_vs_actuals', `unavailable: ${e.message}`));
   }
+
+  try {
+    const raw = await _db.kvGet(tkey('goals', tid), []);
+    growthGoals = Array.isArray(raw) ? raw : [];
+    if (growthGoals.length) {
+      provenance.push(_provenance('kv_store', 'goals_vs_actuals', `${growthGoals.length} growth goal(s)`));
+    }
+  } catch (e) {
+    provenance.push(_provenance('kv_store', 'goals_vs_actuals', `unavailable: ${e.message}`));
+  }
+
+  // goals_vs_actuals assembled after labelled KPIs (see end of compute)
 
   // 5) Prior-period comparison
   out.prior = null;
@@ -798,6 +788,11 @@ async function computeCanonicalMetrics(tid, opts = {}) {
   }
 
   _buildKpisAndLabelled(out);
+  out.goals_vs_actuals = buildGoalsVsActuals(out, {
+    okrRows,
+    agentGoalRows,
+    growthGoals,
+  });
   out.definitions = listDefinitions();
   out.sources = sources;
   delete out._raw;

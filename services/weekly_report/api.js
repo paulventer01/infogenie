@@ -126,15 +126,19 @@ async function _gatherSections(brand, tid) {
       ],
     });
     if (m.goals_vs_actuals?.length) {
+      const {
+        formatGoalActualDisplay,
+        formatGoalStatusDisplay,
+      } = require('../canonical_metrics/goals_vs_actuals');
       sections.push({
         title: '🎯 Goals vs Actuals',
         kind: 'table',
         headers: ['Goal', 'Target', 'Actual', 'Status'],
-        rows: m.goals_vs_actuals.slice(0, 10).map(g => [
+        rows: m.goals_vs_actuals.slice(0, 10).map((g) => [
           String(g.label || '').slice(0, 50),
           String(g.target ?? '—'),
-          String(g.actual ?? '—'),
-          String(g.status || '—'),
+          formatGoalActualDisplay(g),
+          formatGoalStatusDisplay(g),
         ]),
       });
     }
@@ -265,8 +269,10 @@ async function _buildClientNarrative(brand, tid, sections = []) {
       }
     }
 
-    const offTrack = (metrics.goals_vs_actuals || []).filter((g) => g.status === 'off-track' || g.status === 'at-risk');
-    const onTrack = (metrics.goals_vs_actuals || []).filter((g) => g.status === 'on-track');
+    const { isVerifiedGoalRow } = require('../canonical_metrics/goals_vs_actuals');
+    const verifiedGoals = (metrics.goals_vs_actuals || []).filter(isVerifiedGoalRow);
+    const offTrack = verifiedGoals.filter((g) => g.status === 'off-track' || g.status === 'at-risk');
+    const onTrack = verifiedGoals.filter((g) => g.status === 'on-track');
     if (onTrack.length) wins.push(`${onTrack.length} goal(s) on track`);
     if (offTrack.length) {
       risks.push(`${offTrack.length} goal(s) at risk / off track`);
