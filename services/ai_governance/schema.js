@@ -10,6 +10,8 @@ async function ensureAiGovernanceSchema() {
       id               TEXT PRIMARY KEY,
       tenant_id        INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       default_mode     TEXT NOT NULL DEFAULT 'shadow',
+      content_safety_mode TEXT NOT NULL DEFAULT 'enforce',
+      content_safety_explicit BOOLEAN NOT NULL DEFAULT false,
       risk_appetite    TEXT NOT NULL DEFAULT 'aggressive',
       action_tiers     JSONB NOT NULL DEFAULT '{}',
       block_on_caution BOOLEAN NOT NULL DEFAULT false,
@@ -61,6 +63,20 @@ async function ensureAiGovernanceSchema() {
   try { await addTenantIdColumn('ai_governance_policies'); } catch (_) { /* idempotent */ }
   try { await addTenantIdColumn('ai_governance_events'); } catch (_) { /* idempotent */ }
   try { await addTenantIdColumn('ai_governance_output_checks'); } catch (_) { /* idempotent */ }
+
+  await p.query(`ALTER TABLE ai_governance_policies
+    ADD COLUMN IF NOT EXISTS content_safety_mode TEXT NOT NULL DEFAULT 'enforce'`).catch(() => {});
+  await p.query(`ALTER TABLE ai_governance_policies
+    ADD COLUMN IF NOT EXISTS content_safety_explicit BOOLEAN NOT NULL DEFAULT false`).catch(() => {});
+
+  // Existing tenants: inherited shadow defaults → enforce; explicit warning_only preserved.
+  await p.query(`
+    UPDATE ai_governance_policies
+    SET content_safety_mode = 'enforce'
+    WHERE content_safety_explicit = false
+      AND (content_safety_mode IS NULL OR content_safety_mode NOT IN ('enforce', 'warning_only'))
+  `).catch(() => {});
+
   return true;
 }
 

@@ -214,6 +214,7 @@ router.post('/reddit-aeo/draft-reply', _safeAsync(async (req, res) => {
     niche: req.body?.niche || plan?.niche,
     product: req.body?.product,
     voice: req.body?.voice,
+    tenantId: tid,
   });
   if (!result.ok) return _err(res, 400, result.error);
   res.json({ ok: true, tenant_id: tid, ...result });

@@ -1,20 +1,45 @@
 /**
- * REST API for AI Governance Hub — Phase A (Policy + Status + Audit).
+ * REST API for AI Governance Hub — PR10H.1 content safety enforcement.
  */
 const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const { hasPermission } = require('../tenants/permission_enforce');
 const {
   DEFAULT_ACTION_TIERS,
   ACTION_TIER_KEYS,
   PRESETS,
+  CONTENT_SAFETY_MODES,
   defaultPolicy,
   applyPreset,
   _normalizeTiers,
 } = require('./policy');
 const { loadPolicy, govern } = require('./orchestrator');
+const { redactSensitiveText } = require('./preview_redact');
 const { newId } = require('./schema');
+
+const SETTINGS_PERM = 'tenant.settings.manage';
+
+async function _auditPolicyChange(tid, userId, detail) {
+  if (!_db.hasDb() || tid == null) return;
+  try {
+    await _db.getPool().query(
+      `INSERT INTO ai_governance_events
+        (id, tenant_id, user_id, surface, action, execution_tier, status, block_reason, warnings, meta)
+       VALUES ($1,$2,$3,'ai_governance','policy_change','auto','allowed',NULL,$4,$5)`,
+      [
+        newId('age'),
+        tid,
+        userId || null,
+        JSON.stringify([]),
+        JSON.stringify(detail),
+      ],
+    );
+  } catch (e) {
+    console.warn('[ai-governance] policy audit failed:', e.message);
+  }
+}
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _route(fn) {
@@ -62,10 +87,13 @@ router.get('/status', _route(async (req, res) => {
   res.json({
     ok: true,
     mode: policy.default_mode,
+    content_safety_mode: policy.content_safety_mode,
+    content_safety_explicit: !!policy.content_safety_explicit,
     risk_appetite: policy.risk_appetite,
     nonRestrictive: {
-      shadowDefault: true,
-      failOpen: true,
+      shadowDefault: policy.default_mode === 'shadow',
+      contentSafetyEnforce: policy.content_safety_mode === 'enforce',
+      failOpen: false,
       generateAuto: true,
       applyCalendarAuto: policy.action_tiers.apply_calendar === 'auto',
       blockOnCaution: !!policy.block_on_caution,
@@ -91,13 +119,17 @@ router.get('/status', _route(async (req, res) => {
       })(),
       observability: { ready: true, note: 'AI call traces at /api/ai-traces — latency, tier, est. cost' },
       feedback: { ready: true, note: 'AI output ratings at /api/ai-feedback — dislike → memory + escalate candidates' },
-      output: { ready: true, note: 'Phase A light scan; full gate in Phase D' },
+      output: {
+        ready: true,
+        note: 'PR10H.1 — PII, brand/compliance patterns, claim citation on generated content',
+        mode: policy.content_safety_mode,
+      },
     },
     last24h: counts,
     presets: Object.values(PRESETS).map((p) => ({ id: p.id, label: p.label })),
-    banner: policy.default_mode === 'shadow'
-      ? 'Shadow mode — nothing is blocked. Actions proceed; we log warnings for audit.'
-      : 'Enforce mode (tenant opt-in) — suggest/block tiers can delay or stop actions.',
+    banner: policy.content_safety_mode === 'warning_only'
+      ? 'Warning-only mode (explicit opt-in) — content safety issues are logged but generated output is returned with warnings.'
+      : 'Content safety enforce — blocked or unavailable checks stop generated content from being returned. Publish/send/launch approval gates unchanged.',
   });
 }));
 
@@ -132,6 +164,15 @@ router.put('/policy', express.json(), _route(async (req, res) => {
   if (body.default_mode === 'shadow' || body.default_mode === 'enforce') {
     patch.default_mode = body.default_mode;
   }
+  if (body.content_safety_mode === 'enforce' || body.content_safety_mode === 'warning_only') {
+    if (body.content_safety_mode === 'warning_only' && !hasPermission(req, SETTINGS_PERM)) {
+      return _err(res, 403, 'settings_permission_required');
+    }
+    patch.content_safety_mode = body.content_safety_mode;
+    if (body.content_safety_mode === 'warning_only') {
+      patch.content_safety_explicit = true;
+    }
+  }
   if (typeof body.block_on_caution === 'boolean') patch.block_on_caution = body.block_on_caution;
   if (typeof body.require_context === 'boolean') patch.require_context = body.require_context;
   if (typeof body.policy_document === 'string') patch.policy_document = body.policy_document.slice(0, 50000);
@@ -149,6 +190,10 @@ router.put('/policy', express.json(), _route(async (req, res) => {
   const current = await loadPolicy(tid);
   const next = {
     default_mode: patch.default_mode || current.default_mode || 'shadow',
+    content_safety_mode: patch.content_safety_mode || current.content_safety_mode || 'enforce',
+    content_safety_explicit: typeof patch.content_safety_explicit === 'boolean'
+      ? patch.content_safety_explicit
+      : (patch.content_safety_mode === 'warning_only' ? true : !!current.content_safety_explicit),
     risk_appetite: patch.risk_appetite || current.risk_appetite || 'aggressive',
     action_tiers: patch.action_tiers || current.action_tiers,
     block_on_caution: typeof patch.block_on_caution === 'boolean' ? patch.block_on_caution : !!current.block_on_caution,
@@ -157,17 +202,24 @@ router.put('/policy', express.json(), _route(async (req, res) => {
     ethics_contact: patch.ethics_contact !== undefined ? patch.ethics_contact : current.ethics_contact,
   };
 
+  if (!CONTENT_SAFETY_MODES.includes(next.content_safety_mode)) {
+    return _err(res, 400, 'invalid_content_safety_mode');
+  }
+
   const id = current.id || newId('agp');
   const version = (current.policy_version || 1) + (current.id ? 1 : 0);
   const p = _db.getPool();
 
   await p.query(
     `INSERT INTO ai_governance_policies
-      (id, tenant_id, default_mode, risk_appetite, action_tiers, block_on_caution,
+      (id, tenant_id, default_mode, content_safety_mode, content_safety_explicit,
+       risk_appetite, action_tiers, block_on_caution,
        require_context, policy_document, policy_version, ethics_contact, updated_by, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now())
      ON CONFLICT (tenant_id) DO UPDATE SET
        default_mode = EXCLUDED.default_mode,
+       content_safety_mode = EXCLUDED.content_safety_mode,
+       content_safety_explicit = EXCLUDED.content_safety_explicit,
        risk_appetite = EXCLUDED.risk_appetite,
        action_tiers = EXCLUDED.action_tiers,
        block_on_caution = EXCLUDED.block_on_caution,
@@ -181,6 +233,8 @@ router.put('/policy', express.json(), _route(async (req, res) => {
       id,
       tid,
       next.default_mode,
+      next.content_safety_mode,
+      next.content_safety_explicit,
       next.risk_appetite,
       JSON.stringify(next.action_tiers),
       next.block_on_caution,
@@ -192,8 +246,27 @@ router.put('/policy', express.json(), _route(async (req, res) => {
     ],
   );
 
+  await _auditPolicyChange(tid, req.user?.id || null, {
+    previous: {
+      default_mode: current.default_mode,
+      content_safety_mode: current.content_safety_mode,
+      content_safety_explicit: current.content_safety_explicit,
+    },
+    next: {
+      default_mode: next.default_mode,
+      content_safety_mode: next.content_safety_mode,
+      content_safety_explicit: next.content_safety_explicit,
+    },
+    actor: req.user?.id || null,
+  });
+
   const saved = await loadPolicy(tid);
-  res.json({ ok: true, policy: saved, enforceEnabled: saved.default_mode === 'enforce' });
+  res.json({
+    ok: true,
+    policy: saved,
+    enforceEnabled: saved.default_mode === 'enforce',
+    contentSafetyEnforce: saved.content_safety_mode === 'enforce',
+  });
 }));
 
 router.get('/audit', _route(async (req, res) => {
@@ -219,7 +292,13 @@ router.get('/audit', _route(async (req, res) => {
      LIMIT $${params.length}`,
     params,
   );
-  res.json({ ok: true, events: r.rows, total: r.rows.length });
+  const events = r.rows.map((row) => ({
+    ...row,
+    output_preview: row.output_preview
+      ? redactSensitiveText(row.output_preview, 280)
+      : row.output_preview,
+  }));
+  res.json({ ok: true, events, total: events.length });
 }));
 
 router.post('/review/:eventId', express.json(), _route(async (req, res) => {
@@ -262,14 +341,18 @@ router.post('/review/:eventId', express.json(), _route(async (req, res) => {
 router.post('/demo-event', express.json(), _route(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'ai-gov:demo' });
   if (!tid) return _err(res, 400, 'no_tenant');
+  const surface = req.body?.surface || 'content_ai';
+  const action = req.body?.action || 'generate_content';
   const result = await govern({
     tenantId: tid,
     userId: req.user?.id || null,
-    surface: req.body?.surface || 'marketing_spine',
-    action: req.body?.action || 'apply',
+    surface,
+    action,
+    failClosed: action.includes('generate') || surface.includes('content'),
     payload: {
-      title: req.body?.title || 'Demo spine apply',
-      preview: 'Demo governance event (shadow — always proceeds)',
+      title: req.body?.title || 'Demo content generation',
+      text: req.body?.text || 'Demo governance content scan',
+      preview: req.body?.preview || req.body?.text || 'Demo governance event',
       __force_brand_safety_block: !!req.body?.forceBlock,
     },
   });

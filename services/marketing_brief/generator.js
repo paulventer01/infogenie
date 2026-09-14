@@ -492,14 +492,39 @@ async function generateBrief(brand, tenantId) {
 
   const { headline, greeting, sections, actions } = body;
 
+  const briefText = JSON.stringify({ headline, greeting, sections, actions });
+  let contentSafetyWarnings = [];
+  try {
+    const { gateGeneratedContent } = require('../ai_governance/hooks');
+    const gated = await gateGeneratedContent({
+      tenantId,
+      surface: 'marketing_brief',
+      action: 'generate_brief',
+      text: briefText,
+      hasContext: signals.length > 0,
+    });
+    if (!gated.ok) {
+      const err = new Error(gated.userMessage || 'content_safety_blocked');
+      err.code = 'content_safety_blocked';
+      throw err;
+    }
+    contentSafetyWarnings = gated.content_safety_warnings || gated.warnings || [];
+  } catch (e) {
+    if (e.code === 'content_safety_blocked') throw e;
+    const err = new Error('Content safety checks are temporarily unavailable. Brief generation was stopped.');
+    err.code = 'content_safety_unavailable';
+    throw err;
+  }
+
   const r = await pool.query(
     `INSERT INTO marketing_briefs
-       (tenant_id, brand, headline, greeting, signals, actions, sections, active_pillars, generated_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+       (tenant_id, brand, headline, greeting, signals, actions, sections, active_pillars,
+        generated_by, content_safety_warnings)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [tenantId, b, headline, greeting,
      JSON.stringify(signals), JSON.stringify(actions || []),
      JSON.stringify(sections || []), JSON.stringify(activePillars),
-     generated_by]);
+     generated_by, JSON.stringify(contentSafetyWarnings)]);
 
   return r.rows[0];
 }
