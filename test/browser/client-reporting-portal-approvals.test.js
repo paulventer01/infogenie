@@ -108,7 +108,6 @@ test('PR10H.3 portal approval browser journey', {
   await button(owner, 'Preview report');
   await owner.waitForSelector('[aria-label="Client report preview"] article', { visible: true });
   await owner.waitForSelector(APPROVALS, { visible: true });
-  await waitSubmitReady(owner);
   const invite = await responseFor(owner, 'POST', `${API}/clients/${clientId}/portal/invitations`,
     () => button(owner, 'Create invitation link', PORTAL), 201);
   const inviteUrl = `${baseUrl}${invite.invite_path}`;
@@ -121,8 +120,9 @@ test('PR10H.3 portal approval browser journey', {
   await portal.waitForFunction(() => location.pathname === '/client-report/view');
   await portal.waitForSelector('[aria-label="Report approval"]', { visible: true, timeout: 5000 }).catch(() => null);
 
-  await responseFor(owner, 'POST', `${API}/clients/${clientId}/approval-requests`,
-    () => button(owner, 'Submit displayed report for approval', APPROVALS), 201);
+  await submitApproval(owner, clientId);
+  await owner.reload({ waitUntil: 'networkidle2' });
+  await selectClient(owner, clientId);
   await text(owner, 'Pending client approval', APPROVALS);
 
   await portal.reload({ waitUntil: 'networkidle2' });
@@ -146,9 +146,9 @@ test('PR10H.3 portal approval browser journey', {
 
   await button(owner, 'Preview report');
   await owner.waitForSelector('[aria-label="Client report preview"] article', { visible: true });
-  await waitSubmitReady(owner);
-  await responseFor(owner, 'POST', `${API}/clients/${clientId}/approval-requests`,
-    () => button(owner, 'Submit displayed report for approval', APPROVALS), 201);
+  await submitApproval(owner, clientId);
+  await owner.reload({ waitUntil: 'networkidle2' });
+  await selectClient(owner, clientId);
   await text(owner, 'Pending client approval', APPROVALS);
 
   await portal.reload({ waitUntil: 'networkidle2' });
