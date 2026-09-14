@@ -48,6 +48,21 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   page.setDefaultTimeout(45_000);
   page.setDefaultNavigationTimeout(90_000);
   await page.setViewport({ width: 1440, height: 1050 });
+  await page.setBypassServiceWorker(true);
+  await page.setCacheEnabled(false);
+  await page.setRequestInterception(true);
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (request.method() === 'GET' && url.pathname === '/api/diag-capture/latest') {
+      void request.respond({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: false, error: 'no captures yet — run Analyse Now once to seed' }),
+      });
+      return;
+    }
+    void request.continue();
+  });
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (msg) => {
     if (msg.type() === 'error') errors.push(msg.text());
