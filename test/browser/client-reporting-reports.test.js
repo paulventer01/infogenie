@@ -235,7 +235,11 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     version = profileResult.body.profile.version;
     await owner.reload({ waitUntil: 'networkidle2' });
     await selectClient(owner, first.id);
-    await preview();
+    const previewData = await preview();
+    assert.deepEqual(previewData.selected_metrics, ['runs']);
+    const direct = await call(owner, `${API}/clients/${first.id}/metric-drilldown/runs?limit=50`);
+    assert.equal(direct.status, 200, JSON.stringify(direct.body));
+    assert.equal(direct.body.total_count, 3);
     await responseFor(owner, 'GET', `${API}/clients/${first.id}/metric-drilldown/runs`,
       () => button(owner, 'View contributing records for row 1', SECTION));
     await text(owner, '3 contributing records total', SECTION);
