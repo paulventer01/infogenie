@@ -480,6 +480,7 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/client-reporting\/portal\/redeem\/[a-f0-9]+$/, // single-use client portal invitation redeem
   /^\/api\/client-reporting\/portal\/report$/,       // portal session report view (infogenie.crp cookie)
   /^\/api\/client-reporting\/portal\/delivery-history$/, // portal session delivery history
+  /^\/api\/client-reporting\/portal\/metric-drilldown\/[a-z0-9_]+$/, // portal metric drilldown (infogenie.crp cookie)
 ];
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.
@@ -699,6 +700,7 @@ const _CLIENT_REPORTING_OWNER_GATE_ALLOW = [
   [/^(GET|HEAD|PUT)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/profile\/?$/],
   [/^(GET|HEAD|PUT)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/recipient\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/report-preview\/?$/],
+  [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/metric-drilldown\/[a-z0-9_]+\/?$/],
   [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/report\/?$/],
   [/^(GET|HEAD)$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/report-recipient\/?$/],
   [/^POST$/, /^\/api\/client-reporting\/clients\/[1-9]\d*\/report-email\/?$/],

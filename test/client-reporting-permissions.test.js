@@ -31,7 +31,9 @@ const ROOT = '/api/client-reporting/clients';
 const routes = [
   ['GET', ROOT], ['HEAD', ROOT], ['GET', ROOT + '/12'], ['HEAD', ROOT + '/12'],
   ['GET', ROOT + '/12/profile'], ['HEAD', ROOT + '/12/profile'], ['PUT', ROOT + '/12/profile'],
-  ['GET', ROOT + '/12/report-preview'], ['HEAD', ROOT + '/12/report-preview'], ['POST', ROOT + '/12/report'],
+  ['GET', ROOT + '/12/report-preview'], ['HEAD', ROOT + '/12/report-preview'],
+  ['GET', ROOT + '/12/metric-drilldown/runs'], ['HEAD', ROOT + '/12/metric-drilldown/runs'],
+  ['POST', ROOT + '/12/report'],
   ['GET', ROOT + '/12/report-recipient'], ['HEAD', ROOT + '/12/report-recipient'], ['POST', ROOT + '/12/report-email'],
   ['GET', ROOT + '/12/recipient'], ['HEAD', ROOT + '/12/recipient'], ['PUT', ROOT + '/12/recipient'],
   ['GET', ROOT + '/12/portal'], ['HEAD', ROOT + '/12/portal'],

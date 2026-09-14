@@ -17,6 +17,7 @@ const router = express.Router();
 const PERMISSION = 'tenant.settings.manage';
 const metrics = require('./metrics');
 const period = require('./period');
+const drilldown = require('./drilldown');
 const CLIENT_COLUMNS = 'id, name, slug, website, status';
 const PROFILE_COLUMNS = 'client_id, report_source, default_format, report_title, branding_mode, branding_overrides, selected_metrics, reporting_period, reporting_timezone, version, created_at, updated_at';
 const PROFILE_KEYS = ['report_source', 'default_format', 'report_title', 'branding_mode', 'branding_overrides',
@@ -250,6 +251,23 @@ async function reportSnapshot(req, expectedVersion, customRange) {
     return built;
   } finally { connection.release(); }
 }
+router.get('/clients/:clientId/metric-drilldown/:metricKey', readLimiter, safe(async (req, res) => {
+  const { cursor, limit, currency, profileVersion, dateRange } = drilldown.parseDrilldownQuery(req.query);
+  const tenantId = req.clientReportingTenantId, id = clientId(req);
+  const connection = await _db.getPool().connect();
+  try {
+    await connection.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    await activeClient(connection, tenantId, id);
+    const result = await drilldown.fetchDrilldown(connection, tenantId, id, req.params.metricKey,
+      { cursor, limit, currency, profileVersion, dateRange });
+    await connection.query('COMMIT');
+    return res.json(result);
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally { connection.release(); }
+}));
+
 router.get('/clients/:clientId/report-preview', readLimiter, safe(async (req, res) => {
   const customRange = customRangeFromQuery(req.query);
   return res.json(await reportSnapshot(req, undefined, customRange));

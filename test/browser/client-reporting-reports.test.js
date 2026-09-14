@@ -14,10 +14,12 @@ async function button(page, name, scope = PANEL) {
 async function text(page, wanted, scope = SECTION) {
   await page.waitForFunction((selector, value) => document.querySelector(selector)?.innerText.includes(value), {}, scope, wanted);
 }
-async function selectClient(page, id) {
+async function selectClient(page, id, requirePreview = true) {
   await page.waitForSelector(`${PANEL} select[name="client_id"]:enabled`, { visible: true });
   await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
-  await page.waitForSelector(`${SECTION} ::-p-aria([name="Preview report"][role="button"]):not([disabled])`, { visible: true });
+  if (requirePreview) {
+    await page.waitForSelector(`${SECTION} ::-p-aria([name="Preview report"][role="button"]):not([disabled])`, { visible: true });
+  }
 }
 async function call(page, path, method = 'GET', body) {
   return page.evaluate(async (url, verb, data) => {
@@ -220,6 +222,60 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     await text(owner, 'The client or saved profile changed.');
     assert.equal(reportPosts(), afterConflict, 'profile verification stops stale UI generation before POST');
     assert.equal(await owner.$(`${SECTION} article`), null);
+  });
+  await t.test('scalar metric drilldown opens contributing records and clears on close', async () => {
+    await owner.reload({ waitUntil: 'networkidle2' });
+    const alpine = (await pool.query('SELECT id FROM search_intel_queries WHERE tenant_id=$1 AND query=$2 LIMIT 1',
+      [actors.owner.tid, 'ALPINE'])).rows[0]?.id;
+    assert.ok(alpine);
+    await pool.query(`INSERT INTO search_intel_llm_runs (tenant_id,query_id,provider,response_text,brand_mentioned,error,ran_at)
+      SELECT $1,$2,'fixture','x',true,NULL,now()-g*interval '1 hour' FROM generate_series(1,3) g`, [actors.owner.tid, alpine]);
+    const profileResult = await call(owner, profilePath(first.id), 'PUT', {
+      ...profile('pdf', 'search-intel', version),
+      selected_metrics: ['runs'], reporting_period: 'all_time', expected_version: version,
+    });
+    assert.equal(profileResult.status, 200);
+    version = profileResult.body.profile.version;
+    await owner.reload({ waitUntil: 'networkidle2' });
+    await selectClient(owner, first.id);
+    const previewData = await preview();
+    assert.deepEqual(previewData.selected_metrics, ['runs']);
+    const ctx = new URLSearchParams({
+      limit: '50',
+      profile_version: String(previewData.profile_version),
+      reporting_period: previewData.reporting_period || 'all_time',
+      timezone: previewData.reporting_dates?.timezone || 'UTC',
+    });
+    if (previewData.reporting_dates?.start && previewData.reporting_dates?.end) {
+      ctx.set('start_date', previewData.reporting_dates.start);
+      ctx.set('end_date', previewData.reporting_dates.end);
+    }
+    const direct = await call(owner, `${API}/clients/${first.id}/metric-drilldown/runs?${ctx.toString()}`);
+    assert.equal(direct.status, 200, JSON.stringify(direct.body));
+    assert.equal(direct.body.total_count, 3);
+    await responseFor(owner, 'GET', `${API}/clients/${first.id}/metric-drilldown/runs`,
+      () => button(owner, 'View contributing records for row 1', SECTION));
+    await text(owner, '3 contributing records total', SECTION);
+    await button(owner, 'Close contributing records', SECTION);
+    await owner.waitForFunction((selector) => !document.querySelector(selector), {}, `${SECTION} [aria-label="Contributing records drilldown"]`);
+    await responseFor(owner, 'GET', profilePath(second.id), () => owner.select(`${PANEL} select[name="client_id"]`, String(second.id)));
+    await owner.waitForFunction((selector) => !document.querySelector(selector), {}, `${SECTION} [aria-label="Contributing records drilldown"]`);
+    await pool.query('UPDATE search_intel_llm_runs SET brand_mentioned=false WHERE tenant_id=$1 AND query_id=$2 AND id=(SELECT id FROM search_intel_llm_runs WHERE tenant_id=$1 AND query_id=$2 ORDER BY id DESC LIMIT 1)',
+      [actors.owner.tid, alpine]);
+    const switchProfile = await call(owner, profilePath(first.id), 'PUT', {
+      ...profile('pdf', 'search-intel', version),
+      selected_metrics: ['runs', 'brand_mentions'], reporting_period: 'all_time', expected_version: version,
+    });
+    assert.equal(switchProfile.status, 200);
+    version = switchProfile.body.profile.version;
+    await owner.reload({ waitUntil: 'networkidle2' });
+    await selectClient(owner, first.id);
+    await preview();
+    await responseFor(owner, 'GET', `${API}/clients/${first.id}/metric-drilldown/runs`, () => button(owner, 'View contributing records for row 1', SECTION));
+    await text(owner, '3 contributing records total', SECTION);
+    await responseFor(owner, 'GET', `${API}/clients/${first.id}/metric-drilldown/brand_mentions`,
+      () => button(owner, 'View contributing records for row 2', SECTION));
+    await text(owner, '2 contributing records total', SECTION);
   });
   await t.test('preview honors saved metric order from profile', async () => {
     await save('pdf');

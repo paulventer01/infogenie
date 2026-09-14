@@ -1,5 +1,9 @@
 'use strict';
 
+const SEARCH_SCALAR = new Set(['runs', 'successful_runs', 'brand_mentions']);
+const CAMPAIGN_SCALAR = new Set(['performance_rows', 'spend', 'impressions', 'clicks', 'conversions', 'revenue']);
+const LIST_METRICS = new Set(['mapped_queries', 'recent_search_runs', 'mapped_campaigns', 'recent_performance', 'recent_actions']);
+
 const CATALOG = Object.freeze({
   'search-intel': Object.freeze([
     { key: 'runs', label: 'Runs' },
@@ -23,13 +27,36 @@ const CATALOG = Object.freeze({
 
 function fail(status, code) { return Object.assign(new Error(code), { status }); }
 
-function catalog(source) {
+function scalarSet(source) {
+  return source === 'search-intel' ? SEARCH_SCALAR : CAMPAIGN_SCALAR;
+}
+
+function isDrillable(source, metricKey) {
+  return scalarSet(source).has(metricKey);
+}
+
+function catalogEntries(source) {
   if (!Object.hasOwn(CATALOG, source)) throw fail(400, 'invalid_source');
   return CATALOG[source];
 }
 
+function unsupportedReason(source, metricKey) {
+  if (LIST_METRICS.has(metricKey)) return 'list_metric';
+  if (!Object.hasOwn(CATALOG, source) || !catalogEntries(source).some((entry) => entry.key === metricKey)) return 'invalid_metric';
+  if (!scalarSet(source).has(metricKey)) return 'unsupported_metric';
+  return null;
+}
+
+function catalog(source) {
+  return catalogEntries(source).map((entry) => ({
+    ...entry,
+    drillable: isDrillable(source, entry.key),
+    drilldown_unsupported_reason: unsupportedReason(source, entry.key),
+  }));
+}
+
 function defaultKeys(source) {
-  return catalog(source).map((entry) => entry.key);
+  return catalogEntries(source).map((entry) => entry.key);
 }
 
 function labelFor(source, key) {
@@ -58,4 +85,7 @@ function resolveSelection(source, stored) {
   return resolved.length ? resolved : defaultKeys(source);
 }
 
-module.exports = { CATALOG, catalog, defaultKeys, labelFor, validateSelection, resolveSelection };
+module.exports = {
+  CATALOG, SEARCH_SCALAR, CAMPAIGN_SCALAR, LIST_METRICS, catalog, defaultKeys, labelFor,
+  validateSelection, resolveSelection, isDrillable, unsupportedReason,
+};
