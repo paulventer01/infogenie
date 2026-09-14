@@ -22,16 +22,42 @@ const SAFE_REASONS = new Set([
   "not_configured",
 ]);
 
-export function safeClientReportReason(reason?: string | null): string {
-  if (!reason) return "unavailable";
-  if (SAFE_REASONS.has(reason)) return reason.replace(/_/g, " ");
-  if (reason.startsWith("input_unavailable:") || reason.startsWith("source_query_failed:")) {
-    return reason.replace(/_/g, " ");
+const SOURCE_QUERY_LABELS = new Set([
+  "roots",
+  "mapped_count",
+  "search_totals",
+  "recent_runs",
+  "campaign_totals",
+  "recent_performance",
+  "recent_actions",
+]);
+
+const INPUT_UNAVAILABLE_LABELS = new Set([
+  "numerator",
+  "denominator",
+]);
+
+function controlledClientReportReason(reason?: string | null): string {
+  if (!reason) return "source_query_failed";
+  if (SAFE_REASONS.has(reason)) return reason;
+  if (reason.startsWith("source_query_failed:")) {
+    const label = reason.slice("source_query_failed:".length);
+    return SOURCE_QUERY_LABELS.has(label) ? reason : "source_query_failed";
+  }
+  if (reason.startsWith("input_unavailable:")) {
+    const label = reason.slice("input_unavailable:".length);
+    return INPUT_UNAVAILABLE_LABELS.has(label) ? reason : "input_unavailable";
   }
   if (/error|exception|ECONN|relation|syntax|password|pg_/i.test(reason)) {
-    return "source query failed";
+    return "source_query_failed";
   }
-  return reason.replace(/_/g, " ").slice(0, 80);
+  return "source_query_failed";
+}
+
+export function safeClientReportReason(reason?: string | null): string {
+  const safe = controlledClientReportReason(reason);
+  const base = safe.includes(":") ? safe.split(":")[0] : safe;
+  return base.replace(/_/g, " ");
 }
 
 export function hasClientReportAvailability(meta?: ClientReportMetricMeta | null): boolean {

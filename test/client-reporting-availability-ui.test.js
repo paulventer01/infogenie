@@ -16,6 +16,10 @@ test('client report availability formatters cover zero, partial, proxy and unava
     availability.formatDisplayValue(availability.unavailableMeta('source_query_failed')),
     /Unavailable \(source query failed\)/,
   );
+  assert.match(
+    availability.formatDisplayValue(availability.unavailableMeta('source_query_failed:relation "secret" does not exist')),
+    /Unavailable \(source query failed\)/,
+  );
 });
 
 test('report preview and portal components render availability badges', () => {

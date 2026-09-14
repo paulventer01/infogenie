@@ -186,4 +186,104 @@ test('clientReportingAvailability TS helpers stay aligned with server labels', (
   assert.match(source, /formatClientReportValue/);
   assert.match(source, /Unavailable/);
   assert.match(source, /Partial/);
+  assert.match(source, /SOURCE_QUERY_LABELS/);
+});
+
+test('controlledReason allowlists reason codes and strips unknown source labels', () => {
+  const allowed = `${REASON.SOURCE_QUERY_FAILED}:recent_runs`;
+  assert.equal(availability.controlledReason(allowed), allowed);
+  const rawWithPrefix = `${REASON.SOURCE_QUERY_FAILED}:relation "secret_table" does not exist`;
+  assert.equal(availability.controlledReason(rawWithPrefix), REASON.SOURCE_QUERY_FAILED);
+  const rawWithoutPrefix = 'syntax error at or near "SECRET"';
+  assert.equal(availability.controlledReason(rawWithoutPrefix), REASON.SOURCE_QUERY_FAILED);
+  const allowedInput = `${REASON.INPUT_UNAVAILABLE}:numerator`;
+  assert.equal(availability.controlledReason(allowedInput), allowedInput);
+  const rawInput = `${REASON.INPUT_UNAVAILABLE}:password pg_hba.conf leak`;
+  assert.equal(availability.controlledReason(rawInput), REASON.INPUT_UNAVAILABLE);
+});
+
+test('raw error text never appears in structured metadata, rendered cells or email summaries', () => {
+  const evil = 'source_query_failed:syntax error at or near "SECRET"';
+  const meta = availability.unavailableMeta(evil);
+  assert.equal(meta.availability_reason, REASON.SOURCE_QUERY_FAILED);
+  assert.doesNotMatch(JSON.stringify(meta), /SECRET|syntax error/i);
+  const display = availability.formatDisplayValue(meta);
+  assert.match(display, /Unavailable \(source query failed\)/);
+  assert.doesNotMatch(display, /SECRET|syntax/i);
+  const snapshot = buildReport(client, profile, {
+    source: 'search-intel',
+    records: [],
+    summary: { mapped_records: 1, runs: null, successful_runs: null, brand_mentions: null },
+    metric_meta: { runs: meta },
+    recent: { llm_runs: [] },
+    summary_scope: 'all_mapped_records',
+  }, null, ['runs'], null);
+  snapshot.profile_version = 1;
+  snapshot.format = 'pdf';
+  const totals = snapshot.report.sections.find((section) => section.title === 'Search totals');
+  assert.doesNotMatch(JSON.stringify(totals.row_meta), /SECRET|syntax/i);
+  assert.doesNotMatch(String(totals.rows[0][1]), /SECRET|syntax/i);
+  const { text, html } = availability.buildReportEmailBody(snapshot);
+  assert.doesNotMatch(text, /SECRET|syntax/i);
+  assert.doesNotMatch(html, /SECRET|syntax/i);
+});
+
+function searchIntelDb(failOn) {
+  return {
+    query: async (sql) => {
+      if (failOn(sql)) throw new Error('relation "secret_table" does not exist');
+      if (sql.includes('mapped_records')) return { rows: [{ mapped_records: 1 }] };
+      if (sql.includes('brand_mentions')) return { rows: [{ runs: 0, successful_runs: 0, brand_mentions: 0 }] };
+      if (sql.includes('AS failed')) return { rows: [] };
+      if (sql.includes('ORDER BY r.id')) {
+        return { rows: [{ id: 1, query: 'q', brand: 'b', locale: 'en', enabled: true, last_run_at: null }] };
+      }
+      throw new Error(`unexpected query: ${sql.slice(0, 80)}`);
+    },
+  };
+}
+
+function campaignDb(failOn) {
+  return {
+    query: async (sql) => {
+      if (failOn(sql)) throw new Error('relation "secret_table" does not exist');
+      if (sql.includes('mapped_records')) return { rows: [{ mapped_records: 1 }] };
+      if (sql.includes('GROUP BY r.currency')) return { rows: [{ currency: 'USD', performance_rows: 0, spend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 }] };
+      if (sql.includes('c.action_type')) return { rows: [] };
+      if (sql.includes('c.bucket_hour')) return { rows: [] };
+      if (sql.includes('ORDER BY r.id')) {
+        return { rows: [{ id: 1, name: 'n', platform: 'google', objective: null, currency: 'USD', status: 'active' }] };
+      }
+      throw new Error(`unexpected query: ${sql.slice(0, 80)}`);
+    },
+  };
+}
+
+test('sources.data fails closed when recent activity queries fail', async () => {
+  const sources = require('../services/client_reporting/sources');
+  const searchSpec = sources.source('search-intel');
+  const campaignSpec = sources.source('campaigns');
+  const fail = (err) => err instanceof Error && err.message === 'source_query_failed' && err.status === 500;
+  await assert.rejects(
+    () => sources.data(searchIntelDb((sql) => sql.includes('AS failed')), 'search-intel', searchSpec, 1, 11, 0, 50),
+    fail,
+  );
+  await assert.rejects(
+    () => sources.data(campaignDb((sql) => sql.includes('c.bucket_hour')), 'campaigns', campaignSpec, 1, 11, 0, 50),
+    fail,
+  );
+  await assert.rejects(
+    () => sources.data(campaignDb((sql) => sql.includes('c.action_type')), 'campaigns', campaignSpec, 1, 11, 0, 50),
+    fail,
+  );
+  for (const [label, sourceName, failOn] of [
+    ['roots', 'search-intel', (sql) => sql.includes('r.query') && sql.includes('ORDER BY r.id')],
+    ['mapped_count', 'search-intel', (sql) => sql.includes('mapped_records')],
+    ['search_totals', 'search-intel', (sql) => sql.includes('brand_mentions')],
+    ['campaign_totals', 'campaigns', (sql) => sql.includes('GROUP BY r.currency')],
+  ]) {
+    const spec = sourceName === 'campaigns' ? campaignSpec : searchSpec;
+    const db = sourceName === 'campaigns' ? campaignDb(failOn) : searchIntelDb(failOn);
+    await assert.rejects(() => sources.data(db, sourceName, spec, 1, 11, 0, 50), fail, label);
+  }
 });

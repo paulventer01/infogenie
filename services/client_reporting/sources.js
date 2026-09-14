@@ -89,6 +89,13 @@ async function data(db, name, spec, tenantId, clientId, cursor, limit, dateRange
   if (!queryStatus[totalsKey]?.ok) {
     throw Object.assign(new Error('source_query_failed'), { status: 500 });
   }
+  if (name === 'search-intel') {
+    if (!queryStatus.recent_runs?.ok) {
+      throw Object.assign(new Error('source_query_failed'), { status: 500 });
+    }
+  } else if (!queryStatus.recent_performance?.ok || !queryStatus.recent_actions?.ok) {
+    throw Object.assign(new Error('source_query_failed'), { status: 500 });
+  }
   const scope = dateRange?.startDate
     ? `mapped_records_in_period:${dateRange.startDate}:${dateRange.endDate}`
     : 'all_mapped_records';

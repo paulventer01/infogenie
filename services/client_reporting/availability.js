@@ -18,11 +18,38 @@ const SAFE_REASONS = new Set([
   'not_configured',
 ]);
 
+const SOURCE_QUERY_LABELS = new Set([
+  'roots',
+  'mapped_count',
+  'search_totals',
+  'recent_runs',
+  'campaign_totals',
+  'recent_performance',
+  'recent_actions',
+]);
+
+const INPUT_UNAVAILABLE_LABELS = new Set([
+  'numerator',
+  'denominator',
+]);
+
 function controlledReason(reason) {
   if (!reason) return null;
-  if (SAFE_REASONS.has(reason)) return reason;
-  if (String(reason).startsWith(`${REASON.INPUT_UNAVAILABLE}:`)) return reason;
-  if (String(reason).startsWith(`${REASON.SOURCE_QUERY_FAILED}:`)) return reason;
+  const text = String(reason);
+  if (SAFE_REASONS.has(text)) return text;
+  const sourcePrefix = `${REASON.SOURCE_QUERY_FAILED}:`;
+  if (text.startsWith(sourcePrefix)) {
+    const label = text.slice(sourcePrefix.length);
+    return SOURCE_QUERY_LABELS.has(label) ? text : REASON.SOURCE_QUERY_FAILED;
+  }
+  const inputPrefix = `${REASON.INPUT_UNAVAILABLE}:`;
+  if (text.startsWith(inputPrefix)) {
+    const label = text.slice(inputPrefix.length);
+    return INPUT_UNAVAILABLE_LABELS.has(label) ? text : REASON.INPUT_UNAVAILABLE;
+  }
+  if (/error|exception|ECONN|relation|syntax|password|pg_/i.test(text)) {
+    return REASON.SOURCE_QUERY_FAILED;
+  }
   return REASON.SOURCE_QUERY_FAILED;
 }
 
@@ -81,7 +108,10 @@ function resolveCurrencyMeta(metricMeta, currency, key, fallbackValue = null) {
 }
 
 function humanReason(reason) {
-  return safeAvailabilityReason(reason).replace(/_/g, ' ');
+  const safe = controlledReason(reason);
+  if (!safe) return 'unavailable';
+  const base = safe.includes(':') ? safe.split(':')[0] : safe;
+  return base.replace(/_/g, ' ');
 }
 
 function formatDisplayValue(meta, { numeric = true } = {}) {
@@ -244,6 +274,8 @@ module.exports = {
   AVAILABILITY,
   REASON,
   SAFE_REASONS,
+  SOURCE_QUERY_LABELS,
+  INPUT_UNAVAILABLE_LABELS,
   availableMeta,
   unavailableMeta,
   partialMeta,
