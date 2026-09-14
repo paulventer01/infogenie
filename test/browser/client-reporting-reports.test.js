@@ -222,6 +222,7 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     assert.equal(await owner.$(`${SECTION} article`), null);
   });
   await t.test('scalar metric drilldown opens contributing records and clears on close', async () => {
+    await owner.reload({ waitUntil: 'networkidle2' });
     const alpine = (await pool.query('SELECT id FROM search_intel_queries WHERE tenant_id=$1 AND query=$2 LIMIT 1',
       [actors.owner.tid, 'ALPINE'])).rows[0]?.id;
     assert.ok(alpine);
