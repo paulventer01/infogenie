@@ -104,21 +104,21 @@ function fmtGoalActual(g: GoalRow) {
   return base;
 }
 
-function fmtGoalStatus(g: GoalRow) {
-  if (g.status === "unverified") {
-    const suffix = g.pct != null ? ` (${g.pct}% partial)` : "";
-    return `unverified${suffix}`;
-  }
-  const pct = g.pct != null ? ` (${g.pct}%)` : "";
-  const color =
-    g.status === "on-track"
+function fmtGoalStatus(g: GoalRow): { text: string; color: string } {
+  const recognized = goalRecognizedCanonical(g);
+  const unverified = g.status === "unverified" || isUnverifiedCanonical(g, recognized);
+  const pct = g.pct != null ? ` (${g.pct}${unverified ? "% partial" : "%"})` : "";
+  const text = unverified
+    ? `unverified${g.pct != null ? pct : ""}`
+    : `${g.status || "unknown"}${pct}`;
+  const color = unverified
+    ? "#475569"
+    : g.status === "on-track"
       ? "#16A34A"
       : g.status === "at-risk"
         ? "#F59E0B"
-        : g.status === "unverified" || isUnverifiedCanonical(g, goalRecognizedCanonical(g))
-          ? "#475569"
-          : "#DC2626";
-  return { text: `${g.status || "unknown"}${pct}`, color };
+        : "#DC2626";
+  return { text, color };
 }
 
 function fmt(v: number | null | undefined, unit: string, kpi?: Kpi) {
