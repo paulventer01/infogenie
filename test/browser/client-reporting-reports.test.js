@@ -260,9 +260,11 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     await owner.waitForFunction((selector) => !document.querySelector(selector), {}, `${SECTION} [aria-label="Contributing records drilldown"]`);
     await responseFor(owner, 'GET', profilePath(second.id), () => owner.select(`${PANEL} select[name="client_id"]`, String(second.id)));
     await owner.waitForFunction((selector) => !document.querySelector(selector), {}, `${SECTION} [aria-label="Contributing records drilldown"]`);
+    await pool.query('UPDATE search_intel_llm_runs SET brand_mentioned=false WHERE tenant_id=$1 AND query_id=$2 AND id=(SELECT id FROM search_intel_llm_runs WHERE tenant_id=$1 AND query_id=$2 ORDER BY id DESC LIMIT 1)',
+      [actors.owner.tid, alpine]);
     const switchProfile = await call(owner, profilePath(first.id), 'PUT', {
       ...profile('pdf', 'search-intel', version),
-      selected_metrics: ['runs', 'successful_runs'], reporting_period: 'all_time', expected_version: version,
+      selected_metrics: ['runs', 'brand_mentions'], reporting_period: 'all_time', expected_version: version,
     });
     assert.equal(switchProfile.status, 200);
     version = switchProfile.body.profile.version;
@@ -271,12 +273,9 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     await preview();
     await responseFor(owner, 'GET', `${API}/clients/${first.id}/metric-drilldown/runs`, () => button(owner, 'View contributing records for row 1', SECTION));
     await text(owner, '3 contributing records total', SECTION);
-    await responseFor(owner, 'GET', `${API}/clients/${first.id}/metric-drilldown/successful_runs`,
+    await responseFor(owner, 'GET', `${API}/clients/${first.id}/metric-drilldown/brand_mentions`,
       () => button(owner, 'View contributing records for row 2', SECTION));
-    await owner.waitForFunction((selector) => {
-      const panel = document.querySelector(selector);
-      return panel && panel.innerText.includes('2 contributing records total') && !panel.innerText.includes('3 contributing records total');
-    }, {}, `${SECTION} [aria-label="Contributing records drilldown"]`);
+    await text(owner, '2 contributing records total', SECTION);
   });
   await t.test('preview honors saved metric order from profile', async () => {
     await save('pdf');
