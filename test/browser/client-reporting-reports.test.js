@@ -227,9 +227,9 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     assert.ok(alpine);
     await pool.query(`INSERT INTO search_intel_llm_runs (tenant_id,query_id,provider,response_text,brand_mentioned,error,ran_at)
       SELECT $1,$2,'fixture','x',true,NULL,now()-g*interval '1 hour' FROM generate_series(1,3) g`, [actors.owner.tid, alpine]);
-    await save('pdf', 'search-intel', first.id, version);
     const profileResult = await call(owner, profilePath(first.id), 'PUT', {
-      ...profile('pdf', 'search-intel', version), selected_metrics: ['runs'], expected_version: version,
+      ...profile('pdf', 'search-intel', version),
+      selected_metrics: ['runs'], reporting_period: 'all_time', expected_version: version,
     });
     assert.equal(profileResult.status, 200);
     version = profileResult.body.profile.version;
