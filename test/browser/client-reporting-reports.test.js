@@ -283,9 +283,9 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     assert.ok(alpine);
     await pool.query('DELETE FROM search_intel_llm_runs WHERE tenant_id=$1 AND query_id=$2', [actors.owner.tid, alpine]);
     await owner.reload({ waitUntil: 'networkidle2' });
-    await save('pdf', 'search-intel');
-    await owner.reload({ waitUntil: 'networkidle2' });
     await selectClient(owner, first.id);
+    const current = await call(owner, profilePath(first.id));
+    version = current.profile.version;
     const profileResult = await call(owner, profilePath(first.id), 'PUT', {
       ...profile('pdf', 'search-intel', version),
       selected_metrics: ['runs'],
