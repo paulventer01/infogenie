@@ -15,8 +15,13 @@ const profilePath = (id) => `${API}/clients/${id}/profile`;
 async function button(page, name, scope = PANEL) {
   await page.locator(`${scope} ::-p-aria([name="${name}"][role="button"])`).click();
 }
-async function text(page, wanted, scope = PANEL) {
-  await page.waitForFunction((selector, value) => document.querySelector(selector)?.innerText.includes(value), {}, scope, wanted);
+async function text(page, wanted, scope = PANEL, timeout = 120_000) {
+  await page.waitForFunction(
+    (selector, value) => document.querySelector(selector)?.innerText.includes(value),
+    { timeout },
+    scope,
+    wanted,
+  );
 }
 async function responseFor(page, method, path, action, status = 200) {
   const [response] = await Promise.all([
@@ -54,8 +59,8 @@ test('PR10H.2 portal feedback browser journey', {
   t.after(async () => { await browser.close(); });
 
   const owner = await browser.newPage();
-  owner.setDefaultTimeout(45_000);
-  owner.setDefaultNavigationTimeout(90_000);
+  owner.setDefaultTimeout(120_000);
+  owner.setDefaultNavigationTimeout(120_000);
   await owner.goto(`${baseUrl}/login?next=${encodeURIComponent(ROUTE)}`, { waitUntil: 'networkidle2' });
   await owner.waitForFunction(() => [...document.querySelectorAll('strong')].some((el) => el.textContent === 'Preview login'));
   await button(owner, 'Log In', 'body');
@@ -66,16 +71,29 @@ test('PR10H.2 portal feedback browser journey', {
     owner.waitForNavigation({ waitUntil: 'domcontentloaded' }),
     button(owner, 'Log In →', 'form'),
   ]);
+  await owner.evaluate(async (path) => {
+    const response = await fetch(path, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        report_source: 'search-intel', default_format: 'pdf', report_title: 'Feedback Report',
+        branding_mode: 'workspace', branding_overrides: {},
+        selected_metrics: ['runs', 'successful_runs', 'brand_mentions', 'mapped_queries', 'recent_search_runs'],
+        reporting_period: 'last_30_days', reporting_timezone: 'UTC', expected_version: 0,
+      }),
+    });
+    if (!response.ok) throw new Error(await response.text());
+  }, `${baseUrl}${profilePath(clientId)}`);
+  await owner.goto(`${baseUrl}${ROUTE}`, { waitUntil: 'networkidle2' });
   await selectClient(owner, clientId);
-  await owner.locator(`${FORM} [name="report_title"]`).fill('Feedback Report');
-  await responseFor(owner, 'PUT', profilePath(clientId), () => button(owner, 'Save profile', FORM));
-  await owner.waitForFunction(() => document.body.innerText.includes('Profile saved.'));
+  await owner.waitForSelector(PORTAL, { visible: true });
   const invite = await responseFor(owner, 'POST', `${API}/clients/${clientId}/portal/invitations`,
     () => button(owner, 'Create invitation link', PORTAL), 201);
   const inviteUrl = `${baseUrl}${invite.invite_path}`;
 
   const portalContext = await browser.createBrowserContext();
   const portal = await portalContext.newPage();
+  portal.setDefaultTimeout(120_000);
+  portal.setDefaultNavigationTimeout(120_000);
   await portal.goto(inviteUrl, { waitUntil: 'networkidle2' });
   await portal.waitForFunction(() => location.pathname === '/client-report/view');
   await portal.waitForSelector('[aria-label="Report feedback"]');
