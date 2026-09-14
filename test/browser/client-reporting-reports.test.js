@@ -295,6 +295,8 @@ test('PR10F.5 report preview and generation browser acceptance (real PostgreSQL/
     });
     assert.equal(profileResult.status, 200);
     version = profileResult.body.profile.version;
+    await owner.reload({ waitUntil: 'networkidle2' });
+    await selectClient(owner, first.id);
     const data = await preview();
     const totals = data.report.sections.find((section) => section.title === 'Search totals');
     assert.equal(totals.row_meta[0].metric_key, 'runs');
