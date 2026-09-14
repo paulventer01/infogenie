@@ -13,6 +13,7 @@ async function login(page, baseUrl, actors) {
   await page.locator('#pass').fill(actors.owner.password);
   const [loginRes] = await Promise.all([
     page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/auth/login'),
+    page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
     page.locator('form button[type="submit"]').click(),
   ]);
   assert.equal(loginRes.status(), 200);
