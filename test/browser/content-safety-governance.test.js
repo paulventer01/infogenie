@@ -51,7 +51,10 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   });
 
   await login(page, baseUrl, actors);
-  await page.goto(`${baseUrl}${GOVERNANCE_ROUTE}`, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () => window.location.pathname.includes('ai-governance'),
+    { timeout: 90_000 },
+  );
 
   await page.waitForFunction(
     () => document.body?.innerText?.includes('Content safety: Enforce'),
