@@ -17,6 +17,7 @@ const router = express.Router();
 const PERMISSION = 'tenant.settings.manage';
 const metrics = require('./metrics');
 const period = require('./period');
+const drilldown = require('./drilldown');
 const CLIENT_COLUMNS = 'id, name, slug, website, status';
 const PROFILE_COLUMNS = 'client_id, report_source, default_format, report_title, branding_mode, branding_overrides, selected_metrics, reporting_period, reporting_timezone, version, created_at, updated_at';
 const PROFILE_KEYS = ['report_source', 'default_format', 'report_title', 'branding_mode', 'branding_overrides',
@@ -250,6 +251,43 @@ async function reportSnapshot(req, expectedVersion, customRange) {
     return built;
   } finally { connection.release(); }
 }
+function drilldownRangeFromQuery(query) {
+  const hasStart = Object.hasOwn(query, 'start_date');
+  const hasEnd = Object.hasOwn(query, 'end_date');
+  if (hasStart !== hasEnd) throw fail(400, 'invalid_drilldown');
+  if (!hasStart) return null;
+  if (typeof query.start_date !== 'string' || typeof query.end_date !== 'string') throw fail(400, 'invalid_drilldown');
+  return { startDate: query.start_date, endDate: query.end_date };
+}
+
+function drilldownPagination(req) {
+  const allowed = ['cursor', 'limit', 'currency', 'start_date', 'end_date'];
+  if (Object.keys(req.query).some((key) => !allowed.includes(key))) throw fail(400, 'invalid_drilldown');
+  const cursor = req.query.cursor === undefined ? 0 : positiveId(req.query.cursor);
+  const limit = req.query.limit === undefined ? 50 : positiveId(req.query.limit);
+  if (cursor === null || cursor > 2147483647 || !limit || limit > 100) throw fail(400, 'invalid_pagination');
+  const currency = req.query.currency === undefined ? null : req.query.currency;
+  if (currency !== null && typeof currency !== 'string') throw fail(400, 'invalid_currency');
+  return { cursor, limit, currency, customRange: drilldownRangeFromQuery(req.query) };
+}
+
+router.get('/clients/:clientId/metric-drilldown/:metricKey', readLimiter, safe(async (req, res) => {
+  const { cursor, limit, currency, customRange } = drilldownPagination(req);
+  const tenantId = req.clientReportingTenantId, id = clientId(req);
+  const connection = await _db.getPool().connect();
+  try {
+    await connection.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    await activeClient(connection, tenantId, id);
+    const result = await drilldown.fetchDrilldown(connection, tenantId, id, req.params.metricKey,
+      { cursor, limit, currency, customRange });
+    await connection.query('COMMIT');
+    return res.json(result);
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally { connection.release(); }
+}));
+
 router.get('/clients/:clientId/report-preview', readLimiter, safe(async (req, res) => {
   const customRange = customRangeFromQuery(req.query);
   return res.json(await reportSnapshot(req, undefined, customRange));

@@ -4,6 +4,8 @@ import { apiBlob, apiGet, apiPost } from "@/lib/api";
 import { API, PERIOD_HELP, accessLost, responseError, validClient, validProfile, type Draft, type ProfileResponse } from "@/lib/clientReporting";
 import { validRecipient, type RecipientResponse } from "@/lib/clientReportingDelivery";
 import { validPreview, validReportBlob, type Preview } from "@/lib/clientReportingReport";
+import ClientReportingDrilldown, { DrilldownControl } from "@/components/features/manage/ClientReportingDrilldown";
+import type { DrilldownTarget } from "@/lib/clientReportingDrilldown";
 
 type DateStamp = { custom: boolean; start: string; end: string };
 type Props = { clientId: number; version: number; format: Draft["default_format"]; timezone: string;
@@ -15,6 +17,7 @@ export default function ClientReportingReport({ clientId, version, format, timez
   const [useCustomDates, setUseCustomDates] = useState(false);
   const [startDate, setStartDate] = useState(""), [endDate, setEndDate] = useState("");
   const [previewStamp, setPreviewStamp] = useState<DateStamp | null>(null);
+  const [drilldown, setDrilldown] = useState<DrilldownTarget | null>(null);
   const live = useRef(false), running = useRef(false), sequence = useRef(0);
   const stop = useCallback(() => { live.current = false; ++sequence.current; }, []);
   useEffect(() => { live.current = true; return stop; }, [stop]);
@@ -24,7 +27,7 @@ export default function ClientReportingReport({ clientId, version, format, timez
   const customDatesReady = !useCustomDates || (startDate.length > 0 && endDate.length > 0);
   const previewCurrent = !!preview && stampMatches(previewStamp, currentStamp());
   function invalidatePreview() {
-    setPreview(null); setPreviewStamp(null); setConfirm(null); setNotice(null);
+    setPreview(null); setPreviewStamp(null); setConfirm(null); setNotice(null); setDrilldown(null);
   }
   function cancelOperations() {
     ++sequence.current;
@@ -33,6 +36,7 @@ export default function ClientReportingReport({ clientId, version, format, timez
     invalidatePreview();
   }
   useEffect(() => { cancelOperations(); }, [useCustomDates, startDate, endDate]);
+  useEffect(() => { setDrilldown(null); }, [clientId, version, format, timezone, useCustomDates, startDate, endDate]);
   function dateQuery() {
     if (!useCustomDates) return "";
     if (!startDate || !endDate) throw new Error("Enter both custom start and end dates before previewing.");
@@ -185,8 +189,22 @@ export default function ClientReportingReport({ clientId, version, format, timez
       {preview.report.sections.map((section, i) => <div key={i}><h4>{section.title}</h4>
         {!section.rows.length ? <p>No data available for this section.</p> : <div style={{ overflowX: "auto" }} tabIndex={0} role="region" aria-label={section.title}>
           <table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr>{section.headers.map((header, j) => <th key={j} scope="col" style={{ textAlign: "left", padding: 8 }}>{header}</th>)}</tr></thead>
-            <tbody>{section.rows.map((row, j) => <tr key={j}>{row.map((cell, k) => <td key={k} style={{ padding: 8, borderTop: "1px solid #E2E8F0" }}>{cell === null ? "—" : cell}</td>)}</tr>)}</tbody></table>
-        </div>}</div>)}
+            <tbody>{section.rows.map((row, j) => <tr key={j}>
+              {row.map((cell, k) => <td key={k} style={{ padding: 8, borderTop: "1px solid #E2E8F0", verticalAlign: "top" }}>
+                <div>{cell === null ? "—" : cell}</div>
+                {k === row.length - 1 && <DrilldownControl meta={section.drilldown_rows?.[j]} rowIndex={j}
+                  dates={preview.reporting_dates
+                    ? { start: preview.reporting_dates.start, end: preview.reporting_dates.end }
+                    : useCustomDates && startDate && endDate ? { start: startDate, end: endDate } : undefined}
+                  onOpen={setDrilldown} />}
+              </td>)}
+            </tr>)}</tbody></table>
+        </div>}
+        {section.title.startsWith("Mapped ") || section.title.startsWith("Recent ")
+          ? <p style={{ fontSize: 13, color: "#64748B" }}>This section already lists sample contributing records. Scalar metric drilldown is not available here.</p>
+          : null}
+      </div>)}
+      <ClientReportingDrilldown mode="admin" clientId={clientId} target={drilldown} onClose={() => setDrilldown(null)} />
       {preview.brand.footerText && <p>{preview.brand.footerText}</p>}
     </article>}
   </section>;

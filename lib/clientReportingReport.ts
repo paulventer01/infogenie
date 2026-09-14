@@ -1,8 +1,16 @@
 import { BRAND_FIELDS, validClient, type Branding, type Client, type Draft } from "@/lib/clientReporting";
+import type { DrilldownRowMeta } from "@/lib/clientReportingDrilldown";
+export type ReportSection = {
+  kind: "table";
+  title: string;
+  headers: string[];
+  rows: (string | number | null)[][];
+  drilldown_rows?: DrilldownRowMeta[] | null;
+};
 export type Preview = { ok: true; client: Client; profile_version: number; format: Draft["default_format"]; can_generate: boolean;
   reporting_period?: string; reporting_dates?: { start: string; end: string; timezone: string } | null;
   selected_metrics?: string[];
-  brand: Branding; report: { title: string; generated_at: string; sections: { kind: "table"; title: string; headers: string[]; rows: (string | number | null)[][] }[] } };
+  brand: Branding; report: { title: string; generated_at: string; sections: ReportSection[] } };
 const text = (value: unknown, max = 2000): value is string => typeof value === "string" && value.length <= max;
 export function validPreview(value: unknown, id: number, version: number, format: string): value is Preview {
   if (!value || typeof value !== "object") return false;

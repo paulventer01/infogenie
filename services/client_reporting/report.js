@@ -1,9 +1,7 @@
 'use strict';
 
 const { labelFor } = require('./metrics');
-
-const SEARCH_SCALAR = new Set(['runs', 'successful_runs', 'brand_mentions']);
-const CAMPAIGN_SCALAR = new Set(['performance_rows', 'spend', 'impressions', 'clicks', 'conversions', 'revenue']);
+const { SEARCH_SCALAR, CAMPAIGN_SCALAR } = require('./metrics');
 
 function cell(value, limit = 160) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : '';
@@ -24,12 +22,17 @@ function branding(value) {
 }
 function buildReport(client, profile, data, workspaceBrand, selectedMetrics, dateRange) {
   const sections = [];
-  const table = (title, headers, rows) => {
+  const table = (title, headers, rows, drilldownRows = null) => {
     const safeRows = rows.length ? rows : [['No recorded data']];
-    for (let offset = 0; offset < safeRows.length; offset += 20) sections.push({
-      kind: 'table', title: title + (safeRows.length > 20 ? ` ${offset / 20 + 1}` : ''), headers,
-      rows: safeRows.slice(offset, offset + 20).map((row) => headers.map((_, index) => cell(row[index]))),
-    });
+    for (let offset = 0; offset < safeRows.length; offset += 20) {
+      const chunk = safeRows.slice(offset, offset + 20);
+      const chunkMeta = drilldownRows ? drilldownRows.slice(offset, offset + 20) : null;
+      sections.push({
+        kind: 'table', title: title + (safeRows.length > 20 ? ` ${offset / 20 + 1}` : ''), headers,
+        rows: chunk.map((row) => headers.map((_, index) => cell(row[index]))),
+        drilldown_rows: chunkMeta,
+      });
+    }
   };
   const summary = data.summary, records = data.records.slice(0, 100), recent = data.recent;
   const periodLabel = dateRange?.label || 'All-time recorded data';
@@ -51,12 +54,17 @@ function buildReport(client, profile, data, workspaceBrand, selectedMetrics, dat
   ]);
   const flushSearchScalars = (keys) => {
     if (!keys.length) return;
-    table('Search totals', ['Metric', 'Recorded value'], keys.map((key) => [labelFor(data.source, key), summary[key]]));
+    const rows = keys.map((key) => [labelFor(data.source, key), summary[key]]);
+    const drilldownRows = keys.map((key) => ({ metric_key: key, currency: null, drillable: true }));
+    table('Search totals', ['Metric', 'Recorded value'], rows, drilldownRows);
   };
   const flushCampaignScalars = (keys) => {
     if (!keys.length) return;
-    table('Currency totals', ['Currency', 'Metric', 'Recorded value'], summary.by_currency.slice(0, 100).flatMap((r) =>
-      keys.map((key) => [r.currency, labelFor(data.source, key), r[key]])));
+    const rows = summary.by_currency.slice(0, 100).flatMap((r) =>
+      keys.map((key) => [r.currency, labelFor(data.source, key), r[key]]));
+    const drilldownRows = summary.by_currency.slice(0, 100).flatMap((r) =>
+      keys.map((key) => ({ metric_key: key, currency: r.currency, drillable: true })));
+    table('Currency totals', ['Currency', 'Metric', 'Recorded value'], rows, drilldownRows);
     table('Currency coverage', ['Item', 'Coverage'], [['Currency groups', `First ${Math.min(100, summary.by_currency.length)} of ${summary.by_currency.length}`],
       ['Money', 'Currencies reported separately; no conversion or combined money total']]);
   };

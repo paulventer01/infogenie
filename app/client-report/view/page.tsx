@@ -7,16 +7,19 @@ import { responseError } from "@/lib/clientReporting";
 import { validPreview } from "@/lib/clientReportingReport";
 import type { Preview } from "@/lib/clientReportingReport";
 import type { DeliveryRow } from "@/lib/clientReportingPortal";
+import ClientReportingDrilldown, { DrilldownControl } from "@/components/features/manage/ClientReportingDrilldown";
+import type { DrilldownTarget } from "@/lib/clientReportingDrilldown";
 
 export default function ClientReportViewPage() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [drilldown, setDrilldown] = useState<DrilldownTarget | null>(null);
   const live = useRef(true);
 
   const load = useCallback(async () => {
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setDrilldown(null);
     try {
       const report = await fetchPortalReport();
       if (!live.current) return;
@@ -64,16 +67,28 @@ export default function ClientReportViewPage() {
       {preview.brand.agencyName && <p>{preview.brand.agencyName}</p>}
       <h2>{preview.report.title}</h2>
       <p>Snapshot: {preview.report.generated_at}</p>
+      {preview.reporting_dates && <p>Reporting dates: {preview.reporting_dates.start} to {preview.reporting_dates.end} ({preview.reporting_dates.timezone})</p>}
       {!preview.can_generate && <p>No mapped records are available for this report.</p>}
       {preview.report.sections.map((section, i) => <div key={i} style={{ marginTop: 20 }}>
         <h3>{section.title}</h3>
         {!section.rows.length ? <p>No data available for this section.</p> : <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead><tr>{section.headers.map((header, j) => <th key={j} scope="col" style={{ textAlign: "left", padding: 8 }}>{header}</th>)}</tr></thead>
-            <tbody>{section.rows.map((row, j) => <tr key={j}>{row.map((cell, k) => <td key={k} style={{ padding: 8, borderTop: "1px solid #E2E8F0" }}>{cell === null ? "—" : cell}</td>)}</tr>)}</tbody>
+            <tbody>{section.rows.map((row, j) => <tr key={j}>
+              {row.map((cell, k) => <td key={k} style={{ padding: 8, borderTop: "1px solid #E2E8F0", verticalAlign: "top" }}>
+                <div>{cell === null ? "—" : cell}</div>
+                {k === row.length - 1 && <DrilldownControl meta={section.drilldown_rows?.[j]} rowIndex={j}
+                  dates={preview.reporting_dates ? { start: preview.reporting_dates.start, end: preview.reporting_dates.end } : undefined}
+                  onOpen={setDrilldown} />}
+              </td>)}
+            </tr>)}</tbody>
           </table>
         </div>}
+        {section.title.startsWith("Mapped ") || section.title.startsWith("Recent ")
+          ? <p style={{ fontSize: 13, color: "#64748B" }}>This section already lists sample contributing records. Scalar metric drilldown is not available here.</p>
+          : null}
       </div>)}
+      <ClientReportingDrilldown mode="portal" target={drilldown} onClose={() => setDrilldown(null)} />
       {preview.brand.footerText && <p style={{ marginTop: 24 }}>{preview.brand.footerText}</p>}
     </article>}
     {preview && !busy && <section aria-label="Delivery history" style={{ marginTop: 32 }}>

@@ -5,6 +5,7 @@ const _db = require('../../db');
 const { createRateLimiter } = require('../security/rate_limit');
 const _audit = require('../admin/audit');
 const portal = require('./portal');
+const drilldown = require('./drilldown');
 const router = express.Router();
 
 function fail(status, code) { return Object.assign(new Error(code), { status }); }
@@ -48,6 +49,40 @@ router.post('/redeem/:token', redeemLimiter, safe(async (req, res) => {
     context: { client_id: redeemed.session.client_id, invitation_id: redeemed.invitationId, session_id: redeemed.session.id },
   });
   return res.json({ ok: true, client_id: redeemed.session.client_id, expires_at: redeemed.session.expires_at });
+}));
+
+function drilldownPagination(req) {
+  const allowed = ['cursor', 'limit', 'currency'];
+  if (Object.keys(req.query).some((key) => !allowed.includes(key))) throw fail(400, 'invalid_drilldown');
+  const cursor = req.query.cursor === undefined ? 0 : Number(req.query.cursor);
+  const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
+  if (!Number.isInteger(cursor) || cursor < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw fail(400, 'invalid_pagination');
+  }
+  const currency = req.query.currency === undefined ? null : req.query.currency;
+  if (currency !== null && typeof currency !== 'string') throw fail(400, 'invalid_currency');
+  return { cursor, limit, currency };
+}
+
+router.get('/metric-drilldown/:metricKey', requirePortalSession, readLimiter, safe(async (req, res) => {
+  const { tenantId, clientId, sessionId } = req.portalContext;
+  const { cursor, limit, currency } = drilldownPagination(req);
+  const connection = await _db.getPool().connect();
+  try {
+    await connection.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const result = await drilldown.fetchDrilldown(connection, tenantId, clientId, req.params.metricKey,
+      { cursor, limit, currency, customRange: null });
+    await connection.query('COMMIT');
+    await _audit.recordAudit({
+      action: 'client_reporting.portal_drilldown', tenantId,
+      detail: `Client ${clientId} portal metric drilldown ${req.params.metricKey}`,
+      context: { client_id: clientId, session_id: sessionId, metric: req.params.metricKey, currency },
+    });
+    return res.json(result);
+  } catch (error) {
+    await connection.query('ROLLBACK');
+    throw error;
+  } finally { connection.release(); }
 }));
 
 router.get('/report', requirePortalSession, readLimiter, safe(async (req, res) => {

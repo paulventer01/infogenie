@@ -1,0 +1,147 @@
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { createRequire } = require('node:module');
+const express = require('express');
+const metrics = require('../services/client_reporting/metrics');
+const drilldown = require('../services/client_reporting/drilldown');
+const { buildReport } = require('../services/client_reporting/report');
+const period = require('../services/client_reporting/period');
+
+const ROOT = path.join(__dirname, '..');
+const PREFIX = '/api/client-reporting';
+const PERMISSION = 'tenant.settings.manage';
+const client = { id: 11, name: 'Client A', slug: 'client-a', website: null, status: 'active' };
+
+function load(relative, overrides = {}) {
+  const filename = path.join(ROOT, relative), module = { exports: {} }, native = createRequire(filename);
+  new Function('require', 'module', 'exports', fs.readFileSync(filename, 'utf8'))(
+    (name) => Object.hasOwn(overrides, name) ? overrides[name] : native(name), module, module.exports);
+  return module.exports;
+}
+
+function principal(extra = {}) {
+  return { user: { id: 7 }, tenant: { id: 101, status: 'active' },
+    tenantMemberships: [{ tenantId: 101 }], can: (key) => key === PERMISSION, ...extra };
+}
+
+async function fixture(t, { actor = principal(), query = async () => ({ rows: [] }), resolved, hasDb = true } = {}) {
+  const calls = [], resolutions = [];
+  let releases = 0;
+  const pool = { query: async (sql, params) => { calls.push({ sql, params }); return query(sql, params); },
+    connect: async () => ({ query: pool.query, release: () => { releases++; } }) };
+  const enforce = load('services/tenants/permission_enforce.js', { '../security/prod_defaults': { permissionMode: () => 'on' } });
+  const router = load('services/client_reporting/api.js', {
+    '../../db': { hasDb: () => hasDb, getPool: () => pool },
+    '../tenants/context': { resolveTenantId: async (req) => { resolutions.push(req.tenant.id); return resolved ?? req.tenant.id; } },
+    '../tenants/permission_enforce': enforce,
+  });
+  const app = express();
+  app.use(express.json({ verify: (req, _res, buffer) => { req.rawBody = buffer.toString('utf8'); } }));
+  app.use((req, _res, next) => { Object.assign(req, typeof actor === 'function' ? actor(req) : actor); next(); });
+  app.use(enforce.enforceMatrix);
+  app.use(PREFIX, router);
+  const server = await new Promise((resolve) => { const started = app.listen(0, '127.0.0.1', () => resolve(started)); });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  async function request(method, pathname) {
+    const response = await fetch('http://127.0.0.1:' + server.address().port + PREFIX + pathname, {
+      method, headers: { Connection: 'close' },
+    });
+    return { status: response.status, body: await response.json() };
+  }
+  return { request, calls, resolutions, releases: () => releases };
+}
+
+test('metric catalog marks scalar metrics drillable and list metrics unsupported', () => {
+  const search = metrics.catalog('search-intel');
+  assert.equal(search.find((entry) => entry.key === 'runs').drillable, true);
+  assert.equal(search.find((entry) => entry.key === 'mapped_queries').drillable, false);
+  assert.equal(search.find((entry) => entry.key === 'mapped_queries').drilldown_unsupported_reason, 'list_metric');
+  const campaigns = metrics.catalog('campaigns');
+  assert.equal(campaigns.find((entry) => entry.key === 'spend').drillable, true);
+  assert.equal(campaigns.find((entry) => entry.key === 'recent_performance').drilldown_unsupported_reason, 'list_metric');
+});
+
+test('buildReport attaches drilldown metadata to scalar total rows only', () => {
+  const data = { source: 'search-intel', records: [], summary: { mapped_records: 1, runs: 5, successful_runs: 4, brand_mentions: 2 },
+    recent: { llm_runs: [] }, summary_scope: 'all_mapped_records' };
+  const out = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, data, null, ['runs'], null);
+  const totals = out.report.sections.find((section) => section.title === 'Search totals');
+  assert.deepEqual(totals.drilldown_rows, [{ metric_key: 'runs', currency: null, drillable: true }]);
+  const campaigns = { source: 'campaigns', records: [], summary: { mapped_records: 1,
+    by_currency: [{ currency: 'USD', spend: 1, impressions: 2, clicks: 3, conversions: 0, revenue: 0, performance_rows: 1 }] },
+    recent: { performance: [], optimizer_actions: [] }, summary_scope: 'all_mapped_records' };
+  const campaignOut = buildReport(client, { version: 1, report_title: 'T', default_format: 'pdf' }, campaigns, null,
+    ['spend'], null);
+  const currency = campaignOut.report.sections.find((section) => section.title === 'Currency totals');
+  assert.deepEqual(currency.drilldown_rows, [{ metric_key: 'spend', currency: 'USD', drillable: true }]);
+});
+
+test('drilldown route rejects invalid pagination, unknown metrics and list metrics', async (t) => {
+  const profile = { report_source: 'search-intel', selected_metrics: ['runs', 'mapped_queries'],
+    reporting_period: 'all_time', reporting_timezone: 'UTC' };
+  const { request } = await fixture(t, {
+    query: async (sql) => {
+      if (sql.includes('FROM clients')) return { rows: [client] };
+      if (sql.includes('FROM client_reporting_profiles')) return { rows: [profile] };
+      return { rows: [] };
+    },
+  });
+  assert.equal((await request('GET', '/clients/11/metric-drilldown/runs?limit=101')).status, 400);
+  assert.equal((await request('GET', '/clients/11/metric-drilldown/not_real')).body.error, 'invalid_metric');
+  assert.equal((await request('GET', '/clients/11/metric-drilldown/mapped_queries')).body.error, 'metric_not_drillable');
+});
+
+test('drilldown route requires campaign currency and selected metric', async (t) => {
+  const profile = { report_source: 'campaigns', selected_metrics: ['spend'], reporting_period: 'all_time', reporting_timezone: 'UTC' };
+  const { request } = await fixture(t, {
+    query: async (sql) => {
+      if (sql.includes('FROM clients')) return { rows: [client] };
+      if (sql.includes('FROM client_reporting_profiles')) return { rows: [profile] };
+      return { rows: [] };
+    },
+  });
+  assert.equal((await request('GET', '/clients/11/metric-drilldown/spend')).body.error, 'invalid_currency');
+  assert.equal((await request('GET', '/clients/11/metric-drilldown/clicks?currency=USD')).body.error, 'metric_not_selected');
+});
+
+test('fetchDrilldown returns stable ordering metadata and live notice', async () => {
+  const profile = { report_source: 'search-intel', selected_metrics: ['runs'], reporting_period: 'all_time', reporting_timezone: 'UTC' };
+  const calls = [];
+  const db = { query: async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.includes('count(*)::int AS total')) return { rows: [{ total: 2 }] };
+    if (sql.includes('ORDER BY c.id ASC')) {
+      return { rows: [{ id: 10, query_id: 1, query: 'q', provider: 'fixture', brand_mentioned: true,
+        brand_position: 1, failed: false, ran_at: '2026-03-01T00:00:00.000Z' }] };
+    }
+    if (sql.includes('FROM client_reporting_profiles')) return { rows: [profile] };
+    return { rows: [] };
+  } };
+  const result = await drilldown.fetchDrilldown(db, 101, 11, 'runs', { cursor: 0, limit: 1 });
+  assert.equal(result.ok, true);
+  assert.equal(result.total_count, 2);
+  assert.equal(result.page_count, 1);
+  assert.equal(result.records[0].id, 10);
+  assert.match(result.live_notice, /live mapped data/i);
+  assert.match(calls.find((entry) => entry.sql.includes('ORDER BY c.id ASC')).sql, /ORDER BY c\.id ASC/);
+});
+
+test('fetchDrilldown enforces selected metric and custom date range', async () => {
+  const profile = { report_source: 'search-intel', selected_metrics: ['runs'], reporting_period: 'last_7_days',
+    reporting_timezone: 'UTC' };
+  const customRange = period.validateCustomRange('2026-03-01', '2026-03-10', 'UTC', new Date('2026-03-15T12:00:00.000Z'));
+  const db = { query: async (sql) => {
+    if (sql.includes('count(*)::int AS total')) return { rows: [{ total: 0 }] };
+    if (sql.includes('FROM client_reporting_profiles')) return { rows: [profile] };
+    return { rows: [] };
+  } };
+  const result = await drilldown.fetchDrilldown(db, 101, 11, 'runs', { cursor: 0, limit: 50, customRange });
+  assert.equal(result.period.start_date, '2026-03-01');
+  assert.equal(result.period.end_date, '2026-03-10');
+  await assert.rejects(() => drilldown.fetchDrilldown(db, 101, 11, 'brand_mentions', { cursor: 0, limit: 50 }),
+    (error) => error.message === 'metric_not_selected');
+});
