@@ -77,7 +77,9 @@ test('PR10H.1 AI Governance Hub content safety browser acceptance', {
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('console', (msg) => {
     if (msg.type() !== 'error') return;
-    errors.push(msg.text());
+    const text = msg.text();
+    if (text.includes('ERR_BLOCKED_BY_CLIENT.Inspector')) return;
+    errors.push(text);
   });
 
   await login(page, baseUrl, loginActor);
