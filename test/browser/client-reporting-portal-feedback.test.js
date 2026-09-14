@@ -100,4 +100,8 @@ test('PR10H.2 portal feedback browser journey', {
   await portal.reload({ waitUntil: 'networkidle2' });
   await text(portal, 'Thanks — we will revise the summary.', 'main');
   await text(portal, 'resolved', 'main');
+  const fs = require('node:fs/promises');
+  await fs.mkdir('/opt/cursor/artifacts/screenshots', { recursive: true });
+  await portal.screenshot({ path: '/opt/cursor/artifacts/screenshots/portal-feedback-resolved.png', fullPage: true });
+  await owner.screenshot({ path: '/opt/cursor/artifacts/screenshots/agency-feedback-resolved.png', fullPage: true });
 });
