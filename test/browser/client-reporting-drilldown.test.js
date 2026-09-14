@@ -7,6 +7,8 @@ const required = process.env.PR10G5_REQUIRE_BROWSER === '1';
 const PANEL = '#ig-react-panel', ROUTE = '/manage/client-reporting';
 const SECTION = `${PANEL} [aria-label="Client report preview"]`, API = '/api/client-reporting';
 const profilePath = (id) => `${API}/clients/${id}/profile`;
+const previewPath = (id) => `${API}/clients/${id}/report-preview`;
+const drilldownPath = (id, metric) => `${API}/clients/${id}/metric-drilldown/${metric}`;
 async function button(page, name, scope = PANEL) {
   await page.locator(`${scope} ::-p-aria([name="${name}"][role="button"])`).click();
 }
@@ -23,6 +25,21 @@ async function responseFor(page, method, path, action, status = 200) {
     page.waitForResponse((r) => r.request().method() === method && new URL(r.url()).pathname === path), action(),
   ]);
   assert.equal(response.status(), status, `${method} ${path}`); return response;
+}
+async function login(page, baseUrl, actor) {
+  await page.goto(`${baseUrl}/login?next=${encodeURIComponent(ROUTE)}`, { waitUntil: 'networkidle2' });
+  await page.waitForFunction(() => [...document.querySelectorAll('strong')].some((el) => el.textContent === 'Preview login'));
+  await button(page, 'Log In', 'body');
+  await page.locator('#email').fill(actor.email);
+  await page.locator('#pass').fill(actor.password);
+  const [login, navigation] = await Promise.all([
+    page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/auth/login'),
+    page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+    button(page, 'Log In →', 'form'),
+  ]);
+  assert.equal(login.status(), 200);
+  assert.equal(navigation?.status(), 200);
+  await page.waitForSelector(PANEL, { visible: true });
 }
 test('PR10G.5 metric drilldown browser acceptance (real PostgreSQL/TLS)', {
   skip: !dedicatedUrl && !required ? 'optional local run: no PR10E9_TEST_DATABASE_URL' : false,
@@ -57,27 +74,23 @@ test('PR10G.5 metric drilldown browser acceptance (real PostgreSQL/TLS)', {
   page.setDefaultTimeout(45_000); page.setDefaultNavigationTimeout(90_000);
   await page.setViewport({ width: 1440, height: 1050 });
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto(`${baseUrl}/login?next=${encodeURIComponent(ROUTE)}`, { waitUntil: 'networkidle2' });
-  await button(page, 'Log In', 'body');
-  await page.locator('#email').fill(actors.owner.email);
-  await page.locator('#pass').fill(actors.owner.password);
-  await Promise.all([
-    page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/auth/login'),
-    button(page, 'Sign In', 'body'),
-  ]);
-  await page.waitForSelector(PANEL, { visible: true });
+  await login(page, baseUrl, actors.owner);
   await selectClient(page, client.id);
-  await page.evaluate(async (api, id) => {
-    await fetch(`${api}/clients/${id}/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+  const saved = await page.evaluate(async (api, id) => {
+    const response = await fetch(`${api}/clients/${id}/profile`, { method: 'PUT', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ report_source: 'search-intel', default_format: 'pdf', report_title: 'Drilldown report',
         branding_mode: 'workspace', branding_overrides: {}, selected_metrics: ['runs'],
         reporting_period: 'all_time', reporting_timezone: 'UTC', expected_version: 0 }) });
+    return { status: response.status, body: await response.json() };
   }, API, client.id);
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.ok, true);
   await page.reload({ waitUntil: 'networkidle2' });
   await selectClient(page, client.id);
-  await responseFor(page, 'GET', `${API}/clients/${client.id}/report-preview`, () => button(page, 'Preview report', SECTION));
+  await responseFor(page, 'GET', previewPath(client.id), () => button(page, 'Preview report', SECTION));
   await text(page, 'Runs', SECTION);
-  await responseFor(page, 'GET', `${API}/clients/${client.id}/metric-drilldown/runs`, () => button(page, 'View contributing records for row 1', SECTION));
+  await responseFor(page, 'GET', drilldownPath(client.id, 'runs'), () => button(page, 'View contributing records for row 1', SECTION));
   await text(page, '3 contributing records total', SECTION);
   await button(page, 'Close contributing records', SECTION);
   await page.waitForFunction((selector) => !document.querySelector(selector), {}, `${SECTION} [aria-label="Contributing records drilldown"]`);
