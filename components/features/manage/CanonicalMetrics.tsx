@@ -38,6 +38,10 @@ interface GoalRow {
   unit?: string;
   pct?: number | null;
   status?: string;
+  objective_status?: string | null;
+  measurement_source?: string | null;
+  unverified_reason?: string | null;
+  period_mismatch?: boolean;
   metric_availability?: string | null;
   metric_availability_reason?: string | null;
   metric_is_proxy?: boolean;
@@ -93,6 +97,16 @@ function goalRecognizedCanonical(g: GoalRow): boolean {
 
 function fmtGoalActual(g: GoalRow) {
   const unit = g.unit || "";
+  if (g.measurement_source === "stored" && g.actual != null) {
+    const n = g.actual;
+    if (unit === "$") return `$${n} (stored)`;
+    if (unit === "x") return `${n}x (stored)`;
+    if (unit === "%") return `${n}% (stored)`;
+    return `${n} (stored)`;
+  }
+  if (g.unverified_reason === "period_mismatch" && g.actual == null) {
+    return "unverified (period mismatch)";
+  }
   const recognized = goalRecognizedCanonical(g);
   const meta = {
     metric_availability: g.metric_availability,
@@ -101,16 +115,32 @@ function fmtGoalActual(g: GoalRow) {
   };
   let base = formatMetricValue(g.actual, unit, meta, recognized);
   if (g.metric_is_proxy && !base.includes("(proxy)")) base += " (proxy)";
+  if (g.metric_availability === "partial" && g.actual != null && !base.includes("partial")) {
+    const reason = meta.metric_availability_reason?.replace(/_/g, " ") || "partial";
+    base += ` · partial (${reason})`;
+  }
   return base;
 }
 
 function fmtGoalStatus(g: GoalRow): { text: string; color: string } {
+  if (g.status === "complete") {
+    return { text: "complete", color: "#1d4ed8" };
+  }
   const recognized = goalRecognizedCanonical(g);
   const unverified = g.status === "unverified" || isUnverifiedCanonical(g, recognized);
-  const pct = g.pct != null ? ` (${g.pct}${unverified ? "% partial" : "%"})` : "";
-  const text = unverified
-    ? `unverified${g.pct != null ? pct : ""}`
-    : `${g.status || "unknown"}${pct}`;
+  let text: string;
+  if (unverified) {
+    if (g.unverified_reason === "period_mismatch") text = "unverified (period mismatch)";
+    else if (g.measurement_source === "stored") {
+      text = `unverified (stored)${g.pct != null ? ` (${g.pct}%)` : ""}`;
+    } else if (g.metric_availability === "partial" && g.pct != null) {
+      text = `unverified (${g.pct}% partial)`;
+    } else {
+      text = "unverified";
+    }
+  } else {
+    text = `${g.status || "unknown"}${g.pct != null ? ` (${g.pct}%)` : ""}`;
+  }
   const color = unverified
     ? "#475569"
     : g.status === "on-track"

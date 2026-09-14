@@ -601,8 +601,9 @@ async function computeCanonicalMetrics(tid, opts = {}) {
   let growthGoals = [];
   try {
     const okr = await pool.query(
-      `SELECT o.title AS objective, kr.title AS kr_title, kr.metric_type,
-              kr.linked_channel, kr.target_value, kr.current_value, kr.unit
+      `SELECT o.title AS objective, o.quarter, o.status AS objective_status,
+              kr.title AS kr_title, kr.metric_type, kr.linked_channel,
+              kr.target_value, kr.current_value, kr.unit
          FROM okr_key_results kr
          JOIN okr_objectives o ON o.id = kr.objective_id
         WHERE o.tenant_id = $1
