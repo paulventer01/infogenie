@@ -214,6 +214,6 @@ export default function ClientReportingReport({ clientId, version, format, timez
     </article>}
     <ClientReportingApprovals clientId={clientId} version={version} checkAccess={checkAccess}
       canSubmit={previewCurrent && !!preview?.can_generate}
-      customDates={useCustomDates && startDate && endDate ? { start_date: startDate, end_date: endDate } : null} />
+      contentHash={previewCurrent && preview?.content_hash ? preview.content_hash : null} />
   </section>;
 }

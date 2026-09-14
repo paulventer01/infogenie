@@ -99,7 +99,8 @@ export default function ClientReportViewPage() {
       <ClientReportingDrilldown mode="portal" target={drilldown} onClose={() => setDrilldown(null)} />
       {preview.brand.footerText && <p style={{ marginTop: 24 }}>{preview.brand.footerText}</p>}
     </article>}
-    {preview && !busy && <ClientPortalApprovalPanel onDecision={() => void load()} />}
+    {preview && !busy && <ClientPortalApprovalPanel binding={preview.approval_binding || null}
+      onDecision={() => void load()} />}
     {preview && !busy && <ClientPortalFeedbackPanel preview={preview} />}
     {preview && !busy && <section aria-label="Delivery history" style={{ marginTop: 32 }}>
       <h2>Delivery history</h2>

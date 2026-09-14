@@ -1,7 +1,7 @@
 import { apiGet, apiPost, type ApiResult } from "@/lib/api";
 import { ADMIN_API, PORTAL_API } from "@/lib/clientReportingPortal";
 import type { Client } from "@/lib/clientReporting";
-import type { Preview } from "@/lib/clientReportingReport";
+import type { ApprovalBinding, Preview } from "@/lib/clientReportingReport";
 
 export type ApprovalSnapshot = {
   id: number;
@@ -52,6 +52,10 @@ export function approvalErrorMessage(code: string): string {
       return "This approval request is no longer pending. Reload to see the latest status.";
     case "approval_not_found":
       return "This approval request could not be found. Reload and try again.";
+    case "approval_stale":
+      return "This report changed since you opened it. Reload the portal page and review the latest submission.";
+    case "preview_stale":
+      return "The displayed preview is no longer valid. Preview the report again before submitting.";
     case "version_conflict":
       return "The saved profile changed. Reload the profile and preview again before submitting.";
     case "no_mapped_records":
@@ -88,12 +92,8 @@ export async function fetchAdminApprovals(clientId: number): Promise<ApprovalLis
   return apiGet<ApprovalListResponse>(`${ADMIN_API}/${clientId}/approval-requests`);
 }
 
-export async function submitAdminApproval(
-  clientId: number,
-  expectedVersion: number,
-  dates?: { start_date: string; end_date: string },
-): Promise<ApprovalResponse> {
-  return apiPost(`${ADMIN_API}/${clientId}/approval-requests`, { expected_version: expectedVersion, ...dates });
+export async function submitAdminApproval(clientId: number, contentHash: string): Promise<ApprovalResponse> {
+  return apiPost(`${ADMIN_API}/${clientId}/approval-requests`, { content_hash: contentHash });
 }
 
 export async function withdrawAdminApproval(clientId: number, requestId: number): Promise<ApprovalResponse> {
@@ -104,10 +104,18 @@ export async function fetchPortalPendingApproval(): Promise<ApprovalResponse> {
   return apiGet<ApprovalResponse>(`${PORTAL_API}/approval-requests/pending`);
 }
 
-export async function approvePortalRequest(requestId: number): Promise<ApprovalResponse> {
-  return apiPost(`${PORTAL_API}/approval-requests/${requestId}/approve`, { confirm: true });
+export async function approvePortalRequest(binding: ApprovalBinding): Promise<ApprovalResponse> {
+  return apiPost(`${PORTAL_API}/approval-requests/${binding.request_id}/approve`, {
+    confirm: true,
+    snapshot_id: binding.snapshot_id,
+    content_hash: binding.content_hash,
+  });
 }
 
-export async function requestPortalChanges(requestId: number, comment: string): Promise<ApprovalResponse> {
-  return apiPost(`${PORTAL_API}/approval-requests/${requestId}/request-changes`, { comment });
+export async function requestPortalChanges(binding: ApprovalBinding, comment: string): Promise<ApprovalResponse> {
+  return apiPost(`${PORTAL_API}/approval-requests/${binding.request_id}/request-changes`, {
+    comment,
+    snapshot_id: binding.snapshot_id,
+    content_hash: binding.content_hash,
+  });
 }

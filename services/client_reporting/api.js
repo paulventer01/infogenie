@@ -273,7 +273,13 @@ router.get('/clients/:clientId/metric-drilldown/:metricKey', readLimiter, safe(a
 
 router.get('/clients/:clientId/report-preview', readLimiter, safe(async (req, res) => {
   const customRange = customRangeFromQuery(req.query);
-  return res.json(await reportSnapshot(req, undefined, customRange));
+  const tenantId = req.clientReportingTenantId, id = clientId(req), userId = positiveId(req.user.id);
+  const connection = await _db.getPool().connect();
+  try {
+    const built = await _snapshot.buildReportSnapshot(connection, tenantId, id, undefined, customRange);
+    const contentHash = await approvals.registerPreview(connection, tenantId, id, userId, built);
+    return res.json({ ...built.snapshot, content_hash: contentHash });
+  } finally { connection.release(); }
 }));
 router.post('/clients/:clientId/report', writeLimiter, safe(async (req, res) => {
   const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
@@ -612,16 +618,14 @@ router.get('/clients/:clientId/approval-requests/:requestId', readLimiter, safe(
 router.post('/clients/:clientId/approval-requests', writeLimiter, safe(async (req, res) => {
   const body = req.body, raw = req.rawBody == null ? JSON.stringify(body ?? null) : req.rawBody;
   if (Buffer.byteLength(raw, 'utf8') > 8192 || Object.keys(req.query).length || !object(body) ||
-      !Number.isInteger(body.expected_version) || body.expected_version < 1 || body.expected_version >= 2147483647) {
+      Object.keys(body).length !== 1 || !Object.hasOwn(body, 'content_hash') ||
+      !approvals.validContentHash(body.content_hash)) {
     throw fail(400, 'invalid_approval');
   }
-  const customRange = customRangeFromBody(body);
-  const allowed = customRange ? ['expected_version', 'start_date', 'end_date'] : ['expected_version'];
-  if (Object.keys(body).some((key) => !allowed.includes(key))) throw fail(400, 'invalid_approval');
   const tenantId = req.clientReportingTenantId, id = clientId(req);
   const client = await activeClient(_db.getPool(), tenantId, id);
   const request = await approvals.createSubmission(_db.getPool(), tenantId, id, positiveId(req.user.id),
-    body.expected_version, customRange);
+    body.content_hash);
   await _audit.recordAudit({
     action: 'client_reporting.approval_submit', actorUserId: req.user.id, actorEmail: req.user.email,
     tenantId, detail: `${client.name}: report approval submitted (submission #${request.snapshot.submission_number})`,

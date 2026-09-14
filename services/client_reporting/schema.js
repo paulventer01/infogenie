@@ -192,6 +192,29 @@ async function ensureClientReportingSchema() {
     ALTER TABLE client_reporting_portal_feedback_messages
       ADD CONSTRAINT client_reporting_portal_feedback_messages_check
       CHECK ((author_type = 'client' AND author_user_id IS NULL) OR author_type = 'agency');
+    CREATE TABLE IF NOT EXISTS client_reporting_approval_previews (
+      tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      client_id INT NOT NULL,
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      profile_version INT NOT NULL CHECK (profile_version > 0),
+      reporting_period TEXT NOT NULL CHECK (reporting_period IN ('all_time', 'last_7_days', 'last_30_days', 'previous_calendar_month', 'custom')),
+      reporting_timezone TEXT NOT NULL CHECK (length(reporting_timezone) > 0 AND length(reporting_timezone) <= 64),
+      period_start DATE,
+      period_end DATE,
+      selected_metrics JSONB NOT NULL DEFAULT '[]'::jsonb,
+      snapshot_json JSONB NOT NULL,
+      content_hash CHAR(64) NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      FOREIGN KEY (tenant_id, client_id) REFERENCES clients(tenant_id, id) ON DELETE CASCADE,
+      CHECK (jsonb_typeof(snapshot_json) = 'object'),
+      CHECK (jsonb_typeof(selected_metrics) = 'array'),
+      CHECK ((reporting_period = 'all_time' AND period_start IS NULL AND period_end IS NULL)
+        OR (reporting_period <> 'all_time' AND period_start IS NOT NULL AND period_end IS NOT NULL)),
+      PRIMARY KEY (tenant_id, client_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS client_reporting_approval_previews_expires_idx
+      ON client_reporting_approval_previews (expires_at);
     CREATE TABLE IF NOT EXISTS client_reporting_approval_snapshots (
       id BIGSERIAL PRIMARY KEY,
       tenant_id INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

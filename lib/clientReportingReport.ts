@@ -9,10 +9,19 @@ export type ReportSection = {
   drilldown_rows?: DrilldownRowMeta[] | null;
   row_meta?: ClientReportMetricMeta[] | null;
 };
+export type ApprovalBinding = {
+  request_id: number;
+  snapshot_id: number;
+  content_hash: string;
+  status: "pending";
+};
+
 export type Preview = { ok: true; client: Client; profile_version: number; format: Draft["default_format"]; can_generate: boolean;
   reporting_period?: string; reporting_timezone?: string;
   reporting_dates?: { start: string; end: string; timezone: string } | null;
   selected_metrics?: string[];
+  content_hash?: string;
+  approval_binding?: ApprovalBinding | null;
   brand: Branding; report: { title: string; generated_at: string; sections: ReportSection[] } };
 const text = (value: unknown, max = 2000): value is string => typeof value === "string" && value.length <= max;
 export function validPreview(value: unknown, id: number, version: number, format: string): value is Preview {

@@ -11,7 +11,7 @@ type Props = {
   clientId: number;
   version: number;
   canSubmit: boolean;
-  customDates?: { start_date: string; end_date: string } | null;
+  contentHash: string | null;
   checkAccess: () => Promise<boolean>;
 };
 
@@ -32,7 +32,7 @@ function HistoryRow({ request }: { request: ApprovalRequest }) {
   </tr>;
 }
 
-export default function ClientReportingApprovals({ clientId, version, canSubmit, customDates, checkAccess }: Props) {
+export default function ClientReportingApprovals({ clientId, version, canSubmit, contentHash, checkAccess }: Props) {
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [pending, setPending] = useState<ApprovalRequest | null>(null);
   const [busy, setBusy] = useState(true);
@@ -67,10 +67,11 @@ export default function ClientReportingApprovals({ clientId, version, canSubmit,
   }, [load, version]);
 
   async function submit() {
+    if (!contentHash) return;
     setActing(true); setError(null); setNotice(null);
     try {
       if (!await checkAccess()) return;
-      const result = await submitAdminApproval(clientId, version, customDates || undefined);
+      const result = await submitAdminApproval(clientId, contentHash);
       const failure = responseError(result);
       if (failure) {
         setError(approvalErrorMessage(failure));
@@ -117,7 +118,7 @@ export default function ClientReportingApprovals({ clientId, version, canSubmit,
           (profile v{pending.snapshot.profile_version})</p>
         <p style={{ fontSize: 14, color: "#64748B" }}>Submitted {pending.submitted_at}</p>
         <button style={button} disabled={acting} onClick={() => void withdraw()}>Withdraw pending request</button>
-      </div> : <button style={button} disabled={acting || !canSubmit} onClick={() => void submit()}>
+      </div> : <button style={button} disabled={acting || !canSubmit || !contentHash} onClick={() => void submit()}>
         Submit displayed report for approval
       </button>}
       {!requests.length ? <p style={{ marginTop: 16 }}>No approval submissions yet.</p> : <div style={{ marginTop: 16, overflowX: "auto" }}>

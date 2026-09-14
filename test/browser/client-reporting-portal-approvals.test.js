@@ -38,20 +38,6 @@ async function selectClient(page, id) {
   await responseFor(page, 'GET', profilePath(id), () => page.select(`${PANEL} select[name="client_id"]`, String(id)));
   await page.waitForSelector(`${FORM} [name="report_title"]:enabled`, { visible: true });
 }
-async function submitApproval(apiBase, cookie, clientId) {
-  const { request } = require('../helpers');
-  const profile = await request(apiBase, 'GET', `${API}/clients/${clientId}/profile`, { cookie });
-  assert.equal(profile.status, 200);
-  assert.equal(profile.json.ok, true);
-  const submitted = await request(apiBase, 'POST', `${API}/clients/${clientId}/approval-requests`, {
-    cookie,
-    headers: { Origin: apiBase },
-    body: { expected_version: profile.json.profile.version },
-  });
-  assert.equal(submitted.status, 201, submitted.text);
-  assert.equal(submitted.json.request.status, 'pending');
-  return submitted.json.request.id;
-}
 
 test('PR10H.3 portal approval browser journey', {
   skip: !dedicatedUrl && !required ? 'optional local run: no PR10E9_TEST_DATABASE_URL' : false,
@@ -59,8 +45,7 @@ test('PR10H.3 portal approval browser journey', {
 }, async (t) => {
   assert.ok(dedicatedUrl);
   const { startAgencyBrowser } = require('../helpers/agency-browser');
-  const { baseUrl, apiBase, db, actors } = await startAgencyBrowser(t);
-  const ownerSession = await require('../helpers').login(baseUrl, actors.owner.email, actors.owner.password);
+  const { baseUrl, db, actors } = await startAgencyBrowser(t);
   await require('../../services/search_intel/schema').ensureSearchIntelSchema();
   await require('../../services/optimizer/schema').ensureOptimizerSchema();
   const schema = require('../../services/client_reporting/schema');
@@ -118,7 +103,9 @@ test('PR10H.3 portal approval browser journey', {
   await portal.goto(inviteUrl, { waitUntil: 'networkidle2' });
   await portal.waitForFunction(() => location.pathname === '/client-report/view');
 
-  let requestId = await submitApproval(apiBase, ownerSession.cookie, clientId);
+  const submitResponse = await responseFor(owner, 'POST', `${API}/clients/${clientId}/approval-requests`,
+    () => button(owner, 'Submit displayed report for approval', APPROVALS), 201);
+  const requestId = submitResponse.request.id;
   await portal.reload({ waitUntil: 'networkidle2' });
   await portal.waitForSelector('[aria-label="Report approval"]', { visible: true });
   await text(portal, 'Pending client approval', '[aria-label="Report approval"]');
@@ -132,7 +119,11 @@ test('PR10H.3 portal approval browser journey', {
   ]);
   await text(portal, 'Change request submitted', 'main');
 
-  requestId = await submitApproval(apiBase, ownerSession.cookie, clientId);
+  await button(owner, 'Preview report');
+  await owner.waitForSelector('[aria-label="Client report preview"] article', { visible: true });
+  const resubmitResponse = await responseFor(owner, 'POST', `${API}/clients/${clientId}/approval-requests`,
+    () => button(owner, 'Submit displayed report for approval', APPROVALS), 201);
+  const requestId2 = resubmitResponse.request.id;
   await portal.reload({ waitUntil: 'networkidle2' });
   await portal.waitForSelector('[aria-label="Report approval"]', { visible: true });
   await button(portal, 'Approve report', '[aria-label="Report approval"]');
@@ -143,6 +134,7 @@ test('PR10H.3 portal approval browser journey', {
   await selectClient(owner, clientId);
   await owner.waitForSelector(APPROVALS, { visible: true });
   await text(owner, 'Approved', APPROVALS);
+  assert.notEqual(requestId2, requestId);
 
   const fs = require('node:fs/promises');
   await fs.mkdir('/opt/cursor/artifacts/screenshots', { recursive: true });

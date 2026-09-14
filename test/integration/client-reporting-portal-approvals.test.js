@@ -15,7 +15,7 @@ function portalCookie(setCookieArray) {
   return null;
 }
 
-test('Client reporting portal approvals: snapshot immutability, lifecycle, isolation and CSRF', {
+test('Client reporting portal approvals: preview binding, snapshot immutability, lifecycle, isolation and CSRF', {
   skip: !dedicatedUrl && !required ? 'no PR10F1_TEST_DATABASE_URL' : false,
   timeout: 120_000,
 }, async (t) => {
@@ -51,9 +51,10 @@ test('Client reporting portal approvals: snapshot immutability, lifecycle, isola
   fx = require('../helpers/fixtures').makeFixtures();
   await db.ensureSchema();
   await fx.ensureSchemas();
+  await require('../../services/search_intel/schema').ensureSearchIntelSchema();
+  await require('../../services/optimizer/schema').ensureOptimizerSchema();
   await require('../../services/client_reporting/schema').ensureClientReportingSchema();
   await require('../../services/client_reporting/schema').ensureClientReportingMappingSchema();
-  await require('../../services/search_intel/schema').ensureSearchIntelSchema();
   const { bootApp, request, login } = require('../helpers');
   app = await bootApp();
   ports.add(app.port);
@@ -90,71 +91,107 @@ test('Client reporting portal approvals: snapshot immutability, lifecycle, isola
       VALUES ($1,$2,$3,$4,$5)`, [actorRow.tid, queryId, clientId, randomUUID(), actorRow.uid]);
   }
   const previewA = await call(a, 'GET', `${prefix}/${ca}/report-preview`);
-  const version = previewA.json.profile_version;
+  const contentHash = previewA.json.content_hash;
+  assert.ok(contentHash);
   const invite = await call(a, 'POST', invitePath(ca), {}, 201);
   const rawToken = invite.json.invite_path.split('/').pop();
   const redeem = await request(app.baseUrl, 'POST', `${portalApi}/redeem/${rawToken}`, { body: {} });
   const portalCookieValue = portalCookie(redeem.cookies);
   assert.ok(portalCookieValue);
-  const submitted = await call(a, 'POST', approvalsPath(ca), { expected_version: version }, 201);
+  await db.getPool().query(`UPDATE client_reporting_profiles SET report_title='Changed before submit', version=version+1
+    WHERE tenant_id=$1 AND client_id=$2`, [ta.id, ca]);
+  const staleSubmit = await call(a, 'POST', approvalsPath(ca), { content_hash: contentHash }, 409);
+  assert.equal(staleSubmit.json.error, 'preview_stale');
+  const bumpedVersion = (await db.getPool().query(`SELECT version FROM client_reporting_profiles
+    WHERE tenant_id=$1 AND client_id=$2`, [ta.id, ca])).rows[0].version;
+  await call(a, 'PUT', profilePath(ca), { report_source: 'search-intel', default_format: 'pdf', report_title: 'Report', branding_mode: 'workspace', branding_overrides: {},
+    selected_metrics: ['runs', 'successful_runs', 'brand_mentions', 'mapped_queries', 'recent_search_runs'],
+    reporting_period: 'last_30_days', reporting_timezone: 'UTC', expected_version: bumpedVersion });
+  const previewB = await call(a, 'GET', `${prefix}/${ca}/report-preview`);
+  const submitHash = previewB.json.content_hash;
+  const submitted = await call(a, 'POST', approvalsPath(ca), { content_hash: submitHash }, 201);
   const requestId = submitted.json.request.id;
   const snapshotHash = submitted.json.request.snapshot.content_hash;
   const snapshotPayload = submitted.json.request.snapshot_payload;
   assert.ok(snapshotPayload);
   assert.equal(submitted.json.request.status, 'pending');
-  const duplicate = await call(a, 'POST', approvalsPath(ca), { expected_version: version }, 409);
+  const duplicate = await call(a, 'POST', approvalsPath(ca), { content_hash: submitHash }, 409);
   assert.equal(duplicate.json.error, 'approval_pending');
-  const portalPending = await request(app.baseUrl, 'GET', `${portalApi}/approval-requests/pending`, { cookie: portalCookieValue });
-  assert.equal(portalPending.status, 200, portalPending.text);
-  assert.ok(portalPending.json?.pending, `expected pending approval: ${portalPending.text}`);
-  assert.equal(portalPending.json.pending.id, requestId);
+  await db.getPool().query(`UPDATE client_reporting_profiles SET report_title='Changed after submit', version=version+1
+    WHERE tenant_id=$1 AND client_id=$2`, [ta.id, ca]);
   const portalReport = await request(app.baseUrl, 'GET', `${portalApi}/report`, { cookie: portalCookieValue });
   assert.equal(portalReport.json.report.title, snapshotPayload.report.title);
   assert.equal(portalReport.json.profile_version, snapshotPayload.profile_version);
+  assert.ok(portalReport.json.approval_binding);
+  assert.equal(portalReport.json.approval_binding.request_id, requestId);
+  assert.equal(portalReport.json.approval_binding.snapshot_id, submitted.json.request.snapshot.id);
+  assert.equal(portalReport.json.approval_binding.content_hash, snapshotHash);
+  const binding = portalReport.json.approval_binding;
   const csrfApprove = await request(app.baseUrl, 'POST', `${portalApi}/approval-requests/${requestId}/approve`, {
-    cookie: portalCookieValue, body: { confirm: true },
+    cookie: portalCookieValue, body: { confirm: true, snapshot_id: binding.snapshot_id, content_hash: binding.content_hash },
   });
   assert.equal(csrfApprove.status, 403);
   assert.equal(csrfApprove.json.error, 'csrf_rejected');
   const crossTenant = await call(b, 'GET', `${prefix}/${ca}/approval-requests`, undefined, 404);
   assert.equal(crossTenant.json.error, 'client_not_found');
+  const staleBinding = { snapshot_id: binding.snapshot_id, content_hash: 'a'.repeat(64) };
+  const staleChanges = await request(app.baseUrl, 'POST', `${portalApi}/approval-requests/${requestId}/request-changes`, {
+    cookie: portalCookieValue, headers: { Origin: app.baseUrl },
+    body: { comment: 'Please revise the summary.', ...staleBinding },
+  });
+  assert.equal(staleChanges.status, 409);
+  assert.equal(staleChanges.json.error, 'approval_stale');
   const changes = await request(app.baseUrl, 'POST', `${portalApi}/approval-requests/${requestId}/request-changes`, {
-    cookie: portalCookieValue, headers: { Origin: app.baseUrl }, body: { comment: 'Please revise the summary.' },
+    cookie: portalCookieValue, headers: { Origin: app.baseUrl },
+    body: { comment: 'Please revise the summary.', snapshot_id: binding.snapshot_id, content_hash: binding.content_hash },
   });
   assert.equal(changes.status, 200);
   assert.equal(changes.json.request.status, 'changes_requested');
   assert.equal(changes.json.request.decision_actor_type, 'portal_client');
   const staleApprove = await request(app.baseUrl, 'POST', `${portalApi}/approval-requests/${requestId}/approve`, {
-    cookie: portalCookieValue, headers: { Origin: app.baseUrl }, body: { confirm: true },
+    cookie: portalCookieValue, headers: { Origin: app.baseUrl },
+    body: { confirm: true, snapshot_id: binding.snapshot_id, content_hash: binding.content_hash },
   });
   assert.equal(staleApprove.status, 409);
   assert.equal(staleApprove.json.error, 'approval_not_pending');
-  const resubmit = await call(a, 'POST', approvalsPath(ca), { expected_version: version }, 201);
+  const previewC = await call(a, 'GET', `${prefix}/${ca}/report-preview`);
+  const resubmit = await call(a, 'POST', approvalsPath(ca), { content_hash: previewC.json.content_hash }, 201);
   const requestId2 = resubmit.json.request.id;
   assert.notEqual(requestId2, requestId);
   assert.equal(resubmit.json.request.snapshot.submission_number, 2);
+  const portalReport2 = await request(app.baseUrl, 'GET', `${portalApi}/report`, { cookie: portalCookieValue });
+  const binding2 = portalReport2.json.approval_binding;
+  assert.equal(binding2.request_id, requestId2);
+  const approveOld = await request(app.baseUrl, 'POST', `${portalApi}/approval-requests/${requestId}/approve`, {
+    cookie: portalCookieValue, headers: { Origin: app.baseUrl },
+    body: { confirm: true, snapshot_id: binding.snapshot_id, content_hash: binding.content_hash },
+  });
+  assert.equal(approveOld.status, 409);
+  assert.equal(approveOld.json.error, 'approval_not_pending');
   const history = await call(a, 'GET', approvalsPath(ca));
   assert.equal(history.json.requests.length, 2);
   assert.equal(history.json.requests.find((row) => row.id === requestId).status, 'changes_requested');
   await call(a, 'POST', withdrawPath(ca, requestId2), {});
   const withdrawn = await call(a, 'GET', approvalsPath(ca));
   assert.equal(withdrawn.json.requests.find((row) => row.id === requestId2).status, 'withdrawn');
-  const third = await call(a, 'POST', approvalsPath(ca), { expected_version: version }, 201);
+  const previewD = await call(a, 'GET', `${prefix}/${ca}/report-preview`);
+  const third = await call(a, 'POST', approvalsPath(ca), { content_hash: previewD.json.content_hash }, 201);
   const requestId3 = third.json.request.id;
+  const portalReport3 = await request(app.baseUrl, 'GET', `${portalApi}/report`, { cookie: portalCookieValue });
+  const binding3 = portalReport3.json.approval_binding;
   const approved = await request(app.baseUrl, 'POST', `${portalApi}/approval-requests/${requestId3}/approve`, {
-    cookie: portalCookieValue, headers: { Origin: app.baseUrl }, body: { confirm: true },
+    cookie: portalCookieValue, headers: { Origin: app.baseUrl },
+    body: { confirm: true, snapshot_id: binding3.snapshot_id, content_hash: binding3.content_hash },
   });
   assert.equal(approved.status, 200);
   assert.equal(approved.json.request.status, 'approved');
-  await db.getPool().query(`UPDATE client_reporting_profiles SET report_title='Changed title', version=version+1
-    WHERE tenant_id=$1 AND client_id=$2`, [ta.id, ca]);
-  const portalAfterChange = await request(app.baseUrl, 'GET', `${portalApi}/report`, { cookie: portalCookieValue });
-  assert.equal(portalReport.json.report.title, snapshotPayload.report.title);
-  assert.equal(portalAfterChange.json.report.title, 'Changed title');
   const stored = await db.getPool().query(`SELECT snapshot_json, content_hash FROM client_reporting_approval_snapshots
     WHERE tenant_id=$1 AND client_id=$2 AND submission_number=1`, [ta.id, ca]);
   assert.equal(stored.rows[0].content_hash, snapshotHash);
   assert.equal(stored.rows[0].snapshot_json.report.title, snapshotPayload.report.title);
+  const liveTitle = (await db.getPool().query(`SELECT report_title FROM client_reporting_profiles
+    WHERE tenant_id=$1 AND client_id=$2`, [ta.id, ca])).rows[0].report_title;
+  assert.notEqual(stored.rows[0].snapshot_json.report.title, liveTitle);
   await call(a, 'POST', revokePath(ca), {});
   const revoked = await request(app.baseUrl, 'GET', `${portalApi}/approval-requests/pending`, { cookie: portalCookieValue });
   assert.equal(revoked.status, 403);
